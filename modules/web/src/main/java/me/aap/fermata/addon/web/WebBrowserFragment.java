@@ -51,6 +51,13 @@ import me.aap.utils.ui.view.ToolBarView;
 public class WebBrowserFragment extends MainActivityFragment
 		implements OverlayMenu.SelectionHandler, MainActivityListener {
 	private boolean fullScreenOnResume;
+	/**
+	 * Whether playback was actually running (not just "not explicitly paused") right before
+	 * {@link #onPause()} tore fullscreen down for an Android Auto backgrounding. Recorded so a
+	 * recovery path (see {@code YoutubeFragment#recoverFullscreenVideo()}) that ends up reloading
+	 * the page can restore the state the user was actually in, instead of just guessing "paused".
+	 */
+	protected boolean wasPlayingOnPause;
 	@Nullable
 	private PreferenceStore.Listener privateModeListener;
 
@@ -182,6 +189,7 @@ public class WebBrowserFragment extends MainActivityFragment
 			if (chrome.isFullScreen()) {
 				chrome.exitFullScreen();
 				fullScreenOnResume = true;
+				wasPlayingOnPause = MainActivityDelegate.get(getContext()).getMediaServiceBinder().isPlaying();
 			} else {
 				fullScreenOnResume = false;
 			}
