@@ -66,6 +66,11 @@ public class YoutubeAddon extends WebBrowserAddon
 	// it's user-adjustable (see YoutubeEqualizerView) rather than fixed; 2500 matches the value this
 	// was hardcoded to before it became adjustable, so existing users hear no change by default.
 	private static final Pref<IntSupplier> YT_REVERB_DURATION = Pref.i("YT_REVERB_DURATION", 2500);
+	// Which reverb engine the youtube_equalizer.js content script uses for Live Hall: 0 = smooth
+	// (cheap algorithmic comb+allpass, the default), 1 = convolution (the original impulse-response
+	// reverb, higher CPU cost but a different, more "random room" character). See
+	// YoutubeEqualizerView's "Hall quality" row and YoutubeEqualizerScript's config JSON.
+	static final Pref<IntSupplier> YT_REVERB_ENGINE = Pref.i("YT_REVERB_ENGINE", 0);
 	private boolean ignorePrefChange;
 	private YoutubeRootItem root;
 
@@ -323,12 +328,22 @@ public class YoutubeAddon extends WebBrowserAddon
 		getPreferenceStore().applyIntPref(YT_REVERB_DURATION, durationMs);
 	}
 
+	/** 0 = smooth (algorithmic), 1 = convolution (impulse-response). */
+	int reverbEngine() {
+		return getPreferenceStore().getIntPref(YT_REVERB_ENGINE);
+	}
+
+	void setReverbEngine(int engine) {
+		getPreferenceStore().applyIntPref(YT_REVERB_ENGINE, engine);
+	}
+
 	boolean eqPrefsChanged(List<Pref<?>> prefs) {
 		return prefs.contains(YT_EQ_ENABLED) || prefs.contains(YT_EQ_PRESET) ||
 				prefs.contains(YT_EQ_BANDS) || prefs.contains(YT_BASS_ENABLED) ||
 				prefs.contains(YT_BASS_STRENGTH) || prefs.contains(YT_VIRT_ENABLED) ||
 				prefs.contains(YT_VIRT_STRENGTH) || prefs.contains(YT_REVERB_ENABLED) ||
-				prefs.contains(YT_REVERB_STRENGTH) || prefs.contains(YT_REVERB_DURATION);
+				prefs.contains(YT_REVERB_STRENGTH) || prefs.contains(YT_REVERB_DURATION) ||
+				prefs.contains(YT_REVERB_ENGINE);
 	}
 
 	enum VideoScale {

@@ -163,6 +163,9 @@
     <string name="live_hall">Live Hall</string>
     <string name="reverb_duration">Hall Size</string>
     <string name="effects">Effects</string>
+    <string name="hall_quality">Hall quality</string>
+    <string name="hall_quality_smooth">Smooth — low CPU</string>
+    <string name="hall_quality_rich">Rich — high CPU</string>
     <string name="strength">Strength</string>
     <string name="apply_to">Apply to</string>
 

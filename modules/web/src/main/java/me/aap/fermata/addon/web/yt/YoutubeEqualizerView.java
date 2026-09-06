@@ -36,8 +36,10 @@ import me.aap.utils.pref.PreferenceView.ListOpts;
  * design), but binds them to {@link YoutubeAddon}'s Web-Audio-backed prefs instead of an
  * {@link android.media.audiofx.AudioEffects} instance, since YouTube plays through the WebView's
  * own audio pipeline rather than one of the app's native engines. Unlike the native panel,
- * settings here are global to the YouTube tab (no per-track/per-folder scope, no Volume Boost, no
- * Virtualizer mode selector), so those sections/controls of the shared layout are hidden.
+ * settings here are global to the YouTube tab (no per-track/per-folder scope, no Volume Boost),
+ * so those sections/controls of the shared layout are hidden -- except the Virtualizer-mode
+ * dropdown, which has no equivalent here but is repurposed (not hidden) for Live Hall's reverb
+ * engine/quality selector, since it's otherwise the one unused row in this shared layout.
  */
 final class YoutubeEqualizerView extends android.widget.ScrollView implements PreferenceStore.Listener {
 	@Nullable
@@ -59,7 +61,11 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 		this.web = web;
 		YoutubeAddon addon = this.addon = web.getAddon();
 		inflate(getContext(), me.aap.fermata.R.layout.audio_effects, this);
-		hide(me.aap.fermata.R.id.apply_to, me.aap.fermata.R.id.virtualizer_mode,
+		// virtualizer_mode is the native Audio effects screen's Virtualizer-mode dropdown -- unused
+		// here (YouTube's Web-Audio virtualizer has no such mode selector), so it's repurposed rather
+		// than hidden: it's the one existing row in this shared layout with no other job on this
+		// screen, and reusing it avoids any layout/UI change for a single "Hall quality" setting.
+		hide(me.aap.fermata.R.id.apply_to,
 				me.aap.fermata.R.id.equalizer_preset_save, me.aap.fermata.R.id.equalizer_preset_delete);
 		addon.getPreferenceStore().addBroadcastListener(this);
 		// GenericFragment is a single instance shared by every "generic screen" caller in the app
@@ -100,6 +106,24 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 			o.title = me.aap.fermata.R.string.string_format;
 			o.formatTitle = true;
 			o.stringValues = names;
+			return o;
+		});
+
+		// Live Hall's reverb engine: Smooth (cheap algorithmic comb/allpass, default) trades some
+		// character for far lower CPU cost than Rich (the original impulse-response convolution) --
+		// see youtube_equalizer.js. Only affects Live Hall's sound while it's enabled below; doesn't
+		// need its own on/off switch.
+		PreferenceView hallQualityView = findViewById(me.aap.fermata.R.id.virtualizer_mode);
+		hallQualityView.setPreference(null, () -> {
+			ListOpts o = new ListOpts();
+			o.store = addon.getPreferenceStore();
+			o.pref = YoutubeAddon.YT_REVERB_ENGINE;
+			o.title = me.aap.fermata.R.string.hall_quality;
+			o.subtitle = me.aap.fermata.R.string.string_format;
+			o.formatSubtitle = true;
+			o.values = new int[]{me.aap.fermata.R.string.hall_quality_smooth,
+					me.aap.fermata.R.string.hall_quality_rich};
+			o.valuesMap = new int[]{0, 1};
 			return o;
 		});
 
