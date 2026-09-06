@@ -262,6 +262,18 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 */
 	private boolean showEqualizer() {
 		MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a -> {
+			// Showing this as a fragment hides YoutubeFragment's own root view -- the same
+			// FragmentTransaction that shows this one briefly flips the still-playing YoutubeWebView's
+			// visibility to GONE (Fragment.hide() on the outgoing fragment) as part of that. Some
+			// devices' WebView/Chromium implementation treats that visibility flip as the page going
+			// into the background and auto-pauses the video as a side effect -- confirmed intermittent
+			// (device/timing-dependent) rather than a deterministic app-level pause call anywhere in
+			// this path. If it was actually playing going in, nudge it back once shortly after the
+			// transition settles, rather than silently leaving a UI-only navigation the user never
+			// asked to pause for. Harmless if nothing paused it: onPlay() on an already-playing video
+			// is a no-op.
+			boolean wasPlaying = cb.isPlaying();
+
 			if (!(a.showFragment(me.aap.utils.R.id.generic_fragment) instanceof GenericFragment f))
 				return;
 			f.setTitle(a.getContext().getString(me.aap.fermata.R.string.audio_effects));
@@ -270,6 +282,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				v.init(web);
 				g.addView(v, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 			});
+
+			if (wasPlaying) a.postDelayed(() -> {
+				if (!cb.isPlaying()) cb.onPlay();
+			}, 500L);
 		});
 		return true;
 	}
