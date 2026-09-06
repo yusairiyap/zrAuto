@@ -82,14 +82,29 @@
   // 4-allpass network per channel, and "Hall Size" becomes an instant feedback-gain change instead
   // of a buffer rebuild.
   //
-  // Tunings below are Freeverb's own classic constants (Jezar's reference comb/allpass delays and
-  // stereo spread, originally specified in samples at 44.1kHz), converted to milliseconds so they
-  // reproduce the same timing regardless of this AudioContext's actual sample rate.
-  const COMB_DELAYS_MS = [25.31, 26.94, 28.96, 30.75, 32.24, 33.81, 35.31, 36.67];
+  // Tunings below start from Freeverb's own classic constants (Jezar's reference comb/allpass
+  // delays and stereo spread, originally specified in samples at 44.1kHz), converted to
+  // milliseconds (so they reproduce the same timing regardless of this AudioContext's actual
+  // sample rate) and the comb delays scaled up ~2.2x from Freeverb's original room-scale spacing
+  // to genuinely hall-scale reflection spacing. That scale-up isn't cosmetic: a comb filter's
+  // resonant peaks sit at multiples of 1/delay Hz, and reaching a given decay time (RT60) needs
+  // LESS feedback gain the longer each comb's own delay already is (fewer feedback cycles fit in
+  // the same RT60 window) -- so longer delays directly mean lower feedback, and lower feedback
+  // means a lower, less metallic-sounding resonant peak (peak gain is ~1/(1-feedback)) for the
+  // exact same requested Hall Size. At the original room-scale delays, a long Hall Size pushed
+  // feedback high enough to sound like a sharp, painful, ringing echo instead of a smooth tail.
+  const COMB_DELAYS_MS = [55.68, 59.27, 63.71, 67.65, 70.93, 74.38, 77.68, 80.67];
   const STEREO_SPREAD_MS = 0.52;
   const ALLPASS_DELAYS_MS = [12.61, 10.0, 7.73, 5.10];
-  const COMB_DAMPING_HZ = 3000; // fixed high-frequency damping in the feedback path -- not user-
-                                 // exposed; only Hall Size (decay length) and Strength are.
+  // Feedback-path damping brightness range -- see setSmoothDuration(): a real hall loses more
+  // high-frequency energy the longer sound keeps traveling through it, so a longer Hall Size
+  // darkens the tail instead of leaving it ringing brightly the whole way through.
+  const COMB_DAMPING_MAX_HZ = 5500;
+  const COMB_DAMPING_MIN_HZ = 1400;
+  // Hard ceiling on any single comb's feedback, regardless of requested Hall Size -- an extra
+  // safety margin against the sharp, ear-fatiguing ringing a feedback gain approaching 1 causes,
+  // on top of (not a substitute for) the delay-length change above.
+  const SMOOTH_MAX_FEEDBACK = 0.9;
   const ALLPASS_G = 0.5;
 
   function createComb(ctx, delaySeconds) {
@@ -99,7 +114,7 @@
     const damp = ctx.createBiquadFilter();
     damp.type = 'lowpass';
     damp.Q.value = 0.0001;
-    damp.frequency.value = COMB_DAMPING_HZ;
+    damp.frequency.value = COMB_DAMPING_MAX_HZ;
     const feedback = ctx.createGain();
     feedback.gain.value = 0; // set for real by setSmoothDuration()
 
@@ -108,7 +123,8 @@
     damp.connect(feedback);
     feedback.connect(delay);
 
-    return {input, output: delay, delaySeconds, feedback, nodes: [input, delay, damp, feedback]};
+    return {input, output: delay, delaySeconds, feedback, damp,
+            nodes: [input, delay, damp, feedback]};
   }
 
   // One-multiply Schroeder allpass: w[n] = x[n] + g*w[n-D], y[n] = -g*x[n] + w[n-D]. `sum`
@@ -188,14 +204,23 @@
   }
 
   // Hall Size maps to RT60 (time to decay 60dB), via the standard Freeverb feedback formula
-  // feedback = 0.001^(combDelay/RT60) -- longer RT60 (bigger hall) means slower-decaying feedback.
-  // Applies uniformly to every comb in both channels (their differing base delaySeconds is already
-  // baked into each comb object, so this still reproduces the same RT60 target per channel).
-  // Genuinely free to update on every call: just a target gain ramp per comb, no buffer to rebuild.
+  // feedback = 0.001^(combDelay/RT60) -- longer RT60 (bigger hall) means slower-decaying feedback,
+  // clamped to SMOOTH_MAX_FEEDBACK as a hard ceiling. Applies uniformly to every comb in both
+  // channels (their differing base delaySeconds is already baked into each comb object, so this
+  // still reproduces the same RT60 target per channel). Also darkens each comb's feedback-path
+  // damping as Hall Size grows -- real halls attenuate more high frequency the longer the tail
+  // sustains, and letting the tail progressively lose brightness reads as smoother/further away
+  // rather than a flat, unchanging ring for the whole decay. Genuinely free to update on every
+  // call: just target-value ramps, no buffer to rebuild.
   function setSmoothDuration(ctx, combs, rt60Seconds) {
+    const t = Math.max(0, Math.min(1,
+        (rt60Seconds - REVERB_DURATION_MIN) / (REVERB_DURATION_MAX - REVERB_DURATION_MIN)));
+    const dampFreq = COMB_DAMPING_MAX_HZ - (COMB_DAMPING_MAX_HZ - COMB_DAMPING_MIN_HZ) * t;
+
     for (const c of combs) {
       const feedback = Math.pow(0.001, c.delaySeconds / Math.max(0.05, rt60Seconds));
-      rampValue(ctx, c.feedback.gain, Math.min(0.98, feedback));
+      rampValue(ctx, c.feedback.gain, Math.min(SMOOTH_MAX_FEEDBACK, feedback));
+      rampValue(ctx, c.damp.frequency, dampFreq);
     }
   }
 
@@ -450,8 +475,13 @@
     const REVERB_MAX_STRENGTH = 1.5;
     const reverbStrength = cfg.reverbEnabled ?
         Math.max(0, Math.min(REVERB_MAX_STRENGTH, cfg.reverbStrength)) : 0;
+    // The comb network's own resonant peaks make it read as noticeably more prominent/present
+    // than an equal-numbered wet gain on the (smooth, diffuse) convolution engine -- give it its
+    // own, lower wet scale rather than sharing convolution's, so the same Strength% feels roughly
+    // comparable between the two instead of Smooth always sounding hotter/sharper by comparison.
+    const wetScale = (engineName === 'smooth') ? 0.35 : 0.6;
     rampValue(ctx, chain.reverbDry.gain, 1);
-    rampValue(ctx, chain.reverbWet.gain, reverbStrength * 0.6);
+    rampValue(ctx, chain.reverbWet.gain, reverbStrength * wetScale);
 
     if (!cfg.reverbEnabled) return;
 
