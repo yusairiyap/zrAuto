@@ -126,6 +126,48 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		}
 	}
 
+	/**
+	 * Overrides {@code WebBrowserFragment}'s plain "just re-enter fullscreen" recovery with a real
+	 * page reload -- reusing the same reload+reseek pattern {@link #onViewCreated} already uses for
+	 * an Activity recreation. A fullscreen rebuild alone (the base implementation) only tears
+	 * down/rebuilds the Java-side custom view and re-requests fullscreen on the SAME, already-
+	 * existing {@code &lt;video&gt;} element -- it never recreates the underlying decoder pipeline, and
+	 * {@link MediaSessionCallback}'s playback state (driven entirely by one-shot JS DOM 'pause'/
+	 * 'playing' events) can already be desynced from the real video by the time this runs. Only a
+	 * real reload -- confirmed on-device, matching what manually refreshing the page already does
+	 * -- reliably recovers both.
+	 */
+	@Override
+	protected void recoverFullscreenVideo() {
+		MainActivityDelegate.getActivityDelegate(getContext()).onSuccess(a -> {
+			MediaSessionCallback cb = a.getMediaSessionCallback();
+			MediaEngine eng = cb.getEngine();
+			FermataWebView v = getWebView();
+			if (v == null) return;
+
+			if (!(eng instanceof YoutubeMediaEngine)) {
+				a.post(() -> {
+					FermataChromeClient chrome = v.getWebChromeClient();
+					if (chrome != null) chrome.enterFullScreen();
+				});
+				return;
+			}
+
+			boolean wasPlaying = cb.isPlaying();
+			eng.getPosition().onSuccess(pos -> a.post(() -> {
+				v.reload();
+				a.postDelayed(() -> {
+					MediaEngine e2 = cb.getEngine();
+					if (!(e2 instanceof YoutubeMediaEngine)) return; // engine changed/torn down meanwhile
+					if (pos > 0L) cb.onSeekTo(pos);
+					if (wasPlaying) cb.onPlay();
+					FermataChromeClient chrome = v.getWebChromeClient();
+					if (chrome != null) chrome.enterFullScreen();
+				}, 3000L);
+			}));
+		});
+	}
+
 	@Override
 	public void onDestroyView() {
 		MainActivityDelegate a = MainActivityDelegate.get(requireContext());
