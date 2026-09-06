@@ -211,6 +211,19 @@ public class YoutubeWebView extends FermataWebView {
 		return true;
 	}
 
+	@Override
+	protected void exitPageFullScreen() {
+		// See FermataWebView#exitPageFullScreen(): make sure document.fullscreenElement actually
+		// clears when the app force-exits fullscreen, or a later requestFullscreen() call above --
+		// automatic or a manual re-tap -- silently no-ops since the page still thinks it's fullscreen.
+		loadUrl("javascript: (function() {\n" +
+				"  var fs = document.fullscreenElement || document.webkitFullscreenElement;\n" +
+				"  if (!fs) return;\n" +
+				"  if (document.exitFullscreen) document.exitFullscreen().catch(function() {});\n" +
+				"  else if (document.webkitExitFullscreen) document.webkitExitFullscreen();\n" +
+				"})();");
+	}
+
 	void play() {
 		loadUrl("javascript:var v = document.querySelector('video'); if (v != null) v.play();");
 	}

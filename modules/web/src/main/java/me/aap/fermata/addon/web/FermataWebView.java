@@ -290,6 +290,20 @@ public class FermataWebView extends WebView
 		return false;
 	}
 
+	/**
+	 * Tells the PAGE itself (not just the native custom view) to leave fullscreen -- called
+	 * whenever the app force-exits fullscreen from the Java side (e.g. an Android Auto display
+	 * takeover backgrounding the app while a video is fullscreen). No-op by default; overridden
+	 * where fullscreen is actually driven by a real DOM {@code requestFullscreen()} call (see
+	 * {@code YoutubeWebView}), since the Android {@code WebChromeClient} contract for
+	 * {@code onHideCustomView()}/{@code CustomViewCallback} does not reliably clear the page's own
+	 * {@code document.fullscreenElement} when the app -- rather than the page's own JS -- initiates
+	 * the exit. Left stuck, that silently blocks every later {@code requestFullscreen()} call on
+	 * that element (automatic recovery and a manual re-tap alike) until the page is reloaded.
+	 */
+	protected void exitPageFullScreen() {
+	}
+
 	@SuppressLint("ClickableViewAccessibility")
 	@Override
 	public boolean onTouchEvent(MotionEvent event) {

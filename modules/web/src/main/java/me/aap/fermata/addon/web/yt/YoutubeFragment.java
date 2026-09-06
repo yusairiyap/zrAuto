@@ -16,9 +16,6 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.constraintlayout.widget.ConstraintLayout;
 
-import org.json.JSONException;
-import org.json.JSONObject;
-
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -40,7 +37,6 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.utils.async.FutureSupplier;
-import me.aap.utils.function.Consumer;
 import me.aap.utils.function.LongSupplier;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.pref.PreferenceStore.Pref;
@@ -60,17 +56,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	private static final Set<String> DEFAULT_URLS = new HashSet<>(Arrays.asList(DEFAULT_URL, DEFAULT_URL + '/'));
 	private static final Pref<LongSupplier> RESUME_POS = Pref.l("YT_RESUME_POS", 0L);
 	private static final String YT_VIDEO_VIEW_TAG = "yt_video_view_overlay";
-	// Two JS samples this far apart tell a genuinely stuck video (readyState never reaches
-	// HAVE_CURRENT_DATA, or currentTime never advances while claiming to play) apart from an
-	// ordinary pause/resume blip -- see recoverFullscreenVideo()/isStuck() below.
-	private static final long HEALTH_PROBE_DELAY_1 = 600L;
-	private static final long HEALTH_PROBE_DELAY_2 = 900L;
-	private static final String VIDEO_STATE_JS =
-			"(function(){var v=document.querySelector('video');" +
-					"return v?JSON.stringify({t:v.currentTime,p:v.paused,r:v.readyState,e:v.ended}):" +
-					"'null';})()";
 	private boolean playOnResume;
-	private boolean recovering;
 
 	@Override
 	public int getFragmentId() {
@@ -140,128 +126,19 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		}
 	}
 
-	/**
-	 * Overrides {@code WebBrowserFragment}'s plain "just re-enter fullscreen" recovery with a
-	 * two-stage one. Stage 1 is always the same safe, reversible thing the base implementation
-	 * does -- re-enter fullscreen on the existing, already-loaded &lt;video&gt; element -- which
-	 * covers the overwhelming majority of resumes (a routine app switch, a brief camera overlay):
-	 * the video was never actually interrupted, so nothing else needs to happen. Only for an actual
-	 * YouTube engine does stage 2 also run: a couple of JS health samples a moment apart, and only
-	 * if those show the video is genuinely stuck (not just paused, and not just ended) does this
-	 * fall through to a real page reload, matching what manually refreshing the page already does.
-	 * <p>
-	 * A previous version of this override reloaded unconditionally on every recovery, which meant
-	 * ordinary backgrounding (switch to another Android Auto app and back) reloaded and force-paused
-	 * the video every single time -- the reload is now reserved for the case it was actually meant
-	 * to catch: a display takeover leaving the video frozen and unresponsive.
-	 */
-	@Override
-	protected void recoverFullscreenVideo() {
-		MainActivityDelegate.getActivityDelegate(getContext()).onSuccess(a -> {
-			MediaSessionCallback cb = a.getMediaSessionCallback();
-			MediaEngine eng = cb.getEngine();
-			FermataWebView v = getWebView();
-			if (v == null) return;
-
-			a.post(() -> {
-				FermataChromeClient chrome = v.getWebChromeClient();
-				if (chrome != null) chrome.enterFullScreen();
-			});
-
-			if (!(eng instanceof YoutubeMediaEngine) || recovering) return;
-
-			recovering = true;
-			a.postDelayed(() -> sampleVideoState(v, s1 -> a.postDelayed(() ->
-					sampleVideoState(v, s2 -> {
-						recovering = false;
-						if (isStuck(s1, s2)) reloadAndRecover(a, v, cb);
-					}), HEALTH_PROBE_DELAY_2)), HEALTH_PROBE_DELAY_1);
-		});
-	}
-
-	private void sampleVideoState(FermataWebView v, Consumer<VideoState> consumer) {
-		v.evaluateJavascript(VIDEO_STATE_JS, raw -> consumer.accept(VideoState.parse(raw)));
-	}
-
-	/**
-	 * A video is only ever treated as stuck -- worth the disruption of a reload -- when it claims
-	 * to be playing but genuinely isn't moving, or its element has disappeared entirely. A user-
-	 * paused video, a naturally-ended one, or a video this couldn't get a reading on (e.g. the
-	 * WebView itself was torn down mid-probe) is always left alone: reloading those would be the
-	 * exact unconditional-reload regression this replaces.
-	 */
-	private static boolean isStuck(@Nullable VideoState s1, @Nullable VideoState s2) {
-		if (s2 == null) return false;
-		if (!s2.present) return true;
-		if (s2.paused || s2.ended) return false;
-		if ((s1 == null) || !s1.present) return false;
-		if ((s1.readyState < 2) && (s2.readyState < 2)) return true;
-		return !s1.paused && !s1.ended && (Math.abs(s2.time - s1.time) < 0.05);
-	}
-
-	private void reloadAndRecover(MainActivityDelegate a, FermataWebView v, MediaSessionCallback cb) {
-		MediaEngine eng = cb.getEngine();
-		if (!(eng instanceof YoutubeMediaEngine)) return;
-		boolean wasPlaying = wasPlayingOnPause;
-
-		eng.getPosition().onSuccess(pos -> a.post(() -> {
-			v.reload();
-			a.postDelayed(() -> {
-				MediaEngine e2 = cb.getEngine();
-				if (!(e2 instanceof YoutubeMediaEngine)) return; // engine changed/torn down meanwhile
-				if (pos > 0L) cb.onSeekTo(pos);
-				// Restore whatever state playback was actually in before the takeover instead of
-				// always forcing a pause -- a video that was mid-stall while playing should resume
-				// playing once the reload gives it a fresh decoder pipeline, not sit there paused
-				// waiting for the user to notice and tap play again.
-				if (wasPlaying) cb.onPlay();
-				else cb.onPause();
-				FermataChromeClient chrome = v.getWebChromeClient();
-				if (chrome != null) chrome.enterFullScreen();
-			}, 3000L);
-		}));
-	}
-
-	/** Minimal parse of {@link #VIDEO_STATE_JS}'s result -- {@code evaluateJavascript} hands back a
-	 * JS value serialized as a quoted/escaped JSON string, so the outer layer of quoting has to be
-	 * undone before the inner JSON (or the literal {@code null}) can be parsed. */
-	private static final class VideoState {
-		final boolean present;
-		final double time;
-		final boolean paused;
-		final int readyState;
-		final boolean ended;
-
-		VideoState(boolean present, double time, boolean paused, int readyState, boolean ended) {
-			this.present = present;
-			this.time = time;
-			this.paused = paused;
-			this.readyState = readyState;
-			this.ended = ended;
-		}
-
-		@Nullable
-		static VideoState parse(@Nullable String raw) {
-			if (raw == null) return null;
-			String s = raw.trim();
-			if (s.startsWith("\"") && s.endsWith("\"") && (s.length() >= 2)) {
-				s = s.substring(1, s.length() - 1).replace("\\\"", "\"").replace("\\\\", "\\");
-			}
-			if ("null".equals(s)) return new VideoState(false, 0, false, 0, false);
-
-			try {
-				JSONObject j = new JSONObject(s);
-				return new VideoState(true, j.optDouble("t", 0), j.optBoolean("p", false),
-						j.optInt("r", 0), j.optBoolean("e", false));
-			} catch (JSONException ex) {
-				return null;
-			}
-		}
-	}
+	// recoverFullscreenVideo() previously overrode WebBrowserFragment's plain "just re-enter
+	// fullscreen" recovery with a page reload (plus a reseek and forced pause). That traded one bug
+	// for another: it dropped playback on every routine Android Auto backgrounding, not just the
+	// display-takeover freeze it was meant to catch, and even a more selective, health-probe-gated
+	// version of it was found on-device to leave the WebView's fullscreen tracking stuck -- the
+	// page's own document.fullscreenElement doesn't reliably clear from an app-initiated exit (see
+	// FermataWebView#exitPageFullScreen(), now called from every force-exit site instead) -- which
+	// blocked automatic recovery AND a manual re-tap of the fullscreen button alike, recoverable only
+	// by restarting the app. No longer overridden: the base implementation (re-enter fullscreen on
+	// the existing, already-loaded <video> element, no reload, no forced pause) is what runs here now.
 
 	@Override
 	public void onDestroyView() {
-		recovering = false;
 		MainActivityDelegate a = MainActivityDelegate.get(requireContext());
 		// The WebView (and the YoutubeMediaEngine built around it) is about to be torn down along
 		// with this view -- same situation as applyPrivateModeProfile() swapping the WebView below,
