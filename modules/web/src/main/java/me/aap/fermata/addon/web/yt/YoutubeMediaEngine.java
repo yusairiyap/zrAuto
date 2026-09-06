@@ -11,6 +11,7 @@ import android.media.AudioManager;
 import android.media.MediaMetadata;
 import android.support.v4.media.MediaMetadataCompat;
 import android.view.ViewGroup;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -62,9 +63,11 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	private boolean ignorePause;
 	// See paused() below: how long after our own start() or the page's own last confirmed playing()
 	// a page-reported pause is still treated as suspect, and how many times it's retried before
-	// being trusted as a real pause.
+	// being trusted as a real pause. Kept to one retry -- confirmed on-device that a window too
+	// small for YouTube to sustain playback under makes each retry produce its own brief, audible
+	// play/stop blip, and doubling that up before giving up sounded worse than the original pause.
 	private static final long PLAY_RETRY_GRACE_MS = 2000L;
-	private static final int MAX_PLAY_RETRIES = 2;
+	private static final int MAX_PLAY_RETRIES = 1;
 	// How long a playing() confirmation must hold, with no intervening pause, before the retry
 	// budget is considered "spent" and safe to refill -- see playing() below. Without this, a
 	// persistent condition the page keeps refusing to stay playing under (e.g. a window too small
@@ -75,6 +78,13 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	private long lastActivePlayTime;
 	private long lastPausedTime;
 	private int playRetries;
+	// Set once the retry above is spent and the page still won't hold playback -- the WebView's
+	// size at that moment, so a further pause at the same size (or smaller) skips straight to
+	// honoring it instead of re-attempting play() and producing the same blip again. Cleared once
+	// the WebView is bigger than this (playing() below) or the user explicitly asks to play again
+	// (start() below), either of which deserves a fresh attempt. 0 means not currently blocked.
+	private int blockedWidth;
+	private int blockedHeight;
 
 	public YoutubeMediaEngine(YoutubeWebView web, MainActivityDelegate a) {
 		this.web = web;
@@ -103,6 +113,13 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		long now = System.currentTimeMillis();
 		if ((lastPausedTime == 0) || (now - lastPausedTime > RETRY_BUDGET_REFILL_MS)) playRetries = 0;
 		lastActivePlayTime = now;
+
+		// The page is genuinely holding playback now, at a size at least as big as whatever we
+		// previously gave up at -- worth a fresh attempt if it pauses again.
+		if ((blockedWidth != 0) && (web.getWidth() > blockedWidth || web.getHeight() > blockedHeight)) {
+			blockedWidth = 0;
+			blockedHeight = 0;
+		}
 
 		if (BuildConfig.AUTO && web.getAddon().skipAd()) {
 			web.loadUrl("javascript:\n" +
@@ -143,12 +160,29 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		long now = System.currentTimeMillis();
 		lastPausedTime = now;
 
-		if (!ignorePause && (lastActivePlayTime != 0) && (playRetries < MAX_PLAY_RETRIES) &&
-				(now - lastActivePlayTime < PLAY_RETRY_GRACE_MS)) {
+		// Already known to be too small at this size (or smaller) -- don't repeat the same failed
+		// play() attempt and its audible blip, just honor the pause silently (the toast already
+		// told the user why, below, the first time this happened).
+		boolean stillBlocked = (blockedWidth != 0) &&
+				(web.getWidth() <= blockedWidth) && (web.getHeight() <= blockedHeight);
+
+		if (!stillBlocked && !ignorePause && (lastActivePlayTime != 0) &&
+				(playRetries < MAX_PLAY_RETRIES) && (now - lastActivePlayTime < PLAY_RETRY_GRACE_MS)) {
 			playRetries++;
 			Log.i("YoutubeMediaEngine.paused(): retrying play(), attempt ", playRetries);
 			web.play();
 			return;
+		}
+
+		if (!stillBlocked && !ignorePause && (lastActivePlayTime != 0) &&
+				(playRetries >= MAX_PLAY_RETRIES)) {
+			// The retry just above didn't stick -- assume the current size is the reason and stop
+			// asking the page to play at it until it grows (see playing() above) or the user
+			// explicitly taps play again (see start() below).
+			blockedWidth = web.getWidth();
+			blockedHeight = web.getHeight();
+			Toast.makeText(web.getContext(), R.string.youtube_window_too_small, Toast.LENGTH_LONG)
+					.show();
 		}
 
 		ignorePause = true;
@@ -184,6 +218,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		lastActivePlayTime = System.currentTimeMillis();
 		lastPausedTime = 0;
 		playRetries = 0;
+		blockedWidth = 0;
+		blockedHeight = 0;
 		web.play();
 	}
 
