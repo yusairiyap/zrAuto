@@ -198,19 +198,24 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	public void close() {
 	}
 
-	// releaseAudioFocus() intentionally not overridden -- MediaEngine's default (abandon the
-	// request) is harmless and never blocks anything. requestAudioFocus() IS overridden below:
-	// MediaSessionCallback.play() treats a false return as "resume failed" and never calls
-	// start()/web.play() at all (STATE_PAUSED branch). YouTube's audio lives inside a WebView this
-	// app doesn't fully control, so silently blocking a resume over a transient/racy OS focus-grant
-	// failure (e.g. racing whatever the car's display-takeover source itself briefly did with
-	// audio focus) is strictly worse than proceeding -- confirmed on-device as the cause of a
-	// "paused and unresponsive to Play" freeze after an Android Auto camera-overlay interruption.
+	// True no-ops, not "best-effort real request, ignore the result": actually making the real
+	// AudioManagerCompat call (as a prior attempt at this did) registers MediaSessionCallback's
+	// OnAudioFocusChangeListener for real, which makes its AUDIOFOCUS_LOSS_TRANSIENT-triggered
+	// auto-pause path live for YouTube -- and since that pref request is a single object reused for
+	// the whole session and never released except on a full stop, every resume-from-pause ends up
+	// issuing a duplicate real focus request for a grant already held. Confirmed on-device this
+	// broke pause/resume under Android Auto outright (not just during a display-takeover edge case),
+	// with no interruption needed to trigger it -- staying fully inert here, as this class always
+	// has, avoids the whole mechanism rather than trying to tune it further.
 	@Override
 	public boolean requestAudioFocus(@Nullable AudioManager audioManager,
 																		@Nullable AudioFocusRequestCompat audioFocusReq) {
-		MediaEngine.super.requestAudioFocus(audioManager, audioFocusReq); // best-effort; never blocks
 		return true;
+	}
+
+	@Override
+	public void releaseAudioFocus(@Nullable AudioManager audioManager,
+																 @Nullable AudioFocusRequestCompat audioFocusReq) {
 	}
 
 	@Override

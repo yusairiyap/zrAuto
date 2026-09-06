@@ -207,6 +207,14 @@ public class WebBrowserFragment extends MainActivityFragment
 	 * onPause()/onResume() above, this fires only on the "we're back" signal and does the full
 	 * exit+enter fullscreen rebuild in one shot, so it's a no-op if that signal never fires -- no
 	 * risk of leaving the user stuck out of fullscreen from a routine, harmless focus blip.
+	 * <p>
+	 * Deliberately calls {@code enterFullScreen()} directly here rather than going through the
+	 * overridable {@link #recoverFullscreenVideo()} hook: {@code onWindowFocusChanged}'s exact
+	 * semantics under this car SDK aren't documented, this guard has no debounce, and it stays
+	 * armed for as long as a video sits paused -- confirmed on-device that routing it into
+	 * {@code YoutubeFragment}'s reload-based recovery broke ordinary pause/resume under Android
+	 * Auto (a stray focus event during a pause could silently reload the page). Keep this trigger
+	 * doing only the safe, reversible thing it was originally built for.
 	 */
 	public void rebuildFullscreenVideoIfActive() {
 		if (!BuildConfig.AUTO) return;
@@ -216,7 +224,8 @@ public class WebBrowserFragment extends MainActivityFragment
 		if ((chrome == null) || !chrome.isFullScreen()) return;
 		v.onResume();
 		chrome.exitFullScreen();
-		recoverFullscreenVideo();
+		MainActivityDelegate.getActivityDelegate(getContext())
+				.onSuccess(a -> a.post(chrome::enterFullScreen));
 	}
 
 	/**
