@@ -29,7 +29,7 @@
             android:paddingEnd="8dp"
             android:text="@string/equalier"
             android:textAppearance="?attr/textAppearanceListItem"
-            app:layout_constraintBottom_toTopOf="@id/equalizer_preset"
+            app:layout_constraintBottom_toTopOf="@id/preset_label"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
@@ -50,13 +50,28 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="@id/equalizer_title" />
 
+        <me.aap.utils.ui.view.ScalableTextView
+            android:id="@+id/preset_label"
+            style="?attr/appEqualizerStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginTop="4dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:text="@string/preset"
+            android:textAppearance="?attr/textAppearanceBody2"
+            app:layout_constraintBottom_toTopOf="@id/equalizer_preset"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/equalizer_title" />
+
         <me.aap.utils.pref.PreferenceView
             android:id="@+id/equalizer_preset"
             style="?attr/appEqualizerStyle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="20dp"
-            android:layout_marginTop="6dp"
+            android:layout_marginTop="2dp"
             android:layout_marginEnd="6dp"
             android:layout_marginBottom="6dp"
             android:paddingStart="8dp"
@@ -67,7 +82,7 @@
             app:layout_constraintEnd_toStartOf="@id/equalizer_preset_save"
             app:layout_constraintHorizontal_weight="1"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/equalizer_title"
+            app:layout_constraintTop_toBottomOf="@id/preset_label"
             tools:ignore="RtlSymmetry" />
 
         <me.aap.utils.ui.view.ImageButton
