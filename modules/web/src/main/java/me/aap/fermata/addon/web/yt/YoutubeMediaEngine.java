@@ -60,6 +60,12 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	private YoutubeItem current;
 	private String qualityUrl;
 	private boolean ignorePause;
+	// See paused() below: how long after our own start() a page-reported pause is still treated
+	// as suspect, and how many times it's retried before being trusted as a real pause.
+	private static final long PLAY_RETRY_GRACE_MS = 1500L;
+	private static final int MAX_PLAY_RETRIES = 2;
+	private long lastStartTime;
+	private int playRetries;
 
 	public YoutubeMediaEngine(YoutubeWebView web, MainActivityDelegate a) {
 		this.web = web;
@@ -104,6 +110,21 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	void paused() {
+		// Confirmed on-device (window-resize repro): YouTube's own player can auto-pause the
+		// <video> element for a beat right after we told it to play -- its internal layout is still
+		// settling from a container-size change, and the pause DOM event this fires is
+		// indistinguishable from a real one. Only second-guess it when nothing on the native side
+		// asked for a pause since our own start() (see pause() below, which clears lastStartTime),
+		// and only for a short grace window / bounded number of attempts, so a genuine pause -- from
+		// the user, an ad, or the video actually ending -- still gets honored quickly.
+		if (!ignorePause && (lastStartTime != 0) && (playRetries < MAX_PLAY_RETRIES) &&
+				(System.currentTimeMillis() - lastStartTime < PLAY_RETRY_GRACE_MS)) {
+			playRetries++;
+			Log.i("YoutubeMediaEngine.paused(): retrying play(), attempt ", playRetries);
+			web.play();
+			return;
+		}
+
 		ignorePause = true;
 		cb.onPause();
 		ignorePause = false;
@@ -134,11 +155,14 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	@Override
 	public void start() {
+		lastStartTime = System.currentTimeMillis();
+		playRetries = 0;
 		web.play();
 	}
 
 	@Override
 	public void stop() {
+		lastStartTime = 0;
 		if ((current == null) || (current == end)) return;
 		current = null;
 		qualityUrl = null;
@@ -147,6 +171,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	@Override
 	public void pause() {
+		lastStartTime = 0;
 		if (!ignorePause) web.pause();
 	}
 
