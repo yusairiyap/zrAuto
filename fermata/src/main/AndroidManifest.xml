@@ -84,7 +84,7 @@
 
         <activity
             android:name="me.aap.fermata.ui.activity.MainActivity"
-            android:configChanges="colorMode|keyboard|keyboardHidden|locale|mcc|mnc|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:configChanges="colorMode|density|keyboard|keyboardHidden|locale|mcc|mnc|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
             android:exported="true"
             android:launchMode="singleTop"
             android:resizeableActivity="true">
