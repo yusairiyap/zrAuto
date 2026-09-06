@@ -348,7 +348,7 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 
 		boolean hasEffects = (bass != null) || (virt != null) || (le != null) || (reverb != null);
 		if (!hasEffects) {
-			hide(R.id.effects_title, R.id.equalizer_effects_scroll);
+			hide(R.id.effects_title, R.id.equalizer_effects);
 			return;
 		}
 

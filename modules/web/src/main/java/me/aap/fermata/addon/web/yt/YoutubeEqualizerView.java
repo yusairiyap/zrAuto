@@ -241,12 +241,12 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 		View ch = inflater.inflate(me.aap.fermata.R.layout.equalizer_channel, parent, false);
 		parent.addView(ch);
 
-		// This channel has no switch of its own (Hall Size only matters while Live Hall, the channel
-		// to its left, is on) but INVISIBLE rather than the layout's default GONE reserves the same
-		// vertical space the other channels' switches take, so this fader lines up at the same height
-		// as theirs instead of sitting higher.
+		// This channel has no switch of its own -- Hall Size only matters while Live Hall (the row
+		// above it) is on -- so just hide it; each row is independent in this horizontal layout, so
+		// there's no cross-row alignment to preserve space for the way the old vertical-fader
+		// columns needed.
 		View sw = ch.findViewById(me.aap.fermata.R.id.eq_channel_switch);
-		sw.setVisibility(INVISIBLE);
+		sw.setVisibility(GONE);
 
 		TextView value = ch.findViewById(me.aap.fermata.R.id.eq_channel_value);
 		TextView label = ch.findViewById(me.aap.fermata.R.id.eq_channel_label);

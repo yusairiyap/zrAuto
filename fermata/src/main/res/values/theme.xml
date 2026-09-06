@@ -62,9 +62,10 @@
     <style name="AppTheme.EqualizerStyle">
         <item name="android:textColor">?android:attr/textColorSecondary</item>
         <item name="tint">?attr/colorControlActivated</item>
-        <!-- The "thin"/"small" variants were sized for the old cramped horizontal band rows; the
-        vertical mixer-strip channels have plenty of room now, so use the same thicker track/thumb
-        as the main playback seek bar (appSeekBarStyle) for bigger, easier-to-grab faders. -->
+        <!-- The "thin"/"small" variants were sized for an even older, cramped horizontal band row
+        design; this style now uses the same thicker track/thumb as the main playback seek bar
+        (appSeekBarStyle) for bigger, easier-to-grab faders, in both the vertical-column and the
+        current horizontal-row channel layout (equalizer_channel.xml). -->
         <item name="android:progressDrawable">@drawable/slider_track</item>
         <item name="android:thumb">@drawable/slider_thumb</item>
         <item name="android:splitTrack">false</item>
