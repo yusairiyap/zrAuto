@@ -101,7 +101,7 @@ public class FermataChromeClient extends WebChromeClient {
 
 	@Override
 	public void onShowCustomView(View view, CustomViewCallback callback) {
-		Log.i("FermataChromeClient.onShowCustomView()");
+		Log.d("FermataChromeClient.onShowCustomView()");
 		if (view instanceof ViewGroup g) {
 			View focus = g.getFocusedChild();
 
@@ -131,7 +131,7 @@ public class FermataChromeClient extends WebChromeClient {
 
 	@Override
 	public void onHideCustomView() {
-		Log.i("FermataChromeClient.onHideCustomView()");
+		Log.d("FermataChromeClient.onHideCustomView()");
 		if (customViewCallback == null) return;
 		touchStamp = 0;
 		MainActivityDelegate a = MainActivityDelegate.get(customView.getContext());
@@ -314,7 +314,7 @@ public class FermataChromeClient extends WebChromeClient {
 
 	@Override
 	public boolean onConsoleMessage(ConsoleMessage m) {
-		Log.i("[JS:", m.lineNumber(), "] ", m.message());
+		Log.d("[JS:", m.lineNumber(), "] ", m.message());
 		return true;
 	}
 }

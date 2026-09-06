@@ -31,18 +31,18 @@ public class YoutubeJsInterface extends FermataJsInterface {
 	protected void handleEvent(int event, String data) {
 		switch (event) {
 			case JS_VIDEO_FOUND:
-				Log.i("Video found");
+				Log.d("Video found");
 				break;
 			case JS_VIDEO_PLAYING:
-				Log.i("Video playing");
+				Log.d("Video playing");
 				engine.playing(data);
 				break;
 			case JS_VIDEO_PAUSED:
-				Log.i("Video paused");
+				Log.d("Video paused");
 				engine.paused();
 				break;
 			case JS_VIDEO_ENDED:
-				Log.i("Video ended");
+				Log.d("Video ended");
 				engine.ended();
 				break;
 			case JS_VIDEO_QUALITIES:
