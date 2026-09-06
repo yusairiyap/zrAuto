@@ -62,6 +62,10 @@ public class YoutubeAddon extends WebBrowserAddon
 	private static final Pref<IntSupplier> YT_VIRT_STRENGTH = Pref.i("YT_VIRT_STRENGTH", 0);
 	private static final Pref<BooleanSupplier> YT_REVERB_ENABLED = Pref.b("YT_REVERB_ENABLED", false);
 	private static final Pref<IntSupplier> YT_REVERB_STRENGTH = Pref.i("YT_REVERB_STRENGTH", 0);
+	// Impulse response length for the Live Hall convolver, in ms. Directly drives its CPU cost, so
+	// it's user-adjustable (see YoutubeEqualizerView) rather than fixed; 2500 matches the value this
+	// was hardcoded to before it became adjustable, so existing users hear no change by default.
+	private static final Pref<IntSupplier> YT_REVERB_DURATION = Pref.i("YT_REVERB_DURATION", 2500);
 	private boolean ignorePrefChange;
 	private YoutubeRootItem root;
 
@@ -311,12 +315,20 @@ public class YoutubeAddon extends WebBrowserAddon
 		getPreferenceStore().applyIntPref(YT_REVERB_STRENGTH, strength);
 	}
 
+	int reverbDuration() {
+		return getPreferenceStore().getIntPref(YT_REVERB_DURATION);
+	}
+
+	void setReverbDuration(int durationMs) {
+		getPreferenceStore().applyIntPref(YT_REVERB_DURATION, durationMs);
+	}
+
 	boolean eqPrefsChanged(List<Pref<?>> prefs) {
 		return prefs.contains(YT_EQ_ENABLED) || prefs.contains(YT_EQ_PRESET) ||
 				prefs.contains(YT_EQ_BANDS) || prefs.contains(YT_BASS_ENABLED) ||
 				prefs.contains(YT_BASS_STRENGTH) || prefs.contains(YT_VIRT_ENABLED) ||
 				prefs.contains(YT_VIRT_STRENGTH) || prefs.contains(YT_REVERB_ENABLED) ||
-				prefs.contains(YT_REVERB_STRENGTH);
+				prefs.contains(YT_REVERB_STRENGTH) || prefs.contains(YT_REVERB_DURATION);
 	}
 
 	enum VideoScale {

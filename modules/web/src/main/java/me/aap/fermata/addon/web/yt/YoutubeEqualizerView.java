@@ -104,6 +104,8 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 		});
 
 		createChannels(addon);
+		android.widget.Toast.makeText(getContext(), me.aap.fermata.R.string.reverb_duration_hint,
+				android.widget.Toast.LENGTH_LONG).show();
 	}
 
 	void cleanup() {
@@ -132,6 +134,12 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 				addon.virtStrength(), 1000, addon::setVirtEnabled, addon::setVirtStrength);
 		addEffectChannel(inflater, effects, me.aap.fermata.R.string.live_hall, addon.reverbEnabled(),
 				addon.reverbStrength(), 1500, addon::setReverbEnabled, addon::setReverbStrength);
+		// Reverb impulse-response length: no on/off of its own (only matters while Live Hall itself
+		// is enabled, above) but its own fader since it directly trades sound quality for CPU cost --
+		// unlike strength, going lower here actually reduces Live Hall's processing cost, not just
+		// its volume. Range and default (300-3000ms, 2500ms) mirror YoutubeAddon's YT_REVERB_DURATION.
+		addDurationChannel(inflater, effects, me.aap.fermata.R.string.reverb_duration,
+				addon.reverbDuration(), 300, 3000, addon::setReverbDuration);
 	}
 
 	private void bindBandChannel(View ch, int band, int[] bands, int range) {
@@ -196,6 +204,36 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 		});
 	}
 
+	private void addDurationChannel(LayoutInflater inflater, ViewGroup parent, @StringRes int labelRes,
+																	 int durationMs, int minMs, int maxMs, IntConsumer onDurationChanged) {
+		View ch = inflater.inflate(me.aap.fermata.R.layout.equalizer_channel, parent, false);
+		parent.addView(ch);
+
+		TextView value = ch.findViewById(me.aap.fermata.R.id.eq_channel_value);
+		TextView label = ch.findViewById(me.aap.fermata.R.id.eq_channel_label);
+		AppCompatSeekBar sb = ch.findViewById(me.aap.fermata.R.id.eq_channel_seek);
+
+		label.setText(labelRes);
+		value.setText(formatSeconds(durationMs));
+		sb.setMax(maxMs - minMs);
+		sb.setProgress(durationMs - minMs);
+		sb.setOnSeekBarChangeListener(new SeekBarListener() {
+			@Override
+			public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+				value.setText(formatSeconds(progress + minMs));
+			}
+
+			// Unlike every other channel here, committing this one re-synthesizes a multi-second
+			// impulse response -- real, non-trivial CPU work, not just a gain update -- so only do it
+			// once the user releases the slider, not on every pixel of drag.
+			@Override
+			public void onStopTrackingTouch(SeekBar seekBar) {
+				onDurationChanged.accept(seekBar.getProgress() + minMs);
+				push();
+			}
+		});
+	}
+
 	private void bandChanged(int band, short level) {
 		YoutubeAddon addon = this.addon;
 		if (addon == null) return;
@@ -223,6 +261,10 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 
 	private static String formatPercent(int progress) {
 		return (progress / 10) + "%";
+	}
+
+	private static String formatSeconds(int ms) {
+		return String.format(Locale.ROOT, "%.1fs", ms / 1000f);
 	}
 
 	private void push() {

@@ -4,6 +4,12 @@
   const BAND_FREQS = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
   const BASS_FREQ = 200;
   const VIRT_MAX_DELAY = 0.03;
+  // Bounds for the Live Hall impulse-response length, mirroring YoutubeAddon's YT_REVERB_DURATION
+  // range (300-3000ms) -- clamped here too since this script also runs standalone against whatever
+  // config the page last pushed.
+  const REVERB_DURATION_MIN = 0.3;
+  const REVERB_DURATION_MAX = 3.0;
+  const REVERB_DURATION_DEFAULT = 2.5;
 
   const state = {
     config: {
@@ -14,7 +20,8 @@
       virtEnabled: false,
       virtStrength: 0,
       reverbEnabled: false,
-      reverbStrength: 0
+      reverbStrength: 0,
+      reverbDuration: REVERB_DURATION_DEFAULT
     },
     ctx: null,
     chains: new WeakMap(),
@@ -32,12 +39,15 @@
 
   // "Live Hall" reverb: Web Audio has no built-in hall-reverb node, so this
   // synthesizes a plausible impulse response -- exponentially-decaying
-  // stereo white noise, a standard procedural technique for a ConvolverNode
-  // -- once per AudioContext and reuses it for every video's chain.
-  function getImpulseResponse(ctx) {
-    if (state.impulse) return state.impulse;
+  // stereo white noise, a standard procedural technique for a ConvolverNode.
+  // Its length (duration) directly drives the convolver's per-sample CPU cost, and is now user-
+  // adjustable (Hall Size), so the buffer is cached per-duration rather than built once forever --
+  // regenerated only when the requested duration actually changes, and shared by every video's
+  // chain on this AudioContext at that duration.
+  function getImpulseResponse(ctx, duration) {
+    if (state.impulse && (state.impulseDuration === duration)) return state.impulse;
 
-    const duration = 2.5, decay = 3;
+    const decay = 3;
     const length = Math.floor(ctx.sampleRate * duration);
     const impulse = ctx.createBuffer(2, length, ctx.sampleRate);
 
@@ -48,6 +58,7 @@
       }
     }
 
+    state.impulseDuration = duration;
     return state.impulse = impulse;
   }
 
@@ -98,8 +109,9 @@
     // Live Hall reverb: a parallel send -- the dry signal always passes
     // through, the convolved "wet" signal layers on top, rather than
     // replacing the direct sound (matching how a real hall effect is used).
+    // Buffer is assigned by applyToChain() (which also owns tracking the current duration), not
+    // here -- buildChain() runs before any config has been applied to this chain.
     const convolver = ctx.createConvolver();
-    convolver.buffer = getImpulseResponse(ctx);
     convolver.normalize = true;
     const reverbDry = ctx.createGain();
     const reverbWet = ctx.createGain();
@@ -123,7 +135,8 @@
     // output. rewireSpine()/applyToChain() below connect only the currently-enabled stages into
     // the active signal path, and only reconnect when the enabled set actually changes.
     return {video, source, bands, bass, splitter, merger, dryR, delay, wetR, wetL, convolver,
-            reverbDry, reverbWet, limiter, reverbConnected: false, spineKey: null, tail: null};
+            reverbDry, reverbWet, limiter, reverbConnected: false, reverbDuration: null,
+            spineKey: null, tail: null};
   }
 
   // Reconnects the "spine" (source -> [EQ bands] -> [bass] -> [virtualizer] -> reverbDry/convolver)
@@ -192,6 +205,16 @@
         Math.max(0, Math.min(REVERB_MAX_STRENGTH, cfg.reverbStrength)) : 0;
     chain.reverbDry.gain.value = 1;
     chain.reverbWet.gain.value = reverbStrength * 0.6;
+
+    // Hall Size: unlike every other value set in this function, this is real CPU work (rebuilding
+    // a multi-second noise buffer), so only touch the convolver's buffer when the requested
+    // duration actually changed -- not on every applyToChain() call.
+    const reverbDuration = Math.max(REVERB_DURATION_MIN,
+        Math.min(REVERB_DURATION_MAX, cfg.reverbDuration || REVERB_DURATION_DEFAULT));
+    if (chain.reverbDuration !== reverbDuration) {
+      chain.convolver.buffer = getImpulseResponse(chain.convolver.context, reverbDuration);
+      chain.reverbDuration = reverbDuration;
+    }
 
     if (cfg.reverbEnabled && !chain.reverbConnected) {
       chain.tail.connect(chain.convolver);

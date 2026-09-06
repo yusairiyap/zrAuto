@@ -56,6 +56,7 @@ final class YoutubeEqualizerScript {
 				.append(",\"virtStrength\":").append(addon.virtStrength() / 1000f)
 				.append(",\"reverbEnabled\":").append(addon.reverbEnabled())
 				.append(",\"reverbStrength\":").append(addon.reverbStrength() / 1000f)
+				.append(",\"reverbDuration\":").append(addon.reverbDuration() / 1000f)
 				.append('}');
 		return sb.toString();
 	}
