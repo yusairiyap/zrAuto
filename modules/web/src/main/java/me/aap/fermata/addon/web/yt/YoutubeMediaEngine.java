@@ -60,11 +60,12 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	private YoutubeItem current;
 	private String qualityUrl;
 	private boolean ignorePause;
-	// See paused() below: how long after our own start() a page-reported pause is still treated
-	// as suspect, and how many times it's retried before being trusted as a real pause.
-	private static final long PLAY_RETRY_GRACE_MS = 1500L;
+	// See paused() below: how long after our own start() or the page's own last confirmed playing()
+	// a page-reported pause is still treated as suspect, and how many times it's retried before
+	// being trusted as a real pause.
+	private static final long PLAY_RETRY_GRACE_MS = 2000L;
 	private static final int MAX_PLAY_RETRIES = 2;
-	private long lastStartTime;
+	private long lastActivePlayTime;
 	private int playRetries;
 
 	public YoutubeMediaEngine(YoutubeWebView web, MainActivityDelegate a) {
@@ -83,6 +84,14 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	void playing(String url) {
+		// Every confirmed-playing moment re-arms the retry guard in paused() below with a fresh
+		// budget -- not just an explicit native start() -- since a page-reported pause can also
+		// follow a resize-triggered player restart the app never asked for (confirmed on-device: a
+		// window resize alone, with no play/pause tap at all, produces the same rapid
+		// playing-then-paused pairs from YouTube's own player settling its layout).
+		lastActivePlayTime = System.currentTimeMillis();
+		playRetries = 0;
+
 		if (BuildConfig.AUTO && web.getAddon().skipAd()) {
 			web.loadUrl("javascript:\n" +
 					"if (document.querySelectorAll('.ad-showing').length > 0) {\n" +
@@ -111,14 +120,15 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	void paused() {
 		// Confirmed on-device (window-resize repro): YouTube's own player can auto-pause the
-		// <video> element for a beat right after we told it to play -- its internal layout is still
-		// settling from a container-size change, and the pause DOM event this fires is
+		// <video> element for a beat right after it (or we) told it to play -- its internal layout
+		// is still settling from a container-size change, and the pause DOM event this fires is
 		// indistinguishable from a real one. Only second-guess it when nothing on the native side
-		// asked for a pause since our own start() (see pause() below, which clears lastStartTime),
-		// and only for a short grace window / bounded number of attempts, so a genuine pause -- from
-		// the user, an ad, or the video actually ending -- still gets honored quickly.
-		if (!ignorePause && (lastStartTime != 0) && (playRetries < MAX_PLAY_RETRIES) &&
-				(System.currentTimeMillis() - lastStartTime < PLAY_RETRY_GRACE_MS)) {
+		// asked for a pause since the last confirmed playing() (see pause()/stop() below, which
+		// clear lastActivePlayTime), and only for a short grace window / bounded number of attempts
+		// per playing() confirmation, so a genuine pause -- from the user, an ad, or the video
+		// actually ending -- still gets honored quickly.
+		if (!ignorePause && (lastActivePlayTime != 0) && (playRetries < MAX_PLAY_RETRIES) &&
+				(System.currentTimeMillis() - lastActivePlayTime < PLAY_RETRY_GRACE_MS)) {
 			playRetries++;
 			Log.i("YoutubeMediaEngine.paused(): retrying play(), attempt ", playRetries);
 			web.play();
@@ -155,14 +165,14 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	@Override
 	public void start() {
-		lastStartTime = System.currentTimeMillis();
+		lastActivePlayTime = System.currentTimeMillis();
 		playRetries = 0;
 		web.play();
 	}
 
 	@Override
 	public void stop() {
-		lastStartTime = 0;
+		lastActivePlayTime = 0;
 		if ((current == null) || (current == end)) return;
 		current = null;
 		qualityUrl = null;
@@ -171,7 +181,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	@Override
 	public void pause() {
-		lastStartTime = 0;
+		lastActivePlayTime = 0;
 		if (!ignorePause) web.pause();
 	}
 
