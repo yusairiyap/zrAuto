@@ -33,7 +33,7 @@
             android:layout_weight="1"
             android:clickable="true"
             android:focusable="true"
-            app:checkable="true"
+            android:checkable="true"
             app:checkedIcon="@null">
 
             <LinearLayout
@@ -71,7 +71,7 @@
             android:layout_weight="1"
             android:clickable="true"
             android:focusable="true"
-            app:checkable="true"
+            android:checkable="true"
             app:checkedIcon="@null">
 
             <LinearLayout
