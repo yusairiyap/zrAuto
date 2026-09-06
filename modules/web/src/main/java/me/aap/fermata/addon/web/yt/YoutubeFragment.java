@@ -161,8 +161,12 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 					// Deliberately not auto-resuming playback here: the user may have switched away to
 					// listen to something else while this was interrupted, and yanking audio focus back
 					// on return would interrupt that. Land back at the right position, paused, and let
-					// the user decide when to actually resume.
+					// the user decide when to actually resume. The explicit onPause() below is needed
+					// even though nothing here calls onPlay(): the reload lands on the same watch URL,
+					// and YouTube's own mobile web player can start itself back up on load independent
+					// of anything this app calls -- force it back to paused regardless of what it does.
 					if (pos > 0L) cb.onSeekTo(pos);
+					cb.onPause();
 					FermataChromeClient chrome = v.getWebChromeClient();
 					if (chrome != null) chrome.enterFullScreen();
 				}, 3000L);

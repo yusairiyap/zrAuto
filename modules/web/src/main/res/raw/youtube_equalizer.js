@@ -63,21 +63,22 @@
       f.gain.value = 0;
       return f;
     });
+    // Internal series wiring within the EQ block is fixed forever; only the block's entry (into
+    // bands[0]) and exit (out of the last band) get spliced in/out of the active signal path by
+    // rewireSpine() below.
+    for (let i = 0; i < bands.length - 1; i++) bands[i].connect(bands[i + 1]);
 
     const bass = ctx.createBiquadFilter();
     bass.type = 'lowshelf';
     bass.frequency.value = BASS_FREQ;
     bass.gain.value = 0;
 
-    let node = source;
-    for (const b of bands) { node.connect(b); node = b; }
-    node.connect(bass);
-
     // Virtualizer: a Haas-effect stereo widener. The right channel is fed
     // through a short delay and blended back with the dry signal on both
     // channels; strength controls both the delay time and how much of the
     // delayed signal is mixed in, so it degrades gracefully to a plain
-    // pass-through at strength 0 instead of a hard bypass switch.
+    // pass-through at strength 0 instead of a hard bypass switch. Internal wiring is fixed
+    // forever; only the block's entry (into splitter) and exit (out of merger) get spliced in/out.
     const splitter = ctx.createChannelSplitter(2);
     const merger = ctx.createChannelMerger(2);
     const dryR = ctx.createGain();
@@ -85,7 +86,6 @@
     const wetR = ctx.createGain();
     const wetL = ctx.createGain();
 
-    bass.connect(splitter);
     splitter.connect(merger, 0, 0);
     splitter.connect(dryR, 1);
     dryR.connect(merger, 0, 1);
@@ -98,21 +98,15 @@
     // Live Hall reverb: a parallel send -- the dry signal always passes
     // through, the convolved "wet" signal layers on top, rather than
     // replacing the direct sound (matching how a real hall effect is used).
-    // The convolver itself is NOT connected here -- a connected ConvolverNode keeps running its
-    // (by far the most expensive computation in this whole chain) real-time convolution on every
-    // audio frame regardless of its output gain, so wiring it in unconditionally would silently
-    // cost CPU even when Live Hall is off and every other effect is cheap by comparison.
-    // applyToChain() connects/disconnects it based on cfg.reverbEnabled instead.
     const convolver = ctx.createConvolver();
     convolver.buffer = getImpulseResponse(ctx);
     convolver.normalize = true;
     const reverbDry = ctx.createGain();
     const reverbWet = ctx.createGain();
-    merger.connect(reverbDry);
 
-    // Safety limiter: catches the combined output of the whole chain (reverbDry always carries the
-    // full dry signal, even with reverb off) so pushing several controls toward their maxima can't
-    // hard-clip -- Web Audio applies no headroom protection at the destination by default.
+    // Safety limiter: catches the combined output of the whole chain so pushing several controls
+    // toward their maxima can't hard-clip -- Web Audio applies no headroom protection at the
+    // destination by default.
     const limiter = ctx.createDynamicsCompressor();
     limiter.threshold.value = -1;
     limiter.knee.value = 0;
@@ -123,12 +117,59 @@
     reverbWet.connect(limiter);
     limiter.connect(ctx.destination);
 
+    // None of the EQ/bass/virtualizer/reverb stages are connected to `source` (or each other) yet
+    // -- every processing node here has a real, non-zero per-sample CPU cost once connected (the
+    // convolver especially so), so a disabled effect should cost nothing, not just produce silent
+    // output. rewireSpine()/applyToChain() below connect only the currently-enabled stages into
+    // the active signal path, and only reconnect when the enabled set actually changes.
     return {video, source, bands, bass, splitter, merger, dryR, delay, wetR, wetL, convolver,
-            reverbDry, reverbWet, limiter, reverbConnected: false};
+            reverbDry, reverbWet, limiter, reverbConnected: false, spineKey: null, tail: null};
+  }
+
+  // Reconnects the "spine" (source -> [EQ bands] -> [bass] -> [virtualizer] -> reverbDry/convolver)
+  // to include only the currently-enabled stages. Only rewires when the enabled set actually
+  // changed (a real on/off toggle), not on every applyToChain() call -- e.g. dragging an EQ slider
+  // pushes new gain values on every frame, and rewiring the graph on each one would risk an
+  // audible micro-glitch for no reason.
+  function rewireSpine(chain, cfg) {
+    const key = (cfg.eqEnabled ? 'E' : '') + (cfg.bassEnabled ? 'B' : '') + (cfg.virtEnabled ? 'V' : '');
+    if (chain.spineKey === key) return;
+
+    if (chain.tail) {
+      try { chain.tail.disconnect(chain.reverbDry); } catch (err) { /* already disconnected */ }
+      if (chain.reverbConnected) {
+        try { chain.tail.disconnect(chain.convolver); } catch (err) { /* already disconnected */ }
+      }
+    }
+    try { chain.source.disconnect(); } catch (err) { /* already disconnected */ }
+    try { chain.bands[chain.bands.length - 1].disconnect(); } catch (err) { /* already disconnected */ }
+    try { chain.bass.disconnect(); } catch (err) { /* already disconnected */ }
+    try { chain.merger.disconnect(); } catch (err) { /* already disconnected */ }
+
+    let tail = chain.source;
+    if (cfg.eqEnabled) {
+      tail.connect(chain.bands[0]);
+      tail = chain.bands[chain.bands.length - 1];
+    }
+    if (cfg.bassEnabled) {
+      tail.connect(chain.bass);
+      tail = chain.bass;
+    }
+    if (cfg.virtEnabled) {
+      tail.connect(chain.splitter);
+      tail = chain.merger;
+    }
+
+    tail.connect(chain.reverbDry);
+    if (chain.reverbConnected) tail.connect(chain.convolver);
+
+    chain.tail = tail;
+    chain.spineKey = key;
   }
 
   function applyToChain(chain) {
     const cfg = state.config;
+    rewireSpine(chain, cfg);
 
     for (let i = 0; i < chain.bands.length; i++) {
       chain.bands[i].gain.value = cfg.eqEnabled ? (cfg.bands[i] || 0) : 0;
@@ -153,11 +194,11 @@
     chain.reverbWet.gain.value = reverbStrength * 0.6;
 
     if (cfg.reverbEnabled && !chain.reverbConnected) {
-      chain.merger.connect(chain.convolver);
+      chain.tail.connect(chain.convolver);
       chain.convolver.connect(chain.reverbWet);
       chain.reverbConnected = true;
     } else if (!cfg.reverbEnabled && chain.reverbConnected) {
-      chain.merger.disconnect(chain.convolver);
+      chain.tail.disconnect(chain.convolver);
       chain.convolver.disconnect(chain.reverbWet);
       chain.reverbConnected = false;
     }
