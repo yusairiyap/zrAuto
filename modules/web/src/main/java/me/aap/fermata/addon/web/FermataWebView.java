@@ -112,7 +112,7 @@ public class FermataWebView extends WebView
 
 	@Override
 	protected void onWindowVisibilityChanged(int visibility) {
-		Log.d("FermataWebView.onWindowVisibilityChanged(", visibility, ")");
+		Log.i("FermataWebView.onWindowVisibilityChanged(", visibility, ")");
 		if (!BuildConfig.AUTO) super.onWindowVisibilityChanged(visibility);
 		else if (visibility != View.GONE) super.onWindowVisibilityChanged(View.VISIBLE);
 	}
@@ -120,18 +120,18 @@ public class FermataWebView extends WebView
 	@Override
 	protected void onSizeChanged(int w, int h, int oldw, int oldh) {
 		super.onSizeChanged(w, h, oldw, oldh);
-		Log.d("FermataWebView.onSizeChanged(): ", oldw, "x", oldh, " -> ", w, "x", h);
+		Log.i("FermataWebView.onSizeChanged(): ", oldw, "x", oldh, " -> ", w, "x", h);
 	}
 
 	@Override
 	protected void onAttachedToWindow() {
 		super.onAttachedToWindow();
-		Log.d("FermataWebView.onAttachedToWindow()");
+		Log.i("FermataWebView.onAttachedToWindow()");
 	}
 
 	@Override
 	protected void onDetachedFromWindow() {
-		Log.d("FermataWebView.onDetachedFromWindow()");
+		Log.i("FermataWebView.onDetachedFromWindow()");
 		super.onDetachedFromWindow();
 	}
 

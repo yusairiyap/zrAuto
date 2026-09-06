@@ -227,7 +227,12 @@ public class YoutubeWebView extends FermataWebView {
 	}
 
 	void play() {
-		loadUrl("javascript:var v = document.querySelector('video'); if (v != null) v.play();");
+		loadUrl("javascript:(function() {\n" +
+				"  var v = document.querySelector('video');\n" +
+				"  if (v == null) { console.error('Fermata play(): no video element found'); return; }\n" +
+				"  var p = v.play();\n" +
+				"  if (p && p.catch) p.catch(function(e) { console.error('Fermata play() rejected: ' + e); });\n" +
+				"})();");
 	}
 
 	void pause() {

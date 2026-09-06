@@ -174,7 +174,7 @@ public class WebBrowserFragment extends MainActivityFragment
 	@Override
 	public void onPause() {
 		super.onPause();
-		Log.d("WebBrowserFragment.onPause()");
+		Log.i("WebBrowserFragment.onPause()");
 		if (!BuildConfig.AUTO) return;
 		FermataWebView v = getWebView();
 		if (v == null) return;
@@ -193,7 +193,7 @@ public class WebBrowserFragment extends MainActivityFragment
 	@Override
 	public void onResume() {
 		super.onResume();
-		Log.d("WebBrowserFragment.onResume(), fullScreenOnResume=", fullScreenOnResume);
+		Log.i("WebBrowserFragment.onResume(), fullScreenOnResume=", fullScreenOnResume);
 		if (!BuildConfig.AUTO || !fullScreenOnResume) return;
 		FermataWebView v = getWebView();
 		if (v == null) return;
