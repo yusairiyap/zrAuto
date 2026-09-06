@@ -103,7 +103,10 @@
         <item name="rippleColor">?attr/colorControlActivated</item>
         <!-- MaterialCardView draws its own checkmark badge over a checked card by default; each
         card here already hosts its own radio dot as the selected-state indicator, so the built-in
-        badge is a redundant, distinct visual competing with it in the same corner. -->
+        badge is a redundant, distinct visual competing with it in the same corner.
+        checkedIconVisible=false alone didn't suppress it on-device; setting the drawable itself
+        to null is the unambiguous way to guarantee nothing renders regardless of checked state. -->
+        <item name="checkedIcon">@null</item>
         <item name="checkedIconVisible">false</item>
     </style>
 
