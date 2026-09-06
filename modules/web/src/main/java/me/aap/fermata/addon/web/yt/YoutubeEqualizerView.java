@@ -36,10 +36,8 @@ import me.aap.utils.pref.PreferenceView.ListOpts;
  * design), but binds them to {@link YoutubeAddon}'s Web-Audio-backed prefs instead of an
  * {@link android.media.audiofx.AudioEffects} instance, since YouTube plays through the WebView's
  * own audio pipeline rather than one of the app's native engines. Unlike the native panel,
- * settings here are global to the YouTube tab (no per-track/per-folder scope, no Volume Boost),
- * so those sections/controls of the shared layout are hidden -- except the Virtualizer-mode
- * dropdown, which has no equivalent here but is repurposed (not hidden) for Live Hall's reverb
- * engine/quality selector, since it's otherwise the one unused row in this shared layout.
+ * settings here are global to the YouTube tab (no per-track/per-folder scope, no Volume Boost, no
+ * Virtualizer mode selector), so those sections/controls of the shared layout are hidden.
  */
 final class YoutubeEqualizerView extends android.widget.ScrollView implements PreferenceStore.Listener {
 	@Nullable
@@ -61,11 +59,7 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 		this.web = web;
 		YoutubeAddon addon = this.addon = web.getAddon();
 		inflate(getContext(), me.aap.fermata.R.layout.audio_effects, this);
-		// virtualizer_mode is the native Audio effects screen's Virtualizer-mode dropdown -- unused
-		// here (YouTube's Web-Audio virtualizer has no such mode selector), so it's repurposed rather
-		// than hidden: it's the one existing row in this shared layout with no other job on this
-		// screen, and reusing it avoids any layout/UI change for a single "Hall quality" setting.
-		hide(me.aap.fermata.R.id.apply_to,
+		hide(me.aap.fermata.R.id.apply_to, me.aap.fermata.R.id.virtualizer_mode,
 				me.aap.fermata.R.id.equalizer_preset_save, me.aap.fermata.R.id.equalizer_preset_delete);
 		addon.getPreferenceStore().addBroadcastListener(this);
 		// GenericFragment is a single instance shared by every "generic screen" caller in the app
@@ -109,24 +103,6 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 			return o;
 		});
 
-		// Live Hall's reverb engine: Smooth (cheap algorithmic comb/allpass, default) trades some
-		// character for far lower CPU cost than Rich (the original impulse-response convolution) --
-		// see youtube_equalizer.js. Only affects Live Hall's sound while it's enabled below; doesn't
-		// need its own on/off switch.
-		PreferenceView hallQualityView = findViewById(me.aap.fermata.R.id.virtualizer_mode);
-		hallQualityView.setPreference(null, () -> {
-			ListOpts o = new ListOpts();
-			o.store = addon.getPreferenceStore();
-			o.pref = YoutubeAddon.YT_REVERB_ENGINE;
-			o.title = me.aap.fermata.R.string.hall_quality;
-			o.subtitle = me.aap.fermata.R.string.string_format;
-			o.formatSubtitle = true;
-			o.values = new int[]{me.aap.fermata.R.string.hall_quality_smooth,
-					me.aap.fermata.R.string.hall_quality_rich};
-			o.valuesMap = new int[]{0, 1};
-			return o;
-		});
-
 		createChannels(addon);
 	}
 
@@ -162,6 +138,40 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 		// its volume. Range and default (300-3000ms, 2500ms) mirror YoutubeAddon's YT_REVERB_DURATION.
 		addDurationChannel(inflater, effects, me.aap.fermata.R.string.reverb_duration,
 				addon.reverbDuration(), 300, 3000, addon::setReverbDuration);
+		// Live Hall's reverb engine: Smooth (cheap algorithmic comb/allpass, default) vs Rich (the
+		// original impulse-response convolution -- higher CPU cost, a different, more "random room"
+		// character). See youtube_equalizer.js. A two-way choice, so this channel's switch IS the
+		// control (checked = Rich) rather than a fader; grouped with Live Hall/Hall Size since it
+		// only affects Live Hall's sound.
+		addQualityChannel(inflater, effects, me.aap.fermata.R.string.hall_quality,
+				addon.reverbEngine() == 1, checked -> addon.setReverbEngine(checked ? 1 : 0));
+	}
+
+	private void addQualityChannel(LayoutInflater inflater, ViewGroup parent, @StringRes int labelRes,
+																	boolean richEnabled, BooleanConsumer onChanged) {
+		View ch = inflater.inflate(me.aap.fermata.R.layout.equalizer_channel, parent, false);
+		parent.addView(ch);
+
+		SwitchCompat sw = ch.findViewById(me.aap.fermata.R.id.eq_channel_switch);
+		TextView value = ch.findViewById(me.aap.fermata.R.id.eq_channel_value);
+		TextView label = ch.findViewById(me.aap.fermata.R.id.eq_channel_label);
+		View sb = ch.findViewById(me.aap.fermata.R.id.eq_channel_seek);
+
+		// A two-way choice has no fader continuum -- hide the seek bar (the same shared layout
+		// Hall Size instead hides the switch on) since the switch itself is the real control here.
+		sb.setVisibility(GONE);
+
+		label.setText(labelRes);
+		sw.setVisibility(VISIBLE);
+		sw.setChecked(richEnabled);
+		value.setText(richEnabled ? me.aap.fermata.R.string.hall_quality_rich :
+				me.aap.fermata.R.string.hall_quality_smooth);
+		sw.setOnCheckedChangeListener((b, checked) -> {
+			onChanged.accept(checked);
+			value.setText(checked ? me.aap.fermata.R.string.hall_quality_rich :
+					me.aap.fermata.R.string.hall_quality_smooth);
+			push();
+		});
 	}
 
 	private void bindBandChannel(View ch, int band, int[] bands, int range) {
