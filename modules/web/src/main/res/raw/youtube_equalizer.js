@@ -58,10 +58,12 @@
     return state.ctx;
   }
 
-  function rampValue(param, value) {
+  // AudioParam has no back-reference to its AudioContext (unlike AudioNode) -- the context has
+  // to be passed in explicitly to get at currentTime.
+  function rampValue(ctx, param, value) {
     // setTargetAtTime glides to the target over RAMP_TIME instead of stepping there instantly --
     // a plain ".value = x" mid-stream is audible as a click/zipper on every fader drag.
-    param.setTargetAtTime(value, param.context.currentTime, RAMP_TIME);
+    param.setTargetAtTime(value, ctx.currentTime, RAMP_TIME);
   }
 
   // ------------------------------------------------------------------------------------------
@@ -148,17 +150,17 @@
     }
 
     return {input, output: tail, combs, nodes,
-            setDuration: (durationSec) => setSmoothDuration(combs, durationSec)};
+            setDuration: (durationSec) => setSmoothDuration(ctx, combs, durationSec)};
   }
 
   // Hall Size for the smooth engine maps to RT60 (time to decay 60dB), via the standard Freeverb
   // feedback formula feedback = 0.001^(combDelay/RT60) -- longer RT60 (bigger hall) means slower-
   // decaying feedback. Unlike the convolution engine, this is genuinely free to update on every
   // change: just a target gain ramp per comb, no buffer to rebuild.
-  function setSmoothDuration(combs, rt60Seconds) {
+  function setSmoothDuration(ctx, combs, rt60Seconds) {
     for (const c of combs) {
       const feedback = Math.pow(0.001, c.delaySeconds / Math.max(0.05, rt60Seconds));
-      rampValue(c.feedback.gain, Math.min(0.98, feedback));
+      rampValue(ctx, c.feedback.gain, Math.min(0.98, feedback));
     }
   }
 
@@ -384,17 +386,19 @@
     const cfg = state.config;
     rewireSpine(chain, cfg);
 
+    const ctx = chain.ctx;
+
     for (let i = 0; i < chain.bands.length; i++) {
-      rampValue(chain.bands[i].gain, cfg.eqEnabled ? (cfg.bands[i] || 0) : 0);
+      rampValue(ctx, chain.bands[i].gain, cfg.eqEnabled ? (cfg.bands[i] || 0) : 0);
     }
 
-    rampValue(chain.bass.gain, cfg.bassEnabled ? cfg.bassGain : 0);
+    rampValue(ctx, chain.bass.gain, cfg.bassEnabled ? cfg.bassGain : 0);
 
     const strength = cfg.virtEnabled ? Math.max(0, Math.min(1, cfg.virtStrength)) : 0;
-    rampValue(chain.delay.delayTime, 0.005 + VIRT_MAX_DELAY * 0.67 * strength);
-    rampValue(chain.dryR.gain, 1 - 0.5 * strength);
-    rampValue(chain.wetR.gain, 0.5 * strength);
-    rampValue(chain.wetL.gain, 0.3 * strength);
+    rampValue(ctx, chain.delay.delayTime, 0.005 + VIRT_MAX_DELAY * 0.67 * strength);
+    rampValue(ctx, chain.dryR.gain, 1 - 0.5 * strength);
+    rampValue(ctx, chain.wetR.gain, 0.5 * strength);
+    rampValue(ctx, chain.wetL.gain, 0.3 * strength);
 
     const engineName = (cfg.reverbEngine === 'convolution') ? 'convolution' : 'smooth';
 
@@ -417,8 +421,8 @@
     const REVERB_MAX_STRENGTH = 1.5;
     const reverbStrength = cfg.reverbEnabled ?
         Math.max(0, Math.min(REVERB_MAX_STRENGTH, cfg.reverbStrength)) : 0;
-    rampValue(chain.reverbDry.gain, 1);
-    rampValue(chain.reverbWet.gain, reverbStrength * 0.6);
+    rampValue(ctx, chain.reverbDry.gain, 1);
+    rampValue(ctx, chain.reverbWet.gain, reverbStrength * 0.6);
 
     if (!cfg.reverbEnabled) return;
 
