@@ -104,8 +104,6 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 		});
 
 		createChannels(addon);
-		android.widget.Toast.makeText(getContext(), me.aap.fermata.R.string.reverb_duration_hint,
-				android.widget.Toast.LENGTH_LONG).show();
 	}
 
 	void cleanup() {
@@ -208,6 +206,13 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 																	 int durationMs, int minMs, int maxMs, IntConsumer onDurationChanged) {
 		View ch = inflater.inflate(me.aap.fermata.R.layout.equalizer_channel, parent, false);
 		parent.addView(ch);
+
+		// This channel has no switch of its own (Hall Size only matters while Live Hall, the channel
+		// to its left, is on) but INVISIBLE rather than the layout's default GONE reserves the same
+		// vertical space the other channels' switches take, so this fader lines up at the same height
+		// as theirs instead of sitting higher.
+		View sw = ch.findViewById(me.aap.fermata.R.id.eq_channel_switch);
+		sw.setVisibility(INVISIBLE);
 
 		TextView value = ch.findViewById(me.aap.fermata.R.id.eq_channel_value);
 		TextView label = ch.findViewById(me.aap.fermata.R.id.eq_channel_label);
