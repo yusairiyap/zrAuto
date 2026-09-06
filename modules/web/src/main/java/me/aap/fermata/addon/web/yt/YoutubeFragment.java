@@ -29,7 +29,6 @@ import me.aap.fermata.addon.web.FermataWebView;
 import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.WebBrowserAddon;
 import me.aap.fermata.addon.web.WebBrowserFragment;
-import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.DefaultMediaLib;
 import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
@@ -37,10 +36,6 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.utils.async.FutureSupplier;
-import me.aap.utils.function.LongSupplier;
-import me.aap.utils.pref.PreferenceStore;
-import me.aap.utils.pref.PreferenceStore.Pref;
-import me.aap.utils.pref.SharedPreferenceStore;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.menu.OverlayMenuItem;
@@ -54,7 +49,6 @@ import me.aap.utils.ui.view.ToolBarView;
 public class YoutubeFragment extends WebBrowserFragment implements FermataServiceUiBinder.Listener {
 	static final String DEFAULT_URL = "https://m.youtube.com";
 	private static final Set<String> DEFAULT_URLS = new HashSet<>(Arrays.asList(DEFAULT_URL, DEFAULT_URL + '/'));
-	private static final Pref<LongSupplier> RESUME_POS = Pref.l("YT_RESUME_POS", 0L);
 	private static final String YT_VIDEO_VIEW_TAG = "yt_video_view_overlay";
 	private boolean playOnResume;
 
@@ -91,16 +85,12 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 			registerListeners(a);
 			webView.loadUrl(DEFAULT_URL);
 			if (!DEFAULT_URL.equals(url)) a.post(() -> webView.loadUrl(url));
-			a.postDelayed(() -> {
-				PreferenceStore ps = addon.getPreferenceStore();
-				long pos = ps.getLongPref(RESUME_POS);
-				ps.removePref(RESUME_POS);
-				MediaSessionCallback cb = a.getMediaSessionCallback();
-				if (cb.getEngine() instanceof YoutubeMediaEngine) {
-					if (pos > 0L) cb.onSeekTo(pos);
-					if (pause) cb.onPause();
-				}
-			}, 3000L);
+			if (pause) {
+				a.postDelayed(() -> {
+					MediaSessionCallback cb = a.getMediaSessionCallback();
+					if (cb.getEngine() instanceof YoutubeMediaEngine) cb.onPause();
+				}, 3000L);
+			}
 		});
 	}
 
@@ -109,21 +99,11 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		super.onSaveInstanceState(state);
 		String url = getUrl();
 		if (url != null) state.putString("url", url);
-		WebBrowserAddon addon = getAddon();
-		if (addon == null) return;
 		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
 		if (a == null) return;
 
-		SharedPreferenceStore ps = addon.getPreferenceStore();
 		MediaSessionCallback cb = a.getMediaSessionCallback();
-		MediaEngine eng = cb.getEngine();
-
-		if (eng instanceof YoutubeMediaEngine) {
-			state.putBoolean("pause", !cb.isPlaying());
-			eng.getPosition().onSuccess(pos -> ps.applyLongPref(RESUME_POS, pos));
-		} else {
-			ps.removePref(RESUME_POS);
-		}
+		if (cb.getEngine() instanceof YoutubeMediaEngine) state.putBoolean("pause", !cb.isPlaying());
 	}
 
 	// recoverFullscreenVideo() previously overrode WebBrowserFragment's plain "just re-enter

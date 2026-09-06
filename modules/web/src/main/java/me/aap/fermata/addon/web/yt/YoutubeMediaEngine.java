@@ -65,7 +65,15 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	// being trusted as a real pause.
 	private static final long PLAY_RETRY_GRACE_MS = 2000L;
 	private static final int MAX_PLAY_RETRIES = 2;
+	// How long a playing() confirmation must hold, with no intervening pause, before the retry
+	// budget is considered "spent" and safe to refill -- see playing() below. Without this, a
+	// persistent condition the page keeps refusing to stay playing under (e.g. a window too small
+	// for YouTube to run video in) turns retrying into an unbounded loop: each retry's own
+	// playing() confirmation would otherwise refill the budget right before the next pause spends
+	// it again, one attempt at a time, forever.
+	private static final long RETRY_BUDGET_REFILL_MS = 4000L;
 	private long lastActivePlayTime;
+	private long lastPausedTime;
 	private int playRetries;
 
 	public YoutubeMediaEngine(YoutubeWebView web, MainActivityDelegate a) {
@@ -84,13 +92,17 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	void playing(String url) {
-		// Every confirmed-playing moment re-arms the retry guard in paused() below with a fresh
-		// budget -- not just an explicit native start() -- since a page-reported pause can also
-		// follow a resize-triggered player restart the app never asked for (confirmed on-device: a
-		// window resize alone, with no play/pause tap at all, produces the same rapid
-		// playing-then-paused pairs from YouTube's own player settling its layout).
-		lastActivePlayTime = System.currentTimeMillis();
-		playRetries = 0;
+		// Every confirmed-playing moment re-arms the retry guard in paused() below -- not just an
+		// explicit native start() -- since a page-reported pause can also follow a resize-triggered
+		// player restart the app never asked for (confirmed on-device: a window resize alone, with
+		// no play/pause tap at all, produces the same rapid playing-then-paused pairs from YouTube's
+		// own player settling its layout). The retry budget itself only refills once playback has
+		// actually held for a while with no pause in between -- see RETRY_BUDGET_REFILL_MS -- so a
+		// persistent block (the page refusing to stay playing no matter how many times we ask, e.g.
+		// a window too small to run video in) still gives up instead of retrying forever.
+		long now = System.currentTimeMillis();
+		if ((lastPausedTime == 0) || (now - lastPausedTime > RETRY_BUDGET_REFILL_MS)) playRetries = 0;
+		lastActivePlayTime = now;
 
 		if (BuildConfig.AUTO && web.getAddon().skipAd()) {
 			web.loadUrl("javascript:\n" +
@@ -125,10 +137,14 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// indistinguishable from a real one. Only second-guess it when nothing on the native side
 		// asked for a pause since the last confirmed playing() (see pause()/stop() below, which
 		// clear lastActivePlayTime), and only for a short grace window / bounded number of attempts
-		// per playing() confirmation, so a genuine pause -- from the user, an ad, or the video
-		// actually ending -- still gets honored quickly.
+		// -- capped across the whole storm, not per playing() confirmation (see playing() above) --
+		// so a genuine pause, or a persistent condition the page won't play under at all, still gets
+		// honored instead of retrying indefinitely.
+		long now = System.currentTimeMillis();
+		lastPausedTime = now;
+
 		if (!ignorePause && (lastActivePlayTime != 0) && (playRetries < MAX_PLAY_RETRIES) &&
-				(System.currentTimeMillis() - lastActivePlayTime < PLAY_RETRY_GRACE_MS)) {
+				(now - lastActivePlayTime < PLAY_RETRY_GRACE_MS)) {
 			playRetries++;
 			Log.i("YoutubeMediaEngine.paused(): retrying play(), attempt ", playRetries);
 			web.play();
@@ -166,6 +182,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	@Override
 	public void start() {
 		lastActivePlayTime = System.currentTimeMillis();
+		lastPausedTime = 0;
 		playRetries = 0;
 		web.play();
 	}
