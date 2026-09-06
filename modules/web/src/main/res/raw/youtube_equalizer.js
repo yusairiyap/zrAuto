@@ -98,19 +98,33 @@
     // Live Hall reverb: a parallel send -- the dry signal always passes
     // through, the convolved "wet" signal layers on top, rather than
     // replacing the direct sound (matching how a real hall effect is used).
+    // The convolver itself is NOT connected here -- a connected ConvolverNode keeps running its
+    // (by far the most expensive computation in this whole chain) real-time convolution on every
+    // audio frame regardless of its output gain, so wiring it in unconditionally would silently
+    // cost CPU even when Live Hall is off and every other effect is cheap by comparison.
+    // applyToChain() connects/disconnects it based on cfg.reverbEnabled instead.
     const convolver = ctx.createConvolver();
     convolver.buffer = getImpulseResponse(ctx);
     convolver.normalize = true;
     const reverbDry = ctx.createGain();
     const reverbWet = ctx.createGain();
     merger.connect(reverbDry);
-    merger.connect(convolver);
-    convolver.connect(reverbWet);
-    reverbDry.connect(ctx.destination);
-    reverbWet.connect(ctx.destination);
+
+    // Safety limiter: catches the combined output of the whole chain (reverbDry always carries the
+    // full dry signal, even with reverb off) so pushing several controls toward their maxima can't
+    // hard-clip -- Web Audio applies no headroom protection at the destination by default.
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -1;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.25;
+    reverbDry.connect(limiter);
+    reverbWet.connect(limiter);
+    limiter.connect(ctx.destination);
 
     return {video, source, bands, bass, splitter, merger, dryR, delay, wetR, wetL, convolver,
-            reverbDry, reverbWet};
+            reverbDry, reverbWet, limiter, reverbConnected: false};
   }
 
   function applyToChain(chain) {
@@ -137,6 +151,16 @@
         Math.max(0, Math.min(REVERB_MAX_STRENGTH, cfg.reverbStrength)) : 0;
     chain.reverbDry.gain.value = 1;
     chain.reverbWet.gain.value = reverbStrength * 0.6;
+
+    if (cfg.reverbEnabled && !chain.reverbConnected) {
+      chain.merger.connect(chain.convolver);
+      chain.convolver.connect(chain.reverbWet);
+      chain.reverbConnected = true;
+    } else if (!cfg.reverbEnabled && chain.reverbConnected) {
+      chain.merger.disconnect(chain.convolver);
+      chain.convolver.disconnect(chain.reverbWet);
+      chain.reverbConnected = false;
+    }
   }
 
   function anyEffectEnabled(cfg) {
@@ -169,7 +193,7 @@
   function disconnectChain(chain) {
     const nodes = [chain.source, ...chain.bands, chain.bass, chain.splitter, chain.merger,
                     chain.dryR, chain.delay, chain.wetR, chain.wetL, chain.convolver,
-                    chain.reverbDry, chain.reverbWet];
+                    chain.reverbDry, chain.reverbWet, chain.limiter];
     for (const n of nodes) {
       try { n.disconnect(); } catch (err) { /* already disconnected */ }
     }

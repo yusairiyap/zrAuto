@@ -153,14 +153,16 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 				return;
 			}
 
-			boolean wasPlaying = cb.isPlaying();
 			eng.getPosition().onSuccess(pos -> a.post(() -> {
 				v.reload();
 				a.postDelayed(() -> {
 					MediaEngine e2 = cb.getEngine();
 					if (!(e2 instanceof YoutubeMediaEngine)) return; // engine changed/torn down meanwhile
+					// Deliberately not auto-resuming playback here: the user may have switched away to
+					// listen to something else while this was interrupted, and yanking audio focus back
+					// on return would interrupt that. Land back at the right position, paused, and let
+					// the user decide when to actually resume.
 					if (pos > 0L) cb.onSeekTo(pos);
-					if (wasPlaying) cb.onPlay();
 					FermataChromeClient chrome = v.getWebChromeClient();
 					if (chrome != null) chrome.enterFullScreen();
 				}, 3000L);
