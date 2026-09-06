@@ -72,14 +72,22 @@
   // ------------------------------------------------------------------------------------------
 
   // Schroeder/Moorer-style comb + allpass network (the classic Freeverb topology), built entirely
-  // from native Web Audio nodes. Every node here (GainNode/DelayNode/BiquadFilterNode) processes
-  // however many channels its input has automatically -- a stereo signal in stays stereo out, so
-  // (unlike the Virtualizer block below) no explicit splitter/merger is needed. Per-sample cost is
-  // a handful of multiply-adds per comb/allpass, versus a windowed convolution over a multi-second
-  // buffer -- roughly one to two orders of magnitude cheaper, and "Hall Size" becomes an instant
-  // feedback-gain change instead of a buffer rebuild.
-  const COMB_DELAYS_MS = [41.6, 43.3, 40.0, 38.1]; // Freeverb's classic comb tunings, in ms
-  const ALLPASS_DELAYS_MS = [5.0, 12.6];
+  // from native Web Audio nodes -- a full stereo instance is two independent mono networks (one
+  // per channel, via a splitter/merger, same pattern the Virtualizer block below uses) with the
+  // right channel's comb delays offset by STEREO_SPREAD_MS, matching Freeverb's own stereo
+  // widening technique; without that offset, both channels would ring at identical resonant
+  // frequencies and the reverb would sound narrow/mono no matter how it's mixed. Per-sample cost
+  // is a handful of multiply-adds per comb/allpass, versus a windowed convolution over a multi-
+  // second buffer -- roughly one to two orders of magnitude cheaper even with a full 8-comb/
+  // 4-allpass network per channel, and "Hall Size" becomes an instant feedback-gain change instead
+  // of a buffer rebuild.
+  //
+  // Tunings below are Freeverb's own classic constants (Jezar's reference comb/allpass delays and
+  // stereo spread, originally specified in samples at 44.1kHz), converted to milliseconds so they
+  // reproduce the same timing regardless of this AudioContext's actual sample rate.
+  const COMB_DELAYS_MS = [25.31, 26.94, 28.96, 30.75, 32.24, 33.81, 35.31, 36.67];
+  const STEREO_SPREAD_MS = 0.52;
+  const ALLPASS_DELAYS_MS = [12.61, 10.0, 7.73, 5.10];
   const COMB_DAMPING_HZ = 3000; // fixed high-frequency damping in the feedback path -- not user-
                                  // exposed; only Hall Size (decay length) and Strength are.
   const ALLPASS_G = 0.5;
@@ -129,19 +137,26 @@
     return {input, output, nodes: [input, sum, delay, feedbackGain, feedforwardGain, output]};
   }
 
-  function buildSmoothReverb(ctx) {
+  // One channel's worth of the network: `combDelaysMs` combs in parallel (summed, then scaled by
+  // 1/sqrt(N) so perceived loudness doesn't keep climbing as more combs are added -- N decorrelated
+  // resonances summed add roughly in power, not linearly), feeding a series allpass diffuser.
+  function buildMonoReverbNetwork(ctx, combDelaysMs) {
     const input = ctx.createGain();
     const combSum = ctx.createGain();
-    const nodes = [input, combSum];
-    const combs = COMB_DELAYS_MS.map((ms) => {
+    const combGain = ctx.createGain();
+    combGain.gain.value = 1 / Math.sqrt(combDelaysMs.length);
+    const nodes = [input, combSum, combGain];
+
+    const combs = combDelaysMs.map((ms) => {
       const c = createComb(ctx, ms / 1000);
       input.connect(c.input);
       c.output.connect(combSum);
       nodes.push(...c.nodes);
       return c;
     });
+    combSum.connect(combGain);
 
-    let tail = combSum;
+    let tail = combGain;
     for (const ms of ALLPASS_DELAYS_MS) {
       const ap = createAllpass(ctx, ms / 1000, ALLPASS_G);
       tail.connect(ap.input);
@@ -149,14 +164,34 @@
       nodes.push(...ap.nodes);
     }
 
-    return {input, output: tail, combs, nodes,
+    return {input, output: tail, combs, nodes};
+  }
+
+  function buildSmoothReverb(ctx) {
+    const input = ctx.createGain();
+    const splitter = ctx.createChannelSplitter(2);
+    const merger = ctx.createChannelMerger(2);
+    input.connect(splitter);
+
+    const left = buildMonoReverbNetwork(ctx, COMB_DELAYS_MS);
+    const right = buildMonoReverbNetwork(ctx, COMB_DELAYS_MS.map((ms) => ms + STEREO_SPREAD_MS));
+    splitter.connect(left.input, 0);
+    splitter.connect(right.input, 1);
+    left.output.connect(merger, 0, 0);
+    right.output.connect(merger, 0, 1);
+
+    const combs = [...left.combs, ...right.combs];
+    const nodes = [input, splitter, merger, ...left.nodes, ...right.nodes];
+
+    return {input, output: merger, combs, nodes,
             setDuration: (durationSec) => setSmoothDuration(ctx, combs, durationSec)};
   }
 
-  // Hall Size for the smooth engine maps to RT60 (time to decay 60dB), via the standard Freeverb
-  // feedback formula feedback = 0.001^(combDelay/RT60) -- longer RT60 (bigger hall) means slower-
-  // decaying feedback. Unlike the convolution engine, this is genuinely free to update on every
-  // change: just a target gain ramp per comb, no buffer to rebuild.
+  // Hall Size maps to RT60 (time to decay 60dB), via the standard Freeverb feedback formula
+  // feedback = 0.001^(combDelay/RT60) -- longer RT60 (bigger hall) means slower-decaying feedback.
+  // Applies uniformly to every comb in both channels (their differing base delaySeconds is already
+  // baked into each comb object, so this still reproduces the same RT60 target per channel).
+  // Genuinely free to update on every call: just a target gain ramp per comb, no buffer to rebuild.
   function setSmoothDuration(ctx, combs, rt60Seconds) {
     for (const c of combs) {
       const feedback = Math.pow(0.001, c.delaySeconds / Math.max(0.05, rt60Seconds));
@@ -164,20 +199,14 @@
     }
   }
 
-  // The original impulse-response convolution engine, kept as the "Rich" quality option.
-  // `normalize=false` plus a fixed makeup gain (below) skips ConvolverNode's own normalization
-  // pass (an extra full-buffer scan on every buffer swap) -- approximate rather than exact
-  // loudness parity with the smooth engine, but the shared safety limiter downstream catches any
-  // resulting overs.
-  const CONVOLUTION_MAKEUP_GAIN = 4;
-
+  // The original impulse-response convolution engine, kept as the "Rich" quality option --
+  // unchanged from before this engine became switchable: normalize=true is ConvolverNode's own
+  // loudness compensation for the impulse buffer's actual energy, which (unlike a fixed gain)
+  // keeps perceived loudness and Hall Size's feel consistent as the buffer's length/energy changes.
   function buildConvolutionReverb(ctx) {
     const convolver = ctx.createConvolver();
-    convolver.normalize = false;
-    const makeup = ctx.createGain();
-    makeup.gain.value = CONVOLUTION_MAKEUP_GAIN;
-    convolver.connect(makeup);
-    return {input: convolver, output: makeup, convolver};
+    convolver.normalize = true;
+    return {input: convolver, output: convolver, convolver};
   }
 
   // Builds the impulse response in chunks across successive tasks instead of one synchronous
@@ -483,7 +512,7 @@
     // implementations are specified to still collect a cycle with no path to the destination,
     // that's not something to lean on across every WebView version this app runs on.
     if (chain.smoothReverb) nodes.push(...chain.smoothReverb.nodes);
-    if (chain.convolutionReverb) nodes.push(chain.convolutionReverb.input, chain.convolutionReverb.output);
+    if (chain.convolutionReverb) nodes.push(chain.convolutionReverb.convolver);
     for (const n of nodes) {
       try { n.disconnect(); } catch (err) { /* already disconnected */ }
     }
