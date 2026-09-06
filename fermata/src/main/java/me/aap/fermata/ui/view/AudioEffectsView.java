@@ -140,7 +140,7 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 
 			store.applyIntPref(MediaPrefs.EQ_PRESET, preset);
 		} else {
-			hide(R.id.equalizer_switch, R.id.equalizer_preset);
+			hide(R.id.equalizer_switch, R.id.preset_row);
 		}
 
 		// Virtualizer mode dropdown (header)
