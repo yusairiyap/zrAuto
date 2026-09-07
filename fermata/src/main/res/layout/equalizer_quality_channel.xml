@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A two-way choice rendered as plan-card-style radio buttons (label on top, the two option
+     cards in a row below it) instead of the standard equalizer_channel.xml switch+fader row:
+     used for Hall quality (Smooth/Rich), which has no strength/continuum to fade, only a pick
+     between exactly two named options. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="8dp"
+    android:layout_marginBottom="8dp"
+    android:orientation="vertical">
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/eq_quality_label"
+        style="?attr/appEqualizerStyle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:textAppearance="?attr/textAppearanceBody1" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/eq_quality_smooth_card"
+            style="?attr/appQualityCardStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="6dp"
+            android:layout_weight="1"
+            android:clickable="true"
+            android:focusable="true"
+            android:checkable="true"
+            app:checkedIcon="@null">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="12dp"
+                android:paddingTop="10dp"
+                android:paddingEnd="4dp"
+                android:paddingBottom="10dp">
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/hall_quality_smooth"
+                    android:textAppearance="?attr/textAppearanceBody1" />
+
+                <com.google.android.material.radiobutton.MaterialRadioButton
+                    android:id="@+id/eq_quality_smooth_radio"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:clickable="false"
+                    android:focusable="false"
+                    app:buttonTint="@color/quality_radio_tint" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/eq_quality_rich_card"
+            style="?attr/appQualityCardStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:layout_weight="1"
+            android:clickable="true"
+            android:focusable="true"
+            android:checkable="true"
+            app:checkedIcon="@null">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="12dp"
+                android:paddingTop="10dp"
+                android:paddingEnd="4dp"
+                android:paddingBottom="10dp">
+
+                <com.google.android.material.textview.MaterialTextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/hall_quality_rich"
+                    android:textAppearance="?attr/textAppearanceBody1" />
+
+                <com.google.android.material.radiobutton.MaterialRadioButton
+                    android:id="@+id/eq_quality_rich_radio"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:clickable="false"
+                    android:focusable="false"
+                    app:buttonTint="@color/quality_radio_tint" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+    </LinearLayout>
+</LinearLayout>

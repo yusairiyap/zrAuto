@@ -154,6 +154,7 @@
     <string name="audio_effects">Audio effects</string>
     <string name="equalier">Equalizer</string>
     <string name="preset_name">Preset name</string>
+    <string name="preset">Preset</string>
     <string name="virtualizer">Virtualizer</string>
     <string name="auto">Auto</string>
     <string name="binaural">Binaural</string>
@@ -163,6 +164,9 @@
     <string name="live_hall">Live Hall</string>
     <string name="reverb_duration">Hall Size</string>
     <string name="effects">Effects</string>
+    <string name="hall_quality">Hall quality</string>
+    <string name="hall_quality_smooth">Smooth</string>
+    <string name="hall_quality_rich">Rich</string>
     <string name="strength">Strength</string>
     <string name="apply_to">Apply to</string>
 

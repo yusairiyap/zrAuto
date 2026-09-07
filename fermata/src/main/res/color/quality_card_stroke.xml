@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Border color for the Hall quality option cards (see equalizer_quality_channel.xml): a colored
+     highlight when an option is the selected one, the app's plain neutral outline color otherwise;
+     mirrors media_item_border.xml's own selected/unselected pair, the app's existing pattern for
+     "this one is the chosen one" borders. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="?attr/colorControlActivated" android:state_checked="true" />
+    <item android:color="?attr/boxStrokeColor" android:state_checked="false" />
+</selector>

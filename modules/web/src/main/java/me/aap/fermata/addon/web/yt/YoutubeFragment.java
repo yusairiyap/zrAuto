@@ -29,7 +29,6 @@ import me.aap.fermata.addon.web.FermataWebView;
 import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.WebBrowserAddon;
 import me.aap.fermata.addon.web.WebBrowserFragment;
-import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.DefaultMediaLib;
 import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
@@ -37,10 +36,6 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.utils.async.FutureSupplier;
-import me.aap.utils.function.LongSupplier;
-import me.aap.utils.pref.PreferenceStore;
-import me.aap.utils.pref.PreferenceStore.Pref;
-import me.aap.utils.pref.SharedPreferenceStore;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.menu.OverlayMenuItem;
@@ -54,7 +49,6 @@ import me.aap.utils.ui.view.ToolBarView;
 public class YoutubeFragment extends WebBrowserFragment implements FermataServiceUiBinder.Listener {
 	static final String DEFAULT_URL = "https://m.youtube.com";
 	private static final Set<String> DEFAULT_URLS = new HashSet<>(Arrays.asList(DEFAULT_URL, DEFAULT_URL + '/'));
-	private static final Pref<LongSupplier> RESUME_POS = Pref.l("YT_RESUME_POS", 0L);
 	private static final String YT_VIDEO_VIEW_TAG = "yt_video_view_overlay";
 	private boolean playOnResume;
 
@@ -91,16 +85,12 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 			registerListeners(a);
 			webView.loadUrl(DEFAULT_URL);
 			if (!DEFAULT_URL.equals(url)) a.post(() -> webView.loadUrl(url));
-			a.postDelayed(() -> {
-				PreferenceStore ps = addon.getPreferenceStore();
-				long pos = ps.getLongPref(RESUME_POS);
-				ps.removePref(RESUME_POS);
-				MediaSessionCallback cb = a.getMediaSessionCallback();
-				if (cb.getEngine() instanceof YoutubeMediaEngine) {
-					if (pos > 0L) cb.onSeekTo(pos);
-					if (pause) cb.onPause();
-				}
-			}, 3000L);
+			if (pause) {
+				a.postDelayed(() -> {
+					MediaSessionCallback cb = a.getMediaSessionCallback();
+					if (cb.getEngine() instanceof YoutubeMediaEngine) cb.onPause();
+				}, 3000L);
+			}
 		});
 	}
 
@@ -109,70 +99,23 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		super.onSaveInstanceState(state);
 		String url = getUrl();
 		if (url != null) state.putString("url", url);
-		WebBrowserAddon addon = getAddon();
-		if (addon == null) return;
 		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
 		if (a == null) return;
 
-		SharedPreferenceStore ps = addon.getPreferenceStore();
 		MediaSessionCallback cb = a.getMediaSessionCallback();
-		MediaEngine eng = cb.getEngine();
-
-		if (eng instanceof YoutubeMediaEngine) {
-			state.putBoolean("pause", !cb.isPlaying());
-			eng.getPosition().onSuccess(pos -> ps.applyLongPref(RESUME_POS, pos));
-		} else {
-			ps.removePref(RESUME_POS);
-		}
+		if (cb.getEngine() instanceof YoutubeMediaEngine) state.putBoolean("pause", !cb.isPlaying());
 	}
 
-	/**
-	 * Overrides {@code WebBrowserFragment}'s plain "just re-enter fullscreen" recovery with a real
-	 * page reload -- reusing the same reload+reseek pattern {@link #onViewCreated} already uses for
-	 * an Activity recreation. A fullscreen rebuild alone (the base implementation) only tears
-	 * down/rebuilds the Java-side custom view and re-requests fullscreen on the SAME, already-
-	 * existing {@code &lt;video&gt;} element -- it never recreates the underlying decoder pipeline, and
-	 * {@link MediaSessionCallback}'s playback state (driven entirely by one-shot JS DOM 'pause'/
-	 * 'playing' events) can already be desynced from the real video by the time this runs. Only a
-	 * real reload -- confirmed on-device, matching what manually refreshing the page already does
-	 * -- reliably recovers both.
-	 */
-	@Override
-	protected void recoverFullscreenVideo() {
-		MainActivityDelegate.getActivityDelegate(getContext()).onSuccess(a -> {
-			MediaSessionCallback cb = a.getMediaSessionCallback();
-			MediaEngine eng = cb.getEngine();
-			FermataWebView v = getWebView();
-			if (v == null) return;
-
-			if (!(eng instanceof YoutubeMediaEngine)) {
-				a.post(() -> {
-					FermataChromeClient chrome = v.getWebChromeClient();
-					if (chrome != null) chrome.enterFullScreen();
-				});
-				return;
-			}
-
-			eng.getPosition().onSuccess(pos -> a.post(() -> {
-				v.reload();
-				a.postDelayed(() -> {
-					MediaEngine e2 = cb.getEngine();
-					if (!(e2 instanceof YoutubeMediaEngine)) return; // engine changed/torn down meanwhile
-					// Deliberately not auto-resuming playback here: the user may have switched away to
-					// listen to something else while this was interrupted, and yanking audio focus back
-					// on return would interrupt that. Land back at the right position, paused, and let
-					// the user decide when to actually resume. The explicit onPause() below is needed
-					// even though nothing here calls onPlay(): the reload lands on the same watch URL,
-					// and YouTube's own mobile web player can start itself back up on load independent
-					// of anything this app calls -- force it back to paused regardless of what it does.
-					if (pos > 0L) cb.onSeekTo(pos);
-					cb.onPause();
-					FermataChromeClient chrome = v.getWebChromeClient();
-					if (chrome != null) chrome.enterFullScreen();
-				}, 3000L);
-			}));
-		});
-	}
+	// recoverFullscreenVideo() previously overrode WebBrowserFragment's plain "just re-enter
+	// fullscreen" recovery with a page reload (plus a reseek and forced pause). That traded one bug
+	// for another: it dropped playback on every routine Android Auto backgrounding, not just the
+	// display-takeover freeze it was meant to catch, and even a more selective, health-probe-gated
+	// version of it was found on-device to leave the WebView's fullscreen tracking stuck -- the
+	// page's own document.fullscreenElement doesn't reliably clear from an app-initiated exit (see
+	// FermataWebView#exitPageFullScreen(), now called from every force-exit site instead) -- which
+	// blocked automatic recovery AND a manual re-tap of the fullscreen button alike, recoverable only
+	// by restarting the app. No longer overridden: the base implementation (re-enter fullscreen on
+	// the existing, already-loaded <video> element, no reload, no forced pause) is what runs here now.
 
 	@Override
 	public void onDestroyView() {

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Explicit tint for the Hall quality radio buttons (equalizer_quality_channel.xml). Material's
+     default RadioButton tint paints the checked dot in the theme's colorSecondary, but several of
+     this app's non-dynamic themes reuse colorSecondary for a background role (theme_dark,
+     theme_purple, theme_light: colorSecondary = ?android:colorBackground; theme_black: #000000),
+     so the checked dot rendered in that color was invisible against the very background it sits
+     on; only the Material You dynamic theme (its own distinct colorSecondary) showed it.
+     colorControlActivated is already this app's proven-visible "active control" color (every
+     slider thumb/track uses it), so use it here instead, mirroring quality_card_stroke.xml's own
+     selected/unselected pair. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="?attr/colorControlActivated" android:state_checked="true" />
+    <item android:color="?android:attr/textColorSecondary" android:state_checked="false" />
+</selector>

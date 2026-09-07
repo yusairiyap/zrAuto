@@ -181,6 +181,7 @@ public class WebBrowserFragment extends MainActivityFragment
 		if (chrome != null) {
 			if (chrome.isFullScreen()) {
 				chrome.exitFullScreen();
+				v.exitPageFullScreen(() -> {});
 				fullScreenOnResume = true;
 			} else {
 				fullScreenOnResume = false;
@@ -224,25 +225,32 @@ public class WebBrowserFragment extends MainActivityFragment
 		if ((chrome == null) || !chrome.isFullScreen()) return;
 		v.onResume();
 		chrome.exitFullScreen();
-		MainActivityDelegate.getActivityDelegate(getContext())
-				.onSuccess(a -> a.post(chrome::enterFullScreen));
+		MainActivityDelegate.getActivityDelegate(getContext()).onSuccess(a -> a.post(() ->
+				// Re-clear the page's own fullscreen state immediately before re-entering (not just
+				// once, back at the exit above) and wait for confirmation -- see
+				// FermataWebView#exitPageFullScreen() for why relying on the earlier exit alone isn't
+				// enough to avoid a race.
+				v.exitPageFullScreen(chrome::enterFullScreen)));
 	}
 
 	/**
-	 * Re-enters fullscreen after one of the two recovery paths above tore it down. Plain (non-
-	 * YouTube) web video has no {@code MediaSessionCallback}-tracked position worth preserving and
-	 * reloading an arbitrary site mid-video isn't something proven to help, so the base behavior is
-	 * just re-entering fullscreen on the existing page/video element. {@code YoutubeFragment}
-	 * overrides this with a reload+reseek+resume recovery instead (a fullscreen rebuild alone
-	 * doesn't recreate the underlying decoder pipeline, and YouTube's playback state can already be
-	 * desynced from the real video by the time this runs).
+	 * Re-enters fullscreen after one of the two recovery paths above tore it down -- just
+	 * re-entering fullscreen on the existing page/video element, not currently overridden by any
+	 * subclass (a YouTube-specific reload+reseek+resume recovery was tried here previously; it was
+	 * dropped after being found, on-device, to leave the WebView's fullscreen tracking stuck -- see
+	 * {@code FermataWebView#exitPageFullScreen()}).
 	 */
 	protected void recoverFullscreenVideo() {
 		MainActivityDelegate.getActivityDelegate(getContext()).onSuccess(a -> a.post(() -> {
 			FermataWebView v = getWebView();
 			if (v == null) return;
 			FermataChromeClient chrome = v.getWebChromeClient();
-			if (chrome != null) chrome.enterFullScreen();
+			if (chrome == null) return;
+			// See FermataWebView#exitPageFullScreen(): re-clear the page's own fullscreen state right
+			// before asking it to re-enter, rather than relying on the earlier onPause()-time exit
+			// having already taken effect -- a backgrounded WebView can suspend/queue injected JS, so
+			// that exit and this enter could otherwise race in either order.
+			v.exitPageFullScreen(chrome::enterFullScreen);
 		}));
 	}
 

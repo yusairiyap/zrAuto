@@ -18,6 +18,9 @@ import androidx.annotation.StringRes;
 import androidx.appcompat.widget.AppCompatSeekBar;
 import androidx.appcompat.widget.SwitchCompat;
 
+import com.google.android.material.card.MaterialCardView;
+import com.google.android.material.radiobutton.MaterialRadioButton;
+
 import java.util.List;
 import java.util.Locale;
 
@@ -138,6 +141,44 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 		// its volume. Range and default (300-3000ms, 2500ms) mirror YoutubeAddon's YT_REVERB_DURATION.
 		addDurationChannel(inflater, effects, me.aap.fermata.R.string.reverb_duration,
 				addon.reverbDuration(), 300, 3000, addon::setReverbDuration);
+		// Live Hall's reverb engine: Smooth (cheap algorithmic comb/allpass, default) vs Rich (the
+		// original impulse-response convolution -- higher CPU cost, a different, more "random room"
+		// character). See youtube_equalizer.js. A two-way choice, so this channel's switch IS the
+		// control (checked = Rich) rather than a fader; grouped with Live Hall/Hall Size since it
+		// only affects Live Hall's sound.
+		addQualityChannel(inflater, effects, me.aap.fermata.R.string.hall_quality,
+				addon.reverbEngine() == 1, checked -> addon.setReverbEngine(checked ? 1 : 0));
+	}
+
+	private void addQualityChannel(LayoutInflater inflater, ViewGroup parent, @StringRes int labelRes,
+																	boolean richEnabled, BooleanConsumer onChanged) {
+		View ch = inflater.inflate(me.aap.fermata.R.layout.equalizer_quality_channel, parent, false);
+		parent.addView(ch);
+
+		TextView label = ch.findViewById(me.aap.fermata.R.id.eq_quality_label);
+		label.setText(labelRes);
+
+		MaterialCardView smoothCard = ch.findViewById(me.aap.fermata.R.id.eq_quality_smooth_card);
+		MaterialCardView richCard = ch.findViewById(me.aap.fermata.R.id.eq_quality_rich_card);
+		MaterialRadioButton smoothRadio = ch.findViewById(me.aap.fermata.R.id.eq_quality_smooth_radio);
+		MaterialRadioButton richRadio = ch.findViewById(me.aap.fermata.R.id.eq_quality_rich_radio);
+
+		View.OnClickListener select = v -> {
+			boolean rich = (v == richCard);
+			smoothCard.setChecked(!rich);
+			smoothRadio.setChecked(!rich);
+			richCard.setChecked(rich);
+			richRadio.setChecked(rich);
+			onChanged.accept(rich);
+			push();
+		};
+
+		smoothCard.setChecked(!richEnabled);
+		smoothRadio.setChecked(!richEnabled);
+		richCard.setChecked(richEnabled);
+		richRadio.setChecked(richEnabled);
+		smoothCard.setOnClickListener(select);
+		richCard.setOnClickListener(select);
 	}
 
 	private void bindBandChannel(View ch, int band, int[] bands, int range) {
@@ -207,12 +248,10 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 		View ch = inflater.inflate(me.aap.fermata.R.layout.equalizer_channel, parent, false);
 		parent.addView(ch);
 
-		// This channel has no switch of its own (Hall Size only matters while Live Hall, the channel
-		// to its left, is on) but INVISIBLE rather than the layout's default GONE reserves the same
-		// vertical space the other channels' switches take, so this fader lines up at the same height
-		// as theirs instead of sitting higher.
-		View sw = ch.findViewById(me.aap.fermata.R.id.eq_channel_switch);
-		sw.setVisibility(INVISIBLE);
+		// This channel has no switch of its own -- Hall Size only matters while Live Hall (the row
+		// above it) is on -- but the layout's default INVISIBLE (not GONE) still reserves the same
+		// space a shown switch takes, so this row's SeekBar starts at the same horizontal position
+		// as Live Hall's (and every other switch-bearing row's) instead of sitting further left.
 
 		TextView value = ch.findViewById(me.aap.fermata.R.id.eq_channel_value);
 		TextView label = ch.findViewById(me.aap.fermata.R.id.eq_channel_label);

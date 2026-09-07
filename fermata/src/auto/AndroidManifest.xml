@@ -93,7 +93,7 @@
 
         <activity
             android:name="me.aap.fermata.auto.LauncherActivity"
-            android:configChanges="colorMode|keyboard|keyboardHidden|locale|mcc|mnc|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
+            android:configChanges="colorMode|density|keyboard|keyboardHidden|locale|mcc|mnc|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
             android:excludeFromRecents="true"
             android:exported="true"
             android:launchMode="singleInstance" />
