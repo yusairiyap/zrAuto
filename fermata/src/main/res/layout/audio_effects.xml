@@ -25,13 +25,14 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="20dp"
+            android:layout_marginTop="8dp"
             android:paddingStart="8dp"
             android:paddingEnd="8dp"
             android:text="@string/equalier"
             android:textAppearance="?attr/textAppearanceListItem"
             app:layout_constraintBottom_toTopOf="@id/preset_row"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
+            app:layout_constraintTop_toBottomOf="@id/equalizer_effects" />
 
         <androidx.appcompat.widget.SwitchCompat
             android:id="@+id/equalizer_switch"
@@ -151,7 +152,7 @@
             android:paddingTop="12dp"
             android:paddingEnd="12dp"
             android:paddingBottom="6dp"
-            app:layout_constraintBottom_toTopOf="@id/effects_title"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/virtualizer_mode" />
@@ -162,14 +163,13 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="20dp"
-            android:layout_marginTop="8dp"
             android:paddingStart="8dp"
             android:paddingEnd="8dp"
             android:text="@string/effects"
             android:textAppearance="?attr/textAppearanceListItem"
             app:layout_constraintBottom_toTopOf="@id/equalizer_effects"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/equalizer_channels" />
+            app:layout_constraintTop_toTopOf="parent" />
 
         <LinearLayout
             android:id="@+id/equalizer_effects"
@@ -180,7 +180,7 @@
             android:paddingTop="6dp"
             android:paddingEnd="12dp"
             android:paddingBottom="12dp"
-            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintBottom_toTopOf="@id/equalizer_title"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/effects_title" />

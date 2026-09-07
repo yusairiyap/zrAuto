@@ -204,10 +204,30 @@ public class YoutubeWebView extends FermataWebView {
 	}
 
 	protected boolean requestFullScreen() {
-		loadUrl("javascript: var v = document.querySelector('video');\n" +
-				"if ('webkitRequestFullscreen' in v) v.webkitRequestFullscreen();\n" +
-				"else if ('requestFullscreen' in v) v.requestFullscreen();\n" +
-				"else " + JS_EVENT + "(" + JS_ERR + ", 'Method requestFullscreen not found in ' + v);");
+		// document.querySelector('video') can come back null for a beat right after a refocus (the
+		// same player DOM churn confirmed during the window-resize investigation -- YouTube can tear
+		// down and recreate the <video> element on its own). A null v here used to throw
+		// (`'webkitRequestFullscreen' in v` on null) and silently abort, with no fallback: this
+		// method always returns true, so FermataChromeClient#enterFullScreen() never falls back to
+		// its bare-FrameLayout custom view either. The result: onShowCustomView() never fires,
+		// isFullScreen() stays false, and the fullscreen FAB/toggle looks like it does nothing, with
+		// nothing to retry until the page is reloaded. Poll briefly for the element instead of
+		// giving up on the first miss.
+		loadUrl("javascript:(function() {\n" +
+				"  function tryFullscreen(attempt) {\n" +
+				"    var v = document.querySelector('video');\n" +
+				"    if (v != null) {\n" +
+				"      if ('webkitRequestFullscreen' in v) v.webkitRequestFullscreen();\n" +
+				"      else if ('requestFullscreen' in v) v.requestFullscreen();\n" +
+				"      else " + JS_EVENT + "(" + JS_ERR + ", 'Method requestFullscreen not found in ' + v);\n" +
+				"    } else if (attempt < 5) {\n" +
+				"      setTimeout(function() { tryFullscreen(attempt + 1); }, 200);\n" +
+				"    } else {\n" +
+				"      " + JS_EVENT + "(" + JS_ERR + ", 'No video element found for requestFullscreen');\n" +
+				"    }\n" +
+				"  }\n" +
+				"  tryFullscreen(0);\n" +
+				"})();");
 		return true;
 	}
 
