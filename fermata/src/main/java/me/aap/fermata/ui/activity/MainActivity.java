@@ -141,9 +141,6 @@ public class MainActivity extends SplitCompatActivityBase
 	@Override
 	public void onConfigurationChanged(@NonNull Configuration newConfig) {
 		super.onConfigurationChanged(newConfig);
-		Log.d("onConfigurationChanged: ", newConfig.screenWidthDp, "x", newConfig.screenHeightDp,
-				"dp, densityDpi=", newConfig.densityDpi, ", smallestScreenWidthDp=",
-				newConfig.smallestScreenWidthDp);
 		int mode = newConfig.uiMode & Configuration.UI_MODE_NIGHT_MASK;
 		if (mode == nightMode) return;
 		nightMode = mode;
