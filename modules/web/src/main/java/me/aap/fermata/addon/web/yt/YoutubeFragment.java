@@ -126,10 +126,68 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		}
 	}
 
+	/**
+	 * Overrides {@code WebBrowserFragment}'s plain "just re-enter fullscreen" recovery with a real
+	 * page reload -- reusing the same reload+reseek pattern {@link #onViewCreated} already uses for
+	 * an Activity recreation. A fullscreen rebuild alone (the base implementation) only tears
+	 * down/rebuilds the Java-side custom view and re-requests fullscreen on the SAME, already-
+	 * existing {@code &lt;video&gt;} element -- it never recreates the underlying decoder pipeline, and
+	 * {@link MediaSessionCallback}'s playback state (driven entirely by one-shot JS DOM 'pause'/
+	 * 'playing' events) can already be desynced from the real video by the time this runs. Only a
+	 * real reload -- confirmed on-device, matching what manually refreshing the page already does
+	 * -- reliably recovers both.
+	 */
+	@Override
+	protected void recoverFullscreenVideo() {
+		MainActivityDelegate.getActivityDelegate(getContext()).onSuccess(a -> {
+			MediaSessionCallback cb = a.getMediaSessionCallback();
+			MediaEngine eng = cb.getEngine();
+			FermataWebView v = getWebView();
+			if (v == null) return;
+
+			if (!(eng instanceof YoutubeMediaEngine)) {
+				a.post(() -> {
+					FermataChromeClient chrome = v.getWebChromeClient();
+					if (chrome != null) chrome.enterFullScreen();
+				});
+				return;
+			}
+
+			eng.getPosition().onSuccess(pos -> a.post(() -> {
+				v.reload();
+				a.postDelayed(() -> {
+					MediaEngine e2 = cb.getEngine();
+					if (!(e2 instanceof YoutubeMediaEngine)) return; // engine changed/torn down meanwhile
+					// Deliberately not auto-resuming playback here: the user may have switched away to
+					// listen to something else while this was interrupted, and yanking audio focus back
+					// on return would interrupt that. Land back at the right position, paused, and let
+					// the user decide when to actually resume. The explicit onPause() below is needed
+					// even though nothing here calls onPlay(): the reload lands on the same watch URL,
+					// and YouTube's own mobile web player can start itself back up on load independent
+					// of anything this app calls -- force it back to paused regardless of what it does.
+					if (pos > 0L) cb.onSeekTo(pos);
+					cb.onPause();
+					FermataChromeClient chrome = v.getWebChromeClient();
+					if (chrome != null) chrome.enterFullScreen();
+				}, 3000L);
+			}));
+		});
+	}
+
 	@Override
 	public void onDestroyView() {
-		unregisterListeners(MainActivityDelegate.get(requireContext()));
-		removeVideoViewOverlay(MainActivityDelegate.get(requireContext()));
+		MainActivityDelegate a = MainActivityDelegate.get(requireContext());
+		// The WebView (and the YoutubeMediaEngine built around it) is about to be torn down along
+		// with this view -- same situation as applyPrivateModeProfile() swapping the WebView below,
+		// and the same fix applies: stop first, or the media session keeps pointing at an engine
+		// tied to a dead WebView (e.g. after a theme switch recreates the Activity) until a new
+		// video happens to start playing. Without this, the control panel/video menu built from
+		// that stale engine stays showing and its actions (e.g. "Audio effects") can end up running
+		// against an already-destroyed Activity.
+		MediaSessionCallback cb = a.getMediaSessionCallback();
+		if (cb.getEngine() instanceof YoutubeMediaEngine) cb.onStop();
+		unregisterListeners(a);
+		removeVideoViewOverlay(a);
 		super.onDestroyView();
 	}
 

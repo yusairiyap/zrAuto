@@ -65,7 +65,9 @@ public class VlcEngine extends MediaEngineBase
 	private final VlcEngineProvider provider;
 	private final LibVLC vlc;
 	private final MediaPlayer player;
-	private final AudioEffects effects;
+	private final int audioSessionId;
+	@Nullable
+	private AudioEffects effects;
 	@NonNull
 	private Source source = Source.NULL;
 	private long pendingPosition = -1;
@@ -73,8 +75,7 @@ public class VlcEngine extends MediaEngineBase
 	public VlcEngine(VlcEngineProvider provider, Listener listener) {
 		super(listener);
 		LibVLC vlc = provider.getVlc();
-		int sessionId = provider.getAudioSessionId();
-		effects = (sessionId != AudioManager.ERROR) ? AudioEffects.create(0, sessionId) : null;
+		audioSessionId = provider.getAudioSessionId();
 		this.provider = provider;
 		this.vlc = vlc;
 		player = new MediaPlayer(vlc);
@@ -284,9 +285,31 @@ public class VlcEngine extends MediaEngineBase
 		return h;
 	}
 
+	@Nullable
 	@Override
 	public AudioEffects getAudioEffects() {
 		return effects;
+	}
+
+	@Override
+	public boolean supportsAudioEffects() {
+		return (audioSessionId != AudioManager.ERROR) && AudioEffects.isSupported();
+	}
+
+	@Nullable
+	@Override
+	public AudioEffects ensureAudioEffects() {
+		if ((effects == null) && (audioSessionId != AudioManager.ERROR)) {
+			effects = AudioEffects.create(0, audioSessionId);
+		}
+		return effects;
+	}
+
+	@Override
+	public void disposeAudioEffectsIfIdle() {
+		if (effects == null) return;
+		effects.release();
+		effects = null;
 	}
 
 	@Override

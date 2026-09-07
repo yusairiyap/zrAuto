@@ -1,5 +1,6 @@
 package me.aap.fermata.addon.web.yt;
 
+import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 import static me.aap.fermata.media.pref.MediaPrefs.MEDIA_ENG_YT;
 import static me.aap.fermata.util.Utils.dynCtx;
 import static me.aap.utils.async.Completed.completed;
@@ -9,6 +10,7 @@ import android.content.res.Resources;
 import android.media.AudioManager;
 import android.media.MediaMetadata;
 import android.support.v4.media.MediaMetadataCompat;
+import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -33,6 +35,7 @@ import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.text.SharedTextBuilder;
 import me.aap.utils.ui.UiUtils;
+import me.aap.utils.ui.fragment.GenericFragment;
 import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.menu.OverlayMenuItem;
 import me.aap.utils.vfs.VirtualResource;
@@ -195,13 +198,24 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	public void close() {
 	}
 
+	// True no-ops, not "best-effort real request, ignore the result": actually making the real
+	// AudioManagerCompat call (as a prior attempt at this did) registers MediaSessionCallback's
+	// OnAudioFocusChangeListener for real, which makes its AUDIOFOCUS_LOSS_TRANSIENT-triggered
+	// auto-pause path live for YouTube -- and since that pref request is a single object reused for
+	// the whole session and never released except on a full stop, every resume-from-pause ends up
+	// issuing a duplicate real focus request for a grant already held. Confirmed on-device this
+	// broke pause/resume under Android Auto outright (not just during a display-takeover edge case),
+	// with no interruption needed to trigger it -- staying fully inert here, as this class always
+	// has, avoids the whole mechanism rather than trying to tune it further.
 	@Override
-	public boolean requestAudioFocus(@Nullable AudioManager audioManager, @Nullable AudioFocusRequestCompat audioFocusReq) {
+	public boolean requestAudioFocus(@Nullable AudioManager audioManager,
+																		@Nullable AudioFocusRequestCompat audioFocusReq) {
 		return true;
 	}
 
 	@Override
-	public void releaseAudioFocus(@Nullable AudioManager audioManager, @Nullable AudioFocusRequestCompat audioFocusReq) {
+	public void releaseAudioFocus(@Nullable AudioManager audioManager,
+																 @Nullable AudioFocusRequestCompat audioFocusReq) {
 	}
 
 	@Override
@@ -220,6 +234,44 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		b.addItem(me.aap.fermata.R.id.video_scaling,
 				ResourcesCompat.getDrawable(r, R.drawable.video_scaling, ctx.getTheme()),
 				r.getString(me.aap.fermata.R.string.video_scaling)).setSubmenu(this::videoScalingMenu);
+	}
+
+	@Override
+	public void contributeToMenuEnd(OverlayMenu.Builder b) {
+		Context ctx = dynCtx(web.getContext());
+		Resources r = ctx.getResources();
+		b.addItem(R.id.youtube_equalizer,
+				ResourcesCompat.getDrawable(r, me.aap.fermata.R.drawable.equalizer, ctx.getTheme()),
+				r.getString(me.aap.fermata.R.string.audio_effects)).setHandler(item -> showEqualizer());
+	}
+
+	/**
+	 * Opens the Equalizer/Bass Boost/Virtualizer panel as a full-screen {@link GenericFragment}
+	 * instead of an {@link OverlayMenu} submenu -- the submenu is a narrow, edge-docked popup
+	 * ({@code wrap_content}), too cramped for 10 band sliders, especially on Android Auto's wider
+	 * screen. {@link GenericFragment} is reused (not a new addon-registered fragment) since
+	 * addon fragment routing is one-fragment-per-addon and {@link YoutubeAddon} already owns its
+	 * id for {@link YoutubeFragment}.
+	 * <p>
+	 * Uses {@link MainActivityDelegate#getActivityDelegate} rather than the synchronous
+	 * {@code MainActivityDelegate.get()} -- a menu tap can be delivered after the Activity backing
+	 * this WebView's Context has already been destroyed/recreated (e.g. a rotation or an Android
+	 * Auto reconnect while the menu was open), in which case {@code get()} throws
+	 * {@code ActivityDestroyedException} instead of returning; {@code onSuccess} simply no-ops
+	 * there instead of crashing.
+	 */
+	private boolean showEqualizer() {
+		MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a -> {
+			if (!(a.showFragment(me.aap.utils.R.id.generic_fragment) instanceof GenericFragment f))
+				return;
+			f.setTitle(a.getContext().getString(me.aap.fermata.R.string.audio_effects));
+			f.setContentProvider(g -> {
+				YoutubeEqualizerView v = new YoutubeEqualizerView(g.getContext());
+				v.init(web);
+				g.addView(v, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+			});
+		});
+		return true;
 	}
 
 	private FutureSupplier<Void> videoQualityMenu(OverlayMenu.Builder b) {

@@ -763,8 +763,6 @@ public class SettingsFragment extends MainActivityFragment
 		});
 		addSubtitlePrefs(a.getContext(), sub1, mediaPrefs, isCar);
 
-		addAddons(set);
-
 		privateModeSettingsSet = sub1 = set.subSet(o -> {
 			o.title = R.string.private_mode_prefs;
 			o.icon = R.drawable.private_mode;
@@ -816,6 +814,8 @@ public class SettingsFragment extends MainActivityFragment
 				UiUtils.showInfo(a.getContext(), R.string.browsing_data_cleared);
 			};
 		});
+
+		addAddons(set);
 
 		sub1 = set.subSet(o -> {
 			o.title = R.string.other;

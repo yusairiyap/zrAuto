@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Deliberately not colorControlActivated: the track (switch_track_tint) already uses that
+    for its checked state, so a same-colored thumb visually disappears into the track. A fixed
+    dark neutral keeps the thumb readable as a distinct circle against any accent-colored track. -->
+    <item android:alpha="1" android:color="#1C1B1F" android:state_checked="true" />
+    <item android:alpha="1" android:color="?attr/colorSurfaceVariant" android:state_checked="false" />
+</selector>

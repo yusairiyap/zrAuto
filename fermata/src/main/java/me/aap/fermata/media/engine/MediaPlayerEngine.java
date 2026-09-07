@@ -9,9 +9,9 @@ import android.content.Context;
 import android.media.AudioAttributes;
 import android.media.MediaPlayer;
 import android.media.PlaybackParams;
+import android.media.audiofx.PresetReverb;
 import android.net.Uri;
 
-import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import java.util.ArrayList;
@@ -32,15 +32,17 @@ public class MediaPlayerEngine extends MediaEngineBase
 		MediaPlayer.OnVideoSizeChangedListener, MediaPlayer.OnErrorListener {
 	private final Context ctx;
 	private final MediaPlayer player;
-	private final AudioEffects audioEffects;
+	private final int audioSessionId;
+	@Nullable
+	private AudioEffects audioEffects;
 	private PlayableItem source;
+	private float auxSendLevel;
 
 	public MediaPlayerEngine(Context ctx, Listener listener) {
 		super(listener);
 		this.ctx = ctx;
 		player = new MediaPlayer();
-		int sessionId = player.getAudioSessionId();
-		audioEffects = AudioEffects.create(0, sessionId);
+		audioSessionId = player.getAudioSessionId();
 		AudioAttributes attrs = new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
 				.setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build();
 		player.setAudioAttributes(attrs);
@@ -76,11 +78,72 @@ public class MediaPlayerEngine extends MediaEngineBase
 			} else {
 				player.setDataSource(ctx, u);
 			}
+			attachAuxEffect();
 			player.prepareAsync();
 		} catch (Exception ex) {
 			listener.onEngineError(this, ex);
 			this.source = null;
 		}
+	}
+
+	/**
+	 * {@code MediaPlayer.attachAuxEffect()} is only valid between {@code setDataSource()} and
+	 * {@code prepareAsync()}, and is lost on every {@code player.reset()} (called at the top of
+	 * every {@link #prepare}), so it has to be re-attached here on every prepare rather than once.
+	 */
+	private void attachAuxEffect() {
+		if (audioEffects == null) return;
+		PresetReverb reverb = audioEffects.getPresetReverb();
+		if (reverb == null) return;
+
+		try {
+			player.attachAuxEffect(reverb.getId());
+			player.setAuxEffectSendLevel(auxSendLevel);
+		} catch (Exception ex) {
+			Log.e(ex, "Failed to attach aux effect");
+		}
+	}
+
+	@Override
+	public void setAuxEffectSendLevel(float level) {
+		auxSendLevel = level;
+		try {
+			player.setAuxEffectSendLevel(level);
+		} catch (Exception ex) {
+			Log.e(ex, "Failed to set aux effect send level");
+		}
+	}
+
+	@Override
+	public boolean supportsAudioEffects() {
+		return AudioEffects.isSupported();
+	}
+
+	@Nullable
+	@Override
+	public AudioEffects ensureAudioEffects() {
+		if (audioEffects == null) {
+			audioEffects = AudioEffects.create(0, audioSessionId);
+			// Best-effort: if the user enables an effect for the first time mid-playback of an
+			// already-prepared track, attachAuxEffect() may no-op here (MediaPlayer only allows it
+			// between setDataSource()/prepareAsync()) -- the aux send then reliably engages starting
+			// the next track's prepare(), which already calls this unconditionally. Same as how a
+			// reverb change has always behaved on this engine, not a new regression.
+			attachAuxEffect();
+		}
+		return audioEffects;
+	}
+
+	@Override
+	public void disposeAudioEffectsIfIdle() {
+		if (audioEffects == null) return;
+		try {
+			player.setAuxEffectSendLevel(0f);
+		} catch (Exception ignore) {
+		}
+		auxSendLevel = 0f;
+		audioEffects.release();
+		audioEffects = null;
 	}
 
 	@Override
@@ -185,7 +248,7 @@ public class MediaPlayerEngine extends MediaEngineBase
 		return player.getVideoHeight();
 	}
 
-	@NonNull
+	@Nullable
 	@Override
 	public AudioEffects getAudioEffects() {
 		return audioEffects;

@@ -49,6 +49,7 @@ public interface MediaPrefs extends PreferenceStore {
 	Pref<BooleanSupplier> BASS_ENABLED = Pref.b("BASS_ENABLED", false).withInheritance(false);
 	Pref<BooleanSupplier> VOL_BOOST_ENABLED =
 			Pref.b("VOL_BOOST_ENABLED", false).withInheritance(false);
+	Pref<BooleanSupplier> REVERB_ENABLED = Pref.b("REVERB_ENABLED", false).withInheritance(false);
 
 	// 0 stands for Manual, negative for user presets, positive for system presets
 	Pref<IntSupplier> EQ_PRESET = Pref.i("EQ_PRESET", 0).withInheritance(false);
@@ -60,6 +61,7 @@ public interface MediaPrefs extends PreferenceStore {
 	Pref<IntSupplier> VIRT_STRENGTH = Pref.i("VIRT_STRENGTH", 0).withInheritance(false);
 	Pref<IntSupplier> BASS_STRENGTH = Pref.i("BASS_STRENGTH", 0).withInheritance(false);
 	Pref<IntSupplier> VOL_BOOST_STRENGTH = Pref.i("VOL_BOOST_STRENGTH", 0).withInheritance(false);
+	Pref<IntSupplier> REVERB_STRENGTH = Pref.i("REVERB_STRENGTH", 0).withInheritance(false);
 
 	Pref<BooleanSupplier> SUB_ENABLED = Pref.b("SUB_ENABLED", true);
 	Pref<IntSupplier> SUB_DELAY = Pref.i("SUB_DELAY", 0);

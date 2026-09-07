@@ -864,7 +864,7 @@ public class ControlPanelView extends ConstraintLayout
 				}
 			}
 
-			if (eng.getAudioEffects() != null) {
+			if (eng.supportsAudioEffects()) {
 				b.addItem(R.id.audio_effects_fragment, R.drawable.equalizer, R.string.audio_effects);
 			}
 
@@ -881,6 +881,8 @@ public class ControlPanelView extends ConstraintLayout
 				// the in-place toggles above.
 				b.addItem(R.id.dim_settings, R.drawable.settings, R.string.dim_settings);
 			}
+
+			eng.contributeToMenuEnd(b);
 		}
 
 		private void buildRepeatMenu(OverlayMenu.Builder b) {
@@ -897,7 +899,7 @@ public class ControlPanelView extends ConstraintLayout
 
 			if (id == R.id.audio_effects_fragment) {
 				eng = getActivity().getMediaSessionCallback().getEngine();
-				if ((eng != null) && (eng.getAudioEffects() != null))
+				if ((eng != null) && eng.supportsAudioEffects())
 					getActivity().showFragment(R.id.audio_effects_fragment);
 				return true;
 			} else if (id == R.id.repeat_track || id == R.id.repeat_folder ||

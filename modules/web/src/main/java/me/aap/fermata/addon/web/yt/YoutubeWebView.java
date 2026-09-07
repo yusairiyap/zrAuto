@@ -78,6 +78,7 @@ public class YoutubeWebView extends FermataWebView {
 		}
 
 		if (YoutubeSponsorBlock.isPreferenceChanged(prefs)) injectSponsorBlock();
+		if (getAddon().eqPrefsChanged(prefs)) configureEqualizer();
 	}
 
 	@Override
@@ -97,6 +98,7 @@ public class YoutubeWebView extends FermataWebView {
 	protected void pageLoaded(String uri) {
 		attachListeners();
 		injectSponsorBlock();
+		injectEqualizer();
 		hideAppPromoBanners();
 		addFocusHighlight();
 		currentCookieManager().flush();
@@ -174,6 +176,16 @@ public class YoutubeWebView extends FermataWebView {
 	private void configureSponsorBlock() {
 		evaluateJavascript("if (window.FermataSponsorBlock) window.FermataSponsorBlock.configure(" +
 				YoutubeSponsorBlock.getConfigJson(getAddon().getPreferenceStore()) + ");", null);
+	}
+
+	private void injectEqualizer() {
+		String script = YoutubeEqualizerScript.getScript(getContext());
+		if (!script.isEmpty()) evaluateJavascript(script, result -> configureEqualizer());
+	}
+
+	void configureEqualizer() {
+		evaluateJavascript("if (window.FermataEqualizer) window.FermataEqualizer.configure(" +
+				YoutubeEqualizerScript.getConfigJson(getAddon()) + ");", null);
 	}
 
 	private void hideAppPromoBanners() {

@@ -160,6 +160,9 @@
     <string name="transaural">Transaural</string>
     <string name="bass_boost">Bass boost</string>
     <string name="vol_boost">Volume boost</string>
+    <string name="live_hall">Live Hall</string>
+    <string name="reverb_duration">Hall Size</string>
+    <string name="effects">Effects</string>
     <string name="strength">Strength</string>
     <string name="apply_to">Apply to</string>
 

@@ -1,0 +1,318 @@
+(function() {
+  if (window.FermataEqualizer) return;
+
+  const BAND_FREQS = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+  const BASS_FREQ = 200;
+  const VIRT_MAX_DELAY = 0.03;
+  // Bounds for the Live Hall impulse-response length, mirroring YoutubeAddon's YT_REVERB_DURATION
+  // range (300-3000ms) -- clamped here too since this script also runs standalone against whatever
+  // config the page last pushed.
+  const REVERB_DURATION_MIN = 0.3;
+  const REVERB_DURATION_MAX = 3.0;
+  const REVERB_DURATION_DEFAULT = 2.5;
+
+  const state = {
+    config: {
+      eqEnabled: false,
+      bands: BAND_FREQS.map(() => 0),
+      bassEnabled: false,
+      bassGain: 0,
+      virtEnabled: false,
+      virtStrength: 0,
+      reverbEnabled: false,
+      reverbStrength: 0,
+      reverbDuration: REVERB_DURATION_DEFAULT
+    },
+    ctx: null,
+    chains: new WeakMap(),
+    impulse: null
+  };
+
+  function getContext() {
+    if (!state.ctx) {
+      const Ctor = window.AudioContext || window.webkitAudioContext;
+      state.ctx = new Ctor();
+    }
+    if (state.ctx.state === 'suspended') state.ctx.resume().catch(() => {});
+    return state.ctx;
+  }
+
+  // "Live Hall" reverb: Web Audio has no built-in hall-reverb node, so this
+  // synthesizes a plausible impulse response -- exponentially-decaying
+  // stereo white noise, a standard procedural technique for a ConvolverNode.
+  // Its length (duration) directly drives the convolver's per-sample CPU cost, and is now user-
+  // adjustable (Hall Size), so the buffer is cached per-duration rather than built once forever --
+  // regenerated only when the requested duration actually changes, and shared by every video's
+  // chain on this AudioContext at that duration.
+  function getImpulseResponse(ctx, duration) {
+    if (state.impulse && (state.impulseDuration === duration)) return state.impulse;
+
+    const decay = 3;
+    const length = Math.floor(ctx.sampleRate * duration);
+    const impulse = ctx.createBuffer(2, length, ctx.sampleRate);
+
+    for (let ch = 0; ch < 2; ch++) {
+      const data = impulse.getChannelData(ch);
+      for (let i = 0; i < length; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
+      }
+    }
+
+    state.impulseDuration = duration;
+    return state.impulse = impulse;
+  }
+
+  function buildChain(video) {
+    const ctx = getContext();
+    const source = ctx.createMediaElementSource(video);
+
+    const bands = BAND_FREQS.map((freq) => {
+      const f = ctx.createBiquadFilter();
+      f.type = 'peaking';
+      f.frequency.value = freq;
+      f.Q.value = 1;
+      f.gain.value = 0;
+      return f;
+    });
+    // Internal series wiring within the EQ block is fixed forever; only the block's entry (into
+    // bands[0]) and exit (out of the last band) get spliced in/out of the active signal path by
+    // rewireSpine() below.
+    for (let i = 0; i < bands.length - 1; i++) bands[i].connect(bands[i + 1]);
+
+    const bass = ctx.createBiquadFilter();
+    bass.type = 'lowshelf';
+    bass.frequency.value = BASS_FREQ;
+    bass.gain.value = 0;
+
+    // Virtualizer: a Haas-effect stereo widener. The right channel is fed
+    // through a short delay and blended back with the dry signal on both
+    // channels; strength controls both the delay time and how much of the
+    // delayed signal is mixed in, so it degrades gracefully to a plain
+    // pass-through at strength 0 instead of a hard bypass switch. Internal wiring is fixed
+    // forever; only the block's entry (into splitter) and exit (out of merger) get spliced in/out.
+    const splitter = ctx.createChannelSplitter(2);
+    const merger = ctx.createChannelMerger(2);
+    const dryR = ctx.createGain();
+    const delay = ctx.createDelay(VIRT_MAX_DELAY);
+    const wetR = ctx.createGain();
+    const wetL = ctx.createGain();
+
+    splitter.connect(merger, 0, 0);
+    splitter.connect(dryR, 1);
+    dryR.connect(merger, 0, 1);
+    splitter.connect(delay, 1);
+    delay.connect(wetR);
+    wetR.connect(merger, 0, 1);
+    delay.connect(wetL);
+    wetL.connect(merger, 0, 0);
+
+    // Live Hall reverb: a parallel send -- the dry signal always passes
+    // through, the convolved "wet" signal layers on top, rather than
+    // replacing the direct sound (matching how a real hall effect is used).
+    // Buffer is assigned by applyToChain() (which also owns tracking the current duration), not
+    // here -- buildChain() runs before any config has been applied to this chain.
+    const convolver = ctx.createConvolver();
+    convolver.normalize = true;
+    const reverbDry = ctx.createGain();
+    const reverbWet = ctx.createGain();
+
+    // Safety limiter: catches the combined output of the whole chain so pushing several controls
+    // toward their maxima can't hard-clip -- Web Audio applies no headroom protection at the
+    // destination by default.
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -1;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.25;
+    reverbDry.connect(limiter);
+    reverbWet.connect(limiter);
+    limiter.connect(ctx.destination);
+
+    // None of the EQ/bass/virtualizer/reverb stages are connected to `source` (or each other) yet
+    // -- every processing node here has a real, non-zero per-sample CPU cost once connected (the
+    // convolver especially so), so a disabled effect should cost nothing, not just produce silent
+    // output. rewireSpine()/applyToChain() below connect only the currently-enabled stages into
+    // the active signal path, and only reconnect when the enabled set actually changes.
+    return {video, source, bands, bass, splitter, merger, dryR, delay, wetR, wetL, convolver,
+            reverbDry, reverbWet, limiter, reverbConnected: false, reverbDuration: null,
+            spineKey: null, tail: null};
+  }
+
+  // Reconnects the "spine" (source -> [EQ bands] -> [bass] -> [virtualizer] -> reverbDry/convolver)
+  // to include only the currently-enabled stages. Only rewires when the enabled set actually
+  // changed (a real on/off toggle), not on every applyToChain() call -- e.g. dragging an EQ slider
+  // pushes new gain values on every frame, and rewiring the graph on each one would risk an
+  // audible micro-glitch for no reason.
+  function rewireSpine(chain, cfg) {
+    const key = (cfg.eqEnabled ? 'E' : '') + (cfg.bassEnabled ? 'B' : '') + (cfg.virtEnabled ? 'V' : '');
+    if (chain.spineKey === key) return;
+
+    if (chain.tail) {
+      try { chain.tail.disconnect(chain.reverbDry); } catch (err) { /* already disconnected */ }
+      if (chain.reverbConnected) {
+        try { chain.tail.disconnect(chain.convolver); } catch (err) { /* already disconnected */ }
+      }
+    }
+    try { chain.source.disconnect(); } catch (err) { /* already disconnected */ }
+    try { chain.bands[chain.bands.length - 1].disconnect(); } catch (err) { /* already disconnected */ }
+    try { chain.bass.disconnect(); } catch (err) { /* already disconnected */ }
+    try { chain.merger.disconnect(); } catch (err) { /* already disconnected */ }
+
+    let tail = chain.source;
+    if (cfg.eqEnabled) {
+      tail.connect(chain.bands[0]);
+      tail = chain.bands[chain.bands.length - 1];
+    }
+    if (cfg.bassEnabled) {
+      tail.connect(chain.bass);
+      tail = chain.bass;
+    }
+    if (cfg.virtEnabled) {
+      tail.connect(chain.splitter);
+      tail = chain.merger;
+    }
+
+    tail.connect(chain.reverbDry);
+    if (chain.reverbConnected) tail.connect(chain.convolver);
+
+    chain.tail = tail;
+    chain.spineKey = key;
+  }
+
+  function applyToChain(chain) {
+    const cfg = state.config;
+    rewireSpine(chain, cfg);
+
+    for (let i = 0; i < chain.bands.length; i++) {
+      chain.bands[i].gain.value = cfg.eqEnabled ? (cfg.bands[i] || 0) : 0;
+    }
+
+    chain.bass.gain.value = cfg.bassEnabled ? cfg.bassGain : 0;
+
+    const strength = cfg.virtEnabled ? Math.max(0, Math.min(1, cfg.virtStrength)) : 0;
+    chain.delay.delayTime.value = 0.005 + VIRT_MAX_DELAY * 0.67 * strength;
+    chain.dryR.gain.value = 1 - 0.5 * strength;
+    chain.wetR.gain.value = 0.5 * strength;
+    chain.wetL.gain.value = 0.3 * strength;
+
+    // Live Hall's slider allows up to 150% (see YoutubeEqualizerView's Live Hall channel), unlike
+    // Bass/Virtualizer which stay 0-100% -- keep this ceiling in sync with that slider's max, and
+    // note it deliberately differs from the native PresetReverb path, whose aux send level is a
+    // hard 0.0-1.0 platform API contract with no headroom above unity to raise a ceiling into.
+    const REVERB_MAX_STRENGTH = 1.5;
+    const reverbStrength = cfg.reverbEnabled ?
+        Math.max(0, Math.min(REVERB_MAX_STRENGTH, cfg.reverbStrength)) : 0;
+    chain.reverbDry.gain.value = 1;
+    chain.reverbWet.gain.value = reverbStrength * 0.6;
+
+    // Hall Size: unlike every other value set in this function, this is real CPU work (rebuilding
+    // a multi-second noise buffer), so only touch the convolver's buffer when the requested
+    // duration actually changed -- not on every applyToChain() call.
+    const reverbDuration = Math.max(REVERB_DURATION_MIN,
+        Math.min(REVERB_DURATION_MAX, cfg.reverbDuration || REVERB_DURATION_DEFAULT));
+    if (chain.reverbDuration !== reverbDuration) {
+      chain.convolver.buffer = getImpulseResponse(chain.convolver.context, reverbDuration);
+      chain.reverbDuration = reverbDuration;
+    }
+
+    if (cfg.reverbEnabled && !chain.reverbConnected) {
+      chain.tail.connect(chain.convolver);
+      chain.convolver.connect(chain.reverbWet);
+      chain.reverbConnected = true;
+    } else if (!cfg.reverbEnabled && chain.reverbConnected) {
+      chain.tail.disconnect(chain.convolver);
+      chain.convolver.disconnect(chain.reverbWet);
+      chain.reverbConnected = false;
+    }
+  }
+
+  function anyEffectEnabled(cfg) {
+    return cfg.eqEnabled || cfg.bassEnabled || cfg.virtEnabled || cfg.reverbEnabled;
+  }
+
+  function attach(video) {
+    if (video.getAttribute('FermataEqAttached') === 'true') return;
+    // createMediaElementSource() irreversibly reroutes this element's audio through Web Audio --
+    // there's no going back to the browser's zero-overhead direct path for it. So don't build the
+    // graph (no AudioContext, no ConvolverNode running a continuous convolution, etc.) until the
+    // user has actually enabled something; configure() re-scans on every config push, so the very
+    // next one after enabling naturally retries any previously-skipped video.
+    if (!anyEffectEnabled(state.config)) return;
+    video.setAttribute('FermataEqAttached', 'true');
+
+    let chain;
+    try {
+      chain = buildChain(video);
+    } catch (err) {
+      console.debug('FermataEqualizer: failed to attach', err);
+      return;
+    }
+
+    state.chains.set(video, chain);
+    applyToChain(chain);
+    video.addEventListener('playing', () => getContext());
+  }
+
+  function disconnectChain(chain) {
+    const nodes = [chain.source, ...chain.bands, chain.bass, chain.splitter, chain.merger,
+                    chain.dryR, chain.delay, chain.wetR, chain.wetL, chain.convolver,
+                    chain.reverbDry, chain.reverbWet, chain.limiter];
+    for (const n of nodes) {
+      try { n.disconnect(); } catch (err) { /* already disconnected */ }
+    }
+  }
+
+  function detach(video) {
+    const chain = state.chains.get(video);
+    if (!chain) return;
+    disconnectChain(chain);
+    state.chains.delete(video);
+  }
+
+  function collectRemovedVideos(node, out) {
+    if (node.nodeType !== 1) return;
+    if (node.tagName === 'VIDEO') out.push(node);
+    else if (node.querySelectorAll) node.querySelectorAll('video').forEach((v) => out.push(v));
+  }
+
+  function scan() {
+    document.querySelectorAll('video').forEach(attach);
+  }
+
+  // Handles both discovering newly-added <video> elements (as before) and tearing down chains for
+  // ones YouTube's SPA player removes -- e.g. on a video-to-video transition, which swaps in a
+  // fresh element -- so a stale chain (with its own live convolution reverb) never keeps running
+  // alongside the new one.
+  function handleMutations(mutations) {
+    for (const m of mutations) {
+      m.removedNodes.forEach((n) => {
+        const removed = [];
+        collectRemovedVideos(n, removed);
+        removed.forEach(detach);
+      });
+    }
+    scan();
+  }
+
+  function startWatching() {
+    scan();
+    if (!window.__fermataEqObserver) {
+      window.__fermataEqObserver = new MutationObserver(handleMutations);
+      window.__fermataEqObserver.observe(document.body, {childList: true, subtree: true});
+    }
+  }
+
+  window.FermataEqualizer = {
+    configure(config) {
+      state.config = Object.assign({}, state.config, config);
+      if (Array.isArray(config.bands)) state.config.bands = config.bands;
+      startWatching();
+
+      document.querySelectorAll('video').forEach((v) => {
+        const chain = state.chains.get(v);
+        if (chain) applyToChain(chain);
+      });
+    }
+  };
+})();

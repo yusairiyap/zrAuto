@@ -197,7 +197,50 @@ public class WebBrowserFragment extends MainActivityFragment
 		// Calling here onResume makes the video to not get freezed
 		// when you switch to another app and go back to Fermata
 		v.onResume();
+		recoverFullscreenVideo();
+	}
+
+	/**
+	 * Best-effort recovery for an Android Auto display takeover (e.g. a car's camera overlay
+	 * briefly taking the screen) that doesn't route through normal Activity/Fragment
+	 * onPause()/onResume() -- see {@code MainCarActivity.onWindowFocusChanged}. Unlike
+	 * onPause()/onResume() above, this fires only on the "we're back" signal and does the full
+	 * exit+enter fullscreen rebuild in one shot, so it's a no-op if that signal never fires -- no
+	 * risk of leaving the user stuck out of fullscreen from a routine, harmless focus blip.
+	 * <p>
+	 * Deliberately calls {@code enterFullScreen()} directly here rather than going through the
+	 * overridable {@link #recoverFullscreenVideo()} hook: {@code onWindowFocusChanged}'s exact
+	 * semantics under this car SDK aren't documented, this guard has no debounce, and it stays
+	 * armed for as long as a video sits paused -- confirmed on-device that routing it into
+	 * {@code YoutubeFragment}'s reload-based recovery broke ordinary pause/resume under Android
+	 * Auto (a stray focus event during a pause could silently reload the page). Keep this trigger
+	 * doing only the safe, reversible thing it was originally built for.
+	 */
+	public void rebuildFullscreenVideoIfActive() {
+		if (!BuildConfig.AUTO) return;
+		FermataWebView v = getWebView();
+		if (v == null) return;
+		FermataChromeClient chrome = v.getWebChromeClient();
+		if ((chrome == null) || !chrome.isFullScreen()) return;
+		v.onResume();
+		chrome.exitFullScreen();
+		MainActivityDelegate.getActivityDelegate(getContext())
+				.onSuccess(a -> a.post(chrome::enterFullScreen));
+	}
+
+	/**
+	 * Re-enters fullscreen after one of the two recovery paths above tore it down. Plain (non-
+	 * YouTube) web video has no {@code MediaSessionCallback}-tracked position worth preserving and
+	 * reloading an arbitrary site mid-video isn't something proven to help, so the base behavior is
+	 * just re-entering fullscreen on the existing page/video element. {@code YoutubeFragment}
+	 * overrides this with a reload+reseek+resume recovery instead (a fullscreen rebuild alone
+	 * doesn't recreate the underlying decoder pipeline, and YouTube's playback state can already be
+	 * desynced from the real video by the time this runs).
+	 */
+	protected void recoverFullscreenVideo() {
 		MainActivityDelegate.getActivityDelegate(getContext()).onSuccess(a -> a.post(() -> {
+			FermataWebView v = getWebView();
+			if (v == null) return;
 			FermataChromeClient chrome = v.getWebChromeClient();
 			if (chrome != null) chrome.enterFullScreen();
 		}));

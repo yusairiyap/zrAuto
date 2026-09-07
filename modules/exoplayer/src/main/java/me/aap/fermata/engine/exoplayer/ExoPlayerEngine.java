@@ -9,10 +9,12 @@ import static me.aap.utils.misc.Assert.assertMainThread;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.media.audiofx.PresetReverb;
 import android.net.Uri;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.media3.common.AuxEffectInfo;
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
 import androidx.media3.common.MediaItem;
@@ -99,7 +101,8 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	private final Timeline.Period period = new Timeline.Period();
 	private final PendingLoadAudioProcessor audioProc = new PendingLoadAudioProcessor(accessor);
 	private final ExoPlayer player;
-	private final AudioEffects audioEffects;
+	@Nullable
+	private AudioEffects audioEffects;
 	private volatile PlayableItem source;
 	private boolean preparing;
 	private boolean buffering;
@@ -131,7 +134,6 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 			}
 		}).setMediaSourceFactory(msFactory).build();
 		player.addListener(this);
-		audioEffects = AudioEffects.create(0, player.getAudioSessionId());
 
 		try {
 			Field f = player.getClass().getDeclaredField("internalPlayer");
@@ -278,9 +280,51 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		return (f == null) ? 0 : f.height;
 	}
 
+	@Nullable
 	@Override
 	public AudioEffects getAudioEffects() {
 		return audioEffects;
+	}
+
+	@Override
+	public boolean supportsAudioEffects() {
+		return AudioEffects.isSupported();
+	}
+
+	@Nullable
+	@Override
+	public AudioEffects ensureAudioEffects() {
+		if (audioEffects == null) {
+			audioEffects = AudioEffects.create(0, player.getAudioSessionId());
+			attachAuxEffect();
+		}
+		return audioEffects;
+	}
+
+	@Override
+	public void disposeAudioEffectsIfIdle() {
+		if (audioEffects == null) return;
+		player.setAuxEffectInfo(new AuxEffectInfo(0, 0f));
+		audioEffects.release();
+		audioEffects = null;
+	}
+
+	/**
+	 * Unlike {@code MediaPlayer}, ExoPlayer's audio session (and thus an attached aux effect)
+	 * persists across {@code setMediaItem}/{@code prepare()} calls, so this only needs to run once,
+	 * right after the effect is created, rather than being re-attached per item.
+	 */
+	private void attachAuxEffect() {
+		if (audioEffects == null) return;
+		PresetReverb reverb = audioEffects.getPresetReverb();
+		if (reverb != null) player.setAuxEffectInfo(new AuxEffectInfo(reverb.getId(), 0f));
+	}
+
+	@Override
+	public void setAuxEffectSendLevel(float level) {
+		if (audioEffects == null) return;
+		PresetReverb reverb = audioEffects.getPresetReverb();
+		if (reverb != null) player.setAuxEffectInfo(new AuxEffectInfo(reverb.getId(), level));
 	}
 
 	@Override

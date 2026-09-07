@@ -89,6 +89,42 @@ public interface MediaEngine extends Closeable {
 		return null;
 	}
 
+	/**
+	 * Whether this engine type can support {@link AudioEffects} on this device at all -- a stable
+	 * capability check independent of whether an instance currently exists (see
+	 * {@link #ensureAudioEffects()}). Used to decide whether to show the "Audio effects" menu item
+	 * even when nothing has been created/enabled yet.
+	 */
+	default boolean supportsAudioEffects() {
+		return false;
+	}
+
+	/**
+	 * Lazily creates (and wires up) this engine's {@link AudioEffects} on first call, so a session
+	 * with every effect disabled never pays for platform effect objects it doesn't use. Returns the
+	 * existing instance if one was already created. By default just returns {@link #getAudioEffects()}.
+	 */
+	@Nullable
+	default AudioEffects ensureAudioEffects() {
+		return getAudioEffects();
+	}
+
+	/**
+	 * Releases a previously lazily-created {@link AudioEffects} instance, if any, since nothing
+	 * currently needs it (the master "Audio effects" switch is off for the active track/folder/
+	 * global scope). No-op if none was created, or the engine doesn't support tearing one down.
+	 */
+	default void disposeAudioEffectsIfIdle() {}
+
+	/**
+	 * Sets the send level (0.0-1.0) for {@link AudioEffects#getPresetReverb()}, an auxiliary/send
+	 * effect that -- unlike Equalizer/BassBoost/Virtualizer/LoudnessEnhancer -- doesn't just work
+	 * once created on the audio session; the player itself must explicitly route audio to it (e.g.
+	 * {@code MediaPlayer.attachAuxEffect()}/{@code setAuxEffectSendLevel()}, or Media3's
+	 * {@code AuxEffectInfo} for ExoPlayer). No-op by default for engines that don't support it.
+	 */
+	default void setAuxEffectSendLevel(float level) {}
+
 	default List<AudioStreamInfo> getAudioStreamInfo() {
 		return Collections.emptyList();
 	}
@@ -261,6 +297,14 @@ public interface MediaEngine extends Closeable {
 	}
 
 	default void contributeToMenu(OverlayMenu.Builder b) {}
+
+	/**
+	 * Called after every other item in the video menu, including {@code dim_settings} -- for
+	 * engine-contributed items that should always sort last (e.g. YouTube's Equalizer entry, which
+	 * navigates to a whole different screen), since {@link #contributeToMenu} runs too early in
+	 * {@code ControlPanelView.buildPlayableMenu()} to position an item after ones added afterward.
+	 */
+	default void contributeToMenuEnd(OverlayMenu.Builder b) {}
 
 	default boolean adjustVolume(int direction) {
 		return false;

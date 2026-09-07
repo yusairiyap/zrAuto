@@ -111,7 +111,7 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 				PlayableItem pi = eng.getSource();
 
 				if (pi != null) {
-					AudioEffects effects = eng.getAudioEffects();
+					AudioEffects effects = eng.ensureAudioEffects();
 
 					if (effects != null) {
 						view.init(cb, effects, pi);
@@ -187,7 +187,7 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 				AudioEffects effects;
 
 				if ((eng == null) || ((pi = eng.getSource()) == null)
-						|| ((effects = eng.getAudioEffects()) == null) || ((view = getView()) == null)) {
+						|| ((effects = eng.ensureAudioEffects()) == null) || ((view = getView()) == null)) {
 					getMainActivity().onSuccess(this::close);
 				} else if (view.getEffects() != effects) {
 					view.cleanup();

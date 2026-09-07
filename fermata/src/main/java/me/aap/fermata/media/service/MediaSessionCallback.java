@@ -49,6 +49,8 @@ import static me.aap.fermata.media.pref.MediaPrefs.EQ_BANDS;
 import static me.aap.fermata.media.pref.MediaPrefs.EQ_ENABLED;
 import static me.aap.fermata.media.pref.MediaPrefs.EQ_PRESET;
 import static me.aap.fermata.media.pref.MediaPrefs.EQ_USER_PRESETS;
+import static me.aap.fermata.media.pref.MediaPrefs.REVERB_ENABLED;
+import static me.aap.fermata.media.pref.MediaPrefs.REVERB_STRENGTH;
 import static me.aap.fermata.media.pref.MediaPrefs.VIRT_ENABLED;
 import static me.aap.fermata.media.pref.MediaPrefs.VIRT_MODE;
 import static me.aap.fermata.media.pref.MediaPrefs.VIRT_STRENGTH;
@@ -74,6 +76,7 @@ import android.media.AudioManager;
 import android.media.audiofx.BassBoost;
 import android.media.audiofx.Equalizer;
 import android.media.audiofx.LoudnessEnhancer;
+import android.media.audiofx.PresetReverb;
 import android.media.audiofx.Virtualizer;
 import android.media.session.PlaybackState;
 import android.net.Uri;
@@ -449,6 +452,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			playOnPrepared = false;
 			if (i.isVideo() && (videoView != null)) engine.setVideoView(getVideoView());
 			tryAnotherEngine = true;
+			ensureAudioEffectsBeforePrepare(engine, i);
 			engine.prepare(i);
 			return completedVoid();
 		});
@@ -1089,6 +1093,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 				Log.i("Trying another engine: ", this.engine);
 				tryAnotherEngine = false;
 				if (i.isVideo() && (videoView != null)) this.engine.setVideoView(getVideoView());
+				ensureAudioEffectsBeforePrepare(this.engine, i);
 				this.engine.prepare(i);
 				return;
 			}
@@ -1249,6 +1254,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			return;
 		}
 
+		ensureAudioEffectsBeforePrepare(eng, i);
 		eng.prepare(i);
 
 		if (updateQueue) {
@@ -1325,101 +1331,155 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	}
 
 	private void setAudiEffects(MediaEngine engine, PreferenceStore... stores) {
-		AudioEffects ae = engine.getAudioEffects();
-		if (ae == null) return;
+		PreferenceStore active = null;
+
+		for (PreferenceStore st : stores) {
+			if (st.getBooleanPref(AE_ENABLED)) {
+				active = st;
+				break;
+			}
+		}
+
+		if (active == null) {
+			// Nothing enabled anywhere in the resolution chain for this track -- release any
+			// previously lazily-created platform effect objects instead of just disabling them, so
+			// they aren't kept attached (and consuming resources) for the rest of the session.
+			engine.disposeAudioEffectsIfIdle();
+			return;
+		}
+
+		AudioEffects ae = engine.ensureAudioEffects();
+		if (ae == null) return; // unsupported device, or creation failed after retry
 
 		Equalizer eq = ae.getEqualizer();
 		Virtualizer virt = ae.getVirtualizer();
 		BassBoost bass = ae.getBassBoost();
 		LoudnessEnhancer le = ae.getLoudnessEnhancer();
+		PresetReverb reverb = ae.getPresetReverb();
 
-		for (PreferenceStore s : stores) {
-			if (!s.getBooleanPref(AE_ENABLED)) continue;
+		PreferenceStore s = active;
 
-			if (eq != null) {
-				if (s.getBooleanPref(EQ_ENABLED)) {
-					try {
-						short num = eq.getNumberOfPresets();
-						int p = s.getIntPref(EQ_PRESET);
+		if (eq != null) {
+			if (s.getBooleanPref(EQ_ENABLED)) {
+				try {
+					short num = eq.getNumberOfPresets();
+					int p = s.getIntPref(EQ_PRESET);
 
-						if ((p > 0) && (p <= num)) {
-							eq.setEnabled(true);
-							eq.usePreset((short) (p - 1));
+					if ((p > 0) && (p <= num)) {
+						eq.setEnabled(true);
+						eq.usePreset((short) (p - 1));
+					} else {
+						int[] bands = null;
+
+						if (p < 0) {
+							String[] u = getPlaybackControlPrefs().getStringArrayPref(EQ_USER_PRESETS);
+							if ((u.length > 0) && ((p = -p - 1) < u.length)) bands = getUserPresetBands(u[p]);
 						} else {
-							int[] bands = null;
-
-							if (p < 0) {
-								String[] u = getPlaybackControlPrefs().getStringArrayPref(EQ_USER_PRESETS);
-								if ((u.length > 0) && ((p = -p - 1) < u.length)) bands = getUserPresetBands(u[p]);
-							} else {
-								bands = s.getIntArrayPref(EQ_BANDS);
-							}
-
-							if (bands != null) {
-								eq.setEnabled(true);
-
-								for (short i = 0; (i < bands.length) && (i < num); i++) {
-									eq.setBandLevel(i, (short) bands[i]);
-								}
-							} else {
-								eq.setEnabled(false);
-							}
+							bands = s.getIntArrayPref(EQ_BANDS);
 						}
-					} catch (Exception ex) {
-						Log.e(ex, "Failed to configure Equalizer");
-					}
-				} else {
-					eq.setEnabled(false);
-				}
-			}
 
-			if (virt != null) {
-				if (s.getBooleanPref(VIRT_ENABLED)) {
-					try {
-						virt.setEnabled(true);
-						virt.setStrength((short) s.getIntPref(VIRT_STRENGTH));
-						virt.forceVirtualizationMode(s.getIntPref(VIRT_MODE));
-					} catch (Exception ex) {
-						Log.e(ex, "Failed to configure Virtualizer");
-					}
-				} else {
-					virt.setEnabled(false);
-				}
-			}
+						if (bands != null) {
+							eq.setEnabled(true);
 
-			if (bass != null) {
-				if (bass.getStrengthSupported() && s.getBooleanPref(BASS_ENABLED)) {
-					try {
-						bass.setEnabled(true);
-						bass.setStrength((short) s.getIntPref(BASS_STRENGTH));
-					} catch (Exception ex) {
-						Log.e(ex, "Failed to configure BassBoost");
+							for (short i = 0; (i < bands.length) && (i < num); i++) {
+								eq.setBandLevel(i, (short) bands[i]);
+							}
+						} else {
+							eq.setEnabled(false);
+						}
 					}
-				} else {
-					bass.setEnabled(false);
+				} catch (Exception ex) {
+					Log.e(ex, "Failed to configure Equalizer");
 				}
+			} else {
+				eq.setEnabled(false);
 			}
-
-			if (le != null) {
-				if (s.getBooleanPref(VOL_BOOST_ENABLED)) {
-					try {
-						le.setEnabled(true);
-						le.setTargetGain(s.getIntPref(VOL_BOOST_STRENGTH) * 10);
-					} catch (Exception ex) {
-						Log.e(ex, "Failed to configure LoudnessEnhancer");
-					}
-				} else {
-					le.setEnabled(false);
-				}
-			}
-
-			return;
 		}
 
-		if (eq != null) eq.setEnabled(false);
-		if (virt != null) virt.setEnabled(false);
-		if (bass != null) bass.setEnabled(false);
-		if (le != null) le.setEnabled(false);
+		if (virt != null) {
+			if (s.getBooleanPref(VIRT_ENABLED)) {
+				try {
+					virt.setEnabled(true);
+					virt.setStrength((short) s.getIntPref(VIRT_STRENGTH));
+					virt.forceVirtualizationMode(s.getIntPref(VIRT_MODE));
+				} catch (Exception ex) {
+					Log.e(ex, "Failed to configure Virtualizer");
+				}
+			} else {
+				virt.setEnabled(false);
+			}
+		}
+
+		if (bass != null) {
+			if (bass.getStrengthSupported() && s.getBooleanPref(BASS_ENABLED)) {
+				try {
+					bass.setEnabled(true);
+					bass.setStrength((short) s.getIntPref(BASS_STRENGTH));
+				} catch (Exception ex) {
+					Log.e(ex, "Failed to configure BassBoost");
+				}
+			} else {
+				bass.setEnabled(false);
+			}
+		}
+
+		if (le != null) {
+			if (s.getBooleanPref(VOL_BOOST_ENABLED)) {
+				try {
+					le.setEnabled(true);
+					le.setTargetGain(s.getIntPref(VOL_BOOST_STRENGTH) * 10);
+				} catch (Exception ex) {
+					Log.e(ex, "Failed to configure LoudnessEnhancer");
+				}
+			} else {
+				le.setEnabled(false);
+			}
+		}
+
+		if (reverb != null) {
+			if (s.getBooleanPref(REVERB_ENABLED)) {
+				try {
+					reverb.setEnabled(true);
+					engine.setAuxEffectSendLevel(s.getIntPref(REVERB_STRENGTH) / 1000f);
+				} catch (Exception ex) {
+					Log.e(ex, "Failed to configure PresetReverb");
+				}
+			} else {
+				reverb.setEnabled(false);
+				engine.setAuxEffectSendLevel(0f);
+			}
+		}
+	}
+
+	/**
+	 * Re-resolves and reapplies audio effects for the currently active engine/track using the same
+	 * scope-resolution {@link #setAudiEffects} already uses on every prepare. Called when the Audio
+	 * Effects screen closes, so a user who opened it, looked around, and left without enabling
+	 * anything doesn't leave a just-created {@link AudioEffects} instance attached until the next
+	 * track boundary.
+	 */
+	public void reconcileAudioEffects() {
+		MediaEngine eng = getEngine();
+		if (eng == null) return;
+		PlayableItem i = eng.getSource();
+		if (i == null) return;
+		setAudiEffects(eng, i.getPrefs(), i.getParent().getPrefs(), getPlaybackControlPrefs());
+	}
+
+	/**
+	 * Resolves and applies audio effects for {@code i} before {@code engine.prepare(i)} runs, not
+	 * just after (the existing {@code onEnginePrepared} path). {@link MediaPlayerEngine}'s
+	 * PresetReverb aux effect can only be attached between {@code setDataSource()} and
+	 * {@code prepareAsync()} -- lazily creating {@link AudioEffects} only from the post-prepare path
+	 * would miss that window on the very first track of a session that already has reverb enabled
+	 * via saved prefs (subsequent tracks are unaffected, since by then the instance already exists).
+	 * Calling this first makes sure {@link MediaEngine#ensureAudioEffects()} has already run, so the
+	 * engine's own unconditional pre-prepareAsync attach (already in place for exactly this reason)
+	 * has something to attach.
+	 */
+	private void ensureAudioEffectsBeforePrepare(MediaEngine engine, PlayableItem i) {
+		runWithRetry(() -> setAudiEffects(engine, i.getPrefs(), i.getParent().getPrefs(),
+				getPlaybackControlPrefs()));
 	}
 
 	private FutureSupplier<PlayableItem> prepareItem(PlayableItem i) {
