@@ -1,5 +1,7 @@
 package me.aap.fermata.addon.web.yt;
 
+import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_AD_ENDED;
+import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_AD_SHOWING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_ERR;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_EVENT;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_ENDED;
@@ -79,6 +81,7 @@ public class YoutubeWebView extends FermataWebView {
 
 		if (YoutubeSponsorBlock.isPreferenceChanged(prefs)) injectSponsorBlock();
 		if (getAddon().eqPrefsChanged(prefs)) configureEqualizer();
+		if (getAddon().skipAdChanged(prefs)) attachAdObserver();
 	}
 
 	@Override
@@ -100,6 +103,7 @@ public class YoutubeWebView extends FermataWebView {
 		injectSponsorBlock();
 		injectEqualizer();
 		hideAppPromoBanners();
+		attachAdObserver();
 		addFocusHighlight();
 		currentCookieManager().flush();
 		refreshAddressBarTitle();
@@ -146,7 +150,7 @@ public class YoutubeWebView extends FermataWebView {
 		String scale = getAddon().getScale().prefName();
 		loadUrl("javascript:\n" +
 				"function attachVideoListeners(v) {\n" +
-				"  v.muted = false;\n" +
+				"  if (!(window.__fermataAdShowing && window.__fermataAdSkipEnabled)) v.muted = false;\n" +
 				"  if (v.getAttribute('FermataAttached') === 'true') return;\n" +
 				"  v.setAttribute('FermataAttached', 'true');\n" +
 				"  v.style.objectFit = '" + scale + "';\n" + debug +
@@ -200,6 +204,53 @@ public class YoutubeWebView extends FermataWebView {
 				"if (!window.__fermataBannerObserver) {\n" +
 				"  window.__fermataBannerObserver = new MutationObserver(fermataHideBanners);\n" +
 				"  window.__fermataBannerObserver.observe(document.body, {childList: true, subtree: true});\n" +
+				"}");
+	}
+
+	/**
+	 * Watches for YouTube's own {@code .ad-showing} marker class and reacts to it entirely
+	 * client-side (mute + seek-to-end, in the same synchronous MutationObserver callback), instead
+	 * of the previous approach of reacting to it inside {@code YoutubeMediaEngine#playing()} --
+	 * that only ran once a native "playing" DOM event had already round-tripped through the JS
+	 * bridge to Java and back as a new {@code loadUrl()} call, which was long enough for a beat of
+	 * ad audio to be audible before the skip took effect. Fires {@link
+	 * me.aap.fermata.addon.web.yt.YoutubeJsInterface#JS_AD_SHOWING}/{@code JS_AD_ENDED} purely so
+	 * the app can show/hide a loading overlay over the skip; the mute/seek itself never waits on Java.
+	 * <p>
+	 * Always (re)attaches -- the observer itself is idempotent ({@code window.__fermataAdObserver}
+	 * guard) and the actual mute/skip action is separately gated by {@code
+	 * window.__fermataAdSkipEnabled}, refreshed on every call -- so this doubles as the live handler
+	 * for the "Try to skip advertising" preference changing while already on the page (see {@link
+	 * #onPreferenceChanged}), matching {@link #injectSponsorBlock()}'s reconfigure-in-place pattern.
+	 */
+	private void attachAdObserver() {
+		loadUrl("javascript:\n" +
+				"function fermataAdCheck() {\n" +
+				"  var showing = document.querySelectorAll('.ad-showing').length > 0;\n" +
+				"  if (showing === window.__fermataAdShowing) return;\n" +
+				"  window.__fermataAdShowing = showing;\n" +
+				"  if (!window.__fermataAdSkipEnabled) return;\n" +
+				"  var v = document.querySelector('video');\n" +
+				"  if (showing) {\n" +
+				"    if (v != null) {\n" +
+				"      window.__fermataAdMuted = !v.muted;\n" +
+				"      v.muted = true;\n" +
+				"      if (v.duration) v.currentTime = v.duration;\n" +
+				"    }\n" +
+				"    " + JS_EVENT + "(" + JS_AD_SHOWING + ", null);\n" +
+				"  } else {\n" +
+				"    if ((v != null) && window.__fermataAdMuted) v.muted = false;\n" +
+				"    window.__fermataAdMuted = false;\n" +
+				"    " + JS_EVENT + "(" + JS_AD_ENDED + ", null);\n" +
+				"  }\n" +
+				"}\n" +
+				"window.__fermataAdSkipEnabled = " + getAddon().skipAd() + ";\n" +
+				"if (!window.__fermataAdObserver) {\n" +
+				"  window.__fermataAdShowing = false;\n" +
+				"  window.__fermataAdObserver = new MutationObserver(fermataAdCheck);\n" +
+				"  window.__fermataAdObserver.observe(document.body, " +
+				"{childList: true, subtree: true, attributes: true, attributeFilter: ['class']});\n" +
+				"  fermataAdCheck();\n" +
 				"}");
 	}
 
@@ -275,6 +326,28 @@ public class YoutubeWebView extends FermataWebView {
 	private void prevNext(boolean next) {
 		FermataChromeClient chrome = getWebChromeClient();
 		if (chrome == null) return;
+
+		// Try the page's own player API first -- it drives the SPA video swap without touching the
+		// DOM controls overlay at all, so fullscreen (the app's custom view, entirely separate from
+		// this WebView's own visibility) never has to be exited and re-entered around it. Read back
+		// whether the call actually happened (method present and callable) via evaluateJavascript's
+		// result callback, falling back to the older click-based approach -- which does need to exit
+		// fullscreen first, see prevNextByClick() -- if the API isn't available on this page build.
+		evaluateJavascript("""
+				(function() {
+				  var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+				  var fn = p ? p.%s : null;
+				  if (typeof fn !== 'function') return false;
+				  fn.call(p);
+				  return true;
+				})();
+				""".formatted(next ? "nextVideo" : "previousVideo"),
+				result -> {
+					if (!"true".equals(result)) prevNextByClick(chrome, next);
+				});
+	}
+
+	private void prevNextByClick(FermataChromeClient chrome, boolean next) {
 		chrome.exitFullScreen().thenRun(() -> evaluateJavascript("""
 				function prevNextVideo() {
 				  const buttons = document.querySelectorAll('button.player-middle-controls-prev-next-button');

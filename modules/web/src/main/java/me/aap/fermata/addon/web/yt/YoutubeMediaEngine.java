@@ -20,7 +20,7 @@ import androidx.media.AudioFocusRequestCompat;
 
 import com.google.android.play.core.splitcompat.SplitCompat;
 
-import me.aap.fermata.BuildConfig;
+import me.aap.fermata.addon.web.FermataChromeClient;
 import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.yt.YoutubeAddon.VideoScale;
 import me.aap.fermata.media.engine.MediaEngine;
@@ -121,14 +121,6 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			blockedHeight = 0;
 		}
 
-		if (BuildConfig.AUTO && web.getAddon().skipAd()) {
-			web.loadUrl("javascript:\n" +
-					"if (document.querySelectorAll('.ad-showing').length > 0) {\n" +
-					"  var video = document.querySelector('video');\n" +
-					"  if (video != null) video.currentTime = video.duration;\n" +
-					"}");
-		}
-
 		if (url.startsWith("blob:")) url = url.substring(5);
 		current = new Current(url);
 		if (!web.getAddon().autoHighestQuality()) {
@@ -145,6 +137,26 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		current = end;
 		qualityUrl = null;
 		cb.onEngineEnded(this);
+	}
+
+	/** The page-side ad detector (see {@link YoutubeWebView}) just started muting/skipping an ad. */
+	void adShowing() {
+		YoutubeVideoView v = getFullScreenView();
+		if (v != null) v.showAdOverlay();
+	}
+
+	/** The page-side ad detector cleared -- either the ad ended or it was never really one. */
+	void adEnded() {
+		YoutubeVideoView v = getFullScreenView();
+		if (v != null) v.hideAdOverlay();
+	}
+
+	@Nullable
+	private YoutubeVideoView getFullScreenView() {
+		FermataChromeClient chrome = web.getWebChromeClient();
+		if (!(chrome instanceof YoutubeChromeClient yt)) return null;
+		VideoView v = yt.getFullScreenView();
+		return (v instanceof YoutubeVideoView yv) ? yv : null;
 	}
 
 	void paused() {
@@ -448,6 +460,19 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	private static class YoutubeItem extends ExtPlayable {
 		public YoutubeItem(String id, @NonNull BrowsableItem parent, @NonNull VirtualResource resource) {
 			super(id, parent, resource);
+		}
+
+		// Bypasses MediaEngineManager's generic, preference-driven engine selection (which can be
+		// overridden by unrelated prefs such as SubGenAddon.ENABLED, forcing ExoPlayer regardless of
+		// getVideoEnginePref()) -- these items (current/next/prev/end) must always stay on the live
+		// YoutubeMediaEngine. next/prev's resource is a fake URL (http://youtube.com/next) that exists
+		// only to carry a JS button-click signal; handing it to a real player engine instead makes it
+		// genuinely try to open that URL and fail with a "Source error" toast. Returning null when
+		// there's no live YoutubeMediaEngine yet preserves default engine selection for a fresh start.
+		@Nullable
+		@Override
+		public MediaEngine getMediaEngine(@Nullable MediaEngine current, MediaEngine.Listener listener) {
+			return (current instanceof YoutubeMediaEngine) ? current : null;
 		}
 
 		@Override

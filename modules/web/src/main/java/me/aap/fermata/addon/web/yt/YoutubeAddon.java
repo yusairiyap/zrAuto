@@ -1,6 +1,5 @@
 package me.aap.fermata.addon.web.yt;
 
-import static me.aap.fermata.BuildConfig.AUTO;
 import static me.aap.utils.async.Completed.completed;
 
 import android.content.Context;
@@ -51,7 +50,7 @@ public class YoutubeAddon extends WebBrowserAddon
 	private static final Pref<BooleanSupplier> YT_OPEN_ON_START = Pref.b("YT_OPEN_ON_START", false);
 	private static final Pref<BooleanSupplier> YT_AUTO_HIGHEST_QUALITY =
 			Pref.b("YT_AUTO_HIGHEST_QUALITY", false);
-	private static final Pref<BooleanSupplier> YT_SKIP_ADD = AUTO ? Pref.b("YT_SKIP_ADD", true) : null;
+	private static final Pref<BooleanSupplier> YT_SKIP_ADD = Pref.b("YT_SKIP_ADD", true);
 	private static final Pref<Supplier<String[]>> YT_VIDEO_TITLES = Pref.sa("YT_VIDEO_TITLES");
 	private static final Pref<BooleanSupplier> YT_EQ_ENABLED = Pref.b("YT_EQ_ENABLED", false);
 	static final Pref<IntSupplier> YT_EQ_PRESET = Pref.i("YT_EQ_PRESET", 0);
@@ -107,7 +106,11 @@ public class YoutubeAddon extends WebBrowserAddon
 	}
 
 	boolean skipAd() {
-		return AUTO && getPreferenceStore().getBooleanPref(YT_SKIP_ADD);
+		return getPreferenceStore().getBooleanPref(YT_SKIP_ADD);
+	}
+
+	boolean skipAdChanged(List<Pref<?>> prefs) {
+		return prefs.contains(YT_SKIP_ADD);
 	}
 
 	@NonNull
@@ -175,14 +178,12 @@ public class YoutubeAddon extends WebBrowserAddon
 			o.visibility = visibility;
 		});
 
-		if (AUTO) {
-			set.addBooleanPref(o -> {
-				o.store = getPreferenceStore();
-				o.pref = YT_SKIP_ADD;
-				o.title = R.string.try_to_skip_ad;
-				o.visibility = visibility;
-			});
-		}
+		set.addBooleanPref(o -> {
+			o.store = getPreferenceStore();
+			o.pref = YT_SKIP_ADD;
+			o.title = R.string.try_to_skip_ad;
+			o.visibility = visibility;
+		});
 
 		YoutubeSponsorBlock.contributeSettings(getPreferenceStore(), set, visibility);
 	}
