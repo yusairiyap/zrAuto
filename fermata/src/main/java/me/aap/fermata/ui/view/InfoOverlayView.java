@@ -68,7 +68,7 @@ public class InfoOverlayView extends LinearLayout {
 
 	private View newDivider() {
 		View v = new View(getContext());
-		int m = toIntPx(getContext(), BASE_DIVIDER_MARGIN_DP * size);
+		int m = toIntPx(getContext(), Math.round(BASE_DIVIDER_MARGIN_DP * size));
 		LayoutParams lp = new LayoutParams(LayoutParams.MATCH_PARENT, toIntPx(getContext(), 1));
 		lp.setMargins(0, m, 0, m);
 		v.setLayoutParams(lp);
@@ -102,8 +102,8 @@ public class InfoOverlayView extends LinearLayout {
 	}
 
 	private void applyPadding() {
-		int padH = toIntPx(getContext(), BASE_PAD_H_DP * size);
-		int padV = toIntPx(getContext(), BASE_PAD_V_DP * size);
+		int padH = toIntPx(getContext(), Math.round(BASE_PAD_H_DP * size));
+		int padV = toIntPx(getContext(), Math.round(BASE_PAD_V_DP * size));
 		setPadding(padH, padV, padH, padV);
 	}
 
