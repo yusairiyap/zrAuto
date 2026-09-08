@@ -77,6 +77,22 @@ public class YoutubeVideoView extends VideoView {
 	 */
 	void showTransitionOverlay(boolean withSpinner) {
 		if (transitionOverlay == null) return;
+		if (!withSpinner) {
+			// This view itself (the transition overlay's own parent) is what YoutubeChromeClient's
+			// addCustomView()/removeCustomView() toggle VISIBLE/GONE as native HTML5 fullscreen is
+			// entered/exited -- and the fallback next/prev path (YoutubeWebView#prevNextByClick(),
+			// used when the page's own player API isn't available) explicitly exits fullscreen before
+			// clicking the in-page button, which sets this view GONE partway through the switch. A
+			// GONE ancestor hides every descendant regardless of the descendant's own visibility, so
+			// without this, the overlay/spinner set VISIBLE below would still not actually render for
+			// exactly the fallback path's duration -- the one case where a visible "it's working" cue
+			// matters most. Only done for the no-spinner (next/prev) case, which is only ever
+			// triggered while a video is already actively playing and expected to already be in
+			// fullscreen -- unlike the ad-skip case below, which can fire from plain DOM mutations
+			// with no such guarantee, where forcing this view visible could pop a full-screen black
+			// cover over the app outside of fullscreen playback entirely.
+			setVisibility(VISIBLE);
+		}
 		transitionSpinner.removeCallbacks(showSpinnerTask);
 		transitionSpinner.animate().cancel();
 		if (withSpinner) {

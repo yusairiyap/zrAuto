@@ -243,29 +243,56 @@ public class YoutubeWebView extends FermataWebView {
 				// Not just '.ad-showing': YouTube's ad markup/class names have shifted before and
 				// aren't a documented API, so checking a few known variants (rather than just the one
 				// this was originally written against) hedges a little against silently detecting
-				// nothing on a page version where that particular class no longer applies.
-				"var AD_SELECTOR = '.ad-showing, .ad-interrupting, .ytp-ad-player-overlay';\n" +
+				// nothing on a page version where that particular class no longer applies. The
+				// wildcard attribute selector catches any element under YouTube's own "ytp-ad-*"
+				// naming convention for ad-related player UI (skip button, ad text/countdown, etc.),
+				// which is more likely to survive markup changes than any single exact class name.
+				"var AD_SELECTOR = '.ad-showing, .ad-interrupting, .ytp-ad-player-overlay, " +
+				"[class*=\"ytp-ad-\"]';\n" +
+				// The wildcard above is broad enough that a false match (some ad-related node the
+				// page keeps in the DOM, just hidden, even outside an actual ad) would be far worse
+				// than a false miss -- it would mute every video permanently instead of just failing
+				// to skip one ad -- so require an actual match to be genuinely rendered, not merely
+				// present in the DOM.
+				"function fermataIsVisible(el) {\n" +
+				"  return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);\n" +
+				"}\n" +
 				"function fermataAdCheck() {\n" +
-				"  var showing = document.querySelector(AD_SELECTOR) != null;\n" +
-				"  if (showing === window.__fermataAdShowing) return;\n" +
-				"  window.__fermataAdShowing = showing;\n" + debugLog +
+				"  var showing = Array.prototype.some.call(" +
+				"document.querySelectorAll(AD_SELECTOR), fermataIsVisible);\n" +
+				"  var changed = showing !== window.__fermataAdShowing;\n" +
+				"  window.__fermataAdShowing = showing;\n" +
+				"  if (changed) {\n" + debugLog +
+				"  }\n" +
 				"  if (!window.__fermataAdSkipEnabled) return;\n" +
 				// querySelectorAll (not just the first video element) in case the ad and the real
 				// content are ever two separate <video> elements rather than one reused element.
 				"  var videos = document.querySelectorAll('video');\n" +
 				"  if (showing) {\n" +
+				// Re-applied on every check while still showing, not just on the false->true
+				// transition -- a multi-ad pod (2-3 ads back to back) can keep this marker present
+				// continuously across all of them, so only reacting to the transition would mute/skip
+				// the first ad and then silently let the rest of the pod play through untouched. The
+				// per-video __fermataAdActive flag makes sure the original (pre-ad) muted state is
+				// captured once per pod, not overwritten by our own mute on every repeat check.
 				"    videos.forEach(function(v) {\n" +
-				"      v.__fermataAdMuted = !v.muted;\n" +
+				"      if (!v.__fermataAdActive) {\n" +
+				"        v.__fermataAdMuted = !v.muted;\n" +
+				"        v.__fermataAdActive = true;\n" +
+				"      }\n" +
 				"      v.muted = true;\n" +
 				"      if (v.duration) v.currentTime = v.duration;\n" +
 				"    });\n" +
-				"    " + JS_EVENT + "(" + JS_AD_SHOWING + ", null);\n" +
+				"    if (changed) " + JS_EVENT + "(" + JS_AD_SHOWING + ", null);\n" +
 				"  } else {\n" +
 				"    videos.forEach(function(v) {\n" +
-				"      if (v.__fermataAdMuted) v.muted = false;\n" +
-				"      v.__fermataAdMuted = false;\n" +
+				"      if (v.__fermataAdActive) {\n" +
+				"        if (v.__fermataAdMuted) v.muted = false;\n" +
+				"        v.__fermataAdMuted = false;\n" +
+				"        v.__fermataAdActive = false;\n" +
+				"      }\n" +
 				"    });\n" +
-				"    " + JS_EVENT + "(" + JS_AD_ENDED + ", null);\n" +
+				"    if (changed) " + JS_EVENT + "(" + JS_AD_ENDED + ", null);\n" +
 				"  }\n" +
 				"}\n" +
 				"window.__fermataAdSkipEnabled = " + getAddon().skipAd() + ";\n" +
