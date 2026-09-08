@@ -32,6 +32,7 @@ import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.activity.VoiceCommand;
 import me.aap.fermata.ui.fragment.MainActivityFragment;
+import me.aap.fermata.ui.view.VideoView;
 import me.aap.utils.function.BooleanConsumer;
 import me.aap.utils.function.Supplier;
 import me.aap.utils.log.Log;
@@ -285,9 +286,30 @@ public class WebBrowserFragment extends MainActivityFragment
 	@Override
 	public void onHiddenChanged(boolean hidden) {
 		super.onHiddenChanged(hidden);
-		if (!hidden && profileSwitchPending) {
+		if (hidden) return;
+
+		if (profileSwitchPending) {
 			profileSwitchPending = false;
 			applyPrivateModeProfile();
+		}
+
+		// Reclaim MainActivityDelegate#getActiveVideoView() for this fragment's own video on the
+		// way back in. Switching tabs only ever hide()/show()s fragments (see
+		// ActivityDelegate#showFragment() -- nothing is destroyed or recreated), so if some other
+		// tab's own video claimed it while this one was hidden -- or nothing re-claimed it at all,
+		// e.g. after the Android Auto display-takeover recovery in
+		// MainActivityDelegate#onActivityWindowFocusChanged -- returning to this tab left it stale
+		// with nothing to naturally refresh it, since MainActivityDelegate#setVideoMode() is
+		// otherwise only called on an actual fullscreen enter/exit. The fullscreen FAB
+		// (Action#FULLSCREEN_TOGGLE) resolves purely through getActiveVideoView(), so a stale
+		// reference there means it silently operates on the wrong view (or falls through to the
+		// unrelated generic fullscreen-pref toggle) instead of this tab's actual video. A plain
+		// (non-VideoView) browser fullscreen container -- see browser.xml's browserFullScreenView,
+		// a bare FrameLayout -- has nothing to reclaim here.
+		FermataWebView v = getWebView();
+		FermataChromeClient chrome = (v != null) ? v.getWebChromeClient() : null;
+		if ((chrome != null) && (chrome.getFullScreenView() instanceof VideoView vv)) {
+			MainActivityDelegate.get(requireContext()).setVideoMode(chrome.isFullScreen(), vv);
 		}
 	}
 
