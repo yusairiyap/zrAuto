@@ -29,9 +29,17 @@ public class YoutubeVideoView extends VideoView {
 	// is ever missed -- e.g. the page navigates away mid-transition -- so the overlay can't get
 	// stuck covering real content indefinitely.
 	private static final long TRANSITION_OVERLAY_TIMEOUT_MS = 8000L;
+	// How long a next/prev switch (no spinner up front, see showTransitionOverlay()) is given to
+	// finish before the spinner appears after all -- long enough that a quick switch never shows
+	// it at all (avoiding the "reads as buffering" look asked to be avoided there), short enough
+	// that a genuinely slow one (YouTube resolving/buffering the next video, or the exit-fullscreen
+	// fallback in YoutubeWebView#prevNextByClick()) still gets a visible "it's working" signal
+	// instead of just sitting on a plain dark screen.
+	private static final long SPINNER_REVEAL_DELAY_MS = 400L;
 	private View transitionOverlay;
 	private View transitionSpinner;
 	private final Runnable hideTransitionOverlayTask = this::hideTransitionOverlay;
+	private final Runnable showSpinnerTask = this::revealSpinner;
 
 	public YoutubeVideoView(Context context, AttributeSet attrs) {
 		super(context, attrs);
@@ -62,13 +70,23 @@ public class YoutubeVideoView extends VideoView {
 
 	/**
 	 * Fades the transition overlay in. Used both while an ad is being detected/muted/skipped (see
-	 * {@code YoutubeMediaEngine#adShowing()}, {@code withSpinner} true) and while a next/prev
-	 * switch is in flight (see {@code YoutubeMediaEngine#prepare()}, {@code withSpinner} false --
-	 * a spinner there would read as "buffering" rather than a deliberate transition).
+	 * {@code YoutubeMediaEngine#adShowing()}, {@code withSpinner} true -- shown immediately, since
+	 * that wait is already known to be real) and while a next/prev switch is in flight (see
+	 * {@code YoutubeMediaEngine#prepare()}, {@code withSpinner} false -- the spinner instead only
+	 * appears after {@link #SPINNER_REVEAL_DELAY_MS}, if the switch is still going by then).
 	 */
 	void showTransitionOverlay(boolean withSpinner) {
 		if (transitionOverlay == null) return;
-		transitionSpinner.setVisibility(withSpinner ? VISIBLE : GONE);
+		transitionSpinner.removeCallbacks(showSpinnerTask);
+		transitionSpinner.animate().cancel();
+		if (withSpinner) {
+			transitionSpinner.setAlpha(1f);
+			transitionSpinner.setVisibility(VISIBLE);
+		} else {
+			transitionSpinner.setVisibility(GONE);
+			transitionSpinner.postDelayed(showSpinnerTask, SPINNER_REVEAL_DELAY_MS);
+		}
+
 		transitionOverlay.removeCallbacks(hideTransitionOverlayTask);
 		transitionOverlay.animate().cancel();
 		transitionOverlay.setAlpha(0f);
@@ -77,10 +95,17 @@ public class YoutubeVideoView extends VideoView {
 		transitionOverlay.postDelayed(hideTransitionOverlayTask, TRANSITION_OVERLAY_TIMEOUT_MS);
 	}
 
+	private void revealSpinner() {
+		transitionSpinner.setAlpha(0f);
+		transitionSpinner.setVisibility(VISIBLE);
+		transitionSpinner.animate().alpha(1f).setDuration(FADE_MS).start();
+	}
+
 	/** See {@code YoutubeMediaEngine#adEnded()}/{@code #contentPlaying()}. */
 	void hideTransitionOverlay() {
 		if (transitionOverlay == null) return;
 		transitionOverlay.removeCallbacks(hideTransitionOverlayTask);
+		transitionSpinner.removeCallbacks(showSpinnerTask);
 		transitionOverlay.animate().cancel();
 		transitionOverlay.animate().alpha(0f).setDuration(FADE_MS)
 				.withEndAction(() -> transitionOverlay.setVisibility(GONE)).start();
