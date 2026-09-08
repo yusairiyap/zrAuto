@@ -12,8 +12,6 @@ import me.aap.fermata.ui.view.VideoView;
 
 import static android.support.v4.media.session.PlaybackStateCompat.STATE_PAUSED;
 import static android.support.v4.media.session.PlaybackStateCompat.STATE_PLAYING;
-import static android.view.View.GONE;
-import static android.view.View.VISIBLE;
 import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 
 /**
@@ -45,23 +43,15 @@ public class YoutubeChromeClient extends FermataChromeClient {
 	protected void addCustomView(View view) {
 		VideoView vv = getFullScreenView();
 		((ViewGroup) vv.getChildAt(0)).addView(view, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
-		vv.setVisibility(VISIBLE);
 	}
 
 	protected void removeCustomView(View view) {
 		VideoView vv = getFullScreenView();
 		((ViewGroup) vv.getChildAt(0)).removeView(view);
-		vv.setVisibility(GONE);
 	}
 
 	protected void setFullScreen(MainActivityDelegate a, boolean fullScreen) {
 		a.setVideoMode(fullScreen, getFullScreenView());
-	}
-
-	@Override
-	public void onShowCustomView(View view, CustomViewCallback callback) {
-		getWebView().setVisibility(GONE);
-		super.onShowCustomView(view, callback);
 	}
 
 	@Override

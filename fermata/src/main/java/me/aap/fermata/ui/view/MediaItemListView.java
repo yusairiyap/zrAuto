@@ -40,6 +40,7 @@ public class MediaItemListView extends RecyclerView implements PreferenceStore.L
 		super(ctx, attrs);
 		configure(ctx.getResources().getConfiguration());
 		setDescendantFocusability(FOCUS_AFTER_DESCENDANTS);
+		MainActivityDelegate.getActivityDelegate(ctx).onSuccess(a -> a.insetScrollableContent(this));
 	}
 
 	@Override

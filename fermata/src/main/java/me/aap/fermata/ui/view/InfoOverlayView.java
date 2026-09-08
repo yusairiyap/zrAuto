@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.BatteryManager;
 import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.LinearLayout;
@@ -23,8 +24,8 @@ import me.aap.fermata.R;
 
 /**
  * Fullscreen video playback overlay showing any combination of the clock, battery percentage and
- * battery temperature, stacked vertically with a separator between shown items (only when more
- * than one item is visible), and scaled by a single size factor.
+ * battery temperature, in a single horizontal line with a separator between shown items (only
+ * when more than one item is visible), scaled by a single size factor.
  */
 public class InfoOverlayView extends LinearLayout {
 	private static final IntentFilter BATTERY_FILTER =
@@ -51,7 +52,8 @@ public class InfoOverlayView extends LinearLayout {
 
 	public InfoOverlayView(Context context) {
 		super(context);
-		setOrientation(VERTICAL);
+		setOrientation(HORIZONTAL);
+		setGravity(Gravity.CENTER_VERTICAL);
 		setBackgroundResource(R.drawable.clock_bg);
 		clock = (TextClock) LayoutInflater.from(context).inflate(R.layout.clock_view, this, false);
 		batteryPct = newTextView(context);
@@ -69,8 +71,8 @@ public class InfoOverlayView extends LinearLayout {
 	private View newDivider() {
 		View v = new View(getContext());
 		int m = toIntPx(getContext(), Math.round(BASE_DIVIDER_MARGIN_DP * size));
-		LayoutParams lp = new LayoutParams(LayoutParams.MATCH_PARENT, toIntPx(getContext(), 1));
-		lp.setMargins(0, m, 0, m);
+		LayoutParams lp = new LayoutParams(toIntPx(getContext(), 1), LayoutParams.MATCH_PARENT);
+		lp.setMargins(m, 0, m, 0);
 		v.setLayoutParams(lp);
 		v.setBackgroundColor(0x4DFFFFFF);
 		return v;
@@ -144,12 +146,21 @@ public class InfoOverlayView extends LinearLayout {
 
 	private void updateBatteryReceiverState() {
 		boolean needed = isAttachedToWindow() && (showBatteryPct || showBatteryTemp);
-		if (needed && !batteryReceiverRegistered) {
-			Intent sticky = ContextCompat.registerReceiver(getContext(), batteryReceiver, BATTERY_FILTER,
-					ContextCompat.RECEIVER_NOT_EXPORTED);
-			batteryReceiverRegistered = true;
+		if (needed) {
+			if (!batteryReceiverRegistered) {
+				ContextCompat.registerReceiver(getContext(), batteryReceiver, BATTERY_FILTER,
+						ContextCompat.RECEIVER_NOT_EXPORTED);
+				batteryReceiverRegistered = true;
+			}
+			// registerReceiver() only hands back the current sticky intent on the call that actually
+			// registers the receiver -- if it was already registered (e.g. percentage was already
+			// shown and temperature just got turned on), that path is skipped above and the
+			// newly-shown field would otherwise sit blank until the next real battery-changed
+			// broadcast, which can be a long time away. A null-receiver registration is the standard
+			// way to read the current sticky value on demand instead, so do that unconditionally here.
+			Intent sticky = getContext().registerReceiver(null, BATTERY_FILTER);
 			if (sticky != null) updateBattery(sticky);
-		} else if (!needed) {
+		} else {
 			unregisterBatteryReceiver();
 		}
 	}

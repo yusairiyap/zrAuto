@@ -67,12 +67,16 @@ public class FermataWebView extends WebView
 
 	public FermataWebView(Context context, AttributeSet attrs) {
 		super(context, attrs);
-		isCar = BuildConfig.AUTO && MainActivityDelegate.get(context).isCarActivityNotMirror();
+		MainActivityDelegate a = MainActivityDelegate.get(context);
+		isCar = BuildConfig.AUTO && a.isCarActivityNotMirror();
+		a.insetScrollableContent(this);
 	}
 
 	public FermataWebView(Context context, AttributeSet attrs, int defStyleAttr) {
 		super(context, attrs, defStyleAttr);
-		isCar = BuildConfig.AUTO && MainActivityDelegate.get(context).isCarActivityNotMirror();
+		MainActivityDelegate a = MainActivityDelegate.get(context);
+		isCar = BuildConfig.AUTO && a.isCarActivityNotMirror();
+		a.insetScrollableContent(this);
 	}
 
 	@SuppressLint("SetJavaScriptEnabled")

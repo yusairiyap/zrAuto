@@ -357,6 +357,7 @@
     <string name="clock_pos_left">Left</string>
     <string name="clock_pos_right">Right</string>
     <string name="clock_pos_center">Center</string>
+    <string name="info_overlay_prefs">Info overlay</string>
     <string name="info_overlay_show_clock">Show clock</string>
     <string name="info_overlay_show_battery_pct">Show battery percentage</string>
     <string name="info_overlay_show_battery_temp">Show battery temperature</string>

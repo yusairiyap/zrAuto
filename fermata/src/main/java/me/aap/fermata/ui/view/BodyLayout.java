@@ -149,12 +149,20 @@ public class BodyLayout extends SplitLayout
 			if (animate) crossfade(vv, sr, 300L);
 			else {
 				vv.setVisibility(GONE);
+				// A prior crossfade a caller interrupted (e.g. a second setMode() call arriving
+				// before the 300ms fade finished) can leave sr's alpha short of 1 -- animate().cancel()
+				// stops mid-fade without snapping the value to its target, so it's reset explicitly
+				// here rather than relying on it already being 1.
+				sr.animate().cancel();
+				sr.setAlpha(1f);
 				sr.setVisibility(VISIBLE);
 			}
 		} else if (mode == Mode.VIDEO) {
 			if (animate) crossfade(sr, vv, 300L);
 			else {
 				sr.setVisibility(GONE);
+				vv.animate().cancel();
+				vv.setAlpha(1f);
 				vv.setVisibility(VISIBLE);
 			}
 		}

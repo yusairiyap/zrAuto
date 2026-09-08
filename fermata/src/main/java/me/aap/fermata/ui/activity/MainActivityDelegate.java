@@ -78,6 +78,7 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.EditText;
 
 import androidx.annotation.LayoutRes;
@@ -810,27 +811,66 @@ public class MainActivityDelegate extends ActivityDelegate
 		tb.setLayoutParams(tlp);
 		cp.setLayoutParams(clp);
 
+		// In the bottom-nav layout, nav_bar's own topToBottom=control_panel constraint -- paired
+		// with control_panel's bottomToTop=nav_bar above -- forms a genuine mutual reference now
+		// that control_panel has no top constraint of its own to resolve independently: control_panel
+		// needs nav_bar's position to place its bottom edge, and nav_bar needs control_panel's bottom
+		// edge to place its own top, with neither resolvable first. ConstraintLayout does not resolve
+		// this reliably (observed as nav_bar rendering right under tool_bar instead of at the screen
+		// bottom). nav_bar's bottomToBottom=parent already fully determines its position on its own
+		// (wrap_content height, single anchor -- exactly the pattern used above for tool_bar and
+		// control_panel), so drop the redundant top constraint and let it resolve first,
+		// independently; control_panel then resolves cleanly second, off nav_bar's now-correct edge.
+		// The left/right layouts' nav_bar is unrelated to control_panel entirely (an independent
+		// side column spanning top-to-bottom of its own accord) and is left untouched.
+		if (getPrefs().getNavBarPosPref(this) == NavBarView.POSITION_BOTTOM) {
+			View nb = findViewById(R.id.nav_bar);
+			if ((nb != null) && (nb.getLayoutParams() instanceof ConstraintLayout.LayoutParams nlp)) {
+				nlp.topToTop = UNSET;
+				nlp.topToBottom = UNSET;
+				nb.setLayoutParams(nlp);
+			}
+		}
+
 		ToolBarView tbv = getToolBar();
 		int c = MaterialColors.getColor(getContext(), androidx.appcompat.R.attr.colorPrimary,
 				Color.BLACK);
 		tbv.setBackground(ControlPanelView.buildScrimGradient(c, false));
-
-		// body_layout now extends behind tool_bar/control_panel (see above), so every tab's own
-		// content -- added into frame_layout by the fragment manager, same for a plain list, the
-		// Settings screen or the YouTube WebView -- needs its own top/bottom padding to keep from
-		// rendering underneath (and unreachable behind) the bars, restoring the same effective
-		// content area the old non-overlapping layout gave it. video_view is a sibling of
-		// frame_layout, not touched by this, so fullscreen video still renders truly full-bleed.
-		View.OnLayoutChangeListener sync = (view, left, top, right, bottom, oldLeft, oldTop, oldRight,
-																				oldBottom) -> syncBodyContentPadding();
-		tb.addOnLayoutChangeListener(sync);
-		cp.addOnLayoutChangeListener(sync);
-		syncBodyContentPadding();
 	}
 
-	private void syncBodyContentPadding() {
-		View content = findViewById(R.id.frame_layout);
-		if ((content == null) || (toolBar == null) || (controlPanel == null)) return;
+	/**
+	 * Lets a tab's own scrollable content (a RecyclerView-based list, a WebView) keep scrolling
+	 * all the way to its own first/last row underneath tool_bar/control_panel's translucent
+	 * gradients, instead of either being cut off by them or permanently inset away from them --
+	 * gives {@code content} top/bottom padding matching their current heights with clipToPadding
+	 * off, so rows already at rest show inset from the bars but can still scroll fully into view.
+	 * Kept in sync with tool_bar/control_panel's actual size for as long as {@code content} stays
+	 * attached to the window; each caller (e.g. MediaItemListView, a browsing WebView) is expected
+	 * to call this once, typically from its own constructor.
+	 */
+	public void insetScrollableContent(ViewGroup content) {
+		content.setClipToPadding(false);
+		View.OnLayoutChangeListener sync = (v, left, top, right, bottom, oldLeft, oldTop, oldRight,
+																				oldBottom) -> applyContentInsets(content);
+		content.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+			@Override
+			public void onViewAttachedToWindow(@NonNull View v) {
+				if (toolBar != null) toolBar.addOnLayoutChangeListener(sync);
+				if (controlPanel != null) controlPanel.addOnLayoutChangeListener(sync);
+				applyContentInsets(content);
+			}
+
+			@Override
+			public void onViewDetachedFromWindow(@NonNull View v) {
+				if (toolBar != null) toolBar.removeOnLayoutChangeListener(sync);
+				if (controlPanel != null) controlPanel.removeOnLayoutChangeListener(sync);
+			}
+		});
+		if (content.isAttachedToWindow()) applyContentInsets(content);
+	}
+
+	private void applyContentInsets(ViewGroup content) {
+		if ((toolBar == null) || (controlPanel == null)) return;
 		int top = toolBar.getHeight();
 		int bottom = (controlPanel.getVisibility() == VISIBLE) ? controlPanel.getHeight() : 0;
 		if ((content.getPaddingTop() == top) && (content.getPaddingBottom() == bottom)) return;
