@@ -2,6 +2,8 @@ package me.aap.fermata.addon.web.yt;
 
 import static androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.RIGHT;
 
+import android.widget.EditText;
+
 import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.WebToolBarMediator;
 import me.aap.utils.ui.fragment.ActivityFragment;
@@ -29,6 +31,23 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 				me.aap.fermata.R.id.favorites, RIGHT);
 		addButton(tb, me.aap.fermata.R.drawable.playlist, v -> yt.showPlaylistsMenu(),
 				me.aap.fermata.R.id.playlists, RIGHT);
+
+		// Unlike the plain Browser tab, this field only ever shows the current video's title (see
+		// refreshAddressBarTitle() below) -- it isn't a navigable address the user would type into,
+		// so the inherited EditText's editable look (the focus/selection border a
+		// TextInputEditText draws, which setBackgroundResource() above doesn't suppress -- it's
+		// drawn for the focused state, not part of the resting background) and actual editability
+		// don't apply here. Making it non-focusable removes both: nothing to focus, nothing to
+		// show a focus border for, nothing to type into.
+		EditText addr = tb.findViewById(R.id.browser_addr);
+		if (addr != null) {
+			addr.setFocusable(false);
+			addr.setFocusableInTouchMode(false);
+			addr.setClickable(false);
+			addr.setLongClickable(false);
+			addr.setCursorVisible(false);
+		}
+
 		// super.enable() just set the raw URL as the address text; replace it with the video title
 		// (or "YouTube") as soon as it's available.
 		YoutubeWebView wv = yt.getWebView();
