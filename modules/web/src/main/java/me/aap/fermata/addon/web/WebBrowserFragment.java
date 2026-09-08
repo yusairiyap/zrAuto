@@ -53,6 +53,16 @@ public class WebBrowserFragment extends MainActivityFragment
 	private boolean fullScreenOnResume;
 	@Nullable
 	private PreferenceStore.Listener privateModeListener;
+	// applyPrivateModeProfile() destroys and recreates the WebView synchronously on the main thread
+	// (see its own doc comment) -- fine when the user is actually looking at this fragment and
+	// expects a brief overlay, but this fragment (and YoutubeFragment, which shares this class)
+	// stays resident and keeps its listener registered even while hidden behind another fragment
+	// (e.g. Settings), so without this guard, tapping "Clear browsing data now" there would run
+	// that same expensive WebView churn invisibly in the background -- and if more than one
+	// WebBrowserFragment/YoutubeFragment instance is resident at once, more than one at the same
+	// time -- with no user-facing overlay to explain the resulting jank/ANR risk. Deferring it to
+	// onHiddenChanged(false) means it only ever runs while this fragment is the one actually shown.
+	private boolean profileSwitchPending;
 
 	@Override
 	public int getFragmentId() {
@@ -260,10 +270,25 @@ public class WebBrowserFragment extends MainActivityFragment
 			// WebBrowserAddon (a separate listener on the same prefs) only bumps this once the
 			// relevant profile's cookies/site data have actually finished clearing -- switching the
 			// WebView's profile any earlier would race that and could still load with stale data.
-			if (prefs.contains(MainActivityPrefs.PRIVATE_MODE_DATA_CLEARED_STAMP)) {
+			if (!prefs.contains(MainActivityPrefs.PRIVATE_MODE_DATA_CLEARED_STAMP)) return;
+			if (isHidden()) {
+				// See profileSwitchPending's doc comment -- defer the actual (expensive) swap until
+				// this fragment is shown again instead of running it now, in the background, behind
+				// whatever fragment (e.g. Settings) the user is actually looking at.
+				profileSwitchPending = true;
+			} else {
 				applyPrivateModeProfile();
 			}
 		});
+	}
+
+	@Override
+	public void onHiddenChanged(boolean hidden) {
+		super.onHiddenChanged(hidden);
+		if (!hidden && profileSwitchPending) {
+			profileSwitchPending = false;
+			applyPrivateModeProfile();
+		}
 	}
 
 	protected void unregisterListeners(MainActivityDelegate a) {

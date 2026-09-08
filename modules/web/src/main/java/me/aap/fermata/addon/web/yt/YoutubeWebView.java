@@ -231,23 +231,40 @@ public class YoutubeWebView extends FermataWebView {
 	 * #onPreferenceChanged}), matching {@link #injectSponsorBlock()}'s reconfigure-in-place pattern.
 	 */
 	private void attachAdObserver() {
+		// Logged only in debug builds -- see BuildConfig.D use elsewhere in this file -- since
+		// FermataChromeClient#onConsoleMessage() forwards every page console.log to logcat
+		// unconditionally, and this fires on every ad boundary. Diagnostic aid for confirming
+		// whether AD_SELECTOR below is still matching what the current YouTube page actually uses,
+		// without needing a full rebuild to add print statements.
+		String debugLog = BuildConfig.D ?
+				"  console.log('Fermata ad state changed: showing=' + showing + ', bodyClass=' + " +
+						"document.body.className);\n" : "";
 		loadUrl("javascript:\n" +
+				// Not just '.ad-showing': YouTube's ad markup/class names have shifted before and
+				// aren't a documented API, so checking a few known variants (rather than just the one
+				// this was originally written against) hedges a little against silently detecting
+				// nothing on a page version where that particular class no longer applies.
+				"var AD_SELECTOR = '.ad-showing, .ad-interrupting, .ytp-ad-player-overlay';\n" +
 				"function fermataAdCheck() {\n" +
-				"  var showing = document.querySelectorAll('.ad-showing').length > 0;\n" +
+				"  var showing = document.querySelector(AD_SELECTOR) != null;\n" +
 				"  if (showing === window.__fermataAdShowing) return;\n" +
-				"  window.__fermataAdShowing = showing;\n" +
+				"  window.__fermataAdShowing = showing;\n" + debugLog +
 				"  if (!window.__fermataAdSkipEnabled) return;\n" +
-				"  var v = document.querySelector('video');\n" +
+				// querySelectorAll (not just the first video element) in case the ad and the real
+				// content are ever two separate <video> elements rather than one reused element.
+				"  var videos = document.querySelectorAll('video');\n" +
 				"  if (showing) {\n" +
-				"    if (v != null) {\n" +
-				"      window.__fermataAdMuted = !v.muted;\n" +
+				"    videos.forEach(function(v) {\n" +
+				"      v.__fermataAdMuted = !v.muted;\n" +
 				"      v.muted = true;\n" +
 				"      if (v.duration) v.currentTime = v.duration;\n" +
-				"    }\n" +
+				"    });\n" +
 				"    " + JS_EVENT + "(" + JS_AD_SHOWING + ", null);\n" +
 				"  } else {\n" +
-				"    if ((v != null) && window.__fermataAdMuted) v.muted = false;\n" +
-				"    window.__fermataAdMuted = false;\n" +
+				"    videos.forEach(function(v) {\n" +
+				"      if (v.__fermataAdMuted) v.muted = false;\n" +
+				"      v.__fermataAdMuted = false;\n" +
+				"    });\n" +
 				"    " + JS_EVENT + "(" + JS_AD_ENDED + ", null);\n" +
 				"  }\n" +
 				"}\n" +
