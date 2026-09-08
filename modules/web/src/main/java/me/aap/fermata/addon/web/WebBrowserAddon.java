@@ -70,22 +70,31 @@ public class WebBrowserAddon implements FermataFragmentAddon, FermataActivityAdd
 	// silently dropping the listener with no error. Keeping a strong reference in this field is what
 	// keeps it registered for the addon's whole lifetime.
 	private final PreferenceStore.Listener privateModeListener = this::onPrivateModePrefsChanged;
+	// YoutubeAddon extends WebBrowserAddon, so this constructor runs once per addon subclass
+	// AddonManager instantiates, and both are constructed unconditionally regardless of which is
+	// enabled -- so without this guard, a single Settings "clear" tap would run the whole
+	// cookie/storage-clearing pipeline twice, concurrently, through two independent listener
+	// instances. onPrivateModePrefsChanged() doesn't read anything instance-specific (only
+	// statics: MainActivityPrefs/PrivateProfile/CookieManager/WebStorage), so it doesn't matter
+	// which addon's instance ends up registered -- only that exactly one is.
+	private static volatile boolean privateModeListenerRegistered;
 
 	public WebBrowserAddon() {
 		prefs = App.get().getSharedPreferences("web", Context.MODE_PRIVATE);
 
-		// YoutubeAddon extends WebBrowserAddon, so this constructor runs once per addon subclass
-		// AddonManager instantiates -- and since "Web Browser" and "YouTube" are independently
-		// enabled (each has its own AddonInfo/enabledPref), a user can have YouTube on with the
-		// Browser tab off, so this can NOT be skipped for subclasses the way the WebBrowserAddon-only
-		// prefs in contributeSettings() are: it's the only registration a YouTube-only user gets.
-		// Running it twice (once per addon instance) is a bit redundant but harmless/idempotent.
-
 		// Registered here rather than in contributeSettings() (only wired up once the user actually
 		// opens Settings) so a Private Mode toggle flipped from the toolbar or the nav-bar menu -
-		// without ever visiting Settings - still clears/restores browsing data.
-		MainActivityPrefs.get().addBroadcastListener(privateModeListener);
-		Log.i("WebBrowserAddon: Private Mode listener registered");
+		// without ever visiting Settings - still clears/restores browsing data. Since "Web Browser"
+		// and "YouTube" are independently enabled (each has its own AddonInfo/enabledPref), a user
+		// can have YouTube on with the Browser tab off, so this can NOT be skipped for subclasses
+		// the way the WebBrowserAddon-only prefs in contributeSettings() are -- it may be the only
+		// registration a YouTube-only user gets. The static guard above still keeps it to one
+		// registration overall, whichever addon happens to construct first.
+		if (!privateModeListenerRegistered) {
+			privateModeListenerRegistered = true;
+			MainActivityPrefs.get().addBroadcastListener(privateModeListener);
+			Log.i("WebBrowserAddon: Private Mode listener registered");
+		}
 
 		// PRIVATE_MODE_ENABLED is a persisted pref (so a session left active while "Always" is on
 		// survives a restart), but Private Mode itself is meant to be a per-session thing when
@@ -136,7 +145,19 @@ public class WebBrowserAddon implements FermataFragmentAddon, FermataActivityAdd
 			mp.applyBooleanPref(MainActivityPrefs.PRIVATE_MODE_ALWAYS, false);
 		}
 
-		if (PrivateProfile.isSupported()) {
+		boolean multiProfileSupported;
+		try {
+			multiProfileSupported = PrivateProfile.isSupported();
+		} catch (Exception ex) {
+			// Some WebView releases/devices (e.g. a car head unit shipping a cut-down or missing
+			// WebView provider) can throw querying feature support at all, not just when actually
+			// using a profile -- fall back to the shared-jar path below rather than letting this
+			// propagate up through the Settings button tap / preference broadcast that got us here.
+			Log.e(ex, "Failed to query WebView multi-profile support, falling back to the shared cookie jar");
+			multiProfileSupported = false;
+		}
+
+		if (multiProfileSupported) {
 			// The private profile is a separate, isolated cookie jar/storage that the default
 			// profile's WebViews never touch -- see PrivateProfile -- so there's nothing to restore
 			// on the way out, only the private profile's own leftovers to wipe on the way in (or on a
@@ -165,13 +186,26 @@ public class WebBrowserAddon implements FermataFragmentAddon, FermataActivityAdd
 	 * rather than running right after calling this method.
 	 */
 	private void clearPrivateProfileData(Runnable onDone) {
-		Profile p = PrivateProfile.get(true);
-		CookieManager cm = p.getCookieManager();
-		cm.removeAllCookies(cleared -> {
-			cm.flush();
-			p.getWebStorage().deleteAllData();
+		try {
+			Profile p = PrivateProfile.get(true);
+			CookieManager cm = p.getCookieManager();
+			cm.removeAllCookies(cleared -> {
+				try {
+					cm.flush();
+					p.getWebStorage().deleteAllData();
+				} catch (Exception ex) {
+					Log.e(ex, "Failed to clear private profile data");
+				}
+				onDone.run();
+			});
+		} catch (Exception ex) {
+			// Getting/creating the profile, or its CookieManager, is itself a WebView call and can
+			// throw on a device with no (or a broken) WebView provider -- this is reached straight
+			// from a Settings button tap via a synchronous preference broadcast, so an uncaught
+			// exception here would crash the whole app rather than just fail this one action.
+			Log.e(ex, "Failed to clear private profile data");
 			onDone.run();
-		});
+		}
 	}
 
 	/** Clears the Default profile's cookie jar/storage/form data -- i.e. the regular, non-Private
@@ -179,17 +213,25 @@ public class WebBrowserAddon implements FermataFragmentAddon, FermataActivityAdd
 	 * Private Mode's own fallback on WebView releases without {@link PrivateProfile#isSupported()},
 	 * where the Default profile is the only one there is. */
 	private void clearSharedBrowsingData(Runnable onDone) {
-		CookieManager cm = CookieManager.getInstance();
-		cm.removeAllCookies(cleared -> {
-			cm.flush();
-			WebStorage.getInstance().deleteAllData();
-			try {
-				WebViewDatabase.getInstance(FermataApplication.get()).clearFormData();
-			} catch (Exception ex) {
-				Log.e(ex, "Failed to clear WebView form data");
-			}
+		try {
+			CookieManager cm = CookieManager.getInstance();
+			cm.removeAllCookies(cleared -> {
+				try {
+					cm.flush();
+					WebStorage.getInstance().deleteAllData();
+					WebViewDatabase.getInstance(FermataApplication.get()).clearFormData();
+				} catch (Exception ex) {
+					Log.e(ex, "Failed to clear browsing data");
+				}
+				onDone.run();
+			});
+		} catch (Exception ex) {
+			// See clearPrivateProfileData(): reached straight from a Settings button tap via a
+			// synchronous preference broadcast, so an uncaught exception here (e.g. no WebView
+			// provider on this device) would crash the app rather than just fail this one action.
+			Log.e(ex, "Failed to clear browsing data");
 			onDone.run();
-		});
+		}
 	}
 
 	@IdRes

@@ -15,6 +15,9 @@ public class YoutubeJsInterface extends FermataJsInterface {
 	public static final int JS_VIDEO_PAUSED = JS_LAST + 3;
 	public static final int JS_VIDEO_ENDED = JS_LAST + 4;
 	public static final int JS_VIDEO_QUALITIES = JS_LAST + 5;
+	public static final int JS_AD_SHOWING = JS_LAST + 6;
+	public static final int JS_AD_ENDED = JS_LAST + 7;
+	public static final int JS_CONTENT_PLAYING = JS_LAST + 8;
 	private final YoutubeMediaEngine engine;
 	private Promise<String> result;
 
@@ -48,6 +51,18 @@ public class YoutubeJsInterface extends FermataJsInterface {
 			case JS_VIDEO_QUALITIES:
 				Log.d("Video qualities: ", data);
 				setResult(data);
+				break;
+			case JS_AD_SHOWING:
+				Log.d("Ad showing");
+				engine.adShowing();
+				break;
+			case JS_AD_ENDED:
+				Log.d("Ad ended");
+				engine.adEnded();
+				break;
+			case JS_CONTENT_PLAYING:
+				Log.d("Content playing");
+				engine.contentPlaying();
 				break;
 			default:
 				super.handleEvent(event, data);

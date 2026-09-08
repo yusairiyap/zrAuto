@@ -32,6 +32,7 @@ import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.activity.VoiceCommand;
 import me.aap.fermata.ui.fragment.MainActivityFragment;
+import me.aap.fermata.ui.view.VideoView;
 import me.aap.utils.function.BooleanConsumer;
 import me.aap.utils.function.Supplier;
 import me.aap.utils.log.Log;
@@ -53,6 +54,16 @@ public class WebBrowserFragment extends MainActivityFragment
 	private boolean fullScreenOnResume;
 	@Nullable
 	private PreferenceStore.Listener privateModeListener;
+	// applyPrivateModeProfile() destroys and recreates the WebView synchronously on the main thread
+	// (see its own doc comment) -- fine when the user is actually looking at this fragment and
+	// expects a brief overlay, but this fragment (and YoutubeFragment, which shares this class)
+	// stays resident and keeps its listener registered even while hidden behind another fragment
+	// (e.g. Settings), so without this guard, tapping "Clear browsing data now" there would run
+	// that same expensive WebView churn invisibly in the background -- and if more than one
+	// WebBrowserFragment/YoutubeFragment instance is resident at once, more than one at the same
+	// time -- with no user-facing overlay to explain the resulting jank/ANR risk. Deferring it to
+	// onHiddenChanged(false) means it only ever runs while this fragment is the one actually shown.
+	private boolean profileSwitchPending;
 
 	@Override
 	public int getFragmentId() {
@@ -260,10 +271,49 @@ public class WebBrowserFragment extends MainActivityFragment
 			// WebBrowserAddon (a separate listener on the same prefs) only bumps this once the
 			// relevant profile's cookies/site data have actually finished clearing -- switching the
 			// WebView's profile any earlier would race that and could still load with stale data.
-			if (prefs.contains(MainActivityPrefs.PRIVATE_MODE_DATA_CLEARED_STAMP)) {
+			if (!prefs.contains(MainActivityPrefs.PRIVATE_MODE_DATA_CLEARED_STAMP)) return;
+			if (isHidden()) {
+				// See profileSwitchPending's doc comment -- defer the actual (expensive) swap until
+				// this fragment is shown again instead of running it now, in the background, behind
+				// whatever fragment (e.g. Settings) the user is actually looking at.
+				profileSwitchPending = true;
+			} else {
 				applyPrivateModeProfile();
 			}
 		});
+	}
+
+	@Override
+	public void onHiddenChanged(boolean hidden) {
+		super.onHiddenChanged(hidden);
+		if (hidden) return;
+
+		if (profileSwitchPending) {
+			profileSwitchPending = false;
+			applyPrivateModeProfile();
+		}
+
+		// Reclaim MainActivityDelegate#getActiveVideoView() for this fragment's own video on the
+		// way back in. Switching tabs only ever hide()/show()s fragments (see
+		// ActivityDelegate#showFragment() -- nothing is destroyed or recreated), so if some other
+		// tab's own video claimed it while this one was hidden -- or nothing re-claimed it at all,
+		// e.g. after the Android Auto display-takeover recovery in
+		// MainActivityDelegate#onActivityWindowFocusChanged -- returning to this tab left it stale
+		// with nothing to naturally refresh it, since MainActivityDelegate#setVideoMode() is
+		// otherwise only called on an actual fullscreen enter/exit. The fullscreen FAB
+		// (Action#FULLSCREEN_TOGGLE) resolves purely through getActiveVideoView(), so a stale
+		// reference there means it silently operates on the wrong view (or falls through to the
+		// unrelated generic fullscreen-pref toggle) instead of this tab's actual video. A plain
+		// (non-VideoView) browser fullscreen container -- see browser.xml's browserFullScreenView,
+		// a bare FrameLayout -- has nothing to reclaim here.
+		FermataWebView v = getWebView();
+		FermataChromeClient chrome = (v != null) ? v.getWebChromeClient() : null;
+		ViewGroup fsView = (chrome != null) ? chrome.getFullScreenView() : null;
+		Log.d("onHiddenChanged(false): reclaiming active video view, v=", v, ", chrome=", chrome,
+				", fullScreenView=", fsView);
+		if (fsView instanceof VideoView vv) {
+			MainActivityDelegate.get(requireContext()).setVideoMode(chrome.isFullScreen(), vv);
+		}
 	}
 
 	protected void unregisterListeners(MainActivityDelegate a) {

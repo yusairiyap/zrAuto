@@ -62,7 +62,9 @@ public enum Action {
 	// the end: inserting one mid-enum silently remaps every existing user's saved bindings.
 	FULLSCREEN_TOGGLE(R.string.action_fullscreen_toggle, a(a -> {
 		var vv = a.getActiveVideoView();
-		if ((vv != null) && vv.toggleNativeFullscreen()) return;
+		boolean handled = (vv != null) && vv.toggleNativeFullscreen();
+		Log.d("FULLSCREEN_TOGGLE: activeVideoView=", vv, ", handled=", handled);
+		if (handled) return;
 		a.getPrefs().setFullscreenPref(a, !a.getPrefs().getFullscreenPref(a));
 	})),
 	DIM_TOGGLE(R.string.action_dim_toggle, a(a ->

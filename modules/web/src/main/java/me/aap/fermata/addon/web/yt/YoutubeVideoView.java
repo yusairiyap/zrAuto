@@ -1,11 +1,16 @@
 package me.aap.fermata.addon.web.yt;
 
 import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
+import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
 
 import android.content.Context;
+import android.graphics.Color;
 import android.util.AttributeSet;
+import android.view.Gravity;
 import android.view.SurfaceView;
+import android.view.View;
 import android.widget.FrameLayout;
+import android.widget.ProgressBar;
 
 import androidx.annotation.Nullable;
 
@@ -15,6 +20,26 @@ import me.aap.fermata.ui.view.VideoView;
  * @author Andrey Pavlenko
  */
 public class YoutubeVideoView extends VideoView {
+	// Matches the fade duration/idiom used elsewhere in the app for view crossfades (see
+	// ControlPanelView's fadeIn/fadeOut, ActivityDelegate's crossfadeFragmentViews) -- a plain
+	// ViewPropertyAnimator alpha tween, no external animation library.
+	private static final long FADE_MS = 200L;
+	// Safety net in case the page-side "hide" signal (ad-ended, or a video actually playing again
+	// after a next/prev switch -- see YoutubeWebView's ad MutationObserver and 'playing' listener)
+	// is ever missed -- e.g. the page navigates away mid-transition -- so the overlay can't get
+	// stuck covering real content indefinitely.
+	private static final long TRANSITION_OVERLAY_TIMEOUT_MS = 8000L;
+	// How long a next/prev switch (no spinner up front, see showTransitionOverlay()) is given to
+	// finish before the spinner appears after all -- long enough that a quick switch never shows
+	// it at all (avoiding the "reads as buffering" look asked to be avoided there), short enough
+	// that a genuinely slow one (YouTube resolving/buffering the next video, or the exit-fullscreen
+	// fallback in YoutubeWebView#prevNextByClick()) still gets a visible "it's working" signal
+	// instead of just sitting on a plain dark screen.
+	private static final long SPINNER_REVEAL_DELAY_MS = 400L;
+	private View transitionOverlay;
+	private View transitionSpinner;
+	private final Runnable hideTransitionOverlayTask = this::hideTransitionOverlay;
+	private final Runnable showSpinnerTask = this::revealSpinner;
 
 	public YoutubeVideoView(Context context, AttributeSet attrs) {
 		super(context, attrs);
@@ -24,6 +49,82 @@ public class YoutubeVideoView extends VideoView {
 	protected void init(Context context) {
 		addView(new FrameLayout(context), new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 		addDimOverlay(context);
+		addTransitionOverlay(context);
+	}
+
+	private void addTransitionOverlay(Context context) {
+		FrameLayout scrim = new FrameLayout(context);
+		// Fully opaque -- a translucent scrim still let an ad show through, faintly, underneath it.
+		scrim.setBackgroundColor(Color.BLACK);
+		ProgressBar spinner = new ProgressBar(context);
+		FrameLayout.LayoutParams spp = new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+		spp.gravity = Gravity.CENTER;
+		scrim.addView(spinner, spp);
+		scrim.setVisibility(GONE);
+		scrim.setClickable(false);
+		scrim.setFocusable(false);
+		addView(scrim, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		transitionOverlay = scrim;
+		transitionSpinner = spinner;
+	}
+
+	/**
+	 * Fades the transition overlay in. Used both while an ad is being detected/muted/skipped (see
+	 * {@code YoutubeMediaEngine#adShowing()}, {@code withSpinner} true -- shown immediately, since
+	 * that wait is already known to be real) and while a next/prev switch is in flight (see
+	 * {@code YoutubeMediaEngine#prepare()}, {@code withSpinner} false -- the spinner instead only
+	 * appears after {@link #SPINNER_REVEAL_DELAY_MS}, if the switch is still going by then).
+	 */
+	void showTransitionOverlay(boolean withSpinner) {
+		if (transitionOverlay == null) return;
+		if (!withSpinner) {
+			// This view itself (the transition overlay's own parent) is what YoutubeChromeClient's
+			// addCustomView()/removeCustomView() toggle VISIBLE/GONE as native HTML5 fullscreen is
+			// entered/exited -- and the fallback next/prev path (YoutubeWebView#prevNextByClick(),
+			// used when the page's own player API isn't available) explicitly exits fullscreen before
+			// clicking the in-page button, which sets this view GONE partway through the switch. A
+			// GONE ancestor hides every descendant regardless of the descendant's own visibility, so
+			// without this, the overlay/spinner set VISIBLE below would still not actually render for
+			// exactly the fallback path's duration -- the one case where a visible "it's working" cue
+			// matters most. Only done for the no-spinner (next/prev) case, which is only ever
+			// triggered while a video is already actively playing and expected to already be in
+			// fullscreen -- unlike the ad-skip case below, which can fire from plain DOM mutations
+			// with no such guarantee, where forcing this view visible could pop a full-screen black
+			// cover over the app outside of fullscreen playback entirely.
+			setVisibility(VISIBLE);
+		}
+		transitionSpinner.removeCallbacks(showSpinnerTask);
+		transitionSpinner.animate().cancel();
+		if (withSpinner) {
+			transitionSpinner.setAlpha(1f);
+			transitionSpinner.setVisibility(VISIBLE);
+		} else {
+			transitionSpinner.setVisibility(GONE);
+			transitionSpinner.postDelayed(showSpinnerTask, SPINNER_REVEAL_DELAY_MS);
+		}
+
+		transitionOverlay.removeCallbacks(hideTransitionOverlayTask);
+		transitionOverlay.animate().cancel();
+		transitionOverlay.setAlpha(0f);
+		transitionOverlay.setVisibility(VISIBLE);
+		transitionOverlay.animate().alpha(1f).setDuration(FADE_MS).start();
+		transitionOverlay.postDelayed(hideTransitionOverlayTask, TRANSITION_OVERLAY_TIMEOUT_MS);
+	}
+
+	private void revealSpinner() {
+		transitionSpinner.setAlpha(0f);
+		transitionSpinner.setVisibility(VISIBLE);
+		transitionSpinner.animate().alpha(1f).setDuration(FADE_MS).start();
+	}
+
+	/** See {@code YoutubeMediaEngine#adEnded()}/{@code #contentPlaying()}. */
+	void hideTransitionOverlay() {
+		if (transitionOverlay == null) return;
+		transitionOverlay.removeCallbacks(hideTransitionOverlayTask);
+		transitionSpinner.removeCallbacks(showSpinnerTask);
+		transitionOverlay.animate().cancel();
+		transitionOverlay.animate().alpha(0f).setDuration(FADE_MS)
+				.withEndAction(() -> transitionOverlay.setVisibility(GONE)).start();
 	}
 
 	@Nullable

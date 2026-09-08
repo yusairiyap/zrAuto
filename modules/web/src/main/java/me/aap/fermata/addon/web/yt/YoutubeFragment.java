@@ -3,6 +3,7 @@ package me.aap.fermata.addon.web.yt;
 import static me.aap.fermata.addon.web.FermataWebClient.isYoutubeUri;
 import static me.aap.utils.async.Completed.completed;
 import static me.aap.utils.async.Completed.completedVoid;
+import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED;
 
 import android.content.Context;
 import android.net.Uri;
@@ -381,6 +382,22 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		return new YoutubeVideoItem(videoId, addon.getRootItem(lib));
 	}
 
+	/** Whether the video currently on screen is already a favorite -- see YoutubeToolBarMediator,
+	 * which uses this to pick the toolbar favorites button's filled-vs-outline icon. */
+	boolean isCurrentVideoFavorite() {
+		MainActivityDelegate a = MainActivityDelegate.get(requireContext());
+		DefaultMediaLib lib = (DefaultMediaLib) a.getLib();
+		YoutubeVideoItem current = getCurrentVideoItem(lib);
+		return (current != null) && current.isFavoriteItem();
+	}
+
+	/** Lets YoutubeToolBarMediator (and anything else reacting to FRAGMENT_CONTENT_CHANGED, e.g.
+	 * a rebuilt nav-bar menu) pick up an add/remove that happened outside of a page navigation --
+	 * see YoutubeToolBarMediator#onActivityEvent(). */
+	private void notifyFavoritesChanged() {
+		MainActivityDelegate.get(requireContext()).fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
+	}
+
 	private FutureSupplier<Void> favoritesMenu(OverlayMenu.Builder b, MediaLib.Favorites favorites,
 																							@Nullable YoutubeVideoItem current) {
 		if (current != null) {
@@ -388,12 +405,14 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 				b.addItem(me.aap.fermata.R.id.favorites_remove, me.aap.fermata.R.drawable.favorite_filled,
 						me.aap.fermata.R.string.favorites_remove).setHandler(i -> {
 					favorites.removeItem(current);
+					notifyFavoritesChanged();
 					return true;
 				});
 			} else {
 				b.addItem(me.aap.fermata.R.id.favorites_add, me.aap.fermata.R.drawable.favorite,
 						me.aap.fermata.R.string.favorites_add).setHandler(i -> {
 					favorites.addItem(current);
+					notifyFavoritesChanged();
 					return true;
 				});
 			}

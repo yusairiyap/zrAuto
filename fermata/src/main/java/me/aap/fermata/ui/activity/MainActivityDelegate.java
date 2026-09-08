@@ -454,6 +454,17 @@ public class MainActivityDelegate extends ActivityDelegate
 			if (addon instanceof FermataActivityAddon)
 				((FermataActivityAddon) addon).onActivityWindowFocusChanged(this, hasFocus);
 		}
+
+		// Only ever fired with hasFocus=true (see MainCarActivity#onWindowFocusChanged) -- an
+		// Android Auto display takeover (e.g. a car's camera overlay briefly taking the screen)
+		// doesn't route through any playback-state change of its own, so the control panel can be
+		// left showing whatever it was mid-interruption (most commonly hidden, if the interruption
+		// coincided with a state transition through STOPPED/NONE) with nothing to naturally
+		// re-sync it once focus returns. Re-syncing from the actual current state here is a no-op
+		// if nothing was really wrong -- same "safe to fire on a spurious signal" spirit as
+		// WebBrowserFragment#rebuildFullscreenVideoIfActive(), which handles the equivalent
+		// recovery for YouTube's own fullscreen custom view.
+		if (hasFocus) getMediaServiceBinder().resyncControlPanel();
 	}
 
 	@Override
@@ -687,7 +698,26 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	public void setVideoMode(boolean videoMode, @Nullable VideoView v) {
-		if (videoMode == this.videoMode) return;
+		if (videoMode == this.videoMode) {
+			// The mode itself isn't changing, but getActiveVideoView() should still track whichever
+			// view is actually live now, not whatever it was last set to -- e.g. YouTube re-entering
+			// fullscreen after an Android Auto display takeover can call this with the same
+			// videoMode value it already had (if this delegate's own tracking never flipped during
+			// the interruption), and previously that meant this whole method was a no-op, leaving
+			// getActiveVideoView() stale -- observed as Action.FULLSCREEN_TOGGLE either operating on
+			// the wrong VideoView or silently falling through to the unrelated generic fullscreen-pref
+			// toggle instead of YouTube's own WebView fullscreen.
+			if ((v != null) && (v != activeVideoView)) {
+				Log.d("setVideoMode(", videoMode, ", ", v, "): reclaiming activeVideoView (was ",
+						activeVideoView, ")");
+				activeVideoView = v;
+				MainActivityPrefs p = getPrefs();
+				v.setDimOverlay(videoMode && p.getBooleanPref(DIM_ENABLED), p.getIntPref(DIM_OPACITY),
+						p.resolveDimColor());
+			}
+			return;
+		}
+
 		ControlPanelView cp = getControlPanel();
 
 		if (videoMode) {
