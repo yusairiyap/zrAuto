@@ -315,6 +315,13 @@ public class YoutubeWebView extends FermataWebView {
 		// isFullScreen() stays false, and the fullscreen FAB/toggle looks like it does nothing, with
 		// nothing to retry until the page is reloaded. Poll briefly for the element instead of
 		// giving up on the first miss.
+		//
+		// 25 attempts * 200ms = up to 5s, not the original 5 * 200ms = 1s: a plain refocus blip is
+		// quick, but returning to this tab after a while on a completely different one (e.g. the
+		// app's own Playlists tab) can leave the page doing considerably more catching up -- WebView
+		// rendering isn't paused while merely hidden (no explicit onPause()/pauseTimers() call), but
+		// Chromium can still defer/throttle a hidden page's own work, so whatever churn the original
+		// 1s budget was sized for a brief blip of can plausibly take noticeably longer here.
 		loadUrl("javascript:(function() {\n" +
 				"  function tryFullscreen(attempt) {\n" +
 				"    var v = document.querySelector('video');\n" +
@@ -322,7 +329,7 @@ public class YoutubeWebView extends FermataWebView {
 				"      if ('webkitRequestFullscreen' in v) v.webkitRequestFullscreen();\n" +
 				"      else if ('requestFullscreen' in v) v.requestFullscreen();\n" +
 				"      else " + JS_EVENT + "(" + JS_ERR + ", 'Method requestFullscreen not found in ' + v);\n" +
-				"    } else if (attempt < 5) {\n" +
+				"    } else if (attempt < 25) {\n" +
 				"      setTimeout(function() { tryFullscreen(attempt + 1); }, 200);\n" +
 				"    } else {\n" +
 				"      " + JS_EVENT + "(" + JS_ERR + ", 'No video element found for requestFullscreen');\n" +
