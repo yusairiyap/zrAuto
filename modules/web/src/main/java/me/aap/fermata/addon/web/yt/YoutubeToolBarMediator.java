@@ -1,11 +1,14 @@
 package me.aap.fermata.addon.web.yt;
 
 import static androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.RIGHT;
+import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED;
 
 import android.widget.EditText;
+import android.widget.ImageButton;
 
 import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.WebToolBarMediator;
+import me.aap.utils.ui.activity.ActivityDelegate;
 import me.aap.utils.ui.fragment.ActivityFragment;
 import me.aap.utils.ui.view.ToolBarView;
 
@@ -29,6 +32,7 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 				R.id.browser_home, RIGHT);
 		addButton(tb, me.aap.fermata.R.drawable.favorite, v -> yt.showFavoritesMenu(),
 				me.aap.fermata.R.id.favorites, RIGHT);
+		refreshFavoriteButton(tb, yt);
 		addButton(tb, me.aap.fermata.R.drawable.playlist, v -> yt.showPlaylistsMenu(),
 				me.aap.fermata.R.id.playlists, RIGHT);
 
@@ -52,5 +56,25 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 		// (or "YouTube") as soon as it's available.
 		YoutubeWebView wv = yt.getWebView();
 		if (wv != null) wv.refreshAddressBarTitle();
+	}
+
+	@Override
+	public void onActivityEvent(ToolBarView tb, ActivityDelegate a, long e) {
+		super.onActivityEvent(tb, a, e);
+		// Fired on every page navigation (FermataWebClient#onPageFinished()) and, via
+		// YoutubeFragment#notifyFavoritesChanged(), right after the current video is added to or
+		// removed from favorites through the menu this button opens -- either way, whether it
+		// should show filled or outline can have changed.
+		if ((e == FRAGMENT_CONTENT_CHANGED) && (a.getActiveFragment() instanceof YoutubeFragment yt)) {
+			refreshFavoriteButton(tb, yt);
+		}
+	}
+
+	private void refreshFavoriteButton(ToolBarView tb, YoutubeFragment yt) {
+		ImageButton b = tb.findViewById(me.aap.fermata.R.id.favorites);
+		if (b != null) {
+			b.setImageResource(yt.isCurrentVideoFavorite()
+					? me.aap.fermata.R.drawable.favorite_filled : me.aap.fermata.R.drawable.favorite);
+		}
 	}
 }
