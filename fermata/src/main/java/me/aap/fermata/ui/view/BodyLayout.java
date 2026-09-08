@@ -106,10 +106,8 @@ public class BodyLayout extends SplitLayout
 
 		switch (mode) {
 			case FRAME -> {
-				vv.setVisibility(GONE);
 				getSplitLine().setVisibility(GONE);
 				getSplitHandle().setVisibility(GONE);
-				getSwipeRefresh().setVisibility(VISIBLE);
 				lp.guidePercent = isPortrait() ? 0f : 1f;
 				// Only push this to the delegate when BodyLayout's own video mode is actually
 				// changing -- e.g. FRAGMENT_CHANGED re-enters this with FRAME on every tab switch
@@ -122,10 +120,8 @@ public class BodyLayout extends SplitLayout
 				if (oldMode != Mode.FRAME) a.setVideoMode(false, vv);
 			}
 			case VIDEO -> {
-				vv.setVisibility(VISIBLE);
 				getSplitLine().setVisibility(GONE);
 				getSplitHandle().setVisibility(GONE);
-				getSwipeRefresh().setVisibility(GONE);
 				lp.guidePercent = isPortrait() ? 1f : 0f;
 				vv.showVideo();
 				a.setVideoMode(true, vv);
@@ -145,13 +141,54 @@ public class BodyLayout extends SplitLayout
 
 		gl.setLayoutParams(lp);
 
+		// FRAME and VIDEO each hide one of vv/sr entirely while showing the other -- animated as a
+		// crossfade rather than an instant visibility swap, e.g. entering/leaving fullscreen video
+		// playback. Both ending up visible (BOTH) needs no such swap, so is left to the plain
+		// setVisibility(VISIBLE) calls above.
+		if (mode == Mode.FRAME) {
+			if (animate) crossfade(vv, sr, 300L);
+			else {
+				vv.setVisibility(GONE);
+				sr.setVisibility(VISIBLE);
+			}
+		} else if (mode == Mode.VIDEO) {
+			if (animate) crossfade(sr, vv, 300L);
+			else {
+				sr.setVisibility(GONE);
+				vv.setVisibility(VISIBLE);
+			}
+		}
+
 		// Animates the video pane/list growing or shrinking against the guideline's new split
-		// instead of snapping there instantly, e.g. when entering/leaving fullscreen video playback.
+		// instead of snapping there instantly -- a no-op (by design, see UiUtils.flipAnimate) for
+		// the FRAME/VIDEO collapse-to/grow-from-zero above, which the crossfade already covers;
+		// meaningful for BOTH's split-percent changes.
 		if (animate) {
 			UiUtils.flipAnimate(vv, vvBounds, 300L);
 			UiUtils.flipAnimate(sr, srBounds, 300L);
 		}
 		a.fireBroadcastEvent(MODE_CHANGED);
+	}
+
+	/**
+	 * Fades {@code incoming} in while fading {@code outgoing} out, only actually hiding
+	 * {@code outgoing} once its fade completes -- the same idiom as
+	 * {@code ActivityDelegate.crossfadeFragmentViews}, used here for vv/sr instead of fragments.
+	 */
+	private static void crossfade(@Nullable View outgoing, @Nullable View incoming, long duration) {
+		if (incoming != null) {
+			incoming.setVisibility(VISIBLE);
+			incoming.animate().cancel();
+			incoming.setAlpha(0f);
+			incoming.animate().alpha(1f).setDuration(duration).start();
+		}
+		if ((outgoing != null) && (outgoing != incoming)) {
+			outgoing.animate().cancel();
+			outgoing.setAlpha(1f);
+			outgoing.setVisibility(VISIBLE);
+			outgoing.animate().alpha(0f).setDuration(duration)
+					.withEndAction(() -> outgoing.setVisibility(GONE)).start();
+		}
 	}
 
 	public VideoView getVideoView() {

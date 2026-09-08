@@ -763,12 +763,17 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	/**
-	 * Makes body_layout fill the screen down to nav_bar (which keeps its own dedicated,
-	 * non-overlapped space), with tool_bar and control_panel floating over the top/bottom of it as
-	 * translucent gradient scrims instead of squeezing it into the strip between them -- the same
-	 * technique fullscreen video playback already used, now applied everywhere (video mode
-	 * included) so every tab renders behind the bars, for a cleaner look with more of the screen
-	 * visible, especially on Android Auto.
+	 * Makes body_layout fill the whole screen, with tool_bar and control_panel floating over the
+	 * top/bottom of it as translucent gradient scrims instead of squeezing it into the strip
+	 * between them -- the same technique fullscreen video playback already used, now applied
+	 * everywhere (video mode included) so every tab renders behind the bars, for a cleaner look
+	 * with more of the screen visible, especially on Android Auto.
+	 * <p>
+	 * nav_bar is deliberately left completely alone, both its constraints and its appearance: it
+	 * keeps its own fully opaque look and is declared after body_layout in every layout variant
+	 * (bottom, left and right), so plain view-drawing order alone -- with no extra elevation
+	 * needed -- already puts it on top of body_layout's now-larger bounds. body_layout extending
+	 * geometrically behind it is invisible in practice since nav_bar is never translucent.
 	 * <p>
 	 * This deliberately does not go through {@code ConstraintSet}: cloning one captures every
 	 * child's visibility, alpha, scale and translation as well, and applying it back stomps all of
@@ -789,27 +794,15 @@ public class MainActivityDelegate extends ActivityDelegate
 
 		blp.topToTop = PARENT_ID;
 		blp.topToBottom = UNSET;
-
-		if (getPrefs().getNavBarPosPref(this) == NavBarView.POSITION_BOTTOM) {
-			// nav_bar is a bottom bar below control_panel here -- extend behind control_panel but
-			// stop above nav_bar, matching control_panel's own (untouched below) bottomToTop=nav_bar
-			// anchor.
-			blp.bottomToTop = R.id.nav_bar;
-			blp.bottomToBottom = UNSET;
-		} else {
-			// nav_bar is an independent side column in the left/right layouts, outside this vertical
-			// chain entirely -- control_panel's own bottom anchor (untouched below) is already
-			// parent-bottom here.
-			blp.bottomToTop = UNSET;
-			blp.bottomToBottom = PARENT_ID;
-		}
+		blp.bottomToBottom = PARENT_ID;
+		blp.bottomToTop = UNSET;
 
 		tlp.bottomToTop = UNSET;
 		tlp.bottomToBottom = UNSET;
 
 		// control_panel's own bottom anchor (nav_bar or parent, depending on the layout variant) is
 		// already correct as inflated -- only its top needs freeing so it floats off that single
-		// anchor instead of also being pinned to body_layout's old (now much higher) top edge.
+		// anchor instead of also being pinned to body_layout's old (now much lower) bottom edge.
 		clp.topToTop = UNSET;
 		clp.topToBottom = UNSET;
 
@@ -821,6 +814,27 @@ public class MainActivityDelegate extends ActivityDelegate
 		int c = MaterialColors.getColor(getContext(), androidx.appcompat.R.attr.colorPrimary,
 				Color.BLACK);
 		tbv.setBackground(ControlPanelView.buildScrimGradient(c, false));
+
+		// body_layout now extends behind tool_bar/control_panel (see above), so every tab's own
+		// content -- added into frame_layout by the fragment manager, same for a plain list, the
+		// Settings screen or the YouTube WebView -- needs its own top/bottom padding to keep from
+		// rendering underneath (and unreachable behind) the bars, restoring the same effective
+		// content area the old non-overlapping layout gave it. video_view is a sibling of
+		// frame_layout, not touched by this, so fullscreen video still renders truly full-bleed.
+		View.OnLayoutChangeListener sync = (view, left, top, right, bottom, oldLeft, oldTop, oldRight,
+																				oldBottom) -> syncBodyContentPadding();
+		tb.addOnLayoutChangeListener(sync);
+		cp.addOnLayoutChangeListener(sync);
+		syncBodyContentPadding();
+	}
+
+	private void syncBodyContentPadding() {
+		View content = findViewById(R.id.frame_layout);
+		if ((content == null) || (toolBar == null) || (controlPanel == null)) return;
+		int top = toolBar.getHeight();
+		int bottom = (controlPanel.getVisibility() == VISIBLE) ? controlPanel.getHeight() : 0;
+		if ((content.getPaddingTop() == top) && (content.getPaddingBottom() == bottom)) return;
+		content.setPadding(content.getPaddingLeft(), top, content.getPaddingRight(), bottom);
 	}
 
 	private boolean checkMirroringMode(boolean clearFlags) {
