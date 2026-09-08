@@ -127,6 +127,14 @@ public interface MainActivityPrefs
 	Pref<Supplier<String>> VOICE_CONTROL_LANG =
 			Pref.s("VOICE_CONTROL_LANG", () -> Locale.getDefault().toLanguageTag());
 	Pref<IntSupplier> CLOCK_POS = Pref.i("CLOCK_POS", CLOCK_POS_NONE);
+	// Which items the fullscreen video Info Overlay (positioned via CLOCK_POS) shows -- SHOW_CLOCK
+	// defaults to true to preserve the pre-existing clock-only behavior for anyone who already had
+	// CLOCK_POS set to something other than NONE.
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_CLOCK = Pref.b("INFO_OVERLAY_SHOW_CLOCK", true);
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_BATTERY_PCT = Pref.b("INFO_OVERLAY_SHOW_BATTERY_PCT", false);
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_BATTERY_TEMP =
+			Pref.b("INFO_OVERLAY_SHOW_BATTERY_TEMP", false);
+	Pref<DoubleSupplier> INFO_OVERLAY_SIZE = Pref.f("INFO_OVERLAY_SIZE", 1f);
 	Pref<IntSupplier> LOCALE =
 			Pref.i("LOCALE", () -> Lang.get(Locale.getDefault().getLanguage()).ordinal());
 
@@ -354,6 +362,22 @@ public interface MainActivityPrefs
 
 	default int getClockPosPref() {
 		return getIntPref(CLOCK_POS);
+	}
+
+	default boolean getInfoOverlayShowClockPref() {
+		return getBooleanPref(INFO_OVERLAY_SHOW_CLOCK);
+	}
+
+	default boolean getInfoOverlayShowBatteryPctPref() {
+		return getBooleanPref(INFO_OVERLAY_SHOW_BATTERY_PCT);
+	}
+
+	default boolean getInfoOverlayShowBatteryTempPref() {
+		return getBooleanPref(INFO_OVERLAY_SHOW_BATTERY_TEMP);
+	}
+
+	default float getInfoOverlaySizePref() {
+		return getFloatPref(INFO_OVERLAY_SIZE);
 	}
 
 	default Locale getLocalePref() {

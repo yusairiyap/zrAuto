@@ -191,8 +191,6 @@ public class MainActivityDelegate extends ActivityDelegate
 	private int brightness = 255;
 	@Nullable
 	private VideoView activeVideoView;
-	@Nullable
-	private int[] normalAnchors;
 	private SpeechListener speechListener;
 	private VoiceCommandHandler voiceCommandHandler;
 
@@ -759,23 +757,28 @@ public class MainActivityDelegate extends ActivityDelegate
 					p.resolveDimColor());
 		}
 
-		applyVideoOverlayLayout(videoMode);
 		updateSecondaryFabVisibility();
 		updateTertiaryFabVisibility();
 		fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 	}
 
 	/**
-	 * Re-anchors the three bars for video mode by editing their layout params directly.
+	 * Makes body_layout fill the screen down to nav_bar (which keeps its own dedicated,
+	 * non-overlapped space), with tool_bar and control_panel floating over the top/bottom of it as
+	 * translucent gradient scrims instead of squeezing it into the strip between them -- the same
+	 * technique fullscreen video playback already used, now applied everywhere (video mode
+	 * included) so every tab renders behind the bars, for a cleaner look with more of the screen
+	 * visible, especially on Android Auto.
 	 * <p>
 	 * This deliberately does not go through {@code ConstraintSet}: cloning one captures every
 	 * child's visibility, alpha, scale and translation as well, and applying it back stomps all of
 	 * them -- it would re-hide the FAB and control panel (both are hidden the moment video mode
 	 * starts, and the control panel is {@code gone} in the layout to begin with), reset a dragged
 	 * FAB and undo the icon-size scaling. Touching only the anchors we actually change also means
-	 * no dynamically added, id-less child can break the switch.
+	 * no dynamically added, id-less child can break the switch. Called once during setup, since the
+	 * arrangement itself never changes afterward.
 	 */
-	private void applyVideoOverlayLayout(boolean videoMode) {
+	private void enableBodyOverlayLayout() {
 		View body = findViewById(R.id.body_layout);
 		View tb = findViewById(R.id.tool_bar);
 		View cp = findViewById(R.id.control_panel);
@@ -784,79 +787,41 @@ public class MainActivityDelegate extends ActivityDelegate
 				|| !(tb.getLayoutParams() instanceof ConstraintLayout.LayoutParams tlp)
 				|| !(cp.getLayoutParams() instanceof ConstraintLayout.LayoutParams clp)) return;
 
-		// Captured from whichever layout variant was actually inflated, before the first switch,
-		// so normal mode is restored exactly as the variant declared it.
-		if (normalAnchors == null) {
-			normalAnchors = new int[]{blp.topToTop, blp.topToBottom, blp.bottomToTop, blp.bottomToBottom,
-					tlp.bottomToTop, tlp.bottomToBottom, clp.topToTop, clp.topToBottom, clp.bottomToTop,
-					clp.bottomToBottom};
-		}
+		blp.topToTop = PARENT_ID;
+		blp.topToBottom = UNSET;
 
-		// Animates the bars/body sliding to their new anchors instead of jumping there instantly, via
-		// UiUtils.flipAnimate's manual FLIP technique -- a TransitionManager.beginDelayedTransition
-		// scene transition was tried here first, but it depends on capturing an uninterrupted
-		// before/after layout pass on the whole root, which updateSecondaryFabVisibility() et al.
-		// (called right after this method, changing sibling FAB visibility on the same root) can
-		// intervene on and silently drop, and did so in practice. This works off an explicit
-		// snapshot instead, so it can't be dropped that way. Guarded on attachedToWindow: the very
-		// first call comes from BodyLayout's constructor, before this has ever been laid out, where
-		// there's nothing meaningful to animate from anyway.
-		boolean animate = body.isAttachedToWindow() && (body.getHeight() > 0);
-		int[] bodyBounds = animate ? UiUtils.captureBounds(body) : null;
-		int[] tbBounds = animate ? UiUtils.captureBounds(tb) : null;
-		int[] cpBounds = animate ? UiUtils.captureBounds(cp) : null;
-
-		if (videoMode) {
-			// body_layout fills the screen, and tool_bar/control_panel float over it pinned to the
-			// screen edges instead of squeezing the video into a strip between them.
-			blp.topToTop = PARENT_ID;
-			blp.topToBottom = UNSET;
-			blp.bottomToBottom = PARENT_ID;
-			blp.bottomToTop = UNSET;
-			tlp.bottomToTop = UNSET;
-			tlp.bottomToBottom = UNSET;
-			clp.topToTop = UNSET;
-			clp.topToBottom = UNSET;
-			clp.bottomToBottom = PARENT_ID;
-			clp.bottomToTop = UNSET;
-			// nav_bar is intentionally left untouched: in the bottom-nav layout its existing
-			// top_toBottomOf(control_panel) constraint still resolves fine (control_panel's bottom
-			// no longer depends on nav_bar at all, so there's no cycle), while in the left/right
-			// side-nav layouts nav_bar is a wholly independent column already anchored top+bottom
-			// to its own parent edges - clearing either side there would collapse its
-			// 0dp/weighted height.
+		if (getPrefs().getNavBarPosPref(this) == NavBarView.POSITION_BOTTOM) {
+			// nav_bar is a bottom bar below control_panel here -- extend behind control_panel but
+			// stop above nav_bar, matching control_panel's own (untouched below) bottomToTop=nav_bar
+			// anchor.
+			blp.bottomToTop = R.id.nav_bar;
+			blp.bottomToBottom = UNSET;
 		} else {
-			int[] a = normalAnchors;
-			blp.topToTop = a[0];
-			blp.topToBottom = a[1];
-			blp.bottomToTop = a[2];
-			blp.bottomToBottom = a[3];
-			tlp.bottomToTop = a[4];
-			tlp.bottomToBottom = a[5];
-			clp.topToTop = a[6];
-			clp.topToBottom = a[7];
-			clp.bottomToTop = a[8];
-			clp.bottomToBottom = a[9];
+			// nav_bar is an independent side column in the left/right layouts, outside this vertical
+			// chain entirely -- control_panel's own bottom anchor (untouched below) is already
+			// parent-bottom here.
+			blp.bottomToTop = UNSET;
+			blp.bottomToBottom = PARENT_ID;
 		}
+
+		tlp.bottomToTop = UNSET;
+		tlp.bottomToBottom = UNSET;
+
+		// control_panel's own bottom anchor (nav_bar or parent, depending on the layout variant) is
+		// already correct as inflated -- only its top needs freeing so it floats off that single
+		// anchor instead of also being pinned to body_layout's old (now much higher) top edge.
+		clp.topToTop = UNSET;
+		clp.topToBottom = UNSET;
 
 		body.setLayoutParams(blp);
 		tb.setLayoutParams(tlp);
 		cp.setLayoutParams(clp);
 
-		if (animate) {
-			UiUtils.flipAnimate(body, bodyBounds, OVERLAY_ANIM_DURATION);
-			UiUtils.flipAnimate(tb, tbBounds, OVERLAY_ANIM_DURATION);
-			UiUtils.flipAnimate(cp, cpBounds, OVERLAY_ANIM_DURATION);
-		}
-
 		ToolBarView tbv = getToolBar();
 		int c = MaterialColors.getColor(getContext(), androidx.appcompat.R.attr.colorPrimary,
 				Color.BLACK);
-		if (videoMode) tbv.setBackground(ControlPanelView.buildScrimGradient(c, false));
-		else tbv.setBackgroundColor(c);
+		tbv.setBackground(ControlPanelView.buildScrimGradient(c, false));
 	}
-
-	private static final long OVERLAY_ANIM_DURATION = 300L;
 
 	private boolean checkMirroringMode(boolean clearFlags) {
 		if (!AUTO) return false;
@@ -1237,6 +1202,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		floatingButton3.setScale(getPrefs().getFabSizePref());
 		updateFabDraggable();
 		controlPanel.bind(getMediaServiceBinder());
+		enableBodyOverlayLayout();
 
 		if (VERSION.SDK_INT >= VERSION_CODES.VANILLA_ICE_CREAM && !a.isCarActivity()) {
 			ViewCompat.setOnApplyWindowInsetsListener(toolBar, (v, insets) -> {
@@ -1322,8 +1288,6 @@ public class MainActivityDelegate extends ActivityDelegate
 			});
 		} else if (prefs.contains(VOICE_CONTROL_SUBST)) {
 			if (voiceCommandHandler != null) voiceCommandHandler.updateWordSubst();
-		} else if (prefs.contains(CLOCK_POS)) {
-			getBody().getVideoView().setClockPos(getPrefs().getClockPosPref());
 		} else if (prefs.contains(LOCALE)) {
 			recreate();
 		} else if (prefs.contains(DIM_ENABLED) || prefs.contains(DIM_OPACITY)
