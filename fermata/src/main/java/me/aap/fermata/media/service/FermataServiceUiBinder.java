@@ -250,6 +250,19 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 		Log.d("UI bound");
 	}
 
+	/**
+	 * Re-syncs the control panel (visibility, progress bar, buttons) to the current playback
+	 * state, the same way {@link #bound()} does on first bind -- for cases where the panel can be
+	 * left showing something stale with no actual state change to naturally trigger a refresh.
+	 * See {@code MainActivityDelegate#onActivityWindowFocusChanged}: an Android Auto display
+	 * takeover doesn't route through any playback-state change of its own, so if the panel ended
+	 * up hidden (or otherwise out of sync) during the interruption, nothing else re-shows it once
+	 * focus returns.
+	 */
+	public void resyncControlPanel() {
+		if (bound) callback.onPlaybackStateChanged(mediaController.getPlaybackState());
+	}
+
 	public void unbind() {
 		assert bound;
 		bound = false;
