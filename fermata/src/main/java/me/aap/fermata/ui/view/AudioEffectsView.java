@@ -84,6 +84,7 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 	public AudioEffectsView(Context context, AttributeSet attrs) {
 		super(context, attrs);
 		setBackgroundColor(Color.TRANSPARENT);
+		MainActivityDelegate.getActivityDelegate(context).onSuccess(a -> a.insetScrollableContent(this));
 	}
 
 	@Nullable

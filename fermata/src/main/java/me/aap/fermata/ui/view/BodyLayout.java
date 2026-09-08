@@ -145,25 +145,34 @@ public class BodyLayout extends SplitLayout
 		// crossfade rather than an instant visibility swap, e.g. entering/leaving fullscreen video
 		// playback. Both ending up visible (BOTH) needs no such swap, so is left to the plain
 		// setVisibility(VISIBLE) calls above.
-		if (mode == Mode.FRAME) {
-			if (animate) crossfade(vv, sr, 300L);
-			else {
-				vv.setVisibility(GONE);
-				// A prior crossfade a caller interrupted (e.g. a second setMode() call arriving
-				// before the 300ms fade finished) can leave sr's alpha short of 1 -- animate().cancel()
-				// stops mid-fade without snapping the value to its target, so it's reset explicitly
-				// here rather than relying on it already being 1.
-				sr.animate().cancel();
-				sr.setAlpha(1f);
-				sr.setVisibility(VISIBLE);
-			}
-		} else if (mode == Mode.VIDEO) {
-			if (animate) crossfade(sr, vv, 300L);
-			else {
-				sr.setVisibility(GONE);
-				vv.animate().cancel();
-				vv.setAlpha(1f);
-				vv.setVisibility(VISIBLE);
+		// Only when the mode is actually changing: setMode() is routinely re-entered with the *same*
+		// mode it's already in (see the FRAGMENT_CHANGED comment above -- exitVideoMode() alone can
+		// trigger this right on top of an already-running transition), and re-running the crossfade
+		// on every one of those redundant calls would restart it mid-fade each time via
+		// animate().cancel(), which can leave a view stuck at a partial alpha if that keeps
+		// happening faster than 300ms apart -- observed as the screen going blank until something
+		// else (e.g. pressing back) happens to reset it.
+		if (oldMode != mode) {
+			if (mode == Mode.FRAME) {
+				if (animate) crossfade(vv, sr, 300L);
+				else {
+					vv.setVisibility(GONE);
+					// A prior crossfade a caller interrupted (e.g. a second setMode() call arriving
+					// before the 300ms fade finished) can leave sr's alpha short of 1 -- animate().cancel()
+					// stops mid-fade without snapping the value to its target, so it's reset explicitly
+					// here rather than relying on it already being 1.
+					sr.animate().cancel();
+					sr.setAlpha(1f);
+					sr.setVisibility(VISIBLE);
+				}
+			} else if (mode == Mode.VIDEO) {
+				if (animate) crossfade(sr, vv, 300L);
+				else {
+					sr.setVisibility(GONE);
+					vv.animate().cancel();
+					vv.setAlpha(1f);
+					vv.setVisibility(VISIBLE);
+				}
 			}
 		}
 

@@ -877,6 +877,46 @@ public class MainActivityDelegate extends ActivityDelegate
 		content.setPadding(content.getPaddingLeft(), top, content.getPaddingRight(), bottom);
 	}
 
+	/**
+	 * Same idea as {@link #insetScrollableContent}, but for a WebView: unlike a RecyclerView or
+	 * ScrollView, a WebView's page content is composited internally by the browser engine rather
+	 * than drawn as clippable child views, so padding + clipToPadding=false does not reliably
+	 * inset it the same way (observed as page content still rendering flush against/under
+	 * tool_bar). A top/bottom margin instead physically shrinks the WebView's own laid-out bounds,
+	 * which is a hard guarantee regardless of how it renders internally -- at the cost of the page
+	 * never actually scrolling behind the bars the way a native list can.
+	 */
+	public void insetWebViewContent(View content) {
+		View.OnLayoutChangeListener sync = (v, left, top, right, bottom, oldLeft, oldTop, oldRight,
+																				oldBottom) -> applyWebViewInsets(content);
+		content.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+			@Override
+			public void onViewAttachedToWindow(@NonNull View v) {
+				if (toolBar != null) toolBar.addOnLayoutChangeListener(sync);
+				if (controlPanel != null) controlPanel.addOnLayoutChangeListener(sync);
+				applyWebViewInsets(content);
+			}
+
+			@Override
+			public void onViewDetachedFromWindow(@NonNull View v) {
+				if (toolBar != null) toolBar.removeOnLayoutChangeListener(sync);
+				if (controlPanel != null) controlPanel.removeOnLayoutChangeListener(sync);
+			}
+		});
+		if (content.isAttachedToWindow()) applyWebViewInsets(content);
+	}
+
+	private void applyWebViewInsets(View content) {
+		if ((toolBar == null) || (controlPanel == null)) return;
+		if (!(content.getLayoutParams() instanceof ViewGroup.MarginLayoutParams mlp)) return;
+		int top = toolBar.getHeight();
+		int bottom = (controlPanel.getVisibility() == VISIBLE) ? controlPanel.getHeight() : 0;
+		if ((mlp.topMargin == top) && (mlp.bottomMargin == bottom)) return;
+		mlp.topMargin = top;
+		mlp.bottomMargin = bottom;
+		content.setLayoutParams(mlp);
+	}
+
 	private boolean checkMirroringMode(boolean clearFlags) {
 		if (!AUTO) return false;
 		var screenOnFlags =
