@@ -708,7 +708,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			// the wrong VideoView or silently falling through to the unrelated generic fullscreen-pref
 			// toggle instead of YouTube's own WebView fullscreen.
 			if ((v != null) && (v != activeVideoView)) {
-				Log.i("setVideoMode(", videoMode, ", ", v, "): reclaiming activeVideoView (was ",
+				Log.d("setVideoMode(", videoMode, ", ", v, "): reclaiming activeVideoView (was ",
 						activeVideoView, ")");
 				activeVideoView = v;
 				MainActivityPrefs p = getPrefs();

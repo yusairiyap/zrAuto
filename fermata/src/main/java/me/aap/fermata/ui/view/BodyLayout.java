@@ -89,6 +89,7 @@ public class BodyLayout extends SplitLayout
 	}
 
 	public void setMode(Mode mode) {
+		Mode oldMode = this.mode;
 		this.mode = mode;
 		Guideline gl = getGuideline();
 		ConstraintLayout.LayoutParams lp = (ConstraintLayout.LayoutParams) gl.getLayoutParams();
@@ -110,7 +111,15 @@ public class BodyLayout extends SplitLayout
 				getSplitHandle().setVisibility(GONE);
 				getSwipeRefresh().setVisibility(VISIBLE);
 				lp.guidePercent = isPortrait() ? 0f : 1f;
-				a.setVideoMode(false, vv);
+				// Only push this to the delegate when BodyLayout's own video mode is actually
+				// changing -- e.g. FRAGMENT_CHANGED re-enters this with FRAME on every tab switch
+				// where the active fragment isn't a MediaLibFragment (including the YouTube tab
+				// itself), and BodyLayout was typically already in FRAME mode the whole time since
+				// a WebView-hosted player never uses this generic VideoView. Calling
+				// setVideoMode(false, vv) unconditionally there would clobber
+				// getActiveVideoView() back to this unused generic VideoView, stomping on
+				// whichever real VideoView (e.g. YouTube's) was legitimately active.
+				if (oldMode != Mode.FRAME) a.setVideoMode(false, vv);
 			}
 			case VIDEO -> {
 				vv.setVisibility(VISIBLE);

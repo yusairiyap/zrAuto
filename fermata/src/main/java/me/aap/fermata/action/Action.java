@@ -63,11 +63,7 @@ public enum Action {
 	FULLSCREEN_TOGGLE(R.string.action_fullscreen_toggle, a(a -> {
 		var vv = a.getActiveVideoView();
 		boolean handled = (vv != null) && vv.toggleNativeFullscreen();
-		// Diagnostic for the "FAB only toggles the status bar, never enters YouTube fullscreen"
-		// report -- pins down whether getActiveVideoView() is stale/null (falls through to the
-		// generic fullscreen-pref toggle below) or the view itself is right but its own
-		// NativeFullscreen handler is missing (toggleNativeFullscreen() returning false).
-		Log.i("FULLSCREEN_TOGGLE: activeVideoView=", vv, ", handled=", handled);
+		Log.d("FULLSCREEN_TOGGLE: activeVideoView=", vv, ", handled=", handled);
 		if (handled) return;
 		a.getPrefs().setFullscreenPref(a, !a.getPrefs().getFullscreenPref(a));
 	})),
