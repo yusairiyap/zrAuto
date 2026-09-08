@@ -142,13 +142,33 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	/** The page-side ad detector (see {@link YoutubeWebView}) just started muting/skipping an ad. */
 	void adShowing() {
 		YoutubeVideoView v = getFullScreenView();
-		if (v != null) v.showAdOverlay();
+		if (v != null) v.showTransitionOverlay(true);
 	}
 
 	/** The page-side ad detector cleared -- either the ad ended or it was never really one. */
 	void adEnded() {
 		YoutubeVideoView v = getFullScreenView();
-		if (v != null) v.hideAdOverlay();
+		if (v != null) v.hideTransitionOverlay();
+	}
+
+	/**
+	 * A next/prev switch was just requested (see {@link #prepare}) -- covers the switch with a
+	 * plain fade (no spinner, unlike {@link #adShowing()}: this is a deliberate transition, not an
+	 * indeterminate wait) until {@link #contentPlaying()} confirms the new video is actually up.
+	 */
+	private void transitioning() {
+		YoutubeVideoView v = getFullScreenView();
+		if (v != null) v.showTransitionOverlay(false);
+	}
+
+	/**
+	 * The page's {@code <video>} element fired a real (non-ad) "playing" event -- see {@link
+	 * YoutubeWebView}'s {@code JS_CONTENT_PLAYING}. Hides whichever of {@link #transitioning()}/
+	 * {@link #adShowing()} is currently covering the screen; a no-op if neither is.
+	 */
+	void contentPlaying() {
+		YoutubeVideoView v = getFullScreenView();
+		if (v != null) v.hideTransitionOverlay();
 	}
 
 	@Nullable
@@ -217,8 +237,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	@Override
 	public void prepare(PlayableItem source) {
 		if (source == next) {
+			transitioning();
 			web.next();
 		} else if (source == prev) {
+			transitioning();
 			web.prev();
 		} else {
 			cb.onEnginePrepared(this);

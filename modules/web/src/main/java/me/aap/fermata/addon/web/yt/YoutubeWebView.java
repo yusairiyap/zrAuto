@@ -2,6 +2,7 @@ package me.aap.fermata.addon.web.yt;
 
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_AD_ENDED;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_AD_SHOWING;
+import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_CONTENT_PLAYING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_ERR;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_EVENT;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_ENDED;
@@ -154,10 +155,16 @@ public class YoutubeWebView extends FermataWebView {
 				"  if (v.getAttribute('FermataAttached') === 'true') return;\n" +
 				"  v.setAttribute('FermataAttached', 'true');\n" +
 				"  v.style.objectFit = '" + scale + "';\n" + debug +
-				"  if ((v.currentTime > 0) && !v.paused && !v.ended) " + JS_EVENT + "(" + JS_VIDEO_PLAYING +
-				", v.currentSrc);\n" +
-				"  v.addEventListener('playing', function(e) {" + JS_EVENT + "(" + JS_VIDEO_PLAYING +
-				", v.currentSrc);});\n" +
+				"  if ((v.currentTime > 0) && !v.paused && !v.ended) {\n" +
+				"    if (typeof fermataAdCheck === 'function') fermataAdCheck();\n" +
+				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
+				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", v.currentSrc);\n" +
+				"  }\n" +
+				"  v.addEventListener('playing', function(e) {\n" +
+				"    if (typeof fermataAdCheck === 'function') fermataAdCheck();\n" +
+				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
+				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", v.currentSrc);\n" +
+				"  });\n" +
 				"  v.addEventListener('pause', function(e) {" + JS_EVENT + "(" + JS_VIDEO_PAUSED +
 				", v.currentSrc);});\n" +
 				"  v.addEventListener('ended', function(e) {" + JS_EVENT + "(" + JS_VIDEO_ENDED +
