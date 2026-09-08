@@ -308,7 +308,12 @@ public class WebBrowserFragment extends MainActivityFragment
 		// a bare FrameLayout -- has nothing to reclaim here.
 		FermataWebView v = getWebView();
 		FermataChromeClient chrome = (v != null) ? v.getWebChromeClient() : null;
-		if ((chrome != null) && (chrome.getFullScreenView() instanceof VideoView vv)) {
+		ViewGroup fsView = (chrome != null) ? chrome.getFullScreenView() : null;
+		// Diagnostic for the "fullscreen FAB stops working after a tab switch" report -- shows
+		// whether this reclaim actually ran and found what it expected to.
+		Log.i("onHiddenChanged(false): reclaiming active video view, v=", v, ", chrome=", chrome,
+				", fullScreenView=", fsView);
+		if (fsView instanceof VideoView vv) {
 			MainActivityDelegate.get(requireContext()).setVideoMode(chrome.isFullScreen(), vv);
 		}
 	}

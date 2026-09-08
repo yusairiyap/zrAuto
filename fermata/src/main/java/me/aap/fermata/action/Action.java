@@ -62,7 +62,13 @@ public enum Action {
 	// the end: inserting one mid-enum silently remaps every existing user's saved bindings.
 	FULLSCREEN_TOGGLE(R.string.action_fullscreen_toggle, a(a -> {
 		var vv = a.getActiveVideoView();
-		if ((vv != null) && vv.toggleNativeFullscreen()) return;
+		boolean handled = (vv != null) && vv.toggleNativeFullscreen();
+		// Diagnostic for the "FAB only toggles the status bar, never enters YouTube fullscreen"
+		// report -- pins down whether getActiveVideoView() is stale/null (falls through to the
+		// generic fullscreen-pref toggle below) or the view itself is right but its own
+		// NativeFullscreen handler is missing (toggleNativeFullscreen() returning false).
+		Log.i("FULLSCREEN_TOGGLE: activeVideoView=", vv, ", handled=", handled);
+		if (handled) return;
 		a.getPrefs().setFullscreenPref(a, !a.getPrefs().getFullscreenPref(a));
 	})),
 	DIM_TOGGLE(R.string.action_dim_toggle, a(a ->
