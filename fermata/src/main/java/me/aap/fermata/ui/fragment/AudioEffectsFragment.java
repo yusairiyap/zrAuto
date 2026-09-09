@@ -214,20 +214,19 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 	}
 
 	/**
-	 * AudioEffectsView (a ScrollView) is given top/bottom padding sized to clear tool_bar's title
-	 * and control_panel's (plus, when bottom-positioned, nav_bar's) expanded state, with
-	 * clipToPadding off so rows already at rest show inset from the bars but can still scroll
-	 * fully into view -- the same padding+clipToPadding mechanism
-	 * {@link MainActivityDelegate#insetScrollableContent} already uses successfully for
-	 * MediaItemListView/the Settings list, rather than a margin on one of this screen's own
-	 * ConstraintLayout children: that requires a matching bottom constraint to have any effect on
-	 * a wrap_content parent at all, which is easy to get subtly wrong and hard to verify without a
-	 * device in hand. With the bars hidden, neither bar is actually there to clear, so collapse
-	 * both to 0 rather than leave dead space filling the now-larger screen. Re-applied every time
-	 * rather than just once since this is only ever shown/hidden, never recreated, so its padding
-	 * wouldn't otherwise get re-touched.
+	 * effects_title's topMargin (see audio_effects.xml) clears tool_bar's title -- a single-anchor
+	 * margin (top-anchored only) that a wrap_content ConstraintLayout parent always accounts for,
+	 * so it needs no special handling beyond collapsing it to 0 while the bars are hidden.
+	 * bottom_spacer's own height, rather than a margin, reserves the matching space below apply_to
+	 * to clear control_panel's (plus, when bottom-positioned, nav_bar's) expanded state: a plain
+	 * View's height always counts toward a wrap_content parent regardless of anchoring, unlike a
+	 * margin on an edge with no constraint on the opposite side (which apply_to's bottom margin
+	 * turned out to be -- see the previous commit here for the whole story), so this can't
+	 * silently no-op the way that did. Re-applied every time rather than just once since this
+	 * fragment's view is only ever shown/hidden, never recreated, so it wouldn't otherwise get
+	 * re-touched.
 	 * <p>
-	 * The bottom padding is computed from {@link ControlPanelView#getPanelHeight()}/
+	 * The bottom space is computed from {@link ControlPanelView#getPanelHeight()}/
 	 * {@link NavBarView#getBarSize()} rather than a flat dimen: both are deterministic,
 	 * preference-scaled values known synchronously once bound, whereas the equivalent
 	 * {@code getHeight()} reads on this screen have proven unreliable (likely stale/zero) -- a
@@ -237,6 +236,10 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 	private void applyBarsHiddenMargins(MainActivityDelegate a) {
 		AudioEffectsView view = getView();
 		if (view == null) return;
+
+		View header = view.findViewById(R.id.effects_title);
+		View spacer = view.findViewById(R.id.bottom_spacer);
+		if ((header == null) || (spacer == null)) return;
 
 		boolean hidden = a.isBarsHidden();
 		int top = hidden ? 0 : getResources().getDimensionPixelSize(R.dimen.audio_effects_top_margin);
@@ -257,8 +260,14 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 			bottom += getResources().getDimensionPixelSize(R.dimen.audio_effects_bottom_buffer);
 		}
 
-		if ((view.getPaddingTop() == top) && (view.getPaddingBottom() == bottom)) return;
-		view.setClipToPadding(false);
-		view.setPadding(view.getPaddingLeft(), top, view.getPaddingRight(), bottom);
+		if (header.getLayoutParams() instanceof ViewGroup.MarginLayoutParams hlp) {
+			hlp.topMargin = top;
+			header.setLayoutParams(hlp);
+		}
+		ViewGroup.LayoutParams slp = spacer.getLayoutParams();
+		if (slp.height != bottom) {
+			slp.height = bottom;
+			spacer.setLayoutParams(slp);
+		}
 	}
 }

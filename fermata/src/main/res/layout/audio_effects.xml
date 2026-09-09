@@ -163,6 +163,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="20dp"
+            android:layout_marginTop="@dimen/audio_effects_top_margin"
             android:paddingStart="8dp"
             android:paddingEnd="8dp"
             android:text="@string/effects"
@@ -239,5 +240,18 @@
 
     </me.aap.utils.ui.view.OutlinedLinearLayout>
     <!-- ======================================================== -->
+
+    <!-- Reserves scrollable space below apply_to to clear control_panel/nav_bar (see
+         AudioEffectsFragment.applyBarsHiddenMargins(), which sets this View's own height). A
+         plain View's height, unlike a margin on an edge with no matching constraint on the
+         opposite side, always counts toward a wrap_content parent's measured size regardless of
+         anchoring -- avoids relying on ConstraintLayout margin/bias behavior that's proven easy
+         to get subtly wrong here and hard to verify without a device in hand. -->
+    <View
+        android:id="@+id/bottom_spacer"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/apply_to" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
