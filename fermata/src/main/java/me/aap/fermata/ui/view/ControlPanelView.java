@@ -100,6 +100,7 @@ public class ControlPanelView extends ConstraintLayout
 	private final int textAppearance;
 	private PlaybackControlPrefs prefs;
 	private HideTimer hideTimer;
+	private int panelHeight;
 	private byte mask;
 	private View gestureSource;
 	private TextView playbackTimer;
@@ -256,7 +257,17 @@ public class ControlPanelView extends ConstraintLayout
 		}
 
 		setHeight(R.id.control_next, buttonSize);
+		panelHeight = panelSize;
 		getLayoutParams().height = panelSize;
+	}
+
+	/**
+	 * The panel's current target height in px, as just computed by {@link #setSize(float)} from
+	 * the control panel size preference -- known synchronously once bound/preferences change,
+	 * unlike {@link #getHeight()} which only reflects reality after a layout pass has actually run.
+	 */
+	public int getPanelHeight() {
+		return panelHeight;
 	}
 
 	private void setIconPadding(int btnPadH, int btnPadV, int cornerPad) {

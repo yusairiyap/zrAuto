@@ -4,10 +4,8 @@
          AudioEffectsFragment's BARS_HIDDEN_CHANGED handling, which collapses this to 0 while
          the bars are hidden since there's then nothing to clear). -->
     <dimen name="audio_effects_top_margin">64dp</dimen>
-    <!-- Clears control_panel's expanded (seek bar + transport buttons) state (see
-         audio_effects.xml's apply_to and AudioEffectsFragment's BARS_HIDDEN_CHANGED handling). -->
-    <dimen name="audio_effects_bottom_margin">240dp</dimen>
-    <!-- Added on top of audio_effects_bottom_margin when nav_bar is also positioned at the
-         bottom, sitting below control_panel and needing its own extra clearance. -->
-    <dimen name="audio_effects_bottom_navbar_margin">90dp</dimen>
+    <!-- Added on top of control_panel's (and, when bottom-positioned, nav_bar's) computed size --
+         see AudioEffectsFragment.applyBarsHiddenMargins() -- to cover rounding and the panel's own
+         internal padding rather than clipping a band again over a few missed px. -->
+    <dimen name="audio_effects_bottom_buffer">24dp</dimen>
 </resources>

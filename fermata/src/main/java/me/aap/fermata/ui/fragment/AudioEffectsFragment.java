@@ -19,6 +19,7 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.fermata.ui.view.AudioEffectsView;
+import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.ui.view.NavBarView;
 
@@ -214,10 +215,18 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 
 	/**
 	 * effects_title's/apply_to's top/bottom margins (see audio_effects.xml) are sized to clear
-	 * tool_bar's title and control_panel's expanded state -- with the bars hidden, neither is
-	 * actually there to clear, so collapse both margins to 0 rather than leave dead space filling
-	 * the now-larger screen. Re-applied every time rather than just once since this is only ever
-	 * shown/hidden, never recreated, so its views' margins wouldn't otherwise get re-touched.
+	 * tool_bar's title and control_panel's (plus, when bottom-positioned, nav_bar's) expanded
+	 * state -- with the bars hidden, none of that is actually there to clear, so collapse both
+	 * margins to 0 rather than leave dead space filling the now-larger screen. Re-applied every
+	 * time rather than just once since this is only ever shown/hidden, never recreated, so its
+	 * views' margins wouldn't otherwise get re-touched.
+	 * <p>
+	 * The bottom margin is computed from {@link ControlPanelView#getPanelHeight()}/
+	 * {@link NavBarView#getBarSize()} rather than a flat dimen: both are deterministic,
+	 * preference-scaled values known synchronously once bound, whereas the equivalent
+	 * {@code getHeight()} reads on this screen have proven unreliable (likely stale/zero) --
+	 * a flat dp guess also silently falls short whenever the user raises the control panel size
+	 * preference above its default.
 	 */
 	private void applyBarsHiddenMargins(MainActivityDelegate a) {
 		AudioEffectsView view = getView();
@@ -232,13 +241,18 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 		int bottom = 0;
 
 		if (!hidden) {
-			bottom = getResources().getDimensionPixelSize(R.dimen.audio_effects_bottom_margin);
+			ControlPanelView cp = a.getControlPanel();
+			bottom = (cp == null) ? 0 : cp.getPanelHeight();
 			// control_panel sits above nav_bar rather than the other way around when nav_bar is
-			// bottom-positioned, so clearing control_panel alone (the margin above) isn't enough --
-			// nav_bar needs its own extra clearance on top of that.
+			// bottom-positioned, so clearing control_panel alone isn't enough -- nav_bar needs its
+			// own extra clearance stacked on top of that.
 			if (a.getPrefs().getNavBarPosPref(a) == NavBarView.POSITION_BOTTOM) {
-				bottom += getResources().getDimensionPixelSize(R.dimen.audio_effects_bottom_navbar_margin);
+				NavBarView nb = a.getNavBar();
+				if (nb != null) bottom += nb.getBarSize();
 			}
+			// Safety buffer: a small margin of error around the computed sizes (rounding, the
+			// panel's own internal padding) is cheaper than clipping a band again.
+			bottom += getResources().getDimensionPixelSize(R.dimen.audio_effects_bottom_buffer);
 		}
 
 		if (header.getLayoutParams() instanceof ViewGroup.MarginLayoutParams hlp) {

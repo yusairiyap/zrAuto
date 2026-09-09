@@ -52,6 +52,7 @@ public class NavBarView extends LinearLayoutCompat implements ActivityListener {
 	private final int bgColor;
 	private int position;
 	private Mediator mediator;
+	private int barSize;
 
 	public NavBarView(@NonNull Context context, @Nullable AttributeSet attrs) {
 		this(context, attrs, com.google.android.material.R.attr.bottomNavigationStyle);
@@ -91,6 +92,7 @@ public class NavBarView extends LinearLayoutCompat implements ActivityListener {
 		int s = (int) (size * scale);
 		ViewGroup.LayoutParams lp = getLayoutParams();
 		if (lp == null) lp = new LinearLayoutCompat.LayoutParams(0, 0);
+		barSize = s;
 
 		if (getPosition() == POSITION_BOTTOM) {
 			float ts = getTextAppearanceSize(getContext(), textAppearance) * scale;
@@ -105,6 +107,16 @@ public class NavBarView extends LinearLayoutCompat implements ActivityListener {
 		}
 
 		setLayoutParams(lp);
+	}
+
+	/**
+	 * The bar's current target thickness in px (height when bottom-positioned, width otherwise),
+	 * as just computed by {@link #setSize(float)} from the nav bar size preference -- known
+	 * synchronously once bound/preferences change, unlike {@link #getHeight()}/{@link #getWidth()}
+	 * which only reflect reality after a layout pass has actually run.
+	 */
+	public int getBarSize() {
+		return barSize;
 	}
 
 	public void setIconScale(float scale) {
@@ -146,6 +158,7 @@ public class NavBarView extends LinearLayoutCompat implements ActivityListener {
 		float scale = f.getActivityDelegate().getNavBarSize();
 
 		if (scale == 1F) {
+			barSize = size;
 			if (getPosition() == POSITION_BOTTOM) getLayoutParams().height = size;
 			else getLayoutParams().width = size;
 		} else {
