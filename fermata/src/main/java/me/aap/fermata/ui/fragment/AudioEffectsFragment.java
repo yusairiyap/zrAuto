@@ -115,6 +115,13 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 
 					if (effects != null) {
 						view.init(cb, effects, pi);
+						// This screen is only ever shown by re-showing a cached fragment/view rather than
+						// recreating it (see ActivityDelegate.showFragment()'s hide()/show() transaction),
+						// so the view's own attach-time inset registration only ever ran once, the very
+						// first time it was shown -- posted (rather than called inline) so it runs after
+						// the layout pass init()'s inflate() just triggered actually settles the view into
+						// its real bounds, instead of racing it.
+						view.post(() -> a.refreshContentInset(view));
 						return;
 					}
 				}

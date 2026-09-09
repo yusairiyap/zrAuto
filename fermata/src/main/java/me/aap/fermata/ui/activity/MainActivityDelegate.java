@@ -908,6 +908,19 @@ public class MainActivityDelegate extends ActivityDelegate
 		}
 	}
 
+	/**
+	 * Forces an immediate re-check of {@code content}'s inset (see {@link #insetScrollableContent}).
+	 * The attach/layout listeners set up there, plus {@link #refreshContentInsets}'s handful of
+	 * extra trigger points, are expected to keep every registered content view in sync on their
+	 * own -- this is for a caller that knows better than any of those listeners exactly when its
+	 * content has settled into its real, final on-screen position (e.g. right as its screen becomes
+	 * visible again), as a targeted, guaranteed-correct alternative to hoping a passive listener
+	 * fires at the right time.
+	 */
+	public void refreshContentInset(ViewGroup content) {
+		applyContentInsets(content);
+	}
+
 	private final int[] insetLoc1 = new int[2];
 	private final int[] insetLoc2 = new int[2];
 
