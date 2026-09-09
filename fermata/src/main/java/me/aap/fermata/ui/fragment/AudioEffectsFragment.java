@@ -43,7 +43,7 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 		super.onCreate(savedInstanceState);
 		getMainActivity().onSuccess(a -> {
 			FermataServiceUiBinder b = a.getMediaServiceBinder();
-			a.addBroadcastListener(this, ACTIVITY_FINISH | ACTIVITY_DESTROY);
+			a.addBroadcastListener(this, ACTIVITY_FINISH | ACTIVITY_DESTROY | BARS_HIDDEN_CHANGED);
 			b.getMediaSessionCallback().addBroadcastListener(this);
 		});
 	}
@@ -115,13 +115,10 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 
 					if (effects != null) {
 						view.init(cb, effects, pi);
-						// This screen is only ever shown by re-showing a cached fragment/view rather than
-						// recreating it (see ActivityDelegate.showFragment()'s hide()/show() transaction),
-						// so the view's own attach-time inset registration only ever ran once, the very
-						// first time it was shown -- posted (rather than called inline) so it runs after
-						// the layout pass init()'s inflate() just triggered actually settles the view into
-						// its real bounds, instead of racing it.
-						view.post(() -> a.refreshContentInset(view));
+						// Bars may already be hidden from before this screen was ever opened (that state
+						// is app-wide and outlives this fragment being shown/hidden) -- sync once here
+						// rather than only reacting to BARS_HIDDEN_CHANGED, which only fires on a change.
+						applyBarsHiddenMargins(a);
 						return;
 					}
 				}
@@ -209,6 +206,37 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 			applyAndCleanup(a);
 		} else if (e == ACTIVITY_DESTROY) {
 			removeListeners(a);
+		} else if (e == BARS_HIDDEN_CHANGED) {
+			applyBarsHiddenMargins(a);
+		}
+	}
+
+	/**
+	 * effects_title's/apply_to's top/bottom margins (see audio_effects.xml) are sized to clear
+	 * tool_bar's title and control_panel's expanded state -- with the bars hidden, neither is
+	 * actually there to clear, so collapse both margins to 0 rather than leave dead space filling
+	 * the now-larger screen. Re-applied every time rather than just once since this is only ever
+	 * shown/hidden, never recreated, so its views' margins wouldn't otherwise get re-touched.
+	 */
+	private void applyBarsHiddenMargins(MainActivityDelegate a) {
+		AudioEffectsView view = getView();
+		if (view == null) return;
+
+		View header = view.findViewById(R.id.effects_title);
+		View applyTo = view.findViewById(R.id.apply_to);
+		if ((header == null) || (applyTo == null)) return;
+
+		boolean hidden = a.isBarsHidden();
+		int top = hidden ? 0 : getResources().getDimensionPixelSize(R.dimen.audio_effects_top_margin);
+		int bottom = hidden ? 0 : getResources().getDimensionPixelSize(R.dimen.audio_effects_bottom_margin);
+
+		if (header.getLayoutParams() instanceof ViewGroup.MarginLayoutParams hlp) {
+			hlp.topMargin = top;
+			header.setLayoutParams(hlp);
+		}
+		if (applyTo.getLayoutParams() instanceof ViewGroup.MarginLayoutParams alp) {
+			alp.bottomMargin = bottom;
+			applyTo.setLayoutParams(alp);
 		}
 	}
 }

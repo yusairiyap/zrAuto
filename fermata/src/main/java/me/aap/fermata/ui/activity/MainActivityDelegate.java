@@ -714,6 +714,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			// visible, but insetWebViewTop()'s margin is still sized off that height, so without this
 			// a WebView never reclaims that reserved top space when the user hides the bars.
 			refreshContentInsets();
+			fireBroadcastEvent(MainActivityListener.BARS_HIDDEN_CHANGED);
 		});
 	}
 
@@ -906,19 +907,6 @@ public class MainActivityDelegate extends ActivityDelegate
 			paddingInsetContent.add(content);
 			applyContentInsets(content);
 		}
-	}
-
-	/**
-	 * Forces an immediate re-check of {@code content}'s inset (see {@link #insetScrollableContent}).
-	 * The attach/layout listeners set up there, plus {@link #refreshContentInsets}'s handful of
-	 * extra trigger points, are expected to keep every registered content view in sync on their
-	 * own -- this is for a caller that knows better than any of those listeners exactly when its
-	 * content has settled into its real, final on-screen position (e.g. right as its screen becomes
-	 * visible again), as a targeted, guaranteed-correct alternative to hoping a passive listener
-	 * fires at the right time.
-	 */
-	public void refreshContentInset(ViewGroup content) {
-		applyContentInsets(content);
 	}
 
 	private final int[] insetLoc1 = new int[2];
