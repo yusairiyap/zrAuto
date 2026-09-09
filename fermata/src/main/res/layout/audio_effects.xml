@@ -197,9 +197,11 @@
         android:orientation="vertical"
         app:boxStrokeWidth="0dp"
         app:cornerRadius="?attr/cornerRadius"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/equalizer_header">
+        app:layout_constraintTop_toBottomOf="@id/equalizer_header"
+        app:layout_constraintVertical_bias="0">
 
         <me.aap.utils.ui.view.ScalableTextView
             android:id="@+id/apply_to_title"
