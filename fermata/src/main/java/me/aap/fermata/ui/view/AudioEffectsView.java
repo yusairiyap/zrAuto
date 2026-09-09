@@ -22,6 +22,7 @@ import android.util.AttributeSet;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.widget.CompoundButton;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -56,6 +57,7 @@ import me.aap.utils.pref.PreferenceView;
 import me.aap.utils.pref.PreferenceView.BooleanOpts;
 import me.aap.utils.pref.PreferenceView.ListOpts;
 import me.aap.utils.ui.UiUtils;
+import me.aap.utils.ui.view.ToolBarView;
 
 /**
  * @author Andrey Pavlenko
@@ -76,6 +78,22 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 	// the same way the other effects' strengths are read directly off their AudioEffect objects.
 	private int reverbLevel;
 
+	// This screen is shown/hidden rather than recreated (see ActivityDelegate.showFragment()'s
+	// hide()/show() fragment transaction), so it's never detached from the window between opens --
+	// insetScrollableContent()'s attach/layout-driven padding sync (which this still also uses, for
+	// the bottom inset) has repeatedly failed to keep the top inset correct here specifically across
+	// several attempts, for a reason that hasn't been pinned down. A pre-draw listener sidesteps
+	// that entirely: it re-checks tool_bar's actual current height against this view's own padding
+	// right before every single frame this screen draws, for as long as it's actually attached, so
+	// there's no discrete event whose timing can be missed.
+	private final ViewTreeObserver.OnPreDrawListener topInsetSync = () -> {
+		ToolBarView tb = MainActivityDelegate.get(getContext()).getToolBar();
+		if ((tb != null) && (getPaddingTop() != tb.getHeight())) {
+			setPadding(getPaddingLeft(), tb.getHeight(), getPaddingRight(), getPaddingBottom());
+		}
+		return true;
+	};
+
 	public AudioEffectsView(Context context) {
 		this(context, null);
 		setLayoutParams(new ScrollView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
@@ -85,6 +103,18 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 		super(context, attrs);
 		setBackgroundColor(Color.TRANSPARENT);
 		MainActivityDelegate.getActivityDelegate(context).onSuccess(a -> a.insetScrollableContent(this));
+	}
+
+	@Override
+	protected void onAttachedToWindow() {
+		super.onAttachedToWindow();
+		getViewTreeObserver().addOnPreDrawListener(topInsetSync);
+	}
+
+	@Override
+	protected void onDetachedFromWindow() {
+		super.onDetachedFromWindow();
+		getViewTreeObserver().removeOnPreDrawListener(topInsetSync);
 	}
 
 	@Nullable
