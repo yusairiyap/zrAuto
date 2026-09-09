@@ -22,7 +22,6 @@ import android.util.AttributeSet;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.ViewTreeObserver;
 import android.widget.CompoundButton;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -78,22 +77,6 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 	// the same way the other effects' strengths are read directly off their AudioEffect objects.
 	private int reverbLevel;
 
-	// This screen is shown/hidden rather than recreated (see ActivityDelegate.showFragment()'s
-	// hide()/show() fragment transaction), so it's never detached from the window between opens --
-	// insetScrollableContent()'s attach/layout-driven padding sync (which this still also uses, for
-	// the bottom inset) has repeatedly failed to keep the top inset correct here specifically across
-	// several attempts, for a reason that hasn't been pinned down. A pre-draw listener sidesteps
-	// that entirely: it re-checks tool_bar's actual current height against this view's own padding
-	// right before every single frame this screen draws, for as long as it's actually attached, so
-	// there's no discrete event whose timing can be missed.
-	private final ViewTreeObserver.OnPreDrawListener topInsetSync = () -> {
-		ToolBarView tb = MainActivityDelegate.get(getContext()).getToolBar();
-		if ((tb != null) && (getPaddingTop() != tb.getHeight())) {
-			setPadding(getPaddingLeft(), tb.getHeight(), getPaddingRight(), getPaddingBottom());
-		}
-		return true;
-	};
-
 	public AudioEffectsView(Context context) {
 		this(context, null);
 		setLayoutParams(new ScrollView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
@@ -105,16 +88,22 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 		MainActivityDelegate.getActivityDelegate(context).onSuccess(a -> a.insetScrollableContent(this));
 	}
 
-	@Override
-	protected void onAttachedToWindow() {
-		super.onAttachedToWindow();
-		getViewTreeObserver().addOnPreDrawListener(topInsetSync);
-	}
-
-	@Override
-	protected void onDetachedFromWindow() {
-		super.onDetachedFromWindow();
-		getViewTreeObserver().removeOnPreDrawListener(topInsetSync);
+	/**
+	 * Pushes the card's own top edge down by tool_bar's current height directly, as a top margin on
+	 * the card itself rather than top padding on this whole ScrollView -- several attempts at the
+	 * latter (padding kept in sync by insetScrollableContent()'s listeners, then by a per-frame
+	 * check) all failed to actually clear "Effects" (effects_title, pinned to the very top of the
+	 * card) out from under tool_bar's title on-device, for a reason that was never pinned down. Set
+	 * once here, when the card's real content is known to exist, rather than chased reactively.
+	 */
+	private void applyHeaderTopMargin() {
+		View header = findViewById(R.id.equalizer_header);
+		if (header == null) return;
+		if (!(header.getLayoutParams() instanceof ViewGroup.MarginLayoutParams mlp)) return;
+		ToolBarView tb = MainActivityDelegate.get(getContext()).getToolBar();
+		if (tb == null) return;
+		mlp.topMargin = tb.getHeight();
+		header.setLayoutParams(mlp);
 	}
 
 	@Nullable
@@ -129,6 +118,7 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 		this.store.addBroadcastListener(this);
 		this.ctrlPrefs = cb.getPlaybackControlPrefs();
 		inflate(getContext(), R.layout.audio_effects, this);
+		applyHeaderTopMargin();
 
 		Equalizer eq = effects.getEqualizer();
 		Virtualizer virt = effects.getVirtualizer();
