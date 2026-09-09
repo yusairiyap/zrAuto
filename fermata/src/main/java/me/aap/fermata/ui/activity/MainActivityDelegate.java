@@ -708,6 +708,12 @@ public class MainActivityDelegate extends ActivityDelegate
 			ToolBarView tb = getToolBar();
 			if (tb.getMediator() != ToolBarView.Mediator.Invisible.instance) tb.setVisibility(visibility);
 			getNavBar().setVisibility(visibility);
+			// tool_bar keeps its actual layout height above even when its mediator is Invisible (e.g.
+			// while browsing a WebView, which draws its own navigation) -- its own visibility is
+			// deliberately left untouched just above since toggling it wouldn't change anything
+			// visible, but insetWebViewTop()'s margin is still sized off that height, so without this
+			// a WebView never reclaims that reserved top space when the user hides the bars.
+			refreshContentInsets();
 		});
 	}
 
@@ -963,7 +969,11 @@ public class MainActivityDelegate extends ActivityDelegate
 	private void applyWebViewTopInset(View content) {
 		if (toolBar == null) return;
 		if (!(content.getLayoutParams() instanceof ViewGroup.MarginLayoutParams mlp)) return;
-		int top = toolBar.getHeight();
+		// tool_bar's own visibility/height doesn't actually change while its mediator is Invisible
+		// (see setBarsHidden()) since a WebView draws its own navigation and toggling an invisible
+		// bar's visibility wouldn't change anything -- but the user still expects "hide bars" to
+		// reclaim that reserved space for the page, so treat it as zero-height ourselves here.
+		int top = isBarsHidden() ? 0 : toolBar.getHeight();
 		if (mlp.topMargin == top) return;
 		mlp.topMargin = top;
 		content.setLayoutParams(mlp);
