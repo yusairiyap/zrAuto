@@ -164,6 +164,7 @@ import me.aap.utils.ui.activity.ActivityDelegate;
 import me.aap.utils.ui.activity.AppActivity;
 import me.aap.utils.ui.fragment.ActivityFragment;
 import me.aap.utils.ui.menu.OverlayMenu;
+import me.aap.utils.ui.view.ContentInsetConsumer;
 import me.aap.utils.ui.view.DialogBuilder;
 import me.aap.utils.ui.view.FloatingButton;
 import me.aap.utils.ui.view.NavBarView;
@@ -902,9 +903,11 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * ScrollView, a WebView's page content is composited internally by the browser engine rather
 	 * than drawn as clippable child views, so padding + clipToPadding=false does not reliably
 	 * inset it the same way (observed as page content still rendering flush against/under
-	 * tool_bar). A top/bottom margin instead physically shrinks the WebView's own laid-out bounds,
-	 * which is a hard guarantee regardless of how it renders internally -- at the cost of the page
-	 * never actually scrolling behind the bars the way a native list can.
+	 * tool_bar). {@code content} implementing {@link ContentInsetConsumer} (e.g. a WebView that
+	 * pushes the inset into its own page content instead) is handed the raw top/bottom heights
+	 * directly and left full-bleed; anything else gets a physical top/bottom margin instead, which
+	 * shrinks its laid-out bounds -- a hard guarantee regardless of how it renders internally, at
+	 * the cost of the page never actually scrolling behind the bars the way a native list can.
 	 */
 	public void insetWebViewContent(View content) {
 		View.OnLayoutChangeListener sync = (v, left, top, right, bottom, oldLeft, oldTop, oldRight,
@@ -925,10 +928,14 @@ public class MainActivityDelegate extends ActivityDelegate
 				marginInsetContent.remove(content);
 			}
 		});
-		if (content.isAttachedToWindow()) {
-			marginInsetContent.add(content);
-			applyWebViewInsets(content);
-		}
+		marginInsetContent.add(content);
+		// Applied right away regardless of whether `content` itself is attached to the window yet --
+		// a ContentInsetConsumer (see applyWebViewInsets()) only needs tool_bar/control_panel's
+		// current height, already known well before any tab/fragment gets a chance to exist, to push
+		// the right inset into its very first page before that page's first paint; waiting for
+		// `content` to attach first (a WebView's own attachment can lag behind a synchronous
+		// loadUrl() call made right after construction) would let that first load render unstyled.
+		applyWebViewInsets(content);
 	}
 
 	/**
@@ -947,9 +954,18 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	private void applyWebViewInsets(View content) {
 		if ((toolBar == null) || (controlPanel == null)) return;
-		if (!(content.getLayoutParams() instanceof ViewGroup.MarginLayoutParams mlp)) return;
 		int top = toolBar.getHeight();
 		int bottom = (controlPanel.getVisibility() == VISIBLE) ? controlPanel.getHeight() : 0;
+
+		// A ContentInsetConsumer (e.g. YoutubeWebView) handles the inset itself -- typically by
+		// pushing it into the page's own content -- and must keep its bounds full-bleed for that to
+		// have anything to show through, so skip the margin path entirely for it.
+		if (content instanceof ContentInsetConsumer cic) {
+			cic.setContentInset(top, bottom);
+			return;
+		}
+
+		if (!(content.getLayoutParams() instanceof ViewGroup.MarginLayoutParams mlp)) return;
 		if ((mlp.topMargin == top) && (mlp.bottomMargin == bottom)) return;
 		mlp.topMargin = top;
 		mlp.bottomMargin = bottom;

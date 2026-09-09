@@ -15,7 +15,12 @@ import android.content.Context;
 import android.util.AttributeSet;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.webkit.ScriptHandler;
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
 
+import java.util.Collections;
 import java.util.List;
 
 import me.aap.fermata.BuildConfig;
@@ -31,12 +36,13 @@ import me.aap.utils.log.Log;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.text.TextUtils;
 import me.aap.utils.ui.fragment.ActivityFragment;
+import me.aap.utils.ui.view.ContentInsetConsumer;
 import me.aap.utils.ui.view.ToolBarView;
 
 /**
  * @author Andrey Pavlenko
  */
-public class YoutubeWebView extends FermataWebView {
+public class YoutubeWebView extends FermataWebView implements ContentInsetConsumer {
 	private static final String CLEAR_HIGHEST_VIDEO_QUALITY_JS =
 			"function clearFermataQ() {\n" +
 					"  if (!window.__fermataQ) return;\n" +
@@ -47,6 +53,10 @@ public class YoutubeWebView extends FermataWebView {
 					"  window.__fermataQ = null;\n" +
 					"}\n";
 	private YoutubeJsInterface js;
+	private int insetTop;
+	private int insetBottom;
+	@Nullable
+	private ScriptHandler insetScriptHandler;
 
 	public YoutubeWebView(Context context) {
 		super(context);
@@ -58,6 +68,55 @@ public class YoutubeWebView extends FermataWebView {
 
 	public YoutubeWebView(Context context, AttributeSet attrs, int defStyle) {
 		super(context, attrs, defStyle);
+	}
+
+	/**
+	 * Unlike the generic margin-based inset the base class defaults to, YouTube's own page is
+	 * pushed down by CSS instead of shrinking this WebView's own bounds, so the page keeps
+	 * scrolling its content behind tool_bar/control_panel's translucent gradient the same way a
+	 * native list does -- at the cost of tracking a live, third-party page layout we don't control.
+	 */
+	@Override
+	public void setContentInset(int top, int bottom) {
+		if ((top == insetTop) && (bottom == insetBottom)) return;
+		insetTop = top;
+		insetBottom = bottom;
+		applyContentInsetStyle();
+	}
+
+	/**
+	 * Registers a document-start script (runs before the page's own first paint, on every
+	 * navigation) that pushes the current top/bottom inset into the page as CSS padding, so there's
+	 * no flash of unstyled/overlapping content before it takes effect the way injecting from
+	 * {@code onPageFinished} would produce. Also patched into whatever page is currently loaded so
+	 * an already-open video updates live, without a reload, if tool_bar/control_panel's size
+	 * changes while it's open.
+	 */
+	private void applyContentInsetStyle() {
+		float density = getResources().getDisplayMetrics().density;
+		int top = Math.round(insetTop / density);
+		int bottom = Math.round(insetBottom / density);
+		String js = "(function() {\n" +
+				"  var s = document.getElementById('fermataInsetStyle');\n" +
+				"  if (!s) {\n" +
+				"    s = document.createElement('style');\n" +
+				"    s.id = 'fermataInsetStyle';\n" +
+				"    (document.head || document.documentElement).appendChild(s);\n" +
+				"  }\n" +
+				"  s.textContent = 'html{scroll-padding-top:" + top + "px;scroll-padding-bottom:" +
+				bottom + "px;}body{padding-top:" + top + "px !important;padding-bottom:" + bottom +
+				"px !important;box-sizing:border-box;}';\n" +
+				"})();";
+
+		if (insetScriptHandler != null) {
+			insetScriptHandler.remove();
+			insetScriptHandler = null;
+		}
+		if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+			insetScriptHandler = WebViewCompat.addDocumentStartJavaScript(this, js,
+					Collections.singleton("*"));
+		}
+		evaluateJavascript(js, null);
 	}
 
 	@Override
