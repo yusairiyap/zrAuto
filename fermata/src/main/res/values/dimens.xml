@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Clears tool_bar's title -- see audio_effects.xml's effects_title and
+    <!-- Clears tool_bar's title (see audio_effects.xml's effects_title and
          AudioEffectsFragment's BARS_HIDDEN_CHANGED handling, which collapses this to 0 while
-         the bars are hidden since there's then nothing to clear. -->
+         the bars are hidden since there's then nothing to clear). -->
     <dimen name="audio_effects_top_margin">64dp</dimen>
-    <!-- Clears control_panel's expanded (seek bar + transport buttons) state -- see
-         audio_effects.xml's apply_to and AudioEffectsFragment's BARS_HIDDEN_CHANGED handling. -->
+    <!-- Clears control_panel's expanded (seek bar + transport buttons) state (see
+         audio_effects.xml's apply_to and AudioEffectsFragment's BARS_HIDDEN_CHANGED handling). -->
     <dimen name="audio_effects_bottom_margin">240dp</dimen>
 </resources>
