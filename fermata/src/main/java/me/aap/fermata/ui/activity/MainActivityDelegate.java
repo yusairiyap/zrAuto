@@ -164,7 +164,6 @@ import me.aap.utils.ui.activity.ActivityDelegate;
 import me.aap.utils.ui.activity.AppActivity;
 import me.aap.utils.ui.fragment.ActivityFragment;
 import me.aap.utils.ui.menu.OverlayMenu;
-import me.aap.utils.ui.view.ContentInsetConsumer;
 import me.aap.utils.ui.view.DialogBuilder;
 import me.aap.utils.ui.view.FloatingButton;
 import me.aap.utils.ui.view.NavBarView;
@@ -192,16 +191,15 @@ public class MainActivityDelegate extends ActivityDelegate
 	private TertiaryFloatingButton floatingButton3;
 	private ContentLoadingProgressBar progressBar;
 	private FutureSupplier<?> contentLoading;
-	// Belt-and-suspenders re-sync for insetScrollableContent()/insetWebViewContent(): their own
-	// attach/layout listeners cover the common case, but a tab restored by the fragment manager
-	// while switching themes/nav-bar-position (both go through a full Activity.recreate()) can end
-	// up attached to the window before tool_bar/control_panel finish their own post-recreate layout
-	// pass, or in an ordering that has the sync listener miss the one layout change it needed --
-	// leaving the content's insets stuck at their initial (usually zero) value. Weak sets so
-	// dropping a content view (fragment/tab destroyed) doesn't pin it in memory; entries are added
-	// only while the view is actually attached, so a stale/detached view here is harmless to visit.
+	// Belt-and-suspenders re-sync for insetScrollableContent(): its own attach/layout listeners
+	// cover the common case, but a tab restored by the fragment manager while switching
+	// themes/nav-bar-position (both go through a full Activity.recreate()) can end up attached to
+	// the window before tool_bar/control_panel finish their own post-recreate layout pass, or in an
+	// ordering that has the sync listener miss the one layout change it needed -- leaving the
+	// content's insets stuck at their initial (usually zero) value. A weak set so dropping a content
+	// view (fragment/tab destroyed) doesn't pin it in memory; entries are added only while the view
+	// is actually attached, so a stale/detached view here is harmless to visit.
 	private final Set<ViewGroup> paddingInsetContent = Collections.newSetFromMap(new WeakHashMap<>());
-	private final Set<View> marginInsetContent = Collections.newSetFromMap(new WeakHashMap<>());
 	private boolean barsHidden;
 	private boolean videoMode;
 	private int brightness = 255;
@@ -855,14 +853,20 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	/**
-	 * Lets a tab's own scrollable content (a RecyclerView-based list, a WebView) keep scrolling
-	 * all the way to its own first/last row underneath tool_bar/control_panel's translucent
-	 * gradients, instead of either being cut off by them or permanently inset away from them --
-	 * gives {@code content} top/bottom padding matching their current heights with clipToPadding
-	 * off, so rows already at rest show inset from the bars but can still scroll fully into view.
-	 * Kept in sync with tool_bar/control_panel's actual size for as long as {@code content} stays
-	 * attached to the window; each caller (e.g. MediaItemListView, a browsing WebView) is expected
-	 * to call this once, typically from its own constructor.
+	 * Lets a tab's own scrollable content (currently only a RecyclerView-based list or ScrollView --
+	 * a WebView doesn't reliably honor padding + clipToPadding for scroll-into-padding, so it's left
+	 * full-bleed with no inset at all instead) keep scrolling all the way to its own first/last row
+	 * underneath tool_bar/control_panel's translucent gradients, instead of either being cut off by
+	 * them or permanently inset away from them -- gives {@code content} top/bottom padding sized to
+	 * however much of tool_bar/control_panel actually overlaps {@code content}'s own on-screen
+	 * bounds, with clipToPadding off, so rows already at rest show inset from the bars but can still
+	 * scroll fully into view. Computed from actual screen position rather than assuming
+	 * {@code content} always starts at the true top/bottom of the screen: BodyLayout.Mode.BOTH
+	 * (a fragment shown alongside a still-playing video, e.g. Audio Effects) sits {@code content}
+	 * below the video pane instead, where tool_bar may not reach it at all. Kept in sync with
+	 * tool_bar/control_panel's actual size and position for as long as {@code content} stays
+	 * attached to the window; each caller (e.g. MediaItemListView, the Settings list) is expected to
+	 * call this once, typically from its own constructor.
 	 */
 	public void insetScrollableContent(ViewGroup content) {
 		content.setClipToPadding(false);
@@ -890,86 +894,42 @@ public class MainActivityDelegate extends ActivityDelegate
 		}
 	}
 
+	private final int[] insetLoc1 = new int[2];
+	private final int[] insetLoc2 = new int[2];
+
 	private void applyContentInsets(ViewGroup content) {
-		if ((toolBar == null) || (controlPanel == null)) return;
-		int top = toolBar.getHeight();
-		int bottom = (controlPanel.getVisibility() == VISIBLE) ? controlPanel.getHeight() : 0;
+		if ((toolBar == null) || (controlPanel == null) || !content.isAttachedToWindow()) return;
+
+		content.getLocationOnScreen(insetLoc1);
+		int contentTop = insetLoc1[1];
+		int contentBottom = contentTop + content.getHeight();
+
+		toolBar.getLocationOnScreen(insetLoc1);
+		int top = Math.max(0, (insetLoc1[1] + toolBar.getHeight()) - contentTop);
+
+		int bottom;
+		if (controlPanel.getVisibility() == VISIBLE) {
+			controlPanel.getLocationOnScreen(insetLoc2);
+			bottom = Math.max(0, contentBottom - insetLoc2[1]);
+		} else {
+			bottom = 0;
+		}
+
 		if ((content.getPaddingTop() == top) && (content.getPaddingBottom() == bottom)) return;
 		content.setPadding(content.getPaddingLeft(), top, content.getPaddingRight(), bottom);
 	}
 
 	/**
-	 * Same idea as {@link #insetScrollableContent}, but for a WebView: unlike a RecyclerView or
-	 * ScrollView, a WebView's page content is composited internally by the browser engine rather
-	 * than drawn as clippable child views, so padding + clipToPadding=false does not reliably
-	 * inset it the same way (observed as page content still rendering flush against/under
-	 * tool_bar). {@code content} implementing {@link ContentInsetConsumer} (e.g. a WebView that
-	 * pushes the inset into its own page content instead) is handed the raw top/bottom heights
-	 * directly and left full-bleed; anything else gets a physical top/bottom margin instead, which
-	 * shrinks its laid-out bounds -- a hard guarantee regardless of how it renders internally, at
-	 * the cost of the page never actually scrolling behind the bars the way a native list can.
-	 */
-	public void insetWebViewContent(View content) {
-		View.OnLayoutChangeListener sync = (v, left, top, right, bottom, oldLeft, oldTop, oldRight,
-																				oldBottom) -> applyWebViewInsets(content);
-		content.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
-			@Override
-			public void onViewAttachedToWindow(@NonNull View v) {
-				if (toolBar != null) toolBar.addOnLayoutChangeListener(sync);
-				if (controlPanel != null) controlPanel.addOnLayoutChangeListener(sync);
-				marginInsetContent.add(content);
-				applyWebViewInsets(content);
-			}
-
-			@Override
-			public void onViewDetachedFromWindow(@NonNull View v) {
-				if (toolBar != null) toolBar.removeOnLayoutChangeListener(sync);
-				if (controlPanel != null) controlPanel.removeOnLayoutChangeListener(sync);
-				marginInsetContent.remove(content);
-			}
-		});
-		marginInsetContent.add(content);
-		// Applied right away regardless of whether `content` itself is attached to the window yet --
-		// a ContentInsetConsumer (see applyWebViewInsets()) only needs tool_bar/control_panel's
-		// current height, already known well before any tab/fragment gets a chance to exist, to push
-		// the right inset into its very first page before that page's first paint; waiting for
-		// `content` to attach first (a WebView's own attachment can lag behind a synchronous
-		// loadUrl() call made right after construction) would let that first load render unstyled.
-		applyWebViewInsets(content);
-	}
-
-	/**
 	 * Re-applies every currently-attached content view's insets against tool_bar/control_panel's
-	 * present size. Each per-view attach/layout listener set up in {@link #insetScrollableContent}
-	 * / {@link #insetWebViewContent} already keeps things in sync incrementally, but a tab restored
+	 * present size and position. The attach/layout listeners set up in
+	 * {@link #insetScrollableContent} already keep things in sync incrementally, but a tab restored
 	 * by the fragment manager across a full {@link #recreate()} (theme or nav-bar-position change)
-	 * can end up missing the one layout event it needed; called from a handful of extra points
-	 * (a global layout pass, activity resume) as a cheap catch-all -- {@link #applyContentInsets}/
-	 * {@link #applyWebViewInsets} already no-op when nothing actually changed.
+	 * can end up missing the one layout event it needed; called from a handful of extra points (a
+	 * global layout pass, activity resume) as a cheap catch-all -- {@link #applyContentInsets}
+	 * already no-ops when nothing actually changed.
 	 */
 	private void refreshContentInsets() {
 		for (ViewGroup content : paddingInsetContent) applyContentInsets(content);
-		for (View content : marginInsetContent) applyWebViewInsets(content);
-	}
-
-	private void applyWebViewInsets(View content) {
-		if ((toolBar == null) || (controlPanel == null)) return;
-		int top = toolBar.getHeight();
-		int bottom = (controlPanel.getVisibility() == VISIBLE) ? controlPanel.getHeight() : 0;
-
-		// A ContentInsetConsumer (e.g. YoutubeWebView) handles the inset itself -- typically by
-		// pushing it into the page's own content -- and must keep its bounds full-bleed for that to
-		// have anything to show through, so skip the margin path entirely for it.
-		if (content instanceof ContentInsetConsumer cic) {
-			cic.setContentInset(top, bottom);
-			return;
-		}
-
-		if (!(content.getLayoutParams() instanceof ViewGroup.MarginLayoutParams mlp)) return;
-		if ((mlp.topMargin == top) && (mlp.bottomMargin == bottom)) return;
-		mlp.topMargin = top;
-		mlp.bottomMargin = bottom;
-		content.setLayoutParams(mlp);
 	}
 
 	private boolean checkMirroringMode(boolean clearFlags) {
