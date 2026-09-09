@@ -4,8 +4,8 @@
          AudioEffectsFragment's BARS_HIDDEN_CHANGED handling, which collapses this to 0 while
          the bars are hidden since there's then nothing to clear). -->
     <dimen name="audio_effects_top_margin">64dp</dimen>
-    <!-- Added on top of control_panel's (and, when bottom-positioned, nav_bar's) computed size --
-         see AudioEffectsFragment.applyBarsHiddenMargins() -- to cover rounding and the panel's own
+    <!-- Added on top of control_panel's (and, when bottom-positioned, nav_bar's) computed size
+         (see AudioEffectsFragment.applyBarsHiddenMargins()) to cover rounding and the panel's own
          internal padding rather than clipping a band again over a few missed px. -->
     <dimen name="audio_effects_bottom_buffer">24dp</dimen>
 </resources>
