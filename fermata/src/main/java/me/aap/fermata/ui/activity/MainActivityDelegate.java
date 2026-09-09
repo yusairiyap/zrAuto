@@ -864,17 +864,17 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * Lets a tab's own scrollable content (a RecyclerView-based list or ScrollView -- a WebView
 	 * doesn't reliably honor padding + clipToPadding for scroll-into-padding, so it uses
 	 * {@link #insetWebViewTop} instead) keep scrolling all the way to its own first/last row
-	 * underneath tool_bar/control_panel's translucent gradients, instead of either being cut off by
-	 * them or permanently inset away from them -- gives {@code content} top/bottom padding sized to
-	 * however much of tool_bar/control_panel actually overlaps {@code content}'s own on-screen
-	 * bounds, with clipToPadding off, so rows already at rest show inset from the bars but can still
-	 * scroll fully into view. Computed from actual screen position rather than assuming
-	 * {@code content} always starts at the true top/bottom of the screen: BodyLayout.Mode.BOTH
-	 * (a fragment shown alongside a still-playing video, e.g. Audio Effects) sits {@code content}
-	 * below the video pane instead, where tool_bar may not reach it at all. Kept in sync with
-	 * tool_bar/control_panel's actual size and position for as long as {@code content} stays
-	 * attached to the window; each caller (e.g. MediaItemListView, the Settings list) is expected to
-	 * call this once, typically from its own constructor.
+	 * underneath tool_bar/control_panel/nav_bar's translucent gradients, instead of either being
+	 * cut off by them or permanently inset away from them -- gives {@code content} top/bottom
+	 * padding sized to however much of tool_bar/control_panel/a bottom-positioned nav_bar actually
+	 * overlaps {@code content}'s own on-screen bounds, with clipToPadding off, so rows already at
+	 * rest show inset from the bars but can still scroll fully into view. Computed from actual
+	 * screen position rather than assuming {@code content} always starts at the true top/bottom of
+	 * the screen: BodyLayout.Mode.BOTH (a fragment shown alongside a still-playing video, e.g. Audio
+	 * Effects) sits {@code content} below the video pane instead, where tool_bar may not reach it at
+	 * all. Kept in sync with tool_bar/control_panel/nav_bar's actual size and position for as long as
+	 * {@code content} stays attached to the window; each caller (e.g. MediaItemListView, the
+	 * Settings list) is expected to call this once, typically from its own constructor.
 	 */
 	public void insetScrollableContent(ViewGroup content) {
 		content.setClipToPadding(false);
@@ -892,6 +892,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			public void onViewAttachedToWindow(@NonNull View v) {
 				if (toolBar != null) toolBar.addOnLayoutChangeListener(sync);
 				if (controlPanel != null) controlPanel.addOnLayoutChangeListener(sync);
+				if (navBar != null) navBar.addOnLayoutChangeListener(sync);
 				paddingInsetContent.add(content);
 				applyContentInsets(content);
 			}
@@ -900,6 +901,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			public void onViewDetachedFromWindow(@NonNull View v) {
 				if (toolBar != null) toolBar.removeOnLayoutChangeListener(sync);
 				if (controlPanel != null) controlPanel.removeOnLayoutChangeListener(sync);
+				if (navBar != null) navBar.removeOnLayoutChangeListener(sync);
 				paddingInsetContent.remove(content);
 			}
 		});
@@ -922,12 +924,19 @@ public class MainActivityDelegate extends ActivityDelegate
 		toolBar.getLocationOnScreen(insetLoc1);
 		int top = Math.max(0, (insetLoc1[1] + toolBar.getHeight()) - contentTop);
 
-		int bottom;
+		// Whichever bottom-anchored bar reaches furthest up the screen decides the inset -- usually
+		// control_panel (nav_bar, when it's bottom-positioned, sits below it per the bottom-nav
+		// layout's own constraints), but control_panel is routinely GONE while just browsing (nothing
+		// playing), in which case nav_bar alone still needs clearing if it's the bottom-positioned one.
+		int bottom = 0;
 		if (controlPanel.getVisibility() == VISIBLE) {
 			controlPanel.getLocationOnScreen(insetLoc2);
-			bottom = Math.max(0, contentBottom - insetLoc2[1]);
-		} else {
-			bottom = 0;
+			bottom = Math.max(bottom, Math.max(0, contentBottom - insetLoc2[1]));
+		}
+		if ((navBar != null) && (navBar.getVisibility() == VISIBLE)
+				&& (getPrefs().getNavBarPosPref(this) == NavBarView.POSITION_BOTTOM)) {
+			navBar.getLocationOnScreen(insetLoc2);
+			bottom = Math.max(bottom, Math.max(0, contentBottom - insetLoc2[1]));
 		}
 
 		if ((content.getPaddingTop() == top) && (content.getPaddingBottom() == bottom)) return;
