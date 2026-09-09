@@ -20,6 +20,7 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.fermata.ui.view.AudioEffectsView;
 import me.aap.utils.async.FutureSupplier;
+import me.aap.utils.ui.view.NavBarView;
 
 /**
  * @author Andrey Pavlenko
@@ -228,7 +229,17 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 
 		boolean hidden = a.isBarsHidden();
 		int top = hidden ? 0 : getResources().getDimensionPixelSize(R.dimen.audio_effects_top_margin);
-		int bottom = hidden ? 0 : getResources().getDimensionPixelSize(R.dimen.audio_effects_bottom_margin);
+		int bottom = 0;
+
+		if (!hidden) {
+			bottom = getResources().getDimensionPixelSize(R.dimen.audio_effects_bottom_margin);
+			// control_panel sits above nav_bar rather than the other way around when nav_bar is
+			// bottom-positioned, so clearing control_panel alone (the margin above) isn't enough --
+			// nav_bar needs its own extra clearance on top of that.
+			if (a.getPrefs().getNavBarPosPref(a) == NavBarView.POSITION_BOTTOM) {
+				bottom += getResources().getDimensionPixelSize(R.dimen.audio_effects_bottom_navbar_margin);
+			}
+		}
 
 		if (header.getLayoutParams() instanceof ViewGroup.MarginLayoutParams hlp) {
 			hlp.topMargin = top;
