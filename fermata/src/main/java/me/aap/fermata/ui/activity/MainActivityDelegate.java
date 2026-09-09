@@ -79,6 +79,7 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.widget.EditText;
 
 import androidx.annotation.LayoutRes;
@@ -100,9 +101,12 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.WeakHashMap;
 
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
@@ -187,6 +191,16 @@ public class MainActivityDelegate extends ActivityDelegate
 	private TertiaryFloatingButton floatingButton3;
 	private ContentLoadingProgressBar progressBar;
 	private FutureSupplier<?> contentLoading;
+	// Belt-and-suspenders re-sync for insetScrollableContent()/insetWebViewContent(): their own
+	// attach/layout listeners cover the common case, but a tab restored by the fragment manager
+	// while switching themes/nav-bar-position (both go through a full Activity.recreate()) can end
+	// up attached to the window before tool_bar/control_panel finish their own post-recreate layout
+	// pass, or in an ordering that has the sync listener miss the one layout change it needed --
+	// leaving the content's insets stuck at their initial (usually zero) value. Weak sets so
+	// dropping a content view (fragment/tab destroyed) doesn't pin it in memory; entries are added
+	// only while the view is actually attached, so a stale/detached view here is harmless to visit.
+	private final Set<ViewGroup> paddingInsetContent = Collections.newSetFromMap(new WeakHashMap<>());
+	private final Set<View> marginInsetContent = Collections.newSetFromMap(new WeakHashMap<>());
 	private boolean barsHidden;
 	private boolean videoMode;
 	private int brightness = 255;
@@ -412,6 +426,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Override
 	public void onActivityResume() {
 		super.onActivityResume();
+		refreshContentInsets();
 		checkMirroringMode(true);
 		for (FermataAddon addon : AddonManager.get().getAddons()) {
 			if (addon instanceof FermataActivityAddon)
@@ -857,6 +872,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			public void onViewAttachedToWindow(@NonNull View v) {
 				if (toolBar != null) toolBar.addOnLayoutChangeListener(sync);
 				if (controlPanel != null) controlPanel.addOnLayoutChangeListener(sync);
+				paddingInsetContent.add(content);
 				applyContentInsets(content);
 			}
 
@@ -864,9 +880,13 @@ public class MainActivityDelegate extends ActivityDelegate
 			public void onViewDetachedFromWindow(@NonNull View v) {
 				if (toolBar != null) toolBar.removeOnLayoutChangeListener(sync);
 				if (controlPanel != null) controlPanel.removeOnLayoutChangeListener(sync);
+				paddingInsetContent.remove(content);
 			}
 		});
-		if (content.isAttachedToWindow()) applyContentInsets(content);
+		if (content.isAttachedToWindow()) {
+			paddingInsetContent.add(content);
+			applyContentInsets(content);
+		}
 	}
 
 	private void applyContentInsets(ViewGroup content) {
@@ -894,6 +914,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			public void onViewAttachedToWindow(@NonNull View v) {
 				if (toolBar != null) toolBar.addOnLayoutChangeListener(sync);
 				if (controlPanel != null) controlPanel.addOnLayoutChangeListener(sync);
+				marginInsetContent.add(content);
 				applyWebViewInsets(content);
 			}
 
@@ -901,9 +922,27 @@ public class MainActivityDelegate extends ActivityDelegate
 			public void onViewDetachedFromWindow(@NonNull View v) {
 				if (toolBar != null) toolBar.removeOnLayoutChangeListener(sync);
 				if (controlPanel != null) controlPanel.removeOnLayoutChangeListener(sync);
+				marginInsetContent.remove(content);
 			}
 		});
-		if (content.isAttachedToWindow()) applyWebViewInsets(content);
+		if (content.isAttachedToWindow()) {
+			marginInsetContent.add(content);
+			applyWebViewInsets(content);
+		}
+	}
+
+	/**
+	 * Re-applies every currently-attached content view's insets against tool_bar/control_panel's
+	 * present size. Each per-view attach/layout listener set up in {@link #insetScrollableContent}
+	 * / {@link #insetWebViewContent} already keeps things in sync incrementally, but a tab restored
+	 * by the fragment manager across a full {@link #recreate()} (theme or nav-bar-position change)
+	 * can end up missing the one layout event it needed; called from a handful of extra points
+	 * (a global layout pass, activity resume) as a cheap catch-all -- {@link #applyContentInsets}/
+	 * {@link #applyWebViewInsets} already no-op when nothing actually changed.
+	 */
+	private void refreshContentInsets() {
+		for (ViewGroup content : paddingInsetContent) applyContentInsets(content);
+		for (View content : marginInsetContent) applyWebViewInsets(content);
 	}
 
 	private void applyWebViewInsets(View content) {
@@ -1297,6 +1336,10 @@ public class MainActivityDelegate extends ActivityDelegate
 		updateFabDraggable();
 		controlPanel.bind(getMediaServiceBinder());
 		enableBodyOverlayLayout();
+		// Catch-all re-sync -- see refreshContentInsets() -- for content whose own attach/layout
+		// listeners missed the layout change they needed, most notably a tab restored by the
+		// fragment manager across the recreate() that a theme or nav-bar-position change triggers.
+		body.getViewTreeObserver().addOnGlobalLayoutListener(this::refreshContentInsets);
 
 		if (VERSION.SDK_INT >= VERSION_CODES.VANILLA_ICE_CREAM && !a.isCarActivity()) {
 			ViewCompat.setOnApplyWindowInsetsListener(toolBar, (v, insets) -> {
