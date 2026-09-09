@@ -56,7 +56,6 @@ import me.aap.utils.pref.PreferenceView;
 import me.aap.utils.pref.PreferenceView.BooleanOpts;
 import me.aap.utils.pref.PreferenceView.ListOpts;
 import me.aap.utils.ui.UiUtils;
-import me.aap.utils.ui.view.ToolBarView;
 
 /**
  * @author Andrey Pavlenko
@@ -88,24 +87,6 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 		MainActivityDelegate.getActivityDelegate(context).onSuccess(a -> a.insetScrollableContent(this));
 	}
 
-	/**
-	 * Pushes the card's own top edge down by tool_bar's current height directly, as a top margin on
-	 * the card itself rather than top padding on this whole ScrollView -- several attempts at the
-	 * latter (padding kept in sync by insetScrollableContent()'s listeners, then by a per-frame
-	 * check) all failed to actually clear "Effects" (effects_title, pinned to the very top of the
-	 * card) out from under tool_bar's title on-device, for a reason that was never pinned down. Set
-	 * once here, when the card's real content is known to exist, rather than chased reactively.
-	 */
-	private void applyHeaderTopMargin() {
-		View header = findViewById(R.id.equalizer_header);
-		if (header == null) return;
-		if (!(header.getLayoutParams() instanceof ViewGroup.MarginLayoutParams mlp)) return;
-		ToolBarView tb = MainActivityDelegate.get(getContext()).getToolBar();
-		if (tb == null) return;
-		mlp.topMargin = tb.getHeight();
-		header.setLayoutParams(mlp);
-	}
-
 	@Nullable
 	public AudioEffects getEffects() {
 		return effects;
@@ -118,7 +99,6 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 		this.store.addBroadcastListener(this);
 		this.ctrlPrefs = cb.getPlaybackControlPrefs();
 		inflate(getContext(), R.layout.audio_effects, this);
-		applyHeaderTopMargin();
 
 		Equalizer eq = effects.getEqualizer();
 		Virtualizer virt = effects.getVirtualizer();
