@@ -200,6 +200,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	// view (fragment/tab destroyed) doesn't pin it in memory; entries are added only while the view
 	// is actually attached, so a stale/detached view here is harmless to visit.
 	private final Set<ViewGroup> paddingInsetContent = Collections.newSetFromMap(new WeakHashMap<>());
+	private final Set<View> topInsetContent = Collections.newSetFromMap(new WeakHashMap<>());
 	private boolean barsHidden;
 	private boolean videoMode;
 	private int brightness = 255;
@@ -853,9 +854,9 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	/**
-	 * Lets a tab's own scrollable content (currently only a RecyclerView-based list or ScrollView --
-	 * a WebView doesn't reliably honor padding + clipToPadding for scroll-into-padding, so it's left
-	 * full-bleed with no inset at all instead) keep scrolling all the way to its own first/last row
+	 * Lets a tab's own scrollable content (a RecyclerView-based list or ScrollView -- a WebView
+	 * doesn't reliably honor padding + clipToPadding for scroll-into-padding, so it uses
+	 * {@link #insetWebViewTop} instead) keep scrolling all the way to its own first/last row
 	 * underneath tool_bar/control_panel's translucent gradients, instead of either being cut off by
 	 * them or permanently inset away from them -- gives {@code content} top/bottom padding sized to
 	 * however much of tool_bar/control_panel actually overlaps {@code content}'s own on-screen
@@ -872,6 +873,13 @@ public class MainActivityDelegate extends ActivityDelegate
 		content.setClipToPadding(false);
 		View.OnLayoutChangeListener sync = (v, left, top, right, bottom, oldLeft, oldTop, oldRight,
 																				oldBottom) -> applyContentInsets(content);
+		// Also self-triggered by content's own layout changes, not just tool_bar/control_panel's --
+		// a fragment shown as its own root view (e.g. AudioEffectsView) can still be at its pre-
+		// layout position/size (typically (0,0)) the moment it attaches to the window, before its
+		// own first real layout pass places it where it'll actually sit; tool_bar/control_panel may
+		// not move again afterward, so without this, the padding computed off that stale first
+		// position/size never gets corrected once content settles into its real bounds.
+		content.addOnLayoutChangeListener(sync);
 		content.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
 			@Override
 			public void onViewAttachedToWindow(@NonNull View v) {
@@ -920,16 +928,59 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	/**
+	 * A WebView's page content is composited internally by the browser engine rather than drawn as
+	 * clippable child views, so it doesn't reliably scroll into padding the way a RecyclerView or
+	 * ScrollView does -- observed as page content still rendering flush against/under tool_bar.
+	 * Physically shrinking the WebView's own top bound with a margin instead is a hard guarantee
+	 * regardless of how it renders internally. Deliberately top-only: the page is left full-bleed at
+	 * the bottom, so control_panel is free to overlap the very end of the page the way it always
+	 * has -- unlike the top, that's rarely actually scrolled to.
+	 */
+	public void insetWebViewTop(View content) {
+		View.OnLayoutChangeListener sync = (v, left, top, right, bottom, oldLeft, oldTop, oldRight,
+																				oldBottom) -> applyWebViewTopInset(content);
+		content.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+			@Override
+			public void onViewAttachedToWindow(@NonNull View v) {
+				if (toolBar != null) toolBar.addOnLayoutChangeListener(sync);
+				topInsetContent.add(content);
+				applyWebViewTopInset(content);
+			}
+
+			@Override
+			public void onViewDetachedFromWindow(@NonNull View v) {
+				if (toolBar != null) toolBar.removeOnLayoutChangeListener(sync);
+				topInsetContent.remove(content);
+			}
+		});
+		topInsetContent.add(content);
+		// Applied right away, not only once attached -- a WebView's own attachment can lag behind a
+		// synchronous loadUrl() call made right after construction, which would otherwise let that
+		// first page load render unstyled/overlapping before the margin ever takes effect.
+		applyWebViewTopInset(content);
+	}
+
+	private void applyWebViewTopInset(View content) {
+		if (toolBar == null) return;
+		if (!(content.getLayoutParams() instanceof ViewGroup.MarginLayoutParams mlp)) return;
+		int top = toolBar.getHeight();
+		if (mlp.topMargin == top) return;
+		mlp.topMargin = top;
+		content.setLayoutParams(mlp);
+	}
+
+	/**
 	 * Re-applies every currently-attached content view's insets against tool_bar/control_panel's
 	 * present size and position. The attach/layout listeners set up in
-	 * {@link #insetScrollableContent} already keep things in sync incrementally, but a tab restored
-	 * by the fragment manager across a full {@link #recreate()} (theme or nav-bar-position change)
-	 * can end up missing the one layout event it needed; called from a handful of extra points (a
-	 * global layout pass, activity resume) as a cheap catch-all -- {@link #applyContentInsets}
-	 * already no-ops when nothing actually changed.
+	 * {@link #insetScrollableContent}/{@link #insetWebViewTop} already keep things in sync
+	 * incrementally, but a tab restored by the fragment manager across a full {@link #recreate()}
+	 * (theme or nav-bar-position change) can end up missing the one layout event it needed; called
+	 * from a handful of extra points (a global layout pass, activity resume) as a cheap catch-all --
+	 * {@link #applyContentInsets}/{@link #applyWebViewTopInset} already no-op when nothing changed.
 	 */
 	private void refreshContentInsets() {
 		for (ViewGroup content : paddingInsetContent) applyContentInsets(content);
+		for (View content : topInsetContent) applyWebViewTopInset(content);
 	}
 
 	private boolean checkMirroringMode(boolean clearFlags) {
