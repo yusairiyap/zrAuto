@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Clears tool_bar's title (see audio_effects.xml's effects_title and
-         AudioEffectsFragment's BARS_HIDDEN_CHANGED handling, which collapses this to 0 while
-         the bars are hidden since there's then nothing to clear). -->
+    <!-- Clears tool_bar's title (see AudioEffectsFragment.applyBarsHiddenMargins(), which applies
+         this as AudioEffectsView's own top padding, collapsing it to 0 while the bars are hidden
+         since there's then nothing to clear). -->
     <dimen name="audio_effects_top_margin">64dp</dimen>
     <!-- Added on top of control_panel's (and, when bottom-positioned, nav_bar's) computed size
          (see AudioEffectsFragment.applyBarsHiddenMargins()) to cover rounding and the panel's own

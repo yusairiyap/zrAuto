@@ -163,7 +163,6 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="20dp"
-            android:layout_marginTop="@dimen/audio_effects_top_margin"
             android:paddingStart="8dp"
             android:paddingEnd="8dp"
             android:text="@string/effects"
@@ -197,11 +196,9 @@
         android:orientation="vertical"
         app:boxStrokeWidth="0dp"
         app:cornerRadius="?attr/cornerRadius"
-        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/equalizer_header"
-        app:layout_constraintVertical_bias="0">
+        app:layout_constraintTop_toBottomOf="@id/equalizer_header">
 
         <me.aap.utils.ui.view.ScalableTextView
             android:id="@+id/apply_to_title"

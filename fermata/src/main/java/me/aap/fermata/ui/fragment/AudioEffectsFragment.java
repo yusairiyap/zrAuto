@@ -214,27 +214,29 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 	}
 
 	/**
-	 * effects_title's/apply_to's top/bottom margins (see audio_effects.xml) are sized to clear
-	 * tool_bar's title and control_panel's (plus, when bottom-positioned, nav_bar's) expanded
-	 * state -- with the bars hidden, none of that is actually there to clear, so collapse both
-	 * margins to 0 rather than leave dead space filling the now-larger screen. Re-applied every
-	 * time rather than just once since this is only ever shown/hidden, never recreated, so its
-	 * views' margins wouldn't otherwise get re-touched.
+	 * AudioEffectsView (a ScrollView) is given top/bottom padding sized to clear tool_bar's title
+	 * and control_panel's (plus, when bottom-positioned, nav_bar's) expanded state, with
+	 * clipToPadding off so rows already at rest show inset from the bars but can still scroll
+	 * fully into view -- the same padding+clipToPadding mechanism
+	 * {@link MainActivityDelegate#insetScrollableContent} already uses successfully for
+	 * MediaItemListView/the Settings list, rather than a margin on one of this screen's own
+	 * ConstraintLayout children: that requires a matching bottom constraint to have any effect on
+	 * a wrap_content parent at all, which is easy to get subtly wrong and hard to verify without a
+	 * device in hand. With the bars hidden, neither bar is actually there to clear, so collapse
+	 * both to 0 rather than leave dead space filling the now-larger screen. Re-applied every time
+	 * rather than just once since this is only ever shown/hidden, never recreated, so its padding
+	 * wouldn't otherwise get re-touched.
 	 * <p>
-	 * The bottom margin is computed from {@link ControlPanelView#getPanelHeight()}/
+	 * The bottom padding is computed from {@link ControlPanelView#getPanelHeight()}/
 	 * {@link NavBarView#getBarSize()} rather than a flat dimen: both are deterministic,
 	 * preference-scaled values known synchronously once bound, whereas the equivalent
-	 * {@code getHeight()} reads on this screen have proven unreliable (likely stale/zero) --
-	 * a flat dp guess also silently falls short whenever the user raises the control panel size
+	 * {@code getHeight()} reads on this screen have proven unreliable (likely stale/zero) -- a
+	 * flat dp guess also silently falls short whenever the user raises the control panel size
 	 * preference above its default.
 	 */
 	private void applyBarsHiddenMargins(MainActivityDelegate a) {
 		AudioEffectsView view = getView();
 		if (view == null) return;
-
-		View header = view.findViewById(R.id.effects_title);
-		View applyTo = view.findViewById(R.id.apply_to);
-		if ((header == null) || (applyTo == null)) return;
 
 		boolean hidden = a.isBarsHidden();
 		int top = hidden ? 0 : getResources().getDimensionPixelSize(R.dimen.audio_effects_top_margin);
@@ -255,13 +257,8 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 			bottom += getResources().getDimensionPixelSize(R.dimen.audio_effects_bottom_buffer);
 		}
 
-		if (header.getLayoutParams() instanceof ViewGroup.MarginLayoutParams hlp) {
-			hlp.topMargin = top;
-			header.setLayoutParams(hlp);
-		}
-		if (applyTo.getLayoutParams() instanceof ViewGroup.MarginLayoutParams alp) {
-			alp.bottomMargin = bottom;
-			applyTo.setLayoutParams(alp);
-		}
+		if ((view.getPaddingTop() == top) && (view.getPaddingBottom() == bottom)) return;
+		view.setClipToPadding(false);
+		view.setPadding(view.getPaddingLeft(), top, view.getPaddingRight(), bottom);
 	}
 }
