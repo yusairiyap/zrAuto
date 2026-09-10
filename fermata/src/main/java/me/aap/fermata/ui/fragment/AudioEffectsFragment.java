@@ -238,58 +238,50 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 	}
 
 	/**
-	 * effects_title's topMargin (see audio_effects.xml) clears tool_bar's title -- a single-anchor
-	 * margin (top-anchored only) that a wrap_content ConstraintLayout parent always accounts for,
-	 * so it needs no special handling beyond collapsing it to 0 while the bars are hidden.
-	 * equalizer_channels' own bottom PADDING (not a margin, and not a separate spacer further down
-	 * past the unrelated apply_to card) reserves the matching space right where the content
-	 * actually ends -- immediately below its last row (16 kHz) -- to clear control_panel's (plus,
-	 * when bottom-positioned, nav_bar's) expanded state. A ViewGroup's own padding is never
-	 * ambiguous: unlike a margin, which only takes effect on a side ConstraintLayout has anchored
-	 * (the exact way apply_to's old bottom margin silently no-opped -- see this file's history),
-	 * padding always counts toward a wrap_content view's own measured size. Re-applied every time
-	 * rather than just once since this fragment's view is only ever shown/hidden, never recreated,
-	 * so it wouldn't otherwise get re-touched.
+	 * effects_title's topMargin (see audio_effects.xml) clears tool_bar's title, collapsing to 0
+	 * while the bars are hidden.
 	 * <p>
-	 * The bottom space is computed from {@link ControlPanelView#getPanelHeight()}/
-	 * {@link NavBarView#getBarSize()} rather than a flat dimen: both are deterministic,
-	 * preference-scaled values known synchronously once bound, whereas the equivalent
-	 * {@code getHeight()} reads on this screen have proven unreliable (likely stale/zero) -- a
-	 * flat dp guess also silently falls short whenever the user raises the control panel size
-	 * preference above its default.
+	 * The bottom is handled by shrinking this ScrollView's own bounds with a bottom margin, rather
+	 * than by reserving space inside its content. Every content-side attempt here failed
+	 * identically (a child's margin, ScrollView padding, a spacer View's height, equalizer_channels'
+	 * padding) because they all depend on the child measuring and scrolling to its full height, and
+	 * it wasn't: equalizer_channels used to be pinned with constraintBottom_toBottomOf="parent"
+	 * inside a wrap_content parent, which positions a child within the already-resolved parent
+	 * height instead of growing it, so the bands overflowed a too-short container and apply_to was
+	 * never even reachable by scrolling. That pin is gone now, but a margin here is the mechanism
+	 * that cannot fail regardless: content simply has no bounds to be drawn in beneath the panel.
+	 * The same hard-guarantee reasoning as {@link MainActivityDelegate#insetWebViewTop}.
+	 * <p>
+	 * Sized from {@link ControlPanelView#getPanelHeight()}/{@link NavBarView#getBarSize()}: both
+	 * are deterministic, preference-scaled values known synchronously once bound, whereas the
+	 * equivalent {@code getHeight()} reads on this screen have proven unreliable (likely
+	 * stale/zero), and a flat dp guess silently falls short whenever the user raises the control
+	 * panel size preference above its default.
 	 * <p>
 	 * Note the asymmetry between the two ends: {@link MainActivityDelegate#isBarsHidden()} governs
 	 * the top alone, because {@link MainActivityDelegate#setBarsHidden} only hides tool_bar and
 	 * nav_bar. control_panel is not one of those bars (it carries the very button that toggles
 	 * them) and stays on screen either way, so the bottom follows each bar's own visibility
-	 * instead.
+	 * instead. Re-applied every time rather than just once since this fragment's view is only ever
+	 * shown/hidden, never recreated, so it wouldn't otherwise get re-touched.
 	 */
 	private void applyBarsHiddenMargins(MainActivityDelegate a) {
 		AudioEffectsView view = getView();
 		if (view == null) return;
 
 		View header = view.findViewById(R.id.effects_title);
-		View channels = view.findViewById(R.id.equalizer_channels);
-		if ((header == null) || (channels == null)) return;
+		if (header == null) return;
 
 		// Only tool_bar is actually gone while the bars are hidden, so only the top collapses.
 		int top = a.isBarsHidden() ? 0
 				: getResources().getDimensionPixelSize(R.dimen.audio_effects_top_margin);
-		// equalizer_channels.xml's own static paddingBottom, kept as the floor when there's nothing
-		// down there to clear.
-		int bottom = Math.round(6 * getResources().getDisplayMetrics().density);
+		int bottom = 0;
 
 		// Deliberately keyed off each bar's own visibility rather than isBarsHidden():
 		// setBarsHidden() only hides tool_bar and nav_bar, never control_panel, which keeps
-		// overlapping this screen (it's the bar the hide-bars button itself lives on). Reading the
-		// hidden flag here instead is what kept this clearance pinned near zero for so long.
+		// overlapping this screen (it's the bar the hide-bars button itself lives on).
 		ControlPanelView cp = a.getControlPanel();
-		if ((cp != null) && (cp.getVisibility() == View.VISIBLE)) {
-			// Safety buffer: a small margin of error around the computed size (rounding, the panel's
-			// own internal padding) is cheaper than clipping a band again.
-			bottom = cp.getPanelHeight()
-					+ getResources().getDimensionPixelSize(R.dimen.audio_effects_bottom_buffer);
-		}
+		if ((cp != null) && (cp.getVisibility() == View.VISIBLE)) bottom = cp.getPanelHeight();
 
 		// control_panel sits above nav_bar rather than the other way around when nav_bar is
 		// bottom-positioned, so clearing control_panel alone isn't enough -- nav_bar needs its own
@@ -304,9 +296,11 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 			hlp.topMargin = top;
 			header.setLayoutParams(hlp);
 		}
-		if (channels.getPaddingBottom() != bottom) {
-			channels.setPadding(channels.getPaddingLeft(), channels.getPaddingTop(),
-					channels.getPaddingRight(), bottom);
+		if (view.getLayoutParams() instanceof ViewGroup.MarginLayoutParams vlp) {
+			if (vlp.bottomMargin != bottom) {
+				vlp.bottomMargin = bottom;
+				view.setLayoutParams(vlp);
+			}
 		}
 	}
 }
