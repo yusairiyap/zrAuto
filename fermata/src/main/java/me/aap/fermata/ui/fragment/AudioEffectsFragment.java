@@ -217,14 +217,15 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 	 * effects_title's topMargin (see audio_effects.xml) clears tool_bar's title -- a single-anchor
 	 * margin (top-anchored only) that a wrap_content ConstraintLayout parent always accounts for,
 	 * so it needs no special handling beyond collapsing it to 0 while the bars are hidden.
-	 * bottom_spacer's own height, rather than a margin, reserves the matching space below apply_to
-	 * to clear control_panel's (plus, when bottom-positioned, nav_bar's) expanded state: a plain
-	 * View's height always counts toward a wrap_content parent regardless of anchoring, unlike a
-	 * margin on an edge with no constraint on the opposite side (which apply_to's bottom margin
-	 * turned out to be -- see the previous commit here for the whole story), so this can't
-	 * silently no-op the way that did. Re-applied every time rather than just once since this
-	 * fragment's view is only ever shown/hidden, never recreated, so it wouldn't otherwise get
-	 * re-touched.
+	 * equalizer_channels' own bottom PADDING (not a margin, and not a separate spacer further down
+	 * past the unrelated apply_to card) reserves the matching space right where the content
+	 * actually ends -- immediately below its last row (16 kHz) -- to clear control_panel's (plus,
+	 * when bottom-positioned, nav_bar's) expanded state. A ViewGroup's own padding is never
+	 * ambiguous: unlike a margin, which only takes effect on a side ConstraintLayout has anchored
+	 * (the exact way apply_to's old bottom margin silently no-opped -- see this file's history),
+	 * padding always counts toward a wrap_content view's own measured size. Re-applied every time
+	 * rather than just once since this fragment's view is only ever shown/hidden, never recreated,
+	 * so it wouldn't otherwise get re-touched.
 	 * <p>
 	 * The bottom space is computed from {@link ControlPanelView#getPanelHeight()}/
 	 * {@link NavBarView#getBarSize()} rather than a flat dimen: both are deterministic,
@@ -238,12 +239,14 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 		if (view == null) return;
 
 		View header = view.findViewById(R.id.effects_title);
-		View spacer = view.findViewById(R.id.bottom_spacer);
-		if ((header == null) || (spacer == null)) return;
+		View channels = view.findViewById(R.id.equalizer_channels);
+		if ((header == null) || (channels == null)) return;
 
 		boolean hidden = a.isBarsHidden();
 		int top = hidden ? 0 : getResources().getDimensionPixelSize(R.dimen.audio_effects_top_margin);
-		int bottom = 0;
+		// equalizer_channels.xml's own static paddingBottom, restored once there's no bar left to
+		// clear rather than collapsing all the way to 0.
+		int bottom = Math.round(6 * getResources().getDisplayMetrics().density);
 
 		if (!hidden) {
 			ControlPanelView cp = a.getControlPanel();
@@ -264,10 +267,9 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 			hlp.topMargin = top;
 			header.setLayoutParams(hlp);
 		}
-		ViewGroup.LayoutParams slp = spacer.getLayoutParams();
-		if (slp.height != bottom) {
-			slp.height = bottom;
-			spacer.setLayoutParams(slp);
+		if (channels.getPaddingBottom() != bottom) {
+			channels.setPadding(channels.getPaddingLeft(), channels.getPaddingTop(),
+					channels.getPaddingRight(), bottom);
 		}
 	}
 }
