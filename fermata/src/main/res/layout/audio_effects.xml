@@ -245,7 +245,7 @@
          AudioEffectsFragment.applyBarsHiddenMargins(), which sets this View's own height). A
          plain View's height, unlike a margin on an edge with no matching constraint on the
          opposite side, always counts toward a wrap_content parent's measured size regardless of
-         anchoring -- avoids relying on ConstraintLayout margin/bias behavior that's proven easy
+         anchoring, avoiding reliance on ConstraintLayout margin/bias behavior that's proven easy
          to get subtly wrong here and hard to verify without a device in hand. -->
     <View
         android:id="@+id/bottom_spacer"
