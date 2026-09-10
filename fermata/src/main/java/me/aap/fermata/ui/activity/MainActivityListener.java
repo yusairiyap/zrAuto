@@ -8,7 +8,6 @@ import me.aap.utils.ui.activity.ActivityListener;
  */
 public interface MainActivityListener extends ActivityListener {
 	byte MODE_CHANGED = (byte) (LAST << 1);
-	byte BARS_HIDDEN_CHANGED = (byte) (MODE_CHANGED << 1);
 
 	void onActivityEvent(MainActivityDelegate a, long e);
 

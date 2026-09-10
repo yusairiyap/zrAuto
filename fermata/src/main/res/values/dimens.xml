@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Clears tool_bar's title (see audio_effects.xml's effects_title and
-         AudioEffectsFragment.applyBarsHiddenMargins(), which collapses this to 0 while the bars
-         are hidden since there's then nothing to clear). -->
-    <dimen name="audio_effects_top_margin">64dp</dimen>
-</resources>

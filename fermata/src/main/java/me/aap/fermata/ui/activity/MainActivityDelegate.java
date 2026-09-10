@@ -714,7 +714,6 @@ public class MainActivityDelegate extends ActivityDelegate
 			// visible, but insetWebViewTop()'s margin is still sized off that height, so without this
 			// a WebView never reclaims that reserved top space when the user hides the bars.
 			refreshContentInsets();
-			fireBroadcastEvent(MainActivityListener.BARS_HIDDEN_CHANGED);
 		});
 	}
 
