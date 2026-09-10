@@ -128,10 +128,19 @@ public class BodyLayout extends SplitLayout
 				App.get().getHandler().post(vv::requestFocus);
 			}
 			case BOTH -> {
+				// Either pane can arrive here mid-crossfade or already faded to alpha 0 by a prior
+				// FRAME/VIDEO transition (e.g. fullscreen video fades sr out, then navigating to
+				// Audio Effects/Settings forces BOTH straight from VIDEO) -- unlike FRAME/VIDEO's
+				// own transitions, nothing below ever restores that alpha, so a pane can end up
+				// VISIBLE but fully transparent despite being correctly sized and positioned.
+				vv.animate().cancel();
+				vv.setAlpha(1f);
 				vv.setVisibility(VISIBLE);
 				getSplitLine().setVisibility(VISIBLE);
 				getSplitHandle().setVisibility(VISIBLE);
-				getSwipeRefresh().setVisibility(VISIBLE);
+				sr.animate().cancel();
+				sr.setAlpha(1f);
+				sr.setVisibility(VISIBLE);
 				lp.guidePercent = a.getPrefs().getFloatPref(getSplitPercentPref(isPortrait()));
 				vv.showVideo();
 				a.setVideoMode(true, vv);
