@@ -257,6 +257,12 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 	 * {@code getHeight()} reads on this screen have proven unreliable (likely stale/zero) -- a
 	 * flat dp guess also silently falls short whenever the user raises the control panel size
 	 * preference above its default.
+	 * <p>
+	 * Note the asymmetry between the two ends: {@link MainActivityDelegate#isBarsHidden()} governs
+	 * the top alone, because {@link MainActivityDelegate#setBarsHidden} only hides tool_bar and
+	 * nav_bar. control_panel is not one of those bars (it carries the very button that toggles
+	 * them) and stays on screen either way, so the bottom follows each bar's own visibility
+	 * instead.
 	 */
 	private void applyBarsHiddenMargins(MainActivityDelegate a) {
 		AudioEffectsView view = getView();
@@ -266,25 +272,32 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 		View channels = view.findViewById(R.id.equalizer_channels);
 		if ((header == null) || (channels == null)) return;
 
-		boolean hidden = a.isBarsHidden();
-		int top = hidden ? 0 : getResources().getDimensionPixelSize(R.dimen.audio_effects_top_margin);
-		// equalizer_channels.xml's own static paddingBottom, restored once there's no bar left to
-		// clear rather than collapsing all the way to 0.
+		// Only tool_bar is actually gone while the bars are hidden, so only the top collapses.
+		int top = a.isBarsHidden() ? 0
+				: getResources().getDimensionPixelSize(R.dimen.audio_effects_top_margin);
+		// equalizer_channels.xml's own static paddingBottom, kept as the floor when there's nothing
+		// down there to clear.
 		int bottom = Math.round(6 * getResources().getDisplayMetrics().density);
 
-		if (!hidden) {
-			ControlPanelView cp = a.getControlPanel();
-			bottom = (cp == null) ? 0 : cp.getPanelHeight();
-			// control_panel sits above nav_bar rather than the other way around when nav_bar is
-			// bottom-positioned, so clearing control_panel alone isn't enough -- nav_bar needs its
-			// own extra clearance stacked on top of that.
-			if (a.getPrefs().getNavBarPosPref(a) == NavBarView.POSITION_BOTTOM) {
-				NavBarView nb = a.getNavBar();
-				if (nb != null) bottom += nb.getBarSize();
-			}
-			// Safety buffer: a small margin of error around the computed sizes (rounding, the
-			// panel's own internal padding) is cheaper than clipping a band again.
-			bottom += getResources().getDimensionPixelSize(R.dimen.audio_effects_bottom_buffer);
+		// Deliberately keyed off each bar's own visibility rather than isBarsHidden():
+		// setBarsHidden() only hides tool_bar and nav_bar, never control_panel, which keeps
+		// overlapping this screen (it's the bar the hide-bars button itself lives on). Reading the
+		// hidden flag here instead is what kept this clearance pinned near zero for so long.
+		ControlPanelView cp = a.getControlPanel();
+		if ((cp != null) && (cp.getVisibility() == View.VISIBLE)) {
+			// Safety buffer: a small margin of error around the computed size (rounding, the panel's
+			// own internal padding) is cheaper than clipping a band again.
+			bottom = cp.getPanelHeight()
+					+ getResources().getDimensionPixelSize(R.dimen.audio_effects_bottom_buffer);
+		}
+
+		// control_panel sits above nav_bar rather than the other way around when nav_bar is
+		// bottom-positioned, so clearing control_panel alone isn't enough -- nav_bar needs its own
+		// extra clearance stacked on top of that.
+		NavBarView nb = a.getNavBar();
+		if ((nb != null) && (nb.getVisibility() == View.VISIBLE)
+				&& (a.getPrefs().getNavBarPosPref(a) == NavBarView.POSITION_BOTTOM)) {
+			bottom += nb.getBarSize();
 		}
 
 		if (header.getLayoutParams() instanceof ViewGroup.MarginLayoutParams hlp) {
