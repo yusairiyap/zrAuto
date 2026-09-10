@@ -71,6 +71,13 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 	public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
 		super.onViewCreated(view, savedInstanceState);
 		onHiddenChanged(isHidden());
+
+		getMainActivity().onSuccess(a -> {
+			ControlPanelView cp = a.getControlPanel();
+			NavBarView nb = a.getNavBar();
+			if (cp != null) cp.addOnLayoutChangeListener(panelSync);
+			if (nb != null) nb.addOnLayoutChangeListener(panelSync);
+		});
 	}
 
 	@Override
@@ -78,12 +85,29 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 		super.onDestroyView();
 
 		getMainActivity().onSuccess(a -> {
+			ControlPanelView cp = a.getControlPanel();
+			NavBarView nb = a.getNavBar();
+			if (cp != null) cp.removeOnLayoutChangeListener(panelSync);
+			if (nb != null) nb.removeOnLayoutChangeListener(panelSync);
+
 			FermataServiceUiBinder b = a.getMediaServiceBinder();
 			AudioEffectsView view = getView();
 			if (view == null) return;
 			view.apply(b.getMediaSessionCallback());
 		});
 	}
+
+	/**
+	 * control_panel's/nav_bar's own height is only known-good the moment
+	 * {@link #applyBarsHiddenMargins} last ran -- e.g. the seek bar (and with it, the panel's
+	 * height) can enable/disable well after this screen was first shown, as playback starts,
+	 * stops, or the source changes, which none of onHiddenChanged/BARS_HIDDEN_CHANGED alone would
+	 * ever catch. Re-syncing off their own layout changes closes that gap instead of leaving the
+	 * bottom clearance stuck at whatever it happened to be when the screen was opened.
+	 */
+	private final View.OnLayoutChangeListener panelSync = (v, left, top, right, bottom, oldLeft,
+																													oldTop, oldRight, oldBottom) ->
+			getMainActivity().onSuccess(this::applyBarsHiddenMargins);
 
 	@Nullable
 	@Override

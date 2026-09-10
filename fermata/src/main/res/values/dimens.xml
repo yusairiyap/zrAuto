@@ -6,6 +6,8 @@
     <dimen name="audio_effects_top_margin">64dp</dimen>
     <!-- Added on top of control_panel's (and, when bottom-positioned, nav_bar's) computed size
          (see AudioEffectsFragment.applyBarsHiddenMargins()) to cover rounding and the panel's own
-         internal padding rather than clipping a band again over a few missed px. -->
-    <dimen name="audio_effects_bottom_buffer">24dp</dimen>
+         internal padding rather than clipping a band again over a few missed px. Generous on
+         purpose: erring toward a little extra empty space below the last band costs nothing,
+         where erring short clips it again. -->
+    <dimen name="audio_effects_bottom_buffer">64dp</dimen>
 </resources>
