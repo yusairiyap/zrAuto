@@ -403,6 +403,11 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				YoutubeEqualizerView v = new YoutubeEqualizerView(g.getContext());
 				v.init(web);
 				g.addView(v, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+				// GenericFragment's root never insets itself against tool_bar/control_panel/nav_bar,
+				// so without this the first and last equalizer rows sit underneath them. Same call
+				// MediaItemListView and the Settings list make from their own constructors; this
+				// content is built by the caller instead, so it has to be requested here.
+				a.insetScrollableContent(v);
 			});
 
 			if (wasPlaying) a.postDelayed(() -> {
