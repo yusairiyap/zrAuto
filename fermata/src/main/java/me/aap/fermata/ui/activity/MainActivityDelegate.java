@@ -1290,22 +1290,38 @@ public class MainActivityDelegate extends ActivityDelegate
 															Supplier<FutureSupplier<List<PlayableItem>>> selection,
 															Supplier<? extends CharSequence> initName) {
 		builder.addItem(R.id.playlist_add, R.drawable.playlist_add, R.string.playlist_add)
-				.setSubmenu(b -> createPlaylistMenu(b, selection, initName));
+				.setHandler(i -> {
+					showPlaylistDialog(selection, initName);
+					return true;
+				});
 	}
 
-	private void createPlaylistMenu(OverlayMenu.Builder b,
-																	Supplier<FutureSupplier<List<PlayableItem>>> selection,
-																	Supplier<? extends CharSequence> initName) {
+	/**
+	 * A single tap on "Add to playlist" now goes straight to a real dialog listing existing
+	 * playlists (plus "Create new playlist") rather than drilling into another OverlayMenu page --
+	 * one fewer menu-within-a-menu step for an action that's just a one-time choice.
+	 */
+	private void showPlaylistDialog(Supplier<FutureSupplier<List<PlayableItem>>> selection,
+																	 Supplier<? extends CharSequence> initName) {
 		getLib().getPlaylists().getUnsortedChildren().main().onSuccess(playlists -> {
-			b.addItem(R.id.playlist_create, R.drawable.playlist_add, R.string.playlist_create)
-					.setHandler(i -> createPlaylist(selection.get(), initName));
-
+			Context ctx = getContext();
+			CharSequence[] items = new CharSequence[playlists.size() + 1];
+			items[0] = ctx.getString(R.string.playlist_create);
 			for (int i = 0; i < playlists.size(); i++) {
-				Playlist pl = (Playlist) playlists.get(i);
-				String name = pl.getName();
-				b.addItem(UiUtils.getArrayItemId(i), R.drawable.playlist, name)
-						.setHandler(item -> addToPlaylist(name, selection.get()));
+				items[i + 1] = ((Playlist) playlists.get(i)).getName();
 			}
+
+			createDialogBuilder(ctx).setTitle(R.drawable.playlist_add, R.string.playlist_add)
+					.setSingleChoiceItems(items, -1, (d, which) -> {
+						d.dismiss();
+						if (which == 0) {
+							createPlaylist(selection.get(), initName);
+						} else {
+							addToPlaylist(((Playlist) playlists.get(which - 1)).getName(), selection.get());
+						}
+					})
+					.setNegativeButton(android.R.string.cancel, (d, w) -> d.dismiss())
+					.show();
 		});
 	}
 
