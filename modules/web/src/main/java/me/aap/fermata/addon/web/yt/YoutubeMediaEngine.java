@@ -20,6 +20,8 @@ import androidx.media.AudioFocusRequestCompat;
 
 import com.google.android.play.core.splitcompat.SplitCompat;
 
+import java.util.Objects;
+
 import me.aap.fermata.addon.web.FermataChromeClient;
 import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.yt.YoutubeAddon.VideoScale;
@@ -845,22 +847,18 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 * shuffle/repeat prefs via {@link PlayableItem#getPrevPlayable()}'s normal sibling-based logic --
 	 * instead of {@link #prev}, whose {@link #prepare} handling just asks the page for its own
 	 * page-internal previous video. Falls back to {@link #prev} when there's no queue context (plain
-	 * YouTube browsing) or the list has no previous item.
+	 * YouTube browsing) or the list has no previous item, clearing the queue item in the latter case
+	 * -- see {@link #acceptQueueResolved}.
 	 */
 	@NonNull
 	private FutureSupplier<PlayableItem> queueAwarePrevPlayable() {
 		PlayableItem q = web.getAddon().getQueueItem();
-		Log.d("queueAwarePrevPlayable(): queueItem=", q, " parent=", (q != null) ? q.getParent() : null);
+		Log.i("queueAwarePrevPlayable(): queueItem=", q, " parent=", (q != null) ? q.getParent() : null);
 		if (q == null) return completed(prev);
-		// A Favorites/Playlist can mix YouTube videos with local/other media -- prepare() below only
-		// knows how to navigate this engine to another YouTube video (a plain loadUrl()), not swap it
-		// out for a completely different engine, so hitting a non-YouTube neighbor (or the start of
-		// the list) falls back to prev, same as having no queue context at all. A resolved sibling is
-		// always an exported Favorites/Playlist wrapper (see ExportedItem), never a YoutubeVideoItem
-		// itself, hence extractYoutubeVideoId() rather than an instanceof check.
+		BrowsableItem container = q.getParent();
 		return q.getPrevPlayable().map(pi -> {
-			Log.d("queueAwarePrevPlayable(): resolved ", pi);
-			return (YoutubeVideoItem.extractYoutubeVideoId(pi) != null) ? pi : prev;
+			Log.i("queueAwarePrevPlayable(): resolved ", pi);
+			return acceptQueueResolved(pi, container, prev);
 		});
 	}
 
@@ -868,11 +866,43 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	@NonNull
 	private FutureSupplier<PlayableItem> queueAwareNextPlayable() {
 		PlayableItem q = web.getAddon().getQueueItem();
-		Log.d("queueAwareNextPlayable(): queueItem=", q, " parent=", (q != null) ? q.getParent() : null);
+		Log.i("queueAwareNextPlayable(): queueItem=", q, " parent=", (q != null) ? q.getParent() : null);
 		if (q == null) return completed(next);
+		BrowsableItem container = q.getParent();
 		return q.getNextPlayable().map(pi -> {
-			Log.d("queueAwareNextPlayable(): resolved ", pi);
-			return (YoutubeVideoItem.extractYoutubeVideoId(pi) != null) ? pi : next;
+			Log.i("queueAwareNextPlayable(): resolved ", pi);
+			return acceptQueueResolved(pi, container, next);
 		});
+	}
+
+	/**
+	 * {@link MediaLib.Item#getPlayable}'s generic sibling logic -- what {@link
+	 * #queueAwarePrevPlayable()}/{@link #queueAwareNextPlayable()} above resolve the queue item's
+	 * neighbor through -- is written for local media libraries, where running off the end of one
+	 * folder/playlist is meant to spill into the next one over (see its own {@code
+	 * parent.getPlayable(next)} recursive fallback). Applied to a Favorites/Playlist queue here, that
+	 * spillover is wrong: it can walk straight out of the current list into a sibling Favorites entry
+	 * or an entirely different Playlist and hand back the first video of THAT, which is a YouTube
+	 * video too -- so the existing "is this even a YouTube item" check alone happily accepted it,
+	 * producing exactly the "next/prev jumps to a random unrelated video" symptom. A resolved sibling
+	 * only counts as a real continuation of the current queue when it's still parented by {@code
+	 * container} -- the queue item's own container -- same as {@code idx} staying within {@code
+	 * children} in the generic logic before it would have bubbled up. Anything else (no next item at
+	 * all, a non-YouTube neighbor, or a spillover into a different container) means this queue has
+	 * nothing left to say about what plays next: falls back to {@code fallback} ({@link #prev}/{@link
+	 * #next}, i.e. page-internal navigation) AND clears the queue item, so YouTube's own subsequent
+	 * page-driven navigation (or ordinary manual browsing) is no longer mistaken for still being
+	 * inside this queue -- see {@link #playing}'s "unexpected transition" handling, which otherwise
+	 * kept reacting to every further page navigation as if this exhausted queue were still active.
+	 */
+	@NonNull
+	private PlayableItem acceptQueueResolved(@Nullable PlayableItem pi, @Nullable BrowsableItem container,
+																						@NonNull PlayableItem fallback) {
+		if ((pi != null) && (YoutubeVideoItem.extractYoutubeVideoId(pi) != null) &&
+				Objects.equals(pi.getParent(), container)) {
+			return pi;
+		}
+		web.getAddon().setQueueItem(null);
+		return fallback;
 	}
 }
