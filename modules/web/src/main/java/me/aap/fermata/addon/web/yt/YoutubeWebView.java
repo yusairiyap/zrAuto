@@ -152,6 +152,20 @@ public class YoutubeWebView extends FermataWebView {
 		String debug = BuildConfig.D ? JS_EVENT + "(" + JS_VIDEO_FOUND + ", null);\n" : "";
 		String scale = getAddon().getScale().prefName();
 		loadUrl("javascript:\n" +
+				// The WebView's own reported document URL (what YoutubeMediaEngine#playing() used to
+				// derive the current video id from) lags behind player.loadVideoById()'s SPA-internal video
+				// swap -- YouTube updates the address bar via the History API only once it's fetched the
+				// new video's metadata, well after the <video> element itself has already switched sources
+				// and fired 'playing'. Reading the id straight from the player object instead (what it's
+				// actually playing, right now) is instantaneous, so the id is prefixed onto every
+				// JS_VIDEO_PLAYING payload here instead. See YoutubeMediaEngine#playing()'s parsing of it.
+				"function fermataCurrentVideoId() {\n" +
+				"  try {\n" +
+				"    var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
+				"    var d = p && p.getVideoData ? p.getVideoData() : null;\n" +
+				"    return (d && d.video_id) ? d.video_id : '';\n" +
+				"  } catch (e) { return ''; }\n" +
+				"}\n" +
 				"function attachVideoListeners(v) {\n" +
 				"  if (!(window.__fermataAdShowing && window.__fermataAdSkipEnabled)) v.muted = false;\n" +
 				"  if (v.getAttribute('FermataAttached') === 'true') return;\n" +
@@ -160,12 +174,12 @@ public class YoutubeWebView extends FermataWebView {
 				"  if ((v.currentTime > 0) && !v.paused && !v.ended) {\n" +
 				"    if (typeof fermataAdCheck === 'function') fermataAdCheck();\n" +
 				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
-				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", v.currentSrc);\n" +
+				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", fermataCurrentVideoId() + '|' + v.currentSrc);\n" +
 				"  }\n" +
 				"  v.addEventListener('playing', function(e) {\n" +
 				"    if (typeof fermataAdCheck === 'function') fermataAdCheck();\n" +
 				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
-				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", v.currentSrc);\n" +
+				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", fermataCurrentVideoId() + '|' + v.currentSrc);\n" +
 				"  });\n" +
 				"  v.addEventListener('pause', function(e) {" + JS_EVENT + "(" + JS_VIDEO_PAUSED +
 				", v.currentSrc);});\n" +

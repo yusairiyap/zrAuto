@@ -143,7 +143,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		};
 	}
 
-	void playing(String url) {
+	void playing(String data) {
 		// Every confirmed-playing moment re-arms the retry guard in paused() below -- not just an
 		// explicit native start() -- since a page-reported pause can also follow a resize-triggered
 		// player restart the app never asked for (confirmed on-device: a window resize alone, with
@@ -163,12 +163,25 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			blockedHeight = 0;
 		}
 
-		String actualId = YoutubeVideoItem.extractVideoId(web.getUrl());
+		// data is "<videoId>|<v.currentSrc>" -- see YoutubeWebView#attachListeners()'s
+		// fermataCurrentVideoId(). The id comes straight from the player object, not the WebView's own
+		// getUrl(): that outer document URL only catches up with a player.loadVideoById() SPA-internal
+		// swap once YouTube's own JS updates the address bar via the History API, well after the
+		// <video> element has already switched sources and fired this very "playing" event -- using it
+		// here instead used to read the OLD video id for a beat after every queue-driven navigation,
+		// triggering a bogus "expected X but page shows <stale>" correction (see the pendingVideoId
+		// branch below) that reissued loadVideoById() and was visible on-screen as a flicker back to
+		// the old video. Falls back to the old getUrl()-based extraction if the player object wasn't
+		// found (e.g. mid-navigation) or didn't report an id.
+		int sep = data.indexOf('|');
+		String jsVideoId = (sep >= 0) ? data.substring(0, sep) : "";
+		String url = (sep >= 0) ? data.substring(sep + 1) : data;
+		String actualId =
+				!jsVideoId.isEmpty() ? jsVideoId : YoutubeVideoItem.extractVideoId(web.getUrl());
 		YoutubeAddon addon = web.getAddon();
 		String pendingVideoId = addon.getPendingVideoId();
 
-		// The page's own URL (not the <video> source url below, which carries no video id) is what the
-		// app explicitly decided should play, if it decided anything -- see YoutubeAddon#
+		// What the app explicitly decided should play, if it decided anything -- see YoutubeAddon#
 		// getPendingVideoId(). A mismatch means YouTube's own navigation won the race (see
 		// YoutubeWebView's capture-phase interceptors); re-issue the navigation instead of accepting
 		// whatever this is, up to a bounded number of attempts so a genuinely unrelated, legitimate
