@@ -104,6 +104,20 @@ jobs:
           storePassword=${{ secrets.CI_KEYSTORE_PWD }}
           EOF
 
+      # The whisper module's CMake build FetchContents (git clones) whisper.cpp and its
+      # Vulkan headers on every configure, then compiles them with LTO from scratch --
+      # this one native build dominates total CI time (~5-7 min of an ~11 min run).
+      # Caching .cxx lets CMake re-use the cloned sources (fetch instead of clone) and
+      # ninja skip already-built objects when nothing relevant changed.
+      - name: Cache whisper native build (.cxx)
+        uses: actions/cache@v4
+        with:
+          path: modules/whisper/.cxx
+          key: whisper-cxx-${{ inputs.abi }}-${{ env.ANDROID_NDK_VERSION }}-${{ hashFiles('modules/whisper/src/main/cpp/**') }}
+          restore-keys: |
+            whisper-cxx-${{ inputs.abi }}-${{ env.ANDROID_NDK_VERSION }}-
+            whisper-cxx-${{ inputs.abi }}-
+
       - name: Build APK
         env:
           NO_GS: true

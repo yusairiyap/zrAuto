@@ -29,9 +29,11 @@ if (CMAKE_ANDROID_ARCH_ABI MATCHES "arm64")
     set(GGML_VULKAN ON CACHE BOOL "Enable Vulkan" FORCE)
     FetchContent_Declare(vk_hpp GIT_REPOSITORY https://github.com/KhronosGroup/Vulkan-Hpp
             GIT_TAG v1.3.275
+            GIT_SHALLOW TRUE
     )
     FetchContent_Declare(SPIRV-Headers GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Headers
             GIT_TAG main
+            GIT_SHALLOW TRUE
             OVERRIDE_FIND_PACKAGE
     )
     FetchContent_MakeAvailable(vk_hpp SPIRV-Headers)
@@ -50,6 +52,7 @@ FetchContent_Declare(
         whispercpp
         GIT_REPOSITORY https://github.com/ggml-org/whisper.cpp.git
         GIT_TAG master # v1.8.2
+        GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(whispercpp)
 

@@ -3,6 +3,12 @@ android {
     defaultConfig {
         versionCode 1
         versionName '1.0'
+
+        ndk {
+            //noinspection ChromeOsAbiSupport
+            abiFilters = gradle.ext.abiFilters
+        }
+
         externalNativeBuild {
             cmake {
                 arguments '-DCMAKE_BUILD_TYPE=Release'
