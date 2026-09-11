@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Full-bleed thumbnail/icon: fills the whole card, height derived from width so the card
-         itself (wrap_content) sizes to it -- title/subtitle/badge below are overlaid on top of it
+         itself (wrap_content) sizes to it; title/subtitle/badge below are overlaid on top of it
          rather than adding their own row height, matching the Android TV "compact card" style. -->
     <androidx.appcompat.widget.AppCompatImageView
         android:id="@+id/media_item_icon"
