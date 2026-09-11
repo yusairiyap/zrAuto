@@ -17,6 +17,7 @@ import me.aap.fermata.media.lib.ExtPlayable;
 import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
 import me.aap.utils.async.FutureSupplier;
+import me.aap.utils.log.Log;
 import me.aap.utils.text.SharedTextBuilder;
 import me.aap.utils.ui.fragment.ActivityFragment;
 import me.aap.utils.vfs.generic.GenericFileSystem;
@@ -94,6 +95,8 @@ public class YoutubeVideoItem extends ExtPlayable implements MediaLib.Externally
 		// Remembers this item (and its real Favorites/Playlist parent) as the playback queue, so
 		// YoutubeMediaEngine's next/prev navigate that list in order instead of YouTube's own
 		// page-internal next/prev, which knows nothing about it.
+		Log.d("YoutubeVideoItem.loadInFragment(): queueItem=", this, " parent=", getParent(),
+				" addon=", addon);
 		if (addon != null) addon.setQueueItem(this);
 		((YoutubeFragment) fragment).loadUrl(watchUrl(videoId));
 	}
