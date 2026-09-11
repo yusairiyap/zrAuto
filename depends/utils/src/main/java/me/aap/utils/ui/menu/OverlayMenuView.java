@@ -38,6 +38,7 @@ import me.aap.utils.ui.activity.ActivityDelegate;
  * @author Andrey Pavlenko
  */
 public class OverlayMenuView extends ScrollView implements OverlayMenu {
+	private static final long FADE_DURATION = 150L;
 	@ColorInt
 	private final int headerColor;
 
@@ -66,7 +67,10 @@ public class OverlayMenuView extends ScrollView implements OverlayMenu {
 	private void showMenu(MenuBuilder builder) {
 		ActivityDelegate.get(getContext()).setActiveMenu(this);
 		this.builder = builder;
+		animate().cancel();
+		setAlpha(0f);
 		setVisibility(VISIBLE);
+		animate().alpha(1f).setDuration(FADE_DURATION).start();
 
 		ViewGroup g = builder.view;
 		builder.consumer.apply(builder).main().onSuccess(ignore -> {
@@ -119,7 +123,8 @@ public class OverlayMenuView extends ScrollView implements OverlayMenu {
 		View f = builder.focus;
 		builder.cleanUp();
 		builder = null;
-		setVisibility(GONE);
+		animate().cancel();
+		animate().alpha(0f).setDuration(FADE_DURATION).withEndAction(() -> setVisibility(GONE)).start();
 		a.setActiveMenu(null);
 		if (ch != null) ch.menuClosed(this);
 		if (f != null) f.requestFocus();

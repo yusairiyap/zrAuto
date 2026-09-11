@@ -337,6 +337,9 @@ public class ControlPanelView extends ConstraintLayout
 		mask |= MASK_VIDEO_MODE;
 		a.setBarsHidden(true);
 		setShowHideBarsIcon(a);
+		// Redundant during fullscreen playback -- FAB2 defaults to the fullscreen toggle, so this
+		// corner control is dropped rather than duplicating it.
+		findViewById(R.id.show_hide_bars).setVisibility(GONE);
 
 		View fb = a.getFloatingButton();
 		View fb2 = fab2(a);
@@ -379,6 +382,7 @@ public class ControlPanelView extends ConstraintLayout
 		hideTimer = null;
 		mask &= ~MASK_VIDEO_MODE;
 		a.getFloatingButton().setVisibility(VISIBLE);
+		findViewById(R.id.show_hide_bars).setVisibility(VISIBLE);
 
 		if ((mask & MASK_VISIBLE) == 0) {
 			super.setVisibility(GONE);
@@ -860,9 +864,12 @@ public class ControlPanelView extends ConstraintLayout
 					.setSubmenu(s -> new TimerMenuHandler(a).build(s));
 
 			if (pi.isVideo()) {
-				// Navigates to a different page entirely, so keep it last rather than grouped with
-				// the in-place toggles above.
+				// Navigate away entirely, so keep these last rather than grouped with the in-place
+				// toggles above.
 				b.addItem(R.id.dim_settings, R.drawable.settings, R.string.dim_settings);
+				b.addItem(R.id.settings_fragment, R.drawable.settings, R.string.settings);
+				b.addItem(R.id.nav_exit, R.drawable.exit,
+						a.isCarActivityNotMirror() ? R.string.restart : R.string.exit);
 			}
 
 			eng.contributeToMenuEnd(b);
@@ -911,6 +918,16 @@ public class ControlPanelView extends ConstraintLayout
 				// navigates but stays hidden underneath it.
 				a.exitVideoMode();
 				a.showFragment(R.id.settings_fragment, SettingsFragment.SHOW_DIM_SETTINGS);
+				return true;
+			} else if (id == R.id.settings_fragment) {
+				MainActivityDelegate a = getActivity();
+				a.exitVideoMode();
+				a.showFragment(R.id.settings_fragment);
+				return true;
+			} else if (id == R.id.nav_exit) {
+				MainActivityDelegate a = getActivity();
+				a.finish();
+				if (a.isCarActivityNotMirror()) a.getHandler().postDelayed(() -> System.exit(0), 500);
 				return true;
 			}
 

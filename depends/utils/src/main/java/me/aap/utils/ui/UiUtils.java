@@ -133,6 +133,20 @@ public class UiUtils {
 		return p;
 	}
 
+	/**
+	 * A brief, non-blocking confirmation (e.g. "Added to playlist") -- unlike {@link #showAlert}/
+	 * {@link #showInfo}, which are modal dialogs requiring a tap to dismiss, this doesn't interrupt
+	 * whatever the user is doing.
+	 */
+	public static void showToast(Context ctx, @StringRes int msg, Object... args) {
+		showToast(ctx, ctx.getString(msg, args));
+	}
+
+	public static void showToast(Context ctx, String msg) {
+		App.get().getHandler().post(() ->
+				android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_SHORT).show());
+	}
+
 	public static FutureSupplier<Void> showQuestion(
 			Context ctx, @StringRes int title, @StringRes int msg, @DrawableRes int icon) {
 		return showQuestion(ctx, ctx.getString(title), ctx.getString(msg),

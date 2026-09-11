@@ -98,10 +98,13 @@ public class SettingsFragment extends MainActivityFragment
 	public static final Object SHOW_DIM_SETTINGS = "dim_settings";
 	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Private Mode settings subsection. */
 	public static final Object SHOW_PRIVATE_MODE_SETTINGS = "private_mode_settings";
+	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Secondary/Tertiary FAB settings subsection. */
+	public static final Object SHOW_FAB_SETTINGS = "fab_settings";
 
 	private PreferenceViewAdapter adapter;
 	private PreferenceSet dimSettingsSet;
 	private PreferenceSet privateModeSettingsSet;
+	private PreferenceSet fabSettingsSet;
 	@Nullable
 	private Object pendingInput;
 
@@ -121,6 +124,8 @@ public class SettingsFragment extends MainActivityFragment
 			adapter.setPreferenceSet(dimSettingsSet);
 		} else if ((pendingInput == SHOW_PRIVATE_MODE_SETTINGS) && (privateModeSettingsSet != null)) {
 			adapter.setPreferenceSet(privateModeSettingsSet);
+		} else if ((pendingInput == SHOW_FAB_SETTINGS) && (fabSettingsSet != null)) {
+			adapter.setPreferenceSet(fabSettingsSet);
 		}
 		pendingInput = null;
 	}
@@ -333,16 +338,18 @@ public class SettingsFragment extends MainActivityFragment
 		});
 
 		if (BuildConfig.AUTO && a.isCarActivityNotMirror()) {
-			addSecondaryFabPrefs(a, sub1.subSet(o -> {
+			fabSettingsSet = sub1.subSet(o -> {
 				o.title = R.string.secondary_fab_prefs;
 				o.icon = R.drawable.fab;
-			}));
+			});
+			addSecondaryFabPrefs(a, fabSettingsSet);
 			addAAInterface(a, sub1);
 		} else {
-			addSecondaryFabPrefs(a, sub1.subSet(o -> {
+			fabSettingsSet = sub1.subSet(o -> {
 				o.title = R.string.secondary_fab_prefs;
 				o.icon = R.drawable.fab;
-			}));
+			});
+			addSecondaryFabPrefs(a, fabSettingsSet);
 			if (BuildConfig.AUTO) {
 				addAAInterface(a, sub1.subSet(o -> {
 					o.title = R.string.interface_prefs_aa;

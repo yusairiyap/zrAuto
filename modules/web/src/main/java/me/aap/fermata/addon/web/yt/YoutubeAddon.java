@@ -48,7 +48,6 @@ public class YoutubeAddon extends WebBrowserAddon
 	private static final Pref<BooleanSupplier> YT_DESKTOP_VERSION = Pref.b("YT_DESKTOP_VERSION", false);
 	private static final Pref<Supplier<String[]>> YT_BOOKMARKS = Pref.sa("YT_BOOKMARKS");
 	private static final Pref<Supplier<String>> VIDEO_SCALE = Pref.s("VIDEO_SCALE", VideoScale.CONTAIN::prefName);
-	private static final Pref<BooleanSupplier> YT_OPEN_ON_START = Pref.b("YT_OPEN_ON_START", false);
 	private static final Pref<BooleanSupplier> YT_AUTO_HIGHEST_QUALITY =
 			Pref.b("YT_AUTO_HIGHEST_QUALITY", false);
 	private static final Pref<BooleanSupplier> YT_SKIP_ADD = Pref.b("YT_SKIP_ADD", true);
@@ -220,12 +219,6 @@ public class YoutubeAddon extends WebBrowserAddon
 
 		set.addBooleanPref(o -> {
 			o.store = getPreferenceStore();
-			o.pref = YT_OPEN_ON_START;
-			o.title = R.string.open_on_start;
-			o.visibility = visibility;
-		});
-		set.addBooleanPref(o -> {
-			o.store = getPreferenceStore();
 			o.pref = YT_AUTO_HIGHEST_QUALITY;
 			o.title = R.string.auto_highest_video_quality;
 			o.visibility = visibility;
@@ -249,20 +242,9 @@ public class YoutubeAddon extends WebBrowserAddon
 		if (prefs.contains(getInfo().enabledPref)) {
 			if (!store.getBooleanPref(getInfo().enabledPref)) {
 				MainActivityPrefs ap = MainActivityPrefs.get();
-				getPreferenceStore().applyBooleanPref(YT_OPEN_ON_START, false);
 				if (getInfo().className.equals(ap.getShowAddonOnStartPref()))
 					ap.setShowAddonOnStartPref(null);
 			}
-		} else if (prefs.contains(YT_OPEN_ON_START)) {
-			MainActivityPrefs ap = MainActivityPrefs.get();
-			if (store.getBooleanPref(YT_OPEN_ON_START)) {
-				ap.setShowAddonOnStartPref(getInfo().className);
-			} else if (getInfo().className.equals(ap.getShowAddonOnStartPref())) {
-				ap.setShowAddonOnStartPref(null);
-			}
-		} else if (prefs.contains(MainActivityPrefs.SHOW_ADDON_ON_START)) {
-			getPreferenceStore().applyBooleanPref(YT_OPEN_ON_START,
-					getInfo().className.equals(MainActivityPrefs.get().getShowAddonOnStartPref()));
 		}
 
 		ignorePrefChange = false;

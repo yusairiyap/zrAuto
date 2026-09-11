@@ -116,6 +116,11 @@ public final class TertiaryFabMediator implements FloatingButton.Mediator,
 				a.showFragment(R.id.settings_fragment, SettingsFragment.SHOW_DIM_SETTINGS);
 				return true;
 			});
+			b.addItem(R.id.fab_settings, R.drawable.fab, R.string.fab_settings).setHandler(item -> {
+				a.exitVideoMode();
+				a.showFragment(R.id.settings_fragment, SettingsFragment.SHOW_FAB_SETTINGS);
+				return true;
+			});
 			b.addItem(R.id.private_mode_settings, R.drawable.private_mode, R.string.private_mode_settings)
 					.setHandler(item -> {
 						a.exitVideoMode();

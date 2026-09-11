@@ -32,6 +32,7 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.ui.view.MediaItemListView;
+import me.aap.utils.pref.PreferenceSet;
 import me.aap.utils.ui.activity.ActivityDelegate;
 import me.aap.utils.ui.fragment.ActivityFragment;
 import me.aap.utils.ui.menu.OverlayMenu;
@@ -58,6 +59,8 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 		if ((f instanceof MediaLibFragment) && ((MediaLibFragment) f).isGridSupported()) {
 			int gridIcon = a.isGridView() ? R.drawable.view_list : R.drawable.view_grid;
 			addButton(tb, gridIcon, ToolBarMediator::onGridButtonClick, R.id.tool_grid);
+			addButton(tb, R.drawable.card_size, ToolBarMediator::onCardSizeButtonClick,
+					R.id.tool_card_size);
 		}
 
 		if ((f instanceof MediaLibFragment) && a.getPrefs().getShowPgUpDownPref(a)) {
@@ -128,9 +131,11 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 			setButtonVisibility(tb, R.id.tool_view, GONE);
 			setButtonVisibility(tb, R.id.tool_sort, GONE);
 			setButtonVisibility(tb, R.id.tool_grid, (b instanceof StreamItem) ? GONE : VISIBLE);
+			setButtonVisibility(tb, R.id.tool_card_size, (b instanceof StreamItem) ? GONE : VISIBLE);
 		} else {
 			setButtonVisibility(tb, R.id.tool_view, VISIBLE);
 			setButtonVisibility(tb, R.id.tool_grid, VISIBLE);
+			setButtonVisibility(tb, R.id.tool_card_size, VISIBLE);
 			setButtonVisibility(tb, R.id.tool_sort, b.sortChildrenEnabled() ? VISIBLE : GONE);
 		}
 	}
@@ -245,6 +250,28 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 		boolean grid = a.isGridView();
 		((ImageButton) v).setImageResource(grid ? R.drawable.view_grid : R.drawable.view_list);
 		prefs.setGridViewPref(a, !grid);
+	}
+
+	private static void onCardSizeButtonClick(View v) {
+		MainActivityDelegate a = MainActivityDelegate.get(v.getContext());
+		MediaLibFragment f = a.getActiveMediaLibFragment();
+		if (f == null) return;
+
+		f.discardSelection();
+		// Pops up right under the toolbar button, same as the sort/view menus, with a single
+		// slider the user can drag to resize grid cards live.
+		a.getToolBarMenu().show(b -> {
+			PreferenceSet set = new PreferenceSet();
+			set.addFloatPref(o -> {
+				o.title = R.string.card_size;
+				o.store = a.getPrefs();
+				o.pref = MainActivityPrefs.GRID_ITEM_SIZE;
+				o.scale = 0.05f;
+				o.seekMin = 10;
+				o.seekMax = 40;
+			});
+			set.addToMenu(b, true);
+		});
 	}
 
 	private static void onSortButtonClick(View v) {

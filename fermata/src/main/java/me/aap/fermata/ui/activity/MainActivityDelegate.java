@@ -378,6 +378,14 @@ public class MainActivityDelegate extends ActivityDelegate
 
 		String showAddon = getPrefs().getShowAddonOnStartPref();
 		if (showAddon != null) {
+			int fragId = NavBarMediator.nameToFragmentId(showAddon);
+
+			if (fragId != 0) {
+				showFragment(fragId);
+				checkUpdates();
+				return;
+			}
+
 			FermataAddon addon = AddonManager.get().getAddon(showAddon);
 
 			if (addon instanceof FermataFragmentAddon) {
@@ -1368,6 +1376,7 @@ public class MainActivityDelegate extends ActivityDelegate
 											.onFailure(err -> showAlert(getContext(), err.getMessage())).thenRun(() -> {
 												MediaLibFragment f = getMediaLibFragment(R.id.playlists_fragment);
 												if (f != null) f.getAdapter().reload();
+												UiUtils.showToast(getContext(), R.string.added_to_playlist, name);
 											})));
 				});
 		return true;
@@ -1384,6 +1393,7 @@ public class MainActivityDelegate extends ActivityDelegate
 						pl.addItems(items);
 						MediaLibFragment f = getMediaLibFragment(R.id.playlists_fragment);
 						if (f != null) f.getAdapter().reload();
+						UiUtils.showToast(getContext(), R.string.added_to_playlist, name);
 					});
 					break;
 				}

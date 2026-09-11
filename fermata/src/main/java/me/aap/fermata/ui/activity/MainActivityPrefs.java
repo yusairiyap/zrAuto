@@ -76,6 +76,9 @@ public interface MainActivityPrefs
 	// bar-container size sliders above.
 	Pref<DoubleSupplier> ICON_SIZE = Pref.f("ICON_SIZE", 1f);
 	Pref<BooleanSupplier> GRID_VIEW = Pref.b("GRID_VIEW", false);
+	// Independent of TEXT_ICON_SIZE: scales only the grid card size (span count), adjustable live
+	// via the toolbar's card-size slider.
+	Pref<DoubleSupplier> GRID_ITEM_SIZE = Pref.f("GRID_ITEM_SIZE", 1f);
 	Pref<DoubleSupplier> P_SPLIT_PERCENT = Pref.f("P_SPLIT_PERCENT", 0.6f);
 	Pref<DoubleSupplier> L_SPLIT_PERCENT = Pref.f("L_SPLIT_PERCENT", 0.4f);
 	Pref<DoubleSupplier> P_SPLIT_PERCENT_SUB = Pref.f("P_SPLIT_PERCENT_SUB", 0.5f);
@@ -87,9 +90,11 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> LANDSCAPE_VIDEO = Pref.b("LANDSCAPE_VIDEO", false);
 	Pref<BooleanSupplier> CHANGE_BRIGHTNESS = Pref.b("CHANGE_BRIGHTNESS", false);
 	Pref<IntSupplier> BRIGHTNESS = Pref.i("BRIGHTNESS", 255);
+	// All three FABs (primary + secondary + tertiary) are available out of the box: FAB2 defaults
+	// to the fullscreen toggle, FAB3 to the dim-screen toggle.
 	Pref<BooleanSupplier> FAB2_ENABLED = Pref.b("FAB2_ENABLED", true);
-	Pref<IntSupplier> FAB2_ACTION = Pref.i("FAB2_ACTION", Action.PLAY_PAUSE.ordinal());
-	Pref<BooleanSupplier> FAB3_ENABLED = Pref.b("FAB3_ENABLED", false);
+	Pref<IntSupplier> FAB2_ACTION = Pref.i("FAB2_ACTION", Action.FULLSCREEN_TOGGLE.ordinal());
+	Pref<BooleanSupplier> FAB3_ENABLED = Pref.b("FAB3_ENABLED", true);
 	Pref<IntSupplier> FAB3_ACTION = Pref.i("FAB3_ACTION", Action.DIM_TOGGLE.ordinal());
 	Pref<BooleanSupplier> FAB_DRAGGABLE = Pref.b("FAB_DRAGGABLE", true);
 	Pref<DoubleSupplier> FAB_SIZE = Pref.f("FAB_SIZE", 1f);
@@ -291,6 +296,18 @@ public interface MainActivityPrefs
 
 	default void setGridViewPref(MainActivityDelegate a, boolean value) {
 		applyBooleanPref(getGridViewPrefKey(a), value);
+	}
+
+	static boolean hasGridItemSizePref(List<Pref<?>> prefs) {
+		return prefs.contains(GRID_ITEM_SIZE);
+	}
+
+	default float getGridItemSizePref() {
+		return getFloatPref(GRID_ITEM_SIZE);
+	}
+
+	default void setGridItemSizePref(float value) {
+		applyFloatPref(GRID_ITEM_SIZE, value);
 	}
 
 	default float getFabSizePref() {

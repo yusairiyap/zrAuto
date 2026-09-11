@@ -132,8 +132,14 @@
         <attr name="singleChoiceItemLayout" format="reference" />
     </declare-styleable>
 
+    <style name="Theme.Utils.Base.DialogFadeAnimation" parent="android:Animation">
+        <item name="android:windowEnterAnimation">@anim/dialog_fade_in</item>
+        <item name="android:windowExitAnimation">@anim/dialog_fade_out</item>
+    </style>
+
     <style name="Theme.Utils.Base.AlertDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
 
+        <item name="android:windowAnimationStyle">@style/Theme.Utils.Base.DialogFadeAnimation</item>
         <item name="alertDialogStyle">@style/Theme.Utils.Base.AlertDialog.Style</item>
 
         <item name="materialAlertDialogTitlePanelStyle">

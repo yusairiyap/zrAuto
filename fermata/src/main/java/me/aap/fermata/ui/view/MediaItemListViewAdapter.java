@@ -36,6 +36,7 @@ import me.aap.utils.ui.view.MovableRecyclerViewAdapter;
  */
 public class MediaItemListViewAdapter extends MovableRecyclerViewAdapter<MediaItemViewHolder>
 		implements OnClickListener, Item.ChangeListener {
+	private static final long ENTER_FADE_DURATION = 200L;
 	private final MainActivityDelegate activity;
 	private BrowsableItem parent;
 	private String filterText = "";
@@ -72,9 +73,21 @@ public class MediaItemListViewAdapter extends MovableRecyclerViewAdapter<MediaIt
 	@CallSuper
 	public FutureSupplier<?> setParent(BrowsableItem parent, boolean userAction) {
 		ensureMainThread(true);
+		// Only animate a genuine user-driven navigation to a *different* browsable item (drilling
+		// into a folder/playlist) -- not the initial load, a same-parent reload, or a background
+		// refresh triggered by mediaItemChanged().
+		boolean animate = userAction && (listView != null) && (this.parent != null) &&
+				(this.parent != parent);
 		if (this.parent != null) this.parent.removeChangeListener(this);
 		this.parent = parent;
 		list = Collections.emptyList();
+		// Setting alpha to 0 synchronously, before the empty list is even drawn, hides the brief
+		// flash of an empty list -- the new content then fades in once it's actually loaded, giving
+		// a smooth transition instead of an abrupt jump-cut when entering a folder/playlist.
+		if (animate) {
+			listView.animate().cancel();
+			listView.setAlpha(0f);
+		}
 		notifyChanged();
 		if (parent == null) return completedVoid();
 		parent.addChangeListener(this);
@@ -90,6 +103,8 @@ public class MediaItemListViewAdapter extends MovableRecyclerViewAdapter<MediaIt
 					} else {
 						setChildren(result);
 					}
+
+					if (animate) listView.animate().alpha(1f).setDuration(ENTER_FADE_DURATION).start();
 				});
 
 		if (userAction) activity.setContentLoading(f);
@@ -247,6 +262,13 @@ public class MediaItemListViewAdapter extends MovableRecyclerViewAdapter<MediaIt
 	@Override
 	public void onClick(View v) {
 		MediaItemView mi = (MediaItemView) v;
+
+		if (getListView().isSelectionActive()) {
+			MediaItemWrapper w = mi.getItemWrapper();
+			if ((w != null) && w.isSelectionSupported()) w.setSelected(!w.isSelected(), true);
+			return;
+		}
+
 		Item i = mi.getItem();
 
 		if (i instanceof BrowsableItem) {

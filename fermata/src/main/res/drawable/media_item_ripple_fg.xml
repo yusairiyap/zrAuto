@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- Touch-ripple-only overlay (no opaque background layer), drawn as this view's foreground so the
+     ripple still shows on top of a full-bleed grid thumbnail instead of being hidden underneath it;
+     media_item_bg's own solid background layer stays as the view's resting background. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="?attr/rippleColor">
+    <item android:id="@android:id/mask">
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/rippleColor" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+</ripple>
