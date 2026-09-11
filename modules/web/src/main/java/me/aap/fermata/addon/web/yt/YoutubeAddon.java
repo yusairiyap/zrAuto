@@ -72,6 +72,23 @@ public class YoutubeAddon extends WebBrowserAddon
 	static final Pref<IntSupplier> YT_REVERB_ENGINE = Pref.i("YT_REVERB_ENGINE", 0);
 	private boolean ignorePrefChange;
 	private YoutubeRootItem root;
+	// The library item (with its real Favorites/Playlist parent) that the currently loaded video
+	// was selected from, if any -- set by YoutubeVideoItem#loadInFragment() and kept in sync by
+	// YoutubeMediaEngine as playback moves to the next/previous video. Lets next/prev navigate the
+	// actual playlist/favorites order (see YoutubeMediaEngine#queueAwareNextPlayable/PrevPlayable)
+	// instead of YouTube's own page-internal next/prev, which has no notion of the app's playlists.
+	// Null while the user is just browsing YouTube outside of any app playlist/favorites context.
+	@Nullable
+	private YoutubeVideoItem queueItem;
+
+	@Nullable
+	YoutubeVideoItem getQueueItem() {
+		return queueItem;
+	}
+
+	void setQueueItem(@Nullable YoutubeVideoItem item) {
+		queueItem = item;
+	}
 
 	@IdRes
 	@Override

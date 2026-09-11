@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compact per-button width for a POSITION_BOTTOM NavBarView; see
+         NavBarView.Mediator#createButton(). Keeps the bar's buttons small and packed together
+         instead of stretching each one to an even 1/N share of the screen width. 48dp matches the
+         standard minimum touch target size. -->
+    <dimen name="nav_bar_bottom_button_width">48dp</dimen>
+</resources>

@@ -29,6 +29,7 @@ import me.aap.fermata.media.lib.ExtRoot;
 import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
+import me.aap.fermata.media.pref.BrowsableItemPrefs;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.VideoView;
@@ -96,7 +97,13 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			@NonNull
 			@Override
 			public FutureSupplier<PlayableItem> getNextPlayable() {
-				return completed(next);
+				return queueAwareNextPlayable();
+			}
+
+			@NonNull
+			@Override
+			public FutureSupplier<PlayableItem> getPrevPlayable() {
+				return queueAwarePrevPlayable();
 			}
 		};
 	}
@@ -123,6 +130,22 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 		if (url.startsWith("blob:")) url = url.substring(5);
 		current = new Current(url);
+
+		// Confirm the page actually landed on the video the queue (see YoutubeAddon#getQueueItem())
+		// expects -- url above is the <video> element's own media source (a blob/CDN URL), which
+		// carries no video id, so the page's own URL is used instead. A mismatch means the video
+		// changed by some means other than our own queue-driven next/prev (the user tapped a related
+		// video inside the page, typed a new URL, used YouTube's in-page next/prev, etc.), so the
+		// queue context no longer applies -- next/prev falls back to the page's own navigation (see
+		// queueAwareNextPlayable/PrevPlayable) until the user picks another item from a
+		// Favorites/Playlist list.
+		YoutubeAddon addon = web.getAddon();
+		YoutubeVideoItem q = addon.getQueueItem();
+		if (q != null) {
+			String pageVideoId = YoutubeVideoItem.extractVideoId(web.getUrl());
+			if ((pageVideoId == null) || !pageVideoId.equals(q.getVideoId())) addon.setQueueItem(null);
+		}
+
 		if (!web.getAddon().autoHighestQuality()) {
 			qualityUrl = null;
 		} else if (!url.isEmpty() && !url.equals(qualityUrl)) {
@@ -242,6 +265,16 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		} else if (source == prev) {
 			transitioning();
 			web.prev();
+		} else if (source instanceof YoutubeVideoItem yt) {
+			// Reached from MediaSessionCallback.skipTo()/engineEnded() when queueAwareNextPlayable()/
+			// PrevPlayable() below resolved a real sibling from the app's own Favorites/Playlist --
+			// navigate straight to it (same as the initial tap-to-play in YoutubeVideoItem#
+			// loadInFragment()) instead of asking the page for its own next/prev, which has no idea
+			// this item even exists. YouTube's own autoplay-on-load takes it from there and playing()
+			// above reports back once the new video is actually up, same as any other navigation.
+			transitioning();
+			web.getAddon().setQueueItem(yt);
+			web.loadUrl(YoutubeVideoItem.watchUrl(yt.getVideoId()));
 		} else {
 			cb.onEnginePrepared(this);
 		}
@@ -356,6 +389,68 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		b.addItem(me.aap.fermata.R.id.video_scaling,
 				ResourcesCompat.getDrawable(r, R.drawable.video_scaling, ctx.getTheme()),
 				r.getString(me.aap.fermata.R.string.video_scaling)).setSubmenu(this::videoScalingMenu);
+
+		// Only meaningful with a real Favorites/Playlist queue behind the current video (see
+		// YoutubeAddon#getQueueItem()) -- this is also the app's normal control panel "..." menu (it
+		// shows over fullscreen YouTube playback too, see YoutubeFragment's video-view overlay
+		// elevation), which otherwise never offers Repeat/Shuffle for YouTube: PlayableItem#isExternal()
+		// is true for every YouTube item, and ControlPanelView's own repeat/shuffle menu entries are
+		// gated on that being false.
+		YoutubeVideoItem q = web.getAddon().getQueueItem();
+		if (q != null) {
+			BrowsableItemPrefs p = q.getParent().getPrefs();
+			if (q.isRepeatItemEnabled() || p.getRepeatPref()) {
+				b.addItem(me.aap.fermata.R.id.repeat,
+						ResourcesCompat.getDrawable(r, me.aap.fermata.R.drawable.repeat_filled, ctx.getTheme()),
+						r.getString(me.aap.fermata.R.string.repeat)).setSubmenu(this::repeatMenu);
+			} else {
+				b.addItem(me.aap.fermata.R.id.repeat_enable,
+						ResourcesCompat.getDrawable(r, me.aap.fermata.R.drawable.repeat, ctx.getTheme()),
+						r.getString(me.aap.fermata.R.string.repeat)).setSubmenu(this::repeatMenu);
+			}
+
+			if (p.getShufflePref()) {
+				b.addItem(me.aap.fermata.R.id.shuffle_disable,
+						ResourcesCompat.getDrawable(r, me.aap.fermata.R.drawable.shuffle_filled, ctx.getTheme()),
+						r.getString(me.aap.fermata.R.string.shuffle_disable)).setHandler(i -> {
+					p.setShufflePref(false);
+					return true;
+				});
+			} else {
+				b.addItem(me.aap.fermata.R.id.shuffle_enable,
+						ResourcesCompat.getDrawable(r, me.aap.fermata.R.drawable.shuffle, ctx.getTheme()),
+						r.getString(me.aap.fermata.R.string.shuffle)).setHandler(i -> {
+					p.setShufflePref(true);
+					return true;
+				});
+			}
+		}
+	}
+
+	/**
+	 * Repeat submenu for the currently queued YouTube video -- mirrors ControlPanelView's own
+	 * repeat menu, but reads/writes the real queue item's parent prefs ({@link
+	 * YoutubeAddon#getQueueItem()}) rather than {@link #getSource()}'s (a transient, internally
+	 * parented placeholder -- see {@link YoutubeItem}), which is what {@code
+	 * ControlPanelView.MenuHandler} would otherwise use. Each item gets its own {@link
+	 * OverlayMenuItem#setHandler}, same as {@link #showEqualizer()} below, so this stays independent
+	 * of whatever selection handler the surrounding (shared, control-panel-owned) menu already has.
+	 */
+	private void repeatMenu(OverlayMenu.Builder b) {
+		b.addItem(me.aap.fermata.R.id.repeat_track, me.aap.fermata.R.string.current_track)
+				.setHandler(i -> setRepeat(true, false));
+		b.addItem(me.aap.fermata.R.id.repeat_folder, me.aap.fermata.R.string.current_folder)
+				.setHandler(i -> setRepeat(false, true));
+		b.addItem(me.aap.fermata.R.id.repeat_disable_all, me.aap.fermata.R.string.repeat_disable)
+				.setHandler(i -> setRepeat(false, false));
+	}
+
+	private boolean setRepeat(boolean item, boolean folder) {
+		YoutubeVideoItem q = web.getAddon().getQueueItem();
+		if (q == null) return true;
+		q.setRepeatItemEnabled(item);
+		q.getParent().getPrefs().setRepeatPref(folder);
+		return true;
 	}
 
 	@Override
@@ -549,13 +644,40 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		@NonNull
 		@Override
 		public FutureSupplier<PlayableItem> getPrevPlayable() {
-			return completed(prev);
+			return queueAwarePrevPlayable();
 		}
 
 		@NonNull
 		@Override
 		public FutureSupplier<PlayableItem> getNextPlayable() {
-			return completed(next);
+			return queueAwareNextPlayable();
 		}
+	}
+
+	/**
+	 * When the currently loaded video was selected from a Favorites/Playlist list (see {@link
+	 * YoutubeAddon#getQueueItem()}), resolves the previous item in that list -- honoring its
+	 * shuffle/repeat prefs via {@link PlayableItem#getPrevPlayable()}'s normal sibling-based logic --
+	 * instead of {@link #prev}, whose {@link #prepare} handling just asks the page for its own
+	 * page-internal previous video. Falls back to {@link #prev} when there's no queue context (plain
+	 * YouTube browsing) or the list has no previous item.
+	 */
+	@NonNull
+	private FutureSupplier<PlayableItem> queueAwarePrevPlayable() {
+		YoutubeVideoItem q = web.getAddon().getQueueItem();
+		if (q == null) return completed(prev);
+		// A Favorites/Playlist can mix YouTube videos with local/other media -- prepare() below only
+		// knows how to navigate this engine to another YoutubeVideoItem (a plain loadUrl()), not swap
+		// it out for a completely different engine, so hitting a non-YouTube neighbor (or the start of
+		// the list) falls back to prev, same as having no queue context at all.
+		return q.getPrevPlayable().map(pi -> (pi instanceof YoutubeVideoItem) ? pi : prev);
+	}
+
+	/** Next-direction counterpart of {@link #queueAwarePrevPlayable()} -- see there for details. */
+	@NonNull
+	private FutureSupplier<PlayableItem> queueAwareNextPlayable() {
+		YoutubeVideoItem q = web.getAddon().getQueueItem();
+		if (q == null) return completed(next);
+		return q.getNextPlayable().map(pi -> (pi instanceof YoutubeVideoItem) ? pi : next);
 	}
 }

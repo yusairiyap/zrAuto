@@ -5,11 +5,14 @@ import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_TITLE;
 import static me.aap.fermata.media.pref.MediaPrefs.MEDIA_ENG_YT;
 import static me.aap.utils.async.Completed.completed;
 
+import android.net.Uri;
 import android.support.v4.media.MediaMetadataCompat;
 
 import androidx.annotation.IdRes;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
+import me.aap.fermata.addon.AddonManager;
 import me.aap.fermata.media.lib.ExtPlayable;
 import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
@@ -35,6 +38,29 @@ public class YoutubeVideoItem extends ExtPlayable implements MediaLib.Externally
 
 	static String watchUrl(String videoId) {
 		return "https://m.youtube.com/watch?v=" + videoId;
+	}
+
+	/**
+	 * Extracts a video id from a YouTube watch/shorts URL (the page's own URL, not a media
+	 * {@code <video>} source), or {@code null} if {@code url} isn't one/doesn't carry one. Shared by
+	 * {@link YoutubeFragment#getCurrentVideoId()} and {@link YoutubeMediaEngine}, which uses it to
+	 * confirm the page actually navigated to the video its own queue-driven next/prev asked for
+	 * (see {@link YoutubeAddon#getQueueItem()}).
+	 */
+	@Nullable
+	static String extractVideoId(@Nullable String url) {
+		if (url == null) return null;
+		Uri u = Uri.parse(url);
+		String id = u.getQueryParameter("v");
+		if ((id != null) && !id.isEmpty()) return id;
+
+		String path = u.getPath();
+		if ((path != null) && path.startsWith("/shorts/")) {
+			String[] seg = path.split("/");
+			if ((seg.length >= 3) && !seg[2].isEmpty()) return seg[2];
+		}
+
+		return null;
 	}
 
 	public String getVideoId() {
@@ -64,6 +90,11 @@ public class YoutubeVideoItem extends ExtPlayable implements MediaLib.Externally
 
 	@Override
 	public void loadInFragment(ActivityFragment fragment) {
+		YoutubeAddon addon = AddonManager.get().getAddon(YoutubeAddon.class);
+		// Remembers this item (and its real Favorites/Playlist parent) as the playback queue, so
+		// YoutubeMediaEngine's next/prev navigate that list in order instead of YouTube's own
+		// page-internal next/prev, which knows nothing about it.
+		if (addon != null) addon.setQueueItem(this);
 		((YoutubeFragment) fragment).loadUrl(watchUrl(videoId));
 	}
 
@@ -74,7 +105,7 @@ public class YoutubeVideoItem extends ExtPlayable implements MediaLib.Externally
 	}
 
 	private String cachedTitle() {
-		YoutubeAddon addon = me.aap.fermata.addon.AddonManager.get().getAddon(YoutubeAddon.class);
+		YoutubeAddon addon = AddonManager.get().getAddon(YoutubeAddon.class);
 		return (addon != null) ? addon.getVideoTitle(videoId) : videoId;
 	}
 

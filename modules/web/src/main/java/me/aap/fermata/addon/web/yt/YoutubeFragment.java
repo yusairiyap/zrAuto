@@ -316,21 +316,8 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		FermataWebView v = getWebView();
 		if (v == null) return null;
 		String url = v.getUrl();
-		if (url == null) return null;
-
-		Uri u = Uri.parse(url);
-		if (!isYoutubeUri(u)) return null;
-
-		String id = u.getQueryParameter("v");
-		if ((id != null) && !id.isEmpty()) return id;
-
-		String path = u.getPath();
-		if (path != null && path.startsWith("/shorts/")) {
-			String[] seg = path.split("/");
-			if (seg.length >= 3 && !seg[2].isEmpty()) return seg[2];
-		}
-
-		return null;
+		if ((url == null) || !isYoutubeUri(Uri.parse(url))) return null;
+		return YoutubeVideoItem.extractVideoId(url);
 	}
 
 	@Override
