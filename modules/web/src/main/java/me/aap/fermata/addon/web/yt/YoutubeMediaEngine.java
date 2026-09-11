@@ -86,6 +86,26 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	// (start() below), either of which deserves a fresh attempt. 0 means not currently blocked.
 	private int blockedWidth;
 	private int blockedHeight;
+	// The video id the app most recently and explicitly decided should be playing -- set right
+	// before prepare() below navigates to a YoutubeVideoItem (both a manual app-driven next/prev and
+	// a natural end-of-video queue advance go through that same path). YouTube's own autonav can
+	// still win the race and land the page on a different video of its own choosing (see
+	// YoutubeWebView's capture-phase interceptors, which are best-effort, not a guarantee) -- playing()
+	// below checks the page actually landed here and re-issues the navigation if not, up to
+	// MAX_PENDING_CORRECTIONS times before giving up and accepting whatever's actually playing (never
+	// fighting it indefinitely, e.g. if the mismatch turns out to be perfectly legitimate navigation
+	// this mechanism didn't know about).
+	@Nullable
+	private String pendingVideoId;
+	private int pendingCorrections;
+	private static final int MAX_PENDING_CORRECTIONS = 3;
+	// The video id last confirmed actually playing (see playing() below) -- unlike pendingVideoId,
+	// always kept up to date once a mismatch settles, so ended()'s Repeat One branch has a reliable
+	// answer for "which video am I supposed to be looping" that doesn't depend on reading the page's
+	// URL at the exact, possibly-racy moment a video ends (by then YouTube's own navigation may
+	// already be underway).
+	@Nullable
+	private String currentVideoId;
 
 	public YoutubeMediaEngine(YoutubeWebView web, MainActivityDelegate a) {
 		this.web = web;
@@ -128,6 +148,46 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			blockedHeight = 0;
 		}
 
+		String actualId = YoutubeVideoItem.extractVideoId(web.getUrl());
+
+		// The page's own URL (not the <video> source url below, which carries no video id) is what the
+		// app explicitly decided should play, if it decided anything -- see the pendingVideoId field.
+		// A mismatch means YouTube's own navigation won the race (see YoutubeWebView's capture-phase
+		// interceptors); re-issue the navigation instead of accepting whatever this is, up to a bounded
+		// number of attempts so a genuinely unrelated, legitimate mismatch doesn't get fought forever.
+		if (pendingVideoId != null) {
+			if ((actualId == null) || !actualId.equals(pendingVideoId)) {
+				if (++pendingCorrections <= MAX_PENDING_CORRECTIONS) {
+					web.loadUrl(YoutubeVideoItem.watchUrl(pendingVideoId));
+					return;
+				}
+			}
+			pendingVideoId = null;
+			pendingCorrections = 0;
+		} else if ((currentVideoId != null) && (actualId != null) && !actualId.equals(currentVideoId)) {
+			// The video changed to something the app never explicitly navigated to. YouTube's own
+			// autonav can transition well before the original video's native "ended" event fires (its
+			// "up next" countdown doesn't wait for the video to actually finish), so YoutubeMediaEngine#
+			// ended() -- and the capture-phase interceptor that's supposed to feed it -- can end up never
+			// running at all for this transition. Treated as if the original video had just ended, but
+			// only when the app actually has an opinion about what should play (Repeat One, or an active
+			// Favorites/Playlist queue) -- with neither, this is left alone as ordinary page browsing.
+			YoutubeAddon addon = web.getAddon();
+			if (addon.isRepeatOneEnabled()) {
+				pendingVideoId = currentVideoId;
+				pendingCorrections = 0;
+				web.loadUrl(YoutubeVideoItem.watchUrl(currentVideoId));
+				return;
+			} else if (addon.getQueueItem() != null) {
+				current = end;
+				qualityUrl = null;
+				cb.onEngineEnded(this);
+				return;
+			}
+		}
+
+		currentVideoId = actualId;
+
 		if (url.startsWith("blob:")) url = url.substring(5);
 		current = new Current(url);
 
@@ -148,8 +208,28 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// same way whether or not a queue item exists (unlike "repeat the whole playlist", which
 		// necessarily needs one -- see queueAwareNextPlayable/PrevPlayable below).
 		if (web.getAddon().isRepeatOneEnabled()) {
-			web.setPosition(0);
-			web.play();
+			// Reset the same retry-guard bookkeeping start() does: currentTime=0 on an "ended" video
+			// can itself fire a native "pause" event as a side effect (the video is technically paused
+			// again at the new position until play() actually resumes it) -- without this reset,
+			// paused() below sees lastActivePlayTime as long-stale (set when this loop iteration's
+			// playback originally started, possibly minutes ago) and treats that pause as genuine,
+			// calling cb.onPause() instead of retrying -- which is exactly why the loop would play once
+			// and then just sit there paused instead of looping again.
+			lastActivePlayTime = System.currentTimeMillis();
+			lastPausedTime = 0;
+			playRetries = 0;
+			blockedWidth = 0;
+			blockedHeight = 0;
+			// Also armed as a pendingVideoId correction target: if YouTube's own autonav wins the race
+			// on this same "ended" moment (see YoutubeWebView's capture-phase interceptors -- best
+			// effort, not a guarantee) and jumps to a different video before this lightweight seek+play
+			// takes effect, playing() above will notice the mismatch against currentVideoId and force a
+			// full reload back to it instead of silently looping the wrong video.
+			if (currentVideoId != null) {
+				pendingVideoId = currentVideoId;
+				pendingCorrections = 0;
+			}
+			web.replay();
 			return;
 		}
 
@@ -285,6 +365,12 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			// above reports back once the new video is actually up, same as any other navigation.
 			transitioning();
 			web.getAddon().setQueueItem(yt);
+			// Armed as a pendingVideoId correction target -- see playing() above -- in case YouTube's
+			// own autonav (see YoutubeWebView's capture-phase interceptors) still wins whatever race is
+			// in play here (this is reached for a natural end-of-video advance too, which is exactly
+			// when that race happens) and lands the page on a different video of its own choosing.
+			pendingVideoId = yt.getVideoId();
+			pendingCorrections = 0;
 			web.loadUrl(YoutubeVideoItem.watchUrl(yt.getVideoId()));
 		} else {
 			cb.onEnginePrepared(this);

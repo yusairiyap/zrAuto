@@ -490,6 +490,22 @@ public class YoutubeWebView extends FermataWebView {
 				"if (v != null) { v.currentTime = 0; v.pause(); }");
 	}
 
+	/**
+	 * Seeks to 0 and resumes playback in one JS call, for Repeat One (see {@code
+	 * YoutubeMediaEngine#ended()}) -- a separate {@link #setPosition}/{@link #play()} pair would
+	 * still work, but round-trips through two separate {@code loadUrl()} evaluations with no
+	 * ordering guarantee between them, where this is a single atomic script.
+	 */
+	void replay() {
+		loadUrl("javascript:(function() {\n" +
+				"  var v = document.querySelector('video');\n" +
+				"  if (v == null) { console.error('Fermata replay(): no video element found'); return; }\n" +
+				"  v.currentTime = 0;\n" +
+				"  var p = v.play();\n" +
+				"  if (p && p.catch) p.catch(function(e) { console.error('Fermata replay() rejected: ' + e); });\n" +
+				"})();");
+	}
+
 	void prev() {
 		prevNext(false);
 	}
