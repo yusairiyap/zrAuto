@@ -202,6 +202,15 @@ public class VideoView extends FrameLayout
 		nativeFullscreen = fs;
 	}
 
+	/**
+	 * {@code true} only for a web-embedded video source (YouTube) that manages its own fullscreen
+	 * chrome via {@link #setNativeFullscreen}; {@code false} for local playback (ExoPlayer/VLC/
+	 * MediaPlayer), which has no such handler registered.
+	 */
+	public boolean hasNativeFullscreen() {
+		return nativeFullscreen != null;
+	}
+
 	/** Returns {@code true} if a registered native fullscreen handled the toggle. */
 	public boolean toggleNativeFullscreen() {
 		NativeFullscreen fs = nativeFullscreen;

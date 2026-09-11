@@ -166,8 +166,12 @@ public class YoutubeVideoItem extends ExtPlayable implements MediaLib.Externally
 	protected FutureSupplier<MediaMetadataCompat> loadMeta() {
 		MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
 		b.putString(METADATA_KEY_TITLE, cachedTitle());
+		// hqdefault.jpg is a fixed 4:3 canvas with the actual 16:9 frame letterboxed inside it, which
+		// left visible black bars once the grid card's thumbnail became full-bleed; maxresdefault.jpg
+		// is the true source-resolution 16:9 frame for the vast majority of videos (falls back to a
+		// generic icon on the rare video too old to have one, same as any other failed thumbnail load).
 		b.putString(METADATA_KEY_ALBUM_ART_URI,
-				"https://img.youtube.com/vi/" + videoId + "/hqdefault.jpg");
+				"https://img.youtube.com/vi/" + videoId + "/maxresdefault.jpg");
 		return completed(b.build());
 	}
 

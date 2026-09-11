@@ -45,6 +45,7 @@
         app:layout_constraintBottom_toTopOf="@id/media_item_subtitle"
         app:layout_constraintEnd_toEndOf="@id/media_item_icon"
         app:layout_constraintStart_toStartOf="@id/media_item_icon"
+        app:layout_goneMarginBottom="10dp"
         tools:ignore="RtlSymmetry" />
 
     <com.google.android.material.textview.MaterialTextView

@@ -337,9 +337,12 @@ public class ControlPanelView extends ConstraintLayout
 		mask |= MASK_VIDEO_MODE;
 		a.setBarsHidden(true);
 		setShowHideBarsIcon(a);
-		// Redundant during fullscreen playback -- FAB2 defaults to the fullscreen toggle, so this
-		// corner control is dropped rather than duplicating it.
-		findViewById(R.id.show_hide_bars).setVisibility(GONE);
+		// Kept for local playback (still the only in-panel way to toggle system bars there), but
+		// dropped for a web-embedded source (YouTube) -- that already has its own fullscreen chrome,
+		// and FAB2 defaults to the fullscreen toggle anyway.
+		VideoView vv = a.getActiveVideoView();
+		findViewById(R.id.show_hide_bars)
+				.setVisibility(((vv != null) && vv.hasNativeFullscreen()) ? GONE : VISIBLE);
 
 		View fb = a.getFloatingButton();
 		View fb2 = fab2(a);
@@ -868,11 +871,15 @@ public class ControlPanelView extends ConstraintLayout
 				// toggles above.
 				b.addItem(R.id.dim_settings, R.drawable.settings, R.string.dim_settings);
 				b.addItem(R.id.settings_fragment, R.drawable.settings, R.string.settings);
-				b.addItem(R.id.nav_exit, R.drawable.exit,
-						a.isCarActivityNotMirror() ? R.string.restart : R.string.exit);
 			}
 
 			eng.contributeToMenuEnd(b);
+
+			if (pi.isVideo()) {
+				// Absolute last item in the menu, after anything an engine contributes at the end too.
+				b.addItem(R.id.nav_exit, R.drawable.exit,
+						a.isCarActivityNotMirror() ? R.string.restart : R.string.exit);
+			}
 		}
 
 		private void buildRepeatMenu(OverlayMenu.Builder b) {

@@ -124,6 +124,10 @@ public class MediaItemView extends ConstraintLayout
 		setOnLongClickListener(this);
 		getCheckBox().setOnCheckedChangeListener(this);
 		setBackgroundResource(R.drawable.media_item_bg);
+		// Clips the full-bleed thumbnail/gradient/text to media_item_bg's own rounded-rect outline --
+		// without this the card's corners look square, since the thumbnail (unlike before, when it
+		// only covered a smaller inset square) now extends all the way to the view's real edges.
+		setClipToOutline(true);
 		// The grid card's thumbnail now fills the whole view edge-to-edge, which would otherwise
 		// hide the ripple (drawn as a background, so it renders beneath all children) under an
 		// opaque bitmap -- a foreground-only ripple (no solid layer of its own) keeps touch feedback
@@ -236,7 +240,7 @@ public class MediaItemView extends ConstraintLayout
 						getTitle().setText(ifNull(md.getTitle(), i::getName));
 					}
 					if ((p == PROGRESS_DONE) || (p == 2)) {
-						getSubtitle().setText(md.getSubtitle());
+						setSubtitleText(md.getSubtitle());
 					}
 					if ((p == PROGRESS_DONE) || (p == 3)) {
 						Bundle b = md.getExtras();
@@ -323,14 +327,27 @@ public class MediaItemView extends ConstraintLayout
 			rotate.setRepeatCount(Animation.INFINITE);
 			icon.setImageDrawable(getLoadingDrawable(getContext()));
 			icon.startAnimation(rotate);
-			getSubtitle().setText(R.string.loading);
+			setSubtitleText(getContext().getText(R.string.loading));
 		} else {
 			icon.clearAnimation();
 			icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
 			icon.setImageTintList(iconTint);
 			icon.setImageResource(i.getIcon());
-			getSubtitle().setText("");
+			setSubtitleText("");
 		}
+	}
+
+	/**
+	 * Sets the subtitle text, collapsing the row entirely (rather than leaving an empty but
+	 * visible line) when there's none -- e.g. a YouTube item, which never has a subtitle. In the
+	 * grid layout, where title/subtitle are anchored to the card's bottom edge, an empty-but-visible
+	 * subtitle would otherwise still reserve its own line height, leaving the title floating with a
+	 * visible gap above the true bottom instead of sitting flush against it.
+	 */
+	private void setSubtitleText(@Nullable CharSequence s) {
+		TextView v = getSubtitle();
+		v.setText(s);
+		v.setVisibility(((s == null) || (s.length() == 0)) ? GONE : VISIBLE);
 	}
 
 	private static Paint getBadgePaint() {
@@ -434,14 +451,14 @@ public class MediaItemView extends ConstraintLayout
 		int t = i.getTop();
 		int r = i.getRight();
 		int b = i.getBottom();
-		// Circular badge (watched/watching/archive) pinned to the thumbnail's bottom-right corner --
-		// same corner as before, now drawn as a solid, drop-shadowed disc behind the glyph so it
-		// reads clearly over an arbitrary full-bleed thumbnail/gradient instead of a bare vector.
+		// Circular badge (watched/watching/archive) pinned to the thumbnail's top-right corner,
+		// drawn as a solid, drop-shadowed disc behind the glyph so it reads clearly over an
+		// arbitrary full-bleed thumbnail/gradient instead of a bare vector.
 		float radius = Math.min(r - l, b - t) * BADGE_RADIUS_FRACTION;
 		radius = Math.max(badgeMinRadius, Math.min(radius, badgeMaxRadius));
 		float margin = radius * 0.85f;
 		float cx = r - margin - radius;
-		float cy = b - margin - radius;
+		float cy = t + margin + radius;
 
 		Paint paint = getBadgePaint();
 		paint.setColor(BADGE_SHADOW_COLOR);

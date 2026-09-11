@@ -795,5 +795,11 @@ public interface MediaLib {
 		default int getIcon() {
 			return R.drawable.playlist;
 		}
+
+		@NonNull
+		@Override
+		default FutureSupplier<Uri> getIconUri() {
+			return getFirstPlayable().then(first -> (first != null) ? first.getIconUri() : completedNull());
+		}
 	}
 }
