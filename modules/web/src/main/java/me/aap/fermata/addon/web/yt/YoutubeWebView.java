@@ -514,6 +514,31 @@ public class YoutubeWebView extends FermataWebView {
 		prevNext(true);
 	}
 
+	/**
+	 * Switches to a specific video by id -- used for queue-driven (Favorites/Playlist) next/prev,
+	 * where (unlike {@link #next()}/{@link #prev()}) the app already knows exactly which video comes
+	 * next and just needs the page to show it. Tries the page's own player API first, same idiom
+	 * (and the same reasoning: no page reload, no fullscreen exit/re-enter) as {@link #prevNext},
+	 * falling back to a full {@link #loadUrl} navigation only if it's unavailable -- that fallback is
+	 * far heavier (a real page load tears down and recreates the player/video element entirely) and
+	 * was the likely cause of a visible stuck-spinner-with-audio-still-playing gap between videos
+	 * when every queue-driven switch took it unconditionally.
+	 */
+	void loadVideo(String videoId) {
+		evaluateJavascript("""
+				(function() {
+				  var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+				  var fn = p ? p.loadVideoById : null;
+				  if (typeof fn !== 'function') return false;
+				  fn.call(p, '%s');
+				  return true;
+				})();
+				""".formatted(videoId),
+				result -> {
+					if (!"true".equals(result)) loadUrl(YoutubeVideoItem.watchUrl(videoId));
+				});
+	}
+
 	private void prevNext(boolean next) {
 		FermataChromeClient chrome = getWebChromeClient();
 		if (chrome == null) return;

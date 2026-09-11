@@ -160,7 +160,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				if (++pendingCorrections <= MAX_PENDING_CORRECTIONS) {
 					Log.i("playing(): expected ", pendingVideoId, " but page shows ", actualId,
 							" -- correcting, attempt ", pendingCorrections);
-					web.loadUrl(YoutubeVideoItem.watchUrl(pendingVideoId));
+					web.loadVideo(pendingVideoId);
 					return;
 				}
 				Log.w("playing(): giving up correcting to ", pendingVideoId, " after ",
@@ -182,7 +182,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			if (addon.isRepeatOneEnabled()) {
 				pendingVideoId = currentVideoId;
 				pendingCorrections = 0;
-				web.loadUrl(YoutubeVideoItem.watchUrl(currentVideoId));
+				web.loadVideo(currentVideoId);
 				return;
 			} else if (addon.getQueueItem() != null) {
 				current = end;
@@ -392,7 +392,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			// when that race happens) and lands the page on a different video of its own choosing.
 			pendingVideoId = yt.getVideoId();
 			pendingCorrections = 0;
-			web.loadUrl(YoutubeVideoItem.watchUrl(yt.getVideoId()));
+			web.loadVideo(yt.getVideoId());
 		} else {
 			cb.onEnginePrepared(this);
 		}
