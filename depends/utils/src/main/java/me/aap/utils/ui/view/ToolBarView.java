@@ -224,6 +224,14 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 
 		default void addView(ToolBarView tb, View v, @IdRes int id, int side) {
 			ConstraintLayout.LayoutParams lp;
+			// Guards against a stale child stacking up behind the new one (observed as overlapping
+			// title text) if a caller ever adds the same id twice without disable() (removeAllViews())
+			// running in between -- e.g. a Mediator singleton shared across fragments skips its own
+			// enable()/disable() entirely when the mediator instance doesn't change across a fragment
+			// switch, but any other path that re-adds a view with an id already present here would
+			// otherwise leave the old one attached and drawn underneath.
+			View existing = tb.findViewById(id);
+			if ((existing != null) && (existing != v)) tb.removeView(existing);
 			v.setId(id);
 
 			if (tb.getChildCount() == 0) {

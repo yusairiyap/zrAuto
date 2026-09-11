@@ -106,10 +106,8 @@ public class BodyLayout extends SplitLayout
 
 		switch (mode) {
 			case FRAME -> {
-				vv.setVisibility(GONE);
 				getSplitLine().setVisibility(GONE);
 				getSplitHandle().setVisibility(GONE);
-				getSwipeRefresh().setVisibility(VISIBLE);
 				lp.guidePercent = isPortrait() ? 0f : 1f;
 				// Only push this to the delegate when BodyLayout's own video mode is actually
 				// changing -- e.g. FRAGMENT_CHANGED re-enters this with FRAME on every tab switch
@@ -122,20 +120,27 @@ public class BodyLayout extends SplitLayout
 				if (oldMode != Mode.FRAME) a.setVideoMode(false, vv);
 			}
 			case VIDEO -> {
-				vv.setVisibility(VISIBLE);
 				getSplitLine().setVisibility(GONE);
 				getSplitHandle().setVisibility(GONE);
-				getSwipeRefresh().setVisibility(GONE);
 				lp.guidePercent = isPortrait() ? 1f : 0f;
 				vv.showVideo();
 				a.setVideoMode(true, vv);
 				App.get().getHandler().post(vv::requestFocus);
 			}
 			case BOTH -> {
+				// Either pane can arrive here mid-crossfade or already faded to alpha 0 by a prior
+				// FRAME/VIDEO transition (e.g. fullscreen video fades sr out, then navigating to
+				// Audio Effects/Settings forces BOTH straight from VIDEO) -- unlike FRAME/VIDEO's
+				// own transitions, nothing below ever restores that alpha, so a pane can end up
+				// VISIBLE but fully transparent despite being correctly sized and positioned.
+				vv.animate().cancel();
+				vv.setAlpha(1f);
 				vv.setVisibility(VISIBLE);
 				getSplitLine().setVisibility(VISIBLE);
 				getSplitHandle().setVisibility(VISIBLE);
-				getSwipeRefresh().setVisibility(VISIBLE);
+				sr.animate().cancel();
+				sr.setAlpha(1f);
+				sr.setVisibility(VISIBLE);
 				lp.guidePercent = a.getPrefs().getFloatPref(getSplitPercentPref(isPortrait()));
 				vv.showVideo();
 				a.setVideoMode(true, vv);
@@ -145,13 +150,81 @@ public class BodyLayout extends SplitLayout
 
 		gl.setLayoutParams(lp);
 
+		// FRAME and VIDEO each hide one of vv/sr entirely while showing the other -- animated as a
+		// crossfade rather than an instant visibility swap, e.g. entering/leaving fullscreen video
+		// playback. Both ending up visible (BOTH) needs no such swap, so is left to the plain
+		// setVisibility(VISIBLE) calls above.
+		// Only when the mode is actually changing: setMode() is routinely re-entered with the *same*
+		// mode it's already in (see the FRAGMENT_CHANGED comment above -- exitVideoMode() alone can
+		// trigger this right on top of an already-running transition), and re-running the crossfade
+		// on every one of those redundant calls would restart it mid-fade each time via
+		// animate().cancel(), which can leave a view stuck at a partial alpha if that keeps
+		// happening faster than 300ms apart -- observed as the screen going blank until something
+		// else (e.g. pressing back) happens to reset it.
+		if (oldMode != mode) {
+			if (mode == Mode.FRAME) {
+				if (animate) crossfade(vv, sr, 300L);
+				else {
+					vv.setVisibility(GONE);
+					// A prior crossfade a caller interrupted (e.g. a second setMode() call arriving
+					// before the 300ms fade finished) can leave sr's alpha short of 1 -- animate().cancel()
+					// stops mid-fade without snapping the value to its target, so it's reset explicitly
+					// here rather than relying on it already being 1.
+					sr.animate().cancel();
+					sr.setAlpha(1f);
+					sr.setVisibility(VISIBLE);
+				}
+			} else if (mode == Mode.VIDEO) {
+				if (animate) crossfade(sr, vv, 300L);
+				else {
+					sr.setVisibility(GONE);
+					vv.animate().cancel();
+					vv.setAlpha(1f);
+					vv.setVisibility(VISIBLE);
+				}
+			}
+		}
+
 		// Animates the video pane/list growing or shrinking against the guideline's new split
-		// instead of snapping there instantly, e.g. when entering/leaving fullscreen video playback.
+		// instead of snapping there instantly -- a no-op (by design, see UiUtils.flipAnimate) for
+		// the FRAME/VIDEO collapse-to/grow-from-zero above, which the crossfade already covers;
+		// meaningful for BOTH's split-percent changes.
 		if (animate) {
 			UiUtils.flipAnimate(vv, vvBounds, 300L);
 			UiUtils.flipAnimate(sr, srBounds, 300L);
 		}
 		a.fireBroadcastEvent(MODE_CHANGED);
+	}
+
+	/**
+	 * Fades {@code incoming} in while fading {@code outgoing} out, only actually hiding
+	 * {@code outgoing} once its fade completes -- the same idiom as
+	 * {@code ActivityDelegate.crossfadeFragmentViews}, used here for vv/sr instead of fragments.
+	 * <p>
+	 * Coming from {@code Mode.BOTH} (e.g. switching to the YouTube tab during local video playback),
+	 * {@code incoming} is already fully opaque and visible -- forcing it back down to alpha 0 first
+	 * would flash it blank for the length of this fade for no reason, so that reset is skipped
+	 * whenever it's already showing at full opacity.
+	 */
+	private static void crossfade(@Nullable View outgoing, @Nullable View incoming, long duration) {
+		if (incoming != null) {
+			boolean alreadyShown = (incoming.getVisibility() == VISIBLE) && (incoming.getAlpha() >= 1f);
+			incoming.setVisibility(VISIBLE);
+			incoming.animate().cancel();
+			if (alreadyShown) {
+				incoming.setAlpha(1f);
+			} else {
+				incoming.setAlpha(0f);
+				incoming.animate().alpha(1f).setDuration(duration).start();
+			}
+		}
+		if ((outgoing != null) && (outgoing != incoming)) {
+			outgoing.animate().cancel();
+			outgoing.setAlpha(1f);
+			outgoing.setVisibility(VISIBLE);
+			outgoing.animate().alpha(0f).setDuration(duration)
+					.withEndAction(() -> outgoing.setVisibility(GONE)).start();
+		}
 	}
 
 	public VideoView getVideoView() {

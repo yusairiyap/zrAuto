@@ -39,14 +39,12 @@ import android.text.style.ForegroundColorSpan;
 import android.util.AttributeSet;
 import android.view.Gravity;
 import android.view.KeyEvent;
-import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
-import android.widget.TextClock;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -61,7 +59,6 @@ import java.util.Objects;
 import java.util.Set;
 
 import me.aap.fermata.FermataApplication;
-import me.aap.fermata.R;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
@@ -87,9 +84,15 @@ public class VideoView extends FrameLayout
 	private final Set<PreferenceStore.Pref<?>> prefChange = new HashSet<>(
 			Arrays.asList(MediaPrefs.VIDEO_SCALE, MediaPrefs.AUDIO_DELAY, MediaPrefs.AUDIO_DELAY_AA,
 					MediaPrefs.SUB_DELAY));
+	private static final Set<PreferenceStore.Pref<?>> infoOverlayPrefChange = new HashSet<>(
+			Arrays.asList(MainActivityPrefs.CLOCK_POS, MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK,
+					MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_PCT,
+					MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_TEMP, MainActivityPrefs.INFO_OVERLAY_SIZE));
 	private SubDrawer subDrawer;
 	private FutureSupplier<?> createSurface = new Promise<>();
 	private View dimOverlay;
+	@Nullable
+	private InfoOverlayView infoOverlay;
 	@Nullable
 	private NativeFullscreen nativeFullscreen;
 
@@ -103,7 +106,13 @@ public class VideoView extends FrameLayout
 		getActivity().onSuccess(a -> {
 			a.addBroadcastListener(this);
 			a.getLib().getPrefs().addBroadcastListener(this);
-			setClockPos(a.getPrefs().getClockPosPref());
+			// Each VideoView instance (including a YoutubeVideoView, which YoutubeFragment creates as
+			// a separate instance from BodyLayout's own fixed one) manages its own Info Overlay and
+			// reacts to preference changes directly, rather than relying on a single centralized
+			// update -- otherwise a VideoView instance that isn't "the" one a centralized handler knows
+			// about never picks up a change until it's recreated (e.g. on app restart).
+			a.getPrefs().addBroadcastListener(this);
+			refreshInfoOverlay();
 		});
 	}
 
@@ -227,36 +236,47 @@ public class VideoView extends FrameLayout
 	}
 
 
-	public void setClockPos(int pos) {
-		int idx = getChildCount() - 1;
-		int gravity = Gravity.TOP;
+	/** Re-reads the Info Overlay prefs and applies them to this view's overlay panel. */
+	public void refreshInfoOverlay() {
+		getActivity().onSuccess(a -> {
+			MainActivityPrefs p = a.getPrefs();
+			setInfoOverlay(p.getClockPosPref(), p.getInfoOverlayShowClockPref(),
+					p.getInfoOverlayShowBatteryPctPref(), p.getInfoOverlayShowBatteryTempPref(),
+					p.getInfoOverlaySizePref());
+		});
+	}
 
+	public void setInfoOverlay(int pos, boolean showClock, boolean showBatteryPct,
+														 boolean showBatteryTemp, float size) {
+		boolean show =
+				(pos != MainActivityPrefs.CLOCK_POS_NONE) && (showClock || showBatteryPct || showBatteryTemp);
+
+		if (!show) {
+			if (infoOverlay != null) infoOverlay.setItems(false, false, false);
+			return;
+		}
+
+		if (infoOverlay == null) {
+			infoOverlay = new InfoOverlayView(getContext());
+			Context ctx = getContext();
+			int m = toIntPx(ctx, 10);
+			FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+			lp.setMargins(m, m, m, m);
+			addView(infoOverlay, lp);
+		}
+
+		int gravity = Gravity.TOP;
 		switch (pos) {
-			case MainActivityPrefs.CLOCK_POS_NONE -> {
-				if (getChildAt(idx) instanceof TextClock) removeViewAt(idx);
-				return;
-			}
 			case MainActivityPrefs.CLOCK_POS_LEFT -> gravity |= Gravity.START;
 			case MainActivityPrefs.CLOCK_POS_RIGHT -> gravity |= Gravity.END;
 			case MainActivityPrefs.CLOCK_POS_CENTER -> gravity |= Gravity.CENTER;
 		}
 
-		View clock = getChildAt(idx);
-		FrameLayout.LayoutParams lp;
-
-		if (clock instanceof TextClock) {
-			lp = (FrameLayout.LayoutParams) clock.getLayoutParams();
-		} else {
-			Context ctx = getContext();
-			int m = toIntPx(ctx, 10);
-			clock = LayoutInflater.from(ctx).inflate(R.layout.clock_view, this, false);
-			lp = new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
-			lp.setMargins(m, m, m, m);
-			addView(clock);
-		}
-
+		FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) infoOverlay.getLayoutParams();
 		lp.gravity = gravity;
-		clock.setLayoutParams(lp);
+		infoOverlay.setLayoutParams(lp);
+		infoOverlay.setSize(size);
+		infoOverlay.setItems(showClock, showBatteryPct, showBatteryTemp);
 	}
 
 	public void showVideo() {
@@ -529,6 +549,8 @@ public class VideoView extends FrameLayout
 
 	@Override
 	public void onPreferenceChanged(PreferenceStore store, List<PreferenceStore.Pref<?>> prefs) {
+		if (!Collections.disjoint(infoOverlayPrefChange, prefs)) refreshInfoOverlay();
+
 		if (createSurface.isDone() && !Collections.disjoint(prefChange, prefs)) {
 			MainActivityDelegate a = getActivity().peek();
 			if (a == null) return;
@@ -554,6 +576,7 @@ public class VideoView extends FrameLayout
 		if (handleActivityDestroyEvent(a, e)) {
 			a.getMediaSessionCallback().removeVideoView(this);
 			a.getLib().getPrefs().removeBroadcastListener(this);
+			a.getPrefs().removeBroadcastListener(this);
 		}
 	}
 

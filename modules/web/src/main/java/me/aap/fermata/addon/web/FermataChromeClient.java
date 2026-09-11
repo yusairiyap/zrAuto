@@ -99,6 +99,8 @@ public class FermataChromeClient extends WebChromeClient {
 		return onJsConfirm(view, url, message, result);
 	}
 
+	private static final long FULLSCREEN_FADE_DURATION = 300L;
+
 	@Override
 	public void onShowCustomView(View view, CustomViewCallback callback) {
 		if (view instanceof ViewGroup g) {
@@ -116,6 +118,7 @@ public class FermataChromeClient extends WebChromeClient {
 		customView = view;
 		customViewCallback = callback;
 		addCustomView(view);
+		crossfade(getWebView(), getFullScreenView(), FULLSCREEN_FADE_DURATION);
 		MainActivityDelegate a = MainActivityDelegate.get(view.getContext());
 		setFullScreen(a, true);
 
@@ -133,8 +136,12 @@ public class FermataChromeClient extends WebChromeClient {
 		if (customViewCallback == null) return;
 		touchStamp = 0;
 		MainActivityDelegate a = MainActivityDelegate.get(customView.getContext());
-		removeCustomView(customView);
-		getWebView().setVisibility(VISIBLE);
+		View removed = customView;
+		crossfade(getFullScreenView(), getWebView(), FULLSCREEN_FADE_DURATION);
+		// Detaching removed from its container is deferred until the fade-out finishes instead of
+		// happening instantly here, so the outgoing fullscreen content doesn't just vanish out from
+		// under the animation.
+		getFullScreenView().postDelayed(() -> removeCustomView(removed), FULLSCREEN_FADE_DURATION);
 		setFullScreen(a, false);
 		customViewCallback.onCustomViewHidden();
 		customView = null;
@@ -158,15 +165,32 @@ public class FermataChromeClient extends WebChromeClient {
 	}
 
 	protected void addCustomView(View view) {
-		ViewGroup fs = getFullScreenView();
-		fs.addView(view, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
-		fs.setVisibility(VISIBLE);
+		getFullScreenView().addView(view, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 	}
 
 	protected void removeCustomView(View view) {
-		ViewGroup fs = getFullScreenView();
-		fs.removeView(view);
-		fs.setVisibility(GONE);
+		getFullScreenView().removeView(view);
+	}
+
+	/**
+	 * Fades {@code incoming} in while fading {@code outgoing} out, only actually hiding
+	 * {@code outgoing} once its fade completes -- entering/leaving fullscreen (the page's WebView
+	 * and the fullscreen container swapping which one is showing) used to be an instant
+	 * visibility cut with no transition at all.
+	 */
+	protected static void crossfade(View outgoing, View incoming, long duration) {
+		incoming.animate().cancel();
+		incoming.setAlpha(0f);
+		incoming.setVisibility(VISIBLE);
+		incoming.animate().alpha(1f).setDuration(duration).start();
+
+		if (outgoing != incoming) {
+			outgoing.animate().cancel();
+			outgoing.setAlpha(1f);
+			outgoing.setVisibility(VISIBLE);
+			outgoing.animate().alpha(0f).setDuration(duration)
+					.withEndAction(() -> outgoing.setVisibility(GONE)).start();
+		}
 	}
 
 	protected void setFullScreen(MainActivityDelegate a, boolean fullScreen) {

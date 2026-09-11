@@ -204,4 +204,5 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 			removeListeners(a);
 		}
 	}
+
 }

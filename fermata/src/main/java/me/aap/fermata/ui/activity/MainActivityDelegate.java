@@ -78,6 +78,8 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.widget.EditText;
 
 import androidx.annotation.LayoutRes;
@@ -99,9 +101,12 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.WeakHashMap;
 
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
@@ -186,13 +191,26 @@ public class MainActivityDelegate extends ActivityDelegate
 	private TertiaryFloatingButton floatingButton3;
 	private ContentLoadingProgressBar progressBar;
 	private FutureSupplier<?> contentLoading;
+	// Belt-and-suspenders re-sync for insetScrollableContent(): its own attach/layout listeners
+	// cover the common case, but a tab restored by the fragment manager while switching
+	// themes/nav-bar-position (both go through a full Activity.recreate()) can end up attached to
+	// the window before tool_bar/control_panel finish their own post-recreate layout pass, or in an
+	// ordering that has the sync listener miss the one layout change it needed -- leaving the
+	// content's insets stuck at their initial (usually zero) value. A weak set so dropping a content
+	// view (fragment/tab destroyed) doesn't pin it in memory; entries are added only while the view
+	// is actually attached, so a stale/detached view here is harmless to visit.
+	private final Set<ViewGroup> paddingInsetContent = Collections.newSetFromMap(new WeakHashMap<>());
+	private final Set<View> topInsetContent = Collections.newSetFromMap(new WeakHashMap<>());
 	private boolean barsHidden;
 	private boolean videoMode;
+	// Overrides the automatic bar-hiding that videoMode below otherwise forces in isFullScreen() --
+	// set by Action.FULLSCREEN_TOGGLE for local (non-WebView) video, whose VideoView has no
+	// NativeFullscreen handler to toggle instead. Reset on every videoMode transition so a manual
+	// "show bars" choice doesn't leak into the next video played.
+	private boolean videoBarsShown;
 	private int brightness = 255;
 	@Nullable
 	private VideoView activeVideoView;
-	@Nullable
-	private int[] normalAnchors;
 	private SpeechListener speechListener;
 	private VoiceCommandHandler voiceCommandHandler;
 
@@ -413,6 +431,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Override
 	public void onActivityResume() {
 		super.onActivityResume();
+		refreshContentInsets();
 		checkMirroringMode(true);
 		for (FermataAddon addon : AddonManager.get().getAddons()) {
 			if (addon instanceof FermataActivityAddon)
@@ -567,16 +586,31 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	@Override
 	public boolean isFullScreen() {
-		if (videoMode || getPrefs().getFullscreenPref(this)) {
-			if (isCarActivityNotMirror()) {
-				FermataServiceUiBinder b = getMediaServiceBinder();
-				return !b.getMediaSessionCallback().getPlaybackControlPrefs().getVideoAaShowStatusPref();
-			} else {
-				return true;
-			}
+		// While playing video, videoMode alone drives fullscreen (see videoBarsShown) rather than
+		// OR-ing in the persisted pref -- otherwise Action.FULLSCREEN_TOGGLE's fallback toggle of that
+		// pref would be a no-op for local video, since videoMode being true already forces this true
+		// regardless of the pref's value.
+		boolean fullscreen = videoMode ? !videoBarsShown : getPrefs().getFullscreenPref(this);
+		if (!fullscreen) return false;
+
+		if (isCarActivityNotMirror()) {
+			FermataServiceUiBinder b = getMediaServiceBinder();
+			return !b.getMediaSessionCallback().getPlaybackControlPrefs().getVideoAaShowStatusPref();
 		} else {
-			return false;
+			return true;
 		}
+	}
+
+	/**
+	 * Toggles the system status/navigation bars visible or hidden during active video playback,
+	 * without leaving {@link BodyLayout.Mode#VIDEO}/{@link BodyLayout.Mode#BOTH} -- the local-video
+	 * equivalent of a WebView-hosted player's {@link VideoView#toggleNativeFullscreen()}, used as
+	 * {@link me.aap.fermata.action.Action#FULLSCREEN_TOGGLE}'s fallback when there's no such native
+	 * handler to defer to.
+	 */
+	public void toggleVideoBars() {
+		videoBarsShown = !videoBarsShown;
+		setSystemUiVisibility();
 	}
 
 	public boolean isGridView() {
@@ -694,6 +728,12 @@ public class MainActivityDelegate extends ActivityDelegate
 			ToolBarView tb = getToolBar();
 			if (tb.getMediator() != ToolBarView.Mediator.Invisible.instance) tb.setVisibility(visibility);
 			getNavBar().setVisibility(visibility);
+			// tool_bar keeps its actual layout height above even when its mediator is Invisible (e.g.
+			// while browsing a WebView, which draws its own navigation) -- its own visibility is
+			// deliberately left untouched just above since toggling it wouldn't change anything
+			// visible, but insetWebViewTop()'s margin is still sized off that height, so without this
+			// a WebView never reclaims that reserved top space when the user hides the bars.
+			refreshContentInsets();
 		});
 	}
 
@@ -719,6 +759,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		}
 
 		ControlPanelView cp = getControlPanel();
+		videoBarsShown = false;
 
 		if (videoMode) {
 			this.videoMode = true;
@@ -759,23 +800,33 @@ public class MainActivityDelegate extends ActivityDelegate
 					p.resolveDimColor());
 		}
 
-		applyVideoOverlayLayout(videoMode);
 		updateSecondaryFabVisibility();
 		updateTertiaryFabVisibility();
 		fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 	}
 
 	/**
-	 * Re-anchors the three bars for video mode by editing their layout params directly.
+	 * Makes body_layout fill the whole screen, with tool_bar and control_panel floating over the
+	 * top/bottom of it as translucent gradient scrims instead of squeezing it into the strip
+	 * between them -- the same technique fullscreen video playback already used, now applied
+	 * everywhere (video mode included) so every tab renders behind the bars, for a cleaner look
+	 * with more of the screen visible, especially on Android Auto.
+	 * <p>
+	 * nav_bar is deliberately left completely alone, both its constraints and its appearance: it
+	 * keeps its own fully opaque look and is declared after body_layout in every layout variant
+	 * (bottom, left and right), so plain view-drawing order alone -- with no extra elevation
+	 * needed -- already puts it on top of body_layout's now-larger bounds. body_layout extending
+	 * geometrically behind it is invisible in practice since nav_bar is never translucent.
 	 * <p>
 	 * This deliberately does not go through {@code ConstraintSet}: cloning one captures every
 	 * child's visibility, alpha, scale and translation as well, and applying it back stomps all of
 	 * them -- it would re-hide the FAB and control panel (both are hidden the moment video mode
 	 * starts, and the control panel is {@code gone} in the layout to begin with), reset a dragged
 	 * FAB and undo the icon-size scaling. Touching only the anchors we actually change also means
-	 * no dynamically added, id-less child can break the switch.
+	 * no dynamically added, id-less child can break the switch. Called once during setup, since the
+	 * arrangement itself never changes afterward.
 	 */
-	private void applyVideoOverlayLayout(boolean videoMode) {
+	private void enableBodyOverlayLayout() {
 		View body = findViewById(R.id.body_layout);
 		View tb = findViewById(R.id.tool_bar);
 		View cp = findViewById(R.id.control_panel);
@@ -784,79 +835,193 @@ public class MainActivityDelegate extends ActivityDelegate
 				|| !(tb.getLayoutParams() instanceof ConstraintLayout.LayoutParams tlp)
 				|| !(cp.getLayoutParams() instanceof ConstraintLayout.LayoutParams clp)) return;
 
-		// Captured from whichever layout variant was actually inflated, before the first switch,
-		// so normal mode is restored exactly as the variant declared it.
-		if (normalAnchors == null) {
-			normalAnchors = new int[]{blp.topToTop, blp.topToBottom, blp.bottomToTop, blp.bottomToBottom,
-					tlp.bottomToTop, tlp.bottomToBottom, clp.topToTop, clp.topToBottom, clp.bottomToTop,
-					clp.bottomToBottom};
-		}
+		blp.topToTop = PARENT_ID;
+		blp.topToBottom = UNSET;
+		blp.bottomToBottom = PARENT_ID;
+		blp.bottomToTop = UNSET;
 
-		// Animates the bars/body sliding to their new anchors instead of jumping there instantly, via
-		// UiUtils.flipAnimate's manual FLIP technique -- a TransitionManager.beginDelayedTransition
-		// scene transition was tried here first, but it depends on capturing an uninterrupted
-		// before/after layout pass on the whole root, which updateSecondaryFabVisibility() et al.
-		// (called right after this method, changing sibling FAB visibility on the same root) can
-		// intervene on and silently drop, and did so in practice. This works off an explicit
-		// snapshot instead, so it can't be dropped that way. Guarded on attachedToWindow: the very
-		// first call comes from BodyLayout's constructor, before this has ever been laid out, where
-		// there's nothing meaningful to animate from anyway.
-		boolean animate = body.isAttachedToWindow() && (body.getHeight() > 0);
-		int[] bodyBounds = animate ? UiUtils.captureBounds(body) : null;
-		int[] tbBounds = animate ? UiUtils.captureBounds(tb) : null;
-		int[] cpBounds = animate ? UiUtils.captureBounds(cp) : null;
+		tlp.bottomToTop = UNSET;
+		tlp.bottomToBottom = UNSET;
 
-		if (videoMode) {
-			// body_layout fills the screen, and tool_bar/control_panel float over it pinned to the
-			// screen edges instead of squeezing the video into a strip between them.
-			blp.topToTop = PARENT_ID;
-			blp.topToBottom = UNSET;
-			blp.bottomToBottom = PARENT_ID;
-			blp.bottomToTop = UNSET;
-			tlp.bottomToTop = UNSET;
-			tlp.bottomToBottom = UNSET;
-			clp.topToTop = UNSET;
-			clp.topToBottom = UNSET;
-			clp.bottomToBottom = PARENT_ID;
-			clp.bottomToTop = UNSET;
-			// nav_bar is intentionally left untouched: in the bottom-nav layout its existing
-			// top_toBottomOf(control_panel) constraint still resolves fine (control_panel's bottom
-			// no longer depends on nav_bar at all, so there's no cycle), while in the left/right
-			// side-nav layouts nav_bar is a wholly independent column already anchored top+bottom
-			// to its own parent edges - clearing either side there would collapse its
-			// 0dp/weighted height.
-		} else {
-			int[] a = normalAnchors;
-			blp.topToTop = a[0];
-			blp.topToBottom = a[1];
-			blp.bottomToTop = a[2];
-			blp.bottomToBottom = a[3];
-			tlp.bottomToTop = a[4];
-			tlp.bottomToBottom = a[5];
-			clp.topToTop = a[6];
-			clp.topToBottom = a[7];
-			clp.bottomToTop = a[8];
-			clp.bottomToBottom = a[9];
-		}
+		// control_panel's own bottom anchor (nav_bar or parent, depending on the layout variant) is
+		// already correct as inflated -- only its top needs freeing so it floats off that single
+		// anchor instead of also being pinned to body_layout's old (now much lower) bottom edge.
+		clp.topToTop = UNSET;
+		clp.topToBottom = UNSET;
 
 		body.setLayoutParams(blp);
 		tb.setLayoutParams(tlp);
 		cp.setLayoutParams(clp);
 
-		if (animate) {
-			UiUtils.flipAnimate(body, bodyBounds, OVERLAY_ANIM_DURATION);
-			UiUtils.flipAnimate(tb, tbBounds, OVERLAY_ANIM_DURATION);
-			UiUtils.flipAnimate(cp, cpBounds, OVERLAY_ANIM_DURATION);
+		// In the bottom-nav layout, nav_bar's own topToBottom=control_panel constraint -- paired
+		// with control_panel's bottomToTop=nav_bar above -- forms a genuine mutual reference now
+		// that control_panel has no top constraint of its own to resolve independently: control_panel
+		// needs nav_bar's position to place its bottom edge, and nav_bar needs control_panel's bottom
+		// edge to place its own top, with neither resolvable first. ConstraintLayout does not resolve
+		// this reliably (observed as nav_bar rendering right under tool_bar instead of at the screen
+		// bottom). nav_bar's bottomToBottom=parent already fully determines its position on its own
+		// (wrap_content height, single anchor -- exactly the pattern used above for tool_bar and
+		// control_panel), so drop the redundant top constraint and let it resolve first,
+		// independently; control_panel then resolves cleanly second, off nav_bar's now-correct edge.
+		// The left/right layouts' nav_bar is unrelated to control_panel entirely (an independent
+		// side column spanning top-to-bottom of its own accord) and is left untouched.
+		if (getPrefs().getNavBarPosPref(this) == NavBarView.POSITION_BOTTOM) {
+			View nb = findViewById(R.id.nav_bar);
+			if ((nb != null) && (nb.getLayoutParams() instanceof ConstraintLayout.LayoutParams nlp)) {
+				nlp.topToTop = UNSET;
+				nlp.topToBottom = UNSET;
+				nb.setLayoutParams(nlp);
+			}
 		}
 
 		ToolBarView tbv = getToolBar();
 		int c = MaterialColors.getColor(getContext(), androidx.appcompat.R.attr.colorPrimary,
 				Color.BLACK);
-		if (videoMode) tbv.setBackground(ControlPanelView.buildScrimGradient(c, false));
-		else tbv.setBackgroundColor(c);
+		tbv.setBackground(ControlPanelView.buildScrimGradient(c, false));
 	}
 
-	private static final long OVERLAY_ANIM_DURATION = 300L;
+	/**
+	 * Lets a tab's own scrollable content (a RecyclerView-based list or ScrollView -- a WebView
+	 * doesn't reliably honor padding + clipToPadding for scroll-into-padding, so it uses
+	 * {@link #insetWebViewTop} instead) keep scrolling all the way to its own first/last row
+	 * underneath tool_bar/control_panel/nav_bar's translucent gradients, instead of either being
+	 * cut off by them or permanently inset away from them -- gives {@code content} top/bottom
+	 * padding sized to however much of tool_bar/control_panel/a bottom-positioned nav_bar actually
+	 * overlaps {@code content}'s own on-screen bounds, with clipToPadding off, so rows already at
+	 * rest show inset from the bars but can still scroll fully into view. Computed from actual
+	 * screen position rather than assuming {@code content} always starts at the true top/bottom of
+	 * the screen: BodyLayout.Mode.BOTH (a fragment shown alongside a still-playing video, e.g. Audio
+	 * Effects) sits {@code content} below the video pane instead, where tool_bar may not reach it at
+	 * all. Kept in sync with tool_bar/control_panel/nav_bar's actual size and position for as long as
+	 * {@code content} stays attached to the window; each caller (e.g. MediaItemListView, the
+	 * Settings list) is expected to call this once, typically from its own constructor.
+	 */
+	public void insetScrollableContent(ViewGroup content) {
+		content.setClipToPadding(false);
+		View.OnLayoutChangeListener sync = (v, left, top, right, bottom, oldLeft, oldTop, oldRight,
+																				oldBottom) -> applyContentInsets(content);
+		// Also self-triggered by content's own layout changes, not just tool_bar/control_panel's --
+		// a fragment shown as its own root view (e.g. AudioEffectsView) can still be at its pre-
+		// layout position/size (typically (0,0)) the moment it attaches to the window, before its
+		// own first real layout pass places it where it'll actually sit; tool_bar/control_panel may
+		// not move again afterward, so without this, the padding computed off that stale first
+		// position/size never gets corrected once content settles into its real bounds.
+		content.addOnLayoutChangeListener(sync);
+		content.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+			@Override
+			public void onViewAttachedToWindow(@NonNull View v) {
+				if (toolBar != null) toolBar.addOnLayoutChangeListener(sync);
+				if (controlPanel != null) controlPanel.addOnLayoutChangeListener(sync);
+				if (navBar != null) navBar.addOnLayoutChangeListener(sync);
+				paddingInsetContent.add(content);
+				applyContentInsets(content);
+			}
+
+			@Override
+			public void onViewDetachedFromWindow(@NonNull View v) {
+				if (toolBar != null) toolBar.removeOnLayoutChangeListener(sync);
+				if (controlPanel != null) controlPanel.removeOnLayoutChangeListener(sync);
+				if (navBar != null) navBar.removeOnLayoutChangeListener(sync);
+				paddingInsetContent.remove(content);
+			}
+		});
+		if (content.isAttachedToWindow()) {
+			paddingInsetContent.add(content);
+			applyContentInsets(content);
+		}
+	}
+
+	private final int[] insetLoc1 = new int[2];
+	private final int[] insetLoc2 = new int[2];
+
+	private void applyContentInsets(ViewGroup content) {
+		if ((toolBar == null) || (controlPanel == null) || !content.isAttachedToWindow()) return;
+
+		content.getLocationOnScreen(insetLoc1);
+		int contentTop = insetLoc1[1];
+		int contentBottom = contentTop + content.getHeight();
+
+		toolBar.getLocationOnScreen(insetLoc1);
+		int top = Math.max(0, (insetLoc1[1] + toolBar.getHeight()) - contentTop);
+
+		// Whichever bottom-anchored bar reaches furthest up the screen decides the inset -- usually
+		// control_panel (nav_bar, when it's bottom-positioned, sits below it per the bottom-nav
+		// layout's own constraints), but control_panel is routinely GONE while just browsing (nothing
+		// playing), in which case nav_bar alone still needs clearing if it's the bottom-positioned one.
+		int bottom = 0;
+		if (controlPanel.getVisibility() == VISIBLE) {
+			controlPanel.getLocationOnScreen(insetLoc2);
+			bottom = Math.max(bottom, Math.max(0, contentBottom - insetLoc2[1]));
+		}
+		if ((navBar != null) && (navBar.getVisibility() == VISIBLE)
+				&& (getPrefs().getNavBarPosPref(this) == NavBarView.POSITION_BOTTOM)) {
+			navBar.getLocationOnScreen(insetLoc2);
+			bottom = Math.max(bottom, Math.max(0, contentBottom - insetLoc2[1]));
+		}
+
+		if ((content.getPaddingTop() == top) && (content.getPaddingBottom() == bottom)) return;
+		content.setPadding(content.getPaddingLeft(), top, content.getPaddingRight(), bottom);
+	}
+
+	/**
+	 * A WebView's page content is composited internally by the browser engine rather than drawn as
+	 * clippable child views, so it doesn't reliably scroll into padding the way a RecyclerView or
+	 * ScrollView does -- observed as page content still rendering flush against/under tool_bar.
+	 * Physically shrinking the WebView's own top bound with a margin instead is a hard guarantee
+	 * regardless of how it renders internally. Deliberately top-only: the page is left full-bleed at
+	 * the bottom, so control_panel is free to overlap the very end of the page the way it always
+	 * has -- unlike the top, that's rarely actually scrolled to.
+	 */
+	public void insetWebViewTop(View content) {
+		View.OnLayoutChangeListener sync = (v, left, top, right, bottom, oldLeft, oldTop, oldRight,
+																				oldBottom) -> applyWebViewTopInset(content);
+		content.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+			@Override
+			public void onViewAttachedToWindow(@NonNull View v) {
+				if (toolBar != null) toolBar.addOnLayoutChangeListener(sync);
+				topInsetContent.add(content);
+				applyWebViewTopInset(content);
+			}
+
+			@Override
+			public void onViewDetachedFromWindow(@NonNull View v) {
+				if (toolBar != null) toolBar.removeOnLayoutChangeListener(sync);
+				topInsetContent.remove(content);
+			}
+		});
+		topInsetContent.add(content);
+		// Applied right away, not only once attached -- a WebView's own attachment can lag behind a
+		// synchronous loadUrl() call made right after construction, which would otherwise let that
+		// first page load render unstyled/overlapping before the margin ever takes effect.
+		applyWebViewTopInset(content);
+	}
+
+	private void applyWebViewTopInset(View content) {
+		if (toolBar == null) return;
+		if (!(content.getLayoutParams() instanceof ViewGroup.MarginLayoutParams mlp)) return;
+		// tool_bar's own visibility/height doesn't actually change while its mediator is Invisible
+		// (see setBarsHidden()) since a WebView draws its own navigation and toggling an invisible
+		// bar's visibility wouldn't change anything -- but the user still expects "hide bars" to
+		// reclaim that reserved space for the page, so treat it as zero-height ourselves here.
+		int top = isBarsHidden() ? 0 : toolBar.getHeight();
+		if (mlp.topMargin == top) return;
+		mlp.topMargin = top;
+		content.setLayoutParams(mlp);
+	}
+
+	/**
+	 * Re-applies every currently-attached content view's insets against tool_bar/control_panel's
+	 * present size and position. The attach/layout listeners set up in
+	 * {@link #insetScrollableContent}/{@link #insetWebViewTop} already keep things in sync
+	 * incrementally, but a tab restored by the fragment manager across a full {@link #recreate()}
+	 * (theme or nav-bar-position change) can end up missing the one layout event it needed; called
+	 * from a handful of extra points (a global layout pass, activity resume) as a cheap catch-all --
+	 * {@link #applyContentInsets}/{@link #applyWebViewTopInset} already no-op when nothing changed.
+	 */
+	private void refreshContentInsets() {
+		for (ViewGroup content : paddingInsetContent) applyContentInsets(content);
+		for (View content : topInsetContent) applyWebViewTopInset(content);
+	}
 
 	private boolean checkMirroringMode(boolean clearFlags) {
 		if (!AUTO) return false;
@@ -1145,23 +1310,48 @@ public class MainActivityDelegate extends ActivityDelegate
 	public void addPlaylistMenu(OverlayMenu.Builder builder,
 															Supplier<FutureSupplier<List<PlayableItem>>> selection,
 															Supplier<? extends CharSequence> initName) {
+		// Captured now, while builder still belongs to whichever OverlayMenu instance is actually
+		// on screen for this particular caller -- context_menu for the per-item long-press menu,
+		// control_menu for the control panel's own "..." button, tool_bar_menu for YouTube's
+		// dedicated favorites/playlist toolbar buttons. createDialogBuilder() hardcodes
+		// context_menu, so calling it here unconditionally would render the dialog into an
+		// instance other than the one the tap actually came from for the latter two -- invisible,
+		// since that instance isn't the one currently showing.
+		OverlayMenu menu = builder.getMenu();
 		builder.addItem(R.id.playlist_add, R.drawable.playlist_add, R.string.playlist_add)
-				.setSubmenu(b -> createPlaylistMenu(b, selection, initName));
+				.setHandler(i -> {
+					showPlaylistDialog(menu, selection, initName);
+					return true;
+				});
 	}
 
-	private void createPlaylistMenu(OverlayMenu.Builder b,
-																	Supplier<FutureSupplier<List<PlayableItem>>> selection,
-																	Supplier<? extends CharSequence> initName) {
+	/**
+	 * A single tap on "Add to playlist" now goes straight to a real dialog listing existing
+	 * playlists (plus "Create new playlist") rather than drilling into another OverlayMenu page --
+	 * one fewer menu-within-a-menu step for an action that's just a one-time choice.
+	 */
+	private void showPlaylistDialog(OverlayMenu menu,
+																	 Supplier<FutureSupplier<List<PlayableItem>>> selection,
+																	 Supplier<? extends CharSequence> initName) {
 		getLib().getPlaylists().getUnsortedChildren().main().onSuccess(playlists -> {
-			b.addItem(R.id.playlist_create, R.drawable.playlist_add, R.string.playlist_create)
-					.setHandler(i -> createPlaylist(selection.get(), initName));
-
+			Context ctx = getContext();
+			CharSequence[] items = new CharSequence[playlists.size() + 1];
+			items[0] = ctx.getString(R.string.playlist_create);
 			for (int i = 0; i < playlists.size(); i++) {
-				Playlist pl = (Playlist) playlists.get(i);
-				String name = pl.getName();
-				b.addItem(UiUtils.getArrayItemId(i), R.drawable.playlist, name)
-						.setHandler(item -> addToPlaylist(name, selection.get()));
+				items[i + 1] = ((Playlist) playlists.get(i)).getName();
 			}
+
+			DialogBuilder.create(menu).setTitle(R.drawable.playlist_add, R.string.playlist_add)
+					.setSingleChoiceItems(items, -1, (d, which) -> {
+						d.dismiss();
+						if (which == 0) {
+							createPlaylist(selection.get(), initName);
+						} else {
+							addToPlaylist(((Playlist) playlists.get(which - 1)).getName(), selection.get());
+						}
+					})
+					.setNegativeButton(android.R.string.cancel, (d, w) -> d.dismiss())
+					.show();
 		});
 	}
 
@@ -1237,6 +1427,11 @@ public class MainActivityDelegate extends ActivityDelegate
 		floatingButton3.setScale(getPrefs().getFabSizePref());
 		updateFabDraggable();
 		controlPanel.bind(getMediaServiceBinder());
+		enableBodyOverlayLayout();
+		// Catch-all re-sync -- see refreshContentInsets() -- for content whose own attach/layout
+		// listeners missed the layout change they needed, most notably a tab restored by the
+		// fragment manager across the recreate() that a theme or nav-bar-position change triggers.
+		body.getViewTreeObserver().addOnGlobalLayoutListener(this::refreshContentInsets);
 
 		if (VERSION.SDK_INT >= VERSION_CODES.VANILLA_ICE_CREAM && !a.isCarActivity()) {
 			ViewCompat.setOnApplyWindowInsetsListener(toolBar, (v, insets) -> {
@@ -1322,8 +1517,6 @@ public class MainActivityDelegate extends ActivityDelegate
 			});
 		} else if (prefs.contains(VOICE_CONTROL_SUBST)) {
 			if (voiceCommandHandler != null) voiceCommandHandler.updateWordSubst();
-		} else if (prefs.contains(CLOCK_POS)) {
-			getBody().getVideoView().setClockPos(getPrefs().getClockPosPref());
 		} else if (prefs.contains(LOCALE)) {
 			recreate();
 		} else if (prefs.contains(DIM_ENABLED) || prefs.contains(DIM_OPACITY)

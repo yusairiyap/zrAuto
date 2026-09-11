@@ -361,6 +361,24 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		a.getToolBarMenu().showFuture(sb -> favoritesMenu(sb, favorites, current));
 	}
 
+	/**
+	 * A single tap on the toolbar's favorites button now toggles the current video directly
+	 * instead of opening favoritesMenu() (whose top item did the exact same toggle, just one menu
+	 * open away) -- browsing to other favorited videos, the rest of that menu, is still reachable
+	 * via long-press on the same button (see YoutubeToolBarMediator).
+	 */
+	void toggleCurrentVideoFavorite() {
+		MainActivityDelegate a = MainActivityDelegate.get(requireContext());
+		DefaultMediaLib lib = (DefaultMediaLib) a.getLib();
+		YoutubeVideoItem current = getCurrentVideoItem(lib);
+		if (current == null) return;
+
+		MediaLib.Favorites favorites = lib.getFavorites();
+		if (current.isFavoriteItem()) favorites.removeItem(current);
+		else favorites.addItem(current);
+		notifyFavoritesChanged();
+	}
+
 	void showPlaylistsMenu() {
 		MainActivityDelegate a = MainActivityDelegate.get(requireContext());
 		DefaultMediaLib lib = (DefaultMediaLib) a.getLib();

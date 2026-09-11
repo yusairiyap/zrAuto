@@ -291,6 +291,11 @@ public class NavBarMediator extends PrefNavBarMediator
 						LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT));
 				scroll.addView(container);
 				g.addView(scroll);
+				// GenericFragment's own root (g) never insets itself against tool_bar/control_panel/
+				// nav_bar -- unlike MediaItemListView/the Settings list, which each request this inset
+				// from their own constructor, this content is built by the caller instead, so it has to
+				// be requested here, on the actual scrollable view, the same way those do.
+				a.insetScrollableContent(scroll);
 			});
 			return true;
 		} else if (itemId == R.id.settings_fragment) {

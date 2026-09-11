@@ -77,10 +77,11 @@ public class ControlPanelView extends ConstraintLayout
 	/** The vertical padding control_panel_view.xml gives the transport buttons, in dp. */
 	private static final int LAYOUT_BUTTON_PAD_V = 6;
 	/**
-	 * Fullscreen video playback always uses the same black-scrim/white-icon look as the Black
-	 * theme, regardless of the currently selected app theme -- matching what most video players
-	 * do over playback controls, and avoiding barely-visible controls (e.g. blue-on-white) that
-	 * some themes would otherwise put over the video.
+	 * This control panel always uses the same black-scrim/white-icon look, regardless of the
+	 * currently selected app theme -- matching what most video players do over playback controls,
+	 * avoiding barely-visible controls (e.g. blue-on-white) that some themes would otherwise
+	 * produce, and keeping the icons legible now that the panel floats as a translucent overlay
+	 * over arbitrary tab content instead of sitting on a flat, themed background.
 	 */
 	private static final int VIDEO_MODE_BG_COLOR = 0xFF000000;
 	private static final int VIDEO_MODE_ICON_COLOR = 0xFFFFFFFF;
@@ -103,9 +104,6 @@ public class ControlPanelView extends ConstraintLayout
 	private View gestureSource;
 	private TextView playbackTimer;
 	private long scrollStamp;
-	private final int flatBackgroundColor;
-	private final int iconTintColor;
-	private final ColorStateList[] labelTextColors = new ColorStateList[LABEL_IDS.length];
 
 	public ControlPanelView(Context context, AttributeSet attrs) {
 		super(context, attrs, R.attr.appControlPanelStyle);
@@ -116,15 +114,15 @@ public class ControlPanelView extends ConstraintLayout
 				R.attr.appControlPanelStyle, R.style.AppTheme_ControlPanelStyle);
 		size = ta.getLayoutDimension(R.styleable.ControlPanelView_size, 0);
 		textAppearance = ta.getResourceId(R.styleable.ControlPanelView_textAppearance, 0);
-		flatBackgroundColor = ta.getColor(R.styleable.ControlPanelView_android_colorBackground, 0);
-		iconTintColor = ta.getColor(R.styleable.ControlPanelView_tint, VIDEO_MODE_ICON_COLOR);
-		setBackgroundColor(flatBackgroundColor);
 		ta.recycle();
 
-		for (int i = 0; i < LABEL_IDS.length; i++) {
-			TextView label = findViewById(LABEL_IDS[i]);
-			if (label != null) labelTextColors[i] = label.getTextColors();
-		}
+		// Always uses the same translucent black-scrim/white-icon look as fullscreen video playback,
+		// regardless of the selected app theme or whether video mode is active -- so tab content (or
+		// the "now playing" mini control panel shown while browsing) renders underneath/through it,
+		// with transport icons that stay legible over arbitrary content colors.
+		setBackground(buildScrimGradient(VIDEO_MODE_BG_COLOR, true));
+		setIconTint(VIDEO_MODE_ICON_COLOR);
+		setLabelColor(VIDEO_MODE_ICON_COLOR);
 
 		MainActivityDelegate a = getActivity();
 		a.addBroadcastListener(this, ACTIVITY_DESTROY);
@@ -163,14 +161,6 @@ public class ControlPanelView extends ConstraintLayout
 		for (int id : LABEL_IDS) {
 			TextView label = findViewById(id);
 			if (label != null) label.setTextColor(color);
-		}
-	}
-
-	/** Restores the position/duration labels to the color captured at inflate time. */
-	private void restoreLabelColor() {
-		for (int i = 0; i < LABEL_IDS.length; i++) {
-			TextView label = findViewById(LABEL_IDS[i]);
-			if ((label != null) && (labelTextColors[i] != null)) label.setTextColor(labelTextColors[i]);
 		}
 	}
 
@@ -345,10 +335,6 @@ public class ControlPanelView extends ConstraintLayout
 		MainActivityDelegate a = getActivity();
 		hideTimer = null;
 		mask |= MASK_VIDEO_MODE;
-
-		setBackground(buildScrimGradient(VIDEO_MODE_BG_COLOR, true));
-		setIconTint(VIDEO_MODE_ICON_COLOR);
-		setLabelColor(VIDEO_MODE_ICON_COLOR);
 		a.setBarsHidden(true);
 		setShowHideBarsIcon(a);
 
@@ -392,9 +378,6 @@ public class ControlPanelView extends ConstraintLayout
 		MainActivityDelegate a = getActivity();
 		hideTimer = null;
 		mask &= ~MASK_VIDEO_MODE;
-		setBackgroundColor(flatBackgroundColor);
-		setIconTint(iconTintColor);
-		restoreLabelColor();
 		a.getFloatingButton().setVisibility(VISIBLE);
 
 		if ((mask & MASK_VISIBLE) == 0) {

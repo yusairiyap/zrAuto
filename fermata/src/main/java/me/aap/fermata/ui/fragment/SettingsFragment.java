@@ -161,6 +161,7 @@ public class SettingsFragment extends MainActivityFragment
 			listView.setHasFixedSize(true);
 			listView.setLayoutManager(new LinearLayoutManager(getContext()));
 			listView.setAdapter(adapter);
+			a.insetScrollableContent(listView);
 
 			if (state != null) {
 				PreferenceSet p = adapter.getPreferenceSet().find(state.getInt("id", ID_NULL));
@@ -651,16 +652,6 @@ public class SettingsFragment extends MainActivityFragment
 							R.string.hw_accel_disabled};
 			o.visibility = vlcCond;
 		});
-		sub1.addListPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.CLOCK_POS;
-			o.title = R.string.clock_pos;
-			o.subtitle = R.string.string_format;
-			o.formatSubtitle = true;
-			o.values =
-					new int[]{R.string.clock_pos_none, R.string.clock_pos_left, R.string.clock_pos_right,
-							R.string.clock_pos_center};
-		});
 		sub1.addBooleanPref(o -> {
 			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.SYS_BARS_ON_VIDEO_TOUCH;
@@ -756,6 +747,50 @@ public class SettingsFragment extends MainActivityFragment
 			o.icon = R.drawable.audiotrack;
 		});
 		addAudioPrefs(sub2, mediaPrefs, isCar);
+
+		sub2 = sub1.subSet(o -> {
+			o.title = R.string.info_overlay_prefs;
+			o.icon = R.drawable.about;
+		});
+		sub2.addListPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.CLOCK_POS;
+			o.title = R.string.clock_pos;
+			o.subtitle = R.string.string_format;
+			o.formatSubtitle = true;
+			o.values =
+					new int[]{R.string.clock_pos_none, R.string.clock_pos_left, R.string.clock_pos_right,
+							R.string.clock_pos_center};
+		});
+		var infoOverlayCond = new PrefCondition<>(a.getPrefs(), MainActivityPrefs.CLOCK_POS,
+				pref -> a.getPrefs().getIntPref(pref) != MainActivityPrefs.CLOCK_POS_NONE);
+		sub2.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK;
+			o.title = R.string.info_overlay_show_clock;
+			o.visibility = infoOverlayCond.copy();
+		});
+		sub2.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_PCT;
+			o.title = R.string.info_overlay_show_battery_pct;
+			o.visibility = infoOverlayCond.copy();
+		});
+		sub2.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_TEMP;
+			o.title = R.string.info_overlay_show_battery_temp;
+			o.visibility = infoOverlayCond.copy();
+		});
+		sub2.addFloatPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_SIZE;
+			o.title = R.string.info_overlay_size;
+			o.scale = 0.05f;
+			o.seekMin = 10;
+			o.seekMax = 40;
+			o.visibility = infoOverlayCond.copy();
+		});
 
 		sub1 = set.subSet(o -> {
 			o.title = R.string.subtitles;

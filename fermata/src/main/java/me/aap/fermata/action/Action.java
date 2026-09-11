@@ -65,7 +65,12 @@ public enum Action {
 		boolean handled = (vv != null) && vv.toggleNativeFullscreen();
 		Log.d("FULLSCREEN_TOGGLE: activeVideoView=", vv, ", handled=", handled);
 		if (handled) return;
-		a.getPrefs().setFullscreenPref(a, !a.getPrefs().getFullscreenPref(a));
+		// A native handler above covers WebView-hosted video (YouTube); local video's VideoView has
+		// none, so while it's playing this toggles the system bars directly instead -- flipping the
+		// persisted fullscreenPref here would be a no-op, since MainActivityDelegate.isFullScreen()
+		// has videoMode itself already forcing fullscreen regardless of that pref's value.
+		if (a.isVideoMode()) a.toggleVideoBars();
+		else a.getPrefs().setFullscreenPref(a, !a.getPrefs().getFullscreenPref(a));
 	})),
 	DIM_TOGGLE(R.string.action_dim_toggle, a(a ->
 			a.getPrefs().applyBooleanPref(MainActivityPrefs.DIM_ENABLED,
