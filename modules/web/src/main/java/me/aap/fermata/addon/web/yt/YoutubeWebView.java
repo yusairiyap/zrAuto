@@ -166,6 +166,13 @@ public class YoutubeWebView extends FermataWebView {
 				"    return (d && d.video_id) ? d.video_id : '';\n" +
 				"  } catch (e) { return ''; }\n" +
 				"}\n" +
+				// See interceptLinkClicksJs() below for what sets __fermataLastLinkClickTime. A video
+				// change that follows a real link tap within this window is the user browsing to a
+				// different video on purpose -- as opposed to YouTube's own autonav, which never involves a
+				// click at all -- see YoutubeMediaEngine#playing()'s use of this flag.
+				"function fermataRecentLinkClick() {\n" +
+				"  return (Date.now() - (window.__fermataLastLinkClickTime || 0)) < 4000;\n" +
+				"}\n" +
 				"function attachVideoListeners(v) {\n" +
 				"  if (!(window.__fermataAdShowing && window.__fermataAdSkipEnabled)) v.muted = false;\n" +
 				"  if (v.getAttribute('FermataAttached') === 'true') return;\n" +
@@ -174,12 +181,14 @@ public class YoutubeWebView extends FermataWebView {
 				"  if ((v.currentTime > 0) && !v.paused && !v.ended) {\n" +
 				"    if (typeof fermataAdCheck === 'function') fermataAdCheck();\n" +
 				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
-				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", fermataCurrentVideoId() + '|' + v.currentSrc);\n" +
+				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", fermataCurrentVideoId() + '|' + " +
+				"(fermataRecentLinkClick() ? '1' : '0') + '|' + v.currentSrc);\n" +
 				"  }\n" +
 				"  v.addEventListener('playing', function(e) {\n" +
 				"    if (typeof fermataAdCheck === 'function') fermataAdCheck();\n" +
 				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
-				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", fermataCurrentVideoId() + '|' + v.currentSrc);\n" +
+				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", fermataCurrentVideoId() + '|' + " +
+				"(fermataRecentLinkClick() ? '1' : '0') + '|' + v.currentSrc);\n" +
 				"  });\n" +
 				"  v.addEventListener('pause', function(e) {" + JS_EVENT + "(" + JS_VIDEO_PAUSED +
 				", v.currentSrc);});\n" +
@@ -193,7 +202,8 @@ public class YoutubeWebView extends FermataWebView {
 				"}\n" +
 				"findVideo();\n" +
 				interceptEndedJs() +
-				interceptNativeSkipButtonsJs());
+				interceptNativeSkipButtonsJs() +
+				interceptLinkClicksJs());
 	}
 
 	/**
@@ -262,6 +272,27 @@ public class YoutubeWebView extends FermataWebView {
 				"    e.stopImmediatePropagation();\n" +
 				"    e.preventDefault();\n" +
 				"    " + JS_EVENT + "(" + JS_SKIP_PREV_NEXT + ", next ? '1' : '0');\n" +
+				"  }, true);\n" +
+				"}\n";
+	}
+
+	/**
+	 * Records the time of the last click on a link ({@code <a>}, or something inside one -- every
+	 * "tap another video" gesture on a YouTube page, thumbnail/title/related-video-card alike, is a
+	 * link to another watch page; player controls like play/pause, seek and volume are not) so
+	 * {@code attachVideoListeners()}'s {@code JS_VIDEO_PLAYING} payload can tell
+	 * {@link me.aap.fermata.addon.web.yt.YoutubeMediaEngine#playing} whether a video change was a
+	 * real user tap rather than YouTube's own autonav. Passive -- doesn't touch propagation/default
+	 * at all -- so it can't interfere with {@link #interceptNativeSkipButtonsJs()} or anything else
+	 * that also listens for the same click.
+	 */
+	private String interceptLinkClicksJs() {
+		return "if (!window.__fermataClickTracker) {\n" +
+				"  window.__fermataClickTracker = true;\n" +
+				"  document.addEventListener('click', function(e) {\n" +
+				"    if (e.target && e.target.closest && e.target.closest('a')) {\n" +
+				"      window.__fermataLastLinkClickTime = Date.now();\n" +
+				"    }\n" +
 				"  }, true);\n" +
 				"}\n";
 	}

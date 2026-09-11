@@ -163,19 +163,20 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			blockedHeight = 0;
 		}
 
-		// data is "<videoId>|<v.currentSrc>" -- see YoutubeWebView#attachListeners()'s
-		// fermataCurrentVideoId(). The id comes straight from the player object, not the WebView's own
-		// getUrl(): that outer document URL only catches up with a player.loadVideoById() SPA-internal
-		// swap once YouTube's own JS updates the address bar via the History API, well after the
-		// <video> element has already switched sources and fired this very "playing" event -- using it
-		// here instead used to read the OLD video id for a beat after every queue-driven navigation,
-		// triggering a bogus "expected X but page shows <stale>" correction (see the pendingVideoId
-		// branch below) that reissued loadVideoById() and was visible on-screen as a flicker back to
-		// the old video. Falls back to the old getUrl()-based extraction if the player object wasn't
-		// found (e.g. mid-navigation) or didn't report an id.
-		int sep = data.indexOf('|');
-		String jsVideoId = (sep >= 0) ? data.substring(0, sep) : "";
-		String url = (sep >= 0) ? data.substring(sep + 1) : data;
+		// data is "<videoId>|<recentLinkClick 0/1>|<v.currentSrc>" -- see YoutubeWebView#
+		// attachListeners()'s fermataCurrentVideoId()/fermataRecentLinkClick(). The id comes straight
+		// from the player object, not the WebView's own getUrl(): that outer document URL only catches
+		// up with a player.loadVideoById() SPA-internal swap once YouTube's own JS updates the address
+		// bar via the History API, well after the <video> element has already switched sources and
+		// fired this very "playing" event -- using it here instead used to read the OLD video id for a
+		// beat after every queue-driven navigation, triggering a bogus "expected X but page shows
+		// <stale>" correction (see the pendingVideoId branch below) that reissued loadVideoById() and
+		// was visible on-screen as a flicker back to the old video. Falls back to the old getUrl()-based
+		// extraction if the player object wasn't found (e.g. mid-navigation) or didn't report an id.
+		String[] parts = data.split("\\|", 3);
+		String jsVideoId = (parts.length > 0) ? parts[0] : "";
+		boolean recentLinkClick = (parts.length > 1) && "1".equals(parts[1]);
+		String url = (parts.length > 2) ? parts[2] : "";
 		String actualId =
 				!jsVideoId.isEmpty() ? jsVideoId : YoutubeVideoItem.extractVideoId(web.getUrl());
 		YoutubeAddon addon = web.getAddon();
@@ -221,8 +222,19 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			// only when the app actually has an opinion about what should play (Repeat One, or an active
 			// Favorites/Playlist queue) -- with neither, this is left alone as ordinary page browsing.
 			Log.i("playing(): unexpected transition from ", currentVideoId, " to ", actualId,
-					" -- repeatOne=", addon.isRepeatOneEnabled(), ", queueItem=", addon.getQueueItem());
-			if (addon.isRepeatOneEnabled()) {
+					" -- repeatOne=", addon.isRepeatOneEnabled(), ", queueItem=", addon.getQueueItem(),
+					", recentLinkClick=", recentLinkClick);
+			if (recentLinkClick) {
+				// This transition followed a real tap on a link (a video thumbnail/title/related-video
+				// card -- see YoutubeWebView's fermataRecentLinkClick()) within the last few seconds, unlike
+				// YouTube's own autonav, which never involves a click at all. The user picked this video on
+				// purpose: respect it exactly like an explicit next/prev skip would (see prepare() above) --
+				// drop any Favorites/Playlist queue context and Repeat One rather than forcing playback back
+				// onto the queue's own next item -- and fall through to just accept it below, same as
+				// ordinary page browsing with no queue at all.
+				addon.setQueueItem(null);
+				addon.setRepeatOneEnabled(false);
+			} else if (addon.isRepeatOneEnabled()) {
 				addon.setPendingVideoId(currentVideoId);
 				pendingCorrections = 0;
 				web.loadVideo(currentVideoId);
