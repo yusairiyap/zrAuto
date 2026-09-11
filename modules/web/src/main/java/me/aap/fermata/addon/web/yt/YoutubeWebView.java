@@ -5,6 +5,7 @@ import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_AD_SHOWING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_CONTENT_PLAYING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_ERR;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_EVENT;
+import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_SKIP_PREV_NEXT;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_ENDED;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_FOUND;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_PAUSED;
@@ -105,6 +106,7 @@ public class YoutubeWebView extends FermataWebView {
 		injectEqualizer();
 		hideAppPromoBanners();
 		attachAdObserver();
+		disableAutoplay();
 		addFocusHighlight();
 		currentCookieManager().flush();
 		refreshAddressBarTitle();
@@ -150,6 +152,27 @@ public class YoutubeWebView extends FermataWebView {
 		String debug = BuildConfig.D ? JS_EVENT + "(" + JS_VIDEO_FOUND + ", null);\n" : "";
 		String scale = getAddon().getScale().prefName();
 		loadUrl("javascript:\n" +
+				// The WebView's own reported document URL (what YoutubeMediaEngine#playing() used to
+				// derive the current video id from) lags behind player.loadVideoById()'s SPA-internal video
+				// swap -- YouTube updates the address bar via the History API only once it's fetched the
+				// new video's metadata, well after the <video> element itself has already switched sources
+				// and fired 'playing'. Reading the id straight from the player object instead (what it's
+				// actually playing, right now) is instantaneous, so the id is prefixed onto every
+				// JS_VIDEO_PLAYING payload here instead. See YoutubeMediaEngine#playing()'s parsing of it.
+				"function fermataCurrentVideoId() {\n" +
+				"  try {\n" +
+				"    var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
+				"    var d = p && p.getVideoData ? p.getVideoData() : null;\n" +
+				"    return (d && d.video_id) ? d.video_id : '';\n" +
+				"  } catch (e) { return ''; }\n" +
+				"}\n" +
+				// See interceptLinkClicksJs() below for what sets __fermataLastLinkClickTime. A video
+				// change that follows a real link tap within this window is the user browsing to a
+				// different video on purpose -- as opposed to YouTube's own autonav, which never involves a
+				// click at all -- see YoutubeMediaEngine#playing()'s use of this flag.
+				"function fermataRecentLinkClick() {\n" +
+				"  return (Date.now() - (window.__fermataLastLinkClickTime || 0)) < 4000;\n" +
+				"}\n" +
 				"function attachVideoListeners(v) {\n" +
 				"  if (!(window.__fermataAdShowing && window.__fermataAdSkipEnabled)) v.muted = false;\n" +
 				"  if (v.getAttribute('FermataAttached') === 'true') return;\n" +
@@ -158,24 +181,120 @@ public class YoutubeWebView extends FermataWebView {
 				"  if ((v.currentTime > 0) && !v.paused && !v.ended) {\n" +
 				"    if (typeof fermataAdCheck === 'function') fermataAdCheck();\n" +
 				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
-				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", v.currentSrc);\n" +
+				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", fermataCurrentVideoId() + '|' + " +
+				"(fermataRecentLinkClick() ? '1' : '0') + '|' + v.currentSrc);\n" +
 				"  }\n" +
 				"  v.addEventListener('playing', function(e) {\n" +
 				"    if (typeof fermataAdCheck === 'function') fermataAdCheck();\n" +
 				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
-				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", v.currentSrc);\n" +
+				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", fermataCurrentVideoId() + '|' + " +
+				"(fermataRecentLinkClick() ? '1' : '0') + '|' + v.currentSrc);\n" +
 				"  });\n" +
 				"  v.addEventListener('pause', function(e) {" + JS_EVENT + "(" + JS_VIDEO_PAUSED +
 				", v.currentSrc);});\n" +
-				"  v.addEventListener('ended', function(e) {" + JS_EVENT + "(" + JS_VIDEO_ENDED +
-				", null);});\n" +
+				// Deliberately NOT a plain v.addEventListener('ended', ...) here -- see the
+				// document-level capture-phase listener below, which replaces it.
 				"}\n" +
 				"function findVideo() {\n" +
 				"  var video = document.querySelectorAll('video');" +
 				"  video.forEach(attachVideoListeners);\n" +
 				"   setTimeout(findVideo, 1000);\n" +
 				"}\n" +
-				"findVideo();");
+				"findVideo();\n" +
+				interceptEndedJs() +
+				interceptNativeSkipButtonsJs() +
+				interceptLinkClicksJs());
+	}
+
+	/**
+	 * YouTube's own "ended" handling (whatever picks and loads its own "up next" video once
+	 * playback finishes) is wired to the SAME native {@code <video>} "ended" event the app listens
+	 * for (see {@code attachVideoListeners()} above) -- and since that native handling is attached
+	 * directly on the element (well before the app's own JS gets a chance to run), a plain
+	 * {@code v.addEventListener('ended', ...)} here would always lose that race: YouTube's own
+	 * transition is already underway by the time the app's JS-to-Java bridge round-trip gets a
+	 * chance to act on Repeat One/queue-driven next (see {@code YoutubeMediaEngine#ended()}), so
+	 * whatever plays next ends up being whatever YouTube's own pick was, not what the app decided.
+	 * <p>
+	 * The capture phase runs before the target/bubble phase regardless of listener registration
+	 * order -- {@code document}-level, capture=true always sees the event first -- so intercepting
+	 * it here and calling {@code stopImmediatePropagation()} prevents YouTube's own handling (and
+	 * the plain listener above) from ever running at all, leaving the app's own {@code JS_VIDEO_ENDED}
+	 * bridge call as the only thing that reacts to a video actually ending. Added once per page
+	 * (idempotent guard) rather than per-video, since {@code document} itself doesn't get recreated
+	 * between videos the way the player/video element does.
+	 */
+	private String interceptEndedJs() {
+		return "if (!window.__fermataEndedInterceptor) {\n" +
+				"  window.__fermataEndedInterceptor = true;\n" +
+				"  document.addEventListener('ended', function(e) {\n" +
+				"    if (e.target && (e.target.tagName === 'VIDEO')) {\n" +
+				"      e.stopImmediatePropagation();\n" +
+				"      " + JS_EVENT + "(" + JS_VIDEO_ENDED + ", null);\n" +
+				"    }\n" +
+				"  }, true);\n" +
+				"}\n";
+	}
+
+	/**
+	 * Same capture-phase-wins-the-race trick as {@link #interceptEndedJs()}, for a different
+	 * problem: a direct tap on YouTube's own on-screen prev/next button (the desktop-style HTML5
+	 * player's {@code .ytp-next-button}/{@code .ytp-prev-button}, and the mobile overlay's {@code
+	 * button.player-middle-controls-prev-next-button} pair that {@link #prevNextByClick} also
+	 * targets) never reaches the app's Java layer at all -- it's YouTube's own click handler, on
+	 * YouTube's own button, driving YouTube's own page-internal navigation, with no app involvement
+	 * to fix on the Java side no matter what {@code YoutubeMediaEngine} does. Intercepting the click
+	 * in the capture phase and routing it to {@code JS_SKIP_PREV_NEXT} instead (see {@code
+	 * YoutubeMediaEngine#skipRequested}) makes a tap on YouTube's own buttons behave exactly like a
+	 * tap on the app's own control panel next/prev buttons -- both end up going through the app's
+	 * queue-aware Favorites/Playlist navigation instead of YouTube's own pick.
+	 */
+	private String interceptNativeSkipButtonsJs() {
+		return "if (!window.__fermataSkipInterceptor) {\n" +
+				"  window.__fermataSkipInterceptor = true;\n" +
+				"  document.addEventListener('click', function(e) {\n" +
+				"    if (window.__fermataSyntheticClick) {\n" +
+				"      window.__fermataSyntheticClick = false;\n" +
+				"      return;\n" +
+				"    }\n" +
+				"    var t = (e.target && e.target.closest) ? e.target.closest(" +
+				"'.ytp-next-button, .ytp-prev-button, " +
+				"button.player-middle-controls-prev-next-button') : null;\n" +
+				"    if (!t) return;\n" +
+				"    var next;\n" +
+				"    if (t.classList.contains('ytp-next-button')) next = true;\n" +
+				"    else if (t.classList.contains('ytp-prev-button')) next = false;\n" +
+				"    else {\n" +
+				"      var buttons = document.querySelectorAll(" +
+				"'button.player-middle-controls-prev-next-button');\n" +
+				"      next = Array.prototype.indexOf.call(buttons, t) === 1;\n" +
+				"    }\n" +
+				"    e.stopImmediatePropagation();\n" +
+				"    e.preventDefault();\n" +
+				"    " + JS_EVENT + "(" + JS_SKIP_PREV_NEXT + ", next ? '1' : '0');\n" +
+				"  }, true);\n" +
+				"}\n";
+	}
+
+	/**
+	 * Records the time of the last click on a link ({@code <a>}, or something inside one -- every
+	 * "tap another video" gesture on a YouTube page, thumbnail/title/related-video-card alike, is a
+	 * link to another watch page; player controls like play/pause, seek and volume are not) so
+	 * {@code attachVideoListeners()}'s {@code JS_VIDEO_PLAYING} payload can tell
+	 * {@link me.aap.fermata.addon.web.yt.YoutubeMediaEngine#playing} whether a video change was a
+	 * real user tap rather than YouTube's own autonav. Passive -- doesn't touch propagation/default
+	 * at all -- so it can't interfere with {@link #interceptNativeSkipButtonsJs()} or anything else
+	 * that also listens for the same click.
+	 */
+	private String interceptLinkClicksJs() {
+		return "if (!window.__fermataClickTracker) {\n" +
+				"  window.__fermataClickTracker = true;\n" +
+				"  document.addEventListener('click', function(e) {\n" +
+				"    if (e.target && e.target.closest && e.target.closest('a')) {\n" +
+				"      window.__fermataLastLinkClickTime = Date.now();\n" +
+				"    }\n" +
+				"  }, true);\n" +
+				"}\n";
 	}
 
 	private void injectSponsorBlock() {
@@ -305,6 +424,49 @@ public class YoutubeWebView extends FermataWebView {
 				"}");
 	}
 
+	/**
+	 * YouTube's own "Autoplay" toggle (the countdown-to-next-video overlay near the end of playback)
+	 * races the app's own {@code <video>} "ended" listener (see {@code attachListeners()}, whose
+	 * JS_VIDEO_ENDED ultimately drives {@code YoutubeMediaEngine#ended()} -- Repeat One and
+	 * queue-driven next/prev both act there) -- and reliably wins it: YouTube's transition to
+	 * whatever video it auto-picked is already underway (its own listener on the same element,
+	 * attached long before ours) by the time our JS-to-Java bridge round-trip gets a chance to
+	 * react, so the app's own decision arrives too late to matter and the video that actually plays
+	 * next is whatever YouTube's autoplay chose, not what the app asked for. Turning Autoplay off
+	 * removes YouTube's side of that race entirely, leaving the app's own end-of-video handling as
+	 * the only thing that acts once a video actually ends.
+	 * <p>
+	 * Re-applied on every DOM mutation (MutationObserver, idempotent guard, same pattern as {@link
+	 * #hideAppPromoBanners()}/{@link #attachAdObserver()}) rather than once per page load -- the
+	 * player (and this toggle) is rebuilt on every video transition, not just full navigations, so a
+	 * one-shot check right after the page loads could miss a toggle that resets itself to "on" once
+	 * the player for the *next* video spins up.
+	 * <p>
+	 * {@code .ytp-autonav-toggle-button} is YouTube's own HTML5 player control (the same
+	 * {@code #movie_player}/{@code .html5-video-player} embed {@link #next()}/{@link
+	 * #setHighestVideoQuality()} already target elsewhere in this class, used across both the mobile
+	 * and desktop-style watch pages) -- if a future YouTube markup change moves or renames it, this
+	 * becomes a silent no-op rather than a crash, same as the ad-selector fallback in {@link
+	 * #attachAdObserver()}; the debug log below is there to confirm whether it's still matching.
+	 */
+	private void disableAutoplay() {
+		String debugLog = BuildConfig.D ?
+				"  else if (btn) console.log('Fermata: Autoplay toggle found, checked=' + " +
+						"btn.getAttribute('aria-checked'));\n" +
+						"  else console.log('Fermata: Autoplay toggle not found');\n" : "";
+		loadUrl("javascript:\n" +
+				"function fermataDisableAutoplay() {\n" +
+				"  var btn = document.querySelector('.ytp-autonav-toggle-button');\n" +
+				"  if (btn && btn.getAttribute('aria-checked') === 'true') btn.click();\n" + debugLog +
+				"}\n" +
+				"fermataDisableAutoplay();\n" +
+				"if (!window.__fermataAutoplayObserver) {\n" +
+				"  window.__fermataAutoplayObserver = new MutationObserver(fermataDisableAutoplay);\n" +
+				"  window.__fermataAutoplayObserver.observe(document.body, " +
+				"{childList: true, subtree: true, attributes: true, attributeFilter: ['aria-checked']});\n" +
+				"}");
+	}
+
 	protected boolean requestFullScreen() {
 		// document.querySelector('video') can come back null for a beat right after a refocus (the
 		// same player DOM churn confirmed during the window-resize investigation -- YouTube can tear
@@ -373,12 +535,53 @@ public class YoutubeWebView extends FermataWebView {
 				"if (v != null) { v.currentTime = 0; v.pause(); }");
 	}
 
+	/**
+	 * Seeks to 0 and resumes playback in one JS call, for Repeat One (see {@code
+	 * YoutubeMediaEngine#ended()}) -- a separate {@link #setPosition}/{@link #play()} pair would
+	 * still work, but round-trips through two separate {@code loadUrl()} evaluations with no
+	 * ordering guarantee between them, where this is a single atomic script.
+	 */
+	void replay() {
+		loadUrl("javascript:(function() {\n" +
+				"  var v = document.querySelector('video');\n" +
+				"  if (v == null) { console.error('Fermata replay(): no video element found'); return; }\n" +
+				"  v.currentTime = 0;\n" +
+				"  var p = v.play();\n" +
+				"  if (p && p.catch) p.catch(function(e) { console.error('Fermata replay() rejected: ' + e); });\n" +
+				"})();");
+	}
+
 	void prev() {
 		prevNext(false);
 	}
 
 	void next() {
 		prevNext(true);
+	}
+
+	/**
+	 * Switches to a specific video by id -- used for queue-driven (Favorites/Playlist) next/prev,
+	 * where (unlike {@link #next()}/{@link #prev()}) the app already knows exactly which video comes
+	 * next and just needs the page to show it. Tries the page's own player API first, same idiom
+	 * (and the same reasoning: no page reload, no fullscreen exit/re-enter) as {@link #prevNext},
+	 * falling back to a full {@link #loadUrl} navigation only if it's unavailable -- that fallback is
+	 * far heavier (a real page load tears down and recreates the player/video element entirely) and
+	 * was the likely cause of a visible stuck-spinner-with-audio-still-playing gap between videos
+	 * when every queue-driven switch took it unconditionally.
+	 */
+	void loadVideo(String videoId) {
+		evaluateJavascript("""
+				(function() {
+				  var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+				  var fn = p ? p.loadVideoById : null;
+				  if (typeof fn !== 'function') return false;
+				  fn.call(p, '%s');
+				  return true;
+				})();
+				""".formatted(videoId),
+				result -> {
+					if (!"true".equals(result)) loadUrl(YoutubeVideoItem.watchUrl(videoId));
+				});
 	}
 
 	private void prevNext(boolean next) {
@@ -410,7 +613,10 @@ public class YoutubeWebView extends FermataWebView {
 				function prevNextVideo() {
 				  const buttons = document.querySelectorAll('button.player-middle-controls-prev-next-button');
 				  console.log('Prev/Next buttons:', buttons);
-				  if (buttons) buttons[%d].click();
+				  // Marks this as the app's own click, not a user tap -- see interceptNativeSkipButtonsJs(),
+				  // which would otherwise catch this synthetic click too and redirect it right back into
+				  // this same next()/prev() call, looping forever.
+				  if (buttons) { window.__fermataSyntheticClick = true; buttons[%d].click(); }
 				}
 				setTimeout(prevNextVideo, 600);
 				""".formatted(next ? 1 : 0), null));

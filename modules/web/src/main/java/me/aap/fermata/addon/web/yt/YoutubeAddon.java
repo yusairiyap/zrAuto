@@ -21,6 +21,7 @@ import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.WebBrowserAddon;
 import me.aap.fermata.media.lib.DefaultMediaLib;
 import me.aap.fermata.media.lib.MediaLib.Item;
+import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.function.BooleanSupplier;
@@ -70,8 +71,60 @@ public class YoutubeAddon extends WebBrowserAddon
 	// reverb, higher CPU cost but a different, more "random room" character). See
 	// YoutubeEqualizerView's "Hall quality" row and YoutubeEqualizerScript's config JSON.
 	static final Pref<IntSupplier> YT_REVERB_ENGINE = Pref.i("YT_REVERB_ENGINE", 0);
+	// Whether the currently playing video should just loop itself on end -- a property of "whatever
+	// video is playing right now", not of any playlist/favorites list, so unlike "repeat the whole
+	// playlist" (which reads/writes getQueueItem()'s own parent prefs and needs a real queue item to
+	// mean anything) this works the same with or without one.
+	private static final Pref<BooleanSupplier> YT_REPEAT_ONE = Pref.b("YT_REPEAT_ONE", false);
 	private boolean ignorePrefChange;
 	private YoutubeRootItem root;
+	// The library item (with its real Favorites/Playlist parent) that the currently loaded video
+	// was selected from, if any -- set by YoutubeVideoItem#loadInFragment() and kept in sync by
+	// YoutubeMediaEngine as playback moves to the next/previous video. Lets next/prev navigate the
+	// actual playlist/favorites order (see YoutubeMediaEngine#queueAwareNextPlayable/PrevPlayable)
+	// instead of YouTube's own page-internal next/prev, which has no notion of the app's playlists.
+	// Null while the user is just browsing YouTube outside of any app playlist/favorites context.
+	// Typed as the generic PlayableItem, not YoutubeVideoItem: a Favorites/Playlist entry is an
+	// exported wrapper around one (see ExportedItem), not a YoutubeVideoItem itself, and it's that
+	// wrapper -- not the underlying original -- whose getParent() is the real container.
+	@Nullable
+	private PlayableItem queueItem;
+	// The video id the app most recently and explicitly decided should be playing next -- set here
+	// (not on YoutubeMediaEngine, which doesn't exist yet the first time this matters) by
+	// YoutubeVideoItem#loadInFragment() for the initial tap-to-play, and by YoutubeMediaEngine#
+	// prepare() for every next/prev after that. YoutubeMediaEngine#playing() treats a page video id
+	// that doesn't match this as an unrequested transition (YouTube's own autonav winning a race --
+	// see YoutubeWebView's capture-phase interceptors) and corrects it; without a value here at all
+	// (null), a mismatch is left alone as ordinary, non-app-driven page browsing. Consumed (cleared)
+	// once playing() confirms a match, or after it gives up correcting toward it.
+	@Nullable
+	private String pendingVideoId;
+
+	@Nullable
+	PlayableItem getQueueItem() {
+		return queueItem;
+	}
+
+	void setQueueItem(@Nullable PlayableItem item) {
+		queueItem = item;
+	}
+
+	@Nullable
+	String getPendingVideoId() {
+		return pendingVideoId;
+	}
+
+	void setPendingVideoId(@Nullable String videoId) {
+		pendingVideoId = videoId;
+	}
+
+	boolean isRepeatOneEnabled() {
+		return getPreferenceStore().getBooleanPref(YT_REPEAT_ONE);
+	}
+
+	void setRepeatOneEnabled(boolean enabled) {
+		getPreferenceStore().applyBooleanPref(YT_REPEAT_ONE, enabled);
+	}
 
 	@IdRes
 	@Override

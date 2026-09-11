@@ -18,6 +18,7 @@ public class YoutubeJsInterface extends FermataJsInterface {
 	public static final int JS_AD_SHOWING = JS_LAST + 6;
 	public static final int JS_AD_ENDED = JS_LAST + 7;
 	public static final int JS_CONTENT_PLAYING = JS_LAST + 8;
+	public static final int JS_SKIP_PREV_NEXT = JS_LAST + 9;
 	private final YoutubeMediaEngine engine;
 	private Promise<String> result;
 
@@ -63,6 +64,10 @@ public class YoutubeJsInterface extends FermataJsInterface {
 			case JS_CONTENT_PLAYING:
 				Log.d("Content playing");
 				engine.contentPlaying();
+				break;
+			case JS_SKIP_PREV_NEXT:
+				Log.d("Skip requested: ", data);
+				engine.skipRequested("1".equals(data));
 				break;
 			default:
 				super.handleEvent(event, data);

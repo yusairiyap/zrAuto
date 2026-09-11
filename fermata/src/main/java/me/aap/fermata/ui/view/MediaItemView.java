@@ -235,6 +235,7 @@ public class MediaItemView extends ConstraintLayout
 
 												ImageView icon = getIcon();
 												icon.clearAnimation();
+												icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
 												cancelLoading();
 
 												if (bm != null) {
@@ -249,12 +250,14 @@ public class MediaItemView extends ConstraintLayout
 							if (!loadIcon.isDone()) {
 								ImageView icon = getIcon();
 								icon.clearAnimation();
+								icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
 								icon.setImageTintList(iconTint);
 								icon.setImageResource(i.getIcon());
 							}
 						} else {
 							ImageView icon = getIcon();
 							icon.clearAnimation();
+							icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
 							icon.setImageTintList(iconTint);
 							icon.setImageResource(i.getIcon());
 							cancelLoading();
@@ -288,6 +291,11 @@ public class MediaItemView extends ConstraintLayout
 		getTitle().setText(i.getName());
 
 		if (loading) {
+			// CENTER (not the icon's usual fitCenter, restored wherever real content is set below/in
+			// load()) keeps this at its own small intrinsic size instead of being stretched up to fill
+			// the whole thumbnail area, which is what fitCenter would otherwise do with a 24dp vector
+			// inside a much larger grid-view icon.
+			icon.setScaleType(ImageView.ScaleType.CENTER);
 			rotate.setDuration(1000);
 			rotate.setRepeatCount(Animation.INFINITE);
 			icon.setImageDrawable(getLoadingDrawable(getContext()));
@@ -295,6 +303,7 @@ public class MediaItemView extends ConstraintLayout
 			getSubtitle().setText(R.string.loading);
 		} else {
 			icon.clearAnimation();
+			icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
 			icon.setImageTintList(iconTint);
 			icon.setImageResource(i.getIcon());
 			getSubtitle().setText("");
@@ -397,7 +406,9 @@ public class MediaItemView extends ConstraintLayout
 		int t = i.getTop();
 		int r = i.getRight();
 		int b = i.getBottom();
-		d.setBounds(l + (r - l) / 3, t + (b - t) / 3, r, b);
+		// Bottom-right corner badge (watched/watching/archive) at 1/3 of the thumbnail's width/height
+		// instead of 2/3 -- the previous size covered most of the thumbnail image itself.
+		d.setBounds(l + (r - l) * 2 / 3, t + (b - t) * 2 / 3, r, b);
 		d.draw(canvas);
 	}
 

@@ -508,7 +508,17 @@ public interface MediaLib {
 		@IdRes
 		int getPlayerFragmentId();
 
-		void loadInFragment(ActivityFragment fragment);
+		/**
+		 * @param self the item actually selected by the user (see MediaLibFragment's and the relevant
+		 *             addon's own tap handlers) -- pass the exact reference the caller was given, not
+		 *             {@code this}. For a Favorites/Playlist entry this is an exported wrapper whose
+		 *             {@code getParent()} is that real container; {@code this} inside an implementation
+		 *             reached via {@link ExportedItem}'s delegation is always the underlying original,
+		 *             whose own parent is unrelated to whatever list the user actually tapped it from.
+		 *             An implementation that wants to know "which list, and where in it" (e.g. to drive
+		 *             its own next/prev) needs {@code self} for that, not {@code this}.
+		 */
+		void loadInFragment(ActivityFragment fragment, PlayableItem self);
 	}
 
 	interface EpgItem extends Item, Comparable<EpgItem> {
