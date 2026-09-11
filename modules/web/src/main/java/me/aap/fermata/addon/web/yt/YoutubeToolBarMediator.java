@@ -31,8 +31,14 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 		YoutubeFragment yt = (YoutubeFragment) f;
 		addButton(tb, R.drawable.browser_home, v -> yt.loadUrl(YoutubeFragment.DEFAULT_URL),
 				R.id.browser_home, RIGHT);
-		addButton(tb, me.aap.fermata.R.drawable.favorite, v -> yt.showFavoritesMenu(),
-				me.aap.fermata.R.id.favorites, RIGHT);
+		ImageButton favBtn = addButton(tb, me.aap.fermata.R.drawable.favorite,
+				v -> yt.toggleCurrentVideoFavorite(), me.aap.fermata.R.id.favorites, RIGHT);
+		// A tap now toggles the current video directly; long-press keeps the old menu around for
+		// browsing to other favorited videos, since nothing else on this toolbar reaches that list.
+		favBtn.setOnLongClickListener(v -> {
+			yt.showFavoritesMenu();
+			return true;
+		});
 		refreshFavoriteButton(tb, yt);
 		addButton(tb, me.aap.fermata.R.drawable.playlist, v -> yt.showPlaylistsMenu(),
 				me.aap.fermata.R.id.playlists, RIGHT);
@@ -72,8 +78,8 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 		super.onActivityEvent(tb, a, e);
 		// Fired on every page navigation (FermataWebClient#onPageFinished()) and, via
 		// YoutubeFragment#notifyFavoritesChanged(), right after the current video is added to or
-		// removed from favorites through the menu this button opens -- either way, whether it
-		// should show filled or outline can have changed.
+		// removed from favorites (a direct tap on this button, or "Add"/"Remove" from the
+		// long-press menu) -- either way, whether it should show filled or outline can have changed.
 		if ((e == FRAGMENT_CONTENT_CHANGED) && (a.getActiveFragment() instanceof YoutubeFragment yt)) {
 			refreshFavoriteButton(tb, yt);
 		}

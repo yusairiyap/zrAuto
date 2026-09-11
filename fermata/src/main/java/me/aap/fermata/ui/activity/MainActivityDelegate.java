@@ -1289,9 +1289,17 @@ public class MainActivityDelegate extends ActivityDelegate
 	public void addPlaylistMenu(OverlayMenu.Builder builder,
 															Supplier<FutureSupplier<List<PlayableItem>>> selection,
 															Supplier<? extends CharSequence> initName) {
+		// Captured now, while builder still belongs to whichever OverlayMenu instance is actually
+		// on screen for this particular caller -- context_menu for the per-item long-press menu,
+		// control_menu for the control panel's own "..." button, tool_bar_menu for YouTube's
+		// dedicated favorites/playlist toolbar buttons. createDialogBuilder() hardcodes
+		// context_menu, so calling it here unconditionally would render the dialog into an
+		// instance other than the one the tap actually came from for the latter two -- invisible,
+		// since that instance isn't the one currently showing.
+		OverlayMenu menu = builder.getMenu();
 		builder.addItem(R.id.playlist_add, R.drawable.playlist_add, R.string.playlist_add)
 				.setHandler(i -> {
-					showPlaylistDialog(selection, initName);
+					showPlaylistDialog(menu, selection, initName);
 					return true;
 				});
 	}
@@ -1301,7 +1309,8 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * playlists (plus "Create new playlist") rather than drilling into another OverlayMenu page --
 	 * one fewer menu-within-a-menu step for an action that's just a one-time choice.
 	 */
-	private void showPlaylistDialog(Supplier<FutureSupplier<List<PlayableItem>>> selection,
+	private void showPlaylistDialog(OverlayMenu menu,
+																	 Supplier<FutureSupplier<List<PlayableItem>>> selection,
 																	 Supplier<? extends CharSequence> initName) {
 		getLib().getPlaylists().getUnsortedChildren().main().onSuccess(playlists -> {
 			Context ctx = getContext();
@@ -1311,7 +1320,7 @@ public class MainActivityDelegate extends ActivityDelegate
 				items[i + 1] = ((Playlist) playlists.get(i)).getName();
 			}
 
-			createDialogBuilder(ctx).setTitle(R.drawable.playlist_add, R.string.playlist_add)
+			DialogBuilder.create(menu).setTitle(R.drawable.playlist_add, R.string.playlist_add)
 					.setSingleChoiceItems(items, -1, (d, which) -> {
 						d.dismiss();
 						if (which == 0) {
