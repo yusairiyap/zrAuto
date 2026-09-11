@@ -86,17 +86,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	// (start() below), either of which deserves a fresh attempt. 0 means not currently blocked.
 	private int blockedWidth;
 	private int blockedHeight;
-	// The video id the app most recently and explicitly decided should be playing -- set right
-	// before prepare() below navigates to a YoutubeVideoItem (both a manual app-driven next/prev and
-	// a natural end-of-video queue advance go through that same path). YouTube's own autonav can
-	// still win the race and land the page on a different video of its own choosing (see
-	// YoutubeWebView's capture-phase interceptors, which are best-effort, not a guarantee) -- playing()
-	// below checks the page actually landed here and re-issues the navigation if not, up to
-	// MAX_PENDING_CORRECTIONS times before giving up and accepting whatever's actually playing (never
-	// fighting it indefinitely, e.g. if the mismatch turns out to be perfectly legitimate navigation
-	// this mechanism didn't know about).
-	@Nullable
-	private String pendingVideoId;
+	// Attempt counter for YoutubeAddon#getPendingVideoId() corrections -- see playing() below. The
+	// target id itself lives on the addon (YoutubeVideoItem#loadInFragment() needs to set it before
+	// any YoutubeMediaEngine instance necessarily even exists yet), but this counter is purely this
+	// engine/page session's own bookkeeping and doesn't need to be shared.
 	private int pendingCorrections;
 	private static final int MAX_PENDING_CORRECTIONS = 3;
 	// The video id last confirmed actually playing (see playing() below) -- unlike pendingVideoId,
@@ -149,12 +142,15 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		}
 
 		String actualId = YoutubeVideoItem.extractVideoId(web.getUrl());
+		YoutubeAddon addon = web.getAddon();
+		String pendingVideoId = addon.getPendingVideoId();
 
 		// The page's own URL (not the <video> source url below, which carries no video id) is what the
-		// app explicitly decided should play, if it decided anything -- see the pendingVideoId field.
-		// A mismatch means YouTube's own navigation won the race (see YoutubeWebView's capture-phase
-		// interceptors); re-issue the navigation instead of accepting whatever this is, up to a bounded
-		// number of attempts so a genuinely unrelated, legitimate mismatch doesn't get fought forever.
+		// app explicitly decided should play, if it decided anything -- see YoutubeAddon#
+		// getPendingVideoId(). A mismatch means YouTube's own navigation won the race (see
+		// YoutubeWebView's capture-phase interceptors); re-issue the navigation instead of accepting
+		// whatever this is, up to a bounded number of attempts so a genuinely unrelated, legitimate
+		// mismatch doesn't get fought forever.
 		if (pendingVideoId != null) {
 			if ((actualId == null) || !actualId.equals(pendingVideoId)) {
 				if (++pendingCorrections <= MAX_PENDING_CORRECTIONS) {
@@ -166,7 +162,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				Log.w("playing(): giving up correcting to ", pendingVideoId, " after ",
 						pendingCorrections, " attempts -- accepting ", actualId);
 			}
-			pendingVideoId = null;
+			addon.setPendingVideoId(null);
 			pendingCorrections = 0;
 		} else if ((currentVideoId != null) && (actualId != null) && !actualId.equals(currentVideoId)) {
 			// The video changed to something the app never explicitly navigated to. YouTube's own
@@ -176,11 +172,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			// running at all for this transition. Treated as if the original video had just ended, but
 			// only when the app actually has an opinion about what should play (Repeat One, or an active
 			// Favorites/Playlist queue) -- with neither, this is left alone as ordinary page browsing.
-			YoutubeAddon addon = web.getAddon();
 			Log.i("playing(): unexpected transition from ", currentVideoId, " to ", actualId,
 					" -- repeatOne=", addon.isRepeatOneEnabled(), ", queueItem=", addon.getQueueItem());
 			if (addon.isRepeatOneEnabled()) {
-				pendingVideoId = currentVideoId;
+				addon.setPendingVideoId(currentVideoId);
 				pendingCorrections = 0;
 				web.loadVideo(currentVideoId);
 				return;
@@ -232,7 +227,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			// takes effect, playing() above will notice the mismatch against currentVideoId and force a
 			// full reload back to it instead of silently looping the wrong video.
 			if (currentVideoId != null) {
-				pendingVideoId = currentVideoId;
+				web.getAddon().setPendingVideoId(currentVideoId);
 				pendingCorrections = 0;
 			}
 			web.replay();
@@ -356,7 +351,13 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	@Override
 	public void prepare(PlayableItem source) {
-		if ((source == next) || (source == prev) || (source instanceof YoutubeVideoItem)) {
+		// A queue-resolved sibling is a Favorites/Playlist entry -- an exported wrapper (see
+		// ExportedItem), never a YoutubeVideoItem itself -- so this is what actually recognizes it,
+		// not an instanceof check. Computed once up front since it's needed by both the Repeat One
+		// reset below and the navigation branch further down.
+		String queueVideoId = YoutubeVideoItem.extractYoutubeVideoId(source);
+
+		if ((source == next) || (source == prev) || (queueVideoId != null)) {
 			// Every one of these three branches is reached only for a deliberate next/prev-style skip
 			// (the control panel, a hardware/Bluetooth media button, or a tap on YouTube's own on-screen
 			// button -- see YoutubeWebView's capture-phase click interceptor): a natural end-of-video
@@ -376,23 +377,26 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			Log.i("prepare(): no queue item -- asking the page for its own previous video");
 			transitioning();
 			web.prev();
-		} else if (source instanceof YoutubeVideoItem yt) {
+		} else if (queueVideoId != null) {
 			// Reached from MediaSessionCallback.skipTo()/engineEnded() when queueAwareNextPlayable()/
 			// PrevPlayable() below resolved a real sibling from the app's own Favorites/Playlist --
 			// navigate straight to it (same as the initial tap-to-play in YoutubeVideoItem#
 			// loadInFragment()) instead of asking the page for its own next/prev, which has no idea
 			// this item even exists. YouTube's own autoplay-on-load takes it from there and playing()
 			// above reports back once the new video is actually up, same as any other navigation.
-			Log.i("prepare(): navigating queue to ", yt.getVideoId(), " (", yt.getName(), ")");
+			Log.i("prepare(): navigating queue to ", queueVideoId, " (", source.getName(), ")");
 			transitioning();
-			web.getAddon().setQueueItem(yt);
+			// source itself (the resolved sibling, exported wrapper included), not some re-derived
+			// item -- its getParent() is the real Favorites/Playlist, exactly what the *next* next/prev
+			// needs to keep walking the same list. See YoutubeAddon#getQueueItem()'s contract.
+			web.getAddon().setQueueItem(source);
 			// Armed as a pendingVideoId correction target -- see playing() above -- in case YouTube's
 			// own autonav (see YoutubeWebView's capture-phase interceptors) still wins whatever race is
 			// in play here (this is reached for a natural end-of-video advance too, which is exactly
 			// when that race happens) and lands the page on a different video of its own choosing.
-			pendingVideoId = yt.getVideoId();
+			web.getAddon().setPendingVideoId(queueVideoId);
 			pendingCorrections = 0;
-			web.loadVideo(yt.getVideoId());
+			web.loadVideo(queueVideoId);
 		} else {
 			cb.onEnginePrepared(this);
 		}
@@ -518,7 +522,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// below, which only mean something with a real Favorites/Playlist queue behind the current
 		// video (see YoutubeAddon#getQueueItem()).
 		YoutubeAddon addon = web.getAddon();
-		YoutubeVideoItem q = addon.getQueueItem();
+		PlayableItem q = addon.getQueueItem();
 		boolean repeatFolder = (q != null) && q.getParent().getPrefs().getRepeatPref();
 		if (addon.isRepeatOneEnabled() || repeatFolder) {
 			b.addItem(me.aap.fermata.R.id.repeat,
@@ -568,7 +572,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 					return true;
 				});
 
-		YoutubeVideoItem q = addon.getQueueItem();
+		PlayableItem q = addon.getQueueItem();
 		if (q != null) {
 			b.addItem(me.aap.fermata.R.id.repeat_folder, me.aap.fermata.R.string.current_folder)
 					.setHandler(i -> {
@@ -797,28 +801,30 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 */
 	@NonNull
 	private FutureSupplier<PlayableItem> queueAwarePrevPlayable() {
-		YoutubeVideoItem q = web.getAddon().getQueueItem();
-		Log.d("queueAwarePrevPlayable(): queueItem=", q);
+		PlayableItem q = web.getAddon().getQueueItem();
+		Log.d("queueAwarePrevPlayable(): queueItem=", q, " parent=", (q != null) ? q.getParent() : null);
 		if (q == null) return completed(prev);
 		// A Favorites/Playlist can mix YouTube videos with local/other media -- prepare() below only
-		// knows how to navigate this engine to another YoutubeVideoItem (a plain loadUrl()), not swap
-		// it out for a completely different engine, so hitting a non-YouTube neighbor (or the start of
-		// the list) falls back to prev, same as having no queue context at all.
+		// knows how to navigate this engine to another YouTube video (a plain loadUrl()), not swap it
+		// out for a completely different engine, so hitting a non-YouTube neighbor (or the start of
+		// the list) falls back to prev, same as having no queue context at all. A resolved sibling is
+		// always an exported Favorites/Playlist wrapper (see ExportedItem), never a YoutubeVideoItem
+		// itself, hence extractYoutubeVideoId() rather than an instanceof check.
 		return q.getPrevPlayable().map(pi -> {
-			Log.d("queueAwarePrevPlayable(): resolved ", pi, " (parent=", q.getParent(), ")");
-			return (pi instanceof YoutubeVideoItem) ? pi : prev;
+			Log.d("queueAwarePrevPlayable(): resolved ", pi);
+			return (YoutubeVideoItem.extractYoutubeVideoId(pi) != null) ? pi : prev;
 		});
 	}
 
 	/** Next-direction counterpart of {@link #queueAwarePrevPlayable()} -- see there for details. */
 	@NonNull
 	private FutureSupplier<PlayableItem> queueAwareNextPlayable() {
-		YoutubeVideoItem q = web.getAddon().getQueueItem();
-		Log.d("queueAwareNextPlayable(): queueItem=", q);
+		PlayableItem q = web.getAddon().getQueueItem();
+		Log.d("queueAwareNextPlayable(): queueItem=", q, " parent=", (q != null) ? q.getParent() : null);
 		if (q == null) return completed(next);
 		return q.getNextPlayable().map(pi -> {
-			Log.d("queueAwareNextPlayable(): resolved ", pi, " (parent=", q.getParent(), ")");
-			return (pi instanceof YoutubeVideoItem) ? pi : next;
+			Log.d("queueAwareNextPlayable(): resolved ", pi);
+			return (YoutubeVideoItem.extractYoutubeVideoId(pi) != null) ? pi : next;
 		});
 	}
 }

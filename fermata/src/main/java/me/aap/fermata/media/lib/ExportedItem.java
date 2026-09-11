@@ -303,8 +303,8 @@ public class ExportedItem extends PlayableItemBase {
 		}
 
 		@Override
-		public void loadInFragment(ActivityFragment fragment) {
-			getExt().loadInFragment(fragment);
+		public void loadInFragment(ActivityFragment fragment, PlayableItem self) {
+			getExt().loadInFragment(fragment, self);
 		}
 
 		private ExternallyPlayableItem getExt() {

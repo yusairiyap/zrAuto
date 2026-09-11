@@ -444,7 +444,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 				return true;
 			}));
 		} else if (it instanceof MediaLib.ExternallyPlayableItem ext) {
-			ext.loadInFragment(this);
+			ext.loadInFragment(this, ext);
 		}
 		return true;
 	}
@@ -492,7 +492,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 				return true;
 			}));
 		} else if (it instanceof MediaLib.ExternallyPlayableItem ext) {
-			ext.loadInFragment(this);
+			ext.loadInFragment(this, ext);
 		}
 		return true;
 	}

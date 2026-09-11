@@ -21,6 +21,7 @@ import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.WebBrowserAddon;
 import me.aap.fermata.media.lib.DefaultMediaLib;
 import me.aap.fermata.media.lib.MediaLib.Item;
+import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.function.BooleanSupplier;
@@ -83,16 +84,38 @@ public class YoutubeAddon extends WebBrowserAddon
 	// actual playlist/favorites order (see YoutubeMediaEngine#queueAwareNextPlayable/PrevPlayable)
 	// instead of YouTube's own page-internal next/prev, which has no notion of the app's playlists.
 	// Null while the user is just browsing YouTube outside of any app playlist/favorites context.
+	// Typed as the generic PlayableItem, not YoutubeVideoItem: a Favorites/Playlist entry is an
+	// exported wrapper around one (see ExportedItem), not a YoutubeVideoItem itself, and it's that
+	// wrapper -- not the underlying original -- whose getParent() is the real container.
 	@Nullable
-	private YoutubeVideoItem queueItem;
+	private PlayableItem queueItem;
+	// The video id the app most recently and explicitly decided should be playing next -- set here
+	// (not on YoutubeMediaEngine, which doesn't exist yet the first time this matters) by
+	// YoutubeVideoItem#loadInFragment() for the initial tap-to-play, and by YoutubeMediaEngine#
+	// prepare() for every next/prev after that. YoutubeMediaEngine#playing() treats a page video id
+	// that doesn't match this as an unrequested transition (YouTube's own autonav winning a race --
+	// see YoutubeWebView's capture-phase interceptors) and corrects it; without a value here at all
+	// (null), a mismatch is left alone as ordinary, non-app-driven page browsing. Consumed (cleared)
+	// once playing() confirms a match, or after it gives up correcting toward it.
+	@Nullable
+	private String pendingVideoId;
 
 	@Nullable
-	YoutubeVideoItem getQueueItem() {
+	PlayableItem getQueueItem() {
 		return queueItem;
 	}
 
-	void setQueueItem(@Nullable YoutubeVideoItem item) {
+	void setQueueItem(@Nullable PlayableItem item) {
 		queueItem = item;
+	}
+
+	@Nullable
+	String getPendingVideoId() {
+		return pendingVideoId;
+	}
+
+	void setPendingVideoId(@Nullable String videoId) {
+		pendingVideoId = videoId;
 	}
 
 	boolean isRepeatOneEnabled() {
