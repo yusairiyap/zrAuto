@@ -70,6 +70,11 @@ public class YoutubeAddon extends WebBrowserAddon
 	// reverb, higher CPU cost but a different, more "random room" character). See
 	// YoutubeEqualizerView's "Hall quality" row and YoutubeEqualizerScript's config JSON.
 	static final Pref<IntSupplier> YT_REVERB_ENGINE = Pref.i("YT_REVERB_ENGINE", 0);
+	// Whether the currently playing video should just loop itself on end -- a property of "whatever
+	// video is playing right now", not of any playlist/favorites list, so unlike "repeat the whole
+	// playlist" (which reads/writes getQueueItem()'s own parent prefs and needs a real queue item to
+	// mean anything) this works the same with or without one.
+	private static final Pref<BooleanSupplier> YT_REPEAT_ONE = Pref.b("YT_REPEAT_ONE", false);
 	private boolean ignorePrefChange;
 	private YoutubeRootItem root;
 	// The library item (with its real Favorites/Playlist parent) that the currently loaded video
@@ -88,6 +93,14 @@ public class YoutubeAddon extends WebBrowserAddon
 
 	void setQueueItem(@Nullable YoutubeVideoItem item) {
 		queueItem = item;
+	}
+
+	boolean isRepeatOneEnabled() {
+		return getPreferenceStore().getBooleanPref(YT_REPEAT_ONE);
+	}
+
+	void setRepeatOneEnabled(boolean enabled) {
+		getPreferenceStore().applyBooleanPref(YT_REPEAT_ONE, enabled);
 	}
 
 	@IdRes

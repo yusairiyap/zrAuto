@@ -131,21 +131,6 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		if (url.startsWith("blob:")) url = url.substring(5);
 		current = new Current(url);
 
-		// Confirm the page actually landed on the video the queue (see YoutubeAddon#getQueueItem())
-		// expects -- url above is the <video> element's own media source (a blob/CDN URL), which
-		// carries no video id, so the page's own URL is used instead. A mismatch means the video
-		// changed by some means other than our own queue-driven next/prev (the user tapped a related
-		// video inside the page, typed a new URL, used YouTube's in-page next/prev, etc.), so the
-		// queue context no longer applies -- next/prev falls back to the page's own navigation (see
-		// queueAwareNextPlayable/PrevPlayable) until the user picks another item from a
-		// Favorites/Playlist list.
-		YoutubeAddon addon = web.getAddon();
-		YoutubeVideoItem q = addon.getQueueItem();
-		if (q != null) {
-			String pageVideoId = YoutubeVideoItem.extractVideoId(web.getUrl());
-			if ((pageVideoId == null) || !pageVideoId.equals(q.getVideoId())) addon.setQueueItem(null);
-		}
-
 		if (!web.getAddon().autoHighestQuality()) {
 			qualityUrl = null;
 		} else if (!url.isEmpty() && !url.equals(qualityUrl)) {
@@ -157,6 +142,17 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	void ended() {
+		// Repeat One loops whatever video is currently playing, regardless of whether it's part of a
+		// Favorites/Playlist queue (see YoutubeAddon#isRepeatOneEnabled()) -- handled here directly,
+		// short-circuiting before current becomes end/cb.onEngineEnded() runs, so it works the exact
+		// same way whether or not a queue item exists (unlike "repeat the whole playlist", which
+		// necessarily needs one -- see queueAwareNextPlayable/PrevPlayable below).
+		if (web.getAddon().isRepeatOneEnabled()) {
+			web.setPosition(0);
+			web.play();
+			return;
+		}
+
 		current = end;
 		qualityUrl = null;
 		cb.onEngineEnded(this);
@@ -390,25 +386,30 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				ResourcesCompat.getDrawable(r, R.drawable.video_scaling, ctx.getTheme()),
 				r.getString(me.aap.fermata.R.string.video_scaling)).setSubmenu(this::videoScalingMenu);
 
-		// Only meaningful with a real Favorites/Playlist queue behind the current video (see
-		// YoutubeAddon#getQueueItem()) -- this is also the app's normal control panel "..." menu (it
-		// shows over fullscreen YouTube playback too, see YoutubeFragment's video-view overlay
-		// elevation), which otherwise never offers Repeat/Shuffle for YouTube: PlayableItem#isExternal()
-		// is true for every YouTube item, and ControlPanelView's own repeat/shuffle menu entries are
-		// gated on that being false.
-		YoutubeVideoItem q = web.getAddon().getQueueItem();
+		// This is also the app's normal control panel "..." menu (it shows over fullscreen YouTube
+		// playback too, see YoutubeFragment's video-view overlay elevation), which otherwise never
+		// offers Repeat/Shuffle for YouTube: PlayableItem#isExternal() is true for every YouTube item,
+		// and ControlPanelView's own repeat/shuffle menu entries are gated on that being false.
+		//
+		// Repeat One (see YoutubeAddon#isRepeatOneEnabled()) is a property of "whatever video is
+		// playing right now" -- shown unconditionally, unlike Shuffle and "repeat the whole playlist"
+		// below, which only mean something with a real Favorites/Playlist queue behind the current
+		// video (see YoutubeAddon#getQueueItem()).
+		YoutubeAddon addon = web.getAddon();
+		YoutubeVideoItem q = addon.getQueueItem();
+		boolean repeatFolder = (q != null) && q.getParent().getPrefs().getRepeatPref();
+		if (addon.isRepeatOneEnabled() || repeatFolder) {
+			b.addItem(me.aap.fermata.R.id.repeat,
+					ResourcesCompat.getDrawable(r, me.aap.fermata.R.drawable.repeat_filled, ctx.getTheme()),
+					r.getString(me.aap.fermata.R.string.repeat)).setSubmenu(this::repeatMenu);
+		} else {
+			b.addItem(me.aap.fermata.R.id.repeat_enable,
+					ResourcesCompat.getDrawable(r, me.aap.fermata.R.drawable.repeat, ctx.getTheme()),
+					r.getString(me.aap.fermata.R.string.repeat)).setSubmenu(this::repeatMenu);
+		}
+
 		if (q != null) {
 			BrowsableItemPrefs p = q.getParent().getPrefs();
-			if (q.isRepeatItemEnabled() || p.getRepeatPref()) {
-				b.addItem(me.aap.fermata.R.id.repeat,
-						ResourcesCompat.getDrawable(r, me.aap.fermata.R.drawable.repeat_filled, ctx.getTheme()),
-						r.getString(me.aap.fermata.R.string.repeat)).setSubmenu(this::repeatMenu);
-			} else {
-				b.addItem(me.aap.fermata.R.id.repeat_enable,
-						ResourcesCompat.getDrawable(r, me.aap.fermata.R.drawable.repeat, ctx.getTheme()),
-						r.getString(me.aap.fermata.R.string.repeat)).setSubmenu(this::repeatMenu);
-			}
-
 			if (p.getShufflePref()) {
 				b.addItem(me.aap.fermata.R.id.shuffle_disable,
 						ResourcesCompat.getDrawable(r, me.aap.fermata.R.drawable.shuffle_filled, ctx.getTheme()),
@@ -428,29 +429,39 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	/**
-	 * Repeat submenu for the currently queued YouTube video -- mirrors ControlPanelView's own
-	 * repeat menu, but reads/writes the real queue item's parent prefs ({@link
-	 * YoutubeAddon#getQueueItem()}) rather than {@link #getSource()}'s (a transient, internally
-	 * parented placeholder -- see {@link YoutubeItem}), which is what {@code
-	 * ControlPanelView.MenuHandler} would otherwise use. Each item gets its own {@link
+	 * Repeat submenu -- mirrors ControlPanelView's own repeat menu, but "Current track" toggles
+	 * {@link YoutubeAddon#setRepeatOneEnabled} (works with or without a queue item) while "Current
+	 * folder" reads/writes the queue item's parent prefs ({@link YoutubeAddon#getQueueItem()}) rather
+	 * than {@link #getSource()}'s (a transient, internally parented placeholder -- see {@link
+	 * YoutubeItem}), which is what {@code ControlPanelView.MenuHandler} would otherwise use, and is
+	 * omitted entirely when there's no queue item to repeat around. Each item gets its own {@link
 	 * OverlayMenuItem#setHandler}, same as {@link #showEqualizer()} below, so this stays independent
 	 * of whatever selection handler the surrounding (shared, control-panel-owned) menu already has.
 	 */
 	private void repeatMenu(OverlayMenu.Builder b) {
+		YoutubeAddon addon = web.getAddon();
 		b.addItem(me.aap.fermata.R.id.repeat_track, me.aap.fermata.R.string.current_track)
-				.setHandler(i -> setRepeat(true, false));
-		b.addItem(me.aap.fermata.R.id.repeat_folder, me.aap.fermata.R.string.current_folder)
-				.setHandler(i -> setRepeat(false, true));
-		b.addItem(me.aap.fermata.R.id.repeat_disable_all, me.aap.fermata.R.string.repeat_disable)
-				.setHandler(i -> setRepeat(false, false));
-	}
+				.setHandler(i -> {
+					addon.setRepeatOneEnabled(true);
+					return true;
+				});
 
-	private boolean setRepeat(boolean item, boolean folder) {
-		YoutubeVideoItem q = web.getAddon().getQueueItem();
-		if (q == null) return true;
-		q.setRepeatItemEnabled(item);
-		q.getParent().getPrefs().setRepeatPref(folder);
-		return true;
+		YoutubeVideoItem q = addon.getQueueItem();
+		if (q != null) {
+			b.addItem(me.aap.fermata.R.id.repeat_folder, me.aap.fermata.R.string.current_folder)
+					.setHandler(i -> {
+						addon.setRepeatOneEnabled(false);
+						q.getParent().getPrefs().setRepeatPref(true);
+						return true;
+					});
+		}
+
+		b.addItem(me.aap.fermata.R.id.repeat_disable_all, me.aap.fermata.R.string.repeat_disable)
+				.setHandler(i -> {
+					addon.setRepeatOneEnabled(false);
+					if (q != null) q.getParent().getPrefs().setRepeatPref(false);
+					return true;
+				});
 	}
 
 	@Override
