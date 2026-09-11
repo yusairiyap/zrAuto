@@ -397,7 +397,9 @@ public class MediaItemView extends ConstraintLayout
 		int t = i.getTop();
 		int r = i.getRight();
 		int b = i.getBottom();
-		d.setBounds(l + (r - l) / 3, t + (b - t) / 3, r, b);
+		// Bottom-right corner badge (watched/watching/archive) at 1/3 of the thumbnail's width/height
+		// instead of 2/3 -- the previous size covered most of the thumbnail image itself.
+		d.setBounds(l + (r - l) * 2 / 3, t + (b - t) * 2 / 3, r, b);
 		d.draw(canvas);
 	}
 
