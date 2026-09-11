@@ -97,7 +97,7 @@ public class NavBarView extends LinearLayoutCompat implements ActivityListener {
 			for (int i = 0, n = getChildCount(); i < n; i++) {
 				((NavButtonView) getChildAt(i)).setTextSize(ts);
 			}
-			lp.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+			lp.width = MATCH_PARENT;
 			lp.height = s;
 		} else {
 			lp.width = s;
@@ -358,19 +358,6 @@ public class NavBarView extends LinearLayoutCompat implements ActivityListener {
 				NavBarView nb, Function<NavBarView, B> constructor, Drawable icon, CharSequence text) {
 			B b = constructor.apply(nb);
 			initButton(b, icon, text);
-
-			// The bottom bar is laid out wrap_content and end-aligned (see main_activity.xml) so it
-			// packs into a compact, bottom-right cluster instead of a full-width strip -- an evenly
-			// weighted MATCH_PARENT button (the default just below, still used as-is for the left/right
-			// rails, which stay full width/height) would fight that: LinearLayoutCompat's weight
-			// resolution is only well-defined against a bounded main axis, which a wrap_content bar
-			// doesn't have. A fixed, deliberately compact width sidesteps that entirely.
-			if (nb.getPosition() == POSITION_BOTTOM) {
-				int w = nb.getContext().getResources()
-						.getDimensionPixelSize(R.dimen.nav_bar_bottom_button_width);
-				b.setLayoutParams(new LinearLayoutCompat.LayoutParams(w, MATCH_PARENT));
-			}
-
 			return b;
 		}
 
