@@ -299,10 +299,12 @@ public interface MediaEngine extends Closeable {
 	default void contributeToMenu(OverlayMenu.Builder b) {}
 
 	/**
-	 * Called after every other item in the video menu, including {@code dim_settings} -- for
-	 * engine-contributed items that should always sort last (e.g. YouTube's Equalizer entry, which
-	 * navigates to a whole different screen), since {@link #contributeToMenu} runs too early in
-	 * {@code ControlPanelView.buildPlayableMenu()} to position an item after ones added afterward.
+	 * Called after the in-place toggles/submenus (repeat, shuffle, audio effects, speed, timer) but
+	 * before {@code dim_settings}/{@code settings_fragment}/{@code nav_exit} -- for engine-
+	 * contributed items that also navigate to a different screen (e.g. YouTube's own Equalizer
+	 * entry), so they still sort above the app's own Settings/Exit rather than after them, since
+	 * {@link #contributeToMenu} runs too early in {@code ControlPanelView.buildPlayableMenu()} to
+	 * position an item there instead.
 	 */
 	default void contributeToMenuEnd(OverlayMenu.Builder b) {}
 

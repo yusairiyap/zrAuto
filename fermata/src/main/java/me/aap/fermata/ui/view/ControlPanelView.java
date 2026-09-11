@@ -640,6 +640,15 @@ public class ControlPanelView extends ConstraintLayout
 		setShowHideBarsIcon(a);
 	}
 
+	/**
+	 * Keeps this corner icon in sync when the app's bars are hidden/shown from elsewhere -- e.g.
+	 * {@link MainActivityDelegate#toggleVideoBars()}, driven by FAB2's default fullscreen toggle
+	 * during local video playback.
+	 */
+	public void refreshShowHideBarsIcon() {
+		setShowHideBarsIcon(getActivity());
+	}
+
 	public void showMenu() {
 		if (isActive()) showMenu(this);
 	}
@@ -866,14 +875,16 @@ public class ControlPanelView extends ConstraintLayout
 			b.addItem(R.id.timer, R.drawable.timer, R.string.timer)
 					.setSubmenu(s -> new TimerMenuHandler(a).build(s));
 
+			// Runs before Settings/Exit below so an engine-contributed item that also navigates away
+			// (e.g. YouTube's own Audio effects/Equalizer entry) still sorts above them.
+			eng.contributeToMenuEnd(b);
+
 			if (pi.isVideo()) {
 				// Navigate away entirely, so keep these last rather than grouped with the in-place
 				// toggles above.
 				b.addItem(R.id.dim_settings, R.drawable.settings, R.string.dim_settings);
 				b.addItem(R.id.settings_fragment, R.drawable.settings, R.string.settings);
 			}
-
-			eng.contributeToMenuEnd(b);
 
 			if (pi.isVideo()) {
 				// Absolute last item in the menu, after anything an engine contributes at the end too.
