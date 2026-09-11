@@ -13,6 +13,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import me.aap.fermata.addon.AddonManager;
+import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.ExtPlayable;
 import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
@@ -84,6 +85,23 @@ public class YoutubeVideoItem extends ExtPlayable implements MediaLib.Externally
 
 	public String getVideoId() {
 		return videoId;
+	}
+
+	// MediaEngineManager#createEngine() calls this (via ExportedItem.ExportedExternallyPlayableItem's
+	// delegating override -- see there) to decide which engine plays this item. Reached only for
+	// MediaSessionCallback's own automatic next/prev/end-of-video advance -- a direct tap in the UI
+	// goes through loadInFragment() instead and never calls this at all. Without this override (the
+	// interface default always returns null), that automatic path has no way to know a live
+	// YoutubeMediaEngine already showing this exact page is the only thing that can actually play
+	// another YouTube video, and falls back to treating this item's resource (the watch-page URL) as
+	// a literal media source for whatever generic engine getVideoEnginePref() would otherwise select
+	// -- which fails outright, since that URL is an HTML page, not a media stream. Returning null
+	// when there's no live YoutubeMediaEngine yet preserves default engine selection, same as
+	// YoutubeMediaEngine.YoutubeItem's own override of this method.
+	@Nullable
+	@Override
+	public MediaEngine getMediaEngine(@Nullable MediaEngine current, MediaEngine.Listener listener) {
+		return (current instanceof YoutubeMediaEngine) ? current : null;
 	}
 
 	@Override

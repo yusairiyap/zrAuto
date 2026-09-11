@@ -15,6 +15,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 
+import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.engine.MetadataBuilder;
 import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
 import me.aap.fermata.media.lib.MediaLib.ExternallyPlayableItem;
@@ -305,6 +306,22 @@ public class ExportedItem extends PlayableItemBase {
 		@Override
 		public void loadInFragment(ActivityFragment fragment, PlayableItem self) {
 			getExt().loadInFragment(fragment, self);
+		}
+
+		// Without this, MediaSessionCallback's automatic next/prev (a Favorites/Playlist item
+		// auto-advancing to another, as opposed to a direct tap in the UI, which goes through
+		// loadInFragment() above instead and never calls this) falls back to PlayableItem#
+		// getMediaEngine()'s default (always null), so MediaEngineManager#createEngine() has no idea
+		// this item needs its externally-playable engine kept around and instead hands it to whatever
+		// generic engine getVideoEnginePref()/getAudioEnginePref() would otherwise pick, which then
+		// tries to open this item's resource (for YouTube, the watch-page URL) as a literal media
+		// source and fails outright ("Source error"). Delegating lets an already-live matching engine
+		// (e.g. YoutubeMediaEngine while a YouTube video is already playing) say so and be reused,
+		// exactly like a direct tap would end up using.
+		@Nullable
+		@Override
+		public MediaEngine getMediaEngine(@Nullable MediaEngine current, MediaEngine.Listener listener) {
+			return getExt().getMediaEngine(current, listener);
 		}
 
 		private ExternallyPlayableItem getExt() {
