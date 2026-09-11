@@ -203,7 +203,8 @@ public class YoutubeWebView extends FermataWebView {
 				"findVideo();\n" +
 				interceptEndedJs() +
 				interceptNativeSkipButtonsJs() +
-				interceptLinkClicksJs());
+				interceptLinkClicksJs() +
+				interceptUserNavigationJs());
 	}
 
 	/**
@@ -294,6 +295,37 @@ public class YoutubeWebView extends FermataWebView {
 				"      window.__fermataLastLinkClickTime = Date.now();\n" +
 				"    }\n" +
 				"  }, true);\n" +
+				"}\n";
+	}
+
+	/**
+	 * Belt-and-braces companion to {@link #interceptLinkClicksJs()}: that listener only recognizes
+	 * a tap on a real {@code <a>} element (or something inside one), which is how the watch page's
+	 * classic related-video sidebar list navigates -- but not how YouTube's newer non-anchor video
+	 * tiles do (e.g. the "lockup" grid renderers used on the home feed and search-results pages,
+	 * reached via {@link #loadUrl}-driven navigation from this app's own "home"/search toolbar
+	 * buttons rather than a tap within the page): those drive navigation entirely through their own
+	 * click handler and the History API, with no {@code <a>} anywhere in the DOM, so a tap there
+	 * never sets {@code __fermataLastLinkClickTime} and {@code YoutubeMediaEngine#playing()}'s
+	 * "unexpected transition" handling ends up mistaking the tapped video for YouTube's own autonav,
+	 * pulling a still-active Favorites/Playlist queue's own next item back in instead of what was
+	 * actually tapped.
+	 * <p>
+	 * The standard Navigation API's {@code userInitiated} flag sidesteps guessing at YouTube's
+	 * ever-changing tile markup entirely: it's true for any navigation the browser itself attributes
+	 * to a real user gesture (a click anywhere, a form submit, back/forward), false for anything
+	 * programmatic such as YouTube's own autonav -- exactly the distinction {@code
+	 * fermataRecentLinkClick()} needs, from the browser instead of inferred from a selector.
+	 * Feature-detected and purely additive: on a WebView build without the Navigation API this is a
+	 * no-op and the click listener above is all there is.
+	 */
+	private String interceptUserNavigationJs() {
+		return "if (!window.__fermataNavInterceptor && window.navigation && " +
+				"typeof navigation.addEventListener === 'function') {\n" +
+				"  window.__fermataNavInterceptor = true;\n" +
+				"  navigation.addEventListener('navigate', function(e) {\n" +
+				"    if (e.userInitiated) window.__fermataLastLinkClickTime = Date.now();\n" +
+				"  });\n" +
 				"}\n";
 	}
 

@@ -225,10 +225,13 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 					" -- repeatOne=", addon.isRepeatOneEnabled(), ", queueItem=", addon.getQueueItem(),
 					", recentLinkClick=", recentLinkClick);
 			if (recentLinkClick) {
-				// This transition followed a real tap on a link (a video thumbnail/title/related-video
-				// card -- see YoutubeWebView's fermataRecentLinkClick()) within the last few seconds, unlike
-				// YouTube's own autonav, which never involves a click at all. The user picked this video on
-				// purpose: respect it exactly like an explicit next/prev skip would (see prepare() above) --
+				// This transition followed a real user action within the last few seconds -- a tap on a
+				// link (a video thumbnail/title/related-video card) or, for YouTube's newer non-anchor
+				// video tiles (home feed/search-results grids), any browser-recognized user-initiated
+				// navigation -- see YoutubeWebView's fermataRecentLinkClick()/interceptUserNavigationJs().
+				// Unlike YouTube's own autonav, which never involves a user gesture at all. The user picked
+				// this video on purpose: respect it exactly like an explicit next/prev skip would (see
+				// prepare() above) --
 				// drop any Favorites/Playlist queue context and Repeat One rather than forcing playback back
 				// onto the queue's own next item -- and fall through to just accept it below, same as
 				// ordinary page browsing with no queue at all.
