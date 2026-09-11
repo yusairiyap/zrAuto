@@ -99,6 +99,26 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	// already be underway).
 	@Nullable
 	private String currentVideoId;
+	// Set immediately before asking the page to navigate on its own (prepare()'s next/prev branches,
+	// used when there's no queue item -- see queueAwareNextPlayable()/queueAwarePrevPlayable()),
+	// where the resulting video id can't be known ahead of time and so can't be armed via
+	// YoutubeAddon#setPendingVideoId(). Consumed by the very next playing() call: bypasses both the
+	// pendingVideoId and "unexpected transition" checks below entirely and just accepts whatever
+	// video comes back as the new legitimate baseline, since the app itself explicitly asked YouTube
+	// to navigate -- without this, that same call would misread its own requested navigation as an
+	// unrequested one and react to it (see queueTransitionPending below for what that reaction does).
+	private boolean expectingPageNav;
+	// Set while an "unexpected transition" (see playing() below) is already being resolved through
+	// cb.onEngineEnded()'s queue-item branch, up to prepare() re-taking control of navigation.
+	// YouTube's own autonav can keep moving through several further videos in the async gap between
+	// that onEngineEnded() call and its eventual queueAwareNextPlayable() resolution actually
+	// reaching prepare() -- without this flag, every one of those further moves would re-match the
+	// same "unexpected transition" condition and stack another concurrent onEngineEnded() resolution
+	// on top of the one already in flight, each racing the others to call prepare() with its own idea
+	// of what should play next. That runaway cascade is what produced a transition overlay that never
+	// clears and rapid, unrelated video changes. While set, playing() just keeps currentVideoId fresh
+	// and lets the video play rather than reacting again.
+	private boolean queueTransitionPending;
 
 	public YoutubeMediaEngine(YoutubeWebView web, MainActivityDelegate a) {
 		this.web = web;
@@ -151,7 +171,13 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// YoutubeWebView's capture-phase interceptors); re-issue the navigation instead of accepting
 		// whatever this is, up to a bounded number of attempts so a genuinely unrelated, legitimate
 		// mismatch doesn't get fought forever.
-		if (pendingVideoId != null) {
+		if (expectingPageNav) {
+			// The app itself just asked the page to navigate to a video whose id couldn't be known in
+			// advance (prepare()'s next/prev branches) -- accept whatever came back as the new
+			// legitimate baseline instead of second-guessing it against pendingVideoId/currentVideoId
+			// below, which would misread this app-requested navigation as an unrequested one.
+			expectingPageNav = false;
+		} else if (pendingVideoId != null) {
 			if ((actualId == null) || !actualId.equals(pendingVideoId)) {
 				if (++pendingCorrections <= MAX_PENDING_CORRECTIONS) {
 					Log.i("playing(): expected ", pendingVideoId, " but page shows ", actualId,
@@ -164,6 +190,13 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			}
 			addon.setPendingVideoId(null);
 			pendingCorrections = 0;
+		} else if (queueTransitionPending) {
+			// A further autonav move landed while an earlier "unexpected transition" is still being
+			// resolved (see queueTransitionPending's declaration) -- keep the baseline fresh and let
+			// this play rather than piling another onEngineEnded() resolution on top of the one already
+			// in flight; prepare() clears this flag once it re-takes control of navigation.
+			Log.i("playing(): further autonav move while resolving queue transition, from ",
+					currentVideoId, " to ", actualId);
 		} else if ((currentVideoId != null) && (actualId != null) && !actualId.equals(currentVideoId)) {
 			// The video changed to something the app never explicitly navigated to. YouTube's own
 			// autonav can transition well before the original video's native "ended" event fires (its
@@ -180,6 +213,12 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				web.loadVideo(currentVideoId);
 				return;
 			} else if (addon.getQueueItem() != null) {
+				// Keep the baseline fresh before handing off -- see queueTransitionPending -- so that if
+				// autonav moves again before prepare() re-takes control, that further move is compared
+				// against this actualId (the true current state) rather than the now-stale currentVideoId
+				// this transition was itself detected from.
+				currentVideoId = actualId;
+				queueTransitionPending = true;
 				current = end;
 				qualityUrl = null;
 				cb.onEngineEnded(this);
@@ -357,6 +396,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// reset below and the navigation branch further down.
 		String queueVideoId = YoutubeVideoItem.extractYoutubeVideoId(source);
 
+		// prepare() re-taking control of navigation, one way or another, is what queueTransitionPending
+		// waits for -- see its declaration and playing()'s "unexpected transition" handling above.
+		queueTransitionPending = false;
+
 		if ((source == next) || (source == prev) || (queueVideoId != null)) {
 			// Every one of these three branches is reached only for a deliberate next/prev-style skip
 			// (the control panel, a hardware/Bluetooth media button, or a tap on YouTube's own on-screen
@@ -372,10 +415,15 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		if (source == next) {
 			Log.i("prepare(): no queue item -- asking the page for its own next video");
 			transitioning();
+			// The resulting video id is whatever the page itself picks -- unknowable ahead of time, so
+			// it can't be armed via pendingVideoId; expectingPageNav is playing()'s equivalent for this
+			// case. See its declaration.
+			expectingPageNav = true;
 			web.next();
 		} else if (source == prev) {
 			Log.i("prepare(): no queue item -- asking the page for its own previous video");
 			transitioning();
+			expectingPageNav = true;
 			web.prev();
 		} else if (queueVideoId != null) {
 			// Reached from MediaSessionCallback.skipTo()/engineEnded() when queueAwareNextPlayable()/
