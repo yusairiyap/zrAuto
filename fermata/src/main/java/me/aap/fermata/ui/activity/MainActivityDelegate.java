@@ -203,6 +203,11 @@ public class MainActivityDelegate extends ActivityDelegate
 	private final Set<View> topInsetContent = Collections.newSetFromMap(new WeakHashMap<>());
 	private boolean barsHidden;
 	private boolean videoMode;
+	// Overrides the automatic bar-hiding that videoMode below otherwise forces in isFullScreen() --
+	// set by Action.FULLSCREEN_TOGGLE for local (non-WebView) video, whose VideoView has no
+	// NativeFullscreen handler to toggle instead. Reset on every videoMode transition so a manual
+	// "show bars" choice doesn't leak into the next video played.
+	private boolean videoBarsShown;
 	private int brightness = 255;
 	@Nullable
 	private VideoView activeVideoView;
@@ -581,16 +586,31 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	@Override
 	public boolean isFullScreen() {
-		if (videoMode || getPrefs().getFullscreenPref(this)) {
-			if (isCarActivityNotMirror()) {
-				FermataServiceUiBinder b = getMediaServiceBinder();
-				return !b.getMediaSessionCallback().getPlaybackControlPrefs().getVideoAaShowStatusPref();
-			} else {
-				return true;
-			}
+		// While playing video, videoMode alone drives fullscreen (see videoBarsShown) rather than
+		// OR-ing in the persisted pref -- otherwise Action.FULLSCREEN_TOGGLE's fallback toggle of that
+		// pref would be a no-op for local video, since videoMode being true already forces this true
+		// regardless of the pref's value.
+		boolean fullscreen = videoMode ? !videoBarsShown : getPrefs().getFullscreenPref(this);
+		if (!fullscreen) return false;
+
+		if (isCarActivityNotMirror()) {
+			FermataServiceUiBinder b = getMediaServiceBinder();
+			return !b.getMediaSessionCallback().getPlaybackControlPrefs().getVideoAaShowStatusPref();
 		} else {
-			return false;
+			return true;
 		}
+	}
+
+	/**
+	 * Toggles the system status/navigation bars visible or hidden during active video playback,
+	 * without leaving {@link BodyLayout.Mode#VIDEO}/{@link BodyLayout.Mode#BOTH} -- the local-video
+	 * equivalent of a WebView-hosted player's {@link VideoView#toggleNativeFullscreen()}, used as
+	 * {@link me.aap.fermata.action.Action#FULLSCREEN_TOGGLE}'s fallback when there's no such native
+	 * handler to defer to.
+	 */
+	public void toggleVideoBars() {
+		videoBarsShown = !videoBarsShown;
+		setSystemUiVisibility();
 	}
 
 	public boolean isGridView() {
@@ -739,6 +759,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		}
 
 		ControlPanelView cp = getControlPanel();
+		videoBarsShown = false;
 
 		if (videoMode) {
 			this.videoMode = true;

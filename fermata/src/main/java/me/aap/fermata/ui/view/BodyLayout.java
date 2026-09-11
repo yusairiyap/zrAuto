@@ -200,13 +200,23 @@ public class BodyLayout extends SplitLayout
 	 * Fades {@code incoming} in while fading {@code outgoing} out, only actually hiding
 	 * {@code outgoing} once its fade completes -- the same idiom as
 	 * {@code ActivityDelegate.crossfadeFragmentViews}, used here for vv/sr instead of fragments.
+	 * <p>
+	 * Coming from {@code Mode.BOTH} (e.g. switching to the YouTube tab during local video playback),
+	 * {@code incoming} is already fully opaque and visible -- forcing it back down to alpha 0 first
+	 * would flash it blank for the length of this fade for no reason, so that reset is skipped
+	 * whenever it's already showing at full opacity.
 	 */
 	private static void crossfade(@Nullable View outgoing, @Nullable View incoming, long duration) {
 		if (incoming != null) {
+			boolean alreadyShown = (incoming.getVisibility() == VISIBLE) && (incoming.getAlpha() >= 1f);
 			incoming.setVisibility(VISIBLE);
 			incoming.animate().cancel();
-			incoming.setAlpha(0f);
-			incoming.animate().alpha(1f).setDuration(duration).start();
+			if (alreadyShown) {
+				incoming.setAlpha(1f);
+			} else {
+				incoming.setAlpha(0f);
+				incoming.animate().alpha(1f).setDuration(duration).start();
+			}
 		}
 		if ((outgoing != null) && (outgoing != incoming)) {
 			outgoing.animate().cancel();
