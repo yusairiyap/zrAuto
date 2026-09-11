@@ -569,9 +569,17 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 
 		@Override
 		public void onClick(View v) {
+			MediaItemView mi = (MediaItemView) v;
+
+			if (getListView().isSelectionActive()) {
+				MediaItemWrapper w = mi.getItemWrapper();
+				if ((w != null) && w.isSelectionSupported()) w.setSelected(!w.isSelected(), true);
+				return;
+			}
+
 			discardSelection();
 
-			if (((MediaItemView) v).getItem() instanceof PlayableItem i) {
+			if (mi.getItem() instanceof PlayableItem i) {
 				if (!i.isVideo()) {
 					MainActivityDelegate a = getActivityDelegate();
 					MediaEngine eng = a.getMediaSessionCallback().getEngine();

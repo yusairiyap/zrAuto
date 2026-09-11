@@ -378,6 +378,14 @@ public class MainActivityDelegate extends ActivityDelegate
 
 		String showAddon = getPrefs().getShowAddonOnStartPref();
 		if (showAddon != null) {
+			int fragId = NavBarMediator.nameToFragmentId(showAddon);
+
+			if (fragId != 0) {
+				showFragment(fragId);
+				checkUpdates();
+				return;
+			}
+
 			FermataAddon addon = AddonManager.get().getAddon(showAddon);
 
 			if (addon instanceof FermataFragmentAddon) {
@@ -602,15 +610,20 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	/**
-	 * Toggles the system status/navigation bars visible or hidden during active video playback,
-	 * without leaving {@link BodyLayout.Mode#VIDEO}/{@link BodyLayout.Mode#BOTH} -- the local-video
-	 * equivalent of a WebView-hosted player's {@link VideoView#toggleNativeFullscreen()}, used as
+	 * Toggles the system status/navigation bars <em>and</em> the app's own tool/nav bar visible or
+	 * hidden during active video playback, without leaving {@link BodyLayout.Mode#VIDEO}/
+	 * {@link BodyLayout.Mode#BOTH} -- the local-video equivalent of a WebView-hosted player's
+	 * {@link VideoView#toggleNativeFullscreen()}, used as
 	 * {@link me.aap.fermata.action.Action#FULLSCREEN_TOGGLE}'s fallback when there's no such native
-	 * handler to defer to.
+	 * handler to defer to (so this never runs for YouTube, whose own fullscreen chrome/behavior is
+	 * untouched).
 	 */
 	public void toggleVideoBars() {
 		videoBarsShown = !videoBarsShown;
 		setSystemUiVisibility();
+		setBarsHidden(!videoBarsShown);
+		ControlPanelView cp = getControlPanel();
+		if (cp != null) cp.refreshShowHideBarsIcon();
 	}
 
 	public boolean isGridView() {
@@ -761,6 +774,17 @@ public class MainActivityDelegate extends ActivityDelegate
 		ControlPanelView cp = getControlPanel();
 		videoBarsShown = false;
 
+		// Set before cp.enableVideoMode() runs, not after -- that method reads getActiveVideoView()
+		// (to tell local playback from a web-embedded source like YouTube), and it would otherwise
+		// still see whatever was active *before* this call, e.g. a still-stale YoutubeVideoView from
+		// the previous video, right when a local file is what's actually starting now.
+		if (v != null) {
+			activeVideoView = v;
+			MainActivityPrefs dimPrefs = getPrefs();
+			v.setDimOverlay(videoMode && dimPrefs.getBooleanPref(DIM_ENABLED), dimPrefs.getIntPref(DIM_OPACITY),
+					dimPrefs.resolveDimColor());
+		}
+
 		if (videoMode) {
 			this.videoMode = true;
 			setSystemUiVisibility();
@@ -791,13 +815,6 @@ public class MainActivityDelegate extends ActivityDelegate
 					getAppActivity().setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR);
 				}
 			}
-		}
-
-		if (v != null) {
-			activeVideoView = v;
-			MainActivityPrefs p = getPrefs();
-			v.setDimOverlay(videoMode && p.getBooleanPref(DIM_ENABLED), p.getIntPref(DIM_OPACITY),
-					p.resolveDimColor());
 		}
 
 		updateSecondaryFabVisibility();
@@ -1368,6 +1385,7 @@ public class MainActivityDelegate extends ActivityDelegate
 											.onFailure(err -> showAlert(getContext(), err.getMessage())).thenRun(() -> {
 												MediaLibFragment f = getMediaLibFragment(R.id.playlists_fragment);
 												if (f != null) f.getAdapter().reload();
+												UiUtils.showToast(getContext(), R.string.added_to_playlist, name);
 											})));
 				});
 		return true;
@@ -1384,6 +1402,7 @@ public class MainActivityDelegate extends ActivityDelegate
 						pl.addItems(items);
 						MediaLibFragment f = getMediaLibFragment(R.id.playlists_fragment);
 						if (f != null) f.getAdapter().reload();
+						UiUtils.showToast(getContext(), R.string.added_to_playlist, name);
 					});
 					break;
 				}

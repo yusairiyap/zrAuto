@@ -337,6 +337,12 @@ public class ControlPanelView extends ConstraintLayout
 		mask |= MASK_VIDEO_MODE;
 		a.setBarsHidden(true);
 		setShowHideBarsIcon(a);
+		// Kept for local playback (still the only in-panel way to toggle system bars there), but
+		// dropped for a web-embedded source (YouTube) -- that already has its own fullscreen chrome,
+		// and FAB2 defaults to the fullscreen toggle anyway.
+		VideoView vv = a.getActiveVideoView();
+		findViewById(R.id.show_hide_bars)
+				.setVisibility(((vv != null) && vv.hasNativeFullscreen()) ? GONE : VISIBLE);
 
 		View fb = a.getFloatingButton();
 		View fb2 = fab2(a);
@@ -379,6 +385,7 @@ public class ControlPanelView extends ConstraintLayout
 		hideTimer = null;
 		mask &= ~MASK_VIDEO_MODE;
 		a.getFloatingButton().setVisibility(VISIBLE);
+		findViewById(R.id.show_hide_bars).setVisibility(VISIBLE);
 
 		if ((mask & MASK_VISIBLE) == 0) {
 			super.setVisibility(GONE);
@@ -633,6 +640,15 @@ public class ControlPanelView extends ConstraintLayout
 		setShowHideBarsIcon(a);
 	}
 
+	/**
+	 * Keeps this corner icon in sync when the app's bars are hidden/shown from elsewhere -- e.g.
+	 * {@link MainActivityDelegate#toggleVideoBars()}, driven by FAB2's default fullscreen toggle
+	 * during local video playback.
+	 */
+	public void refreshShowHideBarsIcon() {
+		setShowHideBarsIcon(getActivity());
+	}
+
 	public void showMenu() {
 		if (isActive()) showMenu(this);
 	}
@@ -859,13 +875,22 @@ public class ControlPanelView extends ConstraintLayout
 			b.addItem(R.id.timer, R.drawable.timer, R.string.timer)
 					.setSubmenu(s -> new TimerMenuHandler(a).build(s));
 
+			// Runs before Settings/Exit below so an engine-contributed item that also navigates away
+			// (e.g. YouTube's own Audio effects/Equalizer entry) still sorts above them.
+			eng.contributeToMenuEnd(b);
+
 			if (pi.isVideo()) {
-				// Navigates to a different page entirely, so keep it last rather than grouped with
-				// the in-place toggles above.
+				// Navigate away entirely, so keep these last rather than grouped with the in-place
+				// toggles above.
 				b.addItem(R.id.dim_settings, R.drawable.settings, R.string.dim_settings);
+				b.addItem(R.id.settings_fragment, R.drawable.settings, R.string.settings);
 			}
 
-			eng.contributeToMenuEnd(b);
+			if (pi.isVideo()) {
+				// Absolute last item in the menu, after anything an engine contributes at the end too.
+				b.addItem(R.id.nav_exit, R.drawable.exit,
+						a.isCarActivityNotMirror() ? R.string.restart : R.string.exit);
+			}
 		}
 
 		private void buildRepeatMenu(OverlayMenu.Builder b) {
@@ -911,6 +936,16 @@ public class ControlPanelView extends ConstraintLayout
 				// navigates but stays hidden underneath it.
 				a.exitVideoMode();
 				a.showFragment(R.id.settings_fragment, SettingsFragment.SHOW_DIM_SETTINGS);
+				return true;
+			} else if (id == R.id.settings_fragment) {
+				MainActivityDelegate a = getActivity();
+				a.exitVideoMode();
+				a.showFragment(R.id.settings_fragment);
+				return true;
+			} else if (id == R.id.nav_exit) {
+				MainActivityDelegate a = getActivity();
+				a.finish();
+				if (a.isCarActivityNotMirror()) a.getHandler().postDelayed(() -> System.exit(0), 500);
 				return true;
 			}
 

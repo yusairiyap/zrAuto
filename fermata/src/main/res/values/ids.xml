@@ -12,6 +12,7 @@
     <item name="tool_sub_artist" type="id" />
     <item name="tool_sub_dur" type="id" />
     <item name="tool_grid" type="id" />
+    <item name="tool_card_size" type="id" />
     <item name="tool_sort" type="id" />
     <item name="tool_sort_name" type="id" />
     <item name="tool_sort_file_name" type="id" />
@@ -47,6 +48,7 @@
     <item name="nav_about" type="id" />
     <item name="nav_exit" type="id" />
     <item name="nav_select" type="id" />
+    <item name="nav_open_on_start" type="id" />
     <item name="nav_select_all" type="id" />
     <item name="nav_unselect_all" type="id" />
 
@@ -131,6 +133,7 @@
     <item name="dim_toggle" type="id" />
     <item name="dim_settings" type="id" />
     <item name="mute_toggle" type="id" />
+    <item name="fab_settings" type="id" />
 
     <item name="private_mode" type="id" />
     <item name="private_mode_settings" type="id" />

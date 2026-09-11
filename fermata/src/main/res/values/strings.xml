@@ -347,6 +347,8 @@
     <string name="enable">Enable</string>
     <string name="move_left">Move left</string>
     <string name="move_right">Move right</string>
+    <string name="set_open_on_start">Set as open on start</string>
+    <string name="remove_open_on_start">Remove open on start</string>
     <string name="move_up">Move up</string>
     <string name="move_down">Move down</string>
 
@@ -375,6 +377,9 @@
     <string name="fab_draggable">Draggable</string>
     <string name="fab_draggable_sub">Let the floating buttons be dragged to a different position on screen</string>
     <string name="fab_size">Floating button size</string>
+    <string name="card_size">Card size</string>
+    <string name="fab_settings">FAB Settings</string>
+    <string name="added_to_playlist">Added to \"%s\"</string>
     <string name="dim_prefs">Dim screen</string>
     <string name="dim_enable">Dim video screen</string>
     <string name="dim_opacity">Dim opacity</string>

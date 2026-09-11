@@ -56,7 +56,7 @@ public class MediaItemListView extends RecyclerView implements PreferenceStore.L
 			grid = a.isGridView();
 
 			if (grid) {
-				float scale = prefs.getTextIconSizePref(a);
+				float scale = prefs.getTextIconSizePref(a) * prefs.getGridItemSizePref();
 				int cellDp = a.isCarActivity() ? 176 : 128;
 				int span = (int) Math.max(cfg.screenWidthDp / (cellDp * scale), 2);
 				setLayoutManager(new GridLayoutManager(ctx, span));
@@ -373,7 +373,7 @@ public class MediaItemListView extends RecyclerView implements PreferenceStore.L
 	public void onPreferenceChanged(PreferenceStore store, List<PreferenceStore.Pref<?>> prefs) {
 		MainActivityDelegate a = getActivity();
 
-		if (MainActivityPrefs.hasGridViewPref(a, prefs)) {
+		if (MainActivityPrefs.hasGridViewPref(a, prefs) || MainActivityPrefs.hasGridItemSizePref(prefs)) {
 			configure(getContext().getResources().getConfiguration());
 			MediaLibFragment f = a.getActiveMediaLibFragment();
 

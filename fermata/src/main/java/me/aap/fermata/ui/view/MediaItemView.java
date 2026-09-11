@@ -17,6 +17,7 @@ import android.content.res.ColorStateList;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
@@ -77,12 +78,23 @@ public class MediaItemView extends ConstraintLayout
 	private static int iconColor;
 	@ColorInt
 	private static int hintColor;
+	/** Fraction of the card's shorter side used as the watched/watching/archive badge's radius. */
+	private static final float BADGE_RADIUS_FRACTION = 0.11f;
+	@ColorInt
+	private static final int BADGE_BG_COLOR = 0xCC1B1B1B;
+	@ColorInt
+	private static final int BADGE_SHADOW_COLOR = 0x40000000;
+	@ColorInt
+	private static final int BADGE_ICON_COLOR = 0xFFFFFFFF;
+	private static Paint badgePaint;
 	@StyleRes
 	private final int titleTextAppearance;
 	@StyleRes
 	private final int subtitleTextAppearance;
 	private final ColorStateList iconTint;
 	private final ColorStateList textTint;
+	private final float badgeMinRadius;
+	private final float badgeMaxRadius;
 	@Nullable
 	private MediaItemViewHolder holder;
 	private ProgressUpdater progressUpdater;
@@ -103,6 +115,8 @@ public class MediaItemView extends ConstraintLayout
 		setElevation(ta.getDimension(R.styleable.MediaItemView_elevation, 0));
 		textTint = ta.getColorStateList(R.styleable.MediaItemView_android_textColor);
 		ta.recycle();
+		badgeMinRadius = toPx(ctx, 9);
+		badgeMaxRadius = toPx(ctx, 16);
 		MainActivityDelegate a = getMainActivity();
 		applyLayout(ctx, a.isGridView(), a.getPrefs().getTextIconSizePref(a));
 		iconTint = getIcon().getImageTintList();
@@ -110,6 +124,15 @@ public class MediaItemView extends ConstraintLayout
 		setOnLongClickListener(this);
 		getCheckBox().setOnCheckedChangeListener(this);
 		setBackgroundResource(R.drawable.media_item_bg);
+		// Clips the full-bleed thumbnail/gradient/text to media_item_bg's own rounded-rect outline --
+		// without this the card's corners look square, since the thumbnail (unlike before, when it
+		// only covered a smaller inset square) now extends all the way to the view's real edges.
+		setClipToOutline(true);
+		// The grid card's thumbnail now fills the whole view edge-to-edge, which would otherwise
+		// hide the ripple (drawn as a background, so it renders beneath all children) under an
+		// opaque bitmap -- a foreground-only ripple (no solid layer of its own) keeps touch feedback
+		// visible over the thumbnail without changing the card's resting appearance.
+		setForeground(ContextCompat.getDrawable(ctx, R.drawable.media_item_ripple_fg));
 		setFocusable(true);
 	}
 
@@ -217,7 +240,7 @@ public class MediaItemView extends ConstraintLayout
 						getTitle().setText(ifNull(md.getTitle(), i::getName));
 					}
 					if ((p == PROGRESS_DONE) || (p == 2)) {
-						getSubtitle().setText(md.getSubtitle());
+						setSubtitleText(md.getSubtitle());
 					}
 					if ((p == PROGRESS_DONE) || (p == 3)) {
 						Bundle b = md.getExtras();
@@ -235,13 +258,18 @@ public class MediaItemView extends ConstraintLayout
 
 												ImageView icon = getIcon();
 												icon.clearAnimation();
-												icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
 												cancelLoading();
 
 												if (bm != null) {
+													// A real thumbnail: fill the whole card edge-to-edge (cropping
+													// rather than letterboxing it), matching the full-bleed card look.
+													icon.setScaleType(ImageView.ScaleType.CENTER_CROP);
 													icon.setImageTintList(null);
 													icon.setImageBitmap(bm);
 												} else {
+													// No thumbnail: fall back to a small centered glyph instead of
+													// stretching it to fill the now much larger full-bleed icon view.
+													icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
 													icon.setImageTintList(iconTint);
 													icon.setImageResource(i.getIcon());
 												}
@@ -250,14 +278,14 @@ public class MediaItemView extends ConstraintLayout
 							if (!loadIcon.isDone()) {
 								ImageView icon = getIcon();
 								icon.clearAnimation();
-								icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+								icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
 								icon.setImageTintList(iconTint);
 								icon.setImageResource(i.getIcon());
 							}
 						} else {
 							ImageView icon = getIcon();
 							icon.clearAnimation();
-							icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+							icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
 							icon.setImageTintList(iconTint);
 							icon.setImageResource(i.getIcon());
 							cancelLoading();
@@ -291,23 +319,40 @@ public class MediaItemView extends ConstraintLayout
 		getTitle().setText(i.getName());
 
 		if (loading) {
-			// CENTER (not the icon's usual fitCenter, restored wherever real content is set below/in
-			// load()) keeps this at its own small intrinsic size instead of being stretched up to fill
-			// the whole thumbnail area, which is what fitCenter would otherwise do with a 24dp vector
-			// inside a much larger grid-view icon.
+			// CENTER (not the icon's usual centerInside, restored wherever real content is set below/
+			// in load()) keeps this at its own small intrinsic size instead of being stretched up to
+			// fill the whole thumbnail area.
 			icon.setScaleType(ImageView.ScaleType.CENTER);
 			rotate.setDuration(1000);
 			rotate.setRepeatCount(Animation.INFINITE);
 			icon.setImageDrawable(getLoadingDrawable(getContext()));
 			icon.startAnimation(rotate);
-			getSubtitle().setText(R.string.loading);
+			setSubtitleText(getContext().getText(R.string.loading));
 		} else {
 			icon.clearAnimation();
-			icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+			icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
 			icon.setImageTintList(iconTint);
 			icon.setImageResource(i.getIcon());
-			getSubtitle().setText("");
+			setSubtitleText("");
 		}
+	}
+
+	/**
+	 * Sets the subtitle text, collapsing the row entirely (rather than leaving an empty but
+	 * visible line) when there's none -- e.g. a YouTube item, which never has a subtitle. In the
+	 * grid layout, where title/subtitle are anchored to the card's bottom edge, an empty-but-visible
+	 * subtitle would otherwise still reserve its own line height, leaving the title floating with a
+	 * visible gap above the true bottom instead of sitting flush against it.
+	 */
+	private void setSubtitleText(@Nullable CharSequence s) {
+		TextView v = getSubtitle();
+		v.setText(s);
+		v.setVisibility(((s == null) || (s.length() == 0)) ? GONE : VISIBLE);
+	}
+
+	private static Paint getBadgePaint() {
+		if (badgePaint == null) badgePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+		return badgePaint;
 	}
 
 	private static Drawable getLoadingDrawable(Context ctx) {
@@ -327,23 +372,23 @@ public class MediaItemView extends ConstraintLayout
 	}
 
 	public ImageView getIcon() {
-		return (ImageView) getChildAt(0);
+		return findViewById(R.id.media_item_icon);
 	}
 
 	public TextView getTitle() {
-		return (TextView) getChildAt(1);
+		return findViewById(R.id.media_item_title);
 	}
 
 	public TextView getSubtitle() {
-		return (TextView) getChildAt(2);
+		return findViewById(R.id.media_item_subtitle);
 	}
 
 	public LinearProgressIndicator getProgress() {
-		return (LinearProgressIndicator) getChildAt(3);
+		return findViewById(R.id.media_stream_progress);
 	}
 
 	public MaterialCheckBox getCheckBox() {
-		return (MaterialCheckBox) getChildAt(4);
+		return findViewById(R.id.media_item_checkbox);
 	}
 
 	@Override
@@ -371,7 +416,7 @@ public class MediaItemView extends ConstraintLayout
 				d = archiveLabelDrawable =
 						VectorDrawableCompat.create(getResources(), R.drawable.archive_label, null);
 				if (d == null) return;
-				d.setTint(hintColor);
+				d.setTint(BADGE_ICON_COLOR);
 			}
 		} else {
 			if (!(item instanceof PlayableItem) || ((PlayableItem) item).isStream()) return;
@@ -386,7 +431,7 @@ public class MediaItemView extends ConstraintLayout
 					d = watchedVideoDrawable =
 							VectorDrawableCompat.create(getResources(), R.drawable.done, null);
 					if (d == null) return;
-					d.setTint(hintColor);
+					d.setTint(BADGE_ICON_COLOR);
 				}
 			} else if (prefs.getPositionPref() > 0) {
 				d = watchingVideoDrawable;
@@ -394,7 +439,7 @@ public class MediaItemView extends ConstraintLayout
 					d = watchingVideoDrawable =
 							VectorDrawableCompat.create(getResources(), R.drawable.watching, null);
 					if (d == null) return;
-					d.setTint(hintColor);
+					d.setTint(BADGE_ICON_COLOR);
 				}
 			} else {
 				return;
@@ -406,9 +451,24 @@ public class MediaItemView extends ConstraintLayout
 		int t = i.getTop();
 		int r = i.getRight();
 		int b = i.getBottom();
-		// Bottom-right corner badge (watched/watching/archive) at 1/3 of the thumbnail's width/height
-		// instead of 2/3 -- the previous size covered most of the thumbnail image itself.
-		d.setBounds(l + (r - l) * 2 / 3, t + (b - t) * 2 / 3, r, b);
+		// Circular badge (watched/watching/archive) pinned to the thumbnail's top-right corner,
+		// drawn as a solid, drop-shadowed disc behind the glyph so it reads clearly over an
+		// arbitrary full-bleed thumbnail/gradient instead of a bare vector.
+		float radius = Math.min(r - l, b - t) * BADGE_RADIUS_FRACTION;
+		radius = Math.max(badgeMinRadius, Math.min(radius, badgeMaxRadius));
+		float margin = radius * 0.85f;
+		float cx = r - margin - radius;
+		float cy = t + margin + radius;
+
+		Paint paint = getBadgePaint();
+		paint.setColor(BADGE_SHADOW_COLOR);
+		canvas.drawCircle(cx, cy + radius * 0.12f, radius * 1.1f, paint);
+		paint.setColor(BADGE_BG_COLOR);
+		canvas.drawCircle(cx, cy, radius, paint);
+
+		int inset = Math.round(radius * 0.5f);
+		d.setBounds(Math.round(cx - inset), Math.round(cy - inset), Math.round(cx + inset),
+				Math.round(cy + inset));
 		d.draw(canvas);
 	}
 

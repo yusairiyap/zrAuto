@@ -17,6 +17,7 @@ import java.util.List;
 import me.aap.utils.R;
 import me.aap.utils.ui.activity.ActivityDelegate;
 import me.aap.utils.ui.fragment.ActivityFragment;
+import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.menu.OverlayMenuItem;
 import me.aap.utils.ui.menu.OverlayMenuItemView;
 import me.aap.utils.ui.menu.OverlayMenuView;
@@ -195,11 +196,19 @@ public abstract class CustomizableNavBarMediator implements NavBarView.Mediator,
 					TextViewCompat.setCompoundDrawableTintList(item, tint);
 				}
 			}
+			contributeItemMenu(nb, btn, b, tint);
 			b.setCloseHandlerHandler(m -> ((ViewGroup) (nb.getParent())).removeView((View) m));
 		});
 
 		return true;
 	}
+
+	/**
+	 * Extension point for app-specific items on a nav-bar item's long-press menu, added after the
+	 * move-left/right (or move-up/down) items. No-op by default.
+	 */
+	protected void contributeItemMenu(NavBarView nb, NavButtonView btn, OverlayMenu.Builder b,
+																		 ColorStateList tint) {}
 
 	protected OverlayMenuView createOverlayMenu(NavBarView nb, boolean center) {
 		Context ctx = nb.getContext();

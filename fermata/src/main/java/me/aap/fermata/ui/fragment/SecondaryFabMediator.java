@@ -126,6 +126,12 @@ public final class SecondaryFabMediator implements FloatingButton.Mediator,
 						a.showFragment(R.id.settings_fragment, SettingsFragment.SHOW_PRIVATE_MODE_SETTINGS);
 						return true;
 					});
+			// Last item in the menu.
+			b.addItem(R.id.fab_settings, R.drawable.fab, R.string.fab_settings).setHandler(item -> {
+				a.exitVideoMode();
+				a.showFragment(R.id.settings_fragment, SettingsFragment.SHOW_FAB_SETTINGS);
+				return true;
+			});
 		});
 		return true;
 	}

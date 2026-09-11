@@ -14,6 +14,7 @@ import static me.aap.utils.ui.view.NavBarView.POSITION_LEFT;
 import static me.aap.utils.ui.view.NavBarView.POSITION_RIGHT;
 
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.ImageView;
@@ -23,6 +24,7 @@ import androidx.annotation.IdRes;
 import androidx.annotation.Nullable;
 import androidx.core.text.HtmlCompat;
 import androidx.core.widget.NestedScrollView;
+import androidx.core.widget.TextViewCompat;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -53,6 +55,7 @@ import me.aap.utils.ui.fragment.ActivityFragment;
 import me.aap.utils.ui.fragment.GenericFragment;
 import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.menu.OverlayMenuItem;
+import me.aap.utils.ui.menu.OverlayMenuItemView;
 import me.aap.utils.ui.view.NavBarItem;
 import me.aap.utils.ui.view.NavBarView;
 import me.aap.utils.ui.view.NavButtonView;
@@ -136,6 +139,27 @@ public class NavBarMediator extends PrefNavBarMediator
 			Log.e("Unable to swap ", name1, " and ", name2);
 			return false;
 		}
+	}
+
+	@Override
+	protected void contributeItemMenu(NavBarView nb, NavButtonView btn, OverlayMenu.Builder b,
+																		 ColorStateList tint) {
+		int id = btn.getId();
+		if (id == R.id.menu) return;
+
+		String name = idToName(id);
+		MainActivityDelegate a = MainActivityDelegate.get(nb.getContext());
+		boolean isStart = name.equals(a.getPrefs().getShowAddonOnStartPref());
+		int icon = isStart ? R.drawable.bookmark_filled : R.drawable.bookmark;
+		int title = isStart ? R.string.remove_open_on_start : R.string.set_open_on_start;
+		OverlayMenuItemView item =
+				(OverlayMenuItemView) b.addItem(R.id.nav_open_on_start, icon, title);
+		item.setHandler(i -> {
+			a.getPrefs().setShowAddonOnStartPref(isStart ? null : name);
+			return true;
+		});
+		item.setTextColor(tint);
+		TextViewCompat.setCompoundDrawableTintList(item, tint);
 	}
 
 	@Override
@@ -330,6 +354,25 @@ public class NavBarMediator extends PrefNavBarMediator
 		}
 		names.add("menu");
 		return names;
+	}
+
+	/**
+	 * Maps a built-in nav-bar item's stable name (as stored by
+	 * {@link MainActivityPrefs#getShowAddonOnStartPref()}) to its fragment id, or {@code 0} if
+	 * {@code name} isn't one of the built-in items (e.g. it's an addon class name instead).
+	 */
+	@IdRes
+	public static int nameToFragmentId(String name) {
+		switch (name) {
+			case "folders":
+				return R.id.folders_fragment;
+			case "favorites":
+				return R.id.favorites_fragment;
+			case "playlists":
+				return R.id.playlists_fragment;
+			default:
+				return 0;
+		}
 	}
 
 	private static String idToName(@IdRes int id) {
