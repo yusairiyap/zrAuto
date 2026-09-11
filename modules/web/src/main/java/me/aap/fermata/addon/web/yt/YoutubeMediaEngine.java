@@ -158,6 +158,21 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		cb.onEngineEnded(this);
 	}
 
+	/**
+	 * The user tapped YouTube's own on-screen prev/next button (see {@link YoutubeWebView}'s
+	 * capture-phase click interceptor) rather than the app's control panel -- routed through the
+	 * exact same {@link MediaSessionCallback#onSkipToNext()}/{@link
+	 * MediaSessionCallback#onSkipToPrevious()} entry points the control panel's own buttons use (see
+	 * {@code FermataServiceUiBinder#onPrevNextButtonClick}), so both end up going through {@link
+	 * #queueAwareNextPlayable()}/{@link #queueAwarePrevPlayable()} and land on the same video either
+	 * way, instead of YouTube's own page-internal next/prev (whatever it auto-picks, unrelated to the
+	 * app's Favorites/Playlist order) that a native button tap would otherwise trigger directly.
+	 */
+	void skipRequested(boolean next) {
+		if (next) cb.onSkipToNext();
+		else cb.onSkipToPrevious();
+	}
+
 	/** The page-side ad detector (see {@link YoutubeWebView}) just started muting/skipping an ad. */
 	void adShowing() {
 		YoutubeVideoView v = getFullScreenView();
