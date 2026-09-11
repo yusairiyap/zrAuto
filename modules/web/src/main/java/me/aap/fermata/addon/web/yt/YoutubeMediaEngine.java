@@ -196,7 +196,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		} else if (pendingVideoId != null) {
 			if ((actualId == null) || !actualId.equals(pendingVideoId)) {
 				if (++pendingCorrections <= MAX_PENDING_CORRECTIONS) {
-					Log.i("playing(): expected ", pendingVideoId, " but page shows ", actualId,
+					Log.d("playing(): expected ", pendingVideoId, " but page shows ", actualId,
 							" -- correcting, attempt ", pendingCorrections);
 					web.loadVideo(pendingVideoId);
 					return;
@@ -211,7 +211,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			// resolved (see queueTransitionPending's declaration) -- keep the baseline fresh and let
 			// this play rather than piling another onEngineEnded() resolution on top of the one already
 			// in flight; prepare() clears this flag once it re-takes control of navigation.
-			Log.i("playing(): further autonav move while resolving queue transition, from ",
+			Log.d("playing(): further autonav move while resolving queue transition, from ",
 					currentVideoId, " to ", actualId);
 		} else if ((currentVideoId != null) && (actualId != null) && !actualId.equals(currentVideoId)) {
 			// The video changed to something the app never explicitly navigated to. YouTube's own
@@ -221,7 +221,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			// running at all for this transition. Treated as if the original video had just ended, but
 			// only when the app actually has an opinion about what should play (Repeat One, or an active
 			// Favorites/Playlist queue) -- with neither, this is left alone as ordinary page browsing.
-			Log.i("playing(): unexpected transition from ", currentVideoId, " to ", actualId,
+			Log.d("playing(): unexpected transition from ", currentVideoId, " to ", actualId,
 					" -- repeatOne=", addon.isRepeatOneEnabled(), ", queueItem=", addon.getQueueItem(),
 					", recentLinkClick=", recentLinkClick);
 			if (recentLinkClick) {
@@ -355,7 +355,18 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	@Nullable
 	private YoutubeVideoView getFullScreenView() {
 		FermataChromeClient chrome = web.getWebChromeClient();
-		if (!(chrome instanceof YoutubeChromeClient yt)) return null;
+		// YoutubeChromeClient#getFullScreenView() returns the same persistent, activity-level overlay
+		// view (see YoutubeFragment#getOrCreateVideoViewOverlay()) whether or not it's actually being
+		// shown right now -- MainActivityDelegate#showFragment() exits native fullscreen (chrome#
+		// isFullScreen() goes false and the overlay crossfades to GONE) whenever the user switches to a
+		// different tab while a YouTube video keeps playing in the background. Without this check, a
+		// next/prev switch triggered from that other tab's control panel would still resolve this same
+		// view and forcibly show it again (see showTransitionOverlay()'s explicit setVisibility(VISIBLE),
+		// there specifically to counter a *different*, legitimate GONE case) -- popping the video
+		// overlay back on top of whatever tab the user is actually looking at, uninteractive until they
+		// dug back into fullscreen themselves. Checking isFullScreen() here instead makes adShowing()/
+		// transitioning()/contentPlaying() all correctly no-op while the user isn't looking at it.
+		if (!(chrome instanceof YoutubeChromeClient yt) || !chrome.isFullScreen()) return null;
 		VideoView v = yt.getFullScreenView();
 		return (v instanceof YoutubeVideoView yv) ? yv : null;
 	}
@@ -440,7 +451,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		}
 
 		if (source == next) {
-			Log.i("prepare(): no queue item -- asking the page for its own next video");
+			Log.d("prepare(): no queue item -- asking the page for its own next video");
 			transitioning();
 			// The resulting video id is whatever the page itself picks -- unknowable ahead of time, so
 			// it can't be armed via pendingVideoId; expectingPageNav is playing()'s equivalent for this
@@ -448,7 +459,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			expectingPageNav = true;
 			web.next();
 		} else if (source == prev) {
-			Log.i("prepare(): no queue item -- asking the page for its own previous video");
+			Log.d("prepare(): no queue item -- asking the page for its own previous video");
 			transitioning();
 			expectingPageNav = true;
 			web.prev();
@@ -459,7 +470,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			// loadInFragment()) instead of asking the page for its own next/prev, which has no idea
 			// this item even exists. YouTube's own autoplay-on-load takes it from there and playing()
 			// above reports back once the new video is actually up, same as any other navigation.
-			Log.i("prepare(): navigating queue to ", queueVideoId, " (", source.getName(), ")");
+			Log.d("prepare(): navigating queue to ", queueVideoId, " (", source.getName(), ")");
 			transitioning();
 			// source itself (the resolved sibling, exported wrapper included), not some re-derived
 			// item -- its getParent() is the real Favorites/Playlist, exactly what the *next* next/prev
@@ -878,11 +889,11 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	@NonNull
 	private FutureSupplier<PlayableItem> queueAwarePrevPlayable() {
 		PlayableItem q = web.getAddon().getQueueItem();
-		Log.i("queueAwarePrevPlayable(): queueItem=", q, " parent=", (q != null) ? q.getParent() : null);
+		Log.d("queueAwarePrevPlayable(): queueItem=", q, " parent=", (q != null) ? q.getParent() : null);
 		if (q == null) return completed(prev);
 		BrowsableItem container = q.getParent();
 		return q.getPrevPlayable().map(pi -> {
-			Log.i("queueAwarePrevPlayable(): resolved ", pi);
+			Log.d("queueAwarePrevPlayable(): resolved ", pi);
 			return acceptQueueResolved(pi, container, prev);
 		});
 	}
@@ -891,11 +902,11 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	@NonNull
 	private FutureSupplier<PlayableItem> queueAwareNextPlayable() {
 		PlayableItem q = web.getAddon().getQueueItem();
-		Log.i("queueAwareNextPlayable(): queueItem=", q, " parent=", (q != null) ? q.getParent() : null);
+		Log.d("queueAwareNextPlayable(): queueItem=", q, " parent=", (q != null) ? q.getParent() : null);
 		if (q == null) return completed(next);
 		BrowsableItem container = q.getParent();
 		return q.getNextPlayable().map(pi -> {
-			Log.i("queueAwareNextPlayable(): resolved ", pi);
+			Log.d("queueAwareNextPlayable(): resolved ", pi);
 			return acceptQueueResolved(pi, container, next);
 		});
 	}
