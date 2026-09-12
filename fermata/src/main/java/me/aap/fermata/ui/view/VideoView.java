@@ -86,8 +86,15 @@ public class VideoView extends FrameLayout
 					MediaPrefs.SUB_DELAY));
 	private static final Set<PreferenceStore.Pref<?>> infoOverlayPrefChange = new HashSet<>(
 			Arrays.asList(MainActivityPrefs.CLOCK_POS, MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK,
+					MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK_ICON,
 					MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_PCT,
-					MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_TEMP, MainActivityPrefs.INFO_OVERLAY_SIZE));
+					MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_ICON,
+					MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_TEMP,
+					MainActivityPrefs.INFO_OVERLAY_SHOW_TEMP_ICON,
+					MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE,
+					MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE_ICON,
+					MainActivityPrefs.INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE,
+					MainActivityPrefs.INFO_OVERLAY_SIZE));
 	private SubDrawer subDrawer;
 	private FutureSupplier<?> createSurface = new Promise<>();
 	private View dimOverlay;
@@ -95,6 +102,10 @@ public class VideoView extends FrameLayout
 	private InfoOverlayView infoOverlay;
 	@Nullable
 	private NativeFullscreen nativeFullscreen;
+	/** Latest known on-screen visibility of the fullscreen video control panel, pushed by
+	 * {@code ControlPanelView} -- see {@link #setControlPanelVisible}. Assumed visible until told
+	 * otherwise so the overlay isn't wrongly hidden before the first real update arrives. */
+	private boolean controlPanelVisible = true;
 
 	public VideoView(Context context) {
 		this(context, null);
@@ -250,23 +261,31 @@ public class VideoView extends FrameLayout
 		getActivity().onSuccess(a -> {
 			MainActivityPrefs p = a.getPrefs();
 			setInfoOverlay(p.getClockPosPref(), p.getInfoOverlayShowClockPref(),
-					p.getInfoOverlayShowBatteryPctPref(), p.getInfoOverlayShowBatteryTempPref(),
-					p.getInfoOverlaySizePref());
+					p.getInfoOverlayShowClockIconPref(), p.getInfoOverlayShowBatteryPctPref(),
+					p.getInfoOverlayShowBatteryIconPref(), p.getInfoOverlayShowBatteryTempPref(),
+					p.getInfoOverlayShowTempIconPref(), p.getInfoOverlayShowDistancePref(),
+					p.getInfoOverlayShowDistanceIconPref(),
+					p.getInfoOverlayOnlyWhenControlPanelVisiblePref(), p.getInfoOverlaySizePref());
 		});
 	}
 
-	public void setInfoOverlay(int pos, boolean showClock, boolean showBatteryPct,
-														 boolean showBatteryTemp, float size) {
-		boolean show =
-				(pos != MainActivityPrefs.CLOCK_POS_NONE) && (showClock || showBatteryPct || showBatteryTemp);
+	public void setInfoOverlay(int pos, boolean showClock, boolean showClockIcon,
+														 boolean showBatteryPct, boolean showBatteryIcon, boolean showBatteryTemp,
+														 boolean showTempIcon, boolean showDistance, boolean showDistanceIcon,
+														 boolean onlyWhenControlPanelVisible, float size) {
+		boolean show = (pos != MainActivityPrefs.CLOCK_POS_NONE) &&
+				(showClock || showBatteryPct || showBatteryTemp || showDistance);
 
 		if (!show) {
-			if (infoOverlay != null) infoOverlay.setItems(false, false, false);
+			if (infoOverlay != null) {
+				infoOverlay.setItems(false, false, false, false, false, false, false, false);
+			}
 			return;
 		}
 
 		if (infoOverlay == null) {
 			infoOverlay = new InfoOverlayView(getContext());
+			infoOverlay.setControlPanelVisible(controlPanelVisible);
 			Context ctx = getContext();
 			int m = toIntPx(ctx, 10);
 			FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
@@ -285,7 +304,20 @@ public class VideoView extends FrameLayout
 		lp.gravity = gravity;
 		infoOverlay.setLayoutParams(lp);
 		infoOverlay.setSize(size);
-		infoOverlay.setItems(showClock, showBatteryPct, showBatteryTemp);
+		infoOverlay.setOnlyWhenControlPanelVisible(onlyWhenControlPanelVisible);
+		infoOverlay.setItems(showClock, showClockIcon, showBatteryPct, showBatteryIcon, showBatteryTemp,
+				showTempIcon, showDistance, showDistanceIcon);
+	}
+
+	/**
+	 * Called by {@code ControlPanelView} whenever its own on-screen visibility flips, so the Info
+	 * Overlay's "only show while control panel is visible" option can react immediately rather than
+	 * waiting for the next unrelated overlay refresh.
+	 */
+	public void setControlPanelVisible(boolean controlPanelVisible) {
+		if (this.controlPanelVisible == controlPanelVisible) return;
+		this.controlPanelVisible = controlPanelVisible;
+		if (infoOverlay != null) infoOverlay.setControlPanelVisible(controlPanelVisible);
 	}
 
 	public void showVideo() {

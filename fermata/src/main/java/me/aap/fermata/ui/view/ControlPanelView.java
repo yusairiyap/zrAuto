@@ -307,6 +307,18 @@ public class ControlPanelView extends ConstraintLayout
 		return mask != 0;
 	}
 
+	/**
+	 * Notifies the currently active {@link VideoView}'s Info Overlay of this panel's real on-screen
+	 * visibility, for the "only show while control panel is visible" overlay option -- called from
+	 * every place in this class that flips visibility, including the several spots below that call
+	 * {@code super.setVisibility(...)} directly rather than going through the override just below,
+	 * since that bypasses it entirely.
+	 */
+	private void notifyControlPanelVisibility() {
+		VideoView vv = getActivity().getActiveVideoView();
+		if (vv != null) vv.setControlPanelVisible(isVisible(this));
+	}
+
 	@Override
 	public void setVisibility(int visibility) {
 		MainActivityDelegate a = getActivity();
@@ -332,6 +344,7 @@ public class ControlPanelView extends ConstraintLayout
 			}
 		}
 
+		notifyControlPanelVisibility();
 		checkPlaybackTimer(a);
 	}
 
@@ -371,6 +384,7 @@ public class ControlPanelView extends ConstraintLayout
 			a.postDelayed(hideTimer, delay);
 		}
 
+		notifyControlPanelVisibility();
 		checkPlaybackTimer(a);
 	}
 
@@ -415,6 +429,7 @@ public class ControlPanelView extends ConstraintLayout
 		}
 
 		setShowHideBarsIcon(a);
+		notifyControlPanelVisibility();
 	}
 
 	@Override
@@ -553,16 +568,20 @@ public class ControlPanelView extends ConstraintLayout
 	private void fadeOut(View v, boolean self) {
 		v.animate().cancel();
 		v.animate().alpha(0f).setDuration(FADE_DURATION).withEndAction(() -> {
-			if (self) super.setVisibility(GONE);
-			else v.setVisibility(GONE);
+			if (self) {
+				super.setVisibility(GONE);
+				notifyControlPanelVisibility();
+			} else v.setVisibility(GONE);
 		}).start();
 	}
 
 	private void fadeIn(View v, boolean self) {
 		v.animate().cancel();
 		v.setAlpha(0f);
-		if (self) super.setVisibility(VISIBLE);
-		else v.setVisibility(VISIBLE);
+		if (self) {
+			super.setVisibility(VISIBLE);
+			notifyControlPanelVisibility();
+		} else v.setVisibility(VISIBLE);
 		v.animate().alpha(1f).setDuration(FADE_DURATION).start();
 	}
 
@@ -591,6 +610,7 @@ public class ControlPanelView extends ConstraintLayout
 		clearFocus();
 		hideTimer = new HideTimer(a, delay, true, fb, fb2, fb3);
 		a.postDelayed(hideTimer, delay);
+		notifyControlPanelVisibility();
 		checkPlaybackTimer(a);
 	}
 
@@ -854,15 +874,76 @@ public class ControlPanelView extends ConstraintLayout
 			MediaEngine eng = a.getMediaSessionCallback().getEngine();
 			if (eng == null) return;
 
-			if (pi.isVideo()) {
-				b.addItem(R.id.mute_toggle, R.drawable.volume_mute, R.string.action_vol_mute_unmute)
-						.setChecked(Action.isMuted(a.getContext()));
-				b.addItem(R.id.dim_toggle, R.drawable.dim_screen, R.string.dim_screen)
-						.setChecked(a.getPrefs().getBooleanPref(MainActivityPrefs.DIM_ENABLED));
+			boolean stream = (pi.isStream());
+
+			if (!pi.isVideo()) {
+				// Plain audio playback keeps the original flat menu -- the category grouping below is
+				// specifically for the fullscreen video control panel (Audio/Video/Playback all assume
+				// a video is playing), and Settings/Exit are video-only entries to begin with.
+				eng.contributeToMenu(b);
+				buildPlaybackItems(a, b, eng, pi, p, stream);
+				if (eng.supportsAudioEffects()) {
+					b.addItem(R.id.audio_effects_fragment, R.drawable.equalizer, R.string.audio_effects);
+				}
+				eng.contributeToMenuEnd(b);
+				return;
 			}
 
-			boolean stream = (pi.isStream());
-			eng.contributeToMenu(b);
+			b.addItem(R.id.category_audio, R.drawable.audiotrack, R.string.audio)
+					.setSubmenu(s -> buildAudioCategory(a, s, eng));
+
+			// For local playback, super.buildPlayableMenu() above already added a "Video" category
+			// (addVideoMenu() returns true when engine.hasVideoMenu() is false), whose submenu is our
+			// own overridden buildVideoMenu() below -- so Dim screen and any engine-contributed
+			// Quality/Scale end up nested in it alongside the existing scaling/hw-accel entries rather
+			// than duplicating a second "Video" item. YouTube's engine.hasVideoMenu() is true, so
+			// addVideoMenu() skipped adding it there; add it here instead, reusing the same submenu
+			// builder so Dim screen still gets nested with YouTube's own Quality/Scale.
+			if (eng.hasVideoMenu()) {
+				b.addItem(R.id.video, R.drawable.video, R.string.video).setSubmenu(this::buildVideoMenu);
+			}
+
+			b.addItem(R.id.category_playback, R.drawable.playback_settings, R.string.playback)
+					.setSubmenu(s -> buildPlaybackItems(a, s, eng, pi, p, stream));
+
+			// Navigate away entirely, so keep these last rather than grouped with the categories
+			// above. Dim screen settings itself is deliberately not offered here -- this control-panel
+			// "..." menu is meant to stay focused on this item's own playback/quality controls, and Dim
+			// screen settings (still reachable via the FAB long-press menu, see
+			// SecondaryFabMediator/TertiaryFabMediator) is unrelated to any of them.
+			b.addItem(R.id.settings_fragment, R.drawable.settings, R.string.settings);
+			b.addItem(R.id.nav_exit, R.drawable.exit,
+					a.isCarActivityNotMirror() ? R.string.restart : R.string.exit);
+		}
+
+		private void buildAudioCategory(MainActivityDelegate a, OverlayMenu.Builder b, MediaEngine eng) {
+			b.setSelectionHandler(this);
+			b.addItem(R.id.mute_toggle, R.drawable.volume_mute, R.string.action_vol_mute_unmute)
+					.setChecked(Action.isMuted(a.getContext()));
+			if (eng.supportsAudioEffects()) {
+				b.addItem(R.id.audio_effects_fragment, R.drawable.equalizer, R.string.effects);
+			}
+			// Engine-contributed items that also navigate away (e.g. YouTube's own Effects/Equalizer
+			// entry), added last so they sort below the in-place toggles above.
+			eng.contributeToMenuEnd(b);
+		}
+
+		@Override
+		protected void buildVideoMenu(OverlayMenu.Builder b) {
+			b.setSelectionHandler(this);
+			b.addItem(R.id.dim_toggle, R.drawable.dim_screen, R.string.dim_screen)
+					.setChecked(getActivity().getPrefs().getBooleanPref(MainActivityPrefs.DIM_ENABLED));
+			// Engine-contributed video-related items (e.g. YouTube's own Quality/Scale entries).
+			engine.contributeToMenu(b);
+			// Local engines (engine.hasVideoMenu() == false): append the base class's own video-scaling/
+			// hw-accel/watched-threshold/audio-track entries into this same category. YouTube
+			// (hasVideoMenu() == true) has none of those concepts, so skip it there.
+			if (!engine.hasVideoMenu()) super.buildVideoMenu(b);
+		}
+
+		private void buildPlaybackItems(MainActivityDelegate a, OverlayMenu.Builder b, MediaEngine eng,
+																		 PlayableItem pi, BrowsableItemPrefs p, boolean stream) {
+			b.setSelectionHandler(this);
 
 			if (!stream && !pi.isExternal()) {
 				if (pi.isRepeatItemEnabled() || p.getRepeatPref()) {
@@ -882,9 +963,9 @@ public class ControlPanelView extends ConstraintLayout
 				}
 			}
 
-			if (eng.supportsAudioEffects()) {
-				b.addItem(R.id.audio_effects_fragment, R.drawable.equalizer, R.string.audio_effects);
-			}
+			// Engine-contributed items that belong in this category (e.g. YouTube's own Repeat/Shuffle,
+			// which apply even though pi.isExternal() is true for every YouTube item).
+			eng.contributeToPlaybackMenu(b);
 
 			if (!stream) {
 				b.addItem(R.id.speed, R.drawable.speed, R.string.speed)
@@ -893,26 +974,6 @@ public class ControlPanelView extends ConstraintLayout
 
 			b.addItem(R.id.timer, R.drawable.timer, R.string.timer)
 					.setSubmenu(s -> new TimerMenuHandler(a).build(s));
-
-			// Runs before Settings/Exit below so an engine-contributed item that also navigates away
-			// (e.g. YouTube's own Audio effects/Equalizer entry) still sorts above them.
-			eng.contributeToMenuEnd(b);
-
-			if (pi.isVideo()) {
-				// Navigate away entirely, so keep this last rather than grouped with the in-place
-				// toggles above. Dim screen settings itself is deliberately not offered here -- this
-				// control-panel "..." menu is meant to stay focused on this item's own
-				// playback/quality controls, and Dim screen settings (still reachable via the
-				// FAB long-press menu, see SecondaryFabMediator/TertiaryFabMediator) is unrelated to
-				// any of them.
-				b.addItem(R.id.settings_fragment, R.drawable.settings, R.string.settings);
-			}
-
-			if (pi.isVideo()) {
-				// Absolute last item in the menu, after anything an engine contributes at the end too.
-				b.addItem(R.id.nav_exit, R.drawable.exit,
-						a.isCarActivityNotMirror() ? R.string.restart : R.string.exit);
-			}
 		}
 
 		private void buildRepeatMenu(OverlayMenu.Builder b) {
@@ -1188,6 +1249,7 @@ public class ControlPanelView extends ConstraintLayout
 
 			if (activity.getPrefs().getSysBarsOnVideoTouchPref()) activity.setFullScreen(true);
 			ControlPanelView.super.setVisibility(GONE);
+			notifyControlPanelVisibility();
 
 			for (View v : views) {
 				if (v != null) v.setVisibility(GONE);

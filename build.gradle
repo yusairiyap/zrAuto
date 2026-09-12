@@ -29,6 +29,12 @@ ext {
                     class  : 'me.aap.fermata.addon.SubGenAddon',
                     depends: 'exoplayer,translate'
             ],
+            [
+                    name       : 'fuel_log',
+                    icon       : 'fuel',
+                    class      : 'me.aap.fermata.addon.fuel.FuelLogAddon',
+                    hasSettings: false
+            ],
     ]
 }
 

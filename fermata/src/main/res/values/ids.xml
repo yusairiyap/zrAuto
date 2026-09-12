@@ -37,6 +37,7 @@
     <item name="felex_fragment" type="id" />
     <item name="cast_addon" type="id" />
     <item name="chat_addon" type="id" />
+    <item name="fuel_log_addon" type="id" />
     <item name="subgen_addon" type="id" />
     <item name="whisper_addon" type="id" />
     <item name="translate_addon" type="id" />
@@ -71,6 +72,10 @@
     <item name="playlist_create" type="id" />
     <item name="playlist_remove" type="id" />
     <item name="playlist_remove_item" type="id" />
+
+    <item name="category_audio" type="id" />
+    <item name="category_video" type="id" />
+    <item name="category_playback" type="id" />
 
     <item name="video" type="id" />
     <item name="video_scaling" type="id" />

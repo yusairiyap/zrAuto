@@ -771,11 +771,24 @@ public class SettingsFragment extends MainActivityFragment
 		});
 		var infoOverlayCond = new PrefCondition<>(a.getPrefs(), MainActivityPrefs.CLOCK_POS,
 				pref -> a.getPrefs().getIntPref(pref) != MainActivityPrefs.CLOCK_POS_NONE);
+		var showClockCond = PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK);
+		var showBatteryPctCond =
+				PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_PCT);
+		var showBatteryTempCond =
+				PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_TEMP);
+		var showDistanceCond =
+				PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE);
 		sub2.addBooleanPref(o -> {
 			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK;
 			o.title = R.string.info_overlay_show_clock;
 			o.visibility = infoOverlayCond.copy();
+		});
+		sub2.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK_ICON;
+			o.title = R.string.info_overlay_show_clock_icon;
+			o.visibility = infoOverlayCond.copy().and(showClockCond.copy());
 		});
 		sub2.addBooleanPref(o -> {
 			o.store = a.getPrefs();
@@ -785,8 +798,38 @@ public class SettingsFragment extends MainActivityFragment
 		});
 		sub2.addBooleanPref(o -> {
 			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_ICON;
+			o.title = R.string.info_overlay_show_battery_icon;
+			o.visibility = infoOverlayCond.copy().and(showBatteryPctCond.copy());
+		});
+		sub2.addBooleanPref(o -> {
+			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_TEMP;
 			o.title = R.string.info_overlay_show_battery_temp;
+			o.visibility = infoOverlayCond.copy();
+		});
+		sub2.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_TEMP_ICON;
+			o.title = R.string.info_overlay_show_temp_icon;
+			o.visibility = infoOverlayCond.copy().and(showBatteryTempCond.copy());
+		});
+		sub2.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE;
+			o.title = R.string.info_overlay_show_distance;
+			o.visibility = infoOverlayCond.copy();
+		});
+		sub2.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE_ICON;
+			o.title = R.string.info_overlay_show_distance_icon;
+			o.visibility = infoOverlayCond.copy().and(showDistanceCond.copy());
+		});
+		sub2.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE;
+			o.title = R.string.info_overlay_only_when_control_panel_visible;
 			o.visibility = infoOverlayCond.copy();
 		});
 		sub2.addFloatPref(o -> {
@@ -912,7 +955,7 @@ public class SettingsFragment extends MainActivityFragment
 
 	private void addSecondaryFabPrefs(MainActivityDelegate a, PreferenceSet ps) {
 		var fabActions = new Action[]{Action.FULLSCREEN_TOGGLE, Action.VOLUME_MUTE_UNMUTE,
-				Action.PLAY_PAUSE, Action.DIM_TOGGLE, Action.PRIVATE_MODE_TOGGLE};
+				Action.PLAY_PAUSE, Action.DIM_TOGGLE, Action.PRIVATE_MODE_TOGGLE, Action.REFUEL};
 		var fabActionNames = new int[fabActions.length];
 		var fabActionOrdinals = new int[fabActions.length];
 		for (int i = 0; i < fabActions.length; i++) {

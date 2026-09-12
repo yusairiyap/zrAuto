@@ -32,7 +32,7 @@ public final class SecondaryFabMediator implements FloatingButton.Mediator,
 
 	private static final List<Action> OFFERED_ACTIONS = List.of(
 			Action.FULLSCREEN_TOGGLE, Action.VOLUME_MUTE_UNMUTE, Action.PLAY_PAUSE, Action.DIM_TOGGLE,
-			Action.PRIVATE_MODE_TOGGLE);
+			Action.PRIVATE_MODE_TOGGLE, Action.REFUEL);
 
 	@Nullable
 	private FloatingButton fab;
@@ -82,6 +82,7 @@ public final class SecondaryFabMediator implements FloatingButton.Mediator,
 		if (action == Action.DIM_TOGGLE) return a.getPrefs().getBooleanPref(MainActivityPrefs.DIM_ENABLED)
 				? R.drawable.dim_screen : R.drawable.dim_screen_off;
 		if (action == Action.PRIVATE_MODE_TOGGLE) return R.drawable.private_mode;
+		if (action == Action.REFUEL) return R.drawable.fuel;
 		if (action == Action.PLAY_PAUSE)
 			return a.getMediaSessionCallback().isPlaying() ? R.drawable.pause : R.drawable.play;
 		return R.drawable.play_pause;

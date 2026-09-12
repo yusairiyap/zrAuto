@@ -594,12 +594,22 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		Context ctx = dynCtx(web.getContext());
 		Resources r = ctx.getResources();
 		SplitCompat.install(ctx);
+		// Labelled "Quality"/"Scale" here rather than "Video quality"/"Video scaling" -- these items
+		// are now nested inside the control panel's own "Video" category (see
+		// ControlPanelView.MenuHandler.buildVideoCategory), where the parent category already
+		// supplies the "Video" context.
 		b.addItem(R.id.video_quality,
 				ResourcesCompat.getDrawable(r, R.drawable.video_quality, ctx.getTheme()),
-				r.getString(R.string.video_quality)).setFutureSubmenu(this::videoQualityMenu);
+				r.getString(me.aap.fermata.R.string.quality)).setFutureSubmenu(this::videoQualityMenu);
 		b.addItem(me.aap.fermata.R.id.video_scaling,
 				ResourcesCompat.getDrawable(r, R.drawable.video_scaling, ctx.getTheme()),
-				r.getString(me.aap.fermata.R.string.video_scaling)).setSubmenu(this::videoScalingMenu);
+				r.getString(me.aap.fermata.R.string.scale)).setSubmenu(this::videoScalingMenu);
+	}
+
+	@Override
+	public void contributeToPlaybackMenu(OverlayMenu.Builder b) {
+		Context ctx = dynCtx(web.getContext());
+		Resources r = ctx.getResources();
 
 		// This is also the app's normal control panel "..." menu (it shows over fullscreen YouTube
 		// playback too, see YoutubeFragment's video-view overlay elevation), which otherwise never
@@ -683,9 +693,12 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	public void contributeToMenuEnd(OverlayMenu.Builder b) {
 		Context ctx = dynCtx(web.getContext());
 		Resources r = ctx.getResources();
+		// Labelled "Effects" here rather than "Audio effects" -- this item is now nested inside the
+		// control panel's own "Audio" category (see ControlPanelView.MenuHandler.buildAudioCategory),
+		// where the parent category already supplies the "Audio" context.
 		b.addItem(R.id.youtube_equalizer,
 				ResourcesCompat.getDrawable(r, me.aap.fermata.R.drawable.equalizer, ctx.getTheme()),
-				r.getString(me.aap.fermata.R.string.audio_effects)).setHandler(item -> showEqualizer());
+				r.getString(me.aap.fermata.R.string.effects)).setHandler(item -> showEqualizer());
 	}
 
 	/**
