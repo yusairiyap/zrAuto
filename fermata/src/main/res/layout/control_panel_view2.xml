@@ -54,7 +54,8 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:maxLines="1"
-            android:padding="4dp" />
+            android:padding="4dp"
+            android:textColor="@android:color/white" />
     </LinearLayout>
 
     <me.aap.utils.ui.view.ImageButton
@@ -172,7 +173,8 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:maxLines="1"
-            android:padding="4dp" />
+            android:padding="4dp"
+            android:textColor="@android:color/white" />
 
         <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/control_menu_button_icon"

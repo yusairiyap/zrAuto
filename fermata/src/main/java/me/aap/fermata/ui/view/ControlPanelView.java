@@ -49,7 +49,6 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
-import me.aap.fermata.ui.fragment.SettingsFragment;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.function.BooleanSupplier;
 import me.aap.utils.function.DoubleSupplier;
@@ -277,6 +276,11 @@ public class ControlPanelView extends ConstraintLayout
 	private void seTextAppearance(TextView t, float size) {
 		t.setTextAppearance(textAppearance);
 		t.setTextSize(COMPLEX_UNIT_PX, size);
+		// setTextAppearance() above carries its own android:textColor (the theme's normal
+		// textColorPrimary), silently overwriting the constructor's setLabelColor(VIDEO_MODE_ICON_COLOR)
+		// every time this runs (on bind, and again on every control-panel-size change) -- which is
+		// why seek_time/seek_total kept showing the theme's own color instead of staying white.
+		t.setTextColor(VIDEO_MODE_ICON_COLOR);
 	}
 
 	private void setSize(@IdRes int id, int size) {
@@ -337,12 +341,16 @@ public class ControlPanelView extends ConstraintLayout
 		mask |= MASK_VIDEO_MODE;
 		a.setBarsHidden(true);
 		setShowHideBarsIcon(a);
-		// Kept for local playback (still the only in-panel way to toggle system bars there), but
-		// dropped for a web-embedded source (YouTube) -- that already has its own fullscreen chrome,
-		// and FAB2 defaults to the fullscreen toggle anyway.
-		VideoView vv = a.getActiveVideoView();
-		findViewById(R.id.show_hide_bars)
-				.setVisibility(((vv != null) && vv.hasNativeFullscreen()) ? GONE : VISIBLE);
+		// The show_hide_bars_icon toggle (whose only purpose is revealing the system nav bar) is
+		// kept for local playback -- still the only in-panel way to do that there -- but dropped for
+		// a web-embedded source (YouTube), which already has its own fullscreen chrome. Only the icon
+		// itself is hidden, not the whole show_hide_bars row: that row also holds seek_time (the
+		// elapsed-time label), which should stay visible and clickable regardless. Disabling the
+		// row's own click handler (rather than leaving a dead icon-less tap target that still
+		// silently reveals the nav bar) keeps that behavior fully gone, not just invisible.
+		boolean nativeFullscreen = isNativeFullscreen(a);
+		findViewById(R.id.show_hide_bars_icon).setVisibility(nativeFullscreen ? GONE : VISIBLE);
+		findViewById(R.id.show_hide_bars).setClickable(!nativeFullscreen);
 
 		View fb = a.getFloatingButton();
 		View fb2 = fab2(a);
@@ -366,6 +374,15 @@ public class ControlPanelView extends ConstraintLayout
 		checkPlaybackTimer(a);
 	}
 
+	/**
+	 * True while a web-embedded video (YouTube) is in its own native fullscreen -- see
+	 * {@link #enableVideoMode()}'s use of this for {@code show_hide_bars_icon}.
+	 */
+	private boolean isNativeFullscreen(MainActivityDelegate a) {
+		VideoView vv = a.getActiveVideoView();
+		return (vv != null) && vv.hasNativeFullscreen();
+	}
+
 	/** The secondary FAB, if the user has it enabled -- null otherwise (shows/hides with fb). */
 	@Nullable
 	private View fab2(MainActivityDelegate a) {
@@ -386,6 +403,8 @@ public class ControlPanelView extends ConstraintLayout
 		mask &= ~MASK_VIDEO_MODE;
 		a.getFloatingButton().setVisibility(VISIBLE);
 		findViewById(R.id.show_hide_bars).setVisibility(VISIBLE);
+		findViewById(R.id.show_hide_bars).setClickable(true);
+		findViewById(R.id.show_hide_bars_icon).setVisibility(VISIBLE);
 
 		if ((mask & MASK_VISIBLE) == 0) {
 			super.setVisibility(GONE);
@@ -880,9 +899,12 @@ public class ControlPanelView extends ConstraintLayout
 			eng.contributeToMenuEnd(b);
 
 			if (pi.isVideo()) {
-				// Navigate away entirely, so keep these last rather than grouped with the in-place
-				// toggles above.
-				b.addItem(R.id.dim_settings, R.drawable.settings, R.string.dim_settings);
+				// Navigate away entirely, so keep this last rather than grouped with the in-place
+				// toggles above. Dim screen settings itself is deliberately not offered here -- this
+				// control-panel "..." menu is meant to stay focused on this item's own
+				// playback/quality controls, and Dim screen settings (still reachable via the
+				// FAB long-press menu, see SecondaryFabMediator/TertiaryFabMediator) is unrelated to
+				// any of them.
 				b.addItem(R.id.settings_fragment, R.drawable.settings, R.string.settings);
 			}
 
@@ -928,14 +950,6 @@ public class ControlPanelView extends ConstraintLayout
 				MainActivityDelegate a = getActivity();
 				Action.VOLUME_MUTE_UNMUTE.getHandler()
 						.handle(a.getMediaSessionCallback(), a, SystemClock.uptimeMillis());
-				return true;
-			} else if (id == R.id.dim_settings) {
-				MainActivityDelegate a = getActivity();
-				// Settings is a normal fragment hosted in frame_layout, which sits behind whatever
-				// is drawing the fullscreen video -- leave fullscreen first, or the settings page
-				// navigates but stays hidden underneath it.
-				a.exitVideoMode();
-				a.showFragment(R.id.settings_fragment, SettingsFragment.SHOW_DIM_SETTINGS);
 				return true;
 			} else if (id == R.id.settings_fragment) {
 				MainActivityDelegate a = getActivity();

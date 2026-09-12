@@ -235,13 +235,46 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 	}
 
 	public void addToMenu(OverlayMenu.Builder b, boolean setMinWidth) {
-		RecyclerView v = createView(b.getMenu().getContext(), setMinWidth);
+		addToMenu(b, setMinWidth ? (Resources.getSystem().getDisplayMetrics().widthPixels * 2 / 3) : 0);
+	}
+
+	/**
+	 * @param minWidthPx minimum popup width in pixels, or 0 for none. A {@link RecyclerView} inside
+	 *                   the menu's own wrap-content container (see OverlayMenuView.MenuBuilder#init)
+	 *                   has nothing else forcing it to a sensible width -- a preference row's own
+	 *                   match-parent width just resolves against the RecyclerView's, which resolves
+	 *                   against nothing, collapsing the whole popup (and anything meant to stretch
+	 *                   inside a row, like a slider) down toward zero. The boolean overload's
+	 *                   2/3-screen-width default suits a multi-item list menu (sort/view); a single
+	 *                   compact row (e.g. one slider) still needs *some* explicit minimum, just a
+	 *                   smaller one, rather than none at all.
+	 */
+	public void addToMenu(OverlayMenu.Builder b, int minWidthPx) {
+		addToMenu(b, minWidthPx, true);
+	}
+
+	/**
+	 * @param requestFocus whether to focus the first row right away. Worth skipping for a
+	 *                      single-row popup with nothing to navigate between: {@code PreferenceView}
+	 *                      is built on the platform's own {@code android.R.attr.preferenceStyle},
+	 *                      whose default background paints a solid focused-state highlight -- fine
+	 *                      (even necessary) for D-pad/keyboard navigation across a list of rows, but
+	 *                      on a lone row it shows up as a second, inner colored box nested inside
+	 *                      this menu's own rounded background the moment the popup opens.
+	 */
+	public void addToMenu(OverlayMenu.Builder b, int minWidthPx, boolean requestFocus) {
+		RecyclerView v = createView(b.getMenu().getContext(), minWidthPx);
 		b.setCloseHandlerHandler(m -> ((PreferenceViewAdapter) v.getAdapter()).onDestroy());
 		b.setView(v);
-		v.requestFocus();
+		if (requestFocus) v.requestFocus();
 	}
 
 	public RecyclerView createView(Context ctx, boolean setMinWidth) {
+		return createView(ctx,
+				setMinWidth ? (Resources.getSystem().getDisplayMetrics().widthPixels * 2 / 3) : 0);
+	}
+
+	public RecyclerView createView(Context ctx, int minWidthPx) {
 		RecyclerView v = new RecyclerView(ctx) {
 			@Override
 			public View focusSearch(View focused, int direction) {
@@ -254,9 +287,7 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 			}
 		};
 		addToView(v);
-		if (setMinWidth) {
-			v.setMinimumWidth(Resources.getSystem().getDisplayMetrics().widthPixels * 2 / 3);
-		}
+		if (minWidthPx > 0) v.setMinimumWidth(minWidthPx);
 		return v;
 	}
 

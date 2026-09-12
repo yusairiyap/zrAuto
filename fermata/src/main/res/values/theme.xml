@@ -11,6 +11,11 @@
     <style name="AppTheme" parent="Theme.Utils.Base">
         <item name="android:forceDarkAllowed" tools:targetApi="q">true</item>
         <item name="android:isLightTheme" tools:targetApi="q">false</item>
+        <!-- Explicit status/nav bar icon appearance rather than relying on isLightTheme to imply
+        it: dark themes get light (white) bar icons since their bars are always dark-colored.
+        AppTheme.Light/DynamicLight override both to true where their bars are light-colored. -->
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
         <item name="android:navigationBarColor">?attr/colorPrimary</item>
         <item name="android:windowBackground">@drawable/app_background</item>
         <item name="appMediaItemStyle">@style/AppTheme.MediaItemStyle</item>

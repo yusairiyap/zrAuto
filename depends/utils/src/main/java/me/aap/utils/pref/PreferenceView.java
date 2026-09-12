@@ -370,6 +370,17 @@ public class PreferenceView extends ConstraintLayout {
 
 		if (viewConfigurator != null) viewConfigurator.accept(t, sb);
 
+		if (!o.showValue) {
+			t.setVisibility(GONE);
+			// number_pref_layout.xml anchors the seek bar's end to this field's start; with the
+			// field gone, re-anchor it to the parent's end instead so the seek bar actually claims
+			// the freed-up width rather than stopping short at the collapsed field's position.
+			ConstraintLayout.LayoutParams lp = (ConstraintLayout.LayoutParams) sb.getLayoutParams();
+			lp.endToStart = ConstraintLayout.LayoutParams.UNSET;
+			lp.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID;
+			sb.setLayoutParams(lp);
+		}
+
 		t.setEms(o.ems);
 		t.setText(initValue);
 		t.setOnKeyListener(UiUtils::dpadFocusHelper);
@@ -688,6 +699,11 @@ public class PreferenceView extends ConstraintLayout {
 		public int seekScale = 1;
 		public int ems = 2;
 		public boolean showProgress = true;
+		/** Hides the editable numeric value field next to the seek bar, e.g. for a slider whose
+		 * live effect (like a resized card) is its own visible feedback and doesn't need a number
+		 * repeated alongside it. The seek bar then stretches to fill the space that field would
+		 * have used. */
+		public boolean showValue = true;
 	}
 
 	public static class IntOpts extends NumberOpts<IntSupplier> {}
