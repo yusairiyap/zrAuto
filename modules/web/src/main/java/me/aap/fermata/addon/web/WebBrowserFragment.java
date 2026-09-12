@@ -8,6 +8,7 @@ import android.content.Context;
 import android.content.res.Resources;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -52,6 +53,26 @@ import me.aap.utils.ui.view.ToolBarView;
 public class WebBrowserFragment extends MainActivityFragment
 		implements OverlayMenu.SelectionHandler, MainActivityListener {
 	private boolean fullScreenOnResume;
+	// onResume()'s recoverFullscreenVideo() and rebuildFullscreenVideoIfActive() (fed by
+	// MainCarActivity.onWindowFocusChanged()) are two independent signals that can both fire for
+	// the very same Android Auto focus interruption -- their relative order/timing under that
+	// closed-source car SDK is undocumented (see MainCarActivity.onWindowFocusChanged()'s doc
+	// comment). Without this pair of guards, a second, fully redundant exit+enter fullscreen cycle
+	// landing while the first is still resolving (its own JS-side polling can legitimately take up
+	// to 5s, see YoutubeWebView#requestFullScreen()) or just after it finished is exactly the kind
+	// of WebChromeClient contract violation that has previously left the page's own fullscreen
+	// tracking permanently stuck until an app restart (see FermataWebView#exitPageFullScreen()).
+	private boolean fullScreenRecoveryInFlight;
+	private boolean fullScreenRecoveryEverCompleted;
+	private long lastFullScreenRecoveryCompletedAt;
+	private static final long FULLSCREEN_RECOVERY_GRACE_MS = 1000;
+	// chrome.enterFullScreen()'s returned promise only resolves via onShowCustomView() -- if the
+	// page-side video element search it depends on (YoutubeWebView#requestFullScreen()) gives up
+	// after its own ~5s budget without ever finding one, that promise is simply left pending
+	// forever (see the JS_ERR case in FermataJsInterface#handleEvent(), which only logs). Without
+	// this backstop, that pre-existing gap would now also leave fullScreenRecoveryInFlight stuck true
+	// forever, permanently locking out all future recovery -- worse than the bug being fixed here.
+	private static final long FULLSCREEN_RECOVERY_TIMEOUT_MS = 6000;
 	@Nullable
 	private PreferenceStore.Listener privateModeListener;
 	// applyPrivateModeProfile() destroys and recreates the WebView synchronously on the main thread
@@ -209,7 +230,7 @@ public class WebBrowserFragment extends MainActivityFragment
 		// Calling here onResume makes the video to not get freezed
 		// when you switch to another app and go back to Fermata
 		v.onResume();
-		recoverFullscreenVideo();
+		if (beginFullScreenRecovery()) recoverFullscreenVideo();
 	}
 
 	/**
@@ -222,11 +243,13 @@ public class WebBrowserFragment extends MainActivityFragment
 	 * <p>
 	 * Deliberately calls {@code enterFullScreen()} directly here rather than going through the
 	 * overridable {@link #recoverFullscreenVideo()} hook: {@code onWindowFocusChanged}'s exact
-	 * semantics under this car SDK aren't documented, this guard has no debounce, and it stays
-	 * armed for as long as a video sits paused -- confirmed on-device that routing it into
-	 * {@code YoutubeFragment}'s reload-based recovery broke ordinary pause/resume under Android
-	 * Auto (a stray focus event during a pause could silently reload the page). Keep this trigger
-	 * doing only the safe, reversible thing it was originally built for.
+	 * semantics under this car SDK aren't documented, and it stays armed for as long as a video
+	 * sits paused -- confirmed on-device that routing it into {@code YoutubeFragment}'s
+	 * reload-based recovery broke ordinary pause/resume under Android Auto (a stray focus event
+	 * during a pause could silently reload the page). Keep this trigger doing only the safe,
+	 * reversible thing it was originally built for. {@link #beginFullScreenRecovery()} still guards
+	 * it against overlapping with {@link #onResume()}'s own recovery for the same interruption --
+	 * see that method's doc comment.
 	 */
 	public void rebuildFullscreenVideoIfActive() {
 		if (!BuildConfig.AUTO) return;
@@ -234,14 +257,22 @@ public class WebBrowserFragment extends MainActivityFragment
 		if (v == null) return;
 		FermataChromeClient chrome = v.getWebChromeClient();
 		if ((chrome == null) || !chrome.isFullScreen()) return;
+		if (!beginFullScreenRecovery()) return;
 		v.onResume();
 		chrome.exitFullScreen();
-		MainActivityDelegate.getActivityDelegate(getContext()).onSuccess(a -> a.post(() ->
-				// Re-clear the page's own fullscreen state immediately before re-entering (not just
-				// once, back at the exit above) and wait for confirmation -- see
-				// FermataWebView#exitPageFullScreen() for why relying on the earlier exit alone isn't
-				// enough to avoid a race.
-				v.exitPageFullScreen(chrome::enterFullScreen)));
+		MainActivityDelegate.getActivityDelegate(getContext()).onFailure(err -> endFullScreenRecovery())
+				.onSuccess(a -> {
+					// Safety net -- see FULLSCREEN_RECOVERY_TIMEOUT_MS's doc comment. A no-op if the
+					// completion callback below already released the claim by the time this fires.
+					a.postDelayed(this::endFullScreenRecovery, FULLSCREEN_RECOVERY_TIMEOUT_MS);
+					a.post(() ->
+							// Re-clear the page's own fullscreen state immediately before re-entering (not
+							// just once, back at the exit above) and wait for confirmation -- see
+							// FermataWebView#exitPageFullScreen() for why relying on the earlier exit alone
+							// isn't enough to avoid a race.
+							v.exitPageFullScreen(() -> chrome.enterFullScreen()
+									.onCompletion((r, err) -> endFullScreenRecovery())));
+				});
 	}
 
 	/**
@@ -249,20 +280,63 @@ public class WebBrowserFragment extends MainActivityFragment
 	 * re-entering fullscreen on the existing page/video element, not currently overridden by any
 	 * subclass (a YouTube-specific reload+reseek+resume recovery was tried here previously; it was
 	 * dropped after being found, on-device, to leave the WebView's fullscreen tracking stuck -- see
-	 * {@code FermataWebView#exitPageFullScreen()}).
+	 * {@code FermataWebView#exitPageFullScreen()}). Always called behind
+	 * {@link #beginFullScreenRecovery()}; ends with {@link #endFullScreenRecovery()} once the
+	 * re-entry actually resolves.
 	 */
 	protected void recoverFullscreenVideo() {
-		MainActivityDelegate.getActivityDelegate(getContext()).onSuccess(a -> a.post(() -> {
-			FermataWebView v = getWebView();
-			if (v == null) return;
-			FermataChromeClient chrome = v.getWebChromeClient();
-			if (chrome == null) return;
-			// See FermataWebView#exitPageFullScreen(): re-clear the page's own fullscreen state right
-			// before asking it to re-enter, rather than relying on the earlier onPause()-time exit
-			// having already taken effect -- a backgrounded WebView can suspend/queue injected JS, so
-			// that exit and this enter could otherwise race in either order.
-			v.exitPageFullScreen(chrome::enterFullScreen);
-		}));
+		MainActivityDelegate.getActivityDelegate(getContext()).onFailure(err -> endFullScreenRecovery())
+				.onSuccess(a -> {
+					// Safety net -- see FULLSCREEN_RECOVERY_TIMEOUT_MS's doc comment. A no-op if the
+					// completion callback below already released the claim by the time this fires.
+					a.postDelayed(this::endFullScreenRecovery, FULLSCREEN_RECOVERY_TIMEOUT_MS);
+					a.post(() -> {
+						FermataWebView v = getWebView();
+						if (v == null) {
+							endFullScreenRecovery();
+							return;
+						}
+						FermataChromeClient chrome = v.getWebChromeClient();
+						if (chrome == null) {
+							endFullScreenRecovery();
+							return;
+						}
+						// See FermataWebView#exitPageFullScreen(): re-clear the page's own fullscreen state
+						// right before asking it to re-enter, rather than relying on the earlier
+						// onPause()-time exit having already taken effect -- a backgrounded WebView can
+						// suspend/queue injected JS, so that exit and this enter could otherwise race in
+						// either order.
+						v.exitPageFullScreen(() -> chrome.enterFullScreen()
+								.onCompletion((r, err) -> endFullScreenRecovery()));
+					});
+				});
+	}
+
+	/**
+	 * Claims the right to run one fullscreen exit+enter recovery cycle -- returns {@code false}
+	 * (do nothing) if one is either still in flight or finished too recently, so
+	 * {@link #onResume()} and {@link #rebuildFullscreenVideoIfActive()} can't both run a full cycle
+	 * for the same underlying interruption. "In flight" alone isn't enough: the two triggers aren't
+	 * reliably ordered against each other under this car SDK, so a short grace period after
+	 * completion also covers the case where the second trigger's delivery is merely delayed just
+	 * past the first cycle's finish rather than genuinely concurrent with it.
+	 */
+	private boolean beginFullScreenRecovery() {
+		if (fullScreenRecoveryInFlight) return false;
+		if (fullScreenRecoveryEverCompleted &&
+				(SystemClock.elapsedRealtime() - lastFullScreenRecoveryCompletedAt <
+						FULLSCREEN_RECOVERY_GRACE_MS)) {
+			return false;
+		}
+		fullScreenRecoveryInFlight = true;
+		return true;
+	}
+
+	/** Releases the claim taken by {@link #beginFullScreenRecovery()}, win or lose. */
+	private void endFullScreenRecovery() {
+		fullScreenRecoveryInFlight = false;
+		fullScreenRecoveryEverCompleted = true;
+		lastFullScreenRecoveryCompletedAt = SystemClock.elapsedRealtime();
 	}
 
 	protected void registerListeners(MainActivityDelegate a) {
