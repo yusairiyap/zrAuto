@@ -11,6 +11,7 @@ import static me.aap.fermata.media.pref.BrowsableItemPrefs.SORT_BY_NAME;
 import static me.aap.fermata.media.pref.BrowsableItemPrefs.SORT_BY_NONE;
 import static me.aap.fermata.media.pref.BrowsableItemPrefs.SORT_BY_RND;
 import static me.aap.utils.ui.UiUtils.isVisible;
+import static me.aap.utils.ui.UiUtils.toIntPx;
 import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CHANGED;
 import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED;
 
@@ -274,11 +275,11 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 				// to be a single slider.
 				o.showValue = false;
 			});
-			// false: unlike addToMenu's other callers (list-style menus, e.g. sort/view), this
-			// popup holds a single slider row -- forcing the same 2/3-screen-width minimum those
-			// want for a readable list of options just left this one needlessly wide, with far more
-			// surrounding empty space than its one control needs.
-			set.addToMenu(b, false);
+			// A modest fixed width rather than addToMenu's other callers' 2/3-screen-width minimum
+			// (meant for a readable list of options, e.g. sort/view) -- this popup holds a single
+			// slider row, so it just needs enough width for that row to lay out and the seek bar to
+			// actually have room to drag in, not nearly the whole screen.
+			set.addToMenu(b, toIntPx(v.getContext(), 220));
 		});
 	}
 

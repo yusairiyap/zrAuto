@@ -339,9 +339,8 @@ public class ControlPanelView extends ConstraintLayout
 		// Kept for local playback (still the only in-panel way to toggle system bars there), but
 		// dropped for a web-embedded source (YouTube) -- that already has its own fullscreen chrome,
 		// and FAB2 defaults to the fullscreen toggle anyway.
-		VideoView vv = a.getActiveVideoView();
-		findViewById(R.id.show_hide_bars)
-				.setVisibility(((vv != null) && vv.hasNativeFullscreen()) ? GONE : VISIBLE);
+		boolean nativeFullscreen = isNativeFullscreen(a);
+		findViewById(R.id.show_hide_bars).setVisibility(nativeFullscreen ? GONE : VISIBLE);
 
 		View fb = a.getFloatingButton();
 		View fb2 = fab2(a);
@@ -354,7 +353,7 @@ public class ControlPanelView extends ConstraintLayout
 			if (fb3 != null) fb3.setVisibility(GONE);
 			super.setVisibility(GONE);
 		} else {
-			fb.setVisibility(VISIBLE);
+			fb.setVisibility(nativeFullscreen ? GONE : VISIBLE);
 			if (fb2 != null) fb2.setVisibility(VISIBLE);
 			if (fb3 != null) fb3.setVisibility(VISIBLE);
 			super.setVisibility(VISIBLE);
@@ -363,6 +362,20 @@ public class ControlPanelView extends ConstraintLayout
 		}
 
 		checkPlaybackTimer(a);
+	}
+
+	/**
+	 * True while a web-embedded video (YouTube) is in its own native fullscreen -- see
+	 * {@link #enableVideoMode()}'s use of the same check for {@code show_hide_bars}. The main FAB
+	 * defaults to a back-arrow in video mode ({@code FloatingButtonMediator}) whose tap both exits
+	 * fullscreen and reveals the system nav bar; that's redundant chrome on top of YouTube's own
+	 * fullscreen UI (which already has its own way back out) and, unlike local playback, isn't the
+	 * only way to reach it here, so it's left out of every reveal below rather than shown alongside
+	 * the seek bar/elapsed time.
+	 */
+	private boolean isNativeFullscreen(MainActivityDelegate a) {
+		VideoView vv = a.getActiveVideoView();
+		return (vv != null) && vv.hasNativeFullscreen();
 	}
 
 	/** The secondary FAB, if the user has it enabled -- null otherwise (shows/hides with fb). */
@@ -506,16 +519,17 @@ public class ControlPanelView extends ConstraintLayout
 		View fb = a.getFloatingButton();
 		View fb2 = fab2(a);
 		View fb3 = fab3(a);
+		boolean nativeFullscreen = isNativeFullscreen(a);
 
 		if (getVisibility() == VISIBLE) {
 			fadeOut(this, true);
-			fadeOut(fb, false);
+			if (!nativeFullscreen) fadeOut(fb, false);
 			if (fb2 != null) fadeOut(fb2, false);
 			if (fb3 != null) fadeOut(fb3, false);
 			if (a.getPrefs().getSysBarsOnVideoTouchPref()) a.setFullScreen(true);
 		} else {
 			fadeIn(this, true);
-			fadeIn(fb, false);
+			if (nativeFullscreen) fb.setVisibility(GONE); else fadeIn(fb, false);
 			if (fb2 != null) fadeIn(fb2, false);
 			if (fb3 != null) fadeIn(fb3, false);
 			if (a.getPrefs().getSysBarsOnVideoTouchPref()) a.setFullScreen(false);
@@ -565,7 +579,7 @@ public class ControlPanelView extends ConstraintLayout
 		View fb3 = fab3(a);
 		int delay = getSeekDelay();
 		super.setVisibility(VISIBLE);
-		fb.setVisibility(VISIBLE);
+		fb.setVisibility(isNativeFullscreen(a) ? GONE : VISIBLE);
 		if (fb2 != null) fb2.setVisibility(VISIBLE);
 		if (fb3 != null) fb3.setVisibility(VISIBLE);
 		clearFocus();
