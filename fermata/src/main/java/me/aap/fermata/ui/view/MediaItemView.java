@@ -17,6 +17,7 @@ import android.content.res.ColorStateList;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.Typeface;
@@ -143,8 +144,8 @@ public class MediaItemView extends ConstraintLayout
 	}
 
 	public void setSize(Context ctx, boolean grid, float size) {
-		setTextAppearance(ctx, getTitle(), titleTextAppearance, size);
-		setTextAppearance(ctx, getSubtitle(), subtitleTextAppearance, size);
+		setTextAppearance(ctx, getTitle(), titleTextAppearance, size, grid);
+		setTextAppearance(ctx, getSubtitle(), subtitleTextAppearance, size, grid);
 		if (!grid) {
 			int iconSize = (int) (getTitle().getTextSize() + getSubtitle().getTextSize() + toPx(ctx,
 					10));
@@ -156,10 +157,27 @@ public class MediaItemView extends ConstraintLayout
 		}
 	}
 
-	private void setTextAppearance(Context ctx, TextView v, @StyleRes int res, float scale) {
+	/**
+	 * {@code grid} is false for the horizontal list row layout, whose title/subtitle sit directly
+	 * on the card's own background and should follow the theme like everything else there, hence
+	 * {@code textTint} ({@code android:textColor} from {@code appMediaItemStyle}, e.g.
+	 * {@code media_item_text_color}'s {@code ?android:textColorSecondary}). It's true for the grid
+	 * card layout, whose title/subtitle are instead overlaid on the thumbnail/icon over a dark
+	 * scrim (media_item_grid_scrim.xml) specifically so they read white regardless of the
+	 * thumbnail underneath -- text_tint's theme-driven color (dark ink in a light theme) would
+	 * blend into that same dark scrim just as easily as it does into a plain light-themed card
+	 * background, which is exactly why grid titles were unreadable under a light theme even though
+	 * media_item_grid_layout.xml itself already hardcodes white for them: v.setTextAppearance(res)
+	 * on the next line applies that appearance's own color too, silently overwriting the layout's
+	 * white the same way the old unconditional setTextColor(textTint) below it did, so grid mode
+	 * re-asserts white afterward instead of skipping both.
+	 */
+	private void setTextAppearance(Context ctx, TextView v, @StyleRes int res, float scale,
+																	boolean grid) {
 		v.setTextAppearance(res);
 		v.setTextSize(COMPLEX_UNIT_PX, getTextAppearanceSize(ctx, res) * scale);
-		v.setTextColor(textTint);
+		if (grid) v.setTextColor(Color.WHITE);
+		else v.setTextColor(textTint);
 	}
 
 	public void setHolder(@Nullable MediaItemViewHolder holder) {
