@@ -49,7 +49,6 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
-import me.aap.fermata.ui.fragment.SettingsFragment;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.function.BooleanSupplier;
 import me.aap.utils.function.DoubleSupplier;
@@ -880,9 +879,12 @@ public class ControlPanelView extends ConstraintLayout
 			eng.contributeToMenuEnd(b);
 
 			if (pi.isVideo()) {
-				// Navigate away entirely, so keep these last rather than grouped with the in-place
-				// toggles above.
-				b.addItem(R.id.dim_settings, R.drawable.settings, R.string.dim_settings);
+				// Navigate away entirely, so keep this last rather than grouped with the in-place
+				// toggles above. Dim screen settings itself is deliberately not offered here -- this
+				// control-panel "..." menu is meant to stay focused on this item's own
+				// playback/quality controls, and Dim screen settings (still reachable via the
+				// FAB long-press menu, see SecondaryFabMediator/TertiaryFabMediator) is unrelated to
+				// any of them.
 				b.addItem(R.id.settings_fragment, R.drawable.settings, R.string.settings);
 			}
 
@@ -928,14 +930,6 @@ public class ControlPanelView extends ConstraintLayout
 				MainActivityDelegate a = getActivity();
 				Action.VOLUME_MUTE_UNMUTE.getHandler()
 						.handle(a.getMediaSessionCallback(), a, SystemClock.uptimeMillis());
-				return true;
-			} else if (id == R.id.dim_settings) {
-				MainActivityDelegate a = getActivity();
-				// Settings is a normal fragment hosted in frame_layout, which sits behind whatever
-				// is drawing the fullscreen video -- leave fullscreen first, or the settings page
-				// navigates but stays hidden underneath it.
-				a.exitVideoMode();
-				a.showFragment(R.id.settings_fragment, SettingsFragment.SHOW_DIM_SETTINGS);
 				return true;
 			} else if (id == R.id.settings_fragment) {
 				MainActivityDelegate a = getActivity();

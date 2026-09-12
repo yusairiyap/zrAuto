@@ -269,8 +269,16 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 				o.scale = 0.05f;
 				o.seekMin = 10;
 				o.seekMax = 40;
+				// The live-resizing grid behind this popup is its own feedback; the numeric value
+				// field next to the slider is redundant here and just adds clutter to a menu meant
+				// to be a single slider.
+				o.showValue = false;
 			});
-			set.addToMenu(b, true);
+			// false: unlike addToMenu's other callers (list-style menus, e.g. sort/view), this
+			// popup holds a single slider row -- forcing the same 2/3-screen-width minimum those
+			// want for a readable list of options just left this one needlessly wide, with far more
+			// surrounding empty space than its one control needs.
+			set.addToMenu(b, false);
 		});
 	}
 
