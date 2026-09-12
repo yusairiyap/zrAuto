@@ -10,6 +10,12 @@
         way. -->
         <item name="android:isLightTheme" tools:targetApi="q">true</item>
 
+        <!-- Both the status bar and nav bar backgrounds are light here (colorPrimary, below, is
+        ?android:colorBackground i.e. white), so their icons need to render dark to stay visible,
+        rather than the white icons the dark themes' bars need. -->
+        <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">true</item>
+
         <!-- Status bar-->
         <item name="colorPrimaryDark">#445D8F</item>
 

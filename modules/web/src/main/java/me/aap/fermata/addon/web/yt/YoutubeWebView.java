@@ -107,6 +107,7 @@ public class YoutubeWebView extends FermataWebView {
 		hideAppPromoBanners();
 		attachAdObserver();
 		disableAutoplay();
+		disableVideoPreviews();
 		addFocusHighlight();
 		currentCookieManager().flush();
 		refreshAddressBarTitle();
@@ -496,6 +497,51 @@ public class YoutubeWebView extends FermataWebView {
 				"  window.__fermataAutoplayObserver = new MutationObserver(fermataDisableAutoplay);\n" +
 				"  window.__fermataAutoplayObserver.observe(document.body, " +
 				"{childList: true, subtree: true, attributes: true, attributeFilter: ['aria-checked']});\n" +
+				"}");
+	}
+
+	/**
+	 * Independent of (and more reliable than) the "Video previews" toggle in YouTube's own General
+	 * settings (Home/Search feed rows silently autoplaying a muted preview clip as you scroll):
+	 * that account-level preference doesn't survive being turned off (it isn't tied to this device
+	 * or session, and toggling it back off after it re-enables itself is a known YouTube-side
+	 * annoyance, not something this app's settings can reach). A feed preview video is also what was
+	 * behind unwanted jumps straight into fullscreen playback -- {@link #requestFullScreen()} and
+	 * the fullscreen-entry FAB both locate the "current" video with a bare
+	 * {@code document.querySelector('video')}, which happily returns a feed preview's element if one
+	 * happens to be playing, so killing every preview before that lookup ever runs removes the
+	 * ambiguity rather than trying to special-case it there.
+	 * <p>
+	 * Real playback only ever happens on the watch/shorts pages, so anything under {@code <video>}
+	 * found anywhere else is necessarily a feed preview: paused, muted and hidden immediately rather
+	 * than matched against a preview-specific selector, since YouTube's own preview container
+	 * class/element names are unstable across app versions (same reasoning as {@link
+	 * #disableAutoplay()}'s comment on {@code .ytp-autonav-toggle-button}). Re-applied via
+	 * MutationObserver (idempotent guard, same pattern as {@link #disableAutoplay()}) since feed
+	 * rows mount/unmount their preview elements continuously while scrolling, not just once per page
+	 * load.
+	 */
+	private void disableVideoPreviews() {
+		loadUrl("javascript:\n" +
+				"function fermataKillPreviewVideo(v) {\n" +
+				"  var p = location.pathname;\n" +
+				"  if (p.indexOf('/watch') === 0 || p.indexOf('/shorts') === 0) return;\n" +
+				"  try {\n" +
+				"    v.pause();\n" +
+				"    v.muted = true;\n" +
+				"    v.removeAttribute('autoplay');\n" +
+				"    v.removeAttribute('src');\n" +
+				"    v.style.display = 'none';\n" +
+				"  } catch (e) {}\n" +
+				"}\n" +
+				"function fermataScanForPreviewVideos() {\n" +
+				"  document.querySelectorAll('video').forEach(fermataKillPreviewVideo);\n" +
+				"}\n" +
+				"fermataScanForPreviewVideos();\n" +
+				"if (!window.__fermataPreviewObserver) {\n" +
+				"  window.__fermataPreviewObserver = new MutationObserver(fermataScanForPreviewVideos);\n" +
+				"  window.__fermataPreviewObserver.observe(document.body, " +
+				"{childList: true, subtree: true});\n" +
 				"}");
 	}
 

@@ -67,6 +67,10 @@
         <item name="colorOutline">#445D8F</item>
         <item name="android:colorBackground">#FFFFFF</item>
         <item name="android:isLightTheme" tools:targetApi="q">true</item>
+        <!-- The status bar background follows android:colorBackground (white) here, so its icons
+        need to render dark; the nav bar stays colorPrimary (blue), which the dark-icon default
+        from the base AppTheme already suits, so it isn't overridden. -->
+        <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
     </style>
 
 </resources>
