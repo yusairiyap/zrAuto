@@ -1,20 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Bottom-anchored scrim for grid cards, behind the white title/subtitle overlaid on it.
-     Previously faded from opaque at the card's bottom edge to fully transparent at this view's
-     own top edge (android:angle="90" draws start-to-end as bottom-to-top): the title/subtitle
-     text block sits close to that top edge (see media_item_grid_layout.xml's
-     height_percent="0.6" on this view), so the title in particular ended up over little more
-     than a faint tint, fine against a plain dark thumbnail, but against a bright, colorful cover
-     (album art, a light photo) the white text all but disappeared. endColor is now dark enough on
-     its own (55% opaque) that the whole band stays legible regardless of what's underneath;
-     startColor/centerColor keep the bottom noticeably darker still so there's some depth to the
-     scrim rather than a single flat tint. -->
+<!-- Full-card scrim behind the white title/subtitle overlaid on the icon/thumbnail at the bottom.
+     Two earlier versions of this only covered a fraction of the card's height
+     (media_item_grid_layout.xml's media_item_scrim view is now constrained to the icon's full
+     top-to-bottom span, not a percentage of it): whatever opacity this drawable started at its
+     own top edge showed up as a hard, visibly abrupt line partway down the card, right where the
+     un-scrimmed thumbnail met the scrim. Spanning the whole card removes that seam: there's
+     nothing above this view for a boundary to show against, so the gradient can fade smoothly
+     from fully transparent at the very top (the thumbnail's own top edge) down to strongly opaque
+     at the bottom, while still keeping the title/subtitle's own region (the bottom ~35-40%,
+     see media_item_grid_layout.xml) dark enough to read regardless of how bright or busy the
+     thumbnail underneath is. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <gradient
         android:angle="90"
         android:startColor="#F2000000"
-        android:centerColor="#DE000000"
-        android:endColor="#8C000000"
+        android:centerColor="#66000000"
+        android:endColor="#00000000"
         android:type="linear" />
 </shape>
