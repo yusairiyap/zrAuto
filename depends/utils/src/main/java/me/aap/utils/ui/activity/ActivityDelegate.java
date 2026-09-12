@@ -7,6 +7,8 @@ import static android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
 import static android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
 import static android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
 import static android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
+import static android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+import static android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
 import static android.view.View.SYSTEM_UI_FLAG_LOW_PROFILE;
 import static android.view.View.SYSTEM_UI_FLAG_VISIBLE;
 import static me.aap.utils.async.Completed.completed;
@@ -554,7 +556,18 @@ public abstract class ActivityDelegate implements EventBroadcaster<ActivityListe
 		AppActivity a = getAppActivity();
 		this.fullScreen = fullScreen;
 		View decor = a.getWindow().getDecorView();
-		decor.setSystemUiVisibility(fullScreen ? FULLSCREEN_FLAGS : SYSTEM_UI_FLAG_VISIBLE);
+		// SYSTEM_UI_FLAG_VISIBLE is 0, so setSystemUiVisibility() here used to *replace* the whole
+		// flag set rather than just the show/hide-bars bits it's meant for -- wiping out
+		// SYSTEM_UI_FLAG_LIGHT_STATUS_BAR/LIGHT_NAVIGATION_BAR, the same bits the AppTheme.Light/
+		// DynamicLight themes' android:windowLightStatusBar/windowLightNavigationBar set on the
+		// window at creation time, every time this ran (e.g. on resume, on window focus change).
+		// That's why a light theme's status/nav bar icons kept reverting to the dark-theme (white,
+		// meant for a dark bar) appearance shortly after launch even though the theme itself was
+		// correct: preserve whatever this window's current light-bar bits are instead of discarding
+		// them.
+		int lightBars = decor.getSystemUiVisibility() &
+				(SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+		decor.setSystemUiVisibility((fullScreen ? FULLSCREEN_FLAGS : SYSTEM_UI_FLAG_VISIBLE) | lightBars);
 	}
 
 	public boolean isFullScreen() {
