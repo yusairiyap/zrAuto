@@ -42,7 +42,7 @@ public class OverlayMenuView extends ScrollView implements OverlayMenu {
 	private static final long FADE_DURATION = 150L;
 	// Slight rounding for the menu's own body and its optional title header, so this floating
 	// popup/context menu no longer reads as a sharp-cornered rectangle against the page behind it.
-	private static final float CORNER_RADIUS_DP = 12f;
+	private static final int CORNER_RADIUS_DP = 12;
 	@ColorInt
 	private final int headerColor;
 
