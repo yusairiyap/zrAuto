@@ -1,21 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Bottom-anchored scrim for grid cards: fully opaque black at the card's bottom edge fading to
-     transparent toward the top, so the white title/subtitle overlaid on it stay legible against
-     any thumbnail. android:angle="90" draws the gradient from bottom (startColor) to top
-     (endColor).
-     centerColor was #73000000 (45% opaque), too weak where the title line actually sits: the
-     title/subtitle text block runs close to the top edge of this view (see
-     media_item_grid_layout.xml's height_percent="0.45" on this scrim), so with the old center
-     stop the title ended up over close to transparent black, barely darkened at all. Against a
-     plain, light-colored icon (e.g. a folder glyph, rather than a busy photo thumbnail) that left
-     the white title/subtitle unreadable. Both stops are darker now so the whole band stays dark
-     enough for white text regardless of what's underneath. -->
+<!-- Bottom-anchored scrim for grid cards, behind the white title/subtitle overlaid on it.
+     Previously faded from opaque at the card's bottom edge to fully transparent at this view's
+     own top edge (android:angle="90" draws start-to-end as bottom-to-top): the title/subtitle
+     text block sits close to that top edge (see media_item_grid_layout.xml's
+     height_percent="0.6" on this view), so the title in particular ended up over little more
+     than a faint tint, fine against a plain dark thumbnail, but against a bright, colorful cover
+     (album art, a light photo) the white text all but disappeared. endColor is now dark enough on
+     its own (55% opaque) that the whole band stays legible regardless of what's underneath;
+     startColor/centerColor keep the bottom noticeably darker still so there's some depth to the
+     scrim rather than a single flat tint. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <gradient
         android:angle="90"
         android:startColor="#F2000000"
-        android:centerColor="#CC000000"
-        android:endColor="#00000000"
+        android:centerColor="#DE000000"
+        android:endColor="#8C000000"
         android:type="linear" />
 </shape>
