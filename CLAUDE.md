@@ -104,6 +104,33 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
 5. Never bypass a failure by disabling the check, skipping a module, or force-pushing over history to
    "reset" CI — fix the underlying cause.
 
+## Long/exhausting bug investigations: ask for adb logs
+
+This session cannot run the app, attach a debugger, or capture logcat — there's no device/emulator
+and no adb here. If an investigation is dragging on (a bug can't be root-caused from reading code
+alone, a crash report is missing detail, or you're going back and forth on hypotheses without a way
+to confirm one), **stop guessing and give the user a concrete `adb` command to run on their own
+machine/device**, then continue once they paste back the output. Examples:
+
+- Full logcat while reproducing, filtered to this app's tag/package:
+  ```sh
+  adb logcat -c && adb logcat | grep -i fermata
+  ```
+  (or `adb logcat --pid=$(adb shell pidof -s me.aap.fermata)` once the app is running, adjusting the
+  package id if a build-flavor/suffix like `APP_ID_SFX` is in play)
+- Crash-only output:
+  ```sh
+  adb logcat *:E AndroidRuntime:E
+  ```
+- Save a full log to a file for pasting/attaching:
+  ```sh
+  adb logcat -d > fermata_log.txt
+  ```
+
+Tailor the filter/tag to what's actually being investigated (e.g. a specific addon's log tag, or
+`*:F` for fatal-only) rather than always using the generic examples above. Ask for the log **before**
+proposing further speculative fixes once a couple of code-reading passes haven't settled the cause.
+
 ## When in doubt, ask
 
 This is someone's personal Android project (not a work codebase) with real users on the release
