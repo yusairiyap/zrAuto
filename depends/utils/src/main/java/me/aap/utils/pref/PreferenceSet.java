@@ -250,10 +250,23 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 	 *                   smaller one, rather than none at all.
 	 */
 	public void addToMenu(OverlayMenu.Builder b, int minWidthPx) {
+		addToMenu(b, minWidthPx, true);
+	}
+
+	/**
+	 * @param requestFocus whether to focus the first row right away. Worth skipping for a
+	 *                      single-row popup with nothing to navigate between: {@code PreferenceView}
+	 *                      is built on the platform's own {@code android.R.attr.preferenceStyle},
+	 *                      whose default background paints a solid focused-state highlight -- fine
+	 *                      (even necessary) for D-pad/keyboard navigation across a list of rows, but
+	 *                      on a lone row it shows up as a second, inner colored box nested inside
+	 *                      this menu's own rounded background the moment the popup opens.
+	 */
+	public void addToMenu(OverlayMenu.Builder b, int minWidthPx, boolean requestFocus) {
 		RecyclerView v = createView(b.getMenu().getContext(), minWidthPx);
 		b.setCloseHandlerHandler(m -> ((PreferenceViewAdapter) v.getAdapter()).onDestroy());
 		b.setView(v);
-		v.requestFocus();
+		if (requestFocus) v.requestFocus();
 	}
 
 	public RecyclerView createView(Context ctx, boolean setMinWidth) {

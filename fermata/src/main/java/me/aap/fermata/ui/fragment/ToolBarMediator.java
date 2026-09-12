@@ -278,8 +278,11 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 			// A modest fixed width rather than addToMenu's other callers' 2/3-screen-width minimum
 			// (meant for a readable list of options, e.g. sort/view) -- this popup holds a single
 			// slider row, so it just needs enough width for that row to lay out and the seek bar to
-			// actually have room to drag in, not nearly the whole screen.
-			set.addToMenu(b, toIntPx(v.getContext(), 220));
+			// actually have room to drag in, not nearly the whole screen. requestFocus=false skips
+			// the platform preference row's default focused-state highlight, which otherwise shows up
+			// as a second, inner colored box nested inside this popup's own rounded background the
+			// moment it opens -- not needed here since there's only one control to reach anyway.
+			set.addToMenu(b, toIntPx(v.getContext(), 260), false);
 		});
 	}
 

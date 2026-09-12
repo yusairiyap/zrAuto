@@ -276,6 +276,11 @@ public class ControlPanelView extends ConstraintLayout
 	private void seTextAppearance(TextView t, float size) {
 		t.setTextAppearance(textAppearance);
 		t.setTextSize(COMPLEX_UNIT_PX, size);
+		// setTextAppearance() above carries its own android:textColor (the theme's normal
+		// textColorPrimary), silently overwriting the constructor's setLabelColor(VIDEO_MODE_ICON_COLOR)
+		// every time this runs (on bind, and again on every control-panel-size change) -- which is
+		// why seek_time/seek_total kept showing the theme's own color instead of staying white.
+		t.setTextColor(VIDEO_MODE_ICON_COLOR);
 	}
 
 	private void setSize(@IdRes int id, int size) {
