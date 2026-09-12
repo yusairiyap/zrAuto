@@ -24,7 +24,7 @@
         android:background="@drawable/media_item_grid_scrim"
         app:layout_constraintBottom_toBottomOf="@id/media_item_icon"
         app:layout_constraintEnd_toEndOf="@id/media_item_icon"
-        app:layout_constraintHeight_percent="0.45"
+        app:layout_constraintHeight_percent="0.6"
         app:layout_constraintStart_toStartOf="@id/media_item_icon" />
 
     <com.google.android.material.textview.MaterialTextView

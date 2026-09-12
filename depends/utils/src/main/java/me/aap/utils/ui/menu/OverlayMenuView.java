@@ -57,12 +57,24 @@ public class OverlayMenuView extends ScrollView implements OverlayMenu {
 				R.style.Theme_Utils_Base_PopupMenuStyle);
 		headerColor = ta.getColor(OverlayMenuView_colorPrimarySurface, Color.TRANSPARENT);
 		int bgColor = ta.getColor(OverlayMenuView_android_colorBackground, Color.TRANSPARENT);
-		float radius = toPx(ctx, CORNER_RADIUS_DP);
-		GradientDrawable bg = new GradientDrawable();
-		bg.setColor(bgColor);
-		bg.setCornerRadius(radius);
-		setBackground(bg);
+		setBackgroundColor(bgColor);
 		ta.recycle();
+	}
+
+	/**
+	 * Overridden (rather than left as plain {@code View.setBackgroundColor}, a flat rectangle) so
+	 * every caller setting this menu's background color -- the constructor above, and external
+	 * callers such as {@code CustomizableNavBarMediator#createOverlayMenu} restyling the menu to
+	 * match a nav bar's own background -- gets the same rounded corners, instead of a caller further
+	 * down the line unknowingly overwriting the rounded {@link GradientDrawable} the constructor
+	 * originally set with a sharp-cornered fill again.
+	 */
+	@Override
+	public void setBackgroundColor(int color) {
+		GradientDrawable bg = new GradientDrawable();
+		bg.setColor(color);
+		bg.setCornerRadius(toPx(getContext(), CORNER_RADIUS_DP));
+		setBackground(bg);
 	}
 
 	@Override

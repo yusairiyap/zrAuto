@@ -2,13 +2,20 @@
 <!-- Bottom-anchored scrim for grid cards: fully opaque black at the card's bottom edge fading to
      transparent toward the top, so the white title/subtitle overlaid on it stay legible against
      any thumbnail. android:angle="90" draws the gradient from bottom (startColor) to top
-     (endColor). -->
+     (endColor).
+     centerColor was #73000000 (45% opaque) -- too weak where the title line actually sits: the
+     title/subtitle text block runs close to the top edge of this view (see
+     media_item_grid_layout.xml's height_percent="0.45" on this scrim), so with the old center
+     stop the title ended up over close-to-transparent black, i.e. barely darkened at all. Against
+     a plain, light-colored icon (e.g. a folder glyph, rather than a busy photo thumbnail) that
+     left the white title/subtitle unreadable. Both stops are darker now so the whole band stays
+     dark enough for white text regardless of what's underneath. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <gradient
         android:angle="90"
-        android:startColor="#E6000000"
-        android:centerColor="#73000000"
+        android:startColor="#F2000000"
+        android:centerColor="#CC000000"
         android:endColor="#00000000"
         android:type="linear" />
 </shape>
