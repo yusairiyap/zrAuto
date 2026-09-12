@@ -63,8 +63,16 @@ public class WebBrowserFragment extends MainActivityFragment
 	// of WebChromeClient contract violation that has previously left the page's own fullscreen
 	// tracking permanently stuck until an app restart (see FermataWebView#exitPageFullScreen()).
 	private boolean fullScreenRecoveryInFlight;
-	private long lastFullScreenRecoveryCompletedAt = Long.MIN_VALUE;
+	private boolean fullScreenRecoveryEverCompleted;
+	private long lastFullScreenRecoveryCompletedAt;
 	private static final long FULLSCREEN_RECOVERY_GRACE_MS = 1000;
+	// chrome.enterFullScreen()'s returned promise only resolves via onShowCustomView() -- if the
+	// page-side video element search it depends on (YoutubeWebView#requestFullScreen()) gives up
+	// after its own ~5s budget without ever finding one, that promise is simply left pending
+	// forever (see the JS_ERR case in FermataJsInterface#handleEvent(), which only logs). Without
+	// this backstop, that pre-existing gap would now also leave fullScreenRecoveryInFlight stuck true
+	// forever, permanently locking out all future recovery -- worse than the bug being fixed here.
+	private static final long FULLSCREEN_RECOVERY_TIMEOUT_MS = 6000;
 	@Nullable
 	private PreferenceStore.Listener privateModeListener;
 	// applyPrivateModeProfile() destroys and recreates the WebView synchronously on the main thread
@@ -253,13 +261,18 @@ public class WebBrowserFragment extends MainActivityFragment
 		v.onResume();
 		chrome.exitFullScreen();
 		MainActivityDelegate.getActivityDelegate(getContext()).onFailure(err -> endFullScreenRecovery())
-				.onSuccess(a -> a.post(() ->
-						// Re-clear the page's own fullscreen state immediately before re-entering (not
-						// just once, back at the exit above) and wait for confirmation -- see
-						// FermataWebView#exitPageFullScreen() for why relying on the earlier exit alone
-						// isn't enough to avoid a race.
-						v.exitPageFullScreen(() -> chrome.enterFullScreen()
-								.onCompletion((r, err) -> endFullScreenRecovery()))));
+				.onSuccess(a -> {
+					// Safety net -- see FULLSCREEN_RECOVERY_TIMEOUT_MS's doc comment. A no-op if the
+					// completion callback below already released the claim by the time this fires.
+					a.postDelayed(this::endFullScreenRecovery, FULLSCREEN_RECOVERY_TIMEOUT_MS);
+					a.post(() ->
+							// Re-clear the page's own fullscreen state immediately before re-entering (not
+							// just once, back at the exit above) and wait for confirmation -- see
+							// FermataWebView#exitPageFullScreen() for why relying on the earlier exit alone
+							// isn't enough to avoid a race.
+							v.exitPageFullScreen(() -> chrome.enterFullScreen()
+									.onCompletion((r, err) -> endFullScreenRecovery())));
+				});
 	}
 
 	/**
@@ -273,25 +286,30 @@ public class WebBrowserFragment extends MainActivityFragment
 	 */
 	protected void recoverFullscreenVideo() {
 		MainActivityDelegate.getActivityDelegate(getContext()).onFailure(err -> endFullScreenRecovery())
-				.onSuccess(a -> a.post(() -> {
-					FermataWebView v = getWebView();
-					if (v == null) {
-						endFullScreenRecovery();
-						return;
-					}
-					FermataChromeClient chrome = v.getWebChromeClient();
-					if (chrome == null) {
-						endFullScreenRecovery();
-						return;
-					}
-					// See FermataWebView#exitPageFullScreen(): re-clear the page's own fullscreen state
-					// right before asking it to re-enter, rather than relying on the earlier
-					// onPause()-time exit having already taken effect -- a backgrounded WebView can
-					// suspend/queue injected JS, so that exit and this enter could otherwise race in
-					// either order.
-					v.exitPageFullScreen(() -> chrome.enterFullScreen()
-							.onCompletion((r, err) -> endFullScreenRecovery()));
-				}));
+				.onSuccess(a -> {
+					// Safety net -- see FULLSCREEN_RECOVERY_TIMEOUT_MS's doc comment. A no-op if the
+					// completion callback below already released the claim by the time this fires.
+					a.postDelayed(this::endFullScreenRecovery, FULLSCREEN_RECOVERY_TIMEOUT_MS);
+					a.post(() -> {
+						FermataWebView v = getWebView();
+						if (v == null) {
+							endFullScreenRecovery();
+							return;
+						}
+						FermataChromeClient chrome = v.getWebChromeClient();
+						if (chrome == null) {
+							endFullScreenRecovery();
+							return;
+						}
+						// See FermataWebView#exitPageFullScreen(): re-clear the page's own fullscreen state
+						// right before asking it to re-enter, rather than relying on the earlier
+						// onPause()-time exit having already taken effect -- a backgrounded WebView can
+						// suspend/queue injected JS, so that exit and this enter could otherwise race in
+						// either order.
+						v.exitPageFullScreen(() -> chrome.enterFullScreen()
+								.onCompletion((r, err) -> endFullScreenRecovery()));
+					});
+				});
 	}
 
 	/**
@@ -305,8 +323,9 @@ public class WebBrowserFragment extends MainActivityFragment
 	 */
 	private boolean beginFullScreenRecovery() {
 		if (fullScreenRecoveryInFlight) return false;
-		if (SystemClock.elapsedRealtime() - lastFullScreenRecoveryCompletedAt <
-				FULLSCREEN_RECOVERY_GRACE_MS) {
+		if (fullScreenRecoveryEverCompleted &&
+				(SystemClock.elapsedRealtime() - lastFullScreenRecoveryCompletedAt <
+						FULLSCREEN_RECOVERY_GRACE_MS)) {
 			return false;
 		}
 		fullScreenRecoveryInFlight = true;
@@ -316,6 +335,7 @@ public class WebBrowserFragment extends MainActivityFragment
 	/** Releases the claim taken by {@link #beginFullScreenRecovery()}, win or lose. */
 	private void endFullScreenRecovery() {
 		fullScreenRecoveryInFlight = false;
+		fullScreenRecoveryEverCompleted = true;
 		lastFullScreenRecoveryCompletedAt = SystemClock.elapsedRealtime();
 	}
 
