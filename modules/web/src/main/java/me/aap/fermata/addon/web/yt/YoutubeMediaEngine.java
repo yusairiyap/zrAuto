@@ -17,6 +17,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.res.ResourcesCompat;
 import androidx.media.AudioFocusRequestCompat;
+import androidx.media.AudioManagerCompat;
 
 import com.google.android.play.core.splitcompat.SplitCompat;
 
@@ -564,24 +565,38 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	public void close() {
 	}
 
-	// True no-ops, not "best-effort real request, ignore the result": actually making the real
-	// AudioManagerCompat call (as a prior attempt at this did) registers MediaSessionCallback's
-	// OnAudioFocusChangeListener for real, which makes its AUDIOFOCUS_LOSS_TRANSIENT-triggered
-	// auto-pause path live for YouTube -- and since that pref request is a single object reused for
-	// the whole session and never released except on a full stop, every resume-from-pause ends up
-	// issuing a duplicate real focus request for a grant already held. Confirmed on-device this
-	// broke pause/resume under Android Auto outright (not just during a display-takeover edge case),
-	// with no interruption needed to trigger it -- staying fully inert here, as this class always
-	// has, avoids the whole mechanism rather than trying to tune it further.
+	// Two prior attempts at this (see git history: 85f1df7, reverted by 6fcf0d8) made every
+	// requestAudioFocus() call here a real AudioManagerCompat request, which is what's needed for
+	// MediaSessionCallback's AUDIOFOCUS_LOSS_TRANSIENT/AUDIOFOCUS_GAIN auto-pause/auto-resume
+	// machinery to work for YouTube at all -- but since that audioFocusReq is a single object reused
+	// for the whole session and never released except on a full stop, calling the real API on every
+	// resume-from-pause re-requested a grant we already held, which broke pause/resume under Android
+	// Auto outright (no interruption needed to trigger it). hasAudioFocus below is what those attempts
+	// were missing: it makes the real call only when we don't already hold the grant, so an ordinary
+	// resume (manual tap or the auto-resume path this unlocks) never re-requests, while a real
+	// interruption (IHU camera/car system briefly taking focus) still reaches MediaSessionCallback's
+	// OnAudioFocusChangeListener for real and can auto-resume us on AUDIOFOCUS_GAIN instead of leaving
+	// playback stuck paused until the user taps play again.
+	private boolean hasAudioFocus;
+
 	@Override
 	public boolean requestAudioFocus(@Nullable AudioManager audioManager,
 																		@Nullable AudioFocusRequestCompat audioFocusReq) {
+		if (hasAudioFocus) return true;
+		if ((audioManager == null) || (audioFocusReq == null)) return true;
+		hasAudioFocus = AudioManagerCompat.requestAudioFocus(audioManager, audioFocusReq) ==
+				AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+		// Best-effort, matching 85f1df7's original fix: never block resume on a failed/raced grant.
 		return true;
 	}
 
 	@Override
 	public void releaseAudioFocus(@Nullable AudioManager audioManager,
 																 @Nullable AudioFocusRequestCompat audioFocusReq) {
+		if (!hasAudioFocus) return;
+		hasAudioFocus = false;
+		if ((audioManager != null) && (audioFocusReq != null))
+			AudioManagerCompat.abandonAudioFocusRequest(audioManager, audioFocusReq);
 	}
 
 	@Override
