@@ -264,7 +264,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		currentVideoId = actualId;
 
 		if (url.startsWith("blob:")) url = url.substring(5);
-		current = new Current(url, jsTitle);
+		current = new Current(url, jsTitle, actualId);
 
 		if (!web.getAddon().autoHighestQuality()) {
 			qualityUrl = null;
@@ -936,10 +936,18 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// YoutubeWebView#fermataCurrentVideoTitle()) -- may be empty if the player object wasn't found
 		// yet, in which case loadMeta() below falls back to the old document.title-based read.
 		private final String title;
+		// The video id this Current was created for -- captured here (not read from the outer
+		// currentVideoId field inside loadMeta()) so a later video transition that reassigns
+		// currentVideoId can't race a not-yet-resolved loadMeta() call into tagging this item's
+		// metadata with the WRONG (newer) video's thumbnail. Nullable: actualId (see playing() above)
+		// falls back to null if extractVideoId() can't parse one out of the page's own URL either.
+		@Nullable
+		private final String videoId;
 
-		public Current(String url, String title) {
+		public Current(String url, String title, @Nullable String videoId) {
 			super(CURRENT_ID, mediaRoot, GenericFileSystem.getInstance().create(url));
 			this.title = title;
+			this.videoId = videoId;
 		}
 
 		@NonNull
@@ -956,6 +964,16 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
 				b.putString(MediaMetadataCompat.METADATA_KEY_TITLE, t);
 				b.putLong(MediaMetadata.METADATA_KEY_DURATION, dur);
+				// Without this, the OS media notification/lock-screen art always fell back to a
+				// generic icon: unlike YoutubeVideoItem (used for Favorites/Playlist browsing), this
+				// class never supplied any artwork at all for the item actually being played. Same
+				// maxresdefault.jpg URL YoutubeVideoItem already uses -- see its own loadMeta() for why
+				// that size over hqdefault.jpg. MediaSessionCallback#buildMetadata() resolves this URI
+				// into an actual bitmap.
+				if ((videoId != null) && !videoId.isEmpty()) {
+					b.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI,
+							"https://img.youtube.com/vi/" + videoId + "/maxresdefault.jpg");
+				}
 				return b.build();
 			}));
 		}

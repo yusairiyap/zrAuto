@@ -267,7 +267,7 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 						.setDeleteIntent(pi(INTENT_STOP)).setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 						.setStyle(notifStyle).setSmallIcon(R.drawable.notification).setColor(notifColor)
 						.setPriority(NotificationCompat.PRIORITY_HIGH).setShowWhen(false)
-						.setOnlyAlertOnce(true);
+						.setOnlyAlertOnce(true).setColorized(true);
 
 		if (mediaMetadata != null) {
 			MediaDescriptionCompat description = mediaMetadata.getDescription();
