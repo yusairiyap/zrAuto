@@ -14,6 +14,8 @@ import androidx.core.app.ActivityCompat;
 
 import java.util.concurrent.CopyOnWriteArrayList;
 
+import me.aap.fermata.FermataApplication;
+import me.aap.fermata.ui.activity.MainActivity;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.utils.log.Log;
 import me.aap.utils.pref.PreferenceStore;
@@ -25,6 +27,11 @@ import me.aap.utils.pref.PreferenceStore;
  * whole app process (started lazily the first time the Fuel Log tab is opened, per {@link
  * FuelLogFragment}), following the same on-demand permission-request pattern as {@code
  * modules/poi}'s {@code Voyageur}, rather than requesting location access at every app launch.
+ * <p>
+ * GPS fixes keep arriving whenever tracking is running, but distance is only ever added to the
+ * trip total while the app is actually connected to Android Auto (see {@link
+ * #isConnectedToAndroidAuto()}) -- otherwise a phone carried while walking or running (with the
+ * app merely open, e.g. for its Info Overlay) would misreport that movement as driving.
  */
 public class FuelTracker implements LocationListener {
 	/** Fixes worse than this (metres) are too noisy to add to the trip total. */
@@ -123,14 +130,31 @@ public class FuelTracker implements LocationListener {
 			return;
 		}
 
+		// Always advance lastLocation, connected or not: skipping it while disconnected would leave
+		// a stale fix behind, so the first update after reconnecting would compute a bogus jump
+		// spanning however long -- and however far -- the app went unconnected in between.
 		Location prev = lastLocation;
 		lastLocation = location;
 		if (prev == null) return;
+		if (!isConnectedToAndroidAuto()) return;
 
 		float dist = prev.distanceTo(location);
 		if (dist < MIN_MOVEMENT_M) return;
 
 		if (prefs != null) FuelLogStore.addTripDistanceMeters(prefs, dist);
 		for (Runnable r : listeners) r.run();
+	}
+
+	/**
+	 * True while this app is actually connected to Android Auto -- either running as the native
+	 * car activity ({@code MainCarActivity}, auto flavor only) or mirroring the phone UI onto the
+	 * car's display -- mirroring the same check {@code MainActivityDelegate.isCarActivity()} does,
+	 * but without needing a live {@code ActivityDelegate} (this singleton can outlive any one
+	 * Activity instance).
+	 */
+	private static boolean isConnectedToAndroidAuto() {
+		if (FermataApplication.get().isMirroringMode()) return true;
+		MainActivity a = MainActivity.getActiveInstance();
+		return (a != null) && a.isCarActivity();
 	}
 }
