@@ -242,9 +242,11 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	// The overrides below no longer touch playback itself, but they still do two things: log the
 	// transition + current playback state (so it can be correlated against YoutubeMediaEngine's own
 	// logging), and drive YoutubeAddon#setVisible() -- see its declaration and YoutubeMediaEngine#
-	// runOrDeferNavigation()/flushPendingNavigation(): confirmed on-device (via that same logging)
-	// that prepare()'s page navigation call silently never takes effect while backgrounded, so it's
-	// deferred until onResume() flushes it here.
+	// runOrDeferPageAction()/flushPendingPageAction(): confirmed on-device (via that same logging)
+	// that both prepare()'s page navigation and setPosition()'s seek silently never take effect while
+	// backgrounded (a seek issued while hidden was even observed to land unexpectedly a couple of
+	// seconds after the video was next resumed, pausing it with nothing to auto-recover), so both are
+	// deferred until onResume() flushes them here.
 	@Override
 	public void onPause() {
 		YoutubeAddon addon = AddonManager.get().getAddon(YoutubeAddon.class);
@@ -267,7 +269,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 			Log.i("YoutubeFragment.onResume(): isYoutubeItem=",
 					YoutubeMediaEngine.isYoutubeItem(b.getCurrentItem()), ", isPlaying=", b.isPlaying());
 			MediaEngine eng = a.getMediaSessionCallback().getEngine();
-			if (eng instanceof YoutubeMediaEngine yte) yte.flushPendingNavigation();
+			if (eng instanceof YoutubeMediaEngine yte) yte.flushPendingPageAction();
 		});
 	}
 
