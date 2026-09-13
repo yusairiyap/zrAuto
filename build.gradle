@@ -33,7 +33,11 @@ ext {
                     name       : 'fuel_log',
                     icon       : 'fuel',
                     class      : 'me.aap.fermata.addon.fuel.FuelLogAddon',
-                    hasSettings: false
+                    // Low order so its nav-bar icon reliably sorts ahead of other addons (which
+                    // default to order 1000) and the built-in "menu" item, which is always added
+                    // last regardless of order (see NavBarMediator.getLayout()).
+                    order      : 5,
+                    hasSettings: true
             ],
     ]
 }

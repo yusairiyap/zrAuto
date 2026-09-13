@@ -1,26 +1,30 @@
 package me.aap.fermata.addon.fuel;
 
-import static me.aap.utils.async.Completed.completed;
-
 import android.content.Context;
 import android.location.Location;
 
+import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
 
 import me.aap.fermata.R;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
-import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.function.DoubleSupplier;
 import me.aap.utils.function.Supplier;
+import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.pref.PreferenceStore.Pref;
 import me.aap.utils.ui.UiUtils;
 
 /**
  * The "Refuel" modal -- shows the distance travelled since the last refuel (editable before
- * committing) and the current location's nice name (reverse-geocoded, also editable), then stores
- * a new {@link FuelLogEntry} and resets the trip odometer. Reused by both the Fuel Log tab's own
- * Refuel button and the {@code Action.REFUEL} FAB action, so it doesn't require navigating to the
- * tab first. Also reused (via {@link #edit}) for correcting an existing entry's distance/location.
+ * committing) and the current location's nice name (editable), then stores a new {@link
+ * FuelLogEntry} and resets the trip odometer. Reused by both the Fuel Log tab's own Refuel button
+ * and the {@code Action.REFUEL} FAB action, so it doesn't require navigating to the tab first.
+ * Also reused (via {@link #edit}) for correcting an existing entry's distance/location.
+ * <p>
+ * The dialog itself always opens immediately -- reverse geocoding the current GPS fix into a place
+ * name is a network call, so it fills the location field in afterwards (showing a "Detecting
+ * location..." placeholder in the meantime) rather than making the tap that opens this dialog wait
+ * on it.
  */
 public class FuelRefuelDialog {
 
@@ -35,21 +39,27 @@ public class FuelRefuelDialog {
 		Context ctx = a.getContext();
 		float distanceKm = (float) FuelLogStore.getTripDistanceKm(a.getPrefs());
 		Location loc = FuelTracker.get(ctx).getLastLocation();
-		FutureSupplier<String> nameFuture = (loc != null) ?
-				ReverseGeocoder.reverseGeocode(loc.getLatitude(), loc.getLongitude()) : completed("");
+		String placeholder = (loc != null) ? ctx.getString(R.string.fuel_log_detecting_location) : "";
 
-		nameFuture.onCompletion((name, err) -> {
-			String initialName = ((err == null) && (name != null)) ? name : "";
-			openFields(ctx, R.string.fuel_log_refuel, distanceKm, initialName, (distance, location) -> {
-				long now = System.currentTimeMillis();
-				FuelLogEntry entry = new FuelLogEntry(now, distance, location,
-						(loc != null) ? loc.getLatitude() : Double.NaN,
-						(loc != null) ? loc.getLongitude() : Double.NaN, now);
-				FuelLogStore.addEntry(a.getPrefs(), entry);
-				FuelLogStore.resetTripDistance(a.getPrefs());
-				UiUtils.showToast(ctx, R.string.fuel_log_refuel_done);
-				onDone.run();
-			});
+		openFields(ctx, R.string.fuel_log_refuel, distanceKm, placeholder, (distance, location) -> {
+			long now = System.currentTimeMillis();
+			FuelLogEntry entry = new FuelLogEntry(now, distance, location,
+					(loc != null) ? loc.getLatitude() : Double.NaN,
+					(loc != null) ? loc.getLongitude() : Double.NaN, now);
+			FuelLogStore.addEntry(a.getPrefs(), entry);
+			FuelLogStore.resetTripDistance(a.getPrefs());
+			UiUtils.showToast(ctx, R.string.fuel_log_refuel_done);
+			onDone.run();
+		}, (store, locationPref) -> {
+			if (loc == null) return;
+			ReverseGeocoder.reverseGeocode(loc.getLatitude(), loc.getLongitude())
+					.onSuccess(name -> {
+						// Don't clobber it if the user has already started editing the field themselves
+						// while the lookup was still in flight.
+						if (placeholder.equals(store.getStringPref(locationPref))) {
+							store.applyStringPref(locationPref, name);
+						}
+					});
 		});
 	}
 
@@ -62,15 +72,20 @@ public class FuelRefuelDialog {
 					entry.location = location;
 					FuelLogStore.updateEntry(a.getPrefs(), entry);
 					onDone.run();
-				});
+				}, null);
 	}
 
 	private interface OnConfirmed {
 		void confirmed(float distanceKm, String location);
 	}
 
+	private interface OnOpened {
+		void opened(PreferenceStore store, Pref<Supplier<String>> locationPref);
+	}
+
 	private static void openFields(Context ctx, @StringRes int title, float distanceKm,
-																	String initialLocation, OnConfirmed onConfirmed) {
+																	String initialLocation, OnConfirmed onConfirmed,
+																	@Nullable OnOpened onOpened) {
 		Pref<DoubleSupplier> distancePref = Pref.f("distanceKm", distanceKm);
 		Pref<Supplier<String>> locationPref = Pref.s("location", initialLocation);
 
@@ -88,6 +103,7 @@ public class FuelRefuelDialog {
 				o.pref = locationPref;
 				o.title = R.string.fuel_log_location;
 			});
+			if (onOpened != null) onOpened.opened(store, locationPref);
 		}, null).onSuccess(
 				store -> onConfirmed.confirmed(store.getFloatPref(distancePref), store.getStringPref(locationPref)));
 	}

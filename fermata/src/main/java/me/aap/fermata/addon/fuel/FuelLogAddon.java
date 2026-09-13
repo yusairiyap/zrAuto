@@ -3,6 +3,7 @@ package me.aap.fermata.addon.fuel;
 import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 
+import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
 import me.aap.fermata.addon.AddonInfo;
 import me.aap.fermata.addon.FermataAddon;
@@ -34,5 +35,13 @@ public class FuelLogAddon implements FermataFragmentAddon {
 	@Override
 	public ActivityFragment createFragment() {
 		return new FuelLogFragment();
+	}
+
+	@Override
+	public void stop() {
+		// Disabling the addon (via its Settings > Addons > Fuel Log > Enable toggle) should also
+		// stop the GPS trip-distance tracking it started -- otherwise it would keep running
+		// invisibly even with the tab gone.
+		FuelTracker.get(FermataApplication.get()).stop();
 	}
 }

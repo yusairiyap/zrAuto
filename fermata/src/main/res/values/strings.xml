@@ -482,6 +482,7 @@
     <string name="fuel_log_distance_km">Distance (km)</string>
     <string name="fuel_log_location">Location</string>
     <string name="fuel_log_edit_entry">Edit refuel</string>
+    <string name="fuel_log_detecting_location">Detecting location…</string>
     <string name="info_overlay_show_distance">Show distance travelled</string>
     <string name="info_overlay_show_distance_icon">Show distance icon</string>
 </resources>
