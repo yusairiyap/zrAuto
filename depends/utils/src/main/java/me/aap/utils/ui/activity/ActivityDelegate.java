@@ -31,6 +31,7 @@ import android.os.Looper;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.widget.EditText;
 import android.widget.Toast;
@@ -467,6 +468,19 @@ public abstract class ActivityDelegate implements EventBroadcaster<ActivityListe
 	public boolean isRootPage() {
 		ActivityFragment f = getActiveFragment();
 		return (f != null) && f.isRootPage() && (getActiveNavItemId() == f.getFragmentId());
+	}
+
+	/**
+	 * Lets a piece of scrollable content (a RecyclerView/ScrollView) reserve top/bottom padding for
+	 * whatever translucent chrome (toolbar, bottom bars) the host app overlays on top of its
+	 * fragment content, so the content can still scroll fully underneath it instead of being
+	 * clipped by or awkwardly gapped away from it. No-op by default; apps that draw such overlays
+	 * (see fermata's {@code MainActivityDelegate}) override this with the real computation. Any
+	 * generic content built here in {@code depends/utils} (e.g. {@link
+	 * me.aap.utils.ui.UiUtils#queryPrefs}'s dialog list) should call this so it gets the same
+	 * treatment as an app's own screens automatically, without depends/utils needing to know how.
+	 */
+	public void insetScrollableContent(ViewGroup content) {
 	}
 
 	public void onBackPressed() {

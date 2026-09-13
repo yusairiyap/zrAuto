@@ -73,6 +73,11 @@ public class FuelLogFragment extends MainActivityFragment {
 		adapter = new Adapter(a);
 		list.setAdapter(adapter);
 		new ItemTouchHelper(adapter.getItemTouchCallback()).attachToRecyclerView(list);
+		// Without this, the list renders flush under the toolbar's translucent title bar instead of
+		// reserving space below it -- every other scrollable tab (Settings, Audio Effects, folder
+		// browsing) calls this same hook (see MainActivityDelegate.insetScrollableContent) for exactly
+		// this reason.
+		a.insetScrollableContent(list);
 
 		FuelTracker.get(requireContext()).start(a);
 	}
