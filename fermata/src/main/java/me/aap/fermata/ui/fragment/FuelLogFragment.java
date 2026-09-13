@@ -78,6 +78,9 @@ public class FuelLogFragment extends MainActivityFragment {
 		// browsing) calls this same hook (see MainActivityDelegate.insetScrollableContent) for exactly
 		// this reason.
 		a.insetScrollableContent(list);
+		// Otherwise the RecyclerView clips each card's drop shadow to its own bounds, most visibly
+		// cutting the header card's shadow off flush against the list's top edge.
+		list.setClipChildren(false);
 
 		FuelTracker.get(requireContext()).start(a);
 	}
@@ -173,7 +176,9 @@ public class FuelLogFragment extends MainActivityFragment {
 					e.location.isEmpty() ? getString(R.string.fuel_log_unknown_location) : e.location);
 			h.date.setText(formatDateTime(requireContext(), e.time,
 					FORMAT_SHOW_DATE | FORMAT_SHOW_TIME | FORMAT_SHOW_YEAR));
-			h.edit.setOnClickListener(v -> FuelRefuelDialog.edit(activity, e, FuelLogFragment.this::refresh));
+			View.OnClickListener edit = v -> FuelRefuelDialog.edit(activity, e, FuelLogFragment.this::refresh);
+			h.edit.setOnClickListener(edit);
+			h.itemView.setOnClickListener(edit);
 		}
 
 		private void removeEntry(int position) {

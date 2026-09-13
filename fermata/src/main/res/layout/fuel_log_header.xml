@@ -10,8 +10,10 @@
     <com.google.android.material.card.MaterialCardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:cardCornerRadius="16dp"
-        app:cardElevation="6dp">
+        app:cardBackgroundColor="?attr/colorSurfaceVariant"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="6dp"
+        app:rippleColor="?attr/rippleColor">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -63,11 +65,16 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/fuel_log_refuel_button"
+                style="@style/Widget.Material3.Button.OutlinedButton"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
                 android:text="@string/fuel_log_refuel"
-                app:icon="@drawable/fuel" />
+                android:textColor="?attr/colorControlActivated"
+                app:icon="@drawable/fuel"
+                app:iconTint="?attr/colorControlActivated"
+                app:rippleColor="?attr/colorControlActivated"
+                app:strokeColor="?attr/colorControlActivated" />
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
