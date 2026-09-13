@@ -248,6 +248,7 @@ public class UiUtils {
 			v.setAdapter(new PreferenceViewAdapter(set));
 			builder.accept(store, set);
 			g.addView(v);
+			a.insetScrollableContent(v);
 		});
 		f.setBackHandler(() -> {
 			p.cancel();

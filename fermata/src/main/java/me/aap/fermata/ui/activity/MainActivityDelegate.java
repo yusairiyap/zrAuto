@@ -913,6 +913,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * {@code content} stays attached to the window; each caller (e.g. MediaItemListView, the
 	 * Settings list) is expected to call this once, typically from its own constructor.
 	 */
+	@Override
 	public void insetScrollableContent(ViewGroup content) {
 		content.setClipToPadding(false);
 		View.OnLayoutChangeListener sync = (v, left, top, right, bottom, oldLeft, oldTop, oldRight,

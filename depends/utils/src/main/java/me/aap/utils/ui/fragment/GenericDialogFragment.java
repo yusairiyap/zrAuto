@@ -4,8 +4,6 @@ import static android.view.View.GONE;
 import static android.view.View.VISIBLE;
 import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED;
 
-import android.view.animation.Animation;
-import android.view.animation.AnimationUtils;
 import android.widget.TextView;
 
 import androidx.annotation.DrawableRes;
@@ -161,13 +159,6 @@ public class GenericDialogFragment extends GenericFragment {
 
 		default void setOkButtonVisibility(ImageButton b, int vis) {
 			b.setVisibility(vis);
-
-			if (vis == VISIBLE) {
-				Animation shake = AnimationUtils.loadAnimation(b.getContext(), R.anim.shake_y_20);
-				b.startAnimation(shake);
-			} else {
-				b.clearAnimation();
-			}
 		}
 
 		@IdRes

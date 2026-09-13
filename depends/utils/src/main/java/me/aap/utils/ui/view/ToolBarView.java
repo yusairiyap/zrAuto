@@ -122,8 +122,18 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 				this::getMediator, this::setMediator);
 		if (!attached || (f == null)) return false;
 		float scale = f.getActivityDelegate().getToolBarSize();
-		if (scale != 1F) setSize(scale);
-		else getLayoutParams().height = size;
+		if (scale != 1F) {
+			setSize(scale);
+		} else {
+			// Mutating the LayoutParams object alone doesn't request a new layout pass -- unlike
+			// setSize(), which does via setLayoutParams() below. Without it, this toolbar can keep
+			// rendering at whatever height a previous fragment's setSize(scale) last left it at until
+			// some unrelated layout pass happens to pick up the mutated value, clipping this title
+			// text into (or letting it visually spill into) the fragment content below it.
+			ViewGroup.LayoutParams lp = getLayoutParams();
+			lp.height = size;
+			setLayoutParams(lp);
+		}
 		setIconScale(f.getActivityDelegate().getIconSize());
 		return true;
 	}

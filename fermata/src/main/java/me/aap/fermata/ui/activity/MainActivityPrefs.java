@@ -139,6 +139,18 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_BATTERY_PCT = Pref.b("INFO_OVERLAY_SHOW_BATTERY_PCT", false);
 	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_BATTERY_TEMP =
 			Pref.b("INFO_OVERLAY_SHOW_BATTERY_TEMP", false);
+	// Per-item icon toggles, shown alongside each label -- default true so the icons appear
+	// out of the box wherever the label itself is already shown.
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_CLOCK_ICON = Pref.b("INFO_OVERLAY_SHOW_CLOCK_ICON", true);
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_BATTERY_ICON =
+			Pref.b("INFO_OVERLAY_SHOW_BATTERY_ICON", true);
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_TEMP_ICON = Pref.b("INFO_OVERLAY_SHOW_TEMP_ICON", true);
+	Pref<BooleanSupplier> INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE =
+			Pref.b("INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE", false);
+	// Current Fuel Log trip distance, offered as a 4th Info Overlay item -- see FuelLogStore.
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DISTANCE = Pref.b("INFO_OVERLAY_SHOW_DISTANCE", false);
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DISTANCE_ICON =
+			Pref.b("INFO_OVERLAY_SHOW_DISTANCE_ICON", true);
 	Pref<DoubleSupplier> INFO_OVERLAY_SIZE = Pref.f("INFO_OVERLAY_SIZE", 1f);
 	Pref<IntSupplier> LOCALE =
 			Pref.i("LOCALE", () -> Lang.get(Locale.getDefault().getLanguage()).ordinal());
@@ -391,6 +403,30 @@ public interface MainActivityPrefs
 
 	default boolean getInfoOverlayShowBatteryTempPref() {
 		return getBooleanPref(INFO_OVERLAY_SHOW_BATTERY_TEMP);
+	}
+
+	default boolean getInfoOverlayShowClockIconPref() {
+		return getBooleanPref(INFO_OVERLAY_SHOW_CLOCK_ICON);
+	}
+
+	default boolean getInfoOverlayShowBatteryIconPref() {
+		return getBooleanPref(INFO_OVERLAY_SHOW_BATTERY_ICON);
+	}
+
+	default boolean getInfoOverlayShowTempIconPref() {
+		return getBooleanPref(INFO_OVERLAY_SHOW_TEMP_ICON);
+	}
+
+	default boolean getInfoOverlayOnlyWhenControlPanelVisiblePref() {
+		return getBooleanPref(INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE);
+	}
+
+	default boolean getInfoOverlayShowDistancePref() {
+		return getBooleanPref(INFO_OVERLAY_SHOW_DISTANCE);
+	}
+
+	default boolean getInfoOverlayShowDistanceIconPref() {
+		return getBooleanPref(INFO_OVERLAY_SHOW_DISTANCE_ICON);
 	}
 
 	default float getInfoOverlaySizePref() {

@@ -77,6 +77,7 @@ public enum Action {
 					!a.getPrefs().getBooleanPref(MainActivityPrefs.DIM_ENABLED)))),
 	PRIVATE_MODE_TOGGLE(R.string.action_private_mode_toggle, a(a ->
 			a.getPrefs().setPrivateModeEnabled(!a.getPrefs().isPrivateModeEnabled()))),
+	REFUEL(R.string.action_refuel, a(me.aap.fermata.addon.fuel.FuelRefuelDialog::show)),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

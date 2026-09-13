@@ -296,15 +296,27 @@ public interface MediaEngine extends Closeable {
 		return false;
 	}
 
+	/**
+	 * Called when building the "Video" category submenu of the fullscreen video control panel's
+	 * "..." menu (see {@code ControlPanelView.MenuHandler.buildVideoMenu}), for engine-contributed
+	 * video-related items (e.g. YouTube's own Video quality/Video scaling entries).
+	 */
 	default void contributeToMenu(OverlayMenu.Builder b) {}
 
 	/**
-	 * Called after the in-place toggles/submenus (repeat, shuffle, audio effects, speed, timer) but
-	 * before {@code dim_settings}/{@code settings_fragment}/{@code nav_exit} -- for engine-
-	 * contributed items that also navigate to a different screen (e.g. YouTube's own Equalizer
-	 * entry), so they still sort above the app's own Settings/Exit rather than after them, since
-	 * {@link #contributeToMenu} runs too early in {@code ControlPanelView.buildPlayableMenu()} to
-	 * position an item there instead.
+	 * Called when building the "Playback" category submenu (see {@code
+	 * ControlPanelView.MenuHandler.buildPlaybackItems}), for engine-contributed items that belong
+	 * there (e.g. YouTube's own Repeat/Shuffle, which -- unlike the app's own Repeat/Shuffle
+	 * entries -- apply even though {@link PlayableItem#isExternal()} is true for every YouTube
+	 * item).
+	 */
+	default void contributeToPlaybackMenu(OverlayMenu.Builder b) {}
+
+	/**
+	 * Called when building the "Audio" category submenu (see {@code
+	 * ControlPanelView.MenuHandler.buildAudioCategory}) -- for engine-contributed items that also
+	 * navigate to a different screen (e.g. YouTube's own Equalizer entry), added last so they sort
+	 * below the in-place Mute/Effects toggles above.
 	 */
 	default void contributeToMenuEnd(OverlayMenu.Builder b) {}
 

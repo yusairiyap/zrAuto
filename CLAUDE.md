@@ -63,10 +63,50 @@ Conventions worth knowing:
   `fermata/.../addon/`.
 - `settings.gradle` auto-discovers every directory under `modules/` as a Gradle module, and
   conditionally excludes `:gdrive` when Google Services aren't configured (`NO_GS=true`).
-- `depends/utils` is a **git submodule** — always clone/pull with `--recurse-submodules`, and be
-  aware a fresh checkout without submodules initialized will fail to build.
+- `depends/utils` is a regular, fully-tracked directory in this repo (not a real git submodule
+  despite the folder name/historical upstream layout — no `.gitmodules`, normal `100644` file
+  mode) — it's fine to edit files under it directly and commit them like any other source file.
 - Locale/translation resources live under `fermata/src/main/res/values-<locale>/` — don't hand-edit
   translated strings unless specifically asked; app strings normally originate in `values/strings.xml`.
+
+## Adding a new nav-bar tab (addon)
+
+The easiest way to add a whole new top-level tab (like Fuel Log) is to register it as a
+`FermataFragmentAddon`, built directly into the `fermata` module (like `TranslateAddon`/
+`SubGenAddon` in `fermata/.../addon/`) rather than as its own Gradle module under `modules/`,
+unless it needs a heavy/optional dependency that would benefit from on-demand delivery.
+
+1. Add an entry to the root `build.gradle`'s `addons = [...]` list: `name` (also the module-name
+   key), `icon` (a drawable name under `fermata/src/main/res/drawable/`), `class` (fully-qualified
+   addon class), optionally `order` (lower sorts earlier in the nav bar — the built-in `menu` item
+   is always added last regardless, so any real order value already sorts above it) and
+   `hasSettings: true` if you want it to appear.
+2. Add `R.string.addon_name_<name>` to `fermata/src/main/res/values/strings.xml` and an
+   `<item name="<name>_addon" type="id" />` to `fermata/src/main/res/values/ids.xml` — the class
+   is instantiated by reflection off `BuildConfig.ADDONS` (generated from that `build.gradle` list),
+   so it needs `@Keep` and a public no-arg constructor.
+3. Implement `FermataFragmentAddon`: `getAddonId()` returns the id from step 2, `createFragment()`
+   returns your fragment. `hasSettings: true` automatically gets it a Settings > Addons > `<name>` >
+   Enable toggle (see `SettingsFragment.AddonPrefsBuilder`) with no extra code needed — override
+   `stop()` only if the addon needs to release something (e.g. a location listener) when disabled.
+4. Your fragment should extend `MainActivityFragment` (or `MediaLibFragment` if it's browsing the
+   media library), override `getFragmentId()` (same id) and `getTitle()`.
+
+**The one step that's bitten this exact scenario more than once (Audio Effects, then Fuel Log):**
+this app deliberately draws `tool_bar`/`control_panel`/a bottom `nav_bar` as translucent overlays
+*on top of* fragment content (so a list can scroll all the way underneath them edge-to-edge) —
+there is no layout-level fix that makes a new fragment's content start "below" the toolbar, because
+nothing is structurally wrong; every scrollable screen is expected to explicitly reserve the right
+padding itself. If your fragment's root view is scrollable (a `RecyclerView` or `ScrollView`), call
+`getActivityDelegate().insetScrollableContent(thatView)` (typically right after inflating/creating
+it) — see `MainActivityDelegate.insetScrollableContent` and existing callers
+(`MediaItemListView`, `AudioEffectsView`, `SettingsFragment`) for the exact pattern. Skipping this
+renders the content flush under the toolbar title instead of below it — a purely visual bug that's
+easy to mistake for a ConstraintLayout/measurement issue (it isn't) and easy to burn a whole session
+chasing the wrong theory for, as has happened before. If you add a dialog via
+`me.aap.utils.ui.UiUtils#queryPrefs` instead, it's already inset-safe (wired through
+`ActivityDelegate.insetScrollableContent`, a no-op default in `depends/utils` that
+`MainActivityDelegate` overrides) — no extra step needed there.
 
 ## This app cannot be built in this (cloud) session
 
