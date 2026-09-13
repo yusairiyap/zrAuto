@@ -164,20 +164,24 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			blockedHeight = 0;
 		}
 
-		// data is "<videoId>|<recentLinkClick 0/1>|<v.currentSrc>" -- see YoutubeWebView#
-		// attachListeners()'s fermataCurrentVideoId()/fermataRecentLinkClick(). The id comes straight
-		// from the player object, not the WebView's own getUrl(): that outer document URL only catches
-		// up with a player.loadVideoById() SPA-internal swap once YouTube's own JS updates the address
-		// bar via the History API, well after the <video> element has already switched sources and
-		// fired this very "playing" event -- using it here instead used to read the OLD video id for a
-		// beat after every queue-driven navigation, triggering a bogus "expected X but page shows
-		// <stale>" correction (see the pendingVideoId branch below) that reissued loadVideoById() and
-		// was visible on-screen as a flicker back to the old video. Falls back to the old getUrl()-based
-		// extraction if the player object wasn't found (e.g. mid-navigation) or didn't report an id.
-		String[] parts = data.split("\\|", 3);
+		// data is "<videoId>|<recentLinkClick 0/1>|<v.currentSrc>|<title>" -- see YoutubeWebView#
+		// attachListeners()'s fermataCurrentVideoId()/fermataRecentLinkClick()/
+		// fermataCurrentVideoTitle(). The id comes straight from the player object, not the WebView's
+		// own getUrl(): that outer document URL only catches up with a player.loadVideoById()
+		// SPA-internal swap once YouTube's own JS updates the address bar via the History API, well
+		// after the <video> element has already switched sources and fired this very "playing" event --
+		// using it here instead used to read the OLD video id for a beat after every queue-driven
+		// navigation, triggering a bogus "expected X but page shows <stale>" correction (see the
+		// pendingVideoId branch below) that reissued loadVideoById() and was visible on-screen as a
+		// flicker back to the old video. Falls back to the old getUrl()-based extraction if the player
+		// object wasn't found (e.g. mid-navigation) or didn't report an id. Title is read from the same
+		// player object for the same reason (see Current below) -- title is last so an embedded '|' in
+		// it (titles routinely contain one) survives the limited split intact.
+		String[] parts = data.split("\\|", 4);
 		String jsVideoId = (parts.length > 0) ? parts[0] : "";
 		boolean recentLinkClick = (parts.length > 1) && "1".equals(parts[1]);
 		String url = (parts.length > 2) ? parts[2] : "";
+		String jsTitle = (parts.length > 3) ? parts[3] : "";
 		String actualId =
 				!jsVideoId.isEmpty() ? jsVideoId : YoutubeVideoItem.extractVideoId(web.getUrl());
 		YoutubeAddon addon = web.getAddon();
@@ -260,7 +264,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		currentVideoId = actualId;
 
 		if (url.startsWith("blob:")) url = url.substring(5);
-		current = new Current(url);
+		current = new Current(url, jsTitle);
 
 		if (!web.getAddon().autoHighestQuality()) {
 			qualityUrl = null;
@@ -878,18 +882,29 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	private final class Current extends YoutubeItem {
+		// Title as reported straight from the player object at the moment 'playing' fired (see
+		// YoutubeWebView#fermataCurrentVideoTitle()) -- may be empty if the player object wasn't found
+		// yet, in which case loadMeta() below falls back to the old document.title-based read.
+		private final String title;
 
-		public Current(String url) {
+		public Current(String url, String title) {
 			super(CURRENT_ID, mediaRoot, GenericFileSystem.getInstance().create(url));
+			this.title = title;
 		}
 
 		@NonNull
 		@Override
 		protected FutureSupplier<MediaMetadataCompat> loadMeta() {
-			FutureSupplier<String> getTitle = web.getVideoTitle();
-			return web.getDuration().then(dur -> getTitle.map(title -> {
+			// Reading document.title here (the old, sole behavior) races YouTube's own SPA navigation:
+			// on autonav/queue transitions it still reflects the PREVIOUS video for a beat after this
+			// video's 'playing' event already fired, which left the OS media notification's title stuck
+			// on the previous video. title above comes from the same player-object read that already
+			// fixed the equivalent lag for video id (see playing()'s doc comment) and is available
+			// instantly, so prefer it whenever the page actually reported one.
+			FutureSupplier<String> getTitle = title.isEmpty() ? web.getVideoTitle() : completed(title);
+			return web.getDuration().then(dur -> getTitle.map(t -> {
 				MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
-				b.putString(MediaMetadataCompat.METADATA_KEY_TITLE, title);
+				b.putString(MediaMetadataCompat.METADATA_KEY_TITLE, t);
 				b.putLong(MediaMetadata.METADATA_KEY_DURATION, dur);
 				return b.build();
 			}));

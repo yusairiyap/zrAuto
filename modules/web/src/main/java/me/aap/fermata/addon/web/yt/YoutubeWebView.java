@@ -167,6 +167,19 @@ public class YoutubeWebView extends FermataWebView {
 				"    return (d && d.video_id) ? d.video_id : '';\n" +
 				"  } catch (e) { return ''; }\n" +
 				"}\n" +
+				// Same player-object source and same "instantaneous, not SPA-nav-lagged" reasoning as
+				// fermataCurrentVideoId() above -- document.title (see getVideoTitle() in this class) only
+				// catches up once YouTube's own navigation finishes updating the page, well after 'playing'
+				// fires for the new video, which is what left the OS media notification showing the
+				// previous video's title on autonav/queue transitions. getVideoData().title comes from the
+				// same already-loaded player response as video_id, so it's available at the same instant.
+				"function fermataCurrentVideoTitle() {\n" +
+				"  try {\n" +
+				"    var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
+				"    var d = p && p.getVideoData ? p.getVideoData() : null;\n" +
+				"    return (d && d.title) ? d.title : '';\n" +
+				"  } catch (e) { return ''; }\n" +
+				"}\n" +
 				// See interceptLinkClicksJs() below for what sets __fermataLastLinkClickTime. A video
 				// change that follows a real link tap within this window is the user browsing to a
 				// different video on purpose -- as opposed to YouTube's own autonav, which never involves a
@@ -183,13 +196,15 @@ public class YoutubeWebView extends FermataWebView {
 				"    if (typeof fermataAdCheck === 'function') fermataAdCheck();\n" +
 				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
 				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", fermataCurrentVideoId() + '|' + " +
-				"(fermataRecentLinkClick() ? '1' : '0') + '|' + v.currentSrc);\n" +
+				"(fermataRecentLinkClick() ? '1' : '0') + '|' + v.currentSrc + '|' + " +
+				"fermataCurrentVideoTitle());\n" +
 				"  }\n" +
 				"  v.addEventListener('playing', function(e) {\n" +
 				"    if (typeof fermataAdCheck === 'function') fermataAdCheck();\n" +
 				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
 				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", fermataCurrentVideoId() + '|' + " +
-				"(fermataRecentLinkClick() ? '1' : '0') + '|' + v.currentSrc);\n" +
+				"(fermataRecentLinkClick() ? '1' : '0') + '|' + v.currentSrc + '|' + " +
+				"fermataCurrentVideoTitle());\n" +
 				"  });\n" +
 				"  v.addEventListener('pause', function(e) {" + JS_EVENT + "(" + JS_VIDEO_PAUSED +
 				", v.currentSrc);});\n" +
