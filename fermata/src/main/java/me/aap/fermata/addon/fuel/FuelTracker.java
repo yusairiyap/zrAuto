@@ -8,6 +8,8 @@ import android.content.Context;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.os.Handler;
+import android.os.Looper;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
@@ -28,10 +30,12 @@ import me.aap.utils.pref.PreferenceStore;
  * FuelLogFragment}), following the same on-demand permission-request pattern as {@code
  * modules/poi}'s {@code Voyageur}, rather than requesting location access at every app launch.
  * <p>
- * GPS fixes keep arriving whenever tracking is running, but distance is only ever added to the
- * trip total while the app is actually connected to Android Auto (see {@link
- * #isConnectedToAndroidAuto()}) -- otherwise a phone carried while walking or running (with the
- * app merely open, e.g. for its Info Overlay) would misreport that movement as driving.
+ * GPS itself is only ever actually running while the app is connected to Android Auto (see {@link
+ * #isConnectedToAndroidAuto()}) -- there's no push notification for that transition anywhere in
+ * this codebase, so a lightweight poll ({@link #CONNECTION_POLL_MS}) checks it and starts/stops
+ * the location updates accordingly, instead of running GPS continuously and merely discarding
+ * fixes taken while disconnected (which would burn battery for no reason whenever the app is just
+ * open on the phone, e.g. for its Info Overlay, without actually driving with Android Auto).
  */
 public class FuelTracker implements LocationListener {
 	/** Fixes worse than this (metres) are too noisy to add to the trip total. */
@@ -40,15 +44,23 @@ public class FuelTracker implements LocationListener {
 	private static final float MIN_MOVEMENT_M = 5f;
 	private static final long MIN_TIME_MS = 3000L;
 	private static final float MIN_DISTANCE_M = 5f;
+	/** How often to re-check the Android Auto connection state and start/stop GPS accordingly. */
+	private static final long CONNECTION_POLL_MS = 15_000L;
 
 	private static FuelTracker instance;
 
 	private final Context appCtx;
 	private final LocationManager locationManager;
+	private final Handler handler = new Handler(Looper.getMainLooper());
+	private final Runnable connectionWatcher = this::checkConnection;
 	private final CopyOnWriteArrayList<Runnable> listeners = new CopyOnWriteArrayList<>();
 	@Nullable
 	private Location lastLocation;
-	private boolean tracking;
+	/** Whether the connection-watching poll loop is armed (from {@link #start} onward). */
+	private boolean watching;
+	/** Whether GPS updates are actually being requested right now (i.e. currently connected). */
+	private boolean gpsActive;
+	private boolean hasPermission;
 	/**
 	 * The preference store to accumulate distance into, captured from the {@link
 	 * MainActivityDelegate} passed to {@link #start} rather than re-derived from {@link #appCtx}
@@ -69,18 +81,42 @@ public class FuelTracker implements LocationListener {
 		return instance;
 	}
 
-	/** Requests location permission if needed, then starts GPS updates. Safe to call repeatedly. */
+	/** Requests location permission if needed, then arms the connection watcher. Safe to call
+	 * repeatedly (e.g. every time the Fuel Log tab is opened or the Info Overlay refreshes). */
 	public void start(MainActivityDelegate a) {
 		prefs = a.getPrefs();
-		if (tracking) return;
+		if (watching) return;
+		watching = true;
 		a.getAppActivity().checkPermissions(ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION)
-				.onSuccess(result -> startIfGranted());
+				.onSuccess(result -> {
+					hasPermission =
+							ActivityCompat.checkSelfPermission(appCtx, ACCESS_FINE_LOCATION) == PERMISSION_GRANTED;
+					checkConnection();
+				});
 	}
 
-	private void startIfGranted() {
-		if (tracking || (locationManager == null)) return;
-		if (ActivityCompat.checkSelfPermission(appCtx, ACCESS_FINE_LOCATION) != PERMISSION_GRANTED) return;
-		tracking = true;
+	/** Stops GPS (if running) and the connection watcher entirely -- used when the Fuel Log addon
+	 * itself is disabled from Settings. */
+	public void stop() {
+		handler.removeCallbacks(connectionWatcher);
+		watching = false;
+		stopGps();
+	}
+
+	private void checkConnection() {
+		handler.removeCallbacks(connectionWatcher);
+		if (!watching) return;
+
+		boolean connected = hasPermission && isConnectedToAndroidAuto();
+		if (connected && !gpsActive) startGps();
+		else if (!connected && gpsActive) stopGps();
+
+		handler.postDelayed(connectionWatcher, CONNECTION_POLL_MS);
+	}
+
+	private void startGps() {
+		if (gpsActive || (locationManager == null)) return;
+		gpsActive = true;
 
 		try {
 			locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, MIN_TIME_MS,
@@ -96,9 +132,12 @@ public class FuelTracker implements LocationListener {
 		}
 	}
 
-	public void stop() {
-		if (!tracking) return;
-		tracking = false;
+	private void stopGps() {
+		if (!gpsActive) return;
+		gpsActive = false;
+		// The next reconnect should measure fresh from wherever the car actually is, not resume
+		// from a fix taken possibly hours and miles away from the last disconnect.
+		lastLocation = null;
 		try {
 			locationManager.removeUpdates(this);
 		} catch (SecurityException ignore) {
@@ -106,8 +145,10 @@ public class FuelTracker implements LocationListener {
 		}
 	}
 
+	/** True while GPS updates are actually being requested right now (i.e. connected to Android
+	 * Auto), not merely while the connection watcher is armed. */
 	public boolean isTracking() {
-		return tracking;
+		return gpsActive;
 	}
 
 	@Nullable
@@ -130,13 +171,9 @@ public class FuelTracker implements LocationListener {
 			return;
 		}
 
-		// Always advance lastLocation, connected or not: skipping it while disconnected would leave
-		// a stale fix behind, so the first update after reconnecting would compute a bogus jump
-		// spanning however long -- and however far -- the app went unconnected in between.
 		Location prev = lastLocation;
 		lastLocation = location;
 		if (prev == null) return;
-		if (!isConnectedToAndroidAuto()) return;
 
 		float dist = prev.distanceTo(location);
 		if (dist < MIN_MOVEMENT_M) return;
