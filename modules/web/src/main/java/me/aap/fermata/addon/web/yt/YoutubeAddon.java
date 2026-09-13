@@ -98,6 +98,23 @@ public class YoutubeAddon extends WebBrowserAddon
 	// once playing() confirms a match, or after it gives up correcting toward it.
 	@Nullable
 	private String pendingVideoId;
+	// Whether YoutubeFragment is currently resumed/visible -- kept here (not on YoutubeMediaEngine,
+	// same reasoning as queueItem/pendingVideoId above) since the fragment, not the engine, is what
+	// actually observes foreground/background transitions. Confirmed on-device: an already-playing
+	// video's audio keeps going fine while backgrounded, but asking the page to navigate to a
+	// DIFFERENT video (YoutubeMediaEngine#prepare()'s web.next()/prev()/loadVideo() calls) while
+	// hidden silently never takes effect -- the WebView/Chromium just doesn't process it until the
+	// page is visible again. prepare() checks this and defers that call instead of issuing it into a
+	// page that won't act on it; YoutubeFragment#onResume() flushes it once visible again.
+	private boolean visible = true;
+
+	boolean isVisible() {
+		return visible;
+	}
+
+	void setVisible(boolean visible) {
+		this.visible = visible;
+	}
 
 	@Nullable
 	PlayableItem getQueueItem() {

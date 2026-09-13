@@ -29,6 +29,7 @@ import me.aap.fermata.addon.web.FermataWebView;
 import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.WebBrowserAddon;
 import me.aap.fermata.addon.web.WebBrowserFragment;
+import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.DefaultMediaLib;
 import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
@@ -238,11 +239,16 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	// hidden on this build (no onPause()/pauseTimers() call exists for it -- see
 	// YoutubeWebView#requestFullScreen()'s doc comment), so leaving playback alone here should let
 	// it keep running and reach 'ended'/autonav transitions the same way it does in the foreground.
-	// The overrides below are diagnostic-only (log the transition + current playback state so it can
-	// be correlated against YoutubeMediaEngine's own logging) -- remove once background autoplay is
-	// confirmed working on-device.
+	// The overrides below no longer touch playback itself, but they still do two things: log the
+	// transition + current playback state (so it can be correlated against YoutubeMediaEngine's own
+	// logging), and drive YoutubeAddon#setVisible() -- see its declaration and YoutubeMediaEngine#
+	// runOrDeferNavigation()/flushPendingNavigation(): confirmed on-device (via that same logging)
+	// that prepare()'s page navigation call silently never takes effect while backgrounded, so it's
+	// deferred until onResume() flushes it here.
 	@Override
 	public void onPause() {
+		YoutubeAddon addon = AddonManager.get().getAddon(YoutubeAddon.class);
+		if (addon != null) addon.setVisible(false);
 		MainActivityDelegate.getActivityDelegate(getContext()).onSuccess(a -> {
 			FermataServiceUiBinder b = a.getMediaServiceBinder();
 			Log.i("YoutubeFragment.onPause(): isYoutubeItem=",
@@ -254,10 +260,14 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	@Override
 	public void onResume() {
 		super.onResume();
+		YoutubeAddon addon = AddonManager.get().getAddon(YoutubeAddon.class);
+		if (addon != null) addon.setVisible(true);
 		MainActivityDelegate.getActivityDelegate(getContext()).onSuccess(a -> {
 			FermataServiceUiBinder b = a.getMediaServiceBinder();
 			Log.i("YoutubeFragment.onResume(): isYoutubeItem=",
 					YoutubeMediaEngine.isYoutubeItem(b.getCurrentItem()), ", isPlaying=", b.isPlaying());
+			MediaEngine eng = a.getMediaSessionCallback().getEngine();
+			if (eng instanceof YoutubeMediaEngine yte) yte.flushPendingNavigation();
 		});
 	}
 

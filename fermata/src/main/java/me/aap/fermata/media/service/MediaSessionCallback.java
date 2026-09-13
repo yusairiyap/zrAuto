@@ -460,6 +460,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onPlay() {
+		Log.i("onPlay(): state=", getPlaybackState().getState());
 		playerTask.cancel();
 		playerTask = play();
 	}
@@ -547,6 +548,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onPause() {
+		Log.i("onPause(): state=", getPlaybackState().getState());
 		PlayableItem i;
 		MediaEngine eng = getEngine();
 		if ((eng == null) || ((i = eng.getSource()) == null)) return;
@@ -615,6 +617,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	public void onSeekTo(long position) {
 		MediaEngine eng = getEngine();
 		if ((eng == null) || (eng.getSource() == null)) return;
+		Log.i("onSeekTo(): position=", position, ", state=", getPlaybackState().getState());
 
 		eng.getSpeed().onSuccess(speed -> {
 			PlaybackStateCompat state = getPlaybackState();

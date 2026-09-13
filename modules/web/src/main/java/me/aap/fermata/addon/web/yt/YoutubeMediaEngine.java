@@ -473,12 +473,12 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			// it can't be armed via pendingVideoId; expectingPageNav is playing()'s equivalent for this
 			// case. See its declaration.
 			expectingPageNav = true;
-			web.next();
+			runOrDeferNavigation(web::next);
 		} else if (source == prev) {
 			Log.d("prepare(): no queue item -- asking the page for its own previous video");
 			transitioning();
 			expectingPageNav = true;
-			web.prev();
+			runOrDeferNavigation(web::prev);
 		} else if (queueVideoId != null) {
 			// Reached from MediaSessionCallback.skipTo()/engineEnded() when queueAwareNextPlayable()/
 			// PrevPlayable() below resolved a real sibling from the app's own Favorites/Playlist --
@@ -498,10 +498,40 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			// when that race happens) and lands the page on a different video of its own choosing.
 			web.getAddon().setPendingVideoId(queueVideoId);
 			pendingCorrections = 0;
-			web.loadVideo(queueVideoId);
+			runOrDeferNavigation(() -> web.loadVideo(queueVideoId));
 		} else {
 			cb.onEnginePrepared(this);
 		}
+	}
+
+	// Set by runOrDeferNavigation() below when the app is backgrounded at the moment prepare() wants
+	// to navigate to a new video -- confirmed on-device (see the paused()/ended()/prepare() logging
+	// above) that the Java-side decision logic (ended() -> onEngineEnded() -> queueAwareNextPlayable()
+	// -> prepare()) all runs correctly while hidden, but the resulting web.next()/prev()/loadVideo()
+	// JS call into the page silently never takes effect until the page is visible again -- unlike an
+	// already-playing video, whose audio keeps going fine hidden. Flushed by
+	// YoutubeFragment#onResume() once the app is foregrounded again, so the correct next video is
+	// picked up automatically instead of the stale ended/current item just sitting there until the
+	// user manually taps something (which, before this, could also skip past this pending item
+	// entirely).
+	@Nullable
+	private Runnable pendingNavigation;
+
+	private void runOrDeferNavigation(Runnable navigate) {
+		if (web.getAddon().isVisible()) {
+			navigate.run();
+		} else {
+			Log.i("YoutubeMediaEngine: app is backgrounded -- deferring page navigation");
+			pendingNavigation = navigate;
+		}
+	}
+
+	void flushPendingNavigation() {
+		Runnable navigate = pendingNavigation;
+		if (navigate == null) return;
+		pendingNavigation = null;
+		Log.i("YoutubeMediaEngine: app is foregrounded again -- flushing deferred page navigation");
+		navigate.run();
 	}
 
 	@Override
