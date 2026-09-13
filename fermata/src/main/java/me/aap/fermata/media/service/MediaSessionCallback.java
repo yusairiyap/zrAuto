@@ -1030,6 +1030,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	private FutureSupplier<?> engineEnded(MediaEngine engine) {
 		PlayableItem i = engine.getSource();
+		Log.i("engineEnded(): engine=", engine.getClass().getSimpleName(), ", source=", i);
 
 		if (i != null) {
 			if (i instanceof StreamItem) {
@@ -1041,11 +1042,15 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			if (i.isVideo()) i.getPrefs().setWatchedPref(true);
 
 			if (!i.getParent().getPrefs().getPlayNextPref()) {
+				Log.i("engineEnded(): getPlayNextPref() is false for parent ", i.getParent(),
+						" -- stopping instead of advancing");
 				onStop(true);
 				return completedVoid();
 			}
 
 			return getNextPlayable(i).then(this::prepareItem).then(next -> {
+				Log.i("engineEnded(): next playable resolved to ", next);
+
 				if (next != null) {
 					skipTo(true, next);
 				} else {
@@ -1056,6 +1061,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 				return completedVoid();
 			});
 		} else {
+			Log.i("engineEnded(): engine has no source -- stopping");
 			onStop(false);
 			return completedVoid();
 		}
@@ -1151,17 +1157,22 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onAudioFocusChange(int focusChange) {
-		Log.i("Audio focus event received: ", focusChange);
+		Log.i("Audio focus event received: ", focusChange, ", isPlaying=", isPlaying(),
+				", playOnAudioFocus=", playOnAudioFocus, ", isMuted=", isMuted, ", engine=", getEngine());
 
 		switch (focusChange) {
 			case AUDIOFOCUS_GAIN:
 				if (playOnAudioFocus) {
+					Log.i("onAudioFocusChange(): AUDIOFOCUS_GAIN -- resuming (playOnAudioFocus was set)");
 					playOnAudioFocus = false;
 					onPlay();
 				} else if (isMuted) {
+					Log.i("onAudioFocusChange(): AUDIOFOCUS_GAIN -- unmuting");
 					isMuted = false;
 					var eng = getEngine();
 					if (eng != null) eng.unmute(getContext());
+				} else {
+					Log.i("onAudioFocusChange(): AUDIOFOCUS_GAIN -- nothing to do");
 				}
 				break;
 			case AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
@@ -1170,14 +1181,19 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 				if (!isPlaying()) return;
 				var eng = getEngine();
 				if ((eng != null) && eng.muteOnTransientFocusLoss()) {
+					Log.i("onAudioFocusChange(): AUDIOFOCUS_LOSS_TRANSIENT -- muting instead of pausing");
 					isMuted = true;
 					eng.mute(getContext());
 					return;
 				}
 			default:
 				if (isPlaying()) {
+					Log.i("onAudioFocusChange(): ", focusChange,
+							" -- pausing and arming playOnAudioFocus for later resume");
 					playOnAudioFocus = true;
 					onPause();
+				} else {
+					Log.i("onAudioFocusChange(): ", focusChange, " -- not playing, nothing to do");
 				}
 
 				break;

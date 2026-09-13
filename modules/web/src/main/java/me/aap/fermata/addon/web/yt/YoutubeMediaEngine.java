@@ -277,6 +277,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	void ended() {
+		Log.i("YoutubeMediaEngine.ended(): currentVideoId=", currentVideoId, ", repeatOne=",
+				web.getAddon().isRepeatOneEnabled(), ", queueItem=", web.getAddon().getQueueItem());
 		// Repeat One loops whatever video is currently playing, regardless of whether it's part of a
 		// Favorites/Playlist queue (see YoutubeAddon#isRepeatOneEnabled()) -- handled here directly,
 		// short-circuiting before current becomes end/cb.onEngineEnded() runs, so it works the exact
@@ -391,6 +393,9 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// honored instead of retrying indefinitely.
 		long now = System.currentTimeMillis();
 		lastPausedTime = now;
+		Log.i("YoutubeMediaEngine.paused(): lastActivePlayTime=", lastActivePlayTime,
+				", elapsed=", (lastActivePlayTime == 0) ? -1 : (now - lastActivePlayTime),
+				", playRetries=", playRetries, ", ignorePause=", ignorePause);
 
 		// Already known to be too small at this size (or smaller) -- don't repeat the same failed
 		// play() attempt and its audible blip, just honor the pause silently (the toast already
@@ -417,6 +422,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 					.show();
 		}
 
+		Log.i("YoutubeMediaEngine.paused(): honoring pause -- calling cb.onPause()");
 		ignorePause = true;
 		cb.onPause();
 		ignorePause = false;
@@ -441,6 +447,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// not an instanceof check. Computed once up front since it's needed by both the Repeat One
 		// reset below and the navigation branch further down.
 		String queueVideoId = YoutubeVideoItem.extractYoutubeVideoId(source);
+		Log.i("YoutubeMediaEngine.prepare(): source=", source, ", isNext=", (source == next),
+				", isPrev=", (source == prev), ", queueVideoId=", queueVideoId);
 
 		// prepare() re-taking control of navigation, one way or another, is what queueTransitionPending
 		// waits for -- see its declaration and playing()'s "unexpected transition" handling above.
@@ -586,10 +594,14 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	@Override
 	public boolean requestAudioFocus(@Nullable AudioManager audioManager,
 																		@Nullable AudioFocusRequestCompat audioFocusReq) {
-		if (hasAudioFocus) return true;
+		if (hasAudioFocus) {
+			Log.i("YoutubeMediaEngine.requestAudioFocus(): already held, skipping real request");
+			return true;
+		}
 		if ((audioManager == null) || (audioFocusReq == null)) return true;
 		hasAudioFocus = AudioManagerCompat.requestAudioFocus(audioManager, audioFocusReq) ==
 				AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+		Log.i("YoutubeMediaEngine.requestAudioFocus(): real request made, granted=", hasAudioFocus);
 		// Best-effort, matching 85f1df7's original fix: never block resume on a failed/raced grant.
 		return true;
 	}
@@ -598,6 +610,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	public void releaseAudioFocus(@Nullable AudioManager audioManager,
 																 @Nullable AudioFocusRequestCompat audioFocusReq) {
 		if (!hasAudioFocus) return;
+		Log.i("YoutubeMediaEngine.releaseAudioFocus(): abandoning held focus");
 		hasAudioFocus = false;
 		if ((audioManager != null) && (audioFocusReq != null))
 			AudioManagerCompat.abandonAudioFocusRequest(audioManager, audioFocusReq);
@@ -948,11 +961,11 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	@NonNull
 	private FutureSupplier<PlayableItem> queueAwareNextPlayable() {
 		PlayableItem q = web.getAddon().getQueueItem();
-		Log.d("queueAwareNextPlayable(): queueItem=", q, " parent=", (q != null) ? q.getParent() : null);
+		Log.i("queueAwareNextPlayable(): queueItem=", q, " parent=", (q != null) ? q.getParent() : null);
 		if (q == null) return completed(next);
 		BrowsableItem container = q.getParent();
 		return q.getNextPlayable().map(pi -> {
-			Log.d("queueAwareNextPlayable(): resolved ", pi);
+			Log.i("queueAwareNextPlayable(): resolved ", pi);
 			return acceptQueueResolved(pi, container, next);
 		});
 	}

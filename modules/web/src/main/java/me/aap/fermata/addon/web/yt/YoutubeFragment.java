@@ -36,6 +36,7 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.utils.async.FutureSupplier;
+import me.aap.utils.log.Log;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.menu.OverlayMenuItem;
@@ -226,18 +227,40 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		a.getMediaServiceBinder().removeBroadcastListener(this);
 	}
 
-	// Deliberately no onPause()/onResume() override here anymore. This used to force-pause YouTube
-	// playback the instant the fragment backgrounded (phone/non-Auto builds only -- Android Auto
-	// already never did this) and only resume the same video on return, based on a snapshot of
-	// isPlaying() taken at pause time. That made it impossible for a video to ever reach a natural
-	// end while backgrounded -- it just sat paused -- so playlist/favourites/YouTube-autonav
-	// advance-to-next-video (see YoutubeMediaEngine#ended()/MediaSessionCallback#onEngineEnded())
-	// never got a chance to run unless the app was in the foreground the whole time. The WebView
-	// itself isn't suspended by anything else while merely hidden on this build (no
-	// onPause()/pauseTimers() call exists for it -- see YoutubeWebView#requestFullScreen()'s doc
-	// comment), so leaving playback alone here lets it keep running (Chromium may throttle a hidden
-	// page's own JS/timers, but doesn't stop it outright) and reach 'ended'/autonav transitions the
-	// same way it does in the foreground.
+	// No onPause()/onResume() override here that touches playback anymore -- see git history: this
+	// used to force-pause YouTube the instant the fragment backgrounded (phone/non-Auto builds only
+	// -- Android Auto already never did this) and only resume the same video on return, based on a
+	// snapshot of isPlaying() taken at pause time. That made it impossible for a video to ever reach
+	// a natural end while backgrounded -- it just sat paused -- so playlist/favourites/
+	// YouTube-autonav advance-to-next-video (see YoutubeMediaEngine#ended()/
+	// MediaSessionCallback#onEngineEnded()) never got a chance to run unless the app was in the
+	// foreground the whole time. The WebView itself isn't suspended by anything else while merely
+	// hidden on this build (no onPause()/pauseTimers() call exists for it -- see
+	// YoutubeWebView#requestFullScreen()'s doc comment), so leaving playback alone here should let
+	// it keep running and reach 'ended'/autonav transitions the same way it does in the foreground.
+	// The overrides below are diagnostic-only (log the transition + current playback state so it can
+	// be correlated against YoutubeMediaEngine's own logging) -- remove once background autoplay is
+	// confirmed working on-device.
+	@Override
+	public void onPause() {
+		MainActivityDelegate.getActivityDelegate(getContext()).onSuccess(a -> {
+			FermataServiceUiBinder b = a.getMediaServiceBinder();
+			Log.i("YoutubeFragment.onPause(): isYoutubeItem=",
+					YoutubeMediaEngine.isYoutubeItem(b.getCurrentItem()), ", isPlaying=", b.isPlaying());
+		});
+		super.onPause();
+	}
+
+	@Override
+	public void onResume() {
+		super.onResume();
+		MainActivityDelegate.getActivityDelegate(getContext()).onSuccess(a -> {
+			FermataServiceUiBinder b = a.getMediaServiceBinder();
+			Log.i("YoutubeFragment.onResume(): isYoutubeItem=",
+					YoutubeMediaEngine.isYoutubeItem(b.getCurrentItem()), ", isPlaying=", b.isPlaying());
+		});
+	}
+
 	public void loadUrl(String url) {
 		FermataWebView v = getWebView();
 		if (v != null) v.loadUrl(url);
