@@ -2,6 +2,7 @@ package me.aap.fermata.media.service;
 
 import static android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY;
 import static android.media.AudioManager.AUDIOFOCUS_GAIN;
+import static android.media.AudioManager.AUDIOFOCUS_LOSS;
 import static android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT;
 import static android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK;
 import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM_ART;
@@ -1202,6 +1203,20 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 					onPause();
 				} else {
 					Log.i("onAudioFocusChange(): ", focusChange, " -- not playing, nothing to do");
+				}
+
+				if (focusChange == AUDIOFOCUS_LOSS) {
+					// Unlike AUDIOFOCUS_LOSS_TRANSIENT, a permanent loss is not guaranteed to ever be
+					// followed by an AUDIOFOCUS_GAIN callback -- per the AudioManager contract, that only
+					// reliably happens for a transient loss. Confirmed on-device: a car's reverse-camera
+					// takeover can deliver a permanent AUDIOFOCUS_LOSS (-1) for what's really a momentary
+					// interruption, and playOnAudioFocus above then sits waiting indefinitely for a GAIN
+					// that may never come. Telling the engine here (see MediaEngine#onAudioFocusLost())
+					// lets it drop any "we still hold focus" bookkeeping -- see YoutubeMediaEngine's
+					// hasAudioFocus -- so at least the next resume (manual or otherwise) re-requests real
+					// focus instead of wrongly assuming the stale grant is still good.
+					var engLost = getEngine();
+					if (engLost != null) engLost.onAudioFocusLost();
 				}
 
 				break;

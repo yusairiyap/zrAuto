@@ -292,6 +292,17 @@ public interface MediaEngine extends Closeable {
 			AudioManagerCompat.abandonAudioFocusRequest(audioManager, audioFocusReq);
 	}
 
+	/**
+	 * Called by {@link me.aap.fermata.media.service.MediaSessionCallback#onAudioFocusChange} when a
+	 * permanent (non-transient) {@code AUDIOFOCUS_LOSS} arrives -- unlike a transient loss, this one
+	 * isn't guaranteed to ever be followed by an {@code AUDIOFOCUS_GAIN} callback, so an engine that
+	 * tracks its own "do I already hold focus" state to dedupe {@link #requestAudioFocus} calls (see
+	 * {@code YoutubeMediaEngine}) should drop that state here, or its next resume attempt will wrongly
+	 * skip re-requesting real focus. No-op by default: only relevant to an engine that does its own
+	 * such deduping in the first place.
+	 */
+	default void onAudioFocusLost() {}
+
 	default boolean hasVideoMenu() {
 		return false;
 	}

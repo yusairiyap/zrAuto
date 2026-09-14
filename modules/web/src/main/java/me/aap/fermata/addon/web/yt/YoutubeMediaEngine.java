@@ -654,6 +654,19 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	@Override
+	public void onAudioFocusLost() {
+		// Confirmed on-device: a car's reverse-camera/360 takeover can deliver a permanent
+		// AUDIOFOCUS_LOSS rather than a transient one for what's really a momentary interruption.
+		// hasAudioFocus staying true after that would make the next requestAudioFocus() call above
+		// wrongly skip re-requesting real focus (it'd think it still holds a grant the system already
+		// revoked), leaving MediaSessionCallback waiting on an AUDIOFOCUS_GAIN callback that a
+		// permanent loss doesn't reliably ever send. Dropping it here means the next resume attempt
+		// (manual tap, or a future auto-retry) issues a real request instead of a stale no-op.
+		Log.i("YoutubeMediaEngine.onAudioFocusLost(): dropping stale hasAudioFocus");
+		hasAudioFocus = false;
+	}
+
+	@Override
 	public boolean hasVideoMenu() {
 		return true;
 	}
