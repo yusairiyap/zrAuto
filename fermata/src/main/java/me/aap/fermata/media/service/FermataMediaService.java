@@ -242,18 +242,51 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 	@SuppressLint("SwitchIntDef")
 	void updateNotification(int st, PlayableItem currentItem) {
 		switch (st) {
-			case STATE_NONE, STATE_STOPPED, STATE_ERROR -> stopForeground(true);
+			case STATE_NONE, STATE_STOPPED, STATE_ERROR -> {
+				stopForeground(true);
+				// See ensureStarted()'s doc comment: undoes that call once there's genuinely nothing
+				// left to preserve. Harmless no-op if something is still bound (e.g. the phone UI
+				// browsing the library) -- Android only actually destroys the service once BOTH this
+				// has been called AND every binder has disconnected, so this never cuts off a client
+				// still using it, it just drops the "stay alive even with nobody bound" guarantee.
+				stopSelf();
+			}
 			case STATE_PAUSED -> {
+				ensureStarted();
 				if (ActivityCompat.checkSelfPermission(this, POST_NOTIFICATIONS) != PERMISSION_GRANTED) {
 					return;
 				}
 				NotificationManagerCompat.from(this).notify(NOTIF_ID, createNotification(st, currentItem));
 				stopForeground(false);
 			}
-			case STATE_PLAYING -> startForeground(NOTIF_ID, createNotification(st, currentItem));
+			case STATE_PLAYING -> {
+				ensureStarted();
+				startForeground(NOTIF_ID, createNotification(st, currentItem));
+			}
 			default -> {
 			}
 		}
+	}
+
+	// Confirmed on-device (Android Auto): this service was bind-only (bindService(), never
+	// startService()/startForegroundService()), so its whole lifetime -- session, engine, audio
+	// focus bookkeeping, everything -- depended entirely on at least one client staying bound.
+	// CarService.onDestroy() (fermata/src/auto/.../CarService.java) unbinds MainCarActivity's
+	// connection whenever the car head unit tears down/recreates its projected CarActivityService --
+	// observed happening around a reverse-camera/360 overlay takeover -- and if that was the only
+	// bound client (typical while driving, since the phone UI's own Activity usually isn't alive),
+	// that unbind destroyed this service outright: onDestroy() releases the session and closes the
+	// engine, so the next bind rebuilds everything from scratch, including audio-focus state and
+	// (since setLastPlayed() explicitly skips external items) falling back to a stale local
+	// last-played item instead of the YouTube video that had been playing. This is what actually
+	// produced the "pauses on camera takeover and won't resume" symptom -- not anything specific to
+	// YouTube's own focus handling. Marking the service properly started (not just bound) here, on
+	// every transition into an active session (playing or merely paused-with-content), makes it
+	// survive exactly this kind of client churn the same way a well-behaved media service (e.g.
+	// Spotify) already does -- it only actually goes away once BOTH stopSelf() above has run AND
+	// every binder has disconnected.
+	private void ensureStarted() {
+		ContextCompat.startForegroundService(this, new Intent(this, FermataMediaService.class));
 	}
 
 	private Notification createNotification(int st, PlayableItem i) {
