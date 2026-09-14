@@ -4,7 +4,6 @@ import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 import static me.aap.fermata.media.pref.MediaPrefs.MEDIA_ENG_YT;
 import static me.aap.fermata.util.Utils.dynCtx;
 import static me.aap.utils.async.Completed.completed;
-import static me.aap.utils.async.Completed.completedNull;
 
 import android.content.Context;
 import android.content.res.Resources;
@@ -14,6 +13,7 @@ import android.media.MediaMetadata;
 import android.net.Uri;
 import android.os.SystemClock;
 import android.support.v4.media.MediaMetadataCompat;
+import android.support.v4.media.session.MediaSessionCompat;
 import android.view.ViewGroup;
 import android.widget.Toast;
 
@@ -305,7 +305,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		currentVideoId = actualId;
 
 		if (url.startsWith("blob:")) url = url.substring(5);
-		current = new Current(url, currentVideoTitle, actualId);
+		current = new Current(url, currentVideoTitle);
+		updateThumbnailAsync(actualId);
 
 		if (!web.getAddon().autoHighestQuality()) {
 			qualityUrl = null;
@@ -485,6 +486,46 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 */
 	long getLastExternalPauseTime() {
 		return lastExternalPauseTime;
+	}
+
+	/**
+	 * Resolves the current video's thumbnail and, once it arrives, merges it live into whatever
+	 * metadata the session already holds -- entirely independent of {@link Current#loadMeta()}
+	 * (see that method's doc comment for why chaining this fetch into it, an earlier version of
+	 * this feature, caused the seek bar and time labels to sometimes go missing on a video
+	 * change). This is what puts the thumbnail into the OS media notification/Android Auto's
+	 * now-playing surface without holding up anything the UI is actively waiting on.
+	 * <p>
+	 * Tries the true 16:9 frame first and falls back to the always-present letterboxed one (see
+	 * {@link YoutubeVideoItem#thumbnailUrl}) -- a miss on either just leaves the metadata without
+	 * artwork rather than failing anything. Guarded on completion against a fast further video
+	 * change: {@code videoId} must still be {@link #currentVideoId} and this must still be the
+	 * live engine, or the fetch is simply discarded instead of slapping a stale thumbnail onto
+	 * whatever plays next.
+	 */
+	private void updateThumbnailAsync(@Nullable String videoId) {
+		if ((videoId == null) || videoId.isEmpty()) return;
+		fetchThumbnail(videoId, true).then(bm -> (bm != null) ? completed(bm) :
+				fetchThumbnail(videoId, false)).onSuccess(art -> {
+			if ((art == null) || !videoId.equals(currentVideoId) || (cb.getEngine() != this)) return;
+			MediaSessionCompat session = cb.getSession();
+			MediaMetadataCompat existing = session.getController().getMetadata();
+			MediaMetadataCompat.Builder b =
+					(existing != null) ? new MediaMetadataCompat.Builder(existing) :
+							new MediaMetadataCompat.Builder();
+			b.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, art);
+			session.setMetadata(b.build());
+		});
+	}
+
+	/**
+	 * Bounded and failure-swallowing on purpose: nothing awaits this but {@link
+	 * #updateThumbnailAsync}, but a hung network fetch retained forever is still worth capping.
+	 */
+	@NonNull
+	private FutureSupplier<Bitmap> fetchThumbnail(String videoId, boolean maxRes) {
+		return mediaRoot.getLib().getBitmap(YoutubeVideoItem.thumbnailUrl(videoId, maxRes))
+				.timeout(THUMBNAIL_TIMEOUT_MS).ifFail(err -> null);
 	}
 
 	@Override
@@ -949,13 +990,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	private final class Current extends YoutubeItem {
 		@Nullable
 		private final String title;
-		@Nullable
-		private final String videoId;
 
-		public Current(String url, @Nullable String title, @Nullable String videoId) {
+		public Current(String url, @Nullable String title) {
 			super(CURRENT_ID, mediaRoot, GenericFileSystem.getInstance().create(url));
 			this.title = title;
-			this.videoId = videoId;
 		}
 
 		// The resource this item is built around is the <video> element's own currentSrc -- an opaque
@@ -977,50 +1015,22 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			// getVideoTitle() hands back the raw JSON-encoded evaluateJavascript() result, quotes and
 			// all -- both of which used to end up verbatim in the media session metadata, hence in the
 			// notification and the control panel.
+			//
+			// Deliberately just title + duration, nothing else: this Future is also what
+			// PlayableItem#getDuration() resolves through, which FermataServiceUiBinder awaits before
+			// it will show the seek bar/time labels for a newly playing item at all. It used to also
+			// chain the thumbnail fetch below into this same Future -- correct for the metadata, but it
+			// meant a slow or failing image load (a plain network fetch, on a moving car's connection)
+			// delayed the seek bar and both time labels by however long that took, sometimes the whole
+			// timeout, on every single video change. See updateThumbnailAsync() for why the artwork is
+			// applied as a separate, later update instead.
 			FutureSupplier<String> getTitle = (title != null) ? completed(title) : web.getVideoTitle();
-			FutureSupplier<Bitmap> getArt = loadThumbnail();
-			return web.getDuration().then(dur -> getTitle.then(t -> getArt.map(art -> {
+			return web.getDuration().then(dur -> getTitle.map(t -> {
 				MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
 				b.putString(MediaMetadataCompat.METADATA_KEY_TITLE, t);
 				b.putLong(MediaMetadata.METADATA_KEY_DURATION, dur);
-				// Put the decoded bitmap rather than METADATA_KEY_ALBUM_ART_URI (what
-				// YoutubeVideoItem does): MediaSessionCallback#buildMetadata() short-circuits on an
-				// already-present bitmap, so resolving it here is what lets the maxres -> hq fallback
-				// below happen at all -- that path can only be handed one URL and treats a miss as
-				// "no artwork".
-				if (art != null) b.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, art);
 				return b.build();
-			})));
-		}
-
-		/**
-		 * The current video's thumbnail, for the media session metadata -- which is where the OS media
-		 * notification (and Android Auto's own now-playing surface) takes its artwork from. Without
-		 * it, {@code MediaSessionCallback#buildMetadata()} falls through to the default image and
-		 * {@code FermataMediaService#createNotification()} swaps that for a generic video glyph, which
-		 * is what YouTube playback used to show.
-		 * <p>
-		 * Tries the true 16:9 frame first and falls back to the always-present letterboxed one (see
-		 * {@link YoutubeVideoItem#thumbnailUrl}); null if neither resolves, which just restores that
-		 * generic glyph rather than failing the metadata load. Both misses and successes are cached by
-		 * {@link me.aap.fermata.media.engine.BitmapCache}, so a video whose maxres frame doesn't exist
-		 * only pays for that discovery once.
-		 */
-		@NonNull
-		private FutureSupplier<Bitmap> loadThumbnail() {
-			if ((videoId == null) || videoId.isEmpty()) return completedNull();
-			MediaLib lib = getLib();
-			return fetchThumbnail(lib, videoId, true).then(bm -> (bm != null) ? completed(bm) :
-					fetchThumbnail(lib, videoId, false));
-		}
-
-		@NonNull
-		private FutureSupplier<Bitmap> fetchThumbnail(MediaLib lib, String videoId, boolean maxRes) {
-			// Bounded and failure-swallowing on purpose: the whole metadata load waits on this, and a
-			// stalled or broken image fetch must degrade to "no artwork" rather than leave the media
-			// session without a title.
-			return lib.getBitmap(YoutubeVideoItem.thumbnailUrl(videoId, maxRes))
-					.timeout(THUMBNAIL_TIMEOUT_MS).ifFail(err -> null);
+			}));
 		}
 
 		@NonNull
