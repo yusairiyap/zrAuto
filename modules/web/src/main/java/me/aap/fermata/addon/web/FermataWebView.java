@@ -56,7 +56,7 @@ import me.aap.utils.ui.view.ToolBarView;
 public class FermataWebView extends WebView
 		implements TextChangedListener, TextView.OnEditorActionListener, PreferenceStore.Listener,
 		MainActivityListener {
-	private final boolean isCar;
+	private boolean isCar;
 	private WebBrowserAddon addon;
 	private FermataWebClient webClient;
 	private FermataChromeClient chrome;
@@ -67,16 +67,28 @@ public class FermataWebView extends WebView
 
 	public FermataWebView(Context context, AttributeSet attrs) {
 		super(context, attrs);
-		MainActivityDelegate a = MainActivityDelegate.get(context);
-		isCar = BuildConfig.AUTO && a.isCarActivityNotMirror();
-		a.insetWebViewTop(this);
+		initFromActivityDelegate(context);
 	}
 
 	public FermataWebView(Context context, AttributeSet attrs, int defStyleAttr) {
 		super(context, attrs, defStyleAttr);
-		MainActivityDelegate a = MainActivityDelegate.get(context);
-		isCar = BuildConfig.AUTO && a.isCarActivityNotMirror();
-		a.insetWebViewTop(this);
+		initFromActivityDelegate(context);
+	}
+
+	// The synchronous MainActivityDelegate.get(context) this used to call is just
+	// getActivityDelegate(context).getOrThrow(), which throws "FutureSupplier is not done" instead
+	// of blocking if the Activity's own async delegate hasn't finished resolving yet -- confirmed
+	// on-device as a startup crash here, since this constructor can run (via layout inflation of a
+	// fragment's view) before that resolution completes. onSuccess() below runs its callback
+	// synchronously, with the exact same effect as before, whenever the delegate is already resolved
+	// (the overwhelmingly common case) and only actually defers to once it resolves in that narrow
+	// startup race -- isCar is non-final so it can be corrected at that point instead of being
+	// permanently stuck at its default.
+	private void initFromActivityDelegate(Context context) {
+		MainActivityDelegate.getActivityDelegate(context).onSuccess(a -> {
+			isCar = BuildConfig.AUTO && a.isCarActivityNotMirror();
+			a.insetWebViewTop(this);
+		});
 	}
 
 	@SuppressLint("SetJavaScriptEnabled")

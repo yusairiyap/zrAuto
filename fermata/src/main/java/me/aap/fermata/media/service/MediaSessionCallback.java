@@ -193,6 +193,20 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	private Queue<Prioritized<MediaSessionCallbackAssistant>> assistants;
 	private FutureSupplier<?> playerTask = completedVoid();
 	private MediaMetadataCompat metadata;
+	// Bumped every time playerTask is cancelled/replaced below (skip, prepare, play, engine-ended,
+	// ...). skipTo(boolean, PlayableItem, long)/engineEnded() capture the value in effect when they
+	// started and recheck it right before actually committing to a next/prev item -- see skipTo()'s
+	// guard. Without this, a natural "video ended" autonav (YoutubeMediaEngine#ended() ->
+	// cb.onEngineEnded()) racing an explicit tap on skip-next (onSkipToNext(), e.g. tapped right as
+	// the video was about to end anyway) can leave BOTH async resolutions in flight at once, each
+	// unaware the other superseded it (playerTask.cancel() only marks the FutureSupplier cancelled
+	// for callers awaiting it -- it doesn't stop an already-scheduled .then() continuation from still
+	// running and calling playPreparedItem()/MediaEngineManager#createEngine() with its own, possibly
+	// now-stale idea of the current engine/item). Confirmed on-device: that race is what let engine
+	// selection fall through to preference-based selection (bypassing YoutubeItem/YoutubeVideoItem's
+	// own getMediaEngine() override that keeps YouTube on YoutubeMediaEngine) and momentarily hand an
+	// unrelated local video file's engine a YouTube item to play.
+	private long skipGeneration;
 
 	public MediaSessionCallback(FermataMediaService service, MediaSessionCompat session,
 															MediaLib lib,
@@ -282,6 +296,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	public void setEngine(MediaEngine engine) {
 		if (this.engine == engine) return;
 		playerTask.cancel();
+		skipGeneration++;
 		onStop();
 		this.engine = engine;
 	}
@@ -429,6 +444,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	@Override
 	public void onPrepare() {
 		playerTask.cancel();
+		skipGeneration++;
 		playerTask = prepare();
 	}
 
@@ -463,6 +479,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	public void onPlay() {
 		Log.i("onPlay(): state=", getPlaybackState().getState());
 		playerTask.cancel();
+		skipGeneration++;
 		playerTask = play();
 	}
 
@@ -504,6 +521,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	@Override
 	public void onPlayFromMediaId(String mediaId, Bundle extras) {
 		playerTask.cancel();
+		skipGeneration++;
 		playerTask = playFromMediaId(mediaId, extras);
 	}
 
@@ -632,26 +650,30 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	@Override
 	public void onSkipToPrevious() {
 		playerTask.cancel();
-		playerTask = skipTo(false, false);
+		long gen = ++skipGeneration;
+		playerTask = skipTo(false, false, gen);
 	}
 
 	public void onSkipToPreviousFolder() {
 		playerTask.cancel();
-		playerTask = skipTo(false, true);
+		long gen = ++skipGeneration;
+		playerTask = skipTo(false, true, gen);
 	}
 
 	@Override
 	public void onSkipToNext() {
 		playerTask.cancel();
-		playerTask = skipTo(true, false);
+		long gen = ++skipGeneration;
+		playerTask = skipTo(true, false, gen);
 	}
 
 	public void onSkipToNextFolder() {
 		playerTask.cancel();
-		playerTask = skipTo(true, true);
+		long gen = ++skipGeneration;
+		playerTask = skipTo(true, true, gen);
 	}
 
-	private FutureSupplier<Void> skipTo(boolean next, boolean folder) {
+	private FutureSupplier<Void> skipTo(boolean next, boolean folder, long gen) {
 		PlayableItem i;
 		MediaEngine eng = getEngine();
 		if ((eng == null) || ((i = eng.getSource()) == null)) return completedVoid();
@@ -670,12 +692,23 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		return getItem.then(
 				item -> (next ? getNextPlayable(item) : getPrevPlayable(item)).then(this::prepareItem)
 						.then(pi -> {
-							if (pi != null) skipTo(next, pi);
+							if (pi != null) skipTo(next, pi, gen);
 							return completedVoid();
 						}));
 	}
 
-	private void skipTo(boolean next, PlayableItem i) {
+	// gen is whatever skipGeneration was when the caller (onSkipToNext()/onSkipToPrevious()/
+	// engineEnded()) started resolving this next/prev item -- see skipGeneration's declaration.
+	// Re-checked here, right before actually committing to it, since everything above this point ran
+	// asynchronously and a newer skip/end/play/prepare request may have superseded this one while it
+	// was resolving.
+	private void skipTo(boolean next, PlayableItem i, long gen) {
+		if (gen != skipGeneration) {
+			Log.i("skipTo(): superseded by a newer request (gen=", gen, ", current=", skipGeneration,
+					") -- dropping resolved item ", i);
+			return;
+		}
+
 		PlaybackStateCompat state = getPlaybackState();
 		long pos = i.getPrefs().getPositionPref();
 		PlaybackStateCompat.Builder b = new PlaybackStateCompat.Builder(state);
@@ -702,6 +735,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	public boolean rewindFastForward(boolean ff, int time, int timeUnit, int multiply) {
 		playerTask.cancel();
+		skipGeneration++;
 		PlayableItem i;
 		MediaEngine eng = getEngine();
 		if ((eng == null) || ((i = eng.getSource()) == null)) return false;
@@ -822,6 +856,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		if (pi == null) return;
 
 		playerTask.cancel();
+		skipGeneration++;
 		playerTask = skipToQueueItem(pi, queueId);
 	}
 
@@ -891,6 +926,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	@Override
 	public void onEnginePrepared(MediaEngine engine) {
 		playerTask.cancel();
+		skipGeneration++;
 		PlayableItem i = engine.getSource();
 		if (i != null) onEnginePrepared(engine, i);
 	}
@@ -1029,10 +1065,11 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	@Override
 	public void onEngineEnded(MediaEngine engine) {
 		playerTask.cancel();
-		playerTask = engineEnded(engine);
+		long gen = ++skipGeneration;
+		playerTask = engineEnded(engine, gen);
 	}
 
-	private FutureSupplier<?> engineEnded(MediaEngine engine) {
+	private FutureSupplier<?> engineEnded(MediaEngine engine, long gen) {
 		PlayableItem i = engine.getSource();
 		Log.i("engineEnded(): engine=", engine.getClass().getSimpleName(), ", source=", i);
 
@@ -1056,7 +1093,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 				Log.i("engineEnded(): next playable resolved to ", next);
 
 				if (next != null) {
-					skipTo(true, next);
+					skipTo(true, next, gen);
 				} else {
 					onStop(false);
 					setLastPlayed(i, 0);
@@ -1220,6 +1257,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	public void playItem(PlayableItem i, long pos) {
 		playerTask.cancel();
+		skipGeneration++;
 		setLastPlayed(i, pos);
 		PlaybackStateCompat state = new PlaybackStateCompat.Builder().setActions(SUPPORTED_ACTIONS)
 				.setState(STATE_CONNECTING, 0, 1.0f).build();
