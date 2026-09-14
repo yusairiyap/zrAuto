@@ -68,6 +68,7 @@ import me.aap.fermata.media.pref.PlaybackControlPrefs;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.util.Utils;
 import me.aap.utils.app.App;
 import me.aap.utils.collection.CollectionUtils;
@@ -932,6 +933,8 @@ public class SettingsFragment extends MainActivityFragment
 			}
 		}
 
+		addDiagnostics(a, set);
+
 		return new PreferenceViewAdapter(set) {
 			@Override
 			public void setPreferenceSet(PreferenceSet set) {
@@ -939,6 +942,38 @@ public class SettingsFragment extends MainActivityFragment
 				a.fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 			}
 		};
+	}
+
+	/**
+	 * Opt-in event tracing for problems that can only be reproduced in the car -- see
+	 * {@link DiagnosticLog}. Available on every build and on the car screen itself: turning it on
+	 * (and reading it back afterwards) has to be possible from wherever the user actually is when
+	 * the problem happens, which by definition isn't next to a laptop with adb.
+	 */
+	private void addDiagnostics(MainActivityDelegate a, PreferenceSet set) {
+		PreferenceSet sub = set.subSet(o -> {
+			o.title = R.string.diagnostics;
+			o.icon = R.drawable.settings;
+		});
+		sub.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.DEBUG_LOG_ENABLED;
+			o.title = R.string.debug_log_enabled;
+			o.subtitle = R.string.debug_log_enabled_sub;
+		});
+		var loggingOn = PrefCondition.create(a.getPrefs(), MainActivityPrefs.DEBUG_LOG_ENABLED);
+		sub.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.DEBUG_LOG_TOASTS;
+			o.title = R.string.debug_log_toasts;
+			o.subtitle = R.string.debug_log_toasts_sub;
+			o.visibility = loggingOn.copy();
+		});
+		sub.addButton(o -> {
+			o.title = R.string.diagnostic_log_view;
+			o.subtitle = R.string.diagnostic_log_view_sub;
+			o.onClick = () -> a.showFragment(R.id.diagnostic_log_fragment);
+		});
 	}
 
 	/**

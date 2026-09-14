@@ -34,6 +34,7 @@ import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.activity.VoiceCommand;
 import me.aap.fermata.ui.fragment.MainActivityFragment;
 import me.aap.fermata.ui.view.VideoView;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.function.BooleanConsumer;
 import me.aap.utils.function.Supplier;
 import me.aap.utils.log.Log;
@@ -213,6 +214,7 @@ public class WebBrowserFragment extends MainActivityFragment
 		FermataChromeClient chrome = v.getWebChromeClient();
 		if (chrome != null) {
 			if (chrome.isFullScreen()) {
+				DiagnosticLog.log("FULLSCREEN", "force-exit on pause");
 				chrome.exitFullScreen();
 				v.exitPageFullScreen(() -> {});
 				fullScreenOnResume = true;
@@ -275,7 +277,13 @@ public class WebBrowserFragment extends MainActivityFragment
 		if (v == null) return;
 		FermataChromeClient chrome = v.getWebChromeClient();
 		if ((chrome == null) || !chrome.isFullScreen()) return;
-		if (!beginFullScreenRecovery()) return;
+		if (!beginFullScreenRecovery()) {
+			DiagnosticLog.log("FULLSCREEN", "rebuild skipped (another recovery owns this cycle)");
+			return;
+		}
+		// Worth tracing loudly: this tears the page out of fullscreen and puts it back, and YouTube's
+		// player restarting around that resize is a candidate cause of the pause being investigated.
+		DiagnosticLog.log("FULLSCREEN", "rebuild started (exit + re-enter)");
 		v.onResume();
 		chrome.exitFullScreen();
 		MainActivityDelegate.getActivityDelegate(getContext()).onFailure(err -> endFullScreenRecovery())
@@ -352,6 +360,7 @@ public class WebBrowserFragment extends MainActivityFragment
 
 	/** Releases the claim taken by {@link #beginFullScreenRecovery()}, win or lose. */
 	private void endFullScreenRecovery() {
+		DiagnosticLog.log("FULLSCREEN", "recovery cycle finished");
 		fullScreenRecoveryInFlight = false;
 		fullScreenRecoveryEverCompleted = true;
 		lastFullScreenRecoveryCompletedAt = SystemClock.elapsedRealtime();

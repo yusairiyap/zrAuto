@@ -39,6 +39,7 @@ import me.aap.fermata.media.pref.BrowsableItemPrefs;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.VideoView;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.text.SharedTextBuilder;
@@ -312,6 +313,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			qualityUrl = url;
 			web.setHighestVideoQuality();
 		}
+		DiagnosticLog.log("YT", "playing", "id=" + actualId, "title=" + currentVideoTitle);
 		cb.setEngine(this);
 		cb.onEngineStarted(this);
 	}
@@ -348,6 +350,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			return;
 		}
 
+		DiagnosticLog.log("YT", "video ended", "id=" + currentVideoId);
 		current = end;
 		qualityUrl = null;
 		cb.onEngineEnded(this);
@@ -459,6 +462,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 		// Which of the two kinds of pause this is decides whether it's ever automatically undone --
 		// see lastExternalPauseTime's declaration and YoutubeFragment#onHostInterruptionEnded().
+		// The page pausing with nothing on the app side having asked for it is the exact signature of
+		// a host takeover, so it's called out loudly in the trace rather than logged as a plain pause.
+		DiagnosticLog.logAndToast("YT", appRequestedPause ? "paused (app asked)" : "PAUSED BY PAGE",
+				"id=" + currentVideoId, "size=" + web.getWidth() + 'x' + web.getHeight());
 		if (appRequestedPause) {
 			appRequestedPause = false;
 			lastExternalPauseTime = 0;
@@ -556,6 +563,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	@Override
 	public void start() {
+		DiagnosticLog.log("YT", "engine start()", "id=" + currentVideoId);
 		lastActivePlayTime = System.currentTimeMillis();
 		lastPausedTime = 0;
 		playRetries = 0;
@@ -568,6 +576,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	@Override
 	public void stop() {
+		DiagnosticLog.log("YT", "engine stop()", "id=" + currentVideoId);
 		lastActivePlayTime = 0;
 		appRequestedPause = false;
 		lastExternalPauseTime = 0;
@@ -579,6 +588,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	@Override
 	public void pause() {
+		DiagnosticLog.log("YT", "engine pause()", "id=" + currentVideoId,
+				"reentrant=" + ignorePause);
 		lastActivePlayTime = 0;
 		// ignorePause is set only while paused() above is re-entering through
 		// MediaSessionCallback#onPause() for a pause the PAGE reported; anything else reaching here is

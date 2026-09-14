@@ -5,6 +5,7 @@ import com.google.android.apps.auto.sdk.CarActivityService;
 
 import me.aap.fermata.media.service.FermataMediaServiceConnection;
 import me.aap.fermata.media.service.MediaSessionCallback;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.log.Log;
 
 /**
@@ -20,6 +21,7 @@ public class CarService extends CarActivityService {
 	@Override
 	public void onCreate() {
 		Log.d("Creating CarService: " + this);
+		DiagnosticLog.log("CARSERVICE", "created");
 		super.onCreate();
 	}
 
@@ -30,6 +32,7 @@ public class CarService extends CarActivityService {
 		if (s == null) return;
 		MainCarActivity.service = null;
 		MediaSessionCallback cb = s.getMediaSessionCallback();
+		DiagnosticLog.log("CARSERVICE", "destroyed, playing=" + ((cb != null) && cb.isPlaying()));
 		if ((cb != null) && cb.isPlaying()) cb.onPause();
 		s.disconnect();
 		super.onDestroy();

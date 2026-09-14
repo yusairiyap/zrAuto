@@ -52,6 +52,7 @@ import me.aap.fermata.ui.activity.ZrAutoActivity;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.MediaItemListView;
 import me.aap.fermata.ui.view.VideoView;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.function.Cancellable;
 import me.aap.utils.function.Supplier;
@@ -118,24 +119,28 @@ public class MainCarActivity extends CarActivity implements ZrAutoActivity {
 
 	@Override
 	public void onStart() {
+		DiagnosticLog.log("HOST", "onStart");
 		super.onStart();
 		getActivityDelegate().onSuccess(MainActivityDelegate::onActivityStart);
 	}
 
 	@Override
 	public void onResume() {
+		DiagnosticLog.log("HOST", "onResume");
 		super.onResume();
 		getActivityDelegate().onSuccess(MainActivityDelegate::onActivityResume);
 	}
 
 	@Override
 	public void onPause() {
+		DiagnosticLog.log("HOST", "onPause");
 		getActivityDelegate().onSuccess(MainActivityDelegate::onActivityPause);
 		super.onPause();
 	}
 
 	@Override
 	public void onStop() {
+		DiagnosticLog.log("HOST", "onStop");
 		getActivityDelegate().onSuccess(MainActivityDelegate::onActivityStop);
 		super.onStop();
 	}
@@ -161,6 +166,10 @@ public class MainCarActivity extends CarActivity implements ZrAutoActivity {
 	 */
 	@Override
 	public void onWindowFocusChanged(boolean hasFocus, boolean arg2) {
+		// The single most important line in the trace for a display-takeover investigation: this is
+		// the only signal such a takeover gives at all. arg2 is logged undecoded -- its meaning isn't
+		// documented anywhere reachable (see above) -- precisely so a real capture can settle that.
+		DiagnosticLog.logAndToast("FOCUS", hasFocus ? "gained" : "LOST", "(arg2=" + arg2 + ')');
 		super.onWindowFocusChanged(hasFocus, arg2);
 		getActivityDelegate().onSuccess(a -> a.onActivityWindowFocusChanged(hasFocus));
 	}
@@ -168,6 +177,7 @@ public class MainCarActivity extends CarActivity implements ZrAutoActivity {
 	@Override
 	@SuppressWarnings("unchecked")
 	public void onDestroy() {
+		DiagnosticLog.log("HOST", "onDestroy");
 		super.onDestroy();
 		getActivityDelegate().onSuccess(MainActivityDelegate::onActivityDestroy)
 				.thenRun(() -> ActivityDelegate.setContextToDelegate(null));

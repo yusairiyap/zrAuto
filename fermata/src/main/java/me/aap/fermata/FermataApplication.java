@@ -18,6 +18,7 @@ import java.util.Locale;
 import me.aap.fermata.addon.AddonManager;
 import me.aap.fermata.media.engine.BitmapCache;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.vfs.FermataVfsManager;
 import me.aap.utils.app.App;
 import me.aap.utils.app.NetSplitCompatApp;
@@ -46,6 +47,9 @@ public class FermataApplication extends NetSplitCompatApp {
 		super.onCreate();
 		vfsManager = new FermataVfsManager();
 		bitmapCache = new BitmapCache();
+		// Wired up here rather than from an Activity: the events worth tracing (media service
+		// lifecycle, an Android Auto display takeover) happen outside, or before, any one Activity.
+		DiagnosticLog.init();
 	}
 
 	@Override

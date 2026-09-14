@@ -134,6 +134,7 @@ import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.media.service.MediaSessionCallbackAssistant;
 import me.aap.fermata.ui.fragment.AudioEffectsFragment;
+import me.aap.fermata.ui.fragment.DiagnosticLogFragment;
 import me.aap.fermata.ui.fragment.FavoritesFragment;
 import me.aap.fermata.ui.fragment.FoldersFragment;
 import me.aap.fermata.ui.fragment.MainActivityFragment;
@@ -1138,6 +1139,8 @@ public class MainActivityDelegate extends ActivityDelegate
 			return new AudioEffectsFragment();
 		} else if (id == R.id.subtitles_fragment) {
 			return new SubtitlesFragment();
+		} else if (id == R.id.diagnostic_log_fragment) {
+			return new DiagnosticLogFragment();
 		}
 		ActivityFragment f = FermataApplication.get().getAddonManager().createFragment(id);
 		return (f != null) ? f : super.createFragment(id);

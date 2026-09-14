@@ -37,6 +37,7 @@ import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.VideoView;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.ui.UiUtils;
@@ -271,7 +272,11 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(ctx).peek();
 		if (a == null) return;
 		long now = SystemClock.elapsedRealtime();
-		if (!wasYoutubePlaying(a, now)) return;
+		if (!wasYoutubePlaying(a, now)) {
+			DiagnosticLog.log("INTERRUPT", "started, nothing to recover (YouTube not playing)");
+			return;
+		}
+		DiagnosticLog.log("INTERRUPT", "started, armed for resume");
 		hostInterrupted = true;
 		hostInterruptionStartedAt = now;
 		// Cancels any resume still pending from a previous interruption -- see resumeAfterHostInterruption().
@@ -281,6 +286,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	@Override
 	public void onHostInterruptionEnded() {
 		if (!BuildConfig.AUTO || !hostInterrupted) return;
+		DiagnosticLog.log("INTERRUPT", "ended, resume check scheduled");
 		hostInterrupted = false;
 		long startedAt = hostInterruptionStartedAt;
 		hostInterruptionStartedAt = 0;
@@ -292,18 +298,35 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	}
 
 	private void resumeAfterHostInterruption(MainActivityDelegate a, long op, long startedAt) {
-		if ((op != hostResumeOperation) || isHidden() || (getView() == null)) return;
+		if ((op != hostResumeOperation) || isHidden() || (getView() == null)) {
+			DiagnosticLog.log("INTERRUPT", "resume skipped: superseded or fragment gone");
+			return;
+		}
 		FermataServiceUiBinder b = a.getMediaServiceBinder();
-		if (b.isPlaying()) return;
-		if (!YoutubeMediaEngine.isYoutubeItem(b.getCurrentItem())) return;
+		if (b.isPlaying()) {
+			DiagnosticLog.log("INTERRUPT", "resume not needed: already playing");
+			return;
+		}
+		if (!YoutubeMediaEngine.isYoutubeItem(b.getCurrentItem())) {
+			DiagnosticLog.log("INTERRUPT", "resume skipped: current item is not YouTube");
+			return;
+		}
 		MediaSessionCallback cb = a.getMediaSessionCallback();
-		if (!(cb.getEngine() instanceof YoutubeMediaEngine eng)) return;
+		if (!(cb.getEngine() instanceof YoutubeMediaEngine eng)) {
+			DiagnosticLog.log("INTERRUPT", "resume skipped: engine is not YoutubeMediaEngine");
+			return;
+		}
 		long pausedAt = eng.getLastExternalPauseTime();
 		// 0 means the last pause was the app's own -- the user (or the car's transport controls)
 		// asked for it, so it stays. Anything older than the interruption is some earlier pause the
 		// user has been sitting on, not something this interruption caused.
-		if ((pausedAt == 0) || (pausedAt < startedAt - HOST_INTERRUPTION_PAUSE_GRACE_MS)) return;
+		if ((pausedAt == 0) || (pausedAt < startedAt - HOST_INTERRUPTION_PAUSE_GRACE_MS)) {
+			DiagnosticLog.log("INTERRUPT", "resume skipped: pause was not this interruption's",
+					"(pausedAt=" + pausedAt, "startedAt=" + startedAt + ')');
+			return;
+		}
 		Log.i("Resuming YouTube playback paused by a host interruption");
+		DiagnosticLog.logAndToast("INTERRUPT", "resuming playback");
 		cb.onPlay();
 	}
 
