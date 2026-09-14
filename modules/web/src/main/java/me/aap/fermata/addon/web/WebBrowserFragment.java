@@ -207,6 +207,7 @@ public class WebBrowserFragment extends MainActivityFragment
 	public void onPause() {
 		super.onPause();
 		if (!BuildConfig.AUTO) return;
+		onHostInterruptionStarted();
 		FermataWebView v = getWebView();
 		if (v == null) return;
 		FermataChromeClient chrome = v.getWebChromeClient();
@@ -221,9 +222,26 @@ public class WebBrowserFragment extends MainActivityFragment
 		}
 	}
 
+	/**
+	 * The app is (or may be) losing the projected screen -- either the normal Fragment lifecycle
+	 * saying so, or {@code MainCarActivity.onWindowFocusChanged(false)}, which is the ONLY signal an
+	 * Android Auto display takeover (a reversing/360 camera, the car's own system briefly taking the
+	 * screen) gives at all. Paired with {@link #onHostInterruptionEnded()}. Both are no-ops here --
+	 * only {@code YoutubeFragment} currently has anything to recover -- and both can fire
+	 * spuriously, repeatedly, or without their counterpart ever arriving, so an override must stay
+	 * safe under all of that.
+	 */
+	public void onHostInterruptionStarted() {
+	}
+
+	/** Counterpart of {@link #onHostInterruptionStarted()} -- the app has the screen back. */
+	public void onHostInterruptionEnded() {
+	}
+
 	@Override
 	public void onResume() {
 		super.onResume();
+		if (BuildConfig.AUTO) onHostInterruptionEnded();
 		if (!BuildConfig.AUTO || !fullScreenOnResume) return;
 		FermataWebView v = getWebView();
 		if (v == null) return;

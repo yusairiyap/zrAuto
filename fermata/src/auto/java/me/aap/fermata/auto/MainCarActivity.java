@@ -147,6 +147,11 @@ public class MainCarActivity extends CarActivity implements ZrAutoActivity {
 	 * {@code WebBrowserAddon.onActivityWindowFocusChanged} for the YouTube-fullscreen mitigation
 	 * this feeds.
 	 * <p>
+	 * Both edges are forwarded: the losing one is the only signal such a takeover gives at all
+	 * (there is no onPause()), so it's what marks the start of the interruption that
+	 * {@code YoutubeFragment}'s playback recovery measures a page-side pause against. Everything
+	 * downstream that only makes sense on the way back in still checks {@code hasFocus} itself.
+	 * <p>
 	 * Unlike a regular {@code Activity} (whose {@code CarActivity} isn't actually a subclass of --
 	 * confirmed by decompiling {@code aauto.aar}: it's a {@code ContextWrapper} implementing the
 	 * internal {@code HostedCarActivity} interface), this callback is declared as
@@ -157,7 +162,7 @@ public class MainCarActivity extends CarActivity implements ZrAutoActivity {
 	@Override
 	public void onWindowFocusChanged(boolean hasFocus, boolean arg2) {
 		super.onWindowFocusChanged(hasFocus, arg2);
-		if (hasFocus) getActivityDelegate().onSuccess(a -> a.onActivityWindowFocusChanged(true));
+		getActivityDelegate().onSuccess(a -> a.onActivityWindowFocusChanged(hasFocus));
 	}
 
 	@Override

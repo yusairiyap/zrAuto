@@ -482,8 +482,7 @@ public class MainActivityDelegate extends ActivityDelegate
 				((FermataActivityAddon) addon).onActivityWindowFocusChanged(this, hasFocus);
 		}
 
-		// Only ever fired with hasFocus=true (see MainCarActivity#onWindowFocusChanged) -- an
-		// Android Auto display takeover (e.g. a car's camera overlay briefly taking the screen)
+		// An Android Auto display takeover (e.g. a car's camera overlay briefly taking the screen)
 		// doesn't route through any playback-state change of its own, so the control panel can be
 		// left showing whatever it was mid-interruption (most commonly hidden, if the interruption
 		// coincided with a state transition through STOPPED/NONE) with nothing to naturally
