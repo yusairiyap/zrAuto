@@ -549,12 +549,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onPause() {
-		// Stack trace temporarily added to find what's actually invoking this -- a real onPause()
-		// transport command was observed firing on its own a couple of seconds after a seek/resume,
-		// with no corresponding onSeekTo()/onAudioFocusChange()/ACTION_AUDIO_BECOMING_NOISY logged
-		// right before it, so something else is sending it. This will show whether it's a genuine
-		// system MediaSessionCompat dispatch (framework/Binder frames) or something in our own code.
-		Log.i(new Throwable("onPause() call stack"), "onPause(): state=", getPlaybackState().getState());
+		Log.i("onPause(): state=", getPlaybackState().getState());
 		PlayableItem i;
 		MediaEngine eng = getEngine();
 		if ((eng == null) || ((i = eng.getSource()) == null)) return;

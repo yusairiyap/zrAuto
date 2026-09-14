@@ -538,6 +538,20 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	@Override
 	public void start() {
+		// MediaSessionCallback.play()'s resume-from-pause branch always calls setPosition(pos) with
+		// the exact position we were already paused at (a safety-net restore, not a real seek) right
+		// before calling this -- while backgrounded, that setPosition() call is deferred (see
+		// runOrDeferPageAction()) rather than dropped. Left alone, it would still be sitting there
+		// when the app is later foregrounded and would fire then: a stale seek back to wherever we
+		// were AT PAUSE TIME, landing on a video that (thanks to web.play() below, which always runs
+		// immediately regardless of visibility) has since kept playing and moved well past that
+		// position -- confirmed on-device to itself cause a disruptive pause with no obvious trigger,
+		// which the control panel didn't reflect until an extra tap. Resuming right now makes any such
+		// queued restore moot, so drop it before actually resuming.
+		if (pendingPageAction != null) {
+			Log.i("YoutubeMediaEngine.start(): dropping stale pending page action before resuming");
+			pendingPageAction = null;
+		}
 		lastActivePlayTime = System.currentTimeMillis();
 		lastPausedTime = 0;
 		playRetries = 0;
