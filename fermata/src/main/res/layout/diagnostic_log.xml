@@ -20,36 +20,47 @@
         android:paddingTop="4dp"
         android:paddingBottom="4dp">
 
+        <!--
+          A plain platform ?android:attr/buttonBarButtonStyle used to sit here: its text color
+          comes from the platform's own theme rather than this app's Material one, and on this
+          screen's dark background that resolved to a barely-visible dark-on-dark label. The
+          Material3 text-button style is driven by this app's own (per-theme-correct) colorPrimary
+          instead, same as everywhere else in the app that needs a themed, always-legible label.
+        -->
         <Button
             android:id="@+id/diagnostic_log_copy"
-            style="?android:attr/buttonBarButtonStyle"
+            style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:textColor="?attr/colorPrimary"
             android:text="@string/diagnostic_log_copy" />
 
         <Button
             android:id="@+id/diagnostic_log_share"
-            style="?android:attr/buttonBarButtonStyle"
+            style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:textColor="?attr/colorPrimary"
             android:text="@string/diagnostic_log_share" />
 
         <Button
             android:id="@+id/diagnostic_log_refresh"
-            style="?android:attr/buttonBarButtonStyle"
+            style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:textColor="?attr/colorPrimary"
             android:text="@string/diagnostic_log_refresh" />
 
         <Button
             android:id="@+id/diagnostic_log_clear"
-            style="?android:attr/buttonBarButtonStyle"
+            style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:textColor="?attr/colorPrimary"
             android:text="@string/diagnostic_log_clear" />
     </LinearLayout>
 
