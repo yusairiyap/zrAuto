@@ -252,11 +252,19 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 				stopSelf();
 			}
 			case STATE_PAUSED -> {
-				ensureStarted();
-				if (ActivityCompat.checkSelfPermission(this, POST_NOTIFICATIONS) != PERMISSION_GRANTED) {
-					return;
+				// Deliberately NOT calling ensureStarted() here -- see its own doc comment for why
+				// STATE_PLAYING below is the only place that should ever trigger
+				// startForegroundService(). Calling it again here, immediately followed by
+				// stopForeground() below rather than startForeground(), risks
+				// ForegroundServiceDidNotStartInTimeException (fatal at this app's targetSdk 36) if this
+				// transition lands while the service isn't already genuinely in the foreground state --
+				// confirmed on-device: exactly this pattern reproduced as "tap pause, then play never
+				// works again" in the car. The service is already kept alive independent of binding by
+				// STATE_PLAYING's own ensureStarted() call, which every real pause is preceded by, so
+				// nothing here needs to repeat it.
+				if (ActivityCompat.checkSelfPermission(this, POST_NOTIFICATIONS) == PERMISSION_GRANTED) {
+					NotificationManagerCompat.from(this).notify(NOTIF_ID, createNotification(st, currentItem));
 				}
-				NotificationManagerCompat.from(this).notify(NOTIF_ID, createNotification(st, currentItem));
 				stopForeground(false);
 			}
 			case STATE_PLAYING -> {
@@ -281,10 +289,10 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 	// last-played item instead of the YouTube video that had been playing. This is what actually
 	// produced the "pauses on camera takeover and won't resume" symptom -- not anything specific to
 	// YouTube's own focus handling. Marking the service properly started (not just bound) here, on
-	// every transition into an active session (playing or merely paused-with-content), makes it
-	// survive exactly this kind of client churn the same way a well-behaved media service (e.g.
-	// Spotify) already does -- it only actually goes away once BOTH stopSelf() above has run AND
-	// every binder has disconnected.
+	// entering STATE_PLAYING -- the only caller, see updateNotification()'s STATE_PAUSED branch for
+	// why it must stay that way -- makes it survive exactly this kind of client churn the same way a
+	// well-behaved media service (e.g. Spotify) already does -- it only actually goes away once BOTH
+	// stopSelf() above has run AND every binder has disconnected.
 	private void ensureStarted() {
 		ContextCompat.startForegroundService(this, new Intent(this, FermataMediaService.class));
 	}
