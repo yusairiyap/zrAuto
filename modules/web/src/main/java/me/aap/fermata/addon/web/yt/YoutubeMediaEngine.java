@@ -518,6 +518,15 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	// firing unexpectedly) until the user manually intervenes.
 	@Nullable
 	private Runnable pendingPageAction;
+	// Set by start() below instead of going through pendingPageAction -- confirmed on-device that
+	// sharing one slot lost a queued resume outright: navigate-to-video/seek (pendingPageAction) and
+	// resume-playback are independent intents that can legitimately both be pending at once (e.g.
+	// seek the notification's seekbar right after tapping play, both while still hidden), and the
+	// later seek silently overwrote the earlier queued resume, so flushing only re-seeked without
+	// ever resuming -- leaving the session confidently reporting PLAYING (control panel showing a
+	// Pause button) over a video that was never actually told to play. Kept and flushed separately so
+	// neither intent can clobber the other.
+	private boolean pendingResume;
 
 	private void runOrDeferPageAction(Runnable action) {
 		if (web.getAddon().isVisible()) {
@@ -530,10 +539,16 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	void flushPendingPageAction() {
 		Runnable action = pendingPageAction;
-		if (action == null) return;
-		pendingPageAction = null;
-		Log.i("YoutubeMediaEngine: app is foregrounded again -- flushing deferred page action");
-		action.run();
+		if (action != null) {
+			pendingPageAction = null;
+			Log.i("YoutubeMediaEngine: app is foregrounded again -- flushing deferred page action");
+			action.run();
+		}
+		if (pendingResume) {
+			pendingResume = false;
+			Log.i("YoutubeMediaEngine: app is foregrounded again -- flushing deferred resume");
+			web.play();
+		}
 	}
 
 	@Override
@@ -562,11 +577,17 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// block. MediaSessionCallback optimistically marks the session PLAYING regardless, so a
 		// silently-rejected call here left the control panel showing "playing" (Pause button) with
 		// the video never actually resumed -- matching "control panel says resumed, tapping pause
-		// does nothing since it's already paused, a second tap is what actually plays it." Deferring
-		// this the same way as prepare()'s navigation and setPosition() avoids the failed attempt
-		// entirely: flushPendingPageAction() resumes it the moment the app is visible again, before
-		// the user has a chance to see or tap anything.
-		runOrDeferPageAction(web::play);
+		// does nothing since it's already paused, a second tap is what actually plays it." Deferred
+		// via its own pendingResume flag (see its declaration -- not pendingPageAction) so a later
+		// seek/navigation queued before this is foregrounded can't silently discard the resume;
+		// flushPendingPageAction() applies both once the app is visible again, before the user has a
+		// chance to see or tap anything.
+		if (web.getAddon().isVisible()) {
+			web.play();
+		} else {
+			Log.i("YoutubeMediaEngine: app is backgrounded -- deferring resume");
+			pendingResume = true;
+		}
 	}
 
 	@Override
