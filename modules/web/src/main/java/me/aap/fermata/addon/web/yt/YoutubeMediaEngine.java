@@ -540,14 +540,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	public void start() {
 		// MediaSessionCallback.play()'s resume-from-pause branch always calls setPosition(pos) with
 		// the exact position we were already paused at (a safety-net restore, not a real seek) right
-		// before calling this -- while backgrounded, that setPosition() call is deferred (see
-		// runOrDeferPageAction()) rather than dropped. Left alone, it would still be sitting there
-		// when the app is later foregrounded and would fire then: a stale seek back to wherever we
-		// were AT PAUSE TIME, landing on a video that (thanks to web.play() below, which always runs
-		// immediately regardless of visibility) has since kept playing and moved well past that
-		// position -- confirmed on-device to itself cause a disruptive pause with no obvious trigger,
-		// which the control panel didn't reflect until an extra tap. Resuming right now makes any such
-		// queued restore moot, so drop it before actually resuming.
+		// before calling this. Any such call just deferred (see runOrDeferPageAction()) is superseded
+		// by the fresh one queued immediately below -- resuming from here always lands back at the
+		// current position anyway, so the stale one would otherwise fire later, out of order, on a
+		// video that's since moved on. Drop it before queuing the real resume.
 		if (pendingPageAction != null) {
 			Log.i("YoutubeMediaEngine.start(): dropping stale pending page action before resuming");
 			pendingPageAction = null;
@@ -557,7 +553,20 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		playRetries = 0;
 		blockedWidth = 0;
 		blockedHeight = 0;
-		web.play();
+		// Confirmed on-device: v.play() itself -- not just loading a new video or seeking -- can be
+		// silently rejected by the browser's own autoplay/media-engagement policy when issued while
+		// the WebView is hidden (the rejection only reaches YoutubeWebView#play()'s own
+		// console.error(), never bridged back to Java at all). Unlike a video that's already playing
+		// and just keeps going once backgrounded, actively invoking play() again after a pause is
+		// exactly the kind of fresh, programmatic playback request such policies are designed to
+		// block. MediaSessionCallback optimistically marks the session PLAYING regardless, so a
+		// silently-rejected call here left the control panel showing "playing" (Pause button) with
+		// the video never actually resumed -- matching "control panel says resumed, tapping pause
+		// does nothing since it's already paused, a second tap is what actually plays it." Deferring
+		// this the same way as prepare()'s navigation and setPosition() avoids the failed attempt
+		// entirely: flushPendingPageAction() resumes it the moment the app is visible again, before
+		// the user has a chance to see or tap anything.
+		runOrDeferPageAction(web::play);
 	}
 
 	@Override
