@@ -976,7 +976,12 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			assertNotNull(md);
 		} else {
 			MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
-			b.putString(METADATA_KEY_DISPLAY_TITLE, i.getResource().getName());
+			// getName() rather than getResource().getName(): identical for every item that doesn't
+			// override it (Item#getName()'s default IS the resource name), but an item whose resource
+			// isn't a user-facing thing -- YouTube's, whose resource is the <video> element's opaque
+			// blob: source -- can now supply something readable for this placeholder, which is what
+			// the notification and control panel show until the real metadata below resolves.
+			b.putString(METADATA_KEY_DISPLAY_TITLE, i.getName());
 			md = b.build();
 			update.set(m -> engine.getPosition().main().onSuccess(position -> {
 				if (getCurrentItem() != i) return;
