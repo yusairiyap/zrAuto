@@ -21,11 +21,16 @@
         android:paddingBottom="4dp">
 
         <!--
-          A plain platform ?android:attr/buttonBarButtonStyle used to sit here: its text color
-          comes from the platform's own theme rather than this app's Material one, and on this
-          screen's dark background that resolved to a barely-visible dark-on-dark label. The
-          Material3 text-button style is driven by this app's own (per-theme-correct) colorPrimary
-          instead, same as everywhere else in the app that needs a themed, always-legible label.
+          A plain platform ?android:attr/buttonBarButtonStyle used to sit here originally; a first
+          attempt at fixing its barely-visible text switched to ?attr/colorPrimary, which turned out
+          just as wrong for a different reason: this app repurposes colorPrimary as a raw background
+          fill (see AppTheme.ControlPanelStyle's android:colorBackground and, in theme.xml, the
+          comment on AppTheme.SeekBarStyle describing the exact same mistake with colorOnPrimary),
+          so it can be near-black in a dark theme and near-white in a light one, i.e. barely visible
+          as TEXT against this same screen's background in either case. colorControlActivated is the
+          attr that comment settled on instead, for the identical reason: it's what this app's own
+          sliders/equalizer are tinted with, meant for "the active state of a control", and stays
+          legible across every one of this app's themes.
         -->
         <Button
             android:id="@+id/diagnostic_log_copy"
@@ -33,7 +38,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:textColor="?attr/colorPrimary"
+            android:textColor="?attr/colorControlActivated"
             android:text="@string/diagnostic_log_copy" />
 
         <Button
@@ -42,7 +47,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:textColor="?attr/colorPrimary"
+            android:textColor="?attr/colorControlActivated"
             android:text="@string/diagnostic_log_share" />
 
         <Button
@@ -51,7 +56,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:textColor="?attr/colorPrimary"
+            android:textColor="?attr/colorControlActivated"
             android:text="@string/diagnostic_log_refresh" />
 
         <Button
@@ -60,7 +65,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:textColor="?attr/colorPrimary"
+            android:textColor="?attr/colorControlActivated"
             android:text="@string/diagnostic_log_clear" />
     </LinearLayout>
 

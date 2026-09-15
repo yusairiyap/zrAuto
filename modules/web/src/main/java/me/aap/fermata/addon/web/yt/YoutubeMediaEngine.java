@@ -988,10 +988,14 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			// bitmap asynchronously on its own -- for every item in the app, not just YouTube's -- as a
 			// later step of that SAME write, never a second one, so there's nothing left to race.
 			//
-			// hqdefault.jpg rather than maxresdefault.jpg: the higher-resolution frame doesn't exist for
-			// a video that was never available above 720p, and that single-URI pipeline has no fallback
-			// of its own -- a miss there falls all the way to the generic icon. hqdefault.jpg is the one
-			// size YouTube always has.
+			// maxresdefault.jpg rather than hqdefault.jpg: the latter is a fixed 4:3 canvas with the
+			// real 16:9 frame letterboxed inside it, which is exactly what showed up as black bars
+			// above/below the artwork once it reached a full-bleed surface like the notification's own
+			// background. maxresdefault.jpg is the true source-resolution 16:9 frame, but doesn't exist
+			// for a video that was never available above 720p -- a miss on it, on this single-URI
+			// pipeline with no fallback of its own, falls all the way to the generic icon rather than
+			// to hqdefault. Trading a small chance of that (an older/lower-quality video) for a real,
+			// unletterboxed thumbnail everywhere else.
 			FutureSupplier<String> getTitle = (title != null) ? completed(title) : web.getVideoTitle();
 			return web.getDuration().then(dur -> getTitle.map(t -> {
 				MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
@@ -999,7 +1003,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				b.putLong(MediaMetadata.METADATA_KEY_DURATION, dur);
 				if ((videoId != null) && !videoId.isEmpty()) {
 					b.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI,
-							YoutubeVideoItem.thumbnailUrl(videoId, false));
+							YoutubeVideoItem.thumbnailUrl(videoId, true));
 				}
 				return b.build();
 			}));
