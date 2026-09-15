@@ -77,11 +77,23 @@
         android:fillViewport="true"
         android:scrollbars="vertical">
 
+        <!--
+          No style set, so this fell back to whatever this app's theme chain resolves as a plain
+          TextView's default color, white in every theme tried, including Light, where the main
+          content background (android:colorBackground, what this ScrollView actually sits on) is
+          white too. android:textColorSecondary is the attr media_item_text_color.xml (every media
+          list item's title/subtitle, i.e. exactly this same "plain content text on the app's main
+          background" job elsewhere in the app) already uses instead, and every one of this app's
+          themes gives it an explicit, sane value for that surface (e.g. near-black in Light,
+          near-white in the dark ones), unlike textColorPrimary/colorPrimary, which this app
+          repurposes for the control panel's own surface (see the button styling comment above).
+        -->
         <TextView
             android:id="@+id/diagnostic_log_text"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:padding="8dp"
+            android:textColor="?android:attr/textColorSecondary"
             android:textIsSelectable="true"
             android:textSize="12sp"
             android:typeface="monospace" />
