@@ -126,11 +126,16 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 			Log.e(err, "Failed to copy the diagnostic log");
 			copied = false;
 		}
-		// Deliberately outside the try/catch above: if showAlert() ran from inside that catch block
-		// and the dialog mechanism itself were what's actually failing, it would repeat the exact
-		// same failing call with nothing left to catch it, crashing instead of just failing to copy.
-		if (copied) UiUtils.showInfo(ctx, R.string.diagnostic_log_copied);
-		else UiUtils.showAlert(ctx, R.string.diagnostic_log_copy_failed);
+		// Deliberately a separate try/catch from the one above: if this dialog call is itself what's
+		// failing (e.g. a WindowManager.BadTokenException because the host is already finishing by
+		// the time this runs), reusing the same catch block would repeat the exact same failing call
+		// as its own error path, crashing instead of just silently failing to show the confirmation.
+		try {
+			if (copied) UiUtils.showInfo(ctx, R.string.diagnostic_log_copied);
+			else UiUtils.showAlert(ctx, R.string.diagnostic_log_copy_failed);
+		} catch (Exception err) {
+			Log.e(err, "Failed to show the copy result dialog");
+		}
 	}
 
 	private void share() {

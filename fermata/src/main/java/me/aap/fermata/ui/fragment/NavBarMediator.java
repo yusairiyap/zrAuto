@@ -15,6 +15,7 @@ import static me.aap.utils.ui.view.NavBarView.POSITION_RIGHT;
 
 import android.content.Context;
 import android.content.res.ColorStateList;
+import android.content.res.TypedArray;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.ImageView;
@@ -306,6 +307,14 @@ public class NavBarMediator extends PrefNavBarMediator
 						+ ctx.getString(R.string.about_fork_html, UPSTREAM_FERMATA_VERSION);
 				int pad = UiUtils.toIntPx(ctx, 10);
 				v.setPadding(pad, pad, pad, pad);
+				// Left unset, this falls back to a plain TextView's default color, white in every theme
+				// including Light -- the same "invisible on this screen's own light background" bug the
+				// diagnostic log screen had (see diagnostic_log.xml's comment on its TextView). Resolved
+				// the same way MainActivityDelegate's own dialog text does a few call sites up.
+				TypedArray ta = ctx.getTheme()
+						.obtainStyledAttributes(new int[]{android.R.attr.textColorSecondary});
+				v.setTextColor(ColorStateList.valueOf(ta.getColor(0, 0)));
+				ta.recycle();
 				v.setText(HtmlCompat.fromHtml(html, HtmlCompat.FROM_HTML_MODE_LEGACY));
 				v.setOnClickListener(t -> openUrl(t.getContext(), url));
 				container.addView(v);

@@ -148,6 +148,7 @@ import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.ui.view.SecondaryFloatingButton;
 import me.aap.fermata.ui.view.TertiaryFloatingButton;
 import me.aap.fermata.ui.view.VideoView;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.app.App;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.async.Promise;
@@ -421,6 +422,17 @@ public class MainActivityDelegate extends ActivityDelegate
 	protected void setUncaughtExceptionHandler() {
 		if (!AUTO || getAppActivity().isCarActivity()) return;
 		super.setUncaughtExceptionHandler();
+	}
+
+	@Override
+	public void uncaughtException(@NonNull Thread t, @NonNull Throwable err) {
+		// super.setUncaughtExceptionHandler() (above) installs this instance itself as the process's
+		// default handler on every Activity create -- replacing whatever was set before, including
+		// DiagnosticLog.installCrashHandler()'s own hook from Application.onCreate(). Without this,
+		// a crash on any real (non-CarActivity) screen -- which is exactly where Settings/Diagnostics
+		// live -- would never make it into the diagnostic log at all.
+		DiagnosticLog.logCrash(t, err);
+		super.uncaughtException(t, err);
 	}
 
 	@Override
