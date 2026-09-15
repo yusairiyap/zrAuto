@@ -273,6 +273,7 @@
     <string name="by_default">Default</string>
 
     <string name="playlist_add">Add to playlist</string>
+    <string name="playlist_add_failed">Couldn\'t show the playlist picker. Try again, or restart the app if it keeps happening.</string>
     <string name="playlist_remove_item">Remove from playlist</string>
     <string name="playlist_create">Create playlist</string>
     <string name="playlist_remove">Remove playlist</string>

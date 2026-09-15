@@ -1373,17 +1373,32 @@ public class MainActivityDelegate extends ActivityDelegate
 				items[i + 1] = ((Playlist) playlists.get(i)).getName();
 			}
 
-			DialogBuilder.create(menu).setTitle(R.drawable.playlist_add, R.string.playlist_add)
-					.setSingleChoiceItems(items, -1, (d, which) -> {
-						d.dismiss();
-						if (which == 0) {
-							createPlaylist(selection.get(), initName);
-						} else {
-							addToPlaylist(((Playlist) playlists.get(which - 1)).getName(), selection.get());
-						}
-					})
-					.setNegativeButton(android.R.string.cancel, (d, w) -> d.dismiss())
-					.show();
+			try {
+				DialogBuilder.create(menu).setTitle(R.drawable.playlist_add, R.string.playlist_add)
+						.setSingleChoiceItems(items, -1, (d, which) -> {
+							d.dismiss();
+							if (which == 0) {
+								createPlaylist(selection.get(), initName);
+							} else {
+								addToPlaylist(((Playlist) playlists.get(which - 1)).getName(), selection.get());
+							}
+						})
+						.setNegativeButton(android.R.string.cancel, (d, w) -> d.dismiss())
+						.show();
+			} catch (Exception err) {
+				// Seen crashing specifically on the CarActivity surface: an InflateException/
+				// UnsupportedOperationException resolving a TextAppearance attribute while inflating
+				// this dialog's title -- and this app's own showAlert()/showInfo() (see UiUtils) go
+				// through this exact same DialogBuilder.create(OverlayMenu)/DialogView machinery too
+				// (via MainActivityDelegate#createDialogBuilder), just against a different menu, so if
+				// whatever's actually broken here is the host Context's theme rather than anything
+				// specific to this one dialog, calling showAlert() from this catch block would repeat
+				// the identical failure as its own error path. UiUtils.showToast() is a plain
+				// android.widget.Toast, entirely outside that machinery, so it's used here instead.
+				DiagnosticLog.log("DIALOG", "failed to show playlist dialog:", err);
+				Log.e(err, "Failed to show the playlist dialog");
+				UiUtils.showToast(ctx, R.string.playlist_add_failed);
+			}
 		});
 	}
 
