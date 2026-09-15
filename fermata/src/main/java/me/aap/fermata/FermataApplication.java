@@ -44,6 +44,9 @@ public class FermataApplication extends NetSplitCompatApp {
 
 	@Override
 	public void onCreate() {
+		// Ahead of super.onCreate() and everything else below: whatever crashes, even during this
+		// app's own earliest startup, should still be caught by this rather than slip past it.
+		DiagnosticLog.installCrashHandler();
 		super.onCreate();
 		vfsManager = new FermataVfsManager();
 		bitmapCache = new BitmapCache();

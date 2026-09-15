@@ -107,23 +107,35 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 
 	private void copy() {
 		String dump = DiagnosticLog.dump();
-		Context ctx = getContext();
-		if ((ctx == null) || dump.isEmpty()) return;
+		if (dump.isEmpty()) return;
+		// getActivityDelegate().getContext() rather than this Fragment's own getContext(): every
+		// other working call site of UiUtils.showInfo()/showAlert() in this app (e.g. SettingsFragment's
+		// "Clear browsing data") goes through the delegate's own resolved Context, not the plain
+		// Fragment one -- this app's Activity/Fragment glue is custom enough (MainCarActivity isn't
+		// even a real Activity subclass) that the two aren't guaranteed to be interchangeable.
+		Context ctx = getActivityDelegate().getContext();
+		boolean copied;
 		try {
 			ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
 			if (cm == null) return;
 			cm.setPrimaryClip(ClipData.newPlainText(getString(R.string.diagnostic_log), dump));
-			UiUtils.showInfo(ctx, R.string.diagnostic_log_copied);
+			copied = true;
 		} catch (Exception err) {
+			// A payload this large is exactly what can trip TransactionTooLargeException crossing
+			// the Binder call into the system clipboard service.
 			Log.e(err, "Failed to copy the diagnostic log");
-			UiUtils.showAlert(ctx, String.valueOf(err.getLocalizedMessage()));
+			copied = false;
 		}
+		// Deliberately outside the try/catch above: if showAlert() ran from inside that catch block
+		// and the dialog mechanism itself were what's actually failing, it would repeat the exact
+		// same failing call with nothing left to catch it, crashing instead of just failing to copy.
+		if (copied) UiUtils.showInfo(ctx, R.string.diagnostic_log_copied);
+		else UiUtils.showAlert(ctx, R.string.diagnostic_log_copy_failed);
 	}
 
 	private void share() {
 		String dump = DiagnosticLog.dump();
-		Context ctx = getContext();
-		if ((ctx == null) || dump.isEmpty()) return;
+		if (dump.isEmpty()) return;
 		if (dump.length() > MAX_SHARE_CHARS) dump = dump.substring(dump.length() - MAX_SHARE_CHARS);
 		try {
 			// EXTRA_TEXT rather than a file + FileProvider: the provider is only declared in the Auto
@@ -136,7 +148,8 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 			startActivity(Intent.createChooser(i, getString(R.string.diagnostic_log_share)));
 		} catch (Exception err) {
 			Log.e(err, "Failed to share the diagnostic log");
-			UiUtils.showAlert(ctx, String.valueOf(err.getLocalizedMessage()));
+			UiUtils.showAlert(getActivityDelegate().getContext(),
+					String.valueOf(err.getLocalizedMessage()));
 		}
 	}
 }

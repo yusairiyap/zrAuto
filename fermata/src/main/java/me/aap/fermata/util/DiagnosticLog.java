@@ -72,6 +72,27 @@ public final class DiagnosticLog {
 	}
 
 	/**
+	 * Installs a crash-capturing hook that runs ahead of whatever handler was previously
+	 * registered (chaining to it afterward, so existing crash behavior -- the system's own "app has
+	 * stopped" dialog, or this app's own {@code ActivityDelegate.uncaughtException()} on the paths
+	 * that install one -- is unaffected). Call once, as early as possible in
+	 * {@code Application.onCreate()}: {@link #logCrash} needs nothing set up first, so this can run
+	 * before {@link #init()}.
+	 * <p>
+	 * Unlike {@link #log}, a crash is captured unconditionally, whether or not the user ever turned
+	 * on diagnostic logging: a crash is exactly the kind of rare, high-value event this feature
+	 * exists to catch, and someone hitting one is unlikely to have had the toggle on beforehand
+	 * (they weren't investigating anything yet -- the crash is what tells them to start).
+	 */
+	public static void installCrashHandler() {
+		Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
+		Thread.setDefaultUncaughtExceptionHandler((t, err) -> {
+			logCrash(t, err);
+			if (previous != null) previous.uncaughtException(t, err);
+		});
+	}
+
+	/**
 	 * Picks up the current preference values and, if logging is already on, reloads whatever a
 	 * previous run left behind so the user doesn't lose a trace to an app restart. Call once at
 	 * application startup; re-reads the prefs on every change afterwards.
@@ -161,6 +182,36 @@ public final class DiagnosticLog {
 				Log.d(err, "Failed to show diagnostic toast");
 			}
 		});
+	}
+
+	/**
+	 * Records an uncaught exception -- always, regardless of {@link #isEnabled()} (see
+	 * {@link #installCrashHandler}) -- and, unlike {@link #log}, writes the file synchronously and
+	 * inline rather than handing off to the app's executor: the process may not survive long enough
+	 * after this returns for a queued background task to ever run, and a crash that isn't actually
+	 * on disk by the time the process dies defeats the entire point of capturing it. Must never
+	 * itself throw -- that would replace the real crash with this method's, and could still leave
+	 * the real one unreported if it happens before the chained previous handler runs.
+	 */
+	public static void logCrash(Thread thread, Throwable err) {
+		try {
+			StringBuilder sb = new StringBuilder(256);
+			synchronized (stamp) {
+				sb.append(stamp.format(new Date()));
+			}
+			sb.append(" CRASH thread=").append(thread.getName()).append('\n');
+			sb.append(android.util.Log.getStackTraceString(err));
+			String line = sb.toString();
+			Log.e(err, "Uncaught exception in thread ", thread);
+
+			synchronized (entries) {
+				if (entries.size() >= MAX_ENTRIES) entries.pollFirst();
+				entries.addLast(line);
+			}
+			appendToFile(line);
+		} catch (Throwable ignore) {
+			// See the doc comment: this must never add a second failure on top of the real one.
+		}
 	}
 
 	/** Everything recorded so far, oldest first, newline separated. Empty string if nothing. */
