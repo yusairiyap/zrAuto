@@ -227,12 +227,6 @@ public final class DiagnosticLog {
 		return sb.toString();
 	}
 
-	public static int size() {
-		synchronized (entries) {
-			return entries.size();
-		}
-	}
-
 	public static void clear() {
 		synchronized (entries) {
 			entries.clear();

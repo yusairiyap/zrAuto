@@ -968,11 +968,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		protected FutureSupplier<MediaMetadataCompat> loadMeta() {
 			// Prefer the title the player itself reported alongside the "playing" event this item was
 			// created from -- see YoutubeMediaEngine#playing(). Only fall back to reading the document
-			// when the player didn't have one: document.title lags SPA navigation between videos (so it
-			// reports the PREVIOUS video here) and carries YouTube's own " - YouTube" suffix, and
-			// getVideoTitle() hands back the raw JSON-encoded evaluateJavascript() result, quotes and
-			// all -- both of which used to end up verbatim in the media session metadata, hence in the
-			// notification and the control panel.
+			// when the player didn't have one: document.title lags SPA navigation between videos, so it
+			// reports the PREVIOUS video here, and carries YouTube's own " - YouTube" suffix.
 			//
 			// Deliberately no network call of any kind, including for artwork below: this Future is
 			// also what PlayableItem#getDuration() resolves through, which FermataServiceUiBinder
