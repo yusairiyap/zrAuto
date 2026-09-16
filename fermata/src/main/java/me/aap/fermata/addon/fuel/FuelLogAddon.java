@@ -7,7 +7,9 @@ import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
 import me.aap.fermata.addon.AddonInfo;
 import me.aap.fermata.addon.FermataAddon;
+import me.aap.fermata.addon.FermataActivityAddon;
 import me.aap.fermata.addon.FermataFragmentAddon;
+import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.fragment.FuelLogFragment;
 import me.aap.utils.ui.fragment.ActivityFragment;
 
@@ -17,7 +19,7 @@ import me.aap.utils.ui.fragment.ActivityFragment;
  * no heavy or optional dependency that would benefit from on-demand delivery.
  */
 @Keep
-public class FuelLogAddon implements FermataFragmentAddon {
+public class FuelLogAddon implements FermataFragmentAddon, FermataActivityAddon {
 	private static final AddonInfo info = FermataAddon.findAddonInfo(FuelLogAddon.class.getName());
 
 	@Override
@@ -35,6 +37,17 @@ public class FuelLogAddon implements FermataFragmentAddon {
 	@Override
 	public ActivityFragment createFragment() {
 		return new FuelLogFragment();
+	}
+
+	@Override
+	public void onActivityCreate(MainActivityDelegate a) {
+		// Arm the trip tracker for the whole session, not just from whenever the Fuel Log tab (or the
+		// Info Overlay) first happens to be opened -- "current trip" is supposed to be the distance
+		// driven since the last refuel, so the metres driven before the user thought to look at the
+		// tab are exactly the ones that used to go missing. Cheap: the tracker only actually turns
+		// GPS on while connected to Android Auto (see FuelTracker#isConnectedToAndroidAuto()), and
+		// start() is a no-op once already armed.
+		FuelTracker.get(a.getContext()).start(a);
 	}
 
 	@Override

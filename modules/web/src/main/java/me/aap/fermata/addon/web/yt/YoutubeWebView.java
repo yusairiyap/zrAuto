@@ -13,6 +13,7 @@ import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_PLAYING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_QUALITIES;
 
 import android.content.Context;
+import android.graphics.Color;
 import android.util.AttributeSet;
 
 import androidx.annotation.NonNull;
@@ -48,18 +49,40 @@ public class YoutubeWebView extends FermataWebView {
 					"  }\n" +
 					"  window.__fermataQ = null;\n" +
 					"}\n";
+	/**
+	 * How long {@link #navigateToVideoJs} waits for YouTube's own router (or the browser) to act on
+	 * the injected link click before falling back to swapping the video inside the existing player.
+	 * Long enough that a router that merely takes a moment isn't raced into a double navigation,
+	 * short enough to stay under the transition cover that is up over all of this anyway (see
+	 * {@code YoutubeVideoView#showTransitionOverlay}).
+	 */
+	private static final int NAVIGATION_FALLBACK_MS = 1000;
 	private YoutubeJsInterface js;
 
 	public YoutubeWebView(Context context) {
 		super(context);
+		paintUnrenderedAreaBlack();
 	}
 
 	public YoutubeWebView(Context context, AttributeSet attrs) {
 		super(context, attrs);
+		paintUnrenderedAreaBlack();
 	}
 
 	public YoutubeWebView(Context context, AttributeSet attrs, int defStyle) {
 		super(context, attrs, defStyle);
+		paintUnrenderedAreaBlack();
+	}
+
+	/**
+	 * A WebView paints white wherever the page hasn't rendered yet, and that white is what shows
+	 * through the fullscreen enter/exit crossfade (see {@code FermataChromeClient#crossfade}) and
+	 * every moment a new watch page is still loading -- the "white flash" between videos. YouTube's
+	 * own page is dark here anyway (see the Dark mode preference, default auto), so there is nothing
+	 * to lose by making the gap dissolve through black instead.
+	 */
+	private void paintUnrenderedAreaBlack() {
+		setBackgroundColor(Color.BLACK);
 	}
 
 	@Override
@@ -321,6 +344,11 @@ public class YoutubeWebView extends FermataWebView {
 		return "if (!window.__fermataClickTracker) {\n" +
 				"  window.__fermataClickTracker = true;\n" +
 				"  document.addEventListener('click', function(e) {\n" +
+				// The app's own queue-driven navigation clicks a link it injected itself (see
+				// navigateToVideoJs()) -- recording that as a user tap would make
+				// YoutubeMediaEngine#playing() mistake the app's own queue move for the user
+				// deliberately picking a different video and drop the queue on the spot.
+				"    if (window.__fermataSuppressLinkClick) return;\n" +
 				"    if (e.target && e.target.closest && e.target.closest('a')) {\n" +
 				"      window.__fermataLastLinkClickTime = Date.now();\n" +
 				"    }\n" +
@@ -354,6 +382,8 @@ public class YoutubeWebView extends FermataWebView {
 				"typeof navigation.addEventListener === 'function') {\n" +
 				"  window.__fermataNavInterceptor = true;\n" +
 				"  navigation.addEventListener('navigate', function(e) {\n" +
+				// Same exclusion as interceptLinkClicksJs() above -- see there.
+				"    if (window.__fermataSuppressLinkClick) return;\n" +
 				"    if (e.userInitiated) window.__fermataLastLinkClickTime = Date.now();\n" +
 				"  });\n" +
 				"}\n";
@@ -669,26 +699,114 @@ public class YoutubeWebView extends FermataWebView {
 	/**
 	 * Switches to a specific video by id -- used for queue-driven (Favorites/Playlist) next/prev,
 	 * where (unlike {@link #next()}/{@link #prev()}) the app already knows exactly which video comes
-	 * next and just needs the page to show it. Tries the page's own player API first, same idiom
-	 * (and the same reasoning: no page reload, no fullscreen exit/re-enter) as {@link #prevNext},
-	 * falling back to a full {@link #loadUrl} navigation only if it's unavailable -- that fallback is
-	 * far heavier (a real page load tears down and recreates the player/video element entirely) and
-	 * was the likely cause of a visible stuck-spinner-with-audio-still-playing gap between videos
-	 * when every queue-driven switch took it unconditionally.
+	 * next and just needs the page to show it.
+	 * <p>
+	 * This used to go straight to the player's own {@code loadVideoById()}, which swaps the media
+	 * inside the existing player and nothing else: the document URL, the page title, the
+	 * recommendations list -- the whole visible page -- stayed on whichever video was last reached by
+	 * a real navigation. That left the user looking at one video's page while a different one played,
+	 * and it broke several things that quite reasonably read the page's URL as "what is playing":
+	 * {@code YoutubeFragment#getCurrentVideoId()} (so the toolbar's favorites/playlist buttons, and
+	 * "add to playlist", all acted on the stale video), and a manual page refresh, which reloaded the
+	 * stale video and so looked to {@code YoutubeMediaEngine#playing()} exactly like YouTube's own
+	 * autonav jumping somewhere unrequested -- whereupon it "corrected" it by advancing the queue,
+	 * which is the reported "refresh just plays the next playlist item instead of what I picked".
+	 * <p>
+	 * So navigate the page for real instead, through YouTube's own single-page router (a click on an
+	 * injected anchor, the same thing tapping a video tile does), which updates the whole page
+	 * without a document reload and keeps fullscreen. {@link #navigateToVideoJs} falls back on its
+	 * own to the old in-player swap, and then to a full document load, so the video always ends up
+	 * playing even where the router doesn't take the click.
 	 */
 	void loadVideo(String videoId) {
+		evaluateJavascript(navigateToVideoJs(videoId), result -> {
+			// Only reached if the script itself couldn't run at all (no document body yet, an
+			// exception) -- a plain page load is the last resort either way.
+			if (!"true".equals(result)) loadUrl(YoutubeVideoItem.watchUrl(videoId));
+		});
+	}
+
+	/**
+	 * The cheap half of {@link #loadVideo}: swap the media inside the existing player and rewrite the
+	 * document URL to match, with no page navigation at all. Used where the page is already on the
+	 * right watch page and only the player has drifted -- {@code YoutubeMediaEngine#playing()}'s
+	 * correction of a video id that isn't the one the app asked for, and Repeat One's re-arm -- both
+	 * of which can fire repeatedly in a short burst and must stay cheap; routing those through a real
+	 * navigation instead would turn a race the app is already losing into a series of page loads.
+	 */
+	void switchVideoInPlayer(String videoId) {
 		evaluateJavascript("""
 				(function() {
 				  var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
 				  var fn = p ? p.loadVideoById : null;
 				  if (typeof fn !== 'function') return false;
-				  fn.call(p, '%s');
+				  fn.call(p, '%1$s');
+				  try { history.replaceState(history.state, '', '/watch?v=%1$s'); } catch (e) {}
 				  return true;
 				})();
-				""".formatted(videoId),
-				result -> {
-					if (!"true".equals(result)) loadUrl(YoutubeVideoItem.watchUrl(videoId));
-				});
+				""".formatted(videoId), result -> {
+			if (!"true".equals(result)) loadUrl(YoutubeVideoItem.watchUrl(videoId));
+		});
+	}
+
+	/**
+	 * Drives YouTube's own single-page router to a watch page, exactly the way tapping one of its
+	 * video tiles does -- by clicking a link. An injected {@code <a href="/watch?v=...">} is used
+	 * rather than poking at YouTube's internal navigation objects (whose names change release to
+	 * release): a same-origin anchor click is the one thing its router has always handled, and if a
+	 * given page build doesn't handle it, the browser just performs the navigation itself, which is
+	 * the correct destination anyway -- only heavier.
+	 * <p>
+	 * {@code __fermataSuppressLinkClick} keeps the app's own click out of its own user-tap detectors
+	 * (see {@link #interceptLinkClicksJs()}/{@link #interceptUserNavigationJs()}), and
+	 * {@code __fermataSyntheticClick} does the same for the prev/next button interceptor -- without
+	 * them this navigation would read back as "the user deliberately picked another video" and
+	 * {@code YoutubeMediaEngine#playing()} would drop the very queue that asked for it.
+	 * <p>
+	 * The deferred check is the safety net: if the URL hasn't become this video's within
+	 * {@code NAVIGATION_FALLBACK_MS} the click was swallowed (neither router nor browser acted on
+	 * it), so fall back to the in-player swap -- the pre-existing behaviour -- and finally to a
+	 * plain document load. A full browser navigation replaces this document outright, taking the
+	 * pending timer with it, so it can never double-navigate on the path that did work.
+	 */
+	private static String navigateToVideoJs(String videoId) {
+		return """
+				(function() {
+				  var id = '%1$s';
+				  var url = '/watch?v=' + id;
+				  function onTarget() {
+				    try { return new URLSearchParams(location.search).get('v') === id; }
+				    catch (e) { return location.search.indexOf('v=' + id) >= 0; }
+				  }
+				  if (onTarget()) return true;
+				  try {
+				    var a = document.createElement('a');
+				    a.href = url;
+				    a.style.display = 'none';
+				    document.body.appendChild(a);
+				    window.__fermataSuppressLinkClick = true;
+				    window.__fermataSyntheticClick = true;
+				    a.click();
+				    setTimeout(function() {
+				      try { a.remove(); } catch (e) {}
+				      window.__fermataSuppressLinkClick = false;
+				      window.__fermataSyntheticClick = false;
+				      window.__fermataLastLinkClickTime = 0;
+				    }, 0);
+				  } catch (e) { return false; }
+				  setTimeout(function() {
+				    if (onTarget()) return;
+				    var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+				    if (p && (typeof p.loadVideoById === 'function')) {
+				      p.loadVideoById(id);
+				      try { history.replaceState(history.state, '', url); } catch (e) {}
+				    } else {
+				      location.assign(url);
+				    }
+				  }, %2$d);
+				  return true;
+				})();
+				""".formatted(videoId, NAVIGATION_FALLBACK_MS);
 	}
 
 	private void prevNext(boolean next) {
@@ -907,6 +1025,97 @@ public class YoutubeWebView extends FermataWebView {
 		Promise<String> p = new Promise<>();
 		evaluateJavascript("document.title", r -> p.complete(unquoteJsResult(r)));
 		return p;
+	}
+
+	/**
+	 * What the page's {@code <video>} element is actually doing right now -- the only trustworthy
+	 * answer to "is this thing playing", as opposed to what the media session last published.
+	 * See {@link #getPageState()}.
+	 */
+	static final class PageState {
+		/** False when the page has no {@code <video>} element at all right now (mid-navigation, or
+		 * a page shape that simply doesn't have one) -- every other field is meaningless then. */
+		final boolean hasVideo;
+		final boolean paused;
+		final boolean ended;
+		final long positionMs;
+		/** The id the player reports for whatever it currently holds, or {@code null}. */
+		@Nullable
+		final String videoId;
+
+		private PageState(boolean hasVideo, boolean paused, boolean ended, long positionMs,
+											@Nullable String videoId) {
+			this.hasVideo = hasVideo;
+			this.paused = paused;
+			this.ended = ended;
+			this.positionMs = positionMs;
+			this.videoId = videoId;
+		}
+
+		@NonNull
+		@Override
+		public String toString() {
+			return "PageState[hasVideo=" + hasVideo + ", paused=" + paused + ", ended=" + ended +
+					", positionMs=" + positionMs + ", videoId=" + videoId + ']';
+		}
+
+		private static final PageState NONE = new PageState(false, true, false, 0, null);
+
+		/** Parses the {@code hasVideo|paused|ended|positionMs|videoId} payload built below. */
+		static PageState parse(@Nullable String s) {
+			if (s == null) return NONE;
+			String[] p = s.split("\\|", 5);
+			if ((p.length < 5) || !"1".equals(p[0])) return NONE;
+			long pos;
+			try {
+				pos = Long.parseLong(p[3]);
+			} catch (NumberFormatException ex) {
+				pos = 0;
+			}
+			return new PageState(true, "1".equals(p[1]), "1".equals(p[2]), pos,
+					p[4].isEmpty() ? null : p[4]);
+		}
+	}
+
+	/**
+	 * Reads the page's real playback state. Deliberately self-contained (it re-derives the player id
+	 * inline instead of calling the {@code fermataCurrentVideoId()} helper {@code attachListeners()}
+	 * installs) so it still answers on a page where that injection hasn't run yet -- which, after a
+	 * reload or an Android Auto display takeover, is exactly when it is most needed.
+	 */
+	FutureSupplier<PageState> getPageState() {
+		Promise<PageState> p = new Promise<>();
+		evaluateJavascript("""
+				(function() {
+				  var v = document.querySelector('video');
+				  if (v == null) return '0|1|0|0|';
+				  var id = '';
+				  try {
+				    var pl = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+				    var d = (pl && pl.getVideoData) ? pl.getVideoData() : null;
+				    if (d && d.video_id) id = d.video_id;
+				  } catch (e) {}
+				  return '1|' + (v.paused ? '1' : '0') + '|' + (v.ended ? '1' : '0') + '|' +
+				      Math.round((v.currentTime || 0) * 1000) + '|' + id;
+				})();
+				""", r -> p.complete(PageState.parse(unquoteJsResult(r))));
+		return p;
+	}
+
+	/**
+	 * Resumes the page's video, optionally seeking first -- one atomic script rather than a
+	 * {@link #setPosition}/{@link #play()} pair, which round-trips through two independent
+	 * evaluations with no ordering guarantee between them. {@code positionMs < 0} means "play from
+	 * wherever it is".
+	 */
+	void resumeAt(long positionMs) {
+		loadUrl("javascript:(function() {\n" +
+				"  var v = document.querySelector('video');\n" +
+				"  if (v == null) { console.error('Fermata resumeAt(): no video element found'); return; }\n" +
+				(positionMs < 0 ? "" : "  try { v.currentTime = " + (positionMs / 1000d) + "; } catch (e) {}\n") +
+				"  var p = v.play();\n" +
+				"  if (p && p.catch) p.catch(function(e) { console.error('Fermata resumeAt() rejected: ' + e); });\n" +
+				"})();");
 	}
 
 	void setScale(YoutubeAddon.VideoScale scale) {

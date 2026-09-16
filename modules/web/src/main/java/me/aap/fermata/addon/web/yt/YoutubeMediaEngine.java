@@ -218,14 +218,30 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			expectingPageNav = false;
 		} else if (pendingVideoId != null) {
 			if ((actualId == null) || !actualId.equals(pendingVideoId)) {
-				if (++pendingCorrections <= MAX_PENDING_CORRECTIONS) {
+				if (recentLinkClick) {
+					// The user tapped a video while the app still had one of its own pending. Their tap
+					// wins, unconditionally: correcting here would drag the page back off the video they
+					// just chose and onto the app's -- repeatedly, since the tap keeps being "wrong" --
+					// which from the driver's seat looks exactly like tapping a video and having nothing
+					// load at all. Same resolution the unexpected-transition branch below gives a real
+					// tap: drop the queue and Repeat One, and take this video as the new baseline.
+					Log.d("playing(): user tapped ", actualId, " while ", pendingVideoId,
+							" was pending -- honouring the tap");
+					addon.setQueueItem(null);
+					addon.setRepeatOneEnabled(false);
+				} else if (++pendingCorrections <= MAX_PENDING_CORRECTIONS) {
 					Log.d("playing(): expected ", pendingVideoId, " but page shows ", actualId,
 							" -- correcting, attempt ", pendingCorrections);
-					web.loadVideo(pendingVideoId);
+					// The cheap in-player swap, not the full page navigation loadVideo() now performs:
+					// this fires while the app is already losing a race against YouTube's own
+					// navigation, possibly several times in a burst, and answering each round with a
+					// page load would make that far worse rather than better.
+					web.switchVideoInPlayer(pendingVideoId);
 					return;
+				} else {
+					Log.w("playing(): giving up correcting to ", pendingVideoId, " after ",
+							pendingCorrections, " attempts -- accepting ", actualId);
 				}
-				Log.w("playing(): giving up correcting to ", pendingVideoId, " after ",
-						pendingCorrections, " attempts -- accepting ", actualId);
 			}
 			addon.setPendingVideoId(null);
 			pendingCorrections = 0;
@@ -263,7 +279,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			} else if (addon.isRepeatOneEnabled()) {
 				addon.setPendingVideoId(currentVideoId);
 				pendingCorrections = 0;
-				web.loadVideo(currentVideoId);
+				web.switchVideoInPlayer(currentVideoId);
 				return;
 			} else if (addon.getQueueItem() != null) {
 				// Keep the baseline fresh before handing off -- see queueTransitionPending -- so that if
@@ -274,6 +290,11 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				queueTransitionPending = true;
 				current = end;
 				qualityUrl = null;
+				// Cover the handoff: resolving the queue's own next item and navigating to it takes a
+				// beat, and if the page leaves fullscreen on the way (a real navigation does), the
+				// user would otherwise see the watch page's layout flash up mid-switch. A no-op when
+				// not in fullscreen -- see getFullScreenView().
+				transitioning();
 				cb.onEngineEnded(this);
 				return;
 			}
@@ -349,6 +370,9 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		DiagnosticLog.log("YT", "video ended", "id=" + currentVideoId);
 		current = end;
 		qualityUrl = null;
+		// Same reasoning as the unexpected-transition handoff in playing() above: whatever comes next
+		// is resolved asynchronously, and the page must not be visible while it is.
+		transitioning();
 		cb.onEngineEnded(this);
 	}
 
@@ -413,9 +437,49 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// overlay back on top of whatever tab the user is actually looking at, uninteractive until they
 		// dug back into fullscreen themselves. Checking isFullScreen() here instead makes adShowing()/
 		// transitioning()/contentPlaying() all correctly no-op while the user isn't looking at it.
-		if (!(chrome instanceof YoutubeChromeClient yt) || !chrome.isFullScreen()) return null;
+		// isFullScreenExitDeferred() is the one case where isFullScreen() is false and the overlay is
+		// nonetheless the thing on screen: a video switch tore the page out of fullscreen while the
+		// black transition cover was up, and YoutubeChromeClient is holding that cover in place until
+		// the new video re-enters (see its doc comment). contentPlaying() has to be able to take the
+		// cover back down from there, or it would sit until its own timeout.
+		if (!(chrome instanceof YoutubeChromeClient yt) ||
+				!(chrome.isFullScreen() || yt.isFullScreenExitDeferred())) return null;
 		VideoView v = yt.getFullScreenView();
 		return (v instanceof YoutubeVideoView yv) ? yv : null;
+	}
+
+	/** See {@link YoutubeWebView#getPageState()} -- what the page's video element is really doing,
+	 * as opposed to what the media session last published. */
+	FutureSupplier<YoutubeWebView.PageState> getPageState() {
+		return web.getPageState();
+	}
+
+	/**
+	 * The page's video is sitting paused while the media session still believes playback is live --
+	 * put the page back in step with the session, without touching the session's own state (nothing
+	 * about it was wrong; only the page stopped). Used by
+	 * {@code YoutubeFragment#reconcileAfterHostInterruption}, which is the only thing that can tell
+	 * that apart from an ordinary pause.
+	 * <p>
+	 * Resets the same bookkeeping {@link #start()} does, so {@link #paused()}'s retry guard treats
+	 * whatever the page reports next as belonging to this fresh attempt rather than to playback that
+	 * stopped minutes ago -- without that, the first pause event after this would be trusted
+	 * immediately and the session would flip to PAUSED right after we asked it to play.
+	 *
+	 * @param restorePositionMs where to resume from, or a negative value to play from wherever the
+	 *                          page's element currently is.
+	 */
+	void resumePageAfterInterruption(long restorePositionMs) {
+		DiagnosticLog.log("YT", "re-starting page playback", "id=" + currentVideoId,
+				"restorePos=" + restorePositionMs);
+		lastActivePlayTime = System.currentTimeMillis();
+		lastPausedTime = 0;
+		playRetries = 0;
+		blockedWidth = 0;
+		blockedHeight = 0;
+		appRequestedPause = false;
+		lastExternalPauseTime = 0;
+		web.resumeAt(restorePositionMs);
 	}
 
 	void paused() {

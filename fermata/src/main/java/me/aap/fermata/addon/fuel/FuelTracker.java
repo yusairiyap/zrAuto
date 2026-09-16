@@ -17,7 +17,6 @@ import androidx.core.app.ActivityCompat;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import me.aap.fermata.FermataApplication;
-import me.aap.fermata.ui.activity.MainActivity;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.utils.log.Log;
 import me.aap.utils.pref.PreferenceStore;
@@ -87,12 +86,17 @@ public class FuelTracker implements LocationListener {
 		prefs = a.getPrefs();
 		if (watching) return;
 		watching = true;
+		// onCompletion, not onSuccess: MainCarActivity#checkPermissions() returns a FAILED future
+		// outright (the Android Auto SDK has no way to show a permission dialog on the car's screen),
+		// so with onSuccess the callback below simply never ran there -- checkConnection() was never
+		// called, the poll loop was never armed, and since `watching` had already been latched true
+		// no later start() call could retry it either. That alone meant trip distance never moved at
+		// all while actually connected to Android Auto, which is the only time it is supposed to.
+		// The request is still worth making (it's the phone UI's chance to actually grant it); its
+		// outcome just isn't what decides anything -- checkConnection() re-reads the real granted
+		// state from the package manager on every poll.
 		a.getAppActivity().checkPermissions(ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION)
-				.onSuccess(result -> {
-					hasPermission =
-							ActivityCompat.checkSelfPermission(appCtx, ACCESS_FINE_LOCATION) == PERMISSION_GRANTED;
-					checkConnection();
-				});
+				.onCompletion((result, fail) -> checkConnection());
 	}
 
 	/** Stops GPS (if running) and the connection watcher entirely -- used when the Fuel Log addon
@@ -107,6 +111,14 @@ public class FuelTracker implements LocationListener {
 		handler.removeCallbacks(connectionWatcher);
 		if (!watching) return;
 
+		// Re-read on every poll rather than latched once in start(): the permission can be granted
+		// (or revoked) from the phone's own UI long after this singleton was first started, and on
+		// the car activity there is no permission dialog at all, so a one-shot read taken at start
+		// time would have pinned this to false for the whole process lifetime.
+		hasPermission =
+				ActivityCompat.checkSelfPermission(appCtx, ACCESS_FINE_LOCATION) == PERMISSION_GRANTED
+						|| ActivityCompat.checkSelfPermission(appCtx, ACCESS_COARSE_LOCATION) ==
+						PERMISSION_GRANTED;
 		boolean connected = hasPermission && isConnectedToAndroidAuto();
 		if (connected && !gpsActive) startGps();
 		else if (!connected && gpsActive) stopGps();
@@ -185,13 +197,20 @@ public class FuelTracker implements LocationListener {
 	/**
 	 * True while this app is actually connected to Android Auto -- either running as the native
 	 * car activity ({@code MainCarActivity}, auto flavor only) or mirroring the phone UI onto the
-	 * car's display -- mirroring the same check {@code MainActivityDelegate.isCarActivity()} does,
-	 * but without needing a live {@code ActivityDelegate} (this singleton can outlive any one
-	 * Activity instance).
+	 * car's display.
+	 * <p>
+	 * This used to ask {@code MainActivity.getActiveInstance().isCarActivity()}, which can never be
+	 * true: the projected screen is {@code MainCarActivity}, a completely separate class that isn't
+	 * a {@code MainActivity} (nor even an {@code Activity}) at all, and {@code
+	 * MainActivity#isCarActivity()} is hardcoded to return false. So the whole condition collapsed
+	 * to "mirroring mode only" and GPS was never started on a real Android Auto head unit -- the
+	 * trip odometer simply sat at whatever it was. {@link MainActivityDelegate#isCarActivityActive()}
+	 * is tracked from the delegate's own create/destroy, which both Activities forward into, so it
+	 * is correct for either one without needing a live {@code ActivityDelegate} lookup here (this
+	 * singleton can outlive any one Activity instance).
 	 */
 	private static boolean isConnectedToAndroidAuto() {
-		if (FermataApplication.get().isMirroringMode()) return true;
-		MainActivity a = MainActivity.getActiveInstance();
-		return (a != null) && a.isCarActivity();
+		return FermataApplication.get().isMirroringMode() ||
+				MainActivityDelegate.isCarActivityActive();
 	}
 }

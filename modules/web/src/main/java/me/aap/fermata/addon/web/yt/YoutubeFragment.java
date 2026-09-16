@@ -6,6 +6,7 @@ import static me.aap.utils.async.Completed.completedVoid;
 import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED;
 
 import android.content.Context;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.SystemClock;
@@ -62,17 +63,41 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	 */
 	private static final long HOST_INTERRUPTION_PAUSE_GRACE_MS = 4000L;
 	/**
-	 * How long after regaining the screen to actually attempt the resume. Coming back also kicks off
-	 * a fullscreen exit+enter rebuild (see {@link WebBrowserFragment#rebuildFullscreenVideoIfActive()}),
-	 * which resizes the WebView, and YouTube's player reacts to a resize by restarting -- issuing
-	 * play() into the middle of that is exactly what {@code YoutubeMediaEngine#paused()}'s retry
-	 * guard exists to paper over. Let it settle first.
+	 * How long after regaining the screen to run each recovery check, cumulatively. The first is
+	 * delayed because coming back also kicks off a fullscreen exit+enter rebuild (see {@link
+	 * WebBrowserFragment#rebuildFullscreenVideoIfActive()}), which resizes the WebView, and YouTube's
+	 * player reacts to a resize by restarting -- issuing play() into the middle of that is exactly
+	 * what {@code YoutubeMediaEngine#paused()}'s retry guard exists to paper over. The later ones
+	 * exist because a single check was never enough: that rebuild's own budget runs to 6s (see {@code
+	 * WebBrowserFragment#FULLSCREEN_RECOVERY_TIMEOUT_MS}), and captured traces show the page settling
+	 * well after the one 1.5s check had already run and concluded there was nothing to do.
 	 */
-	private static final long HOST_INTERRUPTION_RESUME_DELAY_MS = 1500L;
+	private static final long[] HOST_INTERRUPTION_CHECK_DELAYS_MS = {1500L, 2000L, 3000L};
+	/** Below this, a restored position isn't worth the seek (and risks fighting the page over a
+	 * video that legitimately just started). */
+	private static final long MIN_POSITION_TO_RESTORE_MS = 10000L;
+	/** A page-side position under this counts as "the element was reset", not as real progress. */
+	private static final long RESET_POSITION_MS = 3000L;
 	private boolean playOnResume;
 	private boolean hostInterrupted;
 	private long hostInterruptionStartedAt;
 	private long hostResumeOperation;
+	/**
+	 * What the page's own {@code <video>} element was playing, and how far into it, when the
+	 * interruption began -- captured because an Android Auto display takeover can leave YouTube's
+	 * player having torn down and rebuilt that element, in which case what comes back is a fresh one
+	 * sitting at 0. Simply telling it to play from there would silently restart the video from the
+	 * beginning (which is what a manual pause/play does today). Best effort: if the snapshot doesn't
+	 * come back before the screen goes, nothing is restored and the recovery just plays from wherever
+	 * the page is, exactly as before.
+	 */
+	private long interruptedPositionMs;
+	@Nullable
+	private String interruptedVideoId;
+	/** Bumped once per interruption START, so a snapshot that only comes back after the screen is
+	 * already back is still accepted (unlike {@link #hostResumeOperation}, which also moves on the
+	 * way out and would discard exactly the answer the recovery needs). */
+	private long hostInterruptionCount;
 
 	@Override
 	public int getFragmentId() {
@@ -213,6 +238,11 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		YoutubeVideoView v = new YoutubeVideoView(root.getContext(), null);
 		v.setTag(YT_VIDEO_VIEW_TAG);
 		v.setVisibility(View.GONE);
+		// Whatever this overlay is crossfading over/under -- the page on the way into fullscreen, the
+		// next video's player on the way between videos -- there is a moment where nothing has been
+		// drawn into it yet, and an unpainted view shows whatever is behind it. Black is the only
+		// backdrop that reads as a deliberate dissolve rather than a flash.
+		v.setBackgroundColor(Color.BLACK);
 		// Below control_panel/floating_button/menus (elevation 10dp) so they still show over the
 		// video, but above the rest of the app chrome (toolbar/nav bar/body, elevation 0).
 		v.setElevation(UiUtils.toPx(root.getContext(), 5));
@@ -279,8 +309,25 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		DiagnosticLog.log("INTERRUPT", "started, armed for resume");
 		hostInterrupted = true;
 		hostInterruptionStartedAt = now;
-		// Cancels any resume still pending from a previous interruption -- see resumeAfterHostInterruption().
+		// Cancels any resume still pending from a previous interruption -- see
+		// reconcileAfterHostInterruption().
 		hostResumeOperation++;
+		snapshotPlaybackPosition(a);
+	}
+
+	/** See {@link #interruptedPositionMs}. */
+	private void snapshotPlaybackPosition(MainActivityDelegate a) {
+		interruptedPositionMs = 0;
+		interruptedVideoId = null;
+		long n = ++hostInterruptionCount;
+		if (!(a.getMediaSessionCallback().getEngine() instanceof YoutubeMediaEngine eng)) return;
+		eng.getPageState().onSuccess(st -> {
+			// Only a newer interruption invalidates this -- the answer routinely arrives after the
+			// screen is already back, which is precisely when it gets used.
+			if ((n != hostInterruptionCount) || !st.hasVideo) return;
+			interruptedPositionMs = st.positionMs;
+			interruptedVideoId = st.videoId;
+		});
 	}
 
 	@Override
@@ -291,22 +338,45 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		long startedAt = hostInterruptionStartedAt;
 		hostInterruptionStartedAt = 0;
 		long op = ++hostResumeOperation;
-		Context ctx = getContext();
-		if (ctx == null) return;
-		MainActivityDelegate.getActivityDelegate(ctx).onSuccess(a -> a.postDelayed(
-				() -> resumeAfterHostInterruption(a, op, startedAt), HOST_INTERRUPTION_RESUME_DELAY_MS));
+		scheduleHostInterruptionCheck(op, startedAt, 0);
 	}
 
-	private void resumeAfterHostInterruption(MainActivityDelegate a, long op, long startedAt) {
+	private void scheduleHostInterruptionCheck(long op, long startedAt, int attempt) {
+		Context ctx = getContext();
+		if (ctx == null) return;
+		MainActivityDelegate.getActivityDelegate(ctx)
+				.onSuccess(a -> a.postDelayed(() -> reconcileAfterHostInterruption(a, op, startedAt, attempt),
+						HOST_INTERRUPTION_CHECK_DELAYS_MS[attempt]));
+	}
+
+	/**
+	 * Puts playback back the way the interruption found it -- and, crucially, decides that against
+	 * what the PAGE is actually doing rather than against what the media session believes.
+	 * <p>
+	 * The session's belief is not evidence here. A display takeover can leave YouTube's player having
+	 * torn down and rebuilt its {@code <video>} element, and a freshly built element is simply paused
+	 * at 0 -- it never fired a "pause" event, because as far as the DOM is concerned nothing paused;
+	 * the thing that was playing stopped existing. Nothing else in this addon reports page state
+	 * unprompted either ({@code YoutubeWebView#attachListeners()} only announces an element it finds
+	 * already playing), so the session sails on saying PLAYING while the screen sits frozen -- the
+	 * exact reported symptom, control panel showing playback that isn't happening, and previously
+	 * unrecoverable because this method's first act was to believe it and return ("resume not needed:
+	 * already playing"). Asking the page closes that hole by construction.
+	 * <p>
+	 * Runs up to {@code HOST_INTERRUPTION_CHECK_DELAYS_MS.length} times, because the page keeps
+	 * moving for several seconds after the screen comes back (the fullscreen rebuild resizes the
+	 * WebView, and YouTube's player restarts around a resize), and stops as soon as the page confirms
+	 * it is playing. If the last check still finds them disagreeing, the session is corrected to
+	 * PAUSED instead -- worst case the user taps play once, on controls that are at least telling
+	 * the truth.
+	 */
+	private void reconcileAfterHostInterruption(MainActivityDelegate a, long op, long startedAt,
+																							int attempt) {
 		if ((op != hostResumeOperation) || isHidden() || (getView() == null)) {
 			DiagnosticLog.log("INTERRUPT", "resume skipped: superseded or fragment gone");
 			return;
 		}
 		FermataServiceUiBinder b = a.getMediaServiceBinder();
-		if (b.isPlaying()) {
-			DiagnosticLog.log("INTERRUPT", "resume not needed: already playing");
-			return;
-		}
 		if (!YoutubeMediaEngine.isYoutubeItem(b.getCurrentItem())) {
 			DiagnosticLog.log("INTERRUPT", "resume skipped: current item is not YouTube");
 			return;
@@ -316,18 +386,80 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 			DiagnosticLog.log("INTERRUPT", "resume skipped: engine is not YoutubeMediaEngine");
 			return;
 		}
-		long pausedAt = eng.getLastExternalPauseTime();
-		// 0 means the last pause was the app's own -- the user (or the car's transport controls)
-		// asked for it, so it stays. Anything older than the interruption is some earlier pause the
-		// user has been sitting on, not something this interruption caused.
-		if ((pausedAt == 0) || (pausedAt < startedAt - HOST_INTERRUPTION_PAUSE_GRACE_MS)) {
-			DiagnosticLog.log("INTERRUPT", "resume skipped: pause was not this interruption's",
-					"(pausedAt=" + pausedAt, "startedAt=" + startedAt + ')');
-			return;
-		}
-		Log.i("Resuming YouTube playback paused by a host interruption");
-		DiagnosticLog.logAndToast("INTERRUPT", "resuming playback");
-		cb.onPlay();
+		// The last pass never restarts anything -- it only decides. Restarting and then, in the same
+		// pass, concluding from the same (necessarily pre-restart) reading that the restart failed
+		// would have it immediately pause what it just asked to play.
+		boolean verdictPass = attempt >= HOST_INTERRUPTION_CHECK_DELAYS_MS.length - 1;
+
+		eng.getPageState().onCompletion((st, err) -> {
+			if (op != hostResumeOperation) return;
+			if (err != null) Log.d(err, "Failed to read the YouTube page's playback state");
+			// A missing answer (the JS bridge didn't come back, or there is no <video> element yet
+			// mid-rebuild) is "don't know", never "it's fine" -- it just means try again.
+			boolean known = (err == null) && (st != null) && st.hasVideo;
+			boolean pagePlaying = known && !st.paused;
+			boolean pageStalled = known && st.paused && !st.ended;
+
+			if (b.isPlaying()) {
+				if (pagePlaying) {
+					DiagnosticLog.log("INTERRUPT", "settled: page is playing");
+					return;
+				}
+				if (pageStalled && !verdictPass) {
+					DiagnosticLog.logAndToast("INTERRUPT", "page stalled while session says PLAYING",
+							"id=" + st.videoId, "pos=" + st.positionMs);
+					eng.resumePageAfterInterruption(positionToRestore(st));
+				}
+			} else {
+				if (pagePlaying) {
+					// The page is running and the session hasn't caught up yet -- it will, off the
+					// page's own "playing" event. Nothing to force.
+					DiagnosticLog.log("INTERRUPT", "settled: page is playing, session catching up");
+					return;
+				}
+				long pausedAt = eng.getLastExternalPauseTime();
+				// 0 means the last pause was the app's own -- the user (or the car's transport
+				// controls) asked for it, so it stays. Anything older than the interruption is some
+				// earlier pause the user has been sitting on, not something this interruption caused.
+				if ((pausedAt == 0) || (pausedAt < startedAt - HOST_INTERRUPTION_PAUSE_GRACE_MS)) {
+					DiagnosticLog.log("INTERRUPT", "resume skipped: pause was not this interruption's",
+							"(pausedAt=" + pausedAt, "startedAt=" + startedAt + ')');
+					return;
+				}
+				Log.i("Resuming YouTube playback paused by a host interruption");
+				DiagnosticLog.logAndToast("INTERRUPT", "resuming playback");
+				cb.onPlay();
+				return;
+			}
+
+			if (!verdictPass) {
+				scheduleHostInterruptionCheck(op, startedAt, attempt + 1);
+				return;
+			}
+			// Only on a definite reading -- an unanswered probe is not grounds for overriding
+			// anything.
+			if (b.isPlaying() && pageStalled) {
+				// Out of attempts with the two still disagreeing. Leaving the session claiming PLAYING
+				// is the worst of the available outcomes: the controls lie, and the play button (which
+				// is showing as pause) does nothing useful. Say PAUSED, which is at least true and
+				// which makes a single tap on play work.
+				DiagnosticLog.logAndToast("INTERRUPT", "giving up -- marking playback paused");
+				cb.onPause();
+			}
+		});
+	}
+
+	/**
+	 * Where {@link #reconcileAfterHostInterruption} should resume from, or a negative value for
+	 * "wherever the page already is". Only overrides the page when the page has clearly lost its
+	 * place: same video as before the interruption, the element sitting at (or near) zero, and a
+	 * pre-interruption position actually worth going back to.
+	 */
+	private long positionToRestore(YoutubeWebView.PageState st) {
+		if ((interruptedVideoId == null) || !interruptedVideoId.equals(st.videoId)) return -1;
+		if (interruptedPositionMs < MIN_POSITION_TO_RESTORE_MS) return -1;
+		if (st.positionMs >= RESET_POSITION_MS) return -1;
+		return interruptedPositionMs;
 	}
 
 	/**
