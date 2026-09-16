@@ -72,7 +72,16 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	 * WebBrowserFragment#FULLSCREEN_RECOVERY_TIMEOUT_MS}), and captured traces show the page settling
 	 * well after the one 1.5s check had already run and concluded there was nothing to do.
 	 */
-	private static final long[] HOST_INTERRUPTION_CHECK_DELAYS_MS = {1500L, 2000L, 3000L};
+	private static final long[] HOST_INTERRUPTION_CHECK_DELAYS_MS =
+			{1500L, 2000L, 3000L, 4000L, 5000L, 5000L};
+	/**
+	 * How many times one recovery will ask the page to start playing again before it stops nudging
+	 * and just watches. Spread over the first few checks above, leaving the rest of the window purely
+	 * observational: a captured trace has the page taking eight seconds to honour a play() after a
+	 * two-and-a-half-minute background, so the useful thing after a few attempts is patience, not
+	 * more attempts.
+	 */
+	private static final int MAX_PAGE_RESTARTS = 3;
 	/** Below this, a restored position isn't worth the seek (and risks fighting the page over a
 	 * video that legitimately just started). */
 	private static final long MIN_POSITION_TO_RESTORE_MS = 10000L;
@@ -98,6 +107,8 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	 * already back is still accepted (unlike {@link #hostResumeOperation}, which also moves on the
 	 * way out and would discard exactly the answer the recovery needs). */
 	private long hostInterruptionCount;
+	/** Restarts spent by the recovery currently running -- see {@link #MAX_PAGE_RESTARTS}. */
+	private int pageRestarts;
 
 	@Override
 	public int getFragmentId() {
@@ -338,6 +349,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		long startedAt = hostInterruptionStartedAt;
 		hostInterruptionStartedAt = 0;
 		long op = ++hostResumeOperation;
+		pageRestarts = 0;
 		scheduleHostInterruptionCheck(op, startedAt, 0);
 	}
 
@@ -363,12 +375,13 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	 * unrecoverable because this method's first act was to believe it and return ("resume not needed:
 	 * already playing"). Asking the page closes that hole by construction.
 	 * <p>
-	 * Runs up to {@code HOST_INTERRUPTION_CHECK_DELAYS_MS.length} times, because the page keeps
-	 * moving for several seconds after the screen comes back (the fullscreen rebuild resizes the
-	 * WebView, and YouTube's player restarts around a resize), and stops as soon as the page confirms
-	 * it is playing. If the last check still finds them disagreeing, the session is corrected to
-	 * PAUSED instead -- worst case the user taps play once, on controls that are at least telling
-	 * the truth.
+	 * Runs up to {@code HOST_INTERRUPTION_CHECK_DELAYS_MS.length} times and stops as soon as the page
+	 * confirms it is playing. Every outcome is verified, the resume included: asking for playback and
+	 * assuming it happened is the same mistake as asking the session -- a trace has an
+	 * interruption-triggered resume followed by thirty seconds of nothing, the page simply never
+	 * having started, with no further check to notice. If the last check still finds them
+	 * disagreeing, the session is corrected to PAUSED instead -- worst case the user taps play once,
+	 * on controls that are at least telling the truth.
 	 */
 	private void reconcileAfterHostInterruption(MainActivityDelegate a, long op, long startedAt,
 																							int attempt) {
@@ -397,39 +410,48 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 			// A missing answer (the JS bridge didn't come back, or there is no <video> element yet
 			// mid-rebuild) is "don't know", never "it's fine" -- it just means try again.
 			boolean known = (err == null) && (st != null) && st.hasVideo;
-			boolean pagePlaying = known && !st.paused;
 			boolean pageStalled = known && st.paused && !st.ended;
 
-			if (b.isPlaying()) {
-				if (pagePlaying) {
-					DiagnosticLog.log("INTERRUPT", "settled: page is playing");
-					return;
-				}
-				if (pageStalled && !verdictPass) {
-					DiagnosticLog.logAndToast("INTERRUPT", "page stalled while session says PLAYING",
-							"id=" + st.videoId, "pos=" + st.positionMs);
-					eng.resumePageAfterInterruption(positionToRestore(st));
-				}
-			} else {
-				if (pagePlaying) {
-					// The page is running and the session hasn't caught up yet -- it will, off the
-					// page's own "playing" event. Nothing to force.
-					DiagnosticLog.log("INTERRUPT", "settled: page is playing, session catching up");
-					return;
-				}
-				long pausedAt = eng.getLastExternalPauseTime();
-				// 0 means the last pause was the app's own -- the user (or the car's transport
-				// controls) asked for it, so it stays. Anything older than the interruption is some
-				// earlier pause the user has been sitting on, not something this interruption caused.
-				if ((pausedAt == 0) || (pausedAt < startedAt - HOST_INTERRUPTION_PAUSE_GRACE_MS)) {
-					DiagnosticLog.log("INTERRUPT", "resume skipped: pause was not this interruption's",
-							"(pausedAt=" + pausedAt, "startedAt=" + startedAt + ')');
-					return;
-				}
-				Log.i("Resuming YouTube playback paused by a host interruption");
-				DiagnosticLog.logAndToast("INTERRUPT", "resuming playback");
-				cb.onPlay();
+			// The page is running: whatever this recovery was for, it is over. The session follows off
+			// the page's own "playing" event if it hasn't already.
+			if (known && !st.paused) {
+				DiagnosticLog.log("INTERRUPT", "settled: page is playing");
 				return;
+			}
+
+			if (pageStalled && !verdictPass && (pageRestarts < MAX_PAGE_RESTARTS)) {
+				long restore = positionToRestore(st);
+				if (b.isPlaying()) {
+					pageRestarts++;
+					DiagnosticLog.logAndToast("INTERRUPT", "page stalled while session says PLAYING",
+							"id=" + st.videoId, "pos=" + st.positionMs, "restorePos=" + restore);
+					eng.resumePageAfterInterruption(restore);
+				} else {
+					long pausedAt = eng.getLastExternalPauseTime();
+					// 0 means the last pause was the app's own -- the user (or the car's transport
+					// controls) asked for it, so it stays. Anything older than the interruption is some
+					// earlier pause the user has been sitting on, not something this interruption
+					// caused. Either way there is nothing here to recover, now or on a later pass.
+					if ((pausedAt == 0) || (pausedAt < startedAt - HOST_INTERRUPTION_PAUSE_GRACE_MS)) {
+						DiagnosticLog.log("INTERRUPT", "resume skipped: pause was not this interruption's",
+								"(pausedAt=" + pausedAt, "startedAt=" + startedAt + ')');
+						return;
+					}
+					pageRestarts++;
+					Log.i("Resuming YouTube playback paused by a host interruption");
+					DiagnosticLog.logAndToast("INTERRUPT", "resuming playback",
+							"restorePos=" + restore);
+					// The page first and the session second, both. cb.onPlay() alone was what this
+					// used to do, and it reaches the page only as a bare play() on whatever element
+					// querySelector finds -- which after a long background is routinely one the player
+					// has already abandoned, so nothing actually started (see resumeAt()). Doing the
+					// page's half through the player object, and seeking before playing so a reset
+					// element doesn't audibly restart from zero, is what makes the resume stick;
+					// cb.onPlay() is still needed for the session's own state, and its own redundant
+					// play() is a no-op by then.
+					eng.resumePageAfterInterruption(restore);
+					cb.onPlay();
+				}
 			}
 
 			if (!verdictPass) {

@@ -1107,14 +1107,31 @@ public class YoutubeWebView extends FermataWebView {
 	 * {@link #setPosition}/{@link #play()} pair, which round-trips through two independent
 	 * evaluations with no ordering guarantee between them. {@code positionMs < 0} means "play from
 	 * wherever it is".
+	 * <p>
+	 * Unlike {@link #play()}, this drives YouTube's own player object first and only then falls back
+	 * to the raw {@code <video>} element. That matters specifically here: this is the recovery path
+	 * after a display takeover, where the element {@code querySelector('video')} finds may be one the
+	 * player has already abandoned and rebuilt around -- calling {@code play()} on it does nothing at
+	 * all, which is exactly what a captured trace shows (an engine start() followed by half a minute
+	 * of silence). {@code playVideo()} is what YouTube's own play button calls, and it acts on
+	 * whichever element the player currently considers live. Both are issued: {@code play()} on an
+	 * element the player already started is a harmless no-op.
 	 */
 	void resumeAt(long positionMs) {
+		String seek = (positionMs < 0) ? "" :
+				"  try {\n" +
+						"    if (p && (typeof p.seekTo === 'function')) p.seekTo(" + (positionMs / 1000d) +
+						", true);\n" +
+						"    else if (v != null) v.currentTime = " + (positionMs / 1000d) + ";\n" +
+						"  } catch (e) {}\n";
 		loadUrl("javascript:(function() {\n" +
+				"  var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
 				"  var v = document.querySelector('video');\n" +
+				seek +
+				"  try { if (p && (typeof p.playVideo === 'function')) p.playVideo(); } catch (e) {}\n" +
 				"  if (v == null) { console.error('Fermata resumeAt(): no video element found'); return; }\n" +
-				(positionMs < 0 ? "" : "  try { v.currentTime = " + (positionMs / 1000d) + "; } catch (e) {}\n") +
-				"  var p = v.play();\n" +
-				"  if (p && p.catch) p.catch(function(e) { console.error('Fermata resumeAt() rejected: ' + e); });\n" +
+				"  var r = v.play();\n" +
+				"  if (r && r.catch) r.catch(function(e) { console.error('Fermata resumeAt() rejected: ' + e); });\n" +
 				"})();");
 	}
 

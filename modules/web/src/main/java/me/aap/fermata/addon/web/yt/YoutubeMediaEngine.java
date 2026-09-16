@@ -479,6 +479,11 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		blockedHeight = 0;
 		appRequestedPause = false;
 		lastExternalPauseTime = 0;
+		// Idempotent, and the one thing that would silently swallow a play() if it had happened: a
+		// WebView left paused renders and decodes nothing no matter what the page is asked to do.
+		// WebBrowserFragment already calls this on every fullscreen recovery for the same reason, but
+		// a focus-only takeover never goes through that path.
+		web.onResume();
 		web.resumeAt(restorePositionMs);
 	}
 
