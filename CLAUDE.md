@@ -77,6 +77,24 @@ Conventions worth knowing:
   into XML. Use a plain comma, em dash character (—), or semicolon instead when writing comments inside
   `.xml` files. This has bitten more than one Claude Code session already; if a build fails with that
   exact "not permitted within comments" error, check the newest/edited XML file's comments first.
+- This project builds with non-transitive R classes (the AGP default here — `gradle.properties` doesn't
+  override `android.nonTransitiveRClass`), so a Java file can only use an *unqualified* `R.attr.foo` /
+  `R.drawable.foo` for resources this app itself declares. A theme color role (`colorPrimary`,
+  `colorControlActivated`, `colorError`, `colorOnSecondary`, `colorSurface`, `colorOutline`, ...) is
+  declared by some androidx dependency (`androidx.appcompat.R.attr.*` or
+  `com.google.android.material.R.attr.*`), not this app, and which of those two artifacts declares any
+  given one isn't guessable from the attr's *name* — `colorPrimary` is `androidx.appcompat.R.attr`,
+  `colorOnSecondary`/`colorOutline`/`colorSurface` are `com.google.android.material.R.attr`, but
+  `colorControlActivated`/`colorError` are `androidx.appcompat.R.attr` too even though they read like
+  Material3 roles. Getting this wrong compiles fine in the IDE (which usually resolves R more leniently)
+  but fails `compileXxxJavaWithJavac` in CI with `cannot find symbol ... location: class attr` — this
+  can't be verified without a real build in this cloud session (see below), so when resolving a theme
+  attr from Java (e.g. via `MaterialColors.getColor(view, attr)`), prefer letting **XML** resolve it
+  instead (a drawable/style referencing `?attr/colorError` — AAPT links that against the full merged
+  resource table regardless of R-class transitivity) over guessing the attr's declaring artifact in
+  Java; if Java-side resolution is unavoidable, grep this codebase for an existing
+  `androidx.appcompat.R.attr.*` / `com.google.android.material.R.attr.*` reference to the exact same
+  attr name first rather than assuming which one it lives in.
 
 ## Adding a new nav-bar tab (addon)
 

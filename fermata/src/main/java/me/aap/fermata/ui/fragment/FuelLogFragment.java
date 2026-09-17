@@ -8,7 +8,6 @@ import static android.text.format.DateUtils.FORMAT_SHOW_YEAR;
 import static android.text.format.DateUtils.formatDateRange;
 import static android.text.format.DateUtils.formatDateTime;
 
-import android.content.res.ColorStateList;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -24,7 +23,6 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.button.MaterialButton;
-import com.google.android.material.color.MaterialColors;
 import com.google.android.material.datepicker.MaterialDatePicker;
 
 import java.util.ArrayList;
@@ -332,9 +330,8 @@ public class FuelLogFragment extends MainActivityFragment {
 			h.location.setText(
 					e.location.isEmpty() ? getString(R.string.fuel_log_unknown_location) : e.location);
 
-			int color = eventColor(h.itemView, e.type);
 			h.dot.setImageResource(eventIcon(e.type));
-			h.dot.setBackgroundTintList(ColorStateList.valueOf(color));
+			h.dot.setBackgroundResource(eventDotBackground(e.type));
 			h.card.setOnClickListener(v -> FuelRefuelDialog.edit(activity, e, FuelLogFragment.this::refresh));
 		}
 
@@ -373,18 +370,19 @@ public class FuelLogFragment extends MainActivityFragment {
 		}
 
 		/**
-		 * {@code colorPrimary}/{@code colorSecondary} are remapped to near-background tones by
-		 * several of this app's theme variants (see theme_light.xml/theme_dynamic.xml), so a dot
-		 * tinted with either would blend invisibly into the page on those themes. {@code
-		 * colorControlActivated} (the app's own accent, already used for the Refuel button/sliders)
-		 * and {@code colorError} are the two roles every theme variant defines as a distinct, always
-		 * -visible color -- REFUEL reuses the neutral icon-tint role instead of a third accent.
+		 * A separate drawable per event type (colorControlActivated/colorError/colorOnSecondary,
+		 * respectively -- see each drawable's own doc) rather than one shape re-tinted from Java via
+		 * {@code MaterialColors.getColor(view, attr)}: {@code colorControlActivated} and {@code
+		 * colorError} aren't declared in {@code com.google.android.material}'s own R (confirmed by a
+		 * CI compile failure -- "cannot find symbol"), and this project's non-transitive R classes
+		 * mean guessing the right androidx artifact for each one in Java is fragile. Letting AAPT
+		 * resolve the theme attr while linking the drawable XML sidesteps that entirely.
 		 */
-		private int eventColor(View v, FuelLogEntry.Type type) {
+		private int eventDotBackground(FuelLogEntry.Type type) {
 			return switch (type) {
-				case TRIP_START -> MaterialColors.getColor(v, com.google.android.material.R.attr.colorControlActivated);
-				case TRIP_END -> MaterialColors.getColor(v, com.google.android.material.R.attr.colorError);
-				case REFUEL -> MaterialColors.getColor(v, com.google.android.material.R.attr.colorOnSecondary);
+				case TRIP_START -> R.drawable.timeline_dot_bg_trip_start;
+				case TRIP_END -> R.drawable.timeline_dot_bg_trip_end;
+				case REFUEL -> R.drawable.timeline_dot_bg_refuel;
 			};
 		}
 

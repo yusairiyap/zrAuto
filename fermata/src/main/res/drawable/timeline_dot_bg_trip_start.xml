@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Timeline dot marker for a Trip Started event. A separate drawable per event type (rather than
+     one shared shape re-tinted from Java via View#setBackgroundTintList) so the theme color role
+     is resolved by AAPT while linking resources, not by Java code guessing which androidx artifact
+     (appcompat vs material) actually declares a given attr under this project's non-transitive R
+     classes -- see CLAUDE.md's note on cross-module attr symbols for why that guess is fragile. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="?attr/colorControlActivated" />
+    <stroke
+        android:width="2dp"
+        android:color="?attr/colorSurface" />
+</shape>

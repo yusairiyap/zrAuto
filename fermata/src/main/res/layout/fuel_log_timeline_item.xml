@@ -24,7 +24,7 @@
         android:id="@+id/fuel_log_timeline_dot"
         android:layout_width="32dp"
         android:layout_height="32dp"
-        android:background="@drawable/timeline_dot_bg"
+        android:background="@drawable/timeline_dot_bg_refuel"
         android:padding="6dp"
         android:src="@drawable/fuel"
         app:layout_constraintBottom_toBottomOf="@id/fuel_log_timeline_road"
