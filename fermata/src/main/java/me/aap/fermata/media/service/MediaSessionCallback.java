@@ -126,6 +126,7 @@ import me.aap.fermata.media.pref.PlaybackControlPrefs;
 import me.aap.fermata.media.sub.SubGrid;
 import me.aap.fermata.media.sub.Subtitles;
 import me.aap.fermata.ui.view.VideoView;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.collection.CollectionUtils;
 import me.aap.utils.event.EventBroadcaster;
@@ -460,8 +461,26 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onPlay() {
+		DiagnosticLog.log("TRANSPORT", "onPlay", "state=" + stateName(getPlaybackState().getState()));
 		playerTask.cancel();
 		playerTask = play();
+	}
+
+	/**
+	 * Readable {@link PlaybackStateCompat} state for the diagnostic trace -- a bare int is what this
+	 * log exists to save the reader from decoding.
+	 */
+	private static String stateName(int state) {
+		return switch (state) {
+			case STATE_NONE -> "NONE";
+			case STATE_STOPPED -> "STOPPED";
+			case STATE_PAUSED -> "PAUSED";
+			case STATE_PLAYING -> "PLAYING";
+			case STATE_BUFFERING -> "BUFFERING";
+			case STATE_ERROR -> "ERROR";
+			case STATE_CONNECTING -> "CONNECTING";
+			default -> "state(" + state + ')';
+		};
 	}
 
 	@SuppressLint("SwitchIntDef")
@@ -547,6 +566,8 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onPause() {
+		DiagnosticLog.log("TRANSPORT", "onPause",
+				"state=" + stateName(getPlaybackState().getState()));
 		PlayableItem i;
 		MediaEngine eng = getEngine();
 		if ((eng == null) || ((i = eng.getSource()) == null)) return;
@@ -976,7 +997,12 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			assertNotNull(md);
 		} else {
 			MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
-			b.putString(METADATA_KEY_DISPLAY_TITLE, i.getResource().getName());
+			// getName() rather than getResource().getName(): identical for every item that doesn't
+			// override it (Item#getName()'s default IS the resource name), but an item whose resource
+			// isn't a user-facing thing -- YouTube's, whose resource is the <video> element's opaque
+			// blob: source -- can now supply something readable for this placeholder, which is what
+			// the notification and control panel show until the real metadata below resolves.
+			b.putString(METADATA_KEY_DISPLAY_TITLE, i.getName());
 			md = b.build();
 			update.set(m -> engine.getPosition().main().onSuccess(position -> {
 				if (getCurrentItem() != i) return;
@@ -1152,6 +1178,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	@Override
 	public void onAudioFocusChange(int focusChange) {
 		Log.i("Audio focus event received: ", focusChange);
+		DiagnosticLog.logAndToast("AUDIOFOCUS", focusChange, "playing=" + isPlaying());
 
 		switch (focusChange) {
 			case AUDIOFOCUS_GAIN:
@@ -1284,6 +1311,11 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	}
 
 	private void setPlaybackState(PlaybackStateCompat state) {
+		PlaybackStateCompat prev = currentState;
+		if ((prev == null) || (prev.getState() != state.getState())) {
+			DiagnosticLog.log("STATE", stateName(state.getState()), "pos=" + state.getPosition(),
+					"item=" + getCurrentItem());
+		}
 		currentState = state;
 		session.setPlaybackState(state);
 		service.updateNotification(state.getState(), getCurrentItem());

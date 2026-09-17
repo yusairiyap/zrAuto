@@ -34,6 +34,7 @@ import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.activity.VoiceCommand;
 import me.aap.fermata.ui.fragment.MainActivityFragment;
 import me.aap.fermata.ui.view.VideoView;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.function.BooleanConsumer;
 import me.aap.utils.function.Supplier;
 import me.aap.utils.log.Log;
@@ -207,11 +208,13 @@ public class WebBrowserFragment extends MainActivityFragment
 	public void onPause() {
 		super.onPause();
 		if (!BuildConfig.AUTO) return;
+		onHostInterruptionStarted();
 		FermataWebView v = getWebView();
 		if (v == null) return;
 		FermataChromeClient chrome = v.getWebChromeClient();
 		if (chrome != null) {
 			if (chrome.isFullScreen()) {
+				DiagnosticLog.log("FULLSCREEN", "force-exit on pause");
 				chrome.exitFullScreen();
 				v.exitPageFullScreen(() -> {});
 				fullScreenOnResume = true;
@@ -221,9 +224,26 @@ public class WebBrowserFragment extends MainActivityFragment
 		}
 	}
 
+	/**
+	 * The app is (or may be) losing the projected screen -- either the normal Fragment lifecycle
+	 * saying so, or {@code MainCarActivity.onWindowFocusChanged(false)}, which is the ONLY signal an
+	 * Android Auto display takeover (a reversing/360 camera, the car's own system briefly taking the
+	 * screen) gives at all. Paired with {@link #onHostInterruptionEnded()}. Both are no-ops here --
+	 * only {@code YoutubeFragment} currently has anything to recover -- and both can fire
+	 * spuriously, repeatedly, or without their counterpart ever arriving, so an override must stay
+	 * safe under all of that.
+	 */
+	public void onHostInterruptionStarted() {
+	}
+
+	/** Counterpart of {@link #onHostInterruptionStarted()} -- the app has the screen back. */
+	public void onHostInterruptionEnded() {
+	}
+
 	@Override
 	public void onResume() {
 		super.onResume();
+		if (BuildConfig.AUTO) onHostInterruptionEnded();
 		if (!BuildConfig.AUTO || !fullScreenOnResume) return;
 		FermataWebView v = getWebView();
 		if (v == null) return;
@@ -257,7 +277,13 @@ public class WebBrowserFragment extends MainActivityFragment
 		if (v == null) return;
 		FermataChromeClient chrome = v.getWebChromeClient();
 		if ((chrome == null) || !chrome.isFullScreen()) return;
-		if (!beginFullScreenRecovery()) return;
+		if (!beginFullScreenRecovery()) {
+			DiagnosticLog.log("FULLSCREEN", "rebuild skipped (another recovery owns this cycle)");
+			return;
+		}
+		// Worth tracing loudly: this tears the page out of fullscreen and puts it back, and YouTube's
+		// player restarting around that resize is a candidate cause of the pause being investigated.
+		DiagnosticLog.log("FULLSCREEN", "rebuild started (exit + re-enter)");
 		v.onResume();
 		chrome.exitFullScreen();
 		MainActivityDelegate.getActivityDelegate(getContext()).onFailure(err -> endFullScreenRecovery())
@@ -334,6 +360,7 @@ public class WebBrowserFragment extends MainActivityFragment
 
 	/** Releases the claim taken by {@link #beginFullScreenRecovery()}, win or lose. */
 	private void endFullScreenRecovery() {
+		DiagnosticLog.log("FULLSCREEN", "recovery cycle finished");
 		fullScreenRecoveryInFlight = false;
 		fullScreenRecoveryEverCompleted = true;
 		lastFullScreenRecoveryCompletedAt = SystemClock.elapsedRealtime();

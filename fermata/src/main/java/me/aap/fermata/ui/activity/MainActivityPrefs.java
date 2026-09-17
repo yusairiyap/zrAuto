@@ -126,6 +126,11 @@ public interface MainActivityPrefs
 	// profile's cookies/storage/form data, same mechanism as PRIVATE_MODE_CLEAR_REQUEST but for the
 	// Default profile, so a user can reset their normal session without ever touching Private Mode.
 	Pref<LongSupplier> NORMAL_MODE_CLEAR_REQUEST = Pref.l("NORMAL_MODE_CLEAR_REQUEST", 0L);
+	// Opt-in diagnostics -- see me.aap.fermata.util.DiagnosticLog. Off by default and deliberately
+	// not persisted as "on" by anything but an explicit user toggle: it records an event trace only
+	// while the user is actively investigating something they can only reproduce in the car.
+	Pref<BooleanSupplier> DEBUG_LOG_ENABLED = Pref.b("DEBUG_LOG_ENABLED", false);
+	Pref<BooleanSupplier> DEBUG_LOG_TOASTS = Pref.b("DEBUG_LOG_TOASTS", false);
 	Pref<BooleanSupplier> VOICE_CONTROl_ENABLED = Pref.b("VOICE_CONTROl_ENABLED", false);
 	Pref<BooleanSupplier> VOICE_CONTROl_FB = Pref.b("VOICE_CONTROl_FB", false);
 	Pref<Supplier<String>> VOICE_CONTROL_SUBST = Pref.s("VOICE_CONTROL_SUBST", "");

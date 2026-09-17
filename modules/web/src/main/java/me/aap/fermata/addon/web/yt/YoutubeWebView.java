@@ -16,6 +16,7 @@ import android.content.Context;
 import android.util.AttributeSet;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import java.util.List;
 
@@ -120,16 +121,27 @@ public class YoutubeWebView extends FermataWebView {
 	 * single-page-app navigation between videos.
 	 */
 	void refreshAddressBarTitle() {
-		getVideoTitle().onSuccess(title ->
-				MainActivityDelegate.getActivityDelegate(getContext()).onSuccess(a -> {
-					ActivityFragment f = a.getActiveFragment();
-					if (f == null) return;
-					if (!(f.getToolBarMediator() instanceof WebToolBarMediator wm)) return;
-					String t = unquoteJsResult(title);
-					String display = TextUtils.isNullOrBlank(t)
-							? getContext().getString(me.aap.fermata.R.string.youtube) : t;
-					wm.setAddress(a.getToolBar(), display);
-				}));
+		getVideoTitle().onSuccess(this::showTitleInAddressBar);
+	}
+
+	/**
+	 * Same as {@link #refreshAddressBarTitle()} but for a title the caller already has, rather than
+	 * one read back out of the page. Called from {@link YoutubeMediaEngine#playing} with the title
+	 * the player itself reported: YouTube's single-page-app navigation between videos (the app's own
+	 * queue-driven next/prev, Repeat One, and YouTube's own autonav alike) never triggers a page
+	 * load, so {@link #pageLoaded(String)} -- the only other thing that refreshes this -- simply
+	 * never fires for those, leaving the toolbar showing whichever video's title happened to be up
+	 * when the page was last actually loaded.
+	 */
+	void showTitleInAddressBar(@Nullable String title) {
+		MainActivityDelegate.getActivityDelegate(getContext()).onSuccess(a -> {
+			ActivityFragment f = a.getActiveFragment();
+			if (f == null) return;
+			if (!(f.getToolBarMediator() instanceof WebToolBarMediator wm)) return;
+			String display = TextUtils.isNullOrBlank(title)
+					? getContext().getString(me.aap.fermata.R.string.youtube) : title;
+			wm.setAddress(a.getToolBar(), display);
+		});
 	}
 
 	/** {@link #evaluateJavascript} returns string results JSON-encoded (quoted, with escapes). */
@@ -174,6 +186,21 @@ public class YoutubeWebView extends FermataWebView {
 				"function fermataRecentLinkClick() {\n" +
 				"  return (Date.now() - (window.__fermataLastLinkClickTime || 0)) < 4000;\n" +
 				"}\n" +
+				// Same reasoning as fermataCurrentVideoId() above, for the title: document.title (what
+				// refreshAddressBarTitle()/YoutubeMediaEngine's metadata used to be built from) only
+				// catches up with an SPA-internal video swap once YouTube has fetched the new video's
+				// metadata and updated the document -- long after 'playing' fires -- so reading it at
+				// that moment yields the PREVIOUS video's title, which is then never corrected (nothing
+				// re-reads it afterwards). The player object knows the real title immediately.
+				// URI-encoded so a title containing '|' can't corrupt the payload's field separators --
+				// encodeURIComponent escapes it as %7C. See YoutubeMediaEngine#playing()'s parsing.
+				"function fermataCurrentVideoTitle() {\n" +
+				"  try {\n" +
+				"    var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
+				"    var d = p && p.getVideoData ? p.getVideoData() : null;\n" +
+				"    return (d && d.title) ? encodeURIComponent(d.title) : '';\n" +
+				"  } catch (e) { return ''; }\n" +
+				"}\n" +
 				"function attachVideoListeners(v) {\n" +
 				"  if (!(window.__fermataAdShowing && window.__fermataAdSkipEnabled)) v.muted = false;\n" +
 				"  if (v.getAttribute('FermataAttached') === 'true') return;\n" +
@@ -183,13 +210,15 @@ public class YoutubeWebView extends FermataWebView {
 				"    if (typeof fermataAdCheck === 'function') fermataAdCheck();\n" +
 				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
 				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", fermataCurrentVideoId() + '|' + " +
-				"(fermataRecentLinkClick() ? '1' : '0') + '|' + v.currentSrc);\n" +
+				"(fermataRecentLinkClick() ? '1' : '0') + '|' + fermataCurrentVideoTitle() + '|' + " +
+				"v.currentSrc);\n" +
 				"  }\n" +
 				"  v.addEventListener('playing', function(e) {\n" +
 				"    if (typeof fermataAdCheck === 'function') fermataAdCheck();\n" +
 				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
 				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", fermataCurrentVideoId() + '|' + " +
-				"(fermataRecentLinkClick() ? '1' : '0') + '|' + v.currentSrc);\n" +
+				"(fermataRecentLinkClick() ? '1' : '0') + '|' + fermataCurrentVideoTitle() + '|' + " +
+				"v.currentSrc);\n" +
 				"  });\n" +
 				"  v.addEventListener('pause', function(e) {" + JS_EVENT + "(" + JS_VIDEO_PAUSED +
 				", v.currentSrc);});\n" +
@@ -866,9 +895,17 @@ public class YoutubeWebView extends FermataWebView {
 				speed + ";");
 	}
 
+	/**
+	 * The page document's own title, already unquoted (see {@link #unquoteJsResult(String)}).
+	 * Only a fallback these days -- it lags YouTube's single-page-app navigation between videos and
+	 * carries YouTube's own " - YouTube" suffix; the player's own title, reported alongside every
+	 * "playing" event, is what actually names the current video (see {@code
+	 * YoutubeWebView#attachListeners()}'s {@code fermataCurrentVideoTitle()} and {@code
+	 * YoutubeMediaEngine#playing}).
+	 */
 	FutureSupplier<String> getVideoTitle() {
 		Promise<String> p = new Promise<>();
-		evaluateJavascript("document.title", p::complete);
+		evaluateJavascript("document.title", r -> p.complete(unquoteJsResult(r)));
 		return p;
 	}
 

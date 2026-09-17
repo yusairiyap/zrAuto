@@ -38,6 +38,13 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # Default packages input is "tools platform-tools" -- Google's sdkmanager repository
+          # no longer serves the legacy standalone "tools" package (superseded years ago by
+          # cmdline-tools, which this action already installs/uses on its own), and sdkmanager
+          # exits nonzero if ANY requested package can't be found, failing this whole step
+          # before the actual build even starts. Nothing in this workflow needs it.
+          packages: 'platform-tools'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4

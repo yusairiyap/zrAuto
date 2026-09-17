@@ -254,13 +254,20 @@ public class WebBrowserAddon implements FermataFragmentAddon, FermataActivityAdd
 	/**
 	 * Covers both plain web browsing and YouTube fullscreen (YoutubeFragment extends
 	 * WebBrowserFragment, YoutubeAddon extends WebBrowserAddon) -- see
-	 * {@link WebBrowserFragment#rebuildFullscreenVideoIfActive()}.
+	 * {@link WebBrowserFragment#rebuildFullscreenVideoIfActive()} for the fullscreen half and
+	 * {@link WebBrowserFragment#onHostInterruptionStarted()}/
+	 * {@link WebBrowserFragment#onHostInterruptionEnded()} for the playback half.
 	 */
 	@Override
 	public void onActivityWindowFocusChanged(MainActivityDelegate a, boolean hasFocus) {
-		if (!hasFocus) return;
 		ActivityFragment f = a.getActiveFragment();
-		if (f instanceof WebBrowserFragment wf) wf.rebuildFullscreenVideoIfActive();
+		if (!(f instanceof WebBrowserFragment wf)) return;
+		if (hasFocus) {
+			wf.rebuildFullscreenVideoIfActive();
+			wf.onHostInterruptionEnded();
+		} else {
+			wf.onHostInterruptionStarted();
+		}
 	}
 
 	@Override

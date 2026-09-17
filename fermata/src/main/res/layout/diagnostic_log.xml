@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Root is the ViewGroup handed to MainActivityDelegate#insetScrollableContent() (see
+  DiagnosticLogFragment), not the ScrollView below it: tool_bar/control_panel/nav_bar are drawn as
+  translucent overlays on top of fragment content, so the action row has to be pushed clear of them
+  too, not just the log text.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/diagnostic_log_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp">
+
+        <!--
+          A plain platform ?android:attr/buttonBarButtonStyle used to sit here originally; a first
+          attempt at fixing its barely-visible text switched to ?attr/colorPrimary, which turned out
+          just as wrong for a different reason: this app repurposes colorPrimary as a raw background
+          fill (see AppTheme.ControlPanelStyle's android:colorBackground and, in theme.xml, the
+          comment on AppTheme.SeekBarStyle describing the exact same mistake with colorOnPrimary),
+          so it can be near-black in a dark theme and near-white in a light one, i.e. barely visible
+          as TEXT against this same screen's background in either case. colorControlActivated is the
+          attr that comment settled on instead, for the identical reason: it's what this app's own
+          sliders/equalizer are tinted with, meant for "the active state of a control", and stays
+          legible across every one of this app's themes.
+        -->
+        <Button
+            android:id="@+id/diagnostic_log_copy"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="?attr/colorControlActivated"
+            android:text="@string/diagnostic_log_copy" />
+
+        <Button
+            android:id="@+id/diagnostic_log_share"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="?attr/colorControlActivated"
+            android:text="@string/diagnostic_log_share" />
+
+        <Button
+            android:id="@+id/diagnostic_log_refresh"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="?attr/colorControlActivated"
+            android:text="@string/diagnostic_log_refresh" />
+
+        <Button
+            android:id="@+id/diagnostic_log_clear"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="?attr/colorControlActivated"
+            android:text="@string/diagnostic_log_clear" />
+    </LinearLayout>
+
+    <ScrollView
+        android:id="@+id/diagnostic_log_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true"
+        android:scrollbars="vertical">
+
+        <!--
+          No style set, so this fell back to whatever this app's theme chain resolves as a plain
+          TextView's default color, white in every theme tried, including Light, where the main
+          content background (android:colorBackground, what this ScrollView actually sits on) is
+          white too. android:textColorSecondary is the attr media_item_text_color.xml (every media
+          list item's title/subtitle, i.e. exactly this same "plain content text on the app's main
+          background" job elsewhere in the app) already uses instead, and every one of this app's
+          themes gives it an explicit, sane value for that surface (e.g. near-black in Light,
+          near-white in the dark ones), unlike textColorPrimary/colorPrimary, which this app
+          repurposes for the control panel's own surface (see the button styling comment above).
+        -->
+        <TextView
+            android:id="@+id/diagnostic_log_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="8dp"
+            android:textColor="?android:attr/textColorSecondary"
+            android:textIsSelectable="true"
+            android:textSize="12sp"
+            android:typeface="monospace" />
+    </ScrollView>
+</LinearLayout>

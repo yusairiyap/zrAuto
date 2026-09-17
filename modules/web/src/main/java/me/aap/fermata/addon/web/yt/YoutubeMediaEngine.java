@@ -9,6 +9,8 @@ import android.content.Context;
 import android.content.res.Resources;
 import android.media.AudioManager;
 import android.media.MediaMetadata;
+import android.net.Uri;
+import android.os.SystemClock;
 import android.support.v4.media.MediaMetadataCompat;
 import android.view.ViewGroup;
 import android.widget.Toast;
@@ -35,6 +37,7 @@ import me.aap.fermata.media.pref.BrowsableItemPrefs;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.VideoView;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.text.SharedTextBuilder;
@@ -121,6 +124,22 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	// clears and rapid, unrelated video changes. While set, playing() just keeps currentVideoId fresh
 	// and lets the video play rather than reacting again.
 	private boolean queueTransitionPending;
+	// The title the player reported for currentVideoId alongside its last "playing" event -- see
+	// playing() below. null when the player didn't have one for the current video.
+	@Nullable
+	private String currentVideoTitle;
+	// Set by pause() when the pause came from the app itself (the control panel, a hardware/Bluetooth
+	// media button, Android Auto's own transport controls -- anything routed through
+	// MediaSessionCallback#onPause()), as opposed to the page pausing on its own. Consumed by
+	// paused() below, which is reached either way, to tell those two apart.
+	private boolean appRequestedPause;
+	// SystemClock.elapsedRealtime() of the last pause the page reported that the app never asked for
+	// -- what an Android Auto host interruption (a reversing/360 camera or the car's own system
+	// taking the projected screen) looks like from here: the page stops playing on its own, with no
+	// transport command behind it and nothing to ever start it again. 0 when the last pause was the
+	// app's/user's own, or nothing has paused since the last start(). Read by YoutubeFragment's
+	// interruption handling -- see YoutubeFragment#onHostInterruptionEnded().
+	private long lastExternalPauseTime;
 
 	public YoutubeMediaEngine(YoutubeWebView web, MainActivityDelegate a) {
 		this.web = web;
@@ -173,10 +192,14 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// <stale>" correction (see the pendingVideoId branch below) that reissued loadVideoById() and
 		// was visible on-screen as a flicker back to the old video. Falls back to the old getUrl()-based
 		// extraction if the player object wasn't found (e.g. mid-navigation) or didn't report an id.
-		String[] parts = data.split("\\|", 3);
+		String[] parts = data.split("\\|", 4);
 		String jsVideoId = (parts.length > 0) ? parts[0] : "";
 		boolean recentLinkClick = (parts.length > 1) && "1".equals(parts[1]);
-		String url = (parts.length > 2) ? parts[2] : "";
+		// URI-encoded on the JS side (see YoutubeWebView#attachListeners()'s
+		// fermataCurrentVideoTitle()) so a title containing the payload's own '|' separator can't
+		// shift the fields after it.
+		String jsTitle = (parts.length > 2) ? Uri.decode(parts[2]) : "";
+		String url = (parts.length > 3) ? parts[3] : "";
 		String actualId =
 				!jsVideoId.isEmpty() ? jsVideoId : YoutubeVideoItem.extractVideoId(web.getUrl());
 		YoutubeAddon addon = web.getAddon();
@@ -256,10 +279,29 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			}
 		}
 
+		// The player's own title for whatever is actually playing right now -- the only source that's
+		// correct at this exact moment (see fermataCurrentVideoTitle()). Everything downstream that
+		// shows "what's playing" is fed from here rather than re-reading the page later:
+		//  - the media session metadata / notification / control panel, via Current#loadMeta() below;
+		//  - the toolbar's title field, which otherwise only ever refreshes on a real page load
+		//    (YoutubeWebView#pageLoaded()) and so never updated at all for an SPA-internal switch;
+		//  - YoutubeAddon's videoId -> title cache, so this video already has a proper name if it
+		//    later gets added to Favorites/a Playlist (or is resolved back out of one).
+		if (!jsTitle.isEmpty()) {
+			currentVideoTitle = jsTitle;
+			if (actualId != null) addon.cacheVideoTitle(actualId, jsTitle);
+			web.showTitleInAddressBar(jsTitle);
+		} else if (!Objects.equals(actualId, currentVideoId)) {
+			// A new video, but the player couldn't tell us its title (mid-navigation, or a page shape
+			// getVideoData() isn't available on) -- drop the previous video's title rather than
+			// labelling this one with it; Current#loadMeta() falls back to reading the document below.
+			currentVideoTitle = null;
+		}
+
 		currentVideoId = actualId;
 
 		if (url.startsWith("blob:")) url = url.substring(5);
-		current = new Current(url);
+		current = new Current(url, currentVideoTitle, actualId);
 
 		if (!web.getAddon().autoHighestQuality()) {
 			qualityUrl = null;
@@ -267,6 +309,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			qualityUrl = url;
 			web.setHighestVideoQuality();
 		}
+		DiagnosticLog.log("YT", "playing", "id=" + actualId, "title=" + currentVideoTitle);
 		cb.setEngine(this);
 		cb.onEngineStarted(this);
 	}
@@ -303,6 +346,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			return;
 		}
 
+		DiagnosticLog.log("YT", "video ended", "id=" + currentVideoId);
 		current = end;
 		qualityUrl = null;
 		cb.onEngineEnded(this);
@@ -412,9 +456,31 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 					.show();
 		}
 
+		// Which of the two kinds of pause this is decides whether it's ever automatically undone --
+		// see lastExternalPauseTime's declaration and YoutubeFragment#onHostInterruptionEnded().
+		// The page pausing with nothing on the app side having asked for it is the exact signature of
+		// a host takeover, so it's called out loudly in the trace rather than logged as a plain pause.
+		DiagnosticLog.logAndToast("YT", appRequestedPause ? "paused (app asked)" : "PAUSED BY PAGE",
+				"id=" + currentVideoId, "size=" + web.getWidth() + 'x' + web.getHeight());
+		if (appRequestedPause) {
+			appRequestedPause = false;
+			lastExternalPauseTime = 0;
+		} else {
+			lastExternalPauseTime = SystemClock.elapsedRealtime();
+		}
+
 		ignorePause = true;
 		cb.onPause();
 		ignorePause = false;
+	}
+
+	/**
+	 * When the page last paused itself with nothing on the app side having asked it to
+	 * ({@link SystemClock#elapsedRealtime()}), or 0 if the last pause was the app's/user's own (or
+	 * nothing has paused since playback last started). See {@link #lastExternalPauseTime}.
+	 */
+	long getLastExternalPauseTime() {
+		return lastExternalPauseTime;
 	}
 
 	@Override
@@ -493,17 +559,23 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	@Override
 	public void start() {
+		DiagnosticLog.log("YT", "engine start()", "id=" + currentVideoId);
 		lastActivePlayTime = System.currentTimeMillis();
 		lastPausedTime = 0;
 		playRetries = 0;
 		blockedWidth = 0;
 		blockedHeight = 0;
+		appRequestedPause = false;
+		lastExternalPauseTime = 0;
 		web.play();
 	}
 
 	@Override
 	public void stop() {
+		DiagnosticLog.log("YT", "engine stop()", "id=" + currentVideoId);
 		lastActivePlayTime = 0;
+		appRequestedPause = false;
+		lastExternalPauseTime = 0;
 		if ((current == null) || (current == end)) return;
 		current = null;
 		qualityUrl = null;
@@ -512,8 +584,16 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	@Override
 	public void pause() {
+		DiagnosticLog.log("YT", "engine pause()", "id=" + currentVideoId,
+				"reentrant=" + ignorePause);
 		lastActivePlayTime = 0;
-		if (!ignorePause) web.pause();
+		// ignorePause is set only while paused() above is re-entering through
+		// MediaSessionCallback#onPause() for a pause the PAGE reported; anything else reaching here is
+		// the app asking the page to pause, which is exactly what lastExternalPauseTime must not count.
+		if (!ignorePause) {
+			appRequestedPause = true;
+			web.pause();
+		}
 	}
 
 	@Override
@@ -863,19 +943,65 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	private final class Current extends YoutubeItem {
+		@Nullable
+		private final String title;
+		@Nullable
+		private final String videoId;
 
-		public Current(String url) {
+		public Current(String url, @Nullable String title, @Nullable String videoId) {
 			super(CURRENT_ID, mediaRoot, GenericFileSystem.getInstance().create(url));
+			this.title = title;
+			this.videoId = videoId;
+		}
+
+		// The resource this item is built around is the <video> element's own currentSrc -- an opaque
+		// blob:/googlevideo URL, which is what the inherited getName() would otherwise hand to
+		// anything asking this item what it is.
+		@NonNull
+		@Override
+		public String getName() {
+			return (title != null) ? title : super.getName();
 		}
 
 		@NonNull
 		@Override
 		protected FutureSupplier<MediaMetadataCompat> loadMeta() {
-			FutureSupplier<String> getTitle = web.getVideoTitle();
-			return web.getDuration().then(dur -> getTitle.map(title -> {
+			// Prefer the title the player itself reported alongside the "playing" event this item was
+			// created from -- see YoutubeMediaEngine#playing(). Only fall back to reading the document
+			// when the player didn't have one: document.title lags SPA navigation between videos, so it
+			// reports the PREVIOUS video here, and carries YouTube's own " - YouTube" suffix.
+			//
+			// Deliberately no network call of any kind, including for artwork below: this Future is
+			// also what PlayableItem#getDuration() resolves through, which FermataServiceUiBinder
+			// awaits before it will show the seek bar/time labels for a newly playing item at all.
+			// Chaining a thumbnail *fetch* into this same Future (an earlier version of this feature)
+			// delayed both of those by however long a slow/failing image load took; resolving one
+			// asynchronously afterward and merging it into the session's live metadata (the version
+			// after that) raced MediaSessionCallback's own metadata write for this same item -- whichever
+			// of the two finished last silently won, so the real thumbnail was as likely to be clobbered
+			// by the placeholder default image as to replace it. Just the URI, put synchronously here
+			// with no lookup at all, threads the needle: MediaSessionCallback#buildMetadata() (the one
+			// and only writer of this item's session metadata) already resolves ALBUM_ART_URI into a
+			// bitmap asynchronously on its own -- for every item in the app, not just YouTube's -- as a
+			// later step of that SAME write, never a second one, so there's nothing left to race.
+			//
+			// maxresdefault.jpg rather than hqdefault.jpg: the latter is a fixed 4:3 canvas with the
+			// real 16:9 frame letterboxed inside it, which is exactly what showed up as black bars
+			// above/below the artwork once it reached a full-bleed surface like the notification's own
+			// background. maxresdefault.jpg is the true source-resolution 16:9 frame, but doesn't exist
+			// for a video that was never available above 720p -- a miss on it, on this single-URI
+			// pipeline with no fallback of its own, falls all the way to the generic icon rather than
+			// to hqdefault. Trading a small chance of that (an older/lower-quality video) for a real,
+			// unletterboxed thumbnail everywhere else.
+			FutureSupplier<String> getTitle = (title != null) ? completed(title) : web.getVideoTitle();
+			return web.getDuration().then(dur -> getTitle.map(t -> {
 				MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
-				b.putString(MediaMetadataCompat.METADATA_KEY_TITLE, title);
+				b.putString(MediaMetadataCompat.METADATA_KEY_TITLE, t);
 				b.putLong(MediaMetadata.METADATA_KEY_DURATION, dur);
+				if ((videoId != null) && !videoId.isEmpty()) {
+					b.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI,
+							YoutubeVideoItem.thumbnailUrl(videoId, true));
+				}
 				return b.build();
 			}));
 		}

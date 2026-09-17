@@ -134,6 +134,7 @@ import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.media.service.MediaSessionCallbackAssistant;
 import me.aap.fermata.ui.fragment.AudioEffectsFragment;
+import me.aap.fermata.ui.fragment.DiagnosticLogFragment;
 import me.aap.fermata.ui.fragment.FavoritesFragment;
 import me.aap.fermata.ui.fragment.FoldersFragment;
 import me.aap.fermata.ui.fragment.MainActivityFragment;
@@ -147,6 +148,7 @@ import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.ui.view.SecondaryFloatingButton;
 import me.aap.fermata.ui.view.TertiaryFloatingButton;
 import me.aap.fermata.ui.view.VideoView;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.app.App;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.async.Promise;
@@ -423,6 +425,17 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	@Override
+	public void uncaughtException(@NonNull Thread t, @NonNull Throwable err) {
+		// super.setUncaughtExceptionHandler() (above) installs this instance itself as the process's
+		// default handler on every Activity create -- replacing whatever was set before, including
+		// DiagnosticLog.installCrashHandler()'s own hook from Application.onCreate(). Without this,
+		// a crash on any real (non-CarActivity) screen -- which is exactly where Settings/Diagnostics
+		// live -- would never make it into the diagnostic log at all.
+		DiagnosticLog.logCrash(t, err);
+		super.uncaughtException(t, err);
+	}
+
+	@Override
 	protected void onActivitySaveInstanceState(@NonNull Bundle outState) {
 		super.onActivitySaveInstanceState(outState);
 		if (isRecreating()) {
@@ -482,8 +495,7 @@ public class MainActivityDelegate extends ActivityDelegate
 				((FermataActivityAddon) addon).onActivityWindowFocusChanged(this, hasFocus);
 		}
 
-		// Only ever fired with hasFocus=true (see MainCarActivity#onWindowFocusChanged) -- an
-		// Android Auto display takeover (e.g. a car's camera overlay briefly taking the screen)
+		// An Android Auto display takeover (e.g. a car's camera overlay briefly taking the screen)
 		// doesn't route through any playback-state change of its own, so the control panel can be
 		// left showing whatever it was mid-interruption (most commonly hidden, if the interruption
 		// coincided with a state transition through STOPPED/NONE) with nothing to naturally
@@ -1139,6 +1151,8 @@ public class MainActivityDelegate extends ActivityDelegate
 			return new AudioEffectsFragment();
 		} else if (id == R.id.subtitles_fragment) {
 			return new SubtitlesFragment();
+		} else if (id == R.id.diagnostic_log_fragment) {
+			return new DiagnosticLogFragment();
 		}
 		ActivityFragment f = FermataApplication.get().getAddonManager().createFragment(id);
 		return (f != null) ? f : super.createFragment(id);
@@ -1359,17 +1373,32 @@ public class MainActivityDelegate extends ActivityDelegate
 				items[i + 1] = ((Playlist) playlists.get(i)).getName();
 			}
 
-			DialogBuilder.create(menu).setTitle(R.drawable.playlist_add, R.string.playlist_add)
-					.setSingleChoiceItems(items, -1, (d, which) -> {
-						d.dismiss();
-						if (which == 0) {
-							createPlaylist(selection.get(), initName);
-						} else {
-							addToPlaylist(((Playlist) playlists.get(which - 1)).getName(), selection.get());
-						}
-					})
-					.setNegativeButton(android.R.string.cancel, (d, w) -> d.dismiss())
-					.show();
+			try {
+				DialogBuilder.create(menu).setTitle(R.drawable.playlist_add, R.string.playlist_add)
+						.setSingleChoiceItems(items, -1, (d, which) -> {
+							d.dismiss();
+							if (which == 0) {
+								createPlaylist(selection.get(), initName);
+							} else {
+								addToPlaylist(((Playlist) playlists.get(which - 1)).getName(), selection.get());
+							}
+						})
+						.setNegativeButton(android.R.string.cancel, (d, w) -> d.dismiss())
+						.show();
+			} catch (Exception err) {
+				// Seen crashing specifically on the CarActivity surface: an InflateException/
+				// UnsupportedOperationException resolving a TextAppearance attribute while inflating
+				// this dialog's title -- and this app's own showAlert()/showInfo() (see UiUtils) go
+				// through this exact same DialogBuilder.create(OverlayMenu)/DialogView machinery too
+				// (via MainActivityDelegate#createDialogBuilder), just against a different menu, so if
+				// whatever's actually broken here is the host Context's theme rather than anything
+				// specific to this one dialog, calling showAlert() from this catch block would repeat
+				// the identical failure as its own error path. UiUtils.showToast() is a plain
+				// android.widget.Toast, entirely outside that machinery, so it's used here instead.
+				DiagnosticLog.log("DIALOG", "failed to show playlist dialog:", err);
+				Log.e(err, "Failed to show the playlist dialog");
+				UiUtils.showToast(ctx, R.string.playlist_add_failed);
+			}
 		});
 	}
 

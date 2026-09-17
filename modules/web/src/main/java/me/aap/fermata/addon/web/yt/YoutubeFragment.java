@@ -8,6 +8,7 @@ import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED
 import android.content.Context;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -36,7 +37,9 @@ import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.VideoView;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
+import me.aap.utils.log.Log;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.menu.OverlayMenuItem;
@@ -51,7 +54,25 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	static final String DEFAULT_URL = "https://m.youtube.com";
 	private static final Set<String> DEFAULT_URLS = new HashSet<>(Arrays.asList(DEFAULT_URL, DEFAULT_URL + '/'));
 	private static final String YT_VIDEO_VIEW_TAG = "yt_video_view_overlay";
+	/**
+	 * How far apart a page-side pause and the start of a host interruption may be and still be
+	 * treated as the same event. Needed in both directions: the page can stop playing the moment the
+	 * projected screen is taken away, before the app is told anything, and the app can equally be
+	 * told first and the page's own "pause" event arrive a beat later.
+	 */
+	private static final long HOST_INTERRUPTION_PAUSE_GRACE_MS = 4000L;
+	/**
+	 * How long after regaining the screen to actually attempt the resume. Coming back also kicks off
+	 * a fullscreen exit+enter rebuild (see {@link WebBrowserFragment#rebuildFullscreenVideoIfActive()}),
+	 * which resizes the WebView, and YouTube's player reacts to a resize by restarting -- issuing
+	 * play() into the middle of that is exactly what {@code YoutubeMediaEngine#paused()}'s retry
+	 * guard exists to paper over. Let it settle first.
+	 */
+	private static final long HOST_INTERRUPTION_RESUME_DELAY_MS = 1500L;
 	private boolean playOnResume;
+	private boolean hostInterrupted;
+	private long hostInterruptionStartedAt;
+	private long hostResumeOperation;
 
 	@Override
 	public int getFragmentId() {
@@ -228,6 +249,100 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		a.getMediaServiceBinder().removeBroadcastListener(this);
 	}
 
+	/**
+	 * An Android Auto host interruption (a reversing/360 camera overlay, the car's own system taking
+	 * the projected screen) leaves YouTube playback stopped and nothing to ever start it again: the
+	 * page stops the {@code <video>} element on its own -- the app's media session never issues a
+	 * pause, and {@code YoutubeMediaEngine} deliberately holds no audio focus, so none of the usual
+	 * "resume when the interruption is over" machinery is even in play -- and the resulting DOM
+	 * "pause" event reaches {@code YoutubeMediaEngine#paused()}, which faithfully mirrors it into the
+	 * media session. Recovery for that (and for anything else that briefly takes the screen and
+	 * leaves the page paused) starts here: remember that this interruption began, and whether
+	 * playback was live going into it.
+	 * <p>
+	 * Only arms; nothing is resumed until {@link #onHostInterruptionEnded()}, and only then if the
+	 * pause really was the page's own (never a pause the user or the car's transport controls asked
+	 * for -- see {@code YoutubeMediaEngine#getLastExternalPauseTime()}).
+	 */
+	@Override
+	public void onHostInterruptionStarted() {
+		if (!BuildConfig.AUTO || hostInterrupted) return;
+		Context ctx = getContext();
+		if (ctx == null) return;
+		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(ctx).peek();
+		if (a == null) return;
+		long now = SystemClock.elapsedRealtime();
+		if (!wasYoutubePlaying(a, now)) {
+			DiagnosticLog.log("INTERRUPT", "started, nothing to recover (YouTube not playing)");
+			return;
+		}
+		DiagnosticLog.log("INTERRUPT", "started, armed for resume");
+		hostInterrupted = true;
+		hostInterruptionStartedAt = now;
+		// Cancels any resume still pending from a previous interruption -- see resumeAfterHostInterruption().
+		hostResumeOperation++;
+	}
+
+	@Override
+	public void onHostInterruptionEnded() {
+		if (!BuildConfig.AUTO || !hostInterrupted) return;
+		DiagnosticLog.log("INTERRUPT", "ended, resume check scheduled");
+		hostInterrupted = false;
+		long startedAt = hostInterruptionStartedAt;
+		hostInterruptionStartedAt = 0;
+		long op = ++hostResumeOperation;
+		Context ctx = getContext();
+		if (ctx == null) return;
+		MainActivityDelegate.getActivityDelegate(ctx).onSuccess(a -> a.postDelayed(
+				() -> resumeAfterHostInterruption(a, op, startedAt), HOST_INTERRUPTION_RESUME_DELAY_MS));
+	}
+
+	private void resumeAfterHostInterruption(MainActivityDelegate a, long op, long startedAt) {
+		if ((op != hostResumeOperation) || isHidden() || (getView() == null)) {
+			DiagnosticLog.log("INTERRUPT", "resume skipped: superseded or fragment gone");
+			return;
+		}
+		FermataServiceUiBinder b = a.getMediaServiceBinder();
+		if (b.isPlaying()) {
+			DiagnosticLog.log("INTERRUPT", "resume not needed: already playing");
+			return;
+		}
+		if (!YoutubeMediaEngine.isYoutubeItem(b.getCurrentItem())) {
+			DiagnosticLog.log("INTERRUPT", "resume skipped: current item is not YouTube");
+			return;
+		}
+		MediaSessionCallback cb = a.getMediaSessionCallback();
+		if (!(cb.getEngine() instanceof YoutubeMediaEngine eng)) {
+			DiagnosticLog.log("INTERRUPT", "resume skipped: engine is not YoutubeMediaEngine");
+			return;
+		}
+		long pausedAt = eng.getLastExternalPauseTime();
+		// 0 means the last pause was the app's own -- the user (or the car's transport controls)
+		// asked for it, so it stays. Anything older than the interruption is some earlier pause the
+		// user has been sitting on, not something this interruption caused.
+		if ((pausedAt == 0) || (pausedAt < startedAt - HOST_INTERRUPTION_PAUSE_GRACE_MS)) {
+			DiagnosticLog.log("INTERRUPT", "resume skipped: pause was not this interruption's",
+					"(pausedAt=" + pausedAt, "startedAt=" + startedAt + ')');
+			return;
+		}
+		Log.i("Resuming YouTube playback paused by a host interruption");
+		DiagnosticLog.logAndToast("INTERRUPT", "resuming playback");
+		cb.onPlay();
+	}
+
+	/**
+	 * Whether YouTube playback is live right now, or was until a page-side pause moments ago --
+	 * covering the case where the page already stopped before the app was told the screen was gone.
+	 */
+	private boolean wasYoutubePlaying(MainActivityDelegate a, long now) {
+		FermataServiceUiBinder b = a.getMediaServiceBinder();
+		if (!YoutubeMediaEngine.isYoutubeItem(b.getCurrentItem())) return false;
+		if (b.isPlaying()) return true;
+		if (!(a.getMediaSessionCallback().getEngine() instanceof YoutubeMediaEngine eng)) return false;
+		long pausedAt = eng.getLastExternalPauseTime();
+		return (pausedAt != 0) && ((now - pausedAt) < HOST_INTERRUPTION_PAUSE_GRACE_MS);
+	}
+
 	@Override
 	public void onPause() {
 		if (!BuildConfig.AUTO) {
@@ -382,8 +497,13 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		FermataWebView v = getWebView();
 		if ((addon == null) || (v == null)) return null;
 
-		String title = v.getTitle();
-		addon.cacheVideoTitle(videoId, ((title == null) || title.isEmpty()) ? videoId : title);
+		// Don't overwrite a title the player itself reported (cached by YoutubeMediaEngine#playing()
+		// for whatever is actually playing) with the WebView's document title, which lags YouTube's
+		// single-page-app navigation and carries its " - YouTube" suffix. Only fill in a gap.
+		if (videoId.equals(addon.getVideoTitle(videoId))) {
+			String title = v.getTitle();
+			addon.cacheVideoTitle(videoId, ((title == null) || title.isEmpty()) ? videoId : title);
+		}
 		return new YoutubeVideoItem(videoId, addon.getRootItem(lib));
 	}
 

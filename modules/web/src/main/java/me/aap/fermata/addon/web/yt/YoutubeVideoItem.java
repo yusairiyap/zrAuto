@@ -44,6 +44,18 @@ public class YoutubeVideoItem extends ExtPlayable implements MediaLib.Externally
 	}
 
 	/**
+	 * Thumbnail URL for a video id. {@code maxresdefault.jpg} is the true source-resolution 16:9
+	 * frame, but it simply doesn't exist for a video that was never available above 720p -- which is
+	 * why callers that can't tolerate a miss should fall back to {@code hqdefault.jpg}, the one size
+	 * YouTube always has. That fallback is a fixed 4:3 canvas with the real 16:9 frame letterboxed
+	 * inside it, so it shows black bars anywhere the image is displayed edge to edge.
+	 */
+	static String thumbnailUrl(String videoId, boolean maxRes) {
+		return "https://img.youtube.com/vi/" + videoId +
+				(maxRes ? "/maxresdefault.jpg" : "/hqdefault.jpg");
+	}
+
+	/**
 	 * Extracts a video id from a YouTube watch/shorts URL (the page's own URL, not a media
 	 * {@code <video>} source), or {@code null} if {@code url} isn't one/doesn't carry one. Shared by
 	 * {@link YoutubeFragment#getCurrentVideoId()} and {@link YoutubeMediaEngine}, which uses it to
@@ -170,8 +182,7 @@ public class YoutubeVideoItem extends ExtPlayable implements MediaLib.Externally
 		// left visible black bars once the grid card's thumbnail became full-bleed; maxresdefault.jpg
 		// is the true source-resolution 16:9 frame for the vast majority of videos (falls back to a
 		// generic icon on the rare video too old to have one, same as any other failed thumbnail load).
-		b.putString(METADATA_KEY_ALBUM_ART_URI,
-				"https://img.youtube.com/vi/" + videoId + "/maxresdefault.jpg");
+		b.putString(METADATA_KEY_ALBUM_ART_URI, thumbnailUrl(videoId, true));
 		return completed(b.build());
 	}
 

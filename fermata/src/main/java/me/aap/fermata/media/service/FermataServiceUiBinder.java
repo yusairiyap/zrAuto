@@ -30,6 +30,7 @@ import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.lib.MediaLib.StreamItem;
 import me.aap.fermata.media.pref.PlaybackControlPrefs;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.app.App;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.event.BasicEventBroadcaster;
@@ -465,7 +466,23 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 							} else if ((sessionCallback.getEngine() == eng) && (i == eng.getSource())) {
 								playPause(eng, st, (int) (dur / 1000), (int) (pos / 1000));
 							} else {
-								resetProgressBar();
+								// eng/i moved on while this chain (started for the PREVIOUS engine/item)
+								// was still awaiting getDuration()/getPosition() -- most commonly several
+								// playback-state transitions landing in quick succession during a video
+								// change (an explicit skip, autoplay, or YouTube's own player re-firing
+								// "playing" while settling). That can only happen because the engine/item
+								// change itself went through another setPlaybackState() call, which
+								// already fired its own fresh onPlaybackStateChanged() -> playPause(int)
+								// for the CURRENT engine/item -- so a fresher, correct attempt is already
+								// in flight or has already completed by the time this stale one resolves.
+								// This used to call resetProgressBar() here, which wiped the seek bar and
+								// both time labels back to invisible/blank regardless of whether that
+								// fresher attempt had already shown the right ones -- exactly the "seek
+								// bar/time missing after skipping to the next video, until something else
+								// (e.g. a manual pause tap) forces a clean, uncontested call" bug. A stale
+								// result has nothing correct left to say about the current state, so it
+								// says nothing instead -- just a trace in case this theory is incomplete.
+								DiagnosticLog.log("SEEKBAR", "stale playPause() discarded, item=" + i);
 							}
 						});
 					}
