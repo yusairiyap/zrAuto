@@ -68,6 +68,15 @@ Conventions worth knowing:
   mode) — it's fine to edit files under it directly and commit them like any other source file.
 - Locale/translation resources live under `fermata/src/main/res/values-<locale>/` — don't hand-edit
   translated strings unless specifically asked; app strings normally originate in `values/strings.xml`.
+- XML comments (`<!-- ... -->`) in any Android resource file (layouts, drawables, etc.) can't contain
+  `--` *anywhere in the body*, not just at the delimiters — Android's resource compiler (AAPT2, via a
+  strict `javax.xml.stream` parser) rejects it with `The string "--" is not permitted within comments.`
+  and fails the whole `mergeResources`/`parseLocalResources` task. This is easy to trip on because it's
+  valid in Java/JS comments and this codebase's own Javadoc-style comments use `--` constantly as a
+  dash separator (e.g. "not a real git submodule -- no `.gitmodules`") — that habit doesn't carry over
+  into XML. Use a plain comma, em dash character (—), or semicolon instead when writing comments inside
+  `.xml` files. This has bitten more than one Claude Code session already; if a build fails with that
+  exact "not permitted within comments" error, check the newest/edited XML file's comments first.
 
 ## Adding a new nav-bar tab (addon)
 
