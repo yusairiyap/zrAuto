@@ -1,10 +1,14 @@
 package me.aap.fermata.ui.fragment;
 
+import static android.text.format.DateUtils.FORMAT_ABBREV_MONTH;
 import static android.text.format.DateUtils.FORMAT_SHOW_DATE;
 import static android.text.format.DateUtils.FORMAT_SHOW_TIME;
+import static android.text.format.DateUtils.FORMAT_SHOW_WEEKDAY;
 import static android.text.format.DateUtils.FORMAT_SHOW_YEAR;
+import static android.text.format.DateUtils.formatDateRange;
 import static android.text.format.DateUtils.formatDateTime;
 
+import android.content.res.ColorStateList;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -14,15 +18,20 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.util.Pair;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.color.MaterialColors;
+import com.google.android.material.datepicker.MaterialDatePicker;
 
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.List;
 import java.util.Locale;
+import java.util.TimeZone;
 
 import me.aap.fermata.R;
 import me.aap.fermata.addon.fuel.FuelLogEntry;
@@ -32,19 +41,28 @@ import me.aap.fermata.addon.fuel.FuelTracker;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 
 /**
- * The Fuel Log tab: an overview card (current trip distance, last refuel summary) and the history
- * of past refuels, both on one scrolling screen. Both live in a single {@link RecyclerView} (the
- * overview card as a header at position 0) rather than a header view wrapped in a separate scroll
- * container -- the rest of the app never nests a scrolling view inside the fragment host's own
+ * The Fuel Log tab: an overview card (current trip distance, last refuel summary), a date-filtered
+ * "Timeline" of Trip Started/Trip Ended/Refuel events drawn as a vertical road with popup-style
+ * cards, and the full "History" list below it -- all on one scrolling screen. All of it lives in a
+ * single {@link RecyclerView} (built from a flat {@link Row} list re-derived on every refresh)
+ * rather than a header view (or a nested Timeline scroller) wrapped in a separate scroll container
+ * -- the rest of the app never nests a scrolling view inside the fragment host's own
  * (wrap_content-height) frame, and doing so here made this screen's content render displaced
  * upwards, overlapping the toolbar title above it.
  */
 public class FuelLogFragment extends MainActivityFragment {
 	private static final int TYPE_HEADER = 0;
-	private static final int TYPE_ITEM = 1;
+	private static final int TYPE_TIMELINE_HEADER = 1;
+	private static final int TYPE_TIMELINE_ITEM = 2;
+	private static final int TYPE_TIMELINE_EMPTY = 3;
+	private static final int TYPE_HISTORY_HEADER = 4;
+	private static final int TYPE_HISTORY_ITEM = 5;
 
 	private final Runnable trackerListener = this::refresh;
 	private Adapter adapter;
+	/** Inclusive range, in local wall-clock millis, that the Timeline section is filtered to. */
+	private long timelineFromMillis;
+	private long timelineToMillis;
 
 	@Override
 	public int getFragmentId() {
@@ -67,6 +85,7 @@ public class FuelLogFragment extends MainActivityFragment {
 	@Override
 	public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
 		super.onViewCreated(view, savedInstanceState);
+		resetDefaultDateRange();
 		MainActivityDelegate a = getActivityDelegate();
 		RecyclerView list = (RecyclerView) view;
 		list.setLayoutManager(new LinearLayoutManager(requireContext()));
@@ -103,13 +122,95 @@ public class FuelLogFragment extends MainActivityFragment {
 		adapter.setEntries(FuelLogStore.getEntries(getActivityDelegate().getPrefs()));
 	}
 
+	/** Last 1 calendar month up to and including today, in local time. */
+	private void resetDefaultDateRange() {
+		Calendar to = Calendar.getInstance();
+		to.set(Calendar.HOUR_OF_DAY, 23);
+		to.set(Calendar.MINUTE, 59);
+		to.set(Calendar.SECOND, 59);
+		to.set(Calendar.MILLISECOND, 999);
+		timelineToMillis = to.getTimeInMillis();
+
+		Calendar from = (Calendar) to.clone();
+		from.add(Calendar.MONTH, -1);
+		from.set(Calendar.HOUR_OF_DAY, 0);
+		from.set(Calendar.MINUTE, 0);
+		from.set(Calendar.SECOND, 0);
+		from.set(Calendar.MILLISECOND, 0);
+		timelineFromMillis = from.getTimeInMillis();
+	}
+
+	private void showDateRangePicker() {
+		MaterialDatePicker<Pair<Long, Long>> picker = MaterialDatePicker.Builder.dateRangePicker()
+				.setTitleText(R.string.fuel_log_filter_date_range)
+				.setSelection(new Pair<>(localMillisToUtcDayMillis(timelineFromMillis),
+						localMillisToUtcDayMillis(timelineToMillis)))
+				.build();
+		picker.addOnPositiveButtonClickListener(sel -> {
+			if ((sel == null) || (sel.first == null) || (sel.second == null)) return;
+			timelineFromMillis = utcDayMillisToLocalStartOfDay(sel.first);
+			timelineToMillis = utcDayMillisToLocalEndOfDay(sel.second);
+			refresh();
+		});
+		picker.show(getParentFragmentManager(), "fuel_log_date_range");
+	}
+
+	/**
+	 * {@link MaterialDatePicker} works in UTC calendar days -- these convert between that and this
+	 * screen's local wall-clock day boundaries so a date picked as (e.g.) "17 Sep" always means
+	 * 17 Sep in the device's own timezone, not whatever day that UTC instant happens to fall on
+	 * locally.
+	 */
+	private static long localMillisToUtcDayMillis(long localMillis) {
+		Calendar local = Calendar.getInstance();
+		local.setTimeInMillis(localMillis);
+		Calendar utc = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+		utc.clear();
+		utc.set(local.get(Calendar.YEAR), local.get(Calendar.MONTH), local.get(Calendar.DAY_OF_MONTH));
+		return utc.getTimeInMillis();
+	}
+
+	private static long utcDayMillisToLocalStartOfDay(long utcMillis) {
+		Calendar utc = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+		utc.setTimeInMillis(utcMillis);
+		Calendar local = Calendar.getInstance();
+		local.clear();
+		local.set(utc.get(Calendar.YEAR), utc.get(Calendar.MONTH), utc.get(Calendar.DAY_OF_MONTH),
+				0, 0, 0);
+		return local.getTimeInMillis();
+	}
+
+	private static long utcDayMillisToLocalEndOfDay(long utcMillis) {
+		Calendar utc = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+		utc.setTimeInMillis(utcMillis);
+		Calendar local = Calendar.getInstance();
+		local.clear();
+		local.set(utc.get(Calendar.YEAR), utc.get(Calendar.MONTH), utc.get(Calendar.DAY_OF_MONTH),
+				23, 59, 59);
+		local.set(Calendar.MILLISECOND, 999);
+		return local.getTimeInMillis();
+	}
+
 	private static String formatKm(double km) {
 		return String.format(Locale.getDefault(), "%.1f km", km);
+	}
+
+	/** A single row of the flat list backing the Fuel Log's one {@link RecyclerView}. */
+	private static final class Row {
+		final int type;
+		@Nullable
+		final FuelLogEntry entry;
+
+		Row(int type, @Nullable FuelLogEntry entry) {
+			this.type = type;
+			this.entry = entry;
+		}
 	}
 
 	private final class Adapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 		private final MainActivityDelegate activity;
 		private List<FuelLogEntry> entries = new ArrayList<>();
+		private List<Row> rows = new ArrayList<>();
 
 		Adapter(MainActivityDelegate activity) {
 			this.activity = activity;
@@ -117,35 +218,78 @@ public class FuelLogFragment extends MainActivityFragment {
 
 		void setEntries(List<FuelLogEntry> entries) {
 			this.entries = entries;
+			rebuildRows();
+		}
+
+		private void rebuildRows() {
+			List<Row> r = new ArrayList<>();
+			r.add(new Row(TYPE_HEADER, null));
+			r.add(new Row(TYPE_TIMELINE_HEADER, null));
+
+			List<FuelLogEntry> timeline = new ArrayList<>();
+			for (FuelLogEntry e : entries) {
+				if ((e.time >= timelineFromMillis) && (e.time <= timelineToMillis)) timeline.add(e);
+			}
+			if (timeline.isEmpty()) {
+				r.add(new Row(TYPE_TIMELINE_EMPTY, null));
+			} else {
+				for (FuelLogEntry e : timeline) r.add(new Row(TYPE_TIMELINE_ITEM, e));
+			}
+
+			r.add(new Row(TYPE_HISTORY_HEADER, null));
+			for (FuelLogEntry e : entries) r.add(new Row(TYPE_HISTORY_ITEM, e));
+
+			rows = r;
 			notifyDataSetChanged();
 		}
 
 		@Override
 		public int getItemViewType(int position) {
-			return (position == 0) ? TYPE_HEADER : TYPE_ITEM;
+			return rows.get(position).type;
 		}
 
 		@Override
 		public int getItemCount() {
-			return 1 + entries.size();
+			return rows.size();
 		}
 
 		@NonNull
 		@Override
 		public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
 			LayoutInflater inflater = LayoutInflater.from(parent.getContext());
-			if (viewType == TYPE_HEADER) {
-				return new HeaderViewHolder(inflater.inflate(R.layout.fuel_log_header, parent, false));
+			switch (viewType) {
+				case TYPE_HEADER:
+					return new HeaderViewHolder(inflater.inflate(R.layout.fuel_log_header, parent, false));
+				case TYPE_TIMELINE_HEADER:
+					return new TimelineHeaderViewHolder(
+							inflater.inflate(R.layout.fuel_log_timeline_header, parent, false));
+				case TYPE_TIMELINE_ITEM:
+					return new TimelineItemViewHolder(
+							inflater.inflate(R.layout.fuel_log_timeline_item, parent, false));
+				case TYPE_TIMELINE_EMPTY:
+					return new RecyclerView.ViewHolder(
+							inflater.inflate(R.layout.fuel_log_timeline_empty, parent, false)) {};
+				case TYPE_HISTORY_HEADER:
+					return new HistoryHeaderViewHolder(
+							inflater.inflate(R.layout.fuel_log_history_header, parent, false));
+				default:
+					return new ItemViewHolder(inflater.inflate(R.layout.fuel_log_item, parent, false));
 			}
-			return new ItemViewHolder(inflater.inflate(R.layout.fuel_log_item, parent, false));
 		}
 
 		@Override
 		public void onBindViewHolder(@NonNull RecyclerView.ViewHolder h, int position) {
+			Row row = rows.get(position);
 			if (h instanceof HeaderViewHolder header) {
 				bindHeader(header);
+			} else if (h instanceof TimelineHeaderViewHolder timelineHeader) {
+				bindTimelineHeader(timelineHeader);
+			} else if (h instanceof TimelineItemViewHolder timelineItem) {
+				bindTimelineItem(timelineItem, row.entry);
+			} else if (h instanceof HistoryHeaderViewHolder historyHeader) {
+				bindHistoryHeader(historyHeader);
 			} else if (h instanceof ItemViewHolder item) {
-				bindItem(item, entries.get(position - 1));
+				bindItem(item, row.entry);
 			}
 		}
 
@@ -166,11 +310,42 @@ public class FuelLogFragment extends MainActivityFragment {
 						FORMAT_SHOW_DATE | FORMAT_SHOW_TIME | FORMAT_SHOW_YEAR));
 			}
 
-			h.empty.setVisibility(entries.isEmpty() ? View.VISIBLE : View.GONE);
 			h.refuelButton.setOnClickListener(v -> FuelRefuelDialog.show(activity, FuelLogFragment.this::refresh));
 		}
 
+		private void bindTimelineHeader(TimelineHeaderViewHolder h) {
+			h.dateRange.setText(formatDateRange(requireContext(), timelineFromMillis, timelineToMillis,
+					FORMAT_SHOW_DATE | FORMAT_ABBREV_MONTH | FORMAT_SHOW_YEAR));
+			h.dateRange.setOnClickListener(v -> showDateRangePicker());
+		}
+
+		private void bindHistoryHeader(HistoryHeaderViewHolder h) {
+			h.empty.setVisibility(entries.isEmpty() ? View.VISIBLE : View.GONE);
+		}
+
+		private void bindTimelineItem(TimelineItemViewHolder h, FuelLogEntry e) {
+			h.dayDate.setText(formatDateTime(requireContext(), e.time,
+					FORMAT_SHOW_DATE | FORMAT_ABBREV_MONTH | FORMAT_SHOW_WEEKDAY));
+			h.time.setText(formatDateTime(requireContext(), e.time, FORMAT_SHOW_TIME));
+			h.event.setText(eventLabel(e.type));
+			h.distance.setText(formatKm(e.distanceKm));
+			h.location.setText(
+					e.location.isEmpty() ? getString(R.string.fuel_log_unknown_location) : e.location);
+
+			int color = eventColor(h.itemView, e.type);
+			h.dot.setImageResource(eventIcon(e.type));
+			h.dot.setBackgroundTintList(ColorStateList.valueOf(color));
+			h.card.setOnClickListener(v -> FuelRefuelDialog.edit(activity, e, FuelLogFragment.this::refresh));
+		}
+
 		private void bindItem(ItemViewHolder h, FuelLogEntry e) {
+			h.icon.setImageResource(eventIcon(e.type));
+			if (e.type == FuelLogEntry.Type.REFUEL) {
+				h.event.setVisibility(View.GONE);
+			} else {
+				h.event.setVisibility(View.VISIBLE);
+				h.event.setText(eventLabel(e.type));
+			}
 			h.distance.setText(formatKm(e.distanceKm));
 			h.location.setText(
 					e.location.isEmpty() ? getString(R.string.fuel_log_unknown_location) : e.location);
@@ -181,18 +356,50 @@ public class FuelLogFragment extends MainActivityFragment {
 			h.itemView.setOnClickListener(edit);
 		}
 
-		private void removeEntry(int position) {
-			int idx = position - 1;
-			if ((idx < 0) || (idx >= entries.size())) return;
-			FuelLogStore.removeEntry(activity.getPrefs(), entries.get(idx).id);
-			entries.remove(idx);
-			notifyItemRemoved(position);
-			notifyItemChanged(0);
+		private String eventLabel(FuelLogEntry.Type type) {
+			return switch (type) {
+				case TRIP_START -> getString(R.string.fuel_log_trip_started);
+				case TRIP_END -> getString(R.string.fuel_log_trip_ended);
+				case REFUEL -> getString(R.string.fuel_log_refuel);
+			};
+		}
+
+		private int eventIcon(FuelLogEntry.Type type) {
+			return switch (type) {
+				case TRIP_START -> R.drawable.play;
+				case TRIP_END -> R.drawable.stop;
+				case REFUEL -> R.drawable.fuel;
+			};
 		}
 
 		/**
-		 * Overridden outright (rather than via {@code MovableRecyclerViewAdapter}) so the header at
-		 * position 0 -- the overview card, not a list entry -- never becomes swipeable/draggable.
+		 * {@code colorPrimary}/{@code colorSecondary} are remapped to near-background tones by
+		 * several of this app's theme variants (see theme_light.xml/theme_dynamic.xml), so a dot
+		 * tinted with either would blend invisibly into the page on those themes. {@code
+		 * colorControlActivated} (the app's own accent, already used for the Refuel button/sliders)
+		 * and {@code colorError} are the two roles every theme variant defines as a distinct, always
+		 * -visible color -- REFUEL reuses the neutral icon-tint role instead of a third accent.
+		 */
+		private int eventColor(View v, FuelLogEntry.Type type) {
+			return switch (type) {
+				case TRIP_START -> MaterialColors.getColor(v, com.google.android.material.R.attr.colorControlActivated);
+				case TRIP_END -> MaterialColors.getColor(v, com.google.android.material.R.attr.colorError);
+				case REFUEL -> MaterialColors.getColor(v, com.google.android.material.R.attr.colorOnSecondary);
+			};
+		}
+
+		private void removeEntry(int position) {
+			Row row = rows.get(position);
+			if (row.entry == null) return;
+			FuelLogStore.removeEntry(activity.getPrefs(), row.entry.id);
+			entries.remove(row.entry);
+			rebuildRows();
+		}
+
+		/**
+		 * Overridden outright (rather than via {@code MovableRecyclerViewAdapter}) so only rows
+		 * backed by an actual {@link FuelLogEntry} (Timeline/History items) are swipeable -- the
+		 * overview card and the section headers/empty-state rows never are.
 		 */
 		ItemTouchHelper.Callback getItemTouchCallback() {
 			return new ItemTouchHelper.Callback() {
@@ -203,7 +410,8 @@ public class FuelLogFragment extends MainActivityFragment {
 
 				@Override
 				public int getMovementFlags(@NonNull RecyclerView rv, @NonNull RecyclerView.ViewHolder vh) {
-					if (vh.getItemViewType() == TYPE_HEADER) return 0;
+					int type = vh.getItemViewType();
+					if ((type != TYPE_TIMELINE_ITEM) && (type != TYPE_HISTORY_ITEM)) return 0;
 					return makeMovementFlags(0, ItemTouchHelper.START | ItemTouchHelper.END);
 				}
 
@@ -224,7 +432,6 @@ public class FuelLogFragment extends MainActivityFragment {
 			final TextView currentDistance;
 			final TextView lastRefuelSummary;
 			final TextView lastRefuelDate;
-			final TextView empty;
 			final MaterialButton refuelButton;
 
 			HeaderViewHolder(@NonNull View v) {
@@ -232,12 +439,52 @@ public class FuelLogFragment extends MainActivityFragment {
 				currentDistance = v.findViewById(R.id.fuel_log_current_distance);
 				lastRefuelSummary = v.findViewById(R.id.fuel_log_last_refuel_summary);
 				lastRefuelDate = v.findViewById(R.id.fuel_log_last_refuel_date);
-				empty = v.findViewById(R.id.fuel_log_empty);
 				refuelButton = v.findViewById(R.id.fuel_log_refuel_button);
 			}
 		}
 
+		final class TimelineHeaderViewHolder extends RecyclerView.ViewHolder {
+			final MaterialButton dateRange;
+
+			TimelineHeaderViewHolder(@NonNull View v) {
+				super(v);
+				dateRange = v.findViewById(R.id.fuel_log_timeline_date_range);
+			}
+		}
+
+		final class TimelineItemViewHolder extends RecyclerView.ViewHolder {
+			final View card;
+			final ImageView dot;
+			final TextView dayDate;
+			final TextView time;
+			final TextView event;
+			final TextView distance;
+			final TextView location;
+
+			TimelineItemViewHolder(@NonNull View v) {
+				super(v);
+				card = v.findViewById(R.id.fuel_log_timeline_card);
+				dot = v.findViewById(R.id.fuel_log_timeline_dot);
+				dayDate = v.findViewById(R.id.fuel_log_timeline_day_date);
+				time = v.findViewById(R.id.fuel_log_timeline_time);
+				event = v.findViewById(R.id.fuel_log_timeline_event);
+				distance = v.findViewById(R.id.fuel_log_timeline_distance);
+				location = v.findViewById(R.id.fuel_log_timeline_location);
+			}
+		}
+
+		final class HistoryHeaderViewHolder extends RecyclerView.ViewHolder {
+			final TextView empty;
+
+			HistoryHeaderViewHolder(@NonNull View v) {
+				super(v);
+				empty = v.findViewById(R.id.fuel_log_empty);
+			}
+		}
+
 		final class ItemViewHolder extends RecyclerView.ViewHolder {
+			final ImageView icon;
+			final TextView event;
 			final TextView distance;
 			final TextView location;
 			final TextView date;
@@ -245,6 +492,8 @@ public class FuelLogFragment extends MainActivityFragment {
 
 			ItemViewHolder(@NonNull View v) {
 				super(v);
+				icon = v.findViewById(R.id.fuel_log_item_icon);
+				event = v.findViewById(R.id.fuel_log_item_event);
 				distance = v.findViewById(R.id.fuel_log_item_distance);
 				location = v.findViewById(R.id.fuel_log_item_location);
 				date = v.findViewById(R.id.fuel_log_item_date);

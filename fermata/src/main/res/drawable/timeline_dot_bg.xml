@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Circular marker behind each Timeline event icon; its fill color is swapped per-event-type
+     (Trip Started/Trip Ended/Refuel) at bind time via ImageViewCompat#setImageTintList's sibling,
+     View#setBackgroundTintList. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="?attr/colorControlActivated" />
+    <stroke
+        android:width="2dp"
+        android:color="?attr/colorSurface" />
+</shape>
