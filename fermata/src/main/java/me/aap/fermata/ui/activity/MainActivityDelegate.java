@@ -216,9 +216,25 @@ public class MainActivityDelegate extends ActivityDelegate
 	private SpeechListener speechListener;
 	private VoiceCommandHandler voiceCommandHandler;
 
+	// Whether the native Android Auto car Activity (MainCarActivity, auto flavor only -- not a
+	// subclass of MainActivity, or of Activity at all) is currently alive. Static because the only
+	// thing that needs it, FuelTracker, is a process-wide singleton that outlives any one Activity
+	// and lives in the main source set, where MainCarActivity isn't even visible. Set/cleared from
+	// this delegate's own create/destroy, which MainCarActivity forwards into just like the phone
+	// Activity does. MainActivity#isCarActivity() is hardcoded false, so without this there is no
+	// way at all outside the auto source set to tell "projected onto the car's screen" apart from
+	// "just open on the phone".
+	private static volatile boolean carActivityActive;
+
 	public MainActivityDelegate(AppActivity activity, FermataServiceUiBinder binder) {
 		super(activity);
 		mediaServiceBinder = binder;
+	}
+
+	/** See {@link #carActivityActive} -- true while the app is running as the native Android Auto
+	 * car Activity (mirroring mode is a separate check, see {@code FermataApplication#isMirroringMode}). */
+	public static boolean isCarActivityActive() {
+		return carActivityActive;
 	}
 
 	@NonNull
@@ -263,6 +279,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Override
 	public void onActivityCreate(@Nullable Bundle state) {
 		super.onActivityCreate(state);
+		if (getAppActivity().isCarActivity()) carActivityActive = true;
 		Intent intent = getIntent();
 		if ((intent != null) && INTENT_ACTION_FINISH.equals(intent.getAction())) {
 			finish();
@@ -509,6 +526,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Override
 	public void onActivityDestroy() {
 		super.onActivityDestroy();
+		if (getAppActivity().isCarActivity()) carActivityActive = false;
 		handler.close();
 		getMediaServiceBinder().getMediaSessionCallback().removeAssistant(this);
 		getPrefs().removeBroadcastListener(this);

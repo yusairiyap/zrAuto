@@ -117,10 +117,8 @@ public class FermataChromeClient extends WebChromeClient {
 
 		customView = view;
 		customViewCallback = callback;
-		addCustomView(view);
-		crossfade(getWebView(), getFullScreenView(), FULLSCREEN_FADE_DURATION);
 		MainActivityDelegate a = MainActivityDelegate.get(view.getContext());
-		setFullScreen(a, true);
+		enterFullScreenUi(a, view);
 
 		if (fullScreenReq != null) {
 			Promise<Void> req = fullScreenReq;
@@ -137,12 +135,7 @@ public class FermataChromeClient extends WebChromeClient {
 		touchStamp = 0;
 		MainActivityDelegate a = MainActivityDelegate.get(customView.getContext());
 		View removed = customView;
-		crossfade(getFullScreenView(), getWebView(), FULLSCREEN_FADE_DURATION);
-		// Detaching removed from its container is deferred until the fade-out finishes instead of
-		// happening instantly here, so the outgoing fullscreen content doesn't just vanish out from
-		// under the animation.
-		getFullScreenView().postDelayed(() -> removeCustomView(removed), FULLSCREEN_FADE_DURATION);
-		setFullScreen(a, false);
+		exitFullScreenUi(a, removed);
 		customViewCallback.onCustomViewHidden();
 		customView = null;
 		customViewCallback = null;
@@ -154,6 +147,28 @@ public class FermataChromeClient extends WebChromeClient {
 		}
 
 		a.fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
+	}
+
+	/**
+	 * Everything user-visible about entering fullscreen: attach the page's custom view and swap the
+	 * page out for the fullscreen container. Split out from {@link #onShowCustomView} purely so
+	 * {@code YoutubeChromeClient} can suppress the swap when it is already holding a black cover over
+	 * the screen for a video switch -- the state changes around it are not overridable and always run.
+	 */
+	protected void enterFullScreenUi(MainActivityDelegate a, View view) {
+		addCustomView(view);
+		crossfade(getWebView(), getFullScreenView(), FULLSCREEN_FADE_DURATION);
+		setFullScreen(a, true);
+	}
+
+	/** The counterpart of {@link #enterFullScreenUi} -- see there. */
+	protected void exitFullScreenUi(MainActivityDelegate a, View removed) {
+		crossfade(getFullScreenView(), getWebView(), FULLSCREEN_FADE_DURATION);
+		// Detaching removed from its container is deferred until the fade-out finishes instead of
+		// happening instantly here, so the outgoing fullscreen content doesn't just vanish out from
+		// under the animation.
+		getFullScreenView().postDelayed(() -> removeCustomView(removed), FULLSCREEN_FADE_DURATION);
+		setFullScreen(a, false);
 	}
 
 	public boolean isFullScreen() {
