@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Timeline dot marker for a Refuel event -- see timeline_dot_bg_trip_start.xml for why this is a
+<!-- Timeline dot marker for a Refuel event; see timeline_dot_bg_trip_start.xml for why this is a
      separate per-type drawable instead of one shape re-tinted from Java. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="oval">
