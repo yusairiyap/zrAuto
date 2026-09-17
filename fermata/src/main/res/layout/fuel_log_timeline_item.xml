@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- ConstraintLayout, not a horizontal LinearLayout: the road/dot column's height needs to match
-     the card's -- and the card's own height is wrap_content, driven by however many lines its
+     the card's, and the card's own height is wrap_content, driven by however many lines its
      text ends up taking. A LinearLayout child can't stretch to "whatever height my wrap_content
      sibling ends up being" in one measure pass (a match_parent child of a wrap_content
      LinearLayout just collapses to its own content instead); constraining the road's top+bottom
