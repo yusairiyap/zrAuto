@@ -644,6 +644,13 @@
       return chain ? {ctx: chain.ctx, gain: chain.fade.gain} : null;
     },
 
+    // Whether Live Hall is actually running on this element's audio -- youtube_fade.js lets its
+    // echo ring out on pause instead of fading everything (the tail included) to silence.
+    hasReverbTail(video) {
+      const cfg = state.config;
+      return !!state.chains.get(video) && cfg.reverbEnabled && (cfg.reverbStrength > 0);
+    },
+
     configure(config) {
       state.config = Object.assign({}, state.config, config);
       if (Array.isArray(config.bands)) state.config.bands = config.bands;

@@ -991,7 +991,7 @@ public class SettingsFragment extends MainActivityFragment
 	private void addSecondaryFabPrefs(MainActivityDelegate a, PreferenceSet ps) {
 		var fabActions = new Action[]{Action.FULLSCREEN_TOGGLE, Action.VOLUME_MUTE_UNMUTE,
 				Action.PLAY_PAUSE, Action.DIM_TOGGLE, Action.PRIVATE_MODE_TOGGLE, Action.REFUEL,
-				Action.FAVORITE_ADD};
+				Action.FAVORITE_ADD, Action.PLAYLIST_ADD};
 		var fabActionNames = new int[fabActions.length];
 		var fabActionOrdinals = new int[fabActions.length];
 		for (int i = 0; i < fabActions.length; i++) {

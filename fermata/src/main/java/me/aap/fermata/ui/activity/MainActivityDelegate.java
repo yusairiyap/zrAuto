@@ -1420,6 +1420,29 @@ public class MainActivityDelegate extends ActivityDelegate
 		});
 	}
 
+	/**
+	 * "Add to playlist" as an overlay menu rather than {@link #showPlaylistDialog}'s dialog: "Create
+	 * playlist" first, then every existing playlist -- one tap adds {@code items} to it. Used by the
+	 * FAB action (see {@code Action.PLAYLIST_ADD}), where a quick pick list suits a single tap.
+	 */
+	public void showAddToPlaylistMenu(OverlayMenu menu, List<PlayableItem> items) {
+		FutureSupplier<List<PlayableItem>> selection = completed(items);
+		CharSequence initName = items.isEmpty() ? "" : items.get(0).getName();
+		menu.showFuture(b -> {
+			b.setTitle(R.string.playlist_add);
+			b.addItem(R.id.playlist_create, R.drawable.playlist_add, R.string.playlist_create)
+					.setHandler(i -> createPlaylist(selection, () -> initName));
+			return getLib().getPlaylists().getUnsortedChildren().main().then(playlists -> {
+				for (int i = 0; i < playlists.size(); i++) {
+					String name = ((Playlist) playlists.get(i)).getName();
+					b.addItem(UiUtils.getArrayItemId(i), R.drawable.playlist, name)
+							.setHandler(item -> addToPlaylist(name, selection));
+				}
+				return completedVoid();
+			});
+		});
+	}
+
 	private boolean createPlaylist(FutureSupplier<List<PlayableItem>> selection,
 																 Supplier<? extends CharSequence> initName) {
 		UiUtils.queryText(getContext(), R.string.playlist_name, R.drawable.playlist, initName.get())

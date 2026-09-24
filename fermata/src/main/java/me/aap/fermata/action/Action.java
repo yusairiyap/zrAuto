@@ -19,6 +19,7 @@ import android.media.AudioManager;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
 
+import java.util.Collections;
 import java.util.List;
 
 import me.aap.fermata.BuildConfig;
@@ -32,6 +33,7 @@ import me.aap.utils.app.App;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.ui.UiUtils;
+import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.activity.ActivityDelegate;
 
 /**
@@ -85,6 +87,7 @@ public enum Action {
 			a.getPrefs().setPrivateModeEnabled(!a.getPrefs().isPrivateModeEnabled()))),
 	REFUEL(R.string.action_refuel, a(me.aap.fermata.addon.fuel.FuelRefuelDialog::show)),
 	FAVORITE_ADD(R.string.favorites_add, a(Action::addCurrentToFavorites)),
+	PLAYLIST_ADD(R.string.playlist_add, a(Action::addCurrentToPlaylist)),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));
@@ -154,6 +157,24 @@ public enum Action {
 			UiUtils.showToast(ctx, R.string.favorites_added, pi.getName());
 			// Lets anything showing favorite state (YouTube's toolbar button, the FAB icon) refresh.
 			a.fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
+		});
+	}
+
+	/**
+	 * Shows a pick list of playlists (plus "Create playlist") for whatever is playing -- the same
+	 * item "Add to favorites" acts on, see {@link #getFavoritableItem}. Posted rather than shown
+	 * directly: this also runs from the FAB's own long-press menu, which is still finishing its
+	 * item selection (and hiding itself) at this point, on the same overlay.
+	 */
+	private static void addCurrentToPlaylist(MainActivityDelegate a) {
+		PlayableItem pi = getFavoritableItem(a);
+		if (pi == null) {
+			UiUtils.showToast(a.getContext(), R.string.playlist_nothing_playing);
+			return;
+		}
+		App.get().getHandler().post(() -> {
+			OverlayMenu menu = a.findViewById(R.id.control_menu);
+			if (menu != null) a.showAddToPlaylistMenu(menu, Collections.singletonList(pi));
 		});
 	}
 

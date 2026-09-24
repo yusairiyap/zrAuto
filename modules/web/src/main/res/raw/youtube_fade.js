@@ -189,6 +189,17 @@
     }, RESTORE_AFTER_PAUSE_MS);
   }
 
+  // Live Hall on: pausing should leave its echo ringing, and a fade sits after the reverb in the
+  // chain, so it would silence the tail along with everything else. See pause() below.
+  function hasReverbTail(v) {
+    try {
+      const eq = window.FermataEqualizer;
+      return !!(eq && (typeof eq.hasReverbTail === 'function') && eq.hasReverbTail(v));
+    } catch (err) {
+      return false;
+    }
+  }
+
   function isAudible(v) {
     return !v.paused && !v.ended && !v.muted && !document.hidden && (state(v).level > 0.01);
   }
@@ -302,7 +313,11 @@
         restoreSilently(v);
         s.pausing = false;
       };
-      if (!isAudible(v)) {
+      // No fade when Live Hall is on (a plain pause, not a stop): the element stops right away
+      // and the hall's own tail rings out naturally, so the gain stage is left at full level --
+      // restoreSilently() never touches it on the Web Audio path.
+      if (!isAudible(v) || (!stop && hasReverbTail(v))) {
+        clearTimers(s);
         s.pausing = true;
         finish();
         return;
