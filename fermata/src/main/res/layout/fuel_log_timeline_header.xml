@@ -16,6 +16,13 @@
         android:text="@string/fuel_log_timeline"
         android:textAppearance="?attr/textAppearanceSubtitle1" />
 
+    <!-- Widget.Material3.Button.TextButton.Icon's default text/icon color resolves to something
+         close to this app's own background on several theme variants (colorOnSurface and
+         colorPrimary are both remapped in ways that don't keep the usual contrast against
+         colorSurface/colorBackground here; see AppTheme.MaterialCalendar's doc in theme.xml for
+         the same underlying issue). colorControlActivated is explicit here for the same reason the
+         Refuel button (fuel_log_header.xml) already sets it explicitly instead of relying on a
+         button style's default color resolution. -->
     <com.google.android.material.button.MaterialButton
         android:id="@+id/fuel_log_timeline_date_range"
         style="@style/Widget.Material3.Button.TextButton.Icon"
@@ -26,9 +33,12 @@
         android:minWidth="0dp"
         android:paddingStart="8dp"
         android:paddingEnd="8dp"
+        android:textColor="?attr/colorControlActivated"
         app:icon="@drawable/clock"
         app:iconGravity="textStart"
         app:iconSize="18dp"
+        app:iconTint="?attr/colorControlActivated"
+        app:rippleColor="?attr/colorControlActivated"
         tools:text="17 Aug – 17 Sep 2026" />
 
 </LinearLayout>

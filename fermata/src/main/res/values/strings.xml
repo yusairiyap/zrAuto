@@ -503,6 +503,7 @@
     <string name="fuel_log_trip_started">Trip Started</string>
     <string name="fuel_log_trip_ended">Trip Ended</string>
     <string name="fuel_log_filter_date_range">Filter by date</string>
+    <string name="fuel_log_date_filter_unavailable_in_car">Date filter isn\'t available while connected to Android Auto</string>
     <string name="fuel_log_no_timeline_entries">No trips or refuels in this period</string>
     <string name="fuel_log_today">Today</string>
     <string name="fuel_log_yesterday">Yesterday</string>

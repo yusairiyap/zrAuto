@@ -38,6 +38,7 @@ import me.aap.fermata.addon.fuel.FuelLogStore;
 import me.aap.fermata.addon.fuel.FuelRefuelDialog;
 import me.aap.fermata.addon.fuel.FuelTracker;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.utils.ui.UiUtils;
 
 /**
  * The Fuel Log tab: an overview card (current trip distance, last refuel summary) and a
@@ -141,6 +142,17 @@ public class FuelLogFragment extends MainActivityFragment {
 	}
 
 	private void showDateRangePicker() {
+		// MaterialDatePicker is a full-screen DialogFragment with its own Window -- Android Auto's
+		// projected car screen (the native car Activity, or the phone UI mirrored onto the car) has
+		// no such Window to host it in, and showing it there crashes instead of silently no-opping.
+		// The rest of this tab's UI (the overview card, the Timeline list itself, editing an entry
+		// via FuelRefuelDialog's UiUtils#queryPrefs-based dialog) doesn't hit this because none of it
+		// opens a DialogFragment of its own -- this picker is the one exception.
+		if (getActivityDelegate().isCarActivity()) {
+			UiUtils.showToast(requireContext(), R.string.fuel_log_date_filter_unavailable_in_car);
+			return;
+		}
+
 		MaterialDatePicker<Pair<Long, Long>> picker = MaterialDatePicker.Builder.dateRangePicker()
 				.setTitleText(R.string.fuel_log_filter_date_range)
 				.setSelection(new Pair<>(localMillisToUtcDayMillis(timelineFromMillis),
@@ -391,13 +403,9 @@ public class FuelLogFragment extends MainActivityFragment {
 		}
 
 		/**
-		 * A separate drawable per event type (colorControlActivated/colorError/colorOnSecondary,
-		 * respectively -- see each drawable's own doc) rather than one shape re-tinted from Java via
-		 * {@code MaterialColors.getColor(view, attr)}: {@code colorControlActivated} and {@code
-		 * colorError} aren't declared in {@code com.google.android.material}'s own R (confirmed by a
-		 * CI compile failure -- "cannot find symbol"), and this project's non-transitive R classes
-		 * mean guessing the right androidx artifact for each one in Java is fragile. Letting AAPT
-		 * resolve the theme attr while linking the drawable XML sidesteps that entirely.
+		 * A separate drawable per event type, each with its own fixed hex fill (see each drawable's
+		 * own doc for why: a theme color role like colorControlActivated resolves to pure white on
+		 * the "black" theme variant, which made a white icon glyph invisible against it there).
 		 */
 		private int eventDotBackground(FuelLogEntry.Type type) {
 			return switch (type) {
