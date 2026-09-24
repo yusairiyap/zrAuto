@@ -111,6 +111,7 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 			FermataServiceUiBinder b = a.getMediaServiceBinder();
 			adapter = createAdapter(b);
 			ItemTouchHelper h = new ItemTouchHelper(adapter.getItemTouchCallback());
+			adapter.setItemTouchHelper(h);
 			adapter.setListView(v);
 			v.setAdapter(adapter);
 			h.attachToRecyclerView(v);

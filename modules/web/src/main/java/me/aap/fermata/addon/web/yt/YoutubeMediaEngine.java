@@ -28,6 +28,7 @@ import me.aap.fermata.addon.web.FermataChromeClient;
 import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.yt.YoutubeAddon.VideoScale;
 import me.aap.fermata.media.engine.MediaEngine;
+import me.aap.fermata.media.lib.DefaultMediaLib;
 import me.aap.fermata.media.lib.ExtPlayable;
 import me.aap.fermata.media.lib.ExtRoot;
 import me.aap.fermata.media.lib.MediaLib;
@@ -423,6 +424,33 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		if (v != null) v.hideTransitionOverlay();
 	}
 
+	/**
+	 * The page started fading out the last moments of the current video (see {@code
+	 * youtube_fade.js}) -- fade the picture to black over the same stretch, so by the time the
+	 * video actually ends and {@link #ended()} puts up its transition cover, the cover is already
+	 * there and the switch reads as one continuous fade-out/fade-in instead of a hard cut to black.
+	 * {@code data} is the remaining time in ms, or a negative value when the page undid the fade
+	 * (seeked back or paused before the end), which takes the cover back down.
+	 * <p>
+	 * Skipped for Repeat One: the same video just restarts, so darkening the screen for it would
+	 * only be a blink.
+	 */
+	void videoEnding(String data) {
+		long ms;
+		try {
+			ms = Long.parseLong(data);
+		} catch (NumberFormatException ex) {
+			return;
+		}
+		YoutubeVideoView v = getFullScreenView();
+		if (v == null) return;
+		if (ms < 0) {
+			if (v.isTransitionCoverShowing()) v.hideTransitionOverlay();
+		} else if (!web.getAddon().isRepeatOneEnabled()) {
+			v.showTransitionOverlay(false, ms);
+		}
+	}
+
 	@Nullable
 	private YoutubeVideoView getFullScreenView() {
 		FermataChromeClient chrome = web.getWebChromeClient();
@@ -595,12 +623,12 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			// it can't be armed via pendingVideoId; expectingPageNav is playing()'s equivalent for this
 			// case. See its declaration.
 			expectingPageNav = true;
-			web.next();
+			web.afterAudioFadeOut(web::next);
 		} else if (source == prev) {
 			Log.d("prepare(): no queue item -- asking the page for its own previous video");
 			transitioning();
 			expectingPageNav = true;
-			web.prev();
+			web.afterAudioFadeOut(web::prev);
 		} else if (queueVideoId != null) {
 			// Reached from MediaSessionCallback.skipTo()/engineEnded() when queueAwareNextPlayable()/
 			// PrevPlayable() below resolved a real sibling from the app's own Favorites/Playlist --
@@ -620,7 +648,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			// when that race happens) and lands the page on a different video of its own choosing.
 			web.getAddon().setPendingVideoId(queueVideoId);
 			pendingCorrections = 0;
-			web.loadVideo(queueVideoId);
+			web.afterAudioFadeOut(() -> web.loadVideo(queueVideoId));
 		} else {
 			cb.onEnginePrepared(this);
 		}
@@ -668,6 +696,20 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	@Override
 	public PlayableItem getSource() {
 		return current;
+	}
+
+	/**
+	 * {@link #getSource()} is a placeholder ({@link Current}) that can't be persisted as a favorite;
+	 * hand out the real, library-resolvable video item for whatever is playing instead -- the same
+	 * item YoutubeFragment's own toolbar favorites button adds.
+	 */
+	@Nullable
+	@Override
+	public PlayableItem getFavoritableItem() {
+		String id = currentVideoId;
+		if ((id == null) || id.isEmpty()) return null;
+		if (!(mediaRoot.getLib() instanceof DefaultMediaLib lib)) return null;
+		return new YoutubeVideoItem(id, web.getAddon().getRootItem(lib));
 	}
 
 	@Override

@@ -26,6 +26,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.support.v4.media.MediaDescriptionCompat;
 import android.util.AttributeSet;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.View.OnLongClickListener;
 import android.view.ViewGroup;
@@ -98,6 +99,8 @@ public class MediaItemView extends ConstraintLayout
 	private final float badgeMaxRadius;
 	@Nullable
 	private MediaItemViewHolder holder;
+	/** Whether a finger is currently down on this view -- see {@link #onLongClick}. */
+	private boolean touchActive;
 	private ProgressUpdater progressUpdater;
 	private VectorDrawableCompat watchedVideoDrawable;
 	private VectorDrawableCompat watchingVideoDrawable;
@@ -587,14 +590,37 @@ public class MediaItemView extends ConstraintLayout
 	}
 
 	@Override
+	public boolean dispatchTouchEvent(MotionEvent e) {
+		int action = e.getActionMasked();
+		if (action == MotionEvent.ACTION_DOWN) touchActive = true;
+		else if ((action == MotionEvent.ACTION_UP) || (action == MotionEvent.ACTION_CANCEL)) {
+			touchActive = false;
+		}
+		return super.dispatchTouchEvent(e);
+	}
+
+	@Override
 	public boolean onLongClick(View v) {
+		MediaItemListView l = getListView();
+		if (l != null) {
+			l.discardSelection();
+			// A finger is still down on this item (a real touch long-press, not a D-pad/rotary one):
+			// let the list turn it into a drag where it wants to -- see
+			// MediaItemListViewAdapter#startDragOnLongPress(), which then shows this menu itself if the
+			// item is released without having been moved.
+			MediaItemViewHolder h = getHolder();
+			if (touchActive && (h != null) && l.getAdapter().startDragOnLongPress(h)) return true;
+		}
+		showItemMenu();
+		return true;
+	}
+
+	/** The item's long-press context menu. */
+	public void showItemMenu() {
 		MainActivityDelegate a = getMainActivity();
 		OverlayMenu menu = a.getContextMenu();
 		MediaItemMenuHandler handler = new MediaItemMenuHandler(menu, this);
-		MediaItemListView l = getListView();
-		if (l != null) getListView().discardSelection();
 		handler.show();
-		return true;
 	}
 
 	@Override

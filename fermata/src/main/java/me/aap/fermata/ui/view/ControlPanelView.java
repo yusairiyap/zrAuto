@@ -889,8 +889,10 @@ public class ControlPanelView extends ConstraintLayout
 				return;
 			}
 
-			b.addItem(R.id.category_audio, R.drawable.audiotrack, R.string.audio)
-					.setSubmenu(s -> buildAudioCategory(a, s, eng));
+			// Category order: Playback first (repeat/shuffle/speed/timer -- the entries reached for
+			// most often while a video is playing), then Video, then Audio.
+			b.addItem(R.id.category_playback, R.drawable.playback_settings, R.string.playback)
+					.setSubmenu(s -> buildPlaybackItems(a, s, eng, pi, p, stream));
 
 			// For local playback, super.buildPlayableMenu() above already added a "Video" category
 			// (addVideoMenu() returns true when engine.hasVideoMenu() is false), whose submenu is our
@@ -903,8 +905,8 @@ public class ControlPanelView extends ConstraintLayout
 				b.addItem(R.id.video, R.drawable.video, R.string.video).setSubmenu(this::buildVideoMenu);
 			}
 
-			b.addItem(R.id.category_playback, R.drawable.playback_settings, R.string.playback)
-					.setSubmenu(s -> buildPlaybackItems(a, s, eng, pi, p, stream));
+			b.addItem(R.id.category_audio, R.drawable.audiotrack, R.string.audio)
+					.setSubmenu(s -> buildAudioCategory(a, s, eng));
 
 			// Navigate away entirely, so keep these last rather than grouped with the categories
 			// above. Dim screen settings itself is deliberately not offered here -- this control-panel

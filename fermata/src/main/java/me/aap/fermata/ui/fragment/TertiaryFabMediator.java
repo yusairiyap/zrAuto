@@ -33,7 +33,7 @@ public final class TertiaryFabMediator implements FloatingButton.Mediator,
 
 	private static final List<Action> OFFERED_ACTIONS = List.of(
 			Action.FULLSCREEN_TOGGLE, Action.VOLUME_MUTE_UNMUTE, Action.PLAY_PAUSE, Action.DIM_TOGGLE,
-			Action.PRIVATE_MODE_TOGGLE, Action.REFUEL);
+			Action.PRIVATE_MODE_TOGGLE, Action.REFUEL, Action.FAVORITE_ADD);
 
 	@Nullable
 	private FloatingButton fab;
@@ -82,6 +82,8 @@ public final class TertiaryFabMediator implements FloatingButton.Mediator,
 				? R.drawable.dim_screen : R.drawable.dim_screen_off;
 		if (action == Action.PRIVATE_MODE_TOGGLE) return R.drawable.private_mode;
 		if (action == Action.REFUEL) return R.drawable.fuel;
+		if (action == Action.FAVORITE_ADD) return Action.isCurrentFavorite(a) ?
+				R.drawable.favorite_filled : R.drawable.favorite;
 		if (action == Action.PLAY_PAUSE)
 			return a.getMediaSessionCallback().isPlaying() ? R.drawable.pause : R.drawable.play;
 		return R.drawable.play_pause;

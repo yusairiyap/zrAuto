@@ -11,6 +11,9 @@ import android.view.ViewGroup;
 
 import androidx.annotation.CallSuper;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.recyclerview.widget.ItemTouchHelper;
+import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -43,6 +46,13 @@ public class MediaItemListViewAdapter extends MovableRecyclerViewAdapter<MediaIt
 	private Pattern filter;
 	private MediaItemListView listView;
 	private List<MediaItemWrapper> list = Collections.emptyList();
+	@Nullable
+	private ItemTouchHelper touchHelper;
+	/** See {@link #startDragOnLongPress}: the item whose context menu waits for its drag to end. */
+	@Nullable
+	private MediaItemViewHolder menuAfterDrag;
+	private boolean movedDuringDrag;
+	private boolean dragStarted;
 
 	public MediaItemListViewAdapter(MainActivityDelegate activity) {
 		this.activity = activity;
@@ -181,9 +191,50 @@ public class MediaItemListViewAdapter extends MovableRecyclerViewAdapter<MediaIt
 		getParent().updateTitles().main().thenRun(this::refresh);
 	}
 
+	/** The helper attached to this adapter's list -- see {@link #startDragOnLongPress}. */
+	public void setItemTouchHelper(@Nullable ItemTouchHelper touchHelper) {
+		this.touchHelper = touchHelper;
+	}
+
+	/**
+	 * A touch long-press on an item, on the Android Auto car screen: start dragging it right away
+	 * instead of opening its context menu, and open the menu only if the item is let go of without
+	 * having been moved. On the car screen, the menu popping up over the list at the same moment a
+	 * drag starts (which is what a long press does on the phone) left items impossible to reorder
+	 * there -- this way a long press is either a drag or a menu, never both at once.
+	 *
+	 * @return false to have the caller show the menu straight away instead (not on the car screen,
+	 * dragging disabled for this list, or the drag couldn't start).
+	 */
+	public boolean startDragOnLongPress(MediaItemViewHolder h) {
+		ItemTouchHelper th = touchHelper;
+		if ((th == null) || !activity.isCarActivity() || !isLongPressDragEnabled()) return false;
+		menuAfterDrag = h;
+		movedDuringDrag = false;
+		dragStarted = false;
+		th.startDrag(h);
+		if (dragStarted) return true;
+		menuAfterDrag = null;
+		return false;
+	}
+
+	@Override
+	protected void onDragStarted(@NonNull RecyclerView.ViewHolder vh) {
+		if (vh == menuAfterDrag) dragStarted = true;
+	}
+
+	@Override
+	protected void onDragEnded(@NonNull RecyclerView.ViewHolder vh) {
+		MediaItemViewHolder h = menuAfterDrag;
+		menuAfterDrag = null;
+		if ((h == null) || (h != vh) || movedDuringDrag) return;
+		h.getItemView().showItemMenu();
+	}
+
 	@CallSuper
 	@Override
 	protected boolean onItemMove(int fromPosition, int toPosition) {
+		movedDuringDrag = true;
 		activity.getContextMenu().hide();
 		move(list, fromPosition, toPosition);
 		return true;
