@@ -7,6 +7,7 @@ import static android.text.format.DateUtils.FORMAT_SHOW_WEEKDAY;
 import static android.text.format.DateUtils.FORMAT_SHOW_YEAR;
 import static android.text.format.DateUtils.formatDateRange;
 import static android.text.format.DateUtils.formatDateTime;
+import static android.text.format.DateUtils.isToday;
 
 import android.os.Bundle;
 import android.view.LayoutInflater;
@@ -39,22 +40,23 @@ import me.aap.fermata.addon.fuel.FuelTracker;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 
 /**
- * The Fuel Log tab: an overview card (current trip distance, last refuel summary), a date-filtered
- * "Timeline" of Trip Started/Trip Ended/Refuel events drawn as a vertical road with popup-style
- * cards, and the full "History" list below it -- all on one scrolling screen. All of it lives in a
- * single {@link RecyclerView} (built from a flat {@link Row} list re-derived on every refresh)
- * rather than a header view (or a nested Timeline scroller) wrapped in a separate scroll container
- * -- the rest of the app never nests a scrolling view inside the fragment host's own
+ * The Fuel Log tab: an overview card (current trip distance, last refuel summary) and a
+ * date-filtered "Timeline" of Trip Started/Trip Ended/Refuel events, grouped by day and drawn as a
+ * vertical road with popup-style cards -- all on one scrolling screen. (There used to be a
+ * separate "History" list below the Timeline too, but it showed the same entries a second time
+ * with no filtering, so it was dropped rather than kept in sync with the Timeline.) All of it
+ * lives in a single {@link RecyclerView} (built from a flat {@link Row} list re-derived on every
+ * refresh) rather than a header view (or a nested Timeline scroller) wrapped in a separate scroll
+ * container -- the rest of the app never nests a scrolling view inside the fragment host's own
  * (wrap_content-height) frame, and doing so here made this screen's content render displaced
  * upwards, overlapping the toolbar title above it.
  */
 public class FuelLogFragment extends MainActivityFragment {
 	private static final int TYPE_HEADER = 0;
 	private static final int TYPE_TIMELINE_HEADER = 1;
-	private static final int TYPE_TIMELINE_ITEM = 2;
-	private static final int TYPE_TIMELINE_EMPTY = 3;
-	private static final int TYPE_HISTORY_HEADER = 4;
-	private static final int TYPE_HISTORY_ITEM = 5;
+	private static final int TYPE_TIMELINE_DAY_HEADER = 2;
+	private static final int TYPE_TIMELINE_ITEM = 3;
+	private static final int TYPE_TIMELINE_EMPTY = 4;
 
 	private final Runnable trackerListener = this::refresh;
 	private Adapter adapter;
@@ -120,7 +122,7 @@ public class FuelLogFragment extends MainActivityFragment {
 		adapter.setEntries(FuelLogStore.getEntries(getActivityDelegate().getPrefs()));
 	}
 
-	/** Last 1 calendar month up to and including today, in local time. */
+	/** The last 7 calendar days, including today, in local time. */
 	private void resetDefaultDateRange() {
 		Calendar to = Calendar.getInstance();
 		to.set(Calendar.HOUR_OF_DAY, 23);
@@ -130,7 +132,7 @@ public class FuelLogFragment extends MainActivityFragment {
 		timelineToMillis = to.getTimeInMillis();
 
 		Calendar from = (Calendar) to.clone();
-		from.add(Calendar.MONTH, -1);
+		from.add(Calendar.DAY_OF_YEAR, -6);
 		from.set(Calendar.HOUR_OF_DAY, 0);
 		from.set(Calendar.MINUTE, 0);
 		from.set(Calendar.SECOND, 0);
@@ -143,6 +145,10 @@ public class FuelLogFragment extends MainActivityFragment {
 				.setTitleText(R.string.fuel_log_filter_date_range)
 				.setSelection(new Pair<>(localMillisToUtcDayMillis(timelineFromMillis),
 						localMillisToUtcDayMillis(timelineToMillis)))
+				// The app's own theme variants remap Material3 color roles in ways that break the
+				// calendar's assumed contrast (see AppTheme.MaterialCalendar's own doc) -- pin it to a
+				// palette that stays legible regardless of which variant is active.
+				.setTheme(R.style.AppTheme_MaterialCalendar)
 				.build();
 		picker.addOnPositiveButtonClickListener(sel -> {
 			if ((sel == null) || (sel.first == null) || (sel.second == null)) return;
@@ -193,15 +199,51 @@ public class FuelLogFragment extends MainActivityFragment {
 		return String.format(Locale.getDefault(), "%.1f km", km);
 	}
 
+	/** "Today"/"Yesterday" for those two days, otherwise a full weekday + date (e.g. "Thursday, 24
+	 * Sept") -- the label for a Timeline day-group header, so each event card underneath only needs
+	 * to show its own time rather than repeating the date on every single card. */
+	private String formatDayHeader(long timeMillis) {
+		if (isToday(timeMillis)) return getString(R.string.fuel_log_today);
+
+		Calendar day = Calendar.getInstance();
+		day.setTimeInMillis(timeMillis);
+		Calendar yesterday = Calendar.getInstance();
+		yesterday.add(Calendar.DAY_OF_YEAR, -1);
+		if ((day.get(Calendar.YEAR) == yesterday.get(Calendar.YEAR))
+				&& (day.get(Calendar.DAY_OF_YEAR) == yesterday.get(Calendar.DAY_OF_YEAR))) {
+			return getString(R.string.fuel_log_yesterday);
+		}
+
+		return formatDateTime(requireContext(), timeMillis,
+				FORMAT_SHOW_DATE | FORMAT_ABBREV_MONTH | FORMAT_SHOW_WEEKDAY);
+	}
+
+	/** True if both times fall on the same local calendar day. */
+	private static boolean isSameDay(long a, long b) {
+		Calendar ca = Calendar.getInstance();
+		ca.setTimeInMillis(a);
+		Calendar cb = Calendar.getInstance();
+		cb.setTimeInMillis(b);
+		return (ca.get(Calendar.YEAR) == cb.get(Calendar.YEAR))
+				&& (ca.get(Calendar.DAY_OF_YEAR) == cb.get(Calendar.DAY_OF_YEAR));
+	}
+
 	/** A single row of the flat list backing the Fuel Log's one {@link RecyclerView}. */
 	private static final class Row {
 		final int type;
 		@Nullable
 		final FuelLogEntry entry;
+		@Nullable
+		final String label;
 
 		Row(int type, @Nullable FuelLogEntry entry) {
+			this(type, entry, null);
+		}
+
+		Row(int type, @Nullable FuelLogEntry entry, @Nullable String label) {
 			this.type = type;
 			this.entry = entry;
+			this.label = label;
 		}
 	}
 
@@ -231,11 +273,18 @@ public class FuelLogFragment extends MainActivityFragment {
 			if (timeline.isEmpty()) {
 				r.add(new Row(TYPE_TIMELINE_EMPTY, null));
 			} else {
-				for (FuelLogEntry e : timeline) r.add(new Row(TYPE_TIMELINE_ITEM, e));
+				// entries (and so timeline, a filtered copy of it) is already sorted newest-first, so
+				// consecutive same-day entries are always adjacent -- a single pass inserting a day
+				// header on each day boundary is enough, no separate grouping/sorting pass needed.
+				long lastDay = Long.MIN_VALUE;
+				for (FuelLogEntry e : timeline) {
+					if ((lastDay == Long.MIN_VALUE) || !isSameDay(lastDay, e.time)) {
+						r.add(new Row(TYPE_TIMELINE_DAY_HEADER, null, formatDayHeader(e.time)));
+						lastDay = e.time;
+					}
+					r.add(new Row(TYPE_TIMELINE_ITEM, e));
+				}
 			}
-
-			r.add(new Row(TYPE_HISTORY_HEADER, null));
-			for (FuelLogEntry e : entries) r.add(new Row(TYPE_HISTORY_ITEM, e));
 
 			rows = r;
 			notifyDataSetChanged();
@@ -261,17 +310,15 @@ public class FuelLogFragment extends MainActivityFragment {
 				case TYPE_TIMELINE_HEADER:
 					return new TimelineHeaderViewHolder(
 							inflater.inflate(R.layout.fuel_log_timeline_header, parent, false));
-				case TYPE_TIMELINE_ITEM:
-					return new TimelineItemViewHolder(
-							inflater.inflate(R.layout.fuel_log_timeline_item, parent, false));
+				case TYPE_TIMELINE_DAY_HEADER:
+					return new DayHeaderViewHolder(
+							inflater.inflate(R.layout.fuel_log_timeline_day_header, parent, false));
 				case TYPE_TIMELINE_EMPTY:
 					return new RecyclerView.ViewHolder(
 							inflater.inflate(R.layout.fuel_log_timeline_empty, parent, false)) {};
-				case TYPE_HISTORY_HEADER:
-					return new HistoryHeaderViewHolder(
-							inflater.inflate(R.layout.fuel_log_history_header, parent, false));
 				default:
-					return new ItemViewHolder(inflater.inflate(R.layout.fuel_log_item, parent, false));
+					return new TimelineItemViewHolder(
+							inflater.inflate(R.layout.fuel_log_timeline_item, parent, false));
 			}
 		}
 
@@ -282,12 +329,10 @@ public class FuelLogFragment extends MainActivityFragment {
 				bindHeader(header);
 			} else if (h instanceof TimelineHeaderViewHolder timelineHeader) {
 				bindTimelineHeader(timelineHeader);
+			} else if (h instanceof DayHeaderViewHolder dayHeader) {
+				dayHeader.label.setText(row.label);
 			} else if (h instanceof TimelineItemViewHolder timelineItem) {
 				bindTimelineItem(timelineItem, row.entry);
-			} else if (h instanceof HistoryHeaderViewHolder historyHeader) {
-				bindHistoryHeader(historyHeader);
-			} else if (h instanceof ItemViewHolder item) {
-				bindItem(item, row.entry);
 			}
 		}
 
@@ -317,13 +362,7 @@ public class FuelLogFragment extends MainActivityFragment {
 			h.dateRange.setOnClickListener(v -> showDateRangePicker());
 		}
 
-		private void bindHistoryHeader(HistoryHeaderViewHolder h) {
-			h.empty.setVisibility(entries.isEmpty() ? View.VISIBLE : View.GONE);
-		}
-
 		private void bindTimelineItem(TimelineItemViewHolder h, FuelLogEntry e) {
-			h.dayDate.setText(formatDateTime(requireContext(), e.time,
-					FORMAT_SHOW_DATE | FORMAT_ABBREV_MONTH | FORMAT_SHOW_WEEKDAY));
 			h.time.setText(formatDateTime(requireContext(), e.time, FORMAT_SHOW_TIME));
 			h.event.setText(eventLabel(e.type));
 			h.distance.setText(formatKm(e.distanceKm));
@@ -333,24 +372,6 @@ public class FuelLogFragment extends MainActivityFragment {
 			h.dot.setImageResource(eventIcon(e.type));
 			h.dot.setBackgroundResource(eventDotBackground(e.type));
 			h.card.setOnClickListener(v -> FuelRefuelDialog.edit(activity, e, FuelLogFragment.this::refresh));
-		}
-
-		private void bindItem(ItemViewHolder h, FuelLogEntry e) {
-			h.icon.setImageResource(eventIcon(e.type));
-			if (e.type == FuelLogEntry.Type.REFUEL) {
-				h.event.setVisibility(View.GONE);
-			} else {
-				h.event.setVisibility(View.VISIBLE);
-				h.event.setText(eventLabel(e.type));
-			}
-			h.distance.setText(formatKm(e.distanceKm));
-			h.location.setText(
-					e.location.isEmpty() ? getString(R.string.fuel_log_unknown_location) : e.location);
-			h.date.setText(formatDateTime(requireContext(), e.time,
-					FORMAT_SHOW_DATE | FORMAT_SHOW_TIME | FORMAT_SHOW_YEAR));
-			View.OnClickListener edit = v -> FuelRefuelDialog.edit(activity, e, FuelLogFragment.this::refresh);
-			h.edit.setOnClickListener(edit);
-			h.itemView.setOnClickListener(edit);
 		}
 
 		private String eventLabel(FuelLogEntry.Type type) {
@@ -396,8 +417,8 @@ public class FuelLogFragment extends MainActivityFragment {
 
 		/**
 		 * Overridden outright (rather than via {@code MovableRecyclerViewAdapter}) so only rows
-		 * backed by an actual {@link FuelLogEntry} (Timeline/History items) are swipeable -- the
-		 * overview card and the section headers/empty-state rows never are.
+		 * backed by an actual {@link FuelLogEntry} (Timeline items) are swipeable -- the overview
+		 * card and the section/day headers and empty-state row never are.
 		 */
 		ItemTouchHelper.Callback getItemTouchCallback() {
 			return new ItemTouchHelper.Callback() {
@@ -408,8 +429,7 @@ public class FuelLogFragment extends MainActivityFragment {
 
 				@Override
 				public int getMovementFlags(@NonNull RecyclerView rv, @NonNull RecyclerView.ViewHolder vh) {
-					int type = vh.getItemViewType();
-					if ((type != TYPE_TIMELINE_ITEM) && (type != TYPE_HISTORY_ITEM)) return 0;
+					if (vh.getItemViewType() != TYPE_TIMELINE_ITEM) return 0;
 					return makeMovementFlags(0, ItemTouchHelper.START | ItemTouchHelper.END);
 				}
 
@@ -450,10 +470,18 @@ public class FuelLogFragment extends MainActivityFragment {
 			}
 		}
 
+		final class DayHeaderViewHolder extends RecyclerView.ViewHolder {
+			final TextView label;
+
+			DayHeaderViewHolder(@NonNull View v) {
+				super(v);
+				label = (TextView) v;
+			}
+		}
+
 		final class TimelineItemViewHolder extends RecyclerView.ViewHolder {
 			final View card;
 			final ImageView dot;
-			final TextView dayDate;
 			final TextView time;
 			final TextView event;
 			final TextView distance;
@@ -463,39 +491,10 @@ public class FuelLogFragment extends MainActivityFragment {
 				super(v);
 				card = v.findViewById(R.id.fuel_log_timeline_card);
 				dot = v.findViewById(R.id.fuel_log_timeline_dot);
-				dayDate = v.findViewById(R.id.fuel_log_timeline_day_date);
 				time = v.findViewById(R.id.fuel_log_timeline_time);
 				event = v.findViewById(R.id.fuel_log_timeline_event);
 				distance = v.findViewById(R.id.fuel_log_timeline_distance);
 				location = v.findViewById(R.id.fuel_log_timeline_location);
-			}
-		}
-
-		final class HistoryHeaderViewHolder extends RecyclerView.ViewHolder {
-			final TextView empty;
-
-			HistoryHeaderViewHolder(@NonNull View v) {
-				super(v);
-				empty = v.findViewById(R.id.fuel_log_empty);
-			}
-		}
-
-		final class ItemViewHolder extends RecyclerView.ViewHolder {
-			final ImageView icon;
-			final TextView event;
-			final TextView distance;
-			final TextView location;
-			final TextView date;
-			final ImageView edit;
-
-			ItemViewHolder(@NonNull View v) {
-				super(v);
-				icon = v.findViewById(R.id.fuel_log_item_icon);
-				event = v.findViewById(R.id.fuel_log_item_event);
-				distance = v.findViewById(R.id.fuel_log_item_distance);
-				location = v.findViewById(R.id.fuel_log_item_location);
-				date = v.findViewById(R.id.fuel_log_item_date);
-				edit = v.findViewById(R.id.fuel_log_item_edit);
 			}
 		}
 	}

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A day-group divider within the Timeline (e.g. "Today"/"Yesterday"/"Thursday, 24 Sept") so each
+     event card underneath only needs to show its own time instead of repeating the date on every
+     card. Left margin roughly aligns it with the road/dot column of the item rows above/below it. -->
+<com.google.android.material.textview.MaterialTextView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginStart="12dp"
+    android:layout_marginTop="16dp"
+    android:layout_marginBottom="4dp"
+    android:textAppearance="?attr/textAppearanceSubtitle2"
+    android:textStyle="bold"
+    tools:text="Today" />

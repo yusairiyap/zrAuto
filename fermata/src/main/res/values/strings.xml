@@ -492,7 +492,6 @@
     <string name="fuel_log_last_refuel">Last refuel</string>
     <string name="fuel_log_refuel">Refuel</string>
     <string name="fuel_log_refuel_done">Refuel logged</string>
-    <string name="fuel_log_history">History</string>
     <string name="fuel_log_no_entries">No refuels logged yet</string>
     <string name="fuel_log_unknown_location">Unknown location</string>
     <string name="fuel_log_summary_format">%1$s • %2$s</string>
@@ -505,6 +504,8 @@
     <string name="fuel_log_trip_ended">Trip Ended</string>
     <string name="fuel_log_filter_date_range">Filter by date</string>
     <string name="fuel_log_no_timeline_entries">No trips or refuels in this period</string>
+    <string name="fuel_log_today">Today</string>
+    <string name="fuel_log_yesterday">Yesterday</string>
     <string name="info_overlay_show_distance">Show distance travelled</string>
     <string name="info_overlay_show_distance_icon">Show distance icon</string>
 </resources>
