@@ -48,18 +48,19 @@
         <item name="colorErrorContainer">#93000A</item>
         <item name="colorOnErrorContainer">#FFDAD6</item>
 
+        <!-- colorControlActivated/colorControlNormal are both pure white here, so every slider
+        (playback seek bar, audio effects/equalizer, settings) painted its played part and the rest
+        of its track in the same white and the position was hard to read. A grey played part on a
+        darker remaining track keeps the white thumb standing out. -->
+        <item name="utilsSliderProgressColor">#9E9E9E</item>
+        <item name="utilsSliderTrackColor">#3A3A3A</item>
         <item name="appSeekBarStyle">@style/AppTheme.Black.SeekBarStyle</item>
 
     </style>
 
-    <!-- colorControlActivated/colorControlNormal/colorAccent are all pure white here, so the stock
-    seek bar style painted the played part, the buffered part and the rest of the track in the
-    same white and the position was hard to read. A grey played part on a darker remaining track
-    keeps the white thumb standing out. -->
+    <!-- The playback seek bar's buffered part uses colorAccent, also pure white here. -->
     <style name="AppTheme.Black.SeekBarStyle" parent="AppTheme.SeekBarStyle">
-        <item name="android:progressTint">#9E9E9E</item>
         <item name="android:secondaryProgressTint">#5E5E5E</item>
-        <item name="android:progressBackgroundTint">#3A3A3A</item>
     </style>
 
 </resources>

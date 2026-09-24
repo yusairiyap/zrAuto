@@ -6,6 +6,7 @@ import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_CONTENT_PLAYING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_ERR;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_EVENT;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_SKIP_PREV_NEXT;
+import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_USER_PICKED_VIDEO;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_ENDED;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_ENDING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_FOUND;
@@ -219,6 +220,24 @@ public class YoutubeWebView extends FermataWebView {
 				// change that follows a real link tap within this window is the user browsing to a
 				// different video on purpose -- as opposed to YouTube's own autonav, which never involves a
 				// click at all -- see YoutubeMediaEngine#playing()'s use of this flag.
+				// The video id a watch/shorts URL points to, or '' -- see fermataUserPicked() below.
+				"function fermataVideoIdFromUrl(u) {\n" +
+				"  try {\n" +
+				"    var url = new URL(u, location.href);\n" +
+				"    if (url.pathname === '/watch') return url.searchParams.get('v') || '';\n" +
+				"    var m = url.pathname.match(/^\\/(shorts|live)\\/([A-Za-z0-9_-]+)/);\n" +
+				"    return m ? m[2] : '';\n" +
+				"  } catch (e) { return ''; }\n" +
+				"}\n" +
+				// Tells the app, right away, which video the user just tapped. The 4s in-page window of
+				// fermataRecentLinkClick() is too short for a tap that is followed by an ad or a slow
+				// load, and it doesn't survive a full document load at all -- in both cases the new
+				// video used to be mistaken for YouTube's own autonav and replaced with the next
+				// Favorites/Playlist item. See YoutubeMediaEngine#userPickedVideo().
+				"function fermataUserPicked(u) {\n" +
+				"  var id = fermataVideoIdFromUrl(u);\n" +
+				"  if (id) " + JS_EVENT + "(" + JS_USER_PICKED_VIDEO + ", id);\n" +
+				"}\n" +
 				"function fermataRecentLinkClick() {\n" +
 				"  return (Date.now() - (window.__fermataLastLinkClickTime || 0)) < 4000;\n" +
 				"}\n" +
@@ -362,8 +381,10 @@ public class YoutubeWebView extends FermataWebView {
 				// YoutubeMediaEngine#playing() mistake the app's own queue move for the user
 				// deliberately picking a different video and drop the queue on the spot.
 				"    if (window.__fermataSuppressLinkClick) return;\n" +
-				"    if (e.target && e.target.closest && e.target.closest('a')) {\n" +
+				"    var a = (e.target && e.target.closest) ? e.target.closest('a') : null;\n" +
+				"    if (a) {\n" +
 				"      window.__fermataLastLinkClickTime = Date.now();\n" +
+				"      if (a.href) fermataUserPicked(a.href);\n" +
 				"    }\n" +
 				"  }, true);\n" +
 				"}\n";
@@ -397,7 +418,10 @@ public class YoutubeWebView extends FermataWebView {
 				"  navigation.addEventListener('navigate', function(e) {\n" +
 				// Same exclusion as interceptLinkClicksJs() above -- see there.
 				"    if (window.__fermataSuppressLinkClick) return;\n" +
-				"    if (e.userInitiated) window.__fermataLastLinkClickTime = Date.now();\n" +
+				"    if (e.userInitiated) {\n" +
+				"      window.__fermataLastLinkClickTime = Date.now();\n" +
+				"      if (e.destination && e.destination.url) fermataUserPicked(e.destination.url);\n" +
+				"    }\n" +
 				"  });\n" +
 				"}\n";
 	}

@@ -141,6 +141,18 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	// app's/user's own, or nothing has paused since the last start(). Read by YoutubeFragment's
 	// interruption handling -- see YoutubeFragment#onHostInterruptionEnded().
 	private long lastExternalPauseTime;
+	// The video the user last tapped on the page (a thumbnail, a search result, a related video) and
+	// when (SystemClock.elapsedRealtime()) -- reported by the page the moment the tap happens, see
+	// YoutubeWebView's fermataUserPicked(). Kept on this side, rather than only as the page's own
+	// 4-second "recent click" flag, because the video a tap leads to can take much longer than that
+	// to actually start (an ad first, a slow load) and a full document load wipes the page's flag
+	// entirely: in both cases the tapped video used to be mistaken for YouTube's own autonav and
+	// swapped for the next Favorites/Playlist item. Cleared once that video is actually playing, when
+	// the app itself navigates somewhere (prepare()), or after USER_PICK_WINDOW_MS.
+	@Nullable
+	private String userPickedVideoId;
+	private long userPickedTime;
+	private static final long USER_PICK_WINDOW_MS = 90_000L;
 
 	public YoutubeMediaEngine(YoutubeWebView web, MainActivityDelegate a) {
 		this.web = web;
@@ -205,6 +217,11 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				!jsVideoId.isEmpty() ? jsVideoId : YoutubeVideoItem.extractVideoId(web.getUrl());
 		YoutubeAddon addon = web.getAddon();
 		String pendingVideoId = addon.getPendingVideoId();
+		// The user tapped a video on the page and this is (pickedThis), or may still be on its way to
+		// (pickPending: e.g. an ad is playing first), that video -- see userPickedVideoId.
+		boolean pickPending = isUserPickPending();
+		boolean pickedThis = pickPending && Objects.equals(userPickedVideoId, actualId);
+		if (pickedThis) clearUserPick();
 
 		// What the app explicitly decided should play, if it decided anything -- see YoutubeAddon#
 		// getPendingVideoId(). A mismatch means YouTube's own navigation won the race (see
@@ -219,7 +236,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			expectingPageNav = false;
 		} else if (pendingVideoId != null) {
 			if ((actualId == null) || !actualId.equals(pendingVideoId)) {
-				if (recentLinkClick) {
+				// pickPending rather than just pickedThis: an ad playing ahead of the tapped video
+				// reports its own id here, and "correcting" that would drag the page back onto the
+				// app's pending video instead of letting the tapped one come up after the ad.
+				if (recentLinkClick || pickPending) {
 					// The user tapped a video while the app still had one of its own pending. Their tap
 					// wins, unconditionally: correcting here would drag the page back off the video they
 					// just chose and onto the app's -- repeatedly, since the tap keeps being "wrong" --
@@ -244,6 +264,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 							pendingCorrections, " attempts -- accepting ", actualId);
 				}
 			}
+			if ((actualId != null) && actualId.equals(pendingVideoId)) clearUserPick();
 			addon.setPendingVideoId(null);
 			pendingCorrections = 0;
 		} else if (queueTransitionPending) {
@@ -264,7 +285,9 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			Log.d("playing(): unexpected transition from ", currentVideoId, " to ", actualId,
 					" -- repeatOne=", addon.isRepeatOneEnabled(), ", queueItem=", addon.getQueueItem(),
 					", recentLinkClick=", recentLinkClick);
-			if (recentLinkClick) {
+			if (recentLinkClick || pickPending) {
+				// pickPending: the user tapped a video and this is it -- or something that plays ahead of
+				// it (an ad) -- arriving later than recentLinkClick's short window allows for.
 				// This transition followed a real user action within the last few seconds -- a tap on a
 				// link (a video thumbnail/title/related-video card) or, for YouTube's newer non-anchor
 				// video tiles (home feed/search-results grids), any browser-recognized user-initiated
@@ -334,6 +357,27 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		DiagnosticLog.log("YT", "playing", "id=" + actualId, "title=" + currentVideoTitle);
 		cb.setEngine(this);
 		cb.onEngineStarted(this);
+	}
+
+	/** See {@link #userPickedVideoId}. */
+	void userPickedVideo(String videoId) {
+		if ((videoId == null) || videoId.isEmpty()) return;
+		DiagnosticLog.log("YT", "user picked", "id=" + videoId);
+		userPickedVideoId = videoId;
+		userPickedTime = SystemClock.elapsedRealtime();
+	}
+
+	/** Whether a tap on the page is still waiting for its video to start -- see {@link #userPickedVideoId}. */
+	private boolean isUserPickPending() {
+		if (userPickedVideoId == null) return false;
+		if (SystemClock.elapsedRealtime() - userPickedTime <= USER_PICK_WINDOW_MS) return true;
+		clearUserPick();
+		return false;
+	}
+
+	private void clearUserPick() {
+		userPickedVideoId = null;
+		userPickedTime = 0;
 	}
 
 	void ended() {
@@ -605,6 +649,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		queueTransitionPending = false;
 
 		if ((source == next) || (source == prev) || (queueVideoId != null)) {
+			// The app is choosing what plays next now; an earlier tap on the page no longer applies.
+			clearUserPick();
 			// Every one of these three branches is reached only for a deliberate next/prev-style skip
 			// (the control panel, a hardware/Bluetooth media button, or a tap on YouTube's own on-screen
 			// button -- see YoutubeWebView's capture-phase click interceptor): a natural end-of-video

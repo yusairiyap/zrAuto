@@ -9,7 +9,18 @@
   // overlapping crossfade between two videos isn't possible; fade-out -> switch -> fade-in is the
   // closest equivalent and is what this gives.
   const FADE_IN_MS = 700;
-  const FADE_OUT_MS = 300;
+  const FADE_OUT_MS = 350;
+  // Silence held after a fade-out before the element is actually paused, so whatever audio the
+  // pipeline already had buffered drains out at zero level instead of being cut mid-waveform.
+  const PAUSE_HOLD_MS = 80;
+  // How long a paused element stays at zero level before its own volume is put back (element-volume
+  // path only, see restoreSilently()). Restoring it the instant pause() returns let the few
+  // milliseconds of audio still buffered in the pipeline play out at full volume -- the short
+  // crackle/blip heard on pause.
+  const RESTORE_AFTER_PAUSE_MS = 400;
+  // Gap between holding a gain at its current value and starting a new curve from it -- a
+  // setValueCurveAtTime() may not overlap any other automation event, including the hold itself.
+  const CURVE_START_DELAY_S = 0.005;
   const END_FADE_S = 1.6;
   // Videos shorter than this don't get the automatic end-of-video fade (it would eat most of
   // them), and neither do live streams (duration is Infinity).
@@ -17,7 +28,7 @@
   // Never write an exact 0 to the element's own volume -- some player builds read a volume of 0 as
   // "muted" and flip their own mute state/UI to match.
   const MIN_ELEMENT_VOLUME = 0.001;
-  const STEP_MS = 20;
+  const STEP_MS = 10;
 
   const cfg = {endingEvent: 0};
 
@@ -28,8 +39,8 @@
   function state(v) {
     let s = v.__fermataFade;
     if (!s) {
-      s = {timer: 0, doneTimer: 0, level: 1, base: 1, ending: false, pausing: false,
-        usedElement: false};
+      s = {timer: 0, doneTimer: 0, restoreTimer: 0, level: 1, base: 1, ending: false,
+        pausing: false, usedElement: false};
       v.__fermataFade = s;
     }
     return s;
@@ -56,6 +67,10 @@
     if (s.doneTimer) {
       clearTimeout(s.doneTimer);
       s.doneTimer = 0;
+    }
+    if (s.restoreTimer) {
+      clearTimeout(s.restoreTimer);
+      s.restoreTimer = 0;
     }
   }
 
@@ -94,17 +109,31 @@
       const now = p.ctx.currentTime;
       const from = g.value;
       try {
-        g.cancelScheduledValues(now);
+        // Freeze the gain exactly where it is right now -- including partway through a previous
+        // curve (e.g. pausing during a fade-in). cancelScheduledValues() alone leaves a curve
+        // that already started in place, and scheduling a new one over it throws, which used to
+        // fall through to the catch below: an instant jump to the target, i.e. a click.
+        if (typeof g.cancelAndHoldAtTime === 'function') {
+          g.cancelAndHoldAtTime(now);
+        } else {
+          g.cancelScheduledValues(now);
+          g.setValueAtTime(from, now);
+        }
         if ((ms > 0) && (Math.abs(from - to) > 0.001)) {
-          const n = 32;
+          const n = 64;
           const curve = new Float32Array(n);
           for (let i = 0; i < n; i++) curve[i] = ease(from, to, i / (n - 1));
-          g.setValueCurveAtTime(curve, now, ms / 1000);
+          g.setValueCurveAtTime(curve, now + CURVE_START_DELAY_S, ms / 1000);
         } else {
-          g.setValueAtTime(to, now);
+          g.setValueAtTime(to, now + CURVE_START_DELAY_S);
         }
       } catch (err) {
-        g.value = to;
+        try {
+          g.cancelScheduledValues(0);
+          g.setTargetAtTime(to, now, Math.max(0.005, ms / 4000));
+        } catch (err2) {
+          g.value = to;
+        }
       }
       s.level = to;
       if (done) {
@@ -147,10 +176,17 @@
   }
 
   function restoreSilently(v) {
-    // Only ever called while the element is paused -- nothing is audible, so jump straight back
-    // to full level. Leaving the element's own volume lowered while paused would risk the player
-    // persisting that lowered value as the user's volume.
-    ramp(v, 1, 0);
+    // Called once the element is paused. The Web Audio gain stage just stays down: nothing
+    // persists it, and the next 'play'/'playing' fades it back up anyway. The element's own
+    // volume is put back (the player could otherwise persist the lowered value as the user's
+    // volume), but only after RESTORE_AFTER_PAUSE_MS -- see there.
+    if (gainParam(v)) return;
+    const s = state(v);
+    if (s.restoreTimer) clearTimeout(s.restoreTimer);
+    s.restoreTimer = setTimeout(() => {
+      s.restoreTimer = 0;
+      if (v.paused && !s.pausing) ramp(v, 1, 0);
+    }, RESTORE_AFTER_PAUSE_MS);
   }
 
   function isAudible(v) {
@@ -272,7 +308,9 @@
         return;
       }
       s.pausing = true;
-      ramp(v, 0, (ms == null) ? FADE_OUT_MS : ms, finish);
+      ramp(v, 0, (ms == null) ? FADE_OUT_MS : ms, () => {
+        s.doneTimer = setTimeout(() => { s.doneTimer = 0; finish(); }, PAUSE_HOLD_MS);
+      });
     },
 
     // Fades out without pausing -- used right before switching to another video. Returns whether a

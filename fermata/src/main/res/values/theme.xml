@@ -83,7 +83,8 @@
         actually meant for "the active state of a control", so it stays legible across every
         theme. -->
         <item name="android:thumbTint">?attr/colorControlActivated</item>
-        <item name="android:progressTint">?attr/colorControlActivated</item>
+        <item name="android:progressTint">?attr/utilsSliderProgressColor</item>
+        <item name="android:progressBackgroundTint">?attr/utilsSliderTrackColor</item>
         <item name="android:secondaryProgressTint">?attr/colorAccent</item>
     </style>
 
@@ -98,7 +99,8 @@
         <item name="android:thumb">@drawable/slider_thumb</item>
         <item name="android:splitTrack">false</item>
         <item name="android:thumbTint">?attr/colorControlActivated</item>
-        <item name="android:progressTint">?attr/colorControlActivated</item>
+        <item name="android:progressTint">?attr/utilsSliderProgressColor</item>
+        <item name="android:progressBackgroundTint">?attr/utilsSliderTrackColor</item>
         <item name="android:secondaryProgressTint">?android:attr/textColorHint</item>
         <!-- SwitchCompat ignores the android:thumbTint/progressTint above (those only apply to
         SeekBar); it reads its own app:trackTint/thumbTint instead. Without an explicit opaque

@@ -21,6 +21,8 @@
         <item name="boxStrokeWidth">1dp</item>
         <item name="cornerRadius">5dp</item>
         <item name="thumbTint">@color/thumb_color</item>
+        <item name="utilsSliderProgressColor">?attr/colorControlActivated</item>
+        <item name="utilsSliderTrackColor">?attr/colorControlNormal</item>
 
         <!--Text appearance (Material 3 type scale; see https://m3.material.io/styles/typography)-->
         <item name="textAppearanceHeadline1">@style/TextAppearance.Material3.DisplayLarge</item>
@@ -94,7 +96,8 @@
         <item name="android:thumb">@drawable/slider_thumb</item>
         <item name="android:splitTrack">false</item>
         <item name="android:thumbTint">?attr/colorControlActivated</item>
-        <item name="android:progressTint">?attr/colorControlActivated</item>
+        <item name="android:progressTint">?attr/utilsSliderProgressColor</item>
+        <item name="android:progressBackgroundTint">?attr/utilsSliderTrackColor</item>
         <item name="android:secondaryProgressTint">?android:attr/textColorHint</item>
         <item name="android:paddingTop">10dp</item>
         <item name="android:paddingBottom">10dp</item>

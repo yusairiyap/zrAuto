@@ -121,6 +121,12 @@ class DefaultPlaylist extends ItemContainer<PlayableItem> implements Playlist, P
 		setPlaylistItemsPref(mapToArray(children, PlayableItem::getOrigId, String[]::new));
 	}
 
+	/** Same as Favorites: newly added items go to the top of the playlist. */
+	@Override
+	protected boolean addToTop() {
+		return true;
+	}
+
 	@Override
 	protected void itemAdded(PlayableItem i) {
 		getLib().getAtvInterface(a -> a.addProgram(i));
