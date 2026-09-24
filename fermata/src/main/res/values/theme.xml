@@ -27,6 +27,27 @@
         <item name="cornerRadius">5dp</item>
     </style>
 
+    <!-- Explicit, hardcoded palette rather than inheriting the active AppTheme.* variant's own
+    heavily-remapped Material3 color roles (colorSurface/colorOnSurface/colorPrimary etc. don't
+    keep their usual contrast relationship in several variants; see theme_light.xml's own notes
+    on why colorSurfaceVariant, not colorSecondary, is what actually paints card backgrounds here).
+    MaterialDatePicker assumes the stock relationship holds, so on variants where it doesn't, its
+    calendar rendered with near-white text on a near-white/pale background, unreadable. Fixing
+    the variants' role mapping itself is out of scope of what a date-range filter dialog should
+    need to care about, so this pins the calendar to one guaranteed-legible palette instead,
+    independent of whichever variant is active. -->
+    <style name="AppTheme.MaterialCalendar" parent="ThemeOverlay.Material3.MaterialCalendar">
+        <item name="colorSurface">#FFFFFF</item>
+        <item name="colorOnSurface">#1C1B1F</item>
+        <item name="colorSurfaceVariant">#F0F0F0</item>
+        <item name="colorOnSurfaceVariant">#49454F</item>
+        <item name="colorPrimary">#445D8F</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorOutline">#79747E</item>
+        <item name="android:textColorPrimary">#1C1B1F</item>
+        <item name="android:textColorSecondary">#49454F</item>
+    </style>
+
     <style name="AppTheme.MediaItemStyle">
         <item name="iconColor">?attr/colorOnSecondary</item>
         <item name="hintColor">@android:color/holo_green_light</item>

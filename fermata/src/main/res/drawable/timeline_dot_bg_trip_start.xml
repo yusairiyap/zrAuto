@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Timeline dot marker for a Trip Started event. Fixed hex fill, not a theme attr: the previous
+     ?attr/colorControlActivated fill resolves to pure white on the "black" theme variant (see
+     theme_black.xml), which combined with this dot's own white icon glyph made the icon invisible;
+     exactly the kind of per-variant contrast break AppTheme.MaterialCalendar's own doc (theme.xml)
+     already had to work around for the date picker. A fixed, saturated color per event type
+     sidesteps that entirely: it's always dark enough for a white icon to read against it, on every
+     theme variant, by construction rather than by accident of whichever role a variant maps a given
+     attr to. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="#2E7D32" />
+    <stroke
+        android:width="2dp"
+        android:color="?attr/colorSurface" />
+</shape>

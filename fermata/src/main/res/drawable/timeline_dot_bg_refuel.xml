@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Timeline dot marker for a Refuel event; see timeline_dot_bg_trip_start.xml for why this
+     uses a fixed hex fill rather than a theme color role. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="#1565C0" />
+    <stroke
+        android:width="2dp"
+        android:color="?attr/colorSurface" />
+</shape>

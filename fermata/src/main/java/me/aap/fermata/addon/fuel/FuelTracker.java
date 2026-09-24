@@ -120,10 +120,67 @@ public class FuelTracker implements LocationListener {
 						|| ActivityCompat.checkSelfPermission(appCtx, ACCESS_COARSE_LOCATION) ==
 						PERMISSION_GRANTED;
 		boolean connected = hasPermission && isConnectedToAndroidAuto();
-		if (connected && !gpsActive) startGps();
-		else if (!connected && gpsActive) stopGps();
+		if (connected && !gpsActive) {
+			startGps();
+			logTripEvent(FuelLogEntry.Type.TRIP_START);
+		} else if (!connected && gpsActive) {
+			// Captured before stopGps() clears lastLocation, so "Trip Ended" gets the location the
+			// car was actually at, not "unknown".
+			logTripEvent(FuelLogEntry.Type.TRIP_END);
+			stopGps();
+		}
 
 		handler.postDelayed(connectionWatcher, CONNECTION_POLL_MS);
+	}
+
+	/**
+	 * Auto-inserts a Trip Started/Trip Ended {@link FuelLogEntry} at an Android Auto
+	 * connect/disconnect transition, carrying the odometer-since-last-refuel distance at that
+	 * moment and the best location currently known -- same fields a manual refuel entry carries,
+	 * just without resetting the trip odometer. The location name is filled in asynchronously
+	 * (reverse geocoding is a network call) so logging the event itself never waits on it.
+	 */
+	private void logTripEvent(FuelLogEntry.Type type) {
+		if (prefs == null) return;
+
+		PreferenceStore p = prefs;
+		Location loc = (lastLocation != null) ? lastLocation : getBestLastKnownLocation();
+		long now = System.currentTimeMillis();
+		FuelLogEntry entry = new FuelLogEntry(now, (float) FuelLogStore.getTripDistanceKm(p), "",
+				(loc != null) ? loc.getLatitude() : Double.NaN,
+				(loc != null) ? loc.getLongitude() : Double.NaN, now, type);
+		FuelLogStore.addEntry(p, entry);
+		notifyListeners();
+
+		if (loc != null) {
+			ReverseGeocoder.reverseGeocode(loc.getLatitude(), loc.getLongitude()).onSuccess(name -> {
+				entry.location = name;
+				FuelLogStore.updateEntry(p, entry);
+				notifyListeners();
+			});
+		}
+	}
+
+	/** A location fix that doesn't require waiting for a fresh GPS update -- used for "Trip
+	 * Started" since GPS has often only just been (re)requested and {@link #lastLocation} is still
+	 * null at that instant. */
+	@Nullable
+	private Location getBestLastKnownLocation() {
+		if ((locationManager == null) || !hasPermission) return null;
+		Location best = null;
+		for (String provider : new String[]{LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER}) {
+			try {
+				Location l = locationManager.getLastKnownLocation(provider);
+				if ((l != null) && ((best == null) || (l.getTime() > best.getTime()))) best = l;
+			} catch (SecurityException | IllegalArgumentException ignore) {
+				// Provider unavailable or permission revoked -- fall through to the next one.
+			}
+		}
+		return best;
+	}
+
+	private void notifyListeners() {
+		for (Runnable r : listeners) r.run();
 	}
 
 	private void startGps() {
@@ -191,7 +248,7 @@ public class FuelTracker implements LocationListener {
 		if (dist < MIN_MOVEMENT_M) return;
 
 		if (prefs != null) FuelLogStore.addTripDistanceMeters(prefs, dist);
-		for (Runnable r : listeners) r.run();
+		notifyListeners();
 	}
 
 	/**

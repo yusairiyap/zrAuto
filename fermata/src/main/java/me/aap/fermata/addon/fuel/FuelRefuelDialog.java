@@ -66,7 +66,12 @@ public class FuelRefuelDialog {
 	/** Lets the user correct an existing entry's distance/location -- its date/time is unchanged. */
 	public static void edit(MainActivityDelegate a, FuelLogEntry entry, Runnable onDone) {
 		Context ctx = a.getContext();
-		openFields(ctx, R.string.fuel_log_edit_entry, entry.distanceKm, entry.location,
+		int title = switch (entry.type) {
+			case TRIP_START -> R.string.fuel_log_trip_started;
+			case TRIP_END -> R.string.fuel_log_trip_ended;
+			case REFUEL -> R.string.fuel_log_edit_entry;
+		};
+		openFields(ctx, title, entry.distanceKm, entry.location,
 				(distance, location) -> {
 					entry.distanceKm = distance;
 					entry.location = location;
