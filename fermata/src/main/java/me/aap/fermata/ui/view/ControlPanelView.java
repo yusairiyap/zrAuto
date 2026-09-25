@@ -393,19 +393,22 @@ public class ControlPanelView extends ConstraintLayout
 		View fb = a.getFloatingButton();
 		View fb2 = fab2(a);
 		View fb3 = fab3(a);
+		View fb4 = fab4(a);
 		int delay = getStartDelay();
 
 		if (delay == 0) {
 			fb.setVisibility(GONE);
 			if (fb2 != null) fb2.setVisibility(GONE);
 			if (fb3 != null) fb3.setVisibility(GONE);
+			if (fb4 != null) fb4.setVisibility(GONE);
 			super.setVisibility(GONE);
 		} else {
 			fb.setVisibility(VISIBLE);
 			if (fb2 != null) fb2.setVisibility(VISIBLE);
 			if (fb3 != null) fb3.setVisibility(VISIBLE);
+			if (fb4 != null) fb4.setVisibility(VISIBLE);
 			super.setVisibility(VISIBLE);
-			hideTimer = new HideTimer(a, delay, false, fb, fb2, fb3);
+			hideTimer = new HideTimer(a, delay, false, fb, fb2, fb3, fb4);
 			a.postDelayed(hideTimer, delay);
 		}
 
@@ -433,6 +436,13 @@ public class ControlPanelView extends ConstraintLayout
 	@Nullable
 	private View fab3(MainActivityDelegate a) {
 		return a.getPrefs().getBooleanPref(MainActivityPrefs.FAB3_ENABLED) ? a.getFloatingButton3() :
+				null;
+	}
+
+	/** The fourth FAB, if the user has it enabled -- null otherwise (shows/hides with fb). */
+	@Nullable
+	private View fab4(MainActivityDelegate a) {
+		return a.getPrefs().getBooleanPref(MainActivityPrefs.FAB4_ENABLED) ? a.getFloatingButton4() :
 				null;
 	}
 
@@ -566,21 +576,24 @@ public class ControlPanelView extends ConstraintLayout
 		View fb = a.getFloatingButton();
 		View fb2 = fab2(a);
 		View fb3 = fab3(a);
+		View fb4 = fab4(a);
 
 		if (getVisibility() == VISIBLE) {
 			fadeOut(this, true);
 			fadeOut(fb, false);
 			if (fb2 != null) fadeOut(fb2, false);
 			if (fb3 != null) fadeOut(fb3, false);
+			if (fb4 != null) fadeOut(fb4, false);
 			if (a.getPrefs().getSysBarsOnVideoTouchPref()) a.setFullScreen(true);
 		} else {
 			fadeIn(this, true);
 			fadeIn(fb, false);
 			if (fb2 != null) fadeIn(fb2, false);
 			if (fb3 != null) fadeIn(fb3, false);
+			if (fb4 != null) fadeIn(fb4, false);
 			if (a.getPrefs().getSysBarsOnVideoTouchPref()) a.setFullScreen(false);
 			clearFocus();
-			hideTimer = new HideTimer(a, delay, false, fb, fb2, fb3);
+			hideTimer = new HideTimer(a, delay, false, fb, fb2, fb3, fb4);
 			a.postDelayed(hideTimer, delay);
 		}
 
@@ -627,13 +640,15 @@ public class ControlPanelView extends ConstraintLayout
 		View fb = a.getFloatingButton();
 		View fb2 = fab2(a);
 		View fb3 = fab3(a);
+		View fb4 = fab4(a);
 		int delay = getSeekDelay();
 		super.setVisibility(VISIBLE);
 		fb.setVisibility(VISIBLE);
 		if (fb2 != null) fb2.setVisibility(VISIBLE);
 		if (fb3 != null) fb3.setVisibility(VISIBLE);
+		if (fb4 != null) fb4.setVisibility(VISIBLE);
 		clearFocus();
-		hideTimer = new HideTimer(a, delay, true, fb, fb2, fb3);
+		hideTimer = new HideTimer(a, delay, true, fb, fb2, fb3, fb4);
 		a.postDelayed(hideTimer, delay);
 		notifyControlPanelVisibility();
 		checkPlaybackTimer(a);

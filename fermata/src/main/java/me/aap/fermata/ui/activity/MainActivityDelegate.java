@@ -32,6 +32,8 @@ import static me.aap.fermata.ui.activity.MainActivityPrefs.FAB2_ACTION;
 import static me.aap.fermata.ui.activity.MainActivityPrefs.FAB2_ENABLED;
 import static me.aap.fermata.ui.activity.MainActivityPrefs.FAB3_ACTION;
 import static me.aap.fermata.ui.activity.MainActivityPrefs.FAB3_ENABLED;
+import static me.aap.fermata.ui.activity.MainActivityPrefs.FAB4_ACTION;
+import static me.aap.fermata.ui.activity.MainActivityPrefs.FAB4_ENABLED;
 import static me.aap.fermata.ui.activity.MainActivityPrefs.FAB_DRAGGABLE;
 import static me.aap.fermata.ui.activity.MainActivityPrefs.FAB_SIZE;
 import static me.aap.fermata.ui.activity.MainActivityPrefs.LOCALE;
@@ -152,6 +154,7 @@ import me.aap.fermata.ui.fragment.YoutubeAlternativesFragment;
 import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.ui.view.SecondaryFloatingButton;
+import me.aap.fermata.ui.view.QuaternaryFloatingButton;
 import me.aap.fermata.ui.view.TertiaryFloatingButton;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
@@ -197,6 +200,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	private FloatingButton floatingButton;
 	private SecondaryFloatingButton floatingButton2;
 	private TertiaryFloatingButton floatingButton3;
+	private QuaternaryFloatingButton floatingButton4;
 	private ContentLoadingProgressBar progressBar;
 	private FutureSupplier<?> contentLoading;
 	// Belt-and-suspenders re-sync for insetScrollableContent(): its own attach/layout listeners
@@ -748,6 +752,11 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	@Nullable
+	public QuaternaryFloatingButton getFloatingButton4() {
+		return floatingButton4;
+	}
+
+	@Nullable
 	public VideoView getActiveVideoView() {
 		return activeVideoView;
 	}
@@ -867,6 +876,7 @@ public class MainActivityDelegate extends ActivityDelegate
 
 		updateSecondaryFabVisibility();
 		updateTertiaryFabVisibility();
+		updateQuaternaryFabVisibility();
 		fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 	}
 
@@ -1171,6 +1181,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		ActivityFragment f = super.showFragment(id, input);
 		updateSecondaryFabVisibility();
 		updateTertiaryFabVisibility();
+		updateQuaternaryFabVisibility();
 		return f;
 	}
 
@@ -1597,6 +1608,8 @@ public class MainActivityDelegate extends ActivityDelegate
 		floatingButton2.setScale(getPrefs().getFabSizePref());
 		floatingButton3 = a.findViewById(R.id.floating_button3);
 		floatingButton3.setScale(getPrefs().getFabSizePref());
+		floatingButton4 = a.findViewById(R.id.floating_button4);
+		floatingButton4.setScale(getPrefs().getFabSizePref());
 		updateFabDraggable();
 		controlPanel.bind(getMediaServiceBinder());
 		enableBodyOverlayLayout();
@@ -1657,6 +1670,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			if (floatingButton != null) floatingButton.setScale(getPrefs().getFabSizePref());
 			if (floatingButton2 != null) floatingButton2.setScale(getPrefs().getFabSizePref());
 			if (floatingButton3 != null) floatingButton3.setScale(getPrefs().getFabSizePref());
+			if (floatingButton4 != null) floatingButton4.setScale(getPrefs().getFabSizePref());
 		} else if (MainActivityPrefs.hasNavBarSizePref(this, prefs)) {
 			if (navBar != null) navBar.setSize(getPrefs().getNavBarSizePref(this));
 		} else if (MainActivityPrefs.hasToolBarSizePref(this, prefs)) {
@@ -1717,6 +1731,10 @@ public class MainActivityDelegate extends ActivityDelegate
 			updateTertiaryFabVisibility();
 		} else if (prefs.contains(FAB3_ACTION)) {
 			if (floatingButton3 != null) fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
+		} else if (prefs.contains(FAB4_ENABLED)) {
+			updateQuaternaryFabVisibility();
+		} else if (prefs.contains(FAB4_ACTION)) {
+			if (floatingButton4 != null) fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 		} else if (prefs.contains(FAB_DRAGGABLE)) {
 			updateFabDraggable();
 		}
@@ -1727,6 +1745,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (floatingButton != null) floatingButton.setDraggable(draggable);
 		if (floatingButton2 != null) floatingButton2.setDraggable(draggable);
 		if (floatingButton3 != null) floatingButton3.setDraggable(draggable);
+		if (floatingButton4 != null) floatingButton4.setDraggable(draggable);
 
 		// Previously a dragged FAB only snapped back to its default layout position on the next app
 		// restart (a fresh Activity/View never picked up the leftover drag translation to begin
@@ -1735,6 +1754,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			resetFabPosition(floatingButton);
 			resetFabPosition(floatingButton2);
 			resetFabPosition(floatingButton3);
+			resetFabPosition(floatingButton4);
 		}
 	}
 
@@ -1772,6 +1792,20 @@ public class MainActivityDelegate extends ActivityDelegate
 			floatingButton3.setVisibility(floatingButton.getVisibility());
 		} else {
 			floatingButton3.setVisibility(isWebBrowserActive() ? VISIBLE : GONE);
+		}
+	}
+
+	private void updateQuaternaryFabVisibility() {
+		if (floatingButton4 == null) return;
+		if (!getPrefs().getBooleanPref(FAB4_ENABLED)) {
+			floatingButton4.setVisibility(GONE);
+			return;
+		}
+
+		if (isVideoMode()) {
+			floatingButton4.setVisibility(floatingButton.getVisibility());
+		} else {
+			floatingButton4.setVisibility(isWebBrowserActive() ? VISIBLE : GONE);
 		}
 	}
 

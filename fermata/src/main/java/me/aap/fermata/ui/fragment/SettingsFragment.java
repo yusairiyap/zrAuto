@@ -1098,6 +1098,22 @@ public class SettingsFragment extends MainActivityFragment
 		});
 		ps.addBooleanPref(o -> {
 			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.FAB4_ENABLED;
+			o.title = R.string.fab4_enable;
+		});
+		var fab4EnabledCond = PrefCondition.create(a.getPrefs(), MainActivityPrefs.FAB4_ENABLED);
+		ps.addListPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.FAB4_ACTION;
+			o.title = R.string.fab4_action;
+			o.subtitle = R.string.string_format;
+			o.formatSubtitle = true;
+			o.values = fabActionNames;
+			o.valuesMap = fabActionOrdinals;
+			o.visibility = fab4EnabledCond;
+		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.FAB_DRAGGABLE;
 			o.title = R.string.fab_draggable;
 			o.subtitle = R.string.fab_draggable_sub;

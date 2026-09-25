@@ -495,6 +495,8 @@
     <string name="fab2_action">Tap action</string>
     <string name="fab3_enable">Show tertiary floating button</string>
     <string name="fab3_action">Tap action</string>
+    <string name="fab4_enable">Show fourth floating button</string>
+    <string name="fab4_action">Tap action</string>
     <string name="fab_draggable">Draggable</string>
     <string name="fab_draggable_sub">Let the floating buttons be dragged to a different position on screen</string>
     <string name="fab_size">Floating button size</string>

@@ -90,12 +90,14 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> LANDSCAPE_VIDEO = Pref.b("LANDSCAPE_VIDEO", false);
 	Pref<BooleanSupplier> CHANGE_BRIGHTNESS = Pref.b("CHANGE_BRIGHTNESS", false);
 	Pref<IntSupplier> BRIGHTNESS = Pref.i("BRIGHTNESS", 255);
-	// All three FABs (primary + secondary + tertiary) are available out of the box: FAB2 defaults
-	// to the fullscreen toggle, FAB3 to the dim-screen toggle.
+	// All four FABs (primary + secondary + tertiary + fourth) are available out of the box: FAB2
+	// defaults to the fullscreen toggle, FAB3 to the dim-screen toggle, FAB4 to add to favourites.
 	Pref<BooleanSupplier> FAB2_ENABLED = Pref.b("FAB2_ENABLED", true);
 	Pref<IntSupplier> FAB2_ACTION = Pref.i("FAB2_ACTION", Action.FULLSCREEN_TOGGLE.ordinal());
 	Pref<BooleanSupplier> FAB3_ENABLED = Pref.b("FAB3_ENABLED", true);
 	Pref<IntSupplier> FAB3_ACTION = Pref.i("FAB3_ACTION", Action.DIM_TOGGLE.ordinal());
+	Pref<BooleanSupplier> FAB4_ENABLED = Pref.b("FAB4_ENABLED", true);
+	Pref<IntSupplier> FAB4_ACTION = Pref.i("FAB4_ACTION", Action.FAVORITE_ADD.ordinal());
 	Pref<BooleanSupplier> FAB_DRAGGABLE = Pref.b("FAB_DRAGGABLE", true);
 	Pref<DoubleSupplier> FAB_SIZE = Pref.f("FAB_SIZE", 1f);
 	Pref<BooleanSupplier> DIM_ENABLED = Pref.b("DIM_ENABLED", false);
