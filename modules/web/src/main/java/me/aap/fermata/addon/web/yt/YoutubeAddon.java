@@ -19,6 +19,7 @@ import me.aap.fermata.addon.AddonInfo;
 import me.aap.fermata.addon.FermataAddon;
 import me.aap.fermata.addon.MediaLibAddon;
 import me.aap.fermata.addon.VideoTitleCache;
+import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.WebBrowserAddon;
 import me.aap.fermata.media.lib.DefaultMediaLib;
@@ -100,6 +101,11 @@ public class YoutubeAddon extends WebBrowserAddon
 	// once playing() confirms a match, or after it gives up correcting toward it.
 	@Nullable
 	private String pendingVideoId;
+
+	public YoutubeAddon() {
+		// The Music tab's last-resort player for YouTube audio -- see YoutubeWebAudioEngine.
+		MusicPlayer.setWebAudioEngineFactory(YoutubeWebAudioEngine::new);
+	}
 
 	@Nullable
 	PlayableItem getQueueItem() {
@@ -260,6 +266,7 @@ public class YoutubeAddon extends WebBrowserAddon
 
 	@Override
 	public void uninstall() {
+		MusicPlayer.setWebAudioEngineFactory(null);
 		getPreferenceStore().removeBroadcastListener(this);
 		MainActivityPrefs.get().removeBroadcastListener(this);
 		FermataApplication.get().getPreferenceStore().removeBroadcastListener(this);

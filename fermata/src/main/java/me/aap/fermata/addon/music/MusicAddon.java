@@ -131,6 +131,7 @@ public class MusicAddon implements MediaLibAddon, FermataActivityAddon,
 
 	@Override
 	public void onActivityCreate(MainActivityDelegate a) {
+		MusicPlayer.activityCreated(a);
 		MediaSessionCallback cb = a.getMediaSessionCallback();
 		if (callback != null) callback.removeBroadcastListener(this);
 		callback = cb;
@@ -139,6 +140,7 @@ public class MusicAddon implements MediaLibAddon, FermataActivityAddon,
 
 	@Override
 	public void onActivityDestroy(MainActivityDelegate a) {
+		MusicPlayer.activityDestroyed(a);
 		if (callback == a.getMediaSessionCallback()) {
 			callback.removeBroadcastListener(this);
 			callback = null;

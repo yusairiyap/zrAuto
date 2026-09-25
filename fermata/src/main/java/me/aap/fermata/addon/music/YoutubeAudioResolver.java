@@ -71,6 +71,8 @@ final class YoutubeAudioResolver {
 		final String client;
 		/** That client's User-Agent: the stream is fetched with the same one it was issued to. */
 		final String userAgent;
+		/** "adaptive" (a direct audio-only file) or "hls" (the audio-only HLS rendition). */
+		final String format;
 		final String url;
 		final String mimeType;
 		final long expiresAt;
@@ -80,10 +82,11 @@ final class YoutubeAudioResolver {
 		final String author;
 		final long durationMs;
 
-		Stream(String client, String userAgent, String url, String mimeType, long expiresAt,
-					 @Nullable String title, @Nullable String author, long durationMs) {
+		Stream(String client, String userAgent, String format, String url, String mimeType,
+					 long expiresAt, @Nullable String title, @Nullable String author, long durationMs) {
 			this.client = client;
 			this.userAgent = userAgent;
+			this.format = format;
 			this.url = url;
 			this.mimeType = mimeType;
 			this.expiresAt = expiresAt;
@@ -239,8 +242,8 @@ final class YoutubeAudioResolver {
 		if (!probe.startsWith("ok")) return null;
 
 		long d = best.optLong("approxDurationMs", 0);
-		return new Stream(c.name, c.userAgent, url, best.optString("mimeType"), expiresAt(url), title,
-				author, (d > 0) ? d : dur);
+		return new Stream(c.name, c.userAgent, "adaptive", url, best.optString("mimeType"),
+				expiresAt(url), title, author, (d > 0) ? d : dur);
 	}
 
 	/**
@@ -290,7 +293,7 @@ final class YoutubeAudioResolver {
 			String probe = (segment == null) ? "no segments" : probeRange(segment, c.userAgent, 0);
 			DiagnosticLog.log("MUSIC", "yt hls audio", c.name, "id=" + videoId, "probe=" + probe);
 			if (!probe.startsWith("ok")) return null;
-			return new Stream(c.name, c.userAgent, bestUri, "application/x-mpegURL",
+			return new Stream(c.name, c.userAgent, "hls", bestUri, "application/x-mpegURL",
 					expiresAt(bestUri), title, author, dur);
 		} catch (IOException ex) {
 			DiagnosticLog.log("MUSIC", "yt hls failed", c.name, "id=" + videoId, ex);

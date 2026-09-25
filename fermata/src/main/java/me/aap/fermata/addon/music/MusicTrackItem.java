@@ -16,6 +16,7 @@ import androidx.annotation.Nullable;
 import java.util.HashSet;
 import java.util.Set;
 
+import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.ExtPlayable;
 import me.aap.fermata.media.lib.MediaLib.Item;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
@@ -64,6 +65,14 @@ public class MusicTrackItem extends ExtPlayable {
 	// InnerTube clients whose streams the engines couldn't play for this video (see
 	// invalidateSource()); the resolver tries the others first.
 	private final Set<String> failedClients = new HashSet<>();
+	// Until when this track plays through the hidden web player fallback instead of a direct
+	// audio-only stream -- see isWebFallback().
+	private long webFallbackUntil;
+	private static final long WEB_FALLBACK_TTL = 30 * 60_000L;
+	// When no direct stream could be had for any video, skip straight to the fallback for a while
+	// instead of spending a few seconds of failed requests on every single track.
+	private static long directBlockedUntil;
+	private static final long DIRECT_BLOCKED_TTL = 10 * 60_000L;
 
 	MusicTrackItem(String id, MusicQueue queue, String sourceId, @Nullable PlayableItem source,
 								 @Nullable String title, @Nullable String artist, long durationMs) {
@@ -231,15 +240,64 @@ public class MusicTrackItem extends ExtPlayable {
 
 	@Override
 	public synchronized boolean invalidateSource(Throwable err) {
+		if (videoId == null) return false;
+
+		if (isWebFallback()) {
+			// The fallback itself failed: nothing left to try, report the error.
+			webFallbackUntil = 0;
+			DiagnosticLog.log("MUSIC", "web fallback player failed", "id=" + videoId, err);
+			return false;
+		}
+
 		YoutubeAudioResolver.Stream s = stream;
-		if ((videoId == null) || (s == null)) return false;
+		if (s == null) return false;
 		failedClients.add(s.client);
 		stream = null;
 		boolean retry = failedClients.size() < YoutubeAudioResolver.getClientCount();
-		DiagnosticLog.log("MUSIC", "yt stream failed to play", "client=" + s.client,
-				"id=" + videoId, "retry=" + retry);
+		DiagnosticLog.log("MUSIC", "direct stream failed to play", "client=" + s.client,
+				"format=" + s.format, "id=" + videoId, "retry=" + retry);
+		if (!retry) retry = useWebFallback("every direct stream failed to play");
 		if (retry) startPos = requestedStartPos;
 		return retry;
+	}
+
+	/**
+	 * Whether this YouTube track currently plays through the hidden web player fallback (see
+	 * {@link MusicPlayer.WebAudioEngineFactory}): YouTube's page itself, signed in with the user's own
+	 * session, at its lowest video quality -- used only when no direct audio-only stream can be had.
+	 */
+	public boolean isWebFallback() {
+		return (videoId != null) && (System.currentTimeMillis() < webFallbackUntil);
+	}
+
+	private boolean useWebFallback(String reason) {
+		if (!MusicPlayer.isWebAudioAvailable()) {
+			DiagnosticLog.log("MUSIC", "web fallback unavailable (YouTube addon disabled?)",
+					"id=" + videoId, "reason=" + reason);
+			return false;
+		}
+		webFallbackUntil = System.currentTimeMillis() + WEB_FALLBACK_TTL;
+		DiagnosticLog.log("MUSIC", "method=web-fallback (hidden YouTube page, lowest quality)",
+				"id=" + videoId, "reason=" + reason);
+		return true;
+	}
+
+	/** How this track is being played right now, for the diagnostic log. */
+	String getPlaybackMethod() {
+		if (videoId == null) return "local";
+		if (isWebFallback()) return "web-fallback";
+		YoutubeAudioResolver.Stream s = stream;
+		return (s == null) ? "unresolved" : ("direct/" + s.format + '/' + s.client);
+	}
+
+	@Nullable
+	@Override
+	public MediaEngine getMediaEngine(@Nullable MediaEngine current, MediaEngine.Listener listener) {
+		if (!isWebFallback()) return null;
+		MediaEngine e = MusicPlayer.getWebAudioEngine(current, listener);
+		DiagnosticLog.log("MUSIC", "engine for", "id=" + videoId,
+				(e != null) ? "web-fallback player" : "none (web fallback unavailable)");
+		return e;
 	}
 
 	@Override
@@ -254,6 +312,11 @@ public class MusicTrackItem extends ExtPlayable {
 		if (videoId != null) {
 			YoutubeAudioResolver.Stream s = stream;
 			if ((s != null) && s.isValid()) return completedVoid();
+			if (isWebFallback()) return completedVoid();
+			if ((System.currentTimeMillis() < directBlockedUntil) &&
+					useWebFallback("direct streams were blocked for every video recently")) {
+				return completedVoid();
+			}
 		} else if (source != null) {
 			return completedVoid();
 		}
@@ -278,7 +341,7 @@ public class MusicTrackItem extends ExtPlayable {
 
 	/** Whether {@link #prepareSource()} would have to go to the network for this track. */
 	boolean needsNetworkResolve() {
-		if (videoId == null) return false;
+		if ((videoId == null) || isWebFallback()) return false;
 		YoutubeAudioResolver.Stream s = stream;
 		return (s == null) || !s.isValid();
 	}
@@ -295,12 +358,17 @@ public class MusicTrackItem extends ExtPlayable {
 			if (s.author != null) artist = s.author;
 			if (s.durationMs > 0) durationMs = s.durationMs;
 			setMeta(completed(buildYoutubeMeta(vid)));
+			directBlockedUntil = 0;
+			DiagnosticLog.log("MUSIC", "method=" + getPlaybackMethod(), "id=" + vid);
 			getParent().trackUpdated(this);
 			return (Void) null;
 		}).ifFail(err -> {
 			Log.w(err, "Failed to resolve an audio-only stream for YouTube video ", vid);
 			DiagnosticLog.log("MUSIC", "yt resolve failed", "id=" + vid, err);
-			getParent().trackFailed(this, err);
+			directBlockedUntil = System.currentTimeMillis() + DIRECT_BLOCKED_TTL;
+			if (!useWebFallback("no direct audio-only stream: " + err.getMessage())) {
+				getParent().trackFailed(this, err);
+			}
 			return null;
 		});
 	}

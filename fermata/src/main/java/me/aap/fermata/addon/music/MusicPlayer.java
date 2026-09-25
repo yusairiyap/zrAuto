@@ -6,6 +6,7 @@ import android.content.Context;
 
 import androidx.annotation.Nullable;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -20,6 +21,7 @@ import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.BodyLayout;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.ui.UiUtils;
@@ -40,6 +42,63 @@ public final class MusicPlayer {
 	@Nullable
 	private static String pendingVideoId;
 	private static long pendingVideoPos;
+	@Nullable
+	private static WebAudioEngineFactory webAudioFactory;
+	@Nullable
+	private static MediaEngine webAudioEngine;
+	private static WeakReference<MainActivityDelegate> activity = new WeakReference<>(null);
+	// The activity whose window the current fallback engine's hidden player is attached to.
+	private static WeakReference<MainActivityDelegate> webAudioActivity = new WeakReference<>(null);
+
+	/**
+	 * Creates the fallback engine for YouTube audio: a hidden web player of its own (registered by
+	 * the YouTube addon, which the {@code fermata} module can't reference directly). Used only when
+	 * no direct audio-only stream can be had -- see {@link MusicTrackItem#isWebFallback()}. Entirely
+	 * separate from the YouTube tab's own page and engine, which it never touches.
+	 */
+	public interface WebAudioEngineFactory {
+		MediaEngine create(MainActivityDelegate a, MediaEngine.Listener listener);
+	}
+
+	public static void setWebAudioEngineFactory(@Nullable WebAudioEngineFactory f) {
+		webAudioFactory = f;
+		DiagnosticLog.log("MUSIC", "web fallback player", (f != null) ? "available" : "unavailable");
+	}
+
+	static boolean isWebAudioAvailable() {
+		return (webAudioFactory != null) && (activity.get() != null);
+	}
+
+	static void activityCreated(MainActivityDelegate a) {
+		activity = new WeakReference<>(a);
+	}
+
+	static void activityDestroyed(MainActivityDelegate a) {
+		if (activity.get() == a) activity = new WeakReference<>(null);
+		MediaEngine e = webAudioEngine;
+		if ((e == null) || (webAudioActivity.get() != a)) return;
+		// The hidden player lives in this activity's window: it can't outlive it.
+		DiagnosticLog.log("MUSIC", "web fallback player: its activity is gone, stopping it");
+		MediaSessionCallback cb = a.getMediaSessionCallback();
+		if (cb.getEngine() == e) cb.onStop();
+		else e.close();
+	}
+
+	/** The fallback engine for {@code current}'s replacement -- reused while it's still in use. */
+	@Nullable
+	static MediaEngine getWebAudioEngine(@Nullable MediaEngine current, MediaEngine.Listener l) {
+		if ((current != null) && (current == webAudioEngine)) return current;
+		WebAudioEngineFactory f = webAudioFactory;
+		MainActivityDelegate a = activity.get();
+		if ((f == null) || (a == null)) return null;
+		webAudioEngine = f.create(a, l);
+		webAudioActivity = new WeakReference<>(a);
+		return webAudioEngine;
+	}
+
+	public static void webAudioEngineClosed(MediaEngine e) {
+		if (webAudioEngine == e) webAudioEngine = null;
+	}
 
 	private MusicPlayer() {
 	}
@@ -136,6 +195,8 @@ public final class MusicPlayer {
 
 	/** Plays a queue track -- from the Music tab itself (a queue row, or play with nothing on). */
 	public static void playTrack(MainActivityDelegate a, MusicTrackItem t, long pos) {
+		DiagnosticLog.log("MUSIC", "play", "track=" + t, "id=" + t.getSourceId(),
+				"method=" + t.getPlaybackMethod(), "pos=" + (pos / 1000) + 's');
 		t.setStartPosition(pos);
 		a.getMediaSessionCallback().playItem(t, pos);
 	}
@@ -280,10 +341,12 @@ public final class MusicPlayer {
 			t.prepareSource().main().onSuccess(v -> {
 				if (cb.getEngine() != eng) return;
 				if (t.needsNetworkResolve()) {
-					// Couldn't get one -- the queue's own listener already told the user why; just
-					// leave the video playing.
+					// Couldn't get one, and no fallback either -- the queue's own listener already told
+					// the user why; just leave the video playing.
 					return;
 				}
+				DiagnosticLog.log("MUSIC", "hand-off from the YouTube tab", "id=" + t.getVideoId(),
+						"method=" + t.getPlaybackMethod());
 				eng.getPosition().main().onSuccess(p -> {
 					if (cb.getEngine() != eng) return;
 					eng.handOff();
