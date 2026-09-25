@@ -49,6 +49,8 @@ public class MusicQueue extends ExtRoot {
 	private final Random random = new Random();
 	@Nullable
 	private List<MusicTrackItem> shuffleOrder;
+	// Where the playing track was when it got removed from the queue: "next" carries on from there.
+	private int removedCurrentIdx = -1;
 	private long serial;
 
 	MusicQueue(MediaLib lib) {
@@ -194,7 +196,9 @@ public class MusicQueue extends ExtRoot {
 	public void remove(int idx) {
 		synchronized (this) {
 			if ((idx < 0) || (idx >= tracks.size())) return;
-			tracks.remove(idx);
+			if (tracks.remove(idx).getId().equals(store.getString(KEY_CURRENT, null))) {
+				removedCurrentIdx = idx;
+			}
 			shuffleOrder = null;
 		}
 		changed();
@@ -223,8 +227,19 @@ public class MusicQueue extends ExtRoot {
 		for (Listener l : new ArrayList<>(listeners)) l.onQueueChanged(this);
 	}
 
+	/** Takes over a list's Shuffle and Repeat settings, when the queue is made from that list. */
+	void copyModes(BrowsableItemPrefs from) {
+		BrowsableItemPrefs p = getPrefs();
+		p.setShufflePref(from.getShufflePref());
+		p.setRepeatPref(from.getRepeatPref());
+		p.setRepeatItemPref(null);
+	}
+
 	/** Remembers which track was playing, and where, so the queue can pick up from there later. */
 	void setCurrent(@Nullable MusicTrackItem t, long position) {
+		if ((t != null) && !t.getId().equals(store.getString(KEY_CURRENT, null))) {
+			removedCurrentIdx = -1;
+		}
 		SharedPreferences.Editor e = store.edit();
 		if (t == null) e.remove(KEY_CURRENT);
 		else e.putString(KEY_CURRENT, t.getId());
@@ -308,7 +323,9 @@ public class MusicQueue extends ExtRoot {
 
 			if (idx == -1) {
 				// Removed from the queue while playing: carry on from wherever it used to be.
-				result = next ? order.get(0) : null;
+				int at = (!p.getShufflePref() && (removedCurrentIdx >= 0)) ? removedCurrentIdx : 0;
+				if (next) result = (at < size) ? order.get(at) : (repeat ? order.get(0) : null);
+				else result = ((at > 0) && (at <= size)) ? order.get(at - 1) : null;
 			} else if (next) {
 				result = (idx < size - 1) ? order.get(idx + 1) : (repeat ? order.get(0) : null);
 			} else {

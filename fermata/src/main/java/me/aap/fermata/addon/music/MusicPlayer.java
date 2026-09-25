@@ -247,9 +247,11 @@ public final class MusicPlayer {
 
 	/**
 	 * "Play as music" for whatever is playing right now -- the FAB action and the video control
-	 * panel's Audio menu. The queue becomes the playing item's own list (Favorites, a playlist, its
-	 * folder), unless the queue already has it -- then the queue is kept as it is, so switching to
-	 * video and back doesn't throw away a queue the user put together.
+	 * panel's Audio menu. The queue becomes a copy of the playing item's own list (Favorites, a
+	 * playlist, its folder), in the same order and with its Shuffle/Repeat settings, so playback
+	 * carries on through that list; being a copy, the queue can then be edited freely without
+	 * touching the list itself. Only when the queue was last playing this very item (switched to
+	 * video and back) is it kept as it is, so a queue the user put together isn't thrown away.
 	 */
 	public static void playCurrentAsMusic(MainActivityDelegate a) {
 		MusicQueue q = getQueue(a);
@@ -272,9 +274,9 @@ public final class MusicPlayer {
 		}
 
 		PlayableItem item = qi;
-		MusicTrackItem existing = findInQueue(q, MusicQueue.sourceIdOf(item));
+		MusicTrackItem existing = q.getSavedCurrent();
 
-		if (existing != null) {
+		if ((existing != null) && existing.getSourceId().equals(MusicQueue.sourceIdOf(item))) {
 			open(a);
 			continueAsMusic(a, eng, existing);
 			return;
@@ -290,6 +292,7 @@ public final class MusicPlayer {
 				idx = 0;
 			}
 			MusicTrackItem t = q.replace(l).get(idx);
+			if (!browsing) q.copyModes(item.getParent().getPrefs());
 			open(a);
 			continueAsMusic(a, eng, t);
 		});
@@ -361,16 +364,6 @@ public final class MusicPlayer {
 
 		PlayableItem src = t.getSource();
 		return (src != null) && cur.getLocation().equals(src.getLocation());
-	}
-
-	@Nullable
-	private static MusicTrackItem findInQueue(MusicQueue q, String sourceId) {
-		MusicTrackItem cur = q.getSavedCurrent();
-		if ((cur != null) && sourceId.equals(cur.getSourceId())) return cur;
-		for (MusicTrackItem t : q.getTracks()) {
-			if (sourceId.equals(t.getSourceId())) return t;
-		}
-		return null;
 	}
 
 	private static FutureSupplier<List<PlayableItem>> siblings(PlayableItem i) {
