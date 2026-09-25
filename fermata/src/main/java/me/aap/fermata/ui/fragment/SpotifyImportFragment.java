@@ -1626,7 +1626,9 @@ public class SpotifyImportFragment extends MainActivityFragment {
 			setText(h.detail, detail);
 
 			if (h.thumb != null) {
-				loadImage(h.thumb, (m != null) ? m.thumbnailUrl() : null, R.drawable.audiotrack);
+				// Spotify's album art until a YouTube video is matched (e.g. while just browsing a
+				// playlist from the picker, which doesn't search YouTube at all).
+				loadImage(h.thumb, (m != null) ? m.thumbnailUrl() : t.imageUrl, R.drawable.audiotrack);
 			}
 			if (h.thumbProgress != null) {
 				h.thumbProgress.setVisibility((t.matchState == Track.MATCH_SEARCHING) ?

@@ -148,8 +148,12 @@ public final class SpotifyApi {
 				String name = t.optString("name");
 				if (name.isEmpty()) continue;
 				String artists = artists(t);
-				pl.tracks.add(new Track(name, (artists == null) ? "" : artists,
-						t.optLong("duration_ms", -1)));
+				Track track = new Track(name, (artists == null) ? "" : artists,
+						t.optLong("duration_ms", -1));
+				JSONObject album = t.optJSONObject("album");
+				// Album tracks carry no album object of their own: their art is the album's cover.
+				track.imageUrl = (album != null) ? smallImage(album) : pl.coverUrl;
+				pl.tracks.add(track);
 			}
 
 			url = next(page);
@@ -209,6 +213,28 @@ public final class SpotifyApi {
 		if ((images == null) || (images.length() == 0)) return null;
 		JSONObject img = images.optJSONObject(0); // Spotify lists the largest first.
 		return str(img, "url");
+	}
+
+	/** The smallest image of at least 200px, to keep a long track list light to load. */
+	@Nullable
+	private static String smallImage(JSONObject o) {
+		JSONArray images = o.optJSONArray("images");
+		if ((images == null) || (images.length() == 0)) return null;
+		String url = null;
+		int best = Integer.MAX_VALUE;
+
+		for (int i = 0; i < images.length(); i++) {
+			JSONObject img = images.optJSONObject(i);
+			String u = str(img, "url");
+			if (u == null) continue;
+			int w = img.optInt("width", 0);
+			if ((url == null) || ((w >= 200) && (w < best))) {
+				url = u;
+				if (w >= 200) best = w;
+			}
+		}
+
+		return url;
 	}
 
 	/** A string value, or null if absent, JSON null or empty. */
