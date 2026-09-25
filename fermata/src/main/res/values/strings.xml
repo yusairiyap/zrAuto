@@ -269,6 +269,7 @@
     <string name="favorites_add">Add to favorites</string>
     <string name="favorites_remove">Remove from favorites</string>
     <string name="favorites_added">Added to favorites: %1$s</string>
+    <string name="favorites_removed">Removed from favorites: %1$s</string>
     <string name="favorites_already_added">Already in favorites: %1$s</string>
     <string name="favorites_nothing_playing">Nothing is playing to add to favorites</string>
     <string name="playlist_nothing_playing">Nothing is playing to add to a playlist</string>
@@ -626,7 +627,6 @@
     <string name="music_queue">Music queue</string>
     <string name="play_as_music">Play as music</string>
     <string name="music_queue_add">Add into music queue</string>
-    <string name="fab_use_play_as_music">Use \"Play as music\" as this button\'s action</string>
     <string name="music_up_next">Up next</string>
     <string name="music_queue_short">Queue</string>
     <string name="music_queue_hide">Hide queue</string>
@@ -644,6 +644,7 @@
     <string name="music_repeat_one">Repeat current song</string>
     <string name="music_queue_clear">Clear queue</string>
     <string name="music_switch_to_video">Watch video</string>
+    <string name="music_effects_play_first">Start playing something to adjust its audio effects</string>
     <string name="music_effects_unavailable">Audio effects aren\'t available for this playback</string>
     <plurals name="music_queue_size">
         <item quantity="one">%d song</item>

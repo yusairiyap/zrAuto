@@ -16,7 +16,11 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.log.Log;
 
 /**
@@ -34,12 +38,6 @@ import me.aap.utils.log.Log;
 final class YoutubeAudioResolver {
 	private static final String PLAYER_URL =
 			"https://www.youtube.com/youtubei/v1/player?prettyPrint=false";
-	// Neutral UA for the verification probe: the engines that later stream the URL (MediaPlayer,
-	// ExoPlayer, VLC) don't send the InnerTube client's UA either, so a URL that only works with it
-	// must fail the probe too.
-	private static final String PROBE_UA =
-			"Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) " +
-					"Chrome/128.0.0.0 Mobile Safari/537.36";
 	private static final int TIMEOUT = 15000;
 	private static final long DEFAULT_TTL = 5 * 3600_000L;
 
@@ -60,6 +58,10 @@ final class YoutubeAudioResolver {
 	}
 
 	static final class Stream {
+		/** The InnerTube client the URL was issued to -- see {@link #resolve(String, Set)}. */
+		final String client;
+		/** That client's User-Agent: the stream is fetched with the same one it was issued to. */
+		final String userAgent;
 		final String url;
 		final String mimeType;
 		final long expiresAt;
@@ -69,8 +71,10 @@ final class YoutubeAudioResolver {
 		final String author;
 		final long durationMs;
 
-		Stream(String url, String mimeType, long expiresAt, @Nullable String title,
-					 @Nullable String author, long durationMs) {
+		Stream(String client, String userAgent, String url, String mimeType, long expiresAt,
+					 @Nullable String title, @Nullable String author, long durationMs) {
+			this.client = client;
+			this.userAgent = userAgent;
 			this.url = url;
 			this.mimeType = mimeType;
 			this.expiresAt = expiresAt;
@@ -85,18 +89,32 @@ final class YoutubeAudioResolver {
 		}
 	}
 
-	static Stream resolve(String videoId) throws IOException {
-		IOException last = null;
+	static int getClientCount() {
+		return CLIENTS.length;
+	}
 
-		for (Client c : CLIENTS) {
+	/**
+	 * @param skipClients clients whose streams already failed to play for this video (an engine
+	 *                    error, see {@code MusicTrackItem#invalidateSource}) -- tried last, not never,
+	 *                    in case the failure was a one-off.
+	 */
+	static Stream resolve(String videoId, Set<String> skipClients) throws IOException {
+		IOException last = null;
+		List<Client> order = new ArrayList<>(CLIENTS.length);
+		for (Client c : CLIENTS) if (!skipClients.contains(c.name)) order.add(c);
+		for (Client c : CLIENTS) if (skipClients.contains(c.name)) order.add(c);
+
+		for (Client c : order) {
 			try {
 				Stream s = resolve(videoId, c);
 				if (s != null) return s;
 			} catch (IOException ex) {
 				Log.d(ex, "YouTube audio: client ", c.name, " failed for ", videoId);
+				DiagnosticLog.log("MUSIC", "yt client failed", c.name, "id=" + videoId, ex);
 				last = ex;
 			} catch (JSONException ex) {
 				Log.d(ex, "YouTube audio: unexpected response from client ", c.name);
+				DiagnosticLog.log("MUSIC", "yt bad response", c.name, "id=" + videoId, ex);
 				last = new IOException("Unexpected YouTube response", ex);
 			}
 		}
@@ -134,14 +152,18 @@ final class YoutubeAudioResolver {
 		String st = (status == null) ? null : status.optString("status");
 
 		if (!"OK".equals(st)) {
-			Log.d("YouTube audio: client ", c.name, " status ", st, ": ",
-					(status == null) ? null : status.optString("reason"));
+			String reason = (status == null) ? null : status.optString("reason");
+			Log.d("YouTube audio: client ", c.name, " status ", st, ": ", reason);
+			DiagnosticLog.log("MUSIC", "yt status", c.name, "id=" + videoId, st, reason);
 			return null;
 		}
 
 		JSONObject sd = r.optJSONObject("streamingData");
 		JSONArray formats = (sd == null) ? null : sd.optJSONArray("adaptiveFormats");
-		if (formats == null) return null;
+		if (formats == null) {
+			DiagnosticLog.log("MUSIC", "yt no formats", c.name, "id=" + videoId);
+			return null;
+		}
 
 		JSONObject best = null;
 		long bestScore = Long.MIN_VALUE;
@@ -170,11 +192,20 @@ final class YoutubeAudioResolver {
 			}
 		}
 
-		if (best == null) return null;
+		if (best == null) {
+			DiagnosticLog.log("MUSIC", "yt no plain audio url", c.name, "id=" + videoId,
+					"formats=" + formats.length());
+			return null;
+		}
 
 		String url = best.getString("url");
-		if (!probe(url)) {
-			Log.d("YouTube audio: stream from client ", c.name, " was refused, trying the next one");
+		String probe = probe(url, c.userAgent, best.optLong("contentLength", 0));
+		DiagnosticLog.log("MUSIC", "yt stream", c.name, "id=" + videoId,
+				"itag=" + best.optInt("itag"), "mime=" + best.optString("mimeType"),
+				"bitrate=" + best.optLong("bitrate"), "probe=" + probe);
+		if (!probe.startsWith("ok")) {
+			Log.d("YouTube audio: stream from client ", c.name, " was refused (", probe,
+					"), trying the next one");
 			return null;
 		}
 
@@ -184,7 +215,8 @@ final class YoutubeAudioResolver {
 		long dur = best.optLong("approxDurationMs", 0);
 		if ((dur <= 0) && (details != null)) dur = details.optLong("lengthSeconds", 0) * 1000;
 
-		return new Stream(url, best.optString("mimeType"), expiresAt(url), title, author, dur);
+		return new Stream(c.name, c.userAgent, url, best.optString("mimeType"), expiresAt(url), title,
+				author, dur);
 	}
 
 	private static long expiresAt(String url) {
@@ -237,8 +269,20 @@ final class YoutubeAudioResolver {
 		}
 	}
 
-	/** Fetches the first two bytes of the stream -- enough to know the servers will serve it. */
-	private static boolean probe(String url) {
+	/**
+	 * Fetches two bytes at the start of the stream and two in the middle, with the same User-Agent
+	 * the engines will use -- some refusals only kick in past the first chunk. Returns "ok ..." or
+	 * the reason it failed, for the diagnostic log.
+	 */
+	private static String probe(String url, String userAgent, long length) {
+		String first = probeRange(url, userAgent, 0);
+		if (!first.startsWith("ok") || (length < 1_000_000)) return first;
+		String mid = probeRange(url, userAgent, length / 2);
+		return mid.startsWith("ok") ? ("ok " + first.substring(2).trim() + ',' +
+				mid.substring(2).trim()) : ("mid " + mid);
+	}
+
+	private static String probeRange(String url, String userAgent, long from) {
 		HttpURLConnection con = null;
 
 		try {
@@ -246,13 +290,13 @@ final class YoutubeAudioResolver {
 			con.setConnectTimeout(TIMEOUT);
 			con.setReadTimeout(TIMEOUT);
 			con.setInstanceFollowRedirects(true);
-			con.setRequestProperty("User-Agent", PROBE_UA);
-			con.setRequestProperty("Range", "bytes=0-1");
+			con.setRequestProperty("User-Agent", userAgent);
+			con.setRequestProperty("Range", "bytes=" + from + '-' + (from + 1));
 			int code = con.getResponseCode();
-			return (code == 200) || (code == 206);
+			return ((code == 200) || (code == 206)) ? ("ok " + code) : ("http " + code);
 		} catch (IOException ex) {
 			Log.d(ex, "YouTube audio: probe failed");
-			return false;
+			return "error " + ex;
 		} finally {
 			if (con != null) con.disconnect();
 		}

@@ -1111,6 +1111,16 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		}
 
 		Log.w(ex, msg);
+		DiagnosticLog.log("ENGINE", "error", engine.getClass().getSimpleName(), "item=" + i,
+				"cause=" + describe(ex), "location=" + ((i == null) ? null : safeHost(i)));
+
+		// The item's source itself was rejected (e.g. an expired/refused stream URL): let it fetch a
+		// fresh one and play again, rather than trying another engine on the same dead URL.
+		if ((i != null) && i.invalidateSource(ex)) {
+			DiagnosticLog.log("ENGINE", "retrying with a fresh source", "item=" + i);
+			playItem(i, -1);
+			return;
+		}
 
 		if (tryAnotherEngine && (engine.getSource() != null)) {
 			this.engine = getEngineManager().createAnotherEngine(engine, this);
@@ -1130,6 +1140,27 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 				.setErrorMessage(PlaybackStateCompat.ERROR_CODE_UNKNOWN_ERROR, msg).build();
 		setPlaybackState(state);
 		onStop();
+	}
+
+	/** The whole cause chain, for the diagnostic log -- the top-level message is often empty. */
+	private static String describe(Throwable ex) {
+		StringBuilder sb = new StringBuilder();
+		for (Throwable t = ex; (t != null) && (sb.length() < 600); t = t.getCause()) {
+			if (sb.length() != 0) sb.append(" <- ");
+			sb.append(t.getClass().getSimpleName()).append(": ").append(t.getMessage());
+			if (t.getCause() == t) break;
+		}
+		return sb.toString();
+	}
+
+	/** Scheme and host of the item's location only -- stream URLs carry long-lived tokens. */
+	private static String safeHost(PlayableItem i) {
+		try {
+			Uri u = i.getLocation();
+			return u.getScheme() + "://" + u.getHost();
+		} catch (Throwable ex) {
+			return String.valueOf(ex);
+		}
 	}
 
 	@Override

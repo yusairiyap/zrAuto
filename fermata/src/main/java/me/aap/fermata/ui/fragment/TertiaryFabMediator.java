@@ -93,6 +93,13 @@ public final class TertiaryFabMediator implements FloatingButton.Mediator,
 		return R.drawable.play_pause;
 	}
 
+	/** "Add to favorites" reads "Remove from favorites" when it would remove (it toggles). */
+	private static int labelFor(MainActivityDelegate a, Action action) {
+		if ((action == Action.FAVORITE_ADD) && Action.isCurrentFavorite(a))
+			return R.string.favorites_remove;
+		return action.getName();
+	}
+
 	@Override
 	public void onClick(View v) {
 		MainActivityDelegate a = MainActivityDelegate.get(v.getContext());
@@ -117,18 +124,8 @@ public final class TertiaryFabMediator implements FloatingButton.Mediator,
 			for (int i = 0; i < OFFERED_ACTIONS.size(); i++) {
 				Action action = OFFERED_ACTIONS.get(i);
 				if ((action == Action.PLAY_AS_MUSIC) && !MusicPlayer.isEnabled()) continue;
-				b.addItem(UiUtils.getArrayItemId(i), iconFor(a, action), action.getName()).setData(action);
-			}
-			// One tap to make "Play as music" this button's own action (e.g. while a video plays
-			// fullscreen), instead of digging through the FAB settings for it.
-			if (MusicPlayer.isEnabled() &&
-					(Action.get(a.getPrefs().getIntPref(MainActivityPrefs.FAB3_ACTION)) != Action.PLAY_AS_MUSIC)) {
-				b.addItem(R.id.fab_use_play_as_music, R.drawable.music, R.string.fab_use_play_as_music)
-						.setHandler(item -> {
-							a.getPrefs().applyIntPref(MainActivityPrefs.FAB3_ACTION, Action.PLAY_AS_MUSIC.ordinal());
-							updateIcon((FloatingButton) v);
-							return true;
-						});
+				b.addItem(UiUtils.getArrayItemId(i), iconFor(a, action), labelFor(a, action))
+						.setData(action);
 			}
 			b.addItem(R.id.dim_settings, R.drawable.settings, R.string.dim_settings).setHandler(item -> {
 				a.exitVideoMode();

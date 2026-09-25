@@ -431,6 +431,16 @@ public interface MediaLib {
 		default boolean isAudioOnlyPlayback() {
 			return false;
 		}
+
+		/**
+		 * The engine failed to play this item: if the failure may be down to the source itself (a
+		 * stream URL the server refused), forget it and return true, so the next
+		 * {@link #prepareSource()} fetches a different one and playback is retried; false (the
+		 * default) for the usual handling -- trying another engine, then reporting the error.
+		 */
+		default boolean invalidateSource(Throwable err) {
+			return false;
+		}
 	}
 
 	interface StreamItem extends PlayableItem, BrowsableItem {

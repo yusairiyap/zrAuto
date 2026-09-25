@@ -13,10 +13,14 @@ import android.support.v4.media.MediaMetadataCompat;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.util.HashSet;
+import java.util.Set;
+
 import me.aap.fermata.media.lib.ExtPlayable;
 import me.aap.fermata.media.lib.MediaLib.Item;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.BrowsableItemPrefs;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.app.App;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.function.CheckedSupplier;
@@ -55,6 +59,11 @@ public class MusicTrackItem extends ExtPlayable {
 	private String artist;
 	private long durationMs;
 	private long startPos;
+	// The start position last asked for, so a retry after a refused stream resumes from there.
+	private long requestedStartPos;
+	// InnerTube clients whose streams the engines couldn't play for this video (see
+	// invalidateSource()); the resolver tries the others first.
+	private final Set<String> failedClients = new HashSet<>();
 
 	MusicTrackItem(String id, MusicQueue queue, String sourceId, @Nullable PlayableItem source,
 								 @Nullable String title, @Nullable String artist, long durationMs) {
@@ -103,6 +112,18 @@ public class MusicTrackItem extends ExtPlayable {
 		return source;
 	}
 
+	/**
+	 * The library item "Add to favorites" should act on for this track: the song it plays, never
+	 * this queue entry itself (which only exists in the queue). Null if that isn't resolvable yet
+	 * (a YouTube video with the YouTube addon disabled).
+	 */
+	@Nullable
+	public PlayableItem getFavoritableItem() {
+		if (videoId == null) return source;
+		Item i = getLib().getItem(YT_PREFIX + videoId).peek();
+		return (i instanceof PlayableItem) ? (PlayableItem) i : null;
+	}
+
 	/** Whether switching this track to video playback means anything (see MusicPlayer). */
 	public boolean hasVideo() {
 		if (videoId != null) return true;
@@ -136,7 +157,7 @@ public class MusicTrackItem extends ExtPlayable {
 	 * {@code getLastPlayedPosition()}, i.e. {@link #getPositionPref()} below).
 	 */
 	void setStartPosition(long pos) {
-		startPos = Math.max(0, pos);
+		startPos = requestedStartPos = Math.max(0, pos);
 	}
 
 	@Override
@@ -200,8 +221,25 @@ public class MusicTrackItem extends ExtPlayable {
 	@Nullable
 	@Override
 	public String getUserAgent() {
+		if (videoId != null) {
+			YoutubeAudioResolver.Stream s = stream;
+			return (s != null) ? s.userAgent : null;
+		}
 		PlayableItem src = source;
 		return (src != null) ? src.getUserAgent() : null;
+	}
+
+	@Override
+	public synchronized boolean invalidateSource(Throwable err) {
+		YoutubeAudioResolver.Stream s = stream;
+		if ((videoId == null) || (s == null)) return false;
+		failedClients.add(s.client);
+		stream = null;
+		boolean retry = failedClients.size() < YoutubeAudioResolver.getClientCount();
+		DiagnosticLog.log("MUSIC", "yt stream failed to play", "client=" + s.client,
+				"id=" + videoId, "retry=" + retry);
+		if (retry) startPos = requestedStartPos;
+		return retry;
 	}
 
 	@Override
@@ -246,8 +284,10 @@ public class MusicTrackItem extends ExtPlayable {
 	}
 
 	private FutureSupplier<Void> resolveYoutube(String vid) {
+		Set<String> skip = new HashSet<>(failedClients);
+		DiagnosticLog.log("MUSIC", "yt resolving", "id=" + vid, "skip=" + skip);
 		CheckedSupplier<YoutubeAudioResolver.Stream, Throwable> task =
-				() -> YoutubeAudioResolver.resolve(vid);
+				() -> YoutubeAudioResolver.resolve(vid, skip);
 		FutureSupplier<YoutubeAudioResolver.Stream> f = App.get().execute(task);
 		return f.main().map(s -> {
 			stream = s;
@@ -259,6 +299,7 @@ public class MusicTrackItem extends ExtPlayable {
 			return (Void) null;
 		}).ifFail(err -> {
 			Log.w(err, "Failed to resolve an audio-only stream for YouTube video ", vid);
+			DiagnosticLog.log("MUSIC", "yt resolve failed", "id=" + vid, err);
 			getParent().trackFailed(this, err);
 			return null;
 		});

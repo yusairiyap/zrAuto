@@ -62,6 +62,7 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.ui.view.InfoOverlayView;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.text.TextUtils;
 import me.aap.utils.ui.UiUtils;
@@ -232,7 +233,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 		InfoOverlayView o = new InfoOverlayView(requireContext());
 		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
-				ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.END | Gravity.TOP);
+				ViewGroup.LayoutParams.WRAP_CONTENT,
+				(isLandscape() ? Gravity.END : Gravity.CENTER_HORIZONTAL) | Gravity.TOP);
 		holder.addView(o, lp);
 		o.setSize(0.55f * Math.max(0.5f, p.getInfoOverlaySizePref()));
 		o.setItems(clock, p.getInfoOverlayShowClockIconPref(), battery,
@@ -394,7 +396,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		MediaLib lib = getActivityDelegate().getLib();
 		lib.getBitmap(uri).main().onCompletion((bm, err) -> {
 			if (shownItem != i) return;
-			setArt(bm, uri);
+			setArt(isYoutube(i) ? cropLetterbox(bm) : bm, uri);
 		});
 	}
 
@@ -412,6 +414,29 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		crossfade(art, new BitmapDrawable(getResources(), bm));
 		Bitmap blurred = blur(bm);
 		crossfade(bg, (blurred != null) ? new BitmapDrawable(getResources(), blurred) : null);
+	}
+
+	private static boolean isYoutube(PlayableItem i) {
+		return (i instanceof MusicTrackItem t) && (t.getVideoId() != null);
+	}
+
+	/**
+	 * YouTube's fallback thumbnail (hqdefault.jpg, used when a video has no maxresdefault.jpg) is a
+	 * 4:3 canvas with the 16:9 frame letterboxed inside it: cut the black bars off, so the cover
+	 * card doesn't show them.
+	 */
+	@Nullable
+	private static Bitmap cropLetterbox(@Nullable Bitmap bm) {
+		if (bm == null) return null;
+		int w = bm.getWidth();
+		int h = bm.getHeight();
+		if ((w <= 0) || (w * 3 != h * 4)) return bm;
+		int ch = w * 9 / 16;
+		try {
+			return Bitmap.createBitmap(bm, 0, (h - ch) / 2, w, ch);
+		} catch (Throwable ex) {
+			return bm;
+		}
 	}
 
 	private static void crossfade(ImageView v, @Nullable Drawable to) {
@@ -682,14 +707,16 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private void onEffects() {
 		MainActivityDelegate a = getActivityDelegate();
 		MediaEngine eng = a.getMediaSessionCallback().getEngine();
+		PlayableItem src = (eng == null) ? null : eng.getSource();
 
-		if ((eng != null) && eng.supportsAudioEffects()) {
-			a.showFragment(R.id.audio_effects_fragment);
-		} else if (eng == null) {
-			// Nothing playing yet: the effects screen still edits the saved settings.
+		// The effects screen works on the live engine's effects: with nothing playing (or an engine
+		// without effects support) it would just close itself again straight away.
+		if ((src != null) && eng.supportsAudioEffects()) {
 			a.showFragment(R.id.audio_effects_fragment);
 		} else {
-			UiUtils.showToast(requireContext(), R.string.music_effects_unavailable);
+			DiagnosticLog.log("MUSIC", "effects unavailable", "engine=" + eng, "item=" + src);
+			UiUtils.showToast(requireContext(), (src == null) ? R.string.music_effects_play_first :
+					R.string.music_effects_unavailable);
 		}
 	}
 
@@ -932,7 +959,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 			if (uri != null) {
 				lib.getBitmap(uri, true, true).main().onSuccess(bm -> {
-					if ((track == t) && (bm != null)) art.setImageBitmap(bm);
+					if ((track == t) && (bm != null)) art.setImageBitmap(cropLetterbox(bm));
 				});
 			} else {
 				t.getMediaData().main().onSuccess(md -> {

@@ -101,6 +101,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	private final Timeline.Period period = new Timeline.Period();
 	private final PendingLoadAudioProcessor audioProc = new PendingLoadAudioProcessor(accessor);
 	private final ExoPlayer player;
+	private final Context ctx;
 	@Nullable
 	private AudioEffects audioEffects;
 	private volatile PlayableItem source;
@@ -111,6 +112,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 
 	public ExoPlayerEngine(Context ctx, Listener listener) {
 		super(listener);
+		this.ctx = ctx;
 		DefaultDataSource.Factory dsFactory = new DefaultDataSource.Factory(ctx, httpDsFactory);
 		MediaSource.Factory msFactory =
 				new DefaultMediaSourceFactory(ctx).setDataSourceFactory(dsFactory);
@@ -173,7 +175,19 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		MediaItem m = MediaItem.fromUri(uri);
 		isHls = Util.inferContentType(uri) == C.CONTENT_TYPE_HLS;
 		setVideoTrackDisabled(source.isAudioOnlyPlayback());
-		player.setMediaItem(m);
+		String ua = source.getUserAgent();
+
+		if (source.isAudioOnlyPlayback() && (ua != null) && "https".equals(uri.getScheme())) {
+			// The Music tab's YouTube streams are issued to a specific client and fetched with that
+			// client's own User-Agent, like the other engines already do via getUserAgent().
+			DataSource.Factory http = new DefaultHttpDataSource.Factory().setUserAgent(ua)
+					.setAllowCrossProtocolRedirects(true);
+			player.setMediaSource(new DefaultMediaSourceFactory(ctx)
+					.setDataSourceFactory(new DefaultDataSource.Factory(ctx, http)).createMediaSource(m));
+		} else {
+			player.setMediaItem(m);
+		}
+
 		player.prepare();
 	}
 
