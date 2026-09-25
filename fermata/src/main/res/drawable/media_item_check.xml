@@ -1,9 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_checked="true">
-        <inset android:drawable="@drawable/check_box" android:inset="8dp" />
+        <layer-list>
+            <item android:drawable="@drawable/spotify_import_badge_bg" />
+            <item
+                android:bottom="8dp"
+                android:drawable="@drawable/media_item_check_box_white"
+                android:left="8dp"
+                android:right="8dp"
+                android:top="8dp" />
+        </layer-list>
     </item>
     <item>
-        <inset android:drawable="@drawable/check_box_blank" android:inset="8dp" />
+        <layer-list>
+            <item android:drawable="@drawable/spotify_import_badge_bg" />
+            <item
+                android:bottom="8dp"
+                android:drawable="@drawable/media_item_check_box_blank_white"
+                android:left="8dp"
+                android:right="8dp"
+                android:top="8dp" />
+        </layer-list>
     </item>
 </selector>

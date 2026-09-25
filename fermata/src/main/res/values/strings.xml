@@ -360,6 +360,8 @@
     <string name="spotify_matching_stopped">Matching stopped: %1$d of %2$d tracks matched. Import takes only the matched ones.</string>
     <string name="spotify_matching_bg">Matching YouTube videos: %1$d of %2$d</string>
     <string name="youtube_alternatives">Search alternative videos</string>
+    <string name="youtube_refresh_thumbnail">Refresh thumbnail</string>
+    <string name="youtube_refreshing_thumbnail">Reloading the thumbnail…</string>
     <string name="youtube_alternatives_in">In: %1$s</string>
     <string name="youtube_alternatives_hint">Tap a video to replace this one in the same position. Tap ▶ (or long-press) to preview it first.</string>
     <string name="youtube_alternatives_no_title">This video\'s title isn\'t known yet. Play it once so its title is saved, then search again.</string>

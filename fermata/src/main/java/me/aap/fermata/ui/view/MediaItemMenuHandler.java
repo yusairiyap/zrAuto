@@ -30,6 +30,7 @@ import java.util.List;
 
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
+import me.aap.fermata.media.engine.BitmapCache;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.engine.MediaEngineManager;
 import me.aap.fermata.media.lib.FileItem;
@@ -165,6 +166,8 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 
 			if ((view != null) && YoutubeAlternativesFragment.isSupported(pi)) {
 				b.addItem(R.id.youtube_alternatives, R.drawable.search, R.string.youtube_alternatives);
+				b.addItem(R.id.youtube_refresh_thumbnail, R.drawable.refresh,
+						R.string.youtube_refresh_thumbnail);
 			}
 
 			if (!(item instanceof StreamItem) && !(item instanceof ArchiveItem)) {
@@ -546,6 +549,8 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 		} else if (id == R.id.playlist_remove) {
 			Playlist p = i.getData();
 			p.getParent().removeItems(Collections.singletonList(p));
+		} else if (id == R.id.youtube_refresh_thumbnail) {
+			refreshYoutubeThumbnail((PlayableItem) item);
 		} else if (id == R.id.youtube_alternatives) {
 			YoutubeAlternativesFragment.open(getMainActivity(), (PlayableItem) item);
 		} else if (id == R.id.playlist_rename) {
@@ -645,6 +650,23 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 
 	private Context getContext() {
 		return getMenu().getContext();
+	}
+
+	/**
+	 * Drops every cached copy of a YouTube video's thumbnail (both sizes) and reloads it -- e.g.
+	 * after a failed or placeholder download was cached. See BitmapCache#invalidate.
+	 */
+	private void refreshYoutubeThumbnail(PlayableItem pi) {
+		String origId = pi.getOrigId();
+		if ((origId == null) || !origId.startsWith("youtube:")) return;
+		String base = "https://img.youtube.com/vi/" + origId.substring("youtube:".length()) + '/';
+		Context ctx = getContext();
+		BitmapCache bc = FermataApplication.get().getBitmapCache();
+		bc.invalidate(ctx, base + "maxresdefault.jpg");
+		bc.invalidate(ctx, base + "hqdefault.jpg");
+		pi.updateTitles(); // Drops the cached description, so the icon is looked up again.
+		if (view != null) view.refresh();
+		UiUtils.showToast(ctx, R.string.youtube_refreshing_thumbnail);
 	}
 
 	private void renamePlaylist(Playlist pl) {
