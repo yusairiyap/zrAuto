@@ -145,6 +145,7 @@ import me.aap.fermata.ui.fragment.PlaylistsFragment;
 import me.aap.fermata.ui.fragment.SettingsFragment;
 import me.aap.fermata.ui.fragment.SpotifyImportFragment;
 import me.aap.fermata.ui.fragment.SubtitlesFragment;
+import me.aap.fermata.ui.fragment.YoutubeAlternativesFragment;
 import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.ui.view.SecondaryFloatingButton;
@@ -1178,6 +1179,8 @@ public class MainActivityDelegate extends ActivityDelegate
 			return new SubtitlesFragment();
 		} else if (id == R.id.spotify_import_fragment) {
 			return new SpotifyImportFragment();
+		} else if (id == R.id.youtube_alternatives_fragment) {
+			return new YoutubeAlternativesFragment();
 		} else if (id == R.id.diagnostic_log_fragment) {
 			return new DiagnosticLogFragment();
 		}

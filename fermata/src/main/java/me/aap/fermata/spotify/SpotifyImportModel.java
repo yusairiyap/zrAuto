@@ -98,6 +98,12 @@ public final class SpotifyImportModel {
 		@Nullable
 		public String error;
 		public String name = "";
+		/**
+		 * Part of the import. False for a playlist only opened from the "My Spotify playlists"
+		 * picker to look at its tracks: those aren't matched against YouTube or imported until the
+		 * user actually adds it.
+		 */
+		public boolean included = true;
 		/** Renamed by the user before importing: keep that name instead of Spotify's. */
 		public boolean renamed;
 		@Nullable
@@ -129,7 +135,7 @@ public final class SpotifyImportModel {
 		}
 
 		public boolean hasSelection() {
-			if (state != STATE_LOADED) return false;
+			if (!included || (state != STATE_LOADED)) return false;
 			for (Track t : tracks) if (t.selected) return true;
 			return false;
 		}

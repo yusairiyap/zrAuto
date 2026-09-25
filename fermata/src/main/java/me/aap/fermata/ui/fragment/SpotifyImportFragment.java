@@ -463,7 +463,16 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	}
 
 	private void addPlaylist(String ref, String name, @Nullable String coverUrl) {
-		if (isAdded(ref)) return;
+		Playlist existing = findPlaylist(ref);
+
+		if (existing != null) {
+			if (!existing.included) {
+				existing.included = true;
+				ensureMatcher();
+			}
+			return;
+		}
+
 		Playlist pl = new Playlist(ref);
 		pl.name = name;
 		pl.coverUrl = coverUrl;
@@ -471,11 +480,20 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		fetch(pl);
 	}
 
+	/** Part of the import (not just opened from the picker to look at). */
 	private boolean isAdded(String ref) {
-		for (Playlist p : playlists) {
-			if (p.ref.equals(ref)) return true;
-		}
-		return false;
+		Playlist p = findPlaylist(ref);
+		return (p != null) && p.included;
+	}
+
+	/** Include a playlist opened from the picker, from its own header. */
+	private void includeCurrent() {
+		Playlist pl = current;
+		if ((pl == null) || pl.included) return;
+		pl.included = true;
+		pickerSelected.remove(pl.ref);
+		ensureMatcher();
+		rebuild();
 	}
 
 	/**
@@ -559,6 +577,8 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		if (picker == null) return;
 		picker = null;
 		pickerSelected.clear();
+		// Playlists only opened to look at, never added, aren't part of the import.
+		playlists.removeIf(p -> !p.included);
 		rebuild();
 		getActivityDelegate().fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 	}
@@ -576,8 +596,8 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		if (importing) return;
 		Playlist added = findPlaylist(p.ref);
 
-		if (added != null) {
-			// Unticking a playlist that was already opened/added takes it off the import list.
+		if ((added != null) && added.included) {
+			// Unticking a playlist that was already added takes it off the import list.
 			playlists.remove(added);
 		} else if (!pickerSelected.remove(p.ref)) {
 			pickerSelected.add(p.ref);
@@ -592,10 +612,19 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	 */
 	private void openPicked(SpotifyApi.PlaylistInfo p) {
 		if (importing) return;
-		pickerSelected.remove(p.ref);
-		addPlaylist(p.ref, p.name, p.coverUrl);
 		Playlist pl = findPlaylist(p.ref);
-		if (pl != null) openPlaylist(pl);
+
+		if (pl == null) {
+			// Loads just the track list; no YouTube matching until the playlist is added.
+			pl = new Playlist(p.ref);
+			pl.name = p.name;
+			pl.coverUrl = p.coverUrl;
+			pl.included = false;
+			playlists.add(pl);
+			fetch(pl);
+		}
+
+		openPlaylist(pl);
 	}
 
 	@Nullable
@@ -720,8 +749,11 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	 * Playlists tab's menu), falling back to any app that can open a YouTube link.
 	 */
 	private void preview(Video v) {
-		MainActivityDelegate a = getActivityDelegate();
-		Context ctx = requireContext();
+		previewVideo(getActivityDelegate(), v);
+	}
+
+	static void previewVideo(MainActivityDelegate a, Video v) {
+		Context ctx = a.getContext();
 
 		AddonManager.get().getOrInstallAddon(VideoTitleCache.YOUTUBE_ADDON_CLASS).main()
 				.onCompletion((addon, err) -> {
@@ -775,7 +807,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 
 	private boolean hasPendingTrack() {
 		for (Playlist pl : playlists) {
-			if (pl.state != Playlist.STATE_LOADED) continue;
+			if (!pl.included || (pl.state != Playlist.STATE_LOADED)) continue;
 			for (Track t : pl.tracks) {
 				if ((t.match == null) && (t.matchState == Track.MATCH_NONE)) return true;
 			}
@@ -787,11 +819,12 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	@Nullable
 	private Track takeNextTrack() {
 		if (destroyed || stopAutoMatch || matchingPaused) return null;
-		Track t = (current != null) ? nextPending(current) : null;
+		Track t = ((current != null) && current.included) ? nextPending(current) : null;
 
 		if (t == null) {
 			for (Playlist pl : playlists) {
-				if ((pl.state == Playlist.STATE_LOADED) && ((t = nextPending(pl)) != null)) break;
+				if (pl.included && (pl.state == Playlist.STATE_LOADED) &&
+						((t = nextPending(pl)) != null)) break;
 			}
 		}
 
@@ -1084,7 +1117,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 			current.setAllSelected(!current.isAllSelected());
 		} else {
 			boolean all = isEverythingSelected();
-			for (Playlist pl : playlists) pl.setAllSelected(!all);
+			for (Playlist pl : playlists) if (pl.included) pl.setAllSelected(!all);
 		}
 
 		rebuild();
@@ -1099,7 +1132,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	private boolean isEverythingSelected() {
 		boolean any = false;
 		for (Playlist pl : playlists) {
-			if (pl.state != Playlist.STATE_LOADED) continue;
+			if (!pl.included || (pl.state != Playlist.STATE_LOADED)) continue;
 			any = true;
 			if (!pl.isAllSelected()) return false;
 		}
@@ -1109,7 +1142,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	private int getTotalSelected() {
 		int n = 0;
 		for (Playlist pl : playlists) {
-			if (pl.state == Playlist.STATE_LOADED) n += pl.getSelectedCount();
+			if (pl.included && (pl.state == Playlist.STATE_LOADED)) n += pl.getSelectedCount();
 		}
 		return n;
 	}
@@ -1119,7 +1152,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		if (!matchingPaused) return getTotalSelected();
 		int n = 0;
 		for (Playlist pl : playlists) {
-			if (pl.state != Playlist.STATE_LOADED) continue;
+			if (!pl.included || (pl.state != Playlist.STATE_LOADED)) continue;
 			for (Track t : pl.tracks) {
 				if (t.selected && ((t.match != null) ||
 						((t.alternatives != null) && !t.alternatives.isEmpty()))) n++;
@@ -1161,7 +1194,9 @@ public class SpotifyImportFragment extends MainActivityFragment {
 			for (SpotifyApi.PlaylistInfo p : picker) rows.add(new Row(TYPE_PICK, null, null, null, p));
 		} else if (current == null) {
 			if (playlists.isEmpty()) rows.add(new Row(TYPE_EMPTY, null, null, null, null));
-			for (Playlist pl : playlists) rows.add(new Row(TYPE_PLAYLIST, pl, null, null, null));
+			for (Playlist pl : playlists) {
+				if (pl.included) rows.add(new Row(TYPE_PLAYLIST, pl, null, null, null));
+			}
 		} else {
 			for (Track t : current.tracks) {
 				rows.add(new Row(TYPE_TRACK, current, t, null, null));
@@ -1444,7 +1479,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 				myPlaylists.setVisibility(View.GONE);
 			} else {
 				int loaded = 0;
-				for (Playlist pl : playlists) if (pl.state == Playlist.STATE_LOADED) loaded++;
+				for (Playlist pl : playlists) if (pl.included && (pl.state == Playlist.STATE_LOADED)) loaded++;
 				title.setText(R.string.spotify_import);
 				summary.setText(getString(R.string.spotify_import_summary, loaded, total));
 				note.setVisibility(View.VISIBLE);
@@ -1462,7 +1497,14 @@ public class SpotifyImportFragment extends MainActivityFragment {
 			addLink.setOnClickListener(b -> promptForLinks());
 			myPlaylists.setOnClickListener(b -> addPlaylists());
 
-			if (importing) {
+			if ((current != null) && !current.included) {
+				progressGroup.setVisibility(View.GONE);
+				note.setVisibility(View.VISIBLE);
+				note.setText(R.string.spotify_browse_note);
+				importBtn.setText(R.string.spotify_add_this_playlist);
+				importBtn.setEnabled(!importing && (current.state == Playlist.STATE_LOADED));
+				importBtn.setOnClickListener(b -> includeCurrent());
+			} else if (importing) {
 				progressGroup.setVisibility(View.VISIBLE);
 				progress.setIndeterminate(saving || (progressTotal == 0));
 				progress.setMax(Math.max(1, progressTotal));
@@ -1487,7 +1529,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 			int all = 0;
 			int done = 0;
 			for (Playlist pl : playlists) {
-				if (pl.state != Playlist.STATE_LOADED) continue;
+				if (!pl.included || (pl.state != Playlist.STATE_LOADED)) continue;
 				all += pl.tracks.size();
 				for (Track t : pl.tracks) if (t.matchState != Track.MATCH_NONE &&
 						t.matchState != Track.MATCH_SEARCHING) done++;
@@ -1636,16 +1678,16 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		private void bindPick(Holder h, SpotifyApi.PlaylistInfo p) {
 			Context ctx = h.itemView.getContext();
 			Playlist added = findPlaylist(p.ref);
-			boolean selected = (added != null) || pickerSelected.contains(p.ref);
+			boolean selected = ((added != null) && added.included) || pickerSelected.contains(p.ref);
 			setText(h.title, p.name);
-			if ((added != null) && (added.state == Playlist.STATE_LOADED)) {
+			if ((added != null) && added.included && (added.state == Playlist.STATE_LOADED)) {
 				setText(h.subtitle, ctx.getString(R.string.spotify_import_selected,
 						added.getSelectedCount(), added.tracks.size()));
 			} else if ((added != null) && (added.state == Playlist.STATE_FAILED)) {
 				setText(h.subtitle, ctx.getString(R.string.spotify_import_failed, added.error));
 			} else {
-				setText(h.subtitle, (added != null) ? ctx.getString(R.string.spotify_already_added) :
-						p.owner);
+				setText(h.subtitle, ((added != null) && added.included) ?
+						ctx.getString(R.string.spotify_already_added) : p.owner);
 			}
 
 			String d = (p.total >= 0) ? ctx.getString(R.string.spotify_tracks, p.total) : null;
