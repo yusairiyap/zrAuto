@@ -1462,12 +1462,11 @@ public class SpotifyImportFragment extends MainActivityFragment {
 				h.check.setOnClickListener(v -> togglePicked(p));
 			}
 
+			// Picking only: tapping a card ticks or unticks it. Its tracks are chosen after it's
+			// been added to the import.
 			View target = h.clickTarget();
-			target.setOnClickListener(v -> openPicked(p));
-			target.setOnLongClickListener(v -> {
-				togglePicked(p);
-				return true;
-			});
+			target.setOnClickListener(v -> togglePicked(p));
+			target.setOnLongClickListener(null);
 		}
 
 		private String videoDetail(Video v) {

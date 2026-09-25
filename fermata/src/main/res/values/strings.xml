@@ -356,7 +356,7 @@
     <string name="spotify_rename">Rename before import</string>
     <string name="spotify_remove_from_list">Remove from this list</string>
     <string name="spotify_picker_summary">%1$d of %2$d playlists selected</string>
-    <string name="spotify_picker_hint">Tap a playlist to open it and choose its tracks, or tick playlists (tap the check, or long-press) and tap Add to take them whole. Playlists you don\'t own are read from their public page (first 100 tracks).</string>
+    <string name="spotify_picker_hint">Tap playlists to select them, then tap Add. You can choose individual tracks once they\'re added. Playlists you don\'t own are read from their public page (first 100 tracks).</string>
     <string name="spotify_add_this_playlist">Add this playlist to the import</string>
     <string name="spotify_browse_note">Just looking: YouTube videos are matched once you add this playlist (here, or by ticking it in the list and tapping Add).</string>
     <string name="spotify_picker_add">Add (%1$d)</string>

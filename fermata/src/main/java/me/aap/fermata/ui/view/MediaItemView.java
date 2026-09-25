@@ -143,7 +143,11 @@ public class MediaItemView extends ConstraintLayout
 	public void applyLayout(Context ctx, boolean grid, float size) {
 		removeAllViews();
 		inflate(ctx, grid ? R.layout.media_item_grid_layout : R.layout.media_item_list_layout, this);
+		// The layout's views are all new: the checkbox has to be wired up again, or ticking it after
+		// a list/grid switch only changes how it looks, not the actual selection.
+		getCheckBox().setOnCheckedChangeListener(this);
 		setSize(ctx, grid, size);
+		refreshCheckbox();
 	}
 
 	public void setSize(Context ctx, boolean grid, float size) {
