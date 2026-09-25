@@ -3,6 +3,7 @@ package me.aap.fermata.addon.music;
 import static me.aap.utils.async.Completed.completed;
 import static me.aap.utils.async.Completed.completedNull;
 
+import android.content.Context;
 import android.support.v4.media.session.PlaybackStateCompat;
 
 import androidx.annotation.Keep;
@@ -23,6 +24,11 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.fragment.MusicPlayerFragment;
 import me.aap.utils.async.FutureSupplier;
+import me.aap.utils.function.IntSupplier;
+import me.aap.utils.misc.ChangeableCondition;
+import me.aap.utils.pref.PreferenceSet;
+import me.aap.utils.pref.PreferenceStore;
+import me.aap.utils.pref.PreferenceStore.Pref;
 import me.aap.utils.ui.fragment.ActivityFragment;
 
 /**
@@ -36,6 +42,10 @@ import me.aap.utils.ui.fragment.ActivityFragment;
 public class MusicAddon implements MediaLibAddon, FermataActivityAddon,
 		MediaSessionCallback.Listener {
 	private static final AddonInfo info = FermataAddon.findAddonInfo(MusicAddon.class.getName());
+	/** How blurred the Music tab's background copy of the cover is: 0 (sharp) to 100. */
+	public static final Pref<IntSupplier> BG_BLUR = Pref.i("MUSIC_BG_BLUR", 60);
+	/** How far the background is zoomed in, in percent: 100 (fits the screen) to 300. */
+	public static final Pref<IntSupplier> BG_ZOOM = Pref.i("MUSIC_BG_ZOOM", 120);
 	@Nullable
 	private MusicQueue queue;
 	@Nullable
@@ -61,6 +71,31 @@ public class MusicAddon implements MediaLibAddon, FermataActivityAddon,
 	@Override
 	public ActivityFragment createFragment() {
 		return new MusicPlayerFragment();
+	}
+
+	@Override
+	public void contributeSettings(Context ctx, PreferenceStore store, PreferenceSet set,
+																 ChangeableCondition visibility) {
+		set.addIntPref(o -> {
+			o.store = store;
+			o.pref = BG_BLUR;
+			o.title = R.string.music_bg_blur;
+			o.seekMin = 0;
+			o.seekMax = 100;
+			o.seekScale = 5;
+			o.ems = 3;
+			o.visibility = visibility.copy();
+		});
+		set.addIntPref(o -> {
+			o.store = store;
+			o.pref = BG_ZOOM;
+			o.title = R.string.music_bg_zoom;
+			o.seekMin = 100;
+			o.seekMax = 300;
+			o.seekScale = 5;
+			o.ems = 3;
+			o.visibility = visibility.copy();
+		});
 	}
 
 	@NonNull

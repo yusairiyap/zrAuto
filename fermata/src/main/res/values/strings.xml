@@ -628,6 +628,8 @@
     <string name="play_as_music">Play as music</string>
     <string name="music_queue_add">Add into music queue</string>
     <string name="music_up_next">Up next</string>
+    <string name="music_bg_blur">Background blur</string>
+    <string name="music_bg_zoom">Background zoom (%)</string>
     <string name="music_queue_short">Queue</string>
     <string name="music_queue_hide">Hide queue</string>
     <string name="music_drag_reorder">Drag to reorder</string>

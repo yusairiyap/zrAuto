@@ -48,7 +48,9 @@ import androidx.recyclerview.widget.RecyclerView;
 import java.util.ArrayList;
 import java.util.List;
 
+import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
+import me.aap.fermata.addon.music.MusicAddon;
 import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.music.MusicQueue;
 import me.aap.fermata.addon.music.MusicTrackItem;
@@ -64,6 +66,7 @@ import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.ui.view.InfoOverlayView;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
+import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.text.TextUtils;
 import me.aap.utils.ui.UiUtils;
 
@@ -81,7 +84,8 @@ import me.aap.utils.ui.UiUtils;
  * tiny downscaled copy, never per frame.
  */
 public class MusicPlayerFragment extends MainActivityFragment implements
-		MediaSessionCallback.Listener, FermataServiceUiBinder.Listener, MusicQueue.Listener {
+		MediaSessionCallback.Listener, FermataServiceUiBinder.Listener, MusicQueue.Listener,
+		PreferenceStore.Listener {
 	private static final long PROGRESS_INTERVAL = 500;
 	private static final long RESTART_THRESHOLD = 3000;
 	private static final long FADE_MS = 350;
@@ -114,6 +118,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private PlayableItem shownItem;
 	@Nullable
 	private Object shownArt;
+	// The cover currently shown, kept so the background can be re-blurred when the Background
+	// blur setting changes, without reloading it.
+	@Nullable
+	private Bitmap artBitmap;
 	private boolean listening;
 	private boolean progressRunning;
 	private boolean seeking;
@@ -216,6 +224,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		touchHelper.attachToRecyclerView(queueList);
 
 		addInfoOverlay(view.findViewById(R.id.music_info_holder));
+		updateZoom();
 	}
 
 	/**
@@ -273,6 +282,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		setListening(visible);
 		if (visible) {
 			refresh();
+			// The background settings may have changed in Settings while this tab was hidden.
+			updateBackground(false);
+			updateZoom();
 			if (isResumed()) startProgress();
 		} else {
 			stopProgress();
@@ -291,10 +303,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			a.getMediaSessionCallback().addBroadcastListener(this);
 			a.getMediaServiceBinder().addBroadcastListener(this);
 			if (queue != null) queue.addListener(this);
+			settings().addBroadcastListener(this);
 		} else {
 			a.getMediaSessionCallback().removeBroadcastListener(this);
 			a.getMediaServiceBinder().removeBroadcastListener(this);
 			if (queue != null) queue.removeListener(this);
+			settings().removeBroadcastListener(this);
 		}
 	}
 
@@ -405,6 +419,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		shownArt = key;
 		Context ctx = requireContext();
 
+		artBitmap = bm;
+
 		if (bm == null) {
 			crossfade(art, ContextCompat.getDrawable(ctx, R.drawable.music_art_placeholder));
 			crossfade(bg, null);
@@ -412,8 +428,36 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		}
 
 		crossfade(art, new BitmapDrawable(getResources(), bm));
-		Bitmap blurred = blur(bm);
-		crossfade(bg, (blurred != null) ? new BitmapDrawable(getResources(), blurred) : null);
+		updateBackground(true);
+	}
+
+	private static PreferenceStore settings() {
+		return FermataApplication.get().getPreferenceStore();
+	}
+
+	/** Re-renders the background from the current cover with the Background blur setting. */
+	private void updateBackground(boolean fade) {
+		Bitmap bm = artBitmap;
+		if ((bm == null) || (bg == null)) return;
+		Bitmap blurred = blur(bm, settings().getIntPref(MusicAddon.BG_BLUR));
+		Drawable d = (blurred != null) ? new BitmapDrawable(getResources(), blurred) : null;
+		if (fade) crossfade(bg, d);
+		else bg.setImageDrawable(d);
+	}
+
+	/** Background zoom: just a view scale around the centre, the image isn't re-rendered. */
+	private void updateZoom() {
+		if (bg == null) return;
+		float z = Math.max(100, Math.min(300, settings().getIntPref(MusicAddon.BG_ZOOM))) / 100f;
+		bg.setScaleX(z);
+		bg.setScaleY(z);
+	}
+
+	@Override
+	public void onPreferenceChanged(PreferenceStore store, List<PreferenceStore.Pref<?>> prefs) {
+		if (getView() == null) return;
+		if (prefs.contains(MusicAddon.BG_BLUR)) updateBackground(false);
+		if (prefs.contains(MusicAddon.BG_ZOOM)) updateZoom();
 	}
 
 	private static boolean isYoutube(PlayableItem i) {
@@ -456,19 +500,25 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	 * bilinear filtering -- which is exactly the soft, colour-wash look wanted here.
 	 */
 	@Nullable
-	private static Bitmap blur(Bitmap src) {
+	private static Bitmap blur(Bitmap src, int strength) {
 		try {
+			// 0 = the cover itself, unblurred.
+			if (strength <= 0) return src;
 			if (src.getConfig() == Bitmap.Config.HARDWARE) src = src.copy(Bitmap.Config.ARGB_8888, false);
 			if ((src == null) || (src.getWidth() <= 0) || (src.getHeight() <= 0)) return null;
-			int w = 48;
+			float f = Math.min(100, strength) / 100f;
+			// Stronger blur = a smaller working copy (256px wide at the lightest, 16px at the
+			// heaviest) plus a wider box: both cheaper and softer as the setting goes up.
+			int w = Math.max(8, Math.round(256f * (float) Math.pow(16f / 256f, f)));
 			int h = Math.max(1, Math.round(w * (float) src.getHeight() / src.getWidth()));
+			int r = 1 + Math.round(2 * f);
 			Bitmap small = Bitmap.createScaledBitmap(src, w, h, true);
 			int[] px = new int[w * h];
 			small.getPixels(px, 0, w, 0, 0, w, h);
 			int[] tmp = new int[px.length];
 			for (int pass = 0; pass < 3; pass++) {
-				boxBlur(px, tmp, w, h, 3, true);
-				boxBlur(tmp, px, w, h, 3, false);
+				boxBlur(px, tmp, w, h, r, true);
+				boxBlur(tmp, px, w, h, r, false);
 			}
 			return Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888);
 		} catch (Throwable ex) {
