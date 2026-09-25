@@ -31,7 +31,6 @@ import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -113,8 +112,6 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private QueueAdapter adapter;
 	private ItemTouchHelper touchHelper;
 	@Nullable
-	private InfoOverlayView infoOverlay;
-	@Nullable
 	private MusicQueue queue;
 	@Nullable
 	private PlayableItem shownItem;
@@ -181,19 +178,6 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		content.addOnLayoutChangeListener(
 				(v, l, t, r, b, ol, ot, or, ob) -> v.post(this::layoutQueuePanel));
 
-		// The top/bottom spacing for the tool and nav bars only settles after the first layout pass
-		// (see insetScrollableContent): fade the content in once it has, rather than showing it
-		// jump from one size to the other.
-		content.setAlpha(0f);
-		content.getViewTreeObserver().addOnGlobalLayoutListener(
-				new ViewTreeObserver.OnGlobalLayoutListener() {
-					@Override
-					public void onGlobalLayout() {
-						content.getViewTreeObserver().removeOnGlobalLayoutListener(this);
-						content.postDelayed(() -> content.animate().alpha(1f).setDuration(180).start(), 60);
-					}
-				});
-
 		if (!isLandscape()) {
 			// Keeps the bottom row of actions clear of the floating menu button in the corner.
 			View controls = view.findViewById(R.id.music_controls);
@@ -243,9 +227,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	}
 
 	/**
-	 * The same clock/battery/temperature/distance overlay as fullscreen video (and the same
-	 * choice of items), as a small pill in the top corner -- clock, battery and temperature when
-	 * nothing is picked in its settings.
+	 * The same clock/battery/temperature/distance overlay as fullscreen video, with the same items
+	 * and size (clock, battery and temperature when nothing is picked in its settings).
 	 */
 	private void addInfoOverlay(FrameLayout holder) {
 		MainActivityPrefs p = getActivityDelegate().getPrefs();
@@ -260,11 +243,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				ViewGroup.LayoutParams.WRAP_CONTENT,
 				(isLandscape() ? Gravity.END : Gravity.CENTER_HORIZONTAL) | Gravity.TOP);
 		holder.addView(o, lp);
-		o.setSize(0.55f * Math.max(0.5f, p.getInfoOverlaySizePref()));
+		o.setSize(p.getInfoOverlaySizePref());
 		o.setItems(clock, p.getInfoOverlayShowClockIconPref(), battery,
 				p.getInfoOverlayShowBatteryIconPref(), temp, p.getInfoOverlayShowTempIconPref(), distance,
 				p.getInfoOverlayShowDistanceIconPref());
-		infoOverlay = o;
 	}
 
 	@Override
@@ -353,9 +335,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	// State
 	// ---------------------------------------------------------------------------------------------
 
-	/** The item to show: what's playing, else where the music queue left off. */
+	/** The item to show: the playing queue track, else what's playing, else where the queue left off. */
 	@Nullable
 	private PlayableItem getDisplayItem() {
+		MusicTrackItem track = currentTrack();
+		if (track != null) return track;
 		PlayableItem cur = getActivityDelegate().getMediaSessionCallback().getCurrentItem();
 		if (cur != null) return cur;
 		if (queue == null) return null;
@@ -584,12 +568,33 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		}
 	}
 
+	/** The queue track playing now, if any -- see {@link MusicPlayer#getCurrentTrack}. */
+	@Nullable
+	private MusicTrackItem currentTrack() {
+		return MusicPlayer.getCurrentTrack(getActivityDelegate().getMediaSessionCallback());
+	}
+
+	/** Whether what's playing is playing as music: a queue track, with YouTube in music mode. */
+	private boolean playingAsMusic() {
+		MusicTrackItem t = currentTrack();
+		return (t != null) && ((t.getVideoId() == null) || MusicPlayer.isYoutubeAudioMode());
+	}
+
+	/** What Shuffle/Repeat apply to: the playing queue track, else whatever else is playing. */
+	@Nullable
+	private PlayableItem modeItem() {
+		MusicTrackItem t = currentTrack();
+		return (t != null) ? t : getActivityDelegate().getMediaSessionCallback().getCurrentItem();
+	}
+
 	private void updateVideoButton(@Nullable PlayableItem i) {
-		if ((i instanceof MusicTrackItem t) && t.hasVideo()) {
+		MusicTrackItem t = currentTrack();
+
+		if (playingAsMusic() && t.hasVideo()) {
 			videoButton.setText(R.string.video);
 			videoButton.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.video, 0, 0, 0);
 			videoButton.setVisibility(View.VISIBLE);
-		} else if ((i != null) && !(i instanceof MusicTrackItem) && isPlayingVideo()) {
+		} else if ((i != null) && isPlayingVideo()) {
 			// A video is playing right now (e.g. in the split view): offer to drop the picture.
 			videoButton.setText(R.string.play_as_music);
 			videoButton.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.music, 0, 0, 0);
@@ -629,7 +634,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 	private void updateModes() {
 		BrowsableItemPrefs p = getModePrefs();
-		PlayableItem i = getActivityDelegate().getMediaSessionCallback().getCurrentItem();
+		PlayableItem i = modeItem();
 		int accent = ContextCompat.getColor(requireContext(), R.color.music_accent);
 		int dim = 0xB3FFFFFF;
 
@@ -656,7 +661,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	/** Shuffle/Repeat live on the playing item's container -- the music queue, or its folder. */
 	@Nullable
 	private BrowsableItemPrefs getModePrefs() {
-		PlayableItem i = getActivityDelegate().getMediaSessionCallback().getCurrentItem();
+		PlayableItem i = modeItem();
 		if (i != null) return i.getParent().getPrefs();
 		return (queue != null) ? queue.getPrefs() : null;
 	}
@@ -760,15 +765,21 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		BrowsableItemPrefs p = getModePrefs();
 		if (p == null) return;
 		boolean enable = !p.getShufflePref();
-		if (cb.getCurrentItem() != null) cb.onSetShuffleMode(enable ? SHUFFLE_MODE_ALL : SHUFFLE_MODE_NONE);
-		else p.setShufflePref(enable);
+		// Through the session when it's the session's own item, so its shuffle state follows;
+		// a YouTube queue track isn't (the session's item is the YouTube player's own).
+		PlayableItem i = modeItem();
+		if ((i != null) && (i == cb.getCurrentItem())) {
+			cb.onSetShuffleMode(enable ? SHUFFLE_MODE_ALL : SHUFFLE_MODE_NONE);
+		} else {
+			p.setShufflePref(enable);
+		}
 		updateModes();
 	}
 
 	/** Cycles off, repeat the whole queue/folder, repeat the current song. */
 	private void onRepeat() {
 		MediaSessionCallback cb = getActivityDelegate().getMediaSessionCallback();
-		PlayableItem i = cb.getCurrentItem();
+		PlayableItem i = modeItem();
 		BrowsableItemPrefs p = getModePrefs();
 		if (p == null) return;
 		boolean one = (i != null) && i.getId().equals(p.getRepeatItemPref());
@@ -779,10 +790,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		else if (all) mode = (i != null) ? REPEAT_MODE_ONE : REPEAT_MODE_NONE;
 		else mode = REPEAT_MODE_ALL;
 
-		if (i != null) {
+		if ((i != null) && (i == cb.getCurrentItem())) {
 			cb.onSetRepeatMode(mode);
 		} else {
-			p.setRepeatItemPref(null);
+			p.setRepeatItemPref(((i != null) && (mode == REPEAT_MODE_ONE)) ? i.getId() : null);
 			p.setRepeatPref(mode == REPEAT_MODE_ALL);
 		}
 
@@ -801,8 +812,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if ((src != null) && eng.supportsAudioEffects()) {
 			a.showFragment(R.id.audio_effects_fragment);
 		} else if ((src != null) && eng.showOwnAudioEffects()) {
-			// A web-hosted YouTube player (the YouTube tab's, or the hidden fallback): its own
-			// in-page equalizer, since Android's effects can't reach a web page's audio.
+			// The YouTube player: its own in-page equalizer, since Android's effects can't reach a web
+			// page's audio.
 			DiagnosticLog.log("MUSIC", "effects: engine's own (in-page equalizer)", "engine=" + eng);
 		} else {
 			DiagnosticLog.log("MUSIC", "effects unavailable", "engine=" + eng, "item=" + src);
@@ -813,9 +824,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 	private void onVideo() {
 		MainActivityDelegate a = getActivityDelegate();
-		PlayableItem i = a.getMediaSessionCallback().getCurrentItem();
-		if (i instanceof MusicTrackItem) MusicPlayer.switchToVideo(a);
-		else if (i != null) MusicPlayer.playCurrentAsMusic(a);
+		if (playingAsMusic()) MusicPlayer.switchToVideo(a);
+		else if (a.getMediaSessionCallback().getCurrentItem() != null) MusicPlayer.playCurrentAsMusic(a);
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -894,8 +904,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	}
 
 	private void scrollToCurrent() {
-		PlayableItem cur = getActivityDelegate().getMediaSessionCallback().getCurrentItem();
-		if ((queue == null) || !(cur instanceof MusicTrackItem)) return;
+		MusicTrackItem cur = currentTrack();
+		if ((queue == null) || (cur == null)) return;
 		int idx = queue.indexOf(cur);
 		if (idx >= 0) queueList.scrollToPosition(idx);
 	}
@@ -912,7 +922,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	@Override
 	public void onPlaybackStateChanged(MediaSessionCallback cb, PlaybackStateCompat state) {
 		if (getView() == null) return;
-		PlayableItem cur = cb.getCurrentItem();
+		PlayableItem cur = getDisplayItem();
 		if ((cur != null) && (cur != shownItem)) {
 			displayItem(cur, false);
 			adapter.notifyDataSetChanged();
@@ -925,7 +935,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	@Override
 	public void onPlayableChanged(PlayableItem oldItem, PlayableItem newItem) {
 		if (getView() == null) return;
-		displayItem((newItem != null) ? newItem : getDisplayItem(), false);
+		displayItem(getDisplayItem(), false);
 		adapter.notifyDataSetChanged();
 		updateModes();
 	}
@@ -951,20 +961,6 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			displayItem(getDisplayItem(), true);
 	}
 
-	@Override
-	public void onTrackUpdated(MusicQueue q, MusicTrackItem track) {
-		if (getView() == null) return;
-		if (track == shownItem) displayItem(track, true);
-		adapter.trackUpdated(track);
-	}
-
-	@Override
-	public void onTrackFailed(MusicQueue q, MusicTrackItem track, Throwable err) {
-		if (getView() == null) return;
-		loading.setVisibility(View.GONE);
-		UiUtils.showToast(requireContext(), getString(R.string.music_stream_failed, track.getName()));
-	}
-
 	// ---------------------------------------------------------------------------------------------
 	// Queue list
 	// ---------------------------------------------------------------------------------------------
@@ -978,11 +974,6 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			if (queue != null) tracks.addAll(queue.getTracks());
 			notifyDataSetChanged();
 			updateQueueHeader(tracks.size());
-		}
-
-		void trackUpdated(MusicTrackItem t) {
-			int idx = tracks.indexOf(t);
-			if (idx >= 0) notifyItemChanged(idx);
 		}
 
 		void moved(int from, int to) {
@@ -1036,7 +1027,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 		void bind(MusicTrackItem t) {
 			track = t;
-			boolean current = t.equals(getActivityDelegate().getMediaSessionCallback().getCurrentItem());
+			boolean current = t.equals(currentTrack());
 			title.setText(t.getName());
 			title.setTextColor(current ?
 					ContextCompat.getColor(requireContext(), R.color.music_accent) : 0xFFFFFFFF);

@@ -411,11 +411,10 @@ public interface MediaLib {
 
 		/**
 		 * Called by {@code MediaSessionCallback} right before this item is handed to an engine, and
-		 * waited on -- for an item whose actual playable location has to be fetched first (e.g. the
-		 * Music tab's audio-only YouTube track, whose stream URL comes from the network and expires
-		 * after a few hours). Must never fail: an implementation that can't resolve its source should
-		 * still complete, leaving {@link #getLocation()} pointing at something the engine will then
-		 * report a normal playback error for.
+		 * waited on -- for an item that only knows what it plays once something has been looked up
+		 * first (e.g. a Music tab queue entry restored after a restart, which resolves the library
+		 * item it wraps by id). Must never fail: an implementation that can't resolve its source
+		 * should still complete, and the engine then reports a normal playback error.
 		 */
 		@NonNull
 		default FutureSupplier<Void> prepareSource() {
@@ -429,16 +428,6 @@ public interface MediaLib {
 		 * media whose video still has to show.
 		 */
 		default boolean isAudioOnlyPlayback() {
-			return false;
-		}
-
-		/**
-		 * The engine failed to play this item: if the failure may be down to the source itself (a
-		 * stream URL the server refused), forget it and return true, so the next
-		 * {@link #prepareSource()} fetches a different one and playback is retried; false (the
-		 * default) for the usual handling -- trying another engine, then reporting the error.
-		 */
-		default boolean invalidateSource(Throwable err) {
 			return false;
 		}
 	}

@@ -99,32 +99,8 @@ public interface MediaEngine extends Closeable {
 	}
 
 	/**
-	 * This engine is about to be replaced by another one that picks up the same content where this
-	 * one is right now (the Music tab's switch from a YouTube video to its audio-only stream):
-	 * stop audibly playing, and ignore the player's own events from here on until explicitly
-	 * started again, so none of them can reach the new engine through the shared session callback.
-	 * {@link #close()} isn't a substitute: the web-hosted YouTube engine is deliberately inert there.
-	 */
-	default void handOff() {
-		pause();
-	}
-
-	/**
-	 * First half of a gap-free {@link #handOff()}: keep playing for now, but stop letting the
-	 * player's own events drive the session, which is about to belong to the new engine. Either
-	 * {@link #handOff()} (the new engine is playing, go quiet) or {@link #cancelHandOff()} (it failed,
-	 * carry on as before) follows.
-	 */
-	default void beginHandOff() {
-	}
-
-	/** Undoes {@link #beginHandOff()}: this engine is the session's player again. */
-	default void cancelHandOff() {
-	}
-
-	/**
 	 * For an engine whose audio effects aren't the platform's (see {@link #supportsAudioEffects()})
-	 * but its own -- the web-hosted YouTube players' in-page equalizer: shows its effects screen and
+	 * but its own -- the web-hosted YouTube player's in-page equalizer: shows its effects screen and
 	 * returns true, or returns false if it has none.
 	 */
 	default boolean showOwnAudioEffects() {

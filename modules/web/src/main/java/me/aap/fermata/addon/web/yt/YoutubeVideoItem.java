@@ -14,6 +14,7 @@ import androidx.annotation.Nullable;
 
 import me.aap.fermata.addon.AddonManager;
 import me.aap.fermata.addon.music.MusicPlayer;
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.ExtPlayable;
 import me.aap.fermata.media.lib.MediaLib;
@@ -160,8 +161,9 @@ public class YoutubeVideoItem extends ExtPlayable implements MediaLib.Externally
 			addon.setQueueItem(self);
 			addon.setPendingVideoId(videoId);
 		}
-		// The Music tab switching its audio-only stream back to video asks for the page to pick up
-		// where the audio is now, instead of from the start.
+		// Started from the Music tab's queue: playing as music (lowest video quality), and possibly
+		// resuming where the queue left off. Anything else is watching a video.
+		MusicPlayer.setYoutubeAudioMode(self instanceof MusicTrackItem);
 		long startMs = MusicPlayer.takeVideoStartPosition(videoId);
 		String url = watchUrl(videoId);
 		if (startMs >= 1000) url += "&t=" + (startMs / 1000) + 's';

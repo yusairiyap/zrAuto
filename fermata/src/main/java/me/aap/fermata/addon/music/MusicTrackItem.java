@@ -13,32 +13,27 @@ import android.support.v4.media.MediaMetadataCompat;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import java.util.HashSet;
-import java.util.Set;
-
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.ExtPlayable;
 import me.aap.fermata.media.lib.MediaLib.Item;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.BrowsableItemPrefs;
-import me.aap.fermata.util.DiagnosticLog;
-import me.aap.utils.app.App;
 import me.aap.utils.async.FutureSupplier;
-import me.aap.utils.function.CheckedSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.text.SharedTextBuilder;
 import me.aap.utils.vfs.VirtualResource;
 import me.aap.utils.vfs.generic.GenericFileSystem;
 
 /**
- * One entry of the Music tab's queue -- always played audio-only, whatever it wraps:
+ * One entry of the Music tab's queue, wrapping either:
  * <ul>
- *   <li>a YouTube video ({@code youtube:<videoId>} source id), whose audio-only stream URL is
- *   fetched right before playback (see {@link #prepareSource()} and {@link YoutubeAudioResolver});
- *   no video frame, and no web page, is ever loaded for it;</li>
+ *   <li>a YouTube video ({@code youtube:<videoId>} source id) -- played by the YouTube tab's own
+ *   player, with the video held at its lowest quality while it's playing as music (see
+ *   {@link MusicPlayer#setYoutubeAudioMode}), so next/prev, the crossfade between songs and the
+ *   switch to and from video all behave exactly like YouTube video playback does;</li>
  *   <li>any other library item (a local/network audio or video file, a Favorites/Playlist entry),
- *   resolved by its id and streamed through the same engines as usual, with any video track
- *   skipped (see {@link #isAudioOnlyPlayback()}).</li>
+ *   resolved by its id and played audio-only by the usual engines, with any video track skipped
+ *   (see {@link #isAudioOnlyPlayback()}).</li>
  * </ul>
  * Reports itself as external, so playing it never touches the library's own "last played"
  * bookkeeping; the queue keeps its own (see {@link MusicQueue}).
@@ -51,8 +46,6 @@ public class MusicTrackItem extends ExtPlayable {
 	@Nullable
 	private volatile PlayableItem source;
 	@Nullable
-	private volatile YoutubeAudioResolver.Stream stream;
-	@Nullable
 	private FutureSupplier<Void> resolving;
 	@Nullable
 	private String title;
@@ -60,19 +53,6 @@ public class MusicTrackItem extends ExtPlayable {
 	private String artist;
 	private long durationMs;
 	private long startPos;
-	// The start position last asked for, so a retry after a refused stream resumes from there.
-	private long requestedStartPos;
-	// InnerTube clients whose streams the engines couldn't play for this video (see
-	// invalidateSource()); the resolver tries the others first.
-	private final Set<String> failedClients = new HashSet<>();
-	// Until when this track plays through the hidden web player fallback instead of a direct
-	// audio-only stream -- see isWebFallback().
-	private long webFallbackUntil;
-	private static final long WEB_FALLBACK_TTL = 30 * 60_000L;
-	// When no direct stream could be had for any video, skip straight to the fallback for a while
-	// instead of spending a few seconds of failed requests on every single track.
-	private static long directBlockedUntil;
-	private static final long DIRECT_BLOCKED_TTL = 10 * 60_000L;
 
 	MusicTrackItem(String id, MusicQueue queue, String sourceId, @Nullable PlayableItem source,
 								 @Nullable String title, @Nullable String artist, long durationMs) {
@@ -87,14 +67,11 @@ public class MusicTrackItem extends ExtPlayable {
 
 	private static VirtualResource placeholder(String sourceId, @Nullable PlayableItem source) {
 		if (sourceId.startsWith(YT_PREFIX)) {
-			return GenericFileSystem.getInstance().create(watchUrl(sourceId.substring(YT_PREFIX.length())));
+			return GenericFileSystem.getInstance()
+					.create("https://www.youtube.com/watch?v=" + sourceId.substring(YT_PREFIX.length()));
 		}
 		if (source != null) return source.getResource();
 		return GenericFileSystem.getInstance().create("http://localhost/" + Uri.encode(sourceId));
-	}
-
-	static String watchUrl(String videoId) {
-		return "https://www.youtube.com/watch?v=" + videoId;
 	}
 
 	static String thumbnailUrl(String videoId) {
@@ -102,14 +79,12 @@ public class MusicTrackItem extends ExtPlayable {
 		return "https://img.youtube.com/vi/" + videoId + "/maxresdefault.jpg";
 	}
 
-	/**
-	 * The id this track was created from: {@code youtube:<videoId>}, or a library item id.
-	 */
+	/** The id this track was created from: {@code youtube:<videoId>}, or a library item id. */
 	public String getSourceId() {
 		return sourceId;
 	}
 
-	/** The YouTube video id this track plays the audio of, or null for a library item. */
+	/** The YouTube video id this track plays, or null for a library item. */
 	@Nullable
 	public String getVideoId() {
 		return videoId;
@@ -122,6 +97,15 @@ public class MusicTrackItem extends ExtPlayable {
 	}
 
 	/**
+	 * YouTube tracks report their video's id ({@code youtube:<videoId>}), so the YouTube player
+	 * recognizes them as its own queue items -- see {@link MusicPlayer#setYoutubeAudioMode}.
+	 */
+	@Override
+	public String getOrigId() {
+		return (videoId != null) ? sourceId : getId();
+	}
+
+	/**
 	 * The library item "Add to favorites" should act on for this track: the song it plays, never
 	 * this queue entry itself (which only exists in the queue). Null if that isn't resolvable yet
 	 * (a YouTube video with the YouTube addon disabled).
@@ -129,7 +113,7 @@ public class MusicTrackItem extends ExtPlayable {
 	@Nullable
 	public PlayableItem getFavoritableItem() {
 		if (videoId == null) return source;
-		Item i = getLib().getItem(YT_PREFIX + videoId).peek();
+		Item i = getLib().getItem(sourceId).peek();
 		return (i instanceof PlayableItem) ? (PlayableItem) i : null;
 	}
 
@@ -140,7 +124,7 @@ public class MusicTrackItem extends ExtPlayable {
 		return (src != null) && src.isVideo();
 	}
 
-	/** The artist (YouTube: the channel), once known. */
+	/** The artist, once known. */
 	@Nullable
 	public String getArtistName() {
 		return artist;
@@ -151,11 +135,6 @@ public class MusicTrackItem extends ExtPlayable {
 		return title;
 	}
 
-	@Nullable
-	String getCachedArtist() {
-		return artist;
-	}
-
 	long getCachedDuration() {
 		return durationMs;
 	}
@@ -163,10 +142,15 @@ public class MusicTrackItem extends ExtPlayable {
 	/**
 	 * Where the next prepare should start from -- consumed by the very first read, which is
 	 * {@code MediaSessionCallback#onEnginePrepared()}'s seek (read through the library's
-	 * {@code getLastPlayedPosition()}, i.e. {@link #getPositionPref()} below).
+	 * {@code getLastPlayedPosition()}, i.e. {@link #getPositionPref()} below), or the YouTube
+	 * player's start time (see {@link MusicPlayer#getYoutubeEngine}).
 	 */
 	void setStartPosition(long pos) {
-		startPos = requestedStartPos = Math.max(0, pos);
+		startPos = Math.max(0, pos);
+	}
+
+	boolean hasStartPosition() {
+		return startPos > 0;
 	}
 
 	@Override
@@ -213,10 +197,6 @@ public class MusicTrackItem extends ExtPlayable {
 	@NonNull
 	@Override
 	public Uri getLocation() {
-		if (videoId != null) {
-			YoutubeAudioResolver.Stream s = stream;
-			return Uri.parse((s != null) ? s.url : watchUrl(videoId));
-		}
 		PlayableItem src = source;
 		return (src != null) ? src.getLocation() : super.getLocation();
 	}
@@ -230,74 +210,8 @@ public class MusicTrackItem extends ExtPlayable {
 	@Nullable
 	@Override
 	public String getUserAgent() {
-		if (videoId != null) {
-			YoutubeAudioResolver.Stream s = stream;
-			return (s != null) ? s.userAgent : null;
-		}
 		PlayableItem src = source;
 		return (src != null) ? src.getUserAgent() : null;
-	}
-
-	@Override
-	public synchronized boolean invalidateSource(Throwable err) {
-		if (videoId == null) return false;
-
-		if (isWebFallback()) {
-			// The fallback itself failed: nothing left to try, report the error.
-			webFallbackUntil = 0;
-			DiagnosticLog.log("MUSIC", "web fallback player failed", "id=" + videoId, err);
-			return false;
-		}
-
-		YoutubeAudioResolver.Stream s = stream;
-		if (s == null) return false;
-		failedClients.add(s.client);
-		stream = null;
-		boolean retry = failedClients.size() < YoutubeAudioResolver.getClientCount();
-		DiagnosticLog.log("MUSIC", "direct stream failed to play", "client=" + s.client,
-				"format=" + s.format, "id=" + videoId, "retry=" + retry);
-		if (!retry) retry = useWebFallback("every direct stream failed to play");
-		if (retry) startPos = requestedStartPos;
-		return retry;
-	}
-
-	/**
-	 * Whether this YouTube track currently plays through the hidden web player fallback (see
-	 * {@link MusicPlayer.WebAudioEngineFactory}): YouTube's page itself, signed in with the user's own
-	 * session, at its lowest video quality -- used only when no direct audio-only stream can be had.
-	 */
-	public boolean isWebFallback() {
-		return (videoId != null) && (System.currentTimeMillis() < webFallbackUntil);
-	}
-
-	private boolean useWebFallback(String reason) {
-		if (!MusicPlayer.isWebAudioAvailable()) {
-			DiagnosticLog.log("MUSIC", "web fallback unavailable (YouTube addon disabled?)",
-					"id=" + videoId, "reason=" + reason);
-			return false;
-		}
-		webFallbackUntil = System.currentTimeMillis() + WEB_FALLBACK_TTL;
-		DiagnosticLog.log("MUSIC", "method=web-fallback (hidden YouTube page, lowest quality)",
-				"id=" + videoId, "reason=" + reason);
-		return true;
-	}
-
-	/** How this track is being played right now, for the diagnostic log. */
-	String getPlaybackMethod() {
-		if (videoId == null) return "local";
-		if (isWebFallback()) return "web-fallback";
-		YoutubeAudioResolver.Stream s = stream;
-		return (s == null) ? "unresolved" : ("direct/" + s.format + '/' + s.client);
-	}
-
-	@Nullable
-	@Override
-	public MediaEngine getMediaEngine(@Nullable MediaEngine current, MediaEngine.Listener listener) {
-		if (!isWebFallback()) return null;
-		MediaEngine e = MusicPlayer.getWebAudioEngine(current, listener);
-		DiagnosticLog.log("MUSIC", "engine for", "id=" + videoId,
-				(e != null) ? "web-fallback player" : "none (web fallback unavailable)");
-		return e;
 	}
 
 	@Override
@@ -306,71 +220,18 @@ public class MusicTrackItem extends ExtPlayable {
 		return (src != null) ? src.getOffset() : 0;
 	}
 
+	@Nullable
+	@Override
+	public MediaEngine getMediaEngine(@Nullable MediaEngine current, MediaEngine.Listener listener) {
+		return (videoId != null) ? MusicPlayer.getYoutubeEngine(this, current, listener) : null;
+	}
+
 	@NonNull
 	@Override
 	public synchronized FutureSupplier<Void> prepareSource() {
-		if (videoId != null) {
-			YoutubeAudioResolver.Stream s = stream;
-			if ((s != null) && s.isValid()) return completedVoid();
-			if (isWebFallback()) return completedVoid();
-			if ((System.currentTimeMillis() < directBlockedUntil) &&
-					useWebFallback("direct streams were blocked for every video recently")) {
-				return completedVoid();
-			}
-		} else if (source != null) {
-			return completedVoid();
-		}
-
+		if ((videoId != null) || (source != null)) return completedVoid();
 		if ((resolving != null) && !resolving.isDone()) return resolving;
-		FutureSupplier<Void> r = (videoId != null) ? resolveYoutube(videoId) : resolveLocal();
-		resolving = r;
-		return r;
-	}
-
-	/** Reuses another track's already resolved stream for the same video (no second fetch). */
-	void copyStreamFrom(MusicTrackItem t) {
-		if ((videoId == null) || !videoId.equals(t.videoId) || (stream != null)) return;
-		YoutubeAudioResolver.Stream s = t.stream;
-		if ((s == null) || !s.isValid()) return;
-		stream = s;
-		if (t.title != null) title = t.title;
-		if (t.artist != null) artist = t.artist;
-		if (t.durationMs > 0) durationMs = t.durationMs;
-		setMeta(completed(buildYoutubeMeta(videoId)));
-	}
-
-	/** Whether {@link #prepareSource()} would have to go to the network for this track. */
-	boolean needsNetworkResolve() {
-		if ((videoId == null) || isWebFallback()) return false;
-		YoutubeAudioResolver.Stream s = stream;
-		return (s == null) || !s.isValid();
-	}
-
-	private FutureSupplier<Void> resolveYoutube(String vid) {
-		Set<String> skip = new HashSet<>(failedClients);
-		DiagnosticLog.log("MUSIC", "yt resolving", "id=" + vid, "skip=" + skip);
-		CheckedSupplier<YoutubeAudioResolver.Stream, Throwable> task =
-				() -> YoutubeAudioResolver.resolve(vid, skip);
-		FutureSupplier<YoutubeAudioResolver.Stream> f = App.get().execute(task);
-		return f.main().map(s -> {
-			stream = s;
-			if (s.title != null) title = s.title;
-			if (s.author != null) artist = s.author;
-			if (s.durationMs > 0) durationMs = s.durationMs;
-			setMeta(completed(buildYoutubeMeta(vid)));
-			directBlockedUntil = 0;
-			DiagnosticLog.log("MUSIC", "method=" + getPlaybackMethod(), "id=" + vid);
-			getParent().trackUpdated(this);
-			return (Void) null;
-		}).ifFail(err -> {
-			Log.w(err, "Failed to resolve an audio-only stream for YouTube video ", vid);
-			DiagnosticLog.log("MUSIC", "yt resolve failed", "id=" + vid, err);
-			directBlockedUntil = System.currentTimeMillis() + DIRECT_BLOCKED_TTL;
-			if (!useWebFallback("no direct audio-only stream: " + err.getMessage())) {
-				getParent().trackFailed(this, err);
-			}
-			return null;
-		});
+		return resolving = resolveLocal();
 	}
 
 	private FutureSupplier<Void> resolveLocal() {
@@ -406,12 +267,17 @@ public class MusicTrackItem extends ExtPlayable {
 	@NonNull
 	@Override
 	protected FutureSupplier<MediaMetadataCompat> loadMeta() {
-		if (videoId != null) return completed(buildYoutubeMeta(videoId));
+		if (videoId != null) {
+			MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
+			b.putString(METADATA_KEY_TITLE, getName());
+			if (durationMs > 0) b.putLong(METADATA_KEY_DURATION, durationMs);
+			b.putString(METADATA_KEY_ALBUM_ART_URI, thumbnailUrl(videoId));
+			return completed(b.build());
+		}
 
 		// Never a network round trip here: the queue's getChildren() loads every track's metadata,
 		// and a local item's id resolves straight out of the library.
-		FutureSupplier<Void> resolve = (source == null) ? prepareSource() : completedVoid();
-		return resolve.then(v -> {
+		return prepareSource().then(v -> {
 			PlayableItem src = source;
 			if (src == null) return completed(buildCachedMeta());
 			return src.getMediaData().map(md -> {
@@ -427,15 +293,6 @@ public class MusicTrackItem extends ExtPlayable {
 				return b.build();
 			});
 		});
-	}
-
-	private MediaMetadataCompat buildYoutubeMeta(String vid) {
-		MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
-		b.putString(METADATA_KEY_TITLE, (title != null) ? title : vid);
-		if (artist != null) b.putString(METADATA_KEY_ARTIST, artist);
-		if (durationMs > 0) b.putLong(METADATA_KEY_DURATION, durationMs);
-		b.putString(METADATA_KEY_ALBUM_ART_URI, thumbnailUrl(vid));
-		return b.build();
 	}
 
 	private MediaMetadataCompat buildCachedMeta() {

@@ -637,15 +637,11 @@
     <string name="music_nothing_playing">Nothing playing</string>
     <string name="music_nothing_to_play">Nothing to play here</string>
     <string name="music_cant_play_current">This can\'t be played as music</string>
-    <string name="music_video_unavailable">The video can\'t be opened \u2014 is the YouTube addon enabled?</string>
-    <string name="music_stream_failed">Couldn\'t get the audio-only stream for \"%1$s\"</string>
-    <string name="music_loading_stream">Getting audio stream\u2026</string>
     <string name="music_shuffle">Shuffle</string>
     <string name="music_repeat_off">Repeat off</string>
     <string name="music_repeat_all">Repeat queue</string>
     <string name="music_repeat_one">Repeat current song</string>
     <string name="music_queue_clear">Clear queue</string>
-    <string name="music_switch_to_video">Watch video</string>
     <string name="music_effects_play_first">Start playing something to adjust its audio effects</string>
     <string name="music_effects_unavailable">Audio effects aren\'t available for this playback</string>
     <plurals name="music_queue_size">

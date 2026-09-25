@@ -19,7 +19,6 @@ import me.aap.fermata.addon.MediaLibAddon;
 import me.aap.fermata.media.lib.DefaultMediaLib;
 import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.lib.MediaLib.Item;
-import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.fragment.MusicPlayerFragment;
@@ -162,7 +161,7 @@ public class MusicAddon implements MediaLibAddon, FermataActivityAddon,
 		int st = state.getState();
 		if ((st != PlaybackStateCompat.STATE_PLAYING) && (st != PlaybackStateCompat.STATE_PAUSED))
 			return;
-		PlayableItem i = cb.getCurrentItem();
-		if (i instanceof MusicTrackItem t) t.getParent().setCurrent(t, state.getPosition());
+		MusicTrackItem t = MusicPlayer.getCurrentTrack(cb);
+		if (t != null) t.getParent().setCurrent(t, state.getPosition());
 	}
 }

@@ -3,8 +3,6 @@ package me.aap.fermata.addon.music;
 import static me.aap.utils.async.Completed.completed;
 
 import android.content.Context;
-import android.os.SystemClock;
-import android.support.v4.media.session.PlaybackStateCompat;
 
 import androidx.annotation.Nullable;
 
@@ -15,7 +13,6 @@ import java.util.List;
 
 import me.aap.fermata.R;
 import me.aap.fermata.media.engine.MediaEngine;
-import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
 import me.aap.fermata.media.lib.MediaLib.Item;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
@@ -25,94 +22,115 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
-import me.aap.utils.log.Log;
 import me.aap.utils.ui.UiUtils;
-import me.aap.utils.ui.fragment.ActivityFragment;
 
 /**
  * Entry points into the Music tab: "Play as music" / "Add into music queue" from the library's
  * context menus, "Play as music" for whatever is playing right now (the FAB action and the video
  * control panel's Audio menu), and the switch from music back to video.
  * <p>
- * Switching between video and music keeps the sound going wherever it can: a local file keeps
- * playing on the very same engine, which just stops decoding video (see {@link
- * MediaSessionCallback#switchItem}); a YouTube video keeps playing in its page while its
- * audio-only stream is fetched, and only fades out once that stream is ready to take over. Going
- * back from YouTube music to video only then loads the video, starting where the music was.
+ * YouTube tracks play in the YouTube tab's own player, just with its video held at the lowest
+ * quality while playing as music ({@link #setYoutubeAudioMode}); switching between video and
+ * music there is only a quality change and a tab change, so the sound never stops. A local file
+ * keeps playing on the very same engine, which just stops decoding video (see
+ * {@link MediaSessionCallback#switchItem}).
  */
 public final class MusicPlayer {
+	private static final String TAG = "MUSIC";
+	@Nullable
+	private static YoutubeHooks youtube;
+	private static boolean youtubeAudioMode;
 	@Nullable
 	private static String pendingVideoId;
 	private static long pendingVideoPos;
-	@Nullable
-	private static WebAudioEngineFactory webAudioFactory;
-	@Nullable
-	private static WebAudioEngine webAudioEngine;
 	private static WeakReference<MainActivityDelegate> activity = new WeakReference<>(null);
 
-	/** The fallback engine: a hidden web page, living in whichever activity window is current. */
-	public interface WebAudioEngine extends MediaEngine {
-		/**
-		 * Moves the hidden page into {@code a}'s window, or detaches it (still playing) when null.
-		 */
-		void moveTo(@Nullable MainActivityDelegate a);
-
-		@Nullable
-		MainActivityDelegate getActivity();
+	private MusicPlayer() {
 	}
 
 	/**
-	 * Creates the fallback engine for YouTube audio: a hidden web player of its own (registered by
-	 * the YouTube addon, which the {@code fermata} module can't reference directly). Used only when
-	 * no direct audio-only stream can be had -- see {@link MusicTrackItem#isWebFallback()}. Entirely
-	 * separate from the YouTube tab's own page and engine, which it never touches.
+	 * What the Music tab needs from the YouTube addon (which the {@code fermata} module can't
+	 * reference directly), registered by the addon itself.
 	 */
-	public interface WebAudioEngineFactory {
-		WebAudioEngine create(MainActivityDelegate a, MediaEngine.Listener listener);
+	public interface YoutubeHooks {
+		/**
+		 * Starts {@code t}'s video in the YouTube tab's player (from {@link #takeVideoStartPosition}),
+		 * with {@code t} as that player's queue item. False if it can't.
+		 */
+		boolean play(MainActivityDelegate a, MusicTrackItem t);
+
+		/** Makes {@code item} the YouTube player's queue item without touching what's playing. */
+		void setQueueItem(PlayableItem item);
+
+		/**
+		 * Applies {@link #isYoutubeAudioMode()} to {@code eng}'s video quality, if {@code eng} is the
+		 * YouTube player: the lowest while playing as music, the usual one otherwise.
+		 */
+		void applyQuality(@Nullable MediaEngine eng);
 	}
 
-	public static void setWebAudioEngineFactory(@Nullable WebAudioEngineFactory f) {
-		webAudioFactory = f;
-		DiagnosticLog.log("MUSIC", "web fallback player", (f != null) ? "available" : "unavailable");
+	public static void setYoutubeHooks(@Nullable YoutubeHooks hooks) {
+		youtube = hooks;
 	}
 
-	static boolean isWebAudioAvailable() {
-		return (webAudioFactory != null) && (activity.get() != null);
+	/** Whether YouTube is playing as music: its video held at the lowest quality. */
+	public static boolean isYoutubeAudioMode() {
+		return youtubeAudioMode;
+	}
+
+	public static void setYoutubeAudioMode(boolean on) {
+		if (youtubeAudioMode == on) return;
+		youtubeAudioMode = on;
+		DiagnosticLog.log(TAG, "YouTube " + (on ? "music mode (lowest video quality)" : "video mode"));
+		MainActivityDelegate a = activity.get();
+		YoutubeHooks h = youtube;
+		if ((h != null) && (a != null)) h.applyQuality(a.getMediaSessionCallback().getEngine());
+	}
+
+	/**
+	 * Used by the YouTube page loader: where a video started from the Music tab should start from,
+	 * consumed by the first call for that video.
+	 */
+	public static long takeVideoStartPosition(String videoId) {
+		if (!videoId.equals(pendingVideoId)) return 0;
+		pendingVideoId = null;
+		return pendingVideoPos;
 	}
 
 	static void activityCreated(MainActivityDelegate a) {
 		activity = new WeakReference<>(a);
-		// A rebuilt screen (rotation, Android Auto (re)connecting): the hidden player moves into it.
-		WebAudioEngine e = webAudioEngine;
-		if ((e != null) && (e.getActivity() == null)) e.moveTo(a);
 	}
 
 	static void activityDestroyed(MainActivityDelegate a) {
 		if (activity.get() == a) activity = new WeakReference<>(null);
-		WebAudioEngine e = webAudioEngine;
-		if ((e == null) || (e.getActivity() != a)) return;
-		// Don't stop the music with the screen: move to another live activity if there is one (the
-		// phone's while the car's goes away, or vice versa), else detach until the next one appears.
-		MainActivityDelegate other = activity.get();
-		e.moveTo(((other != null) && (other != a)) ? other : null);
 	}
 
-	/** The fallback engine for {@code current}'s replacement -- reused while it's still in use. */
-	@Nullable
-	static MediaEngine getWebAudioEngine(@Nullable MediaEngine current, MediaEngine.Listener l) {
-		if ((current != null) && (current == webAudioEngine)) return current;
-		WebAudioEngineFactory f = webAudioFactory;
+	/**
+	 * The engine for a YouTube queue track: the YouTube player itself when it's already the one
+	 * playing -- its prepare() moves the page to the track's video, crossfading like any other skip
+	 * in its queue -- otherwise one that starts the video in it (see {@link YoutubeStartEngine}).
+	 */
+	static MediaEngine getYoutubeEngine(MusicTrackItem t, @Nullable MediaEngine current,
+																			MediaEngine.Listener listener) {
+		setYoutubeAudioMode(true);
+		if ((current != null) && (current.getId() == MediaPrefs.MEDIA_ENG_YT) &&
+				!t.hasStartPosition()) {
+			DiagnosticLog.log(TAG, "YouTube track on the playing YouTube player", "id=" + t.getVideoId());
+			return current;
+		}
+		return new YoutubeStartEngine(t, listener);
+	}
+
+	/** Called by {@link YoutubeStartEngine#prepare}. */
+	static boolean startYoutube(MusicTrackItem t, long pos) {
+		YoutubeHooks h = youtube;
 		MainActivityDelegate a = activity.get();
-		if ((f == null) || (a == null)) return null;
-		webAudioEngine = f.create(a, l);
-		return webAudioEngine;
-	}
-
-	public static void webAudioEngineClosed(MediaEngine e) {
-		if (webAudioEngine == e) webAudioEngine = null;
-	}
-
-	private MusicPlayer() {
+		if ((h == null) || (a == null)) return false;
+		pendingVideoId = t.getVideoId();
+		pendingVideoPos = pos;
+		DiagnosticLog.log(TAG, "YouTube track: starting in the YouTube player", "id=" + t.getVideoId(),
+				"pos=" + (pos / 1000) + 's');
+		return h.play(a, t);
 	}
 
 	public static boolean isEnabled() {
@@ -126,13 +144,17 @@ public final class MusicPlayer {
 	}
 
 	/**
-	 * Used by the YouTube page loader: where a video the Music tab just switched back to should
-	 * start from, consumed by the first call for that video.
+	 * The queue track playing right now, if any: the session's own item, or -- for YouTube, whose
+	 * session item is its player's "current video" -- that player's queue item.
 	 */
-	public static long takeVideoStartPosition(String videoId) {
-		if (!videoId.equals(pendingVideoId)) return 0;
-		pendingVideoId = null;
-		return pendingVideoPos;
+	@Nullable
+	public static MusicTrackItem getCurrentTrack(MediaSessionCallback cb) {
+		PlayableItem cur = cb.getCurrentItem();
+		if (cur instanceof MusicTrackItem t) return t;
+		MediaEngine eng = cb.getEngine();
+		if ((eng == null) || (eng.getId() != MediaPrefs.MEDIA_ENG_YT)) return null;
+		PlayableItem q = eng.getQueueItem();
+		return (q instanceof MusicTrackItem t) ? t : null;
 	}
 
 	/** Shows the Music tab, leaving any video mode first. */
@@ -176,7 +198,10 @@ public final class MusicPlayer {
 		List<MusicTrackItem> tracks = q.replace(items);
 		MusicTrackItem t = tracks.get(Math.max(0, Math.min(startIdx, tracks.size() - 1)));
 		open(a);
-		start(a, t);
+		MediaEngine eng = a.getMediaSessionCallback().getEngine();
+		PlayableItem cur = (eng == null) ? null : eng.getSource();
+		if ((cur != null) && isSameMedia(eng, cur, t)) continueAsMusic(a, eng, t);
+		else playTrack(a, t, 0);
 	}
 
 	/** "Add into music queue" for a library item (all of a browsable item's tracks). */
@@ -207,10 +232,17 @@ public final class MusicPlayer {
 
 	/** Plays a queue track -- from the Music tab itself (a queue row, or play with nothing on). */
 	public static void playTrack(MainActivityDelegate a, MusicTrackItem t, long pos) {
-		DiagnosticLog.log("MUSIC", "play", "track=" + t, "id=" + t.getSourceId(),
-				"method=" + t.getPlaybackMethod(), "pos=" + (pos / 1000) + 's');
+		MediaSessionCallback cb = a.getMediaSessionCallback();
+		MediaEngine eng = cb.getEngine();
+		DiagnosticLog.log(TAG, "play", "track=" + t, "id=" + t.getSourceId(),
+				"pos=" + (pos / 1000) + 's');
+		// The YouTube player's close() is deliberately inert: a local track taking over from it has
+		// to silence its page explicitly.
+		if ((t.getVideoId() == null) && (eng != null) && (eng.getId() == MediaPrefs.MEDIA_ENG_YT)) {
+			eng.pause();
+		}
 		t.setStartPosition(pos);
-		a.getMediaSessionCallback().playItem(t, pos);
+		cb.playItem(t, pos);
 	}
 
 	/**
@@ -226,7 +258,8 @@ public final class MusicPlayer {
 		MediaEngine eng = cb.getEngine();
 		PlayableItem cur = (eng == null) ? null : eng.getSource();
 
-		if ((cur == null) || (cur instanceof MusicTrackItem)) {
+		if ((cur == null) || (getCurrentTrack(cb) != null)) {
+			if (cur != null) setYoutubeAudioMode(eng.getId() == MediaPrefs.MEDIA_ENG_YT);
 			open(a);
 			return;
 		}
@@ -239,12 +272,11 @@ public final class MusicPlayer {
 		}
 
 		PlayableItem item = qi;
-		String sourceId = MusicQueue.sourceIdOf(item);
-		MusicTrackItem existing = findInQueue(q, sourceId);
+		MusicTrackItem existing = findInQueue(q, MusicQueue.sourceIdOf(item));
 
 		if (existing != null) {
 			open(a);
-			handOff(a, eng, existing);
+			continueAsMusic(a, eng, existing);
 			return;
 		}
 
@@ -259,36 +291,25 @@ public final class MusicPlayer {
 			}
 			MusicTrackItem t = q.replace(l).get(idx);
 			open(a);
-			handOff(a, eng, t);
+			continueAsMusic(a, eng, t);
 		});
 	}
 
 	/**
-	 * Switches the music track that's playing now back to its video, only then loading the video
-	 * (YouTube picks up where the music is; a local file just gets its picture back).
+	 * Switches the music track that's playing now back to its video: YouTube's page is already
+	 * playing it, so it's just a matter of showing it at its usual quality again; a local file
+	 * gets its picture back on the same engine.
 	 */
 	public static void switchToVideo(MainActivityDelegate a) {
 		MediaSessionCallback cb = a.getMediaSessionCallback();
 		MediaEngine eng = cb.getEngine();
-		if ((eng == null) || !(eng.getSource() instanceof MusicTrackItem t)) return;
+		MusicTrackItem t = getCurrentTrack(cb);
+		if ((eng == null) || (t == null)) return;
 
-		String vid = t.getVideoId();
-
-		if (vid != null) {
-			eng.getPosition().main().onSuccess(pos -> a.getLib().getItem(MusicTrackItem.YT_PREFIX + vid)
-					.main().onCompletion((i, err) -> {
-						if (!(i instanceof MediaLib.ExternallyPlayableItem ext)) {
-							if (err != null) Log.w(err);
-							UiUtils.showToast(a.getContext(), R.string.music_video_unavailable);
-							return;
-						}
-						pendingVideoId = vid;
-						pendingVideoPos = pos;
-						// The music keeps playing until the page's video actually starts, which takes
-						// over the session (and stops this engine) on its own.
-						ActivityFragment f = a.showFragment(ext.getPlayerFragmentId());
-						if (f != null) ext.loadInFragment(f, ext);
-					}));
+		if (t.getVideoId() != null) {
+			DiagnosticLog.log(TAG, "switch to video", "id=" + t.getVideoId());
+			setYoutubeAudioMode(false);
+			a.showFragment(R.id.youtube_fragment);
 			return;
 		}
 
@@ -307,155 +328,39 @@ public final class MusicPlayer {
 		});
 	}
 
-	/** Starts {@code t}, taking over from the current playback if that's the same media. */
-	private static void start(MainActivityDelegate a, MusicTrackItem t) {
-		MediaEngine eng = a.getMediaSessionCallback().getEngine();
-		PlayableItem cur = (eng == null) ? null : eng.getSource();
-		if ((cur != null) && isSameMedia(eng, cur, t)) handOff(a, eng, t);
-		else playTrack(a, t, 0);
-	}
-
-	private static boolean isSameMedia(MediaEngine eng, PlayableItem cur, MusicTrackItem t) {
-		String vid = t.getVideoId();
-
-		if (vid != null) {
-			if (cur instanceof MusicTrackItem ct) return vid.equals(ct.getVideoId());
-			if (eng.getId() != MediaPrefs.MEDIA_ENG_YT) return false;
-			PlayableItem fav = eng.getFavoritableItem();
-			return (fav != null) && (MusicTrackItem.YT_PREFIX + vid).equals(MusicQueue.sourceIdOf(fav));
-		}
-
-		PlayableItem src = t.getSource();
-		if (src == null) return false;
-		if (cur instanceof MusicTrackItem ct) return t.getSourceId().equals(ct.getSourceId());
-		return cur.getLocation().equals(src.getLocation());
-	}
-
 	/**
-	 * Hands playback of the same media over from {@code eng} to {@code t} at the current position.
+	 * Carries on with the media {@code eng} is playing, as {@code t}: for YouTube, the page keeps
+	 * playing -- only its quality drops and its queue becomes the music queue; for a local file, the
+	 * same engine keeps playing it without its video (or re-prepares it at the same position).
 	 */
-	private static void handOff(MainActivityDelegate a, MediaEngine eng, MusicTrackItem t) {
+	private static void continueAsMusic(MainActivityDelegate a, MediaEngine eng, MusicTrackItem t) {
 		MediaSessionCallback cb = a.getMediaSessionCallback();
-		PlayableItem cur = eng.getSource();
-		if (cur == t) return;
-		if ((cur instanceof MusicTrackItem ct) && (ct != t)) t.copyStreamFrom(ct);
+
+		if (eng.getId() == MediaPrefs.MEDIA_ENG_YT) {
+			YoutubeHooks h = youtube;
+			if (h != null) h.setQueueItem(t);
+			setYoutubeAudioMode(true);
+			DiagnosticLog.log(TAG, "YouTube video continues as music", "id=" + t.getVideoId());
+			return;
+		}
 
 		eng.getPosition().main().onSuccess(pos -> {
 			if (cb.getEngine() != eng) return;
-
-			if ((eng.getId() != MediaPrefs.MEDIA_ENG_YT) || (t.getVideoId() == null)) {
-				// Same file (or the same, already resolved stream): keep the engine, drop the video.
-				if (!cb.switchItem(t)) playTrack(a, t, pos);
-				return;
-			}
-
-			// YouTube: the video keeps playing while its audio-only stream is being fetched.
-			t.prepareSource().main().onSuccess(v -> {
-				if (cb.getEngine() != eng) return;
-				if (t.needsNetworkResolve()) {
-					// Couldn't get one, and no fallback either -- the queue's own listener already told
-					// the user why; just leave the video playing.
-					return;
-				}
-				eng.getPosition().main().onSuccess(p -> {
-					if (cb.getEngine() != eng) return;
-					DiagnosticLog.log("MUSIC", "hand-off from the YouTube tab: begin (video keeps playing)",
-							"id=" + t.getVideoId(), "method=" + t.getPlaybackMethod(), "pos=" + (p / 1000) + 's');
-					// Gap-free: the video keeps playing (its page events no longer driving the session)
-					// until the music is actually audible -- see HandOff.
-					eng.beginHandOff();
-					new HandOff(a, eng, t).start();
-					playTrack(a, t, p);
-				});
-			});
+			if (!cb.switchItem(t)) playTrack(a, t, pos);
 		});
 	}
 
-	/**
-	 * Finishes a gap-free switch from the YouTube tab's video to its music track: once the track is
-	 * actually playing, catches it up to wherever the video has got to in the meantime (only if
-	 * they've drifted noticeably apart -- a seek costs a moment of rebuffering) and only then fades
-	 * the video out. If the track fails instead, the video just carries on as the session's player.
-	 */
-	private static final class HandOff implements MediaSessionCallback.Listener {
-		private static final long TIMEOUT = 60_000L;
-		private static final long MAX_DRIFT = 1500L;
-		private static final long SEEK_SETTLE = 800L;
-		// Strong reference: the session's listener list only holds weak ones.
-		@Nullable
-		private static HandOff active;
-		private final MainActivityDelegate activity;
-		private final MediaEngine video;
-		private final MusicTrackItem track;
-		private final long startTime = SystemClock.elapsedRealtime();
-		private boolean done;
+	private static boolean isSameMedia(MediaEngine eng, PlayableItem cur, MusicTrackItem t) {
+		if (cur instanceof MusicTrackItem ct) return t.getSourceId().equals(ct.getSourceId());
 
-		HandOff(MainActivityDelegate activity, MediaEngine video, MusicTrackItem track) {
-			this.activity = activity;
-			this.video = video;
-			this.track = track;
+		if (t.getVideoId() != null) {
+			if (eng.getId() != MediaPrefs.MEDIA_ENG_YT) return false;
+			PlayableItem fav = eng.getFavoritableItem();
+			return (fav != null) && t.getSourceId().equals(MusicQueue.sourceIdOf(fav));
 		}
 
-		void start() {
-			HandOff old = active;
-			if (old != null) old.finish(false, "superseded by another hand-off");
-			active = this;
-			activity.getMediaSessionCallback().addBroadcastListener(this);
-			activity.postDelayed(() -> {
-				if (!done) finish(false, "the music didn't start within " + (TIMEOUT / 1000) + 's');
-			}, TIMEOUT);
-		}
-
-		@Override
-		public void onPlaybackStateChanged(MediaSessionCallback cb, PlaybackStateCompat state) {
-			if (done) return;
-			PlayableItem cur = cb.getCurrentItem();
-			int st = state.getState();
-
-			if (st == PlaybackStateCompat.STATE_ERROR) {
-				finish(false, "the music failed: " + state.getErrorMessage());
-			} else if ((cur != null) && (cur != track) && (cur != video.getSource())) {
-				// Something else was picked meanwhile: the video must not keep playing under it.
-				video.handOff();
-				finish(true, "something else started playing: " + cur);
-			} else if ((cur == track) && (st == PlaybackStateCompat.STATE_PLAYING)) {
-				MediaEngine music = cb.getEngine();
-				if (music == null) return;
-				done = true;
-				video.getPosition().and(music.getPosition()).main().onSuccess(h -> {
-					long drift = h.value1 - h.value2;
-					boolean seek = Math.abs(drift) > MAX_DRIFT;
-					if (seek) {
-						cb.onSeekTo(h.value1);
-						// Let the music's catch-up seek settle before the video fades: a brief overlap
-						// (like a crossfade) rather than a moment of silence.
-						activity.postDelayed(video::handOff, SEEK_SETTLE);
-					} else {
-						video.handOff();
-					}
-					finish(true, "music playing after " + (SystemClock.elapsedRealtime() - startTime) +
-							"ms, drift=" + drift + "ms" + ((Math.abs(drift) > MAX_DRIFT) ? " (caught up)" : ""));
-				});
-			}
-		}
-
-		private void finish(boolean ok, String how) {
-			if (active == this) active = null;
-			boolean wasDone = done;
-			done = true;
-			MediaSessionCallback cb = activity.getMediaSessionCallback();
-			cb.removeBroadcastListener(this);
-			DiagnosticLog.log("MUSIC", "hand-off from the YouTube tab: " + (ok ? "done" : "cancelled"),
-					"id=" + track.getVideoId(), how);
-			if (ok || wasDone) return;
-
-			// The music didn't make it: the video, still playing, is the session's player again.
-			video.cancelHandOff();
-			if (cb.getEngine() != video) {
-				cb.setEngine(video);
-				cb.onEngineStarted(video);
-			}
-		}
+		PlayableItem src = t.getSource();
+		return (src != null) && cur.getLocation().equals(src.getLocation());
 	}
 
 	@Nullable

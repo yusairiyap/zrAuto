@@ -26,6 +26,8 @@ import java.util.Objects;
 
 import me.aap.fermata.addon.web.FermataChromeClient;
 import me.aap.fermata.addon.web.R;
+import me.aap.fermata.addon.music.MusicPlayer;
+import me.aap.fermata.addon.music.MusicQueue;
 import me.aap.fermata.addon.web.yt.YoutubeAddon.VideoScale;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.DefaultMediaLib;
@@ -153,15 +155,6 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	private String userPickedVideoId;
 	private long userPickedTime;
 	private static final long USER_PICK_WINDOW_MS = 90_000L;
-	// Set by handOff() when the Music tab takes this video over as an audio-only stream on another
-	// engine: from then on this page's own playing/paused/ended events must not reach the shared
-	// MediaSessionCallback, or they'd pause/steal back the engine that's now actually playing (see
-	// MediaEngine#handOff()). Cleared once the app itself asks this page to play again -- start(), a
-	// tap-to-play arming YoutubeAddon#getPendingVideoId(), or the user picking a video on the page.
-	private boolean handedOff;
-	// Set by beginHandOff(): handed off, but deliberately still playing until the new engine is
-	// actually audible (a gap-free switch to the Music tab) -- so don't pause it on our own.
-	private boolean handOffKeepPlaying;
 
 	public YoutubeMediaEngine(YoutubeWebView web, MainActivityDelegate a) {
 		this.web = web;
@@ -185,17 +178,6 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	void playing(String data) {
-		if (handedOff) {
-			if ((web.getAddon().getPendingVideoId() == null) && !isUserPickPending()) {
-				// The page resumed on its own (e.g. a buffering stall ending mid-fade) -- keep it quiet,
-				// unless it's meant to still be playing through a gap-free hand-off.
-				if (!handOffKeepPlaying) web.pause();
-				return;
-			}
-			handedOff = false;
-			handOffKeepPlaying = false;
-		}
-
 		// Every confirmed-playing moment re-arms the retry guard in paused() below -- not just an
 		// explicit native start() -- since a page-reported pause can also follow a resize-triggered
 		// player restart the app never asked for (confirmed on-device: a window resize alone, with
@@ -368,11 +350,14 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		if (url.startsWith("blob:")) url = url.substring(5);
 		current = new Current(url, currentVideoTitle, actualId);
 
-		if (!web.getAddon().autoHighestQuality()) {
+		// Playing as music (the Music tab): the lowest quality -- only the sound matters. Otherwise
+		// the highest, if the user asked for it.
+		boolean music = MusicPlayer.isYoutubeAudioMode();
+		if (!music && !web.getAddon().autoHighestQuality()) {
 			qualityUrl = null;
 		} else if (!url.isEmpty() && !url.equals(qualityUrl)) {
 			qualityUrl = url;
-			web.setHighestVideoQuality();
+			web.applyQualityPolicy(music);
 		}
 		DiagnosticLog.log("YT", "playing", "id=" + actualId, "title=" + currentVideoTitle);
 		cb.setEngine(this);
@@ -383,6 +368,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	void userPickedVideo(String videoId) {
 		if ((videoId == null) || videoId.isEmpty()) return;
 		DiagnosticLog.log("YT", "user picked", "id=" + videoId);
+		// Picking a video on the page means watching it, not listening to the Music tab's queue.
+		MusicPlayer.setYoutubeAudioMode(false);
 		userPickedVideoId = videoId;
 		userPickedTime = SystemClock.elapsedRealtime();
 	}
@@ -401,7 +388,6 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	void ended() {
-		if (handedOff) return;
 		// Repeat One loops whatever video is currently playing, regardless of whether it's part of a
 		// Favorites/Playlist queue (see YoutubeAddon#isRepeatOneEnabled()) -- handled here directly,
 		// short-circuiting before current becomes end/cb.onEngineEnded() runs, so it works the exact
@@ -581,9 +567,9 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	void paused() {
-		// A pause after handOff() is our own doing, and the session callback belongs to the Music
-		// tab's engine now -- forwarding it would pause that one instead.
-		if (handedOff) return;
+		// Silenced because another engine took over (see acceptQueueResolved() and the Music tab's
+		// MusicPlayer#playTrack()): that pause must not pause the engine that's playing now.
+		if (cb.getEngine() != this) return;
 
 		// Confirmed on-device (window-resize repro): YouTube's own player can auto-pause the
 		// <video> element for a beat right after it (or we) told it to play -- its internal layout
@@ -725,30 +711,15 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		}
 	}
 
-	@Override
-	public void handOff() {
-		DiagnosticLog.log("YT", "engine handOff()", "id=" + currentVideoId);
-		handedOff = true;
-		handOffKeepPlaying = false;
-		lastActivePlayTime = 0;
-		appRequestedPause = true;
-		web.pause();
-	}
-
-	@Override
-	public void beginHandOff() {
-		DiagnosticLog.log("YT", "engine beginHandOff() -- still playing until the music is",
-				"id=" + currentVideoId);
-		handedOff = true;
-		handOffKeepPlaying = true;
-	}
-
-	@Override
-	public void cancelHandOff() {
-		DiagnosticLog.log("YT", "engine cancelHandOff() -- the session's player again",
-				"id=" + currentVideoId);
-		handedOff = false;
-		handOffKeepPlaying = false;
+	/**
+	 * Re-applies the video quality policy to what's playing now -- the Music tab switching between
+	 * playing this as music (lowest quality) and as video (see {@link MusicPlayer#setYoutubeAudioMode}).
+	 */
+	void applyQuality() {
+		qualityUrl = null;
+		boolean music = MusicPlayer.isYoutubeAudioMode();
+		if (music || web.getAddon().autoHighestQuality()) web.applyQualityPolicy(music);
+		else web.clearQualityPolicy();
 	}
 
 	@Override
@@ -756,6 +727,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		return showEqualizer();
 	}
 
+	/**
+	 * The Favorites/Playlist/Music queue entry this video was started from, if it's still the one
+	 * playing -- what the Music tab's "Play as music" builds its queue around.
+	 */
 	@Nullable
 	@Override
 	public PlayableItem getQueueItem() {
@@ -767,8 +742,6 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	@Override
 	public void start() {
 		DiagnosticLog.log("YT", "engine start()", "id=" + currentVideoId);
-		handedOff = false;
-		handOffKeepPlaying = false;
 		lastActivePlayTime = System.currentTimeMillis();
 		lastPausedTime = 0;
 		playRetries = 0;
@@ -1299,9 +1272,14 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	@NonNull
 	private PlayableItem acceptQueueResolved(@Nullable PlayableItem pi, @Nullable BrowsableItem container,
 																						@NonNull PlayableItem fallback) {
-		if ((pi != null) && (YoutubeVideoItem.extractYoutubeVideoId(pi) != null) &&
-				Objects.equals(pi.getParent(), container)) {
-			return pi;
+		if ((pi != null) && Objects.equals(pi.getParent(), container)) {
+			if (YoutubeVideoItem.extractYoutubeVideoId(pi) != null) return pi;
+			// The Music tab's queue can mix in local songs: another engine plays that one, so this
+			// page has to go quiet (this engine's close() is deliberately inert).
+			if (container instanceof MusicQueue) {
+				web.pause();
+				return pi;
+			}
 		}
 		web.getAddon().setQueueItem(null);
 		return fallback;

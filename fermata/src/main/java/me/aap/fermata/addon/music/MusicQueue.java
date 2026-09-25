@@ -59,14 +59,6 @@ public class MusicQueue extends ExtRoot {
 
 	public interface Listener {
 		void onQueueChanged(MusicQueue queue);
-
-		/** A track's title/artist/art became known (e.g. its YouTube stream was resolved). */
-		default void onTrackUpdated(MusicQueue queue, MusicTrackItem track) {
-		}
-
-		/** A track couldn't be prepared for playback, e.g. no audio-only stream was available. */
-		default void onTrackFailed(MusicQueue queue, MusicTrackItem track, Throwable err) {
-		}
 	}
 
 	public void addListener(Listener l) {
@@ -144,7 +136,7 @@ public class MusicQueue extends ExtRoot {
 
 		if (src instanceof MusicTrackItem t) {
 			return new MusicTrackItem(id, this, sourceId, t.getSource(), t.getCachedTitle(),
-					t.getCachedArtist(), t.getCachedDuration());
+					t.getArtistName(), t.getCachedDuration());
 		}
 
 		String name = src.getName();
@@ -229,15 +221,6 @@ public class MusicQueue extends ExtRoot {
 		save();
 		reset();
 		for (Listener l : new ArrayList<>(listeners)) l.onQueueChanged(this);
-	}
-
-	void trackUpdated(MusicTrackItem t) {
-		save();
-		for (Listener l : new ArrayList<>(listeners)) l.onTrackUpdated(this, t);
-	}
-
-	void trackFailed(MusicTrackItem t, Throwable err) {
-		for (Listener l : new ArrayList<>(listeners)) l.onTrackFailed(this, t, err);
 	}
 
 	/** Remembers which track was playing, and where, so the queue can pick up from there later. */
@@ -346,7 +329,7 @@ public class MusicQueue extends ExtRoot {
 				o.put("i", t.getId());
 				o.put("s", t.getSourceId());
 				String title = t.getCachedTitle();
-				String artist = t.getCachedArtist();
+				String artist = t.getArtistName();
 				if (title != null) o.put("t", title);
 				if (artist != null) o.put("a", artist);
 				long d = t.getCachedDuration();

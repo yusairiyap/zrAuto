@@ -1093,8 +1093,10 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * (theme or nav-bar-position change) can end up missing the one layout event it needed; called
 	 * from a handful of extra points (a global layout pass, activity resume) as a cheap catch-all --
 	 * {@link #applyContentInsets}/{@link #applyWebViewTopInset} already no-op when nothing changed.
+	 * Also called by {@code ControlPanelView} when the Music tab hides it, so the content's padding
+	 * follows in the same frame instead of one layout pass later.
 	 */
-	private void refreshContentInsets() {
+	public void refreshContentInsets() {
 		for (ViewGroup content : paddingInsetContent) applyContentInsets(content);
 		for (View content : topInsetContent) applyWebViewTopInset(content);
 	}
@@ -1219,6 +1221,16 @@ public class MainActivityDelegate extends ActivityDelegate
 	public MainActivityFragment getActiveMainActivityFragment() {
 		ActivityFragment f = getActiveFragment();
 		return (f instanceof MainActivityFragment) ? (MainActivityFragment) f : null;
+	}
+
+	/** The fragment with this id if it's been created (shown at least once), else null. */
+	@Nullable
+	public ActivityFragment getFragment(int id) {
+		for (Fragment f : getSupportFragmentManager().getFragments()) {
+			if ((f instanceof ActivityFragment af) && (af.getFragmentId() == id)) return af;
+		}
+
+		return null;
 	}
 
 	@Nullable

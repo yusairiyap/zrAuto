@@ -24,6 +24,7 @@ import androidx.annotation.Nullable;
 import java.util.List;
 
 import me.aap.fermata.BuildConfig;
+import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.web.FermataChromeClient;
 import me.aap.fermata.addon.web.FermataJsInterface;
 import me.aap.fermata.addon.web.FermataWebView;
@@ -113,9 +114,10 @@ public class YoutubeWebView extends FermataWebView {
 	public void onPreferenceChanged(PreferenceStore store, List<PreferenceStore.Pref<?>> prefs) {
 		super.onPreferenceChanged(store, prefs);
 
-		if (getAddon().autoHighestQualityChanged(prefs)) {
-			if (getAddon().autoHighestQuality()) setHighestVideoQuality();
-			else clearHighestVideoQuality();
+		// While playing as music (the Music tab) the quality stays at its lowest regardless.
+		if (getAddon().autoHighestQualityChanged(prefs) && !MusicPlayer.isYoutubeAudioMode()) {
+			if (getAddon().autoHighestQuality()) applyQualityPolicy(false);
+			else clearQualityPolicy();
 		}
 
 		if (YoutubeSponsorBlock.isPreferenceChanged(prefs)) injectSponsorBlock();
@@ -581,7 +583,7 @@ public class YoutubeWebView extends FermataWebView {
 	 * <p>
 	 * {@code .ytp-autonav-toggle-button} is YouTube's own HTML5 player control (the same
 	 * {@code #movie_player}/{@code .html5-video-player} embed {@link #next()}/{@link
-	 * #setHighestVideoQuality()} already target elsewhere in this class, used across both the mobile
+	 * #applyQualityPolicy(boolean)} already target elsewhere in this class, used across both the mobile
 	 * and desktop-style watch pages) -- if a future YouTube markup change moves or renames it, this
 	 * becomes a silent no-op rather than a crash, same as the ad-selector fallback in {@link
 	 * #attachAdObserver()}; the debug log below is there to confirm whether it's still matching.
@@ -1007,7 +1009,11 @@ public class YoutubeWebView extends FermataWebView {
 				"setVideoQuality(" + idx + ", 0, true);");
 	}
 
-	void setHighestVideoQuality() {
+	/**
+	 * Keeps the player at its highest quality level, or its lowest ({@code lowest}: playing as music,
+	 * where only the sound matters), re-applied on every player state change until cleared.
+	 */
+	void applyQualityPolicy(boolean lowest) {
 		loadUrl("javascript:\n" +
 				"(function() {\n" +
 				CLEAR_HIGHEST_VIDEO_QUALITY_JS +
@@ -1016,13 +1022,17 @@ public class YoutubeWebView extends FermataWebView {
 				"  function getPlayer() {\n" +
 				"    return document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
 				"  }\n" +
+				"  var lowest = " + lowest + ";\n" +
 				"  function applyHighest(p) {\n" +
 				"    if (!p || typeof p.getAvailableQualityLevels !== 'function') return false;\n" +
 				"    var levels = p.getAvailableQualityLevels();\n" +
 				"    if (!levels || levels.length === 0) return false;\n" +
 				"    var best = null;\n" +
+				// Levels come highest first, 'auto' last.
 				"    for (var i = 0; i < levels.length; i++) {\n" +
-				"      if (levels[i] !== 'auto') { best = levels[i]; break; }\n" +
+				"      if (levels[i] === 'auto') continue;\n" +
+				"      best = levels[i];\n" +
+				"      if (!lowest) break;\n" +
 				"    }\n" +
 				"    if (!best) return false;\n" +
 				"    if (p.getPlaybackQuality && p.getPlaybackQuality() === best) return true;\n" +
@@ -1048,11 +1058,14 @@ public class YoutubeWebView extends FermataWebView {
 				"})();");
 	}
 
-	void clearHighestVideoQuality() {
+	/** Stops {@link #applyQualityPolicy} and hands the quality choice back to YouTube. */
+	void clearQualityPolicy() {
 		loadUrl("javascript:\n" +
 				"(function() {\n" +
 				CLEAR_HIGHEST_VIDEO_QUALITY_JS +
 				"  clearFermataQ();\n" +
+				"  var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
+				"  try { if (p && p.setPlaybackQualityRange) p.setPlaybackQualityRange('auto', 'auto'); } catch(e) {}\n" +
 				"})();");
 	}
 

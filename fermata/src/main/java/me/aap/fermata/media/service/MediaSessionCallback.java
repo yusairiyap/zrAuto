@@ -1114,14 +1114,6 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		DiagnosticLog.log("ENGINE", "error", engine.getClass().getSimpleName(), "item=" + i,
 				"cause=" + describe(ex), "location=" + ((i == null) ? null : safeHost(i)));
 
-		// The item's source itself was rejected (e.g. an expired/refused stream URL): let it fetch a
-		// fresh one and play again, rather than trying another engine on the same dead URL.
-		if ((i != null) && i.invalidateSource(ex)) {
-			DiagnosticLog.log("ENGINE", "retrying with a fresh source", "item=" + i);
-			playItem(i, -1);
-			return;
-		}
-
 		if (tryAnotherEngine && (engine.getSource() != null)) {
 			this.engine = getEngineManager().createAnotherEngine(engine, this);
 

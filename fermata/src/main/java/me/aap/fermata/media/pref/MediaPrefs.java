@@ -21,8 +21,6 @@ public interface MediaPrefs extends PreferenceStore {
 	int MEDIA_ENG_YT = 3;
 	int MEDIA_ENG_CAST = 4;
 	int MEDIA_ENG_FELEX = 5;
-	// The Music tab's fallback for YouTube audio: a hidden web player of its own (see MusicPlayer).
-	int MEDIA_ENG_YT_AUDIO = 6;
 
 	int SCALE_BEST = 0;
 	int SCALE_FILL = 1;

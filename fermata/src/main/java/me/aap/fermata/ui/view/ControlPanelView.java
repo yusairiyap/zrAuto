@@ -329,7 +329,13 @@ public class ControlPanelView extends ConstraintLayout
 		}
 
 		notifyControlPanelVisibility();
-		checkPlaybackTimer(getActivity());
+		MainActivityDelegate a = getActivity();
+		checkPlaybackTimer(a);
+		// The content's bottom padding reserves room for this panel; re-apply it right away rather
+		// than on the next layout pass, which drew one frame (or more) with the stale padding. And
+		// once more after that pass, once everything has settled into its final place.
+		a.refreshContentInsets();
+		post(a::refreshContentInsets);
 	}
 
 	/**

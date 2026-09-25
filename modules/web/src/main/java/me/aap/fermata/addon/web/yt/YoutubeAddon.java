@@ -20,11 +20,14 @@ import me.aap.fermata.addon.FermataAddon;
 import me.aap.fermata.addon.MediaLibAddon;
 import me.aap.fermata.addon.VideoTitleCache;
 import me.aap.fermata.addon.music.MusicPlayer;
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.WebBrowserAddon;
+import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.DefaultMediaLib;
 import me.aap.fermata.media.lib.MediaLib.Item;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
+import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.function.BooleanSupplier;
@@ -103,8 +106,48 @@ public class YoutubeAddon extends WebBrowserAddon
 	private String pendingVideoId;
 
 	public YoutubeAddon() {
-		// The Music tab's last-resort player for YouTube audio -- see YoutubeWebAudioEngine.
-		MusicPlayer.setWebAudioEngineFactory(YoutubeWebAudioEngine::new);
+		// Lets the Music tab play YouTube in this addon's own player -- see MusicHooks.
+		MusicPlayer.setYoutubeHooks(new MusicHooks());
+	}
+
+	/**
+	 * The Music tab plays its YouTube tracks in this addon's player, with the video held at its
+	 * lowest quality (see {@link YoutubeMediaEngine#applyQuality()}), and the music queue as the
+	 * player's queue -- so next/prev, the crossfade between songs and the switch to video are all
+	 * exactly YouTube's own.
+	 */
+	private final class MusicHooks implements MusicPlayer.YoutubeHooks {
+		@Override
+		public boolean play(MainActivityDelegate a, MusicTrackItem t) {
+			String videoId = t.getVideoId();
+			if ((videoId == null) || !(a.getLib() instanceof DefaultMediaLib lib)) return false;
+			YoutubeVideoItem video = new YoutubeVideoItem(videoId, getRootItem(lib));
+			ActivityFragment f = a.getFragment(getFragmentId());
+
+			if (f == null) {
+				// Never opened yet: its page has to be created (and laid out -- YouTube won't play in
+				// a zero-size window) by showing it once, then it's straight back to where we were.
+				int back = a.getActiveFragmentId();
+				f = a.showFragment(getFragmentId());
+				if (f == null) return false;
+				a.postDelayed(() -> {
+					if (a.getActiveFragmentId() == getFragmentId()) a.showFragment(back);
+				}, 400);
+			}
+
+			video.loadInFragment(f, t);
+			return true;
+		}
+
+		@Override
+		public void setQueueItem(PlayableItem item) {
+			YoutubeAddon.this.setQueueItem(item);
+		}
+
+		@Override
+		public void applyQuality(@Nullable MediaEngine eng) {
+			if (eng instanceof YoutubeMediaEngine yt) yt.applyQuality();
+		}
 	}
 
 	@Nullable
@@ -266,7 +309,7 @@ public class YoutubeAddon extends WebBrowserAddon
 
 	@Override
 	public void uninstall() {
-		MusicPlayer.setWebAudioEngineFactory(null);
+		MusicPlayer.setYoutubeHooks(null);
 		getPreferenceStore().removeBroadcastListener(this);
 		MainActivityPrefs.get().removeBroadcastListener(this);
 		FermataApplication.get().getPreferenceStore().removeBroadcastListener(this);
