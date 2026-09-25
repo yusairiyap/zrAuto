@@ -143,15 +143,21 @@ public class MediaItemView extends ConstraintLayout
 	public void applyLayout(Context ctx, boolean grid, float size) {
 		removeAllViews();
 		inflate(ctx, grid ? R.layout.media_item_grid_layout : R.layout.media_item_list_layout, this);
+		// The layout's views are all new: the checkbox has to be wired up again, or ticking it after
+		// a list/grid switch only changes how it looks, not the actual selection.
+		getCheckBox().setOnCheckedChangeListener(this);
 		setSize(ctx, grid, size);
+		refreshCheckbox();
 	}
 
 	public void setSize(Context ctx, boolean grid, float size) {
 		setTextAppearance(ctx, getTitle(), titleTextAppearance, size, grid);
 		setTextAppearance(ctx, getSubtitle(), subtitleTextAppearance, size, grid);
 		if (!grid) {
+			// Flush with the card's left, top and bottom edges (clipped to its rounded outline), a
+			// little taller than the two text lines for some breathing room.
 			int iconSize = (int) (getTitle().getTextSize() + getSubtitle().getTextSize() + toPx(ctx,
-					10));
+					28));
 			ImageView i = getIcon();
 			ViewGroup.LayoutParams lp = i.getLayoutParams();
 			lp.height = iconSize;
@@ -415,7 +421,11 @@ public class MediaItemView extends ConstraintLayout
 	@Override
 	public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
 		MediaItemWrapper w = getItemWrapper();
-		if (w != null) w.setSelected(isChecked, false);
+		if (w == null) return;
+		boolean changed = w.isSelected() != isChecked;
+		w.setSelected(isChecked, false);
+		MediaItemListView l = getListView();
+		if (changed && (l != null)) l.notifySelectionChanged();
 	}
 
 	@Override

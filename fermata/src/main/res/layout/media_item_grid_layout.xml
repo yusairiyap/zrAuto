@@ -82,14 +82,24 @@
         app:layout_constraintEnd_toEndOf="@id/media_item_icon"
         app:layout_constraintStart_toStartOf="@id/media_item_icon" />
 
+    <!-- Same look as the Spotify import cards: a white box icon on a dark round badge at the
+         top-left, visible over any thumbnail. The whole look is the view's own (checked-state)
+         background, sized by the view; the CheckBox's own button is blanked out, since a
+         CompoundButton draws its button at the start edge at its intrinsic size. -->
     <com.google.android.material.checkbox.MaterialCheckBox
         android:id="@+id/media_item_checkbox"
-        style="?attr/appMediaItemStyle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_margin="4dp"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_margin="6dp"
+        android:background="@drawable/media_item_check"
+        android:button="@android:color/transparent"
         android:elevation="10dp"
-        app:layout_constraintEnd_toEndOf="@id/media_item_icon"
+        android:minWidth="0dp"
+        android:minHeight="0dp"
+        android:padding="0dp"
+        app:buttonIcon="@android:color/transparent"
+        app:useMaterialThemeColors="false"
+        app:layout_constraintStart_toStartOf="@id/media_item_icon"
         app:layout_constraintTop_toTopOf="@id/media_item_icon" />
 
 </merge>

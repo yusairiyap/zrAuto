@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:focusable="true"
+    android:gravity="center_vertical"
+    android:minHeight="56dp"
+    android:orientation="horizontal"
+    android:paddingStart="56dp"
+    android:paddingTop="4dp"
+    android:paddingEnd="12dp"
+    android:paddingBottom="4dp">
+
+    <ImageView
+        android:id="@+id/si_thumb"
+        android:layout_width="96dp"
+        android:layout_height="54dp"
+        android:importantForAccessibility="no"
+        android:scaleType="centerCrop" />
+
+    <ProgressBar
+        android:id="@+id/si_thumb_progress"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/si_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textAppearance="?attr/textAppearanceBody2" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/si_detail"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="?attr/textAppearanceCaption" />
+    </LinearLayout>
+
+    <ImageView
+        android:id="@+id/si_preview"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/spotify_preview"
+        android:padding="8dp"
+        android:src="@drawable/play"
+        app:tint="?android:attr/textColorPrimary" />
+
+    <ImageView
+        android:id="@+id/si_check"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:importantForAccessibility="no"
+        android:padding="4dp"
+        android:src="@drawable/done"
+        app:tint="?android:attr/textColorPrimary" />
+</LinearLayout>

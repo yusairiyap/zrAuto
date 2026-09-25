@@ -233,10 +233,23 @@ public class BitmapCache {
 
 	@SuppressWarnings("ResultOfMethodCallIgnored")
 	private FutureSupplier<Bitmap> loadHttpBitmap(String uri, String cacheUri, int size) {
+		String ytFallback = youtubeFallback(uri);
 		return downloadImage(uri).then(s -> {
-			if (s == null) return completedNull();
+			if (s == null) {
+				return (ytFallback != null) ? loadHttpBitmap(ytFallback, cacheUri, size) : completedNull();
+			}
 			try (InputStream is = s.getFileStream(true)) {
 				Bitmap bm = BitmapFactory.decodeStream(is);
+
+				// A video that was never available above 720p has no maxresdefault.jpg: YouTube
+				// answers with its tiny grey "..." placeholder (120x90) instead. Use hqdefault.jpg,
+				// which every video has.
+				if ((bm != null) && (ytFallback != null) && (bm.getWidth() <= 120)) {
+					File f = s.getLocalFile();
+					if (f != null) f.delete();
+					invalidBitmapUris.put(uri, uri);
+					return loadHttpBitmap(ytFallback, cacheUri, size);
+				}
 
 				if (bm == null) {
 					File f = s.getLocalFile();
@@ -253,6 +266,32 @@ public class BitmapCache {
 				return failed(ex);
 			}
 		});
+	}
+
+	/** For a YouTube maxresdefault.jpg thumbnail: the hqdefault.jpg one, which always exists. */
+	@Nullable
+	private static String youtubeFallback(String uri) {
+		if (!uri.endsWith("/maxresdefault.jpg")) return null;
+		if (!uri.contains("ytimg.com/") && !uri.contains("img.youtube.com/")) return null;
+		return uri.substring(0, uri.length() - "maxresdefault.jpg".length()) + "hqdefault.jpg";
+	}
+
+	/**
+	 * Forgets everything cached for {@code uri} -- in memory, the downloaded file and the resized
+	 * icon -- so the next request downloads it afresh. Used by "Refresh thumbnail".
+	 */
+	@SuppressWarnings("ResultOfMethodCallIgnored")
+	public void invalidate(Context ctx, String uri) {
+		String iconUri = toIconUri(uri, getIconSize(ctx));
+		synchronized (cache) {
+			cache.remove(uri);
+			cache.remove(iconUri);
+		}
+		invalidBitmapUris.remove(uri);
+		toImageFile(uri).delete();
+		if (iconUri.startsWith(iconsCacheUri)) {
+			new File(iconsCache, iconUri.substring(iconsCacheUri.length())).delete();
+		}
 	}
 
 	public FutureSupplier<Status> downloadImage(String uri) {
@@ -281,6 +320,13 @@ public class BitmapCache {
 		});
 	}
 
+	/** The file an {@link #addImage} image for {@code uri} was saved to, if it exists. */
+	@Nullable
+	public Uri getAddedImage(String uri) {
+		File f = toImageFile(uri);
+		return f.isFile() ? Uri.fromFile(f) : null;
+	}
+
 	public synchronized FutureSupplier<Uri> addImage(String uri,
 																									 CheckedSupplier<Bitmap, Exception> s) {
 		File f = toImageFile(uri);
@@ -288,6 +334,9 @@ public class BitmapCache {
 
 		return queue.enqueue(() -> {
 			synchronized (BitmapCache.this) {
+				File dir = f.getParentFile();
+				if (dir != null) //noinspection ResultOfMethodCallIgnored
+					dir.mkdirs();
 				if (!f.isFile()) {
 					try (OutputStream out = new FileOutputStream(f)) {
 						CompressFormat fmt =

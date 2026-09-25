@@ -9,6 +9,7 @@ import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +18,7 @@ import me.aap.fermata.FermataApplication;
 import me.aap.fermata.addon.AddonInfo;
 import me.aap.fermata.addon.FermataAddon;
 import me.aap.fermata.addon.MediaLibAddon;
+import me.aap.fermata.addon.VideoTitleCache;
 import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.WebBrowserAddon;
 import me.aap.fermata.media.lib.DefaultMediaLib;
@@ -38,7 +40,7 @@ import me.aap.utils.ui.fragment.ActivityFragment;
 @Keep
 @SuppressWarnings("unused")
 public class YoutubeAddon extends WebBrowserAddon
-		implements PreferenceStore.Listener, MediaLibAddon {
+		implements PreferenceStore.Listener, MediaLibAddon, VideoTitleCache {
 	@NonNull
 	private static final AddonInfo info = FermataAddon.findAddonInfo(YoutubeAddon.class.getName());
 	public static final int YT_DARK_MODE_DISABLED = 0;
@@ -175,10 +177,16 @@ public class YoutubeAddon extends WebBrowserAddon
 	}
 
 	void cacheVideoTitle(String videoId, String title) {
+		cacheVideoTitles(Collections.singletonMap(videoId, title));
+	}
+
+	@Override
+	public void cacheVideoTitles(Map<String, String> titles) {
+		if (titles.isEmpty()) return;
 		String[] p = getPreferenceStore().getStringArrayPref(YT_VIDEO_TITLES);
-		Map<String, String> m = new LinkedHashMap<>(p.length / 2 + 1);
+		Map<String, String> m = new LinkedHashMap<>(p.length / 2 + titles.size() + 1);
 		for (int i = 0; i < p.length - 1; i += 2) m.put(p[i], p[i + 1]);
-		m.put(videoId, title);
+		m.putAll(titles);
 
 		String[] a = new String[m.size() * 2];
 		int i = 0;

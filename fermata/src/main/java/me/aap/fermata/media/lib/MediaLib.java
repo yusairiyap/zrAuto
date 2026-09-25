@@ -784,6 +784,13 @@ public interface MediaLib {
 
 		FutureSupplier<Void> addItems(List<PlayableItem> items);
 
+		/**
+		 * Renames this playlist. Fails with an {@link IllegalArgumentException} (carrying a
+		 * user-readable message) if the name is empty, contains '/' or is already used by another
+		 * playlist -- the same rules {@link Playlists#addItem(CharSequence)} applies.
+		 */
+		FutureSupplier<Void> rename(CharSequence name);
+
 		FutureSupplier<Void> removeItem(int idx);
 
 		FutureSupplier<Void> removeItems(List<PlayableItem> items);

@@ -88,6 +88,11 @@ public class MediaItemListViewAdapter extends MovableRecyclerViewAdapter<MediaIt
 		// refresh triggered by mediaItemChanged().
 		boolean animate = userAction && (listView != null) && (this.parent != null) &&
 				(this.parent != parent);
+		// Leaving a folder/playlist (Back, or into another one) ends any multi-selection made in
+		// it: the selection belongs to that list's items, which are no longer shown.
+		if ((this.parent != null) && (this.parent != parent) && (listView != null)) {
+			listView.discardSelection();
+		}
 		if (this.parent != null) this.parent.removeChangeListener(this);
 		this.parent = parent;
 		list = Collections.emptyList();
@@ -316,7 +321,10 @@ public class MediaItemListViewAdapter extends MovableRecyclerViewAdapter<MediaIt
 
 		if (getListView().isSelectionActive()) {
 			MediaItemWrapper w = mi.getItemWrapper();
-			if ((w != null) && w.isSelectionSupported()) w.setSelected(!w.isSelected(), true);
+			if ((w != null) && w.isSelectionSupported()) {
+				w.setSelected(!w.isSelected(), true);
+				getListView().notifySelectionChanged();
+			}
 			return;
 		}
 
