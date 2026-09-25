@@ -763,6 +763,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		// without effects support) it would just close itself again straight away.
 		if ((src != null) && eng.supportsAudioEffects()) {
 			a.showFragment(R.id.audio_effects_fragment);
+		} else if ((src != null) && eng.showOwnAudioEffects()) {
+			// A web-hosted YouTube player (the YouTube tab's, or the hidden fallback): its own
+			// in-page equalizer, since Android's effects can't reach a web page's audio.
+			DiagnosticLog.log("MUSIC", "effects: engine's own (in-page equalizer)", "engine=" + eng);
 		} else {
 			DiagnosticLog.log("MUSIC", "effects unavailable", "engine=" + eng, "item=" + src);
 			UiUtils.showToast(requireContext(), (src == null) ? R.string.music_effects_play_first :

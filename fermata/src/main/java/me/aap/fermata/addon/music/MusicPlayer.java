@@ -3,6 +3,8 @@ package me.aap.fermata.addon.music;
 import static me.aap.utils.async.Completed.completed;
 
 import android.content.Context;
+import android.os.SystemClock;
+import android.support.v4.media.session.PlaybackStateCompat;
 
 import androidx.annotation.Nullable;
 
@@ -345,15 +347,105 @@ public final class MusicPlayer {
 					// the user why; just leave the video playing.
 					return;
 				}
-				DiagnosticLog.log("MUSIC", "hand-off from the YouTube tab", "id=" + t.getVideoId(),
-						"method=" + t.getPlaybackMethod());
 				eng.getPosition().main().onSuccess(p -> {
 					if (cb.getEngine() != eng) return;
-					eng.handOff();
+					DiagnosticLog.log("MUSIC", "hand-off from the YouTube tab: begin (video keeps playing)",
+							"id=" + t.getVideoId(), "method=" + t.getPlaybackMethod(), "pos=" + (p / 1000) + 's');
+					// Gap-free: the video keeps playing (its page events no longer driving the session)
+					// until the music is actually audible -- see HandOff.
+					eng.beginHandOff();
+					new HandOff(a, eng, t).start();
 					playTrack(a, t, p);
 				});
 			});
 		});
+	}
+
+	/**
+	 * Finishes a gap-free switch from the YouTube tab's video to its music track: once the track is
+	 * actually playing, catches it up to wherever the video has got to in the meantime (only if
+	 * they've drifted noticeably apart -- a seek costs a moment of rebuffering) and only then fades
+	 * the video out. If the track fails instead, the video just carries on as the session's player.
+	 */
+	private static final class HandOff implements MediaSessionCallback.Listener {
+		private static final long TIMEOUT = 60_000L;
+		private static final long MAX_DRIFT = 1500L;
+		private static final long SEEK_SETTLE = 800L;
+		// Strong reference: the session's listener list only holds weak ones.
+		@Nullable
+		private static HandOff active;
+		private final MainActivityDelegate activity;
+		private final MediaEngine video;
+		private final MusicTrackItem track;
+		private final long startTime = SystemClock.elapsedRealtime();
+		private boolean done;
+
+		HandOff(MainActivityDelegate activity, MediaEngine video, MusicTrackItem track) {
+			this.activity = activity;
+			this.video = video;
+			this.track = track;
+		}
+
+		void start() {
+			HandOff old = active;
+			if (old != null) old.finish(false, "superseded by another hand-off");
+			active = this;
+			activity.getMediaSessionCallback().addBroadcastListener(this);
+			activity.postDelayed(() -> {
+				if (!done) finish(false, "the music didn't start within " + (TIMEOUT / 1000) + 's');
+			}, TIMEOUT);
+		}
+
+		@Override
+		public void onPlaybackStateChanged(MediaSessionCallback cb, PlaybackStateCompat state) {
+			if (done) return;
+			PlayableItem cur = cb.getCurrentItem();
+			int st = state.getState();
+
+			if (st == PlaybackStateCompat.STATE_ERROR) {
+				finish(false, "the music failed: " + state.getErrorMessage());
+			} else if ((cur != null) && (cur != track) && (cur != video.getSource())) {
+				// Something else was picked meanwhile: the video must not keep playing under it.
+				video.handOff();
+				finish(true, "something else started playing: " + cur);
+			} else if ((cur == track) && (st == PlaybackStateCompat.STATE_PLAYING)) {
+				MediaEngine music = cb.getEngine();
+				if (music == null) return;
+				done = true;
+				video.getPosition().and(music.getPosition()).main().onSuccess(h -> {
+					long drift = h.value1 - h.value2;
+					boolean seek = Math.abs(drift) > MAX_DRIFT;
+					if (seek) {
+						cb.onSeekTo(h.value1);
+						// Let the music's catch-up seek settle before the video fades: a brief overlap
+						// (like a crossfade) rather than a moment of silence.
+						activity.postDelayed(video::handOff, SEEK_SETTLE);
+					} else {
+						video.handOff();
+					}
+					finish(true, "music playing after " + (SystemClock.elapsedRealtime() - startTime) +
+							"ms, drift=" + drift + "ms" + ((Math.abs(drift) > MAX_DRIFT) ? " (caught up)" : ""));
+				});
+			}
+		}
+
+		private void finish(boolean ok, String how) {
+			if (active == this) active = null;
+			boolean wasDone = done;
+			done = true;
+			MediaSessionCallback cb = activity.getMediaSessionCallback();
+			cb.removeBroadcastListener(this);
+			DiagnosticLog.log("MUSIC", "hand-off from the YouTube tab: " + (ok ? "done" : "cancelled"),
+					"id=" + track.getVideoId(), how);
+			if (ok || wasDone) return;
+
+			// The music didn't make it: the video, still playing, is the session's player again.
+			video.cancelHandOff();
+			if (cb.getEngine() != video) {
+				cb.setEngine(video);
+				cb.onEngineStarted(video);
+			}
+		}
 	}
 
 	@Nullable

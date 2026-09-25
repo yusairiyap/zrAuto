@@ -17,6 +17,9 @@ import android.widget.FrameLayout;
 
 import androidx.annotation.Nullable;
 
+import java.util.List;
+
+import me.aap.fermata.addon.AddonManager;
 import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.engine.MediaEngine;
@@ -28,6 +31,9 @@ import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.log.Log;
+import me.aap.utils.pref.PreferenceStore;
+import me.aap.utils.ui.fragment.GenericFragment;
+import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.UiUtils;
 
 /**
@@ -42,7 +48,7 @@ import me.aap.utils.ui.UiUtils;
  * Every step is written to the diagnostic log under "MUSIC web-fallback".
  */
 @SuppressLint("SetJavaScriptEnabled")
-final class YoutubeWebAudioEngine implements MediaEngine {
+final class YoutubeWebAudioEngine implements MediaEngine, PreferenceStore.Listener {
 	private static final String TAG = "MUSIC";
 	private static final long START_TIMEOUT = 45_000L;
 	private static final String JS_FIND = "var v=document.querySelector('video');" +
@@ -50,6 +56,9 @@ final class YoutubeWebAudioEngine implements MediaEngine {
 	private final Listener listener;
 	private final Handler handler = new Handler(Looper.getMainLooper());
 	private final WebView web;
+	private final MainActivityDelegate activity;
+	@Nullable
+	private final YoutubeAddon addon;
 	@Nullable
 	private PlayableItem source;
 	@Nullable
@@ -67,6 +76,11 @@ final class YoutubeWebAudioEngine implements MediaEngine {
 
 	YoutubeWebAudioEngine(MainActivityDelegate a, Listener listener) {
 		this.listener = listener;
+		activity = a;
+		addon = AddonManager.get().getAddon(YoutubeAddon.class);
+		// The same effects as the YouTube tab's (and the same settings): the in-page equalizer --
+		// Android's own effects can't reach a web page's audio.
+		if (addon != null) addon.getPreferenceStore().addBroadcastListener(this);
 		web = new WebView(a.getContext());
 		WebSettings s = web.getSettings();
 		s.setJavaScriptEnabled(true);
@@ -82,6 +96,7 @@ final class YoutubeWebAudioEngine implements MediaEngine {
 			public void onPageFinished(WebView view, String url) {
 				log("page loaded");
 				inject();
+				injectEqualizer();
 			}
 		});
 
@@ -171,6 +186,46 @@ final class YoutubeWebAudioEngine implements MediaEngine {
 				"isFinite(v.duration)?v.duration*1000:0,ad?1:0,q,id);" +
 				"else ZrAudio.state(-1,0,0,0,ad?1:0,q,id);" +
 				"},500);}");
+	}
+
+	private void injectEqualizer() {
+		if (addon == null) return;
+		String script = YoutubeEqualizerScript.getScript(web.getContext());
+		if (!script.isEmpty()) web.evaluateJavascript(script, r -> configureEqualizer());
+	}
+
+	private void configureEqualizer() {
+		if (closed || (addon == null)) return;
+		web.evaluateJavascript("if (window.FermataEqualizer) window.FermataEqualizer.configure(" +
+				YoutubeEqualizerScript.getConfigJson(addon) + ");", null);
+	}
+
+	@Override
+	public void onPreferenceChanged(PreferenceStore store, List<PreferenceStore.Pref<?>> prefs) {
+		if ((addon != null) && addon.eqPrefsChanged(prefs)) configureEqualizer();
+	}
+
+	@Override
+	public boolean showOwnAudioEffects() {
+		if ((addon == null) || closed) return false;
+		log("opening effects (in-page equalizer)");
+		if (!(activity.showFragment(me.aap.utils.R.id.generic_fragment) instanceof GenericFragment f))
+			return false;
+		f.setTitle(activity.getContext().getString(me.aap.fermata.R.string.audio_effects));
+		f.setContentProvider(g -> {
+			YoutubeEqualizerView v = new YoutubeEqualizerView(g.getContext());
+			v.init(addon, this::configureEqualizer);
+			g.addView(v, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+					ViewGroup.LayoutParams.MATCH_PARENT));
+			activity.insetScrollableContent(v);
+		});
+		return true;
+	}
+
+	@Override
+	public void contributeToMenuEnd(OverlayMenu.Builder b) {
+		b.addItem(me.aap.fermata.addon.web.R.id.youtube_equalizer, me.aap.fermata.R.drawable.equalizer,
+				me.aap.fermata.R.string.effects).setHandler(item -> showOwnAudioEffects());
 	}
 
 	private void onState(int gen, int playing, int ended, double pos, double dur, int isAd,
@@ -294,6 +349,7 @@ final class YoutubeWebAudioEngine implements MediaEngine {
 		closed = true;
 		generation++;
 		handler.removeCallbacksAndMessages(null);
+		if (addon != null) addon.getPreferenceStore().removeBroadcastListener(this);
 		log("closed");
 		MusicPlayer.webAudioEngineClosed(this);
 

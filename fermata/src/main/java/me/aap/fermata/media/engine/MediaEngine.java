@@ -109,6 +109,28 @@ public interface MediaEngine extends Closeable {
 		pause();
 	}
 
+	/**
+	 * First half of a gap-free {@link #handOff()}: keep playing for now, but stop letting the
+	 * player's own events drive the session, which is about to belong to the new engine. Either
+	 * {@link #handOff()} (the new engine is playing, go quiet) or {@link #cancelHandOff()} (it failed,
+	 * carry on as before) follows.
+	 */
+	default void beginHandOff() {
+	}
+
+	/** Undoes {@link #beginHandOff()}: this engine is the session's player again. */
+	default void cancelHandOff() {
+	}
+
+	/**
+	 * For an engine whose audio effects aren't the platform's (see {@link #supportsAudioEffects()})
+	 * but its own -- the web-hosted YouTube players' in-page equalizer: shows its effects screen and
+	 * returns true, or returns false if it has none.
+	 */
+	default boolean showOwnAudioEffects() {
+		return false;
+	}
+
 	FutureSupplier<Long> getDuration();
 
 	FutureSupplier<Long> getPosition();

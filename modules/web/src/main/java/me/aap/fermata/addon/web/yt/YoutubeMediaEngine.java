@@ -159,6 +159,9 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	// MediaEngine#handOff()). Cleared once the app itself asks this page to play again -- start(), a
 	// tap-to-play arming YoutubeAddon#getPendingVideoId(), or the user picking a video on the page.
 	private boolean handedOff;
+	// Set by beginHandOff(): handed off, but deliberately still playing until the new engine is
+	// actually audible (a gap-free switch to the Music tab) -- so don't pause it on our own.
+	private boolean handOffKeepPlaying;
 
 	public YoutubeMediaEngine(YoutubeWebView web, MainActivityDelegate a) {
 		this.web = web;
@@ -184,11 +187,13 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	void playing(String data) {
 		if (handedOff) {
 			if ((web.getAddon().getPendingVideoId() == null) && !isUserPickPending()) {
-				// The page resumed on its own (e.g. a buffering stall ending mid-fade) -- keep it quiet.
-				web.pause();
+				// The page resumed on its own (e.g. a buffering stall ending mid-fade) -- keep it quiet,
+				// unless it's meant to still be playing through a gap-free hand-off.
+				if (!handOffKeepPlaying) web.pause();
 				return;
 			}
 			handedOff = false;
+			handOffKeepPlaying = false;
 		}
 
 		// Every confirmed-playing moment re-arms the retry guard in paused() below -- not just an
@@ -724,9 +729,31 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	public void handOff() {
 		DiagnosticLog.log("YT", "engine handOff()", "id=" + currentVideoId);
 		handedOff = true;
+		handOffKeepPlaying = false;
 		lastActivePlayTime = 0;
 		appRequestedPause = true;
 		web.pause();
+	}
+
+	@Override
+	public void beginHandOff() {
+		DiagnosticLog.log("YT", "engine beginHandOff() -- still playing until the music is",
+				"id=" + currentVideoId);
+		handedOff = true;
+		handOffKeepPlaying = true;
+	}
+
+	@Override
+	public void cancelHandOff() {
+		DiagnosticLog.log("YT", "engine cancelHandOff() -- the session's player again",
+				"id=" + currentVideoId);
+		handedOff = false;
+		handOffKeepPlaying = false;
+	}
+
+	@Override
+	public boolean showOwnAudioEffects() {
+		return showEqualizer();
 	}
 
 	@Nullable
@@ -741,6 +768,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	public void start() {
 		DiagnosticLog.log("YT", "engine start()", "id=" + currentVideoId);
 		handedOff = false;
+		handOffKeepPlaying = false;
 		lastActivePlayTime = System.currentTimeMillis();
 		lastPausedTime = 0;
 		playRetries = 0;

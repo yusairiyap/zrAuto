@@ -45,8 +45,10 @@ import me.aap.utils.pref.PreferenceView.ListOpts;
 final class YoutubeEqualizerView extends android.widget.ScrollView implements PreferenceStore.Listener {
 	@Nullable
 	private YoutubeAddon addon;
+	// Pushes the current settings to whichever page is playing (the YouTube tab's, or the Music
+	// tab's hidden fallback player) -- see init().
 	@Nullable
-	private YoutubeWebView web;
+	private Runnable reconfigure;
 
 	public YoutubeEqualizerView(Context context) {
 		this(context, null);
@@ -59,8 +61,12 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 	}
 
 	void init(YoutubeWebView web) {
-		this.web = web;
-		YoutubeAddon addon = this.addon = web.getAddon();
+		init(web.getAddon(), web::configureEqualizer);
+	}
+
+	void init(YoutubeAddon addon, @Nullable Runnable reconfigure) {
+		this.reconfigure = reconfigure;
+		this.addon = addon;
 		inflate(getContext(), me.aap.fermata.R.layout.audio_effects, this);
 		hide(me.aap.fermata.R.id.apply_to, me.aap.fermata.R.id.virtualizer_mode,
 				me.aap.fermata.R.id.equalizer_preset_save, me.aap.fermata.R.id.equalizer_preset_delete);
@@ -113,7 +119,7 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 		if (addon != null) addon.getPreferenceStore().removeBroadcastListener(this);
 		removeAllViews();
 		addon = null;
-		web = null;
+		reconfigure = null;
 	}
 
 	private void createChannels(YoutubeAddon addon) {
@@ -312,7 +318,7 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 	}
 
 	private void push() {
-		if (web != null) web.configureEqualizer();
+		if (reconfigure != null) reconfigure.run();
 	}
 
 	private void hide(@IdRes int... ids) {
