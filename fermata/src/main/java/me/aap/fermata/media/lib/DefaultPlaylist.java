@@ -232,6 +232,20 @@ class DefaultPlaylist extends ItemContainer<PlayableItem> implements Playlist, P
 		return out;
 	}
 
+	/**
+	 * Playlists can be shown sorted (by name, or shuffled) without changing their own order,
+	 * which "Custom order" (no sorting, the default) shows and drag and drop edits.
+	 */
+	@Override
+	public boolean sortChildrenEnabled() {
+		return true;
+	}
+
+	@Override
+	public int getSupportedSortOpts() {
+		return BrowsableItemPrefs.SORT_MASK_NAME_RND;
+	}
+
 	/** Same as Favorites: newly added items go to the top of the playlist. */
 	@Override
 	protected boolean addToTop() {

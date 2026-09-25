@@ -150,8 +150,10 @@ public class MediaItemView extends ConstraintLayout
 		setTextAppearance(ctx, getTitle(), titleTextAppearance, size, grid);
 		setTextAppearance(ctx, getSubtitle(), subtitleTextAppearance, size, grid);
 		if (!grid) {
+			// Flush with the card's left, top and bottom edges (clipped to its rounded outline), a
+			// little taller than the two text lines for some breathing room.
 			int iconSize = (int) (getTitle().getTextSize() + getSubtitle().getTextSize() + toPx(ctx,
-					10));
+					28));
 			ImageView i = getIcon();
 			ViewGroup.LayoutParams lp = i.getLayoutParams();
 			lp.height = iconSize;

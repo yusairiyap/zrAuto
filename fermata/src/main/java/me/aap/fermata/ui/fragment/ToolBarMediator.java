@@ -27,6 +27,7 @@ import me.aap.fermata.addon.AddonManager;
 import me.aap.fermata.addon.FermataAddon;
 import me.aap.fermata.addon.FermataToolAddon;
 import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
+import me.aap.fermata.media.lib.MediaLib.Playlist;
 import me.aap.fermata.media.lib.MediaLib.StreamItem;
 import me.aap.fermata.media.pref.BrowsableItemPrefs;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -56,6 +57,10 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 		MainActivityDelegate a = MainActivityDelegate.get(tb.getContext());
 		addButton(tb, R.drawable.title, ToolBarMediator::onViewButtonClick, R.id.tool_view);
 		addButton(tb, R.drawable.sort, ToolBarMediator::onSortButtonClick, R.id.tool_sort);
+		if (f instanceof MediaLibFragment) {
+			addButton(tb, R.drawable.select_multiple, ToolBarMediator::onSelectButtonClick,
+					R.id.tool_select);
+		}
 
 		if ((f instanceof MediaLibFragment) && ((MediaLibFragment) f).isGridSupported()) {
 			int gridIcon = a.isGridView() ? R.drawable.view_list : R.drawable.view_grid;
@@ -127,6 +132,10 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 		MediaLibFragment.ListAdapter a = ((MediaLibFragment) f).getAdapter();
 		if (a == null) return;
 		BrowsableItem b = a.getParent();
+
+		// Multi-select: wherever the list has selectable (playable) items.
+		setButtonVisibility(tb, R.id.tool_select,
+				((b == null) || (b == b.getRoot()) || (b instanceof StreamItem)) ? GONE : VISIBLE);
 
 		if ((b == null) || (b == b.getRoot()) || (b instanceof StreamItem)) {
 			setButtonVisibility(tb, R.id.tool_view, GONE);
@@ -286,6 +295,16 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 		});
 	}
 
+	/** Enters multi-select mode, or leaves it (discarding the selection) if already in it. */
+	private static void onSelectButtonClick(View v) {
+		MainActivityDelegate a = MainActivityDelegate.get(v.getContext());
+		MediaLibFragment f = a.getActiveMediaLibFragment();
+		if (f == null) return;
+		MediaItemListView lv = f.getAdapter().getListView();
+		if (lv.isSelectionActive()) lv.discardSelection();
+		else lv.select(true);
+	}
+
 	private static void onSortButtonClick(View v) {
 		MainActivityDelegate a = MainActivityDelegate.get(v.getContext());
 		MediaLibFragment f = a.getActiveMediaLibFragment();
@@ -302,7 +321,9 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 			addSortItem(b, R.id.tool_sort_file_name, R.string.file_name, SORT_BY_FILE_NAME, sort, m);
 			addSortItem(b, R.id.tool_sort_date, R.string.date, SORT_BY_DATE, sort, m);
 			addSortItem(b, R.id.tool_sort_random, R.string.random, SORT_BY_RND, sort, m);
-			addSortItem(b, R.id.tool_sort_none, R.string.do_not_sort, SORT_BY_NONE, sort, m);
+			// A playlist's unsorted order is the user's own arrangement.
+			addSortItem(b, R.id.tool_sort_none, (adapter.getParent() instanceof Playlist) ?
+					R.string.sort_custom : R.string.do_not_sort, SORT_BY_NONE, sort, m);
 
 			if ((sort != SORT_BY_NONE) && (sort != SORT_BY_RND)) {
 				b.addItem(R.id.tool_sort_desc, R.string.descending).setChecked(prefs.getSortDescPref());

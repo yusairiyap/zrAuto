@@ -85,6 +85,7 @@
     <item name="spotify_search_more" type="id" />
     <item name="spotify_toggle" type="id" />
     <item name="youtube_alternatives" type="id" />
+    <item name="tool_select" type="id" />
     <item name="youtube_refresh_thumbnail" type="id" />
     <item name="youtube_alternatives_fragment" type="id" />
 

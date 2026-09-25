@@ -8,6 +8,7 @@ import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
@@ -28,6 +29,7 @@ import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.lib.MediaLib.Playlist;
 import me.aap.fermata.media.lib.MediaLib.Playlists;
+import me.aap.fermata.media.pref.BrowsableItemPrefs;
 import me.aap.fermata.media.pref.PlaylistPrefs;
 import me.aap.fermata.media.pref.PlaylistsPrefs;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
@@ -39,7 +41,6 @@ import me.aap.fermata.ui.view.MediaItemViewHolder;
 import me.aap.fermata.ui.view.MediaItemWrapper;
 import me.aap.utils.async.Async;
 import me.aap.utils.log.Log;
-import me.aap.utils.ui.view.NavBarView;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.ui.menu.OverlayMenu;
@@ -167,7 +168,7 @@ public class PlaylistsFragment extends MediaLibFragment {
 				break;
 			}
 		}
-		UiUtils.showToast(requireContext(), R.string.playlist_select_hint);
+		a.getListView().notifySelectionChanged();
 	}
 
 	// ---- Selection panel ----
@@ -201,12 +202,21 @@ public class PlaylistsFragment extends MediaLibFragment {
 	private void updateSelectionPanel() {
 		PlaylistsAdapter a = getAdapter();
 		if ((a == null) || (getView() == null)) return;
-		int n = a.getListView().isSelectionActive() && (a.getParent() instanceof Playlist) ?
-				a.getSelectedItems().size() : 0;
+		boolean active = a.getListView().isSelectionActive() && (a.getParent() instanceof Playlist);
 
-		if ((n == 0) || isHidden()) {
+		// Shown for the whole of selection mode, from the moment it starts, even with nothing
+		// selected yet (the actions are just disabled then).
+		if (!active || isHidden()) {
 			hideSelectionPanel(true);
 			return;
+		}
+
+		// The count is the model's; bring the visible checkboxes in line with it too, in case a
+		// recycled row still shows an earlier state.
+		int n = 0;
+		for (MediaItemWrapper w : a.getList()) {
+			if (w.isSelected()) n++;
+			w.refreshViewCheckbox();
 		}
 
 		View panel = selectionPanel;
@@ -214,14 +224,24 @@ public class PlaylistsFragment extends MediaLibFragment {
 		if (panel == null) return;
 		((TextView) panel.findViewById(R.id.selection_panel_count))
 				.setText(getString(R.string.selection_count, n));
+		boolean enabled = n > 0;
+		for (int id : new int[]{R.id.selection_panel_top, R.id.selection_panel_end,
+				R.id.selection_panel_move, R.id.selection_panel_remove}) {
+			View b = panel.findViewById(id);
+			b.setEnabled(enabled);
+			b.setAlpha(enabled ? 1f : 0.4f);
+		}
 		positionSelectionPanel(panel);
+		// Again once laid out: the nav bar/control panel/FAB positions may only be known then.
+		panel.post(() -> {
+			if (selectionPanel == panel) positionSelectionPanel(panel);
+		});
 	}
 
 	@Nullable
 	private View createSelectionPanel() {
-		View root = requireView().getRootView();
-		View c = root.findViewById(android.R.id.content);
-		if (!(c instanceof FrameLayout content)) return null;
+		FrameLayout content = findPanelHost();
+		if (content == null) return null;
 
 		View panel = LayoutInflater.from(requireContext())
 				.inflate(R.layout.playlist_selection_panel, content, false);
@@ -256,16 +276,50 @@ public class PlaylistsFragment extends MediaLibFragment {
 		return panel;
 	}
 
+	/**
+	 * A full-window FrameLayout to float the panel in: the window's content frame, or failing
+	 * that (the Android Auto car screen's window is set up differently) its root, or the highest
+	 * FrameLayout above this list.
+	 */
+	@Nullable
+	private FrameLayout findPanelHost() {
+		View view = requireView();
+		View root = view.getRootView();
+		View c = root.findViewById(android.R.id.content);
+		if (c instanceof FrameLayout f) return f;
+		if (root instanceof FrameLayout f) return f;
+		FrameLayout host = null;
+		for (ViewParent p = view.getParent(); p != null; p = p.getParent()) {
+			if (p instanceof FrameLayout f) host = f;
+		}
+		return host;
+	}
+
 	/** Above the bottom nav bar and the control panel, whichever are showing. */
 	private void positionSelectionPanel(View panel) {
 		MainActivityDelegate a = getMainActivity();
 		Context ctx = requireContext();
 		int side = UiUtils.toIntPx(ctx, 12);
-		int bottom = UiUtils.toIntPx(ctx, 12);
-		NavBarView nb = a.getNavBar();
-		if ((nb != null) && (nb.getVisibility() == View.VISIBLE) && nb.isBottom()) bottom += nb.getHeight();
-		View cp = a.getControlPanel();
-		if ((cp != null) && (cp.getVisibility() == View.VISIBLE)) bottom += cp.getHeight();
+		int gap = UiUtils.toIntPx(ctx, 12);
+		int bottom = gap;
+
+		// Clear whatever sits over the bottom of the host (nav bar, control panel), measured on
+		// screen, so it works whether they're inside the host or laid out next to it.
+		if (panel.getParent() instanceof View host) {
+			int[] hLoc = new int[2];
+			host.getLocationOnScreen(hLoc);
+			int hostBottom = hLoc[1] + host.getHeight();
+			for (View v : new View[]{a.getNavBar(), a.getControlPanel()}) {
+				if ((v == null) || !v.isShown() || (v.getHeight() == 0)) continue;
+				if ((v == a.getNavBar()) && !a.getNavBar().isBottom()) continue;
+				int[] loc = new int[2];
+				v.getLocationOnScreen(loc);
+				// Only bars across the lower part of the host count (not, say, a side nav bar).
+				if ((loc[1] < hostBottom) && (loc[1] > hLoc[1] + host.getHeight() / 2)) {
+					bottom = Math.max(bottom, hostBottom - loc[1] + gap);
+				}
+			}
+		}
 
 		// Leave the floating button(s) uncovered: stop short of their column, on whichever side
 		// they are, instead of hiding them.
@@ -324,6 +378,10 @@ public class PlaylistsFragment extends MediaLibFragment {
 	private void moveSelected(boolean toTop) {
 		PlaylistsAdapter a = getAdapter();
 		if (!(a.getParent() instanceof Playlist pl)) return;
+		if (!a.isCustomOrder()) {
+			UiUtils.showToast(requireContext(), R.string.playlist_sorted_hint);
+			return;
+		}
 		List<MediaItemWrapper> sel = new ArrayList<>();
 		List<MediaItemWrapper> rest = new ArrayList<>();
 		for (MediaItemWrapper w : a.getList()) (w.isSelected() ? sel : rest).add(w);
@@ -383,6 +441,18 @@ public class PlaylistsFragment extends MediaLibFragment {
 			if (p instanceof Playlist) ((Playlist) p).moveItem(fromPosition, toPosition);
 			else ((Playlists) p).moveItem(fromPosition, toPosition);
 			return super.onItemMove(fromPosition, toPosition);
+		}
+
+		/** Not sorted: the list shows the playlist's own order, which moves can edit. */
+		boolean isCustomOrder() {
+			BrowsableItem p = getParent();
+			return (p == null) || (p.getPrefs().getSortByPref() == BrowsableItemPrefs.SORT_BY_NONE);
+		}
+
+		/** Dragging edits the playlist's own order, so only while it's shown unsorted. */
+		@Override
+		public boolean isLongPressDragEnabled() {
+			return super.isLongPressDragEnabled() && isCustomOrder();
 		}
 
 		/** A bulk reorder is running: its own reload follows, the per-move ones are skipped. */
