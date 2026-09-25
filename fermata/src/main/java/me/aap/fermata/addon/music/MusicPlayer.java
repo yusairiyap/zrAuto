@@ -47,10 +47,19 @@ public final class MusicPlayer {
 	@Nullable
 	private static WebAudioEngineFactory webAudioFactory;
 	@Nullable
-	private static MediaEngine webAudioEngine;
+	private static WebAudioEngine webAudioEngine;
 	private static WeakReference<MainActivityDelegate> activity = new WeakReference<>(null);
-	// The activity whose window the current fallback engine's hidden player is attached to.
-	private static WeakReference<MainActivityDelegate> webAudioActivity = new WeakReference<>(null);
+
+	/** The fallback engine: a hidden web page, living in whichever activity window is current. */
+	public interface WebAudioEngine extends MediaEngine {
+		/**
+		 * Moves the hidden page into {@code a}'s window, or detaches it (still playing) when null.
+		 */
+		void moveTo(@Nullable MainActivityDelegate a);
+
+		@Nullable
+		MainActivityDelegate getActivity();
+	}
 
 	/**
 	 * Creates the fallback engine for YouTube audio: a hidden web player of its own (registered by
@@ -59,7 +68,7 @@ public final class MusicPlayer {
 	 * separate from the YouTube tab's own page and engine, which it never touches.
 	 */
 	public interface WebAudioEngineFactory {
-		MediaEngine create(MainActivityDelegate a, MediaEngine.Listener listener);
+		WebAudioEngine create(MainActivityDelegate a, MediaEngine.Listener listener);
 	}
 
 	public static void setWebAudioEngineFactory(@Nullable WebAudioEngineFactory f) {
@@ -73,17 +82,19 @@ public final class MusicPlayer {
 
 	static void activityCreated(MainActivityDelegate a) {
 		activity = new WeakReference<>(a);
+		// A rebuilt screen (rotation, Android Auto (re)connecting): the hidden player moves into it.
+		WebAudioEngine e = webAudioEngine;
+		if ((e != null) && (e.getActivity() == null)) e.moveTo(a);
 	}
 
 	static void activityDestroyed(MainActivityDelegate a) {
 		if (activity.get() == a) activity = new WeakReference<>(null);
-		MediaEngine e = webAudioEngine;
-		if ((e == null) || (webAudioActivity.get() != a)) return;
-		// The hidden player lives in this activity's window: it can't outlive it.
-		DiagnosticLog.log("MUSIC", "web fallback player: its activity is gone, stopping it");
-		MediaSessionCallback cb = a.getMediaSessionCallback();
-		if (cb.getEngine() == e) cb.onStop();
-		else e.close();
+		WebAudioEngine e = webAudioEngine;
+		if ((e == null) || (e.getActivity() != a)) return;
+		// Don't stop the music with the screen: move to another live activity if there is one (the
+		// phone's while the car's goes away, or vice versa), else detach until the next one appears.
+		MainActivityDelegate other = activity.get();
+		e.moveTo(((other != null) && (other != a)) ? other : null);
 	}
 
 	/** The fallback engine for {@code current}'s replacement -- reused while it's still in use. */
@@ -94,7 +105,6 @@ public final class MusicPlayer {
 		MainActivityDelegate a = activity.get();
 		if ((f == null) || (a == null)) return null;
 		webAudioEngine = f.create(a, l);
-		webAudioActivity = new WeakReference<>(a);
 		return webAudioEngine;
 	}
 

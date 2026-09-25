@@ -31,6 +31,7 @@ import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -69,6 +70,7 @@ import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.text.TextUtils;
 import me.aap.utils.ui.UiUtils;
+import me.aap.utils.ui.fragment.ActivityFragment;
 
 /**
  * The Music tab: a full-screen, audio-only player in the style of Spotify's / Android Auto's
@@ -179,6 +181,19 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		content.addOnLayoutChangeListener(
 				(v, l, t, r, b, ol, ot, or, ob) -> v.post(this::layoutQueuePanel));
 
+		// The top/bottom spacing for the tool and nav bars only settles after the first layout pass
+		// (see insetScrollableContent): fade the content in once it has, rather than showing it
+		// jump from one size to the other.
+		content.setAlpha(0f);
+		content.getViewTreeObserver().addOnGlobalLayoutListener(
+				new ViewTreeObserver.OnGlobalLayoutListener() {
+					@Override
+					public void onGlobalLayout() {
+						content.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+						content.postDelayed(() -> content.animate().alpha(1f).setDuration(180).start(), 60);
+					}
+				});
+
 		if (!isLandscape()) {
 			// Keeps the bottom row of actions clear of the floating menu button in the corner.
 			View controls = view.findViewById(R.id.music_controls);
@@ -256,6 +271,28 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	public void onResume() {
 		super.onResume();
 		updateActive();
+	}
+
+	// Both run before the fragment transaction that shows/hides this tab commits: hiding the control
+	// panel here (not only once this tab is already showing) means the tab is laid out once, at its
+	// final size, instead of first with the panel and then again without it.
+	@Override
+	public void switchingFrom(@Nullable ActivityFragment from) {
+		super.switchingFrom(from);
+		MainActivityDelegate a = null;
+		if (getContext() != null) a = getActivityDelegate();
+		else if ((from instanceof MainActivityFragment m) && (m.getContext() != null))
+			a = m.getActivityDelegate();
+		ControlPanelView cp = (a != null) ? a.getControlPanel() : null;
+		if (cp != null) cp.setSuppressed(true);
+	}
+
+	@Override
+	public void switchingTo(@NonNull ActivityFragment to) {
+		super.switchingTo(to);
+		if (getContext() == null) return;
+		ControlPanelView cp = getActivityDelegate().getControlPanel();
+		if (cp != null) cp.setSuppressed(false);
 	}
 
 	@Override

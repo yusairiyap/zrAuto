@@ -48,7 +48,7 @@ import me.aap.utils.ui.UiUtils;
  * Every step is written to the diagnostic log under "MUSIC web-fallback".
  */
 @SuppressLint("SetJavaScriptEnabled")
-final class YoutubeWebAudioEngine implements MediaEngine, PreferenceStore.Listener {
+final class YoutubeWebAudioEngine implements MusicPlayer.WebAudioEngine, PreferenceStore.Listener {
 	private static final String TAG = "MUSIC";
 	private static final long START_TIMEOUT = 45_000L;
 	private static final String JS_FIND = "var v=document.querySelector('video');" +
@@ -56,7 +56,9 @@ final class YoutubeWebAudioEngine implements MediaEngine, PreferenceStore.Listen
 	private final Listener listener;
 	private final Handler handler = new Handler(Looper.getMainLooper());
 	private final WebView web;
-	private final MainActivityDelegate activity;
+	// The activity whose window currently hosts the hidden page; null while between activities.
+	@Nullable
+	private MainActivityDelegate activity;
 	@Nullable
 	private final YoutubeAddon addon;
 	@Nullable
@@ -76,12 +78,14 @@ final class YoutubeWebAudioEngine implements MediaEngine, PreferenceStore.Listen
 
 	YoutubeWebAudioEngine(MainActivityDelegate a, Listener listener) {
 		this.listener = listener;
-		activity = a;
 		addon = AddonManager.get().getAddon(YoutubeAddon.class);
 		// The same effects as the YouTube tab's (and the same settings): the in-page equalizer --
 		// Android's own effects can't reach a web page's audio.
 		if (addon != null) addon.getPreferenceStore().addBroadcastListener(this);
-		web = new WebView(a.getContext());
+		// The application context, not the activity's: the page has to outlive the activity it was
+		// started in (a rotation, Android Auto (re)connecting), moving to the new one's window -- see
+		// moveTo() -- instead of stopping the music every time the screen is rebuilt.
+		web = new WebView(a.getContext().getApplicationContext());
 		WebSettings s = web.getSettings();
 		s.setJavaScriptEnabled(true);
 		s.setDomStorageEnabled(true);
@@ -107,10 +111,37 @@ final class YoutubeWebAudioEngine implements MediaEngine, PreferenceStore.Listen
 		web.setFocusable(false);
 		web.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
 		web.setOnTouchListener((v, e) -> true);
+		log("created (hidden page, separate from the YouTube tab)");
+		moveTo(a);
+	}
+
+	/**
+	 * Moves the hidden page into {@code a}'s window (behind all of its content), or just detaches it
+	 * when {@code a} is null (the old activity is gone and no new one exists yet) -- the page keeps
+	 * playing either way.
+	 */
+	@Override
+	public void moveTo(@Nullable MainActivityDelegate a) {
+		if (closed || (a == activity)) return;
+		ViewGroup old = (ViewGroup) web.getParent();
+		if (old != null) old.removeView(web);
+		activity = a;
+
+		if (a == null) {
+			log("detached from its old window (activity gone), still playing");
+			return;
+		}
+
 		ViewGroup decor = (ViewGroup) a.getWindow().getDecorView();
 		decor.addView(web, 0, new FrameLayout.LayoutParams(UiUtils.toIntPx(a.getContext(), 320),
 				UiUtils.toIntPx(a.getContext(), 180)));
-		log("created (hidden page, separate from the YouTube tab)");
+		log((old == null) ? "attached to the activity window" : "moved to the new activity window");
+	}
+
+	@Nullable
+	@Override
+	public MainActivityDelegate getActivity() {
+		return activity;
 	}
 
 	@Override
@@ -169,7 +200,13 @@ final class YoutubeWebAudioEngine implements MediaEngine, PreferenceStore.Listen
 				"if(ad){var b=document.querySelector('.ytp-ad-skip-button,.ytp-ad-skip-button-modern," +
 				".ytp-skip-ad-button');if(b){b.click();}else if(v&&isFinite(v.duration)&&v.duration>0)" +
 				"{v.muted=true;window.__zrAdMuted=1;v.currentTime=v.duration;}}" +
-				"else if(v&&window.__zrAdMuted){v.muted=false;window.__zrAdMuted=0;}" +
+				// YouTube's mobile page autoplays MUTED when nobody has tapped it (and nobody ever taps
+				// this one): unmute through the player's own API too, or it just mutes itself again.
+				"else if(v){window.__zrAdMuted=0;if(v.muted||v.volume<0.05||(p&&p.isMuted&&p.isMuted())){" +
+				"try{if(p&&p.unMute)p.unMute();if(p&&p.setVolume)p.setVolume(100);}catch(e){}" +
+				"v.muted=false;v.volume=1;" +
+				"if(!window.__zrUnmuted){window.__zrUnmuted=1;ZrAudio.note('unmuted the page " +
+				"(it had autoplayed muted)');}}}" +
 				"var q=(p&&p.getPlaybackQuality)?p.getPlaybackQuality():'';" +
 				"if(!ad&&p&&q&&q!=='tiny'){try{if(p.setPlaybackQualityRange)" +
 				"p.setPlaybackQualityRange('tiny','tiny');else if(p.setPlaybackQuality)" +
@@ -207,7 +244,8 @@ final class YoutubeWebAudioEngine implements MediaEngine, PreferenceStore.Listen
 
 	@Override
 	public boolean showOwnAudioEffects() {
-		if ((addon == null) || closed) return false;
+		MainActivityDelegate activity = this.activity;
+		if ((addon == null) || closed || (activity == null)) return false;
 		log("opening effects (in-page equalizer)");
 		if (!(activity.showFragment(me.aap.utils.R.id.generic_fragment) instanceof GenericFragment f))
 			return false;
@@ -382,6 +420,12 @@ final class YoutubeWebAudioEngine implements MediaEngine, PreferenceStore.Listen
 											String pageVideoId) {
 			int gen = generation;
 			handler.post(() -> onState(gen, playing, ended, pos, dur, ad, quality, pageVideoId));
+		}
+
+		/** A one-off event worth a diagnostic line (e.g. the page had to be unmuted). */
+		@JavascriptInterface
+		public void note(String msg) {
+			handler.post(() -> log(msg));
 		}
 	}
 }
