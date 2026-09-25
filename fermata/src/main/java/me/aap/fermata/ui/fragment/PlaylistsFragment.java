@@ -219,8 +219,7 @@ public class PlaylistsFragment extends MediaLibFragment {
 			w.refreshViewCheckbox();
 		}
 
-		View panel = selectionPanel;
-		if (panel == null) panel = createSelectionPanel();
+		View panel = (selectionPanel != null) ? selectionPanel : createSelectionPanel();
 		if (panel == null) return;
 		((TextView) panel.findViewById(R.id.selection_panel_count))
 				.setText(getString(R.string.selection_count, n));
