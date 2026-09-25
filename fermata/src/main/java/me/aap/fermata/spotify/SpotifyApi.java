@@ -41,14 +41,18 @@ public final class SpotifyApi {
 		public final String name;
 		@Nullable
 		public final String owner;
+		@Nullable
+		public final String coverUrl;
 		public final int total;
 		/** Owned or collaborative: readable through the API in full. */
 		public final boolean full;
 
-		PlaylistInfo(String ref, String name, @Nullable String owner, int total, boolean full) {
+		public PlaylistInfo(String ref, String name, @Nullable String owner, @Nullable String coverUrl,
+												int total, boolean full) {
 			this.ref = ref;
 			this.name = name;
 			this.owner = owner;
+			this.coverUrl = coverUrl;
 			this.total = total;
 			this.full = full;
 		}
@@ -81,7 +85,7 @@ public final class SpotifyApi {
 						String ownerName = str(owner, "display_name");
 						boolean full = me.equals(ownerId) || p.optBoolean("collaborative");
 						list.add(new PlaylistInfo("playlist/" + id, p.optString("name", id), ownerName,
-								total(p), full));
+								image(p), total(p), full));
 					}
 				}
 

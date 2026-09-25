@@ -76,6 +76,10 @@
     <item name="playlist_rename" type="id" />
     <item name="spotify_import" type="id" />
     <item name="spotify_import_fragment" type="id" />
+    <item name="spotify_preview" type="id" />
+    <item name="spotify_remove" type="id" />
+    <item name="spotify_search_more" type="id" />
+    <item name="spotify_toggle" type="id" />
 
     <item name="category_audio" type="id" />
     <item name="category_video" type="id" />

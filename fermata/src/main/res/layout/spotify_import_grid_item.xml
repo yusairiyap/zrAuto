@@ -3,100 +3,132 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:padding="6dp">
+    android:padding="8dp">
 
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/si_card"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:clickable="true"
         android:focusable="true"
         app:cardBackgroundColor="?attr/colorSurfaceVariant"
-        app:cardCornerRadius="10dp"
-        app:cardElevation="3dp">
+        app:cardCornerRadius="12dp"
+        app:cardElevation="0dp"
+        app:strokeWidth="0dp">
 
-        <LinearLayout
+        <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
+            android:layout_height="wrap_content">
 
-            <androidx.constraintlayout.widget.ConstraintLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content">
+            <ImageView
+                android:id="@+id/si_thumb"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:importantForAccessibility="no"
+                android:scaleType="centerCrop"
+                app:layout_constraintDimensionRatio="1:1"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
 
-                <ImageView
-                    android:id="@+id/si_thumb"
-                    android:layout_width="0dp"
-                    android:layout_height="0dp"
-                    android:importantForAccessibility="no"
-                    android:scaleType="centerCrop"
-                    app:layout_constraintDimensionRatio="16:9"
-                    app:layout_constraintEnd_toEndOf="parent"
-                    app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintTop_toTopOf="parent" />
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:background="@drawable/media_item_grid_scrim"
+                app:layout_constraintBottom_toBottomOf="@id/si_thumb"
+                app:layout_constraintEnd_toEndOf="@id/si_thumb"
+                app:layout_constraintStart_toStartOf="@id/si_thumb"
+                app:layout_constraintTop_toTopOf="@id/si_thumb" />
 
-                <ProgressBar
-                    android:id="@+id/si_thumb_progress"
-                    android:layout_width="28dp"
-                    android:layout_height="28dp"
-                    android:visibility="gone"
-                    app:layout_constraintBottom_toBottomOf="@id/si_thumb"
-                    app:layout_constraintEnd_toEndOf="@id/si_thumb"
-                    app:layout_constraintStart_toStartOf="@id/si_thumb"
-                    app:layout_constraintTop_toTopOf="@id/si_thumb" />
+            <ProgressBar
+                android:id="@+id/si_thumb_progress"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:visibility="gone"
+                app:layout_constraintBottom_toBottomOf="@id/si_thumb"
+                app:layout_constraintEnd_toEndOf="@id/si_thumb"
+                app:layout_constraintStart_toStartOf="@id/si_thumb"
+                app:layout_constraintTop_toTopOf="@id/si_thumb" />
 
-                <ImageView
-                    android:id="@+id/si_check"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:layout_margin="4dp"
-                    android:background="@drawable/media_item_grid_scrim"
-                    android:contentDescription="@string/select"
-                    android:padding="8dp"
-                    android:src="@drawable/check_box"
-                    app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintTop_toTopOf="parent"
-                    app:tint="#FFFFFFFF" />
-            </androidx.constraintlayout.widget.ConstraintLayout>
+            <ImageView
+                android:id="@+id/si_check"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_margin="6dp"
+                android:background="@drawable/spotify_import_badge_bg"
+                android:contentDescription="@string/select"
+                android:padding="8dp"
+                android:src="@drawable/check_box"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:tint="@android:color/white" />
+
+            <ImageView
+                android:id="@+id/si_search_more"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_margin="6dp"
+                android:background="@drawable/spotify_import_badge_bg"
+                android:contentDescription="@string/spotify_import_search_more"
+                android:padding="9dp"
+                android:src="@drawable/search"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:tint="@android:color/white" />
 
             <com.google.android.material.textview.MaterialTextView
                 android:id="@+id/si_title"
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="10dp"
-                android:layout_marginTop="8dp"
                 android:layout_marginEnd="10dp"
+                android:layout_marginBottom="2dp"
                 android:ellipsize="end"
-                android:lines="2"
-                android:textAppearance="?attr/textAppearanceBody2" />
+                android:maxLines="2"
+                android:shadowColor="#B0000000"
+                android:shadowDy="1"
+                android:shadowRadius="3"
+                android:textAppearance="?attr/textAppearanceBody1"
+                android:textColor="@android:color/white"
+                app:layout_constraintBottom_toTopOf="@id/si_subtitle"
+                app:layout_constraintEnd_toEndOf="@id/si_thumb"
+                app:layout_constraintStart_toStartOf="@id/si_thumb" />
 
             <com.google.android.material.textview.MaterialTextView
                 android:id="@+id/si_subtitle"
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="10dp"
                 android:layout_marginEnd="10dp"
                 android:ellipsize="end"
-                android:maxLines="1"
-                android:textAppearance="?attr/textAppearanceCaption" />
+                android:singleLine="true"
+                android:shadowColor="#B0000000"
+                android:shadowDy="1"
+                android:shadowRadius="3"
+                android:textAppearance="?attr/textAppearanceCaption"
+                android:textColor="@android:color/white"
+                app:layout_constraintBottom_toTopOf="@id/si_detail"
+                app:layout_constraintEnd_toEndOf="@id/si_thumb"
+                app:layout_constraintStart_toStartOf="@id/si_thumb" />
 
             <com.google.android.material.textview.MaterialTextView
                 android:id="@+id/si_detail"
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="10dp"
                 android:layout_marginEnd="10dp"
+                android:layout_marginBottom="10dp"
+                android:alpha="0.8"
                 android:ellipsize="end"
-                android:maxLines="1"
-                android:textAppearance="?attr/textAppearanceCaption" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/si_search_more"
-                style="@style/Widget.Material3.Button.TextButton"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="2dp"
-                android:text="@string/spotify_import_search_more"
-                android:textColor="?attr/colorControlActivated" />
-        </LinearLayout>
+                android:singleLine="true"
+                android:shadowColor="#B0000000"
+                android:shadowDy="1"
+                android:shadowRadius="3"
+                android:textAppearance="?attr/textAppearanceCaption"
+                android:textColor="@android:color/white"
+                app:layout_constraintBottom_toBottomOf="@id/si_thumb"
+                app:layout_constraintEnd_toEndOf="@id/si_thumb"
+                app:layout_constraintStart_toStartOf="@id/si_thumb" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
     </com.google.android.material.card.MaterialCardView>
 </FrameLayout>

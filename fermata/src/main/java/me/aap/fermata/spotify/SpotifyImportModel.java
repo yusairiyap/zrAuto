@@ -11,13 +11,6 @@ import java.util.List;
  * thread -- the background fetch/search tasks hand their results back there before mutating it.
  */
 public final class SpotifyImportModel {
-	/**
-	 * Playlists with more tracks than this are not matched against YouTube up front (and so show
-	 * no YouTube thumbnails) -- one search per track would hammer YouTube for large lists. Their
-	 * tracks are matched during the import itself, or one by one via "Search more".
-	 */
-	public static final int AUTO_MATCH_LIMIT = 30;
-
 	private SpotifyImportModel() {
 	}
 
@@ -105,6 +98,8 @@ public final class SpotifyImportModel {
 		@Nullable
 		public String error;
 		public String name = "";
+		/** Renamed by the user before importing: keep that name instead of Spotify's. */
+		public boolean renamed;
 		@Nullable
 		public String owner;
 		@Nullable
@@ -117,10 +112,6 @@ public final class SpotifyImportModel {
 
 		public Playlist(String ref) {
 			this.ref = ref;
-		}
-
-		public boolean isAutoMatch() {
-			return tracks.size() <= AUTO_MATCH_LIMIT;
 		}
 
 		public int getSelectedCount() {

@@ -51,6 +51,16 @@
     </LinearLayout>
 
     <ImageView
+        android:id="@+id/si_preview"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/spotify_preview"
+        android:padding="8dp"
+        android:src="@drawable/play"
+        app:tint="?android:attr/textColorPrimary" />
+
+    <ImageView
         android:id="@+id/si_check"
         android:layout_width="32dp"
         android:layout_height="32dp"
