@@ -271,16 +271,21 @@ public class YoutubeAlternativesFragment extends MainActivityFragment {
 		v.setTag(url);
 		Bitmap cached = images.get(url);
 		if (cached != null) {
+			v.setImageTintList(null);
 			v.setImageBitmap(cached);
 			return;
 		}
 		if (url.equals(tag)) return;
 		v.setImageResource(R.drawable.video);
+		v.setImageTintList(SpotifyImportFragment.placeholderTint(v.getContext()));
 		FermataApplication.get().getBitmapCache().getBitmap(v.getContext(), url, false, false).main()
 				.onSuccess(bm -> {
 					if (bm == null) return;
 					images.put(url, bm);
-					if (url.equals(v.getTag())) v.setImageBitmap(bm);
+					if (url.equals(v.getTag())) {
+						v.setImageTintList(null);
+						v.setImageBitmap(bm);
+					}
 				});
 	}
 

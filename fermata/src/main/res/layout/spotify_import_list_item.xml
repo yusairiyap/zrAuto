@@ -21,7 +21,7 @@
         android:contentDescription="@string/select"
         android:padding="8dp"
         android:src="@drawable/check_box"
-        app:tint="?attr/colorControlActivated" />
+        app:tint="?android:attr/textColorPrimary" />
 
     <FrameLayout
         android:layout_width="112dp"
@@ -81,5 +81,5 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/spotify_import_search_more"
-        android:textColor="?attr/colorControlActivated" />
+        android:textColor="@color/spotify_import_button" />
 </LinearLayout>

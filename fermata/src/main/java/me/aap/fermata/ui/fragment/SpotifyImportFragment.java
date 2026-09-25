@@ -229,22 +229,14 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		int idx = text.indexOf(DASHBOARD_LABEL);
 
 		if (idx != -1) {
-			span.setSpan(new ClickableSpan() {
-				@Override
-				public void onClick(@NonNull View widget) {
-					openDashboard(a);
-				}
-			}, idx, idx + DASHBOARD_LABEL.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+			span.setSpan(new LinkSpan(() -> openDashboard(a)), idx, idx + DASHBOARD_LABEL.length(),
+					Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
 		}
 
 		idx = text.indexOf(SpotifyAuth.REDIRECT_URI);
 		if (idx != -1) {
-			span.setSpan(new ClickableSpan() {
-				@Override
-				public void onClick(@NonNull View widget) {
-					copyToClipboard(ctx, SpotifyAuth.REDIRECT_URI);
-				}
-			}, idx, idx + SpotifyAuth.REDIRECT_URI.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+			span.setSpan(new LinkSpan(() -> copyToClipboard(ctx, SpotifyAuth.REDIRECT_URI)), idx,
+					idx + SpotifyAuth.REDIRECT_URI.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
 		}
 
 		TextView t = new com.google.android.material.textview.MaterialTextView(ctx);
@@ -256,6 +248,29 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		ScrollView scroll = new ScrollView(ctx);
 		scroll.addView(t);
 		return scroll;
+	}
+
+	/**
+	 * A link drawn in the text's own color (bold, underlined) instead of the theme's link color,
+	 * which on several of this app's dark themes is a dark blue barely visible on the dialog.
+	 */
+	private static final class LinkSpan extends ClickableSpan {
+		private final Runnable onClick;
+
+		LinkSpan(Runnable onClick) {
+			this.onClick = onClick;
+		}
+
+		@Override
+		public void onClick(@NonNull View widget) {
+			onClick.run();
+		}
+
+		@Override
+		public void updateDrawState(@NonNull android.text.TextPaint ds) {
+			ds.setUnderlineText(true);
+			ds.setFakeBoldText(true);
+		}
 	}
 
 	/**
@@ -1246,6 +1261,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		Bitmap cached = (url == null) ? null : images.get(url);
 
 		if (cached != null) {
+			v.setImageTintList(null);
 			v.setImageBitmap(cached);
 			return;
 		}
@@ -1253,14 +1269,30 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		// Already showing (or loading) this very image: don't flash the placeholder over it.
 		if ((url != null) && url.equals(tag)) return;
 		v.setImageResource(placeholder);
+		v.setImageTintList(placeholderTint(v.getContext()));
 		if (url == null) return;
 
 		FermataApplication.get().getBitmapCache().getBitmap(v.getContext(), url, false, false).main()
 				.onSuccess(bm -> {
 					if (bm == null) return;
 					images.put(url, bm);
-					if (url.equals(v.getTag())) v.setImageBitmap(bm);
+					if (url.equals(v.getTag())) {
+						v.setImageTintList(null);
+						v.setImageBitmap(bm);
+					}
 				});
+	}
+
+	/**
+	 * The placeholder icons are black vectors: tinted with the theme's primary text color so they
+	 * stay visible on dark themes as well as light ones (a real thumbnail clears the tint).
+	 */
+	static android.content.res.ColorStateList placeholderTint(Context ctx) {
+		android.content.res.TypedArray ta =
+				ctx.obtainStyledAttributes(new int[]{android.R.attr.textColorPrimary});
+		android.content.res.ColorStateList c = ta.getColorStateList(0);
+		ta.recycle();
+		return c;
 	}
 
 	private static final class Row {

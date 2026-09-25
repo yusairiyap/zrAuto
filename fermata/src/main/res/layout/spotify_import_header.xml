@@ -64,24 +64,29 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/si_progress_action"
-                    style="@style/Widget.Material3.Button.TextButton"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_gravity="end"
-                    android:textColor="?attr/colorControlActivated"
-                    android:visibility="gone" />
+                    android:layout_marginTop="4dp"
+                    android:textColor="@color/spotify_import_button"
+                    android:visibility="gone"
+                    app:rippleColor="@color/spotify_import_button"
+                    app:strokeColor="@color/spotify_import_button" />
             </LinearLayout>
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/si_my_playlists"
-                style="@style/Widget.Material3.Button.TextButton"
+                style="@style/Widget.Material3.Button.OutlinedButton"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 android:text="@string/spotify_my_playlists"
-                android:textColor="?attr/colorControlActivated"
+                android:textColor="@color/spotify_import_button"
                 app:icon="@drawable/playlist"
-                app:iconTint="?attr/colorControlActivated" />
+                app:iconTint="@color/spotify_import_button"
+                app:rippleColor="@color/spotify_import_button"
+                app:strokeColor="@color/spotify_import_button" />
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -91,20 +96,26 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/si_select_all"
-                    style="@style/Widget.Material3.Button.TextButton"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:textColor="?attr/colorControlActivated" />
+                    android:textColor="@color/spotify_import_button"
+                    android:layout_marginEnd="4dp"
+                    app:rippleColor="@color/spotify_import_button"
+                    app:strokeColor="@color/spotify_import_button" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/si_add_link"
-                    style="@style/Widget.Material3.Button.TextButton"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:text="@string/spotify_import_add_link"
-                    android:textColor="?attr/colorControlActivated" />
+                    android:textColor="@color/spotify_import_button"
+                    android:layout_marginStart="4dp"
+                    app:rippleColor="@color/spotify_import_button"
+                    app:strokeColor="@color/spotify_import_button" />
             </LinearLayout>
 
             <com.google.android.material.button.MaterialButton
@@ -113,11 +124,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:textColor="?attr/colorControlActivated"
+                android:textColor="@color/spotify_import_button"
                 app:icon="@drawable/playlist_import"
-                app:iconTint="?attr/colorControlActivated"
-                app:rippleColor="?attr/colorControlActivated"
-                app:strokeColor="?attr/colorControlActivated" />
+                app:iconTint="@color/spotify_import_button"
+                app:rippleColor="@color/spotify_import_button"
+                app:strokeColor="@color/spotify_import_button" />
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 </LinearLayout>

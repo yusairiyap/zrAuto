@@ -67,5 +67,5 @@
         android:importantForAccessibility="no"
         android:padding="4dp"
         android:src="@drawable/done"
-        app:tint="?attr/colorControlActivated" />
+        app:tint="?android:attr/textColorPrimary" />
 </LinearLayout>
