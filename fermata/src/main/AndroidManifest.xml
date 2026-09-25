@@ -18,6 +18,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission
         android:name="android.permission.WRITE_SETTINGS"
@@ -114,6 +115,7 @@
                 <data android:host="open" />
                 <data android:host="play" />
                 <data android:host="spotify-callback" />
+                <data android:host="spotify-import" />
             </intent-filter>
 
             <intent-filter>
@@ -864,6 +866,11 @@
                 <action android:name="me.aap.fermata.action.MediaService" />
             </intent-filter>
         </service>
+
+        <service
+            android:name="me.aap.fermata.spotify.SpotifyImportService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <service
             android:name="me.aap.fermata.service.SpeechRecognitionService"

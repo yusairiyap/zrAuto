@@ -364,6 +364,13 @@ public class MainActivityDelegate extends ActivityDelegate
 			return completed(true);
 		}
 
+		if ((u != null) && "zrauto".equals(u.getScheme()) &&
+				"spotify-import".equals(u.getHost())) {
+			// From the Spotify import's progress notification.
+			SpotifyImportFragment.open(this);
+			return completed(true);
+		}
+
 		if (u != null) {
 			if (INTENT_SCHEME.equals(u.getScheme())) {
 				String action = u.getHost();

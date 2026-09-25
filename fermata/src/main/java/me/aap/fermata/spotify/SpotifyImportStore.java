@@ -123,6 +123,10 @@ public final class SpotifyImportStore {
 		if (!tmp.renameTo(f)) Log.e("Failed to save the Spotify import session: rename failed");
 	}
 
+	public static boolean exists(Context ctx) {
+		return file(ctx).isFile();
+	}
+
 	@Nullable
 	public static Session load(Context ctx) {
 		File f = file(ctx);

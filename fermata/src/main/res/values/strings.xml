@@ -367,6 +367,9 @@
     <string name="spotify_status_unmatched">Not matched</string>
     <string name="spotify_status_no_match">No match</string>
     <string name="spotify_status_failed">Search failed</string>
+    <string name="spotify_notif_channel">Spotify import</string>
+    <string name="spotify_notif_matching">Matching Spotify tracks to YouTube</string>
+    <string name="spotify_notif_importing">Importing Spotify playlists</string>
     <string name="spotify_setup_title">Spotify account setup</string>
     <string name="spotify_setup_sub">How to get a free Client ID</string>
     <string name="spotify_setup_steps">One-time setup (free, needs the Premium account you log in with):\n\n1. Open developer.spotify.com/dashboard and log in.\n2. Create app: any name and description; Redirect URI: %1$s (tap it to copy); tick \"Web API\".\n3. Open the app\'s Settings and copy its Client ID.\n4. Go back (Back button) and paste it in zrAuto: Settings &gt; Other &gt; Import from Spotify &gt; Spotify Client ID.\n5. Tap \"Log in to Spotify\".\n\nNo client secret is needed. Or switch Playlist source to \"Public links only\" to skip all this.</string>

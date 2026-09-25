@@ -53,6 +53,7 @@ import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.spotify.SpotifyApi;
 import me.aap.fermata.spotify.SpotifyAuth;
 import me.aap.fermata.spotify.SpotifyClient;
+import me.aap.fermata.spotify.SpotifyImportEngine;
 import me.aap.fermata.spotify.SpotifyImportModel.Playlist;
 import me.aap.fermata.spotify.SpotifyImportStore;
 import me.aap.fermata.spotify.SpotifyImportModel.Track;
@@ -72,7 +73,7 @@ import me.aap.utils.ui.view.ToolBarView;
  * <p>
  * Playlists come from the signed-in user's account (an in-page picker of their playlists, see
  * {@link SpotifyApi}) or from pasted links. Each playlist is a card that can be opened to pick
- * individual tracks -- everything is selected by default -- and renamed before importing. Tracks
+ * individual tracks -- everything is selected by default -- and renamed before engine.isImporting(). Tracks
  * are matched against YouTube progressively in the background, one search at a time (the open
  * playlist first), so each shows the video it would import as; "Search more" lists alternatives,
  * and any video can be previewed.
@@ -104,27 +105,37 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	private static final String WEB_BROWSER_ADDON_CLASS = "me.aap.fermata.addon.web.WebBrowserAddon";
 
 	private final Handler handler = new Handler(Looper.getMainLooper());
-	private final List<Playlist> playlists = new ArrayList<>();
+	/** The import's state and background work, which outlive this screen. */
+	private final SpotifyImportEngine engine = SpotifyImportEngine.get();
+	/** The engine's live list (main thread only). */
+	private final List<Playlist> playlists = engine.getPlaylists();
 	private final List<Row> rows = new ArrayList<>();
 	/** Decoded thumbnails, so rebinding a row doesn't flash the placeholder. */
 	private final LruCache<String, Bitmap> images = new LruCache<>(120);
-	private final AtomicBoolean cancelImport = new AtomicBoolean();
-	/** Playlist fetches. */
-	private final ExecutorService fetchExecutor = Executors.newSingleThreadExecutor();
-	/** Background matching and the import's own matching -- one search at a time. */
-	private final ExecutorService matchExecutor = Executors.newSingleThreadExecutor();
-	/** "Search more", so a tap isn't stuck behind the background matching. */
-	private final ExecutorService altExecutor = Executors.newSingleThreadExecutor();
-	/** Session saves (see {@link SpotifyImportStore}), in order, off the main thread. */
-	private final ExecutorService saveExecutor = Executors.newSingleThreadExecutor();
-	private final Runnable saveTask = this::saveNow;
-	private volatile boolean stopAutoMatch;
-	private boolean matcherRunning;
-	/**
-	 * The user stopped the background matching: nothing more is searched automatically, and the
-	 * import takes only the tracks already matched (plus any picked via "Search more").
-	 */
-	private boolean matchingPaused;
+	/** Lists the user's Spotify playlists for the picker. */
+	private final ExecutorService pickerExecutor = Executors.newSingleThreadExecutor();
+	private final SpotifyImportEngine.Listener engineListener = new SpotifyImportEngine.Listener() {
+		@Override
+		public void onTrackChanged(Track t) {
+			refreshTrack(t);
+			refreshPlaylistOf(t);
+			refreshHeader();
+		}
+
+		@Override
+		public void onChanged() {
+			if ((current != null) && !playlists.contains(current)) {
+				current = null;
+				getActivityDelegate().fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
+			}
+			rebuild();
+		}
+
+		@Override
+		public void onImportFinished(SpotifyImportEngine.ImportResult result) {
+			onImportDone(result);
+		}
+	};
 	private boolean destroyed;
 	@Nullable
 	private Playlist current;
@@ -136,16 +147,6 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	@Nullable
 	private RecyclerView list;
 	private boolean grid;
-	// Import progress, shown in the header card.
-	private boolean importing;
-	private boolean saving;
-	private int progressDone;
-	private int progressTotal;
-	@Nullable
-	private String progressText;
-	/** The tracks being imported, per playlist, captured when the import started. */
-	@Nullable
-	private List<PlanEntry> importPlan;
 
 	/**
 	 * Opens the import screen, asking for Spotify links straight away if nothing has been loaded
@@ -333,7 +334,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	@Override
 	public void onCreate(@Nullable Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		restoreSession();
+		engine.addListener(engineListener);
 	}
 
 	@Nullable
@@ -351,7 +352,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		adapter = new Adapter();
 		adapter.setHasStableIds(true);
 		list.setAdapter(adapter);
-		// Progress updates rebind rows many times a second while matching/importing; the default
+		// Progress updates rebind rows many times a second while matching/engine.isImporting(); the default
 		// change animation cross-fades every one of them, which is what made the cards flicker.
 		if (list.getItemAnimator() instanceof SimpleItemAnimator sia) {
 			sia.setSupportsChangeAnimations(false);
@@ -384,19 +385,16 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	public void onStop() {
 		super.onStop();
 		// The app may be killed any time once in the background: save now, not in a moment.
-		if (!destroyed) saveNow();
+		if (!destroyed) engine.saveNow();
 	}
 
 	@Override
 	public void onDestroy() {
 		super.onDestroy();
 		destroyed = true;
-		cancelImport.set(true);
-		stopAutoMatch = true;
-		fetchExecutor.shutdownNow();
-		matchExecutor.shutdownNow();
-		altExecutor.shutdownNow();
-		saveExecutor.shutdown(); // Lets a pending save finish.
+		engine.removeListener(engineListener);
+		engine.setPriority(null);
+		pickerExecutor.shutdownNow();
 		handler.removeCallbacksAndMessages(null);
 		images.evictAll();
 	}
@@ -496,21 +494,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	}
 
 	private void addPlaylist(String ref, String name, @Nullable String coverUrl) {
-		Playlist existing = findPlaylist(ref);
-
-		if (existing != null) {
-			if (!existing.included) {
-				existing.included = true;
-				ensureMatcher();
-			}
-			return;
-		}
-
-		Playlist pl = new Playlist(ref);
-		pl.name = name;
-		pl.coverUrl = coverUrl;
-		playlists.add(pl);
-		fetch(pl);
+		engine.addPlaylist(ref, name, coverUrl, true);
 	}
 
 	/** Part of the import (not just opened from the picker to look at). */
@@ -523,10 +507,9 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	private void includeCurrent() {
 		Playlist pl = current;
 		if ((pl == null) || pl.included) return;
-		pl.included = true;
 		pickerSelected.remove(pl.ref);
-		ensureMatcher();
-		rebuild();
+		engine.setPriority(pl);
+		engine.include(pl);
 	}
 
 	/**
@@ -569,7 +552,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		if (destroyed || !isAdded()) return;
 		UiUtils.showToast(requireContext(), R.string.spotify_loading_playlists);
 
-		fetchExecutor.execute(() -> {
+		pickerExecutor.execute(() -> {
 			List<SpotifyApi.PlaylistInfo> list = null;
 			Exception err = null;
 			try {
@@ -611,7 +594,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		picker = null;
 		pickerSelected.clear();
 		// Playlists only opened to look at, never added, aren't part of the import.
-		playlists.removeIf(p -> !p.included);
+		engine.removeBrowseOnly();
 		rebuild();
 		getActivityDelegate().fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 	}
@@ -626,12 +609,12 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	}
 
 	private void togglePicked(SpotifyApi.PlaylistInfo p) {
-		if (importing) return;
+		if (engine.isImporting()) return;
 		Playlist added = findPlaylist(p.ref);
 
 		if ((added != null) && added.included) {
 			// Unticking a playlist that was already added takes it off the import list.
-			playlists.remove(added);
+			engine.remove(added);
 		} else if (!pickerSelected.remove(p.ref)) {
 			pickerSelected.add(p.ref);
 		}
@@ -644,17 +627,14 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	 * (loading in the background) and Back returns to the picker.
 	 */
 	private void openPicked(SpotifyApi.PlaylistInfo p) {
-		if (importing) return;
+		if (engine.isImporting()) return;
 		Playlist pl = findPlaylist(p.ref);
 
 		if (pl == null) {
 			// Loads just the track list; no YouTube matching until the playlist is added.
-			pl = new Playlist(p.ref);
-			pl.name = p.name;
-			pl.coverUrl = p.coverUrl;
-			pl.included = false;
-			playlists.add(pl);
-			fetch(pl);
+			engine.addPlaylist(p.ref, p.name, p.coverUrl, false);
+			pl = findPlaylist(p.ref);
+			if (pl == null) return;
 		}
 
 		openPlaylist(pl);
@@ -662,10 +642,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 
 	@Nullable
 	private Playlist findPlaylist(String ref) {
-		for (Playlist p : playlists) {
-			if (p.ref.equals(ref)) return p;
-		}
-		return null;
+		return engine.findPlaylist(ref);
 	}
 
 	private int getPickable() {
@@ -677,51 +654,13 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	}
 
 	private void fetch(Playlist pl) {
-		pl.state = Playlist.STATE_LOADING;
-		pl.error = null;
-		fetchExecutor.execute(() -> {
-			Playlist tmp = new Playlist(pl.ref);
-			tmp.name = pl.name;
-			Exception err = null;
-
-			try {
-				SpotifyClient.fetch(tmp);
-			} catch (Exception ex) {
-				Log.e(ex, "Failed to load Spotify playlist ", pl.ref);
-				err = ex;
-			}
-
-			Exception fail = err;
-			post(() -> {
-				if (fail instanceof SpotifyAuth.AuthException) {
-					pl.state = Playlist.STATE_FAILED;
-					pl.error = getString(R.string.spotify_login_required);
-				} else if (fail != null) {
-					pl.state = Playlist.STATE_FAILED;
-					pl.error = (fail.getMessage() != null) ? fail.getMessage() : fail.toString();
-				} else if (tmp.tracks.isEmpty()) {
-					if (!pl.renamed) pl.name = tmp.name;
-					pl.state = Playlist.STATE_FAILED;
-					pl.error = getString(R.string.spotify_import_no_tracks);
-				} else {
-					if (!pl.renamed) pl.name = tmp.name;
-					pl.owner = tmp.owner;
-					if (tmp.coverUrl != null) pl.coverUrl = tmp.coverUrl;
-					pl.fullList = tmp.fullList;
-					pl.tracks.clear();
-					pl.tracks.addAll(tmp.tracks);
-					pl.state = Playlist.STATE_LOADED;
-					ensureMatcher();
-				}
-				rebuild();
-			});
-		});
+		engine.fetch(pl);
 	}
 
 	// ---- Card menus ----
 
 	private void showPlaylistMenu(Playlist pl) {
-		if (importing) return;
+		if (engine.isImporting()) return;
 		getActivityDelegate().getContextMenu().show(b -> {
 			b.setTitle(pl.name.isEmpty() ? pl.ref : pl.name);
 			b.addItem(R.id.playlist_rename, R.drawable.edit, R.string.spotify_rename).setHandler(i -> {
@@ -730,9 +669,8 @@ public class SpotifyImportFragment extends MainActivityFragment {
 			});
 			b.addItem(R.id.spotify_remove, R.drawable.delete, R.string.spotify_remove_from_list)
 					.setHandler(i -> {
-						playlists.remove(pl);
 						if (current == pl) current = null;
-						rebuild();
+						engine.remove(pl);
 						return true;
 					});
 		});
@@ -750,7 +688,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	}
 
 	private void showTrackMenu(Track t) {
-		if (importing) return;
+		if (engine.isImporting()) return;
 		getActivityDelegate().getContextMenu().show(b -> {
 			b.setTitle(t.displayName());
 			Video m = t.match;
@@ -810,158 +748,28 @@ public class SpotifyImportFragment extends MainActivityFragment {
 
 	// ---- YouTube matching ----
 
-	/**
-	 * Starts the background matcher if it isn't running: it matches every not-yet-matched track of
-	 * every loaded playlist, one YouTube search at a time with a pause in between, always taking
-	 * the next track of the currently open playlist first.
-	 */
+	/** Matching runs in the engine; the open playlist's tracks go first. */
 	private void ensureMatcher() {
-		if (matcherRunning || importing || destroyed || stopAutoMatch || matchingPaused) return;
-		if (!hasPendingTrack()) return;
-		matcherRunning = true;
-
-		matchExecutor.execute(() -> {
-			try {
-				while (!stopAutoMatch && !Thread.currentThread().isInterrupted()) {
-					Track t = callOnMain(this::takeNextTrack);
-					if (t == null) break;
-					searchTrack(t, false);
-					if (!sleep()) break;
-				}
-			} finally {
-				post(() -> {
-					matcherRunning = false;
-					// Playlists may have been added while it was winding down.
-					ensureMatcher();
-				});
-			}
-		});
-	}
-
-	private boolean hasPendingTrack() {
-		for (Playlist pl : playlists) {
-			if (!pl.included || (pl.state != Playlist.STATE_LOADED)) continue;
-			for (Track t : pl.tracks) {
-				if ((t.match == null) && (t.matchState == Track.MATCH_NONE)) return true;
-			}
-		}
-		return false;
-	}
-
-	/** Main thread: picks and marks the next track to match, or null if none. */
-	@Nullable
-	private Track takeNextTrack() {
-		if (destroyed || stopAutoMatch || matchingPaused) return null;
-		Track t = ((current != null) && current.included) ? nextPending(current) : null;
-
-		if (t == null) {
-			for (Playlist pl : playlists) {
-				if (pl.included && (pl.state == Playlist.STATE_LOADED) &&
-						((t = nextPending(pl)) != null)) break;
-			}
-		}
-
-		if (t != null) {
-			t.matchState = Track.MATCH_SEARCHING;
-			refreshTrack(t);
-			refreshPlaylistOf(t);
-		}
-
-		return t;
-	}
-
-	@Nullable
-	private static Track nextPending(Playlist pl) {
-		for (Track t : pl.tracks) {
-			if ((t.match == null) && (t.matchState == Track.MATCH_NONE)) return t;
-		}
-		return null;
-	}
-
-	/** Runs {@code c} on the main thread and waits for its result; null if interrupted. */
-	@Nullable
-	private <T> T callOnMain(java.util.concurrent.Callable<T> c) {
-		FutureTask<T> task = new FutureTask<>(c);
-		handler.post(task);
-		try {
-			return task.get();
-		} catch (InterruptedException ex) {
-			Thread.currentThread().interrupt();
-			return null;
-		} catch (ExecutionException ex) {
-			Log.e(ex, "Failed to pick the next track to match");
-			return null;
-		}
-	}
-
-	/** Blocking; runs on a background executor and posts the result. */
-	private void searchTrack(Track t, boolean countProgress) {
-		List<Video> found = null;
-
-		try {
-			found = YoutubeSearch.searchTrack(t, MAX_RESULTS);
-		} catch (Exception ex) {
-			Log.e(ex, "YouTube search failed: ", t.searchQuery());
-		}
-
-		List<Video> result = found;
-		post(() -> {
-			applySearchResult(t, result);
-			scheduleSave();
-			if (countProgress) progressDone++;
-			refreshTrack(t);
-			refreshPlaylistOf(t);
-			refreshHeader();
-		});
-	}
-
-	private void applySearchResult(Track t, @Nullable List<Video> result) {
-		if (result == null) {
-			if (t.match == null) t.matchState = Track.MATCH_FAILED;
-			return;
-		}
-
-		if (t.alternatives == null) t.alternatives = result;
-		if (t.match == null) t.match = result.isEmpty() ? null : result.get(0);
-		t.matchState = (t.match != null) ? Track.MATCH_FOUND : Track.MATCH_NOT_FOUND;
+		engine.setPriority(current);
+		engine.ensureMatcher();
 	}
 
 	private void onSearchMore(Track t) {
-		if (importing) return;
+		if (engine.isImporting()) return;
 
 		if (t.altExpanded) {
 			t.altExpanded = false;
 		} else {
 			t.altExpanded = true;
 
-			if ((t.alternatives == null) && !t.altSearching) {
-				t.altSearching = true;
-				altExecutor.execute(() -> {
-					List<Video> found = null;
-					try {
-						found = YoutubeSearch.searchTrack(t, MAX_RESULTS);
-					} catch (Exception ex) {
-						Log.e(ex, "YouTube search failed: ", t.searchQuery());
-					}
-					List<Video> result = found;
-					post(() -> {
-						t.altSearching = false;
-						t.alternatives = (result != null) ? result : Collections.emptyList();
-						if ((t.match == null) && (result != null) && !result.isEmpty()) {
-							t.match = result.get(0);
-							t.matchState = Track.MATCH_FOUND;
-						}
-						rebuild();
-					});
-				});
-			}
+			engine.searchMore(t);
 		}
 
 		rebuild();
 	}
 
 	private void onAlternativeSelected(Track t, Video v) {
-		if (importing) return;
+		if (engine.isImporting()) return;
 		t.match = v;
 		t.userPicked = true;
 		t.matchState = Track.MATCH_FOUND;
@@ -972,181 +780,41 @@ public class SpotifyImportFragment extends MainActivityFragment {
 
 	// ---- Import ----
 
+	/** Runs in the engine, so it carries on in the background (see SpotifyImportService). */
 	private void startImport() {
-		if (importing) return;
-		List<PlanEntry> plan = new ArrayList<>();
-		List<Track> toResolve = new ArrayList<>();
-
-		for (Playlist pl : playlists) {
-			if (!pl.hasSelection()) continue;
-			List<Track> tracks = new ArrayList<>();
-
-			for (Track t : pl.tracks) {
-				if (!t.selected) continue;
-				tracks.add(t);
-
-				if (t.match == null) {
-					// A "Search more" lookup already has the answer -- no need to ask YouTube again.
-					if ((t.alternatives != null) && !t.alternatives.isEmpty()) {
-						t.match = t.alternatives.get(0);
-						t.matchState = Track.MATCH_FOUND;
-					} else if (!matchingPaused) {
-						toResolve.add(t);
-					} // else: matching was stopped, so it's skipped as unmatched.
-				}
-			}
-
-			plan.add(new PlanEntry(pl, tracks));
-		}
-
-		if (plan.isEmpty()) {
+		if (!engine.startImport()) {
 			UiUtils.showToast(requireContext(), R.string.spotify_import_nothing_selected);
-			return;
 		}
-
-		importPlan = plan;
-		importing = true;
-		saving = false;
-		progressDone = 0;
-		progressTotal = toResolve.size();
-		progressText = null;
-		cancelImport.set(false);
-		stopAutoMatch = true; // The import does its own matching; the background matcher yields.
-		rebuild();
-
-		// Queued behind the background matcher, which stops after its current search.
-		matchExecutor.execute(() -> {
-			try {
-				for (int i = 0; i < toResolve.size(); i++) {
-					if (cancelImport.get() || Thread.currentThread().isInterrupted()) return;
-					Track t = toResolve.get(i);
-					int n = i + 1;
-					boolean[] skip = {false};
-					callOnMain(() -> {
-						// Matched meanwhile by the background matcher's last search.
-						if (t.match != null) {
-							skip[0] = true;
-							progressDone++;
-							refreshHeader();
-							return null;
-						}
-						progressText = getString(R.string.spotify_import_matching, n, progressTotal,
-								t.displayName());
-						t.matchState = Track.MATCH_SEARCHING;
-						refreshTrack(t);
-						refreshHeader();
-						return null;
-					});
-					if (skip[0]) continue;
-					searchTrack(t, true);
-					if ((i < toResolve.size() - 1) && !sleep()) return;
-				}
-			} finally {
-				post(this::finishImport);
-			}
-		});
 	}
 
 	private void cancelImport() {
-		if (!importing || saving) return;
-		cancelImport.set(true);
-		progressText = getString(R.string.spotify_import_cancelling);
-		refreshHeader();
+		engine.cancelImport();
 	}
 
-	private void finishImport() {
-		List<PlanEntry> plan = importPlan;
-
-		if (cancelImport.get() || (plan == null)) {
-			endImport();
-			// Matches found so far are kept for the next attempt; the library itself is untouched.
-			for (Playlist pl : playlists) {
-				for (Track t : pl.tracks) {
-					if (t.matchState == Track.MATCH_SEARCHING) t.matchState = Track.MATCH_NONE;
-				}
-			}
-			if (!destroyed) UiUtils.showToast(requireContext(), R.string.spotify_import_cancelled);
-			resumeAutoMatch();
-			rebuild();
-			return;
-		}
-
-		List<SpotifyPlaylistWriter.Entry> entries = new ArrayList<>(plan.size());
-		int skipped = 0;
-
-		for (PlanEntry e : plan) {
-			List<Video> videos = new ArrayList<>(e.tracks.size());
-			Set<String> ids = new LinkedHashSet<>();
-
-			for (Track t : e.tracks) {
-				if (t.match == null) skipped++;
-				else if (ids.add(t.match.videoId)) videos.add(t.match);
-			}
-
-			if (!videos.isEmpty()) entries.add(new SpotifyPlaylistWriter.Entry(e.playlist.name, videos));
-		}
-
-		if (entries.isEmpty()) {
-			endImport();
-			UiUtils.showAlert(requireContext(), R.string.spotify_import_nothing_matched);
-			resumeAutoMatch();
-			rebuild();
-			return;
-		}
-
-		saving = true;
-		progressText = getString(R.string.spotify_import_saving);
-		refreshHeader();
-		int nPlaylists = entries.size();
-		int nSkipped = skipped;
+	private void onImportDone(SpotifyImportEngine.ImportResult r) {
+		if (destroyed || !isAdded()) return;
+		Context ctx = requireContext();
 		MainActivityDelegate a = getActivityDelegate();
 
-		SpotifyPlaylistWriter.write(a.getLib(), entries).main().onCompletion((count, err) -> {
-			endImport();
-			if (destroyed) return;
-			Context ctx = requireContext();
+		if (r.status == SpotifyImportEngine.ImportResult.DONE) {
+			MediaLibFragment f = a.getMediaLibFragment(R.id.playlists_fragment);
+			if (f != null) f.getAdapter().reload();
+		}
 
-			if (err != null) {
-				Log.e(err, "Spotify import failed");
-				String msg = (err.getMessage() != null) ? err.getMessage() : err.toString();
-				UiUtils.showAlert(ctx, getString(R.string.spotify_import_error, msg));
-			} else {
-				int n = (count != null) ? count : 0;
-				UiUtils.showInfo(ctx, (nSkipped == 0) ?
-						getString(R.string.spotify_import_done, n, nPlaylists) :
-						getString(R.string.spotify_import_done_skipped, n, nPlaylists, nSkipped));
-				MediaLibFragment f = a.getMediaLibFragment(R.id.playlists_fragment);
-				if (f != null) f.getAdapter().reload();
-				// Done with: they're local playlists now. Also stops the background matcher from
-				// carrying on with their unselected tracks, and clears them from the saved session.
-				for (PlanEntry e : plan) playlists.remove(e.playlist);
-				if ((current != null) && !playlists.contains(current)) {
-					current = null;
-					a.fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
-				}
-			}
-
-			resumeAutoMatch();
-			rebuild();
-		});
-	}
-
-	private void endImport() {
-		importing = false;
-		saving = false;
-		importPlan = null;
-		progressText = null;
-	}
-
-	private void resumeAutoMatch() {
-		stopAutoMatch = false;
-		ensureMatcher();
+		// A dialog only while this screen is showing; otherwise a toast (plus the notification).
+		if (isHidden() || (r.status == SpotifyImportEngine.ImportResult.CANCELLED)) {
+			UiUtils.showToast(ctx, r.getMessage(ctx));
+		} else if (r.status == SpotifyImportEngine.ImportResult.DONE) {
+			UiUtils.showInfo(ctx, r.getMessage(ctx));
+		} else {
+			UiUtils.showAlert(ctx, r.getMessage(ctx));
+		}
 	}
 
 	// ---- Selection ----
 
 	private void toggleAll() {
-		if (importing) return;
+		if (engine.isImporting()) return;
 
 		if (picker != null) {
 			boolean all = pickerSelected.size() == getPickable();
@@ -1165,7 +833,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	}
 
 	private void toggleTrack(Track t) {
-		if (importing) return;
+		if (engine.isImporting()) return;
 		t.selected = !t.selected;
 		rebuild();
 	}
@@ -1181,31 +849,15 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	}
 
 	private int getTotalSelected() {
-		int n = 0;
-		for (Playlist pl : playlists) {
-			if (pl.included && (pl.state == Playlist.STATE_LOADED)) n += pl.getSelectedCount();
-		}
-		return n;
+		return engine.getTotalSelected();
 	}
 
-	/** What Import would bring in: every selected track, or only matched ones once stopped. */
 	private int getImportCount() {
-		if (!matchingPaused) return getTotalSelected();
-		int n = 0;
-		for (Playlist pl : playlists) {
-			if (!pl.included || (pl.state != Playlist.STATE_LOADED)) continue;
-			for (Track t : pl.tracks) {
-				if (t.selected && ((t.match != null) ||
-						((t.alternatives != null) && !t.alternatives.isEmpty()))) n++;
-			}
-		}
-		return n;
+		return engine.getImportCount();
 	}
 
 	private void setMatchingPaused(boolean paused) {
-		matchingPaused = paused;
-		if (!paused) ensureMatcher();
-		rebuild();
+		engine.setMatchingPaused(paused);
 	}
 
 	// ---- Helpers ----
@@ -1216,57 +868,8 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		});
 	}
 
-	/** @return false if interrupted. */
-	private static boolean sleep() {
-		try {
-			Thread.sleep(SEARCH_DELAY_MS);
-			return true;
-		} catch (InterruptedException ex) {
-			Thread.currentThread().interrupt();
-			return false;
-		}
-	}
-
-	// ---- Session persistence ----
-
-	/**
-	 * Brings back the last session (see {@link SpotifyImportStore}) so matching a long playlist
-	 * continues after the app was closed: matches found so far are kept and the background
-	 * matcher carries on with the rest. Playlists whose track list hadn't loaded are reloaded.
-	 */
-	private void restoreSession() {
-		SpotifyImportStore.Session session = SpotifyImportStore.load(requireContext());
-		if ((session == null) || !playlists.isEmpty()) return;
-		matchingPaused = session.matchingPaused;
-		playlists.addAll(session.playlists);
-
-		for (Playlist pl : playlists) {
-			if (pl.state != Playlist.STATE_LOADED) fetch(pl);
-		}
-
-		ensureMatcher();
-	}
-
-	private void scheduleSave() {
-		handler.removeCallbacks(saveTask);
-		handler.postDelayed(saveTask, 2000);
-	}
-
-	private void saveNow() {
-		handler.removeCallbacks(saveTask);
-		Context ctx = getContext();
-		if (ctx == null) return;
-		Context app = ctx.getApplicationContext();
-		String json = SpotifyImportStore.toJson(playlists, matchingPaused);
-		try {
-			saveExecutor.execute(() -> SpotifyImportStore.write(app, json));
-		} catch (Exception ex) {
-			Log.e(ex, "Failed to save the Spotify import session");
-		}
-	}
-
 	private void rebuild() {
-		scheduleSave();
+		engine.scheduleSave();
 		rows.clear();
 		rows.add(new Row(TYPE_HEADER, null, null, null, null));
 
@@ -1390,16 +993,6 @@ public class SpotifyImportFragment extends MainActivityFragment {
 				default -> 0;
 			};
 			return ((long) type << 40) ^ (h & 0xFFFFFFFFFFL);
-		}
-	}
-
-	private static final class PlanEntry {
-		final Playlist playlist;
-		final List<Track> tracks;
-
-		PlanEntry(Playlist playlist, List<Track> tracks) {
-			this.playlist = playlist;
-			this.tracks = tracks;
 		}
 	}
 
@@ -1590,9 +1183,9 @@ public class SpotifyImportFragment extends MainActivityFragment {
 				myPlaylists.setVisibility(account ? View.VISIBLE : View.GONE);
 			}
 
-			selectAll.setEnabled(!importing);
-			addLink.setEnabled(!importing);
-			myPlaylists.setEnabled(!importing);
+			selectAll.setEnabled(!engine.isImporting());
+			addLink.setEnabled(!engine.isImporting());
+			myPlaylists.setEnabled(!engine.isImporting());
 			selectAll.setOnClickListener(b -> toggleAll());
 			addLink.setOnClickListener(b -> promptForLinks());
 			myPlaylists.setOnClickListener(b -> addPlaylists());
@@ -1602,17 +1195,17 @@ public class SpotifyImportFragment extends MainActivityFragment {
 				note.setVisibility(View.VISIBLE);
 				note.setText(R.string.spotify_browse_note);
 				importBtn.setText(R.string.spotify_add_this_playlist);
-				importBtn.setEnabled(!importing && (current.state == Playlist.STATE_LOADED));
+				importBtn.setEnabled(!engine.isImporting() && (current.state == Playlist.STATE_LOADED));
 				importBtn.setOnClickListener(b -> includeCurrent());
-			} else if (importing) {
+			} else if (engine.isImporting()) {
 				progressGroup.setVisibility(View.VISIBLE);
-				progress.setIndeterminate(saving || (progressTotal == 0));
-				progress.setMax(Math.max(1, progressTotal));
-				progress.setProgress(progressDone);
-				progressLabel.setText((progressText != null) ? progressText :
+				progress.setIndeterminate(engine.isSaving() || (engine.getProgressTotal() == 0));
+				progress.setMax(Math.max(1, engine.getProgressTotal()));
+				progress.setProgress(engine.getProgressDone());
+				progressLabel.setText((engine.getProgressText() != null) ? engine.getProgressText() :
 						getString(R.string.spotify_import_preparing));
 				importBtn.setText(android.R.string.cancel);
-				importBtn.setEnabled(!saving && !cancelImport.get());
+				importBtn.setEnabled(!engine.isSaving() && !engine.isCancelling());
 				importBtn.setOnClickListener(b -> cancelImport());
 			} else {
 				bindMatchingProgress(progressGroup, progress, progressLabel, progressAction);
@@ -1623,17 +1216,12 @@ public class SpotifyImportFragment extends MainActivityFragment {
 			}
 		}
 
-		/** While not importing, the header shows the background matching's progress, if any. */
+		/** While not engine.isImporting(), the header shows the background matching's progress, if any. */
 		private void bindMatchingProgress(View group, ProgressBar progress, TextView label,
 																			TextView action) {
-			int all = 0;
-			int done = 0;
-			for (Playlist pl : playlists) {
-				if (!pl.included || (pl.state != Playlist.STATE_LOADED)) continue;
-				all += pl.tracks.size();
-				for (Track t : pl.tracks) if (t.matchState != Track.MATCH_NONE &&
-						t.matchState != Track.MATCH_SEARCHING) done++;
-			}
+			int[] p = engine.getMatchProgress();
+			int done = p[0];
+			int all = p[1];
 
 			if ((all == 0) || (done >= all)) {
 				group.setVisibility(View.GONE);
@@ -1644,12 +1232,12 @@ public class SpotifyImportFragment extends MainActivityFragment {
 			progress.setIndeterminate(false);
 			progress.setMax(all);
 			progress.setProgress(done);
-			label.setText(matchingPaused ? getString(R.string.spotify_matching_stopped, done, all) :
+			label.setText(engine.isMatchingPaused() ? getString(R.string.spotify_matching_stopped, done, all) :
 					getString(R.string.spotify_matching_bg, done, all));
 			action.setVisibility(View.VISIBLE);
-			action.setText(matchingPaused ? R.string.spotify_matching_resume :
+			action.setText(engine.isMatchingPaused() ? R.string.spotify_matching_resume :
 					R.string.spotify_matching_stop);
-			action.setOnClickListener(b -> setMatchingPaused(!matchingPaused));
+			action.setOnClickListener(b -> setMatchingPaused(!engine.isMatchingPaused()));
 		}
 
 		private void bindPlaylist(Holder h, Playlist pl) {
@@ -1690,7 +1278,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 				// Partly selected: a dimmed check.
 				h.check.setAlpha(((sel > 0) && (sel < pl.tracks.size())) ? 0.5f : 1f);
 				h.check.setOnClickListener(v -> {
-					if (importing || !loaded) return;
+					if (engine.isImporting() || !loaded) return;
 					pl.setAllSelected(!pl.isAllSelected());
 					rebuild();
 				});
@@ -1700,7 +1288,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 			target.setOnClickListener(v -> {
 				if (pl.state == Playlist.STATE_LOADED) {
 					openPlaylist(pl);
-				} else if ((pl.state == Playlist.STATE_FAILED) && !importing) {
+				} else if ((pl.state == Playlist.STATE_FAILED) && !engine.isImporting()) {
 					fetch(pl);
 					rebuild();
 				}
@@ -1752,7 +1340,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 
 			if (h.searchMore != null) {
 				h.searchMore.setVisibility(View.VISIBLE);
-				h.searchMore.setEnabled(!importing);
+				h.searchMore.setEnabled(!engine.isImporting());
 				if (h.searchMore instanceof TextView sm) {
 					sm.setText(t.altExpanded ? R.string.spotify_import_hide_more :
 							R.string.spotify_import_search_more);
