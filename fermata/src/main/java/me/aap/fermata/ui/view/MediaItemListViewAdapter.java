@@ -321,7 +321,10 @@ public class MediaItemListViewAdapter extends MovableRecyclerViewAdapter<MediaIt
 
 		if (getListView().isSelectionActive()) {
 			MediaItemWrapper w = mi.getItemWrapper();
-			if ((w != null) && w.isSelectionSupported()) w.setSelected(!w.isSelected(), true);
+			if ((w != null) && w.isSelectionSupported()) {
+				w.setSelected(!w.isSelected(), true);
+				getListView().notifySelectionChanged();
+			}
 			return;
 		}
 

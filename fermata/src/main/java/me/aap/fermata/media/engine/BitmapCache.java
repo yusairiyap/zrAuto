@@ -320,6 +320,13 @@ public class BitmapCache {
 		});
 	}
 
+	/** The file an {@link #addImage} image for {@code uri} was saved to, if it exists. */
+	@Nullable
+	public Uri getAddedImage(String uri) {
+		File f = toImageFile(uri);
+		return f.isFile() ? Uri.fromFile(f) : null;
+	}
+
 	public synchronized FutureSupplier<Uri> addImage(String uri,
 																									 CheckedSupplier<Bitmap, Exception> s) {
 		File f = toImageFile(uri);
@@ -327,6 +334,9 @@ public class BitmapCache {
 
 		return queue.enqueue(() -> {
 			synchronized (BitmapCache.this) {
+				File dir = f.getParentFile();
+				if (dir != null) //noinspection ResultOfMethodCallIgnored
+					dir.mkdirs();
 				if (!f.isFile()) {
 					try (OutputStream out = new FileOutputStream(f)) {
 						CompressFormat fmt =

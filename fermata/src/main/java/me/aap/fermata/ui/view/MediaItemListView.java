@@ -76,6 +76,23 @@ public class MediaItemListView extends RecyclerView implements PreferenceStore.L
 		return isSelectionActive;
 	}
 
+	/** Told whenever selection mode or the set of selected items changes. */
+	public interface SelectionListener {
+		void onSelectionChanged(MediaItemListView v);
+	}
+
+	@Nullable
+	private SelectionListener selectionListener;
+
+	public void setSelectionListener(@Nullable SelectionListener l) {
+		selectionListener = l;
+	}
+
+	public void notifySelectionChanged() {
+		SelectionListener l = selectionListener;
+		if (l != null) l.onSelectionChanged(this);
+	}
+
 	public void select(boolean select) {
 		if (!select && !isSelectionActive) return;
 
@@ -86,6 +103,8 @@ public class MediaItemListView extends RecyclerView implements PreferenceStore.L
 			if (selectAll) w.setSelected(select, true);
 			else w.refreshViewCheckbox();
 		}
+
+		notifySelectionChanged();
 	}
 
 	public void discardSelection() {

@@ -284,6 +284,10 @@
     <string name="playlist_name">Playlist name</string>
     <string name="playlist_rename">Rename playlist</string>
     <string name="playlist_move">Move to playlist</string>
+    <string name="selection_count">%1$d selected</string>
+    <string name="selection_move_top">Move to top</string>
+    <string name="selection_move_end">Move to end</string>
+    <string name="selection_remove">Remove</string>
     <string name="playlist_move_selected">Move selected to playlist</string>
     <string name="playlist_selected_favorites">Add selected to favorites</string>
     <string name="playlist_selected_remove">Remove selected from playlist</string>

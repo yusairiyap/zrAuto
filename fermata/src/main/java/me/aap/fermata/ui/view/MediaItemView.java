@@ -415,7 +415,11 @@ public class MediaItemView extends ConstraintLayout
 	@Override
 	public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
 		MediaItemWrapper w = getItemWrapper();
-		if (w != null) w.setSelected(isChecked, false);
+		if (w == null) return;
+		boolean changed = w.isSelected() != isChecked;
+		w.setSelected(isChecked, false);
+		MediaItemListView l = getListView();
+		if (changed && (l != null)) l.notifySelectionChanged();
 	}
 
 	@Override
