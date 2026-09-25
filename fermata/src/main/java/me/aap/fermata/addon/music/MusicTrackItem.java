@@ -440,4 +440,11 @@ public class MusicTrackItem extends ExtPlayable {
 	public int hashCode() {
 		return getId().hashCode();
 	}
+
+	/** Shown in playback error messages ("Failed to play ...") -- the song, not the queue id. */
+	@NonNull
+	@Override
+	public String toString() {
+		return getName();
+	}
 }

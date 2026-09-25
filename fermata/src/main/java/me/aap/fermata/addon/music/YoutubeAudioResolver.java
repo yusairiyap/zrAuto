@@ -19,6 +19,8 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.log.Log;
@@ -49,10 +51,17 @@ final class YoutubeAudioResolver {
 			new Client("IOS", "20.10.4", 5,
 					"com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
 					"Apple", "iPhone16,2", "iPhone", "18.3.2.22D82", 0),
-			new Client("ANDROID", "19.44.38", 3,
-					"com.google.android.youtube/19.44.38 (Linux; U; Android 11) gzip",
+			new Client("ANDROID", "20.10.38", 3,
+					"com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip",
 					null, null, "Android", "11", 30),
 	};
+	// Anonymous visitor id from YouTube's own home page, sent with every player request: requests
+	// without one are the likeliest to get "Sign in to confirm you're not a bot".
+	private static final long VISITOR_TTL = 30 * 60_000L;
+	private static final Pattern VISITOR_DATA = Pattern.compile("\"VISITOR_DATA\":\"([^\"]+)\"");
+	@Nullable
+	private static String visitorData;
+	private static long visitorDataTime;
 
 	private YoutubeAudioResolver() {
 	}
@@ -137,6 +146,8 @@ final class YoutubeAudioResolver {
 		client.put("gl", "US");
 		client.put("timeZone", "UTC");
 		client.put("utcOffsetMinutes", 0);
+		String visitor = getVisitorData();
+		if (visitor != null) client.put("visitorData", visitor);
 
 		JSONObject body = new JSONObject();
 		body.put("context", new JSONObject().put("client", client));
@@ -146,7 +157,7 @@ final class YoutubeAudioResolver {
 		body.put("playbackContext", new JSONObject().put("contentPlaybackContext",
 				new JSONObject().put("html5Preference", "HTML5_PREF_WANTS")));
 
-		String resp = post(c, body.toString());
+		String resp = post(c, body.toString(), visitor);
 		JSONObject r = new JSONObject(resp);
 		JSONObject status = r.optJSONObject("playabilityStatus");
 		String st = (status == null) ? null : status.optString("status");
@@ -158,8 +169,30 @@ final class YoutubeAudioResolver {
 			return null;
 		}
 
+		JSONObject details = r.optJSONObject("videoDetails");
+		String title = (details == null) ? null : emptyToNull(details.optString("title"));
+		String author = (details == null) ? null : emptyToNull(details.optString("author"));
+		long dur = (details == null) ? 0 : details.optLong("lengthSeconds", 0) * 1000;
 		JSONObject sd = r.optJSONObject("streamingData");
-		JSONArray formats = (sd == null) ? null : sd.optJSONArray("adaptiveFormats");
+		if (sd == null) {
+			DiagnosticLog.log("MUSIC", "yt no streaming data", c.name, "id=" + videoId);
+			return null;
+		}
+
+		Stream s = resolveAdaptive(videoId, c, sd, title, author, dur);
+		if (s != null) return s;
+
+		// Some clients' direct stream URLs are refused without a token only YouTube's own apps can
+		// make, while their HLS manifest -- which has separate, audio-only renditions -- is not.
+		String hls = sd.optString("hlsManifestUrl");
+		return hls.isEmpty() ? null : resolveHls(videoId, c, hls, title, author, dur);
+	}
+
+	@Nullable
+	private static Stream resolveAdaptive(String videoId, Client c, JSONObject sd,
+																				@Nullable String title, @Nullable String author,
+																				long dur) {
+		JSONArray formats = sd.optJSONArray("adaptiveFormats");
 		if (formats == null) {
 			DiagnosticLog.log("MUSIC", "yt no formats", c.name, "id=" + videoId);
 			return null;
@@ -198,31 +231,139 @@ final class YoutubeAudioResolver {
 			return null;
 		}
 
-		String url = best.getString("url");
+		String url = best.optString("url");
 		String probe = probe(url, c.userAgent, best.optLong("contentLength", 0));
 		DiagnosticLog.log("MUSIC", "yt stream", c.name, "id=" + videoId,
 				"itag=" + best.optInt("itag"), "mime=" + best.optString("mimeType"),
 				"bitrate=" + best.optLong("bitrate"), "probe=" + probe);
-		if (!probe.startsWith("ok")) {
-			Log.d("YouTube audio: stream from client ", c.name, " was refused (", probe,
-					"), trying the next one");
+		if (!probe.startsWith("ok")) return null;
+
+		long d = best.optLong("approxDurationMs", 0);
+		return new Stream(c.name, c.userAgent, url, best.optString("mimeType"), expiresAt(url), title,
+				author, (d > 0) ? d : dur);
+	}
+
+	/**
+	 * Picks the audio-only rendition out of an HLS master playlist ({@code #EXT-X-MEDIA} with
+	 * {@code TYPE=AUDIO}; the muxed video variants are never used) and checks that its first
+	 * segment can actually be fetched.
+	 */
+	@Nullable
+	private static Stream resolveHls(String videoId, Client c, String masterUrl,
+																	 @Nullable String title, @Nullable String author, long dur) {
+		try {
+			String master = get(masterUrl, c.userAgent);
+			String bestUri = null;
+			int bestScore = Integer.MIN_VALUE;
+
+			for (String line : master.split("\n")) {
+				line = line.trim();
+				if (!line.startsWith("#EXT-X-MEDIA:") || !line.contains("TYPE=AUDIO")) continue;
+				String uri = attr(line, "URI");
+				if (uri == null) continue;
+				int score = 0;
+				String group = attr(line, "GROUP-ID");
+				// 234 is the higher-bitrate AAC rendition, 233 the lower one.
+				if ("234".equals(group)) score += 10;
+				if (line.contains("DEFAULT=YES")) score += 100;
+				if (score > bestScore) {
+					bestScore = score;
+					bestUri = new URL(new URL(masterUrl), uri).toString();
+				}
+			}
+
+			if (bestUri == null) {
+				DiagnosticLog.log("MUSIC", "yt hls has no audio rendition", c.name, "id=" + videoId);
+				return null;
+			}
+
+			String media = get(bestUri, c.userAgent);
+			String segment = null;
+			for (String line : media.split("\n")) {
+				line = line.trim();
+				if (!line.isEmpty() && !line.startsWith("#")) {
+					segment = new URL(new URL(bestUri), line).toString();
+					break;
+				}
+			}
+
+			String probe = (segment == null) ? "no segments" : probeRange(segment, c.userAgent, 0);
+			DiagnosticLog.log("MUSIC", "yt hls audio", c.name, "id=" + videoId, "probe=" + probe);
+			if (!probe.startsWith("ok")) return null;
+			return new Stream(c.name, c.userAgent, bestUri, "application/x-mpegURL",
+					expiresAt(bestUri), title, author, dur);
+		} catch (IOException ex) {
+			DiagnosticLog.log("MUSIC", "yt hls failed", c.name, "id=" + videoId, ex);
 			return null;
 		}
+	}
 
-		JSONObject details = r.optJSONObject("videoDetails");
-		String title = (details == null) ? null : emptyToNull(details.optString("title"));
-		String author = (details == null) ? null : emptyToNull(details.optString("author"));
-		long dur = best.optLong("approxDurationMs", 0);
-		if ((dur <= 0) && (details != null)) dur = details.optLong("lengthSeconds", 0) * 1000;
+	@Nullable
+	private static String attr(String line, String name) {
+		Matcher m = Pattern.compile("(?:^|[:,])" + name + "=(\"([^\"]*)\"|([^,]*))").matcher(line);
+		if (!m.find()) return null;
+		return (m.group(2) != null) ? m.group(2) : m.group(3);
+	}
 
-		return new Stream(c.name, c.userAgent, url, best.optString("mimeType"), expiresAt(url), title,
-				author, dur);
+	@Nullable
+	private static synchronized String getVisitorData() {
+		long now = System.currentTimeMillis();
+		if ((visitorData != null) && (now - visitorDataTime < VISITOR_TTL)) return visitorData;
+
+		try {
+			String page = get("https://www.youtube.com/?hl=en&persist_hl=1",
+					"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+							"Chrome/128.0.0.0 Safari/537.36");
+			Matcher m = VISITOR_DATA.matcher(page);
+			if (m.find()) {
+				visitorData = m.group(1);
+				visitorDataTime = now;
+			} else {
+				DiagnosticLog.log("MUSIC", "yt no visitor data on the home page");
+			}
+		} catch (IOException ex) {
+			DiagnosticLog.log("MUSIC", "yt visitor data failed", ex);
+		}
+
+		return visitorData;
+	}
+
+	private static String get(String url, String userAgent) throws IOException {
+		HttpURLConnection con = (HttpURLConnection) new URL(url).openConnection();
+
+		try {
+			con.setConnectTimeout(TIMEOUT);
+			con.setReadTimeout(TIMEOUT);
+			con.setInstanceFollowRedirects(true);
+			con.setRequestProperty("User-Agent", userAgent);
+			// Skips the EU cookie-consent interstitial, which has no visitor data in it.
+			con.setRequestProperty("Cookie", "SOCS=CAI; CONSENT=YES+");
+			int code = con.getResponseCode();
+			if (code >= 400) throw new IOException("HTTP " + code);
+			return read(con.getInputStream());
+		} finally {
+			con.disconnect();
+		}
+	}
+
+	private static String read(InputStream is) throws IOException {
+		try (InputStream in = is) {
+			ByteArrayOutputStream out = new ByteArrayOutputStream(64 * 1024);
+			byte[] buf = new byte[16 * 1024];
+			for (int n; (n = in.read(buf)) != -1; ) {
+				out.write(buf, 0, n);
+				if (out.size() > (4 * 1024 * 1024)) throw new IOException("Response is too large");
+			}
+			return out.toString("UTF-8");
+		}
 	}
 
 	private static long expiresAt(String url) {
 		try {
 			String exp = Uri.parse(url).getQueryParameter("expire");
 			if (exp != null) return Long.parseLong(exp) * 1000;
+			Matcher m = Pattern.compile("/expire/(\\d+)").matcher(url);
+			if (m.find()) return Long.parseLong(m.group(1)) * 1000;
 		} catch (Exception ignore) {
 		}
 		return System.currentTimeMillis() + DEFAULT_TTL;
@@ -233,7 +374,7 @@ final class YoutubeAudioResolver {
 		return ((s == null) || s.isEmpty()) ? null : s;
 	}
 
-	private static String post(Client c, String json) throws IOException {
+	private static String post(Client c, String json, @Nullable String visitor) throws IOException {
 		HttpURLConnection con = (HttpURLConnection) new URL(PLAYER_URL).openConnection();
 
 		try {
@@ -247,6 +388,7 @@ final class YoutubeAudioResolver {
 			con.setRequestProperty("X-YouTube-Client-Name", String.valueOf(c.id));
 			con.setRequestProperty("X-YouTube-Client-Version", c.version);
 			con.setRequestProperty("Origin", "https://www.youtube.com");
+			if (visitor != null) con.setRequestProperty("X-Goog-Visitor-Id", visitor);
 			con.setFixedLengthStreamingMode(bytes.length);
 			try (OutputStream out = con.getOutputStream()) {
 				out.write(bytes);

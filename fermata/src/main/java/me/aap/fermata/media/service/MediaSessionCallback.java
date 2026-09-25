@@ -1575,9 +1575,14 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		if (i == null) return completedNull();
 
 		// Items whose playable location has to be fetched first (see PlayableItem#prepareSource()).
+		// Continues with prepareResolvedItem(), never back into prepareItem(): a source that couldn't
+		// be fetched would otherwise just start fetching again, forever.
 		FutureSupplier<Void> src = i.prepareSource();
-		if (!src.isDone()) return src.main().then(v -> prepareItem(i));
+		if (!src.isDone()) return src.main().then(v -> prepareResolvedItem(i));
+		return prepareResolvedItem(i);
+	}
 
+	private FutureSupplier<PlayableItem> prepareResolvedItem(PlayableItem i) {
 		// Make sure metadata is loaded
 		FutureSupplier<Long> getDur = i.getDuration();
 
