@@ -54,6 +54,7 @@ import me.aap.fermata.spotify.SpotifyApi;
 import me.aap.fermata.spotify.SpotifyAuth;
 import me.aap.fermata.spotify.SpotifyClient;
 import me.aap.fermata.spotify.SpotifyImportModel.Playlist;
+import me.aap.fermata.spotify.SpotifyImportStore;
 import me.aap.fermata.spotify.SpotifyImportModel.Track;
 import me.aap.fermata.spotify.SpotifyImportModel.Video;
 import me.aap.fermata.spotify.SpotifyPlaylistWriter;
@@ -114,6 +115,9 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	private final ExecutorService matchExecutor = Executors.newSingleThreadExecutor();
 	/** "Search more", so a tap isn't stuck behind the background matching. */
 	private final ExecutorService altExecutor = Executors.newSingleThreadExecutor();
+	/** Session saves (see {@link SpotifyImportStore}), in order, off the main thread. */
+	private final ExecutorService saveExecutor = Executors.newSingleThreadExecutor();
+	private final Runnable saveTask = this::saveNow;
 	private volatile boolean stopAutoMatch;
 	private boolean matcherRunning;
 	/**
@@ -326,6 +330,12 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		return ImportToolBarMediator.instance;
 	}
 
+	@Override
+	public void onCreate(@Nullable Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
+		restoreSession();
+	}
+
 	@Nullable
 	@Override
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
@@ -371,6 +381,13 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	}
 
 	@Override
+	public void onStop() {
+		super.onStop();
+		// The app may be killed any time once in the background: save now, not in a moment.
+		if (!destroyed) saveNow();
+	}
+
+	@Override
 	public void onDestroy() {
 		super.onDestroy();
 		destroyed = true;
@@ -379,6 +396,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		fetchExecutor.shutdownNow();
 		matchExecutor.shutdownNow();
 		altExecutor.shutdownNow();
+		saveExecutor.shutdown(); // Lets a pending save finish.
 		handler.removeCallbacksAndMessages(null);
 		images.evictAll();
 	}
@@ -889,6 +907,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		List<Video> result = found;
 		post(() -> {
 			applySearchResult(t, result);
+			scheduleSave();
 			if (countProgress) progressDone++;
 			refreshTrack(t);
 			refreshPlaylistOf(t);
@@ -1098,6 +1117,13 @@ public class SpotifyImportFragment extends MainActivityFragment {
 						getString(R.string.spotify_import_done_skipped, n, nPlaylists, nSkipped));
 				MediaLibFragment f = a.getMediaLibFragment(R.id.playlists_fragment);
 				if (f != null) f.getAdapter().reload();
+				// Done with: they're local playlists now. Also stops the background matcher from
+				// carrying on with their unselected tracks, and clears them from the saved session.
+				for (PlanEntry e : plan) playlists.remove(e.playlist);
+				if ((current != null) && !playlists.contains(current)) {
+					current = null;
+					a.fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
+				}
 			}
 
 			resumeAutoMatch();
@@ -1201,7 +1227,46 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		}
 	}
 
+	// ---- Session persistence ----
+
+	/**
+	 * Brings back the last session (see {@link SpotifyImportStore}) so matching a long playlist
+	 * continues after the app was closed: matches found so far are kept and the background
+	 * matcher carries on with the rest. Playlists whose track list hadn't loaded are reloaded.
+	 */
+	private void restoreSession() {
+		SpotifyImportStore.Session session = SpotifyImportStore.load(requireContext());
+		if ((session == null) || !playlists.isEmpty()) return;
+		matchingPaused = session.matchingPaused;
+		playlists.addAll(session.playlists);
+
+		for (Playlist pl : playlists) {
+			if (pl.state != Playlist.STATE_LOADED) fetch(pl);
+		}
+
+		ensureMatcher();
+	}
+
+	private void scheduleSave() {
+		handler.removeCallbacks(saveTask);
+		handler.postDelayed(saveTask, 2000);
+	}
+
+	private void saveNow() {
+		handler.removeCallbacks(saveTask);
+		Context ctx = getContext();
+		if (ctx == null) return;
+		Context app = ctx.getApplicationContext();
+		String json = SpotifyImportStore.toJson(playlists, matchingPaused);
+		try {
+			saveExecutor.execute(() -> SpotifyImportStore.write(app, json));
+		} catch (Exception ex) {
+			Log.e(ex, "Failed to save the Spotify import session");
+		}
+	}
+
 	private void rebuild() {
+		scheduleSave();
 		rows.clear();
 		rows.add(new Row(TYPE_HEADER, null, null, null, null));
 
