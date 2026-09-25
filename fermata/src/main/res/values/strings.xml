@@ -283,6 +283,12 @@
     <string name="playlist_remove">Remove playlist</string>
     <string name="playlist_name">Playlist name</string>
     <string name="playlist_rename">Rename playlist</string>
+    <string name="playlist_move">Move to playlist</string>
+    <string name="playlist_move_selected">Move selected to playlist</string>
+    <string name="playlist_selected_favorites">Add selected to favorites</string>
+    <string name="playlist_selected_remove">Remove selected from playlist</string>
+    <string name="playlist_moved">Moved %1$d item(s) to %2$s</string>
+    <string name="playlist_select_hint">Tap more items to select them, then use the menu (or long-press a selected item) for actions.</string>
     <string name="spotify_import">Import from Spotify</string>
     <string name="spotify_import_sub">Import public Spotify playlists as local playlists of matching YouTube videos</string>
     <string name="spotify_import_link_hint">Paste one or more Spotify playlist or album links</string>

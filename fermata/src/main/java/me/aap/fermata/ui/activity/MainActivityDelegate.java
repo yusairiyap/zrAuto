@@ -1501,6 +1501,59 @@ public class MainActivityDelegate extends ActivityDelegate
 		return true;
 	}
 
+	/**
+	 * "Move to playlist": like "Add to playlist" (a new playlist or any other existing one), then
+	 * removes {@code items} from {@code from}. Only removed once they've been added.
+	 */
+	public void showMoveToPlaylistDialog(OverlayMenu menu, Playlist from, List<PlayableItem> items) {
+		if (items.isEmpty()) return;
+		getLib().getPlaylists().getUnsortedChildren().main().onSuccess(children -> {
+			Context ctx = getContext();
+			List<Playlist> targets = new ArrayList<>(children.size());
+			for (Item i : children) {
+				if ((i instanceof Playlist pl) && !pl.equals(from)) targets.add(pl);
+			}
+			CharSequence[] names = new CharSequence[targets.size() + 1];
+			names[0] = ctx.getString(R.string.playlist_create);
+			for (int i = 0; i < targets.size(); i++) names[i + 1] = targets.get(i).getName();
+
+			try {
+				DialogBuilder.create(menu).setTitle(R.drawable.playlist_move, R.string.playlist_move)
+						.setSingleChoiceItems(names, -1, (d, which) -> {
+							d.dismiss();
+							if (which == 0) {
+								UiUtils.queryText(ctx, R.string.playlist_name, R.drawable.playlist, from.getName())
+										.onSuccess(name -> {
+											if (name == null) return;
+											getLib().getPlaylists().addItem(name)
+													.onFailure(err -> showAlert(ctx, err.getMessage()))
+													.onSuccess(pl -> moveToPlaylist(from, pl, items));
+										});
+							} else {
+								moveToPlaylist(from, targets.get(which - 1), items);
+							}
+						})
+						.setNegativeButton(android.R.string.cancel, (d, w) -> d.dismiss())
+						.show();
+			} catch (Exception err) {
+				Log.e(err, "Failed to show the move-to-playlist dialog");
+				UiUtils.showToast(ctx, R.string.playlist_add_failed);
+			}
+		});
+	}
+
+	private void moveToPlaylist(Playlist from, Playlist to, List<PlayableItem> items) {
+		discardSelection();
+		Context ctx = getContext();
+		to.addItems(items).then(v -> from.removeItems(items)).main()
+				.onFailure(err -> showAlert(ctx, err.getMessage()))
+				.onSuccess(v -> {
+					MediaLibFragment f = getMediaLibFragment(R.id.playlists_fragment);
+					if (f != null) f.getAdapter().reload();
+					UiUtils.showToast(ctx, R.string.playlist_moved, items.size(), to.getName());
+				});
+	}
+
 	public void removeFromPlaylist(Playlist pl, List<PlayableItem> selection) {
 		discardSelection();
 		pl.removeItems(selection).onFailure(err -> showAlert(getContext(), err.getMessage()))
