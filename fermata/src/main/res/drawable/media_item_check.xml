@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_checked="true">
+        <inset android:drawable="@drawable/check_box" android:inset="8dp" />
+    </item>
+    <item>
+        <inset android:drawable="@drawable/check_box_blank" android:inset="8dp" />
+    </item>
+</selector>
