@@ -153,6 +153,12 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	private String userPickedVideoId;
 	private long userPickedTime;
 	private static final long USER_PICK_WINDOW_MS = 90_000L;
+	// Set by handOff() when the Music tab takes this video over as an audio-only stream on another
+	// engine: from then on this page's own playing/paused/ended events must not reach the shared
+	// MediaSessionCallback, or they'd pause/steal back the engine that's now actually playing (see
+	// MediaEngine#handOff()). Cleared once the app itself asks this page to play again -- start(), a
+	// tap-to-play arming YoutubeAddon#getPendingVideoId(), or the user picking a video on the page.
+	private boolean handedOff;
 
 	public YoutubeMediaEngine(YoutubeWebView web, MainActivityDelegate a) {
 		this.web = web;
@@ -176,6 +182,15 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	void playing(String data) {
+		if (handedOff) {
+			if ((web.getAddon().getPendingVideoId() == null) && !isUserPickPending()) {
+				// The page resumed on its own (e.g. a buffering stall ending mid-fade) -- keep it quiet.
+				web.pause();
+				return;
+			}
+			handedOff = false;
+		}
+
 		// Every confirmed-playing moment re-arms the retry guard in paused() below -- not just an
 		// explicit native start() -- since a page-reported pause can also follow a resize-triggered
 		// player restart the app never asked for (confirmed on-device: a window resize alone, with
@@ -381,6 +396,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	void ended() {
+		if (handedOff) return;
 		// Repeat One loops whatever video is currently playing, regardless of whether it's part of a
 		// Favorites/Playlist queue (see YoutubeAddon#isRepeatOneEnabled()) -- handled here directly,
 		// short-circuiting before current becomes end/cb.onEngineEnded() runs, so it works the exact
@@ -560,6 +576,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	void paused() {
+		// A pause after handOff() is our own doing, and the session callback belongs to the Music
+		// tab's engine now -- forwarding it would pause that one instead.
+		if (handedOff) return;
+
 		// Confirmed on-device (window-resize repro): YouTube's own player can auto-pause the
 		// <video> element for a beat right after it (or we) told it to play -- its internal layout
 		// is still settling from a container-size change, and the pause DOM event this fires is
@@ -701,8 +721,26 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	@Override
+	public void handOff() {
+		DiagnosticLog.log("YT", "engine handOff()", "id=" + currentVideoId);
+		handedOff = true;
+		lastActivePlayTime = 0;
+		appRequestedPause = true;
+		web.pause();
+	}
+
+	@Nullable
+	@Override
+	public PlayableItem getQueueItem() {
+		PlayableItem q = web.getAddon().getQueueItem();
+		String id = YoutubeVideoItem.extractYoutubeVideoId(q);
+		return ((id != null) && id.equals(currentVideoId)) ? q : getFavoritableItem();
+	}
+
+	@Override
 	public void start() {
 		DiagnosticLog.log("YT", "engine start()", "id=" + currentVideoId);
+		handedOff = false;
 		lastActivePlayTime = System.currentTimeMillis();
 		lastPausedTime = 0;
 		playRetries = 0;

@@ -30,6 +30,7 @@ import java.util.List;
 
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
+import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.media.engine.BitmapCache;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.engine.MediaEngineManager;
@@ -145,6 +146,12 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 				} else {
 					b.addItem(R.id.repeat_enable, R.drawable.repeat, R.string.repeat);
 				}
+			}
+
+			if ((view != null) && MusicPlayer.isEnabled() && !(pi instanceof StreamItem) &&
+					!(pi instanceof ArchiveItem)) {
+				b.addItem(R.id.music_play, R.drawable.music, R.string.play_as_music);
+				b.addItem(R.id.music_queue_add, R.drawable.queue_music, R.string.music_queue_add);
 			}
 
 			if (pi instanceof StreamItem) {
@@ -296,6 +303,11 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 
 			if (parent instanceof Folders) {
 				b.addItem(R.id.folders_remove, R.drawable.remove_folder, R.string.remove_folder);
+			}
+
+			if ((hasAudio || hasVideo) && MusicPlayer.isEnabled()) {
+				b.addItem(R.id.music_play, R.drawable.music, R.string.play_as_music);
+				b.addItem(R.id.music_queue_add, R.drawable.queue_music, R.string.music_queue_add);
 			}
 
 			if (hasBookmarks) {
@@ -520,7 +532,11 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 		MediaLibFragment f;
 		Item item = getItem();
 
-		if (id == R.id.folders_remove) {
+		if (id == R.id.music_play) {
+			MusicPlayer.play(getMainActivity(), item);
+		} else if (id == R.id.music_queue_add) {
+			MusicPlayer.addToQueue(getMainActivity(), item);
+		} else if (id == R.id.folders_remove) {
 			Folders folders = item.getLib().getFolders();
 			folders.removeItem(item);
 		} else if (id == R.id.programme_guide) {

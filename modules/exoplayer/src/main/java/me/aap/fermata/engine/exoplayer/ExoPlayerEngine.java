@@ -172,8 +172,30 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		Uri uri = source.getLocation();
 		MediaItem m = MediaItem.fromUri(uri);
 		isHls = Util.inferContentType(uri) == C.CONTENT_TYPE_HLS;
+		setVideoTrackDisabled(source.isAudioOnlyPlayback());
 		player.setMediaItem(m);
 		player.prepare();
+	}
+
+	/**
+	 * Audio-only playback (the Music tab) of a file that also has video: disabling the video track
+	 * type stops ExoPlayer from decoding it at all, rather than just having no surface to draw to.
+	 */
+	private void setVideoTrackDisabled(boolean disabled) {
+		var params = player.getTrackSelectionParameters();
+		if (params.disabledTrackTypes.contains(C.TRACK_TYPE_VIDEO) == disabled) return;
+		player.setTrackSelectionParameters(
+				params.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, disabled).build());
+	}
+
+	@Override
+	public boolean adoptSource(PlayableItem src) {
+		PlayableItem cur = source;
+		if ((cur == null) || !cur.getLocation().equals(src.getLocation())) return false;
+		source = src;
+		accessor.sourceChanged(src);
+		setVideoTrackDisabled(src.isAudioOnlyPlayback());
+		return true;
 	}
 
 	@Override

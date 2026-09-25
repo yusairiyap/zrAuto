@@ -1220,6 +1220,32 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		playerTask = prepareItem(i).onSuccess(pi -> playPreparedItem(i, pos));
 	}
 
+	/**
+	 * Swaps the item the current engine reports as playing for {@code to} -- another item for the
+	 * very same underlying media (e.g. a local video and the Music tab's audio-only track wrapping
+	 * it) -- without re-preparing, so the sound never stops. Only possible when the engine supports
+	 * it (see {@link MediaEngine#adoptSource}); returns false otherwise, and the caller falls back
+	 * to a regular {@link #playItem} at the current position.
+	 */
+	public boolean switchItem(PlayableItem to) {
+		MediaEngine eng = getEngine();
+		if ((eng == null) || (eng.getSource() == null) || !eng.adoptSource(to)) return false;
+
+		playerTask.cancel();
+		if (!to.isVideo()) eng.setVideoView(null);
+		else if (videoView != null) eng.setVideoView(getVideoView());
+
+		boolean playing = isPlaying();
+		eng.getPosition().and(eng.getSpeed()).main().onSuccess(h -> {
+			if ((engine == eng) && (eng.getSource() == to))
+				setPlayingState(eng, playing, h.value1, h.value2);
+		});
+		to.getParent().getQueue().main().onSuccess(q -> {
+			if ((engine == eng) && (eng.getSource() == to)) session.setQueue(q);
+		});
+		return true;
+	}
+
 	private void playPreparedItem(PlayableItem i, long pos) {
 		MediaEngine eng = getEngine();
 
@@ -1516,6 +1542,10 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	private FutureSupplier<PlayableItem> prepareItem(PlayableItem i) {
 		if (i == null) return completedNull();
+
+		// Items whose playable location has to be fetched first (see PlayableItem#prepareSource()).
+		FutureSupplier<Void> src = i.prepareSource();
+		if (!src.isDone()) return src.main().then(v -> prepareItem(i));
 
 		// Make sure metadata is loaded
 		FutureSupplier<Long> getDur = i.getDuration();

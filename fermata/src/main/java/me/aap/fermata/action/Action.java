@@ -88,6 +88,8 @@ public enum Action {
 	REFUEL(R.string.action_refuel, a(me.aap.fermata.addon.fuel.FuelRefuelDialog::show)),
 	FAVORITE_ADD(R.string.favorites_add, a(Action::addCurrentToFavorites)),
 	PLAYLIST_ADD(R.string.playlist_add, a(Action::addCurrentToPlaylist)),
+	PLAY_AS_MUSIC(R.string.play_as_music,
+			a(me.aap.fermata.addon.music.MusicPlayer::playCurrentAsMusic)),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

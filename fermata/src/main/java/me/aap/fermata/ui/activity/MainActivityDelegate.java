@@ -110,6 +110,9 @@ import java.util.WeakHashMap;
 
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
+import me.aap.fermata.addon.music.MusicAddon;
+import me.aap.fermata.addon.music.MusicQueue;
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.action.Action;
 import me.aap.fermata.action.Key;
 import me.aap.fermata.addon.AddonManager;
@@ -1224,6 +1227,10 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	public FutureSupplier<Boolean> goToCurrent() {
 		PlayableItem pi = getMediaServiceBinder().getCurrentItem();
+		if ((pi instanceof MusicTrackItem) && (MusicAddon.get() != null)) {
+			showFragment(R.id.music_addon);
+			return completed(true);
+		}
 		return ((pi == null) || (pi.isExternal())) ?
 				getLib().getLastPlayedItem().main().map(this::goToItem) : completed(goToItem(pi));
 	}
@@ -1242,6 +1249,9 @@ public class MainActivityDelegate extends ActivityDelegate
 			showFragment(R.id.favorites_fragment);
 		} else if (root instanceof MediaLib.Playlists) {
 			showFragment(R.id.playlists_fragment);
+		} else if (root instanceof MusicQueue) {
+			showFragment(R.id.music_addon);
+			return true;
 		} else if (root instanceof ExtRoot) {
 			if ("youtube".equals(root.getId())) {
 				showFragment(R.id.youtube_fragment);

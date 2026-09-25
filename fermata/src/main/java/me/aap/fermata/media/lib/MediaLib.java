@@ -408,6 +408,29 @@ public interface MediaLib {
 																			 MediaEngine.Listener listener) {
 			return null;
 		}
+
+		/**
+		 * Called by {@code MediaSessionCallback} right before this item is handed to an engine, and
+		 * waited on -- for an item whose actual playable location has to be fetched first (e.g. the
+		 * Music tab's audio-only YouTube track, whose stream URL comes from the network and expires
+		 * after a few hours). Must never fail: an implementation that can't resolve its source should
+		 * still complete, leaving {@link #getLocation()} pointing at something the engine will then
+		 * report a normal playback error for.
+		 */
+		@NonNull
+		default FutureSupplier<Void> prepareSource() {
+			return completedVoid();
+		}
+
+		/**
+		 * Whether the engine should skip any video track entirely (not decode it at all) even if
+		 * the media has one -- the Music tab's tracks, which can wrap a local video file. Kept
+		 * separate from {@code !isVideo()}, which some items (e.g. M3U radio/TV entries) report for
+		 * media whose video still has to show.
+		 */
+		default boolean isAudioOnlyPlayback() {
+			return false;
+		}
 	}
 
 	interface StreamItem extends PlayableItem, BrowsableItem {

@@ -13,6 +13,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import me.aap.fermata.addon.AddonManager;
+import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.ExtPlayable;
 import me.aap.fermata.media.lib.MediaLib;
@@ -159,7 +160,12 @@ public class YoutubeVideoItem extends ExtPlayable implements MediaLib.Externally
 			addon.setQueueItem(self);
 			addon.setPendingVideoId(videoId);
 		}
-		((YoutubeFragment) fragment).loadUrl(watchUrl(videoId));
+		// The Music tab switching its audio-only stream back to video asks for the page to pick up
+		// where the audio is now, instead of from the start.
+		long startMs = MusicPlayer.takeVideoStartPosition(videoId);
+		String url = watchUrl(videoId);
+		if (startMs >= 1000) url += "&t=" + (startMs / 1000) + 's';
+		((YoutubeFragment) fragment).loadUrl(url);
 	}
 
 	@NonNull

@@ -76,6 +76,39 @@ public interface MediaEngine extends Closeable {
 		return getSource();
 	}
 
+	/**
+	 * The library item (with its real Favorites/Playlist/folder parent) the current media was
+	 * started from, for building a queue around it -- the Music tab's "Play as music" uses its
+	 * siblings as the music queue. Normally just {@link #getSource()}; YouTube's engine returns the
+	 * Favorites/Playlist entry the video was tapped in, or null if it's just being browsed.
+	 */
+	@Nullable
+	default PlayableItem getQueueItem() {
+		return getSource();
+	}
+
+	/**
+	 * Makes {@code src} this engine's source without re-preparing -- for switching between two items
+	 * that play the very same media (a video, and the Music tab's audio-only track wrapping it), so
+	 * the sound carries on uninterrupted. An engine that can't do that returns false (the default),
+	 * and the caller re-prepares {@code src} at the current position instead. Implementations should
+	 * stop decoding video while {@code src} isn't a video, where they can, to save CPU/battery.
+	 */
+	default boolean adoptSource(PlayableItem src) {
+		return false;
+	}
+
+	/**
+	 * This engine is about to be replaced by another one that picks up the same content where this
+	 * one is right now (the Music tab's switch from a YouTube video to its audio-only stream):
+	 * stop audibly playing, and ignore the player's own events from here on until explicitly
+	 * started again, so none of them can reach the new engine through the shared session callback.
+	 * {@link #close()} isn't a substitute: the web-hosted YouTube engine is deliberately inert there.
+	 */
+	default void handOff() {
+		pause();
+	}
+
 	FutureSupplier<Long> getDuration();
 
 	FutureSupplier<Long> getPosition();

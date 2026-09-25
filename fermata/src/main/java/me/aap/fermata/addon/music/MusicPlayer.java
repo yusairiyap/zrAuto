@@ -1,0 +1,321 @@
+package me.aap.fermata.addon.music;
+
+import static me.aap.utils.async.Completed.completed;
+
+import android.content.Context;
+
+import androidx.annotation.Nullable;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+import me.aap.fermata.R;
+import me.aap.fermata.media.engine.MediaEngine;
+import me.aap.fermata.media.lib.MediaLib;
+import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
+import me.aap.fermata.media.lib.MediaLib.Item;
+import me.aap.fermata.media.lib.MediaLib.PlayableItem;
+import me.aap.fermata.media.pref.MediaPrefs;
+import me.aap.fermata.media.service.MediaSessionCallback;
+import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.view.BodyLayout;
+import me.aap.utils.async.FutureSupplier;
+import me.aap.utils.log.Log;
+import me.aap.utils.ui.UiUtils;
+import me.aap.utils.ui.fragment.ActivityFragment;
+
+/**
+ * Entry points into the Music tab: "Play as music" / "Add into music queue" from the library's
+ * context menus, "Play as music" for whatever is playing right now (the FAB action and the video
+ * control panel's Audio menu), and the switch from music back to video.
+ * <p>
+ * Switching between video and music keeps the sound going wherever it can: a local file keeps
+ * playing on the very same engine, which just stops decoding video (see {@link
+ * MediaSessionCallback#switchItem}); a YouTube video keeps playing in its page while its
+ * audio-only stream is fetched, and only fades out once that stream is ready to take over. Going
+ * back from YouTube music to video only then loads the video, starting where the music was.
+ */
+public final class MusicPlayer {
+	@Nullable
+	private static String pendingVideoId;
+	private static long pendingVideoPos;
+
+	private MusicPlayer() {
+	}
+
+	public static boolean isEnabled() {
+		return MusicAddon.get() != null;
+	}
+
+	@Nullable
+	public static MusicQueue getQueue(MainActivityDelegate a) {
+		MusicAddon addon = MusicAddon.get();
+		return (addon == null) ? null : addon.getQueue(a.getLib());
+	}
+
+	/**
+	 * Used by the YouTube page loader: where a video the Music tab just switched back to should
+	 * start from, consumed by the first call for that video.
+	 */
+	public static long takeVideoStartPosition(String videoId) {
+		if (!videoId.equals(pendingVideoId)) return 0;
+		pendingVideoId = null;
+		return pendingVideoPos;
+	}
+
+	/** Shows the Music tab, leaving any video mode first. */
+	public static void open(MainActivityDelegate a) {
+		a.exitVideoMode();
+		a.showFragment(R.id.music_addon);
+		BodyLayout b = a.getBody();
+		if ((b != null) && !b.isFrameMode()) b.setMode(BodyLayout.Mode.FRAME);
+	}
+
+	/**
+	 * "Play as music" for a library item: a playable item plays within its own list (a
+	 * Favorites/Playlist entry starts the whole list from it, like tapping a song in an album);
+	 * a browsable one (a playlist card) plays all of its tracks.
+	 */
+	public static void play(MainActivityDelegate a, Item item) {
+		if (getQueue(a) == null) return;
+
+		if (item instanceof PlayableItem pi) {
+			siblings(pi).main().onSuccess(list -> {
+				int idx = indexOfSame(list, pi);
+				if (idx == -1) {
+					list = Collections.singletonList(pi);
+					idx = 0;
+				}
+				play(a, list, idx);
+			});
+		} else if (item instanceof BrowsableItem bi) {
+			bi.getPlayableChildren(true).main().onSuccess(list -> {
+				if (list.isEmpty()) UiUtils.showToast(a.getContext(), R.string.music_nothing_to_play);
+				else play(a, list, 0);
+			});
+		}
+	}
+
+	/** Replaces the queue with {@code items} and plays from {@code startIdx}. */
+	public static void play(MainActivityDelegate a, List<? extends PlayableItem> items,
+													int startIdx) {
+		MusicQueue q = getQueue(a);
+		if ((q == null) || items.isEmpty()) return;
+		List<MusicTrackItem> tracks = q.replace(items);
+		MusicTrackItem t = tracks.get(Math.max(0, Math.min(startIdx, tracks.size() - 1)));
+		open(a);
+		start(a, t);
+	}
+
+	/** "Add into music queue" for a library item (all of a browsable item's tracks). */
+	public static void addToQueue(MainActivityDelegate a, Item item) {
+		MusicQueue q = getQueue(a);
+		if (q == null) return;
+		FutureSupplier<List<PlayableItem>> items;
+
+		if (item instanceof PlayableItem pi) {
+			items = completed(Collections.singletonList(pi));
+		} else if (item instanceof BrowsableItem bi) {
+			items = bi.getPlayableChildren(true);
+		} else {
+			return;
+		}
+
+		items.main().onSuccess(list -> {
+			Context ctx = a.getContext();
+			if (list.isEmpty()) {
+				UiUtils.showToast(ctx, R.string.music_nothing_to_play);
+				return;
+			}
+			q.add(list);
+			UiUtils.showToast(ctx, ctx.getResources().getQuantityString(R.plurals.music_added_to_queue,
+					list.size(), list.size()));
+		});
+	}
+
+	/** Plays a queue track -- from the Music tab itself (a queue row, or play with nothing on). */
+	public static void playTrack(MainActivityDelegate a, MusicTrackItem t, long pos) {
+		t.setStartPosition(pos);
+		a.getMediaSessionCallback().playItem(t, pos);
+	}
+
+	/**
+	 * "Play as music" for whatever is playing right now -- the FAB action and the video control
+	 * panel's Audio menu. The queue becomes the playing item's own list (Favorites, a playlist, its
+	 * folder), unless the queue already has it -- then the queue is kept as it is, so switching to
+	 * video and back doesn't throw away a queue the user put together.
+	 */
+	public static void playCurrentAsMusic(MainActivityDelegate a) {
+		MusicQueue q = getQueue(a);
+		if (q == null) return;
+		MediaSessionCallback cb = a.getMediaSessionCallback();
+		MediaEngine eng = cb.getEngine();
+		PlayableItem cur = (eng == null) ? null : eng.getSource();
+
+		if ((cur == null) || (cur instanceof MusicTrackItem)) {
+			open(a);
+			return;
+		}
+
+		PlayableItem qi = eng.getQueueItem();
+		if (qi == null) qi = eng.getFavoritableItem();
+		if (qi == null) {
+			UiUtils.showToast(a.getContext(), R.string.music_cant_play_current);
+			return;
+		}
+
+		PlayableItem item = qi;
+		String sourceId = MusicQueue.sourceIdOf(item);
+		MusicTrackItem existing = findInQueue(q, sourceId);
+
+		if (existing != null) {
+			open(a);
+			handOff(a, eng, existing);
+			return;
+		}
+
+		boolean browsing = item.getParent().isExternal();
+		FutureSupplier<List<PlayableItem>> list =
+				browsing ? completed(Collections.singletonList(item)) : siblings(item);
+		list.main().onSuccess(l -> {
+			int idx = indexOfSame(l, item);
+			if (idx == -1) {
+				l = Collections.singletonList(item);
+				idx = 0;
+			}
+			MusicTrackItem t = q.replace(l).get(idx);
+			open(a);
+			handOff(a, eng, t);
+		});
+	}
+
+	/**
+	 * Switches the music track that's playing now back to its video, only then loading the video
+	 * (YouTube picks up where the music is; a local file just gets its picture back).
+	 */
+	public static void switchToVideo(MainActivityDelegate a) {
+		MediaSessionCallback cb = a.getMediaSessionCallback();
+		MediaEngine eng = cb.getEngine();
+		if ((eng == null) || !(eng.getSource() instanceof MusicTrackItem t)) return;
+
+		String vid = t.getVideoId();
+
+		if (vid != null) {
+			eng.getPosition().main().onSuccess(pos -> a.getLib().getItem(MusicTrackItem.YT_PREFIX + vid)
+					.main().onCompletion((i, err) -> {
+						if (!(i instanceof MediaLib.ExternallyPlayableItem ext)) {
+							if (err != null) Log.w(err);
+							UiUtils.showToast(a.getContext(), R.string.music_video_unavailable);
+							return;
+						}
+						pendingVideoId = vid;
+						pendingVideoPos = pos;
+						// The music keeps playing until the page's video actually starts, which takes
+						// over the session (and stops this engine) on its own.
+						ActivityFragment f = a.showFragment(ext.getPlayerFragmentId());
+						if (f != null) ext.loadInFragment(f, ext);
+					}));
+			return;
+		}
+
+		PlayableItem src = t.getSource();
+		if ((src == null) || !src.isVideo()) return;
+
+		eng.getPosition().main().onSuccess(pos -> {
+			a.goToItem(src);
+			// Same file on the same engine: it just gets its video surface back (the library tab
+			// just shown supports video mode, and switches into it as soon as the item becomes a
+			// video again). Otherwise re-prepare it at the current position.
+			if (!cb.switchItem(src)) {
+				src.getPrefs().setPositionPref(pos);
+				cb.playItem(src, pos);
+			}
+		});
+	}
+
+	/** Starts {@code t}, taking over from the current playback if that's the same media. */
+	private static void start(MainActivityDelegate a, MusicTrackItem t) {
+		MediaEngine eng = a.getMediaSessionCallback().getEngine();
+		PlayableItem cur = (eng == null) ? null : eng.getSource();
+		if ((cur != null) && isSameMedia(eng, cur, t)) handOff(a, eng, t);
+		else playTrack(a, t, 0);
+	}
+
+	private static boolean isSameMedia(MediaEngine eng, PlayableItem cur, MusicTrackItem t) {
+		String vid = t.getVideoId();
+
+		if (vid != null) {
+			if (cur instanceof MusicTrackItem ct) return vid.equals(ct.getVideoId());
+			if (eng.getId() != MediaPrefs.MEDIA_ENG_YT) return false;
+			PlayableItem fav = eng.getFavoritableItem();
+			return (fav != null) && (MusicTrackItem.YT_PREFIX + vid).equals(MusicQueue.sourceIdOf(fav));
+		}
+
+		PlayableItem src = t.getSource();
+		if (src == null) return false;
+		if (cur instanceof MusicTrackItem ct) return t.getSourceId().equals(ct.getSourceId());
+		return cur.getLocation().equals(src.getLocation());
+	}
+
+	/**
+	 * Hands playback of the same media over from {@code eng} to {@code t} at the current position.
+	 */
+	private static void handOff(MainActivityDelegate a, MediaEngine eng, MusicTrackItem t) {
+		MediaSessionCallback cb = a.getMediaSessionCallback();
+		PlayableItem cur = eng.getSource();
+		if (cur == t) return;
+		if ((cur instanceof MusicTrackItem ct) && (ct != t)) t.copyStreamFrom(ct);
+
+		eng.getPosition().main().onSuccess(pos -> {
+			if (cb.getEngine() != eng) return;
+
+			if ((eng.getId() != MediaPrefs.MEDIA_ENG_YT) || (t.getVideoId() == null)) {
+				// Same file (or the same, already resolved stream): keep the engine, drop the video.
+				if (!cb.switchItem(t)) playTrack(a, t, pos);
+				return;
+			}
+
+			// YouTube: the video keeps playing while its audio-only stream is being fetched.
+			t.prepareSource().main().onSuccess(v -> {
+				if (cb.getEngine() != eng) return;
+				if (t.needsNetworkResolve()) {
+					// Couldn't get one -- the queue's own listener already told the user why; just
+					// leave the video playing.
+					return;
+				}
+				eng.getPosition().main().onSuccess(p -> {
+					if (cb.getEngine() != eng) return;
+					eng.handOff();
+					playTrack(a, t, p);
+				});
+			});
+		});
+	}
+
+	@Nullable
+	private static MusicTrackItem findInQueue(MusicQueue q, String sourceId) {
+		MusicTrackItem cur = q.getSavedCurrent();
+		if ((cur != null) && sourceId.equals(cur.getSourceId())) return cur;
+		for (MusicTrackItem t : q.getTracks()) {
+			if (sourceId.equals(t.getSourceId())) return t;
+		}
+		return null;
+	}
+
+	private static FutureSupplier<List<PlayableItem>> siblings(PlayableItem i) {
+		BrowsableItem p = i.getParent();
+		return p.getPlayableChildren(false).map(l -> {
+			if (l.isEmpty()) return Collections.singletonList(i);
+			return new ArrayList<>(l);
+		});
+	}
+
+	private static int indexOfSame(List<? extends PlayableItem> list, PlayableItem i) {
+		String id = i.getId();
+		for (int n = 0; n < list.size(); n++) {
+			if (id.equals(list.get(n).getId())) return n;
+		}
+		return -1;
+	}
+}

@@ -39,6 +39,15 @@ ext {
                     order      : 5,
                     hasSettings: true
             ],
+            [
+                    // Audio-only music player for local files and YouTube (with its own queue). Sorted
+                    // just ahead of the Fuel Log, for the same reason as its order comment above.
+                    name       : 'music',
+                    icon       : 'music',
+                    class      : 'me.aap.fermata.addon.music.MusicAddon',
+                    order      : 4,
+                    hasSettings: true
+            ],
     ]
 }
 

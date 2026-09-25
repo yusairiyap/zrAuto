@@ -34,6 +34,8 @@ import com.google.android.material.textview.MaterialTextView;
 import java.util.List;
 
 import me.aap.fermata.R;
+import me.aap.fermata.addon.music.MusicPlayer;
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.action.Action;
 import me.aap.fermata.media.engine.AudioStreamInfo;
 import me.aap.fermata.media.engine.MediaEngine;
@@ -73,6 +75,9 @@ public class ControlPanelView extends ConstraintLayout
 		GestureListener {
 	private static final byte MASK_VISIBLE = 1;
 	private static final byte MASK_VIDEO_MODE = 2;
+	// Set while a screen with its own full player UI (the Music tab) is showing -- the panel stays
+	// out of the way without forgetting whether it's otherwise meant to be visible.
+	private static final byte MASK_SUPPRESSED = 4;
 	/** The vertical padding control_panel_view.xml gives the transport buttons, in dp. */
 	private static final int LAYOUT_BUTTON_PAD_V = 6;
 	/**
@@ -168,7 +173,7 @@ public class ControlPanelView extends ConstraintLayout
 	protected Parcelable onSaveInstanceState() {
 		Parcelable parentState = super.onSaveInstanceState();
 		Bundle b = new Bundle();
-		b.putByte("MASK", mask);
+		b.putByte("MASK", (byte) (mask & ~MASK_SUPPRESSED));
 		b.putParcelable("PARENT", parentState);
 		return b;
 	}
@@ -304,7 +309,27 @@ public class ControlPanelView extends ConstraintLayout
 	}
 
 	public boolean isActive() {
-		return mask != 0;
+		return (mask & ~MASK_SUPPRESSED) != 0;
+	}
+
+	/**
+	 * Hides the panel while a screen with its own full player UI (the Music tab) is showing, and
+	 * restores whatever it would otherwise be once that screen goes away.
+	 */
+	public void setSuppressed(boolean suppressed) {
+		if (suppressed == ((mask & MASK_SUPPRESSED) != 0)) return;
+
+		if (suppressed) {
+			mask |= MASK_SUPPRESSED;
+			if ((mask & MASK_VIDEO_MODE) == 0) super.setVisibility(GONE);
+		} else {
+			mask &= ~MASK_SUPPRESSED;
+			if ((mask & MASK_VIDEO_MODE) == 0)
+				super.setVisibility(((mask & MASK_VISIBLE) != 0) ? VISIBLE : GONE);
+		}
+
+		notifyControlPanelVisibility();
+		checkPlaybackTimer(getActivity());
 	}
 
 	/**
@@ -325,7 +350,7 @@ public class ControlPanelView extends ConstraintLayout
 
 		if (visibility == VISIBLE) {
 			mask |= MASK_VISIBLE;
-			if ((mask & MASK_VIDEO_MODE) != 0) return;
+			if ((mask & (MASK_VIDEO_MODE | MASK_SUPPRESSED)) != 0) return;
 
 			super.setVisibility(VISIBLE);
 
@@ -420,7 +445,7 @@ public class ControlPanelView extends ConstraintLayout
 		findViewById(R.id.show_hide_bars).setClickable(true);
 		findViewById(R.id.show_hide_bars_icon).setVisibility(VISIBLE);
 
-		if ((mask & MASK_VISIBLE) == 0) {
+		if (((mask & MASK_VISIBLE) == 0) || ((mask & MASK_SUPPRESSED) != 0)) {
 			super.setVisibility(GONE);
 			a.setBarsHidden(false);
 		} else {
@@ -885,6 +910,9 @@ public class ControlPanelView extends ConstraintLayout
 				if (eng.supportsAudioEffects()) {
 					b.addItem(R.id.audio_effects_fragment, R.drawable.equalizer, R.string.audio_effects);
 				}
+				if (MusicPlayer.isEnabled() && !(pi instanceof MusicTrackItem)) {
+					b.addItem(R.id.music_play, R.drawable.music, R.string.play_as_music);
+				}
 				eng.contributeToMenuEnd(b);
 				return;
 			}
@@ -922,6 +950,10 @@ public class ControlPanelView extends ConstraintLayout
 			b.setSelectionHandler(this);
 			b.addItem(R.id.mute_toggle, R.drawable.volume_mute, R.string.action_vol_mute_unmute)
 					.setChecked(Action.isMuted(a.getContext()));
+			// Keeps the sound going and just drops the picture (and, for YouTube, the video stream).
+			if (MusicPlayer.isEnabled()) {
+				b.addItem(R.id.music_play, R.drawable.music, R.string.play_as_music);
+			}
 			if (eng.supportsAudioEffects()) {
 				b.addItem(R.id.audio_effects_fragment, R.drawable.equalizer, R.string.effects);
 			}
@@ -990,7 +1022,10 @@ public class ControlPanelView extends ConstraintLayout
 			PlayableItem pi;
 			MediaEngine eng;
 
-			if (id == R.id.audio_effects_fragment) {
+			if (id == R.id.music_play) {
+				MusicPlayer.playCurrentAsMusic(getActivity());
+				return true;
+			} else if (id == R.id.audio_effects_fragment) {
 				eng = getActivity().getMediaSessionCallback().getEngine();
 				if ((eng != null) && eng.supportsAudioEffects())
 					getActivity().showFragment(R.id.audio_effects_fragment);
