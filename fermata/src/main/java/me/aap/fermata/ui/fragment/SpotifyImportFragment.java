@@ -296,8 +296,9 @@ public class SpotifyImportFragment extends MainActivityFragment {
 
 	@Override
 	public CharSequence getTitle() {
-		if (picker != null) return getString(R.string.spotify_my_playlists);
-		return (current != null) ? current.name : getString(R.string.spotify_import);
+		if (current != null) return current.name;
+		return (picker != null) ? getString(R.string.spotify_my_playlists) :
+				getString(R.string.spotify_import);
 	}
 
 	@Override
@@ -364,12 +365,12 @@ public class SpotifyImportFragment extends MainActivityFragment {
 
 	@Override
 	public boolean onBackPressed() {
-		if (picker != null) {
-			closePicker();
+		if (current != null) {
+			openPlaylist(null); // Back to the picker, if it was opened from there.
 			return true;
 		}
-		if (current != null) {
-			openPlaylist(null);
+		if (picker != null) {
+			closePicker();
 			return true;
 		}
 		return super.onBackPressed();
@@ -567,9 +568,37 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	}
 
 	private void togglePicked(SpotifyApi.PlaylistInfo p) {
-		if (isAdded(p.ref)) return;
-		if (!pickerSelected.remove(p.ref)) pickerSelected.add(p.ref);
+		if (importing) return;
+		Playlist added = findPlaylist(p.ref);
+
+		if (added != null) {
+			// Unticking a playlist that was already opened/added takes it off the import list.
+			playlists.remove(added);
+		} else if (!pickerSelected.remove(p.ref)) {
+			pickerSelected.add(p.ref);
+		}
+
 		rebuild();
+	}
+
+	/**
+	 * Tapping a picker card opens the playlist to choose its tracks: it's added to the import list
+	 * (loading in the background) and Back returns to the picker.
+	 */
+	private void openPicked(SpotifyApi.PlaylistInfo p) {
+		if (importing) return;
+		pickerSelected.remove(p.ref);
+		addPlaylist(p.ref, p.name, p.coverUrl);
+		Playlist pl = findPlaylist(p.ref);
+		if (pl != null) openPlaylist(pl);
+	}
+
+	@Nullable
+	private Playlist findPlaylist(String ref) {
+		for (Playlist p : playlists) {
+			if (p.ref.equals(ref)) return p;
+		}
+		return null;
 	}
 
 	private int getPickable() {
@@ -1103,7 +1132,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		rows.clear();
 		rows.add(new Row(TYPE_HEADER, null, null, null, null));
 
-		if (picker != null) {
+		if ((current == null) && (picker != null)) {
 			for (SpotifyApi.PlaylistInfo p : picker) rows.add(new Row(TYPE_PICK, null, null, null, p));
 		} else if (current == null) {
 			if (playlists.isEmpty()) rows.add(new Row(TYPE_EMPTY, null, null, null, null));
@@ -1347,7 +1376,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 			boolean account = SpotifyPrefs.isAccountSource();
 			int total = getTotalSelected();
 
-			if (picker != null) {
+			if ((picker != null) && (current == null)) {
 				int pickable = getPickable();
 				title.setText(R.string.spotify_my_playlists);
 				summary.setText(getString(R.string.spotify_picker_summary, pickerSelected.size(),
@@ -1373,9 +1402,15 @@ public class SpotifyImportFragment extends MainActivityFragment {
 			addLink.setText(R.string.spotify_import_add_link);
 
 			if (current != null) {
-				title.setText(current.name);
-				summary.setText(getString(R.string.spotify_import_selected,
-						current.getSelectedCount(), current.tracks.size()));
+				title.setText(current.name.isEmpty() ? current.ref : current.name);
+				if (current.state == Playlist.STATE_LOADING) {
+					summary.setText(R.string.spotify_import_loading);
+				} else if (current.state == Playlist.STATE_FAILED) {
+					summary.setText(getString(R.string.spotify_import_failed, current.error));
+				} else {
+					summary.setText(getString(R.string.spotify_import_selected,
+							current.getSelectedCount(), current.tracks.size()));
+				}
 				note.setVisibility(View.GONE);
 				selectAll.setText(current.isAllSelected() ? R.string.unselect_all : R.string.select_all);
 				addLink.setVisibility(View.GONE);
@@ -1566,10 +1601,18 @@ public class SpotifyImportFragment extends MainActivityFragment {
 
 		private void bindPick(Holder h, SpotifyApi.PlaylistInfo p) {
 			Context ctx = h.itemView.getContext();
-			boolean added = isAdded(p.ref);
-			boolean selected = added || pickerSelected.contains(p.ref);
+			Playlist added = findPlaylist(p.ref);
+			boolean selected = (added != null) || pickerSelected.contains(p.ref);
 			setText(h.title, p.name);
-			setText(h.subtitle, added ? ctx.getString(R.string.spotify_already_added) : p.owner);
+			if ((added != null) && (added.state == Playlist.STATE_LOADED)) {
+				setText(h.subtitle, ctx.getString(R.string.spotify_import_selected,
+						added.getSelectedCount(), added.tracks.size()));
+			} else if ((added != null) && (added.state == Playlist.STATE_FAILED)) {
+				setText(h.subtitle, ctx.getString(R.string.spotify_import_failed, added.error));
+			} else {
+				setText(h.subtitle, (added != null) ? ctx.getString(R.string.spotify_already_added) :
+						p.owner);
+			}
 
 			String d = (p.total >= 0) ? ctx.getString(R.string.spotify_tracks, p.total) : null;
 			if (!p.full) {
@@ -1587,21 +1630,18 @@ public class SpotifyImportFragment extends MainActivityFragment {
 
 			if (h.check != null) {
 				h.check.setVisibility(View.VISIBLE);
-				h.check.setAlpha(added ? 0.5f : 1f);
+				h.check.setAlpha(1f);
 				h.check.setImageResource(selected ? me.aap.utils.R.drawable.check_box :
 						me.aap.utils.R.drawable.check_box_blank);
 				h.check.setOnClickListener(v -> togglePicked(p));
 			}
 
 			View target = h.clickTarget();
-			target.setAlpha(added ? 0.6f : 1f);
-			target.setOnClickListener(v -> togglePicked(p));
-			target.setOnLongClickListener(null);
-		}
-
-		@Override
-		public void onViewRecycled(@NonNull Holder h) {
-			h.clickTarget().setAlpha(1f);
+			target.setOnClickListener(v -> openPicked(p));
+			target.setOnLongClickListener(v -> {
+				togglePicked(p);
+				return true;
+			});
 		}
 
 		private String videoDetail(Video v) {
