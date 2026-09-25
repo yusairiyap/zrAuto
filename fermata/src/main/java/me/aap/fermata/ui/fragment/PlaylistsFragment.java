@@ -266,10 +266,37 @@ public class PlaylistsFragment extends MediaLibFragment {
 		if ((nb != null) && (nb.getVisibility() == View.VISIBLE) && nb.isBottom()) bottom += nb.getHeight();
 		View cp = a.getControlPanel();
 		if ((cp != null) && (cp.getVisibility() == View.VISIBLE)) bottom += cp.getHeight();
+
+		// Leave the floating button(s) uncovered: stop short of their column, on whichever side
+		// they are, instead of hiding them.
+		int left = side;
+		int right = side;
+		if (panel.getParent() instanceof View content) {
+			int[] cLoc = new int[2];
+			content.getLocationOnScreen(cLoc);
+			int width = content.getWidth();
+			int fabLeft = Integer.MAX_VALUE;
+			int fabRight = Integer.MIN_VALUE;
+
+			for (View fab : new View[]{a.getFloatingButton(), a.getFloatingButton2(),
+					a.getFloatingButton3()}) {
+				if ((fab == null) || !fab.isShown() || (fab.getWidth() == 0)) continue;
+				int[] loc = new int[2];
+				fab.getLocationOnScreen(loc);
+				fabLeft = Math.min(fabLeft, loc[0] - cLoc[0]);
+				fabRight = Math.max(fabRight, loc[0] - cLoc[0] + fab.getWidth());
+			}
+
+			if ((fabLeft != Integer.MAX_VALUE) && (width > 0)) {
+				if ((fabLeft + fabRight) / 2 > width / 2) right = Math.max(side, width - fabLeft + side);
+				else left = Math.max(side, fabRight + side);
+			}
+		}
+
 		FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) panel.getLayoutParams();
 
-		if ((lp.bottomMargin != bottom) || (lp.leftMargin != side)) {
-			lp.setMargins(side, 0, side, bottom);
+		if ((lp.bottomMargin != bottom) || (lp.leftMargin != left) || (lp.rightMargin != right)) {
+			lp.setMargins(left, 0, right, bottom);
 			panel.setLayoutParams(lp);
 		}
 	}
