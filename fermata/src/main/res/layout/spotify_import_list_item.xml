@@ -35,6 +35,24 @@
             android:importantForAccessibility="no"
             android:scaleType="centerCrop" />
 
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/si_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/spotify_status_bg"
+            android:drawablePadding="4dp"
+            android:gravity="center_vertical"
+            android:maxLines="1"
+            android:paddingStart="6dp"
+            android:paddingTop="2dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="2dp"
+            android:textAppearance="?attr/textAppearanceCaption"
+            android:textColor="@android:color/white"
+            android:visibility="gone"
+            android:layout_gravity="bottom|start"
+            android:layout_margin="3dp" />
+
         <ProgressBar
             android:id="@+id/si_thumb_progress"
             android:layout_width="24dp"

@@ -361,6 +361,12 @@
     <string name="youtube_alternative_replacing">Replacing…</string>
     <string name="youtube_alternative_replaced">Replaced with: %1$s</string>
     <string name="youtube_alternative_failed">Couldn\'t replace the video. Please try again.</string>
+    <string name="spotify_status_matched">Matched</string>
+    <string name="spotify_status_picked">Your pick</string>
+    <string name="spotify_status_matching">Matching…</string>
+    <string name="spotify_status_unmatched">Not matched</string>
+    <string name="spotify_status_no_match">No match</string>
+    <string name="spotify_status_failed">Search failed</string>
     <string name="spotify_setup_title">Spotify account setup</string>
     <string name="spotify_setup_sub">How to get a free Client ID</string>
     <string name="spotify_setup_steps">One-time setup (free, needs the Premium account you log in with):\n\n1. Open developer.spotify.com/dashboard and log in.\n2. Create app: any name and description; Redirect URI: %1$s (tap it to copy); tick \"Web API\".\n3. Open the app\'s Settings and copy its Client ID.\n4. Go back (Back button) and paste it in zrAuto: Settings &gt; Other &gt; Import from Spotify &gt; Spotify Client ID.\n5. Tap \"Log in to Spotify\".\n\nNo client secret is needed. Or switch Playlist source to \"Public links only\" to skip all this.</string>

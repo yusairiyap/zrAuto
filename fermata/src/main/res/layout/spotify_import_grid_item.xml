@@ -63,6 +63,26 @@
                 app:layout_constraintTop_toTopOf="parent"
                 app:tint="@android:color/white" />
 
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/si_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/spotify_status_bg"
+                android:drawablePadding="4dp"
+                android:gravity="center_vertical"
+                android:maxLines="1"
+                android:paddingStart="6dp"
+                android:paddingTop="2dp"
+                android:paddingEnd="8dp"
+                android:paddingBottom="2dp"
+                android:textAppearance="?attr/textAppearanceCaption"
+                android:textColor="@android:color/white"
+                android:visibility="gone"
+                android:layout_marginStart="8dp"
+                app:layout_constraintBottom_toBottomOf="@id/si_check"
+                app:layout_constraintStart_toEndOf="@id/si_check"
+                app:layout_constraintTop_toTopOf="@id/si_check" />
+
             <ImageView
                 android:id="@+id/si_search_more"
                 android:layout_width="40dp"

@@ -1355,6 +1355,8 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		final View searchMore;
 		@Nullable
 		final View preview;
+		@Nullable
+		final TextView status;
 
 		Holder(View v) {
 			super(v);
@@ -1366,6 +1368,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 			detail = v.findViewById(R.id.si_detail);
 			searchMore = v.findViewById(R.id.si_search_more);
 			preview = v.findViewById(R.id.si_preview);
+			status = v.findViewById(R.id.si_status);
 		}
 
 		/** The card in grid mode, the row itself in list mode. */
@@ -1612,6 +1615,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 						View.VISIBLE : View.GONE);
 			}
 			if (h.searchMore != null) h.searchMore.setVisibility(View.GONE);
+			if (h.status != null) h.status.setVisibility(View.GONE);
 
 			if (h.check != null) {
 				h.check.setVisibility(loaded ? View.VISIBLE : View.INVISIBLE);
@@ -1666,6 +1670,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 				h.thumbProgress.setVisibility((t.matchState == Track.MATCH_SEARCHING) ?
 						View.VISIBLE : View.GONE);
 			}
+			if (h.status != null) bindStatus(h.status, t);
 
 			if (h.check != null) {
 				h.check.setVisibility(View.VISIBLE);
@@ -1693,6 +1698,58 @@ public class SpotifyImportFragment extends MainActivityFragment {
 				showTrackMenu(t);
 				return true;
 			});
+		}
+
+		/**
+		 * The match badge on a track's thumbnail: green "Matched" (or "Your pick") with the
+		 * YouTube icon, grey while not matched yet (the picture is still Spotify's album art) or
+		 * being searched, red when YouTube found nothing. Fixed colours: it's always drawn over an
+		 * image, never over the theme's own background.
+		 */
+		private void bindStatus(TextView v, Track t) {
+			int text;
+			int color;
+			boolean yt = false;
+
+			switch (t.matchState) {
+				case Track.MATCH_SEARCHING -> {
+					text = R.string.spotify_status_matching;
+					color = 0xCC424242;
+				}
+				case Track.MATCH_NOT_FOUND, Track.MATCH_FAILED -> {
+					text = (t.matchState == Track.MATCH_FAILED) ? R.string.spotify_status_failed :
+							R.string.spotify_status_no_match;
+					color = 0xE6C62828;
+				}
+				default -> {
+					if (t.match != null) {
+						text = t.userPicked ? R.string.spotify_status_picked : R.string.spotify_status_matched;
+						color = 0xE62E7D32;
+						yt = true;
+					} else {
+						text = R.string.spotify_status_unmatched;
+						color = 0xCC424242;
+					}
+				}
+			}
+
+			v.setVisibility(View.VISIBLE);
+			v.setText(text);
+			v.setBackgroundTintList(android.content.res.ColorStateList.valueOf(color));
+
+			if (yt) {
+				android.graphics.drawable.Drawable d = androidx.core.content.ContextCompat.getDrawable(
+						v.getContext(), R.drawable.youtube);
+				if (d != null) {
+					int size = UiUtils.toIntPx(v.getContext(), 14);
+					d = d.mutate();
+					d.setBounds(0, 0, size, size);
+					d.setTint(0xFFFFFFFF);
+				}
+				v.setCompoundDrawablesRelative(d, null, null, null);
+			} else {
+				v.setCompoundDrawablesRelative(null, null, null, null);
+			}
 		}
 
 		private void bindAlt(Holder h, Track t, Video v) {
@@ -1737,6 +1794,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 			}
 			if (h.thumbProgress != null) h.thumbProgress.setVisibility(View.GONE);
 			if (h.searchMore != null) h.searchMore.setVisibility(View.GONE);
+			if (h.status != null) h.status.setVisibility(View.GONE);
 
 			if (h.check != null) {
 				h.check.setVisibility(View.VISIBLE);
