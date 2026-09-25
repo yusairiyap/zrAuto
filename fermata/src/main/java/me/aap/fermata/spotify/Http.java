@@ -30,15 +30,21 @@ final class Http {
 	}
 
 	static Response get(String url, @Nullable Map<String, String> headers) throws IOException {
-		return request(url, null, headers);
+		return request(url, null, null, headers);
 	}
 
 	static Response post(String url, String jsonBody, @Nullable Map<String, String> headers)
 			throws IOException {
-		return request(url, jsonBody, headers);
+		return request(url, jsonBody, "application/json", headers);
 	}
 
-	private static Response request(String url, @Nullable String body,
+	/** POST of an {@code application/x-www-form-urlencoded} body (already encoded). */
+	static Response postForm(String url, String formBody, @Nullable Map<String, String> headers)
+			throws IOException {
+		return request(url, formBody, "application/x-www-form-urlencoded", headers);
+	}
+
+	private static Response request(String url, @Nullable String body, @Nullable String bodyType,
 																	@Nullable Map<String, String> headers) throws IOException {
 		HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
 
@@ -58,7 +64,7 @@ final class Http {
 				byte[] bytes = body.getBytes(UTF_8);
 				c.setRequestMethod("POST");
 				c.setDoOutput(true);
-				c.setRequestProperty("Content-Type", "application/json");
+				c.setRequestProperty("Content-Type", bodyType);
 				c.setFixedLengthStreamingMode(bytes.length);
 				try (OutputStream out = c.getOutputStream()) {
 					out.write(bytes);
@@ -68,7 +74,8 @@ final class Http {
 			int code = c.getResponseCode();
 			InputStream in = (code >= 400) ? c.getErrorStream() : c.getInputStream();
 			String text = (in == null) ? "" : readAll(in);
-			return new Response(code, c.getURL().toString(), text);
+			return new Response(code, c.getURL().toString(), text,
+					c.getHeaderFieldInt("Retry-After", 0));
 		} finally {
 			c.disconnect();
 		}
@@ -93,11 +100,14 @@ final class Http {
 		final int code;
 		final String finalUrl;
 		final String body;
+		/** Seconds, from a 429 response's Retry-After header; 0 if absent. */
+		final int retryAfter;
 
-		Response(int code, String finalUrl, String body) {
+		Response(int code, String finalUrl, String body, int retryAfter) {
 			this.code = code;
 			this.finalUrl = finalUrl;
 			this.body = body;
+			this.retryAfter = retryAfter;
 		}
 
 		boolean isOk() {

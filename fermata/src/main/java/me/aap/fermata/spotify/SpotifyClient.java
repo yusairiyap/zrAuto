@@ -19,6 +19,10 @@ import me.aap.fermata.spotify.SpotifyImportModel.Playlist;
 import me.aap.fermata.spotify.SpotifyImportModel.Track;
 
 /**
+ * Loads Spotify playlists for the import. {@link #fetch} uses the official Web API when the user
+ * has chosen and signed in to the account source (see {@link SpotifyApi}), and otherwise -- or for a
+ * playlist the API won't give out -- the keyless public page described below.
+ * <p>
  * Reads a public Spotify playlist (or album) without any API key or account.
  * <p>
  * The official Spotify Web API is no longer a free option: since February 2026 a development-mode
@@ -56,19 +60,55 @@ public final class SpotifyClient {
 		return new ArrayList<>(refs);
 	}
 
-	/** Loads the playlist/album {@code pl.ref} points to into {@code pl} (name, cover, tracks). */
+	/**
+	 * Loads the playlist/album {@code pl.ref} points to into {@code pl} (name, cover, tracks),
+	 * through whichever source Settings selects: the official API when signed in (falling back to
+	 * the embed page for a playlist the API won't give out, see {@link SpotifyApi}), otherwise the
+	 * embed page.
+	 */
 	public static void fetch(Playlist pl) throws IOException {
-		String ref = pl.ref;
+		String ref = resolve(pl.ref);
+		boolean api = SpotifyPrefs.isAccountSource() && SpotifyAuth.isLoggedIn();
 
-		if (ref.startsWith("http")) {
-			Http.Response r = Http.get(ref, null);
-			List<String> resolved = extractRefs(r.finalUrl + ' ' + r.body);
-			if (resolved.isEmpty() || resolved.get(0).startsWith("http")) {
-				throw new IOException("Unsupported Spotify link: " + ref);
-			}
-			ref = resolved.get(0);
+		if (SpotifyApi.LIKED_SONGS.equals(ref)) {
+			if (!api) throw new SpotifyAuth.AuthException();
+			SpotifyApi.fetch(pl);
+			return;
 		}
 
+		if (api) {
+			Playlist tmp = new Playlist(ref);
+			tmp.name = pl.name;
+
+			try {
+				SpotifyApi.fetch(tmp);
+				pl.name = tmp.name;
+				pl.owner = tmp.owner;
+				pl.coverUrl = tmp.coverUrl;
+				pl.tracks.clear();
+				pl.tracks.addAll(tmp.tracks);
+				pl.fullList = true;
+				return;
+			} catch (SpotifyApi.NotAccessibleException ex) {
+				// Not the user's own playlist (e.g. made by Spotify): read the public embed instead.
+			}
+		}
+
+		fetchEmbed(pl, ref);
+	}
+
+	private static String resolve(String ref) throws IOException {
+		if (!ref.startsWith("http")) return ref;
+		Http.Response r = Http.get(ref, null);
+		List<String> resolved = extractRefs(r.finalUrl + ' ' + r.body);
+		if (resolved.isEmpty() || resolved.get(0).startsWith("http")) {
+			throw new IOException("Unsupported Spotify link: " + ref);
+		}
+		return resolved.get(0);
+	}
+
+	private static void fetchEmbed(Playlist pl, String ref) throws IOException {
+		pl.fullList = false;
 		Http.Response r = Http.get("https://open.spotify.com/embed/" + ref, null);
 		if (!r.isOk()) throw new IOException("Spotify returned HTTP " + r.code);
 

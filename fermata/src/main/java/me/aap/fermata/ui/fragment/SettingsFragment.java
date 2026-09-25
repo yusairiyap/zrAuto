@@ -65,6 +65,8 @@ import me.aap.fermata.media.pref.BrowsableItemPrefs;
 import me.aap.fermata.media.pref.MediaLibPrefs;
 import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.media.pref.PlaybackControlPrefs;
+import me.aap.fermata.spotify.SpotifyAuth;
+import me.aap.fermata.spotify.SpotifyPrefs;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
@@ -907,11 +909,7 @@ public class SettingsFragment extends MainActivityFragment
 			o.title = R.string.other;
 			o.icon = R.drawable.settings;
 		});
-		sub1.addButton(o -> {
-			o.title = R.string.spotify_import;
-			o.subtitle = R.string.spotify_import_sub;
-			o.onClick = () -> SpotifyImportFragment.open(a);
-		});
+		addSpotifyImport(a, sub1);
 		if (!a.isCarActivityNotMirror()) {
 			sub1.addButton(o -> {
 				o.title = R.string.export_prefs;
@@ -947,6 +945,68 @@ public class SettingsFragment extends MainActivityFragment
 				a.fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 			}
 		};
+	}
+
+	/**
+	 * Import from Spotify: the import itself, plus where playlists come from -- the signed-in
+	 * official API (default) or public links only, see {@link SpotifyPrefs}.
+	 */
+	private void addSpotifyImport(MainActivityDelegate a, PreferenceSet set) {
+		PreferenceStore store = SpotifyPrefs.store();
+		PreferenceSet sub = set.subSet(o -> {
+			o.title = R.string.spotify_import;
+			o.icon = R.drawable.playlist_import;
+		});
+		sub.addButton(o -> {
+			o.title = R.string.spotify_import;
+			o.subtitle = R.string.spotify_import_sub;
+			o.onClick = () -> SpotifyImportFragment.open(a);
+		});
+		sub.addListPref(o -> {
+			o.store = store;
+			o.pref = SpotifyPrefs.SOURCE;
+			o.title = R.string.spotify_import_source;
+			o.subtitle = R.string.spotify_import_source_sub;
+			o.formatSubtitle = true;
+			o.values = new int[]{R.string.spotify_import_source_account,
+					R.string.spotify_import_source_public};
+		});
+		sub.addButton(o -> {
+			o.title = R.string.spotify_setup_title;
+			o.subtitle = R.string.spotify_setup_sub;
+			o.visibility = spotifyAccountCond(store);
+			o.onClick = () -> SpotifyImportFragment.showSetupHelp(a);
+		});
+		sub.addStringPref(o -> {
+			o.store = store;
+			o.pref = SpotifyPrefs.CLIENT_ID;
+			o.title = R.string.spotify_client_id;
+			o.hint = R.string.spotify_client_id_hint;
+			o.trim = true;
+			o.visibility = spotifyAccountCond(store);
+		});
+		sub.addButton(o -> {
+			o.title = R.string.spotify_login;
+			o.subtitle = R.string.spotify_login_sub;
+			o.visibility = spotifyAccountCond(store).and(new PrefCondition<>(store,
+					SpotifyPrefs.LOGGED_IN, p -> !store.getBooleanPref(p)));
+			o.onClick = () -> SpotifyImportFragment.startLogin(a);
+		});
+		sub.addButton(o -> {
+			o.title = R.string.spotify_logout;
+			o.visibility = spotifyAccountCond(store).and(PrefCondition.create(store,
+					SpotifyPrefs.LOGGED_IN));
+			o.onClick = () -> {
+				SpotifyAuth.logout();
+				UiUtils.showToast(a.getContext(), R.string.spotify_logged_out);
+			};
+		});
+	}
+
+	/** A fresh instance per row, for the same reason as {@link #dimCustomColorCond}. */
+	private static ChangeableCondition spotifyAccountCond(PreferenceStore store) {
+		return new PrefCondition<>(store, SpotifyPrefs.SOURCE,
+				p -> store.getIntPref(p) == SpotifyPrefs.SOURCE_ACCOUNT);
 	}
 
 	/**

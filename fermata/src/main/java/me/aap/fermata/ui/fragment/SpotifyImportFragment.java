@@ -5,7 +5,9 @@ import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Bitmap;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -14,9 +16,12 @@ import android.util.LruCache;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.annotation.DrawableRes;
@@ -36,12 +41,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
+import me.aap.fermata.spotify.SpotifyApi;
+import me.aap.fermata.spotify.SpotifyAuth;
 import me.aap.fermata.spotify.SpotifyClient;
 import me.aap.fermata.spotify.SpotifyImportModel;
 import me.aap.fermata.spotify.SpotifyImportModel.Playlist;
 import me.aap.fermata.spotify.SpotifyImportModel.Track;
 import me.aap.fermata.spotify.SpotifyImportModel.Video;
 import me.aap.fermata.spotify.SpotifyPlaylistWriter;
+import me.aap.fermata.spotify.SpotifyPrefs;
 import me.aap.fermata.spotify.YoutubeSearch;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.utils.log.Log;
@@ -116,8 +124,71 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	public static void open(MainActivityDelegate a) {
 		ActivityFragment f = a.showFragment(R.id.spotify_import_fragment);
 		if ((f instanceof SpotifyImportFragment sf) && sf.playlists.isEmpty()) {
-			sf.handler.post(sf::promptForLinks);
+			sf.handler.post(sf::addPlaylists);
 		}
+	}
+
+	/**
+	 * Opens the Spotify login page in the browser. Spotify redirects back to
+	 * {@link SpotifyAuth#REDIRECT_URI}, which lands in {@link #handleAuthCallback}.
+	 */
+	public static void startLogin(MainActivityDelegate a) {
+		Context ctx = a.getContext();
+		String clientId = SpotifyPrefs.getClientId();
+
+		if (clientId.isEmpty()) {
+			showSetupHelp(a);
+			return;
+		}
+
+		if (a.isCarActivity()) {
+			UiUtils.showToast(ctx, R.string.spotify_login_on_phone);
+			return;
+		}
+
+		try {
+			Intent i = new Intent(Intent.ACTION_VIEW, SpotifyAuth.buildAuthorizeUri(clientId));
+			i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+			ctx.startActivity(i);
+		} catch (Exception ex) {
+			Log.e(ex, "Failed to open the Spotify login page");
+			UiUtils.showAlert(ctx, R.string.spotify_login_no_browser);
+		}
+	}
+
+	/** The browser's redirect back from the Spotify login page (see the manifest). */
+	public static void handleAuthCallback(MainActivityDelegate a, Uri callback) {
+		Handler h = new Handler(Looper.getMainLooper());
+		new Thread(() -> {
+			Exception err = null;
+			try {
+				SpotifyAuth.completeLogin(callback);
+			} catch (Exception ex) {
+				Log.e(ex, "Spotify login failed");
+				err = ex;
+			}
+			Exception fail = err;
+			h.post(() -> {
+				Context ctx = a.getContext();
+				if (fail != null) {
+					UiUtils.showAlert(ctx, (fail.getMessage() != null) ? fail.getMessage() : fail.toString());
+					return;
+				}
+				UiUtils.showToast(ctx, R.string.spotify_logged_in);
+				ActivityFragment f = a.showFragment(R.id.spotify_import_fragment);
+				if (f instanceof SpotifyImportFragment sf) sf.handler.post(sf::showMyPlaylists);
+			});
+		}, "SpotifyLogin").start();
+	}
+
+	/** How to get a Client ID: the one-time setup the account mode needs. */
+	public static void showSetupHelp(MainActivityDelegate a) {
+		Context ctx = a.getContext();
+		a.createDialogBuilder(ctx)
+				.setTitle(R.drawable.playlist_import, R.string.spotify_setup_title)
+				.setMessage(ctx.getString(R.string.spotify_setup_steps, SpotifyAuth.REDIRECT_URI))
+				.setPositiveButton(android.R.string.ok, (d, i) -> d.dismiss())
+				.show();
 	}
 
 	@Override
@@ -266,21 +337,149 @@ public class SpotifyImportFragment extends MainActivityFragment {
 			return;
 		}
 
-		for (String ref : refs) {
-			boolean exists = false;
-			for (Playlist p : playlists) {
-				if (p.ref.equals(ref)) {
-					exists = true;
+		for (String ref : refs) addPlaylist(ref, "");
+		rebuild();
+	}
+
+	private void addPlaylist(String ref, String name) {
+		for (Playlist p : playlists) {
+			if (p.ref.equals(ref)) return;
+		}
+		Playlist pl = new Playlist(ref);
+		pl.name = name;
+		playlists.add(pl);
+		fetch(pl);
+	}
+
+	/**
+	 * The "add" entry point: the user's own playlists when signed in (Settings' default source),
+	 * otherwise the paste-a-link dialog.
+	 */
+	private void addPlaylists() {
+		if (destroyed || !isAdded()) return;
+		if (!SpotifyPrefs.isAccountSource()) {
+			promptForLinks();
+			return;
+		}
+
+		MainActivityDelegate a = getActivityDelegate();
+		Context ctx = requireContext();
+
+		if (SpotifyAuth.isLoggedIn()) {
+			showMyPlaylists();
+		} else if (SpotifyPrefs.getClientId().isEmpty()) {
+			a.createDialogBuilder(ctx)
+					.setTitle(R.drawable.playlist_import, R.string.spotify_setup_title)
+					.setMessage(ctx.getString(R.string.spotify_setup_steps, SpotifyAuth.REDIRECT_URI))
+					.setNegativeButton(android.R.string.cancel, (d, i) -> d.dismiss())
+					.setNeutralButton(R.string.spotify_paste_link, (d, i) -> promptForLinks())
+					.setPositiveButton(R.string.settings, (d, i) -> a.showFragment(R.id.settings_fragment))
+					.show();
+		} else {
+			a.createDialogBuilder(ctx)
+					.setTitle(R.drawable.playlist_import, R.string.spotify_login)
+					.setMessage(R.string.spotify_login_question)
+					.setNegativeButton(android.R.string.cancel, (d, i) -> d.dismiss())
+					.setNeutralButton(R.string.spotify_paste_link, (d, i) -> promptForLinks())
+					.setPositiveButton(R.string.spotify_login, (d, i) -> startLogin(a))
+					.show();
+		}
+	}
+
+	/** Lists the signed-in user's playlists (plus Liked Songs) to pick from. */
+	private void showMyPlaylists() {
+		if (destroyed || !isAdded()) return;
+		Context ctx = requireContext();
+		UiUtils.showToast(ctx, R.string.spotify_loading_playlists);
+
+		fetchExecutor.execute(() -> {
+			List<SpotifyApi.PlaylistInfo> list = null;
+			Exception err = null;
+			try {
+				list = SpotifyApi.listMyPlaylists();
+			} catch (Exception ex) {
+				Log.e(ex, "Failed to list Spotify playlists");
+				err = ex;
+			}
+			List<SpotifyApi.PlaylistInfo> result = list;
+			Exception fail = err;
+			post(() -> {
+				if (fail instanceof SpotifyAuth.AuthException) {
+					addPlaylists(); // Logged out meanwhile: offers to log in again.
+				} else if (fail != null) {
+					String msg = (fail.getMessage() != null) ? fail.getMessage() : fail.toString();
+					UiUtils.showAlert(requireContext(), getString(R.string.spotify_list_failed, msg));
+				} else {
+					showPlaylistPicker(result);
+				}
+			});
+		});
+	}
+
+	private void showPlaylistPicker(List<SpotifyApi.PlaylistInfo> list) {
+		Context ctx = requireContext();
+		MainActivityDelegate a = getActivityDelegate();
+		List<String> refs = new ArrayList<>(list.size() + 1);
+		List<String> names = new ArrayList<>(list.size() + 1);
+		List<CheckBox> boxes = new ArrayList<>(list.size() + 1);
+		LinearLayout column = new LinearLayout(ctx);
+		column.setOrientation(LinearLayout.VERTICAL);
+		int pad = UiUtils.toIntPx(ctx, 8);
+		column.setPadding(pad, 0, pad, 0);
+
+		CheckBox all = new CheckBox(ctx);
+		all.setText(R.string.select_all);
+		column.addView(all);
+
+		refs.add(SpotifyApi.LIKED_SONGS);
+		names.add(getString(R.string.spotify_liked_songs));
+		for (SpotifyApi.PlaylistInfo p : list) {
+			refs.add(p.ref);
+			names.add(p.name);
+		}
+
+		for (int i = 0; i < refs.size(); i++) {
+			CheckBox cb = new CheckBox(ctx);
+			StringBuilder label = new StringBuilder(names.get(i));
+
+			if (i > 0) {
+				SpotifyApi.PlaylistInfo p = list.get(i - 1);
+				if (p.total >= 0) label.append("\n").append(getString(R.string.spotify_tracks, p.total));
+				if (!p.full) label.append(" \u2022 ").append(getString(R.string.spotify_first_100));
+			}
+
+			cb.setText(label);
+			for (Playlist pl : playlists) {
+				if (pl.ref.equals(refs.get(i))) {
+					cb.setChecked(true);
+					cb.setEnabled(false); // Already added.
 					break;
 				}
 			}
-			if (exists) continue;
-			Playlist pl = new Playlist(ref);
-			playlists.add(pl);
-			fetch(pl);
+			boxes.add(cb);
+			column.addView(cb);
 		}
 
-		rebuild();
+		all.setOnCheckedChangeListener((b, checked) -> {
+			for (CheckBox cb : boxes) if (cb.isEnabled()) cb.setChecked(checked);
+		});
+
+		ScrollView scroll = new ScrollView(ctx);
+		scroll.addView(column);
+
+		a.createDialogBuilder(ctx)
+				.setTitle(R.drawable.playlist_import, R.string.spotify_my_playlists)
+				.setView(scroll)
+				.setNegativeButton(android.R.string.cancel, (d, i) -> d.dismiss())
+				.setNeutralButton(R.string.spotify_paste_link, (d, i) -> promptForLinks())
+				.setPositiveButton(R.string.spotify_import_load, (d, i) -> {
+					for (int n = 0; n < boxes.size(); n++) {
+						CheckBox cb = boxes.get(n);
+						if (cb.isChecked() && cb.isEnabled()) addPlaylist(refs.get(n), names.get(n));
+					}
+					rebuild();
+				})
+				.show();
 	}
 
 	private void fetch(Playlist pl) {
@@ -288,6 +487,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		pl.error = null;
 		fetchExecutor.execute(() -> {
 			Playlist tmp = new Playlist(pl.ref);
+			tmp.name = pl.name;
 			Exception err = null;
 
 			try {
@@ -299,7 +499,10 @@ public class SpotifyImportFragment extends MainActivityFragment {
 
 			Exception fail = err;
 			post(() -> {
-				if (fail != null) {
+				if (fail instanceof SpotifyAuth.AuthException) {
+					pl.state = Playlist.STATE_FAILED;
+					pl.error = getString(R.string.spotify_login_required);
+				} else if (fail != null) {
 					pl.state = Playlist.STATE_FAILED;
 					pl.error = (fail.getMessage() != null) ? fail.getMessage() : fail.toString();
 				} else if (tmp.tracks.isEmpty()) {
@@ -310,6 +513,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 					pl.name = tmp.name;
 					pl.owner = tmp.owner;
 					pl.coverUrl = tmp.coverUrl;
+					pl.fullList = tmp.fullList;
 					pl.tracks.clear();
 					pl.tracks.addAll(tmp.tracks);
 					pl.state = Playlist.STATE_LOADED;
@@ -826,6 +1030,8 @@ public class SpotifyImportFragment extends MainActivityFragment {
 			TextView progressLabel = v.findViewById(R.id.si_progress_text);
 			TextView selectAll = v.findViewById(R.id.si_select_all);
 			View addLink = v.findViewById(R.id.si_add_link);
+			View myPlaylists = v.findViewById(R.id.si_my_playlists);
+			boolean account = SpotifyPrefs.isAccountSource();
 			TextView importBtn = v.findViewById(R.id.si_import);
 			int total = getTotalSelected();
 
@@ -838,21 +1044,26 @@ public class SpotifyImportFragment extends MainActivityFragment {
 						SpotifyImportModel.AUTO_MATCH_LIMIT));
 				selectAll.setText(current.isAllSelected() ? R.string.unselect_all : R.string.select_all);
 				addLink.setVisibility(View.GONE);
+				myPlaylists.setVisibility(View.GONE);
 			} else {
 				int loaded = 0;
 				for (Playlist pl : playlists) if (pl.state == Playlist.STATE_LOADED) loaded++;
 				title.setText(R.string.spotify_import);
 				summary.setText(getString(R.string.spotify_import_summary, loaded, total));
 				note.setVisibility(View.VISIBLE);
-				note.setText(R.string.spotify_import_intro);
+				note.setText(account ? R.string.spotify_import_intro_account :
+						R.string.spotify_import_intro);
 				selectAll.setText(isEverythingSelected() ? R.string.unselect_all : R.string.select_all);
 				addLink.setVisibility(View.VISIBLE);
+				myPlaylists.setVisibility(account ? View.VISIBLE : View.GONE);
 			}
 
 			selectAll.setEnabled(!importing);
 			addLink.setEnabled(!importing);
 			selectAll.setOnClickListener(b -> toggleAll());
 			addLink.setOnClickListener(b -> promptForLinks());
+			myPlaylists.setEnabled(!importing);
+			myPlaylists.setOnClickListener(b -> addPlaylists());
 
 			if (importing) {
 				progressGroup.setVisibility(View.VISIBLE);
@@ -883,8 +1094,14 @@ public class SpotifyImportFragment extends MainActivityFragment {
 				case Playlist.STATE_LOADING -> setText(h.detail, ctx.getString(R.string.spotify_import_loading));
 				case Playlist.STATE_FAILED -> setText(h.detail,
 						ctx.getString(R.string.spotify_import_failed, pl.error));
-				default -> setText(h.detail, ctx.getString(R.string.spotify_import_selected,
-						pl.getSelectedCount(), pl.tracks.size()));
+				default -> {
+					String d = ctx.getString(R.string.spotify_import_selected, pl.getSelectedCount(),
+							pl.tracks.size());
+					if (!pl.fullList && (pl.tracks.size() >= 100)) {
+						d += " \u2022 " + ctx.getString(R.string.spotify_first_100);
+					}
+					setText(h.detail, d);
+				}
 			}
 
 			if (h.thumb != null) loadImage(h.thumb, pl.coverUrl, R.drawable.playlist);

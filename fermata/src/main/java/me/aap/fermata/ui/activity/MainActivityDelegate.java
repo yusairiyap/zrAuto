@@ -133,6 +133,7 @@ import me.aap.fermata.media.pref.PlaybackControlPrefs;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.media.service.MediaSessionCallbackAssistant;
+import me.aap.fermata.spotify.SpotifyAuth;
 import me.aap.fermata.ui.fragment.AudioEffectsFragment;
 import me.aap.fermata.ui.fragment.DiagnosticLogFragment;
 import me.aap.fermata.ui.fragment.FavoritesFragment;
@@ -356,6 +357,11 @@ public class MainActivityDelegate extends ActivityDelegate
 		}
 
 		Uri u = intent.getData();
+
+		if (SpotifyAuth.isCallback(u)) {
+			SpotifyImportFragment.handleAuthCallback(this, u);
+			return completed(true);
+		}
 
 		if (u != null) {
 			if (INTENT_SCHEME.equals(u.getScheme())) {

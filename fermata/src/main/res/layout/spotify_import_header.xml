@@ -63,6 +63,17 @@
                     android:textAppearance="?attr/textAppearanceCaption" />
             </LinearLayout>
 
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/si_my_playlists"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/spotify_my_playlists"
+                android:textColor="?attr/colorControlActivated"
+                app:icon="@drawable/playlist"
+                app:iconTint="?attr/colorControlActivated" />
+
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

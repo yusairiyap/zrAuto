@@ -110,6 +110,10 @@ public final class SpotifyImportModel {
 		@Nullable
 		public String coverUrl;
 		public final List<Track> tracks = new ArrayList<>();
+		/**
+		 * Read through the official API (complete), rather than the embed page (first ~100 only).
+		 */
+		public boolean fullList;
 
 		public Playlist(String ref) {
 			this.ref = ref;

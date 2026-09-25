@@ -113,6 +113,7 @@
                 <data android:scheme="zrauto" />
                 <data android:host="open" />
                 <data android:host="play" />
+                <data android:host="spotify-callback" />
             </intent-filter>
 
             <intent-filter>
