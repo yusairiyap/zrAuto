@@ -116,6 +116,11 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	private final ExecutorService altExecutor = Executors.newSingleThreadExecutor();
 	private volatile boolean stopAutoMatch;
 	private boolean matcherRunning;
+	/**
+	 * The user stopped the background matching: nothing more is searched automatically, and the
+	 * import takes only the tracks already matched (plus any picked via "Search more").
+	 */
+	private boolean matchingPaused;
 	private boolean destroyed;
 	@Nullable
 	private Playlist current;
@@ -746,7 +751,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	 * the next track of the currently open playlist first.
 	 */
 	private void ensureMatcher() {
-		if (matcherRunning || importing || destroyed || stopAutoMatch) return;
+		if (matcherRunning || importing || destroyed || stopAutoMatch || matchingPaused) return;
 		if (!hasPendingTrack()) return;
 		matcherRunning = true;
 
@@ -781,7 +786,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	/** Main thread: picks and marks the next track to match, or null if none. */
 	@Nullable
 	private Track takeNextTrack() {
-		if (destroyed || stopAutoMatch) return null;
+		if (destroyed || stopAutoMatch || matchingPaused) return null;
 		Track t = (current != null) ? nextPending(current) : null;
 
 		if (t == null) {
@@ -918,9 +923,9 @@ public class SpotifyImportFragment extends MainActivityFragment {
 					if ((t.alternatives != null) && !t.alternatives.isEmpty()) {
 						t.match = t.alternatives.get(0);
 						t.matchState = Track.MATCH_FOUND;
-					} else {
+					} else if (!matchingPaused) {
 						toResolve.add(t);
-					}
+					} // else: matching was stopped, so it's skipped as unmatched.
 				}
 			}
 
@@ -1107,6 +1112,26 @@ public class SpotifyImportFragment extends MainActivityFragment {
 			if (pl.state == Playlist.STATE_LOADED) n += pl.getSelectedCount();
 		}
 		return n;
+	}
+
+	/** What Import would bring in: every selected track, or only matched ones once stopped. */
+	private int getImportCount() {
+		if (!matchingPaused) return getTotalSelected();
+		int n = 0;
+		for (Playlist pl : playlists) {
+			if (pl.state != Playlist.STATE_LOADED) continue;
+			for (Track t : pl.tracks) {
+				if (t.selected && ((t.match != null) ||
+						((t.alternatives != null) && !t.alternatives.isEmpty()))) n++;
+			}
+		}
+		return n;
+	}
+
+	private void setMatchingPaused(boolean paused) {
+		matchingPaused = paused;
+		if (!paused) ensureMatcher();
+		rebuild();
 	}
 
 	// ---- Helpers ----
@@ -1369,6 +1394,8 @@ public class SpotifyImportFragment extends MainActivityFragment {
 			View progressGroup = v.findViewById(R.id.si_progress_group);
 			ProgressBar progress = v.findViewById(R.id.si_progress_bar);
 			TextView progressLabel = v.findViewById(R.id.si_progress_text);
+			TextView progressAction = v.findViewById(R.id.si_progress_action);
+			progressAction.setVisibility(View.GONE);
 			TextView selectAll = v.findViewById(R.id.si_select_all);
 			TextView addLink = v.findViewById(R.id.si_add_link);
 			View myPlaylists = v.findViewById(R.id.si_my_playlists);
@@ -1446,15 +1473,17 @@ public class SpotifyImportFragment extends MainActivityFragment {
 				importBtn.setEnabled(!saving && !cancelImport.get());
 				importBtn.setOnClickListener(b -> cancelImport());
 			} else {
-				bindMatchingProgress(progressGroup, progress, progressLabel);
-				importBtn.setText(getString(R.string.spotify_import_import, total));
-				importBtn.setEnabled(total > 0);
+				bindMatchingProgress(progressGroup, progress, progressLabel, progressAction);
+				int count = getImportCount();
+				importBtn.setText(getString(R.string.spotify_import_import, count));
+				importBtn.setEnabled(count > 0);
 				importBtn.setOnClickListener(b -> startImport());
 			}
 		}
 
 		/** While not importing, the header shows the background matching's progress, if any. */
-		private void bindMatchingProgress(View group, ProgressBar progress, TextView label) {
+		private void bindMatchingProgress(View group, ProgressBar progress, TextView label,
+																			TextView action) {
 			int all = 0;
 			int done = 0;
 			for (Playlist pl : playlists) {
@@ -1473,7 +1502,12 @@ public class SpotifyImportFragment extends MainActivityFragment {
 			progress.setIndeterminate(false);
 			progress.setMax(all);
 			progress.setProgress(done);
-			label.setText(getString(R.string.spotify_matching_bg, done, all));
+			label.setText(matchingPaused ? getString(R.string.spotify_matching_stopped, done, all) :
+					getString(R.string.spotify_matching_bg, done, all));
+			action.setVisibility(View.VISIBLE);
+			action.setText(matchingPaused ? R.string.spotify_matching_resume :
+					R.string.spotify_matching_stop);
+			action.setOnClickListener(b -> setMatchingPaused(!matchingPaused));
 		}
 
 		private void bindPlaylist(Holder h, Playlist pl) {

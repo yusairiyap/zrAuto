@@ -61,6 +61,15 @@
                     android:maxLines="2"
                     android:ellipsize="end"
                     android:textAppearance="?attr/textAppearanceCaption" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/si_progress_action"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="end"
+                    android:textColor="?attr/colorControlActivated"
+                    android:visibility="gone" />
             </LinearLayout>
 
             <com.google.android.material.button.MaterialButton

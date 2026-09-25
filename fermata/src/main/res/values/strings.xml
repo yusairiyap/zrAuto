@@ -347,6 +347,9 @@
     <string name="spotify_picker_hint">Tap a playlist to open it and choose its tracks, or tick playlists (tap the check, or long-press) and tap Add to take them whole. Playlists you don\'t own are read from their public page (first 100 tracks).</string>
     <string name="spotify_picker_add">Add (%1$d)</string>
     <string name="spotify_already_added">Added, loading…</string>
+    <string name="spotify_matching_stop">Stop matching</string>
+    <string name="spotify_matching_resume">Resume matching</string>
+    <string name="spotify_matching_stopped">Matching stopped: %1$d of %2$d tracks matched. Import takes only the matched ones.</string>
     <string name="spotify_matching_bg">Matching YouTube videos: %1$d of %2$d</string>
     <string name="spotify_setup_title">Spotify account setup</string>
     <string name="spotify_setup_sub">How to get a free Client ID</string>
