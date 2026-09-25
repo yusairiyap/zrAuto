@@ -12,6 +12,10 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.method.LinkMovementMethod;
+import android.text.style.ClickableSpan;
 import android.util.LruCache;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -41,6 +45,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
+import me.aap.fermata.addon.AddonManager;
 import me.aap.fermata.spotify.SpotifyApi;
 import me.aap.fermata.spotify.SpotifyAuth;
 import me.aap.fermata.spotify.SpotifyClient;
@@ -52,6 +57,7 @@ import me.aap.fermata.spotify.SpotifyPlaylistWriter;
 import me.aap.fermata.spotify.SpotifyPrefs;
 import me.aap.fermata.spotify.YoutubeSearch;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.util.Utils;
 import me.aap.utils.log.Log;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.fragment.ActivityFragment;
@@ -85,6 +91,10 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	private static final int MAX_RESULTS = 10;
 	/** Pause between consecutive YouTube searches, to stay well clear of any rate limiting. */
 	private static final long SEARCH_DELAY_MS = 400;
+	private static final String DASHBOARD_URL = "https://developer.spotify.com/dashboard";
+	/** How the dashboard address appears in {@code R.string.spotify_setup_steps}. */
+	private static final String DASHBOARD_LABEL = "developer.spotify.com/dashboard";
+	private static final String WEB_BROWSER_ADDON_CLASS = "me.aap.fermata.addon.web.WebBrowserAddon";
 
 	private final Handler handler = new Handler(Looper.getMainLooper());
 	private final List<Playlist> playlists = new ArrayList<>();
@@ -186,9 +196,86 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		Context ctx = a.getContext();
 		a.createDialogBuilder(ctx)
 				.setTitle(R.drawable.playlist_import, R.string.spotify_setup_title)
-				.setMessage(ctx.getString(R.string.spotify_setup_steps, SpotifyAuth.REDIRECT_URI))
+				.setView(createSetupStepsView(a))
+				.setNeutralButton(R.string.spotify_open_dashboard, (d, i) -> openDashboard(a))
 				.setPositiveButton(android.R.string.ok, (d, i) -> d.dismiss())
 				.show();
+	}
+
+	/**
+	 * The setup steps, with the dashboard address as a link (opens it in the in-app browser, see
+	 * {@link #openDashboard}) and the redirect URI tap-to-copy, since it has to be typed exactly.
+	 */
+	private static View createSetupStepsView(MainActivityDelegate a) {
+		Context ctx = a.getContext();
+		String text = ctx.getString(R.string.spotify_setup_steps, SpotifyAuth.REDIRECT_URI);
+		SpannableString span = new SpannableString(text);
+		int idx = text.indexOf(DASHBOARD_LABEL);
+
+		if (idx != -1) {
+			span.setSpan(new ClickableSpan() {
+				@Override
+				public void onClick(@NonNull View widget) {
+					openDashboard(a);
+				}
+			}, idx, idx + DASHBOARD_LABEL.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+		}
+
+		idx = text.indexOf(SpotifyAuth.REDIRECT_URI);
+		if (idx != -1) {
+			span.setSpan(new ClickableSpan() {
+				@Override
+				public void onClick(@NonNull View widget) {
+					copyToClipboard(ctx, SpotifyAuth.REDIRECT_URI);
+				}
+			}, idx, idx + SpotifyAuth.REDIRECT_URI.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+		}
+
+		TextView t = new com.google.android.material.textview.MaterialTextView(ctx);
+		t.setText(span);
+		t.setMovementMethod(LinkMovementMethod.getInstance());
+		t.setTextIsSelectable(false);
+		int pad = UiUtils.toIntPx(ctx, 8);
+		t.setPadding(pad, pad, pad, pad);
+		ScrollView scroll = new ScrollView(ctx);
+		scroll.addView(t);
+		return scroll;
+	}
+
+	/**
+	 * Opens the Spotify developer dashboard in the app's own Web Browser tab (installing that addon
+	 * if needed), so the user can create the app and copy its Client ID without leaving zrAuto;
+	 * falls back to the system browser.
+	 */
+	static void openDashboard(MainActivityDelegate a) {
+		Context ctx = a.getContext();
+		a.hideActiveMenu(); // The setup dialog, which would otherwise stay on top of the page.
+
+		if (a.isCarActivity()) {
+			UiUtils.showToast(ctx, R.string.spotify_login_on_phone);
+			return;
+		}
+
+		AddonManager.get().getOrInstallAddon(WEB_BROWSER_ADDON_CLASS).main()
+				.onCompletion((addon, err) -> {
+					if ((err == null) && (addon != null) && Utils.openUrlInBrowserFragment(ctx, DASHBOARD_URL)) {
+						UiUtils.showToast(ctx, R.string.spotify_dashboard_hint);
+						return;
+					}
+					if (err != null) Log.e(err, "Web browser addon unavailable");
+					Utils.openUrl(ctx, DASHBOARD_URL);
+				});
+	}
+
+	private static void copyToClipboard(Context ctx, String text) {
+		try {
+			ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
+			if (cm == null) return;
+			cm.setPrimaryClip(ClipData.newPlainText(text, text));
+			UiUtils.showToast(ctx, R.string.spotify_copied, text);
+		} catch (Exception ex) {
+			Log.e(ex, "Failed to copy to clipboard");
+		}
 	}
 
 	@Override
@@ -370,7 +457,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		} else if (SpotifyPrefs.getClientId().isEmpty()) {
 			a.createDialogBuilder(ctx)
 					.setTitle(R.drawable.playlist_import, R.string.spotify_setup_title)
-					.setMessage(ctx.getString(R.string.spotify_setup_steps, SpotifyAuth.REDIRECT_URI))
+					.setView(createSetupStepsView(a))
 					.setNegativeButton(android.R.string.cancel, (d, i) -> d.dismiss())
 					.setNeutralButton(R.string.spotify_paste_link, (d, i) -> promptForLinks())
 					.setPositiveButton(R.string.settings, (d, i) -> a.showFragment(R.id.settings_fragment))
