@@ -6,7 +6,9 @@ import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_CONTENT_PLAYING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_ERR;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_EVENT;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_SKIP_PREV_NEXT;
+import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_USER_PICKED_VIDEO;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_ENDED;
+import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_ENDING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_FOUND;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_PAUSED;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_PLAYING;
@@ -57,7 +59,18 @@ public class YoutubeWebView extends FermataWebView {
 	 * {@code YoutubeVideoView#showTransitionOverlay}).
 	 */
 	private static final int NAVIGATION_FALLBACK_MS = 1000;
+	/**
+	 * How long an explicit next/prev/queue switch lets the current video's audio fade out (see
+	 * {@code youtube_fade.js}) before actually navigating -- see {@link #afterAudioFadeOut}.
+	 */
+	static final int SWITCH_FADE_OUT_MS = 300;
+	/** Shared lookup of the element every playback helper below acts on. */
+	private static final String JS_FIND_VIDEO = "var v = document.querySelector('video');\n";
 	private YoutubeJsInterface js;
+	/** See {@link #afterAudioFadeOut}. */
+	@Nullable
+	private Runnable pendingSwitch;
+	private int switchGeneration;
 
 	public YoutubeWebView(Context context) {
 		super(context);
@@ -125,6 +138,7 @@ public class YoutubeWebView extends FermataWebView {
 
 	@Override
 	protected void pageLoaded(String uri) {
+		injectFade();
 		attachListeners();
 		injectSponsorBlock();
 		injectEqualizer();
@@ -206,6 +220,24 @@ public class YoutubeWebView extends FermataWebView {
 				// change that follows a real link tap within this window is the user browsing to a
 				// different video on purpose -- as opposed to YouTube's own autonav, which never involves a
 				// click at all -- see YoutubeMediaEngine#playing()'s use of this flag.
+				// The video id a watch/shorts URL points to, or '' -- see fermataUserPicked() below.
+				"function fermataVideoIdFromUrl(u) {\n" +
+				"  try {\n" +
+				"    var url = new URL(u, location.href);\n" +
+				"    if (url.pathname === '/watch') return url.searchParams.get('v') || '';\n" +
+				"    var m = url.pathname.match(/^\\/(shorts|live)\\/([A-Za-z0-9_-]+)/);\n" +
+				"    return m ? m[2] : '';\n" +
+				"  } catch (e) { return ''; }\n" +
+				"}\n" +
+				// Tells the app, right away, which video the user just tapped. The 4s in-page window of
+				// fermataRecentLinkClick() is too short for a tap that is followed by an ad or a slow
+				// load, and it doesn't survive a full document load at all -- in both cases the new
+				// video used to be mistaken for YouTube's own autonav and replaced with the next
+				// Favorites/Playlist item. See YoutubeMediaEngine#userPickedVideo().
+				"function fermataUserPicked(u) {\n" +
+				"  var id = fermataVideoIdFromUrl(u);\n" +
+				"  if (id) " + JS_EVENT + "(" + JS_USER_PICKED_VIDEO + ", id);\n" +
+				"}\n" +
 				"function fermataRecentLinkClick() {\n" +
 				"  return (Date.now() - (window.__fermataLastLinkClickTime || 0)) < 4000;\n" +
 				"}\n" +
@@ -349,8 +381,10 @@ public class YoutubeWebView extends FermataWebView {
 				// YoutubeMediaEngine#playing() mistake the app's own queue move for the user
 				// deliberately picking a different video and drop the queue on the spot.
 				"    if (window.__fermataSuppressLinkClick) return;\n" +
-				"    if (e.target && e.target.closest && e.target.closest('a')) {\n" +
+				"    var a = (e.target && e.target.closest) ? e.target.closest('a') : null;\n" +
+				"    if (a) {\n" +
 				"      window.__fermataLastLinkClickTime = Date.now();\n" +
+				"      if (a.href) fermataUserPicked(a.href);\n" +
 				"    }\n" +
 				"  }, true);\n" +
 				"}\n";
@@ -384,7 +418,10 @@ public class YoutubeWebView extends FermataWebView {
 				"  navigation.addEventListener('navigate', function(e) {\n" +
 				// Same exclusion as interceptLinkClicksJs() above -- see there.
 				"    if (window.__fermataSuppressLinkClick) return;\n" +
-				"    if (e.userInitiated) window.__fermataLastLinkClickTime = Date.now();\n" +
+				"    if (e.userInitiated) {\n" +
+				"      window.__fermataLastLinkClickTime = Date.now();\n" +
+				"      if (e.destination && e.destination.url) fermataUserPicked(e.destination.url);\n" +
+				"    }\n" +
 				"  });\n" +
 				"}\n";
 	}
@@ -398,6 +435,14 @@ public class YoutubeWebView extends FermataWebView {
 	private void configureSponsorBlock() {
 		evaluateJavascript("if (window.FermataSponsorBlock) window.FermataSponsorBlock.configure(" +
 				YoutubeSponsorBlock.getConfigJson(getAddon().getPreferenceStore()) + ");", null);
+	}
+
+	private void injectFade() {
+		String script = YoutubeFadeScript.getScript(getContext());
+		if (script.isEmpty()) return;
+		evaluateJavascript(script, result -> evaluateJavascript(
+				"if (window.FermataFade) window.FermataFade.configure({endingEvent: " + JS_VIDEO_ENDING +
+						"});", null));
 	}
 
 	private void injectEqualizer() {
@@ -656,20 +701,31 @@ public class YoutubeWebView extends FermataWebView {
 
 	void play() {
 		loadUrl("javascript:(function() {\n" +
-				"  var v = document.querySelector('video');\n" +
+				"  " + JS_FIND_VIDEO +
 				"  if (v == null) { console.error('Fermata play(): no video element found'); return; }\n" +
+				"  if (window.FermataFade) window.FermataFade.prepareToPlay(v);\n" +
 				"  var p = v.play();\n" +
 				"  if (p && p.catch) p.catch(function(e) { console.error('Fermata play() rejected: ' + e); });\n" +
 				"})();");
 	}
 
+	/** Fades the audio out first (see {@code youtube_fade.js}), then pauses. */
 	void pause() {
-		loadUrl("javascript:var v = document.querySelector('video'); if (v != null) v.pause();");
+		loadUrl("javascript:(function() {\n" +
+				"  " + JS_FIND_VIDEO +
+				"  if (v == null) return;\n" +
+				"  if (window.FermataFade) window.FermataFade.pause(v, false); else v.pause();\n" +
+				"})();");
 	}
 
+	/** Same as {@link #pause()}, rewinding to the start once the fade-out finishes. */
 	void stop() {
-		loadUrl("javascript:var v = document.querySelector('video');\n" +
-				"if (v != null) { v.currentTime = 0; v.pause(); }");
+		loadUrl("javascript:(function() {\n" +
+				"  " + JS_FIND_VIDEO +
+				"  if (v == null) return;\n" +
+				"  if (window.FermataFade) window.FermataFade.pause(v, true);\n" +
+				"  else { v.currentTime = 0; v.pause(); }\n" +
+				"})();");
 	}
 
 	/**
@@ -680,12 +736,45 @@ public class YoutubeWebView extends FermataWebView {
 	 */
 	void replay() {
 		loadUrl("javascript:(function() {\n" +
-				"  var v = document.querySelector('video');\n" +
+				"  " + JS_FIND_VIDEO +
 				"  if (v == null) { console.error('Fermata replay(): no video element found'); return; }\n" +
 				"  v.currentTime = 0;\n" +
+				"  if (window.FermataFade) window.FermataFade.prepareToPlay(v);\n" +
 				"  var p = v.play();\n" +
 				"  if (p && p.catch) p.catch(function(e) { console.error('Fermata replay() rejected: ' + e); });\n" +
 				"})();");
+	}
+
+	/**
+	 * Runs {@code switchVideo} once the current video's audio has faded out, so an explicit
+	 * next/prev/queue switch doesn't cut the sound off mid-word. There is only one player, so the
+	 * closest thing to a crossfade is fade-out, switch, then the new video fading itself in (see
+	 * {@code youtube_fade.js}'s 'playing' handling). Runs it straight away when there is nothing
+	 * audible to fade -- already paused/ended (a natural end-of-video advance, whose last seconds
+	 * already faded out on their own), hidden, or the fade script isn't on this page.
+	 */
+	void afterAudioFadeOut(Runnable switchVideo) {
+		// A newer switch (rapid repeated skips) supersedes one still waiting on its fade -- only the
+		// last requested video should actually be navigated to.
+		int gen = ++switchGeneration;
+		if (pendingSwitch != null) removeCallbacks(pendingSwitch);
+		pendingSwitch = null;
+		evaluateJavascript("(function() {\n" +
+				"  " + JS_FIND_VIDEO +
+				"  return !!(window.FermataFade && v && window.FermataFade.fadeOut(v, " +
+				SWITCH_FADE_OUT_MS + "));\n" +
+				"})();", result -> {
+			if (gen != switchGeneration) return;
+			if ("true".equals(result)) {
+				pendingSwitch = () -> {
+					pendingSwitch = null;
+					switchVideo.run();
+				};
+				postDelayed(pendingSwitch, SWITCH_FADE_OUT_MS);
+			} else {
+				switchVideo.run();
+			}
+		});
 	}
 
 	void prev() {
@@ -1128,6 +1217,7 @@ public class YoutubeWebView extends FermataWebView {
 				"  var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
 				"  var v = document.querySelector('video');\n" +
 				seek +
+				"  if (window.FermataFade && (v != null)) window.FermataFade.prepareToPlay(v);\n" +
 				"  try { if (p && (typeof p.playVideo === 'function')) p.playVideo(); } catch (e) {}\n" +
 				"  if (v == null) { console.error('Fermata resumeAt(): no video element found'); return; }\n" +
 				"  var r = v.play();\n" +

@@ -6,6 +6,12 @@
     <attr name="submenu" format="reference" />
     <attr name="numLabels" format="integer" />
     <attr name="itemPadding" format="dimension" />
+    <!-- Colors of the played/filled part and the remaining track of every slider/seek bar
+    (Theme.Utils.Base.SliderStyle and the app's own seek bar/equalizer styles). Default to the
+    standard control colors (see Theme.Utils.Base); a theme overrides them where those don't give
+    the filled part enough contrast against the track, e.g. an all-white Black theme. -->
+    <attr name="utilsSliderProgressColor" format="color|reference" />
+    <attr name="utilsSliderTrackColor" format="color|reference" />
 
     <declare-styleable name="ToolBarView">
         <attr name="size" format="dimension|reference" />

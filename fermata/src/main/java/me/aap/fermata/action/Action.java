@@ -10,6 +10,8 @@ import static android.media.AudioManager.STREAM_MUSIC;
 import static android.os.SystemClock.uptimeMillis;
 import static java.util.Arrays.asList;
 import static java.util.Collections.unmodifiableList;
+import static me.aap.utils.async.Completed.completedVoid;
+import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED;
 
 import android.content.Context;
 import android.media.AudioManager;
@@ -17,15 +19,21 @@ import android.media.AudioManager;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
 
+import java.util.Collections;
 import java.util.List;
 
 import me.aap.fermata.BuildConfig;
 import me.aap.fermata.R;
+import me.aap.fermata.media.engine.MediaEngine;
+import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.utils.app.App;
+import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.log.Log;
+import me.aap.utils.ui.UiUtils;
+import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.activity.ActivityDelegate;
 
 /**
@@ -78,6 +86,8 @@ public enum Action {
 	PRIVATE_MODE_TOGGLE(R.string.action_private_mode_toggle, a(a ->
 			a.getPrefs().setPrivateModeEnabled(!a.getPrefs().isPrivateModeEnabled()))),
 	REFUEL(R.string.action_refuel, a(me.aap.fermata.addon.fuel.FuelRefuelDialog::show)),
+	FAVORITE_ADD(R.string.favorites_add, a(Action::addCurrentToFavorites)),
+	PLAYLIST_ADD(R.string.playlist_add, a(Action::addCurrentToPlaylist)),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));
@@ -100,6 +110,72 @@ public enum Action {
 	public static boolean isMuted(Context ctx) {
 		var amgr = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
 		return (amgr != null) && amgr.isStreamMute(STREAM_MUSIC);
+	}
+
+	/**
+	 * The item "Add to favorites" (FAB action) acts on: whatever is playing now -- asking the engine
+	 * first, since some engines' session item is only a placeholder (see
+	 * {@link MediaEngine#getFavoritableItem()}) -- or the last session item when nothing is playing.
+	 */
+	@Nullable
+	public static PlayableItem getFavoritableItem(MainActivityDelegate a) {
+		MediaSessionCallback cb = a.getMediaSessionCallback();
+		MediaEngine eng = cb.getEngine();
+		return (eng != null) ? eng.getFavoritableItem() : cb.getCurrentItem();
+	}
+
+	/** Shared by the FAB icons: whether {@link #getFavoritableItem} is already a favorite. */
+	public static boolean isCurrentFavorite(MainActivityDelegate a) {
+		PlayableItem pi = getFavoritableItem(a);
+		return (pi != null) && pi.isFavoriteItem();
+	}
+
+	private static void addCurrentToFavorites(MainActivityDelegate a) {
+		Context ctx = a.getContext();
+		PlayableItem pi = getFavoritableItem(a);
+		if (pi == null) {
+			UiUtils.showToast(ctx, R.string.favorites_nothing_playing);
+			return;
+		}
+		if (pi.isFavoriteItem()) {
+			UiUtils.showToast(ctx, R.string.favorites_already_added, pi.getName());
+			return;
+		}
+
+		MediaSessionCallback cb = a.getMediaSessionCallback();
+		// The session's own current item goes through the callback so its Android Auto/notification
+		// "favorite" custom action flips to match; anything else (YouTube's real video item behind its
+		// placeholder) is added straight to the library.
+		FutureSupplier<Void> added;
+		if (pi == cb.getCurrentItem()) {
+			cb.favoriteAddRemove(true);
+			added = completedVoid();
+		} else {
+			added = pi.getLib().getFavorites().addItem(pi);
+		}
+		added.main().onSuccess(v -> {
+			UiUtils.showToast(ctx, R.string.favorites_added, pi.getName());
+			// Lets anything showing favorite state (YouTube's toolbar button, the FAB icon) refresh.
+			a.fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
+		});
+	}
+
+	/**
+	 * Shows a pick list of playlists (plus "Create playlist") for whatever is playing -- the same
+	 * item "Add to favorites" acts on, see {@link #getFavoritableItem}. Posted rather than shown
+	 * directly: this also runs from the FAB's own long-press menu, which is still finishing its
+	 * item selection (and hiding itself) at this point, on the same overlay.
+	 */
+	private static void addCurrentToPlaylist(MainActivityDelegate a) {
+		PlayableItem pi = getFavoritableItem(a);
+		if (pi == null) {
+			UiUtils.showToast(a.getContext(), R.string.playlist_nothing_playing);
+			return;
+		}
+		App.get().getHandler().post(() -> {
+			OverlayMenu menu = a.findViewById(R.id.control_menu);
+			if (menu != null) a.showAddToPlaylistMenu(menu, Collections.singletonList(pi));
+		});
 	}
 
 	public static List<Action> getAll() {

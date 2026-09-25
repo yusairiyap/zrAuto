@@ -800,7 +800,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		setPlaybackState(new PlaybackStateCompat.Builder(state).build());
 	}
 
-	void favoriteAddRemove(boolean add) {
+	public void favoriteAddRemove(boolean add) {
 		PlayableItem i = getCurrentItem();
 		if (i == null) return;
 

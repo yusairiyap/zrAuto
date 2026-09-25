@@ -116,6 +116,12 @@ class DefaultFavorites extends ItemContainer<PlayableItem> implements Favorites,
 		setFavoritesPref(mapToArray(children, PlayableItem::getOrigId, String[]::new));
 	}
 
+	/** Newly added favorites go to the top, so the latest one is right there when the list opens. */
+	@Override
+	protected boolean addToTop() {
+		return true;
+	}
+
 	@Override
 	protected void itemAdded(PlayableItem i) {
 		getLib().getAtvInterface(a -> a.addProgram(i));

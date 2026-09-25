@@ -19,6 +19,11 @@ public class YoutubeJsInterface extends FermataJsInterface {
 	public static final int JS_AD_ENDED = JS_LAST + 7;
 	public static final int JS_CONTENT_PLAYING = JS_LAST + 8;
 	public static final int JS_SKIP_PREV_NEXT = JS_LAST + 9;
+	/** See {@code youtube_fade.js}: the video's last seconds started fading out (data = remaining ms),
+	 * or "-1" when that was undone (seeked back / paused before the end). */
+	public static final int JS_VIDEO_ENDING = JS_LAST + 10;
+	/** The user tapped a link/tile leading to a video (data = its id). */
+	public static final int JS_USER_PICKED_VIDEO = JS_LAST + 11;
 	private final YoutubeMediaEngine engine;
 	private Promise<String> result;
 
@@ -68,6 +73,14 @@ public class YoutubeJsInterface extends FermataJsInterface {
 			case JS_SKIP_PREV_NEXT:
 				Log.d("Skip requested: ", data);
 				engine.skipRequested("1".equals(data));
+				break;
+			case JS_VIDEO_ENDING:
+				Log.d("Video ending: ", data);
+				engine.videoEnding(data);
+				break;
+			case JS_USER_PICKED_VIDEO:
+				Log.d("User picked video: ", data);
+				engine.userPickedVideo(data);
 				break;
 			default:
 				super.handleEvent(event, data);

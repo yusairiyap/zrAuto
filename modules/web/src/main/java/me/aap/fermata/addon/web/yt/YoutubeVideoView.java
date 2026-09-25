@@ -24,6 +24,9 @@ public class YoutubeVideoView extends VideoView {
 	// ControlPanelView's fadeIn/fadeOut, ActivityDelegate's crossfadeFragmentViews) -- a plain
 	// ViewPropertyAnimator alpha tween, no external animation library.
 	private static final long FADE_MS = 200L;
+	// Revealing the next video after a switch cover -- a little slower than FADE_MS so the new
+	// picture dissolves in alongside its audio fade-in (see youtube_fade.js) rather than popping.
+	private static final long REVEAL_MS = 450L;
 	// Safety net in case the page-side "hide" signal (ad-ended, or a video actually playing again
 	// after a next/prev switch -- see YoutubeWebView's ad MutationObserver and 'playing' listener)
 	// is ever missed -- e.g. the page navigates away mid-transition -- so the overlay can't get
@@ -109,6 +112,17 @@ public class YoutubeVideoView extends VideoView {
 	 * appears after {@link #SPINNER_REVEAL_DELAY_MS}, if the switch is still going by then).
 	 */
 	void showTransitionOverlay(boolean withSpinner) {
+		showTransitionOverlay(withSpinner, FADE_MS);
+	}
+
+	/**
+	 * Same as {@link #showTransitionOverlay(boolean)}, fading in over {@code fadeMs} -- used with the
+	 * video's own remaining time when its last moments start fading out (see {@code
+	 * YoutubeMediaEngine#videoEnding}), so the picture goes to black together with the sound. If the
+	 * cover is already partly or fully up, it continues from where it is rather than flashing back
+	 * to transparent -- {@code YoutubeMediaEngine#ended()} re-shows it right after that ending fade.
+	 */
+	void showTransitionOverlay(boolean withSpinner, long fadeMs) {
 		if (transitionOverlay == null) return;
 		coverIsVideoSwitch = !withSpinner;
 		if (!withSpinner) {
@@ -134,14 +148,19 @@ public class YoutubeVideoView extends VideoView {
 			transitionSpinner.setVisibility(VISIBLE);
 		} else {
 			transitionSpinner.setVisibility(GONE);
-			transitionSpinner.postDelayed(showSpinnerTask, SPINNER_REVEAL_DELAY_MS);
+			transitionSpinner.postDelayed(showSpinnerTask, fadeMs + SPINNER_REVEAL_DELAY_MS);
 		}
 
 		transitionOverlay.removeCallbacks(hideTransitionOverlayTask);
 		transitionOverlay.animate().cancel();
-		transitionOverlay.setAlpha(0f);
+		boolean alreadyUp = transitionOverlay.getVisibility() == VISIBLE;
+		float from = alreadyUp ? transitionOverlay.getAlpha() : 0f;
+		transitionOverlay.setAlpha(from);
 		transitionOverlay.setVisibility(VISIBLE);
-		transitionOverlay.animate().alpha(1f).setDuration(FADE_MS).start();
+		// Scaled to the distance still left to cover, so re-showing an almost-opaque cover doesn't
+		// take a full fade to do nothing visible.
+		long duration = Math.max(0L, Math.round(fadeMs * (1f - from)));
+		transitionOverlay.animate().alpha(1f).setDuration(duration).start();
 		transitionOverlay.postDelayed(hideTransitionOverlayTask, TRANSITION_OVERLAY_TIMEOUT_MS);
 	}
 
@@ -162,7 +181,7 @@ public class YoutubeVideoView extends VideoView {
 		transitionOverlay.removeCallbacks(hideTransitionOverlayTask);
 		transitionSpinner.removeCallbacks(showSpinnerTask);
 		transitionOverlay.animate().cancel();
-		transitionOverlay.animate().alpha(0f).setDuration(FADE_MS)
+		transitionOverlay.animate().alpha(0f).setDuration(wasShowing ? REVEAL_MS : FADE_MS)
 				.withEndAction(() -> transitionOverlay.setVisibility(GONE)).start();
 		if (!wasShowing) return;
 		Runnable l = coverHiddenListener;

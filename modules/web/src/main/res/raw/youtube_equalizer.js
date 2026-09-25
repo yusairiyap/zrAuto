@@ -358,7 +358,12 @@
     limiter.release.value = 0.25;
     reverbDry.connect(limiter);
     reverbWet.connect(limiter);
-    limiter.connect(ctx.destination);
+    // Last stage before the destination: a plain gain owned by youtube_fade.js (see fadeParam()
+    // below) for play/pause/switch fades. Once this element's audio is routed through Web Audio,
+    // ramping a gain here is sample-accurate and independent of the element's own volume.
+    const fade = ctx.createGain();
+    limiter.connect(fade);
+    fade.connect(ctx.destination);
 
     // None of the EQ/bass/virtualizer/reverb stages are connected to `source` (or each other) yet
     // -- every processing node here has a real, non-zero per-sample CPU cost once connected (the
@@ -366,7 +371,7 @@
     // silent output. rewireSpine()/applyToChain() below connect only the currently-enabled stages
     // into the active signal path, and only reconnect when the enabled set actually changes.
     return {video, ctx, source, bands, bass, splitter, merger, dryR, delay, wetR, wetL,
-            reverbDry, reverbWet, limiter, smoothReverb: null, convolutionReverb: null,
+            reverbDry, reverbWet, limiter, fade, smoothReverb: null, convolutionReverb: null,
             reverbEngineName: null, reverbConnected: false, reverbDuration: null,
             spineKey: null, tail: null};
   }
@@ -535,7 +540,7 @@
   function disconnectChain(chain) {
     const nodes = [chain.source, ...chain.bands, chain.bass, chain.splitter, chain.merger,
                     chain.dryR, chain.delay, chain.wetR, chain.wetL, chain.reverbDry,
-                    chain.reverbWet, chain.limiter];
+                    chain.reverbWet, chain.limiter, chain.fade];
     // Include every internal node of whichever reverb engine(s) were actually built for this
     // chain, not just their outer input/output boundary -- a comb/allpass's internal feedback
     // loop is otherwise left fully interconnected with itself, and while modern Web Audio
@@ -632,6 +637,20 @@
   }
 
   window.FermataEqualizer = {
+    // See buildChain()'s `fade` stage -- null for an element this script hasn't taken over, in
+    // which case youtube_fade.js falls back to the element's own volume.
+    fadeParam(video) {
+      const chain = state.chains.get(video);
+      return chain ? {ctx: chain.ctx, gain: chain.fade.gain} : null;
+    },
+
+    // Whether Live Hall is actually running on this element's audio -- youtube_fade.js lets its
+    // echo ring out on pause instead of fading everything (the tail included) to silence.
+    hasReverbTail(video) {
+      const cfg = state.config;
+      return !!state.chains.get(video) && cfg.reverbEnabled && (cfg.reverbStrength > 0);
+    },
+
     configure(config) {
       state.config = Object.assign({}, state.config, config);
       if (Array.isArray(config.bands)) state.config.bands = config.bands;

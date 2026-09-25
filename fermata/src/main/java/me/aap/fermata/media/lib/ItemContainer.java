@@ -93,7 +93,8 @@ public abstract class ItemContainer<C extends Item> extends BrowsableItemBase {
 
 			List<C> newChildren = new ArrayList<>(children.size() + 1);
 			newChildren.addAll(children);
-			newChildren.add(i);
+			if (addToTop()) newChildren.add(0, i);
+			else newChildren.add(i);
 			itemAdded(i);
 			setNewChildren(newChildren);
 			saveChildren(newChildren);
@@ -104,18 +105,25 @@ public abstract class ItemContainer<C extends Item> extends BrowsableItemBase {
 	public FutureSupplier<Void> addItems(List<C> items) {
 		return list().map(list -> {
 			List<C> newChildren = new ArrayList<>(list.size() + items.size());
-			boolean added = false;
-			newChildren.addAll(list);
+			List<C> added = new ArrayList<>(items.size());
 
 			for (C i : items) {
 				i = toChildItem(i);
-				if (list.contains(i)) continue;
-				newChildren.add(i);
+				if (list.contains(i) || added.contains(i)) continue;
+				added.add(i);
 				itemAdded(i);
-				added = true;
 			}
 
-			if (!added) return null;
+			if (added.isEmpty()) return null;
+
+			// Added as one block, keeping the selection's own order within it.
+			if (addToTop()) {
+				newChildren.addAll(added);
+				newChildren.addAll(list);
+			} else {
+				newChildren.addAll(list);
+				newChildren.addAll(added);
+			}
 
 			setNewChildren(newChildren);
 			saveChildren(newChildren);
@@ -165,6 +173,14 @@ public abstract class ItemContainer<C extends Item> extends BrowsableItemBase {
 	}
 
 	protected void itemAdded(C i) {
+	}
+
+	/**
+	 * Whether {@link #addItem}/{@link #addItems} insert new entries at the top of the list (most
+	 * recently added first) rather than appending them at the end.
+	 */
+	protected boolean addToTop() {
+		return false;
 	}
 
 	@CallSuper

@@ -65,6 +65,17 @@ public interface MediaEngine extends Closeable {
 
 	PlayableItem getSource();
 
+	/**
+	 * The library item "Add to favorites" (e.g. the FAB action, see {@code Action.FAVORITE_ADD})
+	 * should act on for whatever this engine is playing right now. Normally just {@link
+	 * #getSource()}; engines whose source is a synthetic placeholder rather than a real, persistable
+	 * item (YouTube's "current video" item) return the real item instead, or null if there is none.
+	 */
+	@Nullable
+	default PlayableItem getFavoritableItem() {
+		return getSource();
+	}
+
 	FutureSupplier<Long> getDuration();
 
 	FutureSupplier<Long> getPosition();

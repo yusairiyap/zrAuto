@@ -1,6 +1,7 @@
 package me.aap.utils.ui.view;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.recyclerview.widget.RecyclerView.ViewHolder;
@@ -25,6 +26,14 @@ public abstract class MovableRecyclerViewAdapter<VH extends ViewHolder>
 
 	protected boolean isItemViewSwipeEnabled() {
 		return true;
+	}
+
+	/** Called when an item starts being dragged (by a long press or {@code ItemTouchHelper#startDrag}). */
+	protected void onDragStarted(@NonNull ViewHolder vh) {
+	}
+
+	/** Called when the user releases an item after a drag or swipe gesture. */
+	protected void onDragEnded(@NonNull ViewHolder vh) {
 	}
 
 	public boolean isCallbackCall() {
@@ -68,6 +77,20 @@ public abstract class MovableRecyclerViewAdapter<VH extends ViewHolder>
 					isCallbackCall = false;
 					return false;
 				}
+			}
+
+			@Override
+			public void onSelectedChanged(@Nullable ViewHolder viewHolder, int actionState) {
+				super.onSelectedChanged(viewHolder, actionState);
+				if ((viewHolder != null) && (actionState == ItemTouchHelper.ACTION_STATE_DRAG)) {
+					MovableRecyclerViewAdapter.this.onDragStarted(viewHolder);
+				}
+			}
+
+			@Override
+			public void clearView(@NonNull RecyclerView recyclerView, @NonNull ViewHolder viewHolder) {
+				super.clearView(recyclerView, viewHolder);
+				MovableRecyclerViewAdapter.this.onDragEnded(viewHolder);
 			}
 
 			@Override

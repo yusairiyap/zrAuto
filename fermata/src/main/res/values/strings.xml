@@ -267,6 +267,10 @@
     <string name="programme_guide">Programme guide</string>
     <string name="favorites_add">Add to favorites</string>
     <string name="favorites_remove">Remove from favorites</string>
+    <string name="favorites_added">Added to favorites: %1$s</string>
+    <string name="favorites_already_added">Already in favorites: %1$s</string>
+    <string name="favorites_nothing_playing">Nothing is playing to add to favorites</string>
+    <string name="playlist_nothing_playing">Nothing is playing to add to a playlist</string>
     <string name="mark_watched">Mark as watched</string>
     <string name="mark_unwatched">Mark as unwatched</string>
     <string name="preferred_media_engine">Preferred media engine</string>
