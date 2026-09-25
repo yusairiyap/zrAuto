@@ -907,6 +907,11 @@ public class SettingsFragment extends MainActivityFragment
 			o.title = R.string.other;
 			o.icon = R.drawable.settings;
 		});
+		sub1.addButton(o -> {
+			o.title = R.string.spotify_import;
+			o.subtitle = R.string.spotify_import_sub;
+			o.onClick = () -> SpotifyImportFragment.open(a);
+		});
 		if (!a.isCarActivityNotMirror()) {
 			sub1.addButton(o -> {
 				o.title = R.string.export_prefs;

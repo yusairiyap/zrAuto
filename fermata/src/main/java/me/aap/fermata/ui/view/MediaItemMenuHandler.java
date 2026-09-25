@@ -280,6 +280,7 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 				b.addItem(R.id.favorites_add, R.drawable.favorite, R.string.favorites_add);
 
 				if ((bi instanceof Playlist)) {
+					b.addItem(R.id.playlist_rename, R.drawable.edit, R.string.playlist_rename).setData(bi);
 					b.addItem(R.id.playlist_remove, R.drawable.playlist_remove, R.string.playlist_remove)
 							.setData(bi);
 				}
@@ -540,6 +541,8 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 		} else if (id == R.id.playlist_remove) {
 			Playlist p = i.getData();
 			p.getParent().removeItems(Collections.singletonList(p));
+		} else if (id == R.id.playlist_rename) {
+			renamePlaylist(i.getData());
 		} else if (id == R.id.bookmark_remove_all_confirm) {
 			if ((item instanceof PlayableItem)) {
 				((PlayableItem) item).getPrefs().removePref(BOOKMARKS);
@@ -635,6 +638,20 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 
 	private Context getContext() {
 		return getMenu().getContext();
+	}
+
+	private void renamePlaylist(Playlist pl) {
+		Context ctx = getContext();
+		UiUtils.queryText(ctx, R.string.playlist_rename, R.drawable.edit, pl.getName())
+				.onSuccess(name -> {
+					if (name == null) return;
+					pl.rename(name).main()
+							.onFailure(err -> UiUtils.showAlert(ctx, err.getMessage()))
+							.onSuccess(v -> {
+								MediaLibFragment f = getMainActivity().getMediaLibFragment(R.id.playlists_fragment);
+								if (f != null) f.getAdapter().reload();
+							});
+				});
 	}
 
 	private MainActivityDelegate getMainActivity() {

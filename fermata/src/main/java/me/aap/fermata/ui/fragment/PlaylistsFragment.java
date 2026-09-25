@@ -11,6 +11,7 @@ import me.aap.fermata.media.pref.PlaylistPrefs;
 import me.aap.fermata.media.pref.PlaylistsPrefs;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.view.MediaItemMenuHandler;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.menu.OverlayMenuItem;
@@ -45,16 +46,35 @@ public class PlaylistsFragment extends MediaLibFragment {
 		super.contributeToNavBarMenu(builder);
 		PlaylistsAdapter a = getAdapter();
 
+		OverlayMenu.Builder b = builder.withSelectionHandler(this::navBarMenuItemSelected);
+
 		if (a.getListView().isSelectionActive() && a.hasSelected()) {
-			OverlayMenu.Builder b = builder.withSelectionHandler(this::navBarMenuItemSelected);
 			b.addItem(R.id.favorites_add, R.drawable.favorite, R.string.favorites_add);
 			b.addItem(R.id.playlist_remove_item, R.drawable.playlist_remove, R.string.playlist_remove_item);
+		}
+
+		b.addItem(R.id.spotify_import, R.drawable.playlist_import, R.string.spotify_import);
+	}
+
+	@Override
+	public void contributeToContextMenu(OverlayMenu.Builder builder, MediaItemMenuHandler handler) {
+		super.contributeToContextMenu(builder, handler);
+		// Long-pressing a playlist offers the import too, next to Rename/Remove.
+		if (handler.getItem() instanceof Playlist) {
+			builder.addItem(R.id.spotify_import, R.drawable.playlist_import, R.string.spotify_import)
+					.setHandler(i -> {
+						SpotifyImportFragment.open(getMainActivity());
+						return true;
+					});
 		}
 	}
 
 	public boolean navBarMenuItemSelected(OverlayMenuItem item) {
 		int itemId = item.getItemId();
-		if (itemId == R.id.playlist_remove_item) {
+		if (itemId == R.id.spotify_import) {
+			SpotifyImportFragment.open(getMainActivity());
+			return true;
+		} else if (itemId == R.id.playlist_remove_item) {
 			getMainActivity().removeFromPlaylist((Playlist) getAdapter().getParent(), getAdapter().getSelectedItems());
 			return true;
 		}

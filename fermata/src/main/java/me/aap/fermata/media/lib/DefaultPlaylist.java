@@ -2,6 +2,8 @@ package me.aap.fermata.media.lib;
 
 import static java.util.Objects.requireNonNull;
 import static me.aap.utils.async.Completed.completed;
+import static me.aap.utils.async.Completed.completedVoid;
+import static me.aap.utils.async.Completed.failed;
 import static me.aap.utils.collection.CollectionUtils.mapToArray;
 
 import android.content.Context;
@@ -71,6 +73,34 @@ class DefaultPlaylist extends ItemContainer<PlayableItem> implements Playlist, P
 	@Override
 	public String getName() {
 		return getPlaylistNamePref();
+	}
+
+	@Override
+	public FutureSupplier<Void> rename(CharSequence name) {
+		String n = name.toString().trim();
+		Context ctx = getLib().getContext();
+
+		if (n.isEmpty() || (n.indexOf('/') != -1)) {
+			String err = ctx.getResources().getString(R.string.err_invalid_playlist_name, n);
+			return failed(new IllegalArgumentException(err));
+		}
+
+		if (n.equals(getName())) return completedVoid();
+
+		return getParent().getUnsortedChildren().main().then(list -> {
+			for (Item i : list) {
+				if ((i != this) && (i instanceof Playlist) && n.equals(((Playlist) i).getName())) {
+					String err = ctx.getResources().getString(R.string.err_playlist_exists, n);
+					return failed(new IllegalArgumentException(err));
+				}
+			}
+
+			setPlaylistNamePref(n);
+			// buildTitle() reads the name pref, but the MediaDescription built from it is cached --
+			// drop it so the list shows the new name.
+			updateTitles();
+			return completedVoid();
+		});
 	}
 
 	public int getPlaylistId() {
