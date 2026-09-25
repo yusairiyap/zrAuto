@@ -78,8 +78,13 @@
                 android:textAppearance="?attr/textAppearanceCaption"
                 android:textColor="@android:color/white"
                 android:visibility="gone"
-                android:layout_marginStart="8dp"
+                android:layout_marginStart="6dp"
+                android:layout_marginEnd="6dp"
+                android:ellipsize="end"
+                app:layout_constrainedWidth="true"
                 app:layout_constraintBottom_toBottomOf="@id/si_check"
+                app:layout_constraintEnd_toStartOf="@id/si_search_more"
+                app:layout_constraintHorizontal_bias="0"
                 app:layout_constraintStart_toEndOf="@id/si_check"
                 app:layout_constraintTop_toTopOf="@id/si_check" />
 

@@ -51,7 +51,9 @@
             android:textColor="@android:color/white"
             android:visibility="gone"
             android:layout_gravity="bottom|start"
-            android:layout_margin="3dp" />
+            android:layout_margin="3dp"
+            android:ellipsize="end"
+            android:maxWidth="106dp" />
 
         <ProgressBar
             android:id="@+id/si_thumb_progress"

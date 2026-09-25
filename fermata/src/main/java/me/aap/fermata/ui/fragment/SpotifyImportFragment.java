@@ -1735,7 +1735,12 @@ public class SpotifyImportFragment extends MainActivityFragment {
 				h.thumbProgress.setVisibility((t.matchState == Track.MATCH_SEARCHING) ?
 						View.VISIBLE : View.GONE);
 			}
-			if (h.status != null) bindStatus(h.status, t);
+			if (h.status != null) {
+				// In a list row the small thumbnail's centred spinner already says "matching", and
+				// the badge would sit right on top of it; the grid card is big enough for both.
+				if (!grid && (t.matchState == Track.MATCH_SEARCHING)) h.status.setVisibility(View.GONE);
+				else bindStatus(h.status, t);
+			}
 
 			if (h.check != null) {
 				h.check.setVisibility(View.VISIBLE);
