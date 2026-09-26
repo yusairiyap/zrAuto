@@ -3,6 +3,7 @@ package me.aap.fermata.addon.web.yt;
 import static me.aap.fermata.media.pref.MediaPrefs.MEDIA_ENG_YT;
 import static me.aap.fermata.util.Utils.dynCtx;
 import static me.aap.utils.async.Completed.completed;
+import static me.aap.utils.async.Completed.completedVoid;
 
 import android.content.Context;
 import android.content.res.Resources;
@@ -37,6 +38,7 @@ import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.BrowsableItemPrefs;
 import me.aap.fermata.media.service.MediaSessionCallback;
+import me.aap.fermata.media.service.PlaybackResume;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
@@ -55,6 +57,8 @@ import me.aap.utils.vfs.generic.GenericFileSystem;
  */
 class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	private static final int VIDEO_QUALITY_MASK = 1 << 31;
+	/** Marks a quality menu item's data as a player API level name -- see videoQualityMenu(). */
+	private static final String QUALITY_LEVEL_PREFIX = "ytq:";
 	private static final String ID = "youtube";
 	private static final String CURRENT_ID = ID + ":current";
 	private static final String NEXT_ID = ID + ":next";
@@ -363,9 +367,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		}
 
 		// Playing as music (the Music tab): the lowest quality -- only the sound matters. Otherwise
-		// the highest, if the user asked for it.
+		// the user's preferred quality, if they set one.
 		boolean music = MusicPlayer.isYoutubeAudioMode();
-		if (!music && !web.getAddon().autoHighestQuality()) {
+		String preferred = web.getAddon().preferredQuality();
+		if (!music && (preferred == null)) {
 			qualityUrl = null;
 			if (!userQualityChecked) {
 				userQualityChecked = true;
@@ -373,11 +378,18 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			}
 		} else if (!url.isEmpty() && !url.equals(qualityUrl)) {
 			qualityUrl = url;
-			web.applyQualityPolicy(music);
+			web.applyQualityPolicy(music ? "lowest" : preferred);
 		}
 		DiagnosticLog.log("YT", "playing", "id=" + actualId, "title=" + currentVideoTitle);
 		cb.setEngine(this);
 		cb.onEngineStarted(this);
+
+		// Reopened where it was left off (see MainActivityDelegate#resumeLastPlayed()): the video is
+		// only to be loaded, ready to play, not played.
+		if ((actualId != null) && PlaybackResume.takePauseOnStart(YoutubeVideoItem.ID_PREFIX + actualId)) {
+			DiagnosticLog.log("YT", "resumed paused", "id=" + actualId);
+			web.post(cb::onPause);
+		}
 	}
 
 	/** See {@link #userPickedVideoId}. */
@@ -741,8 +753,9 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 */
 	void applyQuality() {
 		qualityUrl = null;
-		boolean music = MusicPlayer.isYoutubeAudioMode();
-		if (music || web.getAddon().autoHighestQuality()) web.applyQualityPolicy(music);
+		String preferred = web.getAddon().preferredQuality();
+		if (MusicPlayer.isYoutubeAudioMode()) web.applyQualityPolicy("lowest");
+		else if (preferred != null) web.applyQualityPolicy(preferred);
 		else web.clearQualityPolicy();
 	}
 
@@ -1030,6 +1043,61 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	private FutureSupplier<Void> videoQualityMenu(OverlayMenu.Builder b) {
 		b.setSelectionHandler(this);
+		// The player API first: it lists every level in and out of fullscreen. The page's own
+		// settings menu is only the fallback -- it can't be opened over fullscreen video, which left
+		// just "Auto" there.
+		return web.getPlayerQualities().timeout(1100).main()
+				.ifFail(err -> {
+					Log.e(err, "Failed to load player qualities");
+					return null;
+				})
+				.then(levels -> {
+					if ((levels != null) && !levels.isEmpty()) {
+						String[] all = levels.split(";");
+						for (int i = 0; i < all.length; i++) {
+							String l = all[i];
+							boolean checked = l.startsWith("*");
+							if (checked) l = l.substring(1);
+							b.addItem(UiUtils.getArrayItemId(i), null, qualityLabel(l)).setChecked(checked, true)
+									.setData(QUALITY_LEVEL_PREFIX + l);
+						}
+						return completedVoid();
+					}
+					return domVideoQualityMenu(b);
+				});
+	}
+
+	/** A player API quality level's name as the viewer knows it, e.g. "hd720" -> "720p". */
+	private String qualityLabel(String level) {
+		switch (level) {
+			case "auto":
+				return web.getContext().getString(me.aap.fermata.R.string.auto);
+			case "highres":
+				return "4320p";
+			case "hd2880":
+				return "2880p";
+			case "hd2160":
+				return "2160p";
+			case "hd1440":
+				return "1440p";
+			case "hd1080":
+				return "1080p";
+			case "hd720":
+				return "720p";
+			case "large":
+				return "480p";
+			case "medium":
+				return "360p";
+			case "small":
+				return "240p";
+			case "tiny":
+				return "144p";
+			default:
+				return level;
+		}
+	}
+
+	private FutureSupplier<Void> domVideoQualityMenu(OverlayMenu.Builder b) {
 		return web.getVideoQualities().timeout(1100).main()
 				.onFailure(err -> Log.e(err, "Failed to load video qualities"))
 				.map(qualities -> {
@@ -1079,6 +1147,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		} else if (itemId == me.aap.fermata.R.id.video_scaling_orig) {
 			web.setScale(VideoScale.NONE);
 			return true;
+		} else if ((item.getData() instanceof String l) && l.startsWith(QUALITY_LEVEL_PREFIX)) {
+			web.setPlayerQuality(l.substring(QUALITY_LEVEL_PREFIX.length()));
 		} else if (item.getData() instanceof Integer) {
 			int d = item.getData();
 			if ((d & VIDEO_QUALITY_MASK) != 0) web.setVideoQuality(d & ~VIDEO_QUALITY_MASK);
@@ -1153,6 +1223,22 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			this.title = title;
 			this.author = author;
 			this.videoId = videoId;
+		}
+
+		/**
+		 * Resumed as the Favorites/Playlist/Music queue entry it was started from, if that's what's
+		 * playing (so a Music tab track comes back as music), else as the bare video.
+		 */
+		@Nullable
+		@Override
+		public String getResumeId() {
+			if ((videoId == null) || videoId.isEmpty()) return null;
+			PlayableItem q = web.getAddon().getQueueItem();
+			if ((q != null) && videoId.equals(YoutubeVideoItem.extractYoutubeVideoId(q))) {
+				String id = q.getResumeId();
+				if (id != null) return id;
+			}
+			return YoutubeVideoItem.ID_PREFIX + videoId;
 		}
 
 		// The resource this item is built around is the <video> element's own currentSrc -- an opaque

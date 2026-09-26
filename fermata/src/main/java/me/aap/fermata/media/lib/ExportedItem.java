@@ -173,6 +173,13 @@ public class ExportedItem extends PlayableItemBase {
 		return orig.getId();
 	}
 
+	/** Resumed as this Favorites/Playlist entry, so next/prev carry on within its list. */
+	@Nullable
+	@Override
+	public String getResumeId() {
+		return ((orig != null) && (orig.getResumeId() != null)) ? getId() : null;
+	}
+
 	@Override
 	@NonNull
 	public Uri getLocation() {

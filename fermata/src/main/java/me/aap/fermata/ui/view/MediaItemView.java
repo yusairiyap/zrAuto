@@ -30,7 +30,9 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.View.OnLongClickListener;
 import android.view.ViewGroup;
+import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
+import android.view.animation.DecelerateInterpolator;
 import android.view.animation.RotateAnimation;
 import android.widget.CompoundButton;
 import android.widget.CompoundButton.OnCheckedChangeListener;
@@ -278,13 +280,16 @@ public class MediaItemView extends ConstraintLayout
 						Uri uri = md.getIconUri();
 
 						if ((uri != null) && !SCHEME_ANDROID_RESOURCE.equals(uri.getScheme())) {
+							// Set once the load turns out to be asynchronous (not already cached), so
+							// the thumbnail fades in when it arrives instead of popping in.
+							boolean[] async = {false};
 							FutureSupplier<Bitmap> loadIcon =
 									i.getLib().getBitmap(uri.toString(), true, true).main()
 											.onCompletion((bm, err) -> {
 												if (getItemWrapper() != w) return;
 
 												ImageView icon = getIcon();
-												icon.clearAnimation();
+												resetIconAnimation(icon);
 												cancelLoading();
 
 												if (bm != null) {
@@ -293,28 +298,22 @@ public class MediaItemView extends ConstraintLayout
 													icon.setScaleType(ImageView.ScaleType.CENTER_CROP);
 													icon.setImageTintList(null);
 													icon.setImageBitmap(bm);
+													if (async[0]) fadeInThumbnail(icon);
 												} else {
 													// No thumbnail: fall back to a small centered glyph instead of
 													// stretching it to fill the now much larger full-bleed icon view.
-													icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-													icon.setImageTintList(iconTint);
-													icon.setImageResource(i.getIcon());
+													setGlyph(icon, i);
 												}
 											});
 
 							if (!loadIcon.isDone()) {
+								async[0] = true;
 								ImageView icon = getIcon();
-								icon.clearAnimation();
-								icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-								icon.setImageTintList(iconTint);
-								icon.setImageResource(i.getIcon());
+								setGlyph(icon, i);
+								pulse(icon);
 							}
 						} else {
-							ImageView icon = getIcon();
-							icon.clearAnimation();
-							icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-							icon.setImageTintList(iconTint);
-							icon.setImageResource(i.getIcon());
+							setGlyph(getIcon(), i);
 							cancelLoading();
 						}
 					}
@@ -349,6 +348,7 @@ public class MediaItemView extends ConstraintLayout
 			// CENTER (not the icon's usual centerInside, restored wherever real content is set below/
 			// in load()) keeps this at its own small intrinsic size instead of being stretched up to
 			// fill the whole thumbnail area.
+			resetIconAnimation(icon);
 			icon.setScaleType(ImageView.ScaleType.CENTER);
 			rotate.setDuration(1000);
 			rotate.setRepeatCount(Animation.INFINITE);
@@ -356,12 +356,42 @@ public class MediaItemView extends ConstraintLayout
 			icon.startAnimation(rotate);
 			setSubtitleText(getContext().getText(R.string.loading));
 		} else {
-			icon.clearAnimation();
-			icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-			icon.setImageTintList(iconTint);
-			icon.setImageResource(i.getIcon());
+			setGlyph(icon, i);
 			setSubtitleText("");
 		}
+	}
+
+	/** The item's own small centered glyph, in place of a thumbnail. */
+	private void setGlyph(ImageView icon, Item i) {
+		resetIconAnimation(icon);
+		icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+		icon.setImageTintList(iconTint);
+		icon.setImageResource(i.getIcon());
+	}
+
+	/**
+	 * Stops whatever a previous bind left running on the icon: the loading spinner, the placeholder
+	 * pulse, or a thumbnail fade-in -- a recycled row must never show a half-faded icon.
+	 */
+	private static void resetIconAnimation(ImageView icon) {
+		icon.clearAnimation();
+		icon.animate().cancel();
+		icon.setAlpha(1f);
+	}
+
+	/** A soft breathing pulse on the placeholder glyph while its thumbnail is still loading. */
+	private static void pulse(ImageView icon) {
+		AlphaAnimation a = new AlphaAnimation(1f, 0.35f);
+		a.setDuration(700);
+		a.setRepeatMode(Animation.REVERSE);
+		a.setRepeatCount(Animation.INFINITE);
+		icon.startAnimation(a);
+	}
+
+	/** The thumbnail arrived after the row was shown (scrolling, app start): fade it in. */
+	private static void fadeInThumbnail(ImageView icon) {
+		icon.setAlpha(0f);
+		icon.animate().alpha(1f).setDuration(280).setInterpolator(new DecelerateInterpolator()).start();
 	}
 
 	/**

@@ -330,6 +330,16 @@ public interface MediaLib {
 
 		String getOrigId();
 
+		/**
+		 * The id to resume this item by after a restart (resolvable with {@link MediaLib#getItem(CharSequence)}), or
+		 * null if it can't be resumed. Library items are resumed by their own id; an external item
+		 * (YouTube, a Music tab track) only if it overrides this.
+		 */
+		@Nullable
+		default String getResumeId() {
+			return isExternal() ? null : getId();
+		}
+
 		@NonNull
 		default Uri getLocation() {
 			VirtualResource file = getResource();

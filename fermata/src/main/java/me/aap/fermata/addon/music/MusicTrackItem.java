@@ -105,6 +105,12 @@ public class MusicTrackItem extends ExtPlayable {
 		return (videoId != null) ? sourceId : getId();
 	}
 
+	/** Resumed as this queue entry, so a YouTube track comes back playing as music. */
+	@Override
+	public String getResumeId() {
+		return getId();
+	}
+
 	/**
 	 * The library item "Add to favorites" should act on for this track: the song it plays, never
 	 * this queue entry itself (which only exists in the queue). Null if that isn't resolvable yet

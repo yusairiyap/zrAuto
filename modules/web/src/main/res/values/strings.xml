@@ -16,6 +16,8 @@
     <string name="youtube_window_too_small">Window too small to play video — resize it larger to resume</string>
     <string name="open_on_start">Open on start</string>
     <string name="auto_highest_video_quality">Auto-select highest video quality</string>
+    <string name="preferred_video_quality">Preferred video quality</string>
+    <string name="video_quality_highest">Highest available</string>
     <string name="try_to_skip_ad">Try to skip advertising</string>
     <string name="sponsorblock" translatable="false">SponsorBlock</string>
     <string name="sponsorblock_sub">Skip crowd-sourced segments while watching YouTube.</string>

@@ -55,6 +55,9 @@
     <item name="nav_exit" type="id" />
     <item name="nav_select" type="id" />
     <item name="nav_open_on_start" type="id" />
+    <item name="nav_tab_move_up" type="id" />
+    <item name="nav_tab_move_down" type="id" />
+    <item name="nav_tab_visibility" type="id" />
     <item name="nav_select_all" type="id" />
     <item name="nav_unselect_all" type="id" />
 

@@ -21,6 +21,7 @@ import android.view.View;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 
+import androidx.annotation.DrawableRes;
 import androidx.annotation.IdRes;
 import androidx.annotation.Nullable;
 import androidx.core.text.HtmlCompat;
@@ -76,6 +77,9 @@ public class NavBarMediator extends PrefNavBarMediator
 			Pref.sa("NAV_BAR_ITEMS_L", (String[]) null);
 	private static final Pref<Supplier<String[]>> PREF_R =
 			Pref.sa("NAV_BAR_ITEMS_R", (String[]) null);
+	/** Names of the tabs hidden from the nav bar (Settings > Interface > Navigation tabs). */
+	private static final Pref<Supplier<String[]>> PREF_HIDDEN =
+			Pref.sa("NAV_BAR_HIDDEN", (String[]) null);
 
 	@Override
 	protected Collection<NavBarItem> getItems(NavBarView nb) {
@@ -85,7 +89,10 @@ public class NavBarMediator extends PrefNavBarMediator
 		AddonManager amgr = getAddonManager();
 		Context ctx = nb.getContext();
 
+		Set<String> hidden = getHiddenTabs(getPreferenceStore(nb));
+
 		for (String name : names) {
+			if (hidden.contains(name)) continue;
 			switch (name) {
 				case "folders":
 					items.add(
@@ -179,6 +186,13 @@ public class NavBarMediator extends PrefNavBarMediator
 	public void onAddonChanged(AddonManager mgr, AddonInfo info, boolean installed) {
 		NavBarView nb = navBar;
 		if (nb != null) reload(nb);
+	}
+
+	@Override
+	public void onPreferenceChanged(PreferenceStore store, List<Pref<?>> prefs) {
+		NavBarView nb = navBar;
+		if ((nb != null) && prefs.contains(PREF_HIDDEN) && !prefs.contains(getPref(nb))) reload(nb);
+		else super.onPreferenceChanged(store, prefs);
 	}
 
 	@Override
@@ -350,9 +364,13 @@ public class NavBarMediator extends PrefNavBarMediator
 	}
 
 	private Collection<String> getLayout(NavBarView nb) {
+		return getLayout(getPreferenceStore(nb), getPref(nb));
+	}
+
+	private static Collection<String> getLayout(PreferenceStore ps, Pref<Supplier<String[]>> p) {
 		AddonManager amgr = FermataApplication.get().getAddonManager();
 		Set<String> names = newLinkedHashSet(BuildConfig.ADDONS.length + 4);
-		String[] pref = getPreferenceStore(nb).getStringArrayPref(getPref(nb));
+		String[] pref = ps.getStringArrayPref(p);
 		CollectionUtils.addAll(names, pref);
 		names.add("folders");
 		names.add("favorites");
@@ -363,6 +381,85 @@ public class NavBarMediator extends PrefNavBarMediator
 		}
 		names.add("menu");
 		return names;
+	}
+
+	/**
+	 * The nav bar's tabs in their current order, hidden ones included, without the fixed trailing
+	 * Menu item -- for Settings > Interface > Navigation tabs. The bottom bar's order is the
+	 * reference; {@link #setTabOrder} applies one order to every bar position.
+	 */
+	public static List<String> getTabs(PreferenceStore ps) {
+		List<String> names = new ArrayList<>(getLayout(ps, PREF_B));
+		names.remove("menu");
+		AddonManager amgr = getAddonManager();
+		for (var it = names.iterator(); it.hasNext(); ) {
+			String n = it.next();
+			if ((nameToFragmentId(n) == 0) && !(amgr.getAddon(n) instanceof FermataFragmentAddon))
+				it.remove(); // A disabled/uninstalled addon's leftover entry
+		}
+		return names;
+	}
+
+	public static void setTabOrder(PreferenceStore ps, List<String> tabs) {
+		List<String> names = new ArrayList<>(tabs);
+		names.remove("menu");
+		names.add("menu");
+		String[] order = names.toArray(new String[0]);
+		try (PreferenceStore.Edit e = ps.editPreferenceStore()) {
+			e.setStringArrayPref(PREF_B, order);
+			e.setStringArrayPref(PREF_L, order);
+			e.setStringArrayPref(PREF_R, order);
+		}
+	}
+
+	public static Set<String> getHiddenTabs(PreferenceStore ps) {
+		Set<String> hidden = newLinkedHashSet(4);
+		CollectionUtils.addAll(hidden, ps.getStringArrayPref(PREF_HIDDEN));
+		hidden.remove("menu"); // Never hidden -- it's the way back to Settings
+		return hidden;
+	}
+
+	public static void setTabHidden(PreferenceStore ps, String name, boolean hide) {
+		Set<String> hidden = getHiddenTabs(ps);
+		if (hide ? !hidden.add(name) : !hidden.remove(name)) return;
+		ps.applyStringArrayPref(PREF_HIDDEN, hidden.toArray(new String[0]));
+	}
+
+	/** Back to the default tab order, with every tab shown. */
+	public static void resetTabs(PreferenceStore ps) {
+		try (PreferenceStore.Edit e = ps.editPreferenceStore()) {
+			e.removePref(PREF_B);
+			e.removePref(PREF_L);
+			e.removePref(PREF_R);
+			e.removePref(PREF_HIDDEN);
+		}
+	}
+
+	public static CharSequence getTabTitle(Context ctx, String name) {
+		switch (name) {
+			case "folders":
+				return ctx.getString(R.string.folders);
+			case "favorites":
+				return ctx.getString(R.string.favorites);
+			case "playlists":
+				return ctx.getString(R.string.playlists);
+		}
+		FermataAddon a = getAddonManager().getAddon(name);
+		return (a != null) ? ctx.getString(a.getInfo().addonName) : name;
+	}
+
+	@DrawableRes
+	public static int getTabIcon(String name) {
+		switch (name) {
+			case "folders":
+				return me.aap.utils.R.drawable.folder;
+			case "favorites":
+				return R.drawable.favorite_filled;
+			case "playlists":
+				return R.drawable.playlist;
+		}
+		FermataAddon a = getAddonManager().getAddon(name);
+		return (a != null) ? a.getInfo().icon : R.drawable.view_grid;
 	}
 
 	/**

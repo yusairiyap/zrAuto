@@ -478,6 +478,15 @@
     <string name="clock_pos_right">Right</string>
     <string name="clock_pos_center">Center</string>
     <string name="info_overlay_prefs">Info overlay</string>
+    <string name="err_open_app_to_resume">Open zrAuto to continue %1$s</string>
+    <string name="nav_tabs_prefs">Navigation tabs</string>
+    <string name="nav_tab_shown">Shown</string>
+    <string name="nav_tab_hidden">Hidden</string>
+    <string name="nav_tab_opens_on_start">Opens on start</string>
+    <string name="nav_tab_show">Show tab</string>
+    <string name="nav_tab_hide">Hide tab</string>
+    <string name="nav_tabs_reset">Reset to default</string>
+    <string name="nav_tabs_reset_sub">Default tab order, every tab shown</string>
     <string name="info_overlay_show_clock">Show clock</string>
     <string name="info_overlay_show_clock_icon">Show clock icon</string>
     <string name="info_overlay_show_battery_pct">Show battery percentage</string>
