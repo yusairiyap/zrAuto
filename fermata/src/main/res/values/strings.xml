@@ -30,6 +30,7 @@
     <string name="addon_name_cast" translatable="false">Google Cast</string>
     <string name="addon_name_chat" translatable="false">ChatGPT</string>
     <string name="addon_name_fuel_log">Fuel Log</string>
+    <string name="addon_name_music">Music</string>
     <string name="addon_name_translate" translatable="false">Language translator</string>
     <string name="addon_name_subgen" translatable="false">Subtitles generator</string>
     <string name="addon_name_whisper" translatable="false">Whisper</string>
@@ -268,6 +269,7 @@
     <string name="favorites_add">Add to favorites</string>
     <string name="favorites_remove">Remove from favorites</string>
     <string name="favorites_added">Added to favorites: %1$s</string>
+    <string name="favorites_removed">Removed from favorites: %1$s</string>
     <string name="favorites_already_added">Already in favorites: %1$s</string>
     <string name="favorites_nothing_playing">Nothing is playing to add to favorites</string>
     <string name="playlist_nothing_playing">Nothing is playing to add to a playlist</string>
@@ -494,6 +496,8 @@
     <string name="fab2_action">Tap action</string>
     <string name="fab3_enable">Show tertiary floating button</string>
     <string name="fab3_action">Tap action</string>
+    <string name="fab4_enable">Show fourth floating button</string>
+    <string name="fab4_action">Tap action</string>
     <string name="fab_draggable">Draggable</string>
     <string name="fab_draggable_sub">Let the floating buttons be dragged to a different position on screen</string>
     <string name="fab_size">Floating button size</string>
@@ -619,4 +623,33 @@
     <string name="fuel_log_yesterday">Yesterday</string>
     <string name="info_overlay_show_distance">Show distance travelled</string>
     <string name="info_overlay_show_distance_icon">Show distance icon</string>
+    <string name="music_title">Music</string>
+    <string name="music_queue">Music queue</string>
+    <string name="play_as_music">Play as music</string>
+    <string name="music_queue_add">Add into music queue</string>
+    <string name="music_up_next">Up next</string>
+    <string name="music_bg_blur">Background blur</string>
+    <string name="music_bg_zoom">Background zoom (%)</string>
+    <string name="music_queue_short">Queue</string>
+    <string name="music_queue_hide">Hide queue</string>
+    <string name="music_drag_reorder">Drag to reorder</string>
+    <string name="music_queue_empty">The music queue is empty. Long press a song, a favourite or a playlist and choose \"Play as music\" or \"Add into music queue\".</string>
+    <string name="music_nothing_playing">Nothing playing</string>
+    <string name="music_nothing_to_play">Nothing to play here</string>
+    <string name="music_cant_play_current">This can\'t be played as music</string>
+    <string name="music_shuffle">Shuffle</string>
+    <string name="music_repeat_off">Repeat off</string>
+    <string name="music_repeat_all">Repeat queue</string>
+    <string name="music_repeat_one">Repeat current song</string>
+    <string name="music_queue_clear">Clear queue</string>
+    <string name="music_effects_play_first">Start playing something to adjust its audio effects</string>
+    <string name="music_effects_unavailable">Audio effects aren\'t available for this playback</string>
+    <plurals name="music_queue_size">
+        <item quantity="one">%d song</item>
+        <item quantity="other">%d songs</item>
+    </plurals>
+    <plurals name="music_added_to_queue">
+        <item quantity="one">%d song added to the music queue</item>
+        <item quantity="other">%d songs added to the music queue</item>
+    </plurals>
 </resources>

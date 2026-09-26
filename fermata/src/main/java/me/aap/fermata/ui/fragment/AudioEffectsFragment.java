@@ -120,7 +120,9 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 				}
 			}
 
-			close(a);
+			// Posted: this also runs from onViewCreated(), i.e. while the transaction showing this
+			// fragment is still executing, and navigating away from inside it left a blank screen.
+			a.post(() -> close(a));
 		});
 	}
 

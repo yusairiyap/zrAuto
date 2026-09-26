@@ -173,6 +173,15 @@ public class MediaPlayerEngine extends MediaEngineBase
 	}
 
 	@Override
+	public boolean adoptSource(PlayableItem src) {
+		if ((source == null) || !source.getLocation().equals(src.getLocation())) return false;
+		source = src;
+		// Without a display surface MediaPlayer stops rendering (and, on NuPlayer, decoding) video.
+		if (!src.isVideo()) setVideoView(null);
+		return true;
+	}
+
+	@Override
 	public FutureSupplier<Long> getDuration() {
 		return completed((source == null) || !source.isSeekable() ? 0L : player.getDuration());
 	}

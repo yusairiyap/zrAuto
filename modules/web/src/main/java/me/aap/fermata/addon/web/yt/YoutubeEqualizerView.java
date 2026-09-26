@@ -24,12 +24,14 @@ import com.google.android.material.radiobutton.MaterialRadioButton;
 import java.util.List;
 import java.util.Locale;
 
+import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.utils.function.BooleanConsumer;
 import me.aap.utils.function.IntConsumer;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.pref.PreferenceStore.Pref;
 import me.aap.utils.pref.PreferenceView;
 import me.aap.utils.pref.PreferenceView.ListOpts;
+import me.aap.utils.ui.fragment.GenericFragment;
 
 /**
  * The YouTube-tab Equalizer/Bass Boost/Virtualizer/Live Hall reverb panel, shown full-screen
@@ -47,6 +49,45 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 	private YoutubeAddon addon;
 	@Nullable
 	private YoutubeWebView web;
+
+	/**
+	 * Shows the effects screen for the YouTube page {@code web}: its in-page equalizer, since
+	 * Android's effects can't reach a web page's audio. Used by the YouTube player's control panel
+	 * menu and by the Music tab's Effects button.
+	 */
+	static void show(YoutubeWebView web) {
+		MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a -> {
+			// Showing this as a fragment hides YoutubeFragment's own root view -- the same
+			// FragmentTransaction that shows this one briefly flips the still-playing YoutubeWebView's
+			// visibility to GONE (Fragment.hide() on the outgoing fragment) as part of that. Some
+			// devices' WebView/Chromium implementation treats that visibility flip as the page going
+			// into the background and auto-pauses the video as a side effect -- confirmed intermittent
+			// (device/timing-dependent) rather than a deterministic app-level pause call anywhere in
+			// this path. If it was actually playing going in, nudge it back once shortly after the
+			// transition settles, rather than silently leaving a UI-only navigation the user never
+			// asked to pause for. Harmless if nothing paused it: onPlay() on an already-playing video
+			// is a no-op.
+			boolean wasPlaying = a.getMediaSessionCallback().isPlaying();
+
+			if (!(a.showFragment(me.aap.utils.R.id.generic_fragment) instanceof GenericFragment f))
+				return;
+			f.setTitle(a.getContext().getString(me.aap.fermata.R.string.audio_effects));
+			f.setContentProvider(g -> {
+				YoutubeEqualizerView v = new YoutubeEqualizerView(g.getContext());
+				v.init(web);
+				g.addView(v, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+				// GenericFragment's root never insets itself against tool_bar/control_panel/nav_bar,
+				// so without this the first and last equalizer rows sit underneath them. Same call
+				// MediaItemListView and the Settings list make from their own constructors; this
+				// content is built by the caller instead, so it has to be requested here.
+				a.insetScrollableContent(v);
+			});
+
+			if (wasPlaying) a.postDelayed(() -> {
+				if (!a.getMediaSessionCallback().isPlaying()) a.getMediaSessionCallback().onPlay();
+			}, 500L);
+		});
+	}
 
 	public YoutubeEqualizerView(Context context) {
 		this(context, null);

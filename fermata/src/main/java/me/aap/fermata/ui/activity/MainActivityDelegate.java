@@ -9,6 +9,7 @@ import static androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.UNS
 import static android.provider.Settings.System.SCREEN_BRIGHTNESS;
 import static android.util.Base64.URL_SAFE;
 import static android.view.View.GONE;
+import static android.view.View.INVISIBLE;
 import static android.view.View.VISIBLE;
 import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
@@ -32,6 +33,8 @@ import static me.aap.fermata.ui.activity.MainActivityPrefs.FAB2_ACTION;
 import static me.aap.fermata.ui.activity.MainActivityPrefs.FAB2_ENABLED;
 import static me.aap.fermata.ui.activity.MainActivityPrefs.FAB3_ACTION;
 import static me.aap.fermata.ui.activity.MainActivityPrefs.FAB3_ENABLED;
+import static me.aap.fermata.ui.activity.MainActivityPrefs.FAB4_ACTION;
+import static me.aap.fermata.ui.activity.MainActivityPrefs.FAB4_ENABLED;
 import static me.aap.fermata.ui.activity.MainActivityPrefs.FAB_DRAGGABLE;
 import static me.aap.fermata.ui.activity.MainActivityPrefs.FAB_SIZE;
 import static me.aap.fermata.ui.activity.MainActivityPrefs.LOCALE;
@@ -93,6 +96,7 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.widget.ContentLoadingProgressBar;
 import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentManager;
 
 import com.google.android.material.color.MaterialColors;
 import com.google.android.material.textview.MaterialTextView;
@@ -117,6 +121,9 @@ import me.aap.fermata.addon.FermataActivityAddon;
 import me.aap.fermata.addon.FermataAddon;
 import me.aap.fermata.addon.FermataFragmentAddon;
 import me.aap.fermata.addon.MediaLibAddon;
+import me.aap.fermata.addon.music.MusicAddon;
+import me.aap.fermata.addon.music.MusicQueue;
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.engine.MediaEngineManager;
 import me.aap.fermata.media.lib.AtvInterface;
 import me.aap.fermata.media.lib.DefaultMediaLib;
@@ -148,6 +155,7 @@ import me.aap.fermata.ui.fragment.SubtitlesFragment;
 import me.aap.fermata.ui.fragment.YoutubeAlternativesFragment;
 import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.ui.view.ControlPanelView;
+import me.aap.fermata.ui.view.QuaternaryFloatingButton;
 import me.aap.fermata.ui.view.SecondaryFloatingButton;
 import me.aap.fermata.ui.view.TertiaryFloatingButton;
 import me.aap.fermata.ui.view.VideoView;
@@ -194,7 +202,10 @@ public class MainActivityDelegate extends ActivityDelegate
 	private FloatingButton floatingButton;
 	private SecondaryFloatingButton floatingButton2;
 	private TertiaryFloatingButton floatingButton3;
+	private QuaternaryFloatingButton floatingButton4;
 	private ContentLoadingProgressBar progressBar;
+	// See setOverlaysSuppressed().
+	private boolean loadingSuppressed;
 	private FutureSupplier<?> contentLoading;
 	// Belt-and-suspenders re-sync for insetScrollableContent(): its own attach/layout listeners
 	// cover the common case, but a tab restored by the fragment manager while switching
@@ -745,6 +756,11 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	@Nullable
+	public QuaternaryFloatingButton getFloatingButton4() {
+		return floatingButton4;
+	}
+
+	@Nullable
 	public VideoView getActiveVideoView() {
 		return activeVideoView;
 	}
@@ -864,6 +880,7 @@ public class MainActivityDelegate extends ActivityDelegate
 
 		updateSecondaryFabVisibility();
 		updateTertiaryFabVisibility();
+		updateQuaternaryFabVisibility();
 		fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 	}
 
@@ -996,9 +1013,23 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	private final int[] insetLoc1 = new int[2];
 	private final int[] insetLoc2 = new int[2];
+	private final int[] insetOut = new int[2];
 
 	private void applyContentInsets(ViewGroup content) {
-		if ((toolBar == null) || (controlPanel == null) || !content.isAttachedToWindow()) return;
+		if (!computeContentInsets(content, insetOut)) return;
+		int top = insetOut[0];
+		int bottom = insetOut[1];
+		if ((content.getPaddingTop() == top) && (content.getPaddingBottom() == bottom)) return;
+		content.setPadding(content.getPaddingLeft(), top, content.getPaddingRight(), bottom);
+	}
+
+	/**
+	 * The top and bottom padding {@code content} needs, right now, to clear tool_bar and the bottom
+	 * bars drawn over it, into {@code out[0]} and {@code out[1]} -- see
+	 * {@link #insetScrollableContent}. False if it can't tell yet (not attached).
+	 */
+	public boolean computeContentInsets(View content, int[] out) {
+		if ((toolBar == null) || (controlPanel == null) || !content.isAttachedToWindow()) return false;
 
 		content.getLocationOnScreen(insetLoc1);
 		int contentTop = insetLoc1[1];
@@ -1012,7 +1043,9 @@ public class MainActivityDelegate extends ActivityDelegate
 		// layout's own constraints), but control_panel is routinely GONE while just browsing (nothing
 		// playing), in which case nav_bar alone still needs clearing if it's the bottom-positioned one.
 		int bottom = 0;
-		if (controlPanel.getVisibility() == VISIBLE) {
+		// A suppressed panel (the Music tab) doesn't count even while it's still showing, e.g. until
+		// the video mode it was left in ends: it's about to go, and the content is laid out without it.
+		if ((controlPanel.getVisibility() == VISIBLE) && !controlPanel.isSuppressed()) {
 			controlPanel.getLocationOnScreen(insetLoc2);
 			bottom = Math.max(bottom, Math.max(0, contentBottom - insetLoc2[1]));
 		}
@@ -1022,8 +1055,9 @@ public class MainActivityDelegate extends ActivityDelegate
 			bottom = Math.max(bottom, Math.max(0, contentBottom - insetLoc2[1]));
 		}
 
-		if ((content.getPaddingTop() == top) && (content.getPaddingBottom() == bottom)) return;
-		content.setPadding(content.getPaddingLeft(), top, content.getPaddingRight(), bottom);
+		out[0] = top;
+		out[1] = bottom;
+		return true;
 	}
 
 	/**
@@ -1080,8 +1114,10 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * (theme or nav-bar-position change) can end up missing the one layout event it needed; called
 	 * from a handful of extra points (a global layout pass, activity resume) as a cheap catch-all --
 	 * {@link #applyContentInsets}/{@link #applyWebViewTopInset} already no-op when nothing changed.
+	 * Also called by {@code ControlPanelView} when the Music tab hides it, so the content's padding
+	 * follows in the same frame instead of one layout pass later.
 	 */
-	private void refreshContentInsets() {
+	public void refreshContentInsets() {
 		for (ViewGroup content : paddingInsetContent) applyContentInsets(content);
 		for (View content : topInsetContent) applyWebViewTopInset(content);
 	}
@@ -1132,7 +1168,7 @@ public class MainActivityDelegate extends ActivityDelegate
 
 		progressBar.hide();
 		if (contentLoading.isDone()) return;
-		progressBar.show();
+		if (!loadingSuppressed) progressBar.show();
 
 		var cl = this.contentLoading = contentLoading.main();
 		cl.onCompletion((r, f) -> {
@@ -1168,6 +1204,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		ActivityFragment f = super.showFragment(id, input);
 		updateSecondaryFabVisibility();
 		updateTertiaryFabVisibility();
+		updateQuaternaryFabVisibility();
 		return f;
 	}
 
@@ -1207,6 +1244,53 @@ public class MainActivityDelegate extends ActivityDelegate
 		return (f instanceof MainActivityFragment) ? (MainActivityFragment) f : null;
 	}
 
+	/**
+	 * Creates the fragment with this id, if it doesn't exist yet, without showing it: it's laid out
+	 * once, invisibly, at the full size of the frame, then hidden like any other tab that isn't on
+	 * screen. For a tab whose content has to exist before the user ever opens it, e.g. the YouTube
+	 * tab's page, which the Music tab plays through.
+	 */
+	@Nullable
+	public ActivityFragment preloadFragment(int id) {
+		ActivityFragment f = getFragment(id);
+		if (f != null) return f;
+		ActivityFragment created = createFragment(id);
+		FragmentManager fm = getSupportFragmentManager();
+		fm.beginTransaction().add(getFrameContainerId(), created).commitNow();
+		View v = created.getView();
+
+		if (v == null) {
+			fm.beginTransaction().hide(created).commitNowAllowingStateLoss();
+			return created;
+		}
+
+		v.setVisibility(INVISIBLE);
+		v.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+			@Override
+			public void onLayoutChange(View view, int l, int t, int r, int b, int ol, int ot, int or,
+																 int ob) {
+				if ((r == l) || (b == t)) return;
+				view.removeOnLayoutChangeListener(this);
+				view.post(() -> {
+					if (!created.isAdded() || created.isHidden()) return;
+					if (getActiveFragment() == created) view.setVisibility(VISIBLE);
+					else fm.beginTransaction().hide(created).commitNowAllowingStateLoss();
+				});
+			}
+		});
+		return created;
+	}
+
+	/** The fragment with this id if it's been created (shown at least once), else null. */
+	@Nullable
+	public ActivityFragment getFragment(int id) {
+		for (Fragment f : getSupportFragmentManager().getFragments()) {
+			if ((f instanceof ActivityFragment af) && (af.getFragmentId() == id)) return af;
+		}
+
+		return null;
+	}
+
 	@Nullable
 	public MediaLibFragment getMediaLibFragment(int id) {
 		for (Fragment f : getSupportFragmentManager().getFragments()) {
@@ -1224,6 +1308,10 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	public FutureSupplier<Boolean> goToCurrent() {
 		PlayableItem pi = getMediaServiceBinder().getCurrentItem();
+		if ((pi instanceof MusicTrackItem) && (MusicAddon.get() != null)) {
+			showFragment(R.id.music_addon);
+			return completed(true);
+		}
 		return ((pi == null) || (pi.isExternal())) ?
 				getLib().getLastPlayedItem().main().map(this::goToItem) : completed(goToItem(pi));
 	}
@@ -1242,6 +1330,9 @@ public class MainActivityDelegate extends ActivityDelegate
 			showFragment(R.id.favorites_fragment);
 		} else if (root instanceof MediaLib.Playlists) {
 			showFragment(R.id.playlists_fragment);
+		} else if (root instanceof MusicQueue) {
+			showFragment(R.id.music_addon);
+			return true;
 		} else if (root instanceof ExtRoot) {
 			if ("youtube".equals(root.getId())) {
 				showFragment(R.id.youtube_fragment);
@@ -1587,6 +1678,8 @@ public class MainActivityDelegate extends ActivityDelegate
 		floatingButton2.setScale(getPrefs().getFabSizePref());
 		floatingButton3 = a.findViewById(R.id.floating_button3);
 		floatingButton3.setScale(getPrefs().getFabSizePref());
+		floatingButton4 = a.findViewById(R.id.floating_button4);
+		floatingButton4.setScale(getPrefs().getFabSizePref());
 		updateFabDraggable();
 		controlPanel.bind(getMediaServiceBinder());
 		enableBodyOverlayLayout();
@@ -1647,6 +1740,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			if (floatingButton != null) floatingButton.setScale(getPrefs().getFabSizePref());
 			if (floatingButton2 != null) floatingButton2.setScale(getPrefs().getFabSizePref());
 			if (floatingButton3 != null) floatingButton3.setScale(getPrefs().getFabSizePref());
+			if (floatingButton4 != null) floatingButton4.setScale(getPrefs().getFabSizePref());
 		} else if (MainActivityPrefs.hasNavBarSizePref(this, prefs)) {
 			if (navBar != null) navBar.setSize(getPrefs().getNavBarSizePref(this));
 		} else if (MainActivityPrefs.hasToolBarSizePref(this, prefs)) {
@@ -1707,6 +1801,10 @@ public class MainActivityDelegate extends ActivityDelegate
 			updateTertiaryFabVisibility();
 		} else if (prefs.contains(FAB3_ACTION)) {
 			if (floatingButton3 != null) fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
+		} else if (prefs.contains(FAB4_ENABLED)) {
+			updateQuaternaryFabVisibility();
+		} else if (prefs.contains(FAB4_ACTION)) {
+			if (floatingButton4 != null) fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 		} else if (prefs.contains(FAB_DRAGGABLE)) {
 			updateFabDraggable();
 		}
@@ -1717,6 +1815,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (floatingButton != null) floatingButton.setDraggable(draggable);
 		if (floatingButton2 != null) floatingButton2.setDraggable(draggable);
 		if (floatingButton3 != null) floatingButton3.setDraggable(draggable);
+		if (floatingButton4 != null) floatingButton4.setDraggable(draggable);
 
 		// Previously a dragged FAB only snapped back to its default layout position on the next app
 		// restart (a fresh Activity/View never picked up the leftover drag translation to begin
@@ -1725,12 +1824,38 @@ public class MainActivityDelegate extends ActivityDelegate
 			resetFabPosition(floatingButton);
 			resetFabPosition(floatingButton2);
 			resetFabPosition(floatingButton3);
+			resetFabPosition(floatingButton4);
 		}
 	}
 
 	private static void resetFabPosition(@Nullable FloatingButton fb) {
 		if (fb == null) return;
 		fb.animate().translationX(0f).translationY(0f).setDuration(200L).start();
+	}
+
+	/**
+	 * Hides what's normally drawn over the content (the control panel, every floating button and
+	 * the content loading indicator) while a screen with its own controls and loading indicator
+	 * (the Music tab) shows.
+	 */
+	public void setOverlaysSuppressed(boolean suppressed) {
+		ControlPanelView cp = getControlPanel();
+		if (cp != null) cp.setSuppressed(suppressed);
+		loadingSuppressed = suppressed;
+		if (progressBar != null) {
+			if (suppressed) progressBar.hide();
+			else if (contentLoading != null) progressBar.show();
+		}
+		// The primary one first: the others may mirror its visibility.
+		if (floatingButton != null) floatingButton.setSuppressed(suppressed);
+		if (floatingButton2 != null) floatingButton2.setSuppressed(suppressed);
+		if (floatingButton3 != null) floatingButton3.setSuppressed(suppressed);
+		if (floatingButton4 != null) floatingButton4.setSuppressed(suppressed);
+		if (suppressed) return;
+		// Whatever the others mirrored while suppressed is stale.
+		updateSecondaryFabVisibility();
+		updateTertiaryFabVisibility();
+		updateQuaternaryFabVisibility();
 	}
 
 	private void updateSecondaryFabVisibility() {
@@ -1762,6 +1887,20 @@ public class MainActivityDelegate extends ActivityDelegate
 			floatingButton3.setVisibility(floatingButton.getVisibility());
 		} else {
 			floatingButton3.setVisibility(isWebBrowserActive() ? VISIBLE : GONE);
+		}
+	}
+
+	private void updateQuaternaryFabVisibility() {
+		if (floatingButton4 == null) return;
+		if (!getPrefs().getBooleanPref(FAB4_ENABLED)) {
+			floatingButton4.setVisibility(GONE);
+			return;
+		}
+
+		if (isVideoMode()) {
+			floatingButton4.setVisibility(floatingButton.getVisibility());
+		} else {
+			floatingButton4.setVisibility(isWebBrowserActive() ? VISIBLE : GONE);
 		}
 	}
 

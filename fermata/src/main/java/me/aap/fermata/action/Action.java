@@ -24,6 +24,7 @@ import java.util.List;
 
 import me.aap.fermata.BuildConfig;
 import me.aap.fermata.R;
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.service.MediaSessionCallback;
@@ -86,8 +87,10 @@ public enum Action {
 	PRIVATE_MODE_TOGGLE(R.string.action_private_mode_toggle, a(a ->
 			a.getPrefs().setPrivateModeEnabled(!a.getPrefs().isPrivateModeEnabled()))),
 	REFUEL(R.string.action_refuel, a(me.aap.fermata.addon.fuel.FuelRefuelDialog::show)),
-	FAVORITE_ADD(R.string.favorites_add, a(Action::addCurrentToFavorites)),
+	FAVORITE_ADD(R.string.favorites_add, a(Action::toggleCurrentFavorite)),
 	PLAYLIST_ADD(R.string.playlist_add, a(Action::addCurrentToPlaylist)),
+	PLAY_AS_MUSIC(R.string.play_as_music,
+			a(me.aap.fermata.addon.music.MusicPlayer::playCurrentAsMusic)),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));
@@ -121,7 +124,10 @@ public enum Action {
 	public static PlayableItem getFavoritableItem(MainActivityDelegate a) {
 		MediaSessionCallback cb = a.getMediaSessionCallback();
 		MediaEngine eng = cb.getEngine();
-		return (eng != null) ? eng.getFavoritableItem() : cb.getCurrentItem();
+		PlayableItem pi = (eng != null) ? eng.getFavoritableItem() : cb.getCurrentItem();
+		// A Music-tab track is only a queue entry: favourite the song it plays instead.
+		if (pi instanceof MusicTrackItem t) pi = t.getFavoritableItem();
+		return pi;
 	}
 
 	/** Shared by the FAB icons: whether {@link #getFavoritableItem} is already a favorite. */
@@ -130,19 +136,31 @@ public enum Action {
 		return (pi != null) && pi.isFavoriteItem();
 	}
 
-	private static void addCurrentToFavorites(MainActivityDelegate a) {
+	private static void toggleCurrentFavorite(MainActivityDelegate a) {
 		Context ctx = a.getContext();
 		PlayableItem pi = getFavoritableItem(a);
 		if (pi == null) {
 			UiUtils.showToast(ctx, R.string.favorites_nothing_playing);
 			return;
 		}
+		MediaSessionCallback cb = a.getMediaSessionCallback();
+
+		// Toggles: already a favourite means this removes it (the FAB icon and menu label say so).
 		if (pi.isFavoriteItem()) {
-			UiUtils.showToast(ctx, R.string.favorites_already_added, pi.getName());
+			FutureSupplier<Void> removed;
+			if (pi == cb.getCurrentItem()) {
+				cb.favoriteAddRemove(false);
+				removed = completedVoid();
+			} else {
+				removed = pi.getLib().getFavorites().removeItem(pi);
+			}
+			removed.main().onSuccess(v -> {
+				UiUtils.showToast(ctx, R.string.favorites_removed, pi.getName());
+				a.fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
+			});
 			return;
 		}
 
-		MediaSessionCallback cb = a.getMediaSessionCallback();
 		// The session's own current item goes through the callback so its Android Auto/notification
 		// "favorite" custom action flips to match; anything else (YouTube's real video item behind its
 		// placeholder) is added straight to the library.

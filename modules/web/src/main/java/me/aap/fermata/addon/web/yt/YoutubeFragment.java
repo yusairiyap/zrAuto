@@ -27,6 +27,7 @@ import java.util.Set;
 
 import me.aap.fermata.BuildConfig;
 import me.aap.fermata.addon.AddonManager;
+import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.web.FermataChromeClient;
 import me.aap.fermata.addon.web.FermataWebView;
 import me.aap.fermata.addon.web.R;
@@ -42,6 +43,7 @@ import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.ui.UiUtils;
+import me.aap.utils.ui.fragment.ActivityFragment;
 import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.menu.OverlayMenuItem;
 import me.aap.utils.ui.view.ToolBarView;
@@ -531,11 +533,31 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		if (v != null) v.loadUrl(url);
 	}
 
+	/**
+	 * Shown by the user: whatever plays here is being watched, so music mode ends and the video
+	 * gets its usual quality back.
+	 */
+	@Override
+	public void switchingFrom(@Nullable ActivityFragment currentFragment) {
+		super.switchingFrom(currentFragment);
+		MusicPlayer.setYoutubeAudioMode(false);
+	}
+
+	/** Shows what this tab's page is playing as fullscreen video (the Music tab's "Video"). */
+	void enterVideoFullScreen() {
+		if (isHidden() || MusicPlayer.isYoutubeAudioMode()) return;
+		FermataWebView v = getWebView();
+		FermataChromeClient chrome = (v != null) ? v.getWebChromeClient() : null;
+		if ((chrome != null) && !DEFAULT_URLS.contains(getUrl())) chrome.enterFullScreen();
+	}
+
 	@Override
 	public void onPlayableChanged(MediaLib.PlayableItem oldItem, MediaLib.PlayableItem newItem) {
 		if (isHidden()) return;
 
 		if (YoutubeMediaEngine.isYoutubeItem(newItem)) {
+			// Playing as music: no fullscreen video.
+			if (MusicPlayer.isYoutubeAudioMode()) return;
 			FermataWebView v = getWebView();
 			MainActivityDelegate a = MainActivityDelegate.get(getContext());
 			if (v == null) return;

@@ -19,11 +19,15 @@ import me.aap.fermata.addon.AddonInfo;
 import me.aap.fermata.addon.FermataAddon;
 import me.aap.fermata.addon.MediaLibAddon;
 import me.aap.fermata.addon.VideoTitleCache;
+import me.aap.fermata.addon.music.MusicPlayer;
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.WebBrowserAddon;
+import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.DefaultMediaLib;
 import me.aap.fermata.media.lib.MediaLib.Item;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
+import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.function.BooleanSupplier;
@@ -100,6 +104,63 @@ public class YoutubeAddon extends WebBrowserAddon
 	// once playing() confirms a match, or after it gives up correcting toward it.
 	@Nullable
 	private String pendingVideoId;
+
+	public YoutubeAddon() {
+		// Lets the Music tab play YouTube in this addon's own player -- see MusicHooks.
+		MusicPlayer.setYoutubeHooks(new MusicHooks());
+	}
+
+	/**
+	 * The Music tab plays its YouTube tracks in this addon's player, with the video held at its
+	 * lowest quality (see {@link YoutubeMediaEngine#applyQuality()}), and the music queue as the
+	 * player's queue -- so next/prev, the crossfade between songs and the switch to video are all
+	 * exactly YouTube's own.
+	 */
+	private final class MusicHooks implements MusicPlayer.YoutubeHooks {
+		@Override
+		public boolean play(MainActivityDelegate a, MusicTrackItem t) {
+			String videoId = t.getVideoId();
+			if ((videoId == null) || !(a.getLib() instanceof DefaultMediaLib lib)) return false;
+			YoutubeVideoItem video = new YoutubeVideoItem(videoId, getRootItem(lib));
+			ActivityFragment f = a.getFragment(getFragmentId());
+
+			// Never opened yet: its page is created (and laid out, YouTube won't play in a zero-size
+			// window) without showing the tab.
+			if (f == null) f = a.preloadFragment(getFragmentId());
+			if (f == null) return false;
+
+			video.loadInFragment(f, t);
+			return true;
+		}
+
+		@Override
+		public void showVideo(MainActivityDelegate a) {
+			// The video keeps playing through the tab switch, so nothing else would take it
+			// fullscreen (see YoutubeFragment#onPlayableChanged): done once the tab is showing.
+			if (a.showFragment(getFragmentId()) instanceof YoutubeFragment f) {
+				a.post(f::enterVideoFullScreen);
+			}
+		}
+
+		@Override
+		public boolean showEffects(MainActivityDelegate a) {
+			if (!(a.getFragment(getFragmentId()) instanceof YoutubeFragment f)) return false;
+			YoutubeWebView web = f.getWebView();
+			if (web == null) return false;
+			YoutubeEqualizerView.show(web);
+			return true;
+		}
+
+		@Override
+		public void setQueueItem(PlayableItem item) {
+			YoutubeAddon.this.setQueueItem(item);
+		}
+
+		@Override
+		public void applyQuality(@Nullable MediaEngine eng) {
+			if (eng instanceof YoutubeMediaEngine yt) yt.applyQuality();
+		}
+	}
 
 	@Nullable
 	PlayableItem getQueueItem() {
@@ -260,6 +321,7 @@ public class YoutubeAddon extends WebBrowserAddon
 
 	@Override
 	public void uninstall() {
+		MusicPlayer.setYoutubeHooks(null);
 		getPreferenceStore().removeBroadcastListener(this);
 		MainActivityPrefs.get().removeBroadcastListener(this);
 		FermataApplication.get().getPreferenceStore().removeBroadcastListener(this);

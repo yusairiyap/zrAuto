@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Music tab's "Up next" queue: a card sliding up over the player. Tap a song to play it, drag the handle to reorder, swipe a row away to remove it, drag the panel's top to close it. -->
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/music_queue_panel"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:layout_gravity="bottom"
+    android:layout_marginStart="8dp"
+    android:layout_marginEnd="8dp"
+    android:visibility="gone"
+    app:cardBackgroundColor="?attr/musicPanelFill"
+    app:cardCornerRadius="24dp"
+    app:cardElevation="24dp"
+    app:strokeWidth="0dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <!-- The grip and the header are the drag handle: dragging them down (portrait) or to the
+             left (landscape) closes the panel, see MusicPlayerFragment. -->
+        <FrameLayout
+            android:id="@+id/music_queue_grip"
+            android:layout_width="match_parent"
+            android:layout_height="16dp">
+
+            <View
+                android:layout_width="36dp"
+                android:layout_height="4dp"
+                android:layout_gravity="center"
+                android:background="@drawable/music_queue_grip" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:id="@+id/music_queue_header"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="20dp"
+            android:paddingEnd="8dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/music_up_next"
+                    android:textColor="?attr/musicTextPrimary"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/music_queue_count"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="?attr/musicTextTertiary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/music_queue_clear"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/music_queue_clear"
+                android:src="@drawable/delete"
+                android:tint="?attr/musicIconPrimary" />
+
+            <ImageButton
+                android:id="@+id/music_queue_close"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/music_queue_hide"
+                android:rotation="90"
+                android:src="@drawable/chevron_right"
+                android:tint="?attr/musicIconPrimary" />
+        </LinearLayout>
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/music_queue_list"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:paddingBottom="16dp" />
+
+            <TextView
+                android:id="@+id/music_queue_empty"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:padding="32dp"
+                android:text="@string/music_queue_empty"
+                android:textColor="?attr/musicTextSecondary"
+                android:textSize="15sp"
+                android:visibility="gone" />
+        </FrameLayout>
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

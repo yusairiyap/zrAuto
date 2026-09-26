@@ -84,17 +84,6 @@ public class VideoView extends FrameLayout
 	private final Set<PreferenceStore.Pref<?>> prefChange = new HashSet<>(
 			Arrays.asList(MediaPrefs.VIDEO_SCALE, MediaPrefs.AUDIO_DELAY, MediaPrefs.AUDIO_DELAY_AA,
 					MediaPrefs.SUB_DELAY));
-	private static final Set<PreferenceStore.Pref<?>> infoOverlayPrefChange = new HashSet<>(
-			Arrays.asList(MainActivityPrefs.CLOCK_POS, MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK,
-					MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK_ICON,
-					MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_PCT,
-					MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_ICON,
-					MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_TEMP,
-					MainActivityPrefs.INFO_OVERLAY_SHOW_TEMP_ICON,
-					MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE,
-					MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE_ICON,
-					MainActivityPrefs.INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE,
-					MainActivityPrefs.INFO_OVERLAY_SIZE));
 	private SubDrawer subDrawer;
 	private FutureSupplier<?> createSurface = new Promise<>();
 	private View dimOverlay;
@@ -590,7 +579,7 @@ public class VideoView extends FrameLayout
 
 	@Override
 	public void onPreferenceChanged(PreferenceStore store, List<PreferenceStore.Pref<?>> prefs) {
-		if (!Collections.disjoint(infoOverlayPrefChange, prefs)) refreshInfoOverlay();
+		if (!Collections.disjoint(MainActivityPrefs.INFO_OVERLAY_PREFS, prefs)) refreshInfoOverlay();
 
 		if (createSurface.isDone() && !Collections.disjoint(prefChange, prefs)) {
 			MainActivityDelegate a = getActivity().peek();

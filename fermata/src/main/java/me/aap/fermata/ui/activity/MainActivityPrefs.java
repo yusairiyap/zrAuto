@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import me.aap.fermata.action.Action;
 import me.aap.utils.event.EventBroadcaster;
@@ -90,12 +91,14 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> LANDSCAPE_VIDEO = Pref.b("LANDSCAPE_VIDEO", false);
 	Pref<BooleanSupplier> CHANGE_BRIGHTNESS = Pref.b("CHANGE_BRIGHTNESS", false);
 	Pref<IntSupplier> BRIGHTNESS = Pref.i("BRIGHTNESS", 255);
-	// All three FABs (primary + secondary + tertiary) are available out of the box: FAB2 defaults
-	// to the fullscreen toggle, FAB3 to the dim-screen toggle.
+	// All four FABs (primary + secondary + tertiary + fourth) are available out of the box: FAB2
+	// defaults to the fullscreen toggle, FAB3 to the dim-screen toggle, FAB4 to add to favourites.
 	Pref<BooleanSupplier> FAB2_ENABLED = Pref.b("FAB2_ENABLED", true);
 	Pref<IntSupplier> FAB2_ACTION = Pref.i("FAB2_ACTION", Action.FULLSCREEN_TOGGLE.ordinal());
 	Pref<BooleanSupplier> FAB3_ENABLED = Pref.b("FAB3_ENABLED", true);
 	Pref<IntSupplier> FAB3_ACTION = Pref.i("FAB3_ACTION", Action.DIM_TOGGLE.ordinal());
+	Pref<BooleanSupplier> FAB4_ENABLED = Pref.b("FAB4_ENABLED", true);
+	Pref<IntSupplier> FAB4_ACTION = Pref.i("FAB4_ACTION", Action.FAVORITE_ADD.ordinal());
 	Pref<BooleanSupplier> FAB_DRAGGABLE = Pref.b("FAB_DRAGGABLE", true);
 	Pref<DoubleSupplier> FAB_SIZE = Pref.f("FAB_SIZE", 1f);
 	Pref<BooleanSupplier> DIM_ENABLED = Pref.b("DIM_ENABLED", false);
@@ -157,6 +160,12 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DISTANCE_ICON =
 			Pref.b("INFO_OVERLAY_SHOW_DISTANCE_ICON", true);
 	Pref<DoubleSupplier> INFO_OVERLAY_SIZE = Pref.f("INFO_OVERLAY_SIZE", 1f);
+	// Every Info Overlay pref, for the views showing it (fullscreen video, the Music tab) to follow.
+	Set<Pref<?>> INFO_OVERLAY_PREFS = Set.of(CLOCK_POS, INFO_OVERLAY_SHOW_CLOCK,
+			INFO_OVERLAY_SHOW_CLOCK_ICON, INFO_OVERLAY_SHOW_BATTERY_PCT, INFO_OVERLAY_SHOW_BATTERY_ICON,
+			INFO_OVERLAY_SHOW_BATTERY_TEMP, INFO_OVERLAY_SHOW_TEMP_ICON, INFO_OVERLAY_SHOW_DISTANCE,
+			INFO_OVERLAY_SHOW_DISTANCE_ICON, INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE,
+			INFO_OVERLAY_SIZE);
 	Pref<IntSupplier> LOCALE =
 			Pref.i("LOCALE", () -> Lang.get(Locale.getDefault().getLanguage()).ordinal());
 

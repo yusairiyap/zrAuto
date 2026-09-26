@@ -1,6 +1,5 @@
 package me.aap.fermata.addon.web.yt;
 
-import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 import static me.aap.fermata.media.pref.MediaPrefs.MEDIA_ENG_YT;
 import static me.aap.fermata.util.Utils.dynCtx;
 import static me.aap.utils.async.Completed.completed;
@@ -12,7 +11,6 @@ import android.media.MediaMetadata;
 import android.net.Uri;
 import android.os.SystemClock;
 import android.support.v4.media.MediaMetadataCompat;
-import android.view.ViewGroup;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -24,6 +22,9 @@ import com.google.android.play.core.splitcompat.SplitCompat;
 
 import java.util.Objects;
 
+import me.aap.fermata.addon.music.MusicPlayer;
+import me.aap.fermata.addon.music.MusicQueue;
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.addon.web.FermataChromeClient;
 import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.yt.YoutubeAddon.VideoScale;
@@ -129,6 +130,11 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	// playing() below. null when the player didn't have one for the current video.
 	@Nullable
 	private String currentVideoTitle;
+	// Whether restoreUserQuality() has run once for this page -- see YoutubeWebView#USER_QUALITY_JS.
+	private boolean userQualityChecked;
+	// The channel the player reported alongside currentVideoTitle, or null.
+	@Nullable
+	private String currentVideoAuthor;
 	// Set by pause() when the pause came from the app itself (the control panel, a hardware/Bluetooth
 	// media button, Android Auto's own transport controls -- anything routed through
 	// MediaSessionCallback#onPause()), as opposed to the page pausing on its own. Consumed by
@@ -195,24 +201,26 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			blockedHeight = 0;
 		}
 
-		// data is "<videoId>|<recentLinkClick 0/1>|<v.currentSrc>" -- see YoutubeWebView#
-		// attachListeners()'s fermataCurrentVideoId()/fermataRecentLinkClick(). The id comes straight
-		// from the player object, not the WebView's own getUrl(): that outer document URL only catches
-		// up with a player.loadVideoById() SPA-internal swap once YouTube's own JS updates the address
-		// bar via the History API, well after the <video> element has already switched sources and
-		// fired this very "playing" event -- using it here instead used to read the OLD video id for a
-		// beat after every queue-driven navigation, triggering a bogus "expected X but page shows
-		// <stale>" correction (see the pendingVideoId branch below) that reissued loadVideoById() and
-		// was visible on-screen as a flicker back to the old video. Falls back to the old getUrl()-based
-		// extraction if the player object wasn't found (e.g. mid-navigation) or didn't report an id.
-		String[] parts = data.split("\\|", 4);
+		// data is "<videoId>|<recentLinkClick 0/1>|<title>|<channel>|<v.currentSrc>" -- see
+		// YoutubeWebView#attachListeners()'s fermataCurrentVideoId()/fermataRecentLinkClick(). The id
+		// comes straight from the player object, not the WebView's own getUrl(): that outer document
+		// URL only catches up with a player.loadVideoById() SPA-internal swap once YouTube's own JS
+		// updates the address bar via the History API, well after the <video> element has already
+		// switched sources and fired this very "playing" event -- using it here instead used to read
+		// the OLD video id for a beat after every queue-driven navigation, triggering a bogus
+		// "expected X but page shows <stale>" correction (see the pendingVideoId branch below) that
+		// reissued loadVideoById() and was visible on-screen as a flicker back to the old video.
+		// Falls back to the old getUrl()-based extraction if the player object wasn't found (e.g.
+		// mid-navigation) or didn't report an id.
+		String[] parts = data.split("\\|", 5);
 		String jsVideoId = (parts.length > 0) ? parts[0] : "";
 		boolean recentLinkClick = (parts.length > 1) && "1".equals(parts[1]);
 		// URI-encoded on the JS side (see YoutubeWebView#attachListeners()'s
 		// fermataCurrentVideoTitle()) so a title containing the payload's own '|' separator can't
 		// shift the fields after it.
 		String jsTitle = (parts.length > 2) ? Uri.decode(parts[2]) : "";
-		String url = (parts.length > 3) ? parts[3] : "";
+		String jsAuthor = (parts.length > 3) ? Uri.decode(parts[3]) : "";
+		String url = (parts.length > 4) ? parts[4] : "";
 		String actualId =
 				!jsVideoId.isEmpty() ? jsVideoId : YoutubeVideoItem.extractVideoId(web.getUrl());
 		YoutubeAddon addon = web.getAddon();
@@ -332,6 +340,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		//    (YoutubeWebView#pageLoaded()) and so never updated at all for an SPA-internal switch;
 		//  - YoutubeAddon's videoId -> title cache, so this video already has a proper name if it
 		//    later gets added to Favorites/a Playlist (or is resolved back out of one).
+		currentVideoAuthor = jsAuthor.isEmpty() ? null : MusicTrackItem.cleanArtist(jsAuthor);
 		if (!jsTitle.isEmpty()) {
 			currentVideoTitle = jsTitle;
 			if (actualId != null) addon.cacheVideoTitle(actualId, jsTitle);
@@ -346,13 +355,25 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		currentVideoId = actualId;
 
 		if (url.startsWith("blob:")) url = url.substring(5);
-		current = new Current(url, currentVideoTitle, actualId);
+		current = new Current(url, currentVideoTitle, currentVideoAuthor, actualId);
+		// A Music tab track learns its real title and channel from the page as it plays.
+		if ((addon.getQueueItem() instanceof MusicTrackItem t) &&
+				Objects.equals(t.getVideoId(), actualId)) {
+			t.setInfo(currentVideoTitle, currentVideoAuthor);
+		}
 
-		if (!web.getAddon().autoHighestQuality()) {
+		// Playing as music (the Music tab): the lowest quality -- only the sound matters. Otherwise
+		// the highest, if the user asked for it.
+		boolean music = MusicPlayer.isYoutubeAudioMode();
+		if (!music && !web.getAddon().autoHighestQuality()) {
 			qualityUrl = null;
+			if (!userQualityChecked) {
+				userQualityChecked = true;
+				web.restoreUserQuality();
+			}
 		} else if (!url.isEmpty() && !url.equals(qualityUrl)) {
 			qualityUrl = url;
-			web.setHighestVideoQuality();
+			web.applyQualityPolicy(music);
 		}
 		DiagnosticLog.log("YT", "playing", "id=" + actualId, "title=" + currentVideoTitle);
 		cb.setEngine(this);
@@ -362,7 +383,16 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	/** See {@link #userPickedVideoId}. */
 	void userPickedVideo(String videoId) {
 		if ((videoId == null) || videoId.isEmpty()) return;
+		// The video the app itself is navigating to (the queue's next track, see prepare()): its
+		// injected link click can still be reported as a navigation of the page's own, e.g. once the
+		// click suppression window has closed. Not a pick: the queue and music mode carry on.
+		if (videoId.equals(web.getAddon().getPendingVideoId())) {
+			DiagnosticLog.log("YT", "ignored pick of the app's own navigation", "id=" + videoId);
+			return;
+		}
 		DiagnosticLog.log("YT", "user picked", "id=" + videoId);
+		// Picking a video on the page means watching it, not listening to the Music tab's queue.
+		MusicPlayer.setYoutubeAudioMode(false);
 		userPickedVideoId = videoId;
 		userPickedTime = SystemClock.elapsedRealtime();
 	}
@@ -560,6 +590,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	void paused() {
+		// Silenced because another engine took over (see acceptQueueResolved() and the Music tab's
+		// MusicPlayer#playTrack()): that pause must not pause the engine that's playing now.
+		if (cb.getEngine() != this) return;
+
 		// Confirmed on-device (window-resize repro): YouTube's own player can auto-pause the
 		// <video> element for a beat right after it (or we) told it to play -- its internal layout
 		// is still settling from a container-size change, and the pause DOM event this fires is
@@ -698,6 +732,42 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		} else {
 			cb.onEnginePrepared(this);
 		}
+	}
+
+	/**
+	 * Re-applies the video quality policy to what's playing now -- the Music tab switching between
+	 * playing this as music (lowest quality) and as video (see
+	 * {@link MusicPlayer#setYoutubeAudioMode}).
+	 */
+	void applyQuality() {
+		qualityUrl = null;
+		boolean music = MusicPlayer.isYoutubeAudioMode();
+		if (music || web.getAddon().autoHighestQuality()) web.applyQualityPolicy(music);
+		else web.clearQualityPolicy();
+	}
+
+	@Override
+	public boolean showOwnAudioEffects() {
+		return showEqualizer();
+	}
+
+	/**
+	 * The Favorites/Playlist/Music queue entry this video was started from, if it's still the one
+	 * playing -- what the Music tab's "Play as music" builds its queue around.
+	 */
+	@Nullable
+	@Override
+	public PlayableItem getQueueItem() {
+		PlayableItem q = web.getAddon().getQueueItem();
+		// Between videos (the "end" placeholder is current): the queue item as it stands, i.e. the
+		// track that just played until the next one is on its way, never the placeholder.
+		if ((q != null) && (current == end)) return q;
+		String id = YoutubeVideoItem.extractYoutubeVideoId(q);
+		// Also while switching to it (skipping to the next track): the previous video is still the
+		// current one until the new one plays, which would otherwise read as "not the queue's".
+		boolean queued = (id != null) &&
+				(id.equals(currentVideoId) || id.equals(web.getAddon().getPendingVideoId()));
+		return queued ? q : getFavoritableItem();
 	}
 
 	@Override
@@ -954,37 +1024,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 * there instead of crashing.
 	 */
 	private boolean showEqualizer() {
-		MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a -> {
-			// Showing this as a fragment hides YoutubeFragment's own root view -- the same
-			// FragmentTransaction that shows this one briefly flips the still-playing YoutubeWebView's
-			// visibility to GONE (Fragment.hide() on the outgoing fragment) as part of that. Some
-			// devices' WebView/Chromium implementation treats that visibility flip as the page going
-			// into the background and auto-pauses the video as a side effect -- confirmed intermittent
-			// (device/timing-dependent) rather than a deterministic app-level pause call anywhere in
-			// this path. If it was actually playing going in, nudge it back once shortly after the
-			// transition settles, rather than silently leaving a UI-only navigation the user never
-			// asked to pause for. Harmless if nothing paused it: onPlay() on an already-playing video
-			// is a no-op.
-			boolean wasPlaying = cb.isPlaying();
-
-			if (!(a.showFragment(me.aap.utils.R.id.generic_fragment) instanceof GenericFragment f))
-				return;
-			f.setTitle(a.getContext().getString(me.aap.fermata.R.string.audio_effects));
-			f.setContentProvider(g -> {
-				YoutubeEqualizerView v = new YoutubeEqualizerView(g.getContext());
-				v.init(web);
-				g.addView(v, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
-				// GenericFragment's root never insets itself against tool_bar/control_panel/nav_bar,
-				// so without this the first and last equalizer rows sit underneath them. Same call
-				// MediaItemListView and the Settings list make from their own constructors; this
-				// content is built by the caller instead, so it has to be requested here.
-				a.insetScrollableContent(v);
-			});
-
-			if (wasPlaying) a.postDelayed(() -> {
-				if (!cb.isPlaying()) cb.onPlay();
-			}, 500L);
-		});
+		YoutubeEqualizerView.show(web);
 		return true;
 	}
 
@@ -1103,11 +1143,15 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		@Nullable
 		private final String title;
 		@Nullable
+		private final String author;
+		@Nullable
 		private final String videoId;
 
-		public Current(String url, @Nullable String title, @Nullable String videoId) {
+		public Current(String url, @Nullable String title, @Nullable String author,
+									 @Nullable String videoId) {
 			super(CURRENT_ID, mediaRoot, GenericFileSystem.getInstance().create(url));
 			this.title = title;
+			this.author = author;
 			this.videoId = videoId;
 		}
 
@@ -1154,6 +1198,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			return web.getDuration().then(dur -> getTitle.map(t -> {
 				MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
 				b.putString(MediaMetadataCompat.METADATA_KEY_TITLE, t);
+				if (author != null) b.putString(MediaMetadataCompat.METADATA_KEY_ARTIST, author);
 				b.putLong(MediaMetadata.METADATA_KEY_DURATION, dur);
 				if ((videoId != null) && !videoId.isEmpty()) {
 					b.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI,
@@ -1233,9 +1278,14 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	@NonNull
 	private PlayableItem acceptQueueResolved(@Nullable PlayableItem pi, @Nullable BrowsableItem container,
 																						@NonNull PlayableItem fallback) {
-		if ((pi != null) && (YoutubeVideoItem.extractYoutubeVideoId(pi) != null) &&
-				Objects.equals(pi.getParent(), container)) {
-			return pi;
+		if ((pi != null) && Objects.equals(pi.getParent(), container)) {
+			if (YoutubeVideoItem.extractYoutubeVideoId(pi) != null) return pi;
+			// The Music tab's queue can mix in local songs: another engine plays that one, so this
+			// page has to go quiet (this engine's close() is deliberately inert).
+			if (container instanceof MusicQueue) {
+				web.pause();
+				return pi;
+			}
 		}
 		web.getAddon().setQueueItem(null);
 		return fallback;

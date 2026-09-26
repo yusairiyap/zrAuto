@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The Music tab's own palette, applied as a theme overlay by MusicPlayerFragment: its blurred
+         cover background and everything drawn over it follow the app theme's lightness, so a light
+         theme gets a bright, whitish tab that blends with its light tool bar and nav bar. -->
+    <attr name="musicBackground" format="color" />
+    <attr name="musicScrimTop" format="color" />
+    <attr name="musicScrimMiddle" format="color" />
+    <attr name="musicScrimBottom" format="color" />
+    <attr name="musicTextPrimary" format="color" />
+    <attr name="musicTextSecondary" format="color" />
+    <attr name="musicTextTertiary" format="color" />
+    <attr name="musicIconPrimary" format="color" />
+    <attr name="musicIconSecondary" format="color" />
+    <attr name="musicSeekTrack" format="color" />
+    <attr name="musicChipFill" format="color" />
+    <attr name="musicChipRipple" format="color" />
+    <attr name="musicPlayFill" format="color" />
+    <attr name="musicPlayIcon" format="color" />
+    <attr name="musicCardFill" format="color" />
+    <attr name="musicPanelFill" format="color" />
+    <attr name="musicRowFill" format="color" />
+    <attr name="musicPlaceholderTop" format="color" />
+    <attr name="musicPlaceholderBottom" format="color" />
+    <attr name="musicPlaceholderNote" format="color" />
+
+    <style name="MusicPalette.Dark" parent="">
+        <item name="musicBackground">#FF101014</item>
+        <item name="musicScrimTop">#66000000</item>
+        <item name="musicScrimMiddle">#8C000000</item>
+        <item name="musicScrimBottom">#E6000000</item>
+        <item name="musicTextPrimary">#FFFFFFFF</item>
+        <item name="musicTextSecondary">#B3FFFFFF</item>
+        <item name="musicTextTertiary">#99FFFFFF</item>
+        <item name="musicIconPrimary">#FFFFFFFF</item>
+        <item name="musicIconSecondary">#B3FFFFFF</item>
+        <item name="musicSeekTrack">#4DFFFFFF</item>
+        <item name="musicChipFill">#26FFFFFF</item>
+        <item name="musicChipRipple">#40FFFFFF</item>
+        <item name="musicPlayFill">#FFFFFFFF</item>
+        <item name="musicPlayIcon">#FF000000</item>
+        <item name="musicCardFill">#FF1E1E2A</item>
+        <item name="musicPanelFill">#F2141418</item>
+        <item name="musicRowFill">#14FFFFFF</item>
+        <item name="musicPlaceholderTop">#FF3A3A52</item>
+        <item name="musicPlaceholderBottom">#FF1E1E2A</item>
+        <item name="musicPlaceholderNote">#59FFFFFF</item>
+    </style>
+
+    <style name="MusicPalette.Light" parent="">
+        <item name="musicBackground">#FFF3F4F7</item>
+        <item name="musicScrimTop">#B3FFFFFF</item>
+        <item name="musicScrimMiddle">#8CFFFFFF</item>
+        <item name="musicScrimBottom">#F2FFFFFF</item>
+        <item name="musicTextPrimary">#DE000000</item>
+        <item name="musicTextSecondary">#99000000</item>
+        <item name="musicTextTertiary">#73000000</item>
+        <item name="musicIconPrimary">#DE000000</item>
+        <item name="musicIconSecondary">#8A000000</item>
+        <item name="musicSeekTrack">#33000000</item>
+        <item name="musicChipFill">#14000000</item>
+        <item name="musicChipRipple">#29000000</item>
+        <item name="musicPlayFill">#FF1C1C1E</item>
+        <item name="musicPlayIcon">#FFFFFFFF</item>
+        <item name="musicCardFill">#FFE6E8EE</item>
+        <item name="musicPanelFill">#F7FBFBFD</item>
+        <item name="musicRowFill">#0D000000</item>
+        <item name="musicPlaceholderTop">#FFE9EBF1</item>
+        <item name="musicPlaceholderBottom">#FFD3D7E0</item>
+        <item name="musicPlaceholderNote">#4D000000</item>
+    </style>
+    <!-- Secondary actions under the Music tab's transport controls (queue, effects, video). -->
+    <style name="MusicChip">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">40dp</item>
+        <item name="android:background">@drawable/music_chip_bg</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:drawablePadding">6dp</item>
+        <item name="android:drawableTint">?attr/musicIconPrimary</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">16dp</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:textColor">?attr/musicTextPrimary</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <color name="music_accent">#FF1ED760</color>
+</resources>

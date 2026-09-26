@@ -25,11 +25,12 @@ import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.view.FloatingButton;
 
 /**
- * @author Andrey Pavlenko
+ * Fourth, optional, user-configurable FAB (defaults to "Add to favourites"). Mirrors
+ * {@link TertiaryFabMediator} with its own enable/action prefs.
  */
-public final class SecondaryFabMediator implements FloatingButton.Mediator,
+public final class QuaternaryFabMediator implements FloatingButton.Mediator,
 		View.OnClickListener, View.OnLongClickListener, MediaSessionCallback.Listener {
-	public static final SecondaryFabMediator instance = new SecondaryFabMediator();
+	public static final QuaternaryFabMediator instance = new QuaternaryFabMediator();
 
 	private static final List<Action> OFFERED_ACTIONS = List.of(
 			Action.FULLSCREEN_TOGGLE, Action.VOLUME_MUTE_UNMUTE, Action.PLAY_PAUSE, Action.DIM_TOGGLE,
@@ -39,7 +40,7 @@ public final class SecondaryFabMediator implements FloatingButton.Mediator,
 	@Nullable
 	private FloatingButton fab;
 
-	private SecondaryFabMediator() {}
+	private QuaternaryFabMediator() {}
 
 	@Override
 	public void enable(FloatingButton fb, ActivityFragment f) {
@@ -65,14 +66,12 @@ public final class SecondaryFabMediator implements FloatingButton.Mediator,
 
 	@Override
 	public void onPlaybackStateChanged(MediaSessionCallback cb, PlaybackStateCompat state) {
-		// Catches play/pause changes triggered from outside FAB2 itself (transport bar, hardware
-		// media keys, notification controls, etc.) so its icon stays live either way.
 		if (fab != null) updateIcon(fab);
 	}
 
 	private void updateIcon(FloatingButton fb) {
 		MainActivityDelegate a = MainActivityDelegate.get(fb.getContext());
-		Action action = Action.get(a.getPrefs().getIntPref(MainActivityPrefs.FAB2_ACTION));
+		Action action = Action.get(a.getPrefs().getIntPref(MainActivityPrefs.FAB4_ACTION));
 		fb.setImageResource(iconFor(a, action));
 	}
 
@@ -104,7 +103,7 @@ public final class SecondaryFabMediator implements FloatingButton.Mediator,
 	@Override
 	public void onClick(View v) {
 		MainActivityDelegate a = MainActivityDelegate.get(v.getContext());
-		Action action = Action.get(a.getPrefs().getIntPref(MainActivityPrefs.FAB2_ACTION));
+		Action action = Action.get(a.getPrefs().getIntPref(MainActivityPrefs.FAB4_ACTION));
 		if (action != null) action.getHandler().handle(a.getMediaSessionCallback(), a, uptimeMillis());
 		updateIcon((FloatingButton) v);
 	}
@@ -129,9 +128,6 @@ public final class SecondaryFabMediator implements FloatingButton.Mediator,
 						.setData(action);
 			}
 			b.addItem(R.id.dim_settings, R.drawable.settings, R.string.dim_settings).setHandler(item -> {
-				// Settings is a normal fragment hosted in frame_layout, which sits behind whatever
-				// is drawing the fullscreen video -- leave fullscreen first, or the settings page
-				// navigates but stays hidden underneath it.
 				a.exitVideoMode();
 				a.showFragment(R.id.settings_fragment, SettingsFragment.SHOW_DIM_SETTINGS);
 				return true;

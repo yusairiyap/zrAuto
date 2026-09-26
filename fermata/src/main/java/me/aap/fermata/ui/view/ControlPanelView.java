@@ -35,6 +35,8 @@ import java.util.List;
 
 import me.aap.fermata.R;
 import me.aap.fermata.action.Action;
+import me.aap.fermata.addon.music.MusicPlayer;
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.engine.AudioStreamInfo;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.engine.SubtitleStreamInfo;
@@ -73,6 +75,9 @@ public class ControlPanelView extends ConstraintLayout
 		GestureListener {
 	private static final byte MASK_VISIBLE = 1;
 	private static final byte MASK_VIDEO_MODE = 2;
+	// Set while a screen with its own full player UI (the Music tab) is showing -- the panel stays
+	// out of the way without forgetting whether it's otherwise meant to be visible.
+	private static final byte MASK_SUPPRESSED = 4;
 	/** The vertical padding control_panel_view.xml gives the transport buttons, in dp. */
 	private static final int LAYOUT_BUTTON_PAD_V = 6;
 	/**
@@ -168,7 +173,7 @@ public class ControlPanelView extends ConstraintLayout
 	protected Parcelable onSaveInstanceState() {
 		Parcelable parentState = super.onSaveInstanceState();
 		Bundle b = new Bundle();
-		b.putByte("MASK", mask);
+		b.putByte("MASK", (byte) (mask & ~MASK_SUPPRESSED));
 		b.putParcelable("PARENT", parentState);
 		return b;
 	}
@@ -304,7 +309,46 @@ public class ControlPanelView extends ConstraintLayout
 	}
 
 	public boolean isActive() {
-		return mask != 0;
+		return (mask & ~MASK_SUPPRESSED) != 0;
+	}
+
+	public boolean isSuppressed() {
+		return (mask & MASK_SUPPRESSED) != 0;
+	}
+
+	/**
+	 * Hides the panel while a screen with its own full player UI (the Music tab) is showing, and
+	 * restores whatever it would otherwise be once that screen goes away.
+	 */
+	public void setSuppressed(boolean suppressed) {
+		if (suppressed == isSuppressed()) {
+			// Already suppressed: re-assert it, in case a path that shows the panel directly (e.g. the
+			// Android Auto focus recovery) brought it back meanwhile.
+			if (suppressed && ((mask & MASK_VIDEO_MODE) == 0) && (getVisibility() != GONE)) {
+				super.setVisibility(GONE);
+				notifyControlPanelVisibility();
+			}
+			if (suppressed) getActivity().refreshContentInsets();
+			return;
+		}
+
+		if (suppressed) {
+			mask |= MASK_SUPPRESSED;
+			if ((mask & MASK_VIDEO_MODE) == 0) super.setVisibility(GONE);
+		} else {
+			mask &= ~MASK_SUPPRESSED;
+			if ((mask & MASK_VIDEO_MODE) == 0)
+				super.setVisibility(((mask & MASK_VISIBLE) != 0) ? VISIBLE : GONE);
+		}
+
+		notifyControlPanelVisibility();
+		MainActivityDelegate a = getActivity();
+		checkPlaybackTimer(a);
+		// The content's bottom padding reserves room for this panel; re-apply it right away rather
+		// than on the next layout pass, which drew one frame (or more) with the stale padding. And
+		// once more after that pass, once everything has settled into its final place.
+		a.refreshContentInsets();
+		post(a::refreshContentInsets);
 	}
 
 	/**
@@ -325,7 +369,7 @@ public class ControlPanelView extends ConstraintLayout
 
 		if (visibility == VISIBLE) {
 			mask |= MASK_VISIBLE;
-			if ((mask & MASK_VIDEO_MODE) != 0) return;
+			if ((mask & (MASK_VIDEO_MODE | MASK_SUPPRESSED)) != 0) return;
 
 			super.setVisibility(VISIBLE);
 
@@ -368,19 +412,22 @@ public class ControlPanelView extends ConstraintLayout
 		View fb = a.getFloatingButton();
 		View fb2 = fab2(a);
 		View fb3 = fab3(a);
+		View fb4 = fab4(a);
 		int delay = getStartDelay();
 
 		if (delay == 0) {
 			fb.setVisibility(GONE);
 			if (fb2 != null) fb2.setVisibility(GONE);
 			if (fb3 != null) fb3.setVisibility(GONE);
+			if (fb4 != null) fb4.setVisibility(GONE);
 			super.setVisibility(GONE);
 		} else {
 			fb.setVisibility(VISIBLE);
 			if (fb2 != null) fb2.setVisibility(VISIBLE);
 			if (fb3 != null) fb3.setVisibility(VISIBLE);
+			if (fb4 != null) fb4.setVisibility(VISIBLE);
 			super.setVisibility(VISIBLE);
-			hideTimer = new HideTimer(a, delay, false, fb, fb2, fb3);
+			hideTimer = new HideTimer(a, delay, false, fb, fb2, fb3, fb4);
 			a.postDelayed(hideTimer, delay);
 		}
 
@@ -411,6 +458,13 @@ public class ControlPanelView extends ConstraintLayout
 				null;
 	}
 
+	/** The fourth FAB, if the user has it enabled -- null otherwise (shows/hides with fb). */
+	@Nullable
+	private View fab4(MainActivityDelegate a) {
+		return a.getPrefs().getBooleanPref(MainActivityPrefs.FAB4_ENABLED) ? a.getFloatingButton4() :
+				null;
+	}
+
 	public void disableVideoMode() {
 		MainActivityDelegate a = getActivity();
 		hideTimer = null;
@@ -420,7 +474,7 @@ public class ControlPanelView extends ConstraintLayout
 		findViewById(R.id.show_hide_bars).setClickable(true);
 		findViewById(R.id.show_hide_bars_icon).setVisibility(VISIBLE);
 
-		if ((mask & MASK_VISIBLE) == 0) {
+		if (((mask & MASK_VISIBLE) == 0) || ((mask & MASK_SUPPRESSED) != 0)) {
 			super.setVisibility(GONE);
 			a.setBarsHidden(false);
 		} else {
@@ -541,21 +595,24 @@ public class ControlPanelView extends ConstraintLayout
 		View fb = a.getFloatingButton();
 		View fb2 = fab2(a);
 		View fb3 = fab3(a);
+		View fb4 = fab4(a);
 
 		if (getVisibility() == VISIBLE) {
 			fadeOut(this, true);
 			fadeOut(fb, false);
 			if (fb2 != null) fadeOut(fb2, false);
 			if (fb3 != null) fadeOut(fb3, false);
+			if (fb4 != null) fadeOut(fb4, false);
 			if (a.getPrefs().getSysBarsOnVideoTouchPref()) a.setFullScreen(true);
 		} else {
 			fadeIn(this, true);
 			fadeIn(fb, false);
 			if (fb2 != null) fadeIn(fb2, false);
 			if (fb3 != null) fadeIn(fb3, false);
+			if (fb4 != null) fadeIn(fb4, false);
 			if (a.getPrefs().getSysBarsOnVideoTouchPref()) a.setFullScreen(false);
 			clearFocus();
-			hideTimer = new HideTimer(a, delay, false, fb, fb2, fb3);
+			hideTimer = new HideTimer(a, delay, false, fb, fb2, fb3, fb4);
 			a.postDelayed(hideTimer, delay);
 		}
 
@@ -602,13 +659,15 @@ public class ControlPanelView extends ConstraintLayout
 		View fb = a.getFloatingButton();
 		View fb2 = fab2(a);
 		View fb3 = fab3(a);
+		View fb4 = fab4(a);
 		int delay = getSeekDelay();
 		super.setVisibility(VISIBLE);
 		fb.setVisibility(VISIBLE);
 		if (fb2 != null) fb2.setVisibility(VISIBLE);
 		if (fb3 != null) fb3.setVisibility(VISIBLE);
+		if (fb4 != null) fb4.setVisibility(VISIBLE);
 		clearFocus();
-		hideTimer = new HideTimer(a, delay, true, fb, fb2, fb3);
+		hideTimer = new HideTimer(a, delay, true, fb, fb2, fb3, fb4);
 		a.postDelayed(hideTimer, delay);
 		notifyControlPanelVisibility();
 		checkPlaybackTimer(a);
@@ -885,6 +944,9 @@ public class ControlPanelView extends ConstraintLayout
 				if (eng.supportsAudioEffects()) {
 					b.addItem(R.id.audio_effects_fragment, R.drawable.equalizer, R.string.audio_effects);
 				}
+				if (MusicPlayer.isEnabled() && !(pi instanceof MusicTrackItem)) {
+					b.addItem(R.id.music_play, R.drawable.music, R.string.play_as_music);
+				}
 				eng.contributeToMenuEnd(b);
 				return;
 			}
@@ -922,6 +984,10 @@ public class ControlPanelView extends ConstraintLayout
 			b.setSelectionHandler(this);
 			b.addItem(R.id.mute_toggle, R.drawable.volume_mute, R.string.action_vol_mute_unmute)
 					.setChecked(Action.isMuted(a.getContext()));
+			// Keeps the sound going and just drops the picture (and, for YouTube, the video stream).
+			if (MusicPlayer.isEnabled()) {
+				b.addItem(R.id.music_play, R.drawable.music, R.string.play_as_music);
+			}
 			if (eng.supportsAudioEffects()) {
 				b.addItem(R.id.audio_effects_fragment, R.drawable.equalizer, R.string.effects);
 			}
@@ -990,7 +1056,10 @@ public class ControlPanelView extends ConstraintLayout
 			PlayableItem pi;
 			MediaEngine eng;
 
-			if (id == R.id.audio_effects_fragment) {
+			if (id == R.id.music_play) {
+				MusicPlayer.playCurrentAsMusic(getActivity());
+				return true;
+			} else if (id == R.id.audio_effects_fragment) {
 				eng = getActivity().getMediaSessionCallback().getEngine();
 				if ((eng != null) && eng.supportsAudioEffects())
 					getActivity().showFragment(R.id.audio_effects_fragment);

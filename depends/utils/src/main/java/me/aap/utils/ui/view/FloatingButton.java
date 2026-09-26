@@ -42,6 +42,8 @@ public class FloatingButton extends FloatingActionButton implements ActivityList
 	@Px
 	private float borderWidth;
 	private float scale = 1f;
+	private boolean suppressed;
+	private int requestedVisibility;
 
 	public FloatingButton(Context context, AttributeSet attrs) {
 		this(context, attrs, com.google.android.material.R.attr.floatingActionButtonStyle);
@@ -117,6 +119,23 @@ public class FloatingButton extends FloatingActionButton implements ActivityList
 		paint.setStrokeWidth(borderWidth);
 		paint.setColor(isFocused() ? getBorderFocusColor() : getBorderColor());
 		canvas.drawCircle(pos, pos, radius, paint);
+	}
+
+	/**
+	 * Keeps this button hidden while a screen that doesn't want it is showing, whatever else asks
+	 * for it meanwhile; unsuppressed, it takes whatever visibility was last asked for.
+	 */
+	public void setSuppressed(boolean suppressed) {
+		if (this.suppressed == suppressed) return;
+		if (suppressed) requestedVisibility = getVisibility();
+		this.suppressed = suppressed;
+		super.setVisibility(suppressed ? GONE : requestedVisibility);
+	}
+
+	@Override
+	public void setVisibility(int visibility) {
+		if (suppressed) requestedVisibility = visibility;
+		else super.setVisibility(visibility);
 	}
 
 	@Override

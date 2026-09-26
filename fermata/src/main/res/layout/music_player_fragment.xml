@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Music tab, portrait/phone: the cover centred above the track info and controls. The landscape variant (tablets on their side, Android Auto) puts the cover on the right instead; both share every id, see MusicPlayerFragment. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/music_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?attr/musicBackground">
+
+    <ImageView
+        android:id="@+id/music_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:scaleType="centerCrop" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/music_scrim" />
+
+    <LinearLayout
+        android:id="@+id/music_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:orientation="vertical">
+
+        <FrameLayout
+            android:id="@+id/music_info_holder"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="16dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="16dp" />
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/music_art_holder"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:padding="24dp">
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/music_art_card"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                app:cardBackgroundColor="?attr/musicCardFill"
+                app:cardCornerRadius="20dp"
+                app:cardElevation="18dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintDimensionRatio="1:1"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintWidth_max="420dp"
+                app:strokeWidth="0dp">
+
+                <ImageView
+                    android:id="@+id/music_art"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="@string/music_title"
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/music_art_placeholder" />
+
+                <me.aap.fermata.ui.view.LoadingDimView
+                    android:id="@+id/music_loading"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <!-- The tab's own messages, instead of a toast: a toast only ever shows on the
+                     phone's screen, never on Android Auto's. See MusicPlayerFragment#showMessage. -->
+                <TextView
+                    android:id="@+id/music_message"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom|center_horizontal"
+                    android:layout_margin="16dp"
+                    android:background="@drawable/music_message_bg"
+                    android:gravity="center"
+                    android:paddingStart="16dp"
+                    android:paddingTop="8dp"
+                    android:paddingEnd="16dp"
+                    android:paddingBottom="8dp"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="14sp"
+                    android:visibility="gone" />
+            </com.google.android.material.card.MaterialCardView>
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <include layout="@layout/music_player_controls" />
+    </LinearLayout>
+
+    <!-- Behind the queue panel while it's open: a tap anywhere else closes it. -->
+    <View
+        android:id="@+id/music_queue_dismiss"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#33000000"
+        android:clickable="true"
+        android:focusable="false"
+        android:importantForAccessibility="no"
+        android:visibility="gone" />
+
+    <include layout="@layout/music_queue_panel" />
+</FrameLayout>

@@ -24,6 +24,7 @@ import androidx.annotation.Nullable;
 import java.util.List;
 
 import me.aap.fermata.BuildConfig;
+import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.web.FermataChromeClient;
 import me.aap.fermata.addon.web.FermataJsInterface;
 import me.aap.fermata.addon.web.FermataWebView;
@@ -42,6 +43,38 @@ import me.aap.utils.ui.view.ToolBarView;
  * @author Andrey Pavlenko
  */
 public class YoutubeWebView extends FermataWebView {
+	// Setting the player's quality through its API can also be stored by YouTube as the viewer's own
+	// preferred quality (localStorage 'yt-player-quality'), which would then stick after music mode
+	// (lowest quality) ends. So the viewer's value is saved (under our own key, which survives page
+	// loads and app restarts) before going lowest, and put back when leaving music mode;
+	// fermataRestoreUserQ() returns the quality level to go back to, or null if nothing was saved.
+	private static final String USER_QUALITY_JS =
+			"function fermataSaveUserQ() {\n" +
+					"  try {\n" +
+					"    if (localStorage.getItem('fermataUserQ') === null)\n" +
+					"      localStorage.setItem('fermataUserQ', JSON.stringify({v: localStorage.getItem('yt-player-quality')}));\n" +
+					"  } catch (e) {}\n" +
+					"}\n" +
+					"function fermataRestoreUserQ() {\n" +
+					"  var level = 'auto';\n" +
+					"  try {\n" +
+					"    var s = localStorage.getItem('fermataUserQ');\n" +
+					"    if (s === null) return null;\n" +
+					"    localStorage.removeItem('fermataUserQ');\n" +
+					"    var raw = JSON.parse(s).v;\n" +
+					"    if (raw === null) localStorage.removeItem('yt-player-quality');\n" +
+					"    else localStorage.setItem('yt-player-quality', raw);\n" +
+					"    var q = JSON.parse(JSON.parse(raw).data).quality;\n" +
+					"    level = {144: 'tiny', 240: 'small', 360: 'medium', 480: 'large', 720: 'hd720',\n" +
+					"      1080: 'hd1080', 1440: 'hd1440', 2160: 'hd2160', 4320: 'highres'}[q] || 'auto';\n" +
+					"  } catch (e) {}\n" +
+					"  return level;\n" +
+					"}\n" +
+					"function fermataSetQ(level) {\n" +
+					"  var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
+					"  try { if (p && p.setPlaybackQualityRange) p.setPlaybackQualityRange(level, level); } catch (e) {}\n" +
+					"}\n";
+
 	private static final String CLEAR_HIGHEST_VIDEO_QUALITY_JS =
 			"function clearFermataQ() {\n" +
 					"  if (!window.__fermataQ) return;\n" +
@@ -113,9 +146,10 @@ public class YoutubeWebView extends FermataWebView {
 	public void onPreferenceChanged(PreferenceStore store, List<PreferenceStore.Pref<?>> prefs) {
 		super.onPreferenceChanged(store, prefs);
 
-		if (getAddon().autoHighestQualityChanged(prefs)) {
-			if (getAddon().autoHighestQuality()) setHighestVideoQuality();
-			else clearHighestVideoQuality();
+		// While playing as music (the Music tab) the quality stays at its lowest regardless.
+		if (getAddon().autoHighestQualityChanged(prefs) && !MusicPlayer.isYoutubeAudioMode()) {
+			if (getAddon().autoHighestQuality()) applyQualityPolicy(false);
+			else clearQualityPolicy();
 		}
 
 		if (YoutubeSponsorBlock.isPreferenceChanged(prefs)) injectSponsorBlock();
@@ -256,6 +290,14 @@ public class YoutubeWebView extends FermataWebView {
 				"    return (d && d.title) ? encodeURIComponent(d.title) : '';\n" +
 				"  } catch (e) { return ''; }\n" +
 				"}\n" +
+				// The channel name, the same way -- the Music tab shows it as the artist.
+				"function fermataCurrentVideoAuthor() {\n" +
+				"  try {\n" +
+				"    var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
+				"    var d = p && p.getVideoData ? p.getVideoData() : null;\n" +
+				"    return (d && d.author) ? encodeURIComponent(d.author) : '';\n" +
+				"  } catch (e) { return ''; }\n" +
+				"}\n" +
 				"function attachVideoListeners(v) {\n" +
 				"  if (!(window.__fermataAdShowing && window.__fermataAdSkipEnabled)) v.muted = false;\n" +
 				"  if (v.getAttribute('FermataAttached') === 'true') return;\n" +
@@ -266,14 +308,14 @@ public class YoutubeWebView extends FermataWebView {
 				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
 				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", fermataCurrentVideoId() + '|' + " +
 				"(fermataRecentLinkClick() ? '1' : '0') + '|' + fermataCurrentVideoTitle() + '|' + " +
-				"v.currentSrc);\n" +
+				"fermataCurrentVideoAuthor() + '|' + v.currentSrc);\n" +
 				"  }\n" +
 				"  v.addEventListener('playing', function(e) {\n" +
 				"    if (typeof fermataAdCheck === 'function') fermataAdCheck();\n" +
 				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
 				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", fermataCurrentVideoId() + '|' + " +
 				"(fermataRecentLinkClick() ? '1' : '0') + '|' + fermataCurrentVideoTitle() + '|' + " +
-				"v.currentSrc);\n" +
+				"fermataCurrentVideoAuthor() + '|' + v.currentSrc);\n" +
 				"  });\n" +
 				"  v.addEventListener('pause', function(e) {" + JS_EVENT + "(" + JS_VIDEO_PAUSED +
 				", v.currentSrc);});\n" +
@@ -581,7 +623,7 @@ public class YoutubeWebView extends FermataWebView {
 	 * <p>
 	 * {@code .ytp-autonav-toggle-button} is YouTube's own HTML5 player control (the same
 	 * {@code #movie_player}/{@code .html5-video-player} embed {@link #next()}/{@link
-	 * #setHighestVideoQuality()} already target elsewhere in this class, used across both the mobile
+	 * #applyQualityPolicy(boolean)} already target elsewhere in this class, used across both the mobile
 	 * and desktop-style watch pages) -- if a future YouTube markup change moves or renames it, this
 	 * becomes a silent no-op rather than a crash, same as the ad-selector fallback in {@link
 	 * #attachAdObserver()}; the debug log below is there to confirm whether it's still matching.
@@ -1007,22 +1049,31 @@ public class YoutubeWebView extends FermataWebView {
 				"setVideoQuality(" + idx + ", 0, true);");
 	}
 
-	void setHighestVideoQuality() {
+	/**
+	 * Keeps the player at its highest quality level, or its lowest ({@code lowest}: playing as music,
+	 * where only the sound matters), re-applied on every player state change until cleared.
+	 */
+	void applyQualityPolicy(boolean lowest) {
 		loadUrl("javascript:\n" +
 				"(function() {\n" +
-				CLEAR_HIGHEST_VIDEO_QUALITY_JS +
+				CLEAR_HIGHEST_VIDEO_QUALITY_JS + USER_QUALITY_JS +
 				"  clearFermataQ();\n" +
+				(lowest ? "  fermataSaveUserQ();\n" : "  fermataRestoreUserQ();\n") +
 				"  var state = window.__fermataQ = { player: null, handler: null, timeout: null, attempts: 0 };\n" +
 				"  function getPlayer() {\n" +
 				"    return document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
 				"  }\n" +
+				"  var lowest = " + lowest + ";\n" +
 				"  function applyHighest(p) {\n" +
 				"    if (!p || typeof p.getAvailableQualityLevels !== 'function') return false;\n" +
 				"    var levels = p.getAvailableQualityLevels();\n" +
 				"    if (!levels || levels.length === 0) return false;\n" +
 				"    var best = null;\n" +
+				// Levels come highest first, 'auto' last.
 				"    for (var i = 0; i < levels.length; i++) {\n" +
-				"      if (levels[i] !== 'auto') { best = levels[i]; break; }\n" +
+				"      if (levels[i] === 'auto') continue;\n" +
+				"      best = levels[i];\n" +
+				"      if (!lowest) break;\n" +
 				"    }\n" +
 				"    if (!best) return false;\n" +
 				"    if (p.getPlaybackQuality && p.getPlaybackQuality() === best) return true;\n" +
@@ -1048,11 +1099,29 @@ public class YoutubeWebView extends FermataWebView {
 				"})();");
 	}
 
-	void clearHighestVideoQuality() {
+	/**
+	 * Stops {@link #applyQualityPolicy} and hands the quality choice back to the viewer: their own
+	 * saved preference if music mode had replaced it, else YouTube's automatic choice.
+	 */
+	void clearQualityPolicy() {
 		loadUrl("javascript:\n" +
 				"(function() {\n" +
-				CLEAR_HIGHEST_VIDEO_QUALITY_JS +
+				CLEAR_HIGHEST_VIDEO_QUALITY_JS + USER_QUALITY_JS +
 				"  clearFermataQ();\n" +
+				"  fermataSetQ(fermataRestoreUserQ() || 'auto');\n" +
+				"})();");
+	}
+
+	/**
+	 * Puts the viewer's own quality back if music mode left it replaced -- e.g. the app was closed
+	 * while playing as music -- and does nothing otherwise.
+	 */
+	void restoreUserQuality() {
+		loadUrl("javascript:\n" +
+				"(function() {\n" +
+				USER_QUALITY_JS +
+				"  var level = fermataRestoreUserQ();\n" +
+				"  if (level) fermataSetQ(level);\n" +
 				"})();");
 	}
 

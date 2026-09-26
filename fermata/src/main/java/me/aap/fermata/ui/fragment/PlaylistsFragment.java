@@ -332,7 +332,7 @@ public class PlaylistsFragment extends MediaLibFragment {
 			int fabRight = Integer.MIN_VALUE;
 
 			for (View fab : new View[]{a.getFloatingButton(), a.getFloatingButton2(),
-					a.getFloatingButton3()}) {
+					a.getFloatingButton3(), a.getFloatingButton4()}) {
 				if ((fab == null) || !fab.isShown() || (fab.getWidth() == 0)) continue;
 				int[] loc = new int[2];
 				fab.getLocationOnScreen(loc);

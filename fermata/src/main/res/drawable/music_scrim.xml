@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Darkens the blurred album art behind the Music tab, most strongly at the bottom where the controls sit, so white text and icons stay readable over any cover. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:angle="270"
+        android:centerColor="?attr/musicScrimMiddle"
+        android:endColor="?attr/musicScrimBottom"
+        android:startColor="?attr/musicScrimTop" />
+</shape>

@@ -408,6 +408,28 @@ public interface MediaLib {
 																			 MediaEngine.Listener listener) {
 			return null;
 		}
+
+		/**
+		 * Called by {@code MediaSessionCallback} right before this item is handed to an engine, and
+		 * waited on -- for an item that only knows what it plays once something has been looked up
+		 * first (e.g. a Music tab queue entry restored after a restart, which resolves the library
+		 * item it wraps by id). Must never fail: an implementation that can't resolve its source
+		 * should still complete, and the engine then reports a normal playback error.
+		 */
+		@NonNull
+		default FutureSupplier<Void> prepareSource() {
+			return completedVoid();
+		}
+
+		/**
+		 * Whether the engine should skip any video track entirely (not decode it at all) even if
+		 * the media has one -- the Music tab's tracks, which can wrap a local video file. Kept
+		 * separate from {@code !isVideo()}, which some items (e.g. M3U radio/TV entries) report for
+		 * media whose video still has to show.
+		 */
+		default boolean isAudioOnlyPlayback() {
+			return false;
+		}
 	}
 
 	interface StreamItem extends PlayableItem, BrowsableItem {

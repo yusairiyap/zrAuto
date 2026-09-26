@@ -346,6 +346,8 @@ public class SettingsFragment extends MainActivityFragment
 				o.icon = R.drawable.fab;
 			});
 			addSecondaryFabPrefs(a, fabSettingsSet);
+			// Right below the floating buttons: addAAInterface() adds its items straight in here.
+			addInfoOverlayPrefs(a, sub1);
 			addAAInterface(a, sub1);
 		} else {
 			fabSettingsSet = sub1.subSet(o -> {
@@ -359,6 +361,7 @@ public class SettingsFragment extends MainActivityFragment
 					o.icon = R.drawable.tv;
 				}));
 			}
+			addInfoOverlayPrefs(a, sub1);
 			addInterface(a, sub1, MainActivityPrefs.THEME_MAIN, MainActivityPrefs.HIDE_BARS,
 					MainActivityPrefs.FULLSCREEN, MainActivityPrefs.SHOW_PG_UP_DOWN, null,
 					MainActivityPrefs.NAV_BAR_POS, MainActivityPrefs.NAV_BAR_SIZE,
@@ -758,93 +761,6 @@ public class SettingsFragment extends MainActivityFragment
 		});
 		addAudioPrefs(sub2, mediaPrefs, isCar);
 
-		sub2 = sub1.subSet(o -> {
-			o.title = R.string.info_overlay_prefs;
-			o.icon = R.drawable.about;
-		});
-		sub2.addListPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.CLOCK_POS;
-			o.title = R.string.clock_pos;
-			o.subtitle = R.string.string_format;
-			o.formatSubtitle = true;
-			o.values =
-					new int[]{R.string.clock_pos_none, R.string.clock_pos_left, R.string.clock_pos_right,
-							R.string.clock_pos_center};
-		});
-		var infoOverlayCond = new PrefCondition<>(a.getPrefs(), MainActivityPrefs.CLOCK_POS,
-				pref -> a.getPrefs().getIntPref(pref) != MainActivityPrefs.CLOCK_POS_NONE);
-		var showClockCond = PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK);
-		var showBatteryPctCond =
-				PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_PCT);
-		var showBatteryTempCond =
-				PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_TEMP);
-		var showDistanceCond =
-				PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE);
-		sub2.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK;
-			o.title = R.string.info_overlay_show_clock;
-			o.visibility = infoOverlayCond.copy();
-		});
-		sub2.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK_ICON;
-			o.title = R.string.info_overlay_show_clock_icon;
-			o.visibility = infoOverlayCond.copy().and(showClockCond.copy());
-		});
-		sub2.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_PCT;
-			o.title = R.string.info_overlay_show_battery_pct;
-			o.visibility = infoOverlayCond.copy();
-		});
-		sub2.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_ICON;
-			o.title = R.string.info_overlay_show_battery_icon;
-			o.visibility = infoOverlayCond.copy().and(showBatteryPctCond.copy());
-		});
-		sub2.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_TEMP;
-			o.title = R.string.info_overlay_show_battery_temp;
-			o.visibility = infoOverlayCond.copy();
-		});
-		sub2.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_TEMP_ICON;
-			o.title = R.string.info_overlay_show_temp_icon;
-			o.visibility = infoOverlayCond.copy().and(showBatteryTempCond.copy());
-		});
-		sub2.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE;
-			o.title = R.string.info_overlay_show_distance;
-			o.visibility = infoOverlayCond.copy();
-		});
-		sub2.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE_ICON;
-			o.title = R.string.info_overlay_show_distance_icon;
-			o.visibility = infoOverlayCond.copy().and(showDistanceCond.copy());
-		});
-		sub2.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE;
-			o.title = R.string.info_overlay_only_when_control_panel_visible;
-			o.visibility = infoOverlayCond.copy();
-		});
-		sub2.addFloatPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SIZE;
-			o.title = R.string.info_overlay_size;
-			o.scale = 0.05f;
-			o.seekMin = 10;
-			o.seekMax = 40;
-			o.visibility = infoOverlayCond.copy();
-		});
-
 		sub1 = set.subSet(o -> {
 			o.title = R.string.subtitles;
 			o.icon = R.drawable.subtitles;
@@ -1053,10 +969,103 @@ public class SettingsFragment extends MainActivityFragment
 						p -> prefs.getIntPref(p) == MainActivityPrefs.DIM_COLOR_CUSTOM_IDX));
 	}
 
+	/**
+	 * The Info Overlay (clock, battery, temperature, distance) shown over fullscreen video and on the
+	 * Music tab: under Interface, as it's no longer about video alone.
+	 */
+	private static void addInfoOverlayPrefs(MainActivityDelegate a, PreferenceSet parent) {
+		PreferenceSet ps = parent.subSet(o -> {
+			o.title = R.string.info_overlay_prefs;
+			o.icon = R.drawable.about;
+		});
+		ps.addListPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.CLOCK_POS;
+			o.title = R.string.clock_pos;
+			o.subtitle = R.string.string_format;
+			o.formatSubtitle = true;
+			o.values =
+					new int[]{R.string.clock_pos_none, R.string.clock_pos_left, R.string.clock_pos_right,
+							R.string.clock_pos_center};
+		});
+		var infoOverlayCond = new PrefCondition<>(a.getPrefs(), MainActivityPrefs.CLOCK_POS,
+				pref -> a.getPrefs().getIntPref(pref) != MainActivityPrefs.CLOCK_POS_NONE);
+		var showClockCond = PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK);
+		var showBatteryPctCond =
+				PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_PCT);
+		var showBatteryTempCond =
+				PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_TEMP);
+		var showDistanceCond =
+				PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE);
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK;
+			o.title = R.string.info_overlay_show_clock;
+			o.visibility = infoOverlayCond.copy();
+		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK_ICON;
+			o.title = R.string.info_overlay_show_clock_icon;
+			o.visibility = infoOverlayCond.copy().and(showClockCond.copy());
+		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_PCT;
+			o.title = R.string.info_overlay_show_battery_pct;
+			o.visibility = infoOverlayCond.copy();
+		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_ICON;
+			o.title = R.string.info_overlay_show_battery_icon;
+			o.visibility = infoOverlayCond.copy().and(showBatteryPctCond.copy());
+		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_TEMP;
+			o.title = R.string.info_overlay_show_battery_temp;
+			o.visibility = infoOverlayCond.copy();
+		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_TEMP_ICON;
+			o.title = R.string.info_overlay_show_temp_icon;
+			o.visibility = infoOverlayCond.copy().and(showBatteryTempCond.copy());
+		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE;
+			o.title = R.string.info_overlay_show_distance;
+			o.visibility = infoOverlayCond.copy();
+		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE_ICON;
+			o.title = R.string.info_overlay_show_distance_icon;
+			o.visibility = infoOverlayCond.copy().and(showDistanceCond.copy());
+		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE;
+			o.title = R.string.info_overlay_only_when_control_panel_visible;
+			o.visibility = infoOverlayCond.copy();
+		});
+		ps.addFloatPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_SIZE;
+			o.title = R.string.info_overlay_size;
+			o.scale = 0.05f;
+			o.seekMin = 10;
+			o.seekMax = 40;
+			o.visibility = infoOverlayCond.copy();
+		});
+	}
+
 	private void addSecondaryFabPrefs(MainActivityDelegate a, PreferenceSet ps) {
 		var fabActions = new Action[]{Action.FULLSCREEN_TOGGLE, Action.VOLUME_MUTE_UNMUTE,
 				Action.PLAY_PAUSE, Action.DIM_TOGGLE, Action.PRIVATE_MODE_TOGGLE, Action.REFUEL,
-				Action.FAVORITE_ADD, Action.PLAYLIST_ADD};
+				Action.FAVORITE_ADD, Action.PLAYLIST_ADD, Action.PLAY_AS_MUSIC};
 		var fabActionNames = new int[fabActions.length];
 		var fabActionOrdinals = new int[fabActions.length];
 		for (int i = 0; i < fabActions.length; i++) {
@@ -1095,6 +1104,22 @@ public class SettingsFragment extends MainActivityFragment
 			o.values = fabActionNames;
 			o.valuesMap = fabActionOrdinals;
 			o.visibility = fab3EnabledCond;
+		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.FAB4_ENABLED;
+			o.title = R.string.fab4_enable;
+		});
+		var fab4EnabledCond = PrefCondition.create(a.getPrefs(), MainActivityPrefs.FAB4_ENABLED);
+		ps.addListPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.FAB4_ACTION;
+			o.title = R.string.fab4_action;
+			o.subtitle = R.string.string_format;
+			o.formatSubtitle = true;
+			o.values = fabActionNames;
+			o.valuesMap = fabActionOrdinals;
+			o.visibility = fab4EnabledCond;
 		});
 		ps.addBooleanPref(o -> {
 			o.store = a.getPrefs();

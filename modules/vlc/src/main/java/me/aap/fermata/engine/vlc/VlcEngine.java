@@ -113,6 +113,8 @@ public class VlcEngine extends MediaEngineBase
 			}
 
 			media.addOption(":input-fast-seek");
+			// Music tab: play a video file's audio without decoding its video at all.
+			if (source.isAudioOnlyPlayback()) media.addOption(":no-video");
 			switch (source.getPrefs().getHwAccelPref()) {
 				case HW_ACCEL_DECODING -> {
 					media.setHWDecoderEnabled(true, true);

@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Track info, seek bar, transport controls and secondary actions of the Music tab. Shared by the portrait and landscape layouts. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/music_controls"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:orientation="vertical"
+    android:paddingStart="24dp"
+    android:paddingEnd="24dp"
+    android:paddingBottom="16dp">
+
+    <TextView
+        android:id="@+id/music_track_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="marquee"
+        android:marqueeRepeatLimit="marquee_forever"
+        android:singleLine="true"
+        android:text="@string/music_nothing_playing"
+        android:textColor="?attr/musicTextPrimary"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/music_track_artist"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:ellipsize="end"
+        android:singleLine="true"
+        android:textColor="?attr/musicTextSecondary"
+        android:textSize="15sp" />
+
+    <SeekBar
+        android:id="@+id/music_seek"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:paddingStart="0dp"
+        android:paddingEnd="0dp"
+        android:progressBackgroundTint="?attr/musicSeekTrack"
+        android:progressTint="?attr/musicIconPrimary"
+        android:thumbTint="?attr/musicIconPrimary" />
+
+    <!-- Fixed-width time labels: updating a wrap_content one every second re-lays out this whole
+         block, and every relayout restarts the title's marquee (a visible jitter while playing). -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <TextView
+            android:id="@+id/music_position"
+            android:layout_width="72dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="start"
+            android:gravity="start"
+            android:text="0:00"
+            android:textColor="?attr/musicTextSecondary"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/music_duration"
+            android:layout_width="72dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:gravity="end"
+            android:text="0:00"
+            android:textColor="?attr/musicTextSecondary"
+            android:textSize="12sp" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <ImageButton
+            android:id="@+id/music_shuffle"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/music_shuffle"
+            android:src="@drawable/shuffle"
+            android:tint="?attr/musicIconSecondary" />
+
+        <ImageButton
+            android:id="@+id/music_prev"
+            android:layout_width="0dp"
+            android:layout_height="56dp"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/action_prev"
+            android:scaleType="fitCenter"
+            android:padding="12dp"
+            android:src="@drawable/prev"
+            android:tint="?attr/musicIconPrimary" />
+
+        <!-- Not clipped, and with room around the button: its shadow and its press animation
+             (see MusicPlayerFragment) reach past its own bounds. -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1.4"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:paddingTop="6dp"
+            android:paddingBottom="10dp">
+
+            <ImageButton
+                android:id="@+id/music_play_pause"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:layout_gravity="center"
+                android:background="@drawable/music_play_bg"
+                android:contentDescription="@string/action_play_pause"
+                android:elevation="6dp"
+                android:padding="18dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/play"
+                android:tint="?attr/musicPlayIcon" />
+
+            <!-- Replaces the play/pause icon while loading; above the button (higher elevation). -->
+            <ProgressBar
+                android:id="@+id/music_play_loading"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_gravity="center"
+                android:elevation="7dp"
+                android:indeterminateTint="?attr/musicPlayIcon"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <ImageButton
+            android:id="@+id/music_next"
+            android:layout_width="0dp"
+            android:layout_height="56dp"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/action_next"
+            android:scaleType="fitCenter"
+            android:padding="12dp"
+            android:src="@drawable/next"
+            android:tint="?attr/musicIconPrimary" />
+
+        <ImageButton
+            android:id="@+id/music_repeat"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:layout_weight="1"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/music_repeat_off"
+            android:src="@drawable/repeat"
+            android:tint="?attr/musicIconSecondary" />
+    </LinearLayout>
+
+    <!-- Animated layout changes: the other chips slide over as the Video / Play as music chip comes,
+         goes or changes width (see MusicPlayerFragment#setVideoButton). -->
+    <LinearLayout
+        android:id="@+id/music_actions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:animateLayoutChanges="true"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/music_queue_button"
+            style="@style/MusicChip"
+            android:drawableStart="@drawable/queue_music"
+            android:text="@string/music_queue_short" />
+
+        <TextView
+            android:id="@+id/music_effects_button"
+            style="@style/MusicChip"
+            android:layout_marginStart="8dp"
+            android:drawableStart="@drawable/equalizer"
+            android:text="@string/effects" />
+
+        <TextView
+            android:id="@+id/music_video_button"
+            style="@style/MusicChip"
+            android:layout_marginStart="8dp"
+            android:drawableStart="@drawable/video"
+            android:text="@string/video"
+            android:visibility="gone" />
+    </LinearLayout>
+</LinearLayout>

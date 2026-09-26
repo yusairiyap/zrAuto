@@ -91,6 +91,18 @@
         app:layout_constraintBottom_toTopOf="@id/control_panel"
         app:layout_constraintEnd_toStartOf="@id/floating_button2" />
 
+    <me.aap.fermata.ui.view.QuaternaryFloatingButton
+        android:id="@+id/floating_button4"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="15dp"
+        android:alpha="0.5"
+        android:elevation="10dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/control_panel"
+        app:layout_constraintEnd_toStartOf="@id/floating_button3" />
+
     <androidx.core.widget.ContentLoadingProgressBar
         android:id="@+id/content_loading_progress"
         style="?android:attr/progressBarStyleLarge"
