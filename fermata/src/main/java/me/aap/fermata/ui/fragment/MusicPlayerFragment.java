@@ -15,6 +15,7 @@ import static android.support.v4.media.session.PlaybackStateCompat.REPEAT_MODE_O
 import static android.support.v4.media.session.PlaybackStateCompat.SHUFFLE_MODE_ALL;
 import static android.support.v4.media.session.PlaybackStateCompat.SHUFFLE_MODE_NONE;
 
+import android.animation.LayoutTransition;
 import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
@@ -44,8 +45,10 @@ import android.widget.ImageView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
+import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.StringRes;
 import androidx.appcompat.view.ContextThemeWrapper;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.ColorUtils;
@@ -212,6 +215,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		message = view.findViewById(R.id.music_message);
 		repeat = view.findViewById(R.id.music_repeat);
 		videoButton = view.findViewById(R.id.music_video_button);
+		videoButtonText = 0; // A new view: the chip starts hidden.
+		// The chips also slide over when the Video / Play as music chip just changes width.
+		LayoutTransition lt = ((ViewGroup) view.findViewById(R.id.music_actions)).getLayoutTransition();
+		if (lt != null) lt.enableTransitionType(LayoutTransition.CHANGING);
 		queuePanel = view.findViewById(R.id.music_queue_panel);
 		queueDismiss = view.findViewById(R.id.music_queue_dismiss);
 		queueDismiss.setOnClickListener(v -> showQueue(false));
@@ -684,20 +691,74 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	}
 
 	private void updateVideoButton(@Nullable PlayableItem i) {
+		// Left as it is while a track loads (e.g. skipping to the next one): what's playing is in
+		// flux until then, and it would only flicker.
+		if (isLoading() && (videoButton.getVisibility() == View.VISIBLE)) return;
 		MusicTrackItem t = currentTrack();
 
 		if ((playingAsMusic() && t.hasVideo()) || (idleVideoTrack() != null)) {
-			videoButton.setText(R.string.video);
-			videoButton.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.video, 0, 0, 0);
-			videoButton.setVisibility(View.VISIBLE);
+			setVideoButton(R.string.video, R.drawable.video);
 		} else if ((i != null) && isPlayingVideo()) {
 			// A video is playing right now (e.g. in the split view): offer to drop the picture.
-			videoButton.setText(R.string.play_as_music);
-			videoButton.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.music, 0, 0, 0);
-			videoButton.setVisibility(View.VISIBLE);
+			setVideoButton(R.string.play_as_music, R.drawable.music);
 		} else {
-			videoButton.setVisibility(View.GONE);
+			setVideoButton(0, 0);
 		}
+	}
+
+	private boolean isLoading() {
+		PlaybackStateCompat st = getActivityDelegate().getMediaSessionCallback().getPlaybackState();
+		return (st != null) && isBusy(st.getState());
+	}
+
+	private static boolean isBusy(int st) {
+		return (st == PlaybackStateCompat.STATE_CONNECTING) ||
+				(st == PlaybackStateCompat.STATE_BUFFERING) ||
+				(st == PlaybackStateCompat.STATE_SKIPPING_TO_NEXT) ||
+				(st == PlaybackStateCompat.STATE_SKIPPING_TO_PREVIOUS) ||
+				(st == PlaybackStateCompat.STATE_SKIPPING_TO_QUEUE_ITEM);
+	}
+
+	// What the Video / Play as music chip currently shows (its text), 0 when hidden.
+	private int videoButtonText;
+
+	/**
+	 * Shows the Video / Play as music chip with this text and icon, or hides it ({@code text} 0),
+	 * animated: it fades in and out, and switching between the two crossfades its content while the
+	 * chips row (animateLayoutChanges) slides the others over to its new width.
+	 */
+	private void setVideoButton(@StringRes int text, @DrawableRes int icon) {
+		if (text == videoButtonText) return;
+		int was = videoButtonText;
+		videoButtonText = text;
+		TextView b = videoButton;
+		b.animate().cancel();
+
+		if (text == 0) {
+			b.setVisibility(View.GONE);
+			return;
+		}
+
+		Runnable apply = () -> {
+			b.setText(text);
+			b.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, 0, 0, 0);
+		};
+
+		if (was == 0) {
+			apply.run();
+			b.setAlpha(1f);
+			b.setScaleX(1f);
+			b.setScaleY(1f);
+			b.setVisibility(View.VISIBLE);
+			return;
+		}
+
+		b.animate().alpha(0f).scaleX(0.9f).scaleY(0.9f).setDuration(120)
+				.setInterpolator(new DecelerateInterpolator()).withEndAction(() -> {
+					apply.run();
+					b.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(220)
+							.setInterpolator(new OvershootInterpolator(1.5f)).start();
+				}).start();
 	}
 
 	private boolean isPlayingVideo() {
@@ -710,11 +771,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		int st = (state == null) ? PlaybackStateCompat.STATE_NONE : state.getState();
 		boolean playing = (st == PlaybackStateCompat.STATE_PLAYING);
 		playPause.setImageResource(playing ? R.drawable.pause : R.drawable.play);
-		boolean busy = (st == PlaybackStateCompat.STATE_CONNECTING) ||
-				(st == PlaybackStateCompat.STATE_BUFFERING) ||
-				(st == PlaybackStateCompat.STATE_SKIPPING_TO_NEXT) ||
-				(st == PlaybackStateCompat.STATE_SKIPPING_TO_PREVIOUS) ||
-				(st == PlaybackStateCompat.STATE_SKIPPING_TO_QUEUE_ITEM);
+		boolean busy = isBusy(st);
 		loading.setLoading(busy);
 		setPlayLoading(busy);
 

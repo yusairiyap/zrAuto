@@ -160,10 +160,14 @@
             android:tint="?attr/musicIconSecondary" />
     </LinearLayout>
 
+    <!-- Animated layout changes: the other chips slide over as the Video / Play as music chip comes,
+         goes or changes width (see MusicPlayerFragment#setVideoButton). -->
     <LinearLayout
+        android:id="@+id/music_actions"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
+        android:animateLayoutChanges="true"
         android:gravity="center"
         android:orientation="horizontal">
 

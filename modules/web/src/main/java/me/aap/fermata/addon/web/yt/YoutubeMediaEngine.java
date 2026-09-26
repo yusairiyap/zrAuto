@@ -754,7 +754,11 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// track that just played until the next one is on its way, never the placeholder.
 		if ((q != null) && (current == end)) return q;
 		String id = YoutubeVideoItem.extractYoutubeVideoId(q);
-		return ((id != null) && id.equals(currentVideoId)) ? q : getFavoritableItem();
+		// Also while switching to it (skipping to the next track): the previous video is still the
+		// current one until the new one plays, which would otherwise read as "not the queue's".
+		if ((id != null) && (id.equals(currentVideoId) || id.equals(web.getAddon().getPendingVideoId())))
+			return q;
+		return getFavoritableItem();
 	}
 
 	@Override
