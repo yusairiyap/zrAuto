@@ -80,7 +80,8 @@ public interface MediaEngine extends Closeable {
 	 * The library item (with its real Favorites/Playlist/folder parent) the current media was
 	 * started from, for building a queue around it -- the Music tab's "Play as music" uses its
 	 * siblings as the music queue. Normally just {@link #getSource()}; YouTube's engine returns the
-	 * Favorites/Playlist entry the video was tapped in, or null if it's just being browsed.
+	 * Favorites/Playlist/music queue entry the video was started from, or the video itself if it's
+	 * just being browsed.
 	 */
 	@Nullable
 	default PlayableItem getQueueItem() {

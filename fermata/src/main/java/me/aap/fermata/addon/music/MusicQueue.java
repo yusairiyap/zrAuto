@@ -172,37 +172,19 @@ public class MusicQueue extends ExtRoot {
 		return added;
 	}
 
+	/** Appends {@code items} to the queue, and to the end of its shuffled order too, if any. */
 	public List<MusicTrackItem> add(List<? extends PlayableItem> items) {
-		return insert(null, items);
-	}
-
-	/**
-	 * Inserts right after {@code after} (or appends, if it isn't in the queue), in the play order
-	 * too: with Shuffle on, right after it in the shuffled order ("play next"), else at its end.
-	 */
-	public List<MusicTrackItem> addAfter(@Nullable Item after, List<? extends PlayableItem> items) {
-		return insert(after, items);
-	}
-
-	private List<MusicTrackItem> insert(@Nullable Item after, List<? extends PlayableItem> items) {
 		List<MusicTrackItem> added;
 
 		synchronized (this) {
 			added = new ArrayList<>(items.size());
 			for (PlayableItem i : items) added.add(newTrack(i));
-			insertAfter(tracks, after, added);
-			if (shuffleOrder != null) insertAfter(shuffleOrder, after, added);
+			tracks.addAll(added);
+			if (shuffleOrder != null) shuffleOrder.addAll(added);
 		}
 
 		changed();
 		return added;
-	}
-
-	private static void insertAfter(List<MusicTrackItem> list, @Nullable Item after,
-																	List<MusicTrackItem> added) {
-		int idx = (after == null) ? -1 : list.indexOf(after);
-		if (idx == -1) list.addAll(added);
-		else list.addAll(idx + 1, added);
 	}
 
 	/** Removes the track at {@code idx} of the play order (as the queue is shown). */
@@ -350,11 +332,12 @@ public class MusicQueue extends ExtRoot {
 		return false;
 	}
 
+	// Only reached through the library's default next/previous, which the queue's tracks override
+	// (see getPlayable()): the same play order either way, never a second, different shuffle.
 	@NonNull
 	@Override
 	public FutureSupplier<Iterator<PlayableItem>> getShuffleIterator() {
-		List<PlayableItem> l = new ArrayList<>(getTracks());
-		Collections.shuffle(l, random);
+		List<PlayableItem> l = new ArrayList<>(getPlayOrder());
 		return completed(l.iterator());
 	}
 

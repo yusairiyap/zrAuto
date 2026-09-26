@@ -172,7 +172,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		Context ctx = inflater.getContext();
 		palette = new ContextThemeWrapper(ctx,
 				isLightTheme(ctx) ? R.style.MusicPalette_Light : R.style.MusicPalette_Dark);
-		return inflater.cloneInContext(palette).inflate(R.layout.music_player_fragment, container, false);
+		return inflater.cloneInContext(palette)
+				.inflate(R.layout.music_player_fragment, container, false);
 	}
 
 	/** Whether the app's current theme is a light one, going by its background's lightness. */
@@ -180,7 +181,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		TypedValue tv = new TypedValue();
 		if (!ctx.getTheme().resolveAttribute(android.R.attr.colorBackground, tv, true)) return false;
 		int color;
-		if ((tv.type >= TypedValue.TYPE_FIRST_COLOR_INT) && (tv.type <= TypedValue.TYPE_LAST_COLOR_INT)) {
+		if ((tv.type >= TypedValue.TYPE_FIRST_COLOR_INT) &&
+				(tv.type <= TypedValue.TYPE_LAST_COLOR_INT)) {
 			color = tv.data;
 		} else if (tv.resourceId != 0) {
 			color = ContextCompat.getColor(ctx, tv.resourceId);
@@ -455,7 +457,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	// State
 	// ---------------------------------------------------------------------------------------------
 
-	/** The item to show: the playing queue track, else what's playing, else where the queue left off. */
+	/** What to show: the playing queue track, else what's playing, else where the queue stopped. */
 	@Nullable
 	private PlayableItem getDisplayItem() {
 		MusicTrackItem track = currentTrack();
@@ -1146,7 +1148,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		MusicTrackItem idle = idleVideoTrack();
 		if (idle != null) MusicPlayer.watch(a, idle);
 		else if (playingAsMusic()) MusicPlayer.switchToVideo(a);
-		else if (a.getMediaSessionCallback().getCurrentItem() != null) MusicPlayer.playCurrentAsMusic(a);
+		else if (a.getMediaSessionCallback().getCurrentItem() != null) {
+			MusicPlayer.playCurrentAsMusic(a);
+		}
 	}
 
 	// ---------------------------------------------------------------------------------------------

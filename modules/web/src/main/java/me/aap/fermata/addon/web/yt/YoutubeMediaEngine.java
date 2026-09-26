@@ -22,11 +22,11 @@ import com.google.android.play.core.splitcompat.SplitCompat;
 
 import java.util.Objects;
 
-import me.aap.fermata.addon.web.FermataChromeClient;
-import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.music.MusicQueue;
 import me.aap.fermata.addon.music.MusicTrackItem;
+import me.aap.fermata.addon.web.FermataChromeClient;
+import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.yt.YoutubeAddon.VideoScale;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.DefaultMediaLib;
@@ -201,16 +201,17 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			blockedHeight = 0;
 		}
 
-		// data is "<videoId>|<recentLinkClick 0/1>|<title>|<channel>|<v.currentSrc>" -- see YoutubeWebView#
-		// attachListeners()'s fermataCurrentVideoId()/fermataRecentLinkClick(). The id comes straight
-		// from the player object, not the WebView's own getUrl(): that outer document URL only catches
-		// up with a player.loadVideoById() SPA-internal swap once YouTube's own JS updates the address
-		// bar via the History API, well after the <video> element has already switched sources and
-		// fired this very "playing" event -- using it here instead used to read the OLD video id for a
-		// beat after every queue-driven navigation, triggering a bogus "expected X but page shows
-		// <stale>" correction (see the pendingVideoId branch below) that reissued loadVideoById() and
-		// was visible on-screen as a flicker back to the old video. Falls back to the old getUrl()-based
-		// extraction if the player object wasn't found (e.g. mid-navigation) or didn't report an id.
+		// data is "<videoId>|<recentLinkClick 0/1>|<title>|<channel>|<v.currentSrc>" -- see
+		// YoutubeWebView#attachListeners()'s fermataCurrentVideoId()/fermataRecentLinkClick(). The id
+		// comes straight from the player object, not the WebView's own getUrl(): that outer document
+		// URL only catches up with a player.loadVideoById() SPA-internal swap once YouTube's own JS
+		// updates the address bar via the History API, well after the <video> element has already
+		// switched sources and fired this very "playing" event -- using it here instead used to read
+		// the OLD video id for a beat after every queue-driven navigation, triggering a bogus
+		// "expected X but page shows <stale>" correction (see the pendingVideoId branch below) that
+		// reissued loadVideoById() and was visible on-screen as a flicker back to the old video.
+		// Falls back to the old getUrl()-based extraction if the player object wasn't found (e.g.
+		// mid-navigation) or didn't report an id.
 		String[] parts = data.split("\\|", 5);
 		String jsVideoId = (parts.length > 0) ? parts[0] : "";
 		boolean recentLinkClick = (parts.length > 1) && "1".equals(parts[1]);
@@ -735,7 +736,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	/**
 	 * Re-applies the video quality policy to what's playing now -- the Music tab switching between
-	 * playing this as music (lowest quality) and as video (see {@link MusicPlayer#setYoutubeAudioMode}).
+	 * playing this as music (lowest quality) and as video (see
+	 * {@link MusicPlayer#setYoutubeAudioMode}).
 	 */
 	void applyQuality() {
 		qualityUrl = null;
@@ -763,9 +765,9 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		String id = YoutubeVideoItem.extractYoutubeVideoId(q);
 		// Also while switching to it (skipping to the next track): the previous video is still the
 		// current one until the new one plays, which would otherwise read as "not the queue's".
-		if ((id != null) && (id.equals(currentVideoId) || id.equals(web.getAddon().getPendingVideoId())))
-			return q;
-		return getFavoritableItem();
+		boolean queued = (id != null) &&
+				(id.equals(currentVideoId) || id.equals(web.getAddon().getPendingVideoId()));
+		return queued ? q : getFavoritableItem();
 	}
 
 	@Override

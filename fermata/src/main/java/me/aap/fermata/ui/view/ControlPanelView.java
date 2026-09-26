@@ -34,9 +34,9 @@ import com.google.android.material.textview.MaterialTextView;
 import java.util.List;
 
 import me.aap.fermata.R;
+import me.aap.fermata.action.Action;
 import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.music.MusicTrackItem;
-import me.aap.fermata.action.Action;
 import me.aap.fermata.media.engine.AudioStreamInfo;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.engine.SubtitleStreamInfo;
@@ -312,14 +312,14 @@ public class ControlPanelView extends ConstraintLayout
 		return (mask & ~MASK_SUPPRESSED) != 0;
 	}
 
-	/**
-	 * Hides the panel while a screen with its own full player UI (the Music tab) is showing, and
-	 * restores whatever it would otherwise be once that screen goes away.
-	 */
 	public boolean isSuppressed() {
 		return (mask & MASK_SUPPRESSED) != 0;
 	}
 
+	/**
+	 * Hides the panel while a screen with its own full player UI (the Music tab) is showing, and
+	 * restores whatever it would otherwise be once that screen goes away.
+	 */
 	public void setSuppressed(boolean suppressed) {
 		if (suppressed == isSuppressed()) {
 			// Already suppressed: re-assert it, in case a path that shows the panel directly (e.g. the
