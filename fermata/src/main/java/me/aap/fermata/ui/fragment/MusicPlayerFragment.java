@@ -15,6 +15,7 @@ import static android.support.v4.media.session.PlaybackStateCompat.REPEAT_MODE_O
 import static android.support.v4.media.session.PlaybackStateCompat.SHUFFLE_MODE_ALL;
 import static android.support.v4.media.session.PlaybackStateCompat.SHUFFLE_MODE_NONE;
 
+import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.res.ColorStateList;
@@ -33,6 +34,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.VelocityTracker;
 import android.view.ViewConfiguration;
+import android.view.ViewTreeObserver;
 import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
@@ -106,6 +108,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private ImageView art;
 	private LoadingDimView loading;
 	private View playLoading;
+	private TextView message;
 	private TextView title;
 	private TextView artist;
 	private TextView position;
@@ -206,6 +209,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		shuffle = view.findViewById(R.id.music_shuffle);
 		playPause = view.findViewById(R.id.music_play_pause);
 		playLoading = view.findViewById(R.id.music_play_loading);
+		message = view.findViewById(R.id.music_message);
 		repeat = view.findViewById(R.id.music_repeat);
 		videoButton = view.findViewById(R.id.music_video_button);
 		queuePanel = view.findViewById(R.id.music_queue_panel);
@@ -217,8 +221,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		queue = MusicPlayer.getQueue(a);
 
 		// Like every other tab: tool_bar/nav_bar are drawn over the fragment, so the content has to
-		// reserve room for them itself (see MainActivityDelegate#insetScrollableContent).
-		a.insetScrollableContent(content);
+		// reserve room for them itself. Not through MainActivityDelegate#insetScrollableContent, which
+		// only reacts to layout events and has repeatedly been left with a stale inset here (this tab
+		// hides the control panel, and is laid out across tab switches and fullscreen video exits):
+		// checked before every frame instead, and any change animated, see syncInsets().
+		content.getViewTreeObserver().addOnPreDrawListener(insetSync);
 		content.addOnLayoutChangeListener(
 				(v, l, t, r, b, ol, ot, or, ob) -> v.post(this::layoutQueuePanel));
 
@@ -353,6 +360,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	public void onDestroyView() {
 		setListening(false);
 		stopProgress();
+		if (content != null) content.getViewTreeObserver().removeOnPreDrawListener(insetSync);
+		if (insetAnim != null) insetAnim.cancel();
+		insetAnim = null;
+		insetsSet = false;
 		super.onDestroyView();
 	}
 
@@ -718,6 +729,77 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		}
 	}
 
+	/**
+	 * Keeps the content clear of tool_bar and nav_bar, which are drawn over it: checked before every
+	 * frame (cheap, and never misses a change the way layout events can), and any change after the
+	 * first is animated rather than jumping.
+	 */
+	private final ViewTreeObserver.OnPreDrawListener insetSync = () -> {
+		syncInsets();
+		return true;
+	};
+	private final int[] insets = new int[2];
+	@Nullable
+	private ValueAnimator insetAnim;
+	private boolean insetsSet;
+	private int insetTop;
+	private int insetBottom;
+
+	private void syncInsets() {
+		View c = content;
+		if ((c == null) || !c.isShown()) return;
+		if (!getActivityDelegate().computeContentInsets(c, insets)) return;
+		int top = insets[0];
+		int bottom = insets[1];
+		if (insetsSet && (top == insetTop) && (bottom == insetBottom)) return;
+		insetTop = top;
+		insetBottom = bottom;
+		if (insetAnim != null) insetAnim.cancel();
+
+		if (!insetsSet) {
+			insetsSet = true;
+			c.setPadding(c.getPaddingLeft(), top, c.getPaddingRight(), bottom);
+			return;
+		}
+
+		int fromTop = c.getPaddingTop();
+		int fromBottom = c.getPaddingBottom();
+		ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
+		a.setDuration(250);
+		a.setInterpolator(new DecelerateInterpolator());
+		a.addUpdateListener(v -> {
+			float f = (float) v.getAnimatedValue();
+			c.setPadding(c.getPaddingLeft(), Math.round(fromTop + (top - fromTop) * f),
+					c.getPaddingRight(), Math.round(fromBottom + (bottom - fromBottom) * f));
+		});
+		a.start();
+		insetAnim = a;
+	}
+
+	/**
+	 * A short message over the cover, instead of a toast: a toast only shows on the phone's own
+	 * screen, never on Android Auto's.
+	 */
+	private void showMessage(CharSequence text) {
+		TextView m = message;
+		if (m == null) return;
+		m.removeCallbacks(hideMessage);
+		m.animate().cancel();
+		m.setText(text);
+		if (m.getVisibility() != View.VISIBLE) {
+			m.setAlpha(0f);
+			m.setVisibility(View.VISIBLE);
+		}
+		m.animate().alpha(1f).setDuration(150).start();
+		m.postDelayed(hideMessage, 2500);
+	}
+
+	private final Runnable hideMessage = () -> {
+		TextView m = message;
+		if (m != null) m.animate().alpha(0f).setDuration(250)
+				.withEndAction(() -> m.setVisibility(View.GONE)).start();
+	};
+
 	/** While loading, a spinner takes the place of the play/pause icon. */
 	private void setPlayLoading(boolean busy) {
 		if (busy == (playLoading.getVisibility() == View.VISIBLE)) return;
@@ -924,8 +1006,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		}
 
 		updateModes();
-		UiUtils.showToast(requireContext(), (mode == REPEAT_MODE_ONE) ? R.string.music_repeat_one :
-				(mode == REPEAT_MODE_ALL) ? R.string.music_repeat_all : R.string.music_repeat_off);
+		showMessage(getString((mode == REPEAT_MODE_ONE) ? R.string.music_repeat_one :
+				(mode == REPEAT_MODE_ALL) ? R.string.music_repeat_all : R.string.music_repeat_off));
 	}
 
 	private void onEffects() {
@@ -943,8 +1025,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			DiagnosticLog.log("MUSIC", "effects: engine's own (in-page equalizer)", "engine=" + eng);
 		} else {
 			DiagnosticLog.log("MUSIC", "effects unavailable", "engine=" + eng, "item=" + src);
-			UiUtils.showToast(requireContext(), (src == null) ? R.string.music_effects_play_first :
-					R.string.music_effects_unavailable);
+			showMessage(getString((src == null) ? R.string.music_effects_play_first :
+					R.string.music_effects_unavailable));
 		}
 	}
 
@@ -1160,8 +1242,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 	@Override
 	public void onPlaybackError(String message) {
-		if ((getView() != null) && (message != null) && !message.isEmpty())
-			UiUtils.showToast(requireContext(), message);
+		if ((getView() != null) && (message != null) && !message.isEmpty()) showMessage(message);
 	}
 
 	@Override

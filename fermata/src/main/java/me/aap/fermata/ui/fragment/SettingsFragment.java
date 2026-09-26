@@ -347,6 +347,7 @@ public class SettingsFragment extends MainActivityFragment
 			});
 			addSecondaryFabPrefs(a, fabSettingsSet);
 			addAAInterface(a, sub1);
+			addInfoOverlayPrefs(a, sub1);
 		} else {
 			fabSettingsSet = sub1.subSet(o -> {
 				o.title = R.string.secondary_fab_prefs;
@@ -359,6 +360,7 @@ public class SettingsFragment extends MainActivityFragment
 					o.icon = R.drawable.tv;
 				}));
 			}
+			addInfoOverlayPrefs(a, sub1);
 			addInterface(a, sub1, MainActivityPrefs.THEME_MAIN, MainActivityPrefs.HIDE_BARS,
 					MainActivityPrefs.FULLSCREEN, MainActivityPrefs.SHOW_PG_UP_DOWN, null,
 					MainActivityPrefs.NAV_BAR_POS, MainActivityPrefs.NAV_BAR_SIZE,
@@ -366,7 +368,6 @@ public class SettingsFragment extends MainActivityFragment
 					MainActivityPrefs.TEXT_ICON_SIZE, MainActivityPrefs.ICON_SIZE);
 		}
 
-		addInfoOverlayPrefs(a, sub1);
 		sub1.addBooleanPref(o -> {
 			o.store = mediaPrefs;
 			o.pref = BrowsableItemPrefs.SHOW_TRACK_ICONS;

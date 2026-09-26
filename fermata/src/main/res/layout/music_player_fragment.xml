@@ -71,6 +71,24 @@
                     android:id="@+id/music_loading"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent" />
+
+                <!-- The tab's own messages, instead of a toast: a toast only ever shows on the
+                     phone's screen, never on Android Auto's. See MusicPlayerFragment#showMessage. -->
+                <TextView
+                    android:id="@+id/music_message"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom|center_horizontal"
+                    android:layout_margin="16dp"
+                    android:background="@drawable/music_message_bg"
+                    android:gravity="center"
+                    android:paddingStart="16dp"
+                    android:paddingTop="8dp"
+                    android:paddingEnd="16dp"
+                    android:paddingBottom="8dp"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="14sp"
+                    android:visibility="gone" />
             </com.google.android.material.card.MaterialCardView>
         </androidx.constraintlayout.widget.ConstraintLayout>
 

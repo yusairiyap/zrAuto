@@ -1013,9 +1013,23 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	private final int[] insetLoc1 = new int[2];
 	private final int[] insetLoc2 = new int[2];
+	private final int[] insetOut = new int[2];
 
 	private void applyContentInsets(ViewGroup content) {
-		if ((toolBar == null) || (controlPanel == null) || !content.isAttachedToWindow()) return;
+		if (!computeContentInsets(content, insetOut)) return;
+		int top = insetOut[0];
+		int bottom = insetOut[1];
+		if ((content.getPaddingTop() == top) && (content.getPaddingBottom() == bottom)) return;
+		content.setPadding(content.getPaddingLeft(), top, content.getPaddingRight(), bottom);
+	}
+
+	/**
+	 * The top and bottom padding {@code content} needs, right now, to clear tool_bar and the bottom
+	 * bars drawn over it, into {@code out[0]} and {@code out[1]} -- see
+	 * {@link #insetScrollableContent}. False if it can't tell yet (not attached).
+	 */
+	public boolean computeContentInsets(View content, int[] out) {
+		if ((toolBar == null) || (controlPanel == null) || !content.isAttachedToWindow()) return false;
 
 		content.getLocationOnScreen(insetLoc1);
 		int contentTop = insetLoc1[1];
@@ -1041,8 +1055,9 @@ public class MainActivityDelegate extends ActivityDelegate
 			bottom = Math.max(bottom, Math.max(0, contentBottom - insetLoc2[1]));
 		}
 
-		if ((content.getPaddingTop() == top) && (content.getPaddingBottom() == bottom)) return;
-		content.setPadding(content.getPaddingLeft(), top, content.getPaddingRight(), bottom);
+		out[0] = top;
+		out[1] = bottom;
+		return true;
 	}
 
 	/**
