@@ -43,6 +43,8 @@ public final class MusicPlayer {
 	@Nullable
 	private static String pendingVideoId;
 	private static long pendingVideoPos;
+	// See watch(): the YouTube track about to start is to be watched, not listened to.
+	private static boolean watchRequested;
 	private static WeakReference<MainActivityDelegate> activity = new WeakReference<>(null);
 
 	private MusicPlayer() {
@@ -116,6 +118,9 @@ public final class MusicPlayer {
 		if ((current != null) && (current.getId() == MediaPrefs.MEDIA_ENG_YT) &&
 				!t.hasStartPosition()) {
 			DiagnosticLog.log(TAG, "YouTube track on the playing YouTube player", "id=" + t.getVideoId());
+			MainActivityDelegate a = activity.get();
+			if (watchRequested && (a != null)) a.post(() -> a.showFragment(R.id.youtube_fragment));
+			watchRequested = false;
 			return current;
 		}
 		return new YoutubeStartEngine(t, listener);
@@ -130,7 +135,12 @@ public final class MusicPlayer {
 		pendingVideoPos = pos;
 		DiagnosticLog.log(TAG, "YouTube track: starting in the YouTube player", "id=" + t.getVideoId(),
 				"pos=" + (pos / 1000) + 's');
-		return h.play(a, t);
+		boolean watch = watchRequested;
+		watchRequested = false;
+		if (!h.play(a, t)) return false;
+		// Showing the YouTube tab ends music mode (see YoutubeFragment#switchingFrom).
+		if (watch) a.showFragment(R.id.youtube_fragment);
+		return true;
 	}
 
 	public static boolean isEnabled() {
@@ -328,6 +338,30 @@ public final class MusicPlayer {
 				src.getPrefs().setPositionPref(pos);
 				cb.playItem(src, pos);
 			}
+		});
+	}
+
+	/**
+	 * "Video" for the queue track shown while nothing is playing (where the queue left off): starts
+	 * it straight away as video, from where the queue left off.
+	 */
+	public static void watch(MainActivityDelegate a, MusicTrackItem t) {
+		MusicQueue q = getQueue(a);
+		long pos = ((q != null) && t.equals(q.getSavedCurrent())) ? q.getSavedPosition() : 0;
+		DiagnosticLog.log(TAG, "watch", "track=" + t, "pos=" + (pos / 1000) + 's');
+
+		if (t.getVideoId() != null) {
+			watchRequested = true;
+			playTrack(a, t, pos);
+			return;
+		}
+
+		t.prepareSource().main().onSuccess(v -> {
+			PlayableItem src = t.getSource();
+			if (src == null) return;
+			a.goToItem(src);
+			src.getPrefs().setPositionPref(pos);
+			a.getMediaSessionCallback().playItem(src, pos);
 		});
 	}
 

@@ -5,7 +5,7 @@
     android:id="@+id/music_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FF101014">
+    android:background="?attr/musicBackground">
 
     <ImageView
         android:id="@+id/music_bg"
@@ -48,7 +48,7 @@
                 android:id="@+id/music_art_card"
                 android:layout_width="0dp"
                 android:layout_height="0dp"
-                app:cardBackgroundColor="#FF1E1E2A"
+                app:cardBackgroundColor="?attr/musicCardFill"
                 app:cardCornerRadius="20dp"
                 app:cardElevation="18dp"
                 app:layout_constraintBottom_toBottomOf="parent"
@@ -67,7 +67,7 @@
                     android:scaleType="centerCrop"
                     android:src="@drawable/music_art_placeholder" />
 
-                <me.aap.fermata.ui.view.ShimmerView
+                <me.aap.fermata.ui.view.LoadingDimView
                     android:id="@+id/music_loading"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent" />

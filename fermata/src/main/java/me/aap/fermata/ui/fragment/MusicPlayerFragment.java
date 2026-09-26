@@ -26,6 +26,7 @@ import android.graphics.drawable.TransitionDrawable;
 import android.os.Bundle;
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
@@ -39,7 +40,9 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.view.ContextThemeWrapper;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.ColorUtils;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -63,9 +66,8 @@ import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
-import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.ui.view.InfoOverlayView;
-import me.aap.fermata.ui.view.ShimmerView;
+import me.aap.fermata.ui.view.LoadingDimView;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.pref.PreferenceStore;
@@ -97,7 +99,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private ViewGroup content;
 	private ImageView bg;
 	private ImageView art;
-	private ShimmerView loading;
+	private LoadingDimView loading;
 	private TextView title;
 	private TextView artist;
 	private TextView position;
@@ -115,6 +117,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private ItemTouchHelper touchHelper;
 	@Nullable
 	private MusicQueue queue;
+	// The context this tab's views are inflated with: the app theme plus the tab's own palette, dark
+	// or light to match it (see onCreateView()).
+	private Context palette;
 	@Nullable
 	private PlayableItem shownItem;
 	@Nullable
@@ -148,7 +153,32 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	@Override
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
 													 @Nullable Bundle savedInstanceState) {
-		return inflater.inflate(R.layout.music_player_fragment, container, false);
+		Context ctx = inflater.getContext();
+		palette = new ContextThemeWrapper(ctx,
+				isLightTheme(ctx) ? R.style.MusicPalette_Light : R.style.MusicPalette_Dark);
+		return inflater.cloneInContext(palette).inflate(R.layout.music_player_fragment, container, false);
+	}
+
+	/** Whether the app's current theme is a light one, going by its background's lightness. */
+	private static boolean isLightTheme(Context ctx) {
+		TypedValue tv = new TypedValue();
+		if (!ctx.getTheme().resolveAttribute(android.R.attr.colorBackground, tv, true)) return false;
+		int color;
+		if ((tv.type >= TypedValue.TYPE_FIRST_COLOR_INT) && (tv.type <= TypedValue.TYPE_LAST_COLOR_INT)) {
+			color = tv.data;
+		} else if (tv.resourceId != 0) {
+			color = ContextCompat.getColor(ctx, tv.resourceId);
+		} else {
+			return false;
+		}
+		return ColorUtils.calculateLuminance(color) > 0.5;
+	}
+
+	/** A color of this tab's own palette (see MusicPalette in music.xml). */
+	private int paletteColor(int attr) {
+		TypedValue tv = new TypedValue();
+		palette.getTheme().resolveAttribute(attr, tv, true);
+		return tv.data;
 	}
 
 	@Override
@@ -277,11 +307,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		suppressOverlays(getActivityDelegate(), false);
 	}
 
-	/** This tab has its own controls: no control panel and no floating buttons over it. */
+	/**
+	 * This tab has its own controls and loading indicator: no control panel, floating buttons or
+	 * content loading indicator over it.
+	 */
 	private static void suppressOverlays(MainActivityDelegate a, boolean suppress) {
-		ControlPanelView cp = a.getControlPanel();
-		if (cp != null) cp.setSuppressed(suppress);
-		a.setFabsSuppressed(suppress);
+		a.setOverlaysSuppressed(suppress);
 	}
 
 	@Override
@@ -450,12 +481,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private void setArt(@Nullable Bitmap bm, @Nullable Object key) {
 		if ((key != null) && key.equals(shownArt)) return;
 		shownArt = key;
-		Context ctx = requireContext();
-
 		artBitmap = bm;
 
 		if (bm == null) {
-			crossfade(art, ContextCompat.getDrawable(ctx, R.drawable.music_art_placeholder));
+			// Through the palette: the placeholder is drawn in its colors.
+			crossfade(art, ContextCompat.getDrawable(palette, R.drawable.music_art_placeholder));
 			crossfade(bg, null);
 			return;
 		}
@@ -602,10 +632,17 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		return (t != null) ? t : getActivityDelegate().getMediaSessionCallback().getCurrentItem();
 	}
 
+	/** The queue track shown while nothing plays (where the queue left off), if it has a video. */
+	@Nullable
+	private MusicTrackItem idleVideoTrack() {
+		if (getActivityDelegate().getMediaSessionCallback().getCurrentItem() != null) return null;
+		return ((shownItem instanceof MusicTrackItem t) && t.hasVideo()) ? t : null;
+	}
+
 	private void updateVideoButton(@Nullable PlayableItem i) {
 		MusicTrackItem t = currentTrack();
 
-		if (playingAsMusic() && t.hasVideo()) {
+		if ((playingAsMusic() && t.hasVideo()) || (idleVideoTrack() != null)) {
 			videoButton.setText(R.string.video);
 			videoButton.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.video, 0, 0, 0);
 			videoButton.setVisibility(View.VISIBLE);
@@ -634,7 +671,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				(st == PlaybackStateCompat.STATE_SKIPPING_TO_NEXT) ||
 				(st == PlaybackStateCompat.STATE_SKIPPING_TO_PREVIOUS) ||
 				(st == PlaybackStateCompat.STATE_SKIPPING_TO_QUEUE_ITEM);
-		loading.setShimmering(busy);
+		loading.setLoading(busy);
 
 		if (playing) {
 			if (isResumed() && !isHidden()) startProgress();
@@ -651,7 +688,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		BrowsableItemPrefs p = getModePrefs();
 		PlayableItem i = modeItem();
 		int accent = ContextCompat.getColor(requireContext(), R.color.music_accent);
-		int dim = 0xB3FFFFFF;
+		int dim = paletteColor(R.attr.musicIconSecondary);
 
 		if (p == null) {
 			shuffle.setImageTintList(ColorStateList.valueOf(dim));
@@ -849,7 +886,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 	private void onVideo() {
 		MainActivityDelegate a = getActivityDelegate();
-		if (playingAsMusic()) MusicPlayer.switchToVideo(a);
+		MusicTrackItem idle = idleVideoTrack();
+		if (idle != null) MusicPlayer.watch(a, idle);
+		else if (playingAsMusic()) MusicPlayer.switchToVideo(a);
 		else if (a.getMediaSessionCallback().getCurrentItem() != null) MusicPlayer.playCurrentAsMusic(a);
 	}
 
@@ -1055,7 +1094,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			boolean current = t.equals(currentTrack());
 			title.setText(t.getName());
 			title.setTextColor(current ?
-					ContextCompat.getColor(requireContext(), R.color.music_accent) : 0xFFFFFFFF);
+					ContextCompat.getColor(requireContext(), R.color.music_accent) :
+					paletteColor(R.attr.musicTextPrimary));
 			String a = t.getArtistName();
 			subtitle.setText((a != null) ? a : ((t.getVideoId() != null) ? "YouTube" : ""));
 			playing.setVisibility(current ? View.VISIBLE : View.GONE);

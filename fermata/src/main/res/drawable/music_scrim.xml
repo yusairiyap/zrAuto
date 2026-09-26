@@ -3,7 +3,7 @@
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
     <gradient
         android:angle="270"
-        android:centerColor="#8C000000"
-        android:endColor="#E6000000"
-        android:startColor="#66000000" />
+        android:centerColor="?attr/musicScrimMiddle"
+        android:endColor="?attr/musicScrimBottom"
+        android:startColor="?attr/musicScrimTop" />
 </shape>

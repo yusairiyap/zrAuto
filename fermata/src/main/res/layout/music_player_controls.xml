@@ -19,7 +19,7 @@
         android:marqueeRepeatLimit="marquee_forever"
         android:singleLine="true"
         android:text="@string/music_nothing_playing"
-        android:textColor="#FFFFFFFF"
+        android:textColor="?attr/musicTextPrimary"
         android:textSize="22sp"
         android:textStyle="bold" />
 
@@ -30,7 +30,7 @@
         android:layout_marginTop="2dp"
         android:ellipsize="end"
         android:singleLine="true"
-        android:textColor="#B3FFFFFF"
+        android:textColor="?attr/musicTextSecondary"
         android:textSize="15sp" />
 
     <SeekBar
@@ -40,9 +40,9 @@
         android:layout_marginTop="12dp"
         android:paddingStart="0dp"
         android:paddingEnd="0dp"
-        android:progressBackgroundTint="#4DFFFFFF"
-        android:progressTint="#FFFFFFFF"
-        android:thumbTint="#FFFFFFFF" />
+        android:progressBackgroundTint="?attr/musicSeekTrack"
+        android:progressTint="?attr/musicIconPrimary"
+        android:thumbTint="?attr/musicIconPrimary" />
 
     <!-- Fixed-width time labels: updating a wrap_content one every second re-lays out this whole
          block, and every relayout restarts the title's marquee (a visible jitter while playing). -->
@@ -57,7 +57,7 @@
             android:layout_gravity="start"
             android:gravity="start"
             android:text="0:00"
-            android:textColor="#B3FFFFFF"
+            android:textColor="?attr/musicTextSecondary"
             android:textSize="12sp" />
 
         <TextView
@@ -67,7 +67,7 @@
             android:layout_gravity="end"
             android:gravity="end"
             android:text="0:00"
-            android:textColor="#B3FFFFFF"
+            android:textColor="?attr/musicTextSecondary"
             android:textSize="12sp" />
     </FrameLayout>
 
@@ -86,7 +86,7 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/music_shuffle"
             android:src="@drawable/shuffle"
-            android:tint="#B3FFFFFF" />
+            android:tint="?attr/musicIconSecondary" />
 
         <ImageButton
             android:id="@+id/music_prev"
@@ -98,7 +98,7 @@
             android:scaleType="fitCenter"
             android:padding="12dp"
             android:src="@drawable/prev"
-            android:tint="#FFFFFFFF" />
+            android:tint="?attr/musicIconPrimary" />
 
         <FrameLayout
             android:layout_width="0dp"
@@ -116,7 +116,7 @@
                 android:padding="18dp"
                 android:scaleType="fitCenter"
                 android:src="@drawable/play"
-                android:tint="#FF000000" />
+                android:tint="?attr/musicPlayIcon" />
         </FrameLayout>
 
         <ImageButton
@@ -129,7 +129,7 @@
             android:scaleType="fitCenter"
             android:padding="12dp"
             android:src="@drawable/next"
-            android:tint="#FFFFFFFF" />
+            android:tint="?attr/musicIconPrimary" />
 
         <ImageButton
             android:id="@+id/music_repeat"
@@ -139,7 +139,7 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/music_repeat_off"
             android:src="@drawable/repeat"
-            android:tint="#B3FFFFFF" />
+            android:tint="?attr/musicIconSecondary" />
     </LinearLayout>
 
     <LinearLayout

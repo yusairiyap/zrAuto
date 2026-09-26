@@ -3,7 +3,7 @@
     android:color="#40000000">
     <item>
         <shape android:shape="oval">
-            <solid android:color="#FFFFFFFF" />
+            <solid android:color="?attr/musicPlayFill" />
         </shape>
     </item>
 </ripple>

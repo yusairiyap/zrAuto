@@ -3,7 +3,6 @@ package me.aap.fermata.addon.web.yt;
 import static me.aap.utils.async.Completed.completed;
 
 import android.content.Context;
-import android.view.View;
 
 import androidx.annotation.IdRes;
 import androidx.annotation.Keep;
@@ -125,52 +124,13 @@ public class YoutubeAddon extends WebBrowserAddon
 			YoutubeVideoItem video = new YoutubeVideoItem(videoId, getRootItem(lib));
 			ActivityFragment f = a.getFragment(getFragmentId());
 
-			if (f == null) {
-				f = bootstrap(a);
-				if (f == null) return false;
-			}
+			// Never opened yet: its page is created (and laid out, YouTube won't play in a zero-size
+			// window) without showing the tab.
+			if (f == null) f = a.preloadFragment(getFragmentId());
+			if (f == null) return false;
 
 			video.loadInFragment(f, t);
 			return true;
-		}
-
-		/**
-		 * The YouTube tab was never opened yet: its page has to be created, and laid out (YouTube
-		 * won't play in a zero-size window), by showing the tab once. Its page is kept invisible
-		 * meanwhile, and it's straight back to where we were once it has been laid out.
-		 */
-		@Nullable
-		private ActivityFragment bootstrap(MainActivityDelegate a) {
-			int back = a.getActiveFragmentId();
-			ActivityFragment f;
-			YoutubeFragment.musicBootstrap = true;
-			try {
-				f = a.showFragment(getFragmentId());
-			} finally {
-				YoutubeFragment.musicBootstrap = false;
-			}
-			if (!(f instanceof YoutubeFragment yf)) return f;
-
-			Runnable goBack = () -> {
-				if (a.getActiveFragmentId() == getFragmentId()) a.showFragment(back);
-			};
-			View page = yf.getWebView();
-			if (page == null) {
-				a.postDelayed(goBack, 400);
-				return f;
-			}
-
-			page.setAlpha(0f);
-			page.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
-				@Override
-				public void onLayoutChange(View v, int l, int t, int r, int b, int ol, int ot, int or,
-																	 int ob) {
-					if ((r - l == 0) || (b - t == 0)) return;
-					v.removeOnLayoutChangeListener(this);
-					v.post(goBack);
-				}
-			});
-			return f;
 		}
 
 		@Override

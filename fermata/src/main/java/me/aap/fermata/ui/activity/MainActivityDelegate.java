@@ -9,6 +9,7 @@ import static androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.UNS
 import static android.provider.Settings.System.SCREEN_BRIGHTNESS;
 import static android.util.Base64.URL_SAFE;
 import static android.view.View.GONE;
+import static android.view.View.INVISIBLE;
 import static android.view.View.VISIBLE;
 import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
@@ -95,6 +96,7 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.widget.ContentLoadingProgressBar;
 import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentManager;
 
 import com.google.android.material.color.MaterialColors;
 import com.google.android.material.textview.MaterialTextView;
@@ -202,6 +204,8 @@ public class MainActivityDelegate extends ActivityDelegate
 	private TertiaryFloatingButton floatingButton3;
 	private QuaternaryFloatingButton floatingButton4;
 	private ContentLoadingProgressBar progressBar;
+	// See setOverlaysSuppressed().
+	private boolean loadingSuppressed;
 	private FutureSupplier<?> contentLoading;
 	// Belt-and-suspenders re-sync for insetScrollableContent(): its own attach/layout listeners
 	// cover the common case, but a tab restored by the fragment manager while switching
@@ -1147,7 +1151,7 @@ public class MainActivityDelegate extends ActivityDelegate
 
 		progressBar.hide();
 		if (contentLoading.isDone()) return;
-		progressBar.show();
+		if (!loadingSuppressed) progressBar.show();
 
 		var cl = this.contentLoading = contentLoading.main();
 		cl.onCompletion((r, f) -> {
@@ -1221,6 +1225,43 @@ public class MainActivityDelegate extends ActivityDelegate
 	public MainActivityFragment getActiveMainActivityFragment() {
 		ActivityFragment f = getActiveFragment();
 		return (f instanceof MainActivityFragment) ? (MainActivityFragment) f : null;
+	}
+
+	/**
+	 * Creates the fragment with this id, if it doesn't exist yet, without showing it: it's laid out
+	 * once, invisibly, at the full size of the frame, then hidden like any other tab that isn't on
+	 * screen. For a tab whose content has to exist before the user ever opens it, e.g. the YouTube
+	 * tab's page, which the Music tab plays through.
+	 */
+	@Nullable
+	public ActivityFragment preloadFragment(int id) {
+		ActivityFragment f = getFragment(id);
+		if (f != null) return f;
+		ActivityFragment created = createFragment(id);
+		FragmentManager fm = getSupportFragmentManager();
+		fm.beginTransaction().add(getFrameContainerId(), created).commitNow();
+		View v = created.getView();
+
+		if (v == null) {
+			fm.beginTransaction().hide(created).commitNowAllowingStateLoss();
+			return created;
+		}
+
+		v.setVisibility(INVISIBLE);
+		v.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+			@Override
+			public void onLayoutChange(View view, int l, int t, int r, int b, int ol, int ot, int or,
+																 int ob) {
+				if ((r == l) || (b == t)) return;
+				view.removeOnLayoutChangeListener(this);
+				view.post(() -> {
+					if (!created.isAdded() || created.isHidden()) return;
+					if (getActiveFragment() == created) view.setVisibility(VISIBLE);
+					else fm.beginTransaction().hide(created).commitNowAllowingStateLoss();
+				});
+			}
+		});
+		return created;
 	}
 
 	/** The fragment with this id if it's been created (shown at least once), else null. */
@@ -1775,8 +1816,19 @@ public class MainActivityDelegate extends ActivityDelegate
 		fb.animate().translationX(0f).translationY(0f).setDuration(200L).start();
 	}
 
-	/** Hides every floating button while a screen with its own controls (the Music tab) shows. */
-	public void setFabsSuppressed(boolean suppressed) {
+	/**
+	 * Hides what's normally drawn over the content (the control panel, every floating button and
+	 * the content loading indicator) while a screen with its own controls and loading indicator
+	 * (the Music tab) shows.
+	 */
+	public void setOverlaysSuppressed(boolean suppressed) {
+		ControlPanelView cp = getControlPanel();
+		if (cp != null) cp.setSuppressed(suppressed);
+		loadingSuppressed = suppressed;
+		if (progressBar != null) {
+			if (suppressed) progressBar.hide();
+			else if (contentLoading != null) progressBar.show();
+		}
 		// The primary one first: the others may mirror its visibility.
 		if (floatingButton != null) floatingButton.setSuppressed(suppressed);
 		if (floatingButton2 != null) floatingButton2.setSuppressed(suppressed);

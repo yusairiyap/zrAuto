@@ -54,8 +54,6 @@ import me.aap.utils.ui.view.ToolBarView;
 @Keep
 @SuppressWarnings("unused")
 public class YoutubeFragment extends WebBrowserFragment implements FermataServiceUiBinder.Listener {
-	// Set while the Music tab's bootstrap shows this tab (see YoutubeAddon.MusicHooks#play).
-	static boolean musicBootstrap;
 	static final String DEFAULT_URL = "https://m.youtube.com";
 	private static final Set<String> DEFAULT_URLS = new HashSet<>(Arrays.asList(DEFAULT_URL, DEFAULT_URL + '/'));
 	private static final String YT_VIDEO_VIEW_TAG = "yt_video_view_overlay";
@@ -536,17 +534,13 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	}
 
 	/**
-	 * Shown by the user (not by the Music tab's {@link YoutubeAddon} bootstrap, which only needs
-	 * this tab's page to exist): whatever plays here is being watched, so music mode ends and the
-	 * video gets its usual quality back.
+	 * Shown by the user: whatever plays here is being watched, so music mode ends and the video
+	 * gets its usual quality back.
 	 */
 	@Override
 	public void switchingFrom(@Nullable ActivityFragment currentFragment) {
 		super.switchingFrom(currentFragment);
-		if (musicBootstrap) return;
 		MusicPlayer.setYoutubeAudioMode(false);
-		FermataWebView v = getWebView();
-		if (v != null) v.setAlpha(1f);
 	}
 
 	@Override
