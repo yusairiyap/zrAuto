@@ -267,16 +267,21 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if (getContext() != null) a = getActivityDelegate();
 		else if ((from instanceof MainActivityFragment m) && (m.getContext() != null))
 			a = m.getActivityDelegate();
-		ControlPanelView cp = (a != null) ? a.getControlPanel() : null;
-		if (cp != null) cp.setSuppressed(true);
+		if (a != null) suppressOverlays(a, true);
 	}
 
 	@Override
 	public void switchingTo(@NonNull ActivityFragment to) {
 		super.switchingTo(to);
 		if (getContext() == null) return;
-		ControlPanelView cp = getActivityDelegate().getControlPanel();
-		if (cp != null) cp.setSuppressed(false);
+		suppressOverlays(getActivityDelegate(), false);
+	}
+
+	/** This tab has its own controls: no control panel and no floating buttons over it. */
+	private static void suppressOverlays(MainActivityDelegate a, boolean suppress) {
+		ControlPanelView cp = a.getControlPanel();
+		if (cp != null) cp.setSuppressed(suppress);
+		a.setFabsSuppressed(suppress);
 	}
 
 	@Override
@@ -317,8 +322,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if (listening == on) return;
 		listening = on;
 		MainActivityDelegate a = getActivityDelegate();
-		ControlPanelView cp = a.getControlPanel();
-		if (cp != null) cp.setSuppressed(on);
+		suppressOverlays(a, on);
 
 		if (on) {
 			a.getMediaSessionCallback().addBroadcastListener(this);

@@ -1775,6 +1775,20 @@ public class MainActivityDelegate extends ActivityDelegate
 		fb.animate().translationX(0f).translationY(0f).setDuration(200L).start();
 	}
 
+	/** Hides every floating button while a screen with its own controls (the Music tab) shows. */
+	public void setFabsSuppressed(boolean suppressed) {
+		// The primary one first: the others may mirror its visibility.
+		if (floatingButton != null) floatingButton.setSuppressed(suppressed);
+		if (floatingButton2 != null) floatingButton2.setSuppressed(suppressed);
+		if (floatingButton3 != null) floatingButton3.setSuppressed(suppressed);
+		if (floatingButton4 != null) floatingButton4.setSuppressed(suppressed);
+		if (suppressed) return;
+		// Whatever the others mirrored while suppressed is stale.
+		updateSecondaryFabVisibility();
+		updateTertiaryFabVisibility();
+		updateQuaternaryFabVisibility();
+	}
+
 	private void updateSecondaryFabVisibility() {
 		if (floatingButton2 == null) return;
 		if (!getPrefs().getBooleanPref(FAB2_ENABLED)) {
