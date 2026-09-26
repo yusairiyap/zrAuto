@@ -27,6 +27,7 @@ import java.util.Set;
 
 import me.aap.fermata.BuildConfig;
 import me.aap.fermata.addon.AddonManager;
+import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.web.FermataChromeClient;
 import me.aap.fermata.addon.web.FermataWebView;
 import me.aap.fermata.addon.web.R;
@@ -42,6 +43,7 @@ import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.ui.UiUtils;
+import me.aap.utils.ui.fragment.ActivityFragment;
 import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.menu.OverlayMenuItem;
 import me.aap.utils.ui.view.ToolBarView;
@@ -52,6 +54,8 @@ import me.aap.utils.ui.view.ToolBarView;
 @Keep
 @SuppressWarnings("unused")
 public class YoutubeFragment extends WebBrowserFragment implements FermataServiceUiBinder.Listener {
+	// Set while the Music tab's bootstrap shows this tab (see YoutubeAddon.MusicHooks#play).
+	static boolean musicBootstrap;
 	static final String DEFAULT_URL = "https://m.youtube.com";
 	private static final Set<String> DEFAULT_URLS = new HashSet<>(Arrays.asList(DEFAULT_URL, DEFAULT_URL + '/'));
 	private static final String YT_VIDEO_VIEW_TAG = "yt_video_view_overlay";
@@ -531,11 +535,27 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		if (v != null) v.loadUrl(url);
 	}
 
+	/**
+	 * Shown by the user (not by the Music tab's {@link YoutubeAddon} bootstrap, which only needs
+	 * this tab's page to exist): whatever plays here is being watched, so music mode ends and the
+	 * video gets its usual quality back.
+	 */
+	@Override
+	public void switchingFrom(@Nullable ActivityFragment currentFragment) {
+		super.switchingFrom(currentFragment);
+		if (musicBootstrap) return;
+		MusicPlayer.setYoutubeAudioMode(false);
+		FermataWebView v = getWebView();
+		if (v != null) v.setAlpha(1f);
+	}
+
 	@Override
 	public void onPlayableChanged(MediaLib.PlayableItem oldItem, MediaLib.PlayableItem newItem) {
 		if (isHidden()) return;
 
 		if (YoutubeMediaEngine.isYoutubeItem(newItem)) {
+			// Playing as music: no fullscreen video.
+			if (MusicPlayer.isYoutubeAudioMode()) return;
 			FermataWebView v = getWebView();
 			MainActivityDelegate a = MainActivityDelegate.get(getContext());
 			if (v == null) return;

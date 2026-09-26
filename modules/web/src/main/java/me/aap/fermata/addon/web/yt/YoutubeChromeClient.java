@@ -6,6 +6,7 @@ import android.view.ViewGroup;
 
 import androidx.annotation.Nullable;
 
+import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.web.FermataChromeClient;
 import me.aap.fermata.addon.web.FermataWebView;
 import me.aap.fermata.media.service.MediaSessionCallback;
@@ -168,6 +169,8 @@ public class YoutubeChromeClient extends FermataChromeClient {
 		MainActivityDelegate a = MainActivityDelegate.get(getWebView().getContext());
 		MediaSessionCallback cb = a.getMediaSessionCallback();
 		if (!((cb.getEngine() instanceof YoutubeMediaEngine))) return false;
+		// Playing as music (the Music tab): no fullscreen video.
+		if (MusicPlayer.isYoutubeAudioMode()) return false;
 		int st = cb.getPlaybackState().getState();
 		return (st == STATE_PLAYING) || (st == STATE_PAUSED);
 	}

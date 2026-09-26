@@ -67,13 +67,10 @@
                     android:scaleType="centerCrop"
                     android:src="@drawable/music_art_placeholder" />
 
-                <ProgressBar
+                <me.aap.fermata.ui.view.ShimmerView
                     android:id="@+id/music_loading"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:layout_gravity="center"
-                    android:indeterminateTint="#FFFFFFFF"
-                    android:visibility="gone" />
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
             </com.google.android.material.card.MaterialCardView>
         </androidx.constraintlayout.widget.ConstraintLayout>
 

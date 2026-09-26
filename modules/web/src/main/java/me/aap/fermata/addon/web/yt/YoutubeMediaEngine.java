@@ -28,6 +28,7 @@ import me.aap.fermata.addon.web.FermataChromeClient;
 import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.music.MusicQueue;
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.addon.web.yt.YoutubeAddon.VideoScale;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.DefaultMediaLib;
@@ -131,6 +132,11 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	// playing() below. null when the player didn't have one for the current video.
 	@Nullable
 	private String currentVideoTitle;
+	// Whether restoreUserQuality() has run once for this page -- see YoutubeWebView#USER_QUALITY_JS.
+	private boolean userQualityChecked;
+	// The channel the player reported alongside currentVideoTitle, or null.
+	@Nullable
+	private String currentVideoAuthor;
 	// Set by pause() when the pause came from the app itself (the control panel, a hardware/Bluetooth
 	// media button, Android Auto's own transport controls -- anything routed through
 	// MediaSessionCallback#onPause()), as opposed to the page pausing on its own. Consumed by
@@ -197,7 +203,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			blockedHeight = 0;
 		}
 
-		// data is "<videoId>|<recentLinkClick 0/1>|<v.currentSrc>" -- see YoutubeWebView#
+		// data is "<videoId>|<recentLinkClick 0/1>|<title>|<channel>|<v.currentSrc>" -- see YoutubeWebView#
 		// attachListeners()'s fermataCurrentVideoId()/fermataRecentLinkClick(). The id comes straight
 		// from the player object, not the WebView's own getUrl(): that outer document URL only catches
 		// up with a player.loadVideoById() SPA-internal swap once YouTube's own JS updates the address
@@ -207,14 +213,15 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// <stale>" correction (see the pendingVideoId branch below) that reissued loadVideoById() and
 		// was visible on-screen as a flicker back to the old video. Falls back to the old getUrl()-based
 		// extraction if the player object wasn't found (e.g. mid-navigation) or didn't report an id.
-		String[] parts = data.split("\\|", 4);
+		String[] parts = data.split("\\|", 5);
 		String jsVideoId = (parts.length > 0) ? parts[0] : "";
 		boolean recentLinkClick = (parts.length > 1) && "1".equals(parts[1]);
 		// URI-encoded on the JS side (see YoutubeWebView#attachListeners()'s
 		// fermataCurrentVideoTitle()) so a title containing the payload's own '|' separator can't
 		// shift the fields after it.
 		String jsTitle = (parts.length > 2) ? Uri.decode(parts[2]) : "";
-		String url = (parts.length > 3) ? parts[3] : "";
+		String jsAuthor = (parts.length > 3) ? Uri.decode(parts[3]) : "";
+		String url = (parts.length > 4) ? parts[4] : "";
 		String actualId =
 				!jsVideoId.isEmpty() ? jsVideoId : YoutubeVideoItem.extractVideoId(web.getUrl());
 		YoutubeAddon addon = web.getAddon();
@@ -334,6 +341,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		//    (YoutubeWebView#pageLoaded()) and so never updated at all for an SPA-internal switch;
 		//  - YoutubeAddon's videoId -> title cache, so this video already has a proper name if it
 		//    later gets added to Favorites/a Playlist (or is resolved back out of one).
+		currentVideoAuthor = jsAuthor.isEmpty() ? null : jsAuthor;
 		if (!jsTitle.isEmpty()) {
 			currentVideoTitle = jsTitle;
 			if (actualId != null) addon.cacheVideoTitle(actualId, jsTitle);
@@ -348,13 +356,22 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		currentVideoId = actualId;
 
 		if (url.startsWith("blob:")) url = url.substring(5);
-		current = new Current(url, currentVideoTitle, actualId);
+		current = new Current(url, currentVideoTitle, currentVideoAuthor, actualId);
+		// A Music tab track learns its real title and channel from the page as it plays.
+		if ((addon.getQueueItem() instanceof MusicTrackItem t) &&
+				Objects.equals(t.getVideoId(), actualId)) {
+			t.setInfo(currentVideoTitle, currentVideoAuthor);
+		}
 
 		// Playing as music (the Music tab): the lowest quality -- only the sound matters. Otherwise
 		// the highest, if the user asked for it.
 		boolean music = MusicPlayer.isYoutubeAudioMode();
 		if (!music && !web.getAddon().autoHighestQuality()) {
 			qualityUrl = null;
+			if (!userQualityChecked) {
+				userQualityChecked = true;
+				web.restoreUserQuality();
+			}
 		} else if (!url.isEmpty() && !url.equals(qualityUrl)) {
 			qualityUrl = url;
 			web.applyQualityPolicy(music);
@@ -1142,11 +1159,15 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		@Nullable
 		private final String title;
 		@Nullable
+		private final String author;
+		@Nullable
 		private final String videoId;
 
-		public Current(String url, @Nullable String title, @Nullable String videoId) {
+		public Current(String url, @Nullable String title, @Nullable String author,
+									 @Nullable String videoId) {
 			super(CURRENT_ID, mediaRoot, GenericFileSystem.getInstance().create(url));
 			this.title = title;
+			this.author = author;
 			this.videoId = videoId;
 		}
 
@@ -1193,6 +1214,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			return web.getDuration().then(dur -> getTitle.map(t -> {
 				MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
 				b.putString(MediaMetadataCompat.METADATA_KEY_TITLE, t);
+				if (author != null) b.putString(MediaMetadataCompat.METADATA_KEY_ARTIST, author);
 				b.putLong(MediaMetadata.METADATA_KEY_DURATION, dur);
 				if ((videoId != null) && !videoId.isEmpty()) {
 					b.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI,

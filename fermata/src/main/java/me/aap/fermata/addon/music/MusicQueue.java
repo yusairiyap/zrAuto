@@ -221,6 +221,13 @@ public class MusicQueue extends ExtRoot {
 		changed();
 	}
 
+	/** A track's own info (title, artist) changed: saved, and shown by the listeners. */
+	void trackChanged(MusicTrackItem t) {
+		if (indexOf(t) == -1) return;
+		save();
+		for (Listener l : new ArrayList<>(listeners)) l.onQueueChanged(this);
+	}
+
 	private void changed() {
 		save();
 		reset();

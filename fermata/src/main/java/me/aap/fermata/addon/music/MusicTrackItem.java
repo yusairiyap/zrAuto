@@ -124,6 +124,25 @@ public class MusicTrackItem extends ExtPlayable {
 		return (src != null) && src.isVideo();
 	}
 
+	/**
+	 * The title and artist (for YouTube, the channel) as the player reports them while this track
+	 * plays; either may be null to keep what's known. Saved with the queue.
+	 */
+	public void setInfo(@Nullable String title, @Nullable String artist) {
+		boolean changed = false;
+		if ((title != null) && !title.isEmpty() && !title.equals(this.title)) {
+			this.title = title;
+			changed = true;
+		}
+		if ((artist != null) && !artist.isEmpty() && !artist.equals(this.artist)) {
+			this.artist = artist;
+			changed = true;
+		}
+		if (!changed) return;
+		reset();
+		getParent().trackChanged(this);
+	}
+
 	/** The artist, once known. */
 	@Nullable
 	public String getArtistName() {
@@ -270,6 +289,7 @@ public class MusicTrackItem extends ExtPlayable {
 		if (videoId != null) {
 			MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
 			b.putString(METADATA_KEY_TITLE, getName());
+			if (artist != null) b.putString(METADATA_KEY_ARTIST, artist);
 			if (durationMs > 0) b.putLong(METADATA_KEY_DURATION, durationMs);
 			b.putString(METADATA_KEY_ALBUM_ART_URI, thumbnailUrl(videoId));
 			return completed(b.build());

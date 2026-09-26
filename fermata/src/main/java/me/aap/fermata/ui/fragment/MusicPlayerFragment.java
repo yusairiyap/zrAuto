@@ -34,7 +34,6 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
-import android.widget.ProgressBar;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
@@ -56,14 +55,17 @@ import me.aap.fermata.addon.music.MusicQueue;
 import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.MediaLib;
+import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.BrowsableItemPrefs;
+import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.ui.view.InfoOverlayView;
+import me.aap.fermata.ui.view.ShimmerView;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.pref.PreferenceStore;
@@ -95,7 +97,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private ViewGroup content;
 	private ImageView bg;
 	private ImageView art;
-	private ProgressBar loading;
+	private ShimmerView loading;
 	private TextView title;
 	private TextView artist;
 	private TextView position;
@@ -399,8 +401,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if ((a == null) || a.isEmpty()) a = md.getString(METADATA_KEY_ALBUM_ARTIST);
 		if ((a == null) || a.isEmpty()) a = md.getString(METADATA_KEY_ALBUM);
 		if ((a != null) && !a.isEmpty()) return a;
-		if (i instanceof MusicTrackItem t) return (t.getVideoId() != null) ? "YouTube" : "";
-		return i.getParent().getName();
+		if (isYoutube(i)) return "YouTube";
+		// A library item's folder/playlist name; an internal placeholder parent (a player's own
+		// root, e.g. YouTube's) has no name worth showing.
+		BrowsableItem p = i.getParent();
+		return p.isExternal() ? "" : p.getName();
 	}
 
 	private void loadArt(PlayableItem i, MediaMetadataCompat md) {
@@ -481,8 +486,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if (prefs.contains(MusicAddon.BG_ZOOM)) updateZoom();
 	}
 
-	private static boolean isYoutube(PlayableItem i) {
-		return (i instanceof MusicTrackItem t) && (t.getVideoId() != null);
+	private boolean isYoutube(PlayableItem i) {
+		if (i instanceof MusicTrackItem t) return t.getVideoId() != null;
+		// The YouTube player's own item for what it's playing (not played as music).
+		MediaEngine eng = getActivityDelegate().getMediaSessionCallback().getEngine();
+		return (eng != null) && (eng.getId() == MediaPrefs.MEDIA_ENG_YT) && (i == eng.getSource());
 	}
 
 	/**
@@ -619,7 +627,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				(st == PlaybackStateCompat.STATE_SKIPPING_TO_NEXT) ||
 				(st == PlaybackStateCompat.STATE_SKIPPING_TO_PREVIOUS) ||
 				(st == PlaybackStateCompat.STATE_SKIPPING_TO_QUEUE_ITEM);
-		loading.setVisibility(busy ? View.VISIBLE : View.GONE);
+		loading.setShimmering(busy);
 
 		if (playing) {
 			if (isResumed() && !isHidden()) startProgress();
