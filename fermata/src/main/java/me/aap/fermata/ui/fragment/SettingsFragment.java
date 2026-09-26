@@ -350,32 +350,31 @@ public class SettingsFragment extends MainActivityFragment
 			// Right below the floating buttons: addAAInterface() adds its items straight in here.
 			addInfoOverlayPrefs(a, sub1);
 			addNavTabsPrefs(a, sub1);
+			addUpNextPrefs(a, sub1);
 			addAAInterface(a, sub1);
 		} else {
-			fabSettingsSet = sub1.subSet(o -> {
-				o.title = R.string.secondary_fab_prefs;
-				o.icon = R.drawable.fab;
-			});
-			addSecondaryFabPrefs(a, fabSettingsSet);
+			// Android Auto's own interface settings first: on a phone they're the ones most easily
+			// missed further down.
 			if (BuildConfig.AUTO) {
 				addAAInterface(a, sub1.subSet(o -> {
 					o.title = R.string.interface_prefs_aa;
 					o.icon = R.drawable.tv;
 				}));
 			}
+			fabSettingsSet = sub1.subSet(o -> {
+				o.title = R.string.secondary_fab_prefs;
+				o.icon = R.drawable.fab;
+			});
+			addSecondaryFabPrefs(a, fabSettingsSet);
 			addInfoOverlayPrefs(a, sub1);
 			addNavTabsPrefs(a, sub1);
+			addUpNextPrefs(a, sub1);
 			addInterface(a, sub1, MainActivityPrefs.THEME_MAIN, MainActivityPrefs.HIDE_BARS,
 					MainActivityPrefs.FULLSCREEN, MainActivityPrefs.SHOW_PG_UP_DOWN, null,
 					MainActivityPrefs.NAV_BAR_POS, MainActivityPrefs.NAV_BAR_SIZE,
 					MainActivityPrefs.TOOL_BAR_SIZE, MainActivityPrefs.CONTROL_PANEL_SIZE,
 					MainActivityPrefs.TEXT_ICON_SIZE, MainActivityPrefs.ICON_SIZE);
 		}
-
-		addUpNextPrefs(a, sub1.subSet(o -> {
-			o.title = R.string.up_next_prefs;
-			o.icon = R.drawable.up_next;
-		}));
 
 		sub1.addBooleanPref(o -> {
 			o.store = mediaPrefs;
@@ -1160,8 +1159,12 @@ public class SettingsFragment extends MainActivityFragment
 		});
 	}
 
-	/** The YouTube tab's Up next queue and the list preview below it. */
-	private static void addUpNextPrefs(MainActivityDelegate a, PreferenceSet ps) {
+	/** The YouTube tab's Up next queue and the list preview below it, as their own section. */
+	private static void addUpNextPrefs(MainActivityDelegate a, PreferenceSet parent) {
+		PreferenceSet ps = parent.subSet(o -> {
+			o.title = R.string.up_next_prefs;
+			o.icon = R.drawable.up_next;
+		});
 		ps.addIntPref(o -> {
 			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.UP_NEXT_MAX;
