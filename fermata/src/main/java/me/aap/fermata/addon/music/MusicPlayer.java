@@ -333,10 +333,13 @@ public final class MusicPlayer {
 		MediaSessionCallback cb = a.getMediaSessionCallback();
 		MediaEngine eng = cb.getEngine();
 		MusicTrackItem t = getCurrentTrack(cb);
-		if ((eng == null) || (t == null)) return;
+		if (eng == null) return;
+		boolean yt = (eng.getId() == MediaPrefs.MEDIA_ENG_YT);
+		// YouTube in music mode may momentarily not report its queue track: still its video to show.
+		if ((t == null) && !(yt && youtubeAudioMode)) return;
 
-		if (t.getVideoId() != null) {
-			DiagnosticLog.log(TAG, "switch to video", "id=" + t.getVideoId());
+		if ((t == null) || (t.getVideoId() != null)) {
+			DiagnosticLog.log(TAG, "switch to video", "id=" + ((t != null) ? t.getVideoId() : "?"));
 			setYoutubeAudioMode(false);
 			YoutubeHooks h = youtube;
 			if (h != null) h.showVideo(a);

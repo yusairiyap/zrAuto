@@ -382,6 +382,13 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	/** See {@link #userPickedVideoId}. */
 	void userPickedVideo(String videoId) {
 		if ((videoId == null) || videoId.isEmpty()) return;
+		// The video the app itself is navigating to (the queue's next track, see prepare()): its
+		// injected link click can still be reported as a navigation of the page's own, e.g. once the
+		// click suppression window has closed. Not a pick: the queue and music mode carry on.
+		if (videoId.equals(web.getAddon().getPendingVideoId())) {
+			DiagnosticLog.log("YT", "ignored pick of the app's own navigation", "id=" + videoId);
+			return;
+		}
 		DiagnosticLog.log("YT", "user picked", "id=" + videoId);
 		// Picking a video on the page means watching it, not listening to the Music tab's queue.
 		MusicPlayer.setYoutubeAudioMode(false);

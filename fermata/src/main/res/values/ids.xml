@@ -40,6 +40,7 @@
     <item name="chat_addon" type="id" />
     <item name="fuel_log_addon" type="id" />
     <item name="music_addon" type="id" />
+    <item name="music_toolbar_info" type="id" />
     <item name="music_play" type="id" />
     <item name="music_queue_add" type="id" />
     <item name="subgen_addon" type="id" />

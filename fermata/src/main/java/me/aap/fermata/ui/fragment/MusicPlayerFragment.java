@@ -84,6 +84,7 @@ import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.text.TextUtils;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.fragment.ActivityFragment;
+import me.aap.utils.ui.view.ToolBarView;
 
 /**
  * The Music tab: a full-screen, audio-only player in the style of Spotify's / Android Auto's
@@ -276,7 +277,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		touchHelper = new ItemTouchHelper(new QueueTouchCallback());
 		touchHelper.attachToRecyclerView(queueList);
 
-		addInfoOverlay(view.findViewById(R.id.music_info_holder));
+		// In landscape (Android Auto) the overlay sits in the title bar instead, see
+		// MusicToolBarMediator.
+		FrameLayout infoHolder = view.findViewById(R.id.music_info_holder);
+		if (isLandscape()) infoHolder.setVisibility(View.GONE);
+		else addInfoOverlay(infoHolder);
 		updateZoom();
 	}
 
@@ -294,6 +299,34 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		applyInfoOverlayPrefs();
 	}
 
+	@Override
+	public ToolBarView.Mediator getToolBarMediator() {
+		return MusicToolBarMediator.instance;
+	}
+
+	/**
+	 * The title bar: back button and title as usual, plus, in landscape (Android Auto), the Info
+	 * Overlay at its right end, where there's room for it, rather than above the controls.
+	 */
+	private static final class MusicToolBarMediator implements ToolBarView.Mediator.BackTitle {
+		static final MusicToolBarMediator instance = new MusicToolBarMediator();
+
+		@Override
+		public void enable(ToolBarView tb, ActivityFragment f) {
+			ToolBarView.Mediator.BackTitle.super.enable(tb, f);
+			if (!(f instanceof MusicPlayerFragment mf) || (mf.getView() == null) || !mf.isLandscape()) {
+				return;
+			}
+			InfoOverlayView o = new InfoOverlayView(tb.getContext());
+			addView(tb, o, R.id.music_toolbar_info);
+			ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) o.getLayoutParams();
+			lp.setMarginEnd(UiUtils.toIntPx(tb.getContext(), 16));
+			o.setLayoutParams(lp);
+			mf.infoOverlay = o;
+			mf.applyInfoOverlayPrefs();
+		}
+	}
+
 	/**
 	 * The Info Overlay settings, as for fullscreen video: shown unless its position is None or no
 	 * item is on, with the same items, icons and size. Its position is this tab's own, though, and
@@ -309,7 +342,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		boolean distance = p.getInfoOverlayShowDistancePref();
 		boolean show = (p.getClockPosPref() != MainActivityPrefs.CLOCK_POS_NONE) &&
 				(clock || battery || temp || distance);
-		((View) o.getParent()).setVisibility(show ? View.VISIBLE : View.GONE);
+		// Its holder in portrait (so its padding goes too), the overlay itself in the title bar.
+		View parent = (View) o.getParent();
+		View target = ((parent != null) && (parent.getId() == R.id.music_info_holder)) ? parent : o;
+		target.setVisibility(show ? View.VISIBLE : View.GONE);
 		if (!show) return;
 		o.setSize(p.getInfoOverlaySizePref());
 		o.setItems(clock, p.getInfoOverlayShowClockIconPref(), battery,
@@ -673,7 +709,15 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	/** Whether what's playing is playing as music: a queue track, with YouTube in music mode. */
 	private boolean playingAsMusic() {
 		MusicTrackItem t = currentTrack();
-		return (t != null) && ((t.getVideoId() == null) || MusicPlayer.isYoutubeAudioMode());
+		if (t != null) return (t.getVideoId() == null) || MusicPlayer.isYoutubeAudioMode();
+		// YouTube in music mode momentarily not reporting its queue track (e.g. switching to the next
+		// one): still music, never a video to "play as music".
+		return isYoutubeEngine() && MusicPlayer.isYoutubeAudioMode();
+	}
+
+	private boolean isYoutubeEngine() {
+		MediaEngine eng = getActivityDelegate().getMediaSessionCallback().getEngine();
+		return (eng != null) && (eng.getId() == MediaPrefs.MEDIA_ENG_YT);
 	}
 
 	/** What Shuffle/Repeat apply to: the playing queue track, else whatever else is playing. */
@@ -696,7 +740,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if (isLoading() && (videoButton.getVisibility() == View.VISIBLE)) return;
 		MusicTrackItem t = currentTrack();
 
-		if ((playingAsMusic() && t.hasVideo()) || (idleVideoTrack() != null)) {
+		if ((playingAsMusic() && ((t == null) || t.hasVideo())) || (idleVideoTrack() != null)) {
 			setVideoButton(R.string.video, R.drawable.video);
 		} else if ((i != null) && isPlayingVideo()) {
 			// A video is playing right now (e.g. in the split view): offer to drop the picture.
