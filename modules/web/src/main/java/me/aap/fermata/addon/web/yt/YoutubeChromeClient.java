@@ -12,10 +12,12 @@ import me.aap.fermata.addon.web.FermataWebView;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.VideoView;
+import me.aap.utils.async.FutureSupplier;
 
 import static android.support.v4.media.session.PlaybackStateCompat.STATE_PAUSED;
 import static android.support.v4.media.session.PlaybackStateCompat.STATE_PLAYING;
 import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
+import static me.aap.utils.async.Completed.completedVoid;
 
 /**
  * @author Andrey Pavlenko
@@ -162,6 +164,18 @@ public class YoutubeChromeClient extends FermataChromeClient {
 		VideoView v = getFullScreenView();
 		v.removeCallbacks(finishDeferredExitTask);
 		if (v instanceof YoutubeVideoView yv) yv.setTransitionCoverHiddenListener(null);
+	}
+
+	/**
+	 * Never while playing as music (the Music tab), whoever asks: that includes the Android Auto
+	 * focus recovery, which re-enters fullscreen directly (see
+	 * WebBrowserFragment#rebuildFullscreenVideoIfActive) and would otherwise bring video mode, and
+	 * the control panel with it, back over the Music tab.
+	 */
+	@Override
+	public FutureSupplier<Void> enterFullScreen() {
+		if (MusicPlayer.isYoutubeAudioMode()) return completedVoid();
+		return super.enterFullScreen();
 	}
 
 	@Override

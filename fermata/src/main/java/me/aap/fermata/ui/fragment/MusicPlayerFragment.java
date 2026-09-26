@@ -307,6 +307,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		boolean visible = !isHidden() && (getView() != null);
 		setListening(visible);
 		if (visible) {
+			// Also on every resume (e.g. Android Auto giving the screen back), not only when this tab
+			// is switched to: something may have shown them meanwhile.
+			suppressOverlays(getActivityDelegate(), true);
 			refresh();
 			// The background settings may have changed in Settings while this tab was hidden.
 			updateBackground(false);
@@ -380,7 +383,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		}
 
 		artist.setSingleLine(true);
-		title.setText(i.getName());
+		setTitle(i.getName());
 		title.setSelected(true); // Starts the marquee for long titles.
 		artist.setText("");
 		if (i instanceof MusicTrackItem t) {
@@ -392,7 +395,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			if (shownItem != i) return;
 			String t = md.getString(METADATA_KEY_TITLE);
 			if ((t == null) || t.isEmpty()) t = md.getString(METADATA_KEY_DISPLAY_TITLE);
-			if ((t != null) && !t.isEmpty()) title.setText(t);
+			if ((t != null) && !t.isEmpty()) setTitle(t);
 			artist.setText(artistOf(i, md));
 			long dur = md.getLong(METADATA_KEY_DURATION);
 			if (dur > 0) setDuration(dur);
@@ -639,7 +642,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			if (!seeking && (st == PlaybackStateCompat.STATE_PAUSED)) {
 				int sec = (int) (state.getPosition() / 1000);
 				seek.setProgress(sec);
-				position.setText(time(sec));
+				setText(position, time(sec));
 			}
 		}
 	}
@@ -681,7 +684,17 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private void setDuration(long ms) {
 		int sec = (int) (ms / 1000);
 		if (seek.getMax() != sec) seek.setMax(sec);
-		duration.setText(time(sec));
+		setText(duration, time(sec));
+	}
+
+	// Setting a TextView's text, even the same text, restarts the title's marquee (its own, or via
+	// the relayout); these only touch it when the text actually changes.
+	private void setTitle(CharSequence text) {
+		setText(title, text);
+	}
+
+	private static void setText(TextView v, CharSequence text) {
+		if (!android.text.TextUtils.equals(v.getText(), text)) v.setText(text);
 	}
 
 	private void startProgress() {
@@ -712,7 +725,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			if (!seeking) {
 				int sec = (int) (h.value2 / 1000);
 				seek.setProgress(sec);
-				position.setText(time(sec));
+				setText(position, time(sec));
 			}
 		});
 		seek.postDelayed(progressTask, PROGRESS_INTERVAL);

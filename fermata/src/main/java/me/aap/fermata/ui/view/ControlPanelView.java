@@ -317,7 +317,15 @@ public class ControlPanelView extends ConstraintLayout
 	 * restores whatever it would otherwise be once that screen goes away.
 	 */
 	public void setSuppressed(boolean suppressed) {
-		if (suppressed == ((mask & MASK_SUPPRESSED) != 0)) return;
+		if (suppressed == ((mask & MASK_SUPPRESSED) != 0)) {
+			// Already suppressed: re-assert it, in case a path that shows the panel directly (e.g. the
+			// Android Auto focus recovery) brought it back meanwhile.
+			if (suppressed && ((mask & MASK_VIDEO_MODE) == 0) && (getVisibility() != GONE)) {
+				super.setVisibility(GONE);
+				notifyControlPanelVisibility();
+			}
+			return;
+		}
 
 		if (suppressed) {
 			mask |= MASK_SUPPRESSED;
