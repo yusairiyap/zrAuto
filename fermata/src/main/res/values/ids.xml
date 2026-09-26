@@ -183,4 +183,10 @@
 
     <item name="cursor" type="id" />
 
+    <item name="youtube_search" type="id" />
+    <item name="youtube_up_next" type="id" />
+    <item name="youtube_up_next_clear" type="id" />
+    <item name="youtube_play_now" type="id" />
+    <item name="youtube_play_next" type="id" />
+    <item name="youtube_add_to_up_next" type="id" />
 </resources>

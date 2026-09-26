@@ -661,4 +661,21 @@
         <item quantity="one">%d song added to the music queue</item>
         <item quantity="other">%d songs added to the music queue</item>
     </plurals>
+    <string name="youtube_search_hint">Search YouTube</string>
+    <string name="youtube_search_results">Results for \"%1$s\"</string>
+    <string name="youtube_searching">Searching…</string>
+    <string name="youtube_search_failed">Search failed. Check your connection and try again.</string>
+    <string name="youtube_search_no_results">No videos found.</string>
+    <string name="youtube_search_intro">Type in the title bar to search. Whatever is playing keeps playing while you browse. Tap a result to play it now, or its queue button to play it next. Long-press any video on the YouTube page to queue it too.</string>
+    <string name="youtube_search_close">Close search</string>
+    <string name="youtube_up_next">Up next</string>
+    <string name="youtube_up_next_count">Up next (%1$d)</string>
+    <string name="youtube_up_next_hint">Queued videos play before the rest of the current playlist or favorites continues.</string>
+    <string name="youtube_up_next_clear">Clear Up next</string>
+    <string name="youtube_up_next_remove">Remove from Up next</string>
+    <string name="youtube_play_now">Play now</string>
+    <string name="youtube_play_next">Play next</string>
+    <string name="youtube_add_to_up_next">Add to end of Up next</string>
+    <string name="youtube_added_play_next">Plays next: %1$s</string>
+    <string name="youtube_added_up_next">Added to Up next: %1$s</string>
 </resources>

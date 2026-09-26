@@ -24,12 +24,18 @@ public class YoutubeJsInterface extends FermataJsInterface {
 	public static final int JS_VIDEO_ENDING = JS_LAST + 10;
 	/** The user tapped a link/tile leading to a video (data = its id). */
 	public static final int JS_USER_PICKED_VIDEO = JS_LAST + 11;
+	/** The user long-pressed a link/tile leading to a video (data = "id|encoded title"). */
+	public static final int JS_VIDEO_LONG_PRESS = JS_LAST + 12;
 	private final YoutubeMediaEngine engine;
 	private Promise<String> result;
 
 	public YoutubeJsInterface(FermataWebView webView, YoutubeMediaEngine engine) {
 		super(webView);
 		this.engine = engine;
+	}
+
+	YoutubeMediaEngine getEngine() {
+		return engine;
 	}
 
 	Promise<String> getResultPromise() {
@@ -81,6 +87,10 @@ public class YoutubeJsInterface extends FermataJsInterface {
 			case JS_USER_PICKED_VIDEO:
 				Log.d("User picked video: ", data);
 				engine.userPickedVideo(data);
+				break;
+			case JS_VIDEO_LONG_PRESS:
+				Log.d("Video long-pressed: ", data);
+				engine.videoLongPressed(data);
 				break;
 			default:
 				super.handleEvent(event, data);

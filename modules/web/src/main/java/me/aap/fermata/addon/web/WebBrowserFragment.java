@@ -18,6 +18,7 @@ import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.res.ResourcesCompat;
+import androidx.fragment.app.FragmentActivity;
 import androidx.webkit.WebViewCompat;
 
 import java.io.UnsupportedEncodingException;
@@ -208,6 +209,14 @@ public class WebBrowserFragment extends MainActivityFragment
 	public void onPause() {
 		super.onPause();
 		if (!BuildConfig.AUTO) return;
+		// Paused into picture-in-picture (see YoutubeFragment#onUserLeaveHint()): still on screen,
+		// nothing is being interrupted, and dropping out of fullscreen would shrink the video to the
+		// page's inline player inside an already tiny window.
+		FragmentActivity act = getActivity();
+		if ((act != null) && act.isInPictureInPictureMode()) {
+			fullScreenOnResume = false;
+			return;
+		}
 		onHostInterruptionStarted();
 		FermataWebView v = getWebView();
 		if (v == null) return;

@@ -50,6 +50,7 @@ import me.aap.fermata.R;
 import me.aap.fermata.addon.AddonInfo;
 import me.aap.fermata.addon.AddonManager;
 import me.aap.fermata.media.service.FermataMediaServiceConnection;
+import me.aap.fermata.ui.fragment.MainActivityFragment;
 import me.aap.utils.app.App;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.collection.NaturalOrderComparator;
@@ -172,6 +173,17 @@ public class MainActivity extends SplitCompatActivityBase
 	protected void onPause() {
 		super.onPause();
 		activeInstance = null;
+	}
+
+	// Lets the active fragment keep a playing video on screen in picture-in-picture as the user
+	// leaves the app -- see MainActivityFragment#onUserLeaveHint() (e.g. the YouTube tab's).
+	@Override
+	protected void onUserLeaveHint() {
+		super.onUserLeaveHint();
+		MainActivityDelegate a = getActivityDelegate().peek();
+		if ((a != null) && (a.getActiveFragment() instanceof MainActivityFragment f)) {
+			f.onUserLeaveHint();
+		}
 	}
 
 	@Override

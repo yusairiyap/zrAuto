@@ -72,4 +72,11 @@ public abstract class MainActivityFragment extends ActivityFragment {
 
 	public void voiceCommand(VoiceCommand cmd) {
 	}
+
+	/**
+	 * The user is leaving the app (home, recents) while this is the active fragment -- see
+	 * {@code MainActivity#onUserLeaveHint()}. The last chance to enter picture-in-picture.
+	 */
+	public void onUserLeaveHint() {
+	}
 }

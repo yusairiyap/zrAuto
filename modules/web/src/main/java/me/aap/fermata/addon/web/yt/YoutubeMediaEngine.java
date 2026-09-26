@@ -317,7 +317,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				pendingCorrections = 0;
 				web.switchVideoInPlayer(currentVideoId);
 				return;
-			} else if (addon.getQueueItem() != null) {
+			} else if ((addon.getQueueItem() != null) || addon.hasUpNext()) {
+				// The user's own Up next queue counts too: YouTube's autonav jumping ahead must not
+				// skip past the video they explicitly queued. The handoff below resolves through
+				// queueAwareNextPlayable(), which plays Up next first.
 				// Keep the baseline fresh before handing off -- see queueTransitionPending -- so that if
 				// autonav moves again before prepare() re-takes control, that further move is compared
 				// against this actualId (the true current state) rather than the now-stale currentVideoId
@@ -721,6 +724,18 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			transitioning();
 			expectingPageNav = true;
 			web.afterAudioFadeOut(web::prev);
+		} else if (source instanceof UpNextItem) {
+			// The user's Up next queue (see queueAwareNextPlayable()). Taken off the queue only now
+			// that it's really about to play -- getNextPlayable() is also called speculatively (e.g.
+			// MediaSessionCallback#setLastPlayed() near the end of a video), so it only peeks.
+			// Unlike the Favorites/Playlist branch below, the queue item is deliberately left alone:
+			// once Up next runs dry, next continues the list from the entry that was playing before.
+			Log.d("prepare(): playing Up next ", queueVideoId);
+			web.getAddon().removeUpNext(queueVideoId);
+			transitioning();
+			web.getAddon().setPendingVideoId(queueVideoId);
+			pendingCorrections = 0;
+			web.afterAudioFadeOut(() -> web.loadVideo(queueVideoId));
 		} else if (queueVideoId != null) {
 			// Reached from MediaSessionCallback.skipTo()/engineEnded() when queueAwareNextPlayable()/
 			// PrevPlayable() below resolved a real sibling from the app's own Favorites/Playlist --
@@ -952,6 +967,23 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 					ResourcesCompat.getDrawable(r, me.aap.fermata.R.drawable.repeat, ctx.getTheme()),
 					r.getString(me.aap.fermata.R.string.repeat)).setSubmenu(this::repeatMenu);
 		}
+
+		// Searching and the Up next queue, reachable from here over fullscreen video and from other
+		// tabs too -- see YoutubeFragment#openSearch(). Neither interrupts what's playing.
+		b.addItem(me.aap.fermata.R.id.youtube_search,
+				ResourcesCompat.getDrawable(r, me.aap.fermata.R.drawable.search, ctx.getTheme()),
+				r.getString(me.aap.fermata.R.string.youtube_search_hint)).setHandler(i -> {
+			YoutubeFragment.openSearch(web.getContext(), false);
+			return true;
+		});
+		int upNext = addon.getUpNext().size();
+		b.addItem(me.aap.fermata.R.id.youtube_up_next,
+				ResourcesCompat.getDrawable(r, me.aap.fermata.R.drawable.queue_music, ctx.getTheme()),
+				(upNext == 0) ? r.getString(me.aap.fermata.R.string.youtube_up_next) :
+						r.getString(me.aap.fermata.R.string.youtube_up_next_count, upNext)).setHandler(i -> {
+			YoutubeFragment.openSearch(web.getContext(), true);
+			return true;
+		});
 
 		if (q != null) {
 			BrowsableItemPrefs p = q.getParent().getPrefs();
@@ -1331,6 +1363,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	/** Next-direction counterpart of {@link #queueAwarePrevPlayable()} -- see there for details. */
 	@NonNull
 	private FutureSupplier<PlayableItem> queueAwareNextPlayable() {
+		// The user's Up next queue always goes first -- before the Favorites/Playlist queue's own next
+		// entry and before YouTube's page-internal next. Peeked, not taken: see prepare().
+		UpNextItem upNext = upNextItem();
+		if (upNext != null) return completed(upNext);
 		PlayableItem q = web.getAddon().getQueueItem();
 		Log.d("queueAwareNextPlayable(): queueItem=", q, " parent=", (q != null) ? q.getParent() : null);
 		if (q == null) return completed(next);
@@ -1339,6 +1375,59 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			Log.d("queueAwareNextPlayable(): resolved ", pi);
 			return acceptQueueResolved(pi, container, next);
 		});
+	}
+
+	@Nullable
+	private UpNextItem upNextItem() {
+		String id = web.getAddon().peekUpNext();
+		if ((id == null) || !(mediaRoot.getLib() instanceof DefaultMediaLib lib)) return null;
+		return new UpNextItem(id, web.getAddon().getRootItem(lib));
+	}
+
+	/**
+	 * An entry of the user's Up next queue (see {@link YoutubeAddon#getUpNext()}) -- a plain video
+	 * item, only marked so {@link #prepare} can tell it apart from a Favorites/Playlist sibling.
+	 */
+	private static final class UpNextItem extends YoutubeVideoItem {
+		UpNextItem(String videoId, @NonNull BrowsableItem parent) {
+			super(videoId, parent);
+		}
+	}
+
+	/**
+	 * Whether a YouTube video is what the app is currently playing through this engine -- i.e.
+	 * whether a queued video will ever be reached by "next", or should just start now instead.
+	 */
+	boolean isActive() {
+		return (cb.getEngine() == this) && (current != null);
+	}
+
+	/**
+	 * Plays {@code videoId} right away, as if the user had tapped it on the page: it leaves any
+	 * Favorites/Playlist queue (the Up next queue stays). Used by the search panel.
+	 */
+	void playNow(String videoId) {
+		DiagnosticLog.log("YT", "play now", "id=" + videoId);
+		YoutubeAddon addon = web.getAddon();
+		MusicPlayer.setYoutubeAudioMode(false);
+		addon.setQueueItem(null);
+		addon.setRepeatOneEnabled(false);
+		addon.removeUpNext(videoId);
+		clearUserPick();
+		queueTransitionPending = false;
+		addon.setPendingVideoId(videoId);
+		pendingCorrections = 0;
+		transitioning();
+		web.afterAudioFadeOut(() -> web.loadVideo(videoId));
+	}
+
+	/** The user long-pressed a video on the page -- see {@link YoutubeWebView}'s injected menu hook. */
+	void videoLongPressed(String data) {
+		String[] parts = data.split("\\|", 2);
+		String id = parts[0];
+		if (id.isEmpty()) return;
+		String title = (parts.length > 1) ? Uri.decode(parts[1]).trim() : "";
+		YoutubeFragment.onVideoLongPressed(web, id, title.isEmpty() ? null : title);
 	}
 
 	/**
