@@ -543,6 +543,14 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		MusicPlayer.setYoutubeAudioMode(false);
 	}
 
+	/** Shows what this tab's page is playing as fullscreen video (the Music tab's "Video"). */
+	void enterVideoFullScreen() {
+		if (isHidden() || MusicPlayer.isYoutubeAudioMode()) return;
+		FermataWebView v = getWebView();
+		FermataChromeClient chrome = (v != null) ? v.getWebChromeClient() : null;
+		if ((chrome != null) && !DEFAULT_URLS.contains(getUrl())) chrome.enterFullScreen();
+	}
+
 	@Override
 	public void onPlayableChanged(MediaLib.PlayableItem oldItem, MediaLib.PlayableItem newItem) {
 		if (isHidden()) return;

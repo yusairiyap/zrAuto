@@ -31,7 +31,11 @@ import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.VelocityTracker;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -100,6 +104,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private ImageView bg;
 	private ImageView art;
 	private LoadingDimView loading;
+	private View playLoading;
 	private TextView title;
 	private TextView artist;
 	private TextView position;
@@ -196,6 +201,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		seek = view.findViewById(R.id.music_seek);
 		shuffle = view.findViewById(R.id.music_shuffle);
 		playPause = view.findViewById(R.id.music_play_pause);
+		playLoading = view.findViewById(R.id.music_play_loading);
 		repeat = view.findViewById(R.id.music_repeat);
 		videoButton = view.findViewById(R.id.music_video_button);
 		queuePanel = view.findViewById(R.id.music_queue_panel);
@@ -210,14 +216,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		content.addOnLayoutChangeListener(
 				(v, l, t, r, b, ol, ot, or, ob) -> v.post(this::layoutQueuePanel));
 
-		if (!isLandscape()) {
-			// Keeps the bottom row of actions clear of the floating menu button in the corner.
-			View controls = view.findViewById(R.id.music_controls);
-			controls.setPaddingRelative(controls.getPaddingStart(), controls.getPaddingTop(),
-					controls.getPaddingEnd(), UiUtils.toIntPx(requireContext(), 72));
-		}
-
 		playPause.setOnClickListener(v -> onPlayPause());
+		addPressEffect(playPause);
+		enableQueueDrag(view.findViewById(R.id.music_queue_grip));
+		enableQueueDrag(view.findViewById(R.id.music_queue_header));
 		view.findViewById(R.id.music_prev).setOnClickListener(v -> onPrev());
 		view.findViewById(R.id.music_next).setOnClickListener(v -> onNext());
 		shuffle.setOnClickListener(v -> onShuffle());
@@ -672,6 +674,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				(st == PlaybackStateCompat.STATE_SKIPPING_TO_PREVIOUS) ||
 				(st == PlaybackStateCompat.STATE_SKIPPING_TO_QUEUE_ITEM);
 		loading.setLoading(busy);
+		setPlayLoading(busy);
 
 		if (playing) {
 			if (isResumed() && !isHidden()) startProgress();
@@ -682,6 +685,36 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				setText(position, time(sec));
 			}
 		}
+	}
+
+	/** While loading, a spinner takes the place of the play/pause icon. */
+	private void setPlayLoading(boolean busy) {
+		if (busy == (playLoading.getVisibility() == View.VISIBLE)) return;
+		playLoading.animate().cancel();
+
+		if (busy) {
+			playPause.setImageAlpha(0);
+			playLoading.setAlpha(0f);
+			playLoading.setVisibility(View.VISIBLE);
+			playLoading.animate().alpha(1f).setDuration(150).start();
+		} else {
+			playLoading.setVisibility(View.GONE);
+			playPause.setImageAlpha(255);
+		}
+	}
+
+	/** A button that shrinks a little while held, and springs back when let go. */
+	@SuppressLint("ClickableViewAccessibility")
+	private static void addPressEffect(View button) {
+		button.setOnTouchListener((v, e) -> {
+			switch (e.getActionMasked()) {
+				case MotionEvent.ACTION_DOWN -> v.animate().scaleX(0.88f).scaleY(0.88f).setDuration(120)
+						.setInterpolator(new DecelerateInterpolator()).start();
+				case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.animate().scaleX(1f).scaleY(1f)
+						.setDuration(280).setInterpolator(new OvershootInterpolator(3f)).start();
+			}
+			return false; // Not consumed: the click still happens.
+		});
 	}
 
 	private void updateModes() {
@@ -929,6 +962,83 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	}
 
 	/** Portrait: a sheet over the bottom ~70%; landscape: a panel over the left side. */
+	/**
+	 * Dragging {@code handle} moves the queue panel the way it closes (down on phones, to the left in
+	 * landscape): let go past a third of the way, or flung, and it closes; otherwise it springs back.
+	 */
+	@SuppressLint("ClickableViewAccessibility")
+	private void enableQueueDrag(View handle) {
+		ViewConfiguration vc = ViewConfiguration.get(requireContext());
+		int slop = vc.getScaledTouchSlop();
+		int fling = vc.getScaledMinimumFlingVelocity() * 4;
+
+		handle.setOnTouchListener(new View.OnTouchListener() {
+			private float start;
+			private boolean dragging;
+			@Nullable
+			private VelocityTracker velocity;
+
+			@Override
+			public boolean onTouch(View v, MotionEvent e) {
+				boolean land = isLandscape();
+				float p = land ? e.getRawX() : e.getRawY();
+
+				switch (e.getActionMasked()) {
+					case MotionEvent.ACTION_DOWN -> {
+						start = p;
+						dragging = false;
+						velocity = VelocityTracker.obtain();
+						velocity.addMovement(e);
+						queuePanel.animate().cancel();
+						return true;
+					}
+					case MotionEvent.ACTION_MOVE -> {
+						if (velocity != null) velocity.addMovement(e);
+						// Only ever towards closing.
+						float off = land ? Math.min(0, p - start) : Math.max(0, p - start);
+						if (!dragging && (Math.abs(off) < slop)) return true;
+						dragging = true;
+						float size = land ? queuePanel.getWidth() : queuePanel.getHeight();
+						if (land) queuePanel.setTranslationX(off);
+						else queuePanel.setTranslationY(off);
+						if (size > 0) queuePanel.setAlpha(1f - 0.5f * Math.abs(off) / size);
+						return true;
+					}
+					case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+						float speed = 0;
+						if (velocity != null) {
+							velocity.addMovement(e);
+							velocity.computeCurrentVelocity(1000);
+							speed = land ? -velocity.getXVelocity() : velocity.getYVelocity();
+							velocity.recycle();
+							velocity = null;
+						}
+						if (!dragging) return false;
+						dragging = false;
+						float size = land ? queuePanel.getWidth() : queuePanel.getHeight();
+						float off = land ? -queuePanel.getTranslationX() : queuePanel.getTranslationY();
+						if ((off > size / 3f) || (speed > fling)) closeQueueFromDrag(land, size);
+						else queuePanel.animate().translationX(0f).translationY(0f).alpha(1f)
+								.setDuration(200).setInterpolator(new DecelerateInterpolator()).start();
+						return true;
+					}
+				}
+				return false;
+			}
+		});
+	}
+
+	/** Finishes a drag-to-close: the panel carries on out of the screen the way it was dragged. */
+	private void closeQueueFromDrag(boolean land, float size) {
+		queuePanel.animate().translationX(land ? -size : 0f).translationY(land ? 0f : size).alpha(0f)
+				.setDuration(180).setInterpolator(new DecelerateInterpolator()).withEndAction(() -> {
+					queuePanel.setVisibility(View.GONE);
+					queuePanel.setTranslationX(0f);
+					queuePanel.setTranslationY(0f);
+					queuePanel.setAlpha(1f);
+				}).start();
+	}
+
 	private void layoutQueuePanel() {
 		if ((queuePanel == null) || (content == null)) return;
 		View root = getView();

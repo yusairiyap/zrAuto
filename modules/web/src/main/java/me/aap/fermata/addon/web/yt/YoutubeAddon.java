@@ -134,6 +134,15 @@ public class YoutubeAddon extends WebBrowserAddon
 		}
 
 		@Override
+		public void showVideo(MainActivityDelegate a) {
+			// The video keeps playing through the tab switch, so nothing else would take it
+			// fullscreen (see YoutubeFragment#onPlayableChanged): done once the tab is showing.
+			if (a.showFragment(getFragmentId()) instanceof YoutubeFragment f) {
+				a.post(f::enterVideoFullScreen);
+			}
+		}
+
+		@Override
 		public void setQueueItem(PlayableItem item) {
 			YoutubeAddon.this.setQueueItem(item);
 		}

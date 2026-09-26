@@ -75,6 +75,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
+        android:clipChildren="false"
+        android:clipToPadding="false"
         android:gravity="center"
         android:orientation="horizontal">
 
@@ -100,10 +102,16 @@
             android:src="@drawable/prev"
             android:tint="?attr/musicIconPrimary" />
 
+        <!-- Not clipped, and with room around the button: its shadow and its press animation
+             (see MusicPlayerFragment) reach past its own bounds. -->
         <FrameLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1.4">
+            android:layout_weight="1.4"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:paddingTop="6dp"
+            android:paddingBottom="10dp">
 
             <ImageButton
                 android:id="@+id/music_play_pause"
@@ -117,6 +125,16 @@
                 android:scaleType="fitCenter"
                 android:src="@drawable/play"
                 android:tint="?attr/musicPlayIcon" />
+
+            <!-- Replaces the play/pause icon while loading; above the button (higher elevation). -->
+            <ProgressBar
+                android:id="@+id/music_play_loading"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_gravity="center"
+                android:elevation="7dp"
+                android:indeterminateTint="?attr/musicPlayIcon"
+                android:visibility="gone" />
         </FrameLayout>
 
         <ImageButton

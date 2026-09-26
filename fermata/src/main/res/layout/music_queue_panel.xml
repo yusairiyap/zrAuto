@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The Music tab's "Up next" queue: a card sliding up over the player. Tap a song to play it, drag the handle to reorder, swipe a row away to remove it. -->
+<!-- The Music tab's "Up next" queue: a card sliding up over the player. Tap a song to play it, drag the handle to reorder, swipe a row away to remove it, drag the panel's top to close it. -->
 <com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/music_queue_panel"
@@ -19,9 +19,24 @@
         android:layout_height="match_parent"
         android:orientation="vertical">
 
-        <LinearLayout
+        <!-- The grip and the header are the drag handle: dragging them down (portrait) or to the
+             left (landscape) closes the panel, see MusicPlayerFragment. -->
+        <FrameLayout
+            android:id="@+id/music_queue_grip"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
+            android:layout_height="16dp">
+
+            <View
+                android:layout_width="36dp"
+                android:layout_height="4dp"
+                android:layout_gravity="center"
+                android:background="@drawable/music_queue_grip" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:id="@+id/music_queue_header"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:paddingStart="20dp"

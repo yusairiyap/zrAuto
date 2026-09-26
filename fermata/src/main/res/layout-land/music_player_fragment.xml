@@ -27,34 +27,30 @@
         android:clipToPadding="false"
         android:orientation="horizontal">
 
-        <LinearLayout
+        <!-- The info overlay sits at the top, out of the flow, so the controls are centred on the
+             column's full height, level with the cover next to them. -->
+        <FrameLayout
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1.15"
             android:clipChildren="false"
-            android:clipToPadding="false"
-            android:orientation="vertical">
+            android:clipToPadding="false">
 
             <FrameLayout
                 android:id="@+id/music_info_holder"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_gravity="top"
                 android:paddingStart="24dp"
                 android:paddingTop="8dp"
                 android:paddingEnd="24dp" />
 
-            <View
+            <include
+                layout="@layout/music_player_controls"
                 android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1" />
-
-            <include layout="@layout/music_player_controls" />
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1" />
-        </LinearLayout>
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical" />
+        </FrameLayout>
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/music_art_holder"

@@ -61,6 +61,12 @@ public final class MusicPlayer {
 		 */
 		boolean play(MainActivityDelegate a, MusicTrackItem t);
 
+		/**
+		 * Shows the YouTube tab with what it's playing as fullscreen video (showing the tab ends
+		 * music mode, so the video gets its usual quality back).
+		 */
+		void showVideo(MainActivityDelegate a);
+
 		/** Makes {@code item} the YouTube player's queue item without touching what's playing. */
 		void setQueueItem(PlayableItem item);
 
@@ -322,7 +328,8 @@ public final class MusicPlayer {
 		if (t.getVideoId() != null) {
 			DiagnosticLog.log(TAG, "switch to video", "id=" + t.getVideoId());
 			setYoutubeAudioMode(false);
-			a.showFragment(R.id.youtube_fragment);
+			YoutubeHooks h = youtube;
+			if (h != null) h.showVideo(a);
 			return;
 		}
 
