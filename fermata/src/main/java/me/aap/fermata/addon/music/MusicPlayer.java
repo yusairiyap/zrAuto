@@ -221,8 +221,8 @@ public final class MusicPlayer {
 													int startIdx) {
 		MusicQueue q = getQueue(a);
 		if ((q == null) || items.isEmpty()) return;
-		List<MusicTrackItem> tracks = q.replace(items);
-		MusicTrackItem t = tracks.get(Math.max(0, Math.min(startIdx, tracks.size() - 1)));
+		int first = Math.max(0, Math.min(startIdx, items.size() - 1));
+		MusicTrackItem t = q.replace(items, first).get(first);
 		open(a);
 		MediaEngine eng = a.getMediaSessionCallback().getEngine();
 		PlayableItem cur = (eng == null) ? null : eng.getSource();
@@ -317,8 +317,9 @@ public final class MusicPlayer {
 				l = Collections.singletonList(item);
 				idx = 0;
 			}
-			MusicTrackItem t = q.replace(l).get(idx);
+			// Modes first: with the list's Shuffle on, the new shuffled order starts from this track.
 			if (!browsing) q.copyModes(item.getParent().getPrefs());
+			MusicTrackItem t = q.replace(l, idx).get(idx);
 			open(a);
 			continueAsMusic(a, eng, t);
 		});

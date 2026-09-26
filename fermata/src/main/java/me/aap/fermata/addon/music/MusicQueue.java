@@ -43,6 +43,7 @@ public class MusicQueue extends ExtRoot {
 	private static final String KEY_SERIAL = "serial";
 	private static final String KEY_CURRENT = "current";
 	private static final String KEY_POSITION = "position";
+	private static final String KEY_SHUFFLE = "shuffle";
 	private final SharedPreferences store;
 	private final List<MusicTrackItem> tracks = new ArrayList<>();
 	private final List<Listener> listeners = new ArrayList<>(2);
@@ -150,7 +151,12 @@ public class MusicQueue extends ExtRoot {
 	 * Replaces the whole queue with {@code items} (in order) and returns the new tracks, in the same
 	 * order. The track for an item that's already playing as music is reused as-is.
 	 */
-	public List<MusicTrackItem> replace(List<? extends PlayableItem> items) {
+	/**
+	 * Replaces the whole queue with {@code items} (in order) and returns the new tracks, in the same
+	 * order. With Shuffle on, the new shuffled order starts with the track at {@code first}, the one
+	 * about to play.
+	 */
+	public List<MusicTrackItem> replace(List<? extends PlayableItem> items, int first) {
 		List<MusicTrackItem> added;
 
 		synchronized (this) {
@@ -159,6 +165,7 @@ public class MusicQueue extends ExtRoot {
 			for (PlayableItem i : items) added.add(newTrack(i));
 			tracks.addAll(added);
 			shuffleOrder = null;
+			if ((first >= 0) && (first < added.size())) playOrder(added.get(first));
 		}
 
 		changed();
@@ -166,51 +173,103 @@ public class MusicQueue extends ExtRoot {
 	}
 
 	public List<MusicTrackItem> add(List<? extends PlayableItem> items) {
-		return insert(-1, items);
+		return insert(null, items);
 	}
 
-	/** Inserts right after {@code after} (or appends, if it isn't in the queue). */
+	/**
+	 * Inserts right after {@code after} (or appends, if it isn't in the queue), in the play order
+	 * too: with Shuffle on, right after it in the shuffled order ("play next"), else at its end.
+	 */
 	public List<MusicTrackItem> addAfter(@Nullable Item after, List<? extends PlayableItem> items) {
-		int idx;
-		synchronized (this) {
-			idx = (after == null) ? -1 : tracks.indexOf(after);
-		}
-		return insert((idx == -1) ? -1 : idx + 1, items);
+		return insert(after, items);
 	}
 
-	private List<MusicTrackItem> insert(int idx, List<? extends PlayableItem> items) {
+	private List<MusicTrackItem> insert(@Nullable Item after, List<? extends PlayableItem> items) {
 		List<MusicTrackItem> added;
 
 		synchronized (this) {
 			added = new ArrayList<>(items.size());
 			for (PlayableItem i : items) added.add(newTrack(i));
-			if ((idx < 0) || (idx > tracks.size())) tracks.addAll(added);
-			else tracks.addAll(idx, added);
-			shuffleOrder = null;
+			insertAfter(tracks, after, added);
+			if (shuffleOrder != null) insertAfter(shuffleOrder, after, added);
 		}
 
 		changed();
 		return added;
 	}
 
+	private static void insertAfter(List<MusicTrackItem> list, @Nullable Item after,
+																	List<MusicTrackItem> added) {
+		int idx = (after == null) ? -1 : list.indexOf(after);
+		if (idx == -1) list.addAll(added);
+		else list.addAll(idx + 1, added);
+	}
+
+	/** Removes the track at {@code idx} of the play order (as the queue is shown). */
 	public void remove(int idx) {
 		synchronized (this) {
-			if ((idx < 0) || (idx >= tracks.size())) return;
-			if (tracks.remove(idx).getId().equals(store.getString(KEY_CURRENT, null))) {
-				removedCurrentIdx = idx;
-			}
-			shuffleOrder = null;
+			List<MusicTrackItem> order = playOrder(null);
+			if ((idx < 0) || (idx >= order.size())) return;
+			MusicTrackItem t = order.get(idx);
+			tracks.remove(t);
+			if (shuffleOrder != null) shuffleOrder.remove(t);
+			if (t.getId().equals(store.getString(KEY_CURRENT, null))) removedCurrentIdx = idx;
 		}
 		changed();
 	}
 
+	/** Moves a track within the play order (as the queue is shown). */
 	public void move(int from, int to) {
 		synchronized (this) {
-			int size = tracks.size();
+			List<MusicTrackItem> order = playOrder(null);
+			int size = order.size();
 			if ((from < 0) || (from >= size) || (to < 0) || (to >= size) || (from == to)) return;
-			tracks.add(to, tracks.remove(from));
+			order.add(to, order.remove(from));
 		}
 		changed();
+	}
+
+	/**
+	 * The order the queue plays in, which is also how it's shown: while Shuffle is on, a fixed random
+	 * order (starting from the track that was playing when it was turned on, kept as tracks are
+	 * added, moved or removed, and saved with the queue), else the queue's own order.
+	 */
+	public synchronized List<MusicTrackItem> getPlayOrder() {
+		return new ArrayList<>(playOrder(null));
+	}
+
+	/** {@code t}'s position in {@link #getPlayOrder()}, or -1. */
+	public synchronized int indexInPlayOrder(Item t) {
+		return playOrder(null).indexOf(t);
+	}
+
+	/**
+	 * The live play order (see {@link #getPlayOrder()}); called holding the lock. A new shuffled
+	 * order starts with {@code first}, or else the track the queue was last playing.
+	 */
+	private List<MusicTrackItem> playOrder(@Nullable MusicTrackItem first) {
+		if (!getPrefs().getShufflePref()) {
+			if (shuffleOrder != null) {
+				// Shuffle was turned off: back to the queue's own order; turning it on again reshuffles.
+				shuffleOrder = null;
+				save();
+			}
+			return tracks;
+		}
+
+		List<MusicTrackItem> order = shuffleOrder;
+		if ((order != null) && (order.size() == tracks.size()) &&
+				((first == null) || order.contains(first))) {
+			return order;
+		}
+
+		order = new ArrayList<>(tracks);
+		Collections.shuffle(order, random);
+		MusicTrackItem head = (first != null) ? first : getSavedCurrent();
+		if ((head != null) && order.remove(head)) order.add(0, head);
+		shuffleOrder = order;
+		save();
+		return order;
 	}
 
 	public void clear() {
@@ -265,9 +324,10 @@ public class MusicQueue extends ExtRoot {
 		return store.getLong(KEY_POSITION, 0);
 	}
 
+	// In play order: Android Auto's queue view shows what actually comes next.
 	@Override
 	protected FutureSupplier<List<Item>> listChildren() {
-		List<Item> children = new ArrayList<>(getTracks());
+		List<Item> children = new ArrayList<>(getPlayOrder());
 		return completed(children);
 	}
 
@@ -299,8 +359,8 @@ public class MusicQueue extends ExtRoot {
 	}
 
 	/**
-	 * Next/previous track after {@code t}, honouring this queue's Repeat One / Repeat / Shuffle
-	 * preferences. Shuffle walks a fixed random order (rebuilt whenever the queue changes), so
+	 * Next/previous track after {@code t}, honouring this queue's Repeat One / Repeat preferences, in
+	 * its play order (see {@link #getPlayOrder()}): with Shuffle on, a fixed random order, so
 	 * "previous" goes back to what actually played before, like any music player.
 	 */
 	FutureSupplier<PlayableItem> getPlayable(MusicTrackItem t, boolean next) {
@@ -312,25 +372,13 @@ public class MusicQueue extends ExtRoot {
 		synchronized (this) {
 			int size = tracks.size();
 			if (size == 0) return completedNull();
-			List<MusicTrackItem> order;
-
-			if (p.getShufflePref()) {
-				order = shuffleOrder;
-				if ((order == null) || (order.size() != size) || !order.contains(t)) {
-					order = new ArrayList<>(tracks);
-					Collections.shuffle(order, random);
-					if (order.remove(t)) order.add(0, t);
-					shuffleOrder = order;
-				}
-			} else {
-				order = tracks;
-			}
-
+			// t: a new shuffled order starts with the track playing, unless it's no longer queued.
+			List<MusicTrackItem> order = playOrder((indexOf(t) == -1) ? null : t);
 			int idx = order.indexOf(t);
 
 			if (idx == -1) {
 				// Removed from the queue while playing: carry on from wherever it used to be.
-				int at = (!p.getShufflePref() && (removedCurrentIdx >= 0)) ? removedCurrentIdx : 0;
+				int at = Math.max(removedCurrentIdx, 0);
 				if (next) result = (at < size) ? order.get(at) : (repeat ? order.get(0) : null);
 				else result = ((at > 0) && (at <= size)) ? order.get(at - 1) : null;
 			} else if (next) {
@@ -365,7 +413,20 @@ public class MusicQueue extends ExtRoot {
 			return;
 		}
 
-		store.edit().putString(KEY_TRACKS, a.toString()).putLong(KEY_SERIAL, serial).apply();
+		SharedPreferences.Editor e = store.edit();
+		e.putString(KEY_TRACKS, a.toString()).putLong(KEY_SERIAL, serial);
+		List<MusicTrackItem> order;
+		synchronized (this) {
+			order = (shuffleOrder == null) ? null : new ArrayList<>(shuffleOrder);
+		}
+		if (order == null) {
+			e.remove(KEY_SHUFFLE);
+		} else {
+			JSONArray ids = new JSONArray();
+			for (MusicTrackItem t : order) ids.put(t.getId());
+			e.putString(KEY_SHUFFLE, ids.toString());
+		}
+		e.apply();
 	}
 
 	private void load() {
@@ -387,6 +448,26 @@ public class MusicQueue extends ExtRoot {
 			}
 		} catch (JSONException ex) {
 			Log.e(ex, "Failed to load the music queue");
+		}
+
+		loadShuffleOrder();
+	}
+
+	/** The saved shuffled order, if it still matches the queue exactly. */
+	private void loadShuffleOrder() {
+		String json = store.getString(KEY_SHUFFLE, null);
+		if (json == null) return;
+
+		try {
+			JSONArray a = new JSONArray(json);
+			List<MusicTrackItem> order = new ArrayList<>(a.length());
+			for (int i = 0, n = a.length(); i < n; i++) {
+				MusicTrackItem t = findTrack(a.optString(i));
+				if (t != null) order.add(t);
+			}
+			if ((order.size() == tracks.size()) && order.containsAll(tracks)) shuffleOrder = order;
+		} catch (JSONException ex) {
+			Log.e(ex, "Failed to load the music queue's shuffled order");
 		}
 	}
 

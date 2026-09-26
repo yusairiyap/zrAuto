@@ -346,8 +346,9 @@ public class SettingsFragment extends MainActivityFragment
 				o.icon = R.drawable.fab;
 			});
 			addSecondaryFabPrefs(a, fabSettingsSet);
-			addAAInterface(a, sub1);
+			// Right below the floating buttons: addAAInterface() adds its items straight in here.
 			addInfoOverlayPrefs(a, sub1);
+			addAAInterface(a, sub1);
 		} else {
 			fabSettingsSet = sub1.subSet(o -> {
 				o.title = R.string.secondary_fab_prefs;

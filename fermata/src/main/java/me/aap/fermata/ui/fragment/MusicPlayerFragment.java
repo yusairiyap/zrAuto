@@ -763,6 +763,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				(st == PlaybackStateCompat.STATE_SKIPPING_TO_QUEUE_ITEM);
 	}
 
+	// The Shuffle state the queue list was last shown for, see updateModes().
+	@Nullable
+	private Boolean shownShuffle;
 	// What the Video / Play as music chip currently shows (its text), 0 when hidden.
 	private int videoButtonText;
 
@@ -947,6 +950,13 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		boolean shuffleOn = p.getShufflePref();
 		shuffle.setImageResource(shuffleOn ? R.drawable.shuffle_filled : R.drawable.shuffle);
 		shuffle.setImageTintList(ColorStateList.valueOf(shuffleOn ? accent : dim));
+		// The queue is listed in play order: shuffled or not, whoever turned it (this tab, Android
+		// Auto, the notification), it's shown the way it'll now play.
+		if ((shownShuffle != null) && (shownShuffle != shuffleOn)) {
+			adapter.reload();
+			scrollToCurrent();
+		}
+		shownShuffle = shuffleOn;
 
 		boolean one = (i != null) && i.getId().equals(p.getRepeatItemPref());
 		boolean all = p.getRepeatPref();
@@ -1307,7 +1317,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private void scrollToCurrent() {
 		MusicTrackItem cur = currentTrack();
 		if ((queue == null) || (cur == null)) return;
-		int idx = queue.indexOf(cur);
+		int idx = queue.indexInPlayOrder(cur);
 		if (idx >= 0) queueList.scrollToPosition(idx);
 	}
 
@@ -1371,7 +1381,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		@SuppressLint("NotifyDataSetChanged")
 		void reload() {
 			tracks.clear();
-			if (queue != null) tracks.addAll(queue.getTracks());
+			if (queue != null) tracks.addAll(queue.getPlayOrder());
 			notifyDataSetChanged();
 			updateQueueHeader(tracks.size());
 		}
