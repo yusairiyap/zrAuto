@@ -957,6 +957,21 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		if (p != null) p.search(query);
 	}
 
+	/** A past search's chip in the panel: runs it again, closing the keyboard if it was up. */
+	void searchFromHistory(String query) {
+		Context ctx = getContext();
+		if (ctx == null) return;
+		MainActivityDelegate a = MainActivityDelegate.get(ctx);
+		View field = a.getToolBar().findViewById(R.id.browser_addr);
+		if (field != null) {
+			android.view.inputmethod.InputMethodManager imm =
+					ctx.getSystemService(android.view.inputmethod.InputMethodManager.class);
+			if (imm != null) imm.hideSoftInputFromWindow(field.getWindowToken(), 0);
+			field.clearFocus();
+		}
+		search(query);
+	}
+
 	/** The last search, to prefill the toolbar's search field with, or null. */
 	@Nullable
 	String getLastSearchQuery() {

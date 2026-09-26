@@ -26,7 +26,11 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.graphics.Rect;
 import android.view.MotionEvent;
+import android.view.View;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
@@ -173,6 +177,26 @@ public class MainActivity extends SplitCompatActivityBase
 	protected void onPause() {
 		super.onPause();
 		activeInstance = null;
+	}
+
+	/**
+	 * A tap anywhere outside the text field being typed into -- a floating button, the toolbar, the
+	 * nav bar, a search result -- closes the soft keyboard, as the field it belonged to is no longer
+	 * where the user is. Only closes it: the tap itself goes on to do whatever it does.
+	 */
+	@Override
+	public boolean dispatchTouchEvent(MotionEvent ev) {
+		if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
+			View focus = getCurrentFocus();
+			if (focus instanceof EditText) {
+				Rect r = new Rect();
+				if (!focus.getGlobalVisibleRect(r) || !r.contains((int) ev.getRawX(), (int) ev.getRawY())) {
+					InputMethodManager imm = getSystemService(InputMethodManager.class);
+					if (imm != null) imm.hideSoftInputFromWindow(focus.getWindowToken(), 0);
+				}
+			}
+		}
+		return super.dispatchTouchEvent(ev);
 	}
 
 	// Lets the active fragment keep a playing video on screen in picture-in-picture as the user

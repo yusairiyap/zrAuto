@@ -686,7 +686,9 @@
     <string name="youtube_clear_search">Clear search</string>
     <string name="action_youtube_search">YouTube search</string>
     <string name="action_youtube_up_next">YouTube Up next</string>
-    <string name="up_next_prefs">YouTube Up next</string>
+    <string name="up_next_prefs">YouTube search &amp; Up next</string>
+    <string name="search_history">Remember searches</string>
+    <string name="search_history_sub">Show recent searches as chips in the search panel. Not kept in Private Mode, and cleared along with browsing data. Long-press a chip to remove it.</string>
     <string name="up_next_max">Queue size</string>
     <string name="up_next_max_sub">The most videos the Up next queue holds</string>
     <string name="up_next_list_preview">Playlist items shown</string>

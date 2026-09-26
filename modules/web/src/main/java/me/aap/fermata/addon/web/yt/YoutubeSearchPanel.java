@@ -25,6 +25,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -84,6 +85,7 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 	private static final int TYPE_NOTE = 1;
 	private static final int TYPE_ACTION = 2;
 	private static final int TYPE_VIDEO = 3;
+	private static final int TYPE_HISTORY = 4;
 	private static final int KIND_RESULT = 0;
 	private static final int KIND_UP_NEXT = 1;
 	private static final int KIND_LIST = 2;
@@ -291,6 +293,8 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		results.clear();
 		refresh();
 
+		addon.addSearchHistory(q);
+
 		executor.execute(() -> {
 			List<Video> found = null;
 			try {
@@ -472,6 +476,10 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 	private void buildSearchRows(List<Row> rows) {
 		Context ctx = getContext();
 
+		// Past searches, as chips right below the search field -- see YoutubeAddon#getSearchHistory().
+		List<String> history = addon.getSearchHistory();
+		if (!history.isEmpty()) rows.add(Row.history(history));
+
 		if (query == null) return;
 
 		rows.add(Row.header("h:results",
@@ -557,6 +565,8 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		final PlayableItem item;
 		/** Shown dimmed: a list entry that only plays after the queued videos. */
 		boolean dim;
+		/** {@link #TYPE_HISTORY}'s searches. */
+		List<String> queries = Collections.emptyList();
 
 		private Row(int type, String key, @Nullable String text, @Nullable String chip,
 								@Nullable Runnable action, int kind, @Nullable String videoId,
@@ -574,6 +584,14 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 
 		static Row header(String key, String text, @Nullable String chip, @Nullable Runnable action) {
 			return new Row(TYPE_HEADER, key, text, chip, action, 0, null, null, null);
+		}
+
+		/** The chip row of past searches; {@code text} carries them for the content comparison. */
+		static Row history(List<String> queries) {
+			Row r = new Row(TYPE_HISTORY, "c:history", String.join("\n", queries), null, null, 0, null,
+					null, null);
+			r.queries = queries;
+			return r;
 		}
 
 		static Row note(String key, String text) {
@@ -689,6 +707,18 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 						.setImageTintList(ColorStateList.valueOf(textPrimary));
 			} else if (viewType == TYPE_HEADER) {
 				v = createHeader(ctx);
+			} else if (viewType == TYPE_HISTORY) {
+				HorizontalScrollView sv = new HorizontalScrollView(ctx);
+				sv.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+				sv.setHorizontalScrollBarEnabled(false);
+				LinearLayout chips = new LinearLayout(ctx);
+				chips.setId(me.aap.fermata.R.id.si_title);
+				chips.setOrientation(LinearLayout.HORIZONTAL);
+				int h = (int) UiUtils.toPx(ctx, 16);
+				int vp = (int) UiUtils.toPx(ctx, 8);
+				chips.setPadding(h, vp, h, vp);
+				sv.addView(chips, new HorizontalScrollView.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
+				v = sv;
 			} else {
 				TextView t = new TextView(ctx);
 				t.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
@@ -735,8 +765,14 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 			title.setTextColor(textPrimary);
 			l.addView(title, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
 
-			TextView chip = new TextView(ctx);
+			TextView chip = createChip(ctx);
 			chip.setId(me.aap.fermata.R.id.si_detail);
+			l.addView(chip, new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
+			return l;
+		}
+
+		private TextView createChip(Context ctx) {
+			TextView chip = new TextView(ctx);
 			chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
 			chip.setTypeface(Typeface.DEFAULT_BOLD);
 			chip.setTextColor(textPrimary);
@@ -752,8 +788,8 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 			chip.setBackground(bg);
 			chip.setFocusable(true);
 			chip.setClickable(true);
-			l.addView(chip, new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
-			return l;
+			chip.setMaxLines(1);
+			return chip;
 		}
 
 		private void setSelectableBackground(View v) {
@@ -769,6 +805,26 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		public void onBindViewHolder(@NonNull RecyclerView.ViewHolder h, int position) {
 			Row r = rows.get(position);
 			View v = h.itemView;
+
+			if (r.type == TYPE_HISTORY) {
+				LinearLayout chips = v.findViewById(me.aap.fermata.R.id.si_title);
+				chips.removeAllViews();
+				Context ctx = v.getContext();
+				int gap = (int) UiUtils.toPx(ctx, 8);
+				for (String q : r.queries) {
+					TextView c = createChip(ctx);
+					c.setText(q);
+					c.setOnClickListener(x -> fragment.searchFromHistory(q));
+					c.setOnLongClickListener(x -> {
+						addon.removeSearchHistory(q);
+						return true;
+					});
+					LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+					lp.setMarginEnd(gap);
+					chips.addView(c, lp);
+				}
+				return;
+			}
 
 			if (r.type == TYPE_HEADER) {
 				TextView title = v.findViewById(me.aap.fermata.R.id.si_title);

@@ -1165,6 +1165,12 @@ public class SettingsFragment extends MainActivityFragment
 			o.title = R.string.up_next_prefs;
 			o.icon = R.drawable.up_next;
 		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.SEARCH_HISTORY_ENABLED;
+			o.title = R.string.search_history;
+			o.subtitle = R.string.search_history_sub;
+		});
 		ps.addIntPref(o -> {
 			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.UP_NEXT_MAX;

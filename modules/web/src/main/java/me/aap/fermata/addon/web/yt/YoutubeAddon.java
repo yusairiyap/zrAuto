@@ -129,9 +129,82 @@ public class YoutubeAddon extends WebBrowserAddon
 	@Nullable
 	private String pendingVideoId;
 
+	// Past searches, most recent first (see getSearchHistory()). Persisted for normal browsing only;
+	// Private Mode keeps its own in memory, never written anywhere, and drops it when it ends.
+	private static final Pref<Supplier<String[]>> YT_SEARCH_HISTORY = Pref.sa("YT_SEARCH_HISTORY");
+	private static final int MAX_SEARCH_HISTORY = 12;
+	private final List<String> privateSearchHistory = new ArrayList<>();
+	// A field, not a bare method reference: EventBroadcaster only holds listeners weakly -- see
+	// WebBrowserAddon#privateModeListener.
+	private final PreferenceStore.Listener searchHistoryListener = this::onSearchHistoryPrefsChanged;
+
 	public YoutubeAddon() {
 		// Lets the Music tab play YouTube in this addon's own player -- see MusicHooks.
 		MusicPlayer.setYoutubeHooks(new MusicHooks());
+		MainActivityPrefs.get().addBroadcastListener(searchHistoryListener);
+	}
+
+	/**
+	 * Recent searches, most recent first: none when turned off in Settings; while in Private Mode
+	 * only that session's own, which are never saved.
+	 */
+	@NonNull
+	List<String> getSearchHistory() {
+		MainActivityPrefs mp = MainActivityPrefs.get();
+		if (!mp.getBooleanPref(MainActivityPrefs.SEARCH_HISTORY_ENABLED)) return new ArrayList<>();
+		if (mp.isPrivateModeEnabled()) return new ArrayList<>(privateSearchHistory);
+		return new ArrayList<>(Arrays.asList(getPreferenceStore().getStringArrayPref(YT_SEARCH_HISTORY)));
+	}
+
+	void addSearchHistory(String query) {
+		String q = query.trim();
+		MainActivityPrefs mp = MainActivityPrefs.get();
+		if (q.isEmpty() || !mp.getBooleanPref(MainActivityPrefs.SEARCH_HISTORY_ENABLED)) return;
+		List<String> l = getSearchHistory();
+		for (int i = l.size() - 1; i >= 0; i--) {
+			if (l.get(i).equalsIgnoreCase(q)) l.remove(i);
+		}
+		l.add(0, q);
+		while (l.size() > MAX_SEARCH_HISTORY) l.remove(l.size() - 1);
+		setSearchHistory(l);
+	}
+
+	void removeSearchHistory(String query) {
+		List<String> l = getSearchHistory();
+		if (l.remove(query)) setSearchHistory(l);
+	}
+
+	private void setSearchHistory(List<String> l) {
+		if (MainActivityPrefs.get().isPrivateModeEnabled()) {
+			privateSearchHistory.clear();
+			privateSearchHistory.addAll(l);
+		} else {
+			getPreferenceStore().applyStringArrayPref(YT_SEARCH_HISTORY, l.toArray(new String[0]));
+		}
+		for (Runnable r : upNextListeners) r.run();
+	}
+
+	/**
+	 * "Clear browsing data" and turning the setting off wipe the saved history; entering or leaving
+	 * Private Mode, or its "clear now", drops that session's in-memory one.
+	 */
+	private void onSearchHistoryPrefsChanged(PreferenceStore store, List<Pref<?>> changed) {
+		MainActivityPrefs mp = MainActivityPrefs.get();
+		boolean off = changed.contains(MainActivityPrefs.SEARCH_HISTORY_ENABLED) &&
+				!mp.getBooleanPref(MainActivityPrefs.SEARCH_HISTORY_ENABLED);
+		boolean changedAny = false;
+		if (off || changed.contains(MainActivityPrefs.NORMAL_MODE_CLEAR_REQUEST)) {
+			getPreferenceStore().removePref(YT_SEARCH_HISTORY);
+			changedAny = true;
+		}
+		if (off || changed.contains(MainActivityPrefs.PRIVATE_MODE_ENABLED) ||
+				changed.contains(MainActivityPrefs.PRIVATE_MODE_CLEAR_REQUEST)) {
+			privateSearchHistory.clear();
+			changedAny = true;
+		}
+		if (changedAny || changed.contains(MainActivityPrefs.SEARCH_HISTORY_ENABLED)) {
+			for (Runnable r : upNextListeners) r.run();
+		}
 	}
 
 	/**

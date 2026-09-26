@@ -107,6 +107,8 @@ public interface MainActivityPrefs
 	Pref<IntSupplier> UP_NEXT_LIST_PREVIEW = Pref.i("UP_NEXT_LIST_PREVIEW", 3);
 	// The most videos the YouTube tab's Up next queue holds (1..50).
 	Pref<IntSupplier> UP_NEXT_MAX = Pref.i("UP_NEXT_MAX", 20);
+	// Whether the YouTube tab remembers past searches (shown as chips in its search panel).
+	Pref<BooleanSupplier> SEARCH_HISTORY_ENABLED = Pref.b("YT_SEARCH_HISTORY_ENABLED", true);
 	Pref<BooleanSupplier> DIM_ENABLED = Pref.b("DIM_ENABLED", false);
 	Pref<IntSupplier> DIM_OPACITY = Pref.i("DIM_OPACITY", 50);
 	Pref<IntSupplier> DIM_COLOR_PRESET = Pref.i("DIM_COLOR_PRESET", 0);
