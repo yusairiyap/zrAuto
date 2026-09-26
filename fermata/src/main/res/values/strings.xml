@@ -686,6 +686,10 @@
     <string name="youtube_clear_search">Clear search</string>
     <string name="action_youtube_search">YouTube search</string>
     <string name="action_youtube_up_next">YouTube Up next</string>
-    <string name="up_next_list_preview">Up next: playlist items shown</string>
-    <string name="up_next_list_preview_sub">How many upcoming Favorites/playlist videos the YouTube Up next list shows below the queue</string>
+    <string name="up_next_prefs">YouTube Up next</string>
+    <string name="up_next_max">Queue size</string>
+    <string name="up_next_max_sub">The most videos the Up next queue holds</string>
+    <string name="up_next_list_preview">Playlist items shown</string>
+    <string name="up_next_list_preview_sub">How many upcoming Favorites/playlist videos are shown below the queue</string>
+    <string name="youtube_up_next_full">Up next is full (%1$d videos). Remove one or raise the queue size in Settings.</string>
 </resources>

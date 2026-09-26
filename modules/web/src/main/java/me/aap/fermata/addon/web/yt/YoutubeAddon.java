@@ -229,17 +229,23 @@ public class YoutubeAddon extends WebBrowserAddon
 		return (a.length == 0) ? null : a[0];
 	}
 
+	/** See {@code MainActivityPrefs#UP_NEXT_MAX}. */
+	int getUpNextMax() {
+		return Math.max(1, Math.min(50, MainActivityPrefs.get().getIntPref(MainActivityPrefs.UP_NEXT_MAX)));
+	}
+
 	/**
 	 * Queues {@code videoId}: at the front (play next) or at the end. A video already queued is
-	 * moved rather than queued twice.
+	 * moved rather than queued twice. False if the queue is full -- see {@link #getUpNextMax()}.
 	 */
-	void addUpNext(String videoId, @Nullable String title, boolean first) {
+	boolean addUpNext(String videoId, @Nullable String title, boolean first) {
 		if ((title != null) && !title.isEmpty()) cacheVideoTitle(videoId, title);
 		List<String> l = getUpNext();
-		l.remove(videoId);
+		if (!l.remove(videoId) && (l.size() >= getUpNextMax())) return false;
 		if (first) l.add(0, videoId);
 		else l.add(videoId);
 		setUpNext(l);
+		return true;
 	}
 
 	/** Removes the first occurrence of {@code videoId}; false if it wasn't queued. */

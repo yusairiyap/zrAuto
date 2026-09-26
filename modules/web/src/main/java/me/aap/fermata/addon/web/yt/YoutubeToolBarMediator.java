@@ -97,9 +97,17 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 		ImageButton clear = tb.findViewById(R.id.browser_addr_clear);
 		if (clear != null) {
 			clear.setContentDescription(tb.getContext().getString(me.aap.fermata.R.string.youtube_clear_search));
+			// And closes the panel: done searching.
 			clear.setOnClickListener(v -> {
 				yt.clearSearch();
-				if ((addr != null) && editing) addr.setText("");
+				if (addr != null) {
+					if (editing) addr.setText("");
+					InputMethodManager imm = addr.getContext().getSystemService(InputMethodManager.class);
+					if (imm != null) imm.hideSoftInputFromWindow(addr.getWindowToken(), 0);
+					addr.clearFocus();
+					endSearchInput(addr);
+				}
+				yt.hideSearchPanel();
 			});
 		}
 		refreshClearButton(tb, yt);

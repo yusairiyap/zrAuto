@@ -372,6 +372,11 @@ public class SettingsFragment extends MainActivityFragment
 					MainActivityPrefs.TEXT_ICON_SIZE, MainActivityPrefs.ICON_SIZE);
 		}
 
+		addUpNextPrefs(a, sub1.subSet(o -> {
+			o.title = R.string.up_next_prefs;
+			o.icon = R.drawable.up_next;
+		}));
+
 		sub1.addBooleanPref(o -> {
 			o.store = mediaPrefs;
 			o.pref = BrowsableItemPrefs.SHOW_TRACK_ICONS;
@@ -1155,6 +1160,26 @@ public class SettingsFragment extends MainActivityFragment
 		});
 	}
 
+	/** The YouTube tab's Up next queue and the list preview below it. */
+	private static void addUpNextPrefs(MainActivityDelegate a, PreferenceSet ps) {
+		ps.addIntPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.UP_NEXT_MAX;
+			o.title = R.string.up_next_max;
+			o.subtitle = R.string.up_next_max_sub;
+			o.seekMin = 1;
+			o.seekMax = 50;
+		});
+		ps.addIntPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.UP_NEXT_LIST_PREVIEW;
+			o.title = R.string.up_next_list_preview;
+			o.subtitle = R.string.up_next_list_preview_sub;
+			o.seekMin = 1;
+			o.seekMax = 10;
+		});
+	}
+
 	private void addSecondaryFabPrefs(MainActivityDelegate a, PreferenceSet ps) {
 		var fabActions = new Action[]{Action.FULLSCREEN_TOGGLE, Action.VOLUME_MUTE_UNMUTE,
 				Action.PLAY_PAUSE, Action.DIM_TOGGLE, Action.PRIVATE_MODE_TOGGLE, Action.REFUEL,
@@ -1330,14 +1355,7 @@ public class SettingsFragment extends MainActivityFragment
 			o.seekMin = 10;
 			o.seekMax = 40;
 		});
-		ps.addIntPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.UP_NEXT_LIST_PREVIEW;
-			o.title = R.string.up_next_list_preview;
-			o.subtitle = R.string.up_next_list_preview_sub;
-			o.seekMin = 1;
-			o.seekMax = 10;
-		});
+
 	}
 
 	private void addAddons(PreferenceSet set) {

@@ -1040,7 +1040,11 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 			}
 		}
 
-		addon.addUpNext(videoId, title, first);
+		if (!addon.addUpNext(videoId, title, first)) {
+			UiUtils.showToast(requireContext(), me.aap.fermata.R.string.youtube_up_next_full,
+					addon.getUpNextMax());
+			return;
+		}
 		String name = ((title != null) && !title.isEmpty()) ? title : addon.getVideoTitle(videoId);
 		UiUtils.showToast(requireContext(), first ? me.aap.fermata.R.string.youtube_added_play_next :
 				me.aap.fermata.R.string.youtube_added_up_next, name);

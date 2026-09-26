@@ -105,6 +105,8 @@ public interface MainActivityPrefs
 	// user's own queue (1..10) -- enough to see what comes after, few enough to leave room for search
 	// results.
 	Pref<IntSupplier> UP_NEXT_LIST_PREVIEW = Pref.i("UP_NEXT_LIST_PREVIEW", 3);
+	// The most videos the YouTube tab's Up next queue holds (1..50).
+	Pref<IntSupplier> UP_NEXT_MAX = Pref.i("UP_NEXT_MAX", 20);
 	Pref<BooleanSupplier> DIM_ENABLED = Pref.b("DIM_ENABLED", false);
 	Pref<IntSupplier> DIM_OPACITY = Pref.i("DIM_OPACITY", 50);
 	Pref<IntSupplier> DIM_COLOR_PRESET = Pref.i("DIM_COLOR_PRESET", 0);

@@ -16,6 +16,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
+import android.support.v4.media.session.PlaybackStateCompat;
 import android.util.LruCache;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -46,6 +47,7 @@ import me.aap.fermata.FermataApplication;
 import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
+import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.spotify.SpotifyImportModel.Video;
 import me.aap.fermata.spotify.YoutubeSearch;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -72,7 +74,7 @@ import me.aap.utils.ui.UiUtils;
  * panel itself slides in/out -- see {@link #slideIn()}/{@link #slideOut(Runnable)}.
  */
 @SuppressLint("ViewConstructor")
-final class YoutubeSearchPanel extends FrameLayout {
+final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallback.Listener {
 	private static final int MAX_RESULTS = 25;
 	private static final long SLIDE_MS = 240;
 	/** Shared: one search at a time is plenty, and a panel recreated with its fragment reuses it. */
@@ -160,6 +162,7 @@ final class YoutubeSearchPanel extends FrameLayout {
 	protected void onAttachedToWindow() {
 		super.onAttachedToWindow();
 		addon.addUpNextListener(queueListener);
+		MainActivityDelegate.get(getContext()).getMediaSessionCallback().addBroadcastListener(this);
 		reloadList();
 	}
 
@@ -167,6 +170,8 @@ final class YoutubeSearchPanel extends FrameLayout {
 	protected void onDetachedFromWindow() {
 		super.onDetachedFromWindow();
 		addon.removeUpNextListener(queueListener);
+		MainActivityDelegate.get(getContext()).getMediaSessionCallback()
+				.removeBroadcastListener(this);
 		handler.removeCallbacksAndMessages(null);
 		generation++;
 		listGeneration++;
@@ -317,6 +322,20 @@ final class YoutubeSearchPanel extends FrameLayout {
 	private void onQueueChanged() {
 		reloadList();
 	}
+
+	/**
+	 * Any playback transition (next video, skip, a list entry starting) can move what's queued and
+	 * which list entry comes next; the queue item and Up next listeners alone didn't catch every one
+	 * of them, leaving the panel showing the previous video's view. Coalesced: a skip reports
+	 * several states in quick succession.
+	 */
+	@Override
+	public void onPlaybackStateChanged(MediaSessionCallback cb, PlaybackStateCompat state) {
+		handler.removeCallbacks(stateReload);
+		handler.postDelayed(stateReload, 300);
+	}
+
+	private final Runnable stateReload = this::reloadList;
 
 	/**
 	 * Loads the next few entries of the Favorites/Playlist the current video was played from (see
@@ -753,7 +772,7 @@ final class YoutubeSearchPanel extends FrameLayout {
 					detail.setText(d);
 					loadImage(thumb, video.thumbnailUrl());
 					button.setVisibility(VISIBLE);
-					button.setImageResource(me.aap.fermata.R.drawable.up_next);
+					button.setImageResource(me.aap.fermata.R.drawable.playlist_add);
 					button.setContentDescription(ctx.getString(me.aap.fermata.R.string.youtube_play_next));
 					button.setOnClickListener(x -> fragment.queueVideo(video.videoId, video.title, true));
 					v.setOnClickListener(x -> fragment.playVideoNow(video.videoId, video.title));

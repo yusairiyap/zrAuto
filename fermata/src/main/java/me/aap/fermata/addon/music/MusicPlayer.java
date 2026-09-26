@@ -266,6 +266,23 @@ public final class MusicPlayer {
 	}
 
 	/**
+	 * Moves what {@code eng} had queued to play next (YouTube's Up next, see
+	 * {@link MediaEngine#takeUpNext()}) into {@code q}, in order, right after {@code after}.
+	 */
+	private static void moveUpNextIntoQueue(MusicQueue q, MediaEngine eng, MusicTrackItem after) {
+		List<PlayableItem> up = eng.takeUpNext();
+		if (up.isEmpty()) return;
+		List<MusicTrackItem> added = q.add(up);
+		int ci = q.indexInPlayOrder(after);
+		if (ci < 0) return;
+		for (int i = 0; i < added.size(); i++) {
+			int from = q.indexInPlayOrder(added.get(i));
+			int to = ci + 1 + i;
+			if ((from >= 0) && (from != to)) q.move(from, to);
+		}
+	}
+
+	/**
 	 * Puts {@code item} into the music queue -- right after the track playing now ({@code next}) or
 	 * at the end. False when no queue track is playing (nothing for it to follow).
 	 */
@@ -338,8 +355,14 @@ public final class MusicPlayer {
 		MediaEngine eng = cb.getEngine();
 		PlayableItem cur = (eng == null) ? null : eng.getSource();
 
-		if ((cur == null) || (getCurrentTrack(cb) != null)) {
-			if (cur != null) setYoutubeAudioMode(eng.getId() == MediaPrefs.MEDIA_ENG_YT);
+		MusicTrackItem playing = getCurrentTrack(cb);
+		if ((cur == null) || (playing != null)) {
+			if (cur != null) {
+				// Already a queue track (switched to video and back): its queue stays as it is, but
+				// whatever was queued in the video player since goes in right after it.
+				if (playing != null) moveUpNextIntoQueue(q, eng, playing);
+				setYoutubeAudioMode(eng.getId() == MediaPrefs.MEDIA_ENG_YT);
+			}
 			open(a);
 			return;
 		}
@@ -355,6 +378,7 @@ public final class MusicPlayer {
 		MusicTrackItem existing = q.getSavedCurrent();
 
 		if ((existing != null) && existing.getSourceId().equals(MusicQueue.sourceIdOf(item))) {
+			moveUpNextIntoQueue(q, eng, existing);
 			open(a);
 			continueAsMusic(a, eng, existing);
 			return;
