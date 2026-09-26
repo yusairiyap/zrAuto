@@ -92,13 +92,16 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 			});
 		}
 
-		// Right after the field: clears the text being typed and the panel's results. Only there
-		// while searching -- the field being typed into, or the panel open -- see refreshClearButton().
+		// Right after the field: a search button that turns into an X while searching (the field
+		// being typed into, or the panel open) -- see refreshClearButton(). The X clears the text and
+		// the results and closes the panel; the search button starts a search.
 		ImageButton clear = tb.findViewById(R.id.browser_addr_clear);
 		if (clear != null) {
-			clear.setContentDescription(tb.getContext().getString(me.aap.fermata.R.string.youtube_clear_search));
-			// And closes the panel: done searching.
 			clear.setOnClickListener(v -> {
+				if (!editing && !yt.isSearchPanelShown()) {
+					yt.startSearch();
+					return;
+				}
 				yt.clearSearch();
 				if (addr != null) {
 					if (editing) addr.setText("");
@@ -158,10 +161,14 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 		}
 	}
 
-	/** See the clear button in {@link #enable}. */
+	/** See the search/clear button in {@link #enable}. */
 	void refreshClearButton(ToolBarView tb, YoutubeFragment yt) {
-		View clear = tb.findViewById(R.id.browser_addr_clear);
-		if (clear != null) clear.setVisibility((editing || yt.isSearchPanelShown()) ? VISIBLE : GONE);
+		if (!(tb.findViewById(R.id.browser_addr_clear) instanceof ImageButton b)) return;
+		boolean searching = editing || yt.isSearchPanelShown();
+		b.setVisibility(VISIBLE);
+		b.setImageResource(searching ? R.drawable.clear : me.aap.fermata.R.drawable.search);
+		b.setContentDescription(tb.getContext().getString(searching ?
+				me.aap.fermata.R.string.youtube_clear_search : me.aap.fermata.R.string.search));
 	}
 
 	private boolean onSearchKey(YoutubeFragment yt, EditText t, int keyCode, KeyEvent event) {

@@ -34,6 +34,7 @@ import java.util.Set;
 import me.aap.fermata.BuildConfig;
 import me.aap.fermata.addon.AddonManager;
 import me.aap.fermata.addon.music.MusicPlayer;
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.addon.web.FermataChromeClient;
 import me.aap.fermata.addon.web.FermataWebView;
 import me.aap.fermata.addon.web.R;
@@ -935,7 +936,10 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	 */
 	void playFromList(MediaLib.PlayableItem pi) {
 		hideSearchPanel();
-		if (pi instanceof MediaLib.ExternallyPlayableItem ext) {
+		if (pi instanceof MusicTrackItem t) {
+			// The Music tab's queue: played the way that tab plays it (as music, from its queue).
+			MusicPlayer.playTrack(MainActivityDelegate.get(requireContext()), t, 0);
+		} else if (pi instanceof MediaLib.ExternallyPlayableItem ext) {
 			ext.loadInFragment(this, ext);
 		} else {
 			MainActivityDelegate.get(requireContext()).getMediaSessionCallback().playItem(pi, 0);

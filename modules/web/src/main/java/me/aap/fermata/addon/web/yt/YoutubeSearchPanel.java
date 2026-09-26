@@ -44,6 +44,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import me.aap.fermata.FermataApplication;
+import me.aap.fermata.addon.music.MusicQueue;
 import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
@@ -347,6 +348,34 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		PlayableItem q = addon.getQueueItem();
 		BrowsableItem parent = (q != null) ? q.getParent() : null;
 
+		int max = Math.max(1, Math.min(10,
+				MainActivityPrefs.get().getIntPref(MainActivityPrefs.UP_NEXT_LIST_PREVIEW)));
+
+		// Playing as music (or back to video from it): the list is the Music tab's queue. It's an
+		// "external" folder -- so the check below would skip it -- but its play order is known
+		// exactly, shuffled or not, so it's previewed as it will really play.
+		if (parent instanceof MusicQueue mq) {
+			List<MusicTrackItem> order = mq.getPlayOrder();
+			int idx = mq.indexInPlayOrder(q);
+			boolean repeat = mq.getPrefs().getRepeatPref();
+			listItems.clear();
+			listName = mq.getName();
+			listShuffled = false;
+			if (idx != -1) {
+				for (int i = 1; i <= max; i++) {
+					int j = idx + i;
+					if (j >= order.size()) {
+						if (!repeat) break;
+						j %= order.size();
+					}
+					if (j == idx) break;
+					listItems.add(order.get(j));
+				}
+			}
+			refresh();
+			return;
+		}
+
 		if ((q == null) || (parent == null) || parent.isExternal()) {
 			listItems.clear();
 			listName = null;
@@ -354,8 +383,6 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 			return;
 		}
 
-		int max = Math.max(1, Math.min(10,
-				MainActivityPrefs.get().getIntPref(MainActivityPrefs.UP_NEXT_LIST_PREVIEW)));
 		boolean shuffle = parent.getPrefs().getShufflePref();
 		boolean repeat = parent.getPrefs().getRepeatPref();
 		String name = parent.getName();
@@ -607,9 +634,30 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 					return old.get(o).sameContent(newRows.get(n));
 				}
 			});
+			// Rows inserted above the first visible one (the queue section appearing, a video queued at
+			// the front) would otherwise land just above the viewport -- the list keeps its current
+			// first row pinned -- and only show up after scrolling. Stay at the top if already there.
+			RecyclerView rv = recyclerView;
+			boolean atTop = (rv != null) &&
+					(rv.getLayoutManager() instanceof LinearLayoutManager lm) &&
+					(lm.findFirstCompletelyVisibleItemPosition() <= 0);
 			rows.clear();
 			rows.addAll(newRows);
 			d.dispatchUpdatesTo(this);
+			if (atTop) rv.scrollToPosition(0);
+		}
+
+		@Nullable
+		private RecyclerView recyclerView;
+
+		@Override
+		public void onAttachedToRecyclerView(@NonNull RecyclerView rv) {
+			recyclerView = rv;
+		}
+
+		@Override
+		public void onDetachedFromRecyclerView(@NonNull RecyclerView rv) {
+			if (recyclerView == rv) recyclerView = null;
 		}
 
 		@Override
