@@ -130,6 +130,8 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	@Nullable
 	private Consumer<PictureInPictureModeChangedInfo> pipListener;
 	private static boolean inPip;
+	private static final long[] PIP_RESUME_CHECK_DELAYS_MS = {800L, 2000L, 4000L};
+	private long pipResumeOperation;
 
 	@Override
 	public int getFragmentId() {
@@ -566,6 +568,28 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		if (!entered) onPipModeChanged(false);
 	}
 
+	/**
+	 * Going into picture-in-picture can still leave the page paused on its own: entering fullscreen
+	 * on the way (a resize YouTube's player answers by restarting) lands at the same moment the
+	 * window shrinks. The user never asked for that pause, so for a few seconds after entering, a
+	 * page-side pause is undone -- a pause from the PiP window's own button (or any other transport
+	 * control) is the app's, and left alone.
+	 */
+	private void resumeIfPausedByPip(MainActivityDelegate a, long op) {
+		if (!inPip || (op != pipResumeOperation)) return;
+		MediaSessionCallback cb = a.getMediaSessionCallback();
+		if (!(cb.getEngine() instanceof YoutubeMediaEngine eng)) return;
+		eng.getPageState().onSuccess(st -> {
+			if (!inPip || (op != pipResumeOperation) || (st == null) || !st.hasVideo) return;
+			if (!st.paused || st.ended) return;
+			boolean pageOwnPause = cb.isPlaying() || (eng.getLastExternalPauseTime() != 0);
+			if (!pageOwnPause) return;
+			DiagnosticLog.log("YT", "PiP: page paused on its own, resuming");
+			eng.resumePageAfterInterruption(-1);
+			if (!cb.isPlaying()) cb.onPlay();
+		});
+	}
+
 	/** Whether the app is showing a YouTube video in picture-in-picture right now. */
 	static boolean isInPictureInPicture() {
 		return inPip;
@@ -575,8 +599,14 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		inPip = pip;
 		if (pip) {
 			if (pipFreeze != null) pipFreeze.applyScale();
+			long op = ++pipResumeOperation;
+			for (long delay : PIP_RESUME_CHECK_DELAYS_MS) {
+				MainActivityDelegate.getActivityDelegate(requireContext())
+						.onSuccess(a -> a.postDelayed(() -> resumeIfPausedByPip(a, op), delay));
+			}
 			return;
 		}
+		pipResumeOperation++;
 		unfreezeVideoAfterPip();
 		FragmentActivity act = getActivity();
 		if ((act != null) && (pipListener != null)) {
@@ -994,6 +1024,20 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		if ((eng == null) || !eng.isActive()) {
 			playVideoNow(videoId, title);
 			return;
+		}
+
+		// Playing as music (the Music tab): the music queue is what plays next, and what that tab
+		// shows -- queue there rather than in a separate Up next the Music tab knows nothing about.
+		if (MusicPlayer.isYoutubeAudioMode()) {
+			if ((title != null) && !title.isEmpty()) addon.cacheVideoTitle(videoId, title);
+			MainActivityDelegate a = MainActivityDelegate.get(requireContext());
+			if ((a.getLib() instanceof DefaultMediaLib lib) && MusicPlayer.queueAfterCurrent(a,
+					new YoutubeVideoItem(videoId, addon.getRootItem(lib)), first)) {
+				String name = ((title != null) && !title.isEmpty()) ? title : addon.getVideoTitle(videoId);
+				UiUtils.showToast(requireContext(), first ? me.aap.fermata.R.string.youtube_added_play_next :
+						me.aap.fermata.R.string.youtube_added_up_next, name);
+				return;
+			}
 		}
 
 		addon.addUpNext(videoId, title, first);

@@ -3,11 +3,15 @@ package me.aap.fermata.addon.web.yt;
 import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
@@ -106,6 +110,10 @@ final class YoutubeSearchPanel extends FrameLayout {
 	private String listName;
 	private boolean listShuffled;
 	private boolean split;
+	/** How far the panel is unrolled, 0..1 -- see {@link #slideIn()}. */
+	private float revealFraction;
+	@Nullable
+	private ValueAnimator reveal;
 
 	YoutubeSearchPanel(Context ctx, YoutubeFragment fragment, YoutubeAddon addon) {
 		super(ctx);
@@ -194,36 +202,71 @@ final class YoutubeSearchPanel extends FrameLayout {
 		refresh();
 	}
 
-	/** Slides the panel down into view from under the toolbar. */
+	/**
+	 * Unrolls the panel downwards from under the toolbar.
+	 * <p>
+	 * A reveal (an animated clip), not a slide: the lists' padding that keeps rows clear of the
+	 * toolbar and the control panel is computed from where they are on screen (see
+	 * MainActivityDelegate#insetScrollableContent), so moving the panel itself mid-animation had
+	 * that padding computed against the off-screen start position -- the rows showed up halfway down
+	 * and then jumped to the top once the slide ended.
+	 */
 	void slideIn() {
-		animate().cancel();
 		setVisibility(VISIBLE);
-		float from = -slideDistance();
-		if (getTranslationY() == 0) {
-			setTranslationY(from);
-			setAlpha(0f);
-		}
-		animate().translationY(0).alpha(1f).setDuration(SLIDE_MS)
-				.setInterpolator(new DecelerateInterpolator()).withEndAction(null).start();
+		animateReveal(1f, null);
 		reloadList();
 	}
 
-	/** Slides the panel back up out of view, then hides it and runs {@code done}. */
+	/** Rolls the panel back up under the toolbar, then hides it and runs {@code done}. */
 	void slideOut(@Nullable Runnable done) {
-		animate().cancel();
-		animate().translationY(-slideDistance()).alpha(0f).setDuration(SLIDE_MS)
-				.setInterpolator(new DecelerateInterpolator()).withEndAction(() -> {
-					setVisibility(GONE);
-					setTranslationY(0);
-					setAlpha(1f);
-					if (done != null) done.run();
-				}).start();
+		animateReveal(0f, () -> {
+			setVisibility(GONE);
+			if (done != null) done.run();
+		});
 	}
 
-	private float slideDistance() {
+	private void animateReveal(float to, @Nullable Runnable done) {
+		ValueAnimator old = reveal;
+		reveal = null;
+		if (old != null) old.cancel();
+		ValueAnimator va = ValueAnimator.ofFloat(revealFraction, to);
+		va.setDuration(SLIDE_MS);
+		va.setInterpolator(new DecelerateInterpolator());
+		va.addUpdateListener(an -> {
+			revealFraction = (float) an.getAnimatedValue();
+			applyReveal();
+		});
+		va.addListener(new AnimatorListenerAdapter() {
+			@Override
+			public void onAnimationEnd(Animator animation) {
+				if (reveal != va) return; // cancelled, superseded by a newer one
+				reveal = null;
+				revealFraction = to;
+				applyReveal();
+				if (done != null) done.run();
+			}
+		});
+		reveal = va;
+		applyReveal();
+		va.start();
+	}
+
+	private void applyReveal() {
+		if (revealFraction >= 1f) {
+			setClipBounds(null);
+			setAlpha(1f);
+			return;
+		}
 		int h = getHeight();
-		if (h == 0 && (getParent() instanceof View p)) h = p.getHeight();
-		return (h == 0) ? UiUtils.toPx(getContext(), 200) : h;
+		setClipBounds(new Rect(0, 0, getWidth(), (int) (h * revealFraction)));
+		setAlpha(0.4f + 0.6f * revealFraction);
+	}
+
+	@Override
+	protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+		super.onLayout(changed, left, top, right, bottom);
+		// The first reveal can start before the panel has a size to clip to.
+		if (changed && (revealFraction < 1f)) applyReveal();
 	}
 
 	@Nullable
@@ -367,20 +410,23 @@ final class YoutubeSearchPanel extends FrameLayout {
 		}
 
 		if (hasList) {
-			rows.add(Row.note("n:list", ctx.getString(listShuffled ?
-					me.aap.fermata.R.string.youtube_then_shuffled :
-					me.aap.fermata.R.string.youtube_then_from, listName)));
-			for (PlayableItem pi : listItems) rows.add(Row.listItem(pi));
+			// "Then from" under queued videos -- they come first; with nothing queued the list is
+			// simply what's playing.
+			boolean queued = !upNext.isEmpty();
+			int label = listShuffled ?
+					(queued ? me.aap.fermata.R.string.youtube_then_shuffled :
+							me.aap.fermata.R.string.youtube_playing_shuffled) :
+					(queued ? me.aap.fermata.R.string.youtube_then_from :
+							me.aap.fermata.R.string.youtube_playing_from);
+			rows.add(Row.note("n:list", ctx.getString(label, listName)));
+			for (PlayableItem pi : listItems) rows.add(Row.listItem(pi, queued));
 		}
 	}
 
 	private void buildSearchRows(List<Row> rows) {
 		Context ctx = getContext();
 
-		if (query == null) {
-			rows.add(Row.note("n:intro", ctx.getString(me.aap.fermata.R.string.youtube_search_intro)));
-			return;
-		}
+		if (query == null) return;
 
 		rows.add(Row.header("h:results",
 				ctx.getString(me.aap.fermata.R.string.youtube_search_results, query), null, null));
@@ -463,6 +509,8 @@ final class YoutubeSearchPanel extends FrameLayout {
 		final Video video;
 		@Nullable
 		final PlayableItem item;
+		/** Shown dimmed: a list entry that only plays after the queued videos. */
+		boolean dim;
 
 		private Row(int type, String key, @Nullable String text, @Nullable String chip,
 								@Nullable Runnable action, int kind, @Nullable String videoId,
@@ -500,14 +548,16 @@ final class YoutubeSearchPanel extends FrameLayout {
 					null);
 		}
 
-		static Row listItem(PlayableItem pi) {
-			return new Row(TYPE_VIDEO, "l:" + pi.getId(), pi.getName(), null, null, KIND_LIST,
+		static Row listItem(PlayableItem pi, boolean dim) {
+			Row r = new Row(TYPE_VIDEO, "l:" + pi.getId(), pi.getName(), null, null, KIND_LIST,
 					videoIdOf(pi), null, pi);
+			r.dim = dim;
+			return r;
 		}
 
 		boolean sameContent(Row o) {
-			return (type == o.type) && (kind == o.kind) && Objects.equals(text, o.text) &&
-					Objects.equals(chip, o.chip);
+			return (type == o.type) && (kind == o.kind) && (dim == o.dim) &&
+					Objects.equals(text, o.text) && Objects.equals(chip, o.chip);
 		}
 	}
 
@@ -685,8 +735,14 @@ final class YoutubeSearchPanel extends FrameLayout {
 			ImageView thumb = v.findViewById(me.aap.fermata.R.id.si_thumb);
 			Context ctx = v.getContext();
 			title.setText(r.text);
-			// Only the list preview is dimmed: it's what plays *after* the queue.
-			v.setAlpha((r.kind == KIND_LIST) ? 0.55f : 1f);
+			// Only the list preview, and only below queued videos: it's what plays *after* them.
+			// Set on the row's contents, never on the row itself -- the item animator fades rows in
+			// and out through that same alpha, and whichever of the two wrote last used to win,
+			// leaving recycled rows stuck half-faded.
+			float a = r.dim ? 0.55f : 1f;
+			title.setAlpha(a);
+			detail.setAlpha(a);
+			thumb.setAlpha(a);
 
 			switch (r.kind) {
 				case KIND_RESULT -> {

@@ -21,6 +21,9 @@ import androidx.media.AudioFocusRequestCompat;
 
 import com.google.android.play.core.splitcompat.SplitCompat;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 
 import me.aap.fermata.addon.music.MusicPlayer;
@@ -847,6 +850,20 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 * next video, see prepare()) -- so "Play as music" keeps the list. Not for the Music tab's own
 	 * queue, which already is the music queue.
 	 */
+	/** See {@link MediaEngine#takeUpNext()}: "Play as music" takes the Up next queue over. */
+	@Override
+	public List<PlayableItem> takeUpNext() {
+		YoutubeAddon addon = web.getAddon();
+		List<String> ids = addon.getUpNext();
+		if (ids.isEmpty() || !(mediaRoot.getLib() instanceof DefaultMediaLib lib)) {
+			return Collections.emptyList();
+		}
+		List<PlayableItem> items = new ArrayList<>(ids.size());
+		for (String id : ids) items.add(new YoutubeVideoItem(id, addon.getRootItem(lib)));
+		addon.clearUpNext();
+		return items;
+	}
+
 	@Nullable
 	@Override
 	public PlayableItem getQueueContextItem() {

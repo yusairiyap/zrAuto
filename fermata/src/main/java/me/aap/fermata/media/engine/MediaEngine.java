@@ -100,6 +100,14 @@ public interface MediaEngine extends Closeable {
 	}
 
 	/**
+	 * Hands over (and forgets) whatever the engine had queued to play next on its own (YouTube's Up
+	 * next) -- for "Play as music", whose queue takes those over so the Music tab shows them.
+	 */
+	default List<PlayableItem> takeUpNext() {
+		return Collections.emptyList();
+	}
+
+	/**
 	 * Makes {@code src} this engine's source without re-preparing -- for switching between two items
 	 * that play the very same media (a video, and the Music tab's audio-only track wrapping it), so
 	 * the sound carries on uninterrupted. An engine that can't do that returns false (the default),

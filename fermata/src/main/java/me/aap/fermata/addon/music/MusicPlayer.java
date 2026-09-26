@@ -265,6 +265,23 @@ public final class MusicPlayer {
 		else playTrack(a, t, 0);
 	}
 
+	/**
+	 * Puts {@code item} into the music queue -- right after the track playing now ({@code next}) or
+	 * at the end. False when no queue track is playing (nothing for it to follow).
+	 */
+	public static boolean queueAfterCurrent(MainActivityDelegate a, PlayableItem item, boolean next) {
+		MusicQueue q = getQueue(a);
+		MusicTrackItem cur = getCurrentTrack(a.getMediaSessionCallback());
+		if ((q == null) || (cur == null)) return false;
+		List<MusicTrackItem> added = q.add(Collections.singletonList(item));
+		if (next && !added.isEmpty()) {
+			int from = q.indexInPlayOrder(added.get(0));
+			int ci = q.indexInPlayOrder(cur);
+			if ((from >= 0) && (ci >= 0) && (from != ci + 1)) q.move(from, ci + 1);
+		}
+		return true;
+	}
+
 	/** "Add into music queue" for a library item (all of a browsable item's tracks). */
 	public static void addToQueue(MainActivityDelegate a, Item item) {
 		MusicQueue q = getQueue(a);
@@ -352,13 +369,14 @@ public final class MusicPlayer {
 				int ci = indexOfSame(list, context);
 				int idx;
 				if (ci == -1) {
-					list = Collections.singletonList(item);
+					list = new ArrayList<>(Collections.singletonList(item));
 					idx = 0;
 				} else {
 					idx = ci + 1;
 					list.add(idx, item);
 					q.copyModes(context.getParent().getPrefs());
 				}
+				list.addAll(idx + 1, eng.takeUpNext());
 				MusicTrackItem t = q.replace(list, idx).get(idx);
 				open(a);
 				continueAsMusic(a, eng, t);
@@ -371,13 +389,17 @@ public final class MusicPlayer {
 				browsing ? completed(Collections.singletonList(item)) : siblings(item);
 		list.main().onSuccess(l -> {
 			int idx = indexOfSame(l, item);
+			List<PlayableItem> items = new ArrayList<>(l);
 			if (idx == -1) {
-				l = Collections.singletonList(item);
+				items = new ArrayList<>(Collections.singletonList(item));
 				idx = 0;
 			}
+			// What was queued to play next (YouTube's Up next) comes right after this track, so the
+			// Music tab's queue shows -- and plays -- exactly what the video player would have.
+			items.addAll(idx + 1, eng.takeUpNext());
 			// Modes first: with the list's Shuffle on, the new shuffled order starts from this track.
 			if (!browsing) q.copyModes(item.getParent().getPrefs());
-			MusicTrackItem t = q.replace(l, idx).get(idx);
+			MusicTrackItem t = q.replace(items, idx).get(idx);
 			open(a);
 			continueAsMusic(a, eng, t);
 		});

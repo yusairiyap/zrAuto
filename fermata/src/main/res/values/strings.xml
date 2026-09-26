@@ -666,7 +666,6 @@
     <string name="youtube_searching">Searching…</string>
     <string name="youtube_search_failed">Search failed. Check your connection and try again.</string>
     <string name="youtube_search_no_results">No videos found.</string>
-    <string name="youtube_search_intro">Type in the title bar to search. Whatever is playing keeps playing while you browse. Tap a result to play it now, or its Up next button to play it next. Long-press any video on the YouTube page to queue it too.</string>
     <string name="youtube_search_close">Close search</string>
     <string name="youtube_up_next">Up next</string>
     <string name="youtube_up_next_count">Up next (%1$d)</string>
@@ -682,6 +681,8 @@
     <string name="youtube_from_list">From %1$s</string>
     <string name="youtube_then_from">Then from %1$s</string>
     <string name="youtube_then_shuffled">Then shuffled from %1$s</string>
+    <string name="youtube_playing_from">Playing from %1$s</string>
+    <string name="youtube_playing_shuffled">Playing shuffled from %1$s</string>
     <string name="youtube_clear_search">Clear search</string>
     <string name="action_youtube_search">YouTube search</string>
     <string name="action_youtube_up_next">YouTube Up next</string>
