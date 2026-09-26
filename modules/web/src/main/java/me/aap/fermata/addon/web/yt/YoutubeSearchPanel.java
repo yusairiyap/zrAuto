@@ -5,34 +5,47 @@ import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.LruCache;
 import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.recyclerview.widget.SimpleItemAnimator;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import me.aap.fermata.FermataApplication;
+import me.aap.fermata.addon.music.MusicTrackItem;
+import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
+import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.spotify.SpotifyImportModel.Video;
 import me.aap.fermata.spotify.YoutubeSearch;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.utils.log.Log;
 import me.aap.utils.ui.UiUtils;
 
@@ -46,31 +59,53 @@ import me.aap.utils.ui.UiUtils;
  * while the user browses results. The search itself is the same key-less InnerTube lookup the
  * Spotify import uses ({@link YoutubeSearch}).
  * <p>
- * Tapping a result plays it now; its queue button puts it at the front of Up next (see
- * {@link YoutubeAddon#getUpNext()}), which plays before the current Favorites/Playlist continues.
+ * Tapping a result plays it now; its Up next button puts it at the front of the queue (see
+ * {@link YoutubeAddon#getUpNext()}), which plays before the current Favorites/Playlist continues --
+ * the list's next few entries are previewed, dimmed, right below the queue to show exactly that.
+ * <p>
+ * On a wide screen (landscape, a tablet, the car) results and the queue sit side by side; on a
+ * narrow one they share a single list, queue first. Every change animates (DiffUtil), and the
+ * panel itself slides in/out -- see {@link #slideIn()}/{@link #slideOut(Runnable)}.
  */
 @SuppressLint("ViewConstructor")
 final class YoutubeSearchPanel extends FrameLayout {
 	private static final int MAX_RESULTS = 25;
+	private static final long SLIDE_MS = 240;
 	/** Shared: one search at a time is plenty, and a panel recreated with its fragment reuses it. */
 	private static final ExecutorService executor = Executors.newSingleThreadExecutor();
 	private static final int TYPE_HEADER = 0;
 	private static final int TYPE_NOTE = 1;
 	private static final int TYPE_ACTION = 2;
 	private static final int TYPE_VIDEO = 3;
+	private static final int KIND_RESULT = 0;
+	private static final int KIND_UP_NEXT = 1;
+	private static final int KIND_LIST = 2;
 	private final Handler handler = new Handler(Looper.getMainLooper());
-	private final LruCache<String, Bitmap> images = new LruCache<>(60);
-	private final List<Row> rows = new ArrayList<>();
+	private final LruCache<String, Bitmap> images = new LruCache<>(80);
 	private final List<Video> results = new ArrayList<>();
+	private final List<PlayableItem> listItems = new ArrayList<>();
 	private final YoutubeFragment fragment;
 	private final YoutubeAddon addon;
-	private final Adapter adapter = new Adapter();
-	private final Runnable upNextListener = () -> handler.post(this::refresh);
+	private final RecyclerView mainList;
+	private final RecyclerView sideList;
+	private final Adapter mainAdapter = new Adapter();
+	private final Adapter sideAdapter = new Adapter();
+	private final Runnable queueListener = () -> handler.post(this::onQueueChanged);
+	// Colors picked for contrast against this panel's own background, rather than taken from the
+	// theme's text attributes: several of the app's themes remap those for their toolbar/nav bar
+	// surfaces, which left the rows here unreadable (white on white) on the light themes.
+	private final int textPrimary;
+	private final int textSecondary;
 	@Nullable
 	private String query;
 	private boolean searching;
 	private boolean failed;
 	private int generation;
+	private int listGeneration;
+	@Nullable
+	private String listName;
+	private boolean listShuffled;
+	private boolean split;
 
 	YoutubeSearchPanel(Context ctx, YoutubeFragment fragment, YoutubeAddon addon) {
 		super(ctx);
@@ -80,32 +115,115 @@ final class YoutubeSearchPanel extends FrameLayout {
 		// showing through faintly makes it obvious nothing was closed or stopped.
 		int bg = resolveColor(ctx, android.R.attr.colorBackground, Color.BLACK);
 		setBackgroundColor((bg & 0x00FFFFFF) | 0xF2000000);
+		boolean light = isLight(bg);
+		textPrimary = light ? 0xDE000000 : 0xFFFFFFFF;
+		textSecondary = light ? 0x99000000 : 0xB3FFFFFF;
 		// Swallow touches, so nothing reaches the page underneath.
 		setClickable(true);
 
+		LinearLayout row = new LinearLayout(ctx);
+		row.setOrientation(LinearLayout.HORIZONTAL);
+		addView(row, new LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		MainActivityDelegate a = MainActivityDelegate.get(ctx);
+		mainList = createList(ctx, a, mainAdapter);
+		sideList = createList(ctx, a, sideAdapter);
+		row.addView(mainList, new LinearLayout.LayoutParams(0, MATCH_PARENT, 1f));
+		row.addView(sideList, new LinearLayout.LayoutParams(0, MATCH_PARENT, 1f));
+		sideList.setVisibility(GONE);
+		refresh();
+	}
+
+	private static RecyclerView createList(Context ctx, MainActivityDelegate a, Adapter adapter) {
 		RecyclerView list = new RecyclerView(ctx);
 		list.setLayoutManager(new LinearLayoutManager(ctx));
 		list.setAdapter(adapter);
-		addView(list, new LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		// Rows animate in/out/moving (the default item animator); a changed row is just rebound in
+		// place rather than cross-faded, which would flicker every refresh.
+		if (list.getItemAnimator() instanceof SimpleItemAnimator sia) {
+			sia.setSupportsChangeAnimations(false);
+		}
 		// Same as every scrollable screen: reserve room for the translucent tool/nav bars and the
 		// control panel, which are all drawn over this.
-		MainActivityDelegate.get(ctx).insetScrollableContent(list);
-		refresh();
+		a.insetScrollableContent(list);
+		return list;
 	}
 
 	@Override
 	protected void onAttachedToWindow() {
 		super.onAttachedToWindow();
-		addon.addUpNextListener(upNextListener);
-		refresh();
+		addon.addUpNextListener(queueListener);
+		reloadList();
 	}
 
 	@Override
 	protected void onDetachedFromWindow() {
 		super.onDetachedFromWindow();
-		addon.removeUpNextListener(upNextListener);
+		addon.removeUpNextListener(queueListener);
 		handler.removeCallbacksAndMessages(null);
 		generation++;
+		listGeneration++;
+	}
+
+	@Override
+	protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+		super.onSizeChanged(w, h, oldw, oldh);
+		// Not during layout: switching lists' visibility requests another one.
+		handler.post(this::updateSplit);
+	}
+
+	/**
+	 * Side by side (results left, queue right) wherever there's room for two columns of rows: on the
+	 * car screen, in landscape, and on large screens in either orientation.
+	 */
+	private void updateSplit() {
+		int w = getWidth();
+		if (w == 0) return;
+		float dp = w / getResources().getDisplayMetrics().density;
+		boolean s = MainActivityDelegate.get(getContext()).isCarActivity() || (dp >= 720) ||
+				((w > getHeight()) && (dp >= 560));
+		if (s == split) return;
+		split = s;
+		sideList.setVisibility(s ? VISIBLE : GONE);
+		// Start the other layout from scratch rather than animating every row across lists.
+		mainAdapter.rows.clear();
+		sideAdapter.rows.clear();
+		//noinspection NotifyDataSetChanged
+		mainAdapter.notifyDataSetChanged();
+		//noinspection NotifyDataSetChanged
+		sideAdapter.notifyDataSetChanged();
+		refresh();
+	}
+
+	/** Slides the panel down into view from under the toolbar. */
+	void slideIn() {
+		animate().cancel();
+		setVisibility(VISIBLE);
+		float from = -slideDistance();
+		if (getTranslationY() == 0) {
+			setTranslationY(from);
+			setAlpha(0f);
+		}
+		animate().translationY(0).alpha(1f).setDuration(SLIDE_MS)
+				.setInterpolator(new DecelerateInterpolator()).withEndAction(null).start();
+		reloadList();
+	}
+
+	/** Slides the panel back up out of view, then hides it and runs {@code done}. */
+	void slideOut(@Nullable Runnable done) {
+		animate().cancel();
+		animate().translationY(-slideDistance()).alpha(0f).setDuration(SLIDE_MS)
+				.setInterpolator(new DecelerateInterpolator()).withEndAction(() -> {
+					setVisibility(GONE);
+					setTranslationY(0);
+					setAlpha(1f);
+					if (done != null) done.run();
+				}).start();
+	}
+
+	private float slideDistance() {
+		int h = getHeight();
+		if (h == 0 && (getParent() instanceof View p)) h = p.getHeight();
+		return (h == 0) ? UiUtils.toPx(getContext(), 200) : h;
 	}
 
 	@Nullable
@@ -143,45 +261,149 @@ final class YoutubeSearchPanel extends FrameLayout {
 		});
 	}
 
-	/** Rebuilds the rows: Up next (if anything is queued) first, then the search results. */
-	void refresh() {
-		Context ctx = getContext();
-		rows.clear();
-		List<String> upNext = addon.getUpNext();
-
-		if (!upNext.isEmpty()) {
-			rows.add(Row.header(ctx.getString(me.aap.fermata.R.string.youtube_up_next_count,
-					upNext.size())));
-			rows.add(Row.note(ctx.getString(me.aap.fermata.R.string.youtube_up_next_hint)));
-			for (String id : upNext) rows.add(Row.upNext(id));
-			rows.add(Row.action(ctx.getString(me.aap.fermata.R.string.youtube_up_next_clear),
-					addon::clearUpNext));
-		}
-
-		if (query == null) {
-			rows.add(Row.note(ctx.getString(me.aap.fermata.R.string.youtube_search_intro)));
-		} else {
-			rows.add(Row.header(ctx.getString(me.aap.fermata.R.string.youtube_search_results, query)));
-			if (searching) {
-				rows.add(Row.note(ctx.getString(me.aap.fermata.R.string.youtube_searching)));
-			} else if (failed) {
-				rows.add(Row.note(ctx.getString(me.aap.fermata.R.string.youtube_search_failed)));
-				String q = query;
-				rows.add(Row.action(ctx.getString(me.aap.fermata.R.string.search), () -> search(q)));
-			} else if (results.isEmpty()) {
-				rows.add(Row.note(ctx.getString(me.aap.fermata.R.string.youtube_search_no_results)));
-			} else {
-				for (Video v : results) rows.add(Row.result(v));
-			}
-		}
-
-		//noinspection NotifyDataSetChanged -- a handful of rows, rebuilt wholesale.
-		adapter.notifyDataSetChanged();
+	/** Drops the last search and its results (the toolbar's clear button). */
+	void clearSearch() {
+		generation++;
+		query = null;
+		searching = false;
+		failed = false;
+		results.clear();
+		refresh();
 	}
 
-	private void loadImage(ImageView v, String url) {
+	private void onQueueChanged() {
+		reloadList();
+	}
+
+	/**
+	 * Loads the next few entries of the Favorites/Playlist the current video was played from (see
+	 * {@link YoutubeAddon#getQueueItem()}): what plays once Up next runs dry. With the list's
+	 * Shuffle on, what comes next isn't known ahead, so only the list's name is shown.
+	 */
+	void reloadList() {
+		int gen = ++listGeneration;
+		PlayableItem q = addon.getQueueItem();
+		BrowsableItem parent = (q != null) ? q.getParent() : null;
+
+		if ((q == null) || (parent == null) || parent.isExternal()) {
+			listItems.clear();
+			listName = null;
+			refresh();
+			return;
+		}
+
+		int max = Math.max(1, Math.min(10,
+				MainActivityPrefs.get().getIntPref(MainActivityPrefs.UP_NEXT_LIST_PREVIEW)));
+		boolean shuffle = parent.getPrefs().getShufflePref();
+		boolean repeat = parent.getPrefs().getRepeatPref();
+		String name = parent.getName();
+
+		parent.getPlayableChildren(false).main().onCompletion((list, err) -> {
+			if (gen != listGeneration) return;
+			if (err != null) Log.d(err, "Failed to load the Up next list preview");
+			listItems.clear();
+			listName = name;
+			listShuffled = shuffle;
+
+			if ((list != null) && !shuffle) {
+				int idx = -1;
+				String id = q.getId();
+				for (int i = 0; i < list.size(); i++) {
+					if (id.equals(list.get(i).getId())) {
+						idx = i;
+						break;
+					}
+				}
+				if (idx != -1) {
+					for (int i = 1; i <= max; i++) {
+						int j = idx + i;
+						if (j >= list.size()) {
+							if (!repeat) break;
+							j %= list.size();
+						}
+						if (j == idx) break;
+						listItems.add(list.get(j));
+					}
+				}
+			}
+
+			refresh();
+		});
+	}
+
+	/** Rebuilds the rows -- only what changed is animated, see {@link Adapter#submit}. */
+	void refresh() {
+		List<Row> queueRows = new ArrayList<>();
+		List<Row> searchRows = new ArrayList<>();
+		buildQueueRows(queueRows);
+		buildSearchRows(searchRows);
+
+		if (split) {
+			mainAdapter.submit(searchRows);
+			sideAdapter.submit(queueRows);
+		} else {
+			queueRows.addAll(searchRows);
+			mainAdapter.submit(queueRows);
+			sideAdapter.submit(Collections.emptyList());
+		}
+	}
+
+	private void buildQueueRows(List<Row> rows) {
+		Context ctx = getContext();
+		List<String> upNext = addon.getUpNext();
+		boolean hasList = (listName != null) && (listShuffled || !listItems.isEmpty());
+		// On a narrow screen an empty queue isn't worth the space; the car/wide layout keeps the
+		// column, with a hint, so it's clear where queued videos go.
+		if (upNext.isEmpty() && !hasList && !split) return;
+
+		String title = upNext.isEmpty() ? ctx.getString(me.aap.fermata.R.string.youtube_up_next) :
+				ctx.getString(me.aap.fermata.R.string.youtube_up_next_count, upNext.size());
+		rows.add(Row.header("h:queue", title, upNext.isEmpty() ? null :
+				ctx.getString(me.aap.fermata.R.string.youtube_up_next_clear), addon::clearUpNext));
+
+		for (String id : upNext) rows.add(Row.upNext(id, addon.getVideoTitle(id)));
+		if (upNext.isEmpty() && !hasList) {
+			rows.add(Row.note("n:queue_empty", ctx.getString(me.aap.fermata.R.string.youtube_up_next_empty)));
+		}
+
+		if (hasList) {
+			rows.add(Row.note("n:list", ctx.getString(listShuffled ?
+					me.aap.fermata.R.string.youtube_then_shuffled :
+					me.aap.fermata.R.string.youtube_then_from, listName)));
+			for (PlayableItem pi : listItems) rows.add(Row.listItem(pi));
+		}
+	}
+
+	private void buildSearchRows(List<Row> rows) {
+		Context ctx = getContext();
+
+		if (query == null) {
+			rows.add(Row.note("n:intro", ctx.getString(me.aap.fermata.R.string.youtube_search_intro)));
+			return;
+		}
+
+		rows.add(Row.header("h:results",
+				ctx.getString(me.aap.fermata.R.string.youtube_search_results, query), null, null));
+		if (searching) {
+			rows.add(Row.note("n:searching", ctx.getString(me.aap.fermata.R.string.youtube_searching)));
+		} else if (failed) {
+			rows.add(Row.note("n:failed", ctx.getString(me.aap.fermata.R.string.youtube_search_failed)));
+			String q = query;
+			rows.add(Row.action("a:retry", ctx.getString(me.aap.fermata.R.string.search), () -> search(q)));
+		} else if (results.isEmpty()) {
+			rows.add(Row.note("n:none", ctx.getString(me.aap.fermata.R.string.youtube_search_no_results)));
+		} else {
+			for (Video v : results) rows.add(Row.result(v));
+		}
+	}
+
+	private void loadImage(ImageView v, @Nullable String url) {
 		Object tag = v.getTag();
 		v.setTag(url);
+		if (url == null) {
+			v.setImageDrawable(null);
+			return;
+		}
 		Bitmap cached = images.get(url);
 		if (cached != null) {
 			v.setImageBitmap(cached);
@@ -197,8 +419,22 @@ final class YoutubeSearchPanel extends FrameLayout {
 				});
 	}
 
-	private static String thumbnailUrl(String videoId) {
-		return "https://i.ytimg.com/vi/" + videoId + "/mqdefault.jpg";
+	@Nullable
+	private static String thumbnailUrl(@Nullable String videoId) {
+		return (videoId == null) ? null : "https://i.ytimg.com/vi/" + videoId + "/mqdefault.jpg";
+	}
+
+	@Nullable
+	private static String videoIdOf(PlayableItem pi) {
+		if (pi instanceof MusicTrackItem t) return t.getVideoId();
+		return YoutubeVideoItem.extractYoutubeVideoId(pi);
+	}
+
+	private static boolean isLight(int color) {
+		double r = Color.red(color) / 255.0;
+		double g = Color.green(color) / 255.0;
+		double b = Color.blue(color) / 255.0;
+		return (0.299 * r + 0.587 * g + 0.114 * b) > 0.6;
 	}
 
 	private static int resolveColor(Context ctx, int attr, int dflt) {
@@ -212,46 +448,100 @@ final class YoutubeSearchPanel extends FrameLayout {
 
 	private static final class Row {
 		final int type;
+		/** Identity across refreshes, for DiffUtil -- see {@link Adapter#submit}. */
+		final String key;
 		@Nullable
 		final String text;
 		@Nullable
-		final Runnable action;
+		final String chip;
 		@Nullable
-		final String upNextId;
+		final Runnable action;
+		final int kind;
+		@Nullable
+		final String videoId;
 		@Nullable
 		final Video video;
+		@Nullable
+		final PlayableItem item;
 
-		private Row(int type, @Nullable String text, @Nullable Runnable action,
-								@Nullable String upNextId, @Nullable Video video) {
+		private Row(int type, String key, @Nullable String text, @Nullable String chip,
+								@Nullable Runnable action, int kind, @Nullable String videoId,
+								@Nullable Video video, @Nullable PlayableItem item) {
 			this.type = type;
+			this.key = key;
 			this.text = text;
+			this.chip = chip;
 			this.action = action;
-			this.upNextId = upNextId;
+			this.kind = kind;
+			this.videoId = videoId;
 			this.video = video;
+			this.item = item;
 		}
 
-		static Row header(String text) {
-			return new Row(TYPE_HEADER, text, null, null, null);
+		static Row header(String key, String text, @Nullable String chip, @Nullable Runnable action) {
+			return new Row(TYPE_HEADER, key, text, chip, action, 0, null, null, null);
 		}
 
-		static Row note(String text) {
-			return new Row(TYPE_NOTE, text, null, null, null);
+		static Row note(String key, String text) {
+			return new Row(TYPE_NOTE, key, text, null, null, 0, null, null, null);
 		}
 
-		static Row action(String text, Runnable action) {
-			return new Row(TYPE_ACTION, text, action, null, null);
+		static Row action(String key, String text, Runnable action) {
+			return new Row(TYPE_ACTION, key, text, null, action, 0, null, null, null);
 		}
 
-		static Row upNext(String videoId) {
-			return new Row(TYPE_VIDEO, null, null, videoId, null);
+		static Row upNext(String videoId, String title) {
+			return new Row(TYPE_VIDEO, "u:" + videoId, title, null, null, KIND_UP_NEXT, videoId, null,
+					null);
 		}
 
 		static Row result(Video v) {
-			return new Row(TYPE_VIDEO, null, null, null, v);
+			return new Row(TYPE_VIDEO, "r:" + v.videoId, v.title, null, null, KIND_RESULT, v.videoId, v,
+					null);
+		}
+
+		static Row listItem(PlayableItem pi) {
+			return new Row(TYPE_VIDEO, "l:" + pi.getId(), pi.getName(), null, null, KIND_LIST,
+					videoIdOf(pi), null, pi);
+		}
+
+		boolean sameContent(Row o) {
+			return (type == o.type) && (kind == o.kind) && Objects.equals(text, o.text) &&
+					Objects.equals(chip, o.chip);
 		}
 	}
 
 	private final class Adapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+		final List<Row> rows = new ArrayList<>();
+
+		/** Swaps in {@code newRows}, animating only the rows that were added, removed or moved. */
+		void submit(List<Row> newRows) {
+			List<Row> old = new ArrayList<>(rows);
+			DiffUtil.DiffResult d = DiffUtil.calculateDiff(new DiffUtil.Callback() {
+				@Override
+				public int getOldListSize() {
+					return old.size();
+				}
+
+				@Override
+				public int getNewListSize() {
+					return newRows.size();
+				}
+
+				@Override
+				public boolean areItemsTheSame(int o, int n) {
+					return old.get(o).key.equals(newRows.get(n).key);
+				}
+
+				@Override
+				public boolean areContentsTheSame(int o, int n) {
+					return old.get(o).sameContent(newRows.get(n));
+				}
+			});
+			rows.clear();
+			rows.addAll(newRows);
+			d.dispatchUpdatesTo(this);
+		}
 
 		@Override
 		public int getItemCount() {
@@ -276,32 +566,31 @@ final class YoutubeSearchPanel extends FrameLayout {
 				v.setPaddingRelative(p, v.getPaddingTop(), p, v.getPaddingBottom());
 				v.findViewById(me.aap.fermata.R.id.si_check).setVisibility(GONE);
 				v.findViewById(me.aap.fermata.R.id.si_preview).setFocusable(true);
+				((TextView) v.findViewById(me.aap.fermata.R.id.si_title)).setTextColor(textPrimary);
+				((TextView) v.findViewById(me.aap.fermata.R.id.si_detail)).setTextColor(textSecondary);
+				((ImageView) v.findViewById(me.aap.fermata.R.id.si_preview))
+						.setImageTintList(ColorStateList.valueOf(textPrimary));
+			} else if (viewType == TYPE_HEADER) {
+				v = createHeader(ctx);
 			} else {
 				TextView t = new TextView(ctx);
 				t.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 				int h = (int) UiUtils.toPx(ctx, 16);
-				int vp = (int) UiUtils.toPx(ctx, (viewType == TYPE_HEADER) ? 12 : 6);
+				int vp = (int) UiUtils.toPx(ctx, 6);
 				t.setPadding(h, vp, h, vp);
 
-				if (viewType == TYPE_HEADER) {
-					t.setTypeface(Typeface.DEFAULT_BOLD);
-					t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-				} else if (viewType == TYPE_ACTION) {
+				if (viewType == TYPE_ACTION) {
 					t.setTypeface(Typeface.DEFAULT_BOLD);
 					t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-					t.setTextColor(resolveColor(ctx, android.R.attr.colorAccent, Color.CYAN));
+					t.setTextColor(textPrimary);
 					t.setMinHeight((int) UiUtils.toPx(ctx, 48));
-					t.setGravity(android.view.Gravity.CENTER_VERTICAL);
+					t.setGravity(Gravity.CENTER_VERTICAL);
 					t.setFocusable(true);
 					t.setClickable(true);
-					TypedValue tv = new TypedValue();
-					if (ctx.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, tv, true)
-							&& (tv.resourceId != 0)) {
-						t.setBackgroundResource(tv.resourceId);
-					}
+					setSelectableBackground(t);
 				} else {
 					t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-					t.setAlpha(0.75f);
+					t.setTextColor(textSecondary);
 				}
 
 				v = t;
@@ -311,12 +600,77 @@ final class YoutubeSearchPanel extends FrameLayout {
 			};
 		}
 
+		/** A section title, with an optional chip (e.g. "Clear") lined up with the rows' buttons. */
+		private View createHeader(Context ctx) {
+			LinearLayout l = new LinearLayout(ctx);
+			l.setOrientation(LinearLayout.HORIZONTAL);
+			l.setGravity(Gravity.CENTER_VERTICAL);
+			l.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+			int h = (int) UiUtils.toPx(ctx, 16);
+			int end = (int) UiUtils.toPx(ctx, 12);
+			int vp = (int) UiUtils.toPx(ctx, 10);
+			l.setPaddingRelative(h, vp, end, vp);
+
+			TextView title = new TextView(ctx);
+			title.setId(me.aap.fermata.R.id.si_title);
+			title.setTypeface(Typeface.DEFAULT_BOLD);
+			title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+			title.setTextColor(textPrimary);
+			l.addView(title, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+
+			TextView chip = new TextView(ctx);
+			chip.setId(me.aap.fermata.R.id.si_detail);
+			chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+			chip.setTypeface(Typeface.DEFAULT_BOLD);
+			chip.setTextColor(textPrimary);
+			chip.setGravity(Gravity.CENTER);
+			int cp = (int) UiUtils.toPx(ctx, 14);
+			chip.setPadding(cp, 0, cp, 0);
+			chip.setMinHeight((int) UiUtils.toPx(ctx, 32));
+			chip.setMinWidth((int) UiUtils.toPx(ctx, 40));
+			GradientDrawable bg = new GradientDrawable();
+			bg.setCornerRadius(UiUtils.toPx(ctx, 16));
+			bg.setStroke((int) UiUtils.toPx(ctx, 1), textSecondary);
+			bg.setColor(Color.TRANSPARENT);
+			chip.setBackground(bg);
+			chip.setFocusable(true);
+			chip.setClickable(true);
+			l.addView(chip, new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
+			return l;
+		}
+
+		private void setSelectableBackground(View v) {
+			TypedValue tv = new TypedValue();
+			if (v.getContext().getTheme()
+					.resolveAttribute(android.R.attr.selectableItemBackground, tv, true) &&
+					(tv.resourceId != 0)) {
+				v.setBackgroundResource(tv.resourceId);
+			}
+		}
+
 		@Override
 		public void onBindViewHolder(@NonNull RecyclerView.ViewHolder h, int position) {
 			Row r = rows.get(position);
+			View v = h.itemView;
+
+			if (r.type == TYPE_HEADER) {
+				TextView title = v.findViewById(me.aap.fermata.R.id.si_title);
+				TextView chip = v.findViewById(me.aap.fermata.R.id.si_detail);
+				title.setText(r.text);
+				Runnable a = r.action;
+				if ((r.chip != null) && (a != null)) {
+					chip.setVisibility(VISIBLE);
+					chip.setText(r.chip);
+					chip.setOnClickListener(x -> a.run());
+				} else {
+					chip.setVisibility(GONE);
+					chip.setOnClickListener(null);
+				}
+				return;
+			}
 
 			if (r.type != TYPE_VIDEO) {
-				TextView t = (TextView) h.itemView;
+				TextView t = (TextView) v;
 				t.setText(r.text);
 				if (r.type == TYPE_ACTION) {
 					Runnable a = r.action;
@@ -325,40 +679,54 @@ final class YoutubeSearchPanel extends FrameLayout {
 				return;
 			}
 
-			View v = h.itemView;
 			TextView title = v.findViewById(me.aap.fermata.R.id.si_title);
 			TextView detail = v.findViewById(me.aap.fermata.R.id.si_detail);
 			ImageView button = v.findViewById(me.aap.fermata.R.id.si_preview);
+			ImageView thumb = v.findViewById(me.aap.fermata.R.id.si_thumb);
 			Context ctx = v.getContext();
+			title.setText(r.text);
+			// Only the list preview is dimmed: it's what plays *after* the queue.
+			v.setAlpha((r.kind == KIND_LIST) ? 0.55f : 1f);
 
-			if (r.video != null) {
-				Video video = r.video;
-				title.setText(video.title);
-				String d = (video.channel != null) ? video.channel : "";
-				if (video.durationText != null) d = d.isEmpty() ? video.durationText :
-						(d + " • " + video.durationText);
-				detail.setText(d);
-				loadImage(v.findViewById(me.aap.fermata.R.id.si_thumb), video.thumbnailUrl());
-				button.setImageResource(me.aap.fermata.R.drawable.queue_music);
-				button.setContentDescription(ctx.getString(me.aap.fermata.R.string.youtube_play_next));
-				button.setOnClickListener(x -> fragment.queueVideo(video.videoId, video.title, true));
-				v.setOnClickListener(x -> fragment.playVideoNow(video.videoId, video.title));
-				v.setOnLongClickListener(x -> {
-					fragment.showVideoActions(video.videoId, video.title);
-					return true;
-				});
-			} else {
-				String id = r.upNextId;
-				if (id == null) return;
-				String name = addon.getVideoTitle(id);
-				title.setText(name);
-				detail.setText(me.aap.fermata.R.string.youtube_up_next);
-				loadImage(v.findViewById(me.aap.fermata.R.id.si_thumb), thumbnailUrl(id));
-				button.setImageResource(me.aap.fermata.R.drawable.playlist_remove);
-				button.setContentDescription(ctx.getString(me.aap.fermata.R.string.youtube_up_next_remove));
-				button.setOnClickListener(x -> addon.removeUpNext(id));
-				v.setOnClickListener(x -> fragment.playVideoNow(id, null));
-				v.setOnLongClickListener(null);
+			switch (r.kind) {
+				case KIND_RESULT -> {
+					Video video = Objects.requireNonNull(r.video);
+					String d = (video.channel != null) ? video.channel : "";
+					if (video.durationText != null) d = d.isEmpty() ? video.durationText :
+							(d + " • " + video.durationText);
+					detail.setText(d);
+					loadImage(thumb, video.thumbnailUrl());
+					button.setVisibility(VISIBLE);
+					button.setImageResource(me.aap.fermata.R.drawable.up_next);
+					button.setContentDescription(ctx.getString(me.aap.fermata.R.string.youtube_play_next));
+					button.setOnClickListener(x -> fragment.queueVideo(video.videoId, video.title, true));
+					v.setOnClickListener(x -> fragment.playVideoNow(video.videoId, video.title));
+					v.setOnLongClickListener(x -> {
+						fragment.showVideoActions(video.videoId, video.title);
+						return true;
+					});
+				}
+				case KIND_UP_NEXT -> {
+					String id = Objects.requireNonNull(r.videoId);
+					detail.setText(me.aap.fermata.R.string.youtube_queued);
+					loadImage(thumb, thumbnailUrl(id));
+					button.setVisibility(VISIBLE);
+					button.setImageResource(me.aap.fermata.R.drawable.playlist_remove);
+					button.setContentDescription(ctx.getString(me.aap.fermata.R.string.youtube_up_next_remove));
+					button.setOnClickListener(x -> addon.removeUpNext(id));
+					v.setOnClickListener(x -> fragment.playVideoNow(id, null));
+					v.setOnLongClickListener(null);
+				}
+				default -> {
+					PlayableItem pi = Objects.requireNonNull(r.item);
+					detail.setText(ctx.getString(me.aap.fermata.R.string.youtube_from_list,
+							(listName != null) ? listName : ""));
+					loadImage(thumb, thumbnailUrl(r.videoId));
+					button.setVisibility(GONE);
+					button.setOnClickListener(null);
+					v.setOnClickListener(x -> fragment.playFromList(pi));
+					v.setOnLongClickListener(null);
+				}
 			}
 		}
 	}

@@ -91,6 +91,11 @@ public enum Action {
 	PLAYLIST_ADD(R.string.playlist_add, a(Action::addCurrentToPlaylist)),
 	PLAY_AS_MUSIC(R.string.play_as_music,
 			a(me.aap.fermata.addon.music.MusicPlayer::playCurrentAsMusic)),
+	// The YouTube tab's search / Up next panel -- see MusicPlayer.YoutubeHooks#openSearch().
+	YOUTUBE_SEARCH(R.string.action_youtube_search,
+			a(a -> me.aap.fermata.addon.music.MusicPlayer.openYoutubeSearch(a, false))),
+	YOUTUBE_UP_NEXT(R.string.action_youtube_up_next,
+			a(a -> me.aap.fermata.addon.music.MusicPlayer.openYoutubeSearch(a, true))),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

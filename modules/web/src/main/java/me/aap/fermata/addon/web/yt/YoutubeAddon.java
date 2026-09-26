@@ -184,6 +184,11 @@ public class YoutubeAddon extends WebBrowserAddon
 		public void applyQuality(@Nullable MediaEngine eng) {
 			if (eng instanceof YoutubeMediaEngine yt) yt.applyQuality();
 		}
+
+		@Override
+		public void openSearch(MainActivityDelegate a, boolean upNextOnly) {
+			YoutubeFragment.openSearch(a.getContext(), upNextOnly);
+		}
 	}
 
 	@Nullable
@@ -192,7 +197,10 @@ public class YoutubeAddon extends WebBrowserAddon
 	}
 
 	void setQueueItem(@Nullable PlayableItem item) {
+		if (queueItem == item) return;
 		queueItem = item;
+		// The Up next list previews the queue item's upcoming list entries -- see YoutubeSearchPanel.
+		for (Runnable r : upNextListeners) r.run();
 	}
 
 	@Nullable

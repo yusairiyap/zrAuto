@@ -79,10 +79,28 @@ public final class MusicPlayer {
 		 * YouTube player: the lowest while playing as music, the usual one otherwise.
 		 */
 		void applyQuality(@Nullable MediaEngine eng);
+
+		/**
+		 * Shows the YouTube tab's search / Up next panel over whatever is playing, without
+		 * interrupting it -- {@code upNextOnly} just opens the panel, otherwise the search field gets
+		 * the cursor too.
+		 */
+		void openSearch(MainActivityDelegate a, boolean upNextOnly);
 	}
 
 	public static void setYoutubeHooks(@Nullable YoutubeHooks hooks) {
 		youtube = hooks;
+	}
+
+	/** Whether the YouTube addon is installed, i.e. its search / Up next can be opened. */
+	public static boolean hasYoutube() {
+		return youtube != null;
+	}
+
+	/** See {@link YoutubeHooks#openSearch}; a no-op without the YouTube addon. */
+	public static void openYoutubeSearch(MainActivityDelegate a, boolean upNextOnly) {
+		YoutubeHooks h = youtube;
+		if (h != null) h.openSearch(a, upNextOnly);
 	}
 
 	/** Whether YouTube is playing as music: its video held at the lowest quality. */
@@ -322,6 +340,29 @@ public final class MusicPlayer {
 		if ((existing != null) && existing.getSourceId().equals(MusicQueue.sourceIdOf(item))) {
 			open(a);
 			continueAsMusic(a, eng, existing);
+			return;
+		}
+
+		// Something from outside the list is playing (YouTube's Up next): keep the list, with this
+		// video slotted in right after the entry it interrupted, so the queue carries on there.
+		PlayableItem context = eng.getQueueContextItem();
+		if ((context != null) && !context.getParent().isExternal()) {
+			siblings(context).main().onSuccess(l -> {
+				List<PlayableItem> list = new ArrayList<>(l);
+				int ci = indexOfSame(list, context);
+				int idx;
+				if (ci == -1) {
+					list = Collections.singletonList(item);
+					idx = 0;
+				} else {
+					idx = ci + 1;
+					list.add(idx, item);
+					q.copyModes(context.getParent().getPrefs());
+				}
+				MusicTrackItem t = q.replace(list, idx).get(idx);
+				open(a);
+				continueAsMusic(a, eng, t);
+			});
 			return;
 		}
 

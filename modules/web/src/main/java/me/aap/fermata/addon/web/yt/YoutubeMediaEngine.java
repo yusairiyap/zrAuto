@@ -636,7 +636,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		}
 
 		if (!stillBlocked && !ignorePause && (lastActivePlayTime != 0) &&
-				(playRetries >= MAX_PLAY_RETRIES)) {
+				(playRetries >= MAX_PLAY_RETRIES) && !YoutubeFragment.isInPictureInPicture()) {
 			// The retry just above didn't stick -- assume the current size is the reason and stop
 			// asking the page to play at it until it grows (see playing() above) or the user
 			// explicitly taps play again (see start() below).
@@ -843,6 +843,21 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	/**
+	 * The Favorites/Playlist entry playback returns to while something from outside it plays (an Up
+	 * next video, see prepare()) -- so "Play as music" keeps the list. Not for the Music tab's own
+	 * queue, which already is the music queue.
+	 */
+	@Nullable
+	@Override
+	public PlayableItem getQueueContextItem() {
+		PlayableItem q = web.getAddon().getQueueItem();
+		if ((q == null) || (q instanceof MusicTrackItem)) return null;
+		String id = YoutubeVideoItem.extractYoutubeVideoId(q);
+		if ((id == null) || id.equals(currentVideoId)) return null;
+		return q;
+	}
+
+	/**
 	 * {@link #getSource()} is a placeholder ({@link Current}) that can't be persisted as a favorite;
 	 * hand out the real, library-resolvable video item for whatever is playing instead -- the same
 	 * item YoutubeFragment's own toolbar favorites button adds.
@@ -968,23 +983,6 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 					r.getString(me.aap.fermata.R.string.repeat)).setSubmenu(this::repeatMenu);
 		}
 
-		// Searching and the Up next queue, reachable from here over fullscreen video and from other
-		// tabs too -- see YoutubeFragment#openSearch(). Neither interrupts what's playing.
-		b.addItem(me.aap.fermata.R.id.youtube_search,
-				ResourcesCompat.getDrawable(r, me.aap.fermata.R.drawable.search, ctx.getTheme()),
-				r.getString(me.aap.fermata.R.string.youtube_search_hint)).setHandler(i -> {
-			YoutubeFragment.openSearch(web.getContext(), false);
-			return true;
-		});
-		int upNext = addon.getUpNext().size();
-		b.addItem(me.aap.fermata.R.id.youtube_up_next,
-				ResourcesCompat.getDrawable(r, me.aap.fermata.R.drawable.queue_music, ctx.getTheme()),
-				(upNext == 0) ? r.getString(me.aap.fermata.R.string.youtube_up_next) :
-						r.getString(me.aap.fermata.R.string.youtube_up_next_count, upNext)).setHandler(i -> {
-			YoutubeFragment.openSearch(web.getContext(), true);
-			return true;
-		});
-
 		if (q != null) {
 			BrowsableItemPrefs p = q.getParent().getPrefs();
 			if (p.getShufflePref()) {
@@ -1039,6 +1037,30 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 					if (q != null) q.getParent().getPrefs().setRepeatPref(false);
 					return true;
 				});
+	}
+
+	/**
+	 * Search and the Up next queue, below Speed/Timer -- reachable from here over fullscreen video and
+	 * from other tabs too (see YoutubeFragment#openSearch()). Neither interrupts what's playing.
+	 */
+	@Override
+	public void contributeToPlaybackMenuEnd(OverlayMenu.Builder b) {
+		Context ctx = dynCtx(web.getContext());
+		Resources r = ctx.getResources();
+		b.addItem(me.aap.fermata.R.id.youtube_search,
+				ResourcesCompat.getDrawable(r, me.aap.fermata.R.drawable.search, ctx.getTheme()),
+				r.getString(me.aap.fermata.R.string.search)).setHandler(i -> {
+			YoutubeFragment.openSearch(web.getContext(), false);
+			return true;
+		});
+		int upNext = web.getAddon().getUpNext().size();
+		b.addItem(me.aap.fermata.R.id.youtube_up_next,
+				ResourcesCompat.getDrawable(r, me.aap.fermata.R.drawable.up_next, ctx.getTheme()),
+				(upNext == 0) ? r.getString(me.aap.fermata.R.string.youtube_up_next) :
+						r.getString(me.aap.fermata.R.string.youtube_up_next_count, upNext)).setHandler(i -> {
+			YoutubeFragment.openSearch(web.getContext(), true);
+			return true;
+		});
 	}
 
 	@Override

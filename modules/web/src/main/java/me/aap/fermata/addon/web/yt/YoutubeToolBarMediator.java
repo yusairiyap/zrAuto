@@ -4,12 +4,14 @@ import static android.view.KeyEvent.KEYCODE_DPAD_CENTER;
 import static android.view.KeyEvent.KEYCODE_ENTER;
 import static android.view.KeyEvent.KEYCODE_NUMPAD_ENTER;
 import static android.view.View.GONE;
+import static android.view.View.VISIBLE;
 import static androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.RIGHT;
 import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED;
 
 import android.annotation.SuppressLint;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
@@ -58,8 +60,11 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 		addButton(tb, me.aap.fermata.R.drawable.playlist, v -> yt.showPlaylistsMenu(),
 				me.aap.fermata.R.id.playlists, RIGHT);
 		// Opens/closes the search panel with the Up next queue, without having to type anything.
-		addButton(tb, me.aap.fermata.R.drawable.queue_music, v -> yt.toggleSearchPanel(),
+		addButton(tb, me.aap.fermata.R.drawable.up_next, v -> yt.toggleSearchPanel(),
 				me.aap.fermata.R.id.youtube_up_next, RIGHT);
+		// The browser's bookmarks don't mean much here -- Favorites/Playlists (above) are this tab's.
+		View bookmarks = tb.findViewById(me.aap.fermata.R.id.bookmarks);
+		if (bookmarks != null) bookmarks.setVisibility(GONE);
 
 		// The field shows the current video's title (see setAddress() below) and doubles as the search
 		// box: tapping/selecting it swaps the title for the last search (or the "Search YouTube"
@@ -87,9 +92,17 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 			});
 		}
 
-		// Nothing to clear: the field is emptied (or prefilled with the last search) when tapped.
+		// Right after the field: clears the text being typed and the panel's results. Only there
+		// while searching -- the field being typed into, or the panel open -- see refreshClearButton().
 		ImageButton clear = tb.findViewById(R.id.browser_addr_clear);
-		if (clear != null) clear.setVisibility(GONE);
+		if (clear != null) {
+			clear.setContentDescription(tb.getContext().getString(me.aap.fermata.R.string.youtube_clear_search));
+			clear.setOnClickListener(v -> {
+				yt.clearSearch();
+				if ((addr != null) && editing) addr.setText("");
+			});
+		}
+		refreshClearButton(tb, yt);
 
 		// super.enable() just set the raw URL as the address text; replace it with the video title
 		// (or "YouTube") as soon as it's available.
@@ -124,12 +137,23 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 		String q = yt.getLastSearchQuery();
 		t.setText((q != null) ? q : "");
 		t.selectAll();
+		if (t.getParent() instanceof ToolBarView tb) refreshClearButton(tb, yt);
 	}
 
 	private void endSearchInput(EditText t) {
 		if (!editing) return;
 		editing = false;
 		t.setText(title);
+		if ((t.getParent() instanceof ToolBarView tb) &&
+				(tb.getActiveFragment() instanceof YoutubeFragment yt)) {
+			refreshClearButton(tb, yt);
+		}
+	}
+
+	/** See the clear button in {@link #enable}. */
+	void refreshClearButton(ToolBarView tb, YoutubeFragment yt) {
+		View clear = tb.findViewById(R.id.browser_addr_clear);
+		if (clear != null) clear.setVisibility((editing || yt.isSearchPanelShown()) ? VISIBLE : GONE);
 	}
 
 	private boolean onSearchKey(YoutubeFragment yt, EditText t, int keyCode, KeyEvent event) {

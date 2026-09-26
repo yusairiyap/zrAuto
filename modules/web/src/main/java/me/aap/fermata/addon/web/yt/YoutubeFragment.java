@@ -8,6 +8,7 @@ import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED
 import android.app.PictureInPictureParams;
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.SystemClock;
@@ -20,6 +21,8 @@ import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.constraintlayout.widget.ConstraintLayout;
+import androidx.core.app.PictureInPictureModeChangedInfo;
+import androidx.core.util.Consumer;
 import androidx.fragment.app.FragmentActivity;
 
 import java.util.Arrays;
@@ -119,6 +122,14 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	private YoutubeSearchPanel searchPanel;
 	/** onPause() let playback carry on because the app went into picture-in-picture -- see onStop(). */
 	private boolean pipPlayback;
+	/** Whether the search panel is (or is sliding) open, as opposed to sliding closed. */
+	private boolean panelOpen;
+	/** See {@link #freezeVideoForPip}. */
+	@Nullable
+	private PipFreeze pipFreeze;
+	@Nullable
+	private Consumer<PictureInPictureModeChangedInfo> pipListener;
+	private static boolean inPip;
 
 	@Override
 	public int getFragmentId() {
@@ -198,8 +209,10 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		MediaSessionCallback cb = a.getMediaSessionCallback();
 		if (cb.getEngine() instanceof YoutubeMediaEngine) cb.onStop();
 		unregisterListeners(a);
+		onPipModeChanged(false);
 		removeVideoViewOverlay(a);
 		searchPanel = null;
+		panelOpen = false;
 		super.onDestroyView();
 	}
 
@@ -531,13 +544,186 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 			chrome.enterFullScreen();
 		}
 
+		// Before the window shrinks -- see freezeVideoForPip().
+		freezeVideoForPip(a);
+		if (pipListener == null) {
+			pipListener = info -> onPipModeChanged(info.isInPictureInPictureMode());
+			act.addOnPictureInPictureModeChangedListener(pipListener);
+		}
+
+		boolean entered = false;
 		try {
-			act.enterPictureInPictureMode(new PictureInPictureParams.Builder()
-					.setAspectRatio(new Rational(16, 9)).build());
-			DiagnosticLog.log("YT", "entered picture-in-picture");
+			PictureInPictureParams.Builder pb = new PictureInPictureParams.Builder()
+					.setAspectRatio(new Rational(16, 9));
+			Rect hint = pipSourceRect(a);
+			if (hint != null) pb.setSourceRectHint(hint);
+			entered = act.enterPictureInPictureMode(pb.build());
+			DiagnosticLog.log("YT", "picture-in-picture", "entered=" + entered);
 		} catch (Exception ex) {
 			// Turned off for this app in the system settings, or not supported on this device.
 			Log.d(ex, "Picture-in-picture is not available");
+		}
+		if (!entered) onPipModeChanged(false);
+	}
+
+	/** Whether the app is showing a YouTube video in picture-in-picture right now. */
+	static boolean isInPictureInPicture() {
+		return inPip;
+	}
+
+	private void onPipModeChanged(boolean pip) {
+		inPip = pip;
+		if (pip) {
+			if (pipFreeze != null) pipFreeze.applyScale();
+			return;
+		}
+		unfreezeVideoAfterPip();
+		FragmentActivity act = getActivity();
+		if ((act != null) && (pipListener != null)) {
+			act.removeOnPictureInPictureModeChangedListener(pipListener);
+		}
+		pipListener = null;
+	}
+
+	/**
+	 * The 16:9 area of the screen the video fills now, for the system's animation into the PiP
+	 * window -- so it grows out of the picture instead of cross-fading from the whole app.
+	 */
+	@Nullable
+	private static Rect pipSourceRect(MainActivityDelegate a) {
+		View root = a.findViewById(me.aap.fermata.R.id.main_activity);
+		Rect r = new Rect();
+		if ((root == null) || !root.getGlobalVisibleRect(r) || r.isEmpty()) return null;
+		int w = r.width();
+		int h = r.height();
+		if (w * 9 > h * 16) w = h * 16 / 9;
+		else h = w * 9 / 16;
+		int left = r.left + (r.width() - w) / 2;
+		int top = r.top + (r.height() - h) / 2;
+		return new Rect(left, top, left + w, top + h);
+	}
+
+	/**
+	 * Keeps the video at the size it has now, and just scales its picture down into the PiP window.
+	 * <p>
+	 * YouTube's player pauses itself once it's laid out smaller than its minimum player size (200px
+	 * in CSS pixels), which a PiP window almost always is -- that was the "window too small" pause:
+	 * the page stopped the moment the window shrank, and only resumed after the window was dragged
+	 * bigger. A layout at the original size and a view-level scale is invisible to the page: it
+	 * keeps laying out (and playing) exactly as before, only drawn smaller.
+	 * <p>
+	 * The video overlay is also lifted above every piece of app chrome (control panel, floating
+	 * buttons, info overlay), so the PiP window shows only the video.
+	 */
+	private void freezeVideoForPip(MainActivityDelegate a) {
+		if (pipFreeze != null) return;
+		ConstraintLayout root = a.findViewById(me.aap.fermata.R.id.main_activity);
+		if ((root == null) || (root.getWidth() == 0) || (root.getHeight() == 0)) return;
+		PipFreeze f = new PipFreeze(root, root.findViewWithTag(YT_VIDEO_VIEW_TAG), getWebView());
+		f.freeze(UiUtils.toPx(root.getContext(), 50));
+		pipFreeze = f;
+	}
+
+	private void unfreezeVideoAfterPip() {
+		PipFreeze f = pipFreeze;
+		pipFreeze = null;
+		if (f != null) f.unfreeze();
+	}
+
+	/** See {@link #freezeVideoForPip}. */
+	private static final class PipFreeze {
+		final ConstraintLayout root;
+		@Nullable
+		final View overlay;
+		@Nullable
+		final View web;
+		final int width;
+		final int height;
+		final View.OnLayoutChangeListener scaler;
+		int overlayLpWidth;
+		int overlayLpHeight;
+		float overlayElevation;
+		int webLpWidth;
+		int webLpHeight;
+		int webWidth;
+		int webHeight;
+
+		PipFreeze(ConstraintLayout root, @Nullable View overlay, @Nullable View web) {
+			this.root = root;
+			this.overlay = overlay;
+			this.web = web;
+			width = root.getWidth();
+			height = root.getHeight();
+			scaler = (v, l, t, r, b, ol, ot, or, ob) -> applyScale();
+		}
+
+		void freeze(float elevation) {
+			if (overlay != null) {
+				ViewGroup.LayoutParams lp = overlay.getLayoutParams();
+				overlayLpWidth = lp.width;
+				overlayLpHeight = lp.height;
+				lp.width = width;
+				lp.height = height;
+				overlay.setLayoutParams(lp);
+				overlayElevation = overlay.getElevation();
+				overlay.setElevation(elevation);
+				// Still constrained to all four parent edges, so it stays centred when the window
+				// shrinks under it -- scaling around its own centre keeps it filling the window.
+				overlay.setPivotX(width / 2f);
+				overlay.setPivotY(height / 2f);
+			}
+			if ((web != null) && (web.getWidth() > 0) && (web.getHeight() > 0)) {
+				ViewGroup.LayoutParams lp = web.getLayoutParams();
+				webLpWidth = lp.width;
+				webLpHeight = lp.height;
+				webWidth = web.getWidth();
+				webHeight = web.getHeight();
+				lp.width = webWidth;
+				lp.height = webHeight;
+				web.setLayoutParams(lp);
+				web.setPivotX(0);
+				web.setPivotY(0);
+			}
+			root.addOnLayoutChangeListener(scaler);
+		}
+
+		void applyScale() {
+			int w = root.getWidth();
+			int h = root.getHeight();
+			if ((w == 0) || (h == 0)) return;
+			if (overlay != null) {
+				float s = Math.min(1f, Math.min(w / (float) width, h / (float) height));
+				overlay.setScaleX(s);
+				overlay.setScaleY(s);
+			}
+			if ((web != null) && (webWidth > 0) && (web.getParent() instanceof View p) &&
+					(p.getWidth() > 0)) {
+				float s = Math.min(1f, Math.min(p.getWidth() / (float) webWidth,
+						p.getHeight() / (float) webHeight));
+				web.setScaleX(s);
+				web.setScaleY(s);
+			}
+		}
+
+		void unfreeze() {
+			root.removeOnLayoutChangeListener(scaler);
+			if (overlay != null) {
+				ViewGroup.LayoutParams lp = overlay.getLayoutParams();
+				lp.width = overlayLpWidth;
+				lp.height = overlayLpHeight;
+				overlay.setLayoutParams(lp);
+				overlay.setElevation(overlayElevation);
+				overlay.setScaleX(1f);
+				overlay.setScaleY(1f);
+			}
+			if ((web != null) && (webWidth > 0)) {
+				ViewGroup.LayoutParams lp = web.getLayoutParams();
+				lp.width = webLpWidth;
+				lp.height = webLpHeight;
+				web.setLayoutParams(lp);
+				web.setScaleX(1f);
+				web.setScaleY(1f);
+			}
 		}
 	}
 
@@ -548,6 +734,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		// leaving the app always has (on Android Auto builds playback always carries on instead).
 		if (!pipPlayback) return;
 		pipPlayback = false;
+		onPipModeChanged(false);
 		if (BuildConfig.AUTO) return;
 		MainActivityDelegate.getActivityDelegate(getContext()).onSuccess(a -> {
 			FermataServiceUiBinder b = a.getMediaServiceBinder();
@@ -617,6 +804,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 
 	@Override
 	public void onPlayableChanged(MediaLib.PlayableItem oldItem, MediaLib.PlayableItem newItem) {
+		if (searchPanel != null) searchPanel.reloadList();
 		if (isHidden()) return;
 
 		if (YoutubeMediaEngine.isYoutubeItem(newItem)) {
@@ -661,7 +849,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	}
 
 	boolean isSearchPanelShown() {
-		return (searchPanel != null) && (searchPanel.getVisibility() == View.VISIBLE);
+		return panelOpen && (searchPanel != null);
 	}
 
 	/**
@@ -680,13 +868,48 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 					ViewGroup.LayoutParams.MATCH_PARENT));
 		}
 		searchPanel.bringToFront();
-		searchPanel.setVisibility(View.VISIBLE);
+		if (!panelOpen) {
+			panelOpen = true;
+			searchPanel.slideIn();
+			onSearchPanelToggled();
+		}
 		searchPanel.refresh();
 		return searchPanel;
 	}
 
 	void hideSearchPanel() {
-		if (searchPanel != null) searchPanel.setVisibility(View.GONE);
+		if (!panelOpen || (searchPanel == null)) return;
+		panelOpen = false;
+		searchPanel.slideOut(null);
+		onSearchPanelToggled();
+	}
+
+	/** The toolbar's clear button is only there while the panel (or a search being typed) is. */
+	private void onSearchPanelToggled() {
+		Context ctx = getContext();
+		if (ctx == null) return;
+		MainActivityDelegate a = MainActivityDelegate.get(ctx);
+		if (a.getActiveFragment() == this) {
+			YoutubeToolBarMediator.getInstance().refreshClearButton(a.getToolBar(), this);
+		}
+	}
+
+	/** The toolbar's clear button: drops the search text and the results, keeps Up next. */
+	void clearSearch() {
+		if (searchPanel != null) searchPanel.clearSearch();
+	}
+
+	/**
+	 * Plays an entry of the Favorites/Playlist preview in the Up next list -- as if picked from that
+	 * list, so the list carries on from there.
+	 */
+	void playFromList(MediaLib.PlayableItem pi) {
+		hideSearchPanel();
+		if (pi instanceof MediaLib.ExternallyPlayableItem ext) {
+			ext.loadInFragment(this, ext);
+		} else {
+			MainActivityDelegate.get(requireContext()).getMediaSessionCallback().playItem(pi, 0);
+		}
 	}
 
 	void toggleSearchPanel() {
@@ -790,12 +1013,12 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 				playVideoNow(videoId, title);
 				return true;
 			});
-			b.addItem(me.aap.fermata.R.id.youtube_play_next, me.aap.fermata.R.drawable.queue_music,
+			b.addItem(me.aap.fermata.R.id.youtube_play_next, me.aap.fermata.R.drawable.up_next,
 					me.aap.fermata.R.string.youtube_play_next).setHandler(i -> {
 				queueVideo(videoId, title, true);
 				return true;
 			});
-			b.addItem(me.aap.fermata.R.id.youtube_add_to_up_next, me.aap.fermata.R.drawable.playlist_add,
+			b.addItem(me.aap.fermata.R.id.youtube_add_to_up_next, me.aap.fermata.R.drawable.up_next,
 					me.aap.fermata.R.string.youtube_add_to_up_next).setHandler(i -> {
 				queueVideo(videoId, title, false);
 				return true;
