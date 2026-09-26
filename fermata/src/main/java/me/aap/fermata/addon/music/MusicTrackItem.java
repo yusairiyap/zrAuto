@@ -146,6 +146,18 @@ public class MusicTrackItem extends ExtPlayable {
 	/** The artist, once known. */
 	@Nullable
 	public String getArtistName() {
+		return cleanArtist(artist);
+	}
+
+	/**
+	 * An artist name as it should be shown: YouTube's auto-generated artist channels are called
+	 * {@code "<artist> - Topic"}, which is just the artist.
+	 */
+	@Nullable
+	public static String cleanArtist(@Nullable String artist) {
+		if ((artist != null) && artist.endsWith(" - Topic")) {
+			return artist.substring(0, artist.length() - " - Topic".length());
+		}
 		return artist;
 	}
 
@@ -289,7 +301,7 @@ public class MusicTrackItem extends ExtPlayable {
 		if (videoId != null) {
 			MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
 			b.putString(METADATA_KEY_TITLE, getName());
-			if (artist != null) b.putString(METADATA_KEY_ARTIST, artist);
+			if (artist != null) b.putString(METADATA_KEY_ARTIST, getArtistName());
 			if (durationMs > 0) b.putLong(METADATA_KEY_DURATION, durationMs);
 			b.putString(METADATA_KEY_ALBUM_ART_URI, thumbnailUrl(videoId));
 			return completed(b.build());
@@ -318,7 +330,7 @@ public class MusicTrackItem extends ExtPlayable {
 	private MediaMetadataCompat buildCachedMeta() {
 		MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
 		b.putString(METADATA_KEY_TITLE, getName());
-		if (artist != null) b.putString(METADATA_KEY_ARTIST, artist);
+		if (artist != null) b.putString(METADATA_KEY_ARTIST, getArtistName());
 		if (durationMs > 0) b.putLong(METADATA_KEY_DURATION, durationMs);
 		return b.build();
 	}

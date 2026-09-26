@@ -1029,7 +1029,9 @@ public class MainActivityDelegate extends ActivityDelegate
 		// layout's own constraints), but control_panel is routinely GONE while just browsing (nothing
 		// playing), in which case nav_bar alone still needs clearing if it's the bottom-positioned one.
 		int bottom = 0;
-		if (controlPanel.getVisibility() == VISIBLE) {
+		// A suppressed panel (the Music tab) doesn't count even while it's still showing, e.g. until
+		// the video mode it was left in ends: it's about to go, and the content is laid out without it.
+		if ((controlPanel.getVisibility() == VISIBLE) && !controlPanel.isSuppressed()) {
 			controlPanel.getLocationOnScreen(insetLoc2);
 			bottom = Math.max(bottom, Math.max(0, contentBottom - insetLoc2[1]));
 		}

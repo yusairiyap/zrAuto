@@ -52,6 +52,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import me.aap.fermata.FermataApplication;
@@ -115,6 +116,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private ImageButton repeat;
 	private TextView videoButton;
 	private View queuePanel;
+	private View queueDismiss;
 	private TextView queueCount;
 	private TextView queueEmpty;
 	private RecyclerView queueList;
@@ -122,6 +124,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private ItemTouchHelper touchHelper;
 	@Nullable
 	private MusicQueue queue;
+	@Nullable
+	private InfoOverlayView infoOverlay;
 	// The context this tab's views are inflated with: the app theme plus the tab's own palette, dark
 	// or light to match it (see onCreateView()).
 	private Context palette;
@@ -205,6 +209,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		repeat = view.findViewById(R.id.music_repeat);
 		videoButton = view.findViewById(R.id.music_video_button);
 		queuePanel = view.findViewById(R.id.music_queue_panel);
+		queueDismiss = view.findViewById(R.id.music_queue_dismiss);
+		queueDismiss.setOnClickListener(v -> showQueue(false));
 		queueCount = view.findViewById(R.id.music_queue_count);
 		queueEmpty = view.findViewById(R.id.music_queue_empty);
 		queueList = view.findViewById(R.id.music_queue_list);
@@ -265,18 +271,32 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	 * and size (clock, battery and temperature when nothing is picked in its settings).
 	 */
 	private void addInfoOverlay(FrameLayout holder) {
-		MainActivityPrefs p = getActivityDelegate().getPrefs();
-		boolean clock = p.getInfoOverlayShowClockPref();
-		boolean battery = p.getInfoOverlayShowBatteryPctPref();
-		boolean temp = p.getInfoOverlayShowBatteryTempPref();
-		boolean distance = p.getInfoOverlayShowDistancePref();
-		if (!clock && !battery && !temp && !distance) clock = battery = temp = true;
-
 		InfoOverlayView o = new InfoOverlayView(requireContext());
 		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
 				ViewGroup.LayoutParams.WRAP_CONTENT,
 				(isLandscape() ? Gravity.END : Gravity.CENTER_HORIZONTAL) | Gravity.TOP);
 		holder.addView(o, lp);
+		infoOverlay = o;
+		applyInfoOverlayPrefs();
+	}
+
+	/**
+	 * The Info Overlay settings, as for fullscreen video: shown unless its position is None or no
+	 * item is on, with the same items, icons and size. Its position is this tab's own, though, and
+	 * "only while the control panel shows" doesn't apply (this tab has no control panel).
+	 */
+	private void applyInfoOverlayPrefs() {
+		InfoOverlayView o = infoOverlay;
+		if (o == null) return;
+		MainActivityPrefs p = getActivityDelegate().getPrefs();
+		boolean clock = p.getInfoOverlayShowClockPref();
+		boolean battery = p.getInfoOverlayShowBatteryPctPref();
+		boolean temp = p.getInfoOverlayShowBatteryTempPref();
+		boolean distance = p.getInfoOverlayShowDistancePref();
+		boolean show = (p.getClockPosPref() != MainActivityPrefs.CLOCK_POS_NONE) &&
+				(clock || battery || temp || distance);
+		((View) o.getParent()).setVisibility(show ? View.VISIBLE : View.GONE);
+		if (!show) return;
 		o.setSize(p.getInfoOverlaySizePref());
 		o.setItems(clock, p.getInfoOverlayShowClockIconPref(), battery,
 				p.getInfoOverlayShowBatteryIconPref(), temp, p.getInfoOverlayShowTempIconPref(), distance,
@@ -365,11 +385,15 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			a.getMediaServiceBinder().addBroadcastListener(this);
 			if (queue != null) queue.addListener(this);
 			settings().addBroadcastListener(this);
+			a.getPrefs().addBroadcastListener(this);
+			// The Info Overlay settings may have changed while this tab was away.
+			applyInfoOverlayPrefs();
 		} else {
 			a.getMediaSessionCallback().removeBroadcastListener(this);
 			a.getMediaServiceBinder().removeBroadcastListener(this);
 			if (queue != null) queue.removeListener(this);
 			settings().removeBroadcastListener(this);
+			a.getPrefs().removeBroadcastListener(this);
 		}
 	}
 
@@ -393,6 +417,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if (getView() == null) return;
 		MediaSessionCallback cb = getActivityDelegate().getMediaSessionCallback();
 		displayItem(getDisplayItem(), false);
+		// Also when the item is the same: music/video mode may have changed while this tab was away
+		// (e.g. its Video button, then back here).
+		updateVideoButton(shownItem);
 		updatePlayState(cb.getPlaybackState());
 		updateModes();
 		adapter.reload();
@@ -521,6 +548,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	@Override
 	public void onPreferenceChanged(PreferenceStore store, List<PreferenceStore.Pref<?>> prefs) {
 		if (getView() == null) return;
+		if (!Collections.disjoint(MainActivityPrefs.INFO_OVERLAY_PREFS, prefs)) {
+			applyInfoOverlayPrefs();
+			return;
+		}
 		if (prefs.contains(MusicAddon.BG_BLUR)) updateBackground(false);
 		if (prefs.contains(MusicAddon.BG_ZOOM)) updateZoom();
 	}
@@ -937,23 +968,38 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if (queuePanel == null) return;
 		boolean visible = queuePanel.getVisibility() == View.VISIBLE;
 		if (show == visible) return;
-		boolean land = isLandscape();
 		queuePanel.animate().cancel();
+		showQueueDismiss(show);
 
 		if (show) {
 			adapter.reload();
 			layoutQueuePanel();
 			queuePanel.setVisibility(View.VISIBLE);
 			queuePanel.setAlpha(0f);
-			if (land) queuePanel.setTranslationX(-queuePanel.getWidth() / 3f);
-			else queuePanel.setTranslationY(queuePanel.getHeight() / 3f);
-			queuePanel.animate().alpha(1f).translationX(0f).translationY(0f).setDuration(250).start();
+			queuePanel.setTranslationY(queuePanel.getHeight() / 3f);
+			queuePanel.animate().alpha(1f).translationY(0f).setDuration(250)
+					.setInterpolator(new DecelerateInterpolator()).start();
 			scrollToCurrent();
 		} else {
-			queuePanel.animate().alpha(0f)
-					.translationX(land ? -queuePanel.getWidth() / 3f : 0f)
-					.translationY(land ? 0f : queuePanel.getHeight() / 3f)
-					.setDuration(200).withEndAction(() -> queuePanel.setVisibility(View.GONE)).start();
+			queuePanel.animate().alpha(0f).translationY(queuePanel.getHeight() / 3f).setDuration(200)
+					.setInterpolator(new DecelerateInterpolator())
+					.withEndAction(() -> queuePanel.setVisibility(View.GONE)).start();
+		}
+	}
+
+	/** The layer behind the open queue panel: dims the player a little, and a tap on it closes. */
+	private void showQueueDismiss(boolean show) {
+		View v = queueDismiss;
+		if (v == null) return;
+		v.animate().cancel();
+
+		if (show) {
+			v.setAlpha(0f);
+			v.setVisibility(View.VISIBLE);
+			v.animate().alpha(1f).setDuration(250).start();
+		} else {
+			v.animate().alpha(0f).setDuration(200).withEndAction(() -> v.setVisibility(View.GONE))
+					.start();
 		}
 	}
 
@@ -963,8 +1009,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 	/** Portrait: a sheet over the bottom ~70%; landscape: a panel over the left side. */
 	/**
-	 * Dragging {@code handle} moves the queue panel the way it closes (down on phones, to the left in
-	 * landscape): let go past a third of the way, or flung, and it closes; otherwise it springs back.
+	 * Dragging {@code handle} down moves the queue panel the way it closes: let go past a third of
+	 * the way, or flung, and it closes; otherwise it springs back.
 	 */
 	@SuppressLint("ClickableViewAccessibility")
 	private void enableQueueDrag(View handle) {
@@ -980,8 +1026,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 			@Override
 			public boolean onTouch(View v, MotionEvent e) {
-				boolean land = isLandscape();
-				float p = land ? e.getRawX() : e.getRawY();
+				float p = e.getRawY();
 
 				switch (e.getActionMasked()) {
 					case MotionEvent.ACTION_DOWN -> {
@@ -995,13 +1040,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 					case MotionEvent.ACTION_MOVE -> {
 						if (velocity != null) velocity.addMovement(e);
 						// Only ever towards closing.
-						float off = land ? Math.min(0, p - start) : Math.max(0, p - start);
-						if (!dragging && (Math.abs(off) < slop)) return true;
+						float off = Math.max(0, p - start);
+						if (!dragging && (off < slop)) return true;
 						dragging = true;
-						float size = land ? queuePanel.getWidth() : queuePanel.getHeight();
-						if (land) queuePanel.setTranslationX(off);
-						else queuePanel.setTranslationY(off);
-						if (size > 0) queuePanel.setAlpha(1f - 0.5f * Math.abs(off) / size);
+						float size = queuePanel.getHeight();
+						queuePanel.setTranslationY(off);
+						if (size > 0) queuePanel.setAlpha(1f - 0.5f * off / size);
 						return true;
 					}
 					case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -1009,17 +1053,17 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 						if (velocity != null) {
 							velocity.addMovement(e);
 							velocity.computeCurrentVelocity(1000);
-							speed = land ? -velocity.getXVelocity() : velocity.getYVelocity();
+							speed = velocity.getYVelocity();
 							velocity.recycle();
 							velocity = null;
 						}
 						if (!dragging) return false;
 						dragging = false;
-						float size = land ? queuePanel.getWidth() : queuePanel.getHeight();
-						float off = land ? -queuePanel.getTranslationX() : queuePanel.getTranslationY();
-						if ((off > size / 3f) || (speed > fling)) closeQueueFromDrag(land, size);
-						else queuePanel.animate().translationX(0f).translationY(0f).alpha(1f)
-								.setDuration(200).setInterpolator(new DecelerateInterpolator()).start();
+						float size = queuePanel.getHeight();
+						float off = queuePanel.getTranslationY();
+						if ((off > size / 3f) || (speed > fling)) closeQueueFromDrag(size);
+						else queuePanel.animate().translationY(0f).alpha(1f).setDuration(200)
+								.setInterpolator(new DecelerateInterpolator()).start();
 						return true;
 					}
 				}
@@ -1028,12 +1072,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		});
 	}
 
-	/** Finishes a drag-to-close: the panel carries on out of the screen the way it was dragged. */
-	private void closeQueueFromDrag(boolean land, float size) {
-		queuePanel.animate().translationX(land ? -size : 0f).translationY(land ? 0f : size).alpha(0f)
-				.setDuration(180).setInterpolator(new DecelerateInterpolator()).withEndAction(() -> {
+	/** Finishes a drag-to-close: the panel carries on down out of the screen. */
+	private void closeQueueFromDrag(float size) {
+		showQueueDismiss(false);
+		queuePanel.animate().translationY(size).alpha(0f).setDuration(180)
+				.setInterpolator(new DecelerateInterpolator()).withEndAction(() -> {
 					queuePanel.setVisibility(View.GONE);
-					queuePanel.setTranslationX(0f);
 					queuePanel.setTranslationY(0f);
 					queuePanel.setAlpha(1f);
 				}).start();

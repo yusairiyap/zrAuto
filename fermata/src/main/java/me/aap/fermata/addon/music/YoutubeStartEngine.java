@@ -78,6 +78,12 @@ final class YoutubeStartEngine implements MediaEngine {
 		return track;
 	}
 
+	/** The YouTube page's effects, even before the video has started (and the player took over). */
+	@Override
+	public boolean showOwnAudioEffects() {
+		return MusicPlayer.showYoutubeEffects();
+	}
+
 	@Nullable
 	@Override
 	public PlayableItem getQueueItem() {

@@ -67,6 +67,9 @@ public final class MusicPlayer {
 		 */
 		void showVideo(MainActivityDelegate a);
 
+		/** Shows the YouTube player's effects screen (its in-page equalizer); false if it can't. */
+		boolean showEffects(MainActivityDelegate a);
+
 		/** Makes {@code item} the YouTube player's queue item without touching what's playing. */
 		void setQueueItem(PlayableItem item);
 
@@ -130,6 +133,13 @@ public final class MusicPlayer {
 			return current;
 		}
 		return new YoutubeStartEngine(t, listener);
+	}
+
+	/** Called by {@link YoutubeStartEngine#showOwnAudioEffects}. */
+	static boolean showYoutubeEffects() {
+		YoutubeHooks h = youtube;
+		MainActivityDelegate a = activity.get();
+		return (h != null) && (a != null) && h.showEffects(a);
 	}
 
 	/** Called by {@link YoutubeStartEngine#prepare}. */

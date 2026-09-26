@@ -77,5 +77,16 @@
         <include layout="@layout/music_player_controls" />
     </LinearLayout>
 
+    <!-- Behind the queue panel while it's open: a tap anywhere else closes it. -->
+    <View
+        android:id="@+id/music_queue_dismiss"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#33000000"
+        android:clickable="true"
+        android:focusable="false"
+        android:importantForAccessibility="no"
+        android:visibility="gone" />
+
     <include layout="@layout/music_queue_panel" />
 </FrameLayout>

@@ -143,6 +143,15 @@ public class YoutubeAddon extends WebBrowserAddon
 		}
 
 		@Override
+		public boolean showEffects(MainActivityDelegate a) {
+			if (!(a.getFragment(getFragmentId()) instanceof YoutubeFragment f)) return false;
+			YoutubeWebView web = f.getWebView();
+			if (web == null) return false;
+			YoutubeEqualizerView.show(web);
+			return true;
+		}
+
+		@Override
 		public void setQueueItem(PlayableItem item) {
 			YoutubeAddon.this.setQueueItem(item);
 		}

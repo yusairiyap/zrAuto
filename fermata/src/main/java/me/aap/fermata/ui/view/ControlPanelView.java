@@ -316,14 +316,19 @@ public class ControlPanelView extends ConstraintLayout
 	 * Hides the panel while a screen with its own full player UI (the Music tab) is showing, and
 	 * restores whatever it would otherwise be once that screen goes away.
 	 */
+	public boolean isSuppressed() {
+		return (mask & MASK_SUPPRESSED) != 0;
+	}
+
 	public void setSuppressed(boolean suppressed) {
-		if (suppressed == ((mask & MASK_SUPPRESSED) != 0)) {
+		if (suppressed == isSuppressed()) {
 			// Already suppressed: re-assert it, in case a path that shows the panel directly (e.g. the
 			// Android Auto focus recovery) brought it back meanwhile.
 			if (suppressed && ((mask & MASK_VIDEO_MODE) == 0) && (getVisibility() != GONE)) {
 				super.setVisibility(GONE);
 				notifyControlPanelVisibility();
 			}
+			if (suppressed) getActivity().refreshContentInsets();
 			return;
 		}
 

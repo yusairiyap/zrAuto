@@ -1,6 +1,5 @@
 package me.aap.fermata.addon.web.yt;
 
-import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 import static me.aap.fermata.media.pref.MediaPrefs.MEDIA_ENG_YT;
 import static me.aap.fermata.util.Utils.dynCtx;
 import static me.aap.utils.async.Completed.completed;
@@ -12,7 +11,6 @@ import android.media.MediaMetadata;
 import android.net.Uri;
 import android.os.SystemClock;
 import android.support.v4.media.MediaMetadataCompat;
-import android.view.ViewGroup;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -341,7 +339,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		//    (YoutubeWebView#pageLoaded()) and so never updated at all for an SPA-internal switch;
 		//  - YoutubeAddon's videoId -> title cache, so this video already has a proper name if it
 		//    later gets added to Favorites/a Playlist (or is resolved back out of one).
-		currentVideoAuthor = jsAuthor.isEmpty() ? null : jsAuthor;
+		currentVideoAuthor = jsAuthor.isEmpty() ? null : MusicTrackItem.cleanArtist(jsAuthor);
 		if (!jsTitle.isEmpty()) {
 			currentVideoTitle = jsTitle;
 			if (actualId != null) addon.cacheVideoTitle(actualId, jsTitle);
@@ -752,6 +750,9 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	@Override
 	public PlayableItem getQueueItem() {
 		PlayableItem q = web.getAddon().getQueueItem();
+		// Between videos (the "end" placeholder is current): the queue item as it stands, i.e. the
+		// track that just played until the next one is on its way, never the placeholder.
+		if ((q != null) && (current == end)) return q;
 		String id = YoutubeVideoItem.extractYoutubeVideoId(q);
 		return ((id != null) && id.equals(currentVideoId)) ? q : getFavoritableItem();
 	}
@@ -1010,37 +1011,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 * there instead of crashing.
 	 */
 	private boolean showEqualizer() {
-		MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a -> {
-			// Showing this as a fragment hides YoutubeFragment's own root view -- the same
-			// FragmentTransaction that shows this one briefly flips the still-playing YoutubeWebView's
-			// visibility to GONE (Fragment.hide() on the outgoing fragment) as part of that. Some
-			// devices' WebView/Chromium implementation treats that visibility flip as the page going
-			// into the background and auto-pauses the video as a side effect -- confirmed intermittent
-			// (device/timing-dependent) rather than a deterministic app-level pause call anywhere in
-			// this path. If it was actually playing going in, nudge it back once shortly after the
-			// transition settles, rather than silently leaving a UI-only navigation the user never
-			// asked to pause for. Harmless if nothing paused it: onPlay() on an already-playing video
-			// is a no-op.
-			boolean wasPlaying = cb.isPlaying();
-
-			if (!(a.showFragment(me.aap.utils.R.id.generic_fragment) instanceof GenericFragment f))
-				return;
-			f.setTitle(a.getContext().getString(me.aap.fermata.R.string.audio_effects));
-			f.setContentProvider(g -> {
-				YoutubeEqualizerView v = new YoutubeEqualizerView(g.getContext());
-				v.init(web);
-				g.addView(v, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
-				// GenericFragment's root never insets itself against tool_bar/control_panel/nav_bar,
-				// so without this the first and last equalizer rows sit underneath them. Same call
-				// MediaItemListView and the Settings list make from their own constructors; this
-				// content is built by the caller instead, so it has to be requested here.
-				a.insetScrollableContent(v);
-			});
-
-			if (wasPlaying) a.postDelayed(() -> {
-				if (!cb.isPlaying()) cb.onPlay();
-			}, 500L);
-		});
+		YoutubeEqualizerView.show(web);
 		return true;
 	}
 
