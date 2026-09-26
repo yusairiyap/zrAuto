@@ -78,6 +78,8 @@ import me.aap.utils.ui.UiUtils;
 @SuppressLint("ViewConstructor")
 final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallback.Listener {
 	private static final int MAX_RESULTS = 25;
+	/** Results shown before "Show more" in the single-column (phone) layout. */
+	private static final int COLLAPSED_RESULTS = 3;
 	private static final long SLIDE_MS = 240;
 	/** Shared: one search at a time is plenty, and a panel recreated with its fragment reuses it. */
 	private static final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -115,6 +117,8 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 	private String listName;
 	private boolean listShuffled;
 	private boolean split;
+	/** "Show more" was tapped for the current results -- see {@link #refresh()}. */
+	private boolean resultsExpanded;
 	/** How far the panel is unrolled, 0..1 -- see {@link #slideIn()}. */
 	private float revealFraction;
 	@Nullable
@@ -288,6 +292,7 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		String search = q;
 		int gen = ++generation;
 		query = q;
+		resultsExpanded = false;
 		searching = true;
 		failed = false;
 		results.clear();
@@ -429,14 +434,17 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		List<Row> queueRows = new ArrayList<>();
 		List<Row> searchRows = new ArrayList<>();
 		buildQueueRows(queueRows);
-		buildSearchRows(searchRows);
 
 		if (split) {
+			buildSearchRows(searchRows, Integer.MAX_VALUE);
 			mainAdapter.submit(searchRows);
 			sideAdapter.submit(queueRows);
 		} else {
-			queueRows.addAll(searchRows);
-			mainAdapter.submit(queueRows);
+			// One narrow column: the first few results, then the queue -- both in sight without
+			// scrolling past a long result list; "Show more" on the results header expands it.
+			buildSearchRows(searchRows, resultsExpanded ? Integer.MAX_VALUE : COLLAPSED_RESULTS);
+			searchRows.addAll(queueRows);
+			mainAdapter.submit(searchRows);
 			sideAdapter.submit(Collections.emptyList());
 		}
 	}
@@ -473,7 +481,7 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		}
 	}
 
-	private void buildSearchRows(List<Row> rows) {
+	private void buildSearchRows(List<Row> rows, int limit) {
 		Context ctx = getContext();
 
 		// Past searches, as chips right below the search field -- see YoutubeAddon#getSearchHistory().
@@ -482,8 +490,16 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 
 		if (query == null) return;
 
+		boolean more = !searching && !failed && (results.size() > COLLAPSED_RESULTS) &&
+				(resultsExpanded || (limit < results.size()));
 		rows.add(Row.header("h:results",
-				ctx.getString(me.aap.fermata.R.string.youtube_search_results, query), null, null));
+				ctx.getString(me.aap.fermata.R.string.youtube_search_results, query),
+				more ? ctx.getString(resultsExpanded ? me.aap.fermata.R.string.youtube_show_less :
+						me.aap.fermata.R.string.youtube_show_more) : null,
+				more ? () -> {
+					resultsExpanded = !resultsExpanded;
+					refresh();
+				} : null));
 		if (searching) {
 			rows.add(Row.note("n:searching", ctx.getString(me.aap.fermata.R.string.youtube_searching)));
 		} else if (failed) {
@@ -493,7 +509,9 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		} else if (results.isEmpty()) {
 			rows.add(Row.note("n:none", ctx.getString(me.aap.fermata.R.string.youtube_search_no_results)));
 		} else {
-			for (Video v : results) rows.add(Row.result(v));
+			for (int i = 0, n = Math.min(limit, results.size()); i < n; i++) {
+				rows.add(Row.result(results.get(i)));
+			}
 		}
 	}
 

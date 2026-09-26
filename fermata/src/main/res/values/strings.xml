@@ -681,6 +681,8 @@
     <string name="youtube_from_list">From %1$s</string>
     <string name="youtube_then_from">Then from %1$s</string>
     <string name="youtube_then_shuffled">Then shuffled from %1$s</string>
+    <string name="youtube_show_more">Show more</string>
+    <string name="youtube_show_less">Show less</string>
     <string name="youtube_playing_from">Playing from %1$s</string>
     <string name="youtube_playing_shuffled">Playing shuffled from %1$s</string>
     <string name="youtube_clear_search">Clear search</string>
