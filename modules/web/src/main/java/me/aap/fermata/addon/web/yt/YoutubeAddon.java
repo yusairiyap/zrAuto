@@ -54,8 +54,22 @@ public class YoutubeAddon extends WebBrowserAddon
 	private static final Pref<BooleanSupplier> YT_DESKTOP_VERSION = Pref.b("YT_DESKTOP_VERSION", false);
 	private static final Pref<Supplier<String[]>> YT_BOOKMARKS = Pref.sa("YT_BOOKMARKS");
 	private static final Pref<Supplier<String>> VIDEO_SCALE = Pref.s("VIDEO_SCALE", VideoScale.CONTAIN::prefName);
+	// Superseded by preferredQualityPref, only read as its default so an existing "highest" choice
+	// carries over.
 	private static final Pref<BooleanSupplier> YT_AUTO_HIGHEST_QUALITY =
 			Pref.b("YT_AUTO_HIGHEST_QUALITY", false);
+	/**
+	 * The quality videos load in, an index into {@link #QUALITY_LEVELS}: 0 is YouTube's own
+	 * automatic choice, 1 the highest available, the rest a fixed resolution (the closest available
+	 * one at or below it). Music mode ignores it and always takes the lowest.
+	 */
+	private final Pref<IntSupplier> preferredQualityPref = Pref.i("YT_PREFERRED_QUALITY",
+			() -> getPreferenceStore().getBooleanPref(YT_AUTO_HIGHEST_QUALITY) ? 1 : 0);
+	/** The YouTube player API's quality level names, by {@link #preferredQualityPref} index. */
+	private static final String[] QUALITY_LEVELS = {null, "highest", "hd2160", "hd1440", "hd1080",
+			"hd720", "large", "medium", "small", "tiny"};
+	private static final String[] QUALITY_LABELS = {null, null, "2160p", "1440p", "1080p", "720p",
+			"480p", "360p", "240p", "144p"};
 	private static final Pref<BooleanSupplier> YT_SKIP_ADD = Pref.b("YT_SKIP_ADD", true);
 	private static final Pref<Supplier<String[]>> YT_VIDEO_TITLES = Pref.sa("YT_VIDEO_TITLES");
 	private static final Pref<BooleanSupplier> YT_EQ_ENABLED = Pref.b("YT_EQ_ENABLED", false);
@@ -286,10 +300,16 @@ public class YoutubeAddon extends WebBrowserAddon
 		MainActivityPrefs.get().addBroadcastListener(this);
 		FermataApplication.get().getPreferenceStore().addBroadcastListener(this);
 
-		set.addBooleanPref(o -> {
+		set.addListPref(o -> {
+			String[] labels = QUALITY_LABELS.clone();
+			labels[0] = ctx.getString(me.aap.fermata.R.string.auto);
+			labels[1] = ctx.getString(R.string.video_quality_highest);
 			o.store = getPreferenceStore();
-			o.pref = YT_AUTO_HIGHEST_QUALITY;
-			o.title = R.string.auto_highest_video_quality;
+			o.pref = preferredQualityPref;
+			o.title = R.string.preferred_video_quality;
+			o.subtitle = me.aap.fermata.R.string.string_format;
+			o.formatSubtitle = true;
+			o.stringValues = labels;
 			o.visibility = visibility;
 		});
 
@@ -344,12 +364,18 @@ public class YoutubeAddon extends WebBrowserAddon
 		getPreferenceStore().applyStringPref(VIDEO_SCALE, scale.prefName());
 	}
 
-	boolean autoHighestQuality() {
-		return getPreferenceStore().getBooleanPref(YT_AUTO_HIGHEST_QUALITY);
+	/**
+	 * The quality level videos should load in outside music mode: "highest", a player API level name
+	 * (e.g. "hd720"), or null to leave it to YouTube.
+	 */
+	@Nullable
+	String preferredQuality() {
+		int i = getPreferenceStore().getIntPref(preferredQualityPref);
+		return ((i > 0) && (i < QUALITY_LEVELS.length)) ? QUALITY_LEVELS[i] : null;
 	}
 
-	boolean autoHighestQualityChanged(List<Pref<?>> prefs) {
-		return prefs.contains(YT_AUTO_HIGHEST_QUALITY);
+	boolean preferredQualityChanged(List<Pref<?>> prefs) {
+		return prefs.contains(preferredQualityPref);
 	}
 
 	boolean eqEnabled() {

@@ -6,6 +6,8 @@ import static android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT;
 import static android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK;
 import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM_ART;
 import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI;
+import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ARTIST;
+import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM;
 import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE;
 import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE;
 import static android.support.v4.media.session.PlaybackStateCompat.ACTION_FAST_FORWARD;
@@ -82,6 +84,7 @@ import android.media.session.PlaybackState;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.SystemClock;
 import android.support.v4.media.MediaDescriptionCompat;
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
@@ -193,6 +196,11 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	private Queue<Prioritized<MediaSessionCallbackAssistant>> assistants;
 	private FutureSupplier<?> playerTask = completedVoid();
 	private MediaMetadataCompat metadata;
+	// What was last played, restored by prepare() as a paused, not yet loaded item -- see there.
+	// Only meaningful while there is no engine: the first engine to be created takes over.
+	@Nullable
+	private PlayableItem resumeItem;
+	private long resumePos;
 
 	public MediaSessionCallback(FermataMediaService service, MediaSessionCompat session,
 															MediaLib lib,
@@ -432,18 +440,51 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		playerTask = prepare();
 	}
 
+	/**
+	 * Restores what was last played -- a library item, a YouTube video or a Music tab track -- at
+	 * the position it was left at, paused: shown with its metadata (e.g. on the Android Auto media
+	 * screen as soon as it connects), ready for play/pause and the steering wheel buttons, but not
+	 * played. An audio file gets its engine prepared right away; a video or an external item (which
+	 * plays in its own player) is loaded on play -- see {@link #resume()}.
+	 */
 	private FutureSupplier<Void> prepare() {
 		int st = getPlaybackState().getState();
 
-		if ((st != PlaybackState.STATE_NONE) && (st != PlaybackState.STATE_ERROR)) {
+		if ((st != PlaybackState.STATE_NONE) && (st != PlaybackState.STATE_ERROR) &&
+				(st != PlaybackState.STATE_STOPPED)) {
 			return completedVoid();
 		}
+		if (getEngine() != null) return completedVoid();
 
-		return lib.getLastPlayedItem().then(this::prepareItem).then(i -> {
+		MediaLibPrefs prefs = lib.getPrefs();
+		String extId = prefs.getResumeExtItemPref();
+		FutureSupplier<PlayableItem> getLast;
+
+		if (extId != null) {
+			long extPos = prefs.getResumeExtPosPref();
+			getLast = lib.getItem(extId).then(i -> {
+				if (i instanceof PlayableItem pi) return completed(pi);
+				// Gone (e.g. the track was removed from the Music queue): the library's last item.
+				return lib.getLastPlayedItem();
+			}).ifFail(err -> {
+				Log.e(err, "Failed to resolve the item to resume: ", extId);
+				return null;
+			}).main();
+			getLast = getLast.then(i -> {
+				if ((i == null) || !i.isExternal()) return completed(i);
+				if (getEngine() == null) setResumeState(i, extPos);
+				return completedNull();
+			});
+		} else {
+			getLast = lib.getLastPlayedItem();
+		}
+
+		return getLast.then(this::prepareItem).then(i -> {
 			if (i == null) return completedVoid();
+			if (getEngine() != null) return completedVoid();
 			if (i.isVideo() || !i.isSeekable()) {
-				setPlaybackState(createPlayingState(i, STATE_STOPPED, 0, 0, 1f));
-				return i.getMediaData().onSuccess(this::setMetadata).cast();
+				setResumeState(i, i.isSeekable() ? lib.getLastPlayedPosition(i) : 0);
+				return completedVoid();
 			}
 
 			engine = getEngineManager().createEngine(engine, i, this);
@@ -457,6 +498,45 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			engine.prepare(i);
 			return completedVoid();
 		});
+	}
+
+	/** Shows {@code i} paused at {@code pos}, to be loaded and played by {@link #resume()}. */
+	private void setResumeState(PlayableItem i, long pos) {
+		resumeItem = i;
+		resumePos = pos;
+		DiagnosticLog.log("RESUME", "restored paused", "item=" + i, "pos=" + (pos / 1000) + 's');
+		setPlaybackState(createPlayingState(i, STATE_PAUSED, 0, pos, 1f));
+		i.getMediaData().main().onSuccess(md -> {
+			if ((resumeItem == i) && (getEngine() == null)) setMetadata(md);
+		});
+	}
+
+	/** Plays the item {@link #prepare()} restored, from where it was left off. */
+	private FutureSupplier<Void> resume() {
+		PlayableItem i = resumeItem;
+		long pos = resumePos;
+		resumeItem = null;
+		if (i == null) return completedVoid();
+		DiagnosticLog.log("RESUME", "play", "item=" + i, "pos=" + (pos / 1000) + 's');
+
+		if (!i.isExternal()) {
+			return prepareItem(i).then(pi -> {
+				if (pi != null) playPreparedItem(pi, pos);
+				return completedVoid();
+			});
+		}
+
+		// Plays in its own player (the YouTube tab, the Music tab), which lives in the UI.
+		MediaSessionCallbackAssistant a = getAssistant();
+		if ((a != this) && a.playExternal(i, pos)) return completedVoid();
+
+		// No UI to play it in (e.g. only the car's own media screen is connected): keep offering it.
+		resumeItem = i;
+		String msg = lib.getContext().getString(R.string.err_open_app_to_resume, i.getName());
+		Log.w(msg);
+		setPlaybackState(new PlaybackStateCompat.Builder(createPlayingState(i, STATE_PAUSED, 0, pos,
+				1f)).setErrorMessage(PlaybackStateCompat.ERROR_CODE_APP_ERROR, msg).build());
+		return completedVoid();
 	}
 
 	@Override
@@ -496,8 +576,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			}
 			case STATE_PAUSED -> {
 				MediaEngine eng = getEngine();
-				assert (eng != null);
-				assert (eng.getSource() != null);
+				if ((eng == null) || (eng.getSource() == null)) return resume();
 				if (!eng.requestAudioFocus(audioManager, audioFocusReq)) {
 					Log.i("Audio focus request failed");
 					return completedVoid();
@@ -597,7 +676,13 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 		if (setPosition && (eng != null)) {
 			PlayableItem i = eng.getSource();
-			if ((i != null) && i.isExternal()) return onStop(eng, -1);
+			if ((i != null) && i.isExternal()) {
+				// Its player may already be going away (e.g. the YouTube tab's page, torn down with the
+				// app), so the position is taken from the session state rather than asked for.
+				String id = i.getResumeId();
+				if (id != null) lib.getPrefs().setResumeExtPref(id, getEstimatedPosition());
+				return onStop(eng, -1);
+			}
 			else return eng.getPosition().main().then(pos -> onStop(eng, pos));
 		} else {
 			return onStop(eng, -1);
@@ -669,9 +754,16 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	}
 
 	private FutureSupplier<Void> skipTo(boolean next, boolean folder) {
-		PlayableItem i;
 		MediaEngine eng = getEngine();
-		if ((eng == null) || ((i = eng.getSource()) == null)) return completedVoid();
+		PlayableItem src = (eng == null) ? null : eng.getSource();
+		if (src == null) {
+			// Nothing loaded yet, only the restored item shown: next/prev from there (a library
+			// item; an external one plays in its own player, so it's just resumed).
+			src = resumeItem;
+			if (src == null) return completedVoid();
+			if (src.isExternal()) return resume();
+		}
+		PlayableItem i = src;
 
 		FutureSupplier<PlayableItem> getItem;
 		if (folder) {
@@ -944,6 +1036,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onEngineStarted(MediaEngine engine) {
+		resumeItem = null;
 		engine.getPosition().and(engine.getSpeed()).main()
 				.onSuccess(h -> setPlayingState(engine, true, h.value1, h.value2));
 	}
@@ -1022,7 +1115,13 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 																														MediaMetadataCompat meta,
 																														MediaDescriptionCompat dsc) {
 		ifNotNull(dsc.getTitle(), t -> b.putString(METADATA_KEY_DISPLAY_TITLE, t.toString()));
-		ifNotNull(dsc.getSubtitle(), t -> b.putString(METADATA_KEY_DISPLAY_SUBTITLE, t.toString()));
+		CharSequence sub = dsc.getSubtitle();
+		// No subtitle of its own (a YouTube video): the artist/channel. Android Auto shows only the
+		// display subtitle once a display title is set, never falling back to the artist itself,
+		// so without this the channel shows in the phone's notification but not on the car.
+		if ((sub == null) || (sub.length() == 0)) sub = meta.getString(METADATA_KEY_ARTIST);
+		if ((sub == null) || (sub.length() == 0)) sub = meta.getString(METADATA_KEY_ALBUM);
+		if ((sub != null) && (sub.length() > 0)) b.putString(METADATA_KEY_DISPLAY_SUBTITLE, sub.toString());
 		if (meta.getBitmap(METADATA_KEY_ALBUM_ART) != null) return completed(b.build());
 
 		String art = meta.getString(METADATA_KEY_ALBUM_ART_URI);
@@ -1270,6 +1369,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	}
 
 	private void playPreparedItem(PlayableItem i, long pos) {
+		resumeItem = null;
 		MediaEngine eng = getEngine();
 
 		if (eng != null) {
@@ -1359,6 +1459,17 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 				.addCustomAction(i.isFavoriteItem() ? customFavoritesRemove : customFavoritesAdd).build();
 	}
 
+	/** The current playback position, extrapolated from the session state while playing. */
+	private long getEstimatedPosition() {
+		PlaybackStateCompat st = currentState;
+		long pos = st.getPosition();
+		if ((st.getState() == STATE_PLAYING) && (st.getLastPositionUpdateTime() > 0)) {
+			pos += (long) ((SystemClock.elapsedRealtime() - st.getLastPositionUpdateTime()) *
+					st.getPlaybackSpeed());
+		}
+		return Math.max(pos, 0);
+	}
+
 	private void setPlaybackState(PlaybackStateCompat state) {
 		PlaybackStateCompat prev = currentState;
 		if ((prev == null) || (prev.getState() != state.getState())) {
@@ -1366,8 +1477,14 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 					"item=" + getCurrentItem());
 		}
 		currentState = state;
+		// stopped() deactivates the session; anything to play or pause makes it the one the media
+		// buttons (and Android Auto's steering wheel controls) go to again.
+		int st = state.getState();
+		if ((st != STATE_NONE) && (st != STATE_STOPPED) && (st != STATE_ERROR) && !session.isActive())
+			session.setActive(true);
 		session.setPlaybackState(state);
-		service.updateNotification(state.getState(), getCurrentItem());
+		PlayableItem cur = getCurrentItem();
+		service.updateNotification(st, (cur != null) ? cur : resumeItem);
 		fireBroadcastEvent(l -> l.onPlaybackStateChanged(this, state));
 
 		if (state.getState() == STATE_PLAYING) {
@@ -1590,7 +1707,14 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	}
 
 	private void setLastPlayed(PlayableItem i, long position) {
-		if (i.isExternal()) return;
+		if (i.isExternal()) {
+			// Not in the library's own last-played record, but resumable on the next start.
+			String id = i.getResumeId();
+			if (id != null) lib.getPrefs().setResumeExtPref(id, position);
+			return;
+		}
+
+		if (lib.getPrefs().getResumeExtItemPref() != null) lib.getPrefs().setResumeExtPref(null, 0);
 
 		if (position < 0) {
 			var id = i.getId();

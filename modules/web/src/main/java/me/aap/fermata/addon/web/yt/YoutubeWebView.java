@@ -147,8 +147,9 @@ public class YoutubeWebView extends FermataWebView {
 		super.onPreferenceChanged(store, prefs);
 
 		// While playing as music (the Music tab) the quality stays at its lowest regardless.
-		if (getAddon().autoHighestQualityChanged(prefs) && !MusicPlayer.isYoutubeAudioMode()) {
-			if (getAddon().autoHighestQuality()) applyQualityPolicy(false);
+		if (getAddon().preferredQualityChanged(prefs) && !MusicPlayer.isYoutubeAudioMode()) {
+			String q = getAddon().preferredQuality();
+			if (q != null) applyQualityPolicy(q);
 			else clearQualityPolicy();
 		}
 
@@ -623,7 +624,7 @@ public class YoutubeWebView extends FermataWebView {
 	 * <p>
 	 * {@code .ytp-autonav-toggle-button} is YouTube's own HTML5 player control (the same
 	 * {@code #movie_player}/{@code .html5-video-player} embed {@link #next()}/{@link
-	 * #applyQualityPolicy(boolean)} already target elsewhere in this class, used across both the mobile
+	 * #applyQualityPolicy(String)} already target elsewhere in this class, used across both the mobile
 	 * and desktop-style watch pages) -- if a future YouTube markup change moves or renames it, this
 	 * becomes a silent no-op rather than a crash, same as the ad-selector fallback in {@link
 	 * #attachAdObserver()}; the debug log below is there to confirm whether it's still matching.
@@ -986,6 +987,52 @@ public class YoutubeWebView extends FermataWebView {
 		return getMilliseconds("currentTime");
 	}
 
+	/**
+	 * The player's available quality levels, read straight from its API -- works the same in and out
+	 * of fullscreen, where the page's own settings menu (see {@link #getVideoQualities()}) can't be
+	 * opened and so only "Auto" could be offered. Completes with "level;*level;...;auto" (the one
+	 * playing now marked with '*'), or null if the API isn't there, e.g. before the player is ready.
+	 */
+	FutureSupplier<String> getPlayerQualities() {
+		Promise<String> p = new Promise<>();
+		evaluateJavascript("""
+				(function() {
+				  try {
+				    var pl = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+				    if (!pl || typeof pl.getAvailableQualityLevels !== 'function') return null;
+				    var levels = pl.getAvailableQualityLevels();
+				    if (!levels || levels.length === 0) return null;
+				    var fixed = window.__fermataUserQ || null;
+				    var cur = fixed ? fixed : (window.__fermataQ ? pl.getPlaybackQuality() : 'auto');
+				    var out = [];
+				    for (var i = 0; i < levels.length; i++) out.push((levels[i] === cur ? '*' : '') + levels[i]);
+				    if (levels.indexOf('auto') < 0) out.push((cur === 'auto' ? '*' : '') + 'auto');
+				    return out.join(';');
+				  } catch (e) { return null; }
+				})();
+				""", v -> {
+			if ((v == null) || v.equals("null") || (v.length() < 2)) p.complete(null);
+			else p.complete(v.substring(1, v.length() - 1)); // Strip the JSON string quotes
+		});
+		return p;
+	}
+
+	/**
+	 * Switches the player to the given API quality level ("auto" hands it back to YouTube), picked
+	 * from {@link #getPlayerQualities()}. Replaces any preferred-quality policy for this page, so
+	 * the next state change doesn't switch it straight back.
+	 */
+	void setPlayerQuality(String level) {
+		loadUrl("javascript:\n" +
+				"(function() {\n" +
+				CLEAR_HIGHEST_VIDEO_QUALITY_JS + USER_QUALITY_JS +
+				"  clearFermataQ();\n" +
+				"  var level = '" + level.replaceAll("[^a-z0-9]", "") + "';\n" +
+				"  window.__fermataUserQ = (level === 'auto') ? null : level;\n" +
+				"  fermataSetQ(level);\n" +
+				"})();");
+	}
+
 	FutureSupplier<String> getVideoQualities() {
 		Promise<String> p = js.getResultPromise();
 		loadUrl("javascript:\n" +
@@ -1050,31 +1097,41 @@ public class YoutubeWebView extends FermataWebView {
 	}
 
 	/**
-	 * Keeps the player at its highest quality level, or its lowest ({@code lowest}: playing as music,
-	 * where only the sound matters), re-applied on every player state change until cleared.
+	 * Keeps the player at the {@code target} quality, re-applied on every player state change until
+	 * cleared: "highest", "lowest" (playing as music, where only the sound matters) or a player API
+	 * level name such as "hd720" -- the closest available level at or below it, else the lowest.
 	 */
-	void applyQualityPolicy(boolean lowest) {
+	void applyQualityPolicy(String target) {
+		boolean lowest = "lowest".equals(target);
 		loadUrl("javascript:\n" +
 				"(function() {\n" +
 				CLEAR_HIGHEST_VIDEO_QUALITY_JS + USER_QUALITY_JS +
 				"  clearFermataQ();\n" +
+				"  window.__fermataUserQ = null;\n" +
 				(lowest ? "  fermataSaveUserQ();\n" : "  fermataRestoreUserQ();\n") +
 				"  var state = window.__fermataQ = { player: null, handler: null, timeout: null, attempts: 0 };\n" +
 				"  function getPlayer() {\n" +
 				"    return document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
 				"  }\n" +
-				"  var lowest = " + lowest + ";\n" +
-				"  function applyHighest(p) {\n" +
+				"  var target = '" + target.replaceAll("[^a-z0-9]", "") + "';\n" +
+				"  var order = ['highres', 'hd2880', 'hd2160', 'hd1440', 'hd1080', 'hd720', 'large', 'medium', 'small', 'tiny'];\n" +
+				"  function pick(levels) {\n" +
+				// Levels come highest first, 'auto' last.
+				"    var real = levels.filter(function(l) { return l !== 'auto'; });\n" +
+				"    if (real.length === 0) return null;\n" +
+				"    if (target === 'highest') return real[0];\n" +
+				"    if (target === 'lowest') return real[real.length - 1];\n" +
+				"    var max = order.indexOf(target);\n" +
+				"    for (var i = 0; i < real.length; i++) {\n" +
+				"      if (order.indexOf(real[i]) >= max) return real[i];\n" +
+				"    }\n" +
+				"    return real[real.length - 1];\n" +
+				"  }\n" +
+				"  function applyTarget(p) {\n" +
 				"    if (!p || typeof p.getAvailableQualityLevels !== 'function') return false;\n" +
 				"    var levels = p.getAvailableQualityLevels();\n" +
 				"    if (!levels || levels.length === 0) return false;\n" +
-				"    var best = null;\n" +
-				// Levels come highest first, 'auto' last.
-				"    for (var i = 0; i < levels.length; i++) {\n" +
-				"      if (levels[i] === 'auto') continue;\n" +
-				"      best = levels[i];\n" +
-				"      if (!lowest) break;\n" +
-				"    }\n" +
+				"    var best = pick(levels);\n" +
 				"    if (!best) return false;\n" +
 				"    if (p.getPlaybackQuality && p.getPlaybackQuality() === best) return true;\n" +
 				"    if (typeof p.setPlaybackQualityRange === 'function') p.setPlaybackQualityRange(best, best);\n" +
@@ -1090,10 +1147,10 @@ public class YoutubeWebView extends FermataWebView {
 				"    }\n" +
 				"    state.player = p;\n" +
 				"    state.handler = function(s) {\n" +
-				"      if ((s === 1) || (s === 3)) applyHighest(getPlayer() || p);\n" +
+				"      if ((s === 1) || (s === 3)) applyTarget(getPlayer() || p);\n" +
 				"    };\n" +
 				"    p.addEventListener('onStateChange', state.handler);\n" +
-				"    applyHighest(p);\n" +
+				"    applyTarget(p);\n" +
 				"  }\n" +
 				"  install();\n" +
 				"})();");
@@ -1108,6 +1165,7 @@ public class YoutubeWebView extends FermataWebView {
 				"(function() {\n" +
 				CLEAR_HIGHEST_VIDEO_QUALITY_JS + USER_QUALITY_JS +
 				"  clearFermataQ();\n" +
+				"  window.__fermataUserQ = null;\n" +
 				"  fermataSetQ(fermataRestoreUserQ() || 'auto');\n" +
 				"})();");
 	}

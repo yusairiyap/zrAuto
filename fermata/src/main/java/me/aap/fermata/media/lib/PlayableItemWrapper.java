@@ -158,6 +158,12 @@ public class PlayableItemWrapper implements PlayableItem {
 		return getItem().getOrigId();
 	}
 
+	@Nullable
+	@Override
+	public String getResumeId() {
+		return getItem().getResumeId();
+	}
+
 	@Override
 	@NonNull
 	public Uri getLocation() {

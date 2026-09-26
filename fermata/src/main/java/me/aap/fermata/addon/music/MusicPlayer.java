@@ -23,6 +23,7 @@ import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.ui.UiUtils;
+import me.aap.utils.ui.fragment.ActivityFragment;
 
 /**
  * Entry points into the Music tab: "Play as music" / "Add into music queue" from the library's
@@ -108,6 +109,19 @@ public final class MusicPlayer {
 		return pendingVideoPos;
 	}
 
+	/**
+	 * Whether the YouTube queue track about to play is to be watched rather than listened to: "Video"
+	 * was asked for, or YouTube is already out of music mode with its tab showing the video.
+	 */
+	private static boolean isWatchingVideo() {
+		if (watchRequested) return true;
+		if (youtubeAudioMode) return false;
+		MainActivityDelegate a = activity.get();
+		if (a == null) return false;
+		ActivityFragment f = a.getActiveFragment();
+		return (f != null) && (f.getFragmentId() == R.id.youtube_fragment);
+	}
+
 	static void activityCreated(MainActivityDelegate a) {
 		activity = new WeakReference<>(a);
 	}
@@ -123,7 +137,10 @@ public final class MusicPlayer {
 	 */
 	static MediaEngine getYoutubeEngine(MusicTrackItem t, @Nullable MediaEngine current,
 																			MediaEngine.Listener listener) {
-		setYoutubeAudioMode(true);
+		// Music unless the user switched to watching it (the Music tab's "Video"): then Next/Prev
+		// through the queue keep showing video, at its usual quality, instead of dropping back to
+		// the lowest one.
+		if (!isWatchingVideo()) setYoutubeAudioMode(true);
 		if ((current != null) && (current.getId() == MediaPrefs.MEDIA_ENG_YT) &&
 				!t.hasStartPosition()) {
 			DiagnosticLog.log(TAG, "YouTube track on the playing YouTube player", "id=" + t.getVideoId());

@@ -44,6 +44,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -348,6 +349,7 @@ public class SettingsFragment extends MainActivityFragment
 			addSecondaryFabPrefs(a, fabSettingsSet);
 			// Right below the floating buttons: addAAInterface() adds its items straight in here.
 			addInfoOverlayPrefs(a, sub1);
+			addNavTabsPrefs(a, sub1);
 			addAAInterface(a, sub1);
 		} else {
 			fabSettingsSet = sub1.subSet(o -> {
@@ -362,6 +364,7 @@ public class SettingsFragment extends MainActivityFragment
 				}));
 			}
 			addInfoOverlayPrefs(a, sub1);
+			addNavTabsPrefs(a, sub1);
 			addInterface(a, sub1, MainActivityPrefs.THEME_MAIN, MainActivityPrefs.HIDE_BARS,
 					MainActivityPrefs.FULLSCREEN, MainActivityPrefs.SHOW_PG_UP_DOWN, null,
 					MainActivityPrefs.NAV_BAR_POS, MainActivityPrefs.NAV_BAR_SIZE,
@@ -967,6 +970,96 @@ public class SettingsFragment extends MainActivityFragment
 		return PrefCondition.create(prefs, MainActivityPrefs.DIM_ENABLED)
 				.and(new PrefCondition<>(prefs, MainActivityPrefs.DIM_COLOR_PRESET,
 						p -> prefs.getIntPref(p) == MainActivityPrefs.DIM_COLOR_CUSTOM_IDX));
+	}
+
+	/**
+	 * Navigation tabs: every nav bar tab in its order, each opening a small menu to move it, hide
+	 * it, or make it the one the app opens on start. Rebuilt after every change, so the list always
+	 * shows the current order.
+	 */
+	private static void addNavTabsPrefs(MainActivityDelegate a, PreferenceSet parent) {
+		PreferenceSet ps = parent.subSet(o -> {
+			o.title = R.string.nav_tabs_prefs;
+			o.icon = R.drawable.view_grid;
+		});
+		ps.configure(s -> buildNavTabsPrefs(a, s));
+	}
+
+	private static void buildNavTabsPrefs(MainActivityDelegate a, PreferenceSet ps) {
+		MainActivityPrefs prefs = a.getPrefs();
+		List<String> tabs = NavBarMediator.getTabs(prefs);
+
+		for (int i = 0, n = tabs.size(); i < n; i++) {
+			String name = tabs.get(i);
+			int pos = i;
+			ps.addButton(o -> {
+				Context ctx = a.getContext();
+				boolean hidden = NavBarMediator.getHiddenTabs(prefs).contains(name);
+				boolean start = name.equals(prefs.getShowAddonOnStartPref());
+				String state = ctx.getString(hidden ? R.string.nav_tab_hidden : R.string.nav_tab_shown);
+				if (start) state += " · " + ctx.getString(R.string.nav_tab_opens_on_start);
+				o.icon = NavBarMediator.getTabIcon(name);
+				o.ctitle = (pos + 1) + ". " + NavBarMediator.getTabTitle(ctx, name);
+				o.csubtitle = state;
+				o.onClick = () -> showNavTabMenu(a, ps, tabs, pos);
+			});
+		}
+
+		ps.addButton(o -> {
+			o.title = R.string.nav_tabs_reset;
+			o.subtitle = R.string.nav_tabs_reset_sub;
+			o.icon = R.drawable.view_grid;
+			o.onClick = () -> {
+				NavBarMediator.resetTabs(prefs);
+				ps.configure(s -> buildNavTabsPrefs(a, s));
+			};
+		});
+	}
+
+	private static void showNavTabMenu(MainActivityDelegate a, PreferenceSet ps, List<String> tabs,
+																		 int pos) {
+		MainActivityPrefs prefs = a.getPrefs();
+		String name = tabs.get(pos);
+		boolean hidden = NavBarMediator.getHiddenTabs(prefs).contains(name);
+		boolean start = name.equals(prefs.getShowAddonOnStartPref());
+		Runnable refresh = () -> ps.configure(s -> buildNavTabsPrefs(a, s));
+
+		a.getContextMenu().show(b -> {
+			b.setTitle(NavBarMediator.getTabTitle(a.getContext(), name).toString());
+			if (pos > 0) {
+				b.addItem(R.id.nav_tab_move_up, me.aap.utils.R.drawable.move_up, R.string.move_up)
+						.setHandler(i -> {
+							List<String> order = new ArrayList<>(tabs);
+							Collections.swap(order, pos, pos - 1);
+							NavBarMediator.setTabOrder(prefs, order);
+							refresh.run();
+							return true;
+						});
+			}
+			if (pos < tabs.size() - 1) {
+				b.addItem(R.id.nav_tab_move_down, me.aap.utils.R.drawable.move_down, R.string.move_down)
+						.setHandler(i -> {
+							List<String> order = new ArrayList<>(tabs);
+							Collections.swap(order, pos, pos + 1);
+							NavBarMediator.setTabOrder(prefs, order);
+							refresh.run();
+							return true;
+						});
+			}
+			b.addItem(R.id.nav_tab_visibility,
+					hidden ? me.aap.utils.R.drawable.check_box_blank : me.aap.utils.R.drawable.check_box,
+					hidden ? R.string.nav_tab_show : R.string.nav_tab_hide).setHandler(i -> {
+				NavBarMediator.setTabHidden(prefs, name, !hidden);
+				refresh.run();
+				return true;
+			});
+			b.addItem(R.id.nav_open_on_start, start ? R.drawable.bookmark_filled : R.drawable.bookmark,
+					start ? R.string.remove_open_on_start : R.string.set_open_on_start).setHandler(i -> {
+				prefs.setShowAddonOnStartPref(start ? null : name);
+				refresh.run();
+				return true;
+			});
+		});
 	}
 
 	/**

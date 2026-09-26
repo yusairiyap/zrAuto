@@ -276,7 +276,7 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 					.setSubText(description.getDescription());
 
 			if (callback.isDefaultImage(largeIcon)) {
-				if (i.isVideo()) {
+				if ((i != null) && i.isVideo()) {
 					if (defaultVideoIcon == null) defaultVideoIcon = createLargeIcon(R.drawable.video);
 					largeIcon = defaultVideoIcon;
 				} else {

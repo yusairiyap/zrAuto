@@ -122,6 +122,7 @@ import me.aap.fermata.addon.FermataAddon;
 import me.aap.fermata.addon.FermataFragmentAddon;
 import me.aap.fermata.addon.MediaLibAddon;
 import me.aap.fermata.addon.music.MusicAddon;
+import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.music.MusicQueue;
 import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.engine.MediaEngineManager;
@@ -136,10 +137,12 @@ import me.aap.fermata.media.lib.MediaLib.Item;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.lib.MediaLib.Playlist;
 import me.aap.fermata.media.lib.SearchFolder;
+import me.aap.fermata.media.pref.MediaLibPrefs;
 import me.aap.fermata.media.pref.PlaybackControlPrefs;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.media.service.MediaSessionCallbackAssistant;
+import me.aap.fermata.media.service.PlaybackResume;
 import me.aap.fermata.spotify.SpotifyAuth;
 import me.aap.fermata.ui.fragment.AudioEffectsFragment;
 import me.aap.fermata.ui.fragment.DiagnosticLogFragment;
@@ -440,7 +443,8 @@ public class MainActivityDelegate extends ActivityDelegate
 			}
 		}
 
-		FutureSupplier<Boolean> f = goToCurrent().onCompletion((ok, fail1) -> {
+		FutureSupplier<Boolean> f = resumeLastPlayed().then(resumed ->
+				Boolean.TRUE.equals(resumed) ? completed(true) : goToCurrent()).onCompletion((ok, fail1) -> {
 			if ((fail1 != null) && !isCancellation(fail1)) {
 				Log.e(fail1, "Last played track not found");
 			}
@@ -452,6 +456,58 @@ public class MainActivityDelegate extends ActivityDelegate
 			showFragment(R.id.folders_fragment);
 			setContentLoading(f);
 		}
+	}
+
+	/**
+	 * On a fresh start, when the last thing played was a YouTube video or a Music tab track: brings
+	 * it back where it was left off, loaded but not playing -- the video in the YouTube tab (see
+	 * {@link PlaybackResume}), the track in the Music tab (which shows where its queue left off).
+	 * Completes with false if there's nothing like that to resume, for the usual last library item.
+	 */
+	private FutureSupplier<Boolean> resumeLastPlayed() {
+		if (getMediaServiceBinder().getCurrentItem() != null) return completed(false);
+		MediaLibPrefs prefs = getLib().getPrefs();
+		String id = prefs.getResumeExtItemPref();
+		if (id == null) return completed(false);
+		long pos = prefs.getResumeExtPosPref();
+
+		return getLib().getItem(id).main().map(i -> {
+			if (i instanceof MusicTrackItem) {
+				if (MusicAddon.get() == null) return false;
+				showFragment(R.id.music_addon);
+				return true;
+			}
+			if (i instanceof MediaLib.ExternallyPlayableItem ext) {
+				String origId = ext.getOrigId();
+				if (origId != null) PlaybackResume.set(origId, pos, true);
+				ActivityFragment f = showFragment(ext.getPlayerFragmentId());
+				if (f == null) return false;
+				ext.loadInFragment(f, ext);
+				return true;
+			}
+			return false;
+		}).ifFail(err -> {
+			Log.e(err, "Failed to resume ", id);
+			return false;
+		});
+	}
+
+	/** See {@link MediaSessionCallbackAssistant#playExternal}. */
+	@Override
+	public boolean playExternal(PlayableItem i, long pos) {
+		if (i instanceof MusicTrackItem t) {
+			MusicPlayer.playTrack(this, t, pos);
+			return true;
+		}
+		if (i instanceof MediaLib.ExternallyPlayableItem ext) {
+			String origId = ext.getOrigId();
+			if (origId != null) PlaybackResume.set(origId, pos, false);
+			ActivityFragment f = showFragment(ext.getPlayerFragmentId());
+			if (f == null) return false;
+			ext.loadInFragment(f, ext);
+			return true;
+		}
+		return false;
 	}
 
 	private void checkUpdates() {
