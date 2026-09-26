@@ -6,6 +6,8 @@ import static android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT;
 import static android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK;
 import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM_ART;
 import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI;
+import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ARTIST;
+import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM;
 import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE;
 import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE;
 import static android.support.v4.media.session.PlaybackStateCompat.ACTION_FAST_FORWARD;
@@ -1113,7 +1115,13 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 																														MediaMetadataCompat meta,
 																														MediaDescriptionCompat dsc) {
 		ifNotNull(dsc.getTitle(), t -> b.putString(METADATA_KEY_DISPLAY_TITLE, t.toString()));
-		ifNotNull(dsc.getSubtitle(), t -> b.putString(METADATA_KEY_DISPLAY_SUBTITLE, t.toString()));
+		CharSequence sub = dsc.getSubtitle();
+		// No subtitle of its own (a YouTube video): the artist/channel. Android Auto shows only the
+		// display subtitle once a display title is set, never falling back to the artist itself,
+		// so without this the channel shows in the phone's notification but not on the car.
+		if ((sub == null) || (sub.length() == 0)) sub = meta.getString(METADATA_KEY_ARTIST);
+		if ((sub == null) || (sub.length() == 0)) sub = meta.getString(METADATA_KEY_ALBUM);
+		if ((sub != null) && (sub.length() > 0)) b.putString(METADATA_KEY_DISPLAY_SUBTITLE, sub.toString());
 		if (meta.getBitmap(METADATA_KEY_ALBUM_ART) != null) return completed(b.build());
 
 		String art = meta.getString(METADATA_KEY_ALBUM_ART_URI);

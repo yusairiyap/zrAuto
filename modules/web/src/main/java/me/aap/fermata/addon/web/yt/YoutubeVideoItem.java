@@ -169,7 +169,9 @@ public class YoutubeVideoItem extends ExtPlayable implements MediaLib.Externally
 		}
 		// Started from the Music tab's queue: playing as music (lowest video quality), and possibly
 		// resuming where the queue left off. Anything else is watching a video.
-		MusicPlayer.setYoutubeAudioMode(self instanceof MusicTrackItem);
+		// Whether a queue track plays as music or as video was already decided when its engine
+		// was picked (MusicPlayer#getYoutubeEngine), e.g. video after the Music tab's "Video".
+		if (!(self instanceof MusicTrackItem)) MusicPlayer.setYoutubeAudioMode(false);
 		long startMs = MusicPlayer.takeVideoStartPosition(videoId);
 		// Or reopened where it was left off -- see PlaybackResume.
 		if (startMs == 0) startMs = PlaybackResume.getStartPosition(getId());
