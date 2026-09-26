@@ -263,6 +263,7 @@ public class MainCarActivity extends CarActivity implements ZrAutoActivity {
 			} else {
 				a().startInput(editText);
 			}
+			a.refreshFabKeyboardLift();
 		});
 		return editText;
 	}
@@ -274,6 +275,8 @@ public class MainCarActivity extends CarActivity implements ZrAutoActivity {
 		}
 
 		a().stopInput();
+		// The floating buttons were lifted above the car keyboard -- see refreshFabKeyboardLift().
+		getActivityDelegate().onSuccess(MainActivityDelegate::refreshFabKeyboardLift);
 	}
 
 	public boolean isInputActive() {
@@ -283,7 +286,10 @@ public class MainCarActivity extends CarActivity implements ZrAutoActivity {
 	public EditText createEditText(Context ctx) {
 		CarEditText et = new CarEditText(ctx);
 		et.setOnClickListener(v -> {
-			if (!a().isInputActive()) a().startInput(et);
+			if (!a().isInputActive()) {
+				a().startInput(et);
+				getActivityDelegate().onSuccess(MainActivityDelegate::refreshFabKeyboardLift);
+			}
 		});
 		return et;
 	}

@@ -1746,9 +1746,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		body.getViewTreeObserver().addOnGlobalLayoutListener(this::refreshContentInsets);
 		// The soft keyboard shows over the bottom of the window without resizing it, hiding the
 		// floating buttons (e.g. while typing a YouTube search) -- keep them above it instead.
-		if (!isCarActivity()) {
-			body.getViewTreeObserver().addOnGlobalLayoutListener(this::liftFabsAboveKeyboard);
-		}
+		body.getViewTreeObserver().addOnGlobalLayoutListener(this::liftFabsAboveKeyboard);
 
 		if (VERSION.SDK_INT >= VERSION_CODES.VANILLA_ICE_CREAM && !a.isCarActivity()) {
 			ViewCompat.setOnApplyWindowInsetsListener(toolBar, (v, insets) -> {
@@ -1890,6 +1888,14 @@ public class MainActivityDelegate extends ActivityDelegate
 		int screenBottom = root.getHeight();
 		// Anything smaller is just the system navigation bar, not a keyboard.
 		boolean keyboard = (screenBottom - keyboardFrame.bottom) > (screenBottom * 0.15f);
+		int keyboardTop = keyboardFrame.bottom;
+		// Android Auto's keyboard belongs to the car host and may not show up in the window's
+		// visible frame at all: while its text input is active, keep the buttons in the upper half.
+		if (!keyboard && isCarActivity() && getAppActivity().isInputActive()) {
+			keyboard = true;
+			root.getLocationOnScreen(fabParentLoc);
+			keyboardTop = fabParentLoc[1] + screenBottom / 2;
+		}
 
 		int lift = 0;
 		if (keyboard) {
@@ -1897,7 +1903,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			// Where the buttons' bottom edge sits without any lift.
 			int bottom = fabParentLoc[1] + f.getBottom() + fabKeyboardLift;
 			int gap = UiUtils.toIntPx(getContext(), 8);
-			lift = Math.max(0, bottom + gap - keyboardFrame.bottom);
+			lift = Math.max(0, bottom + gap - keyboardTop);
 		}
 		if (lift == fabKeyboardLift) return;
 
@@ -1910,6 +1916,11 @@ public class MainActivityDelegate extends ActivityDelegate
 			lp.bottomMargin = Math.max(0, lp.bottomMargin + delta);
 			b.setLayoutParams(lp);
 		}
+	}
+
+	/** Re-checks {@link #liftFabsAboveKeyboard()} -- for keyboards that don't relayout the window. */
+	public void refreshFabKeyboardLift() {
+		if (floatingButton != null) floatingButton.post(this::liftFabsAboveKeyboard);
 	}
 
 	private void updateFabDraggable() {
