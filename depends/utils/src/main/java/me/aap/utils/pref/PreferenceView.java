@@ -34,6 +34,7 @@ import android.text.TextWatcher;
 import android.util.AttributeSet;
 import android.util.Pair;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ImageView;
@@ -364,7 +365,8 @@ public class PreferenceView extends ConstraintLayout {
 																			 IntFunction<String> fromInt, ToIntFunction<String> toInt,
 																			 BiConsumer<EditText, SeekBar> viewConfigurator) {
 		setPreference(R.layout.number_pref_layout, o);
-		EditText t = findViewById(R.id.pref_value);
+		EditText t = o.inputBox ? carInputBox(findViewById(R.id.pref_value))
+				: findViewById(R.id.pref_value);
 		SeekBar sb = findViewById(R.id.pref_footer);
 		boolean[] ignoreChange = new boolean[1];
 		String initValue = get.get();
@@ -458,6 +460,32 @@ public class PreferenceView extends ConstraintLayout {
 		setPrefListener((s, p) -> {
 			if (!ignoreChange[0] && p.contains(o.pref)) t.setText(get.get());
 		});
+	}
+
+	/**
+	 * On the Android Auto screen a plain EditText never brings up the car keyboard when tapped: only
+	 * the activity's own edit text (see {@link ActivityDelegate#createEditText(Context)}) is wired to
+	 * it. So there, the layout's input box is swapped for one of those, in the same place and with
+	 * the same id, so the seek bar's constraints and everything below keep working unchanged.
+	 */
+	private EditText carInputBox(EditText t) {
+		ActivityDelegate a = ActivityDelegate.getActivityDelegate(getContext()).peek();
+		if ((a == null) || !a.isCarActivity()) return t;
+		EditText et = a.createEditText(getContext());
+		if ((et == null) || (et == t)) return t;
+		int idx = indexOfChild(t);
+		ViewGroup.LayoutParams lp = t.getLayoutParams();
+		removeView(t);
+		et.setId(t.getId());
+		et.setFocusable(true);
+		et.setSingleLine();
+		et.setGravity(t.getGravity());
+		et.setTextAlignment(t.getTextAlignment());
+		et.setTextColor(t.getTextColors());
+		et.setHintTextColor(t.getHintTextColors());
+		et.setInputType(t.getInputType());
+		addView(et, idx, lp);
+		return et;
 	}
 
 	private void setListPreference(ListOpts o) {

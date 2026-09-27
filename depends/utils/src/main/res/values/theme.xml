@@ -145,6 +145,16 @@
         <item name="android:windowAnimationStyle">@style/Theme.Utils.Base.DialogFadeAnimation</item>
         <item name="alertDialogStyle">@style/Theme.Utils.Base.AlertDialog.Style</item>
 
+        <!-- Every TextAppearance.AppCompat style (the dialog title, message and buttons all use one)
+        reads android:textColorLink and android:textColorHighlight through ?android:attr references
+        that only the platform theme defines. Inside this overlay that lookup failed on both the
+        phone and the car screen (UnsupportedOperationException: Failed to resolve attribute
+        0x0101009b, i.e. android:textColorLink, while inflating DialogTitle), crashing every
+        confirmation dialog. Defining both here, from values the app theme always has, means the
+        lookup never has to leave the app's own styles. -->
+        <item name="android:textColorLink">?attr/colorOnSurface</item>
+        <item name="android:textColorHighlight">#665E97F6</item>
+
         <item name="materialAlertDialogTitlePanelStyle">
             @style/Theme.Utils.Base.AlertDialog.Title.Panel
         </item>

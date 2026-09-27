@@ -15,6 +15,8 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.fragment.DataUsageFragment;
+import me.aap.fermata.util.DiagnosticLog;
+import me.aap.utils.log.Log;
 import me.aap.utils.misc.ChangeableCondition;
 import me.aap.utils.pref.PrefCondition;
 import me.aap.utils.pref.PreferenceSet;
@@ -173,11 +175,21 @@ public class DataUsageAddon implements FermataFragmentAddon, FermataActivityAddo
 			o.title = R.string.data_usage_reset;
 			o.subtitle = R.string.data_usage_reset_sub;
 			o.visibility = visibility.copy();
-			o.onClick = () -> UiUtils.showQuestion(ctx, R.string.data_usage_reset,
-					R.string.data_usage_reset_question, R.drawable.data_usage).onSuccess(v -> {
-				DataUsageTracker.get().reset();
-				UiUtils.showInfo(ctx, R.string.data_usage_reset_done);
-			});
+			o.onClick = () -> {
+				try {
+					UiUtils.showQuestion(ctx, R.string.data_usage_reset,
+							R.string.data_usage_reset_question, R.drawable.data_usage).onSuccess(v -> {
+						DataUsageTracker.get().reset();
+						UiUtils.showToast(ctx, R.string.data_usage_reset_done);
+					});
+				} catch (Exception err) {
+					// A dialog that fails to inflate (see Theme.Utils.Base.AlertDialog) must not take the
+					// whole app down with it, least of all while driving: log it and say so instead.
+					DiagnosticLog.log("DIALOG", "failed to show data usage reset dialog:", err);
+					Log.e(err, "Failed to show the data usage reset dialog");
+					UiUtils.showToast(ctx, R.string.data_usage_reset_failed);
+				}
+			};
 		});
 	}
 }
