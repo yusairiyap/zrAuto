@@ -35,7 +35,7 @@ import me.aap.utils.ui.activity.ActivityListener;
  * alike (a toast only ever shows on the phone):
  * <ul>
  * <li>a banner at the top of every tab while usage is past the warning level or the limit,
- * sliding in with a pulse when a level is just reached; it sits right under the title bar, or at
+ * sliding in when a level is just reached; it sits right under the title bar, or at
  * the very top over fullscreen video, where it hides itself again after a few seconds. Closing
  * it hides it until the next tab is opened;</li>
  * <li>when playback was paused for the limit, a cover over the video with Tap to continue, which
@@ -113,12 +113,12 @@ public final class DataUsageAlerts implements DataUsageTracker.AlertListener, Ac
 	@Override
 	public void onDataAlert(int level, boolean crossed, boolean paused) {
 		if (crossed || paused) dismissedLevel = LEVEL_OK;
-		updateBanner(crossed || paused);
+		updateBanner();
 		updateGate();
 	}
 
 	private void update() {
-		updateBanner(false);
+		updateBanner();
 		updateGate();
 	}
 
@@ -126,7 +126,7 @@ public final class DataUsageAlerts implements DataUsageTracker.AlertListener, Ac
 	// Banner
 	// ---------------------------------------------------------------------------------------------
 
-	private void updateBanner(boolean emphasize) {
+	private void updateBanner() {
 		DataUsageTracker t = DataUsageTracker.get();
 		int level = t.getLevel();
 
@@ -179,9 +179,8 @@ public final class DataUsageAlerts implements DataUsageTracker.AlertListener, Ac
 		ImageButton close = b.findViewById(R.id.data_usage_banner_close);
 		close.setImageTintList(ColorStateList.valueOf(fg));
 
-		boolean levelChanged = level != shownLevel;
 		shownLevel = level;
-		showBanner(b, emphasize || levelChanged);
+		showBanner(b);
 	}
 
 	private static String bannerText(Context ctx, DataUsageTracker t, boolean limit, boolean paused) {
@@ -222,15 +221,12 @@ public final class DataUsageAlerts implements DataUsageTracker.AlertListener, Ac
 		return b;
 	}
 
-	private void showBanner(View b, boolean emphasize) {
+	private void showBanner(View b) {
 		b.removeCallbacks(autoHide);
 		// Over fullscreen video, only for a few seconds: the Tap to continue cover, if needed, stays.
 		if (isVideoShown()) b.postDelayed(autoHide, VIDEO_BANNER_MS);
 
-		if (bannerShown && (b.getVisibility() == View.VISIBLE)) {
-			if (emphasize) pulse(b);
-			return;
-		}
+		if (bannerShown && (b.getVisibility() == View.VISIBLE)) return;
 
 		bannerShown = true;
 		b.animate().cancel();
@@ -240,10 +236,7 @@ public final class DataUsageAlerts implements DataUsageTracker.AlertListener, Ac
 		b.setScaleX(0.96f);
 		b.setScaleY(0.96f);
 		b.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f).setDuration(420)
-				.setInterpolator(new OvershootInterpolator(1.4f))
-				.withEndAction(() -> {
-					if (emphasize) pulse(b);
-				}).start();
+				.setInterpolator(new OvershootInterpolator(1.4f)).start();
 	}
 
 	private void hideBanner(boolean animate) {
@@ -259,12 +252,6 @@ public final class DataUsageAlerts implements DataUsageTracker.AlertListener, Ac
 		b.animate().alpha(0f).translationY(-toIntPx(b.getContext(), 32)).setDuration(220)
 				.setInterpolator(new DecelerateInterpolator())
 				.withEndAction(() -> b.setVisibility(View.GONE)).start();
-	}
-
-	/** A level was just reached: the icon bounces a few times to catch the eye. */
-	private static void pulse(View b) {
-		View icon = b.findViewById(R.id.data_usage_banner_icon);
-		bounce(icon, 3);
 	}
 
 	private static void bounce(View v, int times) {
