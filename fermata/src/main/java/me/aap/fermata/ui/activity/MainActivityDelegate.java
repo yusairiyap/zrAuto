@@ -51,6 +51,10 @@ import static me.aap.utils.ui.UiUtils.showAlert;
 import static me.aap.utils.ui.UiUtils.toIntPx;
 import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.graphics.drawable.ColorDrawable;
+import android.animation.ValueAnimator;
 import android.Manifest;
 import android.Manifest.permission;
 import android.app.Activity;
@@ -83,6 +87,8 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.PathInterpolator;
+import android.view.ViewPropertyAnimator;
 import android.view.ViewTreeObserver;
 import android.widget.EditText;
 
@@ -159,6 +165,7 @@ import me.aap.fermata.ui.fragment.SubtitlesFragment;
 import me.aap.fermata.ui.fragment.YoutubeAlternativesFragment;
 import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.ui.view.ControlPanelView;
+import me.aap.fermata.ui.view.FermataNavBarView;
 import me.aap.fermata.ui.view.QuaternaryFloatingButton;
 import me.aap.fermata.ui.view.SecondaryFloatingButton;
 import me.aap.fermata.ui.view.TertiaryFloatingButton;
@@ -197,6 +204,9 @@ public class MainActivityDelegate extends ActivityDelegate
 	public static final String INTENT_ACTION_FINISH = "finish";
 	private static final String INTENT_SCHEME = "fermata";
 	private final HandlerExecutor handler = new HandlerExecutor(App.get().getHandler().getLooper());
+	/** How far the floating nav bar/control panel pill sits off the screen edges, in dp. */
+	private static final int FLOATING_BAR_MARGIN = 12;
+	private static final long BARS_ANIM_MS = 260;
 	private final NavBarMediator navBarMediator = new NavBarMediator();
 	private final FermataServiceUiBinder mediaServiceBinder;
 	private ToolBarView toolBar;
@@ -856,10 +866,12 @@ public class MainActivityDelegate extends ActivityDelegate
 	public void setBarsHidden(boolean barsHidden) {
 		App.get().getHandler().post(() -> {
 			this.barsHidden = barsHidden;
-			int visibility = barsHidden ? GONE : VISIBLE;
 			ToolBarView tb = getToolBar();
-			if (tb.getMediator() != ToolBarView.Mediator.Invisible.instance) tb.setVisibility(visibility);
-			getNavBar().setVisibility(visibility);
+			if (tb.getMediator() != ToolBarView.Mediator.Invisible.instance) {
+				animateBar(tb, !barsHidden, 0, -tb.getHeight());
+			}
+			animateNavBar(!barsHidden);
+			syncSideNavInset();
 			// tool_bar keeps its actual layout height above even when its mediator is Invisible (e.g.
 			// while browsing a WebView, which draws its own navigation) -- its own visibility is
 			// deliberately left untouched just above since toggling it wouldn't change anything
@@ -906,11 +918,13 @@ public class MainActivityDelegate extends ActivityDelegate
 
 		if (videoMode) {
 			this.videoMode = true;
+			cancelVideoExitFade();
 			setSystemUiVisibility();
 			keepScreenOn(true);
 			cp.enableVideoMode();
 		} else {
 			this.videoMode = false;
+			fadeInFromVideo();
 			setSystemUiVisibility();
 			keepScreenOn(false);
 			if (cp != null) cp.disableVideoMode();
@@ -949,11 +963,10 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * everywhere (video mode included) so every tab renders behind the bars, for a cleaner look
 	 * with more of the screen visible, especially on Android Auto.
 	 * <p>
-	 * nav_bar is deliberately left completely alone, both its constraints and its appearance: it
-	 * keeps its own fully opaque look and is declared after body_layout in every layout variant
-	 * (bottom, left and right), so plain view-drawing order alone -- with no extra elevation
-	 * needed -- already puts it on top of body_layout's now-larger bounds. body_layout extending
-	 * geometrically behind it is invisible in practice since nav_bar is never translucent.
+	 * nav_bar and control_panel float over it as a pill -- see {@link #enableFloatingBars}. Both,
+	 * and the floating_bars view that paints the pill, are declared after body_layout in every
+	 * layout variant (bottom, left and right), so plain view-drawing order alone -- with no extra
+	 * elevation needed -- puts them on top of body_layout's now-larger bounds.
 	 * <p>
 	 * This deliberately does not go through {@code ConstraintSet}: cloning one captures every
 	 * child's visibility, alpha, scale and translation as well, and applying it back stomps all of
@@ -1015,6 +1028,446 @@ public class MainActivityDelegate extends ActivityDelegate
 		int c = MaterialColors.getColor(getContext(), androidx.appcompat.R.attr.colorPrimary,
 				Color.BLACK);
 		tbv.setBackground(ControlPanelView.buildScrimGradient(c, false));
+		enableFloatingBars();
+	}
+
+	/**
+	 * Detaches nav_bar and control_panel from the screen edges so they float as a pill (painted
+	 * behind them by {@link me.aap.fermata.ui.view.FloatingBarsView}), and lets the tab content
+	 * run behind a side nav bar too, not only a bottom one.
+	 * <p>
+	 * Bottom nav bar: both bars share the same side margins, and control_panel sits directly on
+	 * top of nav_bar, so together they read as one two-row pill. When nav_bar is hidden (bars
+	 * hidden, e.g. over a video), control_panel's gone-margin keeps it floating off the bottom edge.
+	 * <p>
+	 * Left/right nav bar: nav_bar is a vertical pill along its side and control_panel a separate
+	 * pill along the bottom of the remaining width -- both still follow the one nav-bar position
+	 * setting. body_layout now spans the full width behind the side pill; its own horizontal
+	 * padding ({@link #syncSideNavInset}) keeps the tab content itself clear of the pill.
+	 */
+	private void enableFloatingBars() {
+		View body = findViewById(R.id.body_layout);
+		View cp = findViewById(R.id.control_panel);
+		View tb = findViewById(R.id.tool_bar);
+		View bars = findViewById(R.id.floating_bars);
+		if (!(navBar instanceof FermataNavBarView nb) || (body == null) || (cp == null)
+				|| (tb == null) || (bars == null)) return;
+		if (!(body.getLayoutParams() instanceof ConstraintLayout.LayoutParams blp)
+				|| !(nb.getLayoutParams() instanceof ConstraintLayout.LayoutParams nlp)
+				|| !(cp.getLayoutParams() instanceof ConstraintLayout.LayoutParams clp)
+				|| !(tb.getLayoutParams() instanceof ConstraintLayout.LayoutParams tlp)) return;
+
+		// The pill (and the nav bar on it) are raised to tool_bar's own elevation -- tied, so the
+		// layout's declaration order decides, and both come after tool_bar -- so a side pill draws
+		// over tool_bar's scrim where they meet (tool_bar spans the full width now, see below)
+		// instead of tool_bar's scrim ending in a hard notch next to the pill. No outline shadows:
+		// the pill paints its own.
+		float z = tb.getElevation();
+		bars.setOutlineProvider(null);
+		bars.setElevation(z);
+		nb.setOutlineProvider(null);
+		nb.setElevation(z);
+
+		int m = toIntPx(getContext(), FLOATING_BAR_MARGIN);
+		int pos = getPrefs().getNavBarPosPref(this);
+
+		if (pos == NavBarView.POSITION_BOTTOM) {
+			setHorizontalMargins(nlp, m, m);
+			nlp.bottomMargin = m;
+			setHorizontalMargins(clp, m, m);
+			clp.width = 0;
+			clp.goneBottomMargin = m;
+		} else {
+			nlp.topMargin = m;
+			nlp.bottomMargin = m;
+			// body_layout and tool_bar both span the full width, behind the pill; each is padded
+			// clear of it (see syncSideNavInset()).
+			if (pos == NavBarView.POSITION_LEFT) {
+				setHorizontalMargins(nlp, m, 0);
+				blp.startToEnd = UNSET;
+				blp.startToStart = PARENT_ID;
+				tlp.startToEnd = UNSET;
+				tlp.startToStart = PARENT_ID;
+				clp.goneStartMargin = m;
+			} else {
+				setHorizontalMargins(nlp, 0, m);
+				blp.endToStart = UNSET;
+				blp.endToEnd = PARENT_ID;
+				tlp.endToStart = UNSET;
+				tlp.endToEnd = PARENT_ID;
+				clp.goneEndMargin = m;
+			}
+			setHorizontalMargins(clp, m, m);
+			clp.bottomMargin = m;
+			body.setLayoutParams(blp);
+			tb.setLayoutParams(tlp);
+			// Every tab is padded clear of the side pill, but a tab may still extend its own
+			// background out under it (see MainActivityFragment#drawsBehindSideNavBar): don't clip
+			// that at body_layout's padding, nor at the containers in between.
+			if (body instanceof ViewGroup bg) {
+				// Both: clipChildren would still clip each child to its own (padded) bounds.
+				bg.setClipChildren(false);
+				bg.setClipToPadding(false);
+				for (int id : new int[]{R.id.swiperefresh, R.id.frame_layout}) {
+					View c = bg.findViewById(id);
+					if (c instanceof ViewGroup g) {
+						g.setClipChildren(false);
+						g.setClipToPadding(false);
+					}
+				}
+			}
+		}
+
+		nb.setLayoutParams(nlp);
+		cp.setLayoutParams(clp);
+		nb.matchConstraints();
+	}
+
+	private static void setHorizontalMargins(ConstraintLayout.LayoutParams lp, int start, int end) {
+		// Every main_activity layout is forced LTR, so start/end and left/right are the same thing.
+		lp.setMarginStart(start);
+		lp.setMarginEnd(end);
+		lp.leftMargin = start;
+		lp.rightMargin = end;
+	}
+
+	/**
+	 * With a side nav bar, body_layout spans the full width behind the floating pill (so the
+	 * background and the fade continue under it), but the tab content itself is kept clear of it
+	 * via body_layout's horizontal padding, sized to how far the pill actually reaches into
+	 * body_layout -- or none at all while the bars are hidden (e.g. fullscreen video). Nothing in
+	 * a tab scrolls horizontally, so unlike a bottom bar there is nothing to scroll underneath it.
+	 * <p>
+	 * Deliberately never animated, and switched the moment the bars are hidden/shown rather than
+	 * once the nav bar's fade has finished: each padding change resizes the whole tab, and
+	 * YouTube's player restarts (and may pause, or miss going fullscreen on the next video) on
+	 * every resize of its WebView -- one resize, at the same moment the old side-by-side layout
+	 * resized it, is the only thing it copes with well.
+	 */
+	private void syncSideNavInset() {
+		BodyLayout b = body;
+		NavBarView nb = navBar;
+		if ((b == null) || (nb == null)) return;
+		int left = 0;
+		int right = 0;
+
+		if (isSideNavShown(nb)) {
+			int gap = toIntPx(getContext(), FLOATING_BAR_MARGIN);
+			if (nb.isLeft()) left = Math.max(0, nb.getRight() - b.getLeft() + gap);
+			else right = Math.max(0, b.getRight() - nb.getLeft() + gap);
+		}
+
+		// tool_bar's buttons and title are always kept clear of the pill, whatever the tab.
+		ToolBarView tb = toolBar;
+		if ((tb != null) && !nb.isBottom()
+				&& ((tb.getPaddingLeft() != left) || (tb.getPaddingRight() != right))) {
+			tb.setPadding(left, tb.getPaddingTop(), right, tb.getPaddingBottom());
+		}
+
+		if ((b.getPaddingLeft() == left) && (b.getPaddingRight() == right)) return;
+		b.setPadding(left, b.getPaddingTop(), right, b.getPaddingBottom());
+	}
+
+	/**
+	 * Whether a side nav bar counts as taking up room: going by the bars' hidden state rather than
+	 * the nav bar's own visibility, which lags behind it by its fade (see animateNavBar()).
+	 */
+	private boolean isSideNavShown(NavBarView nb) {
+		return !nb.isBottom() && !barsHidden && (nb.getVisibility() == VISIBLE) && (nb.getWidth() > 0);
+	}
+
+	/**
+	 * The left and right padding {@code content} needs, right now, to clear a side nav bar's
+	 * floating pill, into {@code out[0]} and {@code out[1]} -- for a tab that
+	 * {@link MainActivityFragment#drawsBehindSideNavBar() draws behind it}. Both zero with a bottom
+	 * or hidden nav bar. False if it can't tell yet (not attached).
+	 */
+	public boolean computeSideInsets(View content, int[] out) {
+		out[0] = out[1] = 0;
+		if (!content.isAttachedToWindow()) return false;
+		NavBarView nb = navBar;
+		if ((nb == null) || !isSideNavShown(nb)) return true;
+
+		int gap = toIntPx(getContext(), FLOATING_BAR_MARGIN);
+		content.getLocationOnScreen(insetLoc1);
+		int contentLeft = insetLoc1[0];
+		int contentRight = contentLeft + content.getWidth();
+		nb.getLocationOnScreen(insetLoc2);
+		if (nb.isLeft()) out[0] = Math.max(0, insetLoc2[0] + nb.getWidth() + gap - contentLeft);
+		else out[1] = Math.max(0, contentRight - insetLoc2[0] + gap);
+		return true;
+	}
+
+	@Nullable
+	private ColorDrawable videoExitFade;
+
+	/**
+	 * Leaving fullscreen video relayouts the whole screen at once (bars back, the video pane
+	 * shrinking or going, tab content resizing, system bars returning). Covers the whole window
+	 * with black -- the colour fullscreen video sits on -- the instant that starts, and fades it
+	 * out once things have had a moment to settle, so the switch reads as one smooth fade rather
+	 * than a series of jumps.
+	 */
+	private void fadeInFromVideo() {
+		View decor = getWindow().getDecorView();
+		if (!decor.isLaidOut() || (decor.getWidth() == 0)) return;
+		ColorDrawable prev = videoExitFade;
+		if (prev != null) decor.getOverlay().remove(prev);
+
+		ColorDrawable d = new ColorDrawable(Color.BLACK);
+		d.setBounds(0, 0, decor.getWidth(), decor.getHeight());
+		videoExitFade = d;
+		decor.getOverlay().add(d);
+
+		ValueAnimator anim = ValueAnimator.ofInt(255, 0);
+		anim.setStartDelay(120);
+		anim.setDuration(320);
+		anim.setInterpolator(new PathInterpolator(0.4f, 0f, 0.2f, 1f));
+		anim.addUpdateListener(v -> {
+			if (videoExitFade != d) {
+				v.cancel();
+				return;
+			}
+			d.setAlpha((int) v.getAnimatedValue());
+			decor.invalidate();
+		});
+		anim.addListener(new AnimatorListenerAdapter() {
+			@Override
+			public void onAnimationEnd(Animator animation) {
+				decor.getOverlay().remove(d);
+				if (videoExitFade == d) videoExitFade = null;
+			}
+		});
+		anim.start();
+	}
+
+	/** Back into video before the exit fade finished: drop it, it'd only dim the new video. */
+	private void cancelVideoExitFade() {
+		ColorDrawable d = videoExitFade;
+		if (d == null) return;
+		videoExitFade = null;
+		getWindow().getDecorView().getOverlay().remove(d);
+	}
+
+	/**
+	 * Shows or hides the nav bar with a fade instead of a snap. The bar stays genuinely VISIBLE
+	 * (and laid out) until its fade-out ends, so nothing laid out around it -- the content's
+	 * insets -- sees it go and come back mid-way. (body_layout's side padding goes by the bars'
+	 * hidden state instead, and switches at once, see syncSideNavInset().)
+	 * <p>
+	 * A bottom nav bar sharing its pill with the control panel: the control panel (and the floating
+	 * buttons sitting on it) move down into the nav bar's place as it fades, so the pill shrinks
+	 * smoothly from the top, and move up out of its way when it comes back.
+	 */
+	private void animateNavBar(boolean show) {
+		NavBarView nb = navBar;
+		if (nb == null) return;
+		// Just a fade, wherever the bar is: at the bottom it fades out of its pill row; on a side
+		// the tab content takes its room at once (see syncSideNavInset()), and the pill fading over
+		// it is smoother than one sliding across it.
+		float outX = 0f;
+
+		if (show) {
+			// Also brings back anything a hide cut short had already moved down part of the way.
+			glideAfterLayout(controlPanel, floatingButton, floatingButton2, floatingButton3,
+					floatingButton4);
+			animateBar(nb, true, outX, 0);
+			return;
+		}
+
+		if (nb.getVisibility() != VISIBLE) return;
+		ControlPanelView cp = controlPanel;
+		boolean moveDown = nb.isBottom() && (cp != null) && (cp.getVisibility() == VISIBLE)
+				&& nb.isLaidOut();
+		View[] followers = {cp, floatingButton, floatingButton2, floatingButton3, floatingButton4};
+
+		if (moveDown && (cp.getParent() instanceof View parent)
+				&& (cp.getLayoutParams() instanceof ConstraintLayout.LayoutParams clp)) {
+			// Once the nav bar is GONE, the control panel's bottom anchor becomes the bottom edge
+			// (less its gone-margin); the floating buttons sit on top of the control panel.
+			float dy = (parent.getHeight() - parent.getPaddingBottom() - clp.goneBottomMargin)
+					- cp.getBottom();
+			if (dy > 0f) {
+				for (View v : followers) {
+					if ((v != null) && (v.getVisibility() == VISIBLE)) slideBy(v, 0, dy);
+				}
+			}
+		}
+
+		animateBar(nb, false, outX, 0, () -> {
+			if (moveDown) {
+				// Laid out in its new place from this same frame on: drop the offset.
+				for (View v : followers) {
+					if (v != null) settleSlide(v);
+				}
+			}
+			refreshContentInsets();
+		});
+	}
+
+	private void animateBar(View v, boolean show, float outX, float outY) {
+		animateBar(v, show, outX, outY, null);
+	}
+
+	/**
+	 * Fades/slides {@code v} in (from {@code outX}/{@code outY}) or out (to them), and only makes it
+	 * GONE at the end of the hide -- unless the bars were shown again meanwhile.
+	 */
+	private void animateBar(View v, boolean show, float outX, float outY,
+													@Nullable Runnable onHidden) {
+		ViewPropertyAnimator anim = v.animate();
+		anim.cancel();
+
+		if (show) {
+			if (v.getVisibility() != VISIBLE) {
+				v.setAlpha(0f);
+				v.setTranslationX(outX);
+				v.setTranslationY(outY);
+				v.setVisibility(VISIBLE);
+			}
+			anim.alpha(1f).translationX(0f).translationY(0f).setDuration(BARS_ANIM_MS)
+					.setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f)).start();
+			return;
+		}
+
+		if (v.getVisibility() != VISIBLE) return;
+		if (!v.isLaidOut() || !v.isAttachedToWindow()) {
+			v.setVisibility(GONE);
+			if (onHidden != null) onHidden.run();
+			return;
+		}
+
+		anim.alpha(0f).translationX(outX).translationY(outY).setDuration(BARS_ANIM_MS)
+				.setInterpolator(new PathInterpolator(0.4f, 0f, 1f, 1f)).withEndAction(() -> {
+					if (barsHidden) v.setVisibility(GONE);
+					v.setAlpha(1f);
+					v.setTranslationX(0f);
+					v.setTranslationY(0f);
+					if (onHidden != null) onHidden.run();
+				}).start();
+	}
+
+	/**
+	 * Lets each of {@code views} glide from where it is now to wherever the next layout pass puts
+	 * it, rather than jumping there. Runs its own translation animator per view (see
+	 * {@link #slideBy}), so it never touches a view's {@code animate()} -- which the floating
+	 * buttons use for their own press/release scaling, and cancelling that would leave them stuck
+	 * enlarged -- and never suppresses the parent's layout the way ChangeBounds would.
+	 */
+	public void glideAfterLayout(View... views) {
+		View rootView = findViewById(R.id.main_activity);
+		if ((rootView == null) || !rootView.isLaidOut()) return;
+		int n = views.length;
+		float[] oldX = new float[n];
+		float[] oldY = new float[n];
+		boolean[] wasShown = new boolean[n];
+
+		for (int i = 0; i < n; i++) {
+			View v = views[i];
+			if (v == null) continue;
+			wasShown[i] = (v.getVisibility() == VISIBLE) && (v.getWidth() > 0);
+			oldX[i] = v.getLeft() + slideBase(v, true) + slideOffset(v, true);
+			oldY[i] = v.getTop() + slideBase(v, false) + slideOffset(v, false);
+		}
+
+		ViewTreeObserver vto = rootView.getViewTreeObserver();
+		vto.addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
+			@Override
+			public boolean onPreDraw() {
+				ViewTreeObserver o = rootView.getViewTreeObserver();
+				if (o.isAlive()) o.removeOnPreDrawListener(this);
+
+				for (int i = 0; i < n; i++) {
+					View v = views[i];
+					if ((v == null) || !wasShown[i] || (v.getVisibility() != VISIBLE)) continue;
+					float dx = oldX[i] - (v.getLeft() + slideBase(v, true));
+					float dy = oldY[i] - (v.getTop() + slideBase(v, false));
+					if ((Math.abs(dx) < 1f) && (Math.abs(dy) < 1f)) continue;
+					startSlide(v, dx, dy, 0f, 0f);
+				}
+
+				return true;
+			}
+		});
+	}
+
+	/** {@link #glideAfterLayout} for the floating buttons, e.g. around the control panel. */
+	public void glideFabsAfterLayout() {
+		glideAfterLayout(floatingButton, floatingButton2, floatingButton3, floatingButton4);
+	}
+
+	/** Slides {@code v} by (dx, dy) away from its resting translation, animated. */
+	private static void slideBy(View v, float dx, float dy) {
+		startSlide(v, slideOffset(v, true), slideOffset(v, false), dx, dy);
+	}
+
+	/** Ends any slide on {@code v}, putting it straight back at its resting translation. */
+	private static void settleSlide(View v) {
+		if (!(v.getTag(R.id.floating_bars) instanceof Slide s)) return;
+		v.setTag(R.id.floating_bars, null);
+		s.anim.cancel();
+		v.setTranslationX(s.baseX);
+		v.setTranslationY(s.baseY);
+	}
+
+	/**
+	 * Animates {@code v}'s offset from its resting translation (whatever it had before any slide of
+	 * ours began, e.g. where a floating button was dragged to) from one value to another. Keeps
+	 * the resting translation and the running animator in the view's tag.
+	 */
+	private static void startSlide(View v, float fromDx, float fromDy, float toDx, float toDy) {
+		Slide s;
+		if (v.getTag(R.id.floating_bars) instanceof Slide prev) {
+			prev.anim.cancel();
+			s = new Slide(prev.baseX, prev.baseY);
+		} else {
+			s = new Slide(v.getTranslationX(), v.getTranslationY());
+		}
+
+		ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
+		a.setDuration(BARS_ANIM_MS);
+		a.setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f));
+		a.addUpdateListener(va -> {
+			float f = (float) va.getAnimatedValue();
+			s.dx = fromDx + (toDx - fromDx) * f;
+			s.dy = fromDy + (toDy - fromDy) * f;
+			v.setTranslationX(s.baseX + s.dx);
+			v.setTranslationY(s.baseY + s.dy);
+			if ((f >= 1f) && (s.dx == 0f) && (s.dy == 0f) && (v.getTag(R.id.floating_bars) == s)) {
+				v.setTag(R.id.floating_bars, null);
+			}
+		});
+		s.anim = a;
+		v.setTag(R.id.floating_bars, s);
+		s.dx = fromDx;
+		s.dy = fromDy;
+		v.setTranslationX(s.baseX + fromDx);
+		v.setTranslationY(s.baseY + fromDy);
+		a.start();
+	}
+
+	private static float slideBase(View v, boolean x) {
+		if (v.getTag(R.id.floating_bars) instanceof Slide s) return x ? s.baseX : s.baseY;
+		return x ? v.getTranslationX() : v.getTranslationY();
+	}
+
+	private static float slideOffset(View v, boolean x) {
+		if (v.getTag(R.id.floating_bars) instanceof Slide s) return x ? s.dx : s.dy;
+		return 0f;
+	}
+
+	/** A running slide of a view: its resting translation, current offset, and animator. */
+	private static final class Slide {
+		final float baseX;
+		final float baseY;
+		float dx;
+		float dy;
+		ValueAnimator anim;
+
+		Slide(float baseX, float baseY) {
+			this.baseX = baseX;
+			this.baseY = baseY;
+		}
 	}
 
 	/**
@@ -1745,6 +2198,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		// listeners missed the layout change they needed, most notably a tab restored by the
 		// fragment manager across the recreate() that a theme or nav-bar-position change triggers.
 		body.getViewTreeObserver().addOnGlobalLayoutListener(this::refreshContentInsets);
+		body.getViewTreeObserver().addOnGlobalLayoutListener(this::syncSideNavInset);
 		// The soft keyboard shows over the bottom of the window without resizing it, hiding the
 		// floating buttons (e.g. while typing a YouTube search) -- keep them above it instead.
 		body.getViewTreeObserver().addOnGlobalLayoutListener(this::liftFabsAboveKeyboard);

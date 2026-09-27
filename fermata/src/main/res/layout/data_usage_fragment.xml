@@ -2,13 +2,14 @@
 <!-- The Data Usage tab, see DataUsageFragment. One scrolling column: the usage ring with the
      limit figures, the settings chip, the Overall / Day / Week / Month switch with the period
      navigation, the bar chart, and the breakdown by category. Inflated with the Music tab's
-     palette (MusicPalette in music.xml), so both tabs share one look. -->
+     palette (MusicPalette in music.xml) for its cards and text, but no background of its own:
+     like the Fuel Log tab it shows the app's own background through, which is what the floating
+     nav bar's fade and the space around it blend into. -->
 <androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/data_usage_scroll"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/musicBackground"
     android:fillViewport="true">
 
     <LinearLayout

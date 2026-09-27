@@ -80,19 +80,21 @@ public class ControlPanelView extends ConstraintLayout
 	private static final byte MASK_SUPPRESSED = 4;
 	/** The vertical padding control_panel_view.xml gives the transport buttons, in dp. */
 	private static final int LAYOUT_BUTTON_PAD_V = 6;
-	/**
-	 * This control panel always uses the same black-scrim/white-icon look, regardless of the
-	 * currently selected app theme -- matching what most video players do over playback controls,
-	 * avoiding barely-visible controls (e.g. blue-on-white) that some themes would otherwise
-	 * produce, and keeping the icons legible now that the panel floats as a translucent overlay
-	 * over arbitrary tab content instead of sitting on a flat, themed background.
-	 */
-	private static final int VIDEO_MODE_BG_COLOR = 0xFF000000;
-	private static final int VIDEO_MODE_ICON_COLOR = 0xFFFFFFFF;
 	@IdRes
 	private static final int[] ICON_IDS = {R.id.show_hide_bars_icon, R.id.control_menu_button_icon,
 			R.id.control_prev, R.id.control_rw, R.id.control_play_pause, R.id.control_ff,
 			R.id.control_next};
+	/** Every tappable part of the panel, given the same pill-shaped press/focus highlight. */
+	@IdRes
+	private static final int[] BUTTON_IDS = {R.id.show_hide_bars, R.id.control_menu_button,
+			R.id.control_prev, R.id.control_rw, R.id.control_play_pause, R.id.control_ff,
+			R.id.control_next};
+	/**
+	 * Fullscreen video keeps the panel's old look, whatever the theme: a black scrim fading up into
+	 * the video, white icons, edge to edge -- not a floating pill. See {@link #setVideoLook}.
+	 */
+	private static final int VIDEO_BG_COLOR = 0xFF000000;
+	private static final int VIDEO_ICON_COLOR = 0xFFFFFFFF;
 	/** The current-position/duration labels shown at the bottom corners of the seek bar. */
 	@IdRes
 	private static final int[] LABEL_IDS = {R.id.seek_time, R.id.seek_total};
@@ -108,6 +110,21 @@ public class ControlPanelView extends ConstraintLayout
 	private View gestureSource;
 	private TextView playbackTimer;
 	private long scrollStamp;
+	/**
+	 * The nav bar's own icon color: the panel no longer has a background of its own, it's drawn as
+	 * a row of the same floating pill as the nav bar ({@link FloatingBarsView}), in the nav bar's
+	 * background color, so its icons and labels use the nav bar's tint to match.
+	 */
+	private final int iconColor;
+	/** The padding the layout gave the panel; the pill look adds {@link #pillPadH}/{@link #pillPadTop}. */
+	private final int basePadTop;
+	private final int basePadBottom;
+	private final int pillPadH;
+	private final int pillPadTop;
+	private boolean videoLook;
+	/** The pill look's margins (see MainActivityDelegate#enableFloatingBars) while in the video look. */
+	@Nullable
+	private int[] pillMargins;
 
 	public ControlPanelView(Context context, AttributeSet attrs) {
 		super(context, attrs, R.attr.appControlPanelStyle);
@@ -120,13 +137,23 @@ public class ControlPanelView extends ConstraintLayout
 		textAppearance = ta.getResourceId(R.styleable.ControlPanelView_textAppearance, 0);
 		ta.recycle();
 
-		// Always uses the same translucent black-scrim/white-icon look as fullscreen video playback,
-		// regardless of the selected app theme or whether video mode is active -- so tab content (or
-		// the "now playing" mini control panel shown while browsing) renders underneath/through it,
-		// with transport icons that stay legible over arbitrary content colors.
-		setBackground(buildScrimGradient(VIDEO_MODE_BG_COLOR, true));
-		setIconTint(VIDEO_MODE_ICON_COLOR);
-		setLabelColor(VIDEO_MODE_ICON_COLOR);
+		// No background (and so no elevation shadow of its own): FloatingBarsView paints the pill
+		// behind it, shared with the nav bar when that's at the bottom.
+		setBackground(null);
+		iconColor = NavBarView.resolveStyleColors(context)[0];
+		setIconTint(iconColor);
+		setLabelColor(iconColor);
+		basePadTop = getPaddingTop();
+		basePadBottom = getPaddingBottom();
+		// Keeps the corner buttons (show/hide bars, menu) and their labels as clear of the pill's
+		// rounded edge as the transport buttons below them are.
+		pillPadH = toIntPx(context, 14);
+		pillPadTop = toIntPx(context, 6);
+		applyLookPadding();
+		for (int id : BUTTON_IDS) {
+			View b = findViewById(id);
+			if (b != null) b.setBackgroundResource(R.drawable.pill_focusable_bg);
+		}
 
 		MainActivityDelegate a = getActivity();
 		a.addBroadcastListener(this, ACTIVITY_DESTROY);
@@ -149,6 +176,59 @@ public class ControlPanelView extends ConstraintLayout
 		int transparent = color & 0x00FFFFFF;
 		int[] stops = fadeTowardBottom ? new int[]{transparent, color} : new int[]{color, transparent};
 		return new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, stops);
+	}
+
+	public boolean isVideoLook() {
+		return videoLook;
+	}
+
+	/**
+	 * Switches between the floating-pill look (no background of its own, the nav bar's colors,
+	 * inset from the screen edges) and the fullscreen-video look (black scrim, white icons, edge to
+	 * edge). FloatingBarsView leaves the panel out of the pill while it's in the video look.
+	 */
+	private void setVideoLook(boolean video) {
+		if (video == videoLook) return;
+		videoLook = video;
+		setBackground(video ? buildScrimGradient(VIDEO_BG_COLOR, true) : null);
+		int c = labelColor();
+		setIconTint(c);
+		setLabelColor(c);
+
+		if (getLayoutParams() instanceof ConstraintLayout.LayoutParams lp) {
+			if (video) {
+				pillMargins = new int[]{lp.leftMargin, lp.rightMargin, lp.getMarginStart(),
+						lp.getMarginEnd(), lp.bottomMargin, lp.goneBottomMargin, lp.goneStartMargin,
+						lp.goneEndMargin};
+				lp.leftMargin = lp.rightMargin = lp.bottomMargin = 0;
+				lp.setMarginStart(0);
+				lp.setMarginEnd(0);
+				lp.goneBottomMargin = lp.goneStartMargin = lp.goneEndMargin = 0;
+			} else if (pillMargins != null) {
+				int[] m = pillMargins;
+				lp.leftMargin = m[0];
+				lp.rightMargin = m[1];
+				lp.setMarginStart(m[2]);
+				lp.setMarginEnd(m[3]);
+				lp.bottomMargin = m[4];
+				lp.goneBottomMargin = m[5];
+				lp.goneStartMargin = m[6];
+				lp.goneEndMargin = m[7];
+			}
+			setLayoutParams(lp);
+		}
+
+		applyLookPadding();
+		computeSize();
+	}
+
+	private void applyLookPadding() {
+		if (videoLook) setPadding(0, basePadTop, 0, basePadBottom);
+		else setPadding(pillPadH, basePadTop + pillPadTop, pillPadH, basePadBottom);
+	}
+
+	private int labelColor() {
+		return videoLook ? VIDEO_ICON_COLOR : iconColor;
 	}
 
 	/** Retints the transport/menu icons, overriding the tint the theme applied at inflate time. */
@@ -223,7 +303,7 @@ public class ControlPanelView extends ConstraintLayout
 		// grow into each other -- scale it with the panel instead, and give a bit more of it than
 		// the layout does.
 		int btnPadV = Math.min(toIntPx(ctx, Math.round(8 * scale)), Math.max(0, buttonSize / 4));
-		int cornerPad = toIntPx(ctx, Math.round(3 * scale));
+		int cornerPad = toIntPx(ctx, Math.round(5 * scale));
 		// The glyphs are drawn fitCenter inside their box, so padding alone would shrink them.
 		// Grow each box (and the panel with it) by exactly the padding added on top of what the
 		// layout already had, so the extra room lands around the icons and they stay their old size.
@@ -260,7 +340,7 @@ public class ControlPanelView extends ConstraintLayout
 		}
 
 		setHeight(R.id.control_next, buttonSize);
-		getLayoutParams().height = panelSize;
+		getLayoutParams().height = panelSize + (videoLook ? 0 : pillPadTop);
 	}
 
 	private void setIconPadding(int btnPadH, int btnPadV, int cornerPad) {
@@ -282,10 +362,10 @@ public class ControlPanelView extends ConstraintLayout
 		t.setTextAppearance(textAppearance);
 		t.setTextSize(COMPLEX_UNIT_PX, size);
 		// setTextAppearance() above carries its own android:textColor (the theme's normal
-		// textColorPrimary), silently overwriting the constructor's setLabelColor(VIDEO_MODE_ICON_COLOR)
+		// textColorPrimary), silently overwriting the constructor's setLabelColor(iconColor)
 		// every time this runs (on bind, and again on every control-panel-size change) -- which is
-		// why seek_time/seek_total kept showing the theme's own color instead of staying white.
-		t.setTextColor(VIDEO_MODE_ICON_COLOR);
+		// why seek_time/seek_total kept showing the theme's own color instead of matching the icons.
+		t.setTextColor(labelColor());
 	}
 
 	private void setSize(@IdRes int id, int size) {
@@ -332,6 +412,11 @@ public class ControlPanelView extends ConstraintLayout
 			return;
 		}
 
+		// Deliberately not animated: this is the Music tab coming or going, which has its own
+		// entrance/exit animation; the panel fading on top of that only fought with it.
+		animate().cancel();
+		setAlpha(1f);
+
 		if (suppressed) {
 			mask |= MASK_SUPPRESSED;
 			if ((mask & MASK_VIDEO_MODE) == 0) super.setVisibility(GONE);
@@ -371,7 +456,14 @@ public class ControlPanelView extends ConstraintLayout
 			mask |= MASK_VISIBLE;
 			if ((mask & (MASK_VIDEO_MODE | MASK_SUPPRESSED)) != 0) return;
 
-			super.setVisibility(VISIBLE);
+			if (getVisibility() != VISIBLE) {
+				// Fades in, while the floating buttons sitting on it glide up out of its way.
+				a.glideFabsAfterLayout();
+				fadeIn(this, true);
+			} else {
+				animate().cancel();
+				setAlpha(1f);
+			}
 
 			if (a.getPrefs().getHideBarsPref(a)) {
 				a.setBarsHidden(true);
@@ -379,7 +471,7 @@ public class ControlPanelView extends ConstraintLayout
 			}
 		} else {
 			mask &= ~MASK_VISIBLE;
-			super.setVisibility(GONE);
+			hideAnimated(a);
 			a.getFloatingButton().setVisibility(VISIBLE);
 
 			if (a.isBarsHidden()) {
@@ -396,6 +488,7 @@ public class ControlPanelView extends ConstraintLayout
 		MainActivityDelegate a = getActivity();
 		hideTimer = null;
 		mask |= MASK_VIDEO_MODE;
+		setVideoLook(true);
 		a.setBarsHidden(true);
 		setShowHideBarsIcon(a);
 		// The show_hide_bars_icon toggle (whose only purpose is revealing the system nav bar) is
@@ -469,6 +562,7 @@ public class ControlPanelView extends ConstraintLayout
 		MainActivityDelegate a = getActivity();
 		hideTimer = null;
 		mask &= ~MASK_VIDEO_MODE;
+		setVideoLook(false);
 		a.getFloatingButton().setVisibility(VISIBLE);
 		findViewById(R.id.show_hide_bars).setVisibility(VISIBLE);
 		findViewById(R.id.show_hide_bars).setClickable(true);
@@ -629,6 +723,28 @@ public class ControlPanelView extends ConstraintLayout
 				super.setVisibility(GONE);
 				notifyControlPanelVisibility();
 			} else v.setVisibility(GONE);
+		}).start();
+	}
+
+	/**
+	 * Fades the panel out and only then makes it GONE (the floating buttons gliding down as it
+	 * goes) -- unless something showed it again meanwhile, or video mode took it over.
+	 */
+	private void hideAnimated(MainActivityDelegate a) {
+		animate().cancel();
+		if ((getVisibility() != VISIBLE) || !isLaidOut() || !isAttachedToWindow()) {
+			super.setVisibility(GONE);
+			setAlpha(1f);
+			return;
+		}
+		animate().alpha(0f).setDuration(FADE_DURATION).withEndAction(() -> {
+			if ((mask & (MASK_VISIBLE | MASK_VIDEO_MODE)) == 0) {
+				a.glideFabsAfterLayout();
+				super.setVisibility(GONE);
+				notifyControlPanelVisibility();
+				a.refreshContentInsets();
+			}
+			setAlpha(1f);
 		}).start();
 	}
 

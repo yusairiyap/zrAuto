@@ -109,6 +109,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private final Runnable progressTask = this::updateProgress;
 	private ViewGroup content;
 	private ImageView bg;
+	// The background layers extended past the tab's edges, see extendBackground().
+	@Nullable
+	private View[] behind;
+	private final int[] extLoc = new int[2];
+	private final int[] extLoc2 = new int[2];
 	private ImageView art;
 	private LoadingDimView loading;
 	private View playLoading;
@@ -205,6 +210,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		MainActivityDelegate a = getActivityDelegate();
 		content = view.findViewById(R.id.music_content);
 		bg = view.findViewById(R.id.music_bg);
+		behind = new View[]{view.findViewById(R.id.music_backdrop), bg,
+				view.findViewById(R.id.music_scrim)};
 		art = view.findViewById(R.id.music_art);
 		loading = view.findViewById(R.id.music_loading);
 		title = view.findViewById(R.id.music_track_title);
@@ -845,45 +852,101 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	 * first is animated rather than jumping.
 	 */
 	private final ViewTreeObserver.OnPreDrawListener insetSync = () -> {
+		extendBackground();
 		syncInsets();
 		return true;
 	};
 	private final int[] insets = new int[2];
+	private final int[] sideInsets = new int[2];
 	@Nullable
 	private ValueAnimator insetAnim;
 	private boolean insetsSet;
 	private int insetTop;
 	private int insetBottom;
+	private int insetLeft;
+	private int insetRight;
+
+	/** The blurred cover runs on behind a side nav bar's floating pill; see extendBackground(). */
+	@Override
+	public boolean drawsBehindSideNavBar() {
+		return true;
+	}
+
+	/**
+	 * With a left/right nav bar, body_layout pads every tab clear of the floating pill -- this one
+	 * included, so switching tabs never resizes anything (which would visibly stretch the tabs
+	 * being crossfaded). Only the background layers (backdrop colour, blurred cover, scrim) reach
+	 * out past this tab's own edges to body_layout's, under the pill; the tab-switch crossfade then
+	 * fades them in over there along with the rest of the tab. body_layout and the containers
+	 * between it and this tab don't clip them (see MainActivityDelegate#enableFloatingBars).
+	 */
+	private void extendBackground() {
+		View[] layers = behind;
+		View root = getView();
+		if ((layers == null) || (root == null) || !root.isAttachedToWindow()) return;
+		View body = getActivityDelegate().getBody();
+		int left = 0;
+		int right = 0;
+
+		if ((body != null) && body.isAttachedToWindow()) {
+			root.getLocationOnScreen(extLoc);
+			body.getLocationOnScreen(extLoc2);
+			left = Math.max(0, extLoc[0] - extLoc2[0]);
+			right = Math.max(0, (extLoc2[0] + body.getWidth()) - (extLoc[0] + root.getWidth()));
+		}
+
+		for (View v : layers) {
+			if ((v == null) || !(v.getLayoutParams() instanceof ViewGroup.MarginLayoutParams lp)) continue;
+			if ((lp.leftMargin == -left) && (lp.rightMargin == -right)) continue;
+			lp.leftMargin = -left;
+			lp.rightMargin = -right;
+			lp.setMarginStart(-left);
+			lp.setMarginEnd(-right);
+			v.setLayoutParams(lp);
+		}
+	}
 
 	private void syncInsets() {
 		View c = content;
 		if ((c == null) || !c.isShown()) return;
-		if (!getActivityDelegate().computeContentInsets(c, insets)) return;
+		MainActivityDelegate a = getActivityDelegate();
+		if (!a.computeContentInsets(c, insets) || !a.computeSideInsets(c, sideInsets)) return;
 		int top = insets[0];
 		int bottom = insets[1];
-		if (insetsSet && (top == insetTop) && (bottom == insetBottom)) return;
+		int left = sideInsets[0];
+		int right = sideInsets[1];
+		if (insetsSet && (top == insetTop) && (bottom == insetBottom) && (left == insetLeft)
+				&& (right == insetRight)) {
+			return;
+		}
 		insetTop = top;
 		insetBottom = bottom;
+		insetLeft = left;
+		insetRight = right;
 		if (insetAnim != null) insetAnim.cancel();
 
 		if (!insetsSet) {
 			insetsSet = true;
-			c.setPadding(c.getPaddingLeft(), top, c.getPaddingRight(), bottom);
+			c.setPadding(left, top, right, bottom);
 			return;
 		}
 
 		int fromTop = c.getPaddingTop();
 		int fromBottom = c.getPaddingBottom();
-		ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
-		a.setDuration(250);
-		a.setInterpolator(new DecelerateInterpolator());
-		a.addUpdateListener(v -> {
+		int fromLeft = c.getPaddingLeft();
+		int fromRight = c.getPaddingRight();
+		ValueAnimator anim = ValueAnimator.ofFloat(0f, 1f);
+		anim.setDuration(250);
+		anim.setInterpolator(new DecelerateInterpolator());
+		anim.addUpdateListener(v -> {
 			float f = (float) v.getAnimatedValue();
-			c.setPadding(c.getPaddingLeft(), Math.round(fromTop + (top - fromTop) * f),
-					c.getPaddingRight(), Math.round(fromBottom + (bottom - fromBottom) * f));
+			c.setPadding(Math.round(fromLeft + (left - fromLeft) * f),
+					Math.round(fromTop + (top - fromTop) * f),
+					Math.round(fromRight + (right - fromRight) * f),
+					Math.round(fromBottom + (bottom - fromBottom) * f));
 		});
-		a.start();
-		insetAnim = a;
+		anim.start();
+		insetAnim = anim;
 	}
 
 	/**

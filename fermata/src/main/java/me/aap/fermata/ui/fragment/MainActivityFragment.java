@@ -34,6 +34,16 @@ public abstract class MainActivityFragment extends ActivityFragment {
 		return getActivityDelegate().getNavBarMediator();
 	}
 
+	/**
+	 * With a left/right nav bar, body_layout pads every tab clear of the floating nav pill (see
+	 * MainActivityDelegate#syncSideNavInset). A tab returning true here extends its own background
+	 * out under the pill past that padding itself (body_layout doesn't clip it there), so the pill
+	 * doesn't lay the usual edge fade over it either.
+	 */
+	public boolean drawsBehindSideNavBar() {
+		return false;
+	}
+
 	@Override
 	public FloatingButton.Mediator getFloatingButtonMediator() {
 		return FloatingButtonMediator.instance;
