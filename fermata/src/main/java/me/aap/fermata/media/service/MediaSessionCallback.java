@@ -759,8 +759,29 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onSkipToPrevious() {
+		clearRepeatOneOnSkip();
 		playerTask.cancel();
 		playerTask = skipTo(false, false);
+	}
+
+	/**
+	 * An explicit skip (next/previous) turns Repeat One off, so the track actually changes -- as
+	 * YouTube's own Repeat One already did. Left on, a skip resolved to the very same track: music
+	 * mode's queue replayed it (or, for YouTube, sat on the loading cover) instead of moving on.
+	 * Covers the session's item and, for YouTube in music mode, the queue track behind it.
+	 */
+	private void clearRepeatOneOnSkip() {
+		clearRepeatOne(getCurrentItem());
+		clearRepeatOne(me.aap.fermata.addon.music.MusicPlayer.getCurrentTrack(this));
+	}
+
+	private static void clearRepeatOne(@Nullable PlayableItem i) {
+		if (i == null) return;
+		BrowsableItemPrefs p = i.getParent().getPrefs();
+		if (i.getId().equals(p.getRepeatItemPref())) {
+			DiagnosticLog.log("TRANSPORT", "skip turns Repeat One off", "item=" + i);
+			p.setRepeatItemPref(null);
+		}
 	}
 
 	public void onSkipToPreviousFolder() {
@@ -770,6 +791,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onSkipToNext() {
+		clearRepeatOneOnSkip();
 		playerTask.cancel();
 		playerTask = skipTo(true, false);
 	}

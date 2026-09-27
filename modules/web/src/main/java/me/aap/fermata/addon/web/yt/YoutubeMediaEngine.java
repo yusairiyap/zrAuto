@@ -491,6 +491,30 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		userPickedTime = 0;
 	}
 
+	/**
+	 * Plays the current video again from the start, in place -- Repeat One, whether YouTube's own
+	 * (the video player's menu) or the Music tab's (the queue's Repeat One, which resolves "next" to
+	 * this very track, see prepare()). A navigation to the video the page is already on does
+	 * nothing at all, which left music mode's Repeat One stuck on the ended video.
+	 */
+	private void replayCurrent() {
+		lastActivePlayTime = System.currentTimeMillis();
+		lastPausedTime = 0;
+		playRetries = 0;
+		blockedWidth = 0;
+		blockedHeight = 0;
+		// Also armed as a pendingVideoId correction target: if YouTube's own autonav wins the race
+		// on this same "ended" moment (see YoutubeWebView's capture-phase interceptors -- best
+		// effort, not a guarantee) and jumps to a different video before this lightweight seek+play
+		// takes effect, playing() above will notice the mismatch against currentVideoId and force a
+		// full reload back to it instead of silently looping the wrong video.
+		if (currentVideoId != null) {
+			web.getAddon().setPendingVideoId(currentVideoId);
+			pendingCorrections = 0;
+		}
+		web.replay();
+	}
+
 	void ended() {
 		// Repeat One loops whatever video is currently playing, regardless of whether it's part of a
 		// Favorites/Playlist queue (see YoutubeAddon#isRepeatOneEnabled()) -- handled here directly,
@@ -505,21 +529,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			// playback originally started, possibly minutes ago) and treats that pause as genuine,
 			// calling cb.onPause() instead of retrying -- which is exactly why the loop would play once
 			// and then just sit there paused instead of looping again.
-			lastActivePlayTime = System.currentTimeMillis();
-			lastPausedTime = 0;
-			playRetries = 0;
-			blockedWidth = 0;
-			blockedHeight = 0;
-			// Also armed as a pendingVideoId correction target: if YouTube's own autonav wins the race
-			// on this same "ended" moment (see YoutubeWebView's capture-phase interceptors -- best
-			// effort, not a guarantee) and jumps to a different video before this lightweight seek+play
-			// takes effect, playing() above will notice the mismatch against currentVideoId and force a
-			// full reload back to it instead of silently looping the wrong video.
-			if (currentVideoId != null) {
-				web.getAddon().setPendingVideoId(currentVideoId);
-				pendingCorrections = 0;
-			}
-			web.replay();
+			replayCurrent();
 			return;
 		}
 
@@ -815,6 +825,13 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			pendingCorrections = 0;
 			// From 0:00, not wherever YouTube would resume it -- see YoutubeWebView#loadVideo.
 			web.afterAudioFadeOut(() -> web.loadVideo(queueVideoId, true));
+		} else if ((queueVideoId != null) && queueVideoId.equals(currentVideoId) &&
+				!web.getAddon().isRepeatOneEnabled()) {
+			// The queue resolved to the video that's on the page already -- the Music tab's Repeat One
+			// (or the same video queued twice): replay it in place, see replayCurrent().
+			Log.d("prepare(): replaying ", queueVideoId, " (", source.getName(), ")");
+			web.getAddon().setQueueItem(source);
+			replayCurrent();
 		} else if (queueVideoId != null) {
 			// Reached from MediaSessionCallback.skipTo()/engineEnded() when queueAwareNextPlayable()/
 			// PrevPlayable() below resolved a real sibling from the app's own Favorites/Playlist --
