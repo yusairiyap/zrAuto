@@ -918,6 +918,7 @@ public class MainActivityDelegate extends ActivityDelegate
 
 		if (videoMode) {
 			this.videoMode = true;
+			cancelVideoExitFade();
 			setSystemUiVisibility();
 			keepScreenOn(true);
 			cp.enableVideoMode();
@@ -1221,6 +1222,10 @@ public class MainActivityDelegate extends ActivityDelegate
 		anim.setDuration(320);
 		anim.setInterpolator(new PathInterpolator(0.4f, 0f, 0.2f, 1f));
 		anim.addUpdateListener(v -> {
+			if (videoExitFade != d) {
+				v.cancel();
+				return;
+			}
 			d.setAlpha((int) v.getAnimatedValue());
 			decor.invalidate();
 		});
@@ -1232,6 +1237,14 @@ public class MainActivityDelegate extends ActivityDelegate
 			}
 		});
 		anim.start();
+	}
+
+	/** Back into video before the exit fade finished: drop it, it'd only dim the new video. */
+	private void cancelVideoExitFade() {
+		ColorDrawable d = videoExitFade;
+		if (d == null) return;
+		videoExitFade = null;
+		getWindow().getDecorView().getOverlay().remove(d);
 	}
 
 	/**
