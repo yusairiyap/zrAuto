@@ -1134,13 +1134,15 @@ public class MainActivityDelegate extends ActivityDelegate
 			b.setPadding(left, b.getPaddingTop(), right, b.getPaddingBottom());
 			return;
 		}
+		int toLeft = left;
+		int toRight = right;
 		ValueAnimator anim = ValueAnimator.ofFloat(0f, 1f);
 		anim.setDuration(BARS_ANIM_MS);
 		anim.setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f));
 		anim.addUpdateListener(v -> {
 			float f = (float) v.getAnimatedValue();
-			b.setPadding(Math.round(fromLeft + (left - fromLeft) * f), b.getPaddingTop(),
-					Math.round(fromRight + (right - fromRight) * f), b.getPaddingBottom());
+			b.setPadding(Math.round(fromLeft + (toLeft - fromLeft) * f), b.getPaddingTop(),
+					Math.round(fromRight + (toRight - fromRight) * f), b.getPaddingBottom());
 		});
 		sideInsetAnim = anim;
 		anim.start();
