@@ -80,15 +80,6 @@ public class ControlPanelView extends ConstraintLayout
 	private static final byte MASK_SUPPRESSED = 4;
 	/** The vertical padding control_panel_view.xml gives the transport buttons, in dp. */
 	private static final int LAYOUT_BUTTON_PAD_V = 6;
-	/**
-	 * This control panel always uses the same black-scrim/white-icon look, regardless of the
-	 * currently selected app theme -- matching what most video players do over playback controls,
-	 * avoiding barely-visible controls (e.g. blue-on-white) that some themes would otherwise
-	 * produce, and keeping the icons legible now that the panel floats as a translucent overlay
-	 * over arbitrary tab content instead of sitting on a flat, themed background.
-	 */
-	private static final int VIDEO_MODE_BG_COLOR = 0xFF000000;
-	private static final int VIDEO_MODE_ICON_COLOR = 0xFFFFFFFF;
 	@IdRes
 	private static final int[] ICON_IDS = {R.id.show_hide_bars_icon, R.id.control_menu_button_icon,
 			R.id.control_prev, R.id.control_rw, R.id.control_play_pause, R.id.control_ff,
@@ -108,6 +99,12 @@ public class ControlPanelView extends ConstraintLayout
 	private View gestureSource;
 	private TextView playbackTimer;
 	private long scrollStamp;
+	/**
+	 * The nav bar's own icon color: the panel no longer has a background of its own, it's drawn as
+	 * a row of the same floating pill as the nav bar ({@link FloatingBarsView}), in the nav bar's
+	 * background color, so its icons and labels use the nav bar's tint to match.
+	 */
+	private final int iconColor;
 
 	public ControlPanelView(Context context, AttributeSet attrs) {
 		super(context, attrs, R.attr.appControlPanelStyle);
@@ -120,13 +117,12 @@ public class ControlPanelView extends ConstraintLayout
 		textAppearance = ta.getResourceId(R.styleable.ControlPanelView_textAppearance, 0);
 		ta.recycle();
 
-		// Always uses the same translucent black-scrim/white-icon look as fullscreen video playback,
-		// regardless of the selected app theme or whether video mode is active -- so tab content (or
-		// the "now playing" mini control panel shown while browsing) renders underneath/through it,
-		// with transport icons that stay legible over arbitrary content colors.
-		setBackground(buildScrimGradient(VIDEO_MODE_BG_COLOR, true));
-		setIconTint(VIDEO_MODE_ICON_COLOR);
-		setLabelColor(VIDEO_MODE_ICON_COLOR);
+		// No background (and so no elevation shadow of its own): FloatingBarsView paints the pill
+		// behind it, shared with the nav bar when that's at the bottom.
+		setBackground(null);
+		iconColor = NavBarView.resolveStyleColors(context)[0];
+		setIconTint(iconColor);
+		setLabelColor(iconColor);
 
 		MainActivityDelegate a = getActivity();
 		a.addBroadcastListener(this, ACTIVITY_DESTROY);
@@ -282,10 +278,10 @@ public class ControlPanelView extends ConstraintLayout
 		t.setTextAppearance(textAppearance);
 		t.setTextSize(COMPLEX_UNIT_PX, size);
 		// setTextAppearance() above carries its own android:textColor (the theme's normal
-		// textColorPrimary), silently overwriting the constructor's setLabelColor(VIDEO_MODE_ICON_COLOR)
+		// textColorPrimary), silently overwriting the constructor's setLabelColor(iconColor)
 		// every time this runs (on bind, and again on every control-panel-size change) -- which is
-		// why seek_time/seek_total kept showing the theme's own color instead of staying white.
-		t.setTextColor(VIDEO_MODE_ICON_COLOR);
+		// why seek_time/seek_total kept showing the theme's own color instead of matching the icons.
+		t.setTextColor(iconColor);
 	}
 
 	private void setSize(@IdRes int id, int size) {

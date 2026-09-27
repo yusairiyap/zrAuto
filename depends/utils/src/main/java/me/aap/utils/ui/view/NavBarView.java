@@ -194,12 +194,26 @@ public class NavBarView extends LinearLayoutCompat implements ActivityListener {
 		}
 	}
 
-	protected int getBgColor() {
+	public int getBgColor() {
 		return bgColor;
 	}
 
-	protected int getTint() {
+	public int getTint() {
 		return tint;
+	}
+
+	/**
+	 * The nav bar style's {@code tint} and {@code android:colorBackground}, as {@code {tint, bg}},
+	 * resolved the same way the constructor does -- for views that need to match the nav bar's
+	 * look (e.g. something sharing a floating pill with it) without holding a NavBarView instance.
+	 */
+	public static int[] resolveStyleColors(Context ctx) {
+		TypedArray ta = ctx.obtainStyledAttributes(null, R.styleable.NavBarView,
+				com.google.android.material.R.attr.bottomNavigationStyle, R.style.Theme_Utils_Base_NavBarStyle);
+		int t = ta.getColor(R.styleable.NavBarView_tint, Color.TRANSPARENT);
+		int bg = ta.getColor(R.styleable.NavBarView_android_colorBackground, Color.TRANSPARENT);
+		ta.recycle();
+		return new int[]{t, bg};
 	}
 
 	@Override

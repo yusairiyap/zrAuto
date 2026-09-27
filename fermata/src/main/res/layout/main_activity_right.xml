@@ -8,21 +8,6 @@
     android:background="?android:colorPrimary"
     android:layoutDirection="ltr">
 
-    <me.aap.fermata.ui.view.FermataNavBarView
-        android:id="@+id/nav_bar"
-        android:layout_width="wrap_content"
-        android:layout_height="0dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        app:labelVisibilityMode="selected"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_weight="1"
-        app:position="RIGHT" />
-
     <me.aap.utils.ui.view.ToolBarView
         android:id="@+id/tool_bar"
         android:layout_width="0dp"
@@ -45,6 +30,31 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/tool_bar"
         app:layout_constraintVertical_weight="1" />
+
+    <!-- Paints the floating pill behind nav_bar/control_panel and the fade under it; see FloatingBarsView. -->
+    <me.aap.fermata.ui.view.FloatingBarsView
+        android:id="@+id/floating_bars"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <me.aap.fermata.ui.view.FermataNavBarView
+        android:id="@+id/nav_bar"
+        android:layout_width="wrap_content"
+        android:layout_height="0dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        app:labelVisibilityMode="selected"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_weight="1"
+        app:position="RIGHT" />
 
     <me.aap.fermata.ui.view.ControlPanelView
         android:id="@+id/control_panel"

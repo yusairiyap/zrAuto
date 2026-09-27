@@ -159,6 +159,7 @@ import me.aap.fermata.ui.fragment.SubtitlesFragment;
 import me.aap.fermata.ui.fragment.YoutubeAlternativesFragment;
 import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.ui.view.ControlPanelView;
+import me.aap.fermata.ui.view.FermataNavBarView;
 import me.aap.fermata.ui.view.QuaternaryFloatingButton;
 import me.aap.fermata.ui.view.SecondaryFloatingButton;
 import me.aap.fermata.ui.view.TertiaryFloatingButton;
@@ -197,6 +198,8 @@ public class MainActivityDelegate extends ActivityDelegate
 	public static final String INTENT_ACTION_FINISH = "finish";
 	private static final String INTENT_SCHEME = "fermata";
 	private final HandlerExecutor handler = new HandlerExecutor(App.get().getHandler().getLooper());
+	/** How far the floating nav bar/control panel pill sits off the screen edges, in dp. */
+	private static final int FLOATING_BAR_MARGIN = 12;
 	private final NavBarMediator navBarMediator = new NavBarMediator();
 	private final FermataServiceUiBinder mediaServiceBinder;
 	private ToolBarView toolBar;
@@ -949,11 +952,10 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * everywhere (video mode included) so every tab renders behind the bars, for a cleaner look
 	 * with more of the screen visible, especially on Android Auto.
 	 * <p>
-	 * nav_bar is deliberately left completely alone, both its constraints and its appearance: it
-	 * keeps its own fully opaque look and is declared after body_layout in every layout variant
-	 * (bottom, left and right), so plain view-drawing order alone -- with no extra elevation
-	 * needed -- already puts it on top of body_layout's now-larger bounds. body_layout extending
-	 * geometrically behind it is invisible in practice since nav_bar is never translucent.
+	 * nav_bar and control_panel float over it as a pill -- see {@link #enableFloatingBars}. Both,
+	 * and the floating_bars view that paints the pill, are declared after body_layout in every
+	 * layout variant (bottom, left and right), so plain view-drawing order alone -- with no extra
+	 * elevation needed -- puts them on top of body_layout's now-larger bounds.
 	 * <p>
 	 * This deliberately does not go through {@code ConstraintSet}: cloning one captures every
 	 * child's visibility, alpha, scale and translation as well, and applying it back stomps all of
@@ -1015,6 +1017,94 @@ public class MainActivityDelegate extends ActivityDelegate
 		int c = MaterialColors.getColor(getContext(), androidx.appcompat.R.attr.colorPrimary,
 				Color.BLACK);
 		tbv.setBackground(ControlPanelView.buildScrimGradient(c, false));
+		enableFloatingBars();
+	}
+
+	/**
+	 * Detaches nav_bar and control_panel from the screen edges so they float as a pill (painted
+	 * behind them by {@link me.aap.fermata.ui.view.FloatingBarsView}), and lets the tab content
+	 * run behind a side nav bar too, not only a bottom one.
+	 * <p>
+	 * Bottom nav bar: both bars share the same side margins, and control_panel sits directly on
+	 * top of nav_bar, so together they read as one two-row pill. When nav_bar is hidden (bars
+	 * hidden, e.g. over a video), control_panel's gone-margin keeps it floating off the bottom edge.
+	 * <p>
+	 * Left/right nav bar: nav_bar is a vertical pill along its side and control_panel a separate
+	 * pill along the bottom of the remaining width -- both still follow the one nav-bar position
+	 * setting. body_layout now spans the full width behind the side pill; its own horizontal
+	 * padding ({@link #syncSideNavInset}) keeps the tab content itself clear of the pill.
+	 */
+	private void enableFloatingBars() {
+		View body = findViewById(R.id.body_layout);
+		View cp = findViewById(R.id.control_panel);
+		if (!(navBar instanceof FermataNavBarView nb) || (body == null) || (cp == null)) return;
+		if (!(body.getLayoutParams() instanceof ConstraintLayout.LayoutParams blp)
+				|| !(nb.getLayoutParams() instanceof ConstraintLayout.LayoutParams nlp)
+				|| !(cp.getLayoutParams() instanceof ConstraintLayout.LayoutParams clp)) return;
+
+		int m = toIntPx(getContext(), FLOATING_BAR_MARGIN);
+		int pos = getPrefs().getNavBarPosPref(this);
+
+		if (pos == NavBarView.POSITION_BOTTOM) {
+			setHorizontalMargins(nlp, m, m);
+			nlp.bottomMargin = m;
+			setHorizontalMargins(clp, m, m);
+			clp.width = 0;
+			clp.goneBottomMargin = m;
+		} else {
+			nlp.topMargin = m;
+			nlp.bottomMargin = m;
+			if (pos == NavBarView.POSITION_LEFT) {
+				setHorizontalMargins(nlp, m, 0);
+				blp.startToEnd = UNSET;
+				blp.startToStart = PARENT_ID;
+				clp.goneStartMargin = m;
+			} else {
+				setHorizontalMargins(nlp, 0, m);
+				blp.endToStart = UNSET;
+				blp.endToEnd = PARENT_ID;
+				clp.goneEndMargin = m;
+			}
+			setHorizontalMargins(clp, m, m);
+			clp.bottomMargin = m;
+			body.setLayoutParams(blp);
+		}
+
+		nb.setLayoutParams(nlp);
+		cp.setLayoutParams(clp);
+		nb.matchConstraints();
+	}
+
+	private static void setHorizontalMargins(ConstraintLayout.LayoutParams lp, int start, int end) {
+		// Every main_activity layout is forced LTR, so start/end and left/right are the same thing.
+		lp.setMarginStart(start);
+		lp.setMarginEnd(end);
+		lp.leftMargin = start;
+		lp.rightMargin = end;
+	}
+
+	/**
+	 * With a side nav bar, body_layout spans the full width behind the floating pill (so the
+	 * background and the fade continue under it), but the tab content itself is kept clear of it
+	 * via body_layout's horizontal padding, sized to how far the pill actually reaches into
+	 * body_layout -- or none at all while the nav bar is hidden (e.g. fullscreen video). Nothing in
+	 * a tab scrolls horizontally, so unlike a bottom bar there is nothing to scroll underneath it.
+	 */
+	private void syncSideNavInset() {
+		BodyLayout b = body;
+		NavBarView nb = navBar;
+		if ((b == null) || (nb == null)) return;
+		int left = 0;
+		int right = 0;
+
+		if ((nb.getVisibility() == VISIBLE) && (nb.getWidth() > 0)) {
+			int gap = toIntPx(getContext(), FLOATING_BAR_MARGIN);
+			if (nb.isLeft()) left = Math.max(0, nb.getRight() - b.getLeft() + gap);
+			else if (nb.isRight()) right = Math.max(0, b.getRight() - nb.getLeft() + gap);
+		}
+
+		if ((b.getPaddingLeft() == left) && (b.getPaddingRight() == right)) return;
+		b.setPadding(left, b.getPaddingTop(), right, b.getPaddingBottom());
 	}
 
 	/**
@@ -1745,6 +1835,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		// listeners missed the layout change they needed, most notably a tab restored by the
 		// fragment manager across the recreate() that a theme or nav-bar-position change triggers.
 		body.getViewTreeObserver().addOnGlobalLayoutListener(this::refreshContentInsets);
+		body.getViewTreeObserver().addOnGlobalLayoutListener(this::syncSideNavInset);
 		// The soft keyboard shows over the bottom of the window without resizing it, hiding the
 		// floating buttons (e.g. while typing a YouTube search) -- keep them above it instead.
 		body.getViewTreeObserver().addOnGlobalLayoutListener(this::liftFabsAboveKeyboard);
