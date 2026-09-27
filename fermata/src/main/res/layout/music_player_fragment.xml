@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Music tab, portrait/phone: the cover centred above the track info and controls. The landscape variant (tablets on their side, Android Auto) puts the cover on the right instead; both share every id, see MusicPlayerFragment. -->
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<me.aap.fermata.ui.view.OverflowFrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/music_root"
     android:layout_width="match_parent"
@@ -117,4 +117,4 @@
         android:visibility="gone" />
 
     <include layout="@layout/music_queue_panel" />
-</FrameLayout>
+</me.aap.fermata.ui.view.OverflowFrameLayout>

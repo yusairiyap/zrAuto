@@ -1105,6 +1105,8 @@ public class MainActivityDelegate extends ActivityDelegate
 			// background out under it (see MainActivityFragment#drawsBehindSideNavBar): don't clip
 			// that at body_layout's padding, nor at the containers in between.
 			if (body instanceof ViewGroup bg) {
+				// Both: clipChildren would still clip each child to its own (padded) bounds.
+				bg.setClipChildren(false);
 				bg.setClipToPadding(false);
 				for (int id : new int[]{R.id.swiperefresh, R.id.frame_layout}) {
 					View c = bg.findViewById(id);
