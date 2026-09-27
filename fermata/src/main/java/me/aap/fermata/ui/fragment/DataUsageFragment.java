@@ -14,6 +14,8 @@ import static me.aap.fermata.addon.data.DataUsageStore.CAT_VIDEO;
 import static me.aap.fermata.addon.data.DataUsageStore.dayKey;
 import static me.aap.fermata.addon.data.DataUsageStore.sum;
 
+import android.animation.ArgbEvaluator;
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.os.Bundle;
@@ -22,6 +24,7 @@ import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.ImageView;
 import android.widget.TextView;
 
@@ -89,6 +92,10 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 	private View next;
 	private TextView footer;
 	private final TextView[] filters = new TextView[4];
+	@Nullable
+	private View filterPill;
+	@Nullable
+	private ValueAnimator pillAnim;
 	private final View[] rows = new View[CATS];
 	private int filter;
 	// 0 is the current day/week/month/year, -1 the one before, and so on.
@@ -171,6 +178,11 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 			int f = i;
 			filters[i].setOnClickListener(v -> setFilter(f));
 		}
+		filterPill = view.findViewById(R.id.data_usage_filter_pill);
+		// Placed (not animated) once the options have their widths, and again on any relayout.
+		filters[0].addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+			if ((r - l) != (or - ol)) v.post(() -> moveFilterPill(false));
+		});
 		prev.setOnClickListener(v -> step(-1));
 		next.setOnClickListener(v -> step(1));
 		view.findViewById(R.id.data_usage_settings).setOnClickListener(v ->
@@ -200,6 +212,9 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 
 	@Override
 	public void onDestroyView() {
+		if (pillAnim != null) pillAnim.cancel();
+		pillAnim = null;
+		filterPill = null;
 		setListening(false);
 		super.onDestroyView();
 	}
@@ -242,7 +257,64 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 		filter = f;
 		offset = 0;
 		DataUsageTracker.prefs().applyIntPref(FILTER, f);
+		moveFilterPill(true);
 		refresh();
+	}
+
+	/**
+	 * Slides the selected pill over to the current filter's option (with a little stretch while it
+	 * moves), crossfading the options' text colours on the way; or just puts it there.
+	 */
+	private void moveFilterPill(boolean animate) {
+		View pill = filterPill;
+		if ((pill == null) || (getView() == null)) return;
+		TextView target = filters[filter];
+		int w = target.getWidth();
+		if (w <= 0) return;
+		if (pill.getLayoutParams().width != w) {
+			ViewGroup.LayoutParams lp = pill.getLayoutParams();
+			lp.width = w;
+			pill.setLayoutParams(lp);
+		}
+		pill.setPivotX(w / 2f);
+		float x = target.getLeft();
+		int sel = paletteColor(R.attr.musicPlayIcon);
+		int text = paletteColor(R.attr.musicTextPrimary);
+		if (pillAnim != null) pillAnim.cancel();
+
+		if (!animate || (pill.getVisibility() != View.VISIBLE)) {
+			pill.setTranslationX(x);
+			pill.setScaleX(1f);
+			pill.setVisibility(View.VISIBLE);
+			for (int i = 0; i < filters.length; i++) {
+				filters[i].setSelected(i == filter);
+				filters[i].setTextColor((i == filter) ? sel : text);
+			}
+			return;
+		}
+
+		float fromX = pill.getTranslationX();
+		int[] fromColors = new int[filters.length];
+		for (int i = 0; i < filters.length; i++) {
+			fromColors[i] = filters[i].getCurrentTextColor();
+			filters[i].setSelected(i == filter);
+		}
+		ArgbEvaluator argb = new ArgbEvaluator();
+		ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
+		a.setDuration(320);
+		a.setInterpolator(new DecelerateInterpolator(1.5f));
+		a.addUpdateListener(v -> {
+			float p = (float) v.getAnimatedValue();
+			pill.setTranslationX(fromX + (x - fromX) * p);
+			// Stretches a little mid-way, like it's being dragged, and settles back.
+			pill.setScaleX(1f + 0.12f * (float) Math.sin(Math.PI * p));
+			for (int i = 0; i < filters.length; i++) {
+				int to = (i == filter) ? sel : text;
+				filters[i].setTextColor((int) argb.evaluate(p, fromColors[i], to));
+			}
+		});
+		pillAnim = a;
+		a.start();
 	}
 
 	private void step(int by) {
@@ -332,13 +404,6 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 		Context ctx = requireContext();
 		DataUsageStore store = DataUsageTracker.get().getStore();
 		boolean mobile = DataUsageTracker.isMobileOnly();
-		int selText = paletteColor(R.attr.musicPlayIcon);
-		int text = paletteColor(R.attr.musicTextPrimary);
-
-		for (int i = 0; i < filters.length; i++) {
-			filters[i].setSelected(i == filter);
-			filters[i].setTextColor((i == filter) ? selText : text);
-		}
 
 		Calendar now = Calendar.getInstance();
 		Calendar from = startOfDay(now);

@@ -39,6 +39,14 @@ public class DataUsageChartView extends View {
 	private int highlight = -1;
 	private int selected = -1;
 	private float progress = 1f;
+	// What each bar showed when the data last changed, and what it shows now (per category), so a
+	// change of the same bars (usage going up) moves them from where they are instead of regrowing
+	// them from nothing; grow is only for new bars (another period or filter).
+	private float[][] from = new float[0][];
+	private float[][] shown = new float[0][];
+	private float fromScale;
+	private float shownScale;
+	private boolean grow = true;
 	@Nullable
 	private ValueAnimator anim;
 	// Chart area and scale of the last draw, for touch handling.
@@ -85,14 +93,38 @@ public class DataUsageChartView extends View {
 	 * @param highlight the bar for "now" (its label is drawn stronger), or -1
 	 */
 	public void setData(long[][] values, String[] labels, String[] names, int highlight) {
+		boolean sameBars = (values.length == this.values.length) &&
+				java.util.Arrays.equals(labels, this.labels) && (shown.length == values.length);
+		boolean sameValues = sameBars && java.util.Arrays.deepEquals(values, this.values);
 		this.values = values;
 		this.labels = labels;
 		this.names = names;
 		this.highlight = highlight;
-		selected = -1;
+
+		if (sameValues) {
+			invalidate();
+			return;
+		}
+
 		if (anim != null) anim.cancel();
+		grow = !sameBars;
+
+		if (grow) {
+			selected = -1;
+			from = new float[values.length][];
+			shown = new float[values.length][];
+			for (int i = 0; i < values.length; i++) {
+				from[i] = new float[values[i].length];
+				shown[i] = new float[values[i].length];
+			}
+		} else {
+			// Carry on from what's on screen right now, even mid-animation.
+			for (int i = 0; i < shown.length; i++) from[i] = shown[i].clone();
+			fromScale = shownScale;
+		}
+
 		ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
-		a.setDuration(700);
+		a.setDuration(grow ? 700 : 450);
 		a.setInterpolator(new DecelerateInterpolator(1.6f));
 		a.addUpdateListener(v -> {
 			progress = (float) v.getAnimatedValue();
@@ -126,7 +158,11 @@ public class DataUsageChartView extends View {
 
 		long max = 0;
 		for (long[] v : values) max = Math.max(max, sum(v));
-		scaleMax = niceMax(max);
+		long target = niceMax(max);
+		// The scale slides to its new value along with the bars, rather than jumping.
+		float scale = (grow || (fromScale <= 0)) ? target : fromScale + (target - fromScale) * progress;
+		shownScale = scale;
+		scaleMax = Math.max(1, Math.round((double) scale));
 
 		// Value grid: 0, half and the top, labelled on the left.
 		String topLabel = Formatter.formatShortFileSize(ctx, scaleMax);
@@ -156,10 +192,17 @@ public class DataUsageChartView extends View {
 
 		for (int i = 0; i < n; i++) {
 			float cx = chartLeft + slot * i + slot / 2f;
-			long total = sum(values[i]);
-			// Staggered: each bar starts growing a little after the one before it.
-			float p = clamp((progress * 1.35f) - (0.35f * i / Math.max(1, n - 1)));
-			float barH = (scaleMax > 0) ? chartH * total / scaleMax * p : 0;
+			// New bars: staggered, each starts growing a little after the one before it. Changed
+			// bars: all together, from their current height.
+			float p = grow ? clamp((progress * 1.35f) - (0.35f * i / Math.max(1, n - 1))) : progress;
+			float total = 0;
+			for (int cat = 0; cat < values[i].length; cat++) {
+				float f = (cat < from[i].length) ? from[i][cat] : 0;
+				float v = f + (values[i][cat] - f) * p;
+				shown[i][cat] = v;
+				total += v;
+			}
+			float barH = chartH * total / scale;
 			boolean dim = (selected >= 0) && (selected != i);
 
 			if (barH < baseStub) {
@@ -175,7 +218,7 @@ public class DataUsageChartView extends View {
 				c.clipPath(path);
 				float y = bottom;
 				for (int cat = 0; cat < values[i].length; cat++) {
-					float segH = barH * values[i][cat] / (float) total;
+					float segH = barH * shown[i][cat] / total;
 					if (segH <= 0) continue;
 					barPaint.setColor(colors[cat % colors.length]);
 					if (dim) barPaint.setAlpha(90);

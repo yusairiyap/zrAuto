@@ -33,6 +33,10 @@ public class DataUsageRingView extends View {
 	private long capacity;
 	private long warning;
 	private float progress = 1f;
+	// Degrees of the ring per category: when the data last changed, and on screen now. The ring
+	// moves from where it is to the new values, so growing usage extends it instead of re-sweeping.
+	private float[] fromDeg = new float[0];
+	private float[] shownDeg = new float[0];
 	@Nullable
 	private ValueAnimator anim;
 
@@ -75,8 +79,11 @@ public class DataUsageRingView extends View {
 		this.warning = warning;
 		if (same) return;
 		if (anim != null) anim.cancel();
+		boolean first = shownDeg.length != values.length;
+		fromDeg = first ? new float[values.length] : shownDeg.clone();
+		if (first) shownDeg = new float[values.length];
 		ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
-		a.setDuration(900);
+		a.setDuration(first ? 900 : 500);
 		a.setInterpolator(new DecelerateInterpolator(1.8f));
 		a.addUpdateListener(v -> {
 			progress = (float) v.getAnimatedValue();
@@ -110,20 +117,29 @@ public class DataUsageRingView extends View {
 
 		long total = 0;
 		for (long v : values) total += v;
-		if (total > 0) {
-			long full = (capacity > 0) ? capacity : total;
-			float usedDeg = 360f * Math.min(1f, (float) total / full) * progress;
-			int shown = 0;
-			for (long v : values) if (v > 0) shown++;
+		long full = (capacity > 0) ? capacity : Math.max(total, 1);
+		float targetDeg = 360f * Math.min(1f, (float) total / full);
+		float usedDeg = 0;
+		int shown = 0;
+		for (int i = 0; (i < values.length) && (i < shownDeg.length); i++) {
+			float target = (total > 0) ? targetDeg * values[i] / total : 0;
+			float f = (i < fromDeg.length) ? fromDeg[i] : 0;
+			shownDeg[i] = f + (target - f) * progress;
+			usedDeg += shownDeg[i];
+			if (shownDeg[i] > 0.1f) shown++;
+		}
+
+		if (usedDeg > 0.1f) {
 			// A small gap between the category arcs (and after the last one, on a full ring).
-			boolean fullRing = total >= full;
+			boolean fullRing = usedDeg >= 359.9f;
 			int gapCount = (shown > 1) ? (fullRing ? shown : shown - 1) : 0;
 			float gaps = (usedDeg > GAP_DEG * gapCount * 2) ? GAP_DEG * gapCount : 0;
 			float start = -90f;
 
-			for (int i = 0; i < values.length; i++) {
-				if (values[i] <= 0) continue;
-				float sweep = (usedDeg - gaps) * values[i] / total;
+			for (int i = 0; i < shownDeg.length; i++) {
+				if (shownDeg[i] <= 0.1f) continue;
+				// Each arc gives up its share of the gaps, so the gaps don't lengthen the ring.
+				float sweep = shownDeg[i] * (usedDeg - gaps) / usedDeg;
 				if (sweep <= 0) continue;
 				arcPaint.setColor(colors[i % colors.length]);
 				c.drawArc(rect, start, sweep, false, arcPaint);
@@ -133,7 +149,10 @@ public class DataUsageRingView extends View {
 			// Past the limit: a thin outer ring in the limit colour.
 			if ((capacity > 0) && (total >= capacity)) {
 				markPaint.setColor(limitColor);
-				markPaint.setAlpha(Math.round(255 * progress));
+				// Fades in when the limit is just passed; stays put while usage keeps growing.
+				float wasDeg = 0;
+				for (float d : fromDeg) wasDeg += d;
+				markPaint.setAlpha((wasDeg >= 359.9f) ? 255 : Math.round(255 * progress));
 				float ro = r + stroke / 2f + outer / 2f + markPaint.getStrokeWidth() / 2f;
 				c.drawCircle(cx, cy, ro, markPaint);
 				markPaint.setAlpha(255);
