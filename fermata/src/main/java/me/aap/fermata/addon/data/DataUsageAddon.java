@@ -34,6 +34,9 @@ import me.aap.utils.ui.fragment.ActivityFragment;
 public class DataUsageAddon implements FermataFragmentAddon, FermataActivityAddon,
 		FermataMediaServiceAddon {
 	private static final AddonInfo info = FermataAddon.findAddonInfo(DataUsageAddon.class.getName());
+	// The warning/limit banner and Tap to continue cover of each open screen (phone, car).
+	private final java.util.Map<MainActivityDelegate, DataUsageAlerts> alerts =
+			new java.util.HashMap<>();
 
 	@Override
 	public int getAddonId() {
@@ -55,6 +58,14 @@ public class DataUsageAddon implements FermataFragmentAddon, FermataActivityAddo
 	@Override
 	public void onActivityCreate(MainActivityDelegate a) {
 		DataUsageTracker.get().start(a.getMediaSessionCallback());
+		DataUsageAlerts old = alerts.put(a, DataUsageAlerts.attach(a));
+		if (old != null) old.detach();
+	}
+
+	@Override
+	public void onActivityDestroy(MainActivityDelegate a) {
+		DataUsageAlerts al = alerts.remove(a);
+		if (al != null) al.detach();
 	}
 
 	@Override
@@ -74,6 +85,8 @@ public class DataUsageAddon implements FermataFragmentAddon, FermataActivityAddo
 
 	@Override
 	public void stop() {
+		for (DataUsageAlerts al : alerts.values()) al.detach();
+		alerts.clear();
 		DataUsageTracker.get().stop();
 	}
 

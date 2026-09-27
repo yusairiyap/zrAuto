@@ -29,6 +29,7 @@ import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
 import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.media.engine.MediaEngine;
+import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.utils.app.App;
@@ -52,6 +53,12 @@ import me.aap.utils.pref.PreferenceStore.Pref;
  * Usage settings.
  */
 public final class DataUsageTracker implements MediaSessionCallback.Listener {
+	/** Under the warning level (or none set). */
+	public static final int LEVEL_OK = 0;
+	/** Past the warning level. */
+	public static final int LEVEL_WARNING = 1;
+	/** Past the data limit. */
+	public static final int LEVEL_LIMIT = 2;
 	public static final int CYCLE_DAY = 0;
 	public static final int CYCLE_WEEK = 1;
 	public static final int CYCLE_MONTH = 2;
@@ -73,6 +80,8 @@ public final class DataUsageTracker implements MediaSessionCallback.Listener {
 	private static final Pref<LongSupplier> LAST_BOOT = Pref.l("DATA_USAGE_LAST_BOOT", 0);
 	private static final Pref<LongSupplier> ALERT_CYCLE = Pref.l("DATA_USAGE_ALERT_CYCLE", 0);
 	private static final Pref<IntSupplier> ALERT_LEVEL = Pref.i("DATA_USAGE_ALERT_LEVEL", 0);
+	// The cycle (its start) in which the user chose to go over the limit: no more pausing then.
+	private static final Pref<LongSupplier> OVER_LIMIT_CYCLE = Pref.l("DATA_USAGE_OVER_LIMIT", 0);
 	private static final long INTERVAL = 10_000;
 	private static final long SAVE_INTERVAL = 60_000;
 	private static final long MIN_SAMPLE_GAP = 1000;
@@ -82,6 +91,7 @@ public final class DataUsageTracker implements MediaSessionCallback.Listener {
 
 	private final DataUsageStore store = new DataUsageStore();
 	private final List<Runnable> listeners = new ArrayList<>(2);
+	private final List<AlertListener> alertListeners = new ArrayList<>(2);
 	private final Runnable tick = this::tick;
 	private final int uid = Process.myUid();
 	private WeakReference<MediaSessionCallback> callback = new WeakReference<>(null);
@@ -92,6 +102,18 @@ public final class DataUsageTracker implements MediaSessionCallback.Listener {
 	private long lastSave;
 	private int lastCat = CAT_OTHER;
 	private int lastNet = NET_OTHER;
+	// Playback was paused for reaching the limit, and not resumed since.
+	private boolean limitPaused;
+
+	/** Told on the main thread about warnings, the limit, and pausing for it. */
+	public interface AlertListener {
+		/**
+		 * @param level   the usage level, {@code LEVEL_*}
+		 * @param crossed whether the level was only just reached (the first time this cycle)
+		 * @param paused  whether playback was just paused for the limit
+		 */
+		void onDataAlert(int level, boolean crossed, boolean paused);
+	}
 
 	private DataUsageTracker() {
 		PreferenceStore ps = prefs();
@@ -156,11 +178,13 @@ public final class DataUsageTracker implements MediaSessionCallback.Listener {
 	public void reset() {
 		sample();
 		store.clear();
+		limitPaused = false;
 		PreferenceStore ps = prefs();
 		try (PreferenceStore.Edit e = ps.editPreferenceStore()) {
 			e.setLongPref(SINCE, System.currentTimeMillis());
 			e.setLongPref(ALERT_CYCLE, 0);
 			e.setIntPref(ALERT_LEVEL, 0);
+			e.setLongPref(OVER_LIMIT_CYCLE, 0);
 		}
 		save();
 		notifyListeners();
@@ -175,10 +199,94 @@ public final class DataUsageTracker implements MediaSessionCallback.Listener {
 		listeners.remove(l);
 	}
 
+	public void addAlertListener(AlertListener l) {
+		if (!alertListeners.contains(l)) alertListeners.add(l);
+	}
+
+	public void removeAlertListener(AlertListener l) {
+		alertListeners.remove(l);
+	}
+
 	@Override
 	public void onPlaybackStateChanged(MediaSessionCallback cb, PlaybackStateCompat state) {
 		// Book what was used so far to what was playing so far, before what's playing changes.
 		if (started && (SystemClock.elapsedRealtime() - lastSample >= MIN_SAMPLE_GAP)) sample();
+		// Pressing play again while over the limit: paused again, with the Tap to continue prompt.
+		if (!started || (state == null) || (state.getState() != PlaybackStateCompat.STATE_PLAYING)) {
+			return;
+		}
+		if (!enforceLimit() && limitPaused) {
+			// Playing again, and allowed to (e.g. a local file, which uses no data): no more prompt.
+			limitPaused = false;
+			fireAlert(getLevel(), false, false);
+		}
+	}
+
+	/** The usage level of the current cycle, {@code LEVEL_*}. */
+	public int getLevel() {
+		long limit = getLimit();
+		long warning = getWarning();
+		if ((limit <= 0) && (warning <= 0)) return LEVEL_OK;
+		long used = DataUsageStore.sum(getCycleUsage());
+		if ((limit > 0) && (used >= limit)) return LEVEL_LIMIT;
+		if ((warning > 0) && (used >= warning)) return LEVEL_WARNING;
+		return LEVEL_OK;
+	}
+
+	/** Whether the user chose to carry on past the limit this cycle. */
+	public static boolean isOverLimitAllowed() {
+		return prefs().getLongPref(OVER_LIMIT_CYCLE) == getCycle()[0].getTimeInMillis();
+	}
+
+	/** Whether playback is paused for the limit right now, waiting for Tap to continue. */
+	public boolean isLimitPaused() {
+		return limitPaused && (getLevel() == LEVEL_LIMIT) && !isOverLimitAllowed();
+	}
+
+	/**
+	 * The user tapped Continue: no more pausing for the limit this cycle, and playback resumes if
+	 * it was paused for it.
+	 */
+	public void allowOverLimit() {
+		prefs().applyLongPref(OVER_LIMIT_CYCLE, getCycle()[0].getTimeInMillis());
+		boolean resume = limitPaused;
+		limitPaused = false;
+		MediaSessionCallback cb = callback.get();
+		if (resume && (cb != null) && (cb.getCurrentItem() != null)) cb.onPlay();
+		fireAlert(getLevel(), false, false);
+	}
+
+	/** Pauses what's playing, if it uses the internet and the limit is reached. */
+	private boolean enforceLimit() {
+		if ((getLimit() <= 0) || isOverLimitAllowed()) return false;
+		MediaSessionCallback cb = callback.get();
+		if ((cb == null) || !cb.isPlaying() || !usesInternet(cb)) return false;
+		if (getLevel() != LEVEL_LIMIT) return false;
+		limitPaused = true;
+		// Not from inside the playback state broadcast this may have been called from.
+		App.get().getHandler().post(() -> {
+			if (cb.isPlaying()) cb.onPause();
+		});
+		fireAlert(LEVEL_LIMIT, false, true);
+		return true;
+	}
+
+	/** Whether what's playing streams from the internet (YouTube, a web stream or file). */
+	private static boolean usesInternet(MediaSessionCallback cb) {
+		MediaEngine eng = cb.getEngine();
+		PlayableItem src = (eng == null) ? null : eng.getSource();
+		if (src == null) return false;
+		if ((eng.getId() == MediaPrefs.MEDIA_ENG_YT) || src.isStream()) return true;
+		try {
+			String scheme = src.getResource().getRid().getScheme();
+			return "http".equals(scheme) || "https".equals(scheme);
+		} catch (Throwable ex) {
+			return false;
+		}
+	}
+
+	private void fireAlert(int level, boolean crossed, boolean paused) {
+		for (AlertListener l : new ArrayList<>(alertListeners)) l.onDataAlert(level, crossed, paused);
 	}
 
 	private void tick() {
@@ -223,6 +331,7 @@ public final class DataUsageTracker implements MediaSessionCallback.Listener {
 			checkAlerts();
 			notifyListeners();
 		}
+		enforceLimit();
 	}
 
 	private long readBytes() {
@@ -356,6 +465,13 @@ public final class DataUsageTracker implements MediaSessionCallback.Listener {
 		try (PreferenceStore.Edit e = ps.editPreferenceStore()) {
 			e.setLongPref(ALERT_CYCLE, cycle);
 			e.setIntPref(ALERT_LEVEL, level);
+		}
+
+		// Shown by the app's own banner (which, unlike a toast, also shows on Android Auto's screen);
+		// a toast only when no screen of the app is open.
+		if (!alertListeners.isEmpty()) {
+			fireAlert(level, true, false);
+			return;
 		}
 
 		Context ctx = FermataApplication.get();

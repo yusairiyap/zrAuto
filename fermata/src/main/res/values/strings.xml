@@ -757,6 +757,17 @@
     <string name="data_usage_reset_done">Data usage reset</string>
     <string name="data_usage_warning_reached">Data warning: %1$s used this cycle</string>
     <string name="data_usage_limit_reached">Data limit reached: %1$s used this cycle</string>
+    <string name="data_usage_banner_of">%1$s of %2$s used</string>
+    <string name="data_usage_banner_used">%1$s used</string>
+    <string name="data_usage_banner_paused">playback paused</string>
+    <string name="data_usage_banner_over">going over the limit</string>
+    <string name="data_usage_continue">Continue</string>
+    <string name="data_usage_details">Details</string>
+    <string name="data_usage_dismiss">Dismiss</string>
+    <string name="data_usage_gate_title">Data limit reached</string>
+    <string name="data_usage_gate_text">%1$s of your %2$s data limit used. Playback is paused to save data.</string>
+    <string name="data_usage_gate_tap">Tap to continue</string>
+    <string name="data_usage_gate_note">Playback will carry on past your data limit for the rest of this cycle</string>
 
     <!-- Storage and cache settings -->
     <string name="storage_prefs">Storage and cache</string>
