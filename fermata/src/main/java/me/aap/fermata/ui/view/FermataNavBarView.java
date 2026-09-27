@@ -212,19 +212,23 @@ public class FermataNavBarView extends NavBarView implements GestureListener {
 		return MainActivityDelegate.get(getContext());
 	}
 
+	// The bottom bar passes horizontal swipes on to the control panel right above it (prev/next,
+	// seeking). A side bar doesn't: a finger sliding off a left/right pill, or a swipe in from the
+	// screen edge, isn't meant as a skip -- it used to jump to the previous track.
 	@Override
 	public boolean onSwipeLeft(MotionEvent e1, MotionEvent e2) {
-		return getMainActivity().getControlPanel().onSwipeLeft(e1, e2);
+		return isBottom() && getMainActivity().getControlPanel().onSwipeLeft(e1, e2);
 	}
 
 	@Override
 	public boolean onSwipeRight(MotionEvent e1, MotionEvent e2) {
-		return getMainActivity().getControlPanel().onSwipeRight(e1, e2);
+		return isBottom() && getMainActivity().getControlPanel().onSwipeRight(e1, e2);
 	}
 
 	@Override
 	public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
-		return getMainActivity().getControlPanel().onScroll(e1, e2, distanceX, distanceY);
+		return isBottom() &&
+				getMainActivity().getControlPanel().onScroll(e1, e2, distanceX, distanceY);
 	}
 
 	private MainActivityDelegate getMainActivity() {

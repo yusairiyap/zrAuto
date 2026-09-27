@@ -83,12 +83,9 @@ public class PlaylistsFragment extends MediaLibFragment {
 
 		OverlayMenu.Builder b = builder.withSelectionHandler(this::navBarMenuItemSelected);
 
-		if (a.getListView().isSelectionActive() && a.hasSelected()) {
-			if (a.getParent() instanceof Playlist) {
-				addSelectionActions(b);
-			} else {
-				b.addItem(R.id.favorites_add, R.drawable.favorite, R.string.favorites_add);
-			}
+		if (a.getListView().isSelectionActive() && a.hasSelected() &&
+				(a.getParent() instanceof Playlist)) {
+			addSelectionActions(b);
 		}
 
 		b.addItem(R.id.spotify_import, R.drawable.playlist_import, R.string.spotify_import);
@@ -204,7 +201,14 @@ public class PlaylistsFragment extends MediaLibFragment {
 				PlaylistsAdapter a = getAdapter();
 				if (a.getParent() instanceof Playlist pl) {
 					getMainActivity().removeFromPlaylist(pl, a.getSelectedItems());
+				} else if (a.getParent() instanceof Playlists pls) {
+					removeSelectedPlaylists(pls);
 				}
+			}
+
+			@Override
+			public boolean hasPlaylistAction() {
+				return getAdapter().getParent() instanceof Playlist;
 			}
 		});
 		getListView().setSelectionListener(v -> updateSelectionPanel());
@@ -227,17 +231,33 @@ public class PlaylistsFragment extends MediaLibFragment {
 	private void updateSelectionPanel() {
 		PlaylistsAdapter a = getAdapter();
 		if ((a == null) || (selectionPanel == null)) return;
-		selectionPanel.update(a.getListView().isSelectionActive() && (a.getParent() instanceof Playlist));
+		BrowsableItem p = a.getParent();
+		selectionPanel.update(a.getListView().isSelectionActive() &&
+				((p instanceof Playlist) || (p instanceof Playlists)));
+	}
+
+	/** The list of playlists: removes the selected ones, once the user confirms. */
+	private void removeSelectedPlaylists(Playlists pls) {
+		List<Playlist> sel = new ArrayList<>();
+		for (MediaItemWrapper w : getAdapter().getList()) {
+			if (w.isSelected() && (w.getItem() instanceof Playlist pl)) sel.add(pl);
+		}
+		if (sel.isEmpty()) return;
+		UiUtils.showQuestion(requireContext(), getString(R.string.playlist_remove),
+				getResources().getQuantityString(R.plurals.playlists_remove_confirm, sel.size(),
+						sel.size()), null).onSuccess(v -> {
+			pls.removeItems(sel);
+			discardSelection();
+		});
 	}
 
 	private void hideSelectionPanel(boolean animate) {
 		if (selectionPanel != null) selectionPanel.hide(animate);
 	}
 
-	/** Moves the selected items, in their current order, to the top or the end of the playlist. */
+	/** Moves the selected items, in their current order, to the top or the end of the list. */
 	private void moveSelected(boolean toTop) {
-		PlaylistsAdapter a = getAdapter();
-		if (a.getParent() instanceof Playlist) a.moveSelected(toTop);
+		getAdapter().moveSelected(toTop);
 	}
 
 	@Override
@@ -255,7 +275,8 @@ public class PlaylistsFragment extends MediaLibFragment {
 		if (a.isCallbackCall() || (a.getParent() == null)) return;
 
 		if (prefs.contains(PlaylistsPrefs.PLAYLIST_IDS) && (a.getParent() == getLib().getPlaylists())) {
-			a.reload();
+			// A bulk reorder reloads once itself when done; otherwise keep any selection alive.
+			if (!a.reordering) a.reloadKeepSelection();
 		} else if (prefs.contains(PlaylistPrefs.PLAYLIST_ITEMS)) {
 			// A bulk reorder reloads once itself when done; otherwise keep any selection alive.
 			if (!a.reordering) a.reloadKeepSelection();
@@ -287,31 +308,35 @@ public class PlaylistsFragment extends MediaLibFragment {
 		}
 
 		/**
-		 * Dragging edits the playlist's own order, so only while it's shown unsorted -- and, inside a
-		 * playlist, only in selection mode (the toolbar's Select), so that a long press in the normal
-		 * view is always the item's menu, never a drag fighting it (on the car screen especially).
-		 * The list of playlists itself keeps long-press reordering.
+		 * Dragging edits the playlist's (or the list of playlists') own order, so only while it's shown
+		 * unsorted -- and only in selection mode (the toolbar's Select), so that a long press in the
+		 * normal view is always the item's menu, never a drag fighting it (on the car screen
+		 * especially).
 		 */
 		@Override
 		public boolean isLongPressDragEnabled() {
-			if (!super.isLongPressDragEnabled() || !isCustomOrder()) return false;
-			return !(getParent() instanceof Playlist) || isSelectionActive();
+			return super.isLongPressDragEnabled() && isCustomOrder() &&
+					(isSelectionActive() || tapOpensMenu());
 		}
 
 		@Override
 		public boolean isDragOnlyInSelection() {
-			return getParent() instanceof Playlist;
+			return true;
 		}
 
 		@Override
 		protected boolean isReorderable() {
-			return getParent() instanceof Playlist;
+			BrowsableItem p = getParent();
+			return (p instanceof Playlist) || (p instanceof Playlists);
 		}
 
 		@Nullable
 		@Override
 		protected FutureSupplier<Void> moveInModel(int from, int to) {
-			return (getParent() instanceof Playlist pl) ? pl.moveItem(from, to) : null;
+			BrowsableItem p = getParent();
+			if (p instanceof Playlist pl) return pl.moveItem(from, to);
+			if (p instanceof Playlists pls) return pls.moveItem(from, to);
+			return null;
 		}
 	}
 }

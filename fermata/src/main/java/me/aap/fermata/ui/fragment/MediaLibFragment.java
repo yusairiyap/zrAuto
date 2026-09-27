@@ -17,6 +17,7 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.res.Configuration;
 import android.os.Bundle;
+import android.os.Parcelable;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -80,6 +81,15 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 	private ListAdapter adapter;
 	private boolean noScroll;
 	private int scrollPosition;
+	/**
+	 * Where the list was scrolled to when the user left this tab (another tab shown, e.g. the
+	 * YouTube player after tapping a video), and for which folder: put back exactly on return,
+	 * rather than jumping to the playing or last played entry.
+	 */
+	@Nullable
+	private Parcelable savedListState;
+	@Nullable
+	private String savedListParentId;
 	private Item clicked;
 
 	protected abstract ListAdapter createAdapter(FermataServiceUiBinder b);
@@ -132,6 +142,7 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 
 	@Override
 	public void onDestroyView() {
+		saveListState();
 		scrollPosition = -1;
 		cleanUp(getMainActivity());
 		super.onDestroyView();
@@ -239,7 +250,37 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 	@Override
 	public void onHiddenChanged(boolean hidden) {
 		super.onHiddenChanged(hidden);
-		if (!hidden) scrollToPosition();
+		if (hidden) saveListState();
+		else if (!restoreListState()) scrollToPosition();
+	}
+
+	private void saveListState() {
+		View v = getView();
+		ListAdapter a = adapter;
+		if (!(v instanceof MediaItemListView lv) || (a == null) || (a.getParent() == null)) return;
+		RecyclerView.LayoutManager lm = lv.getLayoutManager();
+		if (lm == null) return;
+		savedListState = lm.onSaveInstanceState();
+		savedListParentId = a.getParent().getId();
+	}
+
+	/** Puts the list back where the user left it, if it's still showing the same folder. */
+	private boolean restoreListState() {
+		Parcelable st = savedListState;
+		String id = savedListParentId;
+		savedListState = null;
+		savedListParentId = null;
+		View v = getView();
+		ListAdapter a = adapter;
+		if ((st == null) || !(v instanceof MediaItemListView lv) || (a == null) ||
+				(a.getParent() == null) || !a.getParent().getId().equals(id)) {
+			return false;
+		}
+		RecyclerView.LayoutManager lm = lv.getLayoutManager();
+		if (lm == null) return false;
+		lm.onRestoreInstanceState(st);
+		scrollPosition = -1;
+		return true;
 	}
 
 	@Override
@@ -322,7 +363,9 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 			return true;
 		} else if (itemId == R.id.favorites_add) {
 			requireNonNull(getLib()).getFavorites().addItems(filterMap(getAdapter().getList(),
-					MediaItemWrapper::isSelected, (i, w, l) -> l.add((PlayableItem) w.getItem()),
+					MediaItemWrapper::isSelected, (i, w, l) -> {
+						if (w.getItem() instanceof PlayableItem p) l.add(p);
+					},
 					ArrayList::new));
 			discardSelection();
 			MediaLibFragment f = getMainActivity().getMediaLibFragment(R.id.favorites_fragment);
@@ -545,6 +588,12 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 			super.setParent(parent, false);
 		}
 
+		/** See MainActivityPrefs#getTapOpensMenuPref(). */
+		protected boolean tapOpensMenu() {
+			MainActivityDelegate a = getMainActivity();
+			return a.getPrefs().getTapOpensMenuPref(a);
+		}
+
 		/** Whether this list's own order (a playlist's, Favorites') can be edited from here. */
 		protected boolean isReorderable() {
 			return false;
@@ -713,11 +762,22 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 
 			if (getListView().isSelectionActive()) {
 				MediaItemWrapper w = mi.getItemWrapper();
-				if ((w != null) && w.isSelectionSupported()) w.setSelected(!w.isSelected(), true);
+				if ((w != null) && w.isSelectionSupported()) {
+					w.setSelected(!w.isSelected(), true);
+					// The selection panel's count (and actions) follow every change.
+					getListView().notifySelectionChanged();
+				}
 				return;
 			}
 
 			discardSelection();
+
+			// Set to open the menu on a tap (Settings > Interface): Play is its first entry.
+			if ((mi.getItem() instanceof PlayableItem) && tapOpensMenu()) {
+				clicked = null;
+				mi.showItemMenu();
+				return;
+			}
 
 			if (mi.getItem() instanceof PlayableItem i) {
 				if (!i.isVideo()) {
@@ -727,7 +787,7 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 							(eng.getCurrentSubtitles() != NO_SUBTITLES)) {
 						a.showFragment(R.id.subtitles_fragment);
 						clicked = null;
-						onClick(i);
+						playTapped(i, true);
 						return;
 					}
 				}
@@ -741,15 +801,15 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 						App.get().getHandler().postDelayed(() -> {
 							boolean same = clicked == i;
 							clicked = null;
-							if (same) onClick(i);
+							if (same) playTapped(i, true);
 						}, 300);
 					}
 				} else if (i instanceof ArchiveItem) {
 					clicked = null;
-					if (!((ArchiveItem) i).isExpired()) onClick(i);
+					if (!((ArchiveItem) i).isExpired()) playTapped(i, true);
 				} else {
 					clicked = null;
-					onClick(i);
+					playTapped(i, true);
 				}
 			} else {
 				clicked = null;
@@ -780,15 +840,19 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 			});
 		}
 
-		private void onClick(PlayableItem i) {
+		/**
+		 * Plays {@code i} the way tapping it does. {@code allowMusic}: false for the context menu's
+		 * "Play as video", which plays it normally even while music mode is on.
+		 */
+		public void playTapped(PlayableItem i, boolean allowMusic) {
 			var a = getMainActivity();
 
 			// The Music tab is what's playing: a Favorites/Playlist entry tapped now plays as music
-			// too, from its list, instead of dropping out of music mode into the video player.
-			if (playsAsMusicInMusicMode() && !(i instanceof StreamItem) &&
+			// too, from its list, and the Music tab comes up -- instead of dropping out of music mode
+			// into the video player.
+			if (allowMusic && playsAsMusicInMusicMode() && !(i instanceof StreamItem) &&
 					MusicPlayer.isMusicModeActive(a)) {
-				MusicPlayer.play(a, i, false);
-				getAdapter().getListView().refreshState();
+				MusicPlayer.play(a, i, true);
 				return;
 			}
 
@@ -799,7 +863,7 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 			}
 
 			var cur = a.getCurrentPlayable();
-			if (Objects.equals(cur, i)) return;
+			if (Objects.equals(cur, i) && (allowMusic || !MusicPlayer.isMusicModeActive(a))) return;
 			a.getBody().playItem(i);
 			getAdapter().getListView().refreshState();
 			if (i.isVideo()) return;
@@ -815,6 +879,14 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 		protected void setChildren(List<? extends Item> children) {
 			super.setChildren(children);
 			if (noScroll) return;
+			// The view was recreated while away: back to where the user had scrolled to.
+			if (!isHidden() && (savedListState != null)) {
+				MediaItemListView lv = getListView();
+				lv.post(() -> {
+					if (!restoreListState()) scrollToPosition();
+				});
+				return;
+			}
 			BrowsableItem p = getParent();
 			PlayableItem current = getMainActivityDelegate()
 					.mapIfNotNull(MainActivityDelegate::getCurrentPlayable).peek();

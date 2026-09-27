@@ -5,6 +5,7 @@ import androidx.annotation.Nullable;
 
 import java.util.Objects;
 
+import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.lib.MediaLib.Item;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 
@@ -58,7 +59,9 @@ public class MediaItemWrapper {
 	}
 
 	public boolean isSelectionSupported() {
-		return (getItem() instanceof PlayableItem);
+		// Playlists too: the list of playlists can be selected to reorder or remove them.
+		Item i = getItem();
+		return (i instanceof PlayableItem) || (i instanceof MediaLib.Playlist);
 	}
 
 	@Override

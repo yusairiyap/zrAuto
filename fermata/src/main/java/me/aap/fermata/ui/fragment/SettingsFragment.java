@@ -385,7 +385,8 @@ public class SettingsFragment extends MainActivityFragment
 			addNavTabsPrefs(a, sub1);
 			addUpNextPrefs(a, sub1);
 			addInterface(a, sub1, MainActivityPrefs.THEME_MAIN, MainActivityPrefs.HIDE_BARS,
-					MainActivityPrefs.FULLSCREEN, MainActivityPrefs.SHOW_PG_UP_DOWN, null,
+					MainActivityPrefs.FULLSCREEN, MainActivityPrefs.SHOW_PG_UP_DOWN,
+					MainActivityPrefs.TAP_ACTION, null,
 					MainActivityPrefs.NAV_BAR_POS, MainActivityPrefs.NAV_BAR_SIZE,
 					MainActivityPrefs.TOOL_BAR_SIZE, MainActivityPrefs.CONTROL_PANEL_SIZE,
 					MainActivityPrefs.TEXT_ICON_SIZE, MainActivityPrefs.ICON_SIZE);
@@ -1271,65 +1272,24 @@ public class SettingsFragment extends MainActivityFragment
 	}
 
 	private void addSecondaryFabPrefs(MainActivityDelegate a, PreferenceSet ps) {
-		var fabActions = new Action[]{Action.FULLSCREEN_TOGGLE, Action.VOLUME_MUTE_UNMUTE,
-				Action.PLAY_PAUSE, Action.DIM_TOGGLE, Action.PRIVATE_MODE_TOGGLE, Action.REFUEL,
-				Action.FAVORITE_ADD, Action.PLAYLIST_ADD, Action.PLAY_AS_MUSIC, Action.YOUTUBE_SEARCH,
-				Action.YOUTUBE_UP_NEXT};
-		var fabActionNames = new int[fabActions.length];
-		var fabActionOrdinals = new int[fabActions.length];
-		for (int i = 0; i < fabActions.length; i++) {
-			fabActionNames[i] = fabActions[i].getName();
-			fabActionOrdinals[i] = fabActions[i].ordinal();
+		var fabActions = ActionFabMediator.OFFERED_ACTIONS;
+		var fabActionNames = new int[fabActions.size()];
+		var fabActionOrdinals = new int[fabActions.size()];
+		for (int i = 0; i < fabActions.size(); i++) {
+			fabActionNames[i] = fabActions.get(i).getName();
+			fabActionOrdinals[i] = fabActions.get(i).ordinal();
 		}
 
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.FAB2_ENABLED;
-			o.title = R.string.fab2_enable;
-		});
-		var fab2EnabledCond = PrefCondition.create(a.getPrefs(), MainActivityPrefs.FAB2_ENABLED);
-		ps.addListPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.FAB2_ACTION;
-			o.title = R.string.fab2_action;
-			o.subtitle = R.string.string_format;
-			o.formatSubtitle = true;
-			o.values = fabActionNames;
-			o.valuesMap = fabActionOrdinals;
-			o.visibility = fab2EnabledCond;
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.FAB3_ENABLED;
-			o.title = R.string.fab3_enable;
-		});
-		var fab3EnabledCond = PrefCondition.create(a.getPrefs(), MainActivityPrefs.FAB3_ENABLED);
-		ps.addListPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.FAB3_ACTION;
-			o.title = R.string.fab3_action;
-			o.subtitle = R.string.string_format;
-			o.formatSubtitle = true;
-			o.values = fabActionNames;
-			o.valuesMap = fabActionOrdinals;
-			o.visibility = fab3EnabledCond;
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.FAB4_ENABLED;
-			o.title = R.string.fab4_enable;
-		});
-		var fab4EnabledCond = PrefCondition.create(a.getPrefs(), MainActivityPrefs.FAB4_ENABLED);
-		ps.addListPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.FAB4_ACTION;
-			o.title = R.string.fab4_action;
-			o.subtitle = R.string.string_format;
-			o.formatSubtitle = true;
-			o.values = fabActionNames;
-			o.valuesMap = fabActionOrdinals;
-			o.visibility = fab4EnabledCond;
-		});
+		addFabPrefs(a, ps, MainActivityPrefs.FAB2_ENABLED, R.string.fab2_enable,
+				MainActivityPrefs.FAB2_ACTION, R.string.fab2_action, fabActionNames, fabActionOrdinals);
+		addFabPrefs(a, ps, MainActivityPrefs.FAB3_ENABLED, R.string.fab3_enable,
+				MainActivityPrefs.FAB3_ACTION, R.string.fab3_action, fabActionNames, fabActionOrdinals);
+		addFabPrefs(a, ps, MainActivityPrefs.FAB4_ENABLED, R.string.fab4_enable,
+				MainActivityPrefs.FAB4_ACTION, R.string.fab4_action, fabActionNames, fabActionOrdinals);
+		addFabPrefs(a, ps, MainActivityPrefs.FAB5_ENABLED, R.string.fab5_enable,
+				MainActivityPrefs.FAB5_ACTION, R.string.fab4_action, fabActionNames, fabActionOrdinals);
+		addFabPrefs(a, ps, MainActivityPrefs.FAB6_ENABLED, R.string.fab6_enable,
+				MainActivityPrefs.FAB6_ACTION, R.string.fab4_action, fabActionNames, fabActionOrdinals);
 		ps.addBooleanPref(o -> {
 			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.FAB_DRAGGABLE;
@@ -1346,11 +1306,34 @@ public class SettingsFragment extends MainActivityFragment
 		});
 	}
 
+	/** One extra floating button's switch, and its tap action (shown while it's on). */
+	private static void addFabPrefs(MainActivityDelegate a, PreferenceSet ps,
+																	Pref<BooleanSupplier> enabled, int enabledTitle,
+																	Pref<IntSupplier> action, int actionTitle, int[] names,
+																	int[] ordinals) {
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = enabled;
+			o.title = enabledTitle;
+		});
+		var cond = PrefCondition.create(a.getPrefs(), enabled);
+		ps.addListPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = action;
+			o.title = actionTitle;
+			o.subtitle = R.string.string_format;
+			o.formatSubtitle = true;
+			o.values = names;
+			o.valuesMap = ordinals;
+			o.visibility = cond;
+		});
+	}
+
 	private void addAAInterface(MainActivityDelegate a, PreferenceSet ps) {
 		if (BuildConfig.AUTO) {
 			addInterface(a, ps, MainActivityPrefs.THEME_AA, MainActivityPrefs.HIDE_BARS_AA,
 					MainActivityPrefs.FULLSCREEN_AA, MainActivityPrefs.SHOW_PG_UP_DOWN_AA,
-					MainActivityPrefs.USE_DPAD_CURSOR, MainActivityPrefs.NAV_BAR_POS_AA,
+					MainActivityPrefs.TAP_ACTION_AA, MainActivityPrefs.USE_DPAD_CURSOR, MainActivityPrefs.NAV_BAR_POS_AA,
 					MainActivityPrefs.NAV_BAR_SIZE_AA, MainActivityPrefs.TOOL_BAR_SIZE_AA,
 					MainActivityPrefs.CONTROL_PANEL_SIZE_AA, MainActivityPrefs.TEXT_ICON_SIZE_AA,
 					MainActivityPrefs.ICON_SIZE_AA);
@@ -1359,7 +1342,8 @@ public class SettingsFragment extends MainActivityFragment
 
 	private void addInterface(MainActivityDelegate a, PreferenceSet ps, Pref<IntSupplier> theme,
 														Pref<BooleanSupplier> hideBars, Pref<BooleanSupplier> fullScreen,
-														Pref<BooleanSupplier> pgUpDown, Pref<BooleanSupplier> dpadCursor,
+														Pref<BooleanSupplier> pgUpDown, Pref<IntSupplier> tapAction,
+														Pref<BooleanSupplier> dpadCursor,
 														Pref<IntSupplier> nbPos, Pref<DoubleSupplier> nbSize,
 														Pref<DoubleSupplier> tbSize, Pref<DoubleSupplier> cpSize,
 														Pref<DoubleSupplier> textIconSize, Pref<DoubleSupplier> iconSize) {
@@ -1388,6 +1372,14 @@ public class SettingsFragment extends MainActivityFragment
 			o.store = a.getPrefs();
 			o.pref = pgUpDown;
 			o.title = R.string.show_pg_up_down;
+		});
+		ps.addListPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = tapAction;
+			o.title = R.string.tap_action;
+			o.subtitle = R.string.tap_action_sub;
+			o.formatSubtitle = true;
+			o.values = new int[]{R.string.tap_action_play, R.string.tap_action_menu};
 		});
 		if (dpadCursor != null) {
 			ps.addBooleanPref(o -> {

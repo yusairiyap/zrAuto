@@ -40,6 +40,11 @@ final class SelectionPanel {
 		void playlistAction(View anchor);
 
 		void removeSelected();
+
+		/** Whether the third button (see {@link #playlistAction}) applies to what's shown. */
+		default boolean hasPlaylistAction() {
+			return true;
+		}
 	}
 
 	SelectionPanel(MediaLibFragment fragment, @StringRes int playlistLabel, Actions actions) {
@@ -74,6 +79,8 @@ final class SelectionPanel {
 		if (p == null) return;
 		((TextView) p.findViewById(R.id.selection_panel_count))
 				.setText(fragment.getString(R.string.selection_count, n));
+		p.findViewById(R.id.selection_panel_move)
+				.setVisibility(actions.hasPlaylistAction() ? View.VISIBLE : View.GONE);
 		boolean enabled = n > 0;
 		for (int id : new int[]{R.id.selection_panel_top, R.id.selection_panel_end,
 				R.id.selection_panel_move, R.id.selection_panel_remove}) {
@@ -173,8 +180,10 @@ final class SelectionPanel {
 			int fabLeft = Integer.MAX_VALUE;
 			int fabRight = Integer.MIN_VALUE;
 
-			for (View fab : new View[]{a.getFloatingButton(), a.getFloatingButton2(),
-					a.getFloatingButton3(), a.getFloatingButton4()}) {
+			java.util.List<View> fabs = new java.util.ArrayList<>();
+			fabs.add(a.getFloatingButton());
+			java.util.Collections.addAll(fabs, a.getExtraFloatingButtons());
+			for (View fab : fabs) {
 				if ((fab == null) || !fab.isShown() || (fab.getWidth() == 0)) continue;
 				int[] loc = new int[2];
 				fab.getLocationOnScreen(loc);

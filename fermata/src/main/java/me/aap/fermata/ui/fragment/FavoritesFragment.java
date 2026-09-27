@@ -172,11 +172,13 @@ public class FavoritesFragment extends MediaLibFragment {
 
 		/**
 		 * Reordered only in selection mode (the toolbar's Select), and only while shown unsorted: a
-		 * long press in the normal view is always the item's menu, never a drag fighting it.
+		 * long press in the normal view is always the item's menu, never a drag fighting it -- unless
+		 * a tap opens the menu (Settings), which leaves the long press free for dragging.
 		 */
 		@Override
 		public boolean isLongPressDragEnabled() {
-			return super.isLongPressDragEnabled() && isCustomOrder() && isSelectionActive();
+			return super.isLongPressDragEnabled() && isCustomOrder() &&
+					(isSelectionActive() || tapOpensMenu());
 		}
 
 		@Override

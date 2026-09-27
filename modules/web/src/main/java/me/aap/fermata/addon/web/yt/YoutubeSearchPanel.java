@@ -112,6 +112,10 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 	private final Adapter mainAdapter = new Adapter();
 	private final Adapter sideAdapter = new Adapter();
 	private final Runnable queueListener = () -> handler.post(this::onQueueChanged);
+	// The Music tab's queue changing (Play next, a track added or removed) changes what's previewed.
+	private final MusicQueue.Listener musicQueueListener = q -> handler.post(this::onQueueChanged);
+	@Nullable
+	private MusicQueue musicQueue;
 	// Colors picked for contrast against this panel's own background, rather than taken from the
 	// theme's text attributes: several of the app's themes remap those for their toolbar/nav bar
 	// surfaces, which left the rows here unreadable (white on white) on the light themes.
@@ -179,7 +183,10 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 	protected void onAttachedToWindow() {
 		super.onAttachedToWindow();
 		addon.addUpNextListener(queueListener);
-		MainActivityDelegate.get(getContext()).getMediaSessionCallback().addBroadcastListener(this);
+		MainActivityDelegate a = MainActivityDelegate.get(getContext());
+		a.getMediaSessionCallback().addBroadcastListener(this);
+		musicQueue = MusicPlayer.getQueue(a);
+		if (musicQueue != null) musicQueue.addListener(musicQueueListener);
 		reloadList();
 	}
 
@@ -189,6 +196,8 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		addon.removeUpNextListener(queueListener);
 		MainActivityDelegate.get(getContext()).getMediaSessionCallback()
 				.removeBroadcastListener(this);
+		if (musicQueue != null) musicQueue.removeListener(musicQueueListener);
+		musicQueue = null;
 		handler.removeCallbacksAndMessages(null);
 		generation++;
 		listGeneration++;

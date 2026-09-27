@@ -262,6 +262,23 @@ public class YoutubeAddon extends WebBrowserAddon
 		public void openSearch(MainActivityDelegate a, boolean upNextOnly) {
 			YoutubeFragment.openSearch(a.getContext(), upNextOnly);
 		}
+
+		@Override
+		public int addToVideoQueue(MainActivityDelegate a, List<? extends PlayableItem> items) {
+			if (!(a.getFragment(getFragmentId()) instanceof YoutubeFragment f)) return -1;
+			YoutubeWebView web = f.getWebView();
+			YoutubeMediaEngine eng = (web == null) ? null : web.getEngine();
+			if ((eng == null) || !eng.isActive()) return -1;
+			int n = 0;
+			for (PlayableItem pi : items) {
+				String id = YoutubeVideoItem.extractYoutubeVideoId(pi);
+				if (id == null) continue;
+				String name = pi.getName();
+				if (!addUpNext(id, id.equals(name) ? null : name, false)) break;
+				n++;
+			}
+			return n;
+		}
 	}
 
 	@Nullable

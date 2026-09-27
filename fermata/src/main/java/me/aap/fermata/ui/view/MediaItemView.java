@@ -97,6 +97,15 @@ public class MediaItemView extends ConstraintLayout
 	private final int subtitleTextAppearance;
 	private final ColorStateList iconTint;
 	private final ColorStateList textTint;
+	/** The item whose long-press menu is open -- its card is outlined, see onDrawForeground(). */
+	@Nullable
+	private static Item menuItem;
+	@Nullable
+	private Drawable outline;
+	/** 0..1: how much of the outline shows; animated so it fades in and out. */
+	private float outlineFraction;
+	@Nullable
+	private android.animation.ValueAnimator outlineAnim;
 	private final float badgeMinRadius;
 	private final float badgeMaxRadius;
 	@Nullable
@@ -456,6 +465,7 @@ public class MediaItemView extends ConstraintLayout
 		if (w == null) return;
 		boolean changed = w.isSelected() != isChecked;
 		w.setSelected(isChecked, false);
+		refreshOutline(true);
 		MediaItemListView l = getListView();
 		if (changed && (l != null)) l.notifySelectionChanged();
 	}
@@ -473,6 +483,7 @@ public class MediaItemView extends ConstraintLayout
 		boolean attach = attaching && (changedView == this);
 		if (changedView == this) attaching = false;
 		if ((visibility != VISIBLE) || (item == null)) return;
+		refreshOutline(false);
 		// Every attach also reports the view's visibility: while scrolling, that's each card coming
 		// on screen, just bound (so just loaded) or back from the view cache unchanged. Reloading a
 		// video card there (as refresh() does) loaded every one twice mid-fling; the playing/last
@@ -484,6 +495,7 @@ public class MediaItemView extends ConstraintLayout
 	@Override
 	public void onDrawForeground(Canvas canvas) {
 		super.onDrawForeground(canvas);
+		drawOutline(canvas);
 		Item item = getItem();
 		VectorDrawableCompat d;
 
@@ -625,7 +637,60 @@ public class MediaItemView extends ConstraintLayout
 		setActivated(activated);
 	}
 
+	/** Whether the card is to be outlined: selected in selection mode, or its menu open. */
+	private boolean isOutlined() {
+		Item i = getItem();
+		if ((i != null) && (i == menuItem)) return true;
+		MediaItemWrapper w = getItemWrapper();
+		MediaItemListView l = getListView();
+		return (w != null) && w.isSelected() && (l != null) && l.isSelectionActive();
+	}
+
+	/**
+	 * Fades the outline in or out to match {@link #isOutlined()}. Drawn as part of the foreground,
+	 * so the card itself never moves or resizes -- see media_item_outline.xml.
+	 */
+	public void refreshOutline(boolean animate) {
+		float to = isOutlined() ? 1f : 0f;
+		android.animation.ValueAnimator old = outlineAnim;
+		if (old != null) {
+			if ((old.isRunning()) && (to == (Float) old.getAnimatedValue())) return;
+			old.cancel();
+			outlineAnim = null;
+		}
+		if (outlineFraction == to) return;
+		if (!animate || !isAttachedToWindow()) {
+			outlineFraction = to;
+			invalidate();
+			return;
+		}
+		android.animation.ValueAnimator va = android.animation.ValueAnimator.ofFloat(outlineFraction, to);
+		va.setDuration(180);
+		va.setInterpolator(new DecelerateInterpolator());
+		va.addUpdateListener(an -> {
+			outlineFraction = (float) an.getAnimatedValue();
+			invalidate();
+		});
+		outlineAnim = va;
+		va.start();
+	}
+
+	private void drawOutline(Canvas canvas) {
+		if (outlineFraction <= 0f) return;
+		Drawable d = outline;
+		if (d == null) {
+			d = outline = ContextCompat.getDrawable(getContext(), R.drawable.media_item_outline);
+			if (d == null) return;
+			d = outline = d.mutate();
+		}
+		int inset = Math.round(toPx(getContext(), 1));
+		d.setBounds(inset, inset, getWidth() - inset, getHeight() - inset);
+		d.setAlpha(Math.round(255 * outlineFraction));
+		d.draw(canvas);
+	}
+
 	public void refreshCheckbox() {
+		refreshOutline(true);
 		MediaItemWrapper w = getItemWrapper();
 		if (w == null) return;
 		MaterialCheckBox cb = getCheckBox();
@@ -660,9 +725,11 @@ public class MediaItemView extends ConstraintLayout
 		MediaItemListView l = getListView();
 		if (l != null) {
 			MediaItemListViewAdapter ad = l.getAdapter();
-			if ((ad != null) && ad.isDragOnlyInSelection() && l.isSelectionActive()) {
-				// Selection mode of a list that only reorders there: the long press is a drag, which
-				// brings its menu up itself if the item is let go of without moving. Selection stays.
+			if ((ad != null) && ad.isDragOnlyInSelection() &&
+					(l.isSelectionActive() || ad.isLongPressDragEnabled())) {
+				// Selection mode of a list that only reorders there (or a tap opens the menu, leaving
+				// the long press for dragging): the long press is a drag, which brings the menu up
+				// itself if the item is let go of without moving. Selection stays.
 				MediaItemViewHolder h = getHolder();
 				if (touchActive && (h != null) && ad.startDragOnLongPress(h, true)) return true;
 				showItemMenu();
@@ -680,12 +747,26 @@ public class MediaItemView extends ConstraintLayout
 		return true;
 	}
 
-	/** The item's long-press context menu. */
+	/** The item's long-press context menu; the card stays outlined while it's open. */
 	public void showItemMenu() {
 		MainActivityDelegate a = getMainActivity();
 		OverlayMenu menu = a.getContextMenu();
 		MediaItemMenuHandler handler = new MediaItemMenuHandler(menu, this);
+		menuItem = getItem();
+		refreshOutline(true);
 		handler.show();
+	}
+
+	/** The long-press menu closed: the outline goes (from whichever card now shows that item). */
+	void menuClosed() {
+		Item i = menuItem;
+		menuItem = null;
+		if (i == getItem()) refreshOutline(true);
+		MediaItemListView l = getListView();
+		if (l == null) return;
+		for (int n = l.getChildCount(), c = 0; c < n; c++) {
+			if (l.getChildAt(c) instanceof MediaItemView v) v.refreshOutline(true);
+		}
 	}
 
 	@Override

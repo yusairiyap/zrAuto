@@ -219,14 +219,18 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		if (NetworkIssuePopup.isShown()) return;
 		DiagnosticLog.log("YT", "stalled", "id=" + currentVideoId,
 				"for=" + ((SystemClock.elapsedRealtime() - waitingSince) / 1000) + 's');
-		MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a ->
-				NetworkIssuePopup.show(a, () -> {
+		boolean fullscreen = getFullScreenView() != null;
+		MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a -> {
+			// Over playback only -- fullscreen video or the Music tab -- never while browsing.
+			if (!NetworkIssuePopup.isPlaybackScreen(a, fullscreen)) return;
+			NetworkIssuePopup.show(a, () -> {
 					waitingSince = 0;
 					lastActivePlayTime = System.currentTimeMillis();
 					playRetries = 0;
 					web.onResume();
 					web.play();
-				}));
+				});
+		});
 	}
 
 	/** Buffering is over (playing again, paused, stopped): no more stall to report. */
@@ -711,8 +715,12 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// The page gave up on its own while waiting for data, or with no connection at all: that's
 		// the network, not the user -- say so, with the way out.
 		if (!appRequestedPause && (stalled || !NetworkIssuePopup.isOnline(web.getContext()))) {
-			MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a ->
-					NetworkIssuePopup.show(a, () -> cb.onPlay()));
+			boolean fullscreen = getFullScreenView() != null;
+			MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a -> {
+				if (NetworkIssuePopup.isPlaybackScreen(a, fullscreen)) {
+					NetworkIssuePopup.show(a, () -> cb.onPlay());
+				}
+			});
 		}
 		if (appRequestedPause) {
 			appRequestedPause = false;

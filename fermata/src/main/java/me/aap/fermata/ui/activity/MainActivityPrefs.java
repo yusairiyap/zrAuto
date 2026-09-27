@@ -67,6 +67,10 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> HIDE_BARS = Pref.b("HIDE_BARS", false);
 	Pref<BooleanSupplier> FULLSCREEN = Pref.b("FULLSCREEN", false);
 	Pref<BooleanSupplier> SHOW_PG_UP_DOWN = Pref.b("SHOW_PG_UP_DOWN", true);
+	/** What tapping a track in a list does: {@link #TAP_PLAYS} or {@link #TAP_OPENS_MENU}. */
+	Pref<IntSupplier> TAP_ACTION = Pref.i("TAP_ACTION", 0);
+	int TAP_PLAYS = 0;
+	int TAP_OPENS_MENU = 1;
 	Pref<BooleanSupplier> USE_DPAD_CURSOR = AUTO ? Pref.b("USE_DPAD_CURSOR", true) : null;
 	Pref<IntSupplier> NAV_BAR_POS = Pref.i("NAV_BAR_POS", NavBarView.POSITION_BOTTOM);
 	Pref<DoubleSupplier> NAV_BAR_SIZE = Pref.f("NAV_BAR_SIZE", 1f);
@@ -99,7 +103,13 @@ public interface MainActivityPrefs
 	Pref<IntSupplier> FAB3_ACTION = Pref.i("FAB3_ACTION", Action.DIM_TOGGLE.ordinal());
 	Pref<BooleanSupplier> FAB4_ENABLED = Pref.b("FAB4_ENABLED", true);
 	Pref<IntSupplier> FAB4_ACTION = Pref.i("FAB4_ACTION", Action.FAVORITE_ADD.ordinal());
-	Pref<BooleanSupplier> FAB_DRAGGABLE = Pref.b("FAB_DRAGGABLE", true);
+	// FAB5 (search) is on out of the box too; FAB6 is there to be turned on.
+	Pref<BooleanSupplier> FAB5_ENABLED = Pref.b("FAB5_ENABLED", true);
+	Pref<IntSupplier> FAB5_ACTION = Pref.i("FAB5_ACTION", Action.YOUTUBE_SEARCH.ordinal());
+	Pref<BooleanSupplier> FAB6_ENABLED = Pref.b("FAB6_ENABLED", false);
+	Pref<IntSupplier> FAB6_ACTION = Pref.i("FAB6_ACTION", Action.OPEN_PLAYLISTS.ordinal());
+	// Fixed in place by default: dragging is easy to trigger by accident while driving.
+	Pref<BooleanSupplier> FAB_DRAGGABLE = Pref.b("FAB_DRAGGABLE", false);
 	Pref<DoubleSupplier> FAB_SIZE = Pref.f("FAB_SIZE", 1f);
 	// How many upcoming Favorites/Playlist entries the YouTube tab's Up next list previews below the
 	// user's own queue (1..10) -- enough to see what comes after, few enough to leave room for search
@@ -188,6 +198,7 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> HIDE_BARS_AA = AUTO ? Pref.b("HIDE_BARS_AA", false) : null;
 	Pref<BooleanSupplier> FULLSCREEN_AA = AUTO ? Pref.b("FULLSCREEN_AA", false) : null;
 	Pref<BooleanSupplier> SHOW_PG_UP_DOWN_AA = AUTO ? Pref.b("SHOW_PG_UP_DOWN_AA", true) : null;
+	Pref<IntSupplier> TAP_ACTION_AA = AUTO ? Pref.i("TAP_ACTION_AA", 0) : null;
 	Pref<IntSupplier> NAV_BAR_POS_AA =
 			AUTO ? Pref.i("NAV_BAR_POS_AA", NavBarView.POSITION_BOTTOM) : null;
 	Pref<DoubleSupplier> NAV_BAR_SIZE_AA = AUTO ? Pref.f("NAV_BAR_SIZE_AA", 1f) : null;
@@ -255,6 +266,15 @@ public interface MainActivityPrefs
 	default boolean getShowPgUpDownPref(MainActivityDelegate a) {
 		if (AUTO && a.isCarActivity()) return getBooleanPref(SHOW_PG_UP_DOWN_AA);
 		return getBooleanPref(SHOW_PG_UP_DOWN);
+	}
+
+	/**
+	 * Whether tapping a track opens its menu rather than playing it (set separately for the car
+	 * screen). Items can then also be dragged with a long press, outside selection mode.
+	 */
+	default boolean getTapOpensMenuPref(MainActivityDelegate a) {
+		if (AUTO && a.isCarActivity()) return getIntPref(TAP_ACTION_AA) == TAP_OPENS_MENU;
+		return getIntPref(TAP_ACTION) == TAP_OPENS_MENU;
 	}
 
 	default boolean useDpadCursor(MainActivityDelegate a) {
@@ -351,8 +371,12 @@ public interface MainActivityPrefs
 		applyFloatPref(GRID_ITEM_SIZE, value);
 	}
 
+	/**
+	 * The floating buttons' scale: the size setting (1.0 by default) on top of a base a little
+	 * larger than Material's standard FAB, which read as small on a car screen.
+	 */
 	default float getFabSizePref() {
-		return getFloatPref(FAB_SIZE);
+		return getFloatPref(FAB_SIZE) * 1.15f;
 	}
 
 	default boolean getSysBarsOnVideoTouchPref() {

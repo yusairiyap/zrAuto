@@ -86,6 +86,12 @@ public final class MusicPlayer {
 		 * the cursor too.
 		 */
 		void openSearch(MainActivityDelegate a, boolean upNextOnly);
+
+		/**
+		 * Adds the YouTube videos among {@code items} to the end of the YouTube player's Up next, if
+		 * a YouTube video is what's playing. The number added, or -1 if no YouTube video is playing.
+		 */
+		int addToVideoQueue(MainActivityDelegate a, List<? extends PlayableItem> items);
 	}
 
 	public static void setYoutubeHooks(@Nullable YoutubeHooks hooks) {
@@ -309,9 +315,13 @@ public final class MusicPlayer {
 	public static boolean isMusicModeActive(MainActivityDelegate a) {
 		if (!isEnabled()) return false;
 		MediaSessionCallback cb = a.getMediaSessionCallback();
-		return (getCurrentTrack(cb) != null) ||
-				(youtubeAudioMode && (cb.getEngine() != null) &&
-						(cb.getEngine().getId() == MediaPrefs.MEDIA_ENG_YT));
+		MediaEngine eng = cb.getEngine();
+		if (eng == null) return false;
+		// YouTube: its queue item stays the music track after "Video" -- only the quality says
+		// whether it's being listened to or watched.
+		if (eng.getId() == MediaPrefs.MEDIA_ENG_YT) return youtubeAudioMode;
+		// A local file: switched to video, the session item is the file itself again.
+		return cb.getCurrentItem() instanceof MusicTrackItem;
 	}
 
 	/**
@@ -380,6 +390,21 @@ public final class MusicPlayer {
 			if (list.isEmpty()) {
 				UiUtils.showToast(ctx, R.string.music_nothing_to_play);
 				return;
+			}
+			// Watching a YouTube video (not music mode): "Add into queue" means that player's Up next.
+			YoutubeHooks h = youtube;
+			MediaEngine eng = a.getMediaSessionCallback().getEngine();
+			if ((h != null) && !isMusicModeActive(a) && (eng != null) &&
+					(eng.getId() == MediaPrefs.MEDIA_ENG_YT)) {
+				int n = h.addToVideoQueue(a, list);
+				if (n > 0) {
+					UiUtils.showToast(ctx, ctx.getResources().getQuantityString(
+							R.plurals.video_added_to_queue, n, n));
+					return;
+				} else if (n == 0) {
+					UiUtils.showToast(ctx, R.string.video_queue_nothing_added);
+					return;
+				}
 			}
 			// Right after the track playing now (or where the queue left off), not at the far end of
 			// a long queue: what was just added is what the user wants to hear next.

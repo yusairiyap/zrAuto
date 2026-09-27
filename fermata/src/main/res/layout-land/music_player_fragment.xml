@@ -55,11 +55,14 @@
                 android:paddingTop="8dp"
                 android:paddingEnd="24dp" />
 
+            <!-- Nudged up a little: centred on the column alone, the block reads as sitting low,
+                 its action chips being lighter than the title above. -->
             <include
                 layout="@layout/music_player_controls"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical" />
+                android:layout_gravity="center_vertical"
+                android:layout_marginBottom="56dp" />
         </FrameLayout>
 
         <androidx.constraintlayout.widget.ConstraintLayout

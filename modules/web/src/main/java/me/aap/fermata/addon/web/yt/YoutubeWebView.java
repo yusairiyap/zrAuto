@@ -94,6 +94,10 @@ public class YoutubeWebView extends FermataWebView {
 	 * {@code YoutubeVideoView#showTransitionOverlay}).
 	 */
 	private static final int NAVIGATION_FALLBACK_MS = 1000;
+	/** See navigateToVideoJs(): more time for a navigation the router has visibly started. */
+	private static final int NAVIGATION_STARTED_WAIT_MS = 8000;
+	/** See navigateToVideoJs(): a second look before forcing, when no navigation was seen. */
+	private static final int NAVIGATION_RECHECK_MS = 2000;
 	/**
 	 * How long an explicit next/prev/queue switch lets the current video's audio fade out (see
 	 * {@code youtube_fade.js}) before actually navigating -- see {@link #afterAudioFadeOut}.
@@ -985,6 +989,24 @@ public class YoutubeWebView extends FermataWebView {
 				    catch (e) { return location.search.indexOf('v=' + id) >= 0; }
 				  }
 				  if (onTarget()) return true;
+				  // Whether YouTube's router took the click: on a slow connection it can take well
+				  // over a second to get to the new URL. Forcing loadVideoById() meanwhile started the
+				  // video, then the router's own navigation landed and loaded it again from the start --
+				  // heard as a track playing for a while and then restarting.
+				  var navStarted = false;
+				  function onNav() { navStarted = true; }
+				  var navEvents = ['yt-navigate-start', 'yt-navigate', 'state-navigatestart'];
+				  navEvents.forEach(function(n) { window.addEventListener(n, onNav, true); });
+				  function stopListening() {
+				    navEvents.forEach(function(n) { window.removeEventListener(n, onNav, true); });
+				  }
+				  function playerOnTarget() {
+				    try {
+				      var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+				      var d = (p && p.getVideoData) ? p.getVideoData() : null;
+				      return !!d && (d.video_id === id);
+				    } catch (e) { return false; }
+				  }
 				  try {
 				    var a = document.createElement('a');
 				    a.href = navUrl;
@@ -1000,8 +1022,9 @@ public class YoutubeWebView extends FermataWebView {
 				      window.__fermataLastLinkClickTime = 0;
 				    }, 0);
 				  } catch (e) { return false; }
-				  setTimeout(function() {
-				    if (onTarget()) return;
+				  function force() {
+				    stopListening();
+				    if (onTarget() || playerOnTarget()) return;
 				    var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
 				    if (p && (typeof p.loadVideoById === 'function')) {
 				      if (fromStart) p.loadVideoById(id, 0);
@@ -1010,10 +1033,17 @@ public class YoutubeWebView extends FermataWebView {
 				    } else {
 				      location.assign(navUrl);
 				    }
+				  }
+				  setTimeout(function() {
+				    if (onTarget() || playerOnTarget()) { stopListening(); return; }
+				    // The router is on its way (or may be, on a slow network): give it longer before
+				    // concluding the click was swallowed.
+				    setTimeout(force, navStarted ? %4$d : %5$d);
 				  }, %2$d);
 				  return true;
 				})();
-				""".formatted(videoId, NAVIGATION_FALLBACK_MS, fromStart);
+				""".formatted(videoId, NAVIGATION_FALLBACK_MS, fromStart, NAVIGATION_STARTED_WAIT_MS,
+				NAVIGATION_RECHECK_MS);
 	}
 
 	private void prevNext(boolean next) {

@@ -96,6 +96,14 @@ public enum Action {
 			a(a -> me.aap.fermata.addon.music.MusicPlayer.openYoutubeSearch(a, false))),
 	YOUTUBE_UP_NEXT(R.string.action_youtube_up_next,
 			a(a -> me.aap.fermata.addon.music.MusicPlayer.openYoutubeSearch(a, true))),
+	OPEN_FAVORITES(R.string.action_open_favorites, a(a -> {
+		a.exitVideoMode();
+		a.showFragment(R.id.favorites_fragment);
+	})),
+	OPEN_PLAYLISTS(R.string.action_open_playlists, a(a -> {
+		a.exitVideoMode();
+		a.showFragment(R.id.playlists_fragment);
+	})),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));
