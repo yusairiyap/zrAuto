@@ -21,15 +21,19 @@
 
         <!-- Tool/Nav bars: white background (colorPrimary, decoupled from colorPrimaryDark so the
         status bar stays its own blue), keeping the existing blue colorOnPrimary for icons/text
-        drawn on top of them. -->
-        <item name="colorPrimary">?android:colorBackground</item>
+        drawn on top of them. A literal white, the same as android:colorBackground, rather than a
+        reference to it: dialogs apply an AppCompat overlay that points android:colorBackground at
+        colorBackgroundFloating, which is colorSurface, which is colorPrimary here. Referencing
+        android:colorBackground closed that into a loop that never resolves, so every dialog crashed
+        on this theme (title, then buttons) while the literal-color themes were fine. -->
+        <item name="colorPrimary">#FFFFFF</item>
         <item name="colorOnPrimary">#0288D1</item>
         <item name="android:textColorPrimary">?colorOnPrimary</item>
 
         <!-- List/Media items: dark ink icon tint and title/subtitle text, rather than the blue icon
         tint and (illegible, white-on-white) textColorSecondary this theme previously had here.
         (The actual card background color is colorSurfaceVariant, below.) -->
-        <item name="colorSecondary">?android:colorBackground</item>
+        <item name="colorSecondary">#FFFFFF</item>
         <item name="colorOnSecondary">#1C1B1F</item>
         <item name="android:textColorSecondary">#1C1B1F</item>
         <item name="boxStrokeColor">#445D8F</item>

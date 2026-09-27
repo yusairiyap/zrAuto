@@ -738,7 +738,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			transitioning();
 			web.getAddon().setPendingVideoId(queueVideoId);
 			pendingCorrections = 0;
-			web.afterAudioFadeOut(() -> web.loadVideo(queueVideoId));
+			// From 0:00, not wherever YouTube would resume it -- see YoutubeWebView#loadVideo.
+			web.afterAudioFadeOut(() -> web.loadVideo(queueVideoId, true));
 		} else if (queueVideoId != null) {
 			// Reached from MediaSessionCallback.skipTo()/engineEnded() when queueAwareNextPlayable()/
 			// PrevPlayable() below resolved a real sibling from the app's own Favorites/Playlist --
@@ -758,7 +759,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			// when that race happens) and lands the page on a different video of its own choosing.
 			web.getAddon().setPendingVideoId(queueVideoId);
 			pendingCorrections = 0;
-			web.afterAudioFadeOut(() -> web.loadVideo(queueVideoId));
+			// From 0:00, not wherever YouTube would resume it -- see YoutubeWebView#loadVideo.
+			web.afterAudioFadeOut(() -> web.loadVideo(queueVideoId, true));
 		} else {
 			cb.onEnginePrepared(this);
 		}

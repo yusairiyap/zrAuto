@@ -72,6 +72,10 @@ import me.aap.utils.ui.activity.SplitCompatActivityBase;
 public class MainActivity extends SplitCompatActivityBase
 		implements ZrAutoActivity, AddonManager.Listener {
 	private static FermataMediaServiceConnection service;
+	// Where androidx keeps the FragmentManager's saved state in an activity's saved instance state.
+	private static final String SAVED_STATE_REGISTRY_KEY =
+			"androidx.lifecycle.BundlableSavedStateRegistry.key";
+	private static final String FRAGMENTS_STATE_KEY = "android:support:fragments";
 	private static MainActivity activeInstance;
 	private int nightMode;
 
@@ -125,7 +129,25 @@ public class MainActivity extends SplitCompatActivityBase
 				getActivityDelegate().onSuccess(MainActivityDelegate::onBackPressed);
 			}
 		});
+		// Every screen's fragment needs the activity delegate, which is only ready once the media
+		// service is connected. After the process was killed in the background (it happens on a
+		// long drive with Android Auto), that connection is asynchronous, yet the FragmentManager
+		// would still restore the old fragments and create their views in onStart(), before the
+		// delegate exists: the YouTube tab then crashed building its web view ("FutureSupplier is
+		// not done"). The delegate reopens the saved tab itself (the navId/fragmentId it saves, see
+		// MainActivityDelegate#onActivityCreate) and creates its fragment anew when missing, so the
+		// FragmentManager's own copy is simply dropped in that case.
+		FermataMediaServiceConnection s = service;
+		if ((savedInstanceState != null) && ((s == null) || !s.isConnected())) {
+			dropFragmentState(savedInstanceState);
+		}
 		super.onCreate(savedInstanceState);
+	}
+
+	private static void dropFragmentState(Bundle state) {
+		state.remove(FRAGMENTS_STATE_KEY);
+		Bundle registry = state.getBundle(SAVED_STATE_REGISTRY_KEY);
+		if (registry != null) registry.remove(FRAGMENTS_STATE_KEY);
 	}
 
 	@Override

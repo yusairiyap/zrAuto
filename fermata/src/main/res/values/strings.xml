@@ -627,7 +627,12 @@
     <string name="fuel_log_trip_started">Trip Started</string>
     <string name="fuel_log_trip_ended">Trip Ended</string>
     <string name="fuel_log_filter_date_range">Filter by date</string>
-    <string name="fuel_log_date_filter_unavailable_in_car">Date filter isn\'t available while connected to Android Auto</string>
+    <string name="fuel_log_range_7_days">Last 7 days</string>
+    <string name="fuel_log_range_30_days">Last 30 days</string>
+    <string name="fuel_log_range_90_days">Last 90 days</string>
+    <string name="fuel_log_range_this_month">This month</string>
+    <string name="fuel_log_range_last_month">Last month</string>
+    <string name="fuel_log_range_this_year">This year</string>
     <string name="fuel_log_no_timeline_entries">No trips or refuels in this period</string>
     <string name="fuel_log_today">Today</string>
     <string name="fuel_log_yesterday">Yesterday</string>
@@ -758,6 +763,7 @@
     <string name="data_usage_reset_sub">Forget all usage counted so far and start again from zero</string>
     <string name="data_usage_reset_question">All data usage counted so far will be deleted. Continue?</string>
     <string name="data_usage_reset_done">Data usage reset</string>
+    <string name="data_usage_reset_failed">Couldn\'t show the reset confirmation. Try again, or restart the app if it keeps happening.</string>
     <string name="data_usage_warning_reached">Data warning: %1$s used this cycle</string>
     <string name="data_usage_limit_reached">Data limit reached: %1$s used this cycle</string>
     <string name="data_usage_banner_of">%1$s of %2$s used</string>

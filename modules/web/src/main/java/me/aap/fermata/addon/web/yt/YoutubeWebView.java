@@ -904,10 +904,24 @@ public class YoutubeWebView extends FermataWebView {
 	 * playing even where the router doesn't take the click.
 	 */
 	void loadVideo(String videoId) {
-		evaluateJavascript(navigateToVideoJs(videoId), result -> {
+		loadVideo(videoId, false);
+	}
+
+	/**
+	 * @param fromStart start the video at 0:00 rather than wherever YouTube itself would resume it.
+	 *                  YouTube remembers how far the signed-in account got into every video and
+	 *                  resumes there, which for a queue skip back to a song that was just listened
+	 *                  to the end meant starting in its last seconds: it ended again almost at once
+	 *                  and the queue jumped forward, heard as a stutter. Used for queue navigation
+	 *                  only (see YoutubeMediaEngine#prepare); a video the user picks keeps
+	 *                  YouTube's own resume behaviour.
+	 */
+	void loadVideo(String videoId, boolean fromStart) {
+		evaluateJavascript(navigateToVideoJs(videoId, fromStart), result -> {
 			// Only reached if the script itself couldn't run at all (no document body yet, an
 			// exception) -- a plain page load is the last resort either way.
-			if (!"true".equals(result)) loadUrl(YoutubeVideoItem.watchUrl(videoId));
+			if (!"true".equals(result))
+				loadUrl(YoutubeVideoItem.watchUrl(videoId) + (fromStart ? "&t=0s" : ""));
 		});
 	}
 
@@ -954,11 +968,13 @@ public class YoutubeWebView extends FermataWebView {
 	 * plain document load. A full browser navigation replaces this document outright, taking the
 	 * pending timer with it, so it can never double-navigate on the path that did work.
 	 */
-	private static String navigateToVideoJs(String videoId) {
+	private static String navigateToVideoJs(String videoId, boolean fromStart) {
 		return """
 				(function() {
 				  var id = '%1$s';
 				  var url = '/watch?v=' + id;
+				  var fromStart = %3$b;
+				  var navUrl = fromStart ? url + '&t=0s' : url;
 				  function onTarget() {
 				    try { return new URLSearchParams(location.search).get('v') === id; }
 				    catch (e) { return location.search.indexOf('v=' + id) >= 0; }
@@ -966,7 +982,7 @@ public class YoutubeWebView extends FermataWebView {
 				  if (onTarget()) return true;
 				  try {
 				    var a = document.createElement('a');
-				    a.href = url;
+				    a.href = navUrl;
 				    a.style.display = 'none';
 				    document.body.appendChild(a);
 				    window.__fermataSuppressLinkClick = true;
@@ -983,15 +999,16 @@ public class YoutubeWebView extends FermataWebView {
 				    if (onTarget()) return;
 				    var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
 				    if (p && (typeof p.loadVideoById === 'function')) {
-				      p.loadVideoById(id);
+				      if (fromStart) p.loadVideoById(id, 0);
+				      else p.loadVideoById(id);
 				      try { history.replaceState(history.state, '', url); } catch (e) {}
 				    } else {
-				      location.assign(url);
+				      location.assign(navUrl);
 				    }
 				  }, %2$d);
 				  return true;
 				})();
-				""".formatted(videoId, NAVIGATION_FALLBACK_MS);
+				""".formatted(videoId, NAVIGATION_FALLBACK_MS, fromStart);
 	}
 
 	private void prevNext(boolean next) {

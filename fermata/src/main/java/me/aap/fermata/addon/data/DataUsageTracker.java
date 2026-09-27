@@ -396,12 +396,18 @@ public final class DataUsageTracker implements MediaSessionCallback.Listener {
 
 	/** The data limit in bytes, 0 if none. */
 	public static long getLimit() {
-		return Math.round(prefs().getFloatPref(LIMIT_GB) * GB);
+		return gbToBytes(prefs().getFloatPref(LIMIT_GB));
 	}
 
 	/** The warning level in bytes, 0 if none. */
 	public static long getWarning() {
-		return Math.round(prefs().getFloatPref(WARNING_GB) * GB);
+		return gbToBytes(prefs().getFloatPref(WARNING_GB));
+	}
+
+	// Math.round(float) returns an int, so rounding the float product directly capped every value
+	// above ~2.147 GB at Integer.MAX_VALUE bytes (a 10 GB limit showed as 2.1 GB). Round in double.
+	private static long gbToBytes(float gb) {
+		return Math.round((double) gb * GB);
 	}
 
 	/** The current limit cycle: its first moment and the first moment of the next one. */

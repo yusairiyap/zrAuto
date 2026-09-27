@@ -304,6 +304,14 @@ public abstract class ActivityDelegate implements EventBroadcaster<ActivityListe
 		return getAppActivity().findViewById(id);
 	}
 
+	/**
+	 * Whether this activity draws on the Android Auto (car) screen, where a plain EditText can't
+	 * bring up the car keyboard and {@link #createEditText(Context)} must be used instead.
+	 */
+	public boolean isCarActivity() {
+		return false;
+	}
+
 	public EditText createEditText() {
 		return createEditText(getContext());
 	}

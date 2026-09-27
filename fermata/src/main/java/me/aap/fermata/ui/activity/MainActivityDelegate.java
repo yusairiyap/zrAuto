@@ -646,6 +646,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		return (ZrAutoActivity) super.getAppActivity();
 	}
 
+	@Override
 	public boolean isCarActivity() {
 		return AUTO && getAppActivity().isCarActivity() || FermataApplication.get().isMirroringMode();
 	}

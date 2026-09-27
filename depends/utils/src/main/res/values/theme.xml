@@ -145,6 +145,16 @@
         <item name="android:windowAnimationStyle">@style/Theme.Utils.Base.DialogFadeAnimation</item>
         <item name="alertDialogStyle">@style/Theme.Utils.Base.AlertDialog.Style</item>
 
+        <!-- Every TextAppearance.AppCompat style (the dialog title, message and buttons all use one)
+        reads android:textColorLink and android:textColorHighlight through ?android:attr references
+        that only the platform theme defines. Their platform values lead back to the app's color
+        roles, so an app theme whose roles loop through android:colorBackground inside this overlay
+        (see AppTheme.Light's colorPrimary) failed here first: "Failed to resolve attribute
+        0x0101009b", i.e. android:textColorLink, inflating DialogTitle. Defining both directly keeps
+        that lookup short. -->
+        <item name="android:textColorLink">?attr/colorOnSurface</item>
+        <item name="android:textColorHighlight">#665E97F6</item>
+
         <item name="materialAlertDialogTitlePanelStyle">
             @style/Theme.Utils.Base.AlertDialog.Title.Panel
         </item>
