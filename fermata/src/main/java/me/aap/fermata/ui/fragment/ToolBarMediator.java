@@ -17,16 +17,12 @@ import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED
 
 import android.content.Context;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.LinearLayout;
 
 import androidx.annotation.IdRes;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
-import androidx.recyclerview.widget.RecyclerView;
 
-import com.google.android.material.materialswitch.MaterialSwitch;
-
+import me.aap.fermata.BuildConfig;
 import me.aap.fermata.R;
 import me.aap.fermata.addon.AddonManager;
 import me.aap.fermata.addon.FermataAddon;
@@ -42,7 +38,7 @@ import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.ui.view.MediaItemListView;
 import me.aap.utils.pref.PreferenceSet;
-import me.aap.utils.pref.PreferenceViewAdapter;
+import me.aap.utils.pref.PrefCondition;
 import me.aap.utils.ui.activity.ActivityDelegate;
 import me.aap.utils.ui.fragment.ActivityFragment;
 import me.aap.utils.ui.menu.OverlayMenu;
@@ -274,44 +270,43 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 		// slider the user can drag to resize grid cards live.
 		a.getToolBarMenu().show(b -> {
 			Context ctx = b.getMenu().getContext();
-			LinearLayout box = new LinearLayout(ctx);
-			box.setOrientation(LinearLayout.VERTICAL);
-			box.setMinimumWidth(toIntPx(ctx, 260));
-
-			// Grid or list, as a switch at the top -- formerly its own toolbar button.
-			MaterialSwitch grid = new MaterialSwitch(ctx);
-			grid.setText(R.string.grid_view);
-			grid.setChecked(a.isGridView());
-			int pad = toIntPx(ctx, 16);
-			grid.setPadding(pad, toIntPx(ctx, 8), pad, toIntPx(ctx, 4));
-			grid.setMinHeight(toIntPx(ctx, 48));
-			grid.setOnCheckedChangeListener((sw, checked) -> {
-				if (checked != a.isGridView()) a.getPrefs().setGridViewPref(a, checked);
-			});
-			box.addView(grid, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-					ViewGroup.LayoutParams.WRAP_CONTENT));
-
+			MainActivityPrefs prefs = a.getPrefs();
+			var gridPref = MainActivityPrefs.getGridViewPrefKey(a);
 			PreferenceSet set = new PreferenceSet();
+			// Grid or list, as a switch -- the same row style as the slider below, so it follows
+			// the theme like every other setting.
+			set.addBooleanPref(o -> {
+				o.store = prefs;
+				o.pref = gridPref;
+				o.title = R.string.grid_view;
+				o.asSwitch = true;
+			});
+			// Grid: the card size. List: the rows' text and icon size.
 			set.addFloatPref(o -> {
 				o.title = R.string.card_size;
-				o.store = a.getPrefs();
+				o.store = prefs;
 				o.pref = MainActivityPrefs.GRID_ITEM_SIZE;
 				o.scale = 0.05f;
 				o.seekMin = 10;
 				o.seekMax = 40;
-				// The live-resizing grid behind this popup is its own feedback; the numeric value
-				// field next to the slider is redundant here.
+				// The live-resizing list behind this popup is its own feedback.
 				o.showValue = false;
+				o.visibility = PrefCondition.create(prefs, gridPref);
 			});
-			// A modest fixed width: the popup holds a switch and a single slider row. Not focused
-			// right away -- see PreferenceSet#addToMenu's requestFocus.
-			RecyclerView sizes = set.createView(ctx, toIntPx(ctx, 260));
-			box.addView(sizes, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-					ViewGroup.LayoutParams.WRAP_CONTENT));
-			b.setCloseHandlerHandler(m -> {
-				if (sizes.getAdapter() instanceof PreferenceViewAdapter pa) pa.onDestroy();
+			set.addFloatPref(o -> {
+				o.title = R.string.list_size;
+				o.store = prefs;
+				o.pref = (BuildConfig.AUTO && a.isCarActivity()) ? MainActivityPrefs.TEXT_ICON_SIZE_AA :
+						MainActivityPrefs.TEXT_ICON_SIZE;
+				o.scale = 0.05f;
+				o.seekMin = 10;
+				o.seekMax = 40;
+				o.showValue = false;
+				o.visibility = new PrefCondition<>(prefs, gridPref, p -> !prefs.getBooleanPref(p));
 			});
-			b.setView(box);
+			// A modest fixed width: a switch and a slider. Not focused right away -- see
+			// PreferenceSet#addToMenu's requestFocus.
+			set.addToMenu(b, toIntPx(ctx, 280), false);
 		});
 	}
 
@@ -342,7 +337,8 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 			addSortItem(b, R.id.tool_sort_date, R.string.date, SORT_BY_DATE, sort, m);
 			addSortItem(b, R.id.tool_sort_random, R.string.random, SORT_BY_RND, sort, m);
 			// A playlist's unsorted order is the user's own arrangement.
-			addSortItem(b, R.id.tool_sort_none, (adapter.getParent() instanceof Playlist) ?
+			addSortItem(b, R.id.tool_sort_none,
+					((adapter.getParent() instanceof Playlist) || (adapter.getParent() instanceof Favorites)) ?
 					R.string.sort_custom : R.string.do_not_sort, SORT_BY_NONE, sort, m);
 
 			if ((sort != SORT_BY_NONE) && (sort != SORT_BY_RND)) {

@@ -376,7 +376,7 @@ public interface MainActivityPrefs
 	 * larger than Material's standard FAB, which read as small on a car screen.
 	 */
 	default float getFabSizePref() {
-		return getFloatPref(FAB_SIZE) * 1.15f;
+		return getFloatPref(FAB_SIZE) * 1.1f;
 	}
 
 	default boolean getSysBarsOnVideoTouchPref() {

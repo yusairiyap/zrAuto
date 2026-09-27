@@ -1265,6 +1265,15 @@ public class YoutubeWebView extends FermataWebView {
 	 * Stops {@link #applyQualityPolicy} and hands the quality choice back to the viewer: their own
 	 * saved preference if music mode had replaced it, else YouTube's automatic choice.
 	 */
+	/** Stops {@link #applyQualityPolicy} without touching the quality itself. */
+	void stopQualityPolicy() {
+		loadUrl("javascript:\n" +
+				"(function() {\n" +
+				CLEAR_HIGHEST_VIDEO_QUALITY_JS +
+				"  clearFermataQ();\n" +
+				"})();");
+	}
+
 	void clearQualityPolicy() {
 		loadUrl("javascript:\n" +
 				"(function() {\n" +

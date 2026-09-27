@@ -132,4 +132,18 @@ class DefaultFavorites extends ItemContainer<PlayableItem> implements Favorites,
 		super.itemRemoved(i);
 		getLib().getAtvInterface(a -> a.removeProgram(i));
 	}
+
+	/**
+	 * Like a playlist: can be shown sorted (by name, or shuffled) without changing its own order,
+	 * which "Custom order" (no sorting, the default) shows and drag and drop edits.
+	 */
+	@Override
+	public boolean sortChildrenEnabled() {
+		return true;
+	}
+
+	@Override
+	public int getSupportedSortOpts() {
+		return me.aap.fermata.media.pref.BrowsableItemPrefs.SORT_MASK_NAME_RND;
+	}
 }

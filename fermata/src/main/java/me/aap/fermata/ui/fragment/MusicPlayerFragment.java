@@ -913,6 +913,13 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if (!a.computeContentInsets(c, insets) || !a.computeSideInsets(c, sideInsets)) return;
 		int top = insets[0];
 		int bottom = insets[1];
+		// Landscape: the cover and the controls sit side by side, each centred on the column's
+		// height -- with only the top reserved (for the toolbar), that centre was below the
+		// screen's own, and both read as sitting low. The same room at the bottom puts them on
+		// the screen's centre line.
+		if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
+			bottom = Math.max(bottom, top);
+		}
 		int left = sideInsets[0];
 		int right = sideInsets[1];
 		if (insetsSet && (top == insetTop) && (bottom == insetBottom) && (left == insetLeft)

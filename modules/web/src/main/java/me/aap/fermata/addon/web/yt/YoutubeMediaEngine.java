@@ -76,6 +76,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	private final YoutubeItem end;
 	private YoutubeItem current;
 	private String qualityUrl;
+	// The video the user picked a quality for by hand (the quality menu): the preferred-quality
+	// setting leaves that video alone, see playing().
+	@Nullable
+	private String manualQualityVideoId;
 	private boolean ignorePause;
 	// See paused() below: how long after our own start() or the page's own last confirmed playing()
 	// a page-reported pause is still treated as suspect, and how many times it's retried before
@@ -436,6 +440,9 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				userQualityChecked = true;
 				web.restoreUserQuality();
 			}
+		} else if (!music && (actualId != null) && actualId.equals(manualQualityVideoId)) {
+			// Picked by hand for this video: the setting doesn't override the user's choice.
+			qualityUrl = url;
 		} else if (!url.isEmpty() && !url.equals(qualityUrl)) {
 			qualityUrl = url;
 			web.applyQualityPolicy(music ? "lowest" : preferred);
@@ -840,6 +847,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 */
 	void applyQuality() {
 		qualityUrl = null;
+		manualQualityVideoId = null;
 		String preferred = web.getAddon().preferredQuality();
 		if (MusicPlayer.isYoutubeAudioMode()) web.applyQualityPolicy("lowest");
 		else if (preferred != null) web.applyQualityPolicy(preferred);
@@ -1290,10 +1298,17 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			web.setScale(VideoScale.NONE);
 			return true;
 		} else if ((item.getData() instanceof String l) && l.startsWith(QUALITY_LEVEL_PREFIX)) {
+			manualQualityVideoId = currentVideoId;
 			web.setPlayerQuality(l.substring(QUALITY_LEVEL_PREFIX.length()));
 		} else if (item.getData() instanceof Integer) {
 			int d = item.getData();
-			if ((d & VIDEO_QUALITY_MASK) != 0) web.setVideoQuality(d & ~VIDEO_QUALITY_MASK);
+			if ((d & VIDEO_QUALITY_MASK) != 0) {
+				// The preferred-quality policy re-applies itself on every buffering; stop it first, or
+				// the page's own quality menu choice is undone moments later.
+				manualQualityVideoId = currentVideoId;
+				web.stopQualityPolicy();
+				web.setVideoQuality(d & ~VIDEO_QUALITY_MASK);
+			}
 		}
 		return false;
 	}

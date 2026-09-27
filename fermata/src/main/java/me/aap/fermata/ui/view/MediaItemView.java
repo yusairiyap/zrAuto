@@ -683,7 +683,7 @@ public class MediaItemView extends ConstraintLayout
 			if (d == null) return;
 			d = outline = d.mutate();
 		}
-		int inset = Math.round(toPx(getContext(), 1));
+		int inset = 0;
 		d.setBounds(inset, inset, getWidth() - inset, getHeight() - inset);
 		d.setAlpha(Math.round(255 * outlineFraction));
 		d.draw(canvas);

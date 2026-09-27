@@ -77,7 +77,15 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 	// media keys, the notification): its icon follows.
 	@Override
 	public void onPlaybackStateChanged(MediaSessionCallback cb, PlaybackStateCompat state) {
-		if (fab != null) updateIcon(fab);
+		FloatingButton fb = fab;
+		if (fb == null) return;
+		updateIcon(fb);
+		// Whether a video is playing decides whether a fullscreen button shows over the lists.
+		MainActivityDelegate.getActivityDelegate(fb.getContext())
+				.onSuccess(a -> {
+					// Over video the buttons follow the control panel's own show/hide instead.
+					if (!a.isVideoMode()) a.updateExtraFabsVisibility();
+				});
 	}
 
 	private void updateIcon(FloatingButton fb) {

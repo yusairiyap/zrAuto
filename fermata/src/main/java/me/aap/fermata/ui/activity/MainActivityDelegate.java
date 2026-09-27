@@ -191,6 +191,7 @@ import me.aap.utils.function.Supplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.misc.MiscUtils;
 import me.aap.utils.function.BooleanSupplier;
+import me.aap.utils.function.IntSupplier;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.pref.PreferenceStore.Pref;
 import me.aap.utils.ui.UiUtils;
@@ -2497,16 +2498,48 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * screen (getStartDelay() == 0), and recomputing visibility here from scratch would immediately
 	 * clobber that, causing a brief flash on entry.
 	 */
-	private void updateExtraFabsVisibility() {
+	public void updateExtraFabsVisibility() {
 		FloatingButton[] fabs = getExtraFloatingButtons();
 		Pref<BooleanSupplier>[] on = extraFabEnabledPrefs();
+		Pref<IntSupplier>[] actions = extraFabActionPrefs();
+		boolean listWithVideo = isFavoritesOrPlaylistsActive() && isVideoPlaying();
 		for (int i = 0; i < fabs.length; i++) {
 			FloatingButton fb = fabs[i];
 			if (fb == null) continue;
 			if (!getPrefs().getBooleanPref(on[i])) fb.setVisibility(GONE);
 			else if (isVideoMode()) fb.setVisibility(floatingButton.getVisibility());
-			else fb.setVisibility(isWebBrowserActive() ? VISIBLE : GONE);
+			else if (isWebBrowserActive()) fb.setVisibility(VISIBLE);
+			// A video playing while browsing Favorites/Playlists: its fullscreen button is one tap
+			// back to it.
+			else if (listWithVideo &&
+					(getPrefs().getIntPref(actions[i]) == Action.FULLSCREEN_TOGGLE.ordinal())) {
+				fb.setVisibility(VISIBLE);
+			} else {
+				fb.setVisibility(GONE);
+			}
 		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private static Pref<IntSupplier>[] extraFabActionPrefs() {
+		return new Pref[]{FAB2_ACTION, FAB3_ACTION, FAB4_ACTION, FAB5_ACTION, FAB6_ACTION};
+	}
+
+	private boolean isFavoritesOrPlaylistsActive() {
+		ActivityFragment f = getActiveFragment();
+		if (f == null) return false;
+		int id = f.getFragmentId();
+		return (id == R.id.favorites_fragment) || (id == R.id.playlists_fragment);
+	}
+
+	/** Whether a video (not music) is playing: YouTube out of music mode, or a local video. */
+	public boolean isVideoPlaying() {
+		MediaSessionCallback cb = getMediaSessionCallback();
+		MediaEngine eng = cb.getEngine();
+		if ((eng == null) || !cb.isPlaying()) return false;
+		if (eng.getId() == MediaPrefs.MEDIA_ENG_YT) return !MusicPlayer.isYoutubeAudioMode();
+		PlayableItem src = eng.getSource();
+		return (src != null) && src.isVideo();
 	}
 
 	// The web/YouTube browser addon is a video-adjacent context (fullscreen/mute/dim/play-pause

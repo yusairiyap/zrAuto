@@ -4,6 +4,7 @@ import static me.aap.utils.ui.fragment.ViewFragmentMediator.attachMediator;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.content.res.TypedArray;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -66,6 +67,9 @@ public class FloatingButton extends FloatingActionButton implements ActivityList
 			setOutlineAmbientShadowColor(Color.BLACK);
 			setOutlineSpotShadowColor(Color.BLACK);
 		}
+		// No pressed/hover/focus colour wash: the press animation (it grows, then settles) is the
+		// feedback.
+		setRippleColor(ColorStateList.valueOf(Color.TRANSPARENT));
 
 		ActivityDelegate a = getActivity();
 		a.addBroadcastListener(this, ToolBarView.Mediator.DEFAULT_EVENT_MASK);

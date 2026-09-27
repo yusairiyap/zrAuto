@@ -109,6 +109,12 @@ public final class MusicPlayer {
 		if (h != null) h.openSearch(a, upNextOnly);
 	}
 
+	/** Shows the YouTube tab with its video fullscreen (a no-op without the YouTube addon). */
+	public static void showYoutubeVideo(MainActivityDelegate a) {
+		YoutubeHooks h = youtube;
+		if (h != null) h.showVideo(a);
+	}
+
 	/** Whether YouTube is playing as music: its video held at the lowest quality. */
 	public static boolean isYoutubeAudioMode() {
 		return youtubeAudioMode;
