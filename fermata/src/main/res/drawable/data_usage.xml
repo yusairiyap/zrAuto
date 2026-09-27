@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Data usage: an up and a down arrow, the usual symbol for data transfer. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#000000"
+        android:pathData="M7.5,2.6L3.3,6.8C2.9,7.2 3.2,7.9 3.7,7.9L6.4,7.9L6.4,14.5C6.4,15.1 6.9,15.6 7.5,15.6C8.1,15.6 8.6,15.1 8.6,14.5L8.6,7.9L11.3,7.9C11.8,7.9 12.1,7.2 11.7,6.8L7.5,2.6Z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M16.5,21.4L20.7,17.2C21.1,16.8 20.8,16.1 20.3,16.1L17.6,16.1L17.6,9.5C17.6,8.9 17.1,8.4 16.5,8.4C15.9,8.4 15.4,8.9 15.4,9.5L15.4,16.1L12.7,16.1C12.2,16.1 11.9,16.8 12.3,17.2L16.5,21.4Z" />
+</vector>

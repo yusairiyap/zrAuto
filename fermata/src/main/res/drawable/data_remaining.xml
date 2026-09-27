@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Data remaining: a pie with a slice taken, what is left of the data limit. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#000000"
+        android:pathData="M11,2.05C5.94,2.55 2,6.82 2,12C2,17.52 6.48,22 12,22C17.18,22 21.45,18.06 21.95,13L11,13Z" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M13,2.05L13,11L21.95,11C21.48,6.28 17.72,2.52 13,2.05Z" />
+</vector>

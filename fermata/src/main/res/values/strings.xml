@@ -31,6 +31,7 @@
     <string name="addon_name_chat" translatable="false">ChatGPT</string>
     <string name="addon_name_fuel_log">Fuel Log</string>
     <string name="addon_name_music">Music</string>
+    <string name="addon_name_data_usage">Data usage</string>
     <string name="addon_name_translate" translatable="false">Language translator</string>
     <string name="addon_name_subgen" translatable="false">Subtitles generator</string>
     <string name="addon_name_whisper" translatable="false">Whisper</string>
@@ -696,4 +697,80 @@
     <string name="up_next_list_preview">Playlist items shown</string>
     <string name="up_next_list_preview_sub">How many upcoming Favorites/playlist videos are shown below the queue</string>
     <string name="youtube_up_next_full">Up next is full (%1$d videos). Remove one or raise the queue size in Settings.</string>
+
+    <!-- Data Usage tab -->
+    <string name="data_usage_title">Data usage</string>
+    <string name="data_usage_cat_video">YouTube videos</string>
+    <string name="data_usage_cat_music">YouTube music mode</string>
+    <string name="data_usage_cat_other">Other app data</string>
+    <string name="data_usage_cycle_range">%1$s · %2$s</string>
+    <string name="data_usage_today">Today</string>
+    <string name="data_usage_yesterday">Yesterday</string>
+    <string name="data_usage_this_week">This week</string>
+    <string name="data_usage_last_week">Last week</string>
+    <string name="data_usage_this_month">This month</string>
+    <string name="data_usage_last_12_months">Last 12 months</string>
+    <string name="data_usage_used">used</string>
+    <string name="data_usage_of">used of %1$s</string>
+    <string name="data_usage_off">Off</string>
+    <string name="data_usage_remaining">Remaining</string>
+    <string name="data_usage_limit">Data limit</string>
+    <string name="data_usage_warning">Warning at</string>
+    <string name="data_usage_left">%1$s left</string>
+    <string name="data_usage_status_ok">%1$d%% of your limit used</string>
+    <string name="data_usage_status_warning">Nearing your data limit</string>
+    <string name="data_usage_status_limit">Data limit reached</string>
+    <string name="data_usage_status_no_limit">No data limit set</string>
+    <string name="data_usage_settings">Data usage settings</string>
+    <string name="data_usage_overall">Overall</string>
+    <string name="data_usage_day">Day</string>
+    <string name="data_usage_week">Week</string>
+    <string name="data_usage_month">Month</string>
+    <string name="data_usage_previous">Previous</string>
+    <string name="data_usage_next">Next</string>
+    <string name="data_usage_chart_hint">Tap a bar to see its usage</string>
+    <string name="data_usage_breakdown">Breakdown</string>
+    <string name="data_usage_period_total">%1$s in total</string>
+    <string name="data_usage_total_since">%1$s in total since counting started</string>
+    <string name="data_usage_no_hours">hourly detail is only kept for 2 months</string>
+    <string name="data_usage_footer_since">Counting since %1$s</string>
+    <string name="data_usage_footer_note">Counts everything this app sends and receives while it runs: YouTube, thumbnails, browsing and other streams.</string>
+    <string name="data_usage_unsupported">This device does not report per-app data usage, so nothing can be counted.</string>
+    <string name="data_usage_networks">Count data used over</string>
+    <string name="data_usage_networks_all">All networks</string>
+    <string name="data_usage_networks_mobile">Mobile data only</string>
+    <string name="data_usage_limit_gb">Data limit (GB, 0 for none)</string>
+    <string name="data_usage_warning_gb">Data warning (GB, 0 for none)</string>
+    <string name="data_usage_cycle">Limit applies per</string>
+    <string name="data_usage_cycle_day">Day</string>
+    <string name="data_usage_cycle_week">Week</string>
+    <string name="data_usage_cycle_month">Month</string>
+    <string name="data_usage_cycle_start">Monthly cycle starts on day</string>
+    <string name="info_overlay_show_data_usage">Show data usage</string>
+    <string name="info_overlay_show_data_remaining">Show remaining data</string>
+    <string name="info_overlay_show_data_icon">Show data usage icons</string>
+    <string name="data_usage_overlay_sub">In the Info Overlay; its position is set under Interface > Info overlay</string>
+    <string name="data_usage_overlay_remaining_sub">Only shown while a data limit is set</string>
+    <string name="data_usage_reset">Reset data usage</string>
+    <string name="data_usage_reset_sub">Forget all usage counted so far and start again from zero</string>
+    <string name="data_usage_reset_question">All data usage counted so far will be deleted. Continue?</string>
+    <string name="data_usage_reset_done">Data usage reset</string>
+    <string name="data_usage_warning_reached">Data warning: %1$s used this cycle</string>
+    <string name="data_usage_limit_reached">Data limit reached: %1$s used this cycle</string>
+
+    <!-- Storage and cache settings -->
+    <string name="storage_prefs">Storage and cache</string>
+    <string name="thumb_quality">Thumbnail quality</string>
+    <string name="thumb_quality_high">High (largest cache)</string>
+    <string name="thumb_quality_balanced">Balanced</string>
+    <string name="thumb_quality_saver">Data saver (smallest cache, less data)</string>
+    <string name="image_cache_limit">Image cache size limit</string>
+    <string name="image_cache_limit_100">100 MB</string>
+    <string name="image_cache_limit_250">250 MB</string>
+    <string name="image_cache_limit_500">500 MB</string>
+    <string name="image_cache_limit_1000">1 GB</string>
+    <string name="image_cache_limit_none">No limit</string>
+    <string name="clear_image_cache">Clear image cache</string>
+    <string name="clear_image_cache_sub">Delete downloaded thumbnails and covers; they are downloaded again when next shown</string>
+    <string name="image_cache_cleared">Image cache cleared, %1$s freed</string>
 </resources>

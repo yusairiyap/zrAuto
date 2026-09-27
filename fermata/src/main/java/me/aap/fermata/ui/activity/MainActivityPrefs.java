@@ -168,12 +168,19 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DISTANCE_ICON =
 			Pref.b("INFO_OVERLAY_SHOW_DISTANCE_ICON", true);
 	Pref<DoubleSupplier> INFO_OVERLAY_SIZE = Pref.f("INFO_OVERLAY_SIZE", 1f);
+	// The Data Usage addon's items: data used this cycle, and what's left of the data limit (only
+	// shown when a limit is set) -- see DataUsageTracker.
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DATA_USAGE = Pref.b("INFO_OVERLAY_SHOW_DATA_USAGE", false);
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DATA_REMAINING =
+			Pref.b("INFO_OVERLAY_SHOW_DATA_REMAINING", false);
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DATA_ICON = Pref.b("INFO_OVERLAY_SHOW_DATA_ICON", true);
 	// Every Info Overlay pref, for the views showing it (fullscreen video, the Music tab) to follow.
 	Set<Pref<?>> INFO_OVERLAY_PREFS = Set.of(CLOCK_POS, INFO_OVERLAY_SHOW_CLOCK,
 			INFO_OVERLAY_SHOW_CLOCK_ICON, INFO_OVERLAY_SHOW_BATTERY_PCT, INFO_OVERLAY_SHOW_BATTERY_ICON,
 			INFO_OVERLAY_SHOW_BATTERY_TEMP, INFO_OVERLAY_SHOW_TEMP_ICON, INFO_OVERLAY_SHOW_DISTANCE,
 			INFO_OVERLAY_SHOW_DISTANCE_ICON, INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE,
-			INFO_OVERLAY_SIZE);
+			INFO_OVERLAY_SIZE, INFO_OVERLAY_SHOW_DATA_USAGE, INFO_OVERLAY_SHOW_DATA_REMAINING,
+			INFO_OVERLAY_SHOW_DATA_ICON);
 	Pref<IntSupplier> LOCALE =
 			Pref.i("LOCALE", () -> Lang.get(Locale.getDefault().getLanguage()).ordinal());
 
@@ -449,6 +456,24 @@ public interface MainActivityPrefs
 
 	default boolean getInfoOverlayShowDistanceIconPref() {
 		return getBooleanPref(INFO_OVERLAY_SHOW_DISTANCE_ICON);
+	}
+
+	/** Whether the Data Usage addon is on: its overlay items only show while it is. */
+	private static boolean dataUsageEnabled() {
+		me.aap.fermata.addon.AddonManager m = me.aap.fermata.addon.AddonManager.get();
+		return (m != null) && (m.getAddon(me.aap.fermata.addon.data.DataUsageAddon.class) != null);
+	}
+
+	default boolean getInfoOverlayShowDataUsagePref() {
+		return getBooleanPref(INFO_OVERLAY_SHOW_DATA_USAGE) && dataUsageEnabled();
+	}
+
+	default boolean getInfoOverlayShowDataRemainingPref() {
+		return getBooleanPref(INFO_OVERLAY_SHOW_DATA_REMAINING) && dataUsageEnabled();
+	}
+
+	default boolean getInfoOverlayShowDataIconPref() {
+		return getBooleanPref(INFO_OVERLAY_SHOW_DATA_ICON);
 	}
 
 	default float getInfoOverlaySizePref() {
