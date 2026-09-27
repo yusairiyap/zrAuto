@@ -95,7 +95,7 @@ public class YoutubeJsInterface extends FermataJsInterface {
 				engine.videoLongPressed(data);
 				break;
 			case JS_VIDEO_WAITING:
-				engine.waiting();
+				engine.waiting(data);
 				break;
 			default:
 				super.handleEvent(event, data);

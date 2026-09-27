@@ -95,7 +95,7 @@
     clearTimers(s);
     // A hidden page has its timers throttled to about once a second -- a stepped fade there would
     // just be a few coarse jumps, so go straight to the target instead.
-    if (document.hidden) ms = 0;
+    if (pageHidden()) ms = 0;
     const p = gainParam(v);
 
     if (p) {
@@ -200,8 +200,14 @@
     }
   }
 
+  // The page's real visibility: document.hidden is made to always read false for YouTube's own
+  // player (see YoutubeWebView#attachListeners), but timers really are throttled while hidden.
+  function pageHidden() {
+    return window.__fermataPageHidden ? window.__fermataPageHidden() : document.hidden;
+  }
+
   function isAudible(v) {
-    return !v.paused && !v.ended && !v.muted && !document.hidden && (state(v).level > 0.01);
+    return !v.paused && !v.ended && !v.muted && !pageHidden() && (state(v).level > 0.01);
   }
 
   function sendEvent(data) {

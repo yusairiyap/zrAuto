@@ -312,6 +312,27 @@ public class YoutubeWebView extends FermataWebView {
 				"    return (d && d.author) ? encodeURIComponent(d.author) : '';\n" +
 				"  } catch (e) { return ''; }\n" +
 				"}\n" +
+				// The page always reads as visible to YouTube's own scripts: with the tab switched away
+				// (the WebView hidden) its player otherwise adapts to "in the background" about 30s in
+				// -- reloading the stream, heard as a pause and resume. The real state stays available
+				// to our own scripts (youtube_fade.js) as __fermataPageHidden().
+				"(function() {\n" +
+				"  if (window.__fermataPageHidden) return;\n" +
+				"  try {\n" +
+				"    var hd = Object.getOwnPropertyDescriptor(Document.prototype, 'hidden');\n" +
+				"    var real = (hd && hd.get) ? hd.get.bind(document) : function() { return false; };\n" +
+				"    window.__fermataPageHidden = real;\n" +
+				"    Object.defineProperty(document, 'hidden', { configurable: true, get: function() { return false; } });\n" +
+				"    Object.defineProperty(document, 'webkitHidden', { configurable: true, get: function() { return false; } });\n" +
+				"    Object.defineProperty(document, 'visibilityState', { configurable: true, get: function() { return 'visible'; } });\n" +
+				"    Object.defineProperty(document, 'webkitVisibilityState', { configurable: true, get: function() { return 'visible'; } });\n" +
+				"    var stop = function(e) { e.stopImmediatePropagation(); };\n" +
+				"    window.addEventListener('visibilitychange', stop, true);\n" +
+				"    window.addEventListener('webkitvisibilitychange', stop, true);\n" +
+				"    document.addEventListener('visibilitychange', stop, true);\n" +
+				"    document.addEventListener('webkitvisibilitychange', stop, true);\n" +
+				"  } catch (e) {}\n" +
+				"})();\n" +
 				"function attachVideoListeners(v) {\n" +
 				"  if (!(window.__fermataAdShowing && window.__fermataAdSkipEnabled)) v.muted = false;\n" +
 				"  if (v.getAttribute('FermataAttached') === 'true') return;\n" +
@@ -336,7 +357,7 @@ public class YoutubeWebView extends FermataWebView {
 				// Buffering: stalled for data. Resolved by the next 'playing' -- see
 				// YoutubeMediaEngine#waiting(), which tells a long stall (the network) apart.
 				"  v.addEventListener('waiting', function(e) {" + JS_EVENT + "(" + JS_VIDEO_WAITING +
-				", null);});\n" +
+				", (window.__fermataPageHidden && window.__fermataPageHidden()) ? 'hidden' : 'shown');});\n" +
 				// Deliberately NOT a plain v.addEventListener('ended', ...) here -- see the
 				// document-level capture-phase listener below, which replaces it.
 				"}\n" +

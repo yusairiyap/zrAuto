@@ -208,11 +208,12 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 * lasts (see {@link #STALL_MS}) while playback is supposed to be going, the connection is lost or
 	 * too slow, and the driver is told so rather than left with silence -- see NetworkIssuePopup.
 	 */
-	void waiting() {
+	void waiting(@Nullable String page) {
 		if (cb.getEngine() != this) return;
 		if (waitingSince == 0) {
 			waitingSince = SystemClock.elapsedRealtime();
-			DiagnosticLog.log("YT", "buffering", "id=" + currentVideoId);
+			// Whether the page was really hidden (another tab showing) -- see attachListeners().
+			DiagnosticLog.log("YT", "buffering", "id=" + currentVideoId, "page=" + page);
 		}
 		web.removeCallbacks(stallCheck);
 		web.postDelayed(stallCheck, STALL_MS);
