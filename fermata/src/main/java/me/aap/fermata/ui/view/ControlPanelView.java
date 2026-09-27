@@ -1042,6 +1042,9 @@ public class ControlPanelView extends ConstraintLayout
 
 			b.addItem(R.id.timer, R.drawable.timer, R.string.timer)
 					.setSubmenu(s -> new TimerMenuHandler(a).build(s));
+
+			// Engine-contributed items that go below Timer (e.g. YouTube's Search/Up next).
+			eng.contributeToPlaybackMenuEnd(b);
 		}
 
 		private void buildRepeatMenu(OverlayMenu.Builder b) {

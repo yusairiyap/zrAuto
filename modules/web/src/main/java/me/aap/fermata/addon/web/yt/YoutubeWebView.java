@@ -10,6 +10,7 @@ import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_USER_PICKED_VIDE
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_ENDED;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_ENDING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_FOUND;
+import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_LONG_PRESS;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_PAUSED;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_PLAYING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_QUALITIES;
@@ -137,6 +138,12 @@ public class YoutubeWebView extends FermataWebView {
 		return js = new YoutubeJsInterface(this, new YoutubeMediaEngine(this, a));
 	}
 
+	/** The media engine driving this page, or null before the page's JS interface is set up. */
+	@Nullable
+	YoutubeMediaEngine getEngine() {
+		return (js != null) ? js.getEngine() : null;
+	}
+
 	@Override
 	public YoutubeAddon getAddon() {
 		return (YoutubeAddon) super.getAddon();
@@ -182,6 +189,7 @@ public class YoutubeWebView extends FermataWebView {
 		disableAutoplay();
 		disableVideoPreviews();
 		addFocusHighlight();
+		interceptVideoLongPress();
 		currentCookieManager().flush();
 		refreshAddressBarTitle();
 	}
@@ -467,6 +475,51 @@ public class YoutubeWebView extends FermataWebView {
 				"    }\n" +
 				"  });\n" +
 				"}\n";
+	}
+
+	/**
+	 * Long-pressing a video (a thumbnail, a title, a related-video card) opens the app's own
+	 * Play now / Play next / Add to Up next menu instead of the WebView's link preview -- the one way
+	 * to queue a video straight off the page (see {@code YoutubeFragment#onVideoLongPressed}).
+	 * Chromium turns a long press into a {@code contextmenu} event; cancelling it suppresses the
+	 * browser's own handling. Anything that isn't a link to a video is left alone.
+	 */
+	private void interceptVideoLongPress() {
+		evaluateJavascript("""
+				(function() {
+				  if (window.__fermataLongPress) return;
+				  window.__fermataLongPress = true;
+				  function videoId(u) {
+				    try {
+				      var url = new URL(u, location.href);
+				      if (url.pathname === '/watch') return url.searchParams.get('v') || '';
+				      var m = url.pathname.match(/^\\/(shorts|live)\\/([A-Za-z0-9_-]+)/);
+				      return m ? m[2] : '';
+				    } catch (e) { return ''; }
+				  }
+				  function title(a) {
+				    try {
+				      var t = a.getAttribute('aria-label') || a.getAttribute('title') || '';
+				      if (!t) {
+				        var c = a.closest('ytm-video-with-context-renderer, ytm-compact-video-renderer, ' +
+				          'ytm-media-item, ytm-rich-item-renderer, ytm-video-card-renderer, ' +
+				          'ytm-playlist-panel-video-renderer') || a;
+				        var h = c.querySelector('h3, h4, .media-item-headline, .compact-media-item-headline');
+				        t = h ? h.textContent : '';
+				      }
+				      return t.replace(/\\s+/g, ' ').trim();
+				    } catch (e) { return ''; }
+				  }
+				  document.addEventListener('contextmenu', function(e) {
+				    var a = (e.target && e.target.closest) ? e.target.closest('a[href]') : null;
+				    var id = a ? videoId(a.href) : '';
+				    if (!id) return;
+				    e.preventDefault();
+				    e.stopPropagation();
+				    %s(%d, id + '|' + encodeURIComponent(title(a)));
+				  }, true);
+				})();
+				""".formatted(JS_EVENT, JS_VIDEO_LONG_PRESS), null);
 	}
 
 	private void injectSponsorBlock() {

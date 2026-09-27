@@ -79,10 +79,28 @@ public final class MusicPlayer {
 		 * YouTube player: the lowest while playing as music, the usual one otherwise.
 		 */
 		void applyQuality(@Nullable MediaEngine eng);
+
+		/**
+		 * Shows the YouTube tab's search / Up next panel over whatever is playing, without
+		 * interrupting it -- {@code upNextOnly} just opens the panel, otherwise the search field gets
+		 * the cursor too.
+		 */
+		void openSearch(MainActivityDelegate a, boolean upNextOnly);
 	}
 
 	public static void setYoutubeHooks(@Nullable YoutubeHooks hooks) {
 		youtube = hooks;
+	}
+
+	/** Whether the YouTube addon is installed, i.e. its search / Up next can be opened. */
+	public static boolean hasYoutube() {
+		return youtube != null;
+	}
+
+	/** See {@link YoutubeHooks#openSearch}; a no-op without the YouTube addon. */
+	public static void openYoutubeSearch(MainActivityDelegate a, boolean upNextOnly) {
+		YoutubeHooks h = youtube;
+		if (h != null) h.openSearch(a, upNextOnly);
 	}
 
 	/** Whether YouTube is playing as music: its video held at the lowest quality. */
@@ -247,6 +265,40 @@ public final class MusicPlayer {
 		else playTrack(a, t, 0);
 	}
 
+	/**
+	 * Moves what {@code eng} had queued to play next (YouTube's Up next, see
+	 * {@link MediaEngine#takeUpNext()}) into {@code q}, in order, right after {@code after}.
+	 */
+	private static void moveUpNextIntoQueue(MusicQueue q, MediaEngine eng, MusicTrackItem after) {
+		List<PlayableItem> up = eng.takeUpNext();
+		if (up.isEmpty()) return;
+		List<MusicTrackItem> added = q.add(up);
+		int ci = q.indexInPlayOrder(after);
+		if (ci < 0) return;
+		for (int i = 0; i < added.size(); i++) {
+			int from = q.indexInPlayOrder(added.get(i));
+			int to = ci + 1 + i;
+			if ((from >= 0) && (from != to)) q.move(from, to);
+		}
+	}
+
+	/**
+	 * Puts {@code item} into the music queue -- right after the track playing now ({@code next}) or
+	 * at the end. False when no queue track is playing (nothing for it to follow).
+	 */
+	public static boolean queueAfterCurrent(MainActivityDelegate a, PlayableItem item, boolean next) {
+		MusicQueue q = getQueue(a);
+		MusicTrackItem cur = getCurrentTrack(a.getMediaSessionCallback());
+		if ((q == null) || (cur == null)) return false;
+		List<MusicTrackItem> added = q.add(Collections.singletonList(item));
+		if (next && !added.isEmpty()) {
+			int from = q.indexInPlayOrder(added.get(0));
+			int ci = q.indexInPlayOrder(cur);
+			if ((from >= 0) && (ci >= 0) && (from != ci + 1)) q.move(from, ci + 1);
+		}
+		return true;
+	}
+
 	/** "Add into music queue" for a library item (all of a browsable item's tracks). */
 	public static void addToQueue(MainActivityDelegate a, Item item) {
 		MusicQueue q = getQueue(a);
@@ -303,8 +355,14 @@ public final class MusicPlayer {
 		MediaEngine eng = cb.getEngine();
 		PlayableItem cur = (eng == null) ? null : eng.getSource();
 
-		if ((cur == null) || (getCurrentTrack(cb) != null)) {
-			if (cur != null) setYoutubeAudioMode(eng.getId() == MediaPrefs.MEDIA_ENG_YT);
+		MusicTrackItem playing = getCurrentTrack(cb);
+		if ((cur == null) || (playing != null)) {
+			if (cur != null) {
+				// Already a queue track (switched to video and back): its queue stays as it is, but
+				// whatever was queued in the video player since goes in right after it.
+				if (playing != null) moveUpNextIntoQueue(q, eng, playing);
+				setYoutubeAudioMode(eng.getId() == MediaPrefs.MEDIA_ENG_YT);
+			}
 			open(a);
 			return;
 		}
@@ -320,8 +378,33 @@ public final class MusicPlayer {
 		MusicTrackItem existing = q.getSavedCurrent();
 
 		if ((existing != null) && existing.getSourceId().equals(MusicQueue.sourceIdOf(item))) {
+			moveUpNextIntoQueue(q, eng, existing);
 			open(a);
 			continueAsMusic(a, eng, existing);
+			return;
+		}
+
+		// Something from outside the list is playing (YouTube's Up next): keep the list, with this
+		// video slotted in right after the entry it interrupted, so the queue carries on there.
+		PlayableItem context = eng.getQueueContextItem();
+		if ((context != null) && !context.getParent().isExternal()) {
+			siblings(context).main().onSuccess(l -> {
+				List<PlayableItem> list = new ArrayList<>(l);
+				int ci = indexOfSame(list, context);
+				int idx;
+				if (ci == -1) {
+					list = new ArrayList<>(Collections.singletonList(item));
+					idx = 0;
+				} else {
+					idx = ci + 1;
+					list.add(idx, item);
+					q.copyModes(context.getParent().getPrefs());
+				}
+				list.addAll(idx + 1, eng.takeUpNext());
+				MusicTrackItem t = q.replace(list, idx).get(idx);
+				open(a);
+				continueAsMusic(a, eng, t);
+			});
 			return;
 		}
 
@@ -330,13 +413,17 @@ public final class MusicPlayer {
 				browsing ? completed(Collections.singletonList(item)) : siblings(item);
 		list.main().onSuccess(l -> {
 			int idx = indexOfSame(l, item);
+			List<PlayableItem> items = new ArrayList<>(l);
 			if (idx == -1) {
-				l = Collections.singletonList(item);
+				items = new ArrayList<>(Collections.singletonList(item));
 				idx = 0;
 			}
+			// What was queued to play next (YouTube's Up next) comes right after this track, so the
+			// Music tab's queue shows -- and plays -- exactly what the video player would have.
+			items.addAll(idx + 1, eng.takeUpNext());
 			// Modes first: with the list's Shuffle on, the new shuffled order starts from this track.
 			if (!browsing) q.copyModes(item.getParent().getPrefs());
-			MusicTrackItem t = q.replace(l, idx).get(idx);
+			MusicTrackItem t = q.replace(items, idx).get(idx);
 			open(a);
 			continueAsMusic(a, eng, t);
 		});

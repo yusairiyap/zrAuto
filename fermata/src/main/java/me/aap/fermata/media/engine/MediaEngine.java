@@ -89,6 +89,25 @@ public interface MediaEngine extends Closeable {
 	}
 
 	/**
+	 * While playing something from outside the list playback was started from (YouTube's Up next,
+	 * say), the entry of that list playback carries on after -- so "Play as music" can build its
+	 * queue around the list instead of just the one video. Null when there's no such list, or when
+	 * {@link #getQueueItem()} already is its entry.
+	 */
+	@Nullable
+	default PlayableItem getQueueContextItem() {
+		return null;
+	}
+
+	/**
+	 * Hands over (and forgets) whatever the engine had queued to play next on its own (YouTube's Up
+	 * next) -- for "Play as music", whose queue takes those over so the Music tab shows them.
+	 */
+	default List<PlayableItem> takeUpNext() {
+		return Collections.emptyList();
+	}
+
+	/**
 	 * Makes {@code src} this engine's source without re-preparing -- for switching between two items
 	 * that play the very same media (a video, and the Music tab's audio-only track wrapping it), so
 	 * the sound carries on uninterrupted. An engine that can't do that returns false (the default),
@@ -354,6 +373,9 @@ public interface MediaEngine extends Closeable {
 	 * item).
 	 */
 	default void contributeToPlaybackMenu(OverlayMenu.Builder b) {}
+
+	/** Like {@link #contributeToPlaybackMenu}, but for items that belong below Speed/Timer. */
+	default void contributeToPlaybackMenuEnd(OverlayMenu.Builder b) {}
 
 	/**
 	 * Called when building the "Audio" category submenu (see {@code

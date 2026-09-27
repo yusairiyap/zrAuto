@@ -350,21 +350,25 @@ public class SettingsFragment extends MainActivityFragment
 			// Right below the floating buttons: addAAInterface() adds its items straight in here.
 			addInfoOverlayPrefs(a, sub1);
 			addNavTabsPrefs(a, sub1);
+			addUpNextPrefs(a, sub1);
 			addAAInterface(a, sub1);
 		} else {
-			fabSettingsSet = sub1.subSet(o -> {
-				o.title = R.string.secondary_fab_prefs;
-				o.icon = R.drawable.fab;
-			});
-			addSecondaryFabPrefs(a, fabSettingsSet);
+			// Android Auto's own interface settings first: on a phone they're the ones most easily
+			// missed further down.
 			if (BuildConfig.AUTO) {
 				addAAInterface(a, sub1.subSet(o -> {
 					o.title = R.string.interface_prefs_aa;
 					o.icon = R.drawable.tv;
 				}));
 			}
+			fabSettingsSet = sub1.subSet(o -> {
+				o.title = R.string.secondary_fab_prefs;
+				o.icon = R.drawable.fab;
+			});
+			addSecondaryFabPrefs(a, fabSettingsSet);
 			addInfoOverlayPrefs(a, sub1);
 			addNavTabsPrefs(a, sub1);
+			addUpNextPrefs(a, sub1);
 			addInterface(a, sub1, MainActivityPrefs.THEME_MAIN, MainActivityPrefs.HIDE_BARS,
 					MainActivityPrefs.FULLSCREEN, MainActivityPrefs.SHOW_PG_UP_DOWN, null,
 					MainActivityPrefs.NAV_BAR_POS, MainActivityPrefs.NAV_BAR_SIZE,
@@ -1155,10 +1159,41 @@ public class SettingsFragment extends MainActivityFragment
 		});
 	}
 
+	/** The YouTube tab's Up next queue and the list preview below it, as their own section. */
+	private static void addUpNextPrefs(MainActivityDelegate a, PreferenceSet parent) {
+		PreferenceSet ps = parent.subSet(o -> {
+			o.title = R.string.up_next_prefs;
+			o.icon = R.drawable.up_next;
+		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.SEARCH_HISTORY_ENABLED;
+			o.title = R.string.search_history;
+			o.subtitle = R.string.search_history_sub;
+		});
+		ps.addIntPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.UP_NEXT_MAX;
+			o.title = R.string.up_next_max;
+			o.subtitle = R.string.up_next_max_sub;
+			o.seekMin = 1;
+			o.seekMax = 50;
+		});
+		ps.addIntPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.UP_NEXT_LIST_PREVIEW;
+			o.title = R.string.up_next_list_preview;
+			o.subtitle = R.string.up_next_list_preview_sub;
+			o.seekMin = 1;
+			o.seekMax = 10;
+		});
+	}
+
 	private void addSecondaryFabPrefs(MainActivityDelegate a, PreferenceSet ps) {
 		var fabActions = new Action[]{Action.FULLSCREEN_TOGGLE, Action.VOLUME_MUTE_UNMUTE,
 				Action.PLAY_PAUSE, Action.DIM_TOGGLE, Action.PRIVATE_MODE_TOGGLE, Action.REFUEL,
-				Action.FAVORITE_ADD, Action.PLAYLIST_ADD, Action.PLAY_AS_MUSIC};
+				Action.FAVORITE_ADD, Action.PLAYLIST_ADD, Action.PLAY_AS_MUSIC, Action.YOUTUBE_SEARCH,
+				Action.YOUTUBE_UP_NEXT};
 		var fabActionNames = new int[fabActions.length];
 		var fabActionOrdinals = new int[fabActions.length];
 		for (int i = 0; i < fabActions.length; i++) {
@@ -1329,6 +1364,7 @@ public class SettingsFragment extends MainActivityFragment
 			o.seekMin = 10;
 			o.seekMax = 40;
 		});
+
 	}
 
 	private void addAddons(PreferenceSet set) {

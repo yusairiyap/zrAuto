@@ -58,6 +58,7 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.res.ColorStateList;
@@ -1743,6 +1744,9 @@ public class MainActivityDelegate extends ActivityDelegate
 		// listeners missed the layout change they needed, most notably a tab restored by the
 		// fragment manager across the recreate() that a theme or nav-bar-position change triggers.
 		body.getViewTreeObserver().addOnGlobalLayoutListener(this::refreshContentInsets);
+		// The soft keyboard shows over the bottom of the window without resizing it, hiding the
+		// floating buttons (e.g. while typing a YouTube search) -- keep them above it instead.
+		body.getViewTreeObserver().addOnGlobalLayoutListener(this::liftFabsAboveKeyboard);
 
 		if (VERSION.SDK_INT >= VERSION_CODES.VANILLA_ICE_CREAM && !a.isCarActivity()) {
 			ViewCompat.setOnApplyWindowInsetsListener(toolBar, (v, insets) -> {
@@ -1864,6 +1868,59 @@ public class MainActivityDelegate extends ActivityDelegate
 		} else if (prefs.contains(FAB_DRAGGABLE)) {
 			updateFabDraggable();
 		}
+	}
+
+	/** How far the floating buttons are currently lifted above their place -- see below. */
+	private int fabKeyboardLift;
+	private final Rect keyboardFrame = new Rect();
+	private final int[] fabParentLoc = new int[2];
+
+	/**
+	 * Moves the floating buttons up out from under the soft keyboard while it's showing, and back
+	 * when it goes. Done with their bottom margins, not a translation: dragging a button (see
+	 * FAB_DRAGGABLE) already owns its translation.
+	 */
+	private void liftFabsAboveKeyboard() {
+		FloatingButton f = floatingButton;
+		if ((f == null) || !f.isAttachedToWindow() || !(f.getParent() instanceof View parent)) return;
+		View root = f.getRootView();
+		root.getWindowVisibleDisplayFrame(keyboardFrame);
+		int screenBottom = root.getHeight();
+		// Anything smaller is just the system navigation bar, not a keyboard.
+		boolean keyboard = (screenBottom - keyboardFrame.bottom) > (screenBottom * 0.15f);
+		int keyboardTop = keyboardFrame.bottom;
+		// Android Auto's keyboard belongs to the car host and may not show up in the window's
+		// visible frame at all: while its text input is active, keep the buttons in the upper half.
+		if (!keyboard && isCarActivity() && getAppActivity().isInputActive()) {
+			keyboard = true;
+			root.getLocationOnScreen(fabParentLoc);
+			keyboardTop = fabParentLoc[1] + screenBottom / 2;
+		}
+
+		int lift = 0;
+		if (keyboard) {
+			parent.getLocationOnScreen(fabParentLoc);
+			// Where the buttons' bottom edge sits without any lift.
+			int bottom = fabParentLoc[1] + f.getBottom() + fabKeyboardLift;
+			int gap = UiUtils.toIntPx(getContext(), 8);
+			lift = Math.max(0, bottom + gap - keyboardTop);
+		}
+		if (lift == fabKeyboardLift) return;
+
+		int delta = lift - fabKeyboardLift;
+		fabKeyboardLift = lift;
+		for (View b : new View[]{floatingButton, floatingButton2, floatingButton3, floatingButton4}) {
+			if ((b == null) || !(b.getLayoutParams() instanceof ViewGroup.MarginLayoutParams lp)) {
+				continue;
+			}
+			lp.bottomMargin = Math.max(0, lp.bottomMargin + delta);
+			b.setLayoutParams(lp);
+		}
+	}
+
+	/** Re-checks {@link #liftFabsAboveKeyboard()} -- for keyboards that don't relayout the window. */
+	public void refreshFabKeyboardLift() {
+		if (floatingButton != null) floatingButton.post(this::liftFabsAboveKeyboard);
 	}
 
 	private void updateFabDraggable() {

@@ -72,4 +72,23 @@ public abstract class MainActivityFragment extends ActivityFragment {
 
 	public void voiceCommand(VoiceCommand cmd) {
 	}
+
+	/**
+	 * The user is leaving the app (home, recents) while this is the active fragment -- see
+	 * {@code MainActivity#onUserLeaveHint()}. The last chance to enter picture-in-picture.
+	 */
+	public void onUserLeaveHint() {
+	}
+
+	/**
+	 * A touch went down outside the text field being typed into (screen coordinates) -- see
+	 * {@code MainActivity#dispatchTouchEvent}. Followed by {@link #onTapOutsideTextField()} once the
+	 * tap has been delivered and the keyboard closed.
+	 */
+	public void onTouchDownOutsideTextField(float x, float y) {
+	}
+
+	/** See {@link #onTouchDownOutsideTextField}. */
+	public void onTapOutsideTextField() {
+	}
 }

@@ -35,7 +35,7 @@ public final class QuaternaryFabMediator implements FloatingButton.Mediator,
 	private static final List<Action> OFFERED_ACTIONS = List.of(
 			Action.FULLSCREEN_TOGGLE, Action.VOLUME_MUTE_UNMUTE, Action.PLAY_PAUSE, Action.DIM_TOGGLE,
 			Action.PRIVATE_MODE_TOGGLE, Action.REFUEL, Action.FAVORITE_ADD,
-			Action.PLAYLIST_ADD, Action.PLAY_AS_MUSIC);
+			Action.PLAYLIST_ADD, Action.PLAY_AS_MUSIC, Action.YOUTUBE_SEARCH, Action.YOUTUBE_UP_NEXT);
 
 	@Nullable
 	private FloatingButton fab;
@@ -86,6 +86,8 @@ public final class QuaternaryFabMediator implements FloatingButton.Mediator,
 		if (action == Action.REFUEL) return R.drawable.fuel;
 		if (action == Action.PLAYLIST_ADD) return R.drawable.playlist_add;
 		if (action == Action.PLAY_AS_MUSIC) return R.drawable.music;
+		if (action == Action.YOUTUBE_SEARCH) return R.drawable.search;
+		if (action == Action.YOUTUBE_UP_NEXT) return R.drawable.up_next;
 		if (action == Action.FAVORITE_ADD) return Action.isCurrentFavorite(a) ?
 				R.drawable.favorite_filled : R.drawable.favorite;
 		if (action == Action.PLAY_PAUSE)
@@ -124,6 +126,8 @@ public final class QuaternaryFabMediator implements FloatingButton.Mediator,
 			for (int i = 0; i < OFFERED_ACTIONS.size(); i++) {
 				Action action = OFFERED_ACTIONS.get(i);
 				if ((action == Action.PLAY_AS_MUSIC) && !MusicPlayer.isEnabled()) continue;
+				if (((action == Action.YOUTUBE_SEARCH) || (action == Action.YOUTUBE_UP_NEXT)) &&
+						!MusicPlayer.hasYoutube()) continue;
 				b.addItem(UiUtils.getArrayItemId(i), iconFor(a, action), labelFor(a, action))
 						.setData(action);
 			}

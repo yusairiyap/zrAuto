@@ -5,11 +5,14 @@ import static me.aap.utils.async.Completed.completed;
 import static me.aap.utils.async.Completed.completedVoid;
 import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED;
 
+import android.app.PictureInPictureParams;
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.util.Rational;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -18,6 +21,9 @@ import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.constraintlayout.widget.ConstraintLayout;
+import androidx.core.app.PictureInPictureModeChangedInfo;
+import androidx.core.util.Consumer;
+import androidx.fragment.app.FragmentActivity;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -28,6 +34,7 @@ import java.util.Set;
 import me.aap.fermata.BuildConfig;
 import me.aap.fermata.addon.AddonManager;
 import me.aap.fermata.addon.music.MusicPlayer;
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.addon.web.FermataChromeClient;
 import me.aap.fermata.addon.web.FermataWebView;
 import me.aap.fermata.addon.web.R;
@@ -111,6 +118,23 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	private long hostInterruptionCount;
 	/** Restarts spent by the recovery currently running -- see {@link #MAX_PAGE_RESTARTS}. */
 	private int pageRestarts;
+	/** See {@link YoutubeSearchPanel}. Created on first use, lives inside this fragment's view. */
+	@Nullable
+	private YoutubeSearchPanel searchPanel;
+	/** onPause() let playback carry on because the app went into picture-in-picture -- see onStop(). */
+	private boolean pipPlayback;
+	/** Whether the search panel is (or is sliding) open, as opposed to sliding closed. */
+	private boolean panelOpen;
+	/** See {@link #onTouchDownOutsideTextField}. */
+	private boolean closePanelAfterTap;
+	/** See {@link #freezeVideoForPip}. */
+	@Nullable
+	private PipFreeze pipFreeze;
+	@Nullable
+	private Consumer<PictureInPictureModeChangedInfo> pipListener;
+	private static boolean inPip;
+	private static final long[] PIP_RESUME_CHECK_DELAYS_MS = {800L, 2000L, 4000L};
+	private long pipResumeOperation;
 
 	@Override
 	public int getFragmentId() {
@@ -190,7 +214,10 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		MediaSessionCallback cb = a.getMediaSessionCallback();
 		if (cb.getEngine() instanceof YoutubeMediaEngine) cb.onStop();
 		unregisterListeners(a);
+		onPipModeChanged(false);
 		removeVideoViewOverlay(a);
+		searchPanel = null;
+		panelOpen = false;
 		super.onDestroyView();
 	}
 
@@ -499,9 +526,265 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		return (pausedAt != 0) && ((now - pausedAt) < HOST_INTERRUPTION_PAUSE_GRACE_MS);
 	}
 
+	/**
+	 * Leaving the app (home, recents) while a YouTube video is playing: keep it going on screen in
+	 * picture-in-picture, as the fullscreen video, instead of pausing it (see {@link #onPause()}).
+	 * Phone only -- the car screen has no such thing, and on Android Auto playback already carries
+	 * on in the background. Playing as music (the Music tab) has nothing to show, so no window.
+	 */
+	@Override
+	public void onUserLeaveHint() {
+		Context ctx = getContext();
+		FragmentActivity act = getActivity();
+		if ((ctx == null) || (act == null) || isHidden() || MusicPlayer.isYoutubeAudioMode()) return;
+		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(ctx).peek();
+		if ((a == null) || a.isCarActivity()) return;
+		FermataServiceUiBinder b = a.getMediaServiceBinder();
+		if (!YoutubeMediaEngine.isYoutubeItem(b.getCurrentItem()) || !b.isPlaying()) return;
+
+		hideSearchPanel();
+		FermataWebView v = getWebView();
+		FermataChromeClient chrome = (v != null) ? v.getWebChromeClient() : null;
+		if ((chrome != null) && !chrome.isFullScreen() && !DEFAULT_URLS.contains(getUrl())) {
+			chrome.enterFullScreen();
+		}
+
+		// Before the window shrinks -- see freezeVideoForPip().
+		freezeVideoForPip(a);
+		if (pipListener == null) {
+			pipListener = info -> onPipModeChanged(info.isInPictureInPictureMode());
+			act.addOnPictureInPictureModeChangedListener(pipListener);
+		}
+
+		boolean entered = false;
+		try {
+			PictureInPictureParams.Builder pb = new PictureInPictureParams.Builder()
+					.setAspectRatio(new Rational(16, 9));
+			Rect hint = pipSourceRect(a);
+			if (hint != null) pb.setSourceRectHint(hint);
+			entered = act.enterPictureInPictureMode(pb.build());
+			DiagnosticLog.log("YT", "picture-in-picture", "entered=" + entered);
+		} catch (Exception ex) {
+			// Turned off for this app in the system settings, or not supported on this device.
+			Log.d(ex, "Picture-in-picture is not available");
+		}
+		if (!entered) onPipModeChanged(false);
+	}
+
+	/**
+	 * Going into picture-in-picture can still leave the page paused on its own: entering fullscreen
+	 * on the way (a resize YouTube's player answers by restarting) lands at the same moment the
+	 * window shrinks. The user never asked for that pause, so for a few seconds after entering, a
+	 * page-side pause is undone -- a pause from the PiP window's own button (or any other transport
+	 * control) is the app's, and left alone.
+	 */
+	private void resumeIfPausedByPip(MainActivityDelegate a, long op) {
+		if (!inPip || (op != pipResumeOperation)) return;
+		MediaSessionCallback cb = a.getMediaSessionCallback();
+		if (!(cb.getEngine() instanceof YoutubeMediaEngine eng)) return;
+		eng.getPageState().onSuccess(st -> {
+			if (!inPip || (op != pipResumeOperation) || (st == null) || !st.hasVideo) return;
+			if (!st.paused || st.ended) return;
+			boolean pageOwnPause = cb.isPlaying() || (eng.getLastExternalPauseTime() != 0);
+			if (!pageOwnPause) return;
+			DiagnosticLog.log("YT", "PiP: page paused on its own, resuming");
+			eng.resumePageAfterInterruption(-1);
+			if (!cb.isPlaying()) cb.onPlay();
+		});
+	}
+
+	/** Whether the app is showing a YouTube video in picture-in-picture right now. */
+	static boolean isInPictureInPicture() {
+		return inPip;
+	}
+
+	private void onPipModeChanged(boolean pip) {
+		inPip = pip;
+		if (pip) {
+			if (pipFreeze != null) pipFreeze.applyScale();
+			long op = ++pipResumeOperation;
+			for (long delay : PIP_RESUME_CHECK_DELAYS_MS) {
+				MainActivityDelegate.getActivityDelegate(requireContext())
+						.onSuccess(a -> a.postDelayed(() -> resumeIfPausedByPip(a, op), delay));
+			}
+			return;
+		}
+		pipResumeOperation++;
+		unfreezeVideoAfterPip();
+		FragmentActivity act = getActivity();
+		if ((act != null) && (pipListener != null)) {
+			act.removeOnPictureInPictureModeChangedListener(pipListener);
+		}
+		pipListener = null;
+	}
+
+	/**
+	 * The 16:9 area of the screen the video fills now, for the system's animation into the PiP
+	 * window -- so it grows out of the picture instead of cross-fading from the whole app.
+	 */
+	@Nullable
+	private static Rect pipSourceRect(MainActivityDelegate a) {
+		View root = a.findViewById(me.aap.fermata.R.id.main_activity);
+		Rect r = new Rect();
+		if ((root == null) || !root.getGlobalVisibleRect(r) || r.isEmpty()) return null;
+		int w = r.width();
+		int h = r.height();
+		if (w * 9 > h * 16) w = h * 16 / 9;
+		else h = w * 9 / 16;
+		int left = r.left + (r.width() - w) / 2;
+		int top = r.top + (r.height() - h) / 2;
+		return new Rect(left, top, left + w, top + h);
+	}
+
+	/**
+	 * Keeps the video at the size it has now, and just scales its picture down into the PiP window.
+	 * <p>
+	 * YouTube's player pauses itself once it's laid out smaller than its minimum player size (200px
+	 * in CSS pixels), which a PiP window almost always is -- that was the "window too small" pause:
+	 * the page stopped the moment the window shrank, and only resumed after the window was dragged
+	 * bigger. A layout at the original size and a view-level scale is invisible to the page: it
+	 * keeps laying out (and playing) exactly as before, only drawn smaller.
+	 * <p>
+	 * The video overlay is also lifted above every piece of app chrome (control panel, floating
+	 * buttons, info overlay), so the PiP window shows only the video.
+	 */
+	private void freezeVideoForPip(MainActivityDelegate a) {
+		if (pipFreeze != null) return;
+		ConstraintLayout root = a.findViewById(me.aap.fermata.R.id.main_activity);
+		if ((root == null) || (root.getWidth() == 0) || (root.getHeight() == 0)) return;
+		PipFreeze f = new PipFreeze(root, root.findViewWithTag(YT_VIDEO_VIEW_TAG), getWebView());
+		f.freeze(UiUtils.toPx(root.getContext(), 50));
+		pipFreeze = f;
+	}
+
+	private void unfreezeVideoAfterPip() {
+		PipFreeze f = pipFreeze;
+		pipFreeze = null;
+		if (f != null) f.unfreeze();
+	}
+
+	/** See {@link #freezeVideoForPip}. */
+	private static final class PipFreeze {
+		final ConstraintLayout root;
+		@Nullable
+		final View overlay;
+		@Nullable
+		final View web;
+		final int width;
+		final int height;
+		final View.OnLayoutChangeListener scaler;
+		int overlayLpWidth;
+		int overlayLpHeight;
+		float overlayElevation;
+		int webLpWidth;
+		int webLpHeight;
+		int webWidth;
+		int webHeight;
+
+		PipFreeze(ConstraintLayout root, @Nullable View overlay, @Nullable View web) {
+			this.root = root;
+			this.overlay = overlay;
+			this.web = web;
+			width = root.getWidth();
+			height = root.getHeight();
+			scaler = (v, l, t, r, b, ol, ot, or, ob) -> applyScale();
+		}
+
+		void freeze(float elevation) {
+			if (overlay != null) {
+				ViewGroup.LayoutParams lp = overlay.getLayoutParams();
+				overlayLpWidth = lp.width;
+				overlayLpHeight = lp.height;
+				lp.width = width;
+				lp.height = height;
+				overlay.setLayoutParams(lp);
+				overlayElevation = overlay.getElevation();
+				overlay.setElevation(elevation);
+				// Still constrained to all four parent edges, so it stays centred when the window
+				// shrinks under it -- scaling around its own centre keeps it filling the window.
+				overlay.setPivotX(width / 2f);
+				overlay.setPivotY(height / 2f);
+			}
+			if ((web != null) && (web.getWidth() > 0) && (web.getHeight() > 0)) {
+				ViewGroup.LayoutParams lp = web.getLayoutParams();
+				webLpWidth = lp.width;
+				webLpHeight = lp.height;
+				webWidth = web.getWidth();
+				webHeight = web.getHeight();
+				lp.width = webWidth;
+				lp.height = webHeight;
+				web.setLayoutParams(lp);
+				web.setPivotX(0);
+				web.setPivotY(0);
+			}
+			root.addOnLayoutChangeListener(scaler);
+		}
+
+		void applyScale() {
+			int w = root.getWidth();
+			int h = root.getHeight();
+			if ((w == 0) || (h == 0)) return;
+			if (overlay != null) {
+				float s = Math.min(1f, Math.min(w / (float) width, h / (float) height));
+				overlay.setScaleX(s);
+				overlay.setScaleY(s);
+			}
+			if ((web != null) && (webWidth > 0) && (web.getParent() instanceof View p) &&
+					(p.getWidth() > 0)) {
+				float s = Math.min(1f, Math.min(p.getWidth() / (float) webWidth,
+						p.getHeight() / (float) webHeight));
+				web.setScaleX(s);
+				web.setScaleY(s);
+			}
+		}
+
+		void unfreeze() {
+			root.removeOnLayoutChangeListener(scaler);
+			if (overlay != null) {
+				ViewGroup.LayoutParams lp = overlay.getLayoutParams();
+				lp.width = overlayLpWidth;
+				lp.height = overlayLpHeight;
+				overlay.setLayoutParams(lp);
+				overlay.setElevation(overlayElevation);
+				overlay.setScaleX(1f);
+				overlay.setScaleY(1f);
+			}
+			if ((web != null) && (webWidth > 0)) {
+				ViewGroup.LayoutParams lp = web.getLayoutParams();
+				lp.width = webLpWidth;
+				lp.height = webLpHeight;
+				web.setLayoutParams(lp);
+				web.setScaleX(1f);
+				web.setScaleY(1f);
+			}
+		}
+	}
+
+	@Override
+	public void onStop() {
+		super.onStop();
+		// The picture-in-picture window was closed: the user is done watching, so stop here the way
+		// leaving the app always has (on Android Auto builds playback always carries on instead).
+		if (!pipPlayback) return;
+		pipPlayback = false;
+		onPipModeChanged(false);
+		if (BuildConfig.AUTO) return;
+		MainActivityDelegate.getActivityDelegate(getContext()).onSuccess(a -> {
+			FermataServiceUiBinder b = a.getMediaServiceBinder();
+			if (YoutubeMediaEngine.isYoutubeItem(b.getCurrentItem()) && b.isPlaying()) {
+				b.getMediaSessionCallback().onPause();
+			}
+		});
+	}
+
 	@Override
 	public void onPause() {
-		if (!BuildConfig.AUTO) {
+		FragmentActivity act = getActivity();
+		if ((act != null) && act.isInPictureInPictureMode()) {
+			// Still on screen, in its own window -- see onUserLeaveHint().
+			pipPlayback = true;
+			playOnResume = false;
+		} else if (!BuildConfig.AUTO) {
 			MainActivityDelegate.getActivityDelegate(getContext()).onSuccess(a -> {
 				FermataServiceUiBinder b = a.getMediaServiceBinder();
 				if (YoutubeMediaEngine.isYoutubeItem(b.getCurrentItem()) && b.isPlaying()) {
@@ -518,6 +801,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	@Override
 	public void onResume() {
 		super.onResume();
+		pipPlayback = false;
 		if (BuildConfig.AUTO || !playOnResume) return;
 		playOnResume = false;
 		MainActivityDelegate.getActivityDelegate(getContext()).onSuccess(a -> {
@@ -553,6 +837,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 
 	@Override
 	public void onPlayableChanged(MediaLib.PlayableItem oldItem, MediaLib.PlayableItem newItem) {
+		if (searchPanel != null) searchPanel.reloadList();
 		if (isHidden()) return;
 
 		if (YoutubeMediaEngine.isYoutubeItem(newItem)) {
@@ -580,7 +865,288 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	}
 
 	@Override
+	public boolean isRootPage() {
+		return !isSearchPanelShown() && super.isRootPage();
+	}
+
+	@Override
+	public boolean onBackPressed() {
+		// Before anything else: the base implementation's next step is WebView#goBack(), which
+		// YoutubeWebView#goBack() turns into a full playback stop -- exactly what the panel exists
+		// to avoid.
+		if (isSearchPanelShown()) {
+			hideSearchPanel();
+			return true;
+		}
+		return super.onBackPressed();
+	}
+
+	boolean isSearchPanelShown() {
+		return panelOpen && (searchPanel != null);
+	}
+
+	/**
+	 * Shows the search/Up next panel over the page. The page underneath is left completely alone --
+	 * not navigated, hidden or paused -- so whatever is playing keeps playing. See
+	 * {@link YoutubeSearchPanel}.
+	 */
+	@Nullable
+	YoutubeSearchPanel showSearchPanel() {
+		if (searchPanel == null) {
+			View root = getView();
+			YoutubeAddon addon = (YoutubeAddon) getAddon();
+			if (!(root instanceof ViewGroup g) || (addon == null)) return null;
+			searchPanel = new YoutubeSearchPanel(root.getContext(), this, addon);
+			g.addView(searchPanel, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+					ViewGroup.LayoutParams.MATCH_PARENT));
+		}
+		searchPanel.bringToFront();
+		if (!panelOpen) {
+			panelOpen = true;
+			searchPanel.slideIn();
+			onSearchPanelToggled();
+		}
+		searchPanel.refresh();
+		return searchPanel;
+	}
+
+	void hideSearchPanel() {
+		if (!panelOpen || (searchPanel == null)) return;
+		panelOpen = false;
+		searchPanel.slideOut(null);
+		onSearchPanelToggled();
+	}
+
+	/** The toolbar's clear button is only there while the panel (or a search being typed) is. */
+	private void onSearchPanelToggled() {
+		Context ctx = getContext();
+		if (ctx == null) return;
+		MainActivityDelegate a = MainActivityDelegate.get(ctx);
+		if (a.getActiveFragment() == this) {
+			YoutubeToolBarMediator.getInstance().refreshClearButton(a.getToolBar(), this);
+		}
+	}
+
+	/** The toolbar's clear button: drops the search text and the results, keeps Up next. */
+	void clearSearch() {
+		if (searchPanel != null) searchPanel.clearSearch();
+	}
+
+	/**
+	 * Plays an entry of the Favorites/Playlist preview in the Up next list -- as if picked from that
+	 * list, so the list carries on from there.
+	 */
+	void playFromList(MediaLib.PlayableItem pi) {
+		hideSearchPanel();
+		if (pi instanceof MusicTrackItem t) {
+			// The Music tab's queue: played the way that tab plays it (as music, from its queue).
+			MusicPlayer.playTrack(MainActivityDelegate.get(requireContext()), t, 0);
+		} else if (pi instanceof MediaLib.ExternallyPlayableItem ext) {
+			ext.loadInFragment(this, ext);
+		} else {
+			MainActivityDelegate.get(requireContext()).getMediaSessionCallback().playItem(pi, 0);
+		}
+	}
+
+	void toggleSearchPanel() {
+		if (isSearchPanelShown()) hideSearchPanel();
+		else showSearchPanel();
+	}
+
+	/** Searches YouTube natively, in the panel -- the page and its playback are left untouched. */
+	void search(String query) {
+		YoutubeSearchPanel p = showSearchPanel();
+		if (p != null) p.search(query);
+	}
+
+	/** See {@link YoutubeChromeClient#onShowCustomView}. */
+	static void closeSearchPanel(FermataWebView web) {
+		MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a -> {
+			if (a.getFragment(me.aap.fermata.R.id.youtube_fragment) instanceof YoutubeFragment f) {
+				f.hideSearchPanel();
+			}
+		});
+	}
+
+	/** Leaving the tab closes the panel -- it's not what the user comes back to. */
+	@Override
+	public void onHiddenChanged(boolean hidden) {
+		super.onHiddenChanged(hidden);
+		if (hidden) hideSearchPanel();
+	}
+
+	/**
+	 * A tap outside the search field closed the keyboard (see MainActivity#dispatchTouchEvent): if it
+	 * also landed outside the panel -- a floating button, the nav bar, another toolbar button -- the
+	 * user has moved on from searching, so the panel closes too. Decided from where the panel was
+	 * when the finger went down, so a tap that opens the panel doesn't immediately close it.
+	 */
+	@Override
+	public void onTouchDownOutsideTextField(float x, float y) {
+		closePanelAfterTap = isSearchPanelShown() && (searchPanel != null) &&
+				!isInside(searchPanel, x, y);
+	}
+
+	@Override
+	public void onTapOutsideTextField() {
+		if (closePanelAfterTap) {
+			closePanelAfterTap = false;
+			hideSearchPanel();
+		}
+	}
+
+	private static boolean isInside(View v, float x, float y) {
+		android.graphics.Rect r = new android.graphics.Rect();
+		return v.getGlobalVisibleRect(r) && r.contains((int) x, (int) y);
+	}
+
+	/** A past search's chip in the panel: runs it again, closing the keyboard if it was up. */
+	void searchFromHistory(String query) {
+		Context ctx = getContext();
+		if (ctx == null) return;
+		MainActivityDelegate a = MainActivityDelegate.get(ctx);
+		View field = a.getToolBar().findViewById(R.id.browser_addr);
+		if (field != null) {
+			android.view.inputmethod.InputMethodManager imm =
+					ctx.getSystemService(android.view.inputmethod.InputMethodManager.class);
+			if (imm != null) imm.hideSoftInputFromWindow(field.getWindowToken(), 0);
+			field.clearFocus();
+		}
+		search(query);
+	}
+
+	/** The last search, to prefill the toolbar's search field with, or null. */
+	@Nullable
+	String getLastSearchQuery() {
+		return (searchPanel != null) ? searchPanel.getQuery() : null;
+	}
+
+	/**
+	 * From the control panel's menu, which is also reachable over fullscreen video and from other
+	 * tabs: brings this tab up, drops out of fullscreen (the page keeps playing inline), opens the
+	 * panel and puts the cursor in the toolbar's search field.
+	 */
+	void startSearch() {
+		FermataWebView v = getWebView();
+		FermataChromeClient chrome = (v != null) ? v.getWebChromeClient() : null;
+		if ((chrome != null) && chrome.isFullScreen()) chrome.exitFullScreen();
+		showSearchPanel();
+		MainActivityDelegate a = MainActivityDelegate.get(requireContext());
+		a.post(() -> YoutubeToolBarMediator.getInstance().focusSearchField(a));
+	}
+
+	/** See {@link #startSearch()}; {@code upNextOnly} just shows the panel. */
+	static void openSearch(Context ctx, boolean upNextOnly) {
+		MainActivityDelegate.getActivityDelegate(ctx).onSuccess(a -> {
+			if (!(a.showFragment(me.aap.fermata.R.id.youtube_fragment) instanceof YoutubeFragment f))
+				return;
+			if (upNextOnly) {
+				FermataWebView v = f.getWebView();
+				FermataChromeClient chrome = (v != null) ? v.getWebChromeClient() : null;
+				if ((chrome != null) && chrome.isFullScreen()) chrome.exitFullScreen();
+				f.showSearchPanel();
+			} else {
+				f.startSearch();
+			}
+		});
+	}
+
+	/**
+	 * Plays {@code videoId} now, like tapping it on the page: leaves any Favorites/Playlist queue
+	 * behind (Up next stays).
+	 */
+	void playVideoNow(String videoId, @Nullable String title) {
+		YoutubeAddon addon = (YoutubeAddon) getAddon();
+		YoutubeWebView v = getWebView();
+		if ((addon == null) || (v == null)) return;
+		if ((title != null) && !title.isEmpty()) addon.cacheVideoTitle(videoId, title);
+		hideSearchPanel();
+		YoutubeMediaEngine eng = v.getEngine();
+
+		if (eng != null) {
+			eng.playNow(videoId);
+		} else {
+			MusicPlayer.setYoutubeAudioMode(false);
+			addon.setQueueItem(null);
+			addon.setPendingVideoId(videoId);
+			v.loadVideo(videoId);
+		}
+	}
+
+	/**
+	 * Adds {@code videoId} to Up next -- at the front ({@code first}, "Play next") or the end. With
+	 * no YouTube video playing there is nothing for it to wait for, so it just plays now.
+	 */
+	void queueVideo(String videoId, @Nullable String title, boolean first) {
+		YoutubeAddon addon = (YoutubeAddon) getAddon();
+		YoutubeWebView v = getWebView();
+		if ((addon == null) || (v == null)) return;
+		YoutubeMediaEngine eng = v.getEngine();
+
+		if ((eng == null) || !eng.isActive()) {
+			playVideoNow(videoId, title);
+			return;
+		}
+
+		// Playing as music (the Music tab): the music queue is what plays next, and what that tab
+		// shows -- queue there rather than in a separate Up next the Music tab knows nothing about.
+		if (MusicPlayer.isYoutubeAudioMode()) {
+			if ((title != null) && !title.isEmpty()) addon.cacheVideoTitle(videoId, title);
+			MainActivityDelegate a = MainActivityDelegate.get(requireContext());
+			if ((a.getLib() instanceof DefaultMediaLib lib) && MusicPlayer.queueAfterCurrent(a,
+					new YoutubeVideoItem(videoId, addon.getRootItem(lib)), first)) {
+				String name = ((title != null) && !title.isEmpty()) ? title : addon.getVideoTitle(videoId);
+				UiUtils.showToast(requireContext(), first ? me.aap.fermata.R.string.youtube_added_play_next :
+						me.aap.fermata.R.string.youtube_added_up_next, name);
+				return;
+			}
+		}
+
+		if (!addon.addUpNext(videoId, title, first)) {
+			UiUtils.showToast(requireContext(), me.aap.fermata.R.string.youtube_up_next_full,
+					addon.getUpNextMax());
+			return;
+		}
+		String name = ((title != null) && !title.isEmpty()) ? title : addon.getVideoTitle(videoId);
+		UiUtils.showToast(requireContext(), first ? me.aap.fermata.R.string.youtube_added_play_next :
+				me.aap.fermata.R.string.youtube_added_up_next, name);
+	}
+
+	/** Play now / Play next / Add to Up next, for a video long-pressed on the page or in the panel. */
+	void showVideoActions(String videoId, @Nullable String title) {
+		Context ctx = getContext();
+		if (ctx == null) return;
+		MainActivityDelegate.get(ctx).getContextMenu().show(b -> {
+			if ((title != null) && !title.isEmpty()) b.setTitle(title);
+			b.addItem(me.aap.fermata.R.id.youtube_play_now, me.aap.fermata.R.drawable.play,
+					me.aap.fermata.R.string.youtube_play_now).setHandler(i -> {
+				playVideoNow(videoId, title);
+				return true;
+			});
+			b.addItem(me.aap.fermata.R.id.youtube_play_next, me.aap.fermata.R.drawable.up_next,
+					me.aap.fermata.R.string.youtube_play_next).setHandler(i -> {
+				queueVideo(videoId, title, true);
+				return true;
+			});
+			b.addItem(me.aap.fermata.R.id.youtube_add_to_up_next, me.aap.fermata.R.drawable.up_next,
+					me.aap.fermata.R.string.youtube_add_to_up_next).setHandler(i -> {
+				queueVideo(videoId, title, false);
+				return true;
+			});
+		});
+	}
+
+	/** See {@code YoutubeWebView#interceptVideoLongPress()}. */
+	static void onVideoLongPressed(YoutubeWebView web, String videoId, @Nullable String title) {
+		MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a -> {
+			if (a.getActiveFragment() instanceof YoutubeFragment f) f.showVideoActions(videoId, title);
+		});
+	}
+
+	@Override
 	public boolean canScrollUp() {
+		// Never pull-to-refresh from the search panel: that reloads the page, stopping playback.
+		if (isSearchPanelShown()) return true;
 		FermataWebView v = getWebView();
 		if (v == null) return false;
 		FermataChromeClient chrome = v.getWebChromeClient();

@@ -101,6 +101,14 @@ public interface MainActivityPrefs
 	Pref<IntSupplier> FAB4_ACTION = Pref.i("FAB4_ACTION", Action.FAVORITE_ADD.ordinal());
 	Pref<BooleanSupplier> FAB_DRAGGABLE = Pref.b("FAB_DRAGGABLE", true);
 	Pref<DoubleSupplier> FAB_SIZE = Pref.f("FAB_SIZE", 1f);
+	// How many upcoming Favorites/Playlist entries the YouTube tab's Up next list previews below the
+	// user's own queue (1..10) -- enough to see what comes after, few enough to leave room for search
+	// results.
+	Pref<IntSupplier> UP_NEXT_LIST_PREVIEW = Pref.i("UP_NEXT_LIST_PREVIEW", 3);
+	// The most videos the YouTube tab's Up next queue holds (1..50).
+	Pref<IntSupplier> UP_NEXT_MAX = Pref.i("UP_NEXT_MAX", 20);
+	// Whether the YouTube tab remembers past searches (shown as chips in its search panel).
+	Pref<BooleanSupplier> SEARCH_HISTORY_ENABLED = Pref.b("YT_SEARCH_HISTORY_ENABLED", true);
 	Pref<BooleanSupplier> DIM_ENABLED = Pref.b("DIM_ENABLED", false);
 	Pref<IntSupplier> DIM_OPACITY = Pref.i("DIM_OPACITY", 50);
 	Pref<IntSupplier> DIM_COLOR_PRESET = Pref.i("DIM_COLOR_PRESET", 0);

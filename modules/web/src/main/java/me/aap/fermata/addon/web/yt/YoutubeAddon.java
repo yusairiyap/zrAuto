@@ -9,10 +9,13 @@ import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.addon.AddonInfo;
@@ -95,6 +98,13 @@ public class YoutubeAddon extends WebBrowserAddon
 	// playlist" (which reads/writes getQueueItem()'s own parent prefs and needs a real queue item to
 	// mean anything) this works the same with or without one.
 	private static final Pref<BooleanSupplier> YT_REPEAT_ONE = Pref.b("YT_REPEAT_ONE", false);
+	// The user's own "Up next" queue: video ids, in play order, queued from the search panel or by
+	// long-pressing a video on the page. Takes priority over whatever would otherwise play next --
+	// see YoutubeMediaEngine#queueAwareNextPlayable() -- without replacing the Favorites/Playlist
+	// queue item, so once it runs dry the list carries on from where it was. Persisted so a queue
+	// survives the app being killed in the background mid-drive.
+	private static final Pref<Supplier<String[]>> YT_UP_NEXT = Pref.sa("YT_UP_NEXT");
+	private final List<Runnable> upNextListeners = new CopyOnWriteArrayList<>();
 	private boolean ignorePrefChange;
 	private YoutubeRootItem root;
 	// The library item (with its real Favorites/Playlist parent) that the currently loaded video
@@ -119,9 +129,82 @@ public class YoutubeAddon extends WebBrowserAddon
 	@Nullable
 	private String pendingVideoId;
 
+	// Past searches, most recent first (see getSearchHistory()). Persisted for normal browsing only;
+	// Private Mode keeps its own in memory, never written anywhere, and drops it when it ends.
+	private static final Pref<Supplier<String[]>> YT_SEARCH_HISTORY = Pref.sa("YT_SEARCH_HISTORY");
+	private static final int MAX_SEARCH_HISTORY = 12;
+	private final List<String> privateSearchHistory = new ArrayList<>();
+	// A field, not a bare method reference: EventBroadcaster only holds listeners weakly -- see
+	// WebBrowserAddon#privateModeListener.
+	private final PreferenceStore.Listener searchHistoryListener = this::onSearchHistoryPrefsChanged;
+
 	public YoutubeAddon() {
 		// Lets the Music tab play YouTube in this addon's own player -- see MusicHooks.
 		MusicPlayer.setYoutubeHooks(new MusicHooks());
+		MainActivityPrefs.get().addBroadcastListener(searchHistoryListener);
+	}
+
+	/**
+	 * Recent searches, most recent first: none when turned off in Settings; while in Private Mode
+	 * only that session's own, which are never saved.
+	 */
+	@NonNull
+	List<String> getSearchHistory() {
+		MainActivityPrefs mp = MainActivityPrefs.get();
+		if (!mp.getBooleanPref(MainActivityPrefs.SEARCH_HISTORY_ENABLED)) return new ArrayList<>();
+		if (mp.isPrivateModeEnabled()) return new ArrayList<>(privateSearchHistory);
+		return new ArrayList<>(Arrays.asList(getPreferenceStore().getStringArrayPref(YT_SEARCH_HISTORY)));
+	}
+
+	void addSearchHistory(String query) {
+		String q = query.trim();
+		MainActivityPrefs mp = MainActivityPrefs.get();
+		if (q.isEmpty() || !mp.getBooleanPref(MainActivityPrefs.SEARCH_HISTORY_ENABLED)) return;
+		List<String> l = getSearchHistory();
+		for (int i = l.size() - 1; i >= 0; i--) {
+			if (l.get(i).equalsIgnoreCase(q)) l.remove(i);
+		}
+		l.add(0, q);
+		while (l.size() > MAX_SEARCH_HISTORY) l.remove(l.size() - 1);
+		setSearchHistory(l);
+	}
+
+	void removeSearchHistory(String query) {
+		List<String> l = getSearchHistory();
+		if (l.remove(query)) setSearchHistory(l);
+	}
+
+	private void setSearchHistory(List<String> l) {
+		if (MainActivityPrefs.get().isPrivateModeEnabled()) {
+			privateSearchHistory.clear();
+			privateSearchHistory.addAll(l);
+		} else {
+			getPreferenceStore().applyStringArrayPref(YT_SEARCH_HISTORY, l.toArray(new String[0]));
+		}
+		for (Runnable r : upNextListeners) r.run();
+	}
+
+	/**
+	 * "Clear browsing data" and turning the setting off wipe the saved history; entering or leaving
+	 * Private Mode, or its "clear now", drops that session's in-memory one.
+	 */
+	private void onSearchHistoryPrefsChanged(PreferenceStore store, List<Pref<?>> changed) {
+		MainActivityPrefs mp = MainActivityPrefs.get();
+		boolean off = changed.contains(MainActivityPrefs.SEARCH_HISTORY_ENABLED) &&
+				!mp.getBooleanPref(MainActivityPrefs.SEARCH_HISTORY_ENABLED);
+		boolean changedAny = false;
+		if (off || changed.contains(MainActivityPrefs.NORMAL_MODE_CLEAR_REQUEST)) {
+			getPreferenceStore().removePref(YT_SEARCH_HISTORY);
+			changedAny = true;
+		}
+		if (off || changed.contains(MainActivityPrefs.PRIVATE_MODE_ENABLED) ||
+				changed.contains(MainActivityPrefs.PRIVATE_MODE_CLEAR_REQUEST)) {
+			privateSearchHistory.clear();
+			changedAny = true;
+		}
+		if (changedAny || changed.contains(MainActivityPrefs.SEARCH_HISTORY_ENABLED)) {
+			for (Runnable r : upNextListeners) r.run();
+		}
 	}
 
 	/**
@@ -174,6 +257,11 @@ public class YoutubeAddon extends WebBrowserAddon
 		public void applyQuality(@Nullable MediaEngine eng) {
 			if (eng instanceof YoutubeMediaEngine yt) yt.applyQuality();
 		}
+
+		@Override
+		public void openSearch(MainActivityDelegate a, boolean upNextOnly) {
+			YoutubeFragment.openSearch(a.getContext(), upNextOnly);
+		}
 	}
 
 	@Nullable
@@ -182,7 +270,10 @@ public class YoutubeAddon extends WebBrowserAddon
 	}
 
 	void setQueueItem(@Nullable PlayableItem item) {
+		if (queueItem == item) return;
 		queueItem = item;
+		// The Up next list previews the queue item's upcoming list entries -- see YoutubeSearchPanel.
+		for (Runnable r : upNextListeners) r.run();
 	}
 
 	@Nullable
@@ -192,6 +283,67 @@ public class YoutubeAddon extends WebBrowserAddon
 
 	void setPendingVideoId(@Nullable String videoId) {
 		pendingVideoId = videoId;
+	}
+
+	/** The Up next queue, in play order -- see {@link #YT_UP_NEXT}. */
+	@NonNull
+	List<String> getUpNext() {
+		return new ArrayList<>(Arrays.asList(getPreferenceStore().getStringArrayPref(YT_UP_NEXT)));
+	}
+
+	boolean hasUpNext() {
+		return getPreferenceStore().getStringArrayPref(YT_UP_NEXT).length != 0;
+	}
+
+	/** The video that plays next, without taking it off the queue -- see {@link #removeUpNext}. */
+	@Nullable
+	String peekUpNext() {
+		String[] a = getPreferenceStore().getStringArrayPref(YT_UP_NEXT);
+		return (a.length == 0) ? null : a[0];
+	}
+
+	/** See {@code MainActivityPrefs#UP_NEXT_MAX}. */
+	int getUpNextMax() {
+		return Math.max(1, Math.min(50, MainActivityPrefs.get().getIntPref(MainActivityPrefs.UP_NEXT_MAX)));
+	}
+
+	/**
+	 * Queues {@code videoId}: at the front (play next) or at the end. A video already queued is
+	 * moved rather than queued twice. False if the queue is full -- see {@link #getUpNextMax()}.
+	 */
+	boolean addUpNext(String videoId, @Nullable String title, boolean first) {
+		if ((title != null) && !title.isEmpty()) cacheVideoTitle(videoId, title);
+		List<String> l = getUpNext();
+		if (!l.remove(videoId) && (l.size() >= getUpNextMax())) return false;
+		if (first) l.add(0, videoId);
+		else l.add(videoId);
+		setUpNext(l);
+		return true;
+	}
+
+	/** Removes the first occurrence of {@code videoId}; false if it wasn't queued. */
+	boolean removeUpNext(String videoId) {
+		List<String> l = getUpNext();
+		if (!l.remove(videoId)) return false;
+		setUpNext(l);
+		return true;
+	}
+
+	void clearUpNext() {
+		if (hasUpNext()) setUpNext(Collections.emptyList());
+	}
+
+	private void setUpNext(List<String> l) {
+		getPreferenceStore().applyStringArrayPref(YT_UP_NEXT, l.toArray(new String[0]));
+		for (Runnable r : upNextListeners) r.run();
+	}
+
+	void addUpNextListener(Runnable l) {
+		upNextListeners.add(l);
+	}
+
+	void removeUpNextListener(Runnable l) {
+		upNextListeners.remove(l);
 	}
 
 	boolean isRepeatOneEnabled() {
