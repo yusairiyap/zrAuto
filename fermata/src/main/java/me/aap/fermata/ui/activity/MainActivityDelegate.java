@@ -51,6 +51,9 @@ import static me.aap.utils.ui.UiUtils.showAlert;
 import static me.aap.utils.ui.UiUtils.toIntPx;
 import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.graphics.drawable.ColorDrawable;
 import android.animation.ValueAnimator;
 import android.Manifest;
 import android.Manifest.permission;
@@ -920,6 +923,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			cp.enableVideoMode();
 		} else {
 			this.videoMode = false;
+			fadeInFromVideo();
 			setSystemUiVisibility();
 			keepScreenOn(false);
 			if (cp != null) cp.disableVideoMode();
@@ -1096,6 +1100,19 @@ public class MainActivityDelegate extends ActivityDelegate
 			clp.bottomMargin = m;
 			body.setLayoutParams(blp);
 			tb.setLayoutParams(tlp);
+			// Every tab is padded clear of the side pill, but a tab may still extend its own
+			// background out under it (see MainActivityFragment#drawsBehindSideNavBar): don't clip
+			// that at body_layout's padding, nor at the containers in between.
+			if (body instanceof ViewGroup bg) {
+				bg.setClipToPadding(false);
+				for (int id : new int[]{R.id.swiperefresh, R.id.frame_layout}) {
+					View c = bg.findViewById(id);
+					if (c instanceof ViewGroup g) {
+						g.setClipChildren(false);
+						g.setClipToPadding(false);
+					}
+				}
+			}
 		}
 
 		nb.setLayoutParams(nlp);
@@ -1130,8 +1147,6 @@ public class MainActivityDelegate extends ActivityDelegate
 		if ((b == null) || (nb == null)) return;
 		int left = 0;
 		int right = 0;
-		boolean selfInset = (getActiveFragment() instanceof MainActivityFragment f)
-				&& f.drawsBehindSideNavBar();
 
 		if (isSideNavShown(nb)) {
 			int gap = toIntPx(getContext(), FLOATING_BAR_MARGIN);
@@ -1146,7 +1161,6 @@ public class MainActivityDelegate extends ActivityDelegate
 			tb.setPadding(left, tb.getPaddingTop(), right, tb.getPaddingBottom());
 		}
 
-		if (selfInset) left = right = 0;
 		if ((b.getPaddingLeft() == left) && (b.getPaddingRight() == right)) return;
 		b.setPadding(left, b.getPaddingTop(), right, b.getPaddingBottom());
 	}
@@ -1179,6 +1193,45 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (nb.isLeft()) out[0] = Math.max(0, insetLoc2[0] + nb.getWidth() + gap - contentLeft);
 		else out[1] = Math.max(0, contentRight - insetLoc2[0] + gap);
 		return true;
+	}
+
+	@Nullable
+	private ColorDrawable videoExitFade;
+
+	/**
+	 * Leaving fullscreen video relayouts the whole screen at once (bars back, the video pane
+	 * shrinking or going, tab content resizing, system bars returning). Covers the whole window
+	 * with black -- the colour fullscreen video sits on -- the instant that starts, and fades it
+	 * out once things have had a moment to settle, so the switch reads as one smooth fade rather
+	 * than a series of jumps.
+	 */
+	private void fadeInFromVideo() {
+		View decor = getWindow().getDecorView();
+		if (!decor.isLaidOut() || (decor.getWidth() == 0)) return;
+		ColorDrawable prev = videoExitFade;
+		if (prev != null) decor.getOverlay().remove(prev);
+
+		ColorDrawable d = new ColorDrawable(Color.BLACK);
+		d.setBounds(0, 0, decor.getWidth(), decor.getHeight());
+		videoExitFade = d;
+		decor.getOverlay().add(d);
+
+		ValueAnimator anim = ValueAnimator.ofInt(255, 0);
+		anim.setStartDelay(120);
+		anim.setDuration(320);
+		anim.setInterpolator(new PathInterpolator(0.4f, 0f, 0.2f, 1f));
+		anim.addUpdateListener(v -> {
+			d.setAlpha((int) v.getAnimatedValue());
+			decor.invalidate();
+		});
+		anim.addListener(new AnimatorListenerAdapter() {
+			@Override
+			public void onAnimationEnd(Animator animation) {
+				decor.getOverlay().remove(d);
+				if (videoExitFade == d) videoExitFade = null;
+			}
+		});
+		anim.start();
 	}
 
 	/**

@@ -5,7 +5,16 @@
     android:id="@+id/music_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/musicBackground">
+    android:background="?attr/musicBackground"
+    android:clipChildren="false">
+
+    <!-- The backdrop, cover and scrim reach past the tab's own edges, under a left/right
+         floating nav pill; see MusicPlayerFragment#extendBackground. -->
+    <View
+        android:id="@+id/music_backdrop"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="?attr/musicBackground" />
 
     <ImageView
         android:id="@+id/music_bg"
@@ -15,6 +24,7 @@
         android:scaleType="centerCrop" />
 
     <View
+        android:id="@+id/music_scrim"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@drawable/music_scrim" />

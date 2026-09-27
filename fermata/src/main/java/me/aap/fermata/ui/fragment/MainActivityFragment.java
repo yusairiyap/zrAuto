@@ -35,10 +35,10 @@ public abstract class MainActivityFragment extends ActivityFragment {
 	}
 
 	/**
-	 * With a left/right nav bar, body_layout normally pads the whole tab clear of the floating nav
-	 * pill (see MainActivityDelegate#syncSideNavInset). A tab returning true here is laid out
-	 * across the full width instead, so its background runs on behind the pill, and keeps its own
-	 * content clear of it itself, via MainActivityDelegate#computeSideInsets.
+	 * With a left/right nav bar, body_layout pads every tab clear of the floating nav pill (see
+	 * MainActivityDelegate#syncSideNavInset). A tab returning true here extends its own background
+	 * out under the pill past that padding itself (body_layout doesn't clip it there), so the pill
+	 * doesn't lay the usual edge fade over it either.
 	 */
 	public boolean drawsBehindSideNavBar() {
 		return false;
