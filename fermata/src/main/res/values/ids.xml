@@ -190,4 +190,10 @@
     <item name="youtube_play_now" type="id" />
     <item name="youtube_play_next" type="id" />
     <item name="youtube_add_to_up_next" type="id" />
+    <item name="fuel_range_7_days" type="id" />
+    <item name="fuel_range_30_days" type="id" />
+    <item name="fuel_range_90_days" type="id" />
+    <item name="fuel_range_this_month" type="id" />
+    <item name="fuel_range_last_month" type="id" />
+    <item name="fuel_range_this_year" type="id" />
 </resources>

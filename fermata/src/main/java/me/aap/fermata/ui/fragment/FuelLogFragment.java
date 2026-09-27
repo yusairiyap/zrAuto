@@ -19,6 +19,7 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.util.Pair;
+import androidx.fragment.app.DialogFragment;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -38,7 +39,6 @@ import me.aap.fermata.addon.fuel.FuelLogStore;
 import me.aap.fermata.addon.fuel.FuelRefuelDialog;
 import me.aap.fermata.addon.fuel.FuelTracker;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
-import me.aap.utils.ui.UiUtils;
 
 /**
  * The Fuel Log tab: an overview card (current trip distance, last refuel summary) and a
@@ -58,6 +58,8 @@ public class FuelLogFragment extends MainActivityFragment {
 	private static final int TYPE_TIMELINE_DAY_HEADER = 2;
 	private static final int TYPE_TIMELINE_ITEM = 3;
 	private static final int TYPE_TIMELINE_EMPTY = 4;
+
+	private static final String DATE_PICKER_TAG = "fuel_log_date_range";
 
 	private final Runnable trackerListener = this::refresh;
 	private Adapter adapter;
@@ -118,6 +120,20 @@ public class FuelLogFragment extends MainActivityFragment {
 		FuelTracker.get(requireContext()).removeListener(trackerListener);
 	}
 
+	@Override
+	public void onStop() {
+		// Close a date picker left open rather than let it be saved with the activity: after a
+		// restart (a theme change, the process being killed, the phone UI moving onto the car
+		// screen) the FragmentManager would bring it back and show it itself, bypassing
+		// showDateRangePicker()'s car check, and on the car screen that crashes the app
+		// ("Window type mismatch"). onStop() runs before the state is saved, so it's not restored.
+		if (getParentFragmentManager().findFragmentByTag(DATE_PICKER_TAG)
+				instanceof DialogFragment picker) {
+			picker.dismissAllowingStateLoss();
+		}
+		super.onStop();
+	}
+
 	private void refresh() {
 		if ((adapter == null) || !isAdded()) return;
 		adapter.setEntries(FuelLogStore.getEntries(getActivityDelegate().getPrefs()));
@@ -147,9 +163,10 @@ public class FuelLogFragment extends MainActivityFragment {
 		// no such Window to host it in, and showing it there crashes instead of silently no-opping.
 		// The rest of this tab's UI (the overview card, the Timeline list itself, editing an entry
 		// via FuelRefuelDialog's UiUtils#queryPrefs-based dialog) doesn't hit this because none of it
-		// opens a DialogFragment of its own -- this picker is the one exception.
+		// opens a DialogFragment of its own -- this picker is the one exception. The car gets a menu
+		// of ready-made ranges instead, drawn in the app's own overlay menu, which the car can show.
 		if (getActivityDelegate().isCarActivity()) {
-			UiUtils.showToast(requireContext(), R.string.fuel_log_date_filter_unavailable_in_car);
+			showCarDateRangeMenu();
 			return;
 		}
 
@@ -168,7 +185,78 @@ public class FuelLogFragment extends MainActivityFragment {
 			timelineToMillis = utcDayMillisToLocalEndOfDay(sel.second);
 			refresh();
 		});
-		picker.show(getParentFragmentManager(), "fuel_log_date_range");
+		picker.show(getParentFragmentManager(), DATE_PICKER_TAG);
+	}
+
+	/** The car screen's stand-in for the date picker: a few common ranges, one tap each. */
+	private void showCarDateRangeMenu() {
+		getActivityDelegate().getContextMenu().show(b -> {
+			b.setTitle(R.string.fuel_log_filter_date_range);
+			b.addItem(R.id.fuel_range_7_days, R.string.fuel_log_range_7_days)
+					.setHandler(i -> setRangeDays(7));
+			b.addItem(R.id.fuel_range_30_days, R.string.fuel_log_range_30_days)
+					.setHandler(i -> setRangeDays(30));
+			b.addItem(R.id.fuel_range_90_days, R.string.fuel_log_range_90_days)
+					.setHandler(i -> setRangeDays(90));
+			b.addItem(R.id.fuel_range_this_month, R.string.fuel_log_range_this_month)
+					.setHandler(i -> setRangeMonth(0));
+			b.addItem(R.id.fuel_range_last_month, R.string.fuel_log_range_last_month)
+					.setHandler(i -> setRangeMonth(-1));
+			b.addItem(R.id.fuel_range_this_year, R.string.fuel_log_range_this_year)
+					.setHandler(i -> setRangeThisYear());
+		});
+	}
+
+	/** The last {@code days} calendar days, including today. */
+	private boolean setRangeDays(int days) {
+		Calendar to = endOfToday();
+		Calendar from = startOfDay(to);
+		from.add(Calendar.DAY_OF_YEAR, -(days - 1));
+		return setRange(from, to);
+	}
+
+	/** A whole calendar month: this one for 0, the previous one for -1. */
+	private boolean setRangeMonth(int monthOffset) {
+		Calendar from = startOfDay(endOfToday());
+		from.set(Calendar.DAY_OF_MONTH, 1);
+		from.add(Calendar.MONTH, monthOffset);
+		Calendar to = (Calendar) from.clone();
+		to.add(Calendar.MONTH, 1);
+		to.add(Calendar.MILLISECOND, -1);
+		return setRange(from, to);
+	}
+
+	/** From 1 January up to the end of today. */
+	private boolean setRangeThisYear() {
+		Calendar to = endOfToday();
+		Calendar from = startOfDay(to);
+		from.set(Calendar.DAY_OF_YEAR, 1);
+		return setRange(from, to);
+	}
+
+	private boolean setRange(Calendar from, Calendar to) {
+		timelineFromMillis = from.getTimeInMillis();
+		timelineToMillis = to.getTimeInMillis();
+		refresh();
+		return true;
+	}
+
+	private static Calendar endOfToday() {
+		Calendar c = Calendar.getInstance();
+		c.set(Calendar.HOUR_OF_DAY, 23);
+		c.set(Calendar.MINUTE, 59);
+		c.set(Calendar.SECOND, 59);
+		c.set(Calendar.MILLISECOND, 999);
+		return c;
+	}
+
+	private static Calendar startOfDay(Calendar c) {
+		Calendar d = (Calendar) c.clone();
+		d.set(Calendar.HOUR_OF_DAY, 0);
+		d.set(Calendar.MINUTE, 0);
+		d.set(Calendar.SECOND, 0);
+		d.set(Calendar.MILLISECOND, 0);
+		return d;
 	}
 
 	/**

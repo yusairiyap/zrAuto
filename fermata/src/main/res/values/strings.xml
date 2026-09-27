@@ -627,7 +627,12 @@
     <string name="fuel_log_trip_started">Trip Started</string>
     <string name="fuel_log_trip_ended">Trip Ended</string>
     <string name="fuel_log_filter_date_range">Filter by date</string>
-    <string name="fuel_log_date_filter_unavailable_in_car">Date filter isn\'t available while connected to Android Auto</string>
+    <string name="fuel_log_range_7_days">Last 7 days</string>
+    <string name="fuel_log_range_30_days">Last 30 days</string>
+    <string name="fuel_log_range_90_days">Last 90 days</string>
+    <string name="fuel_log_range_this_month">This month</string>
+    <string name="fuel_log_range_last_month">Last month</string>
+    <string name="fuel_log_range_this_year">This year</string>
     <string name="fuel_log_no_timeline_entries">No trips or refuels in this period</string>
     <string name="fuel_log_today">Today</string>
     <string name="fuel_log_yesterday">Yesterday</string>
