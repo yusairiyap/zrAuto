@@ -412,10 +412,10 @@ public class ControlPanelView extends ConstraintLayout
 			return;
 		}
 
-		if ((mask & MASK_VIDEO_MODE) == 0) {
-			int target = (!suppressed && ((mask & MASK_VISIBLE) != 0)) ? VISIBLE : GONE;
-			if (getVisibility() != target) getActivity().beginBarsTransition();
-		}
+		// Deliberately not animated: this is the Music tab coming or going, which has its own
+		// entrance/exit animation; the panel fading on top of that only fought with it.
+		animate().cancel();
+		setAlpha(1f);
 
 		if (suppressed) {
 			mask |= MASK_SUPPRESSED;
@@ -456,8 +456,14 @@ public class ControlPanelView extends ConstraintLayout
 			mask |= MASK_VISIBLE;
 			if ((mask & (MASK_VIDEO_MODE | MASK_SUPPRESSED)) != 0) return;
 
-			if (getVisibility() != VISIBLE) a.beginBarsTransition();
-			super.setVisibility(VISIBLE);
+			if (getVisibility() != VISIBLE) {
+				// Fades in, while the floating buttons sitting on it glide up out of its way.
+				a.glideFabsAfterLayout();
+				fadeIn(this, true);
+			} else {
+				animate().cancel();
+				setAlpha(1f);
+			}
 
 			if (a.getPrefs().getHideBarsPref(a)) {
 				a.setBarsHidden(true);
@@ -465,8 +471,7 @@ public class ControlPanelView extends ConstraintLayout
 			}
 		} else {
 			mask &= ~MASK_VISIBLE;
-			if (getVisibility() != GONE) a.beginBarsTransition();
-			super.setVisibility(GONE);
+			hideAnimated(a);
 			a.getFloatingButton().setVisibility(VISIBLE);
 
 			if (a.isBarsHidden()) {
@@ -718,6 +723,28 @@ public class ControlPanelView extends ConstraintLayout
 				super.setVisibility(GONE);
 				notifyControlPanelVisibility();
 			} else v.setVisibility(GONE);
+		}).start();
+	}
+
+	/**
+	 * Fades the panel out and only then makes it GONE (the floating buttons gliding down as it
+	 * goes) -- unless something showed it again meanwhile, or video mode took it over.
+	 */
+	private void hideAnimated(MainActivityDelegate a) {
+		animate().cancel();
+		if ((getVisibility() != VISIBLE) || !isLaidOut() || !isAttachedToWindow()) {
+			super.setVisibility(GONE);
+			setAlpha(1f);
+			return;
+		}
+		animate().alpha(0f).setDuration(FADE_DURATION).withEndAction(() -> {
+			if ((mask & (MASK_VISIBLE | MASK_VIDEO_MODE)) == 0) {
+				a.glideFabsAfterLayout();
+				super.setVisibility(GONE);
+				notifyControlPanelVisibility();
+				a.refreshContentInsets();
+			}
+			setAlpha(1f);
 		}).start();
 	}
 

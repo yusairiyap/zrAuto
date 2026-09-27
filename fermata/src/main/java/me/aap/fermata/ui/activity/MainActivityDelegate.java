@@ -52,12 +52,6 @@ import static me.aap.utils.ui.UiUtils.toIntPx;
 import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED;
 
 import android.animation.ValueAnimator;
-import android.transition.ChangeBounds;
-import android.transition.Fade;
-import android.transition.Slide;
-import android.transition.Transition;
-import android.transition.TransitionManager;
-import android.transition.TransitionSet;
 import android.Manifest;
 import android.Manifest.permission;
 import android.app.Activity;
@@ -91,6 +85,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.PathInterpolator;
+import android.view.ViewPropertyAnimator;
 import android.view.ViewTreeObserver;
 import android.widget.EditText;
 
@@ -237,6 +232,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	// See syncSideNavInset().
 	private int sideInsetLeft = -1;
 	private int sideInsetRight = -1;
+	private boolean sideInsetSelf;
 	@Nullable
 	private ValueAnimator sideInsetAnim;
 	private boolean videoMode;
@@ -873,11 +869,11 @@ public class MainActivityDelegate extends ActivityDelegate
 	public void setBarsHidden(boolean barsHidden) {
 		App.get().getHandler().post(() -> {
 			this.barsHidden = barsHidden;
-			int visibility = barsHidden ? GONE : VISIBLE;
-			if (getNavBar().getVisibility() != visibility) beginBarsTransition();
 			ToolBarView tb = getToolBar();
-			if (tb.getMediator() != ToolBarView.Mediator.Invisible.instance) tb.setVisibility(visibility);
-			getNavBar().setVisibility(visibility);
+			if (tb.getMediator() != ToolBarView.Mediator.Invisible.instance) {
+				animateBar(tb, !barsHidden, 0, -tb.getHeight());
+			}
+			animateNavBar(!barsHidden);
 			// tool_bar keeps its actual layout height above even when its mediator is Invisible (e.g.
 			// while browsing a WebView, which draws its own navigation) -- its own visibility is
 			// deliberately left untouched just above since toggling it wouldn't change anything
@@ -1052,10 +1048,25 @@ public class MainActivityDelegate extends ActivityDelegate
 	private void enableFloatingBars() {
 		View body = findViewById(R.id.body_layout);
 		View cp = findViewById(R.id.control_panel);
-		if (!(navBar instanceof FermataNavBarView nb) || (body == null) || (cp == null)) return;
+		View tb = findViewById(R.id.tool_bar);
+		View bars = findViewById(R.id.floating_bars);
+		if (!(navBar instanceof FermataNavBarView nb) || (body == null) || (cp == null)
+				|| (tb == null) || (bars == null)) return;
 		if (!(body.getLayoutParams() instanceof ConstraintLayout.LayoutParams blp)
 				|| !(nb.getLayoutParams() instanceof ConstraintLayout.LayoutParams nlp)
-				|| !(cp.getLayoutParams() instanceof ConstraintLayout.LayoutParams clp)) return;
+				|| !(cp.getLayoutParams() instanceof ConstraintLayout.LayoutParams clp)
+				|| !(tb.getLayoutParams() instanceof ConstraintLayout.LayoutParams tlp)) return;
+
+		// The pill (and the nav bar on it) are raised to tool_bar's own elevation -- tied, so the
+		// layout's declaration order decides, and both come after tool_bar -- so a side pill draws
+		// over tool_bar's scrim where they meet (tool_bar spans the full width now, see below)
+		// instead of tool_bar's scrim ending in a hard notch next to the pill. No outline shadows:
+		// the pill paints its own.
+		float z = tb.getElevation();
+		bars.setOutlineProvider(null);
+		bars.setElevation(z);
+		nb.setOutlineProvider(null);
+		nb.setElevation(z);
 
 		int m = toIntPx(getContext(), FLOATING_BAR_MARGIN);
 		int pos = getPrefs().getNavBarPosPref(this);
@@ -1069,20 +1080,27 @@ public class MainActivityDelegate extends ActivityDelegate
 		} else {
 			nlp.topMargin = m;
 			nlp.bottomMargin = m;
+			// body_layout and tool_bar both span the full width, behind the pill; each is padded
+			// clear of it (see syncSideNavInset()).
 			if (pos == NavBarView.POSITION_LEFT) {
 				setHorizontalMargins(nlp, m, 0);
 				blp.startToEnd = UNSET;
 				blp.startToStart = PARENT_ID;
+				tlp.startToEnd = UNSET;
+				tlp.startToStart = PARENT_ID;
 				clp.goneStartMargin = m;
 			} else {
 				setHorizontalMargins(nlp, 0, m);
 				blp.endToStart = UNSET;
 				blp.endToEnd = PARENT_ID;
+				tlp.endToStart = UNSET;
+				tlp.endToEnd = PARENT_ID;
 				clp.goneEndMargin = m;
 			}
 			setHorizontalMargins(clp, m, m);
 			clp.bottomMargin = m;
 			body.setLayoutParams(blp);
+			tb.setLayoutParams(tlp);
 		}
 
 		nb.setLayoutParams(nlp);
@@ -1114,11 +1132,22 @@ public class MainActivityDelegate extends ActivityDelegate
 		boolean selfInset = (getActiveFragment() instanceof MainActivityFragment f)
 				&& f.drawsBehindSideNavBar();
 
-		if (!selfInset && (nb.getVisibility() == VISIBLE) && (nb.getWidth() > 0)) {
+		if ((nb.getVisibility() == VISIBLE) && (nb.getWidth() > 0)) {
 			int gap = toIntPx(getContext(), FLOATING_BAR_MARGIN);
 			if (nb.isLeft()) left = Math.max(0, nb.getRight() - b.getLeft() + gap);
 			else if (nb.isRight()) right = Math.max(0, b.getRight() - nb.getLeft() + gap);
 		}
+
+		// tool_bar's buttons and title are always kept clear of the pill, whatever the tab.
+		ToolBarView tb = toolBar;
+		if ((tb != null) && !nb.isBottom()
+				&& ((tb.getPaddingLeft() != left) || (tb.getPaddingRight() != right))) {
+			tb.setPadding(left, tb.getPaddingTop(), right, tb.getPaddingBottom());
+		}
+
+		if (selfInset) left = right = 0;
+		boolean tabSwitch = selfInset != sideInsetSelf;
+		sideInsetSelf = selfInset;
 
 		if ((left == sideInsetLeft) && (right == sideInsetRight)) return;
 		sideInsetLeft = left;
@@ -1128,9 +1157,11 @@ public class MainActivityDelegate extends ActivityDelegate
 		int fromRight = b.getPaddingRight();
 		if ((fromLeft == left) && (fromRight == right)) return;
 
-		// Glides along with the nav bar sliding on or off its side (see beginBarsTransition()),
+		// Glides along with the nav bar sliding on or off its side (see animateNavBar()),
 		// rather than the content jumping to its new width as soon as the slide starts.
-		if (!b.isLaidOut() || (getActiveFragment() == null)) {
+		// Only animated along with the nav bar sliding on/off; switching to or from a tab that
+		// insets itself (Music) is instant, or both paddings animating at once make it wobble.
+		if (tabSwitch || !b.isLaidOut() || (getActiveFragment() == null)) {
 			b.setPadding(left, b.getPaddingTop(), right, b.getPaddingBottom());
 			return;
 		}
@@ -1172,94 +1203,222 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	/**
-	 * Animates whatever tool_bar/nav_bar/control_panel visibility changes are about to be made
-	 * (in the same frame) instead of letting them snap: the nav bar fades out of (or into) the
-	 * bottom pill, or slides off (onto) its side; tool_bar slides up; control_panel fades, and
-	 * both it and the floating buttons glide to wherever the new layout puts them. The pill behind
-	 * the bars follows along on its own, see {@link me.aap.fermata.ui.view.FloatingBarsView}.
+	 * Shows or hides the nav bar with an animation instead of a snap. At the bottom it fades in or
+	 * out of its pill row; on a side it slides on or off its edge. The bar stays genuinely VISIBLE
+	 * (and laid out) until its hide animation ends, so nothing laid out around it -- the content's
+	 * insets, body_layout's side padding -- sees it go and come back mid-way.
+	 * <p>
+	 * A bottom nav bar sharing its pill with the control panel: the control panel (and the floating
+	 * buttons sitting on it) move down into the nav bar's place as it fades, so the pill shrinks
+	 * smoothly from the top, and move up out of its way when it comes back.
 	 */
-	public void beginBarsTransition() {
-		View rootView = findViewById(R.id.main_activity);
-		if (!(rootView instanceof ViewGroup root) || !root.isLaidOut()) return;
-		if ((navBar == null) || (controlPanel == null) || (toolBar == null)) return;
+	private void animateNavBar(boolean show) {
+		NavBarView nb = navBar;
+		if (nb == null) return;
+		float outX = nb.isLeft() ? -(nb.getRight()) : nb.isRight() ? (nb.getWidth() + toIntPx(
+				getContext(), FLOATING_BAR_MARGIN)) : 0;
 
-		Transition nav = navBar.isBottom() ? new Fade() :
-				new Slide(navBar.isLeft() ? Gravity.LEFT : Gravity.RIGHT);
-		nav.addTarget(navBar);
-		Transition tb = new Slide(Gravity.TOP);
-		tb.addTarget(toolBar);
-		Transition cpFade = new Fade();
-		cpFade.addTarget(controlPanel);
+		if (show) {
+			// Also brings back anything a hide cut short had already moved down part of the way.
+			glideAfterLayout(controlPanel, floatingButton, floatingButton2, floatingButton3,
+					floatingButton4);
+			animateBar(nb, true, outX, 0);
+			return;
+		}
 
-		TransitionSet set = new TransitionSet();
-		set.setOrdering(TransitionSet.ORDERING_TOGETHER);
-		set.addTransition(nav).addTransition(tb).addTransition(cpFade);
-		set.setDuration(BARS_ANIM_MS);
-		set.setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f));
-		TransitionManager.beginDelayedTransition(root, set);
-		glideAfterLayout(root, controlPanel, floatingButton, floatingButton2, floatingButton3,
-				floatingButton4);
+		if (nb.getVisibility() != VISIBLE) return;
+		ControlPanelView cp = controlPanel;
+		boolean moveDown = nb.isBottom() && (cp != null) && (cp.getVisibility() == VISIBLE)
+				&& nb.isLaidOut();
+		View[] followers = {cp, floatingButton, floatingButton2, floatingButton3, floatingButton4};
+
+		if (moveDown && (cp.getParent() instanceof View parent)
+				&& (cp.getLayoutParams() instanceof ConstraintLayout.LayoutParams clp)) {
+			// Once the nav bar is GONE, the control panel's bottom anchor becomes the bottom edge
+			// (less its gone-margin); the floating buttons sit on top of the control panel.
+			float dy = (parent.getHeight() - parent.getPaddingBottom() - clp.goneBottomMargin)
+					- cp.getBottom();
+			if (dy > 0f) {
+				for (View v : followers) {
+					if ((v != null) && (v.getVisibility() == VISIBLE)) slideBy(v, 0, dy);
+				}
+			}
+		}
+
+		animateBar(nb, false, outX, 0, () -> {
+			if (moveDown) {
+				// Laid out in its new place from this same frame on: drop the offset.
+				for (View v : followers) {
+					if (v != null) settleSlide(v);
+				}
+			}
+			refreshContentInsets();
+		});
+	}
+
+	private void animateBar(View v, boolean show, float outX, float outY) {
+		animateBar(v, show, outX, outY, null);
+	}
+
+	/**
+	 * Fades/slides {@code v} in (from {@code outX}/{@code outY}) or out (to them), and only makes it
+	 * GONE at the end of the hide -- unless the bars were shown again meanwhile.
+	 */
+	private void animateBar(View v, boolean show, float outX, float outY,
+													@Nullable Runnable onHidden) {
+		ViewPropertyAnimator anim = v.animate();
+		anim.cancel();
+
+		if (show) {
+			if (v.getVisibility() != VISIBLE) {
+				v.setAlpha(0f);
+				v.setTranslationX(outX);
+				v.setTranslationY(outY);
+				v.setVisibility(VISIBLE);
+			}
+			anim.alpha(1f).translationX(0f).translationY(0f).setDuration(BARS_ANIM_MS)
+					.setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f)).start();
+			return;
+		}
+
+		if (v.getVisibility() != VISIBLE) return;
+		if (!v.isLaidOut() || !v.isAttachedToWindow()) {
+			v.setVisibility(GONE);
+			if (onHidden != null) onHidden.run();
+			return;
+		}
+
+		anim.alpha(0f).translationX(outX).translationY(outY).setDuration(BARS_ANIM_MS)
+				.setInterpolator(new PathInterpolator(0.4f, 0f, 1f, 1f)).withEndAction(() -> {
+					if (barsHidden) v.setVisibility(GONE);
+					v.setAlpha(1f);
+					v.setTranslationX(0f);
+					v.setTranslationY(0f);
+					if (onHidden != null) onHidden.run();
+				}).start();
 	}
 
 	/**
 	 * Lets each of {@code views} glide from where it is now to wherever the next layout pass puts
-	 * it, rather than jumping there -- a translation animation started right after that layout, so
-	 * unlike {@link android.transition.ChangeBounds} it never suppresses the parent's layout (which
-	 * would hold up the tab content being laid out meanwhile, e.g. while switching tabs).
+	 * it, rather than jumping there. Runs its own translation animator per view (see
+	 * {@link #slideBy}), so it never touches a view's {@code animate()} -- which the floating
+	 * buttons use for their own press/release scaling, and cancelling that would leave them stuck
+	 * enlarged -- and never suppresses the parent's layout the way ChangeBounds would.
 	 */
-	private static void glideAfterLayout(ViewGroup root, View... views) {
+	public void glideAfterLayout(View... views) {
+		View rootView = findViewById(R.id.main_activity);
+		if ((rootView == null) || !rootView.isLaidOut()) return;
 		int n = views.length;
 		float[] oldX = new float[n];
 		float[] oldY = new float[n];
-		float[] baseX = new float[n];
-		float[] baseY = new float[n];
 		boolean[] wasShown = new boolean[n];
 
 		for (int i = 0; i < n; i++) {
 			View v = views[i];
 			if (v == null) continue;
-			v.animate().cancel();
 			wasShown[i] = (v.getVisibility() == VISIBLE) && (v.getWidth() > 0);
-			oldX[i] = v.getX();
-			oldY[i] = v.getY();
-			// Whatever translation the view had before any glide of ours, so it ends up back there.
-			Object base = v.getTag(R.id.floating_bars);
-			if (base instanceof float[] b) {
-				baseX[i] = b[0];
-				baseY[i] = b[1];
-			} else {
-				baseX[i] = v.getTranslationX();
-				baseY[i] = v.getTranslationY();
-			}
+			oldX[i] = v.getLeft() + slideBase(v, true) + slideOffset(v, true);
+			oldY[i] = v.getTop() + slideBase(v, false) + slideOffset(v, false);
 		}
 
-		ViewTreeObserver vto = root.getViewTreeObserver();
+		ViewTreeObserver vto = rootView.getViewTreeObserver();
 		vto.addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
 			@Override
 			public boolean onPreDraw() {
-				if (root.getViewTreeObserver().isAlive()) {
-					root.getViewTreeObserver().removeOnPreDrawListener(this);
-				}
+				ViewTreeObserver o = rootView.getViewTreeObserver();
+				if (o.isAlive()) o.removeOnPreDrawListener(this);
 
 				for (int i = 0; i < n; i++) {
 					View v = views[i];
 					if ((v == null) || !wasShown[i] || (v.getVisibility() != VISIBLE)) continue;
-					float dx = oldX[i] - (v.getLeft() + baseX[i]);
-					float dy = oldY[i] - (v.getTop() + baseY[i]);
+					float dx = oldX[i] - (v.getLeft() + slideBase(v, true));
+					float dy = oldY[i] - (v.getTop() + slideBase(v, false));
 					if ((Math.abs(dx) < 1f) && (Math.abs(dy) < 1f)) continue;
-					float bx = baseX[i];
-					float by = baseY[i];
-					v.setTag(R.id.floating_bars, new float[]{bx, by});
-					v.setTranslationX(bx + dx);
-					v.setTranslationY(by + dy);
-					v.animate().translationX(bx).translationY(by).setDuration(BARS_ANIM_MS)
-							.setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f))
-							.withEndAction(() -> v.setTag(R.id.floating_bars, null)).start();
+					startSlide(v, dx, dy, 0f, 0f);
 				}
 
 				return true;
 			}
 		});
+	}
+
+	/** {@link #glideAfterLayout} for the floating buttons, e.g. around the control panel. */
+	public void glideFabsAfterLayout() {
+		glideAfterLayout(floatingButton, floatingButton2, floatingButton3, floatingButton4);
+	}
+
+	/** Slides {@code v} by (dx, dy) away from its resting translation, animated. */
+	private static void slideBy(View v, float dx, float dy) {
+		startSlide(v, slideOffset(v, true), slideOffset(v, false), dx, dy);
+	}
+
+	/** Ends any slide on {@code v}, putting it straight back at its resting translation. */
+	private static void settleSlide(View v) {
+		if (!(v.getTag(R.id.floating_bars) instanceof Slide s)) return;
+		v.setTag(R.id.floating_bars, null);
+		s.anim.cancel();
+		v.setTranslationX(s.baseX);
+		v.setTranslationY(s.baseY);
+	}
+
+	/**
+	 * Animates {@code v}'s offset from its resting translation (whatever it had before any slide of
+	 * ours began, e.g. where a floating button was dragged to) from one value to another. Keeps
+	 * the resting translation and the running animator in the view's tag.
+	 */
+	private static void startSlide(View v, float fromDx, float fromDy, float toDx, float toDy) {
+		Slide s;
+		if (v.getTag(R.id.floating_bars) instanceof Slide prev) {
+			prev.anim.cancel();
+			s = new Slide(prev.baseX, prev.baseY);
+		} else {
+			s = new Slide(v.getTranslationX(), v.getTranslationY());
+		}
+
+		ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
+		a.setDuration(BARS_ANIM_MS);
+		a.setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f));
+		a.addUpdateListener(va -> {
+			float f = (float) va.getAnimatedValue();
+			s.dx = fromDx + (toDx - fromDx) * f;
+			s.dy = fromDy + (toDy - fromDy) * f;
+			v.setTranslationX(s.baseX + s.dx);
+			v.setTranslationY(s.baseY + s.dy);
+			if ((f >= 1f) && (s.dx == 0f) && (s.dy == 0f) && (v.getTag(R.id.floating_bars) == s)) {
+				v.setTag(R.id.floating_bars, null);
+			}
+		});
+		s.anim = a;
+		v.setTag(R.id.floating_bars, s);
+		s.dx = fromDx;
+		s.dy = fromDy;
+		v.setTranslationX(s.baseX + fromDx);
+		v.setTranslationY(s.baseY + fromDy);
+		a.start();
+	}
+
+	private static float slideBase(View v, boolean x) {
+		if (v.getTag(R.id.floating_bars) instanceof Slide s) return x ? s.baseX : s.baseY;
+		return x ? v.getTranslationX() : v.getTranslationY();
+	}
+
+	private static float slideOffset(View v, boolean x) {
+		if (v.getTag(R.id.floating_bars) instanceof Slide s) return x ? s.dx : s.dy;
+		return 0f;
+	}
+
+	/** A running slide of a view: its resting translation, current offset, and animator. */
+	private static final class Slide {
+		final float baseX;
+		final float baseY;
+		float dx;
+		float dy;
+		ValueAnimator anim;
+
+		Slide(float baseX, float baseY) {
+			this.baseX = baseX;
+			this.baseY = baseY;
+		}
 	}
 
 	/**

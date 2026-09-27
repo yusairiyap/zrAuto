@@ -19,6 +19,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.fragment.MainActivityFragment;
 import me.aap.utils.ui.view.NavBarView;
 
 /**
@@ -35,7 +36,7 @@ import me.aap.utils.ui.view.NavBarView;
  * <p>
  * The pill is recomputed from the bars' live state before every frame -- position (including any
  * translation), visibility and alpha -- so it follows whatever animates them (the show/hide
- * transitions of MainActivityDelegate#beginBarsTransition) frame by frame: sliding off with a
+ * animations of MainActivityDelegate#animateNavBar and the control panel's fades) frame by frame: sliding off with a
  * side nav bar, fading with it, or growing and shrinking as the control panel row comes and goes.
  */
 public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDrawListener {
@@ -150,7 +151,11 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 			}
 		}
 
-		float newFadeA = a.isVideoMode() ? 0f : navA;
+		// No fade over video, nor over a tab running its own background on behind a side pill (the
+		// Music tab's blurred cover): there the background itself should show through, untinted.
+		boolean ownBg = !nb.isBottom() && (a.getActiveFragment() instanceof MainActivityFragment f)
+				&& f.drawsBehindSideNavBar();
+		float newFadeA = (a.isVideoMode() || ownBg) ? 0f : navA;
 		int pos = nb.getPosition();
 
 		if (!main.equals(tmp) || !aux.equals(newAux) || (mainAlpha != newMainA)
