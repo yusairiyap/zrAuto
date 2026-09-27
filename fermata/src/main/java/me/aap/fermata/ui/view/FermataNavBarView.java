@@ -19,9 +19,11 @@ import androidx.annotation.Nullable;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.view.GestureDetectorCompat;
 
+import me.aap.fermata.R;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.utils.ui.view.GestureListener;
 import me.aap.utils.ui.view.NavBarView;
+import me.aap.utils.ui.view.NavButtonView;
 
 /**
  * The nav bar, drawn as the lower row of the floating pill {@link FloatingBarsView} paints behind
@@ -125,6 +127,16 @@ public class FermataNavBarView extends NavBarView implements GestureListener {
 		}
 
 		super.dispatchDraw(canvas);
+	}
+
+	/**
+	 * Tabs get a pill-shaped press/hover/focus highlight, matching the selection indicator, in place
+	 * of the rectangular one NavBarView.Mediator#initButton gives them (it runs before the add).
+	 */
+	@Override
+	public void onViewAdded(View child) {
+		super.onViewAdded(child);
+		if (child instanceof NavButtonView) child.setBackgroundResource(R.drawable.nav_item_pill_bg);
 	}
 
 	/**

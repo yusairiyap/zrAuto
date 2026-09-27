@@ -849,41 +849,62 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		return true;
 	};
 	private final int[] insets = new int[2];
+	private final int[] sideInsets = new int[2];
 	@Nullable
 	private ValueAnimator insetAnim;
 	private boolean insetsSet;
 	private int insetTop;
 	private int insetBottom;
+	private int insetLeft;
+	private int insetRight;
+
+	/** The blurred cover runs on behind a side nav bar's floating pill; see syncInsets(). */
+	@Override
+	public boolean drawsBehindSideNavBar() {
+		return true;
+	}
 
 	private void syncInsets() {
 		View c = content;
 		if ((c == null) || !c.isShown()) return;
-		if (!getActivityDelegate().computeContentInsets(c, insets)) return;
+		MainActivityDelegate a = getActivityDelegate();
+		if (!a.computeContentInsets(c, insets) || !a.computeSideInsets(c, sideInsets)) return;
 		int top = insets[0];
 		int bottom = insets[1];
-		if (insetsSet && (top == insetTop) && (bottom == insetBottom)) return;
+		int left = sideInsets[0];
+		int right = sideInsets[1];
+		if (insetsSet && (top == insetTop) && (bottom == insetBottom) && (left == insetLeft)
+				&& (right == insetRight)) {
+			return;
+		}
 		insetTop = top;
 		insetBottom = bottom;
+		insetLeft = left;
+		insetRight = right;
 		if (insetAnim != null) insetAnim.cancel();
 
 		if (!insetsSet) {
 			insetsSet = true;
-			c.setPadding(c.getPaddingLeft(), top, c.getPaddingRight(), bottom);
+			c.setPadding(left, top, right, bottom);
 			return;
 		}
 
 		int fromTop = c.getPaddingTop();
 		int fromBottom = c.getPaddingBottom();
-		ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
-		a.setDuration(250);
-		a.setInterpolator(new DecelerateInterpolator());
-		a.addUpdateListener(v -> {
+		int fromLeft = c.getPaddingLeft();
+		int fromRight = c.getPaddingRight();
+		ValueAnimator anim = ValueAnimator.ofFloat(0f, 1f);
+		anim.setDuration(250);
+		anim.setInterpolator(new DecelerateInterpolator());
+		anim.addUpdateListener(v -> {
 			float f = (float) v.getAnimatedValue();
-			c.setPadding(c.getPaddingLeft(), Math.round(fromTop + (top - fromTop) * f),
-					c.getPaddingRight(), Math.round(fromBottom + (bottom - fromBottom) * f));
+			c.setPadding(Math.round(fromLeft + (left - fromLeft) * f),
+					Math.round(fromTop + (top - fromTop) * f),
+					Math.round(fromRight + (right - fromRight) * f),
+					Math.round(fromBottom + (bottom - fromBottom) * f));
 		});
-		a.start();
-		insetAnim = a;
+		anim.start();
+		insetAnim = anim;
 	}
 
 	/**

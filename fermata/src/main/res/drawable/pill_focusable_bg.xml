@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Like focusable_shape_transparent, but pill shaped: the press/hover ripple and the focus
+     outline follow the rounded look of the floating nav bar and control panel. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="?attr/rippleColor">
+    <item android:id="@android:id/mask">
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/white" />
+            <corners android:radius="20dp" />
+        </shape>
+    </item>
+
+    <item android:id="@android:id/background">
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+            <stroke
+                android:width="?attr/boxStrokeWidth"
+                android:color="@color/focus_color" />
+            <corners android:radius="20dp" />
+        </shape>
+    </item>
+</ripple>

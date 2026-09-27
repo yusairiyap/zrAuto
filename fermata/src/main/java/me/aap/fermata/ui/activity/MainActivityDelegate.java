@@ -51,6 +51,13 @@ import static me.aap.utils.ui.UiUtils.showAlert;
 import static me.aap.utils.ui.UiUtils.toIntPx;
 import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED;
 
+import android.animation.ValueAnimator;
+import android.transition.ChangeBounds;
+import android.transition.Fade;
+import android.transition.Slide;
+import android.transition.Transition;
+import android.transition.TransitionManager;
+import android.transition.TransitionSet;
 import android.Manifest;
 import android.Manifest.permission;
 import android.app.Activity;
@@ -83,6 +90,7 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.PathInterpolator;
 import android.view.ViewTreeObserver;
 import android.widget.EditText;
 
@@ -200,6 +208,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	private final HandlerExecutor handler = new HandlerExecutor(App.get().getHandler().getLooper());
 	/** How far the floating nav bar/control panel pill sits off the screen edges, in dp. */
 	private static final int FLOATING_BAR_MARGIN = 12;
+	private static final long BARS_ANIM_MS = 260;
 	private final NavBarMediator navBarMediator = new NavBarMediator();
 	private final FermataServiceUiBinder mediaServiceBinder;
 	private ToolBarView toolBar;
@@ -225,6 +234,11 @@ public class MainActivityDelegate extends ActivityDelegate
 	private final Set<ViewGroup> paddingInsetContent = Collections.newSetFromMap(new WeakHashMap<>());
 	private final Set<View> topInsetContent = Collections.newSetFromMap(new WeakHashMap<>());
 	private boolean barsHidden;
+	// See syncSideNavInset().
+	private int sideInsetLeft = -1;
+	private int sideInsetRight = -1;
+	@Nullable
+	private ValueAnimator sideInsetAnim;
 	private boolean videoMode;
 	// Overrides the automatic bar-hiding that videoMode below otherwise forces in isFullScreen() --
 	// set by Action.FULLSCREEN_TOGGLE for local (non-WebView) video, whose VideoView has no
@@ -860,6 +874,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		App.get().getHandler().post(() -> {
 			this.barsHidden = barsHidden;
 			int visibility = barsHidden ? GONE : VISIBLE;
+			if (getNavBar().getVisibility() != visibility) beginBarsTransition();
 			ToolBarView tb = getToolBar();
 			if (tb.getMediator() != ToolBarView.Mediator.Invisible.instance) tb.setVisibility(visibility);
 			getNavBar().setVisibility(visibility);
@@ -1096,15 +1111,153 @@ public class MainActivityDelegate extends ActivityDelegate
 		if ((b == null) || (nb == null)) return;
 		int left = 0;
 		int right = 0;
+		boolean selfInset = (getActiveFragment() instanceof MainActivityFragment f)
+				&& f.drawsBehindSideNavBar();
 
-		if ((nb.getVisibility() == VISIBLE) && (nb.getWidth() > 0)) {
+		if (!selfInset && (nb.getVisibility() == VISIBLE) && (nb.getWidth() > 0)) {
 			int gap = toIntPx(getContext(), FLOATING_BAR_MARGIN);
 			if (nb.isLeft()) left = Math.max(0, nb.getRight() - b.getLeft() + gap);
 			else if (nb.isRight()) right = Math.max(0, b.getRight() - nb.getLeft() + gap);
 		}
 
-		if ((b.getPaddingLeft() == left) && (b.getPaddingRight() == right)) return;
-		b.setPadding(left, b.getPaddingTop(), right, b.getPaddingBottom());
+		if ((left == sideInsetLeft) && (right == sideInsetRight)) return;
+		sideInsetLeft = left;
+		sideInsetRight = right;
+		if (sideInsetAnim != null) sideInsetAnim.cancel();
+		int fromLeft = b.getPaddingLeft();
+		int fromRight = b.getPaddingRight();
+		if ((fromLeft == left) && (fromRight == right)) return;
+
+		// Glides along with the nav bar sliding on or off its side (see beginBarsTransition()),
+		// rather than the content jumping to its new width as soon as the slide starts.
+		if (!b.isLaidOut() || (getActiveFragment() == null)) {
+			b.setPadding(left, b.getPaddingTop(), right, b.getPaddingBottom());
+			return;
+		}
+		ValueAnimator anim = ValueAnimator.ofFloat(0f, 1f);
+		anim.setDuration(BARS_ANIM_MS);
+		anim.setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f));
+		anim.addUpdateListener(v -> {
+			float f = (float) v.getAnimatedValue();
+			b.setPadding(Math.round(fromLeft + (left - fromLeft) * f), b.getPaddingTop(),
+					Math.round(fromRight + (right - fromRight) * f), b.getPaddingBottom());
+		});
+		sideInsetAnim = anim;
+		anim.start();
+	}
+
+	/**
+	 * The left and right padding {@code content} needs, right now, to clear a side nav bar's
+	 * floating pill, into {@code out[0]} and {@code out[1]} -- for a tab that
+	 * {@link MainActivityFragment#drawsBehindSideNavBar() draws behind it}. Both zero with a bottom
+	 * or hidden nav bar. False if it can't tell yet (not attached).
+	 */
+	public boolean computeSideInsets(View content, int[] out) {
+		out[0] = out[1] = 0;
+		if (!content.isAttachedToWindow()) return false;
+		NavBarView nb = navBar;
+		if ((nb == null) || nb.isBottom() || (nb.getVisibility() != VISIBLE) || (nb.getWidth() == 0))
+			return true;
+
+		int gap = toIntPx(getContext(), FLOATING_BAR_MARGIN);
+		content.getLocationOnScreen(insetLoc1);
+		int contentLeft = insetLoc1[0];
+		int contentRight = contentLeft + content.getWidth();
+		nb.getLocationOnScreen(insetLoc2);
+		if (nb.isLeft()) out[0] = Math.max(0, insetLoc2[0] + nb.getWidth() + gap - contentLeft);
+		else out[1] = Math.max(0, contentRight - insetLoc2[0] + gap);
+		return true;
+	}
+
+	/**
+	 * Animates whatever tool_bar/nav_bar/control_panel visibility changes are about to be made
+	 * (in the same frame) instead of letting them snap: the nav bar fades out of (or into) the
+	 * bottom pill, or slides off (onto) its side; tool_bar slides up; control_panel fades, and
+	 * both it and the floating buttons glide to wherever the new layout puts them. The pill behind
+	 * the bars follows along on its own, see {@link me.aap.fermata.ui.view.FloatingBarsView}.
+	 */
+	public void beginBarsTransition() {
+		View rootView = findViewById(R.id.main_activity);
+		if (!(rootView instanceof ViewGroup root) || !root.isLaidOut()) return;
+		if ((navBar == null) || (controlPanel == null) || (toolBar == null)) return;
+
+		Transition nav = navBar.isBottom() ? new Fade() :
+				new Slide(navBar.isLeft() ? Gravity.LEFT : Gravity.RIGHT);
+		nav.addTarget(navBar);
+		Transition tb = new Slide(Gravity.TOP);
+		tb.addTarget(toolBar);
+		Transition cpFade = new Fade();
+		cpFade.addTarget(controlPanel);
+
+		TransitionSet set = new TransitionSet();
+		set.setOrdering(TransitionSet.ORDERING_TOGETHER);
+		set.addTransition(nav).addTransition(tb).addTransition(cpFade);
+		set.setDuration(BARS_ANIM_MS);
+		set.setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f));
+		TransitionManager.beginDelayedTransition(root, set);
+		glideAfterLayout(root, controlPanel, floatingButton, floatingButton2, floatingButton3,
+				floatingButton4);
+	}
+
+	/**
+	 * Lets each of {@code views} glide from where it is now to wherever the next layout pass puts
+	 * it, rather than jumping there -- a translation animation started right after that layout, so
+	 * unlike {@link android.transition.ChangeBounds} it never suppresses the parent's layout (which
+	 * would hold up the tab content being laid out meanwhile, e.g. while switching tabs).
+	 */
+	private static void glideAfterLayout(ViewGroup root, View... views) {
+		int n = views.length;
+		float[] oldX = new float[n];
+		float[] oldY = new float[n];
+		float[] baseX = new float[n];
+		float[] baseY = new float[n];
+		boolean[] wasShown = new boolean[n];
+
+		for (int i = 0; i < n; i++) {
+			View v = views[i];
+			if (v == null) continue;
+			v.animate().cancel();
+			wasShown[i] = (v.getVisibility() == VISIBLE) && (v.getWidth() > 0);
+			oldX[i] = v.getX();
+			oldY[i] = v.getY();
+			// Whatever translation the view had before any glide of ours, so it ends up back there.
+			Object base = v.getTag(R.id.floating_bars);
+			if (base instanceof float[] b) {
+				baseX[i] = b[0];
+				baseY[i] = b[1];
+			} else {
+				baseX[i] = v.getTranslationX();
+				baseY[i] = v.getTranslationY();
+			}
+		}
+
+		ViewTreeObserver vto = root.getViewTreeObserver();
+		vto.addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
+			@Override
+			public boolean onPreDraw() {
+				if (root.getViewTreeObserver().isAlive()) {
+					root.getViewTreeObserver().removeOnPreDrawListener(this);
+				}
+
+				for (int i = 0; i < n; i++) {
+					View v = views[i];
+					if ((v == null) || !wasShown[i] || (v.getVisibility() != VISIBLE)) continue;
+					float dx = oldX[i] - (v.getLeft() + baseX[i]);
+					float dy = oldY[i] - (v.getTop() + baseY[i]);
+					if ((Math.abs(dx) < 1f) && (Math.abs(dy) < 1f)) continue;
+					float bx = baseX[i];
+					float by = baseY[i];
+					v.setTag(R.id.floating_bars, new float[]{bx, by});
+					v.setTranslationX(bx + dx);
+					v.setTranslationY(by + dy);
+					v.animate().translationX(bx).translationY(by).setDuration(BARS_ANIM_MS)
+							.setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f))
+							.withEndAction(() -> v.setTag(R.id.floating_bars, null)).start();
+				}
+
+				return true;
+			}
+		});
 	}
 
 	/**
