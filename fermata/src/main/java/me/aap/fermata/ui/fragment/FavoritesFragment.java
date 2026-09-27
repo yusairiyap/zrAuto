@@ -17,6 +17,7 @@ import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.FavoritesPrefs;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.view.MediaItemMenuHandler;
 import me.aap.fermata.ui.view.MediaItemWrapper;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.pref.PreferenceStore;
@@ -62,6 +63,32 @@ public class FavoritesFragment extends MediaLibFragment {
 			b.addItem(R.id.favorites_remove, R.drawable.favorite_filled, R.string.favorites_remove);
 			getMainActivity().addPlaylistMenu(b, completed(a.getSelectedItems()));
 		}
+	}
+
+	/** Like a playlist's: Select, last in a favorite's long-press menu, starts selection mode with it. */
+	@Override
+	public void contributeToContextMenu(OverlayMenu.Builder builder, MediaItemMenuHandler handler) {
+		super.contributeToContextMenu(builder, handler);
+		if (!(handler.getItem() instanceof PlayableItem pi)) return;
+		if (getAdapter().getListView().isSelectionActive()) return;
+		builder.addItem(R.id.playlist_select_item, me.aap.utils.R.drawable.check_box, R.string.select)
+				.setHandler(i -> {
+					startSelection(pi);
+					return true;
+				});
+	}
+
+	/** Enters multi-select with {@code first} already selected. */
+	private void startSelection(PlayableItem first) {
+		ListAdapter a = getAdapter();
+		a.getListView().select(true);
+		for (MediaItemWrapper w : a.getList()) {
+			if (w.getItem() == first) {
+				w.setSelected(true, true);
+				break;
+			}
+		}
+		a.getListView().notifySelectionChanged();
 	}
 
 	protected boolean navBarMenuItemSelected(OverlayMenuItem item) {

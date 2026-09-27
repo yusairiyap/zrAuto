@@ -467,7 +467,8 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 		MainActivityDelegate a = getMainActivity();
 		boolean viewChanged = hasGridViewPref(a, prefs);
 
-		if (viewChanged || hasTextIconSizePref(getMainActivity(), prefs)) {
+		if (viewChanged || hasTextIconSizePref(getMainActivity(), prefs) ||
+				prefs.contains(MainActivityPrefs.LIST_ITEM_SIZE)) {
 			MediaItemListView list = (MediaItemListView) getView();
 
 			if (list != null) {

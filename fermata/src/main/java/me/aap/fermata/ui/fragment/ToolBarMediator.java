@@ -17,10 +17,13 @@ import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED
 
 import android.content.Context;
 import android.view.View;
+import android.view.ViewGroup;
 
 import androidx.annotation.IdRes;
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
+import androidx.recyclerview.widget.RecyclerView;
 
 import me.aap.fermata.BuildConfig;
 import me.aap.fermata.R;
@@ -39,6 +42,7 @@ import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.ui.view.MediaItemListView;
 import me.aap.utils.pref.PreferenceSet;
 import me.aap.utils.pref.PrefCondition;
+import me.aap.utils.pref.PreferenceViewAdapter;
 import me.aap.utils.ui.activity.ActivityDelegate;
 import me.aap.utils.ui.fragment.ActivityFragment;
 import me.aap.utils.ui.menu.OverlayMenu;
@@ -296,17 +300,41 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 			set.addFloatPref(o -> {
 				o.title = R.string.list_size;
 				o.store = prefs;
-				o.pref = (BuildConfig.AUTO && a.isCarActivity()) ? MainActivityPrefs.TEXT_ICON_SIZE_AA :
-						MainActivityPrefs.TEXT_ICON_SIZE;
+				o.pref = MainActivityPrefs.LIST_ITEM_SIZE;
 				o.scale = 0.05f;
 				o.seekMin = 10;
 				o.seekMax = 40;
 				o.showValue = false;
 				o.visibility = new PrefCondition<>(prefs, gridPref, p -> !prefs.getBooleanPref(p));
 			});
-			// A modest fixed width: a switch and a slider. Not focused right away -- see
-			// PreferenceSet#addToMenu's requestFocus.
-			set.addToMenu(b, toIntPx(ctx, 280), false);
+			// One panel rather than a card per row: the rows lose their own box, margins and
+			// elevation and sit straight on the popup's background. A modest fixed width: a switch
+			// and a slider. Not focused right away (see PreferenceSet#addToMenu's requestFocus).
+			RecyclerView v = set.createView(ctx, toIntPx(ctx, 280));
+			int pad = toIntPx(ctx, 6);
+			v.setPadding(0, pad, 0, pad);
+			v.setClipToPadding(false);
+			v.addOnChildAttachStateChangeListener(new RecyclerView.OnChildAttachStateChangeListener() {
+				@Override
+				public void onChildViewAttachedToWindow(@NonNull View row) {
+					row.setBackground(null);
+					row.setElevation(0f);
+					if (row.getLayoutParams() instanceof ViewGroup.MarginLayoutParams lp) {
+						lp.setMargins(0, 0, 0, 0);
+						row.setLayoutParams(lp);
+					}
+					row.setPadding(row.getPaddingLeft(), toIntPx(ctx, 6), row.getPaddingRight(),
+							toIntPx(ctx, 6));
+				}
+
+				@Override
+				public void onChildViewDetachedFromWindow(@NonNull View row) {
+				}
+			});
+			b.setCloseHandlerHandler(m -> {
+				if (v.getAdapter() instanceof PreferenceViewAdapter pa) pa.onDestroy();
+			});
+			b.setView(v);
 		});
 	}
 

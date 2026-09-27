@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The tint over a selected card: the theme's primary colour, translucent. -->
+<!-- The tint over a selected card: the theme's primary colour, strong enough to read at a glance. -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:alpha="0.28" android:color="?attr/colorPrimary" />
+    <item android:alpha="0.45" android:color="?attr/colorPrimary" />
 </selector>

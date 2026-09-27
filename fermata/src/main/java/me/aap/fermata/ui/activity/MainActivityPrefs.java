@@ -84,6 +84,8 @@ public interface MainActivityPrefs
 	// Independent of TEXT_ICON_SIZE: scales only the grid card size (span count), adjustable live
 	// via the toolbar's card-size slider.
 	Pref<DoubleSupplier> GRID_ITEM_SIZE = Pref.f("GRID_ITEM_SIZE", 1f);
+	/** See getListItemSizePref(). */
+	Pref<DoubleSupplier> LIST_ITEM_SIZE = Pref.f("LIST_ITEM_SIZE", 1f);
 	Pref<DoubleSupplier> P_SPLIT_PERCENT = Pref.f("P_SPLIT_PERCENT", 0.6f);
 	Pref<DoubleSupplier> L_SPLIT_PERCENT = Pref.f("L_SPLIT_PERCENT", 0.4f);
 	Pref<DoubleSupplier> P_SPLIT_PERCENT_SUB = Pref.f("P_SPLIT_PERCENT_SUB", 0.5f);
@@ -365,6 +367,11 @@ public interface MainActivityPrefs
 
 	default float getGridItemSizePref() {
 		return getFloatPref(GRID_ITEM_SIZE);
+	}
+
+	/** List view's row size (the thumbnail, and so the row's height) -- the text keeps its size. */
+	default float getListItemSizePref() {
+		return getFloatPref(LIST_ITEM_SIZE);
 	}
 
 	default void setGridItemSizePref(float value) {

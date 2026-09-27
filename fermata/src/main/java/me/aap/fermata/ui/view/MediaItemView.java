@@ -169,8 +169,11 @@ public class MediaItemView extends ConstraintLayout
 		if (!grid) {
 			// Flush with the card's left, top and bottom edges (clipped to its rounded outline), a
 			// little taller than the two text lines for some breathing room.
-			int iconSize = (int) (getTitle().getTextSize() + getSubtitle().getTextSize() + toPx(ctx,
-					28));
+			// Scaled by the List size setting (the card size popup) -- the row grows or shrinks
+			// around text that keeps its size.
+			float rowScale = getMainActivity().getPrefs().getListItemSizePref();
+			int iconSize = (int) ((getTitle().getTextSize() + getSubtitle().getTextSize() + toPx(ctx,
+					28)) * rowScale);
 			ImageView i = getIcon();
 			ViewGroup.LayoutParams lp = i.getLayoutParams();
 			lp.height = iconSize;
