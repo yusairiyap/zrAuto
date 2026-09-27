@@ -39,15 +39,21 @@ import androidx.recyclerview.widget.SimpleItemAnimator;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import me.aap.fermata.FermataApplication;
+import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.music.MusicQueue;
 import me.aap.fermata.addon.music.MusicTrackItem;
+import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
+import me.aap.fermata.media.lib.MediaLib.Item;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.spotify.SpotifyImportModel.Video;
@@ -91,10 +97,14 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 	private static final int KIND_RESULT = 0;
 	private static final int KIND_UP_NEXT = 1;
 	private static final int KIND_LIST = 2;
+	private static final int KIND_LIBRARY = 3;
+	/** Favorites/Playlist entries matching a search, shown above YouTube's own results. */
+	private static final int MAX_LIBRARY_RESULTS = 12;
 	private final Handler handler = new Handler(Looper.getMainLooper());
 	private final LruCache<String, Bitmap> images = new LruCache<>(80);
 	private final List<Video> results = new ArrayList<>();
 	private final List<PlayableItem> listItems = new ArrayList<>();
+	private final List<PlayableItem> libraryResults = new ArrayList<>();
 	private final YoutubeFragment fragment;
 	private final YoutubeAddon addon;
 	private final RecyclerView mainList;
@@ -296,9 +306,11 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		searching = true;
 		failed = false;
 		results.clear();
+		libraryResults.clear();
 		refresh();
 
 		addon.addSearchHistory(q);
+		searchLibrary(q, gen);
 
 		executor.execute(() -> {
 			List<Video> found = null;
@@ -319,14 +331,89 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		});
 	}
 
-	/** Drops the last search and its results (the toolbar's clear button). */
+	/** Drops the last search and its results (the toolbar's clear button, the search icon). */
 	void clearSearch() {
 		generation++;
 		query = null;
 		searching = false;
 		failed = false;
+		resultsExpanded = false;
 		results.clear();
+		libraryResults.clear();
 		refresh();
+	}
+
+	/**
+	 * Finds Favorites and Playlist entries whose title matches {@code q} -- so something already
+	 * saved can be queued (Play next) or played from right here, without leaving what's playing.
+	 * Lists are read one after another, stopping at {@link #MAX_LIBRARY_RESULTS}.
+	 */
+	private void searchLibrary(String q, int gen) {
+		MediaLib lib = MainActivityDelegate.get(getContext()).getLib();
+		String needle = q.toLowerCase(Locale.ROOT);
+		List<BrowsableItem> sources = new ArrayList<>();
+		sources.add(lib.getFavorites());
+		lib.getPlaylists().getChildren().main().onCompletion((pls, err) -> {
+			if (gen != generation) return;
+			if (pls != null) {
+				for (Item i : pls) {
+					if (i instanceof BrowsableItem b) sources.add(b);
+				}
+			}
+			collectLibrary(sources, 0, needle, new ArrayList<>(), new HashSet<>(), gen);
+		});
+	}
+
+	private void collectLibrary(List<BrowsableItem> sources, int idx, String needle,
+															List<PlayableItem> found, Set<String> seen, int gen) {
+		if (gen != generation) return;
+		if ((idx >= sources.size()) || (found.size() >= MAX_LIBRARY_RESULTS)) {
+			libraryResults.clear();
+			libraryResults.addAll(found);
+			refresh();
+			return;
+		}
+		sources.get(idx).getPlayableChildren(false).main().onCompletion((list, err) -> {
+			if (list != null) {
+				for (PlayableItem pi : list) {
+					if (found.size() >= MAX_LIBRARY_RESULTS) break;
+					String vid = videoIdOf(pi);
+					String name = libraryTitle(pi, vid);
+					if (!name.toLowerCase(Locale.ROOT).contains(needle)) continue;
+					if (seen.add((vid != null) ? vid : pi.getId())) found.add(pi);
+				}
+			}
+			collectLibrary(sources, idx + 1, needle, found, seen, gen);
+		});
+	}
+
+	private String libraryTitle(PlayableItem pi, @Nullable String videoId) {
+		String name = pi.getName();
+		if ((videoId != null) && ((name == null) || name.isEmpty() || name.equals(videoId))) {
+			name = addon.getVideoTitle(videoId);
+		}
+		return (name == null) ? "" : name;
+	}
+
+	/**
+	 * "Play next" for a Favorites/Playlist entry: into the music queue right behind the playing
+	 * track when playing as music (a queued track is just moved there), else to the front of Up
+	 * next.
+	 */
+	private void playNext(PlayableItem pi, @Nullable String videoId, String title) {
+		MainActivityDelegate a = MainActivityDelegate.get(getContext());
+		Context ctx = getContext();
+		if (pi instanceof MusicTrackItem t) {
+			if (MusicPlayer.playNext(a, t)) {
+				UiUtils.showToast(ctx, me.aap.fermata.R.string.youtube_added_play_next, title);
+			}
+			return;
+		}
+		if (MusicPlayer.isMusicModeActive(a) && MusicPlayer.queueAfterCurrent(a, pi, true)) {
+			UiUtils.showToast(ctx, me.aap.fermata.R.string.youtube_added_play_next, title);
+			return;
+		}
+		if (videoId != null) fragment.queueVideo(videoId, title, true);
 	}
 
 	private void onQueueChanged() {
@@ -490,6 +577,15 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 
 		if (query == null) return;
 
+		if (!libraryResults.isEmpty()) {
+			rows.add(Row.header("h:library",
+					ctx.getString(me.aap.fermata.R.string.youtube_search_library), null, null));
+			for (PlayableItem pi : libraryResults) {
+				String vid = videoIdOf(pi);
+				rows.add(Row.libraryItem(pi, vid, libraryTitle(pi, vid)));
+			}
+		}
+
 		boolean more = !searching && !failed && (results.size() > COLLAPSED_RESULTS) &&
 				(resultsExpanded || (limit < results.size()));
 		rows.add(Row.header("h:results",
@@ -635,6 +731,11 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 					videoIdOf(pi), null, pi);
 			r.dim = dim;
 			return r;
+		}
+
+		static Row libraryItem(PlayableItem pi, @Nullable String videoId, String title) {
+			return new Row(TYPE_VIDEO, "b:" + pi.getId(), title, null, null, KIND_LIBRARY, videoId,
+					null, pi);
 		}
 
 		boolean sameContent(Row o) {
@@ -819,6 +920,24 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 			}
 		}
 
+		/** The row's button as "Play next" for a library/list entry, where that's possible. */
+		private void bindPlayNext(ImageView button, PlayableItem pi, @Nullable String videoId,
+															String title) {
+			MainActivityDelegate a = MainActivityDelegate.get(button.getContext());
+			boolean can = (pi instanceof MusicTrackItem) || (videoId != null) ||
+					MusicPlayer.isMusicModeActive(a);
+			if (!can) {
+				button.setVisibility(GONE);
+				button.setOnClickListener(null);
+				return;
+			}
+			button.setVisibility(VISIBLE);
+			button.setImageResource(me.aap.fermata.R.drawable.playlist_add);
+			button.setContentDescription(button.getContext()
+					.getString(me.aap.fermata.R.string.youtube_play_next));
+			button.setOnClickListener(x -> playNext(pi, videoId, title));
+		}
+
 		@Override
 		public void onBindViewHolder(@NonNull RecyclerView.ViewHolder h, int position) {
 			Row r = rows.get(position);
@@ -914,13 +1033,29 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 					v.setOnClickListener(x -> fragment.playVideoNow(id, null));
 					v.setOnLongClickListener(null);
 				}
+				case KIND_LIBRARY -> {
+					PlayableItem pi = Objects.requireNonNull(r.item);
+					String t = (r.text != null) ? r.text : "";
+					detail.setText(ctx.getString(me.aap.fermata.R.string.youtube_from_list,
+							pi.getParent().getName()));
+					loadImage(thumb, thumbnailUrl(r.videoId));
+					bindPlayNext(button, pi, r.videoId, t);
+					v.setOnClickListener(x -> fragment.playFromList(pi));
+					v.setOnLongClickListener(null);
+				}
 				default -> {
 					PlayableItem pi = Objects.requireNonNull(r.item);
+					String t = (r.text != null) ? r.text : "";
 					detail.setText(ctx.getString(me.aap.fermata.R.string.youtube_from_list,
 							(listName != null) ? listName : ""));
 					loadImage(thumb, thumbnailUrl(r.videoId));
-					button.setVisibility(GONE);
-					button.setOnClickListener(null);
+					// Already next: nothing to move.
+					if (listItems.indexOf(pi) == 0) {
+						button.setVisibility(GONE);
+						button.setOnClickListener(null);
+					} else {
+						bindPlayNext(button, pi, r.videoId, t);
+					}
 					v.setOnClickListener(x -> fragment.playFromList(pi));
 					v.setOnLongClickListener(null);
 				}

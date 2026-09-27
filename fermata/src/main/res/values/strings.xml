@@ -685,6 +685,7 @@
     <string name="youtube_up_next_empty">Nothing queued. Use a result\'s Up next button to add one.</string>
     <string name="youtube_queued">Queued</string>
     <string name="youtube_from_list">From %1$s</string>
+    <string name="youtube_search_library">In your Favorites &amp; Playlists</string>
     <string name="youtube_then_from">Then from %1$s</string>
     <string name="youtube_then_shuffled">Then shuffled from %1$s</string>
     <string name="youtube_show_more">Show more</string>
@@ -737,6 +738,17 @@
     <string name="data_usage_chart_hint">Tap a bar to see its usage</string>
     <string name="data_usage_breakdown">Breakdown</string>
     <string name="data_usage_period_total">%1$s in total</string>
+    <string name="data_usage_played">%1$s played · about %2$s per hour</string>
+    <string name="data_usage_not_played">Not played in this period</string>
+    <string name="data_usage_hours_minutes">%1$d h %2$d min</string>
+    <string name="data_usage_minutes">%1$d min</string>
+    <string name="network_issue_slow_title">Connection too slow</string>
+    <string name="network_issue_offline_title">No internet connection</string>
+    <string name="network_issue_message">Streaming stopped because of the network. It will carry on by itself once the connection is back.</string>
+    <string name="network_issue_message_offline_tracks">Streaming stopped because of the network. You can carry on with music stored on this phone meanwhile.</string>
+    <string name="network_issue_retry">Try again</string>
+    <string name="network_issue_play_offline">Play offline music</string>
+    <string name="network_issue_dismiss">Dismiss</string>
     <string name="data_usage_total_since">%1$s in total since counting started</string>
     <string name="data_usage_no_hours">hourly detail is only kept for 2 months</string>
     <string name="data_usage_footer_since">Counting since %1$s</string>

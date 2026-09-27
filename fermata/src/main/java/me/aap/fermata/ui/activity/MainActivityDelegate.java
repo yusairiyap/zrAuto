@@ -1996,6 +1996,12 @@ public class MainActivityDelegate extends ActivityDelegate
 				});
 	}
 
+	/** The "Add to playlist" dialog for {@code items}, straight away (no menu item first). */
+	public void showAddToPlaylistDialog(List<PlayableItem> items) {
+		if (items.isEmpty()) return;
+		showPlaylistDialog(getContextMenu(), () -> completed(items), () -> "");
+	}
+
 	/**
 	 * A single tap on "Add to playlist" now goes straight to a real dialog listing existing
 	 * playlists (plus "Create new playlist") rather than drilling into another OverlayMenu page --

@@ -1,5 +1,11 @@
 package me.aap.fermata.ui.fragment;
 
+import android.os.Bundle;
+import android.view.View;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -12,6 +18,7 @@ import me.aap.fermata.media.pref.FavoritesPrefs;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.MediaItemWrapper;
+import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.menu.OverlayMenuItem;
@@ -28,6 +35,11 @@ public class FavoritesFragment extends MediaLibFragment {
 	@Override
 	protected ListAdapter createAdapter(FermataServiceUiBinder b) {
 		return new FavoritesAdapter(getMainActivity(), b.getLib().getFavorites());
+	}
+
+	@Override
+	protected boolean playsAsMusicInMusicMode() {
+		return true;
 	}
 
 	@Override
@@ -77,8 +89,67 @@ public class FavoritesFragment extends MediaLibFragment {
 	@Override
 	public void onPreferenceChanged(PreferenceStore store, List<PreferenceStore.Pref<?>> prefs) {
 		FavoritesAdapter a = getAdapter();
-		if (!a.isCallbackCall() && prefs.contains(FavoritesPrefs.FAVORITES)) a.reload();
-		else super.onPreferenceChanged(store, prefs);
+		if (!a.isCallbackCall() && prefs.contains(FavoritesPrefs.FAVORITES)) {
+			// A bulk reorder reloads once itself when done; otherwise keep any selection alive.
+			if (!a.reordering) a.reloadKeepSelection();
+		} else {
+			super.onPreferenceChanged(store, prefs);
+		}
+	}
+
+	// ---- Selection panel: the same one playlists have ----
+
+	@Nullable
+	private SelectionPanel selectionPanel;
+
+	@Override
+	public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+		super.onViewCreated(view, savedInstanceState);
+		selectionPanel = new SelectionPanel(this, R.string.playlist_add, new SelectionPanel.Actions() {
+			@Override
+			public void moveSelected(boolean toTop) {
+				getAdapter().moveSelected(toTop);
+			}
+
+			@Override
+			public void playlistAction(View anchor) {
+				getMainActivity().showAddToPlaylistDialog(getAdapter().getSelectedItems());
+			}
+
+			@Override
+			public void removeSelected() {
+				List<PlayableItem> sel = getAdapter().getSelectedItems();
+				if (sel.isEmpty()) return;
+				getFavorites().removeItems(sel);
+				discardSelection();
+				getAdapter().setParent(getAdapter().getParent());
+			}
+		});
+		getListView().setSelectionListener(v -> updateSelectionPanel());
+	}
+
+	@Override
+	public void onHiddenChanged(boolean hidden) {
+		super.onHiddenChanged(hidden);
+		if (hidden) hideSelectionPanel();
+		else updateSelectionPanel();
+	}
+
+	@Override
+	public void onDestroyView() {
+		hideSelectionPanel();
+		selectionPanel = null;
+		super.onDestroyView();
+	}
+
+	private void updateSelectionPanel() {
+		ListAdapter a = getAdapter();
+		if ((a == null) || (selectionPanel == null)) return;
+		selectionPanel.update(a.getListView().isSelectionActive());
+	}
+
+	private void hideSelectionPanel() {
+		if (selectionPanel != null) selectionPanel.hide(false);
 	}
 
 	private class FavoritesAdapter extends ListAdapter {
@@ -97,6 +168,30 @@ public class FavoritesFragment extends MediaLibFragment {
 		protected boolean onItemMove(int fromPosition, int toPosition) {
 			getFavorites().moveItem(fromPosition, toPosition);
 			return super.onItemMove(fromPosition, toPosition);
+		}
+
+		/**
+		 * Reordered only in selection mode (the toolbar's Select), and only while shown unsorted: a
+		 * long press in the normal view is always the item's menu, never a drag fighting it.
+		 */
+		@Override
+		public boolean isLongPressDragEnabled() {
+			return super.isLongPressDragEnabled() && isCustomOrder() && isSelectionActive();
+		}
+
+		@Override
+		public boolean isDragOnlyInSelection() {
+			return true;
+		}
+
+		@Override
+		protected boolean isReorderable() {
+			return true;
+		}
+
+		@Override
+		protected FutureSupplier<Void> moveInModel(int from, int to) {
+			return getFavorites().moveItem(from, to);
 		}
 	}
 }

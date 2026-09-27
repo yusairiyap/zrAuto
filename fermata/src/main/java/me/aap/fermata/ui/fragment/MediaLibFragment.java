@@ -10,6 +10,7 @@ import static me.aap.fermata.ui.activity.MainActivityPrefs.hasGridViewPref;
 import static me.aap.fermata.ui.activity.MainActivityPrefs.hasTextIconSizePref;
 import static me.aap.utils.async.Completed.completed;
 import static me.aap.utils.async.Completed.completedNull;
+import static me.aap.utils.async.Completed.completedVoid;
 import static me.aap.utils.collection.CollectionUtils.filterMap;
 
 import android.annotation.SuppressLint;
@@ -23,6 +24,7 @@ import android.view.ViewGroup;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.ItemTouchHelper;
+import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -34,6 +36,7 @@ import java.util.Objects;
 import java.util.Set;
 
 import me.aap.fermata.R;
+import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.lib.MediaLib.ArchiveItem;
@@ -54,6 +57,7 @@ import me.aap.fermata.ui.view.MediaItemListView;
 import me.aap.fermata.ui.view.MediaItemListViewAdapter;
 import me.aap.fermata.ui.view.MediaItemMenuHandler;
 import me.aap.fermata.ui.view.MediaItemView;
+import me.aap.fermata.ui.view.MediaItemViewHolder;
 import me.aap.fermata.ui.view.MediaItemWrapper;
 import me.aap.utils.app.App;
 import me.aap.utils.async.Async;
@@ -63,6 +67,7 @@ import me.aap.utils.function.Function;
 import me.aap.utils.holder.Holder;
 import me.aap.utils.log.Log;
 import me.aap.utils.pref.PreferenceStore;
+import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.menu.OverlayMenuItem;
 import me.aap.utils.ui.view.ToolBarView;
@@ -350,6 +355,11 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 		return false;
 	}
 
+	/** Whether tapping an entry plays it as music while the Music tab is playing (see onClick). */
+	protected boolean playsAsMusicInMusicMode() {
+		return false;
+	}
+
 	@SuppressWarnings("unchecked")
 	public <A extends ListAdapter> A getAdapter() {
 		return (A) adapter;
@@ -525,10 +535,139 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 	}
 
 	public class ListAdapter extends MediaItemListViewAdapter {
+		/** A bulk reorder is running: its own reload follows, the per-move ones are skipped. */
+		boolean reordering;
+		/** The dragged item is one of several selected ones: they all follow it on drop. */
+		private boolean multiDrag;
 
 		public ListAdapter(MainActivityDelegate activity, BrowsableItem parent) {
 			super(activity);
 			super.setParent(parent, false);
+		}
+
+		/** Whether this list's own order (a playlist's, Favorites') can be edited from here. */
+		protected boolean isReorderable() {
+			return false;
+		}
+
+		/** Moves an item of the list's model; only called when {@link #isReorderable()}. */
+		@Nullable
+		protected FutureSupplier<Void> moveInModel(int from, int to) {
+			return null;
+		}
+
+		/** Not sorted: the list shows its own order, which moves can edit. */
+		boolean isCustomOrder() {
+			BrowsableItem p = getParent();
+			return (p == null) || (p.getPrefs().getSortByPref() == BrowsableItemPrefs.SORT_BY_NONE);
+		}
+
+		@Override
+		protected void onDragStarted(@NonNull RecyclerView.ViewHolder vh) {
+			super.onDragStarted(vh);
+			multiDrag = false;
+			MediaItemWrapper dragged = (vh instanceof MediaItemViewHolder h) ? h.getItemWrapper() : null;
+			if ((dragged == null) || !dragged.isSelected() || !getListView().isSelectionActive() ||
+					!isReorderable() || (getSelectedItems().size() < 2)) {
+				return;
+			}
+			multiDrag = true;
+			// The others fade while dragging: they'll be gathered around the dragged one on drop.
+			for (MediaItemWrapper w : getList()) {
+				MediaItemView v = w.getView();
+				if ((w != dragged) && w.isSelected() && (v != null)) v.animate().alpha(0.35f).start();
+			}
+		}
+
+		@Override
+		protected void onDragEnded(@NonNull RecyclerView.ViewHolder vh) {
+			super.onDragEnded(vh);
+			if (!multiDrag) return;
+			multiDrag = false;
+			for (MediaItemWrapper w : getList()) {
+				MediaItemView v = w.getView();
+				if (v != null) v.animate().alpha(1f).start();
+			}
+
+			MediaItemWrapper dragged = (vh instanceof MediaItemViewHolder h) ? h.getItemWrapper() : null;
+			if ((dragged == null) || !isReorderable()) return;
+			List<MediaItemWrapper> sel = new ArrayList<>();
+			for (MediaItemWrapper w : getList()) if (w.isSelected()) sel.add(w);
+			List<MediaItemWrapper> order = new ArrayList<>(getList().size());
+
+			for (MediaItemWrapper w : getList()) {
+				if (w == dragged) order.addAll(sel); // The whole selection, in its existing order.
+				else if (!w.isSelected()) order.add(w);
+			}
+
+			applyOrder(order);
+		}
+
+		/** Moves the selected items, in their current order, to the top or the end of the list. */
+		void moveSelected(boolean toTop) {
+			if (!isReorderable()) return;
+			if (!isCustomOrder()) {
+				UiUtils.showToast(getMainActivity().getContext(), R.string.playlist_sorted_hint);
+				return;
+			}
+			List<MediaItemWrapper> sel = new ArrayList<>();
+			List<MediaItemWrapper> rest = new ArrayList<>();
+			for (MediaItemWrapper w : getList()) (w.isSelected() ? sel : rest).add(w);
+			if (sel.isEmpty()) return;
+			List<MediaItemWrapper> order = new ArrayList<>(getList().size());
+			if (toTop) {
+				order.addAll(sel);
+				order.addAll(rest);
+			} else {
+				order.addAll(rest);
+				order.addAll(sel);
+			}
+			applyOrder(order);
+		}
+
+		/**
+		 * Reorders the list's model to {@code order} (a permutation of the current list) with the
+		 * fewest moves, then reloads once, keeping the selection.
+		 */
+		void applyOrder(List<MediaItemWrapper> order) {
+			List<MediaItemWrapper> cur = new ArrayList<>(getList());
+			List<int[]> moves = new ArrayList<>();
+
+			for (int to = 0; to < order.size(); to++) {
+				int from = cur.indexOf(order.get(to));
+				if (from > to) {
+					moves.add(new int[]{from, to});
+					cur.add(to, cur.remove(from));
+				}
+			}
+
+			if (moves.isEmpty()) return;
+			reordering = true;
+			Async.forEach(m -> {
+				FutureSupplier<Void> f = moveInModel(m[0], m[1]);
+				return (f != null) ? f : completedVoid();
+			}, moves).main().onCompletion((v, err) -> {
+				reordering = false;
+				if (err != null) Log.e(err, "Failed to reorder the list");
+				reloadKeepSelection();
+			});
+		}
+
+		/** Reloads the list; if items are selected, they stay selected. */
+		void reloadKeepSelection() {
+			MediaItemListView lv = getListView();
+			if (!lv.isSelectionActive()) {
+				reload();
+				return;
+			}
+			Set<Item> sel = new HashSet<>();
+			for (MediaItemWrapper w : getList()) if (w.isSelected()) sel.add(w.getItem());
+			setParent(getParent(), false).main().onSuccess(v -> {
+				for (MediaItemWrapper w : getList()) {
+					if (sel.contains(w.getItem())) w.setSelected(true, true);
+				}
+				lv.notifySelectionChanged();
+			});
 		}
 
 		@Override
@@ -643,6 +782,15 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 
 		private void onClick(PlayableItem i) {
 			var a = getMainActivity();
+
+			// The Music tab is what's playing: a Favorites/Playlist entry tapped now plays as music
+			// too, from its list, instead of dropping out of music mode into the video player.
+			if (playsAsMusicInMusicMode() && !(i instanceof StreamItem) &&
+					MusicPlayer.isMusicModeActive(a)) {
+				MusicPlayer.play(a, i, false);
+				getAdapter().getListView().refreshState();
+				return;
+			}
 
 			if (i instanceof MediaLib.ExternallyPlayableItem ext) {
 				var f = a.showFragment(ext.getPlayerFragmentId());

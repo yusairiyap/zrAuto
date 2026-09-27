@@ -14,6 +14,7 @@ import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_LONG_PRESS
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_PAUSED;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_PLAYING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_QUALITIES;
+import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_WAITING;
 
 import android.content.Context;
 import android.graphics.Color;
@@ -328,6 +329,10 @@ public class YoutubeWebView extends FermataWebView {
 				"  });\n" +
 				"  v.addEventListener('pause', function(e) {" + JS_EVENT + "(" + JS_VIDEO_PAUSED +
 				", v.currentSrc);});\n" +
+				// Buffering: stalled for data. Resolved by the next 'playing' -- see
+				// YoutubeMediaEngine#waiting(), which tells a long stall (the network) apart.
+				"  v.addEventListener('waiting', function(e) {" + JS_EVENT + "(" + JS_VIDEO_WAITING +
+				", null);});\n" +
 				// Deliberately NOT a plain v.addEventListener('ended', ...) here -- see the
 				// document-level capture-phase listener below, which replaces it.
 				"}\n" +

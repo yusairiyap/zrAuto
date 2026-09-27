@@ -659,6 +659,15 @@ public class MediaItemView extends ConstraintLayout
 	public boolean onLongClick(View v) {
 		MediaItemListView l = getListView();
 		if (l != null) {
+			MediaItemListViewAdapter ad = l.getAdapter();
+			if ((ad != null) && ad.isDragOnlyInSelection() && l.isSelectionActive()) {
+				// Selection mode of a list that only reorders there: the long press is a drag, which
+				// brings its menu up itself if the item is let go of without moving. Selection stays.
+				MediaItemViewHolder h = getHolder();
+				if (touchActive && (h != null) && ad.startDragOnLongPress(h, true)) return true;
+				showItemMenu();
+				return true;
+			}
 			l.discardSelection();
 			// A finger is still down on this item (a real touch long-press, not a D-pad/rotary one):
 			// let the list turn it into a drag where it wants to -- see

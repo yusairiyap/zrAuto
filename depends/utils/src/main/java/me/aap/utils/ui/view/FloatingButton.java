@@ -8,6 +8,7 @@ import android.content.res.TypedArray;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.os.Build;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
@@ -59,6 +60,13 @@ public class FloatingButton extends FloatingActionButton implements ActivityList
 		borderFocusColor = ta.getColor(R.styleable.FloatingButton_borderFocusColor, Color.TRANSPARENT);
 		ta.recycle();
 
+		// A soft, clearly visible drop shadow in every theme: the default shadow color is barely
+		// there against the app's dark backgrounds once the border is gone.
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+			setOutlineAmbientShadowColor(Color.BLACK);
+			setOutlineSpotShadowColor(Color.BLACK);
+		}
+
 		ActivityDelegate a = getActivity();
 		a.addBroadcastListener(this, ToolBarView.Mediator.DEFAULT_EVENT_MASK);
 		setMediator(a.getActiveFragment());
@@ -108,8 +116,10 @@ public class FloatingButton extends FloatingActionButton implements ActivityList
 	protected void onDraw(Canvas canvas) {
 		super.onDraw(canvas);
 
+		// Borderless at rest, like a modern FAB -- the drop shadow alone sets it off the content.
+		// The ring only marks focus (D-pad/rotary input), where it's the one cue for what's selected.
 		float borderWidth = getBorderWidth();
-		if (borderWidth == 0f) return;
+		if ((borderWidth == 0f) || !isFocused()) return;
 
 		float pos = getWidth() / 2f;
 		float radius = pos - borderWidth / 2;
@@ -119,6 +129,13 @@ public class FloatingButton extends FloatingActionButton implements ActivityList
 		paint.setStrokeWidth(borderWidth);
 		paint.setColor(isFocused() ? getBorderFocusColor() : getBorderColor());
 		canvas.drawCircle(pos, pos, radius, paint);
+	}
+
+	@Override
+	protected void onFocusChanged(boolean gainFocus, int direction,
+																@Nullable android.graphics.Rect previouslyFocusedRect) {
+		super.onFocusChanged(gainFocus, direction, previouslyFocusedRect);
+		invalidate(); // The focus ring comes and goes with the focus -- see onDraw().
 	}
 
 	/**

@@ -102,6 +102,11 @@ public final class DataUsageTracker implements MediaSessionCallback.Listener {
 	private long lastSave;
 	private int lastCat = CAT_OTHER;
 	private int lastNet = NET_OTHER;
+	// Whether something was playing at the last reading -- the time since then is booked as played
+	// time of lastCat (see sample()).
+	private boolean lastPlaying;
+	/** A gap between readings longer than this (the phone slept) isn't counted as played time. */
+	private static final long MAX_PLAY_GAP = 3 * INTERVAL;
 	// Playback was paused for reaching the limit, and not resumed since.
 	private boolean limitPaused;
 
@@ -314,12 +319,27 @@ public final class DataUsageTracker implements MediaSessionCallback.Listener {
 		lastSample = SystemClock.elapsedRealtime();
 		lastCat = currentCategory();
 		lastNet = currentNetwork();
+		lastPlaying = isPlaying();
+	}
+
+	private boolean isPlaying() {
+		MediaSessionCallback cb = callback.get();
+		return (cb != null) && cb.isPlaying();
 	}
 
 	private void sample() {
 		long bytes = readBytes();
-		lastSample = SystemClock.elapsedRealtime();
-		if (bytes < 0) return;
+		long now = SystemClock.elapsedRealtime();
+		long gap = now - lastSample;
+		lastSample = now;
+		if (lastPlaying && (lastCat != CAT_OTHER) && (gap > 0) && (gap <= MAX_PLAY_GAP)) {
+			store.addPlayTime(System.currentTimeMillis(), lastCat, gap);
+		}
+		lastPlaying = isPlaying();
+		if (bytes < 0) {
+			lastCat = currentCategory();
+			return;
+		}
 		long used = (lastBytes >= 0) ? (bytes - lastBytes) : 0;
 		lastBytes = bytes;
 		// Less than last time: the count started over (not while the app is running, normally).

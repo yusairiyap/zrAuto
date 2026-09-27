@@ -27,6 +27,7 @@ import me.aap.fermata.addon.AddonManager;
 import me.aap.fermata.addon.FermataAddon;
 import me.aap.fermata.addon.FermataToolAddon;
 import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
+import me.aap.fermata.media.lib.MediaLib.Favorites;
 import me.aap.fermata.media.lib.MediaLib.Playlist;
 import me.aap.fermata.media.lib.MediaLib.StreamItem;
 import me.aap.fermata.media.pref.BrowsableItemPrefs;
@@ -134,8 +135,10 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 		BrowsableItem b = a.getParent();
 
 		// Multi-select: wherever the list has selectable (playable) items.
-		setButtonVisibility(tb, R.id.tool_select,
-				((b == null) || (b == b.getRoot()) || (b instanceof StreamItem)) ? GONE : VISIBLE);
+		// Favorites is a root, but a list of playable items like any playlist: select (and, in
+		// selection mode, reorder) there too.
+		setButtonVisibility(tb, R.id.tool_select, ((b == null) || (b instanceof StreamItem) ||
+				((b == b.getRoot()) && !(b instanceof Favorites))) ? GONE : VISIBLE);
 
 		if ((b == null) || (b == b.getRoot()) || (b instanceof StreamItem)) {
 			setButtonVisibility(tb, R.id.tool_view, GONE);

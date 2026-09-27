@@ -26,6 +26,8 @@ public class YoutubeJsInterface extends FermataJsInterface {
 	public static final int JS_USER_PICKED_VIDEO = JS_LAST + 11;
 	/** The user long-pressed a link/tile leading to a video (data = "id|encoded title"). */
 	public static final int JS_VIDEO_LONG_PRESS = JS_LAST + 12;
+	/** The video stopped to wait for data (buffering) -- see YoutubeMediaEngine#waiting(). */
+	public static final int JS_VIDEO_WAITING = JS_LAST + 13;
 	private final YoutubeMediaEngine engine;
 	private Promise<String> result;
 
@@ -91,6 +93,9 @@ public class YoutubeJsInterface extends FermataJsInterface {
 			case JS_VIDEO_LONG_PRESS:
 				Log.d("Video long-pressed: ", data);
 				engine.videoLongPressed(data);
+				break;
+			case JS_VIDEO_WAITING:
+				engine.waiting();
 				break;
 			default:
 				super.handleEvent(event, data);

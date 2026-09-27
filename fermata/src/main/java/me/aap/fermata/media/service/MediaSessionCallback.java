@@ -255,6 +255,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			public void onReceive(Context context, Intent intent) {
 				if (ACTION_AUDIO_BECOMING_NOISY.equals(intent.getAction())) {
 					Log.i("Received ACTION_AUDIO_BECOMING_NOISY event");
+					DiagnosticLog.log("NOISY", "audio output changed, pausing", "playing=" + isPlaying());
 					onPause();
 				}
 			}
@@ -547,6 +548,31 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	}
 
 	/**
+	 * Who asked for a pause, for the diagnostic trace: the controlling app when the command came
+	 * through the media session (Android Auto, a Bluetooth head unit, the notification), else the
+	 * first app class up the call stack. A pause nobody on screen asked for is otherwise
+	 * indistinguishable in the trace from one the user did ask for.
+	 */
+	private String pauseSource() {
+		if (!DiagnosticLog.isEnabled()) return "?";
+		StringBuilder sb = new StringBuilder();
+		try {
+			var info = session.getCurrentControllerInfo();
+			if (info != null) sb.append(info.getPackageName()).append(' ');
+		} catch (Throwable ignore) {
+			// Only valid inside a session callback -- a direct call has no controller.
+		}
+		for (StackTraceElement e : new Throwable().getStackTrace()) {
+			String c = e.getClassName();
+			if (!c.startsWith("me.aap.") || c.startsWith(MediaSessionCallback.class.getName())) continue;
+			sb.append(c.substring(c.lastIndexOf('.') + 1)).append('.').append(e.getMethodName())
+					.append(':').append(e.getLineNumber());
+			break;
+		}
+		return (sb.length() == 0) ? "session" : sb.toString().trim();
+	}
+
+	/**
 	 * Readable {@link PlaybackStateCompat} state for the diagnostic trace -- a bare int is what this
 	 * log exists to save the reader from decoding.
 	 */
@@ -646,7 +672,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	@Override
 	public void onPause() {
 		DiagnosticLog.log("TRANSPORT", "onPause",
-				"state=" + stateName(getPlaybackState().getState()));
+				"state=" + stateName(getPlaybackState().getState()), "from=" + pauseSource());
 		PlayableItem i;
 		MediaEngine eng = getEngine();
 		if ((eng == null) || ((i = eng.getSource()) == null)) return;

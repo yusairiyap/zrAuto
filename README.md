@@ -3,18 +3,28 @@ zrAuto is a free, open source media player built for Android Auto, made by [Yusa
 
 [Download the latest release](https://github.com/yusairiyap/zrAuto/releases/latest)
 
-## What makes zrAuto different
-zrAuto is built on top of the original Fermata Auto, with a few changes to make it nicer to use:
+## Highlights
+The things zrAuto does best, especially behind the wheel:
 
-* **A fresher look** — redesigned menus with a cleaner, card-style layout, plus smoother animations when switching tabs, entering or leaving fullscreen video, and navigating Settings
+* **A real Music tab** — a full-screen, audio-only player with a blurred album-art background, its own editable play queue (drag to reorder, swipe to remove, Shuffle/Repeat), and big car-friendly controls. Mix local songs and YouTube tracks in the same queue. "Add to queue" and "Play next" drop tracks right after the one playing, and once you're in music mode, tapping anything in Favorites or a Playlist just keeps playing it as music
+* **YouTube, made for the car** — YouTube plays inside the app with its own Favorites, Playlists and queue. Music mode holds the video at the lowest quality so you only pay (in data) for the sound, and switching between video and music never interrupts playback
+* **Search without stopping the music** — a native search panel slides over whatever is playing: results from YouTube, matching tracks already in your Favorites and Playlists, and an Up next queue where anything can be set to play next with one tap
+* **Spotify playlist import** — bring a Spotify playlist over and zrAuto finds each song on YouTube for you
+* **Data usage tracker** — see exactly how much mobile data went to YouTube videos, music mode and everything else, by hour, day, week or month, next to how long each was actually played (and what that cost per hour). Set a warning level or a hard limit and zrAuto pauses streaming before you blow through your plan
+* **Tells you when the network is the problem** — if streaming stalls on a weak or lost connection, a clear message pops up in the middle of the screen with a Try again button, and the option to carry on with music stored on your phone meanwhile
+* **Easy list editing** — the toolbar's Select mode (in Favorites and Playlists alike) brings up a panel to move tracks to the top or end, add or move them to another playlist, or remove them, and lets you drag them into place. Outside Select mode a long press always opens the item's menu, so nothing moves by accident
+* **Fuel Log** — log refuels with the distance driven and where you filled up, and follow your trips on a timeline, right from the car screen
+* **A fresher look** — card-style menus, a floating pill nav bar, borderless floating buttons with soft shadows, and smooth animations throughout
 * **Bigger, easier-to-tap controls** — the toolbar, navigation bar, and control panel are sized with driving in mind, so you're not squinting or fumbling for buttons on the road
-* **Customizable floating buttons** — add up to two extra floating buttons alongside the main one, each fully optional and independently configurable from Settings: pick its tap action (fullscreen, mute, play/pause, or screen dimming), long-press any of them for a quick menu of all four, resize them all with a single slider, and drag them anywhere on screen
-* **Night-friendly video dimming** — a translucent overlay over the video, with adjustable opacity and color (Black, a warm Blue light filter, Red, Deep red, Amber, Yellow, or your own custom color), to keep the screen easier on your eyes when watching or driving at night. Turn it on and off from Settings, the secondary floating button, or the video screen's menu
-* **Private Mode** — an incognito-style mode for the Browser and YouTube tabs: turning it on clears cookies and site data for a clean slate, so YouTube stops showing personalized recommendations, and turning it back off signs you back into your normal session automatically (with an option to skip that and discard it too, for a fully clean break). Extra privacy options (in the spirit of Brave's) let you block trackers/ads and third-party cookies, and "Always use Private Mode" keeps it on by default, even across app restarts. Toggle it from the toolbar, the secondary/tertiary floating buttons, or the Browser/YouTube menu
-* **YouTube in your Favorites and Playlists** — save YouTube videos alongside your other media, not just browse them live
-* **Upgraded audio effects** — the Equalizer, Bass Boost, and Virtualizer got a redesigned, spacious mixer-style interface with vertical sliders built for easy use while driving, plus a new Live Hall reverb effect that simulates live-concert-hall acoustics. Now available for YouTube video playback too, not just local media
+* **Customizable floating buttons** — up to four floating buttons, each fully optional and independently configurable from Settings: pick its tap action (fullscreen, mute, play/pause, screen dimming, search), long-press any of them for a quick menu, resize them all with a single slider, and drag them anywhere on screen
+* **Night-friendly video dimming** — a translucent overlay over the video, with adjustable opacity and color (Black, a warm Blue light filter, Red, Deep red, Amber, Yellow, or your own custom color), to keep the screen easier on your eyes at night
+* **Private Mode** — an incognito-style mode for the Browser and YouTube tabs: a clean slate with no personalized recommendations, optional tracker/ad and third-party cookie blocking, and your normal session restored automatically when you turn it off
+* **Upgraded audio effects** — a spacious, mixer-style Equalizer, Bass Boost and Virtualizer with vertical sliders built for use while driving, plus a Live Hall reverb. Works for YouTube too, not just local media
+* **Built-in diagnostic log** — an opt-in event log you can read, copy and share from inside the app, for tracking down car-only problems without a laptop
 * **No donation nagging** — the app doesn't interrupt you asking for money
-* **Its own update channel** — zrAuto checks for and installs its own updates, so you're always running the latest zrAuto build
+* **Its own update channel** — zrAuto checks for and installs its own updates, so you're always running the latest build
+
+zrAuto is built on top of Andrey Pavlenko's original Fermata Auto.
 
 ## What zrAuto can do
 * Play your media files, organized by folders — just like browsing files normally

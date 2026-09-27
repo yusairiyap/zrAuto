@@ -938,9 +938,13 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	 */
 	void playFromList(MediaLib.PlayableItem pi) {
 		hideSearchPanel();
+		MainActivityDelegate a = MainActivityDelegate.get(requireContext());
 		if (pi instanceof MusicTrackItem t) {
 			// The Music tab's queue: played the way that tab plays it (as music, from its queue).
-			MusicPlayer.playTrack(MainActivityDelegate.get(requireContext()), t, 0);
+			MusicPlayer.playTrack(a, t, 0);
+		} else if (MusicPlayer.isMusicModeActive(a)) {
+			// Listening as music: a Favorites/Playlist entry picked here carries on as music too.
+			MusicPlayer.play(a, pi, false);
 		} else if (pi instanceof MediaLib.ExternallyPlayableItem ext) {
 			ext.loadInFragment(this, ext);
 		} else {
@@ -1030,6 +1034,9 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		FermataWebView v = getWebView();
 		FermataChromeClient chrome = (v != null) ? v.getWebChromeClient() : null;
 		if ((chrome != null) && chrome.isFullScreen()) chrome.exitFullScreen();
+		// The search button (toolbar or FAB) starts a new search: the previous results and query go,
+		// and the field starts empty rather than holding the last query or a stale title.
+		clearSearch();
 		showSearchPanel();
 		MainActivityDelegate a = MainActivityDelegate.get(requireContext());
 		a.post(() -> YoutubeToolBarMediator.getInstance().focusSearchField(a));

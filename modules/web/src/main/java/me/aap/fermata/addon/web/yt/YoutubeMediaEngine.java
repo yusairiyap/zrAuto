@@ -43,6 +43,7 @@ import me.aap.fermata.media.pref.BrowsableItemPrefs;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.media.service.PlaybackResume;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.view.NetworkIssuePopup;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
@@ -167,6 +168,16 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	private long userPickedTime;
 	private static final long USER_PICK_WINDOW_MS = 90_000L;
 
+	/**
+	 * How long the video may sit buffering, while the session says it's playing, before the network
+	 * is blamed out loud (see {@link #waiting()}). Long enough that a seek, the start of a video or
+	 * an ordinary hiccup never gets there.
+	 */
+	private static final long STALL_MS = 10_000L;
+	// When the page last reported buffering with no 'playing' since; 0 when not buffering.
+	private long waitingSince;
+	private final Runnable stallCheck = this::stallCheck;
+
 	public YoutubeMediaEngine(YoutubeWebView web, MainActivityDelegate a) {
 		this.web = web;
 		cb = a.getMediaSessionCallback();
@@ -188,7 +199,46 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		};
 	}
 
+	/**
+	 * The page's video stopped to wait for data. Mostly a beat at a seek or a video's start; when it
+	 * lasts (see {@link #STALL_MS}) while playback is supposed to be going, the connection is lost or
+	 * too slow, and the driver is told so rather than left with silence -- see NetworkIssuePopup.
+	 */
+	void waiting() {
+		if (cb.getEngine() != this) return;
+		if (waitingSince == 0) {
+			waitingSince = SystemClock.elapsedRealtime();
+			DiagnosticLog.log("YT", "buffering", "id=" + currentVideoId);
+		}
+		web.removeCallbacks(stallCheck);
+		web.postDelayed(stallCheck, STALL_MS);
+	}
+
+	private void stallCheck() {
+		if ((waitingSince == 0) || (cb.getEngine() != this) || !cb.isPlaying()) return;
+		if (NetworkIssuePopup.isShown()) return;
+		DiagnosticLog.log("YT", "stalled", "id=" + currentVideoId,
+				"for=" + ((SystemClock.elapsedRealtime() - waitingSince) / 1000) + 's');
+		MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a ->
+				NetworkIssuePopup.show(a, () -> {
+					waitingSince = 0;
+					lastActivePlayTime = System.currentTimeMillis();
+					playRetries = 0;
+					web.onResume();
+					web.play();
+				}));
+	}
+
+	/** Buffering is over (playing again, paused, stopped): no more stall to report. */
+	private void clearStall() {
+		waitingSince = 0;
+		web.removeCallbacks(stallCheck);
+		NetworkIssuePopup.dismiss();
+	}
+
 	void playing(String data) {
+		boolean wasBuffering = waitingSince != 0;
+		clearStall();
 		// Every confirmed-playing moment re-arms the retry guard in paused() below -- not just an
 		// explicit native start() -- since a page-reported pause can also follow a resize-triggered
 		// player restart the app never asked for (confirmed on-device: a window resize alone, with
@@ -386,7 +436,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			qualityUrl = url;
 			web.applyQualityPolicy(music ? "lowest" : preferred);
 		}
-		DiagnosticLog.log("YT", "playing", "id=" + actualId, "title=" + currentVideoTitle);
+		DiagnosticLog.log("YT", wasBuffering ? "playing (after buffering)" : "playing",
+				"id=" + actualId, "title=" + currentVideoTitle);
 		cb.setEngine(this);
 		cb.onEngineStarted(this);
 
@@ -655,6 +706,14 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// a host takeover, so it's called out loudly in the trace rather than logged as a plain pause.
 		DiagnosticLog.logAndToast("YT", appRequestedPause ? "paused (app asked)" : "PAUSED BY PAGE",
 				"id=" + currentVideoId, "size=" + web.getWidth() + 'x' + web.getHeight());
+		boolean stalled = waitingSince != 0;
+		clearStall();
+		// The page gave up on its own while waiting for data, or with no connection at all: that's
+		// the network, not the user -- say so, with the way out.
+		if (!appRequestedPause && (stalled || !NetworkIssuePopup.isOnline(web.getContext()))) {
+			MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a ->
+					NetworkIssuePopup.show(a, () -> cb.onPlay()));
+		}
 		if (appRequestedPause) {
 			appRequestedPause = false;
 			lastExternalPauseTime = 0;
@@ -819,6 +878,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	@Override
 	public void stop() {
 		DiagnosticLog.log("YT", "engine stop()", "id=" + currentVideoId);
+		clearStall();
 		lastActivePlayTime = 0;
 		appRequestedPause = false;
 		lastExternalPauseTime = 0;
@@ -832,6 +892,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	public void pause() {
 		DiagnosticLog.log("YT", "engine pause()", "id=" + currentVideoId,
 				"reentrant=" + ignorePause);
+		if (!ignorePause) clearStall();
 		lastActivePlayTime = 0;
 		// ignorePause is set only while paused() above is re-entering through
 		// MediaSessionCallback#onPause() for a pause the PAGE reported; anything else reaching here is

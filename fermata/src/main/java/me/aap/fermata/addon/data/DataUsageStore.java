@@ -43,6 +43,10 @@ public final class DataUsageStore {
 
 	private final TreeMap<Long, long[]> hours = new TreeMap<>();
 	private final TreeMap<Long, long[]> days = new TreeMap<>();
+	// Milliseconds of playback per category ({@code CAT_*}), by hour and by day: what the bytes
+	// above bought, so a category's usage can be read against how long it was actually played.
+	private final TreeMap<Long, long[]> playHours = new TreeMap<>();
+	private final TreeMap<Long, long[]> playDays = new TreeMap<>();
 	private final AtomicFile file;
 	private boolean dirty;
 	private boolean saving;
@@ -63,16 +67,57 @@ public final class DataUsageStore {
 		dirty = true;
 	}
 
+	/** Adds {@code ms} of playback in category {@code cat} at {@code time} to its hour and day. */
+	synchronized void addPlayTime(long time, int cat, long ms) {
+		if ((ms <= 0) || (cat < 0) || (cat >= CATS)) return;
+		Calendar c = Calendar.getInstance();
+		c.setTimeInMillis(time);
+		bucket(playHours, hourKey(c), CATS)[cat] += ms;
+		bucket(playDays, dayKey(c), CATS)[cat] += ms;
+		dirty = true;
+	}
+
 	private static long[] bucket(TreeMap<Long, long[]> m, long key) {
+		return bucket(m, key, SLOTS);
+	}
+
+	private static long[] bucket(TreeMap<Long, long[]> m, long key, int size) {
 		long[] b = m.get(key);
-		if (b == null) m.put(key, b = new long[SLOTS]);
+		if (b == null) m.put(key, b = new long[size]);
 		return b;
+	}
+
+	/** Milliseconds played per category during that hour. */
+	public synchronized long[] playTimeHour(long hourKey) {
+		long[] b = playHours.get(hourKey);
+		return (b == null) ? new long[CATS] : b.clone();
+	}
+
+	/** Milliseconds played per category from {@code fromDay} to {@code toDay}, both included. */
+	public synchronized long[] playTimeDays(long fromDay, long toDay) {
+		long[] sum = new long[CATS];
+		if (fromDay > toDay) return sum;
+		for (long[] b : playDays.subMap(fromDay, true, toDay, true).values()) {
+			for (int i = 0; i < CATS; i++) sum[i] += b[i];
+		}
+		return sum;
+	}
+
+	/** Milliseconds played per category, all time (since the last reset). */
+	public synchronized long[] playTimeTotal() {
+		long[] sum = new long[CATS];
+		for (long[] b : playDays.values()) {
+			for (int i = 0; i < CATS; i++) sum[i] += b[i];
+		}
+		return sum;
 	}
 
 	/** Forgets everything recorded so far. */
 	synchronized void clear() {
 		hours.clear();
 		days.clear();
+		playHours.clear();
+		playDays.clear();
 		dirty = true;
 	}
 
@@ -146,6 +191,12 @@ public final class DataUsageStore {
 				StandardCharsets.UTF_8))) {
 			for (String line = r.readLine(); line != null; line = r.readLine()) {
 				String[] f = line.trim().split(" ");
+				if ((f.length == CATS + 2) && ("TH".equals(f[0]) || "TD".equals(f[0]))) {
+					long[] b = new long[CATS];
+					for (int i = 0; i < CATS; i++) b[i] = Long.parseLong(f[i + 2]);
+					("TH".equals(f[0]) ? playHours : playDays).put(Long.parseLong(f[1]), b);
+					continue;
+				}
 				if (f.length != SLOTS + 2) continue;
 				TreeMap<Long, long[]> m = "H".equals(f[0]) ? hours : "D".equals(f[0]) ? days : null;
 				if (m == null) continue;
@@ -180,6 +231,8 @@ public final class DataUsageStore {
 			StringBuilder sb = new StringBuilder((hours.size() + days.size()) * 48);
 			append(sb, "H", hours);
 			append(sb, "D", days);
+			append(sb, "TH", playHours);
+			append(sb, "TD", playDays);
 			text = sb.toString();
 		}
 
@@ -203,9 +256,11 @@ public final class DataUsageStore {
 		Calendar c = Calendar.getInstance();
 		c.add(Calendar.DAY_OF_YEAR, -KEEP_HOURS_DAYS);
 		hours.headMap(hourKey(c)).clear();
+		playHours.headMap(hourKey(c)).clear();
 		c = Calendar.getInstance();
 		c.add(Calendar.DAY_OF_YEAR, -KEEP_DAYS);
 		days.headMap(dayKey(c)).clear();
+		playDays.headMap(dayKey(c)).clear();
 	}
 
 	private static void append(StringBuilder sb, String type, @NonNull TreeMap<Long, long[]> m) {

@@ -232,6 +232,15 @@ public final class MusicPlayer {
 	 * a browsable one (a playlist card) plays all of its tracks.
 	 */
 	public static void play(MainActivityDelegate a, Item item) {
+		play(a, item, true);
+	}
+
+	/**
+	 * See {@link #play(MainActivityDelegate, Item)}; {@code show}: whether to switch to the Music
+	 * tab, or stay where the item was tapped (music mode is already on, the control panel shows
+	 * what's playing).
+	 */
+	public static void play(MainActivityDelegate a, Item item, boolean show) {
 		if (getQueue(a) == null) return;
 
 		if (item instanceof PlayableItem pi) {
@@ -241,12 +250,12 @@ public final class MusicPlayer {
 					list = Collections.singletonList(pi);
 					idx = 0;
 				}
-				play(a, list, idx);
+				play(a, list, idx, show);
 			});
 		} else if (item instanceof BrowsableItem bi) {
 			bi.getPlayableChildren(true).main().onSuccess(list -> {
 				if (list.isEmpty()) UiUtils.showToast(a.getContext(), R.string.music_nothing_to_play);
-				else play(a, list, 0);
+				else play(a, list, 0, show);
 			});
 		}
 	}
@@ -254,11 +263,16 @@ public final class MusicPlayer {
 	/** Replaces the queue with {@code items} and plays from {@code startIdx}. */
 	public static void play(MainActivityDelegate a, List<? extends PlayableItem> items,
 													int startIdx) {
+		play(a, items, startIdx, true);
+	}
+
+	private static void play(MainActivityDelegate a, List<? extends PlayableItem> items,
+													 int startIdx, boolean show) {
 		MusicQueue q = getQueue(a);
 		if ((q == null) || items.isEmpty()) return;
 		int first = Math.max(0, Math.min(startIdx, items.size() - 1));
 		MusicTrackItem t = q.replace(items, first).get(first);
-		open(a);
+		if (show) open(a);
 		MediaEngine eng = a.getMediaSessionCallback().getEngine();
 		PlayableItem cur = (eng == null) ? null : eng.getSource();
 		if ((cur != null) && isSameMedia(eng, cur, t)) continueAsMusic(a, eng, t);
@@ -271,15 +285,7 @@ public final class MusicPlayer {
 	 */
 	private static void moveUpNextIntoQueue(MusicQueue q, MediaEngine eng, MusicTrackItem after) {
 		List<PlayableItem> up = eng.takeUpNext();
-		if (up.isEmpty()) return;
-		List<MusicTrackItem> added = q.add(up);
-		int ci = q.indexInPlayOrder(after);
-		if (ci < 0) return;
-		for (int i = 0; i < added.size(); i++) {
-			int from = q.indexInPlayOrder(added.get(i));
-			int to = ci + 1 + i;
-			if ((from >= 0) && (from != to)) q.move(from, to);
-		}
+		if (!up.isEmpty()) q.addAfter(after, up);
 	}
 
 	/**
@@ -290,12 +296,68 @@ public final class MusicPlayer {
 		MusicQueue q = getQueue(a);
 		MusicTrackItem cur = getCurrentTrack(a.getMediaSessionCallback());
 		if ((q == null) || (cur == null)) return false;
-		List<MusicTrackItem> added = q.add(Collections.singletonList(item));
-		if (next && !added.isEmpty()) {
-			int from = q.indexInPlayOrder(added.get(0));
-			int ci = q.indexInPlayOrder(cur);
-			if ((from >= 0) && (ci >= 0) && (from != ci + 1)) q.move(from, ci + 1);
+		List<PlayableItem> l = Collections.singletonList(item);
+		if (next) q.addAfter(cur, l);
+		else q.add(l);
+		return true;
+	}
+
+	/**
+	 * Whether the Music tab is what's playing (or was, paused): a queue track is the session's item,
+	 * or YouTube is playing as music. Tapping a Favorites/Playlist entry then plays it as music too.
+	 */
+	public static boolean isMusicModeActive(MainActivityDelegate a) {
+		if (!isEnabled()) return false;
+		MediaSessionCallback cb = a.getMediaSessionCallback();
+		return (getCurrentTrack(cb) != null) ||
+				(youtubeAudioMode && (cb.getEngine() != null) &&
+						(cb.getEngine().getId() == MediaPrefs.MEDIA_ENG_YT));
+	}
+
+	/**
+	 * "Play next" for a track already in the queue: moves it right behind the one playing. False
+	 * when no queue track is playing.
+	 */
+	public static boolean playNext(MainActivityDelegate a, MusicTrackItem t) {
+		MusicQueue q = getQueue(a);
+		MusicTrackItem cur = getCurrentTrack(a.getMediaSessionCallback());
+		return (q != null) && (cur != null) && (t.getParent() == q) && q.moveAfter(cur, t);
+	}
+
+	/**
+	 * The next queue track (in play order, after the one playing or where the queue left off) that
+	 * doesn't need the internet: a file on the phone, not a YouTube video. Null if there's none.
+	 */
+	@Nullable
+	private static MusicTrackItem nextOfflineTrack(MainActivityDelegate a) {
+		MusicQueue q = getQueue(a);
+		if (q == null) return null;
+		List<MusicTrackItem> order = q.getPlayOrder();
+		if (order.isEmpty()) return null;
+		MusicTrackItem cur = getCurrentTrack(a.getMediaSessionCallback());
+		if (cur == null) cur = q.getSavedCurrent();
+		int start = (cur == null) ? -1 : order.indexOf(cur);
+		for (int i = 1, n = order.size(); i <= n; i++) {
+			MusicTrackItem t = order.get(Math.floorMod(start + i, n));
+			if ((t.getVideoId() == null) && !t.equals(cur)) return t;
 		}
+		return null;
+	}
+
+	/** Whether the music queue has a track that plays without the internet. */
+	public static boolean hasOfflineTrack(MainActivityDelegate a) {
+		return nextOfflineTrack(a) != null;
+	}
+
+	/**
+	 * Carries on with the next queue track that plays without the internet (see
+	 * {@link #nextOfflineTrack}) -- the network dropped mid-stream. False if there's none.
+	 */
+	public static boolean playOfflineTrack(MainActivityDelegate a) {
+		MusicTrackItem t = nextOfflineTrack(a);
+		if (t == null) return false;
+		DiagnosticLog.log(TAG, "network lost: playing an offline track", "track=" + t);
+		playTrack(a, t, 0);
 		return true;
 	}
 
@@ -319,7 +381,11 @@ public final class MusicPlayer {
 				UiUtils.showToast(ctx, R.string.music_nothing_to_play);
 				return;
 			}
-			q.add(list);
+			// Right after the track playing now (or where the queue left off), not at the far end of
+			// a long queue: what was just added is what the user wants to hear next.
+			MusicTrackItem cur = getCurrentTrack(a.getMediaSessionCallback());
+			if (cur == null) cur = q.getSavedCurrent();
+			q.addAfter(cur, list);
 			UiUtils.showToast(ctx, ctx.getResources().getQuantityString(R.plurals.music_added_to_queue,
 					list.size(), list.size()));
 		});
