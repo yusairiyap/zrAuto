@@ -130,7 +130,12 @@ public final class DataUsageAlerts implements DataUsageTracker.AlertListener, Ac
 		DataUsageTracker t = DataUsageTracker.get();
 		int level = t.getLevel();
 
-		if ((level == LEVEL_OK) || (level <= dismissedLevel)) {
+		// Not on the Data Usage tab (it shows all of this itself) nor in Settings (where it would
+		// only cover the very options it's about): on every other tab.
+		int active = activity.getActiveFragmentId();
+		boolean ownScreen = (active == R.id.data_usage_addon) || (active == R.id.settings_fragment);
+
+		if ((level == LEVEL_OK) || (level <= dismissedLevel) || ownScreen) {
 			hideBanner(true);
 			return;
 		}
@@ -162,17 +167,14 @@ public final class DataUsageAlerts implements DataUsageTracker.AlertListener, Ac
 		TextView action = b.findViewById(R.id.data_usage_banner_action);
 		action.setBackgroundTintList(ColorStateList.valueOf(fg));
 		action.setTextColor(bg);
-		boolean onTab = activity.getActiveFragmentId() == R.id.data_usage_addon;
 		if (paused) {
 			action.setText(R.string.data_usage_continue);
 			action.setVisibility(View.VISIBLE);
 			action.setOnClickListener(v -> t.allowOverLimit());
-		} else if (!onTab) {
+		} else {
 			action.setText(R.string.data_usage_details);
 			action.setVisibility(View.VISIBLE);
 			action.setOnClickListener(v -> activity.showFragment(R.id.data_usage_addon));
-		} else {
-			action.setVisibility(View.GONE);
 		}
 		ImageButton close = b.findViewById(R.id.data_usage_banner_close);
 		close.setImageTintList(ColorStateList.valueOf(fg));

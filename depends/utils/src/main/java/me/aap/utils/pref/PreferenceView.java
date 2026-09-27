@@ -29,6 +29,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.text.Editable;
 import android.text.InputType;
+import android.util.TypedValue;
 import android.text.TextWatcher;
 import android.util.AttributeSet;
 import android.util.Pair;
@@ -382,6 +383,18 @@ public class PreferenceView extends ConstraintLayout {
 		}
 
 		t.setEms(o.ems);
+		if (o.inputBox) {
+			t.setBackgroundResource(R.drawable.pref_input_box);
+			int ph = UiUtils.toIntPx(getContext(), 16);
+			int pv = UiUtils.toIntPx(getContext(), 10);
+			t.setPadding(ph, pv, ph, pv);
+			t.setMinEms(Math.max(o.ems, 4));
+			t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+			t.setSelectAllOnFocus(true);
+			if (o instanceof FloatOpts) {
+				t.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+			}
+		}
 		t.setText(initValue);
 		t.setOnKeyListener(UiUtils::dpadFocusHelper);
 		t.addTextChangedListener(new TextWatcher() {
@@ -704,6 +717,12 @@ public class PreferenceView extends ConstraintLayout {
 		 * repeated alongside it. The seek bar then stretches to fill the space that field would
 		 * have used. */
 		public boolean showValue = true;
+		/**
+		 * Shown as a roomy, rounded text box instead of a seek bar (set showProgress to false too):
+		 * for values typed rather than dragged to, like a data limit. A float one then accepts a
+		 * decimal point.
+		 */
+		public boolean inputBox;
 	}
 
 	public static class IntOpts extends NumberOpts<IntSupplier> {}

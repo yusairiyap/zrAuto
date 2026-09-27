@@ -64,7 +64,8 @@ import me.aap.utils.pref.PreferenceStore.Pref;
  * Drawn in the Music tab's palette, dark or light to match the app theme, so the two tabs look
  * like they belong together.
  */
-public class DataUsageFragment extends MainActivityFragment implements PreferenceStore.Listener {
+public class DataUsageFragment extends MainActivityFragment implements PreferenceStore.Listener,
+		DataUsageTracker.AlertListener {
 	private static final int FILTER_OVERALL = 0;
 	private static final int FILTER_DAY = 1;
 	private static final int FILTER_WEEK = 2;
@@ -233,9 +234,11 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 		listening = on;
 		if (on) {
 			DataUsageTracker.get().addListener(trackerListener);
+			DataUsageTracker.get().addAlertListener(this);
 			DataUsageTracker.prefs().addBroadcastListener(this);
 		} else {
 			DataUsageTracker.get().removeListener(trackerListener);
+			DataUsageTracker.get().removeAlertListener(this);
 			DataUsageTracker.prefs().removeBroadcastListener(this);
 		}
 	}
@@ -243,6 +246,11 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 	@Override
 	public void onPreferenceChanged(PreferenceStore store, List<Pref<?>> prefs) {
 		if (prefs.contains(FILTER)) return;
+		refresh();
+	}
+
+	@Override
+	public void onDataAlert(int level, boolean crossed, boolean paused) {
 		refresh();
 	}
 
@@ -367,10 +375,13 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 		int bg;
 		int fg;
 		String text;
+		boolean paused = t.isLimitPaused();
 		if ((lim > 0) && (total >= lim)) {
 			bg = ContextCompat.getColor(ctx, R.color.data_usage_limit);
 			fg = 0xFFFFFFFF;
-			text = getString(R.string.data_usage_status_limit);
+			// The banner with Continue doesn't show on this tab: the pill takes its place.
+			text = getString(paused ? R.string.data_usage_status_paused :
+					R.string.data_usage_status_limit);
 		} else if ((warn > 0) && (total >= warn)) {
 			bg = ContextCompat.getColor(ctx, R.color.data_usage_warning);
 			fg = 0xFF000000;
@@ -387,6 +398,8 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 		status.setBackgroundTintList(ColorStateList.valueOf(bg));
 		status.setTextColor(fg);
 		status.setText(text);
+		status.setOnClickListener(paused ? v -> t.allowOverLimit() : null);
+		status.setClickable(paused);
 
 		StringBuilder f = new StringBuilder();
 		f.append(getString(R.string.data_usage_footer_since, formatDateTime(ctx,

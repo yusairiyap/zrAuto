@@ -107,20 +107,22 @@ public class DataUsageAddon implements FermataFragmentAddon, FermataActivityAddo
 			o.store = ps;
 			o.pref = DataUsageTracker.LIMIT_GB;
 			o.title = R.string.data_usage_limit_gb;
-			o.scale = 0.1f;
-			o.seekMin = 0;
-			o.seekMax = 500;
-			o.ems = 3;
+			o.subtitle = R.string.data_usage_limit_gb_sub;
+			// Typed in a box: a slider can't hit 0.25 GB, nor go past a fixed maximum.
+			o.showProgress = false;
+			o.inputBox = true;
+			o.ems = 4;
 			o.visibility = visibility.copy();
 		});
 		set.addFloatPref(o -> {
 			o.store = ps;
 			o.pref = DataUsageTracker.WARNING_GB;
 			o.title = R.string.data_usage_warning_gb;
-			o.scale = 0.1f;
-			o.seekMin = 0;
-			o.seekMax = 500;
-			o.ems = 3;
+			o.subtitle = R.string.data_usage_warning_gb_sub;
+			// Typed in a box: a slider can't hit 0.25 GB, nor go past a fixed maximum.
+			o.showProgress = false;
+			o.inputBox = true;
+			o.ems = 4;
 			o.visibility = visibility.copy();
 		});
 		set.addListPref(o -> {

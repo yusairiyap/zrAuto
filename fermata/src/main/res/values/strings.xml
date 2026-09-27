@@ -720,6 +720,7 @@
     <string name="data_usage_status_ok">%1$d%% of your limit used</string>
     <string name="data_usage_status_warning">Nearing your data limit</string>
     <string name="data_usage_status_limit">Data limit reached</string>
+    <string name="data_usage_status_paused">Playback paused · Tap to continue</string>
     <string name="data_usage_status_no_limit">No data limit set</string>
     <string name="data_usage_settings">Data usage settings</string>
     <string name="data_usage_overall">Overall</string>
@@ -739,8 +740,10 @@
     <string name="data_usage_networks">Count data used over</string>
     <string name="data_usage_networks_all">All networks</string>
     <string name="data_usage_networks_mobile">Mobile data only</string>
-    <string name="data_usage_limit_gb">Data limit (GB, 0 for none)</string>
-    <string name="data_usage_warning_gb">Data warning (GB, 0 for none)</string>
+    <string name="data_usage_limit_gb">Data limit (GB)</string>
+    <string name="data_usage_limit_gb_sub">For example 0.5 for 500 MB. 0 for no limit</string>
+    <string name="data_usage_warning_gb">Data warning (GB)</string>
+    <string name="data_usage_warning_gb_sub">Warn once this much is used. 0 for no warning</string>
     <string name="data_usage_cycle">Limit applies per</string>
     <string name="data_usage_cycle_day">Day</string>
     <string name="data_usage_cycle_week">Week</string>
