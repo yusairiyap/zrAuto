@@ -81,7 +81,9 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 			// what Android Auto's own keyboard reaches on submit -- see CarEditText#onEditorAction().
 			addr.setOnKeyListener((v, keyCode, event) -> onSearchKey(yt, addr, keyCode, event));
 			addr.setOnFocusChangeListener((v, focused) -> {
-				if (!focused) endSearchInput(addr);
+				// Android Auto's keyboard takes the focus off the field while it types into it: putting
+				// the title back then left the title in the field, with the query typed in front of it.
+				if (!focused && !isCarInputActive(addr)) endSearchInput(addr);
 			});
 			// On touch down, i.e. before the click that opens the keyboard (the car keyboard on
 			// Android Auto starts from whatever text is in the field). Not on focus: focus alone
@@ -159,6 +161,12 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 				(tb.getActiveFragment() instanceof YoutubeFragment yt)) {
 			refreshClearButton(tb, yt);
 		}
+	}
+
+	/** Whether Android Auto's own keyboard is typing into a field right now. */
+	private static boolean isCarInputActive(View v) {
+		MainActivityDelegate a = MainActivityDelegate.get(v.getContext());
+		return (a != null) && a.isCarActivity() && a.getAppActivity().isInputActive();
 	}
 
 	/** See the search/clear button in {@link #enable}. */

@@ -60,10 +60,24 @@ public class MediaItemListView extends RecyclerView implements PreferenceStore.L
 				int cellDp = a.isCarActivity() ? 176 : 128;
 				int span = (int) Math.max(cfg.screenWidthDp / (cellDp * scale), 2);
 				setLayoutManager(new GridLayoutManager(ctx, span));
+				tuneRecycling(span);
 			} else {
 				setLayoutManager(new LinearLayoutManager(ctx));
+				tuneRecycling(1);
 			}
 		});
+	}
+
+	/**
+	 * RecyclerView keeps only 5 spare item views and 2 off-screen ones by default. A grid scrolls
+	 * a whole row of new cards in at once, more than that on a wide screen, so every row used to
+	 * inflate fresh cards (and rebind the ones just scrolled off) mid-fling. Keeping a few rows
+	 * around makes scrolling back and forth through a long playlist reuse them instead.
+	 */
+	private void tuneRecycling(int span) {
+		setHasFixedSize(true);
+		setItemViewCacheSize(Math.max(6, span * 2));
+		getRecycledViewPool().setMaxRecycledViews(0, Math.max(12, span * 4));
 	}
 
 	@NonNull

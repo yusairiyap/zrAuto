@@ -30,6 +30,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.util.DisplayMetrics;
+import android.util.LruCache;
 import android.util.Size;
 
 import androidx.annotation.NonNull;
@@ -47,10 +48,16 @@ import java.lang.ref.SoftReference;
 import java.net.URL;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.provider.FermataContentProvider;
@@ -65,6 +72,8 @@ import me.aap.utils.io.MemOutputStream;
 import me.aap.utils.log.Log;
 import me.aap.utils.net.http.HttpFileDownloader;
 import me.aap.utils.net.http.HttpFileDownloader.Status;
+import me.aap.utils.pref.PreferenceStore;
+import me.aap.utils.pref.PreferenceStore.Pref;
 import me.aap.utils.pref.SharedPreferenceStore;
 import me.aap.utils.resource.Rid;
 import me.aap.utils.text.SharedTextBuilder;
@@ -75,6 +84,21 @@ import me.aap.utils.ui.UiUtils;
  * @author Andrey Pavlenko
  */
 public class BitmapCache {
+	/** Best looking thumbnails, the biggest cache. */
+	public static final int THUMB_QUALITY_HIGH = 0;
+	/** Visually the same, but saved more compactly (the default). */
+	public static final int THUMB_QUALITY_BALANCED = 1;
+	/** Smaller, lighter thumbnails: the least cache and the least data. */
+	public static final int THUMB_QUALITY_SAVER = 2;
+	/** How thumbnails are downloaded and stored, one of the THUMB_QUALITY_* values. */
+	public static final Pref<IntSupplier> THUMB_QUALITY =
+			Pref.i("THUMB_QUALITY", THUMB_QUALITY_BALANCED);
+	/** The image cache's size limit, in MB, for each IMAGE_CACHE_LIMIT choice; 0 is no limit. */
+	public static final int[] CACHE_LIMITS_MB = {100, 250, 500, 1000, 0};
+	/** Index into {@link #CACHE_LIMITS_MB}. */
+	public static final Pref<IntSupplier> IMAGE_CACHE_LIMIT = Pref.i("IMAGE_CACHE_LIMIT", 1);
+	// Re-checks the cache size after this many newly saved images, besides once at startup.
+	private static final int TRIM_EVERY = 50;
 	private final File iconsCache;
 	private final File imageCache;
 	private final String iconsCacheUri;
@@ -84,6 +108,18 @@ public class BitmapCache {
 	private final ReferenceQueue<Bitmap> refQueue = new ReferenceQueue<>();
 	private final PromiseQueue queue = new PromiseQueue(App.get().getExecutor());
 	private final Map<String, String> invalidBitmapUris = new ConcurrentHashMap<>();
+	/**
+	 * Strong references to the most recently used bitmaps, on top of the soft {@link #cache}: soft
+	 * references go at the first bit of memory pressure, and then scrolling back up a long list
+	 * decodes every thumbnail again, which is what made big playlists stutter.
+	 */
+	private final LruCache<String, Bitmap> recent = new LruCache<>(recentCacheSizeKb()) {
+		@Override
+		protected int sizeOf(String key, Bitmap value) {
+			return Math.max(1, value.getAllocationByteCount() / 1024);
+		}
+	};
+	private final AtomicInteger savedSinceTrim = new AtomicInteger();
 
 	public BitmapCache() {
 		File cache = App.get().getExternalCacheDir();
@@ -93,6 +129,29 @@ public class BitmapCache {
 		iconsCacheUri = Uri.fromFile(iconsCache).toString() + '/';
 		imageCacheUri = Uri.fromFile(imageCache).toString() + '/';
 		prefs = getContext().getSharedPreferences("image-cache", MODE_PRIVATE);
+		App.get().getScheduler().schedule(this::trimToLimit, 30, TimeUnit.SECONDS);
+	}
+
+	private static int recentCacheSizeKb() {
+		long max = Runtime.getRuntime().maxMemory() / 1024;
+		return (int) Math.max(8 * 1024, Math.min(max / 8, 64 * 1024));
+	}
+
+	private static PreferenceStore settings() {
+		return FermataApplication.get().getPreferenceStore();
+	}
+
+	private static int thumbQuality() {
+		return settings().getIntPref(THUMB_QUALITY);
+	}
+
+	/** JPEG quality the resized thumbnails are saved with. */
+	private static int jpegQuality() {
+		return switch (thumbQuality()) {
+			case THUMB_QUALITY_HIGH -> 92;
+			case THUMB_QUALITY_SAVER -> 70;
+			default -> 82;
+		};
 	}
 
 	public boolean isResourceImageAvailable(Uri uri) {
@@ -140,22 +199,60 @@ public class BitmapCache {
 		if (bm != null) return completed(bm);
 
 		if (u.startsWith("http://") || u.startsWith("https://")) {
-			return loadHttpBitmap(u, iconUri, size);
+			if (iconUri == null) return loadHttpBitmap(u, null, 0);
+			// A list thumbnail: the small resized copy saved from an earlier download is all it needs,
+			// no need to check the original with the server, let alone decode it at full size again.
+			String src = (thumbQuality() == THUMB_QUALITY_SAVER) ? youtubeSmall(u) : u;
+			File iconFile = new File(iconsCache, iconUri.substring(iconsCacheUri.length()));
+			if (!iconFile.isFile()) return loadHttpBitmap(src, iconUri, size);
+			// Decoded in parallel, not through the one-at-a-time queue: a screenful of cards at once.
+			FutureSupplier<Bitmap> f = App.get().getExecutor().submitTask(() -> loadIconFile(iconFile,
+					iconUri));
+			return f.then(b -> (b != null) ? completed(b) : loadHttpBitmap(src, iconUri, size));
 		}
 
 		return queue.enqueue(() -> loadBitmap(ctx, u, iconUri, cache, size));
 	}
 
 	@Nullable
+	private Bitmap loadIconFile(File f, String iconUri) {
+		Bitmap bm = getCachedBitmap(iconUri);
+		if (bm != null) return bm;
+		bm = BitmapFactory.decodeFile(f.getPath());
+		if (bm == null) {
+			//noinspection ResultOfMethodCallIgnored
+			f.delete();
+			return null;
+		}
+		touch(f);
+		return cacheBitmap(iconUri, bm);
+	}
+
+	/** Marks a cached file as recently used, so trimming the cache removes it last. */
+	@SuppressWarnings("ResultOfMethodCallIgnored")
+	private static void touch(File f) {
+		long now = System.currentTimeMillis();
+		// Not on every single use: once a day is plenty for picking what to drop first.
+		if (now - f.lastModified() > 24 * 3600_000L) f.setLastModified(now);
+	}
+
+	@Nullable
 	private Bitmap getCachedBitmap(String uri) {
+		Bitmap recentBm = recent.get(uri);
+		if (recentBm != null) return recentBm;
+
 		synchronized (cache) {
 			clearRefs();
 			Ref r = cache.get(uri);
 
 			if (r != null) {
 				Bitmap bm = r.get();
-				if (bm != null) return bm;
-				else cache.remove(uri);
+				if (bm != null) {
+					recent.put(uri, bm);
+					return bm;
+				} else {
+					cache.remove(uri);
+				}
 			}
 
 			return null;
@@ -238,8 +335,8 @@ public class BitmapCache {
 			if (s == null) {
 				return (ytFallback != null) ? loadHttpBitmap(ytFallback, cacheUri, size) : completedNull();
 			}
-			try (InputStream is = s.getFileStream(true)) {
-				Bitmap bm = BitmapFactory.decodeStream(is);
+			try {
+				Bitmap bm = decodeSampled(s, size);
 
 				// A video that was never available above 720p has no maxresdefault.jpg: YouTube
 				// answers with its tiny grey "..." placeholder (120x90) instead. Use hqdefault.jpg,
@@ -257,14 +354,86 @@ public class BitmapCache {
 					invalidBitmapUris.put(uri, uri);
 					return failed(new IOException("Failed to decode image: " + uri));
 				} else {
+					if (isLetterboxedYoutube(uri)) bm = cropLetterbox(bm);
 					if (size != 0) bm = resizedBitmap(bm, size);
-					if (cacheUri != null) bm = cacheBitmap(cacheUri, bm);
+					if (cacheUri != null) {
+						bm = cacheBitmap(cacheUri, bm);
+						// Only resized thumbnails have an icon file; the next time, that's all that's read.
+						if (size != 0) saveIconAsync(bm, cacheUri);
+					}
 					return completed(bm);
 				}
 			} catch (Exception ex) {
 				invalidBitmapUris.put(uri, uri);
 				return failed(ex);
 			}
+		});
+	}
+
+	/**
+	 * Decodes a downloaded image, at no more than about twice {@code size} (0: at full size): the
+	 * full-size decode of a 1280x720 YouTube thumbnail allocates ~3.5 MB just to be shrunk right
+	 * away, and a long list does that dozens of times in a row.
+	 */
+	@Nullable
+	private static Bitmap decodeSampled(Status s, int size) throws IOException {
+		if (size <= 0) {
+			try (InputStream is = s.getFileStream(true)) {
+				return BitmapFactory.decodeStream(is);
+			}
+		}
+		BitmapFactory.Options o = new BitmapFactory.Options();
+		o.inJustDecodeBounds = true;
+		try (InputStream is = s.getFileStream(true)) {
+			BitmapFactory.decodeStream(is, null, o);
+		}
+		int sample = 1;
+		int w = o.outWidth;
+		int h = o.outHeight;
+		// Never below 121px wide either: that's how YouTube's placeholder image is told apart.
+		while ((w > 0) && (h > 0) && (Math.max(w, h) / (sample * 2) >= size) &&
+				(w / (sample * 2) > 120)) {
+			sample *= 2;
+		}
+		o = new BitmapFactory.Options();
+		o.inSampleSize = sample;
+		try (InputStream is = s.getFileStream(true)) {
+			return BitmapFactory.decodeStream(is, null, o);
+		}
+	}
+
+	private static boolean isLetterboxedYoutube(String uri) {
+		return uri.endsWith("/hqdefault.jpg") &&
+				(uri.contains("ytimg.com/") || uri.contains("img.youtube.com/"));
+	}
+
+	/**
+	 * YouTube's hqdefault.jpg is a 4:3 canvas with the 16:9 frame letterboxed inside it: cut the
+	 * black bars off, or they show on every cropped card.
+	 */
+	private static Bitmap cropLetterbox(Bitmap bm) {
+		int w = bm.getWidth();
+		int h = bm.getHeight();
+		if ((w <= 0) || (w * 3 != h * 4)) return bm;
+		int ch = w * 9 / 16;
+		try {
+			return Bitmap.createBitmap(bm, 0, (h - ch) / 2, w, ch);
+		} catch (Throwable ex) {
+			return bm;
+		}
+	}
+
+	/** In Data saver mode: a list thumbnail from hqdefault.jpg, a fraction of maxresdefault.jpg. */
+	private static String youtubeSmall(String uri) {
+		String fb = youtubeFallback(uri);
+		return (fb != null) ? fb : uri;
+	}
+
+	private void saveIconAsync(Bitmap bm, String iconUri) {
+		if (!iconUri.startsWith(iconsCacheUri)) return;
+		File f = new File(iconsCache, iconUri.substring(iconsCacheUri.length()));
+		App.get().getExecutor().submitTask(() -> {
+			if (!f.isFile()) saveIcon(bm, f);
 		});
 	}
 
@@ -283,6 +452,8 @@ public class BitmapCache {
 	@SuppressWarnings("ResultOfMethodCallIgnored")
 	public void invalidate(Context ctx, String uri) {
 		String iconUri = toIconUri(uri, getIconSize(ctx));
+		recent.remove(uri);
+		recent.remove(iconUri);
 		synchronized (cache) {
 			cache.remove(uri);
 			cache.remove(iconUri);
@@ -386,16 +557,21 @@ public class BitmapCache {
 
 			if (cachedRef != null) {
 				Bitmap cached = cachedRef.get();
-				if (cached != null) return cached;
+				if (cached != null) {
+					recent.put(uri, cached);
+					return cached;
+				}
 				cache.put(uri, ref);
 			}
 
+			recent.put(uri, bm);
 			return bm;
 		}
 	}
 
 	private static int getIconSize(Context ctx) {
-		return 3 * smallIconSize(ctx);
+		// Data saver: two thirds the size, still sharp enough for a list or grid card.
+		return ((thumbQuality() == THUMB_QUALITY_SAVER) ? 2 : 3) * smallIconSize(ctx);
 	}
 
 	private static int smallIconSize(Context ctx) {
@@ -456,9 +632,99 @@ public class BitmapCache {
 			p.mkdirs();
 
 		try (OutputStream out = new FileOutputStream(f)) {
-			bm.compress(CompressFormat.JPEG, 100, out);
+			bm.compress(CompressFormat.JPEG, jpegQuality(), out);
 		} catch (Exception ex) {
 			Log.e(ex, "Failed to save icon: ", f);
+		}
+
+		if (savedSinceTrim.incrementAndGet() >= TRIM_EVERY) {
+			savedSinceTrim.set(0);
+			App.get().getExecutor().submitTask(this::trimToLimit);
+		}
+	}
+
+	/** The size, in bytes, of what {@link #clearCache} and {@link #trimToLimit} may delete. */
+	public long getCacheSize() {
+		long total = 0;
+		for (File f : listDeletable()) total += f.length();
+		return total;
+	}
+
+	/**
+	 * Deletes every downloaded image and resized thumbnail: they're downloaded or resized again
+	 * when next shown. Album art extracted from local files and generated playlist covers stay,
+	 * since there's nothing to make them again from. Returns the number of bytes freed.
+	 */
+	public synchronized long clearCache() {
+		recent.evictAll();
+		synchronized (cache) {
+			cache.clear();
+		}
+		long freed = 0;
+		for (File f : listDeletable()) {
+			long len = f.length();
+			if (f.delete()) freed += len;
+		}
+		invalidBitmapUris.clear();
+		cleanUpPrefs();
+		return freed;
+	}
+
+	/** Deletes the least recently used cached images while the cache is over its size limit. */
+	public synchronized void trimToLimit() {
+		try {
+			int idx = settings().getIntPref(IMAGE_CACHE_LIMIT);
+			if ((idx < 0) || (idx >= CACHE_LIMITS_MB.length)) return;
+			long limit = CACHE_LIMITS_MB[idx] * 1024L * 1024L;
+			if (limit <= 0) return;
+			List<File> files = listDeletable();
+			long total = 0;
+			long[] sizes = new long[files.size()];
+			long[] times = new long[files.size()];
+			for (int i = 0; i < sizes.length; i++) {
+				File f = files.get(i);
+				total += sizes[i] = f.length();
+				times[i] = f.lastModified();
+			}
+			if (total <= limit) return;
+			Integer[] order = new Integer[sizes.length];
+			for (int i = 0; i < order.length; i++) order[i] = i;
+			Arrays.sort(order, (a, b) -> Long.compare(times[a], times[b]));
+			// Down to 80% of the limit, so it's not trimmed again after the next few downloads.
+			long target = limit * 4 / 5;
+			for (Integer i : order) {
+				if (total <= target) break;
+				if (files.get(i).delete()) total -= sizes[i];
+			}
+			Log.i("Image cache trimmed to ", total / 1024, " KB");
+			cleanUpPrefs();
+		} catch (Throwable ex) {
+			Log.e(ex, "Failed to trim the image cache");
+		}
+	}
+
+	/** Resized thumbnails, plus the images downloaded from the web (those with download prefs). */
+	private List<File> listDeletable() {
+		List<File> files = new ArrayList<>();
+		listFiles(iconsCache, files);
+		Set<String> downloaded = new HashSet<>();
+		for (String k : prefs.getAll().keySet()) {
+			int idx = k.lastIndexOf('#');
+			if (idx > 0) downloaded.add(k.substring(0, idx));
+		}
+		for (String path : downloaded) {
+			File f = new File(imageCache, path);
+			if (f.isFile()) files.add(f);
+		}
+		return files;
+	}
+
+	private static void listFiles(File dir, List<File> out) {
+		File[] ls = dir.listFiles();
+		if (ls == null) return;
+		for (File f : ls) {
+			if (f.isDirectory()) listFiles(f, out);
+			else out.add(f);
 		}
 	}
 

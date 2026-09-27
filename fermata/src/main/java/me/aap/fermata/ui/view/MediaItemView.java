@@ -103,6 +103,8 @@ public class MediaItemView extends ConstraintLayout
 	private MediaItemViewHolder holder;
 	/** Whether a finger is currently down on this view -- see {@link #onLongClick}. */
 	private boolean touchActive;
+	/** Set while attaching to the window, see {@link #onVisibilityChanged}. */
+	private boolean attaching;
 	private ProgressUpdater progressUpdater;
 	private VectorDrawableCompat watchedVideoDrawable;
 	private VectorDrawableCompat watchingVideoDrawable;
@@ -459,10 +461,24 @@ public class MediaItemView extends ConstraintLayout
 	}
 
 	@Override
+	protected void onAttachedToWindow() {
+		attaching = true;
+		super.onAttachedToWindow();
+	}
+
+	@Override
 	protected void onVisibilityChanged(@NonNull View changedView, int visibility) {
 		super.onVisibilityChanged(changedView, visibility);
 		Item item = getItem();
-		if ((visibility == VISIBLE) && (item != null)) refresh();
+		boolean attach = attaching && (changedView == this);
+		if (changedView == this) attaching = false;
+		if ((visibility != VISIBLE) || (item == null)) return;
+		// Every attach also reports the view's visibility: while scrolling, that's each card coming
+		// on screen, just bound (so just loaded) or back from the view cache unchanged. Reloading a
+		// video card there (as refresh() does) loaded every one twice mid-fling; the playing/last
+		// played state is all that may have changed meanwhile.
+		if (attach) refreshState(item);
+		else refresh();
 	}
 
 	@Override

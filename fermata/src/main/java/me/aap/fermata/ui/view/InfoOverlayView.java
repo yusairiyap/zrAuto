@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.ColorStateList;
 import android.os.BatteryManager;
+import android.text.format.Formatter;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -23,6 +24,8 @@ import androidx.core.content.ContextCompat;
 import java.util.Locale;
 
 import me.aap.fermata.R;
+import me.aap.fermata.addon.data.DataUsageStore;
+import me.aap.fermata.addon.data.DataUsageTracker;
 import me.aap.fermata.addon.fuel.FuelLogStore;
 import me.aap.fermata.addon.fuel.FuelTracker;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -58,6 +61,12 @@ public class InfoOverlayView extends LinearLayout {
 	private final TextView distance;
 	private final ImageView distanceIcon;
 	private final LinearLayout distanceRow;
+	private final TextView dataUsage;
+	private final ImageView dataUsageIcon;
+	private final LinearLayout dataUsageRow;
+	private final TextView dataRemaining;
+	private final ImageView dataRemainingIcon;
+	private final LinearLayout dataRemainingRow;
 	private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
 		@Override
 		public void onReceive(Context context, Intent intent) {
@@ -65,8 +74,15 @@ public class InfoOverlayView extends LinearLayout {
 		}
 	};
 	private final Runnable distanceListener = this::updateDistanceText;
+	private final Runnable dataListener = this::updateDataText;
 	private boolean batteryReceiverRegistered;
 	private boolean distanceListenerRegistered;
+	private boolean dataListenerRegistered;
+	private boolean showDataUsage;
+	private boolean showDataRemaining;
+	private boolean showDataIcon = true;
+	// Whether the Remaining item is actually laid out: only while a data limit is set.
+	private boolean dataRemainingShown;
 	private boolean showClock;
 	private boolean showClockIcon;
 	private boolean showBatteryPct;
@@ -101,6 +117,14 @@ public class InfoOverlayView extends LinearLayout {
 		distanceIcon = newIconView(context);
 		distanceIcon.setImageResource(R.drawable.distance);
 		distanceRow = newRow(context, distanceIcon, distance);
+		dataUsage = newTextView(context);
+		dataUsageIcon = newIconView(context);
+		dataUsageIcon.setImageResource(R.drawable.data_usage);
+		dataUsageRow = newRow(context, dataUsageIcon, dataUsage);
+		dataRemaining = newTextView(context);
+		dataRemainingIcon = newIconView(context);
+		dataRemainingIcon.setImageResource(R.drawable.data_remaining);
+		dataRemainingRow = newRow(context, dataRemainingIcon, dataRemaining);
 		applyPadding();
 		applyIconSize();
 	}
@@ -164,8 +188,28 @@ public class InfoOverlayView extends LinearLayout {
 		updateDistanceListenerState();
 	}
 
+	/**
+	 * The Data Usage items: data used in the current cycle, and what's left of the data limit (only
+	 * while one is set), see {@link DataUsageTracker}.
+	 */
+	public void setDataItems(boolean showUsage, boolean showRemaining, boolean showIcon) {
+		boolean changed = (showDataUsage != showUsage) || (showDataRemaining != showRemaining) ||
+				(showDataIcon != showIcon);
+		showDataUsage = showUsage;
+		showDataRemaining = showRemaining;
+		showDataIcon = showIcon;
+		if (changed) {
+			dataUsageIcon.setVisibility(showIcon ? VISIBLE : GONE);
+			dataRemainingIcon.setVisibility(showIcon ? VISIBLE : GONE);
+			dataRemainingShown = showRemaining && (DataUsageTracker.getLimit() > 0);
+			layoutRows();
+		}
+		updateDataListenerState();
+	}
+
 	public boolean hasVisibleItems() {
-		return showClock || showBatteryPct || showBatteryTemp || showDistance;
+		return showClock || showBatteryPct || showBatteryTemp || showDistance || showDataUsage ||
+				dataRemainingShown;
 	}
 
 	/**
@@ -192,6 +236,8 @@ public class InfoOverlayView extends LinearLayout {
 		batteryPct.setTextSize(TypedValue.COMPLEX_UNIT_SP, BASE_TEXT_SIZE_SP * size);
 		batteryTemp.setTextSize(TypedValue.COMPLEX_UNIT_SP, BASE_TEXT_SIZE_SP * size);
 		distance.setTextSize(TypedValue.COMPLEX_UNIT_SP, BASE_TEXT_SIZE_SP * size);
+		dataUsage.setTextSize(TypedValue.COMPLEX_UNIT_SP, BASE_TEXT_SIZE_SP * size);
+		dataRemaining.setTextSize(TypedValue.COMPLEX_UNIT_SP, BASE_TEXT_SIZE_SP * size);
 		applyPadding();
 		applyIconSize();
 		layoutRows();
@@ -208,7 +254,8 @@ public class InfoOverlayView extends LinearLayout {
 				TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, BASE_TEXT_SIZE_SP * size,
 						getResources().getDisplayMetrics()));
 		int margin = toIntPx(getContext(), Math.round(BASE_ICON_MARGIN_DP * size));
-		for (ImageView icon : new ImageView[]{clockIcon, batteryIcon, tempIcon, distanceIcon}) {
+		for (ImageView icon : new ImageView[]{clockIcon, batteryIcon, tempIcon, distanceIcon,
+				dataUsageIcon, dataRemainingIcon}) {
 			LayoutParams lp = new LayoutParams(iconSize, iconSize);
 			lp.setMarginEnd(margin);
 			icon.setLayoutParams(lp);
@@ -238,6 +285,16 @@ public class InfoOverlayView extends LinearLayout {
 		if (showDistance) {
 			if (!first) addView(newDivider());
 			addView(distanceRow);
+			first = false;
+		}
+		if (showDataUsage) {
+			if (!first) addView(newDivider());
+			addView(dataUsageRow);
+			first = false;
+		}
+		if (dataRemainingShown) {
+			if (!first) addView(newDivider());
+			addView(dataRemainingRow);
 		}
 
 		applyVisibility();
@@ -253,6 +310,7 @@ public class InfoOverlayView extends LinearLayout {
 		super.onAttachedToWindow();
 		updateBatteryReceiverState();
 		updateDistanceListenerState();
+		updateDataListenerState();
 	}
 
 	@Override
@@ -260,6 +318,44 @@ public class InfoOverlayView extends LinearLayout {
 		super.onDetachedFromWindow();
 		unregisterBatteryReceiver();
 		unregisterDistanceListener();
+		unregisterDataListener();
+	}
+
+	private void updateDataListenerState() {
+		if (isAttachedToWindow() && (showDataUsage || showDataRemaining)) {
+			if (!dataListenerRegistered) {
+				DataUsageTracker.get().addListener(dataListener);
+				dataListenerRegistered = true;
+			}
+			updateDataText();
+		} else {
+			unregisterDataListener();
+		}
+	}
+
+	private void unregisterDataListener() {
+		if (!dataListenerRegistered) return;
+		dataListenerRegistered = false;
+		DataUsageTracker.get().removeListener(dataListener);
+	}
+
+	private void updateDataText() {
+		DataUsageTracker t = DataUsageTracker.get();
+		Context ctx = getContext();
+		if (showDataUsage) {
+			dataUsage.setText(Formatter.formatShortFileSize(ctx, DataUsageStore.sum(t.getCycleUsage())));
+		}
+		long remaining = showDataRemaining ? t.getRemaining() : -1;
+		if (remaining >= 0) {
+			dataRemaining.setText(ctx.getString(R.string.data_usage_left,
+					Formatter.formatShortFileSize(ctx, remaining)));
+		}
+		// The limit may have been set or removed in Settings meanwhile.
+		boolean remainingShown = remaining >= 0;
+		if (remainingShown != dataRemainingShown) {
+			dataRemainingShown = remainingShown;
+			layoutRows();
+		}
 	}
 
 	private void updateDistanceListenerState() {

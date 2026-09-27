@@ -48,6 +48,15 @@ ext {
                     order      : 4,
                     hasSettings: true
             ],
+            [
+                    // How much internet data the app uses, split into YouTube videos, YouTube music
+                    // mode and the rest, with a data limit/warning. Right after the Fuel Log.
+                    name       : 'data_usage',
+                    icon       : 'data_usage',
+                    class      : 'me.aap.fermata.addon.data.DataUsageAddon',
+                    order      : 6,
+                    hasSettings: true
+            ],
     ]
 }
 

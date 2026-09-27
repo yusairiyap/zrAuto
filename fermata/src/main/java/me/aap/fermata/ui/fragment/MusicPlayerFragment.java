@@ -177,7 +177,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	}
 
 	/** Whether the app's current theme is a light one, going by its background's lightness. */
-	private static boolean isLightTheme(Context ctx) {
+	static boolean isLightTheme(Context ctx) {
 		TypedValue tv = new TypedValue();
 		if (!ctx.getTheme().resolveAttribute(android.R.attr.colorBackground, tv, true)) return false;
 		int color;
@@ -241,6 +241,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 		playPause.setOnClickListener(v -> onPlayPause());
 		addPressEffect(playPause);
+		enableArtSwipe(view.findViewById(R.id.music_art_card));
 		enableQueueDrag(view.findViewById(R.id.music_queue_grip));
 		enableQueueDrag(view.findViewById(R.id.music_queue_header));
 		view.findViewById(R.id.music_prev).setOnClickListener(v -> onPrev());
@@ -342,8 +343,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		boolean battery = p.getInfoOverlayShowBatteryPctPref();
 		boolean temp = p.getInfoOverlayShowBatteryTempPref();
 		boolean distance = p.getInfoOverlayShowDistancePref();
+		boolean dataUsage = p.getInfoOverlayShowDataUsagePref();
+		boolean dataRemaining = p.getInfoOverlayShowDataRemainingPref();
 		boolean show = (p.getClockPosPref() != MainActivityPrefs.CLOCK_POS_NONE) &&
-				(clock || battery || temp || distance);
+				(clock || battery || temp || distance || dataUsage || dataRemaining);
 		// Its holder in portrait (so its padding goes too), the overlay itself in the title bar.
 		View parent = (View) o.getParent();
 		View target = ((parent != null) && (parent.getId() == R.id.music_info_holder)) ? parent : o;
@@ -353,6 +356,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		o.setItems(clock, p.getInfoOverlayShowClockIconPref(), battery,
 				p.getInfoOverlayShowBatteryIconPref(), temp, p.getInfoOverlayShowTempIconPref(), distance,
 				p.getInfoOverlayShowDistanceIconPref());
+		o.setDataItems(dataUsage, dataRemaining, p.getInfoOverlayShowDataIconPref());
 	}
 
 	@Override
@@ -819,7 +823,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private void updatePlayState(@Nullable PlaybackStateCompat state) {
 		int st = (state == null) ? PlaybackStateCompat.STATE_NONE : state.getState();
 		boolean playing = (st == PlaybackStateCompat.STATE_PLAYING);
-		playPause.setImageResource(playing ? R.drawable.pause : R.drawable.play);
+		playPause.setImageResource(playing ? R.drawable.music_pause : R.drawable.play);
 		boolean busy = isBusy(st);
 		loading.setLoading(busy);
 		setPlayLoading(busy);
@@ -934,6 +938,110 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			}
 			return false; // Not consumed: the click still happens.
 		});
+	}
+
+	/**
+	 * Swiping the cover left or right skips to the next or previous track: the card follows the
+	 * finger (tilting and fading a little), and once let go past a third of its width, or flung,
+	 * it flies off that side while the track changes, then the card slides back in from the other
+	 * side, where the new cover crossfades in as soon as it's loaded. A short drag springs back.
+	 */
+	@SuppressLint("ClickableViewAccessibility")
+	private void enableArtSwipe(View card) {
+		ViewConfiguration vc = ViewConfiguration.get(requireContext());
+		int slop = vc.getScaledTouchSlop();
+		int fling = vc.getScaledMinimumFlingVelocity() * 6;
+
+		card.setOnTouchListener(new View.OnTouchListener() {
+			private float startX;
+			private float startY;
+			private boolean dragging;
+			@Nullable
+			private VelocityTracker velocity;
+
+			@Override
+			public boolean onTouch(View v, MotionEvent e) {
+				switch (e.getActionMasked()) {
+					case MotionEvent.ACTION_DOWN -> {
+						startX = e.getRawX();
+						startY = e.getRawY();
+						dragging = false;
+						if (velocity != null) velocity.recycle();
+						velocity = VelocityTracker.obtain();
+						velocity.addMovement(e);
+						return true;
+					}
+					case MotionEvent.ACTION_MOVE -> {
+						if (velocity != null) velocity.addMovement(e);
+						float dx = e.getRawX() - startX;
+						float dy = e.getRawY() - startY;
+						if (!dragging) {
+							if ((Math.abs(dx) < slop) || (Math.abs(dx) < Math.abs(dy))) return true;
+							dragging = true;
+							v.animate().cancel();
+							ViewGroup p = (ViewGroup) v.getParent();
+							if (p != null) p.requestDisallowInterceptTouchEvent(true);
+						}
+						dragArt(v, dx);
+						return true;
+					}
+					case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+						float speed = 0;
+						if (velocity != null) {
+							velocity.addMovement(e);
+							velocity.computeCurrentVelocity(1000);
+							speed = velocity.getXVelocity();
+							velocity.recycle();
+							velocity = null;
+						}
+						if (!dragging) return true;
+						dragging = false;
+						float dx = v.getTranslationX();
+						boolean cancel = e.getActionMasked() == MotionEvent.ACTION_CANCEL;
+						boolean flung = (Math.abs(speed) > fling) && (Math.signum(speed) == Math.signum(dx));
+						if (!cancel && ((Math.abs(dx) > v.getWidth() / 3f) || flung) && canSwipeTrack()) {
+							swipeTrack(v, dx < 0);
+						} else {
+							v.animate().translationX(0f).rotation(0f).alpha(1f).setDuration(220)
+									.setInterpolator(new OvershootInterpolator(1.2f)).start();
+						}
+						return true;
+					}
+				}
+				return false;
+			}
+		});
+	}
+
+	private static void dragArt(View v, float dx) {
+		float w = Math.max(1, v.getWidth());
+		float f = Math.min(1f, Math.abs(dx) / w);
+		v.setTranslationX(dx);
+		v.setRotation(8f * dx / w);
+		v.setAlpha(1f - 0.35f * f);
+	}
+
+	/** Whether there's something playing to skip from. */
+	private boolean canSwipeTrack() {
+		return getActivityDelegate().getMediaSessionCallback().getCurrentItem() != null;
+	}
+
+	private void swipeTrack(View v, boolean next) {
+		float w = Math.max(v.getWidth(), 1);
+		float out = next ? -w * 1.2f : w * 1.2f;
+		v.animate().translationX(out).rotation(next ? -12f : 12f).alpha(0f).setDuration(170)
+				.setInterpolator(new DecelerateInterpolator()).withEndAction(() -> {
+					if (getView() == null) return;
+					MediaSessionCallback cb = getActivityDelegate().getMediaSessionCallback();
+					// Straight to the other track: unlike the Previous button, a swipe back never just
+					// restarts the current one.
+					if (next) cb.onSkipToNext();
+					else cb.onSkipToPrevious();
+					v.setTranslationX(-out * 0.6f);
+					v.setRotation(next ? 6f : -6f);
+					v.animate().translationX(0f).rotation(0f).alpha(1f).setDuration(320)
+							.setInterpolator(new OvershootInterpolator(0.9f)).start();
+				}).start();
 	}
 
 	private void updateModes() {

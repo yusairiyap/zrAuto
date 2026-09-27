@@ -61,6 +61,7 @@ import me.aap.fermata.addon.AddonInfo;
 import me.aap.fermata.addon.AddonManager;
 import me.aap.fermata.addon.FermataAddon;
 import me.aap.fermata.addon.SubGenAddon;
+import me.aap.fermata.media.engine.BitmapCache;
 import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.pref.BrowsableItemPrefs;
 import me.aap.fermata.media.pref.MediaLibPrefs;
@@ -104,13 +105,24 @@ public class SettingsFragment extends MainActivityFragment
 	public static final Object SHOW_PRIVATE_MODE_SETTINGS = "private_mode_settings";
 	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Secondary/Tertiary FAB settings subsection. */
 	public static final Object SHOW_FAB_SETTINGS = "fab_settings";
+	private static final String ADDON_SETTINGS = "addon_settings:";
 
 	private PreferenceViewAdapter adapter;
 	private PreferenceSet dimSettingsSet;
 	private PreferenceSet privateModeSettingsSet;
 	private PreferenceSet fabSettingsSet;
+	// Each addon's own settings page, by module name, see addonSettings().
+	private final java.util.Map<String, PreferenceSet> addonSettingsSets = new java.util.HashMap<>();
 	@Nullable
 	private Object pendingInput;
+
+	/**
+	 * Same as {@link #SHOW_DIM_SETTINGS}, but for an addon's own settings page (Settings > Addons >
+	 * the addon), by the addon's module name.
+	 */
+	public static Object addonSettings(String moduleName) {
+		return ADDON_SETTINGS + moduleName;
+	}
 
 	@Override
 	public int getFragmentId() {
@@ -130,6 +142,9 @@ public class SettingsFragment extends MainActivityFragment
 			adapter.setPreferenceSet(privateModeSettingsSet);
 		} else if ((pendingInput == SHOW_FAB_SETTINGS) && (fabSettingsSet != null)) {
 			adapter.setPreferenceSet(fabSettingsSet);
+		} else if ((pendingInput instanceof String s) && s.startsWith(ADDON_SETTINGS)) {
+			PreferenceSet p = addonSettingsSets.get(s.substring(ADDON_SETTINGS.length()));
+			if (p != null) adapter.setPreferenceSet(p);
 		}
 		pendingInput = null;
 	}
@@ -833,6 +848,7 @@ public class SettingsFragment extends MainActivityFragment
 			o.icon = R.drawable.settings;
 		});
 		addSpotifyImport(a, sub1);
+		addStoragePrefs(a, sub1);
 		if (!a.isCarActivityNotMirror()) {
 			sub1.addButton(o -> {
 				o.title = R.string.export_prefs;
@@ -868,6 +884,48 @@ public class SettingsFragment extends MainActivityFragment
 				a.fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 			}
 		};
+	}
+
+	/**
+	 * Storage and cache: how thumbnails are downloaded and stored, how big their cache may grow,
+	 * and clearing it. Web browsing data has its own Clear button, next to the Private Mode settings.
+	 */
+	private static void addStoragePrefs(MainActivityDelegate a, PreferenceSet parent) {
+		PreferenceStore store = FermataApplication.get().getPreferenceStore();
+		PreferenceSet ps = parent.subSet(o -> {
+			o.title = R.string.storage_prefs;
+			o.icon = me.aap.utils.R.drawable.folder;
+		});
+		ps.addListPref(o -> {
+			o.store = store;
+			o.pref = BitmapCache.THUMB_QUALITY;
+			o.title = R.string.thumb_quality;
+			o.subtitle = R.string.string_format;
+			o.formatSubtitle = true;
+			o.values = new int[]{R.string.thumb_quality_high, R.string.thumb_quality_balanced,
+					R.string.thumb_quality_saver};
+		});
+		ps.addListPref(o -> {
+			o.store = store;
+			o.pref = BitmapCache.IMAGE_CACHE_LIMIT;
+			o.title = R.string.image_cache_limit;
+			o.subtitle = R.string.string_format;
+			o.formatSubtitle = true;
+			o.values = new int[]{R.string.image_cache_limit_100, R.string.image_cache_limit_250,
+					R.string.image_cache_limit_500, R.string.image_cache_limit_1000,
+					R.string.image_cache_limit_none};
+		});
+		ps.addButton(o -> {
+			o.title = R.string.clear_image_cache;
+			o.subtitle = R.string.clear_image_cache_sub;
+			o.onClick = () -> {
+				Context ctx = a.getContext();
+				BitmapCache bc = FermataApplication.get().getBitmapCache();
+				App.get().getExecutor().submitTask(bc::clearCache).main().onSuccess(freed ->
+						UiUtils.showInfo(ctx, ctx.getString(R.string.image_cache_cleared,
+								android.text.format.Formatter.formatShortFileSize(ctx, freed))));
+			};
+		});
 	}
 
 	/**
@@ -1142,6 +1200,29 @@ public class SettingsFragment extends MainActivityFragment
 			o.title = R.string.info_overlay_show_distance_icon;
 			o.visibility = infoOverlayCond.copy().and(showDistanceCond.copy());
 		});
+		// The Data Usage addon's items, also offered in its own settings; only while it's enabled.
+		if (FermataApplication.get().getAddonManager()
+				.getAddon(me.aap.fermata.addon.data.DataUsageAddon.class) != null) {
+			ps.addBooleanPref(o -> {
+				o.store = a.getPrefs();
+				o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DATA_USAGE;
+				o.title = R.string.info_overlay_show_data_usage;
+				o.visibility = infoOverlayCond.copy();
+			});
+			ps.addBooleanPref(o -> {
+				o.store = a.getPrefs();
+				o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DATA_REMAINING;
+				o.title = R.string.info_overlay_show_data_remaining;
+				o.subtitle = R.string.data_usage_overlay_remaining_sub;
+				o.visibility = infoOverlayCond.copy();
+			});
+			ps.addBooleanPref(o -> {
+				o.store = a.getPrefs();
+				o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DATA_ICON;
+				o.title = R.string.info_overlay_show_data_icon;
+				o.visibility = infoOverlayCond.copy();
+			});
+		}
 		ps.addBooleanPref(o -> {
 			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE;
@@ -1374,12 +1455,14 @@ public class SettingsFragment extends MainActivityFragment
 			o.icon = R.drawable.more;
 		});
 		PreferenceStore store = FermataApplication.get().getPreferenceStore();
+		addonSettingsSets.clear();
 
 		for (AddonInfo addon : BuildConfig.ADDONS) {
 			if (!addon.hasSettings) continue;
 			AddonPrefsBuilder b = new AddonPrefsBuilder(amgr, addon, store);
 			PreferenceSet sub1 = sub.subSet(b);
 			sub1.configure(b::configure);
+			addonSettingsSets.put(addon.moduleName, sub1);
 		}
 	}
 

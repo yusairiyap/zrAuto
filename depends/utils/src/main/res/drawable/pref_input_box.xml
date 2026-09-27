@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A rounded text box for a number preference shown without its seek bar (NumberOpts.inputBox):
+     a thin outline at rest, a thicker one in the accent colour while being typed into. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorSurface" />
+            <stroke
+                android:width="2dp"
+                android:color="?attr/colorPrimary" />
+            <corners android:radius="14dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorSurface" />
+            <stroke
+                android:width="1dp"
+                android:color="?attr/colorOutline" />
+            <corners android:radius="14dp" />
+        </shape>
+    </item>
+</selector>

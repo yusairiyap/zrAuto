@@ -262,12 +262,17 @@ public class VideoView extends FrameLayout
 														 boolean showBatteryPct, boolean showBatteryIcon, boolean showBatteryTemp,
 														 boolean showTempIcon, boolean showDistance, boolean showDistanceIcon,
 														 boolean onlyWhenControlPanelVisible, float size) {
+		MainActivityPrefs mp = MainActivityPrefs.get();
+		boolean dataUsage = mp.getInfoOverlayShowDataUsagePref();
+		boolean dataRemaining = mp.getInfoOverlayShowDataRemainingPref();
 		boolean show = (pos != MainActivityPrefs.CLOCK_POS_NONE) &&
-				(showClock || showBatteryPct || showBatteryTemp || showDistance);
+				(showClock || showBatteryPct || showBatteryTemp || showDistance || dataUsage ||
+						dataRemaining);
 
 		if (!show) {
 			if (infoOverlay != null) {
 				infoOverlay.setItems(false, false, false, false, false, false, false, false);
+				infoOverlay.setDataItems(false, false, false);
 			}
 			return;
 		}
@@ -296,6 +301,7 @@ public class VideoView extends FrameLayout
 		infoOverlay.setOnlyWhenControlPanelVisible(onlyWhenControlPanelVisible);
 		infoOverlay.setItems(showClock, showClockIcon, showBatteryPct, showBatteryIcon, showBatteryTemp,
 				showTempIcon, showDistance, showDistanceIcon);
+		infoOverlay.setDataItems(dataUsage, dataRemaining, mp.getInfoOverlayShowDataIconPref());
 	}
 
 	/**

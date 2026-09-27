@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A pill shaped button: the banner action and the Tap to continue button; tinted in code. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#40000000">
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="24dp" />
+            <solid android:color="#FFFFFFFF" />
+        </shape>
+    </item>
+</ripple>
