@@ -229,12 +229,6 @@ public class MainActivityDelegate extends ActivityDelegate
 	private final Set<ViewGroup> paddingInsetContent = Collections.newSetFromMap(new WeakHashMap<>());
 	private final Set<View> topInsetContent = Collections.newSetFromMap(new WeakHashMap<>());
 	private boolean barsHidden;
-	// See syncSideNavInset().
-	private int sideInsetLeft = -1;
-	private int sideInsetRight = -1;
-	private boolean sideInsetSelf;
-	@Nullable
-	private ValueAnimator sideInsetAnim;
 	private boolean videoMode;
 	// Overrides the automatic bar-hiding that videoMode below otherwise forces in isFullScreen() --
 	// set by Action.FULLSCREEN_TOGGLE for local (non-WebView) video, whose VideoView has no
@@ -874,6 +868,7 @@ public class MainActivityDelegate extends ActivityDelegate
 				animateBar(tb, !barsHidden, 0, -tb.getHeight());
 			}
 			animateNavBar(!barsHidden);
+			syncSideNavInset();
 			// tool_bar keeps its actual layout height above even when its mediator is Invisible (e.g.
 			// while browsing a WebView, which draws its own navigation) -- its own visibility is
 			// deliberately left untouched just above since toggling it wouldn't change anything
@@ -1120,8 +1115,14 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * With a side nav bar, body_layout spans the full width behind the floating pill (so the
 	 * background and the fade continue under it), but the tab content itself is kept clear of it
 	 * via body_layout's horizontal padding, sized to how far the pill actually reaches into
-	 * body_layout -- or none at all while the nav bar is hidden (e.g. fullscreen video). Nothing in
+	 * body_layout -- or none at all while the bars are hidden (e.g. fullscreen video). Nothing in
 	 * a tab scrolls horizontally, so unlike a bottom bar there is nothing to scroll underneath it.
+	 * <p>
+	 * Deliberately never animated, and switched the moment the bars are hidden/shown rather than
+	 * once the nav bar's fade has finished: each padding change resizes the whole tab, and
+	 * YouTube's player restarts (and may pause, or miss going fullscreen on the next video) on
+	 * every resize of its WebView -- one resize, at the same moment the old side-by-side layout
+	 * resized it, is the only thing it copes with well.
 	 */
 	private void syncSideNavInset() {
 		BodyLayout b = body;
@@ -1132,10 +1133,10 @@ public class MainActivityDelegate extends ActivityDelegate
 		boolean selfInset = (getActiveFragment() instanceof MainActivityFragment f)
 				&& f.drawsBehindSideNavBar();
 
-		if ((nb.getVisibility() == VISIBLE) && (nb.getWidth() > 0)) {
+		if (isSideNavShown(nb)) {
 			int gap = toIntPx(getContext(), FLOATING_BAR_MARGIN);
 			if (nb.isLeft()) left = Math.max(0, nb.getRight() - b.getLeft() + gap);
-			else if (nb.isRight()) right = Math.max(0, b.getRight() - nb.getLeft() + gap);
+			else right = Math.max(0, b.getRight() - nb.getLeft() + gap);
 		}
 
 		// tool_bar's buttons and title are always kept clear of the pill, whatever the tab.
@@ -1146,37 +1147,16 @@ public class MainActivityDelegate extends ActivityDelegate
 		}
 
 		if (selfInset) left = right = 0;
-		boolean tabSwitch = selfInset != sideInsetSelf;
-		sideInsetSelf = selfInset;
+		if ((b.getPaddingLeft() == left) && (b.getPaddingRight() == right)) return;
+		b.setPadding(left, b.getPaddingTop(), right, b.getPaddingBottom());
+	}
 
-		if ((left == sideInsetLeft) && (right == sideInsetRight)) return;
-		sideInsetLeft = left;
-		sideInsetRight = right;
-		if (sideInsetAnim != null) sideInsetAnim.cancel();
-		int fromLeft = b.getPaddingLeft();
-		int fromRight = b.getPaddingRight();
-		if ((fromLeft == left) && (fromRight == right)) return;
-
-		// Glides along with the nav bar sliding on or off its side (see animateNavBar()),
-		// rather than the content jumping to its new width as soon as the slide starts.
-		// Only animated along with the nav bar sliding on/off; switching to or from a tab that
-		// insets itself (Music) is instant, or both paddings animating at once make it wobble.
-		if (tabSwitch || !b.isLaidOut() || (getActiveFragment() == null)) {
-			b.setPadding(left, b.getPaddingTop(), right, b.getPaddingBottom());
-			return;
-		}
-		int toLeft = left;
-		int toRight = right;
-		ValueAnimator anim = ValueAnimator.ofFloat(0f, 1f);
-		anim.setDuration(BARS_ANIM_MS);
-		anim.setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f));
-		anim.addUpdateListener(v -> {
-			float f = (float) v.getAnimatedValue();
-			b.setPadding(Math.round(fromLeft + (toLeft - fromLeft) * f), b.getPaddingTop(),
-					Math.round(fromRight + (toRight - fromRight) * f), b.getPaddingBottom());
-		});
-		sideInsetAnim = anim;
-		anim.start();
+	/**
+	 * Whether a side nav bar counts as taking up room: going by the bars' hidden state rather than
+	 * the nav bar's own visibility, which lags behind it by its fade (see animateNavBar()).
+	 */
+	private boolean isSideNavShown(NavBarView nb) {
+		return !nb.isBottom() && !barsHidden && (nb.getVisibility() == VISIBLE) && (nb.getWidth() > 0);
 	}
 
 	/**
@@ -1189,8 +1169,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		out[0] = out[1] = 0;
 		if (!content.isAttachedToWindow()) return false;
 		NavBarView nb = navBar;
-		if ((nb == null) || nb.isBottom() || (nb.getVisibility() != VISIBLE) || (nb.getWidth() == 0))
-			return true;
+		if ((nb == null) || !isSideNavShown(nb)) return true;
 
 		int gap = toIntPx(getContext(), FLOATING_BAR_MARGIN);
 		content.getLocationOnScreen(insetLoc1);
@@ -1203,10 +1182,10 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	/**
-	 * Shows or hides the nav bar with an animation instead of a snap. At the bottom it fades in or
-	 * out of its pill row; on a side it slides on or off its edge. The bar stays genuinely VISIBLE
-	 * (and laid out) until its hide animation ends, so nothing laid out around it -- the content's
-	 * insets, body_layout's side padding -- sees it go and come back mid-way.
+	 * Shows or hides the nav bar with a fade instead of a snap. The bar stays genuinely VISIBLE
+	 * (and laid out) until its fade-out ends, so nothing laid out around it -- the content's
+	 * insets -- sees it go and come back mid-way. (body_layout's side padding goes by the bars'
+	 * hidden state instead, and switches at once, see syncSideNavInset().)
 	 * <p>
 	 * A bottom nav bar sharing its pill with the control panel: the control panel (and the floating
 	 * buttons sitting on it) move down into the nav bar's place as it fades, so the pill shrinks
@@ -1215,8 +1194,10 @@ public class MainActivityDelegate extends ActivityDelegate
 	private void animateNavBar(boolean show) {
 		NavBarView nb = navBar;
 		if (nb == null) return;
-		float outX = nb.isLeft() ? -(nb.getRight()) : nb.isRight() ? (nb.getWidth() + toIntPx(
-				getContext(), FLOATING_BAR_MARGIN)) : 0;
+		// Just a fade, wherever the bar is: at the bottom it fades out of its pill row; on a side
+		// the tab content takes its room at once (see syncSideNavInset()), and the pill fading over
+		// it is smoother than one sliding across it.
+		float outX = 0f;
 
 		if (show) {
 			// Also brings back anything a hide cut short had already moved down part of the way.
