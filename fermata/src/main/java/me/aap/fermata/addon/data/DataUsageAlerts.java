@@ -285,9 +285,10 @@ public final class DataUsageAlerts implements DataUsageTracker.AlertListener, Ac
 
 		if (!show) {
 			if ((g != null) && (g.getVisibility() == View.VISIBLE)) {
-				g.animate().cancel();
-				g.animate().alpha(0f).setDuration(200).withEndAction(() -> g.setVisibility(View.GONE))
-						.start();
+				View hide = g;
+				hide.animate().cancel();
+				hide.animate().alpha(0f).setDuration(200)
+						.withEndAction(() -> hide.setVisibility(View.GONE)).start();
 			}
 			return;
 		}
