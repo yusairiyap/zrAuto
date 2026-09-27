@@ -23,6 +23,14 @@ import static me.aap.utils.async.Completed.completedVoid;
  * @author Andrey Pavlenko
  */
 public class YoutubeChromeClient extends FermataChromeClient {
+
+	/** Going fullscreen puts the video over everything: the search/Up next panel goes away. */
+	@Override
+	public void onShowCustomView(View view, CustomViewCallback callback) {
+		super.onShowCustomView(view, callback);
+		YoutubeFragment.closeSearchPanel(getWebView());
+	}
+
 	/**
 	 * How long after the black transition cover comes down a deferred fullscreen exit waits before
 	 * actually happening. The cover normally comes down the moment the new video reports itself

@@ -182,22 +182,55 @@ public class MainActivity extends SplitCompatActivityBase
 	/**
 	 * A tap anywhere outside the text field being typed into -- a floating button, the toolbar, the
 	 * nav bar, a search result -- closes the soft keyboard, as the field it belonged to is no longer
-	 * where the user is. Only closes it: the tap itself goes on to do whatever it does.
+	 * where the user is. The tap itself still does whatever it does.
+	 * <p>
+	 * Only once the tap is over, though: closing the keyboard re-lays out the window (the floating
+	 * buttons drop back down from above it, a panned window pans back), and doing that as the finger
+	 * went down moved the very button being tapped out from under it, cancelling the tap -- it took a
+	 * second one to actually do anything. The click itself is posted by the view on ACTION_UP, so the
+	 * keyboard is closed in a post after that.
 	 */
 	@Override
 	public boolean dispatchTouchEvent(MotionEvent ev) {
-		if (ev.getActionMasked() == MotionEvent.ACTION_DOWN) {
+		int action = ev.getActionMasked();
+		if (action == MotionEvent.ACTION_DOWN) {
 			View focus = getCurrentFocus();
+			outsideTap = null;
 			if (focus instanceof EditText) {
 				Rect r = new Rect();
 				if (!focus.getGlobalVisibleRect(r) || !r.contains((int) ev.getRawX(), (int) ev.getRawY())) {
-					InputMethodManager imm = getSystemService(InputMethodManager.class);
-					if (imm != null) imm.hideSoftInputFromWindow(focus.getWindowToken(), 0);
+					outsideTap = focus;
+					MainActivityDelegate a = getActivityDelegate().peek();
+					if ((a != null) && (a.getActiveFragment() instanceof MainActivityFragment f)) {
+						f.onTouchDownOutsideTextField(ev.getRawX(), ev.getRawY());
+					}
 				}
 			}
 		}
-		return super.dispatchTouchEvent(ev);
+
+		boolean handled = super.dispatchTouchEvent(ev);
+
+		if ((action == MotionEvent.ACTION_UP) || (action == MotionEvent.ACTION_CANCEL)) {
+			View focus = outsideTap;
+			outsideTap = null;
+			if (focus != null) {
+				focus.post(() -> {
+					InputMethodManager imm = getSystemService(InputMethodManager.class);
+					if (imm != null) imm.hideSoftInputFromWindow(focus.getWindowToken(), 0);
+					MainActivityDelegate a = getActivityDelegate().peek();
+					if ((a != null) && (a.getActiveFragment() instanceof MainActivityFragment f)) {
+						f.onTapOutsideTextField();
+					}
+				});
+			}
+		}
+
+		return handled;
 	}
+
+	/** The focused text field a touch went down outside of -- see {@link #dispatchTouchEvent}. */
+	@Nullable
+	private View outsideTap;
 
 	// Lets the active fragment keep a playing video on screen in picture-in-picture as the user
 	// leaves the app -- see MainActivityFragment#onUserLeaveHint() (e.g. the YouTube tab's).

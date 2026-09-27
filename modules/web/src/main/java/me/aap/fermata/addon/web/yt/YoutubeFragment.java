@@ -125,6 +125,8 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	private boolean pipPlayback;
 	/** Whether the search panel is (or is sliding) open, as opposed to sliding closed. */
 	private boolean panelOpen;
+	/** See {@link #onTouchDownOutsideTextField}. */
+	private boolean closePanelAfterTap;
 	/** See {@link #freezeVideoForPip}. */
 	@Nullable
 	private PipFreeze pipFreeze;
@@ -955,6 +957,47 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	void search(String query) {
 		YoutubeSearchPanel p = showSearchPanel();
 		if (p != null) p.search(query);
+	}
+
+	/** See {@link YoutubeChromeClient#onShowCustomView}. */
+	static void closeSearchPanel(FermataWebView web) {
+		MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a -> {
+			if (a.getFragment(me.aap.fermata.R.id.youtube_fragment) instanceof YoutubeFragment f) {
+				f.hideSearchPanel();
+			}
+		});
+	}
+
+	/** Leaving the tab closes the panel -- it's not what the user comes back to. */
+	@Override
+	public void onHiddenChanged(boolean hidden) {
+		super.onHiddenChanged(hidden);
+		if (hidden) hideSearchPanel();
+	}
+
+	/**
+	 * A tap outside the search field closed the keyboard (see MainActivity#dispatchTouchEvent): if it
+	 * also landed outside the panel -- a floating button, the nav bar, another toolbar button -- the
+	 * user has moved on from searching, so the panel closes too. Decided from where the panel was
+	 * when the finger went down, so a tap that opens the panel doesn't immediately close it.
+	 */
+	@Override
+	public void onTouchDownOutsideTextField(float x, float y) {
+		closePanelAfterTap = isSearchPanelShown() && (searchPanel != null) &&
+				!isInside(searchPanel, x, y);
+	}
+
+	@Override
+	public void onTapOutsideTextField() {
+		if (closePanelAfterTap) {
+			closePanelAfterTap = false;
+			hideSearchPanel();
+		}
+	}
+
+	private static boolean isInside(View v, float x, float y) {
+		android.graphics.Rect r = new android.graphics.Rect();
+		return v.getGlobalVisibleRect(r) && r.contains((int) x, (int) y);
 	}
 
 	/** A past search's chip in the panel: runs it again, closing the keyboard if it was up. */

@@ -79,4 +79,16 @@ public abstract class MainActivityFragment extends ActivityFragment {
 	 */
 	public void onUserLeaveHint() {
 	}
+
+	/**
+	 * A touch went down outside the text field being typed into (screen coordinates) -- see
+	 * {@code MainActivity#dispatchTouchEvent}. Followed by {@link #onTapOutsideTextField()} once the
+	 * tap has been delivered and the keyboard closed.
+	 */
+	public void onTouchDownOutsideTextField(float x, float y) {
+	}
+
+	/** See {@link #onTouchDownOutsideTextField}. */
+	public void onTapOutsideTextField() {
+	}
 }
