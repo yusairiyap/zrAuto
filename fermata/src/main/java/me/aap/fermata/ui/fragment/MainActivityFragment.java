@@ -44,6 +44,15 @@ public abstract class MainActivityFragment extends ActivityFragment {
 		return false;
 	}
 
+	/**
+	 * Whether the content scrolling up under the floating tool bar fades into the background
+	 * there (see BodyLayout#drawTopFade). Not over a tab running its own background under the bars
+	 * (the Music tab's blurred cover), which should show through untinted.
+	 */
+	public boolean drawsTopFade() {
+		return !drawsBehindSideNavBar();
+	}
+
 	@Override
 	public FloatingButton.Mediator getFloatingButtonMediator() {
 		return FloatingButtonMediator.instance;

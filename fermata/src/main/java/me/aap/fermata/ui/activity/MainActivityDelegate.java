@@ -1800,6 +1800,17 @@ public class MainActivityDelegate extends ActivityDelegate
 		applyWebViewTopInset(content);
 	}
 
+	/**
+	 * Whether a web page (the YouTube tab, the browser) is showing below the tool bar: it starts
+	 * right under the tool bar's pill (see insetWebViewTop), so nothing may fade over it there.
+	 */
+	public boolean isTopInsetWebViewShown() {
+		for (View v : topInsetContent) {
+			if (v.isShown()) return true;
+		}
+		return false;
+	}
+
 	private void applyWebViewTopInset(View content) {
 		if (toolBar == null) return;
 		if (!(content.getLayoutParams() instanceof ViewGroup.MarginLayoutParams mlp)) return;
