@@ -52,6 +52,7 @@ import me.aap.utils.function.IntSupplier;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.pref.PreferenceStore.Pref;
 import me.aap.utils.ui.UiUtils;
+import me.aap.utils.ui.view.ToolBarView;
 
 /**
  * The Data Usage tab: how much internet data the app has used and on what (YouTube videos,
@@ -67,7 +68,10 @@ import me.aap.utils.ui.UiUtils;
  * like they belong together.
  */
 public class DataUsageFragment extends MainActivityFragment implements PreferenceStore.Listener,
-		DataUsageTracker.AlertListener {
+		DataUsageTracker.AlertListener, ToolBarChip.Host {
+	// The settings chip, in the title bar in landscape and on the car screen.
+	private static final ToolBarChip.Mediator TOOL_BAR = new ToolBarChip.Mediator(
+			R.id.data_usage_toolbar_chip, R.drawable.settings, R.string.data_usage_settings);
 	private static final int FILTER_OVERALL = 0;
 	private static final int FILTER_DAY = 1;
 	private static final int FILTER_WEEK = 2;
@@ -114,6 +118,17 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 	@Override
 	public CharSequence getTitle() {
 		return getString(R.string.data_usage_title);
+	}
+
+	@Override
+	public ToolBarView.Mediator getToolBarMediator() {
+		return TOOL_BAR;
+	}
+
+	@Override
+	public void onToolBarChipClick() {
+		getActivityDelegate().showFragment(R.id.settings_fragment,
+				SettingsFragment.addonSettings("data_usage"));
 	}
 
 	@Nullable
@@ -188,16 +203,25 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 		});
 		prev.setOnClickListener(v -> step(-1));
 		next.setOnClickListener(v -> step(1));
-		view.findViewById(R.id.data_usage_settings).setOnClickListener(v ->
-				a.showFragment(R.id.settings_fragment, SettingsFragment.addonSettings("data_usage")));
+		view.findViewById(R.id.data_usage_settings).setOnClickListener(v -> onToolBarChipClick());
+		updateSettingsChip(view);
 
 		// tool_bar/nav_bar are drawn over the fragment: the list has to keep clear of them itself.
 		a.insetScrollableContent(view.findViewById(R.id.data_usage_scroll));
 
 		// Not during layout: switching the columns' layout requests another one.
 		view.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
-			if (((r - l) != (or - ol)) || ((b - t) != (ob - ot))) v.post(() -> updateSplit(v));
+			if (((r - l) != (or - ol)) || ((b - t) != (ob - ot))) v.post(() -> {
+				updateSplit(v);
+				updateSettingsChip(v);
+			});
 		});
+	}
+
+	/** The settings chip: in the title bar in landscape and on the car screen, else in here. */
+	private void updateSettingsChip(View root) {
+		ToolBarChip.update(this, R.id.data_usage_toolbar_chip,
+				root.findViewById(R.id.data_usage_settings_row));
 	}
 
 	/**

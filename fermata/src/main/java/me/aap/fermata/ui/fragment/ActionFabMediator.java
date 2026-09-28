@@ -90,7 +90,8 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 
 	private void updateIcon(FloatingButton fb) {
 		MainActivityDelegate a = MainActivityDelegate.get(fb.getContext());
-		fb.setImageResource(iconFor(a, Action.get(a.getPrefs().getIntPref(actionPref))));
+		fb.setImageResource(iconFor(a, Action.get(a.getPrefs().getIntPref(
+				MainActivityPrefs.fab(a, actionPref)))));
 	}
 
 	@DrawableRes
@@ -127,7 +128,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 	@Override
 	public void onClick(View v) {
 		MainActivityDelegate a = MainActivityDelegate.get(v.getContext());
-		Action action = Action.get(a.getPrefs().getIntPref(actionPref));
+		Action action = Action.get(a.getPrefs().getIntPref(MainActivityPrefs.fab(a, actionPref)));
 		if (action != null) action.getHandler().handle(a.getMediaSessionCallback(), a, uptimeMillis());
 		updateIcon((FloatingButton) v);
 	}

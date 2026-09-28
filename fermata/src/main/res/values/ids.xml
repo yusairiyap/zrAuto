@@ -42,6 +42,8 @@
     <item name="music_addon" type="id" />
     <item name="data_usage_addon" type="id" />
     <item name="music_toolbar_info" type="id" />
+    <item name="data_usage_toolbar_chip" type="id" />
+    <item name="fuel_log_toolbar_chip" type="id" />
     <item name="music_play" type="id" />
     <item name="item_play" type="id" />
     <item name="fab_cat_playback" type="id" />

@@ -37,16 +37,16 @@ public class PreferenceViewAdapter extends RecyclerView.Adapter<PreferenceViewAd
 		Context ctx = parent.getContext();
 		PreferenceView v = new PreferenceView(ctx);
 		RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		int marginH = (int) UiUtils.toPx(ctx, 8);
+		int marginH = (int) UiUtils.toPx(ctx, 12);
 		int marginV = (int) UiUtils.toPx(ctx, 4);
-		int paddingH = (int) UiUtils.toPx(ctx, 16);
-		int paddingV = (int) UiUtils.toPx(ctx, 12);
+		int paddingH = (int) UiUtils.toPx(ctx, 20);
+		int paddingV = (int) UiUtils.toPx(ctx, 14);
 		v.setLayoutParams(lp);
 		lp.setMargins(marginH, marginV, marginH, marginV);
 		v.setPadding(paddingH, paddingV, paddingH, paddingV);
 		v.setFocusable(true);
+		// Flat rounded cards, no shadow: the same clean look as the Data Usage tab's.
 		v.setBackgroundResource(R.drawable.box_secondary);
-		v.setElevation(UiUtils.toPx(ctx, 3));
 		return new PrefViewHolder(v);
 	}
 

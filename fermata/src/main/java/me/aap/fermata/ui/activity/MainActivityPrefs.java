@@ -112,7 +112,8 @@ public interface MainActivityPrefs
 	Pref<IntSupplier> FAB6_ACTION = Pref.i("FAB6_ACTION", Action.OPEN_PLAYLISTS.ordinal());
 	// Fixed in place by default: dragging is easy to trigger by accident while driving.
 	Pref<BooleanSupplier> FAB_DRAGGABLE = Pref.b("FAB_DRAGGABLE", false);
-	Pref<DoubleSupplier> FAB_SIZE = Pref.f("FAB_SIZE", 1f);
+	// 5% smaller than the original 1.0 out of the box.
+	Pref<DoubleSupplier> FAB_SIZE = Pref.f("FAB_SIZE", 0.95f);
 	// How many upcoming Favorites/Playlist entries the YouTube tab's Up next list previews below the
 	// user's own queue (1..10) -- enough to see what comes after, few enough to leave room for search
 	// results.
@@ -209,6 +210,55 @@ public interface MainActivityPrefs
 	Pref<DoubleSupplier> TEXT_ICON_SIZE_AA = AUTO ? Pref.f("TEXT_ICON_SIZE_AA", 1f) : null;
 	Pref<DoubleSupplier> ICON_SIZE_AA = AUTO ? Pref.f("ICON_SIZE_AA", 1f) : null;
 	Pref<BooleanSupplier> GRID_VIEW_AA = AUTO ? Pref.b("GRID_VIEW_AA", false) : null;
+	// The floating buttons' own set for the car screen, independent of the phone's (see fab()).
+	Pref<BooleanSupplier> FAB2_ENABLED_AA = AUTO ? Pref.b("FAB2_ENABLED_AA", true) : null;
+	Pref<IntSupplier> FAB2_ACTION_AA =
+			AUTO ? Pref.i("FAB2_ACTION_AA", Action.FULLSCREEN_TOGGLE.ordinal()) : null;
+	Pref<BooleanSupplier> FAB3_ENABLED_AA = AUTO ? Pref.b("FAB3_ENABLED_AA", true) : null;
+	Pref<IntSupplier> FAB3_ACTION_AA =
+			AUTO ? Pref.i("FAB3_ACTION_AA", Action.DIM_TOGGLE.ordinal()) : null;
+	Pref<BooleanSupplier> FAB4_ENABLED_AA = AUTO ? Pref.b("FAB4_ENABLED_AA", true) : null;
+	Pref<IntSupplier> FAB4_ACTION_AA =
+			AUTO ? Pref.i("FAB4_ACTION_AA", Action.FAVORITE_ADD.ordinal()) : null;
+	Pref<BooleanSupplier> FAB5_ENABLED_AA = AUTO ? Pref.b("FAB5_ENABLED_AA", true) : null;
+	Pref<IntSupplier> FAB5_ACTION_AA =
+			AUTO ? Pref.i("FAB5_ACTION_AA", Action.YOUTUBE_SEARCH.ordinal()) : null;
+	Pref<BooleanSupplier> FAB6_ENABLED_AA = AUTO ? Pref.b("FAB6_ENABLED_AA", false) : null;
+	Pref<IntSupplier> FAB6_ACTION_AA =
+			AUTO ? Pref.i("FAB6_ACTION_AA", Action.OPEN_PLAYLISTS.ordinal()) : null;
+	Pref<BooleanSupplier> FAB_DRAGGABLE_AA = AUTO ? Pref.b("FAB_DRAGGABLE_AA", false) : null;
+	Pref<DoubleSupplier> FAB_SIZE_AA = AUTO ? Pref.f("FAB_SIZE_AA", 0.95f) : null;
+
+	/**
+	 * A floating button pref as it applies to {@code a}: on the car screen its Android Auto twin
+	 * (FAB2_ENABLED -> FAB2_ENABLED_AA, ...), so the phone and the car each keep their own
+	 * buttons, actions and size; the phone pref itself anywhere else.
+	 */
+	@SuppressWarnings("unchecked")
+	static <S> Pref<S> fab(MainActivityDelegate a, Pref<S> p) {
+		if (!AUTO || !a.isCarActivity()) return p;
+		Pref<?> aa = fabAA(p);
+		return (aa == null) ? p : (Pref<S>) aa;
+	}
+
+	/** The Android Auto twin of a phone floating button pref, or null if it has none. */
+	@Nullable
+	static Pref<?> fabAA(Pref<?> p) {
+		if (!AUTO) return null;
+		if (p == FAB2_ENABLED) return FAB2_ENABLED_AA;
+		if (p == FAB2_ACTION) return FAB2_ACTION_AA;
+		if (p == FAB3_ENABLED) return FAB3_ENABLED_AA;
+		if (p == FAB3_ACTION) return FAB3_ACTION_AA;
+		if (p == FAB4_ENABLED) return FAB4_ENABLED_AA;
+		if (p == FAB4_ACTION) return FAB4_ACTION_AA;
+		if (p == FAB5_ENABLED) return FAB5_ENABLED_AA;
+		if (p == FAB5_ACTION) return FAB5_ACTION_AA;
+		if (p == FAB6_ENABLED) return FAB6_ENABLED_AA;
+		if (p == FAB6_ACTION) return FAB6_ACTION_AA;
+		if (p == FAB_DRAGGABLE) return FAB_DRAGGABLE_AA;
+		if (p == FAB_SIZE) return FAB_SIZE_AA;
+		return null;
+	}
 
 	static MainActivityPrefs get() {
 		return MainActivityDelegate.Prefs.instance;
@@ -379,11 +429,11 @@ public interface MainActivityPrefs
 	}
 
 	/**
-	 * The floating buttons' scale: the size setting (1.0 by default) on top of a base a little
+	 * The floating buttons' scale: the size setting (0.95 by default) on top of a base a little
 	 * larger than Material's standard FAB, which read as small on a car screen.
 	 */
-	default float getFabSizePref() {
-		return getFloatPref(FAB_SIZE) * 1.1f;
+	default float getFabSizePref(MainActivityDelegate a) {
+		return getFloatPref(fab(a, FAB_SIZE)) * 1.1f;
 	}
 
 	default boolean getSysBarsOnVideoTouchPref() {

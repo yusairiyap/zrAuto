@@ -183,7 +183,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	}
 
 	/** Whether the app's current theme is a light one, going by its background's lightness. */
-	static boolean isLightTheme(Context ctx) {
+	public static boolean isLightTheme(Context ctx) {
 		TypedValue tv = new TypedValue();
 		if (!ctx.getTheme().resolveAttribute(android.R.attr.colorBackground, tv, true)) return false;
 		int color;

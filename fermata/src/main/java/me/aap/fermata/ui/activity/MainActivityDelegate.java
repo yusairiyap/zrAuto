@@ -92,6 +92,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.PathInterpolator;
+import android.view.animation.Interpolator;
 import android.view.ViewPropertyAnimator;
 import android.view.ViewTreeObserver;
 import android.widget.EditText;
@@ -219,6 +220,11 @@ public class MainActivityDelegate extends ActivityDelegate
 	/** How far the floating nav bar/control panel pill sits off the screen edges, in dp. */
 	private static final int FLOATING_BAR_MARGIN = 12;
 	private static final long BARS_ANIM_MS = 260;
+	// Hiding matches the control panel's own fade (ControlPanelView.FADE_DURATION) and starts
+	// dimming from its very first frame: an ease-in curve here left the bar looking untouched for
+	// its first ~100ms, so it read as fading late behind the control panel (most visibly when a
+	// video goes fullscreen, which hides both at once).
+	private static final long BARS_HIDE_MS = 200;
 	private final NavBarMediator navBarMediator = new NavBarMediator();
 	private final FermataServiceUiBinder mediaServiceBinder;
 	private ToolBarView toolBar;
@@ -914,7 +920,9 @@ public class MainActivityDelegate extends ActivityDelegate
 		Pref<BooleanSupplier>[] on = extraFabEnabledPrefs();
 		List<View> l = new ArrayList<>(fabs.length);
 		for (int i = 0; i < fabs.length; i++) {
-			if ((fabs[i] != null) && getPrefs().getBooleanPref(on[i])) l.add(fabs[i]);
+			if ((fabs[i] != null) && getPrefs().getBooleanPref(MainActivityPrefs.fab(this, on[i]))) {
+				l.add(fabs[i]);
+			}
 		}
 		return l;
 	}
@@ -1483,8 +1491,8 @@ public class MainActivityDelegate extends ActivityDelegate
 			return;
 		}
 
-		anim.alpha(0f).translationX(outX).translationY(outY).setDuration(BARS_ANIM_MS)
-				.setInterpolator(new PathInterpolator(0.4f, 0f, 1f, 1f)).withEndAction(() -> {
+		anim.alpha(0f).translationX(outX).translationY(outY).setDuration(BARS_HIDE_MS)
+				.setInterpolator(new PathInterpolator(0f, 0f, 0.2f, 1f)).withEndAction(() -> {
 					if (barsHidden) v.setVisibility(GONE);
 					v.setAlpha(1f);
 					v.setTranslationX(0f);
@@ -1529,7 +1537,8 @@ public class MainActivityDelegate extends ActivityDelegate
 					float dx = oldX[i] - (v.getLeft() + slideBase(v, true));
 					float dy = oldY[i] - (v.getTop() + slideBase(v, false));
 					if ((Math.abs(dx) < 1f) && (Math.abs(dy) < 1f)) continue;
-					startSlide(v, dx, dy, 0f, 0f);
+					startSlide(v, dx, dy, 0f, 0f, BARS_ANIM_MS,
+							new PathInterpolator(0.2f, 0f, 0f, 1f));
 				}
 
 				return true;
@@ -1545,7 +1554,9 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	/** Slides {@code v} by (dx, dy) away from its resting translation, animated. */
 	private static void slideBy(View v, float dx, float dy) {
-		startSlide(v, slideOffset(v, true), slideOffset(v, false), dx, dy);
+		// Only while the nav bar fades out: in step with it, see BARS_HIDE_MS.
+		startSlide(v, slideOffset(v, true), slideOffset(v, false), dx, dy, BARS_HIDE_MS,
+				new PathInterpolator(0f, 0f, 0.2f, 1f));
 	}
 
 	/** Ends any slide on {@code v}, putting it straight back at its resting translation. */
@@ -1562,7 +1573,8 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * ours began, e.g. where a floating button was dragged to) from one value to another. Keeps
 	 * the resting translation and the running animator in the view's tag.
 	 */
-	private static void startSlide(View v, float fromDx, float fromDy, float toDx, float toDy) {
+	private static void startSlide(View v, float fromDx, float fromDy, float toDx, float toDy,
+																 long duration, Interpolator interpolator) {
 		Slide s;
 		if (v.getTag(R.id.floating_bars) instanceof Slide prev) {
 			prev.anim.cancel();
@@ -1572,8 +1584,8 @@ public class MainActivityDelegate extends ActivityDelegate
 		}
 
 		ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
-		a.setDuration(BARS_ANIM_MS);
-		a.setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f));
+		a.setDuration(duration);
+		a.setInterpolator(interpolator);
 		a.addUpdateListener(va -> {
 			float f = (float) va.getAnimatedValue();
 			s.dx = fromDx + (toDx - fromDx) * f;
@@ -2342,17 +2354,17 @@ public class MainActivityDelegate extends ActivityDelegate
 		body = a.findViewById(R.id.body_layout);
 		controlPanel = a.findViewById(R.id.control_panel);
 		floatingButton = a.findViewById(R.id.floating_button);
-		floatingButton.setScale(getPrefs().getFabSizePref());
+		floatingButton.setScale(getPrefs().getFabSizePref(this));
 		floatingButton2 = a.findViewById(R.id.floating_button2);
-		floatingButton2.setScale(getPrefs().getFabSizePref());
+		floatingButton2.setScale(getPrefs().getFabSizePref(this));
 		floatingButton3 = a.findViewById(R.id.floating_button3);
-		floatingButton3.setScale(getPrefs().getFabSizePref());
+		floatingButton3.setScale(getPrefs().getFabSizePref(this));
 		floatingButton4 = a.findViewById(R.id.floating_button4);
-		floatingButton4.setScale(getPrefs().getFabSizePref());
+		floatingButton4.setScale(getPrefs().getFabSizePref(this));
 		floatingButton5 = a.findViewById(R.id.floating_button5);
-		if (floatingButton5 != null) floatingButton5.setScale(getPrefs().getFabSizePref());
+		if (floatingButton5 != null) floatingButton5.setScale(getPrefs().getFabSizePref(this));
 		floatingButton6 = a.findViewById(R.id.floating_button6);
-		if (floatingButton6 != null) floatingButton6.setScale(getPrefs().getFabSizePref());
+		if (floatingButton6 != null) floatingButton6.setScale(getPrefs().getFabSizePref(this));
 		updateFabDraggable();
 		controlPanel.bind(getMediaServiceBinder());
 		enableBodyOverlayLayout();
@@ -2413,13 +2425,13 @@ public class MainActivityDelegate extends ActivityDelegate
 			recreate();
 		} else if (MainActivityPrefs.hasNavBarPosPref(this, prefs)) {
 			recreate();
-		} else if (prefs.contains(FAB_SIZE)) {
-			if (floatingButton != null) floatingButton.setScale(getPrefs().getFabSizePref());
-			if (floatingButton2 != null) floatingButton2.setScale(getPrefs().getFabSizePref());
-			if (floatingButton3 != null) floatingButton3.setScale(getPrefs().getFabSizePref());
-			if (floatingButton4 != null) floatingButton4.setScale(getPrefs().getFabSizePref());
-			if (floatingButton5 != null) floatingButton5.setScale(getPrefs().getFabSizePref());
-			if (floatingButton6 != null) floatingButton6.setScale(getPrefs().getFabSizePref());
+		} else if (prefs.contains(MainActivityPrefs.fab(this, FAB_SIZE))) {
+			if (floatingButton != null) floatingButton.setScale(getPrefs().getFabSizePref(this));
+			if (floatingButton2 != null) floatingButton2.setScale(getPrefs().getFabSizePref(this));
+			if (floatingButton3 != null) floatingButton3.setScale(getPrefs().getFabSizePref(this));
+			if (floatingButton4 != null) floatingButton4.setScale(getPrefs().getFabSizePref(this));
+			if (floatingButton5 != null) floatingButton5.setScale(getPrefs().getFabSizePref(this));
+			if (floatingButton6 != null) floatingButton6.setScale(getPrefs().getFabSizePref(this));
 		} else if (MainActivityPrefs.hasNavBarSizePref(this, prefs)) {
 			if (navBar != null) navBar.setSize(getPrefs().getNavBarSizePref(this));
 		} else if (MainActivityPrefs.hasToolBarSizePref(this, prefs)) {
@@ -2472,17 +2484,21 @@ public class MainActivityDelegate extends ActivityDelegate
 			// toolbar's private-mode button in sync with changes made from Settings, the nav-bar menu,
 			// or another FAB, not just whichever surface was actually tapped.
 			fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
-		} else if (prefs.contains(FAB2_ENABLED) || prefs.contains(FAB3_ENABLED) ||
-				prefs.contains(FAB4_ENABLED) || prefs.contains(FAB5_ENABLED) ||
-				prefs.contains(FAB6_ENABLED)) {
+		} else if (containsFabPref(prefs, extraFabEnabledPrefs())) {
 			updateExtraFabsVisibility();
-		} else if (prefs.contains(FAB2_ACTION) || prefs.contains(FAB3_ACTION) ||
-				prefs.contains(FAB4_ACTION) || prefs.contains(FAB5_ACTION) ||
-				prefs.contains(FAB6_ACTION)) {
+		} else if (containsFabPref(prefs, extraFabActionPrefs())) {
 			fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
-		} else if (prefs.contains(FAB_DRAGGABLE)) {
+		} else if (prefs.contains(MainActivityPrefs.fab(this, FAB_DRAGGABLE))) {
 			updateFabDraggable();
 		}
+	}
+
+	/** Whether one of these floating button prefs, as it applies to this screen, changed. */
+	private boolean containsFabPref(List<PreferenceStore.Pref<?>> changed, Pref<?>[] fabPrefs) {
+		for (Pref<?> p : fabPrefs) {
+			if (changed.contains(MainActivityPrefs.fab(this, p))) return true;
+		}
+		return false;
 	}
 
 	/** How far the floating buttons are currently lifted above their place -- see below. */
@@ -2540,7 +2556,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	private void updateFabDraggable() {
-		boolean draggable = getPrefs().getBooleanPref(FAB_DRAGGABLE);
+		boolean draggable = getPrefs().getBooleanPref(MainActivityPrefs.fab(this, FAB_DRAGGABLE));
 		if (floatingButton != null) floatingButton.setDraggable(draggable);
 		if (floatingButton2 != null) floatingButton2.setDraggable(draggable);
 		if (floatingButton3 != null) floatingButton3.setDraggable(draggable);
@@ -2606,13 +2622,14 @@ public class MainActivityDelegate extends ActivityDelegate
 		for (int i = 0; i < fabs.length; i++) {
 			FloatingButton fb = fabs[i];
 			if (fb == null) continue;
-			if (!getPrefs().getBooleanPref(on[i])) fb.setVisibility(GONE);
+			if (!getPrefs().getBooleanPref(MainActivityPrefs.fab(this, on[i]))) fb.setVisibility(GONE);
 			else if (isVideoMode()) fb.setVisibility(floatingButton.getVisibility());
 			else if (isWebBrowserActive()) fb.setVisibility(VISIBLE);
 			// A video playing while browsing Favorites/Playlists: its fullscreen button is one tap
 			// back to it.
 			else if (listWithVideo &&
-					(getPrefs().getIntPref(actions[i]) == Action.FULLSCREEN_TOGGLE.ordinal())) {
+					(getPrefs().getIntPref(MainActivityPrefs.fab(this, actions[i])) ==
+							Action.FULLSCREEN_TOGGLE.ordinal())) {
 				fb.setVisibility(VISIBLE);
 			} else {
 				fb.setVisibility(GONE);

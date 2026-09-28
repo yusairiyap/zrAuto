@@ -1,18 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
-
+<!-- A Settings row: a flat card, rounded like the app's floating nav bar pill and the Data Usage
+     tab's cards, see PreferenceViewAdapter. -->
 <ripple xmlns:android="http://schemas.android.com/apk/res/android"
     android:color="?attr/rippleColor">
     <item android:id="@android:id/mask">
         <shape android:shape="rectangle">
             <solid android:color="?attr/rippleColor" />
-            <corners android:radius="12dp" />
+            <corners android:radius="22dp" />
         </shape>
     </item>
 
     <item android:id="@android:id/background">
         <shape>
             <solid android:color="?attr/colorSurfaceVariant" />
-            <corners android:radius="12dp" />
+            <corners android:radius="22dp" />
         </shape>
     </item>
 </ripple>

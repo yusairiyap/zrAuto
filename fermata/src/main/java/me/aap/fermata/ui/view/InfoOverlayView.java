@@ -29,6 +29,7 @@ import me.aap.fermata.addon.data.DataUsageTracker;
 import me.aap.fermata.addon.fuel.FuelLogStore;
 import me.aap.fermata.addon.fuel.FuelTracker;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.fragment.MusicPlayerFragment;
 
 /**
  * Fullscreen video playback overlay showing any combination of the clock, battery percentage and
@@ -100,7 +101,9 @@ public class InfoOverlayView extends LinearLayout {
 		super(context);
 		setOrientation(HORIZONTAL);
 		setGravity(Gravity.CENTER_VERTICAL);
-		setBackgroundResource(R.drawable.clock_bg);
+		// A darker shade on a light theme: the white text is otherwise hard to read over light tabs.
+		setBackgroundResource(MusicPlayerFragment.isLightTheme(context) ? R.drawable.clock_bg_light :
+				R.drawable.clock_bg);
 		clock = (TextClock) LayoutInflater.from(context).inflate(R.layout.clock_view, this, false);
 		clockIcon = newIconView(context);
 		clockIcon.setImageResource(R.drawable.clock);

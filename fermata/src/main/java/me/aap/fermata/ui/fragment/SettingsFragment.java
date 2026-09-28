@@ -361,7 +361,8 @@ public class SettingsFragment extends MainActivityFragment
 				o.title = R.string.secondary_fab_prefs;
 				o.icon = R.drawable.fab;
 			});
-			addSecondaryFabPrefs(a, fabSettingsSet);
+			// The car's own floating buttons, independent of the phone's.
+			addSecondaryFabPrefs(a, fabSettingsSet, true);
 			// Right below the floating buttons: addAAInterface() adds its items straight in here.
 			addInfoOverlayPrefs(a, sub1);
 			addNavTabsPrefs(a, sub1);
@@ -370,17 +371,28 @@ public class SettingsFragment extends MainActivityFragment
 		} else {
 			// Android Auto's own interface settings first: on a phone they're the ones most easily
 			// missed further down.
+			PreferenceSet aaFabSet = null;
 			if (BuildConfig.AUTO) {
-				addAAInterface(a, sub1.subSet(o -> {
+				PreferenceSet aaSet = sub1.subSet(o -> {
 					o.title = R.string.interface_prefs_aa;
 					o.icon = R.drawable.tv;
-				}));
+				});
+				// Android Auto's floating buttons are set up separately from the phone's.
+				aaFabSet = aaSet.subSet(o -> {
+					o.title = R.string.secondary_fab_prefs;
+					o.icon = R.drawable.fab;
+				});
+				addSecondaryFabPrefs(a, aaFabSet, true);
+				addAAInterface(a, aaSet);
 			}
 			fabSettingsSet = sub1.subSet(o -> {
 				o.title = R.string.secondary_fab_prefs;
 				o.icon = R.drawable.fab;
 			});
-			addSecondaryFabPrefs(a, fabSettingsSet);
+			addSecondaryFabPrefs(a, fabSettingsSet, false);
+			// The phone UI mirrored onto the car screen uses the car's buttons: its floating buttons'
+			// "settings" item opens those.
+			if ((aaFabSet != null) && a.isCarActivity()) fabSettingsSet = aaFabSet;
 			addInfoOverlayPrefs(a, sub1);
 			addNavTabsPrefs(a, sub1);
 			addUpNextPrefs(a, sub1);
@@ -1271,7 +1283,8 @@ public class SettingsFragment extends MainActivityFragment
 		});
 	}
 
-	private void addSecondaryFabPrefs(MainActivityDelegate a, PreferenceSet ps) {
+	/** The floating buttons' settings: the car screen's own set if {@code aa}, else the phone's. */
+	private void addSecondaryFabPrefs(MainActivityDelegate a, PreferenceSet ps, boolean aa) {
 		var fabActions = ActionFabMediator.OFFERED_ACTIONS;
 		var fabActionNames = new int[fabActions.size()];
 		var fabActionOrdinals = new int[fabActions.size()];
@@ -1280,30 +1293,43 @@ public class SettingsFragment extends MainActivityFragment
 			fabActionOrdinals[i] = fabActions.get(i).ordinal();
 		}
 
-		addFabPrefs(a, ps, MainActivityPrefs.FAB2_ENABLED, R.string.fab2_enable,
-				MainActivityPrefs.FAB2_ACTION, R.string.fab2_action, fabActionNames, fabActionOrdinals);
-		addFabPrefs(a, ps, MainActivityPrefs.FAB3_ENABLED, R.string.fab3_enable,
-				MainActivityPrefs.FAB3_ACTION, R.string.fab3_action, fabActionNames, fabActionOrdinals);
-		addFabPrefs(a, ps, MainActivityPrefs.FAB4_ENABLED, R.string.fab4_enable,
-				MainActivityPrefs.FAB4_ACTION, R.string.fab4_action, fabActionNames, fabActionOrdinals);
-		addFabPrefs(a, ps, MainActivityPrefs.FAB5_ENABLED, R.string.fab5_enable,
-				MainActivityPrefs.FAB5_ACTION, R.string.fab4_action, fabActionNames, fabActionOrdinals);
-		addFabPrefs(a, ps, MainActivityPrefs.FAB6_ENABLED, R.string.fab6_enable,
-				MainActivityPrefs.FAB6_ACTION, R.string.fab4_action, fabActionNames, fabActionOrdinals);
+		addFabPrefs(a, ps, fabPref(aa, MainActivityPrefs.FAB2_ENABLED), R.string.fab2_enable,
+				fabPref(aa, MainActivityPrefs.FAB2_ACTION), R.string.fab2_action,
+				fabActionNames, fabActionOrdinals);
+		addFabPrefs(a, ps, fabPref(aa, MainActivityPrefs.FAB3_ENABLED), R.string.fab3_enable,
+				fabPref(aa, MainActivityPrefs.FAB3_ACTION), R.string.fab3_action,
+				fabActionNames, fabActionOrdinals);
+		addFabPrefs(a, ps, fabPref(aa, MainActivityPrefs.FAB4_ENABLED), R.string.fab4_enable,
+				fabPref(aa, MainActivityPrefs.FAB4_ACTION), R.string.fab4_action,
+				fabActionNames, fabActionOrdinals);
+		addFabPrefs(a, ps, fabPref(aa, MainActivityPrefs.FAB5_ENABLED), R.string.fab5_enable,
+				fabPref(aa, MainActivityPrefs.FAB5_ACTION), R.string.fab4_action,
+				fabActionNames, fabActionOrdinals);
+		addFabPrefs(a, ps, fabPref(aa, MainActivityPrefs.FAB6_ENABLED), R.string.fab6_enable,
+				fabPref(aa, MainActivityPrefs.FAB6_ACTION), R.string.fab4_action,
+				fabActionNames, fabActionOrdinals);
 		ps.addBooleanPref(o -> {
 			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.FAB_DRAGGABLE;
+			o.pref = fabPref(aa, MainActivityPrefs.FAB_DRAGGABLE);
 			o.title = R.string.fab_draggable;
 			o.subtitle = R.string.fab_draggable_sub;
 		});
 		ps.addFloatPref(o -> {
 			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.FAB_SIZE;
+			o.pref = fabPref(aa, MainActivityPrefs.FAB_SIZE);
 			o.title = R.string.fab_size;
 			o.scale = 0.05f;
 			o.seekMin = 10;
 			o.seekMax = 40;
 		});
+	}
+
+	/** The Android Auto twin of a phone floating button pref if {@code aa}, else the pref itself. */
+	@SuppressWarnings("unchecked")
+	private static <S> Pref<S> fabPref(boolean aa, Pref<S> p) {
+		if (!aa) return p;
+		Pref<?> twin = MainActivityPrefs.fabAA(p);
+		return (twin == null) ? p : (Pref<S>) twin;
 	}
 
 	/** One extra floating button's switch, and its tap action (shown while it's on). */
