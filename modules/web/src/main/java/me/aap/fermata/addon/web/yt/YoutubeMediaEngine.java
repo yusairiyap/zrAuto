@@ -440,7 +440,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		if (!jsTitle.isEmpty()) {
 			currentVideoTitle = jsTitle;
 			if (actualId != null) addon.cacheVideoTitle(actualId, jsTitle);
-			web.showTitleInAddressBar(jsTitle);
+			web.showTitleInAddressBar(MusicTrackItem.titleWithoutArtist(jsTitle, currentVideoAuthor));
 		} else if (!Objects.equals(actualId, currentVideoId)) {
 			// A new video, but the player couldn't tell us its title (mid-navigation, or a page shape
 			// getVideoData() isn't available on) -- drop the previous video's title rather than
@@ -1449,7 +1449,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		@NonNull
 		@Override
 		public String getName() {
-			return (title != null) ? title : super.getName();
+			return (title != null) ? MusicTrackItem.titleWithoutArtist(title, author) : super.getName();
 		}
 
 		@NonNull
@@ -1487,7 +1487,9 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				// Kept for if this video is added to Favorites/a Playlist while (or after) playing.
 				if (videoId != null) web.getAddon().setLiveVideoInfo(videoId, author, dur);
 				MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
-				b.putString(MediaMetadataCompat.METADATA_KEY_TITLE, t);
+				// Without the channel in front: it's the artist line right under it.
+				b.putString(MediaMetadataCompat.METADATA_KEY_TITLE,
+						MusicTrackItem.titleWithoutArtist(t, author));
 				if (author != null) b.putString(MediaMetadataCompat.METADATA_KEY_ARTIST, author);
 				b.putLong(MediaMetadata.METADATA_KEY_DURATION, dur);
 				if ((videoId != null) && !videoId.isEmpty()) {

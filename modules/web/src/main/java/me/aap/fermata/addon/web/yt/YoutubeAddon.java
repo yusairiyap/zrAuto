@@ -433,6 +433,28 @@ public class YoutubeAddon extends WebBrowserAddon
 		return videoId;
 	}
 
+	/**
+	 * The title to show for {@code videoId}: without its channel's name in front, when the channel
+	 * is known (see MusicTrackItem#titleWithoutArtist()); the id itself if even the title isn't.
+	 */
+	@NonNull
+	String getDisplayTitle(String videoId) {
+		String title = getVideoTitle(videoId);
+		return title.equals(videoId) ? title : titleWithoutChannel(videoId, title);
+	}
+
+	/** {@code title} of {@code videoId} without its channel's name in front, if the channel is known. */
+	@Nullable
+	String titleWithoutChannel(String videoId, @Nullable String title) {
+		VideoInfo info = liveInfo.get(videoId);
+		String channel = (info != null) ? info.artist : null;
+		if (channel == null) {
+			info = getVideoInfo(videoId);
+			if (info != null) channel = info.artist;
+		}
+		return MusicTrackItem.titleWithoutArtist(title, channel);
+	}
+
 	void cacheVideoTitle(String videoId, String title) {
 		cacheVideoTitles(Collections.singletonMap(videoId, title));
 	}

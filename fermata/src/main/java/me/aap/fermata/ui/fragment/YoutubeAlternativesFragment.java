@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
 import me.aap.fermata.addon.AddonManager;
@@ -361,7 +362,8 @@ public class YoutubeAlternativesFragment extends MainActivityFragment {
 		private void bindVideo(View v, Video video) {
 			TextView title = v.findViewById(R.id.si_title);
 			TextView detail = v.findViewById(R.id.si_detail);
-			title.setText(video.title);
+			// The channel shows right under it: not in front of the title too.
+			title.setText(MusicTrackItem.titleWithoutArtist(video.title, video.channel));
 			String d = (video.channel != null) ? video.channel : "";
 			if (video.durationText != null) d = d.isEmpty() ? video.durationText :
 					(d + " • " + video.durationText);

@@ -206,7 +206,11 @@ public class YoutubeWebView extends FermataWebView {
 	 * single-page-app navigation between videos.
 	 */
 	void refreshAddressBarTitle() {
-		getVideoTitle().onSuccess(this::showTitleInAddressBar);
+		getVideoTitle().onSuccess(t -> {
+			// Without the channel's name in front, when it's known -- see YoutubeAddon.
+			String id = YoutubeVideoItem.extractVideoId(getUrl());
+			showTitleInAddressBar((id != null) ? getAddon().titleWithoutChannel(id, t) : t);
+		});
 	}
 
 	/**

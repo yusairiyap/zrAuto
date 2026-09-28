@@ -1146,7 +1146,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 			MainActivityDelegate a = MainActivityDelegate.get(requireContext());
 			if ((a.getLib() instanceof DefaultMediaLib lib) && MusicPlayer.queueAfterCurrent(a,
 					new YoutubeVideoItem(videoId, addon.getRootItem(lib)), first)) {
-				String name = ((title != null) && !title.isEmpty()) ? title : addon.getVideoTitle(videoId);
+				String name = ((title != null) && !title.isEmpty()) ? title : addon.getDisplayTitle(videoId);
 				UiUtils.showToast(requireContext(), first ? me.aap.fermata.R.string.youtube_added_play_next :
 						me.aap.fermata.R.string.youtube_added_up_next, name);
 				return;
@@ -1158,7 +1158,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 					addon.getUpNextMax());
 			return;
 		}
-		String name = ((title != null) && !title.isEmpty()) ? title : addon.getVideoTitle(videoId);
+		String name = ((title != null) && !title.isEmpty()) ? title : addon.getDisplayTitle(videoId);
 		UiUtils.showToast(requireContext(), first ? me.aap.fermata.R.string.youtube_added_play_next :
 				me.aap.fermata.R.string.youtube_added_up_next, name);
 	}

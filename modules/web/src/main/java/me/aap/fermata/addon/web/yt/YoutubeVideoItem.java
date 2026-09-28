@@ -194,7 +194,7 @@ public class YoutubeVideoItem extends ExtPlayable implements MediaLib.Externally
 
 	private String cachedTitle() {
 		YoutubeAddon addon = AddonManager.get().getAddon(YoutubeAddon.class);
-		return (addon != null) ? addon.getVideoTitle(videoId) : videoId;
+		return (addon != null) ? addon.getDisplayTitle(videoId) : videoId;
 	}
 
 	@NonNull
