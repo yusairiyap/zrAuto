@@ -236,7 +236,7 @@ public class YoutubeWebView extends FermataWebView {
 				"{background-color:__BG__ !important}").replace("__BG__", hex);
 		evaluateJavascript("""
 				(function() {
-				  var CSS = '__CSS__', APP_DARK = __DARK__;
+				  var CSS = '__CSS__', APP_DARK = __DARK__, DARKENED = __DARKENED__;
 				  function lum(c) {
 				    var m = (c || '').match(/[0-9.]+/g);
 				    if (!m || (m.length < 3) || ((m.length > 3) && (+m[3] === 0))) return -1;
@@ -256,6 +256,8 @@ public class YoutubeWebView extends FermataWebView {
 				    var l = lum(getComputedStyle(app).backgroundColor);
 				    if (l < 0) l = lum(getComputedStyle(document.body).backgroundColor);
 				    if (l < 0) l = document.documentElement.hasAttribute('dark') ? 0 : 1;
+				    // The WebView darkens the page itself: drawn dark whatever its CSS says.
+				    if (DARKENED) l = 0;
 				    s.disabled = APP_DARK ? (l >= 0.5) : (l < 0.5);
 				  }
 				  apply();
@@ -264,7 +266,8 @@ public class YoutubeWebView extends FermataWebView {
 				    window.__zrThemeObs.observe(document.documentElement,
 				        {attributes: true, attributeFilter: ['dark', 'darker-dark-theme']});
 				  }
-				})()""".replace("__CSS__", css).replace("__DARK__", appDark ? "true" : "false"),
+				})()""".replace("__CSS__", css).replace("__DARK__", appDark ? "true" : "false")
+						.replace("__DARKENED__", isPageDarkened() ? "true" : "false"),
 				null);
 	}
 

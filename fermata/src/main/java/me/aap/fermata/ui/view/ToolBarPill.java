@@ -47,10 +47,23 @@ public final class ToolBarPill {
 				}
 				outline.setRoundRect(Math.round(r.left), Math.round(r.top), Math.round(r.right),
 						Math.round(r.bottom), radius(r, maxRadius));
-				// A soft shadow, like the one FloatingBarsView paints under the nav bar's pill.
-				outline.setAlpha(0.35f);
+				// A soft shadow, like the one FloatingBarsView paints under the nav bar's pill -- none
+				// under a see-through pill (see setTranslucent()), where it would show as a smudge.
+				boolean clear = (view.getBackground() instanceof PillDrawable d) && d.translucent;
+				outline.setAlpha(clear ? 0f : 0.35f);
 			}
 		});
+		tb.invalidateOutline();
+	}
+
+	/**
+	 * A see-through pill (or back to the usual, mostly opaque one): over the Music tab's blurred
+	 * cover, which then shows through it like frosted glass.
+	 */
+	public static void setTranslucent(View tb, boolean translucent) {
+		if (!(tb.getBackground() instanceof PillDrawable d) || (d.translucent == translucent)) return;
+		d.translucent = translucent;
+		d.invalidateSelf();
 		tb.invalidateOutline();
 	}
 
@@ -73,6 +86,7 @@ public final class ToolBarPill {
 		private final int inner;
 		private final float maxRadius;
 		private int alpha = 255;
+		boolean translucent;
 
 		PillDrawable(View view, int color, int inner, float maxRadius) {
 			this.view = view;
@@ -88,7 +102,8 @@ public final class ToolBarPill {
 			pillRect(view, inner, b.left, b.top, b.right, b.bottom, rect);
 			if (rect.isEmpty()) return;
 			paint.setColor(color);
-			paint.setAlpha(Math.round(Color.alpha(color) * (alpha / 255f)));
+			int a = translucent ? 0x59 : Color.alpha(color);
+			paint.setAlpha(Math.round(a * (alpha / 255f)));
 			float radius = radius(rect, maxRadius);
 			canvas.drawRoundRect(rect, radius, radius, paint);
 		}

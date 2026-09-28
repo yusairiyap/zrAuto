@@ -42,6 +42,7 @@ public class InfoOverlayView extends LinearLayout {
 	private static final IntentFilter BATTERY_FILTER =
 			new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
 	private static final float BASE_TEXT_SIZE_SP = 24f;
+	private static final float SIZE_SCALE = 0.65f;
 	private static final int BASE_PAD_H_DP = 10;
 	private static final int BASE_PAD_V_DP = 6;
 	private static final int BASE_DIVIDER_MARGIN_DP = 4;
@@ -276,6 +277,8 @@ public class InfoOverlayView extends LinearLayout {
 	}
 
 	public void setSize(float size) {
+		// The size setting's 1.0 is this much of the original base size, which read as too big.
+		size *= SIZE_SCALE;
 		if (this.size == size) return;
 		this.size = size;
 		clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, BASE_TEXT_SIZE_SP * size);

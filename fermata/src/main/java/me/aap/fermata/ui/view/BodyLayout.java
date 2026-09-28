@@ -86,6 +86,7 @@ public class BodyLayout extends SplitLayout
 	 * nothing else invalidates this layout then. Checked before every frame, cheaply.
 	 */
 	private final ViewTreeObserver.OnPreDrawListener topFadeSync = () -> {
+		syncRefreshOffset();
 		float end = -1f;
 		float alpha = 0f;
 		if (computeTopFade()) {
@@ -99,6 +100,33 @@ public class BodyLayout extends SplitLayout
 		}
 		return true;
 	};
+
+	private final int[] refreshLoc1 = new int[2];
+	private final int[] refreshLoc2 = new int[2];
+	private int refreshOffsetFor = Integer.MIN_VALUE;
+
+	/**
+	 * The pull-to-refresh spinner comes down from under the floating tool bar pill, not from the
+	 * top of the screen behind it. Only re-set once the tool bar is settled (not mid show/hide).
+	 */
+	private void syncRefreshOffset() {
+		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
+		SwipeRefreshLayout srl = getSwipeRefresh();
+		if ((a == null) || (srl == null) || srl.isRefreshing()) return;
+		View tb = a.getToolBar();
+		if ((tb == null) || (tb.getVisibility() != VISIBLE) || (tb.getHeight() == 0) ||
+				(tb.getAlpha() < 1f) || (tb.getTranslationY() != 0f) || !srl.isAttachedToWindow()) {
+			return;
+		}
+		srl.getLocationOnScreen(refreshLoc1);
+		tb.getLocationOnScreen(refreshLoc2);
+		int bottom = refreshLoc2[1] + tb.getHeight() - refreshLoc1[1];
+		if (bottom == refreshOffsetFor) return;
+		refreshOffsetFor = bottom;
+		int circle = srl.getProgressCircleDiameter();
+		srl.setProgressViewOffset(false, bottom - circle,
+				bottom + Math.round(UiUtils.toPx(getContext(), 24)));
+	}
 
 	@Override
 	protected void onAttachedToWindow() {

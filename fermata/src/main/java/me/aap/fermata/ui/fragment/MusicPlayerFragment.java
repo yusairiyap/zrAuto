@@ -78,6 +78,7 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.view.InfoOverlayView;
+import me.aap.fermata.ui.view.ToolBarPill;
 import me.aap.fermata.ui.view.LoadingDimView;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
@@ -326,6 +327,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		@Override
 		public void enable(ToolBarView tb, ActivityFragment f) {
 			ToolBarView.Mediator.BackTitle.super.enable(tb, f);
+			// The blurred cover shows through the tool bar's pill here, frosted-glass style.
+			ToolBarPill.setTranslucent(tb, true);
 			if (!(f instanceof MusicPlayerFragment mf) || (mf.getView() == null) || !mf.isLandscape()) {
 				return;
 			}
@@ -338,6 +341,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			o.setLayoutParams(lp);
 			mf.infoOverlay = o;
 			mf.applyInfoOverlayPrefs();
+		}
+
+		@Override
+		public void disable(ToolBarView tb) {
+			ToolBarPill.setTranslucent(tb, false);
+			ToolBarView.Mediator.BackTitle.super.disable(tb);
 		}
 	}
 

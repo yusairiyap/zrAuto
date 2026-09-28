@@ -1263,6 +1263,11 @@ public class MainActivityDelegate extends ActivityDelegate
 		ta.recycle();
 		if ((bg >>> 24) == 0) return;
 		getWindow().setStatusBarColor(bg | 0xFF000000);
+		// From Android 15 the window is drawn edge to edge: the status bar shows through to
+		// main_activity (padded clear of it, see init()), whose own background -- colorPrimary, the
+		// nav bar's colour -- was what showed there instead of the colour set just above.
+		View root = findViewById(R.id.main_activity);
+		if (root != null) root.setBackgroundColor(bg | 0xFF000000);
 	}
 
 	private static void setHorizontalMargins(ConstraintLayout.LayoutParams lp, int start, int end) {
@@ -1331,17 +1336,26 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	/**
-	 * The tool bar pill as thick as the nav bar's (its width on a side, its height at the bottom),
-	 * unless its own size setting makes it thicker still, with its buttons padded down to draw
-	 * their icons the same size as the nav bar's.
+	 * Next to a side nav bar (tablet, landscape, the car): the tool bar pill as thick as the nav
+	 * bar's, unless its own size setting makes it thicker still, with its buttons padded down to
+	 * draw their icons the same size as the nav bar's. With a bottom nav bar, a compact pill.
 	 */
 	private void syncToolBarHeight(ToolBarView tb, NavBarView nb) {
-		if ((nb.getVisibility() != VISIBLE) || !nb.isLaidOut()) return;
-		int thick = nb.isBottom() ? nb.getHeight() : nb.getWidth();
-		if (thick <= 0) return;
-		int icon = navIconSize(nb);
 		// The tool bar buttons' own padding, see ToolBarView.Mediator#setButtonPadding.
 		int btnPad = toIntPx(getContext(), Math.round(10 * getToolBarSize()));
+		if (nb.isBottom()) {
+			// A phone in portrait: the two bars don't sit side by side, and a tool bar as tall as the
+			// bottom nav bar (with its labels) looks oversized. A compact pill with standard 24dp icons.
+			int scale = Math.round(getToolBarSize() * 100);
+			int h = toIntPx(getContext(), 56 * scale / 100);
+			int icon = toIntPx(getContext(), 24 * scale / 100);
+			tb.setMinBarHeight(h, Math.max(0, (h - (icon + 2 * btnPad)) / 2));
+			return;
+		}
+		if ((nb.getVisibility() != VISIBLE) || !nb.isLaidOut()) return;
+		int thick = nb.getWidth();
+		if (thick <= 0) return;
+		int icon = navIconSize(nb);
 		int vPad = (icon > 0) ? Math.max(0, (thick - (icon + 2 * btnPad)) / 2) : 0;
 		tb.setMinBarHeight(thick, vPad);
 	}
