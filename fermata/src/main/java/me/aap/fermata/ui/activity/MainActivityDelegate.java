@@ -96,6 +96,7 @@ import android.view.animation.Interpolator;
 import android.view.ViewPropertyAnimator;
 import android.view.ViewTreeObserver;
 import android.widget.EditText;
+import android.widget.ImageView;
 
 import androidx.annotation.LayoutRes;
 import androidx.annotation.NonNull;
@@ -204,6 +205,7 @@ import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.view.DialogBuilder;
 import me.aap.utils.ui.view.FloatingButton;
 import me.aap.utils.ui.view.NavBarView;
+import me.aap.utils.ui.view.NavButtonView;
 import me.aap.utils.ui.view.ToolBarView;
 
 /**
@@ -1137,6 +1139,8 @@ public class MainActivityDelegate extends ActivityDelegate
 		int[] nbc = NavBarView.resolveStyleColors(getContext());
 		ToolBarPill.apply(tbv, (nbc[1] & 0x00FFFFFF) | 0xF2000000,
 				toIntPx(getContext(), TOOL_BAR_INNER_PAD));
+		// Its buttons in the nav bar's icon colour, so the two bars' icons match.
+		if ((nbc[0] >>> 24) != 0) tbv.setIconTint(ColorStateList.valueOf(nbc[0]));
 		enableFloatingBars();
 	}
 
@@ -1244,6 +1248,23 @@ public class MainActivityDelegate extends ActivityDelegate
 		syncToolBarInset();
 	}
 
+	/**
+	 * The status bar in the app's own background colour instead of the theme's darker
+	 * colorPrimaryDark, so it blends seamlessly into the screen below it -- the content fades into
+	 * that same colour at the top (see BodyLayout#drawTopFade). Its icons stay light or dark as the
+	 * theme's windowLightStatusBar already sets them. Not on the car screen, whose status bar
+	 * belongs to the car.
+	 */
+	private void matchStatusBarToBackground() {
+		if (isCarActivity()) return;
+		TypedArray ta = getContext().obtainStyledAttributes(
+				new int[]{android.R.attr.colorBackground});
+		int bg = ta.getColor(0, 0);
+		ta.recycle();
+		if ((bg >>> 24) == 0) return;
+		getWindow().setStatusBarColor(bg | 0xFF000000);
+	}
+
 	private static void setHorizontalMargins(ConstraintLayout.LayoutParams lp, int start, int end) {
 		// Every main_activity layout is forced LTR, so start/end and left/right are the same thing.
 		lp.setMarginStart(start);
@@ -1302,10 +1323,40 @@ public class MainActivityDelegate extends ActivityDelegate
 			else right += Math.max(0, tb.getRight() - (nb.getLeft() - gap));
 		}
 
+		syncToolBarHeight(tb, nb);
 		if ((tb.getPaddingLeft() == left) && (tb.getPaddingRight() == right)) return;
 		tb.setPadding(left, tb.getPaddingTop(), right, tb.getPaddingBottom());
 		tb.invalidateOutline();
 		tb.invalidate();
+	}
+
+	/**
+	 * The tool bar pill as thick as the nav bar's (its width on a side, its height at the bottom),
+	 * unless its own size setting makes it thicker still, with its buttons padded down to draw
+	 * their icons the same size as the nav bar's.
+	 */
+	private void syncToolBarHeight(ToolBarView tb, NavBarView nb) {
+		if ((nb.getVisibility() != VISIBLE) || !nb.isLaidOut()) return;
+		int thick = nb.isBottom() ? nb.getHeight() : nb.getWidth();
+		if (thick <= 0) return;
+		int icon = navIconSize(nb);
+		// The tool bar buttons' own padding, see ToolBarView.Mediator#setButtonPadding.
+		int btnPad = toIntPx(getContext(), Math.round(10 * getToolBarSize()));
+		int vPad = (icon > 0) ? Math.max(0, (thick - (icon + 2 * btnPad)) / 2) : 0;
+		tb.setMinBarHeight(thick, vPad);
+	}
+
+	/** How big the nav bar draws its icons (fit into each button, less its padding), 0 if unknown. */
+	private static int navIconSize(NavBarView nb) {
+		int max = 0;
+		for (int i = 0, n = nb.getChildCount(); i < n; i++) {
+			if (!(nb.getChildAt(i) instanceof NavButtonView b)) continue;
+			ImageView img = b.getIcon();
+			int w = img.getWidth() - img.getPaddingLeft() - img.getPaddingRight();
+			int h = img.getHeight() - img.getPaddingTop() - img.getPaddingBottom();
+			max = Math.max(max, Math.min(w, h));
+		}
+		return max;
 	}
 
 	/**
@@ -2397,6 +2448,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	private void init() {
 		ZrAutoActivity a = getAppActivity();
 		a.setContentView(getLayout());
+		matchStatusBarToBackground();
 		toolBar = a.findViewById(R.id.tool_bar);
 		progressBar = a.findViewById(R.id.content_loading_progress);
 		navBar = a.findViewById(R.id.nav_bar);

@@ -330,6 +330,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				return;
 			}
 			InfoOverlayView o = new InfoOverlayView(tb.getContext());
+			// The tool bar's pill is its backdrop already: no shade of its own on top of that.
+			o.setShaded(false);
 			addView(tb, o, R.id.music_toolbar_info);
 			ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) o.getLayoutParams();
 			lp.setMarginEnd(UiUtils.toIntPx(tb.getContext(), 16));

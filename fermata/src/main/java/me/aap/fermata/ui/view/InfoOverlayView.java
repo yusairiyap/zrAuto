@@ -7,6 +7,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.ColorStateList;
+import android.content.res.TypedArray;
 import android.os.BatteryManager;
 import android.text.format.Formatter;
 import android.util.TypedValue;
@@ -96,6 +97,48 @@ public class InfoOverlayView extends LinearLayout {
 	private boolean onlyWhenControlPanelVisible;
 	private boolean controlPanelVisible = true;
 	private float size = 1f;
+	// The items' colour: white on the shade, see setShaded().
+	private int fgColor = ICON_COLOR;
+
+	/**
+	 * With (the default) or without its rounded dark shade behind the items. Without it (e.g. on
+	 * the tool bar's own pill), the items take the theme's text colour instead of white, which the
+	 * shade was there to make readable.
+	 */
+	public void setShaded(boolean shaded) {
+		if (shaded) {
+			setBackgroundResource(MusicPlayerFragment.isLightTheme(getContext()) ?
+					R.drawable.clock_bg_light : R.drawable.clock_bg);
+			setForegroundColor(ICON_COLOR);
+		} else {
+			setBackground(null);
+			TypedArray ta = getContext().obtainStyledAttributes(
+					new int[]{android.R.attr.textColorPrimary});
+			int c = ta.getColor(0, ICON_COLOR);
+			ta.recycle();
+			setForegroundColor(c);
+		}
+	}
+
+	private void setForegroundColor(int color) {
+		fgColor = color;
+		for (LinearLayout row : new LinearLayout[]{clockRow, batteryRow, tempRow, distanceRow,
+				dataUsageRow, dataRemainingRow}) {
+			for (int i = 0, n = row.getChildCount(); i < n; i++) {
+				View v = row.getChildAt(i);
+				if (v instanceof TextView t) t.setTextColor(color);
+				else if (v instanceof ImageView img) img.setImageTintList(ColorStateList.valueOf(color));
+			}
+		}
+		for (int i = 0, n = getChildCount(); i < n; i++) {
+			View v = getChildAt(i);
+			if (!(v instanceof LinearLayout)) v.setBackgroundColor(dividerColor());
+		}
+	}
+
+	private int dividerColor() {
+		return (fgColor & 0x00FFFFFF) | 0x4D000000;
+	}
 
 	public InfoOverlayView(Context context) {
 		super(context);
@@ -160,7 +203,7 @@ public class InfoOverlayView extends LinearLayout {
 		LayoutParams lp = new LayoutParams(toIntPx(getContext(), 1), LayoutParams.MATCH_PARENT);
 		lp.setMargins(m, 0, m, 0);
 		v.setLayoutParams(lp);
-		v.setBackgroundColor(0x4DFFFFFF);
+		v.setBackgroundColor(dividerColor());
 		return v;
 	}
 

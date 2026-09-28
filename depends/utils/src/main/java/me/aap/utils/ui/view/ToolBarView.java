@@ -16,8 +16,8 @@ import static me.aap.utils.ui.UiUtils.toIntPx;
 import static me.aap.utils.ui.UiUtils.toPx;
 import static me.aap.utils.ui.fragment.ViewFragmentMediator.attachMediator;
 
-import android.animation.LayoutTransition;
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.content.res.TypedArray;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
@@ -85,39 +85,15 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 		setBackgroundColor(ta.getColor(R.styleable.ToolBarView_android_colorBackground, Color.TRANSPARENT));
 		ta.recycle();
 
-		// Buttons and fields coming and going (a filter opening, a tab showing or hiding a button)
-		// fade in and out, the others sliding over to make or take up the room.
-		LayoutTransition lt = new LayoutTransition();
-		lt.setDuration(ANIM_DURATION);
-		lt.setStartDelay(LayoutTransition.APPEARING, ANIM_DURATION / 2);
-		lt.setStartDelay(LayoutTransition.DISAPPEARING, 0);
-		lt.setStartDelay(LayoutTransition.CHANGE_APPEARING, 0);
-		lt.setStartDelay(LayoutTransition.CHANGE_DISAPPEARING, ANIM_DURATION / 2);
-		setLayoutTransition(lt);
-
 		ActivityDelegate a = getActivity();
 		a.addBroadcastListener(this, Mediator.DEFAULT_EVENT_MASK);
 		setMediator(a.getActiveFragment());
 	}
 
+	// No LayoutTransition for buttons coming and going: mediators animate their own changes where
+	// they want to (e.g. YouTube's search field, with TransitionManager), and a second, generic
+	// animation on top of those ran twice and could leave the bar unresponsive mid-way.
 	private static final long ANIM_DURATION = 180L;
-	private static final int[] TRANSITION_TYPES = {LayoutTransition.APPEARING,
-			LayoutTransition.DISAPPEARING, LayoutTransition.CHANGE_APPEARING,
-			LayoutTransition.CHANGE_DISAPPEARING};
-
-	/**
-	 * Pauses (or resumes) the add/remove animations, for changes that shouldn't animate one view at
-	 * a time: a whole new set of views (see setMediator) or the overflow re-shuffle while measuring.
-	 * Not by dropping the LayoutTransition, which would cut short any animation still running.
-	 */
-	private void suspendTransitions(boolean suspend) {
-		LayoutTransition lt = getLayoutTransition();
-		if (lt == null) return;
-		for (int t : TRANSITION_TYPES) {
-			if (suspend) lt.disableTransitionType(t);
-			else lt.enableTransitionType(t);
-		}
-	}
 
 	/** A new tab's title and buttons fade in, rising a little into place. */
 	private void animateContentIn() {
@@ -135,13 +111,63 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 		}
 	}
 
+	// The height the owner wants at least (e.g. the nav bar's thickness), 0 for none, and the
+	// vertical padding that keeps the buttons their own size inside it -- see setMinBarHeight().
+	private int minBarHeight;
+	private float sizeScale = 1F;
+	@Nullable
+	private ColorStateList iconTint;
+
+	/**
+	 * Makes the bar at least {@code height} tall (still taller if its own size setting says so),
+	 * padded by {@code vPad} at the top and bottom so the buttons keep the size the padding leaves
+	 * them rather than growing with the bar.
+	 */
+	public void setMinBarHeight(int height, int vPad) {
+		if ((height == minBarHeight) && (getPaddingTop() == vPad) && (getPaddingBottom() == vPad)) {
+			return;
+		}
+		minBarHeight = height;
+		setPadding(getPaddingLeft(), vPad, getPaddingRight(), vPad);
+		applyHeight((int) (size * sizeScale));
+	}
+
+	private void applyHeight(int own) {
+		ViewGroup.LayoutParams lp = getLayoutParams();
+		if (lp == null) return;
+		int h = Math.max(own, minBarHeight);
+		// Taller than the minimum: the padding would only squeeze the buttons.
+		if ((h > minBarHeight) && ((getPaddingTop() != 0) || (getPaddingBottom() != 0))) {
+			setPadding(getPaddingLeft(), 0, getPaddingRight(), 0);
+		}
+		if (lp.height == h) return;
+		lp.height = h;
+		setLayoutParams(lp);
+	}
+
+	/** The buttons' icon colour (e.g. the nav bar's, for the two to match), or null for the style's. */
+	public void setIconTint(@Nullable ColorStateList tint) {
+		iconTint = tint;
+		if (tint == null) return;
+		for (int i = 0, n = getChildCount(); i < n; i++) applyIconTint(getChildAt(i));
+	}
+
+	private void applyIconTint(View v) {
+		if ((iconTint != null) && (v instanceof ImageButton b)) b.setImageTintList(iconTint);
+	}
+
+	@Override
+	public void onViewAdded(View child) {
+		super.onViewAdded(child);
+		applyIconTint(child);
+	}
+
 	public void setSize(float scale) {
 		Context ctx = getContext();
 		float ts = getTextAppearanceSize(ctx, textAppearance) * scale;
 		float ets = getTextAppearanceSize(ctx, editTextAppearance) * scale;
-		ViewGroup.LayoutParams lp = getLayoutParams();
-		lp.height = (int) (size * scale);
-		setLayoutParams(lp);
+		sizeScale = scale;
+		applyHeight((int) (size * scale));
 
 		for (int i = 0, n = getChildCount(); i < n; i++) {
 			View v = getChildAt(i);
@@ -169,14 +195,8 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 	}
 
 	protected boolean setMediator(ActivityFragment f) {
-		suspendTransitions(true);
-		boolean attached;
-		try {
-			attached = attachMediator(this, f, (f == null) ? null : f::getToolBarMediator,
-					this::getMediator, this::setMediator);
-		} finally {
-			suspendTransitions(false);
-		}
+		boolean attached = attachMediator(this, f, (f == null) ? null : f::getToolBarMediator,
+				this::getMediator, this::setMediator);
 		if (!attached || (f == null)) return false;
 		animateContentIn();
 		float scale = f.getActivityDelegate().getToolBarSize();
@@ -188,9 +208,9 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 			// rendering at whatever height a previous fragment's setSize(scale) last left it at until
 			// some unrelated layout pass happens to pick up the mutated value, clipping this title
 			// text into (or letting it visually spill into) the fragment content below it.
-			ViewGroup.LayoutParams lp = getLayoutParams();
-			lp.height = size;
-			setLayoutParams(lp);
+			sizeScale = 1F;
+			applyHeight(size);
+			setLayoutParams(getLayoutParams());
 		}
 		setIconScale(f.getActivityDelegate().getIconSize());
 		return true;
@@ -206,18 +226,14 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 	 */
 	@Override
 	protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-		suspendTransitions(true);
-		try {
-			updateOverflow(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.getSize(heightMeasureSpec));
-		} finally {
-			suspendTransitions(false);
-		}
+		updateOverflow(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.getSize(heightMeasureSpec));
 		super.onMeasure(widthMeasureSpec, heightMeasureSpec);
 	}
 
 	private void updateOverflow(int width, int height) {
 		ViewGroup.LayoutParams tlp = getLayoutParams();
 		int h = ((tlp != null) && (tlp.height > 0)) ? tlp.height : height;
+		h -= getPaddingTop() + getPaddingBottom(); // The buttons' height, and so their width
 		if ((width <= 0) || (h <= 0)) return;
 
 		List<ImageButton> movable = new ArrayList<>();
