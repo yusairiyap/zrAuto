@@ -16,6 +16,7 @@ import static me.aap.utils.ui.UiUtils.toIntPx;
 import static me.aap.utils.ui.UiUtils.toPx;
 import static me.aap.utils.ui.fragment.ViewFragmentMediator.attachMediator;
 
+import android.animation.LayoutTransition;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Color;
@@ -26,6 +27,7 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.DecelerateInterpolator;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.ImageView;
@@ -83,9 +85,54 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 		setBackgroundColor(ta.getColor(R.styleable.ToolBarView_android_colorBackground, Color.TRANSPARENT));
 		ta.recycle();
 
+		// Buttons and fields coming and going (a filter opening, a tab showing or hiding a button)
+		// fade in and out, the others sliding over to make or take up the room.
+		LayoutTransition lt = new LayoutTransition();
+		lt.setDuration(ANIM_DURATION);
+		lt.setStartDelay(LayoutTransition.APPEARING, ANIM_DURATION / 2);
+		lt.setStartDelay(LayoutTransition.DISAPPEARING, 0);
+		lt.setStartDelay(LayoutTransition.CHANGE_APPEARING, 0);
+		lt.setStartDelay(LayoutTransition.CHANGE_DISAPPEARING, ANIM_DURATION / 2);
+		setLayoutTransition(lt);
+
 		ActivityDelegate a = getActivity();
 		a.addBroadcastListener(this, Mediator.DEFAULT_EVENT_MASK);
 		setMediator(a.getActiveFragment());
+	}
+
+	private static final long ANIM_DURATION = 180L;
+	private static final int[] TRANSITION_TYPES = {LayoutTransition.APPEARING,
+			LayoutTransition.DISAPPEARING, LayoutTransition.CHANGE_APPEARING,
+			LayoutTransition.CHANGE_DISAPPEARING};
+
+	/**
+	 * Pauses (or resumes) the add/remove animations, for changes that shouldn't animate one view at
+	 * a time: a whole new set of views (see setMediator) or the overflow re-shuffle while measuring.
+	 * Not by dropping the LayoutTransition, which would cut short any animation still running.
+	 */
+	private void suspendTransitions(boolean suspend) {
+		LayoutTransition lt = getLayoutTransition();
+		if (lt == null) return;
+		for (int t : TRANSITION_TYPES) {
+			if (suspend) lt.disableTransitionType(t);
+			else lt.enableTransitionType(t);
+		}
+	}
+
+	/** A new tab's title and buttons fade in, rising a little into place. */
+	private void animateContentIn() {
+		if (!isLaidOut() || !isAttachedToWindow()) return;
+		float dy = toPx(getContext(), 6);
+		for (int i = 0, n = getChildCount(); i < n; i++) {
+			View v = getChildAt(i);
+			float alpha = v.getAlpha();
+			if (alpha <= 0f) continue;
+			v.animate().cancel();
+			v.setAlpha(0f);
+			v.setTranslationY(dy);
+			v.animate().alpha(alpha).translationY(0f).setDuration(ANIM_DURATION)
+					.setStartDelay(i * 15L).setInterpolator(new DecelerateInterpolator()).start();
+		}
 	}
 
 	public void setSize(float scale) {
@@ -122,9 +169,16 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 	}
 
 	protected boolean setMediator(ActivityFragment f) {
-		boolean attached = attachMediator(this, f, (f == null) ? null : f::getToolBarMediator,
-				this::getMediator, this::setMediator);
+		suspendTransitions(true);
+		boolean attached;
+		try {
+			attached = attachMediator(this, f, (f == null) ? null : f::getToolBarMediator,
+					this::getMediator, this::setMediator);
+		} finally {
+			suspendTransitions(false);
+		}
 		if (!attached || (f == null)) return false;
+		animateContentIn();
 		float scale = f.getActivityDelegate().getToolBarSize();
 		if (scale != 1F) {
 			setSize(scale);
@@ -152,7 +206,12 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 	 */
 	@Override
 	protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-		updateOverflow(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.getSize(heightMeasureSpec));
+		suspendTransitions(true);
+		try {
+			updateOverflow(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.getSize(heightMeasureSpec));
+		} finally {
+			suspendTransitions(false);
+		}
 		super.onMeasure(widthMeasureSpec, heightMeasureSpec);
 	}
 
@@ -476,7 +535,7 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 			lp.dimensionRatio = "1:1";
 			b.setImageResource(icon);
 			b.setScaleType(ImageView.ScaleType.FIT_CENTER);
-			b.setBackgroundResource(R.drawable.focusable_shape_transparent);
+			b.setBackgroundResource(R.drawable.tool_bar_button_bg);
 			if (onClick != null) b.setOnClickListener(onClick);
 			setButtonPadding(b);
 			return b;

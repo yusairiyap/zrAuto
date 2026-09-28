@@ -110,7 +110,6 @@ import androidx.core.widget.ContentLoadingProgressBar;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
 
-import com.google.android.material.color.MaterialColors;
 import com.google.android.material.textview.MaterialTextView;
 
 import java.io.IOException;
@@ -174,6 +173,7 @@ import me.aap.fermata.ui.fragment.YoutubeAlternativesFragment;
 import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.ui.view.FermataNavBarView;
+import me.aap.fermata.ui.view.ToolBarPill;
 import me.aap.fermata.ui.view.QuaternaryFloatingButton;
 import me.aap.fermata.ui.view.QuinaryFloatingButton;
 import me.aap.fermata.ui.view.SenaryFloatingButton;
@@ -219,6 +219,8 @@ public class MainActivityDelegate extends ActivityDelegate
 	private final HandlerExecutor handler = new HandlerExecutor(App.get().getHandler().getLooper());
 	/** How far the floating nav bar/control panel pill sits off the screen edges, in dp. */
 	private static final int FLOATING_BAR_MARGIN = 12;
+	/** tool_bar's padding inside its pill's rounded ends, in dp -- see ToolBarPill. */
+	private static final int TOOL_BAR_INNER_PAD = 6;
 	private static final long BARS_ANIM_MS = 260;
 	// Hiding matches the control panel's own fade (ControlPanelView.FADE_DURATION) and starts
 	// dimming from its very first frame: an ease-in curve here left the bar looking untouched for
@@ -972,7 +974,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			this.barsHidden = barsHidden;
 			ToolBarView tb = getToolBar();
 			if (tb.getMediator() != ToolBarView.Mediator.Invisible.instance) {
-				animateBar(tb, !barsHidden, 0, -tb.getHeight());
+				animateBar(tb, !barsHidden, 0, -tb.getBottom());
 			}
 			animateNavBar(!barsHidden);
 			syncSideNavInset();
@@ -1129,10 +1131,12 @@ public class MainActivityDelegate extends ActivityDelegate
 			}
 		}
 
+		// tool_bar floats as a pill too, in the nav bar pill's colour (see FloatingBarsView), instead
+		// of a full-width scrim across the top.
 		ToolBarView tbv = getToolBar();
-		int c = MaterialColors.getColor(getContext(), androidx.appcompat.R.attr.colorPrimary,
-				Color.BLACK);
-		tbv.setBackground(ControlPanelView.buildScrimGradient(c, false));
+		int[] nbc = NavBarView.resolveStyleColors(getContext());
+		ToolBarPill.apply(tbv, (nbc[1] & 0x00FFFFFF) | 0xF2000000,
+				toIntPx(getContext(), TOOL_BAR_INNER_PAD));
 		enableFloatingBars();
 	}
 
@@ -1175,6 +1179,12 @@ public class MainActivityDelegate extends ActivityDelegate
 
 		int m = toIntPx(getContext(), FLOATING_BAR_MARGIN);
 		int pos = getPrefs().getNavBarPosPref(this);
+
+		// tool_bar floats off the top and the sides like the other bars (with a side nav bar, its
+		// padding keeps its pill clear of that one, see syncToolBarInset()).
+		setHorizontalMargins(tlp, m, m);
+		tlp.topMargin = m;
+		tb.setLayoutParams(tlp);
 
 		if (pos == NavBarView.POSITION_BOTTOM) {
 			setHorizontalMargins(nlp, m, m);
@@ -1226,6 +1236,12 @@ public class MainActivityDelegate extends ActivityDelegate
 		nb.setLayoutParams(nlp);
 		cp.setLayoutParams(clp);
 		nb.matchConstraints();
+
+		// tool_bar's own padding follows the side pill's place as the bars are laid out.
+		View.OnLayoutChangeListener sync = (v, l, t, r, b, ol, ot, or, ob) -> syncToolBarInset();
+		nb.addOnLayoutChangeListener(sync);
+		tb.addOnLayoutChangeListener(sync);
+		syncToolBarInset();
 	}
 
 	private static void setHorizontalMargins(ConstraintLayout.LayoutParams lp, int start, int end) {
@@ -1262,15 +1278,34 @@ public class MainActivityDelegate extends ActivityDelegate
 			else right = Math.max(0, b.getRight() - nb.getLeft() + gap);
 		}
 
-		// tool_bar's buttons and title are always kept clear of the pill, whatever the tab.
-		ToolBarView tb = toolBar;
-		if ((tb != null) && !nb.isBottom()
-				&& ((tb.getPaddingLeft() != left) || (tb.getPaddingRight() != right))) {
-			tb.setPadding(left, tb.getPaddingTop(), right, tb.getPaddingBottom());
-		}
-
+		syncToolBarInset();
 		if ((b.getPaddingLeft() == left) && (b.getPaddingRight() == right)) return;
 		b.setPadding(left, b.getPaddingTop(), right, b.getPaddingBottom());
+	}
+
+	/**
+	 * tool_bar's horizontal padding: a little room inside its pill's rounded ends, plus, with a
+	 * side nav bar showing, whatever keeps its pill (and so its buttons and title) clear of the nav
+	 * bar's own -- the pill is drawn inside that extra padding, see ToolBarPill.
+	 */
+	private void syncToolBarInset() {
+		ToolBarView tb = toolBar;
+		NavBarView nb = navBar;
+		if ((tb == null) || (nb == null)) return;
+		int inner = toIntPx(getContext(), TOOL_BAR_INNER_PAD);
+		int left = inner;
+		int right = inner;
+
+		if (isSideNavShown(nb)) {
+			int gap = toIntPx(getContext(), FLOATING_BAR_MARGIN);
+			if (nb.isLeft()) left += Math.max(0, nb.getRight() + gap - tb.getLeft());
+			else right += Math.max(0, tb.getRight() - (nb.getLeft() - gap));
+		}
+
+		if ((tb.getPaddingLeft() == left) && (tb.getPaddingRight() == right)) return;
+		tb.setPadding(left, tb.getPaddingTop(), right, tb.getPaddingBottom());
+		tb.invalidateOutline();
+		tb.invalidate();
 	}
 
 	/**
@@ -1706,7 +1741,9 @@ public class MainActivityDelegate extends ActivityDelegate
 		int contentBottom = contentTop + content.getHeight();
 
 		toolBar.getLocationOnScreen(insetLoc1);
-		int top = Math.max(0, (insetLoc1[1] + toolBar.getHeight()) - contentTop);
+		// A little room below the floating tool bar pill, so the first item doesn't sit against it.
+		int top = Math.max(0, (insetLoc1[1] + toolBar.getHeight() + toIntPx(getContext(), 6)) -
+				contentTop);
 
 		// Whichever bottom-anchored bar reaches furthest up the screen decides the inset -- usually
 		// control_panel (nav_bar, when it's bottom-positioned, sits below it per the bottom-nav
@@ -1770,7 +1807,8 @@ public class MainActivityDelegate extends ActivityDelegate
 		// (see setBarsHidden()) since a WebView draws its own navigation and toggling an invisible
 		// bar's visibility wouldn't change anything -- but the user still expects "hide bars" to
 		// reclaim that reserved space for the page, so treat it as zero-height ourselves here.
-		int top = isBarsHidden() ? 0 : toolBar.getHeight();
+		// Its bottom edge, not its height: the pill floats off the top of the screen.
+		int top = isBarsHidden() ? 0 : toolBar.getBottom();
 		if (mlp.topMargin == top) return;
 		mlp.topMargin = top;
 		content.setLayoutParams(mlp);

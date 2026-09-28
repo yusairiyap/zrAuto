@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- The Favorites/playlist selection panel: a flat, borderless rounded card, recoloured by
+     SelectionPanel to the floating nav bar pill's colour so the two read as one design. -->
 <com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
@@ -6,10 +8,9 @@
     android:clickable="true"
     android:focusable="false"
     app:cardBackgroundColor="?attr/colorSurfaceVariant"
-    app:cardCornerRadius="24dp"
-    app:cardElevation="12dp"
-    app:strokeColor="?android:attr/textColorSecondary"
-    app:strokeWidth="1dp">
+    app:cardCornerRadius="28dp"
+    app:cardElevation="0dp"
+    app:strokeWidth="0dp">
 
     <LinearLayout
         android:layout_width="match_parent"

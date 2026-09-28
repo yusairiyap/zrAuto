@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A tool bar button: a round tap ripple and focus ring, in keeping with the tool bar's pill
+     shape, instead of focusable_shape_transparent's box. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="?attr/rippleColor">
+    <item android:id="@android:id/mask">
+        <shape android:shape="oval">
+            <solid android:color="?attr/rippleColor" />
+        </shape>
+    </item>
+
+    <item android:id="@android:id/background">
+        <shape android:shape="oval">
+            <solid android:color="@android:color/transparent" />
+            <stroke
+                android:width="?attr/boxStrokeWidth"
+                android:color="@color/focus_color" />
+        </shape>
+    </item>
+</ripple>
