@@ -1133,17 +1133,14 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		YoutubeWebView v = getWebView();
 		if ((addon == null) || (v == null)) return;
 		YoutubeMediaEngine eng = v.getEngine();
+		MainActivityDelegate a = MainActivityDelegate.get(requireContext());
 
-		if ((eng == null) || !eng.isActive()) {
-			playVideoNow(videoId, title);
-			return;
-		}
-
-		// Playing as music (the Music tab): the music queue is what plays next, and what that tab
-		// shows -- queue there rather than in a separate Up next the Music tab knows nothing about.
-		if (MusicPlayer.isYoutubeAudioMode()) {
+		// Playing as music (the Music tab, YouTube or a local file alike): the music queue is what
+		// plays next, and what that tab shows -- queue there rather than in a separate Up next the
+		// Music tab knows nothing about. Checked first: a local track playing leaves this tab's
+		// own player idle, which below would mean "nothing playing, play it now" and cut it off.
+		if (MusicPlayer.isYoutubeAudioMode() || MusicPlayer.isMusicModeActive(a)) {
 			if ((title != null) && !title.isEmpty()) addon.cacheVideoTitle(videoId, title);
-			MainActivityDelegate a = MainActivityDelegate.get(requireContext());
 			if ((a.getLib() instanceof DefaultMediaLib lib) && MusicPlayer.queueAfterCurrent(a,
 					new YoutubeVideoItem(videoId, addon.getRootItem(lib)), first)) {
 				String name = ((title != null) && !title.isEmpty()) ? title : addon.getDisplayTitle(videoId);
@@ -1151,6 +1148,11 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 						me.aap.fermata.R.string.youtube_added_up_next, name);
 				return;
 			}
+		}
+
+		if ((eng == null) || !eng.isActive()) {
+			playVideoNow(videoId, title);
+			return;
 		}
 
 		if (!addon.addUpNext(videoId, title, first)) {

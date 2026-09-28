@@ -303,12 +303,19 @@ public final class MusicPlayer {
 
 	/**
 	 * Puts {@code item} into the music queue -- right after the track playing now ({@code next}) or
-	 * at the end. False when no queue track is playing (nothing for it to follow).
+	 * at the end. False when no queue track is playing (nothing for it to follow) -- unless the
+	 * Music tab is what's playing ({@link #isMusicModeActive}), when YouTube's player may just not
+	 * be reporting its queue track at this very moment: then it goes after where the queue is (its
+	 * saved current track), so it still shows up in the Music tab's queue rather than nowhere.
 	 */
 	public static boolean queueAfterCurrent(MainActivityDelegate a, PlayableItem item, boolean next) {
 		MusicQueue q = getQueue(a);
+		if (q == null) return false;
 		MusicTrackItem cur = getCurrentTrack(a.getMediaSessionCallback());
-		if ((q == null) || (cur == null)) return false;
+		if (cur == null) {
+			if (!isMusicModeActive(a)) return false;
+			cur = q.getSavedCurrent();
+		}
 		List<PlayableItem> l = Collections.singletonList(item);
 		if (next) q.addAfter(cur, l);
 		else q.add(l);
