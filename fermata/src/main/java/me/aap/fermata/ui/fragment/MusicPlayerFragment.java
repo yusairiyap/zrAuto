@@ -1324,7 +1324,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		MainActivityDelegate a = getActivityDelegate();
 		MusicTrackItem idle = idleVideoTrack();
 		if (idle != null) MusicPlayer.watch(a, idle);
-		else if (playingAsMusic()) MusicPlayer.switchToVideo(a);
+		else if (playingAsMusic()) {
+			// Into the video through black, the same fade as leaving fullscreen.
+			a.fadeToBlackForVideo();
+			MusicPlayer.switchToVideo(a);
+		}
 		else if (a.getMediaSessionCallback().getCurrentItem() != null) {
 			MusicPlayer.playCurrentAsMusic(a);
 		}

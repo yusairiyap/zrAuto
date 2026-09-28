@@ -967,6 +967,9 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (videoMode) {
 			this.videoMode = true;
 			cancelVideoExitFade();
+			// Came from the Music tab's Video: lift the black now that the video is taking over.
+			ColorDrawable sf = videoSwitchFade;
+			if (sf != null) getHandler().postDelayed(() -> releaseVideoSwitchFade(sf), 150);
 			setSystemUiVisibility();
 			keepScreenOn(true);
 			cp.enableVideoMode();
@@ -1262,11 +1265,59 @@ public class MainActivityDelegate extends ActivityDelegate
 
 		ColorDrawable d = new ColorDrawable(Color.BLACK);
 		d.setBounds(0, 0, decor.getWidth(), decor.getHeight());
-		videoExitFade = d;
+		decor.getOverlay().add(d);
+		fadeOutOverlay(decor, d, 255, 120);
+	}
+
+	@Nullable
+	private ColorDrawable videoSwitchFade;
+
+	/**
+	 * The other way round from {@link #fadeInFromVideo()}: switching from the Music tab to its
+	 * video (the tab change, the video going fullscreen, bars and system bars going away) fades the
+	 * whole window to black first, and fades back in once the video has taken over (see
+	 * {@link #setVideoMode}) -- the same smooth fade as leaving fullscreen, instead of a series of
+	 * jumps. Lifts by itself after a moment should the video not show up.
+	 */
+	public void fadeToBlackForVideo() {
+		View decor = getWindow().getDecorView();
+		if (!decor.isLaidOut() || (decor.getWidth() == 0)) return;
+		cancelVideoExitFade();
+		ColorDrawable prev = videoSwitchFade;
+		if (prev != null) decor.getOverlay().remove(prev);
+
+		ColorDrawable d = new ColorDrawable(Color.BLACK);
+		d.setBounds(0, 0, decor.getWidth(), decor.getHeight());
+		d.setAlpha(0);
+		videoSwitchFade = d;
 		decor.getOverlay().add(d);
 
-		ValueAnimator anim = ValueAnimator.ofInt(255, 0);
-		anim.setStartDelay(120);
+		ValueAnimator anim = ValueAnimator.ofInt(0, 255);
+		anim.setDuration(200);
+		anim.setInterpolator(new PathInterpolator(0.4f, 0f, 0.2f, 1f));
+		anim.addUpdateListener(v -> {
+			if (videoSwitchFade != d) {
+				v.cancel();
+				return;
+			}
+			d.setAlpha((int) v.getAnimatedValue());
+			decor.invalidate();
+		});
+		anim.start();
+		getHandler().postDelayed(() -> releaseVideoSwitchFade(d), 2000);
+	}
+
+	private void releaseVideoSwitchFade(ColorDrawable d) {
+		if (videoSwitchFade != d) return;
+		videoSwitchFade = null;
+		fadeOutOverlay(getWindow().getDecorView(), d, d.getAlpha(), 0);
+	}
+
+	/** Fades {@code d}, already on the window's overlay, out from {@code from} and removes it. */
+	private void fadeOutOverlay(View decor, ColorDrawable d, int from, long delay) {
+		videoExitFade = d;
+		ValueAnimator anim = ValueAnimator.ofInt(from, 0);
+		anim.setStartDelay(delay);
 		anim.setDuration(320);
 		anim.setInterpolator(new PathInterpolator(0.4f, 0f, 0.2f, 1f));
 		anim.addUpdateListener(v -> {
