@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
+import me.aap.fermata.addon.VideoTitleCache;
 import me.aap.fermata.BuildConfig;
 import me.aap.fermata.R;
 import me.aap.fermata.media.engine.BitmapCache;
@@ -255,6 +256,12 @@ class DefaultPlaylist extends ItemContainer<PlayableItem> implements Playlist, P
 	@Override
 	protected void itemAdded(PlayableItem i) {
 		getLib().getAtvInterface(a -> a.addProgram(i));
+	}
+
+	/** A YouTube entry keeps its channel/duration for the list's subtitles. */
+	@Override
+	protected void beforeItemAdded(PlayableItem i) {
+		VideoTitleCache.beforeItemAdded(i);
 	}
 
 	@Override

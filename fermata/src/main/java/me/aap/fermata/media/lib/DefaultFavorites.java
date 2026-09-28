@@ -11,6 +11,7 @@ import androidx.annotation.NonNull;
 import java.util.Collection;
 import java.util.List;
 
+import me.aap.fermata.addon.VideoTitleCache;
 import me.aap.fermata.R;
 import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
 import me.aap.fermata.media.lib.MediaLib.Favorites;
@@ -125,6 +126,12 @@ class DefaultFavorites extends ItemContainer<PlayableItem> implements Favorites,
 	@Override
 	protected void itemAdded(PlayableItem i) {
 		getLib().getAtvInterface(a -> a.addProgram(i));
+	}
+
+	/** A YouTube entry keeps its channel/duration for the list's subtitles. */
+	@Override
+	protected void beforeItemAdded(PlayableItem i) {
+		VideoTitleCache.beforeItemAdded(i);
 	}
 
 	@Override

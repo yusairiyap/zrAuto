@@ -57,6 +57,9 @@ public final class SpotifyImportModel {
 		/** Spotify's album art for the track, if known; shown until a YouTube video is matched. */
 		@Nullable
 		public String imageUrl;
+		/** The album's name, if known; stored with the imported entry. */
+		@Nullable
+		public String album;
 		public boolean selected = true;
 		public int matchState = MATCH_NONE;
 		@Nullable

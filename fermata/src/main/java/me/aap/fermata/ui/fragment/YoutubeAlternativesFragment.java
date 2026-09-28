@@ -36,6 +36,7 @@ import me.aap.fermata.media.lib.MediaLib.Favorites;
 import me.aap.fermata.media.lib.MediaLib.Item;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.lib.MediaLib.Playlist;
+import me.aap.fermata.spotify.SpotifyPlaylistWriter;
 import me.aap.fermata.spotify.SpotifyImportModel.Video;
 import me.aap.fermata.spotify.YoutubeSearch;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -199,6 +200,9 @@ public class YoutubeAlternativesFragment extends MainActivityFragment {
 				.onCompletion((addon, err) -> {
 					if (addon instanceof VideoTitleCache c) {
 						c.cacheVideoTitles(Collections.singletonMap(v.videoId, v.title));
+						// The replacement keeps its channel/duration in the playlist too.
+						c.cacheVideoInfo(Collections.singletonMap(v.videoId,
+								SpotifyPlaylistWriter.videoInfo(v, null)));
 					}
 					a.getLib().getItem(YT_PREFIX + v.videoId).main().onCompletion((ni, e) -> {
 						if (!(ni instanceof PlayableItem np) || (parent == null)) {

@@ -75,6 +75,19 @@ public class YoutubeAddon extends WebBrowserAddon
 			"480p", "360p", "240p", "144p"};
 	private static final Pref<BooleanSupplier> YT_SKIP_ADD = Pref.b("YT_SKIP_ADD", true);
 	private static final Pref<Supplier<String[]>> YT_VIDEO_TITLES = Pref.sa("YT_VIDEO_TITLES");
+	/** Flat {videoId, channel, album, durationMs} groups, see {@link #cacheVideoInfo}. */
+	private static final Pref<Supplier<String[]>> YT_VIDEO_INFO = Pref.sa("YT_VIDEO_INFO");
+	private static final int VIDEO_INFO_FIELDS = 4;
+	/**
+	 * What the player reported for recently played videos (channel, duration), so adding the one
+	 * playing to Favorites/a Playlist can keep that too -- see {@link #recordAddedVideo}.
+	 */
+	private final Map<String, VideoInfo> liveInfo = new LinkedHashMap<>(16, 0.75f, true) {
+		@Override
+		protected boolean removeEldestEntry(Map.Entry<String, VideoInfo> eldest) {
+			return size() > 256;
+		}
+	};
 	private static final Pref<BooleanSupplier> YT_EQ_ENABLED = Pref.b("YT_EQ_ENABLED", false);
 	static final Pref<IntSupplier> YT_EQ_PRESET = Pref.i("YT_EQ_PRESET", 0);
 	private static final Pref<Supplier<int[]>> YT_EQ_BANDS = Pref.ia("YT_EQ_BANDS", () -> null);
@@ -439,6 +452,80 @@ public class YoutubeAddon extends WebBrowserAddon
 			a[i++] = e.getValue();
 		}
 		getPreferenceStore().applyStringArrayPref(YT_VIDEO_TITLES, a);
+	}
+
+	/** What's stored about {@code videoId}, or null if nothing is. */
+	@Nullable
+	VideoInfo getVideoInfo(String videoId) {
+		String[] p = getPreferenceStore().getStringArrayPref(YT_VIDEO_INFO);
+		for (int i = 0; i <= p.length - VIDEO_INFO_FIELDS; i += VIDEO_INFO_FIELDS) {
+			if (!p[i].equals(videoId)) continue;
+			long dur;
+			try {
+				dur = Long.parseLong(p[i + 3]);
+			} catch (NumberFormatException ex) {
+				dur = -1;
+			}
+			return new VideoInfo(null, emptyToNull(p[i + 1]), emptyToNull(p[i + 2]), dur);
+		}
+		return null;
+	}
+
+	@Override
+	public void cacheVideoInfo(Map<String, VideoInfo> info) {
+		if (info.isEmpty()) return;
+		Map<String, String> titles = new LinkedHashMap<>();
+		String[] p = getPreferenceStore().getStringArrayPref(YT_VIDEO_INFO);
+		Map<String, String[]> m = new LinkedHashMap<>(p.length / VIDEO_INFO_FIELDS + info.size() + 1);
+		for (int i = 0; i <= p.length - VIDEO_INFO_FIELDS; i += VIDEO_INFO_FIELDS) {
+			m.put(p[i], new String[]{p[i + 1], p[i + 2], p[i + 3]});
+		}
+		boolean changed = false;
+
+		for (Map.Entry<String, VideoInfo> e : info.entrySet()) {
+			VideoInfo vi = e.getValue();
+			if ((vi.title != null) && !vi.title.isEmpty()) titles.put(e.getKey(), vi.title);
+			String[] v = m.get(e.getKey());
+			if (v == null) v = new String[]{"", "", "-1"};
+			String[] nv = v.clone();
+			if ((vi.artist != null) && !vi.artist.isEmpty()) nv[0] = vi.artist;
+			if ((vi.album != null) && !vi.album.isEmpty()) nv[1] = vi.album;
+			if (vi.durationMs > 0) nv[2] = String.valueOf(vi.durationMs);
+			if (nv[0].isEmpty() && nv[1].isEmpty() && "-1".equals(nv[2])) continue;
+			if (Arrays.equals(v, nv) && m.containsKey(e.getKey())) continue;
+			m.put(e.getKey(), nv);
+			changed = true;
+		}
+
+		if (!titles.isEmpty()) cacheVideoTitles(titles);
+		if (!changed) return;
+		String[] a = new String[m.size() * VIDEO_INFO_FIELDS];
+		int i = 0;
+		for (Map.Entry<String, String[]> e : m.entrySet()) {
+			a[i++] = e.getKey();
+			for (String f : e.getValue()) a[i++] = f;
+		}
+		getPreferenceStore().applyStringArrayPref(YT_VIDEO_INFO, a);
+	}
+
+	/** See {@link #liveInfo}; fed by YoutubeMediaEngine as a video plays. */
+	void setLiveVideoInfo(String videoId, @Nullable String channel, long durationMs) {
+		if ((videoId == null) || videoId.isEmpty()) return;
+		VideoInfo old = liveInfo.get(videoId);
+		if ((channel == null) && (old != null)) channel = old.artist;
+		if ((durationMs <= 0) && (old != null)) durationMs = old.durationMs;
+		liveInfo.put(videoId, new VideoInfo(null, channel, null, durationMs));
+	}
+
+	@Override
+	public void recordAddedVideo(String videoId) {
+		VideoInfo live = liveInfo.get(videoId);
+		if (live != null) cacheVideoInfo(Collections.singletonMap(videoId, live));
+	}
+
+	@Nullable
+	private static String emptyToNull(String s) {
+		return ((s == null) || s.isEmpty()) ? null : s;
 	}
 
 	@Override

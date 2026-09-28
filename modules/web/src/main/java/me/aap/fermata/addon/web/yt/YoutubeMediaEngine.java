@@ -410,6 +410,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		//  - YoutubeAddon's videoId -> title cache, so this video already has a proper name if it
 		//    later gets added to Favorites/a Playlist (or is resolved back out of one).
 		currentVideoAuthor = jsAuthor.isEmpty() ? null : MusicTrackItem.cleanArtist(jsAuthor);
+		if (actualId != null) addon.setLiveVideoInfo(actualId, currentVideoAuthor, -1);
 		if (!jsTitle.isEmpty()) {
 			currentVideoTitle = jsTitle;
 			if (actualId != null) addon.cacheVideoTitle(actualId, jsTitle);
@@ -1457,6 +1458,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			// unletterboxed thumbnail everywhere else.
 			FutureSupplier<String> getTitle = (title != null) ? completed(title) : web.getVideoTitle();
 			return web.getDuration().then(dur -> getTitle.map(t -> {
+				// Kept for if this video is added to Favorites/a Playlist while (or after) playing.
+				if (videoId != null) web.getAddon().setLiveVideoInfo(videoId, author, dur);
 				MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
 				b.putString(MediaMetadataCompat.METADATA_KEY_TITLE, t);
 				if (author != null) b.putString(MediaMetadataCompat.METADATA_KEY_ARTIST, author);

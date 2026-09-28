@@ -334,7 +334,12 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 				searching = false;
 				failed = (result == null);
 				results.clear();
-				if (result != null) results.addAll(result);
+				if (result != null) {
+					results.addAll(result);
+					// Kept in memory: a result played and then added to Favorites/a Playlist keeps its
+					// channel and duration there, even before the player reports them.
+					for (Video v : result) addon.setLiveVideoInfo(v.videoId, v.channel, v.durationMs);
+				}
 				refresh();
 			});
 		});

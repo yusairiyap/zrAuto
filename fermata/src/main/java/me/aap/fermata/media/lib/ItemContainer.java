@@ -88,6 +88,7 @@ public abstract class ItemContainer<C extends Item> extends BrowsableItemBase {
 
 	public FutureSupplier<Void> addItem(C item) {
 		return list().map(children -> {
+			beforeItemAdded(item);
 			C i = toChildItem(item);
 			if (children.contains(i)) return null;
 
@@ -108,6 +109,7 @@ public abstract class ItemContainer<C extends Item> extends BrowsableItemBase {
 			List<C> added = new ArrayList<>(items.size());
 
 			for (C i : items) {
+				beforeItemAdded(i);
 				i = toChildItem(i);
 				if (list.contains(i) || added.contains(i)) continue;
 				added.add(i);
@@ -170,6 +172,10 @@ public abstract class ItemContainer<C extends Item> extends BrowsableItemBase {
 			CollectionUtils.forEach(removed, this::itemRemoved);
 			return null;
 		});
+	}
+
+	/** {@code i} as passed to {@link #addItem}/{@link #addItems}, before it becomes a child. */
+	protected void beforeItemAdded(C i) {
 	}
 
 	protected void itemAdded(C i) {

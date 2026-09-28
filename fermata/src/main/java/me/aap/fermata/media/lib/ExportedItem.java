@@ -107,7 +107,7 @@ public class ExportedItem extends PlayableItemBase {
 
 	@Override
 	protected String buildSubtitle(MediaMetadataCompat md, SharedTextBuilder tb) {
-		return orig.buildSubtitle(md, tb);
+		return orig.buildExportedSubtitle(md, tb, getParent().getPrefs());
 	}
 
 	@Override
