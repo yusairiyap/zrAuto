@@ -171,8 +171,10 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Same chips as the Music tab's (queue, effects, video). -->
+        <!-- Same chips as the Music tab's (queue, effects, video). In landscape and on the car
+             screen the chip sits in the title bar instead, see ToolBarChip. -->
         <LinearLayout
+            android:id="@+id/data_usage_settings_row"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"

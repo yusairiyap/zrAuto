@@ -9,6 +9,7 @@ import static android.text.format.DateUtils.formatDateRange;
 import static android.text.format.DateUtils.formatDateTime;
 import static android.text.format.DateUtils.isToday;
 
+import android.content.Context;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -18,13 +19,13 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.view.ContextThemeWrapper;
 import androidx.core.util.Pair;
 import androidx.fragment.app.DialogFragment;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.google.android.material.button.MaterialButton;
 import com.google.android.material.datepicker.MaterialDatePicker;
 
 import java.util.ArrayList;
@@ -39,6 +40,7 @@ import me.aap.fermata.addon.fuel.FuelLogStore;
 import me.aap.fermata.addon.fuel.FuelRefuelDialog;
 import me.aap.fermata.addon.fuel.FuelTracker;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.utils.ui.view.ToolBarView;
 
 /**
  * The Fuel Log tab: an overview card (current trip distance, last refuel summary) and a
@@ -52,7 +54,10 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
  * (wrap_content-height) frame, and doing so here made this screen's content render displaced
  * upwards, overlapping the toolbar title above it.
  */
-public class FuelLogFragment extends MainActivityFragment {
+public class FuelLogFragment extends MainActivityFragment implements ToolBarChip.Host {
+	// The Refuel chip, in the title bar in landscape and on the car screen.
+	private static final ToolBarChip.Mediator TOOL_BAR = new ToolBarChip.Mediator(
+			R.id.fuel_log_toolbar_chip, R.drawable.fuel, R.string.fuel_log_refuel);
 	private static final int TYPE_HEADER = 0;
 	private static final int TYPE_TIMELINE_HEADER = 1;
 	private static final int TYPE_TIMELINE_DAY_HEADER = 2;
@@ -78,11 +83,29 @@ public class FuelLogFragment extends MainActivityFragment {
 		return getString(R.string.fuel_log_title);
 	}
 
+	@Override
+	public ToolBarView.Mediator getToolBarMediator() {
+		return TOOL_BAR;
+	}
+
+	@Override
+	public void onToolBarChipClick() {
+		if (getContext() == null) return;
+		FuelRefuelDialog.show(getActivityDelegate(), this::refresh);
+	}
+
+	/**
+	 * Drawn in the Music tab's palette, like the Data Usage tab, so the two look alike: the list's
+	 * own context carries it to every row inflated from it.
+	 */
 	@Nullable
 	@Override
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
 														@Nullable Bundle savedInstanceState) {
-		return inflater.inflate(R.layout.fuel_log_fragment, container, false);
+		Context ctx = inflater.getContext();
+		Context palette = new ContextThemeWrapper(ctx, MusicPlayerFragment.isLightTheme(ctx) ?
+				R.style.MusicPalette_Light : R.style.MusicPalette_Dark);
+		return inflater.cloneInContext(palette).inflate(R.layout.fuel_log_fragment, container, false);
 	}
 
 	@Override
@@ -100,9 +123,16 @@ public class FuelLogFragment extends MainActivityFragment {
 		// browsing) calls this same hook (see MainActivityDelegate.insetScrollableContent) for exactly
 		// this reason.
 		a.insetScrollableContent(list);
-		// Otherwise the RecyclerView clips each card's drop shadow to its own bounds, most visibly
-		// cutting the header card's shadow off flush against the list's top edge.
 		list.setClipChildren(false);
+		// Rotated (this activity handles that itself, nothing is recreated): the Refuel chip moves
+		// between the overview and the title bar, see ToolBarChip.
+		list.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+			if (((r - l) != (or - ol)) && (adapter != null)) {
+				v.post(() -> {
+					if (adapter.getItemCount() > 0) adapter.notifyItemChanged(0);
+				});
+			}
+		});
 
 		FuelTracker.get(requireContext()).start(a);
 	}
@@ -453,7 +483,8 @@ public class FuelLogFragment extends MainActivityFragment {
 						FORMAT_SHOW_DATE | FORMAT_SHOW_TIME | FORMAT_SHOW_YEAR));
 			}
 
-			h.refuelButton.setOnClickListener(v -> FuelRefuelDialog.show(activity, FuelLogFragment.this::refresh));
+			h.refuelButton.setOnClickListener(v -> onToolBarChipClick());
+			ToolBarChip.update(FuelLogFragment.this, R.id.fuel_log_toolbar_chip, h.refuelRow);
 		}
 
 		private void bindTimelineHeader(TimelineHeaderViewHolder h) {
@@ -546,7 +577,8 @@ public class FuelLogFragment extends MainActivityFragment {
 			final TextView currentDistance;
 			final TextView lastRefuelSummary;
 			final TextView lastRefuelDate;
-			final MaterialButton refuelButton;
+			final View refuelButton;
+			final View refuelRow;
 
 			HeaderViewHolder(@NonNull View v) {
 				super(v);
@@ -554,11 +586,12 @@ public class FuelLogFragment extends MainActivityFragment {
 				lastRefuelSummary = v.findViewById(R.id.fuel_log_last_refuel_summary);
 				lastRefuelDate = v.findViewById(R.id.fuel_log_last_refuel_date);
 				refuelButton = v.findViewById(R.id.fuel_log_refuel_button);
+				refuelRow = v.findViewById(R.id.fuel_log_refuel_row);
 			}
 		}
 
 		final class TimelineHeaderViewHolder extends RecyclerView.ViewHolder {
-			final MaterialButton dateRange;
+			final TextView dateRange;
 
 			TimelineHeaderViewHolder(@NonNull View v) {
 				super(v);

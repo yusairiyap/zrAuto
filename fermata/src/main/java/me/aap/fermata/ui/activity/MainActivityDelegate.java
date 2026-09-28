@@ -92,9 +92,11 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.PathInterpolator;
+import android.view.animation.Interpolator;
 import android.view.ViewPropertyAnimator;
 import android.view.ViewTreeObserver;
 import android.widget.EditText;
+import android.widget.ImageView;
 
 import androidx.annotation.LayoutRes;
 import androidx.annotation.NonNull;
@@ -109,7 +111,6 @@ import androidx.core.widget.ContentLoadingProgressBar;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
 
-import com.google.android.material.color.MaterialColors;
 import com.google.android.material.textview.MaterialTextView;
 
 import java.io.IOException;
@@ -173,6 +174,7 @@ import me.aap.fermata.ui.fragment.YoutubeAlternativesFragment;
 import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.ui.view.FermataNavBarView;
+import me.aap.fermata.ui.view.ToolBarPill;
 import me.aap.fermata.ui.view.QuaternaryFloatingButton;
 import me.aap.fermata.ui.view.QuinaryFloatingButton;
 import me.aap.fermata.ui.view.SenaryFloatingButton;
@@ -203,6 +205,7 @@ import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.view.DialogBuilder;
 import me.aap.utils.ui.view.FloatingButton;
 import me.aap.utils.ui.view.NavBarView;
+import me.aap.utils.ui.view.NavButtonView;
 import me.aap.utils.ui.view.ToolBarView;
 
 /**
@@ -218,7 +221,16 @@ public class MainActivityDelegate extends ActivityDelegate
 	private final HandlerExecutor handler = new HandlerExecutor(App.get().getHandler().getLooper());
 	/** How far the floating nav bar/control panel pill sits off the screen edges, in dp. */
 	private static final int FLOATING_BAR_MARGIN = 12;
+	/** tool_bar's padding inside its pill's rounded ends, in dp -- see ToolBarPill. */
+	private static final int TOOL_BAR_INNER_PAD = 6;
+	/** How far a web page (YouTube, the browser) reaches up under the tool bar pill, in dp. */
+	private static final int WEB_UNDER_TOOL_BAR = 8;
 	private static final long BARS_ANIM_MS = 260;
+	// Hiding matches the control panel's own fade (ControlPanelView.FADE_DURATION) and starts
+	// dimming from its very first frame: an ease-in curve here left the bar looking untouched for
+	// its first ~100ms, so it read as fading late behind the control panel (most visibly when a
+	// video goes fullscreen, which hides both at once).
+	private static final long BARS_HIDE_MS = 200;
 	private final NavBarMediator navBarMediator = new NavBarMediator();
 	private final FermataServiceUiBinder mediaServiceBinder;
 	private ToolBarView toolBar;
@@ -914,7 +926,9 @@ public class MainActivityDelegate extends ActivityDelegate
 		Pref<BooleanSupplier>[] on = extraFabEnabledPrefs();
 		List<View> l = new ArrayList<>(fabs.length);
 		for (int i = 0; i < fabs.length; i++) {
-			if ((fabs[i] != null) && getPrefs().getBooleanPref(on[i])) l.add(fabs[i]);
+			if ((fabs[i] != null) && getPrefs().getBooleanPref(MainActivityPrefs.fab(this, on[i]))) {
+				l.add(fabs[i]);
+			}
 		}
 		return l;
 	}
@@ -964,7 +978,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			this.barsHidden = barsHidden;
 			ToolBarView tb = getToolBar();
 			if (tb.getMediator() != ToolBarView.Mediator.Invisible.instance) {
-				animateBar(tb, !barsHidden, 0, -tb.getHeight());
+				animateBar(tb, !barsHidden, 0, -tb.getBottom());
 			}
 			animateNavBar(!barsHidden);
 			syncSideNavInset();
@@ -1121,10 +1135,14 @@ public class MainActivityDelegate extends ActivityDelegate
 			}
 		}
 
+		// tool_bar floats as a pill too, in the nav bar pill's colour (see FloatingBarsView), instead
+		// of a full-width scrim across the top.
 		ToolBarView tbv = getToolBar();
-		int c = MaterialColors.getColor(getContext(), androidx.appcompat.R.attr.colorPrimary,
-				Color.BLACK);
-		tbv.setBackground(ControlPanelView.buildScrimGradient(c, false));
+		int[] nbc = NavBarView.resolveStyleColors(getContext());
+		ToolBarPill.apply(tbv, (nbc[1] & 0x00FFFFFF) | 0xF2000000,
+				toIntPx(getContext(), TOOL_BAR_INNER_PAD));
+		// Its buttons in the nav bar's icon colour, so the two bars' icons match.
+		if ((nbc[0] >>> 24) != 0) tbv.setIconTint(ColorStateList.valueOf(nbc[0]));
 		enableFloatingBars();
 	}
 
@@ -1167,6 +1185,12 @@ public class MainActivityDelegate extends ActivityDelegate
 
 		int m = toIntPx(getContext(), FLOATING_BAR_MARGIN);
 		int pos = getPrefs().getNavBarPosPref(this);
+
+		// tool_bar floats off the top and the sides like the other bars (with a side nav bar, its
+		// padding keeps its pill clear of that one, see syncToolBarInset()).
+		setHorizontalMargins(tlp, m, m);
+		tlp.topMargin = m;
+		tb.setLayoutParams(tlp);
 
 		if (pos == NavBarView.POSITION_BOTTOM) {
 			setHorizontalMargins(nlp, m, m);
@@ -1218,6 +1242,34 @@ public class MainActivityDelegate extends ActivityDelegate
 		nb.setLayoutParams(nlp);
 		cp.setLayoutParams(clp);
 		nb.matchConstraints();
+
+		// tool_bar's own padding follows the side pill's place as the bars are laid out.
+		View.OnLayoutChangeListener sync = (v, l, t, r, b, ol, ot, or, ob) -> syncToolBarInset();
+		nb.addOnLayoutChangeListener(sync);
+		tb.addOnLayoutChangeListener(sync);
+		syncToolBarInset();
+	}
+
+	/**
+	 * The status bar in the app's own background colour instead of the theme's darker
+	 * colorPrimaryDark, so it blends seamlessly into the screen below it -- the content fades into
+	 * that same colour at the top (see BodyLayout#drawTopFade). Its icons stay light or dark as the
+	 * theme's windowLightStatusBar already sets them. Not on the car screen, whose status bar
+	 * belongs to the car.
+	 */
+	private void matchStatusBarToBackground() {
+		if (isCarActivity()) return;
+		TypedArray ta = getContext().obtainStyledAttributes(
+				new int[]{android.R.attr.colorBackground});
+		int bg = ta.getColor(0, 0);
+		ta.recycle();
+		if ((bg >>> 24) == 0) return;
+		getWindow().setStatusBarColor(bg | 0xFF000000);
+		// From Android 15 the window is drawn edge to edge: the status bar shows through to
+		// main_activity (padded clear of it, see init()), whose own background -- colorPrimary, the
+		// nav bar's colour -- was what showed there instead of the colour set just above.
+		View root = findViewById(R.id.main_activity);
+		if (root != null) root.setBackgroundColor(bg | 0xFF000000);
 	}
 
 	private static void setHorizontalMargins(ConstraintLayout.LayoutParams lp, int start, int end) {
@@ -1254,15 +1306,73 @@ public class MainActivityDelegate extends ActivityDelegate
 			else right = Math.max(0, b.getRight() - nb.getLeft() + gap);
 		}
 
-		// tool_bar's buttons and title are always kept clear of the pill, whatever the tab.
-		ToolBarView tb = toolBar;
-		if ((tb != null) && !nb.isBottom()
-				&& ((tb.getPaddingLeft() != left) || (tb.getPaddingRight() != right))) {
-			tb.setPadding(left, tb.getPaddingTop(), right, tb.getPaddingBottom());
-		}
-
+		syncToolBarInset();
 		if ((b.getPaddingLeft() == left) && (b.getPaddingRight() == right)) return;
 		b.setPadding(left, b.getPaddingTop(), right, b.getPaddingBottom());
+	}
+
+	/**
+	 * tool_bar's horizontal padding: a little room inside its pill's rounded ends, plus, with a
+	 * side nav bar showing, whatever keeps its pill (and so its buttons and title) clear of the nav
+	 * bar's own -- the pill is drawn inside that extra padding, see ToolBarPill.
+	 */
+	private void syncToolBarInset() {
+		ToolBarView tb = toolBar;
+		NavBarView nb = navBar;
+		if ((tb == null) || (nb == null)) return;
+		int inner = toIntPx(getContext(), TOOL_BAR_INNER_PAD);
+		int left = inner;
+		int right = inner;
+
+		if (isSideNavShown(nb)) {
+			int gap = toIntPx(getContext(), FLOATING_BAR_MARGIN);
+			if (nb.isLeft()) left += Math.max(0, nb.getRight() + gap - tb.getLeft());
+			else right += Math.max(0, tb.getRight() - (nb.getLeft() - gap));
+		}
+
+		syncToolBarHeight(tb, nb);
+		if ((tb.getPaddingLeft() == left) && (tb.getPaddingRight() == right)) return;
+		tb.setPadding(left, tb.getPaddingTop(), right, tb.getPaddingBottom());
+		tb.invalidateOutline();
+		tb.invalidate();
+	}
+
+	/**
+	 * Next to a side nav bar (tablet, landscape, the car): the tool bar pill as thick as the nav
+	 * bar's, unless its own size setting makes it thicker still, with its buttons padded down to
+	 * draw their icons the same size as the nav bar's. With a bottom nav bar, a compact pill.
+	 */
+	private void syncToolBarHeight(ToolBarView tb, NavBarView nb) {
+		// The tool bar buttons' own padding, see ToolBarView.Mediator#setButtonPadding.
+		int btnPad = toIntPx(getContext(), Math.round(10 * getToolBarSize()));
+		if (nb.isBottom()) {
+			// A phone in portrait: the two bars don't sit side by side, and a tool bar as tall as the
+			// bottom nav bar (with its labels) looks oversized. A compact pill with standard 24dp icons.
+			int scale = Math.round(getToolBarSize() * 100);
+			int h = toIntPx(getContext(), 56 * scale / 100);
+			int icon = toIntPx(getContext(), 24 * scale / 100);
+			tb.setMinBarHeight(h, Math.max(0, (h - (icon + 2 * btnPad)) / 2));
+			return;
+		}
+		if ((nb.getVisibility() != VISIBLE) || !nb.isLaidOut()) return;
+		int thick = nb.getWidth();
+		if (thick <= 0) return;
+		int icon = navIconSize(nb);
+		int vPad = (icon > 0) ? Math.max(0, (thick - (icon + 2 * btnPad)) / 2) : 0;
+		tb.setMinBarHeight(thick, vPad);
+	}
+
+	/** How big the nav bar draws its icons (fit into each button, less its padding), 0 if unknown. */
+	private static int navIconSize(NavBarView nb) {
+		int max = 0;
+		for (int i = 0, n = nb.getChildCount(); i < n; i++) {
+			if (!(nb.getChildAt(i) instanceof NavButtonView b)) continue;
+			ImageView img = b.getIcon();
+			int w = img.getWidth() - img.getPaddingLeft() - img.getPaddingRight();
+			int h = img.getHeight() - img.getPaddingTop() - img.getPaddingBottom();
+			max = Math.max(max, Math.min(w, h));
+		}
+		return max;
 	}
 
 	/**
@@ -1483,8 +1593,8 @@ public class MainActivityDelegate extends ActivityDelegate
 			return;
 		}
 
-		anim.alpha(0f).translationX(outX).translationY(outY).setDuration(BARS_ANIM_MS)
-				.setInterpolator(new PathInterpolator(0.4f, 0f, 1f, 1f)).withEndAction(() -> {
+		anim.alpha(0f).translationX(outX).translationY(outY).setDuration(BARS_HIDE_MS)
+				.setInterpolator(new PathInterpolator(0f, 0f, 0.2f, 1f)).withEndAction(() -> {
 					if (barsHidden) v.setVisibility(GONE);
 					v.setAlpha(1f);
 					v.setTranslationX(0f);
@@ -1529,7 +1639,8 @@ public class MainActivityDelegate extends ActivityDelegate
 					float dx = oldX[i] - (v.getLeft() + slideBase(v, true));
 					float dy = oldY[i] - (v.getTop() + slideBase(v, false));
 					if ((Math.abs(dx) < 1f) && (Math.abs(dy) < 1f)) continue;
-					startSlide(v, dx, dy, 0f, 0f);
+					startSlide(v, dx, dy, 0f, 0f, BARS_ANIM_MS,
+							new PathInterpolator(0.2f, 0f, 0f, 1f));
 				}
 
 				return true;
@@ -1545,7 +1656,9 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	/** Slides {@code v} by (dx, dy) away from its resting translation, animated. */
 	private static void slideBy(View v, float dx, float dy) {
-		startSlide(v, slideOffset(v, true), slideOffset(v, false), dx, dy);
+		// Only while the nav bar fades out: in step with it, see BARS_HIDE_MS.
+		startSlide(v, slideOffset(v, true), slideOffset(v, false), dx, dy, BARS_HIDE_MS,
+				new PathInterpolator(0f, 0f, 0.2f, 1f));
 	}
 
 	/** Ends any slide on {@code v}, putting it straight back at its resting translation. */
@@ -1562,7 +1675,8 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * ours began, e.g. where a floating button was dragged to) from one value to another. Keeps
 	 * the resting translation and the running animator in the view's tag.
 	 */
-	private static void startSlide(View v, float fromDx, float fromDy, float toDx, float toDy) {
+	private static void startSlide(View v, float fromDx, float fromDy, float toDx, float toDy,
+																 long duration, Interpolator interpolator) {
 		Slide s;
 		if (v.getTag(R.id.floating_bars) instanceof Slide prev) {
 			prev.anim.cancel();
@@ -1572,8 +1686,8 @@ public class MainActivityDelegate extends ActivityDelegate
 		}
 
 		ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
-		a.setDuration(BARS_ANIM_MS);
-		a.setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f));
+		a.setDuration(duration);
+		a.setInterpolator(interpolator);
 		a.addUpdateListener(va -> {
 			float f = (float) va.getAnimatedValue();
 			s.dx = fromDx + (toDx - fromDx) * f;
@@ -1693,8 +1807,17 @@ public class MainActivityDelegate extends ActivityDelegate
 		int contentTop = insetLoc1[1];
 		int contentBottom = contentTop + content.getHeight();
 
-		toolBar.getLocationOnScreen(insetLoc1);
-		int top = Math.max(0, (insetLoc1[1] + toolBar.getHeight()) - contentTop);
+		int top;
+		if ((toolBar.getVisibility() == GONE) && !isBarsHidden()) {
+			// A tab without a tool bar at all (the Music tab on a phone): nothing to keep clear of.
+			// (Hidden with the bars, it keeps its room, so the content doesn't jump each time.)
+			top = 0;
+		} else {
+			toolBar.getLocationOnScreen(insetLoc1);
+			// A little room below the floating tool bar pill, so the first item doesn't sit against it.
+			top = Math.max(0, (insetLoc1[1] + toolBar.getHeight() + toIntPx(getContext(), 6)) -
+					contentTop);
+		}
 
 		// Whichever bottom-anchored bar reaches furthest up the screen decides the inset -- usually
 		// control_panel (nav_bar, when it's bottom-positioned, sits below it per the bottom-nav
@@ -1751,6 +1874,17 @@ public class MainActivityDelegate extends ActivityDelegate
 		applyWebViewTopInset(content);
 	}
 
+	/**
+	 * Whether a web page (the YouTube tab, the browser) is showing below the tool bar: it starts
+	 * right under the tool bar's pill (see insetWebViewTop), so nothing may fade over it there.
+	 */
+	public boolean isTopInsetWebViewShown() {
+		for (View v : topInsetContent) {
+			if (v.isShown()) return true;
+		}
+		return false;
+	}
+
 	private void applyWebViewTopInset(View content) {
 		if (toolBar == null) return;
 		if (!(content.getLayoutParams() instanceof ViewGroup.MarginLayoutParams mlp)) return;
@@ -1758,7 +1892,11 @@ public class MainActivityDelegate extends ActivityDelegate
 		// (see setBarsHidden()) since a WebView draws its own navigation and toggling an invisible
 		// bar's visibility wouldn't change anything -- but the user still expects "hide bars" to
 		// reclaim that reserved space for the page, so treat it as zero-height ourselves here.
-		int top = isBarsHidden() ? 0 : toolBar.getHeight();
+		// Its bottom edge, not its height: the pill floats off the top of the screen. A little less,
+		// tucking the page's own top spacing (YouTube's, a site's header padding) under the pill's
+		// bottom edge, so more of the page shows.
+		int top = isBarsHidden() ? 0 :
+				Math.max(0, toolBar.getBottom() - toIntPx(getContext(), WEB_UNDER_TOOL_BAR));
 		if (mlp.topMargin == top) return;
 		mlp.topMargin = top;
 		content.setLayoutParams(mlp);
@@ -2336,23 +2474,24 @@ public class MainActivityDelegate extends ActivityDelegate
 	private void init() {
 		ZrAutoActivity a = getAppActivity();
 		a.setContentView(getLayout());
+		matchStatusBarToBackground();
 		toolBar = a.findViewById(R.id.tool_bar);
 		progressBar = a.findViewById(R.id.content_loading_progress);
 		navBar = a.findViewById(R.id.nav_bar);
 		body = a.findViewById(R.id.body_layout);
 		controlPanel = a.findViewById(R.id.control_panel);
 		floatingButton = a.findViewById(R.id.floating_button);
-		floatingButton.setScale(getPrefs().getFabSizePref());
+		floatingButton.setScale(getPrefs().getFabSizePref(this));
 		floatingButton2 = a.findViewById(R.id.floating_button2);
-		floatingButton2.setScale(getPrefs().getFabSizePref());
+		floatingButton2.setScale(getPrefs().getFabSizePref(this));
 		floatingButton3 = a.findViewById(R.id.floating_button3);
-		floatingButton3.setScale(getPrefs().getFabSizePref());
+		floatingButton3.setScale(getPrefs().getFabSizePref(this));
 		floatingButton4 = a.findViewById(R.id.floating_button4);
-		floatingButton4.setScale(getPrefs().getFabSizePref());
+		floatingButton4.setScale(getPrefs().getFabSizePref(this));
 		floatingButton5 = a.findViewById(R.id.floating_button5);
-		if (floatingButton5 != null) floatingButton5.setScale(getPrefs().getFabSizePref());
+		if (floatingButton5 != null) floatingButton5.setScale(getPrefs().getFabSizePref(this));
 		floatingButton6 = a.findViewById(R.id.floating_button6);
-		if (floatingButton6 != null) floatingButton6.setScale(getPrefs().getFabSizePref());
+		if (floatingButton6 != null) floatingButton6.setScale(getPrefs().getFabSizePref(this));
 		updateFabDraggable();
 		controlPanel.bind(getMediaServiceBinder());
 		enableBodyOverlayLayout();
@@ -2413,13 +2552,13 @@ public class MainActivityDelegate extends ActivityDelegate
 			recreate();
 		} else if (MainActivityPrefs.hasNavBarPosPref(this, prefs)) {
 			recreate();
-		} else if (prefs.contains(FAB_SIZE)) {
-			if (floatingButton != null) floatingButton.setScale(getPrefs().getFabSizePref());
-			if (floatingButton2 != null) floatingButton2.setScale(getPrefs().getFabSizePref());
-			if (floatingButton3 != null) floatingButton3.setScale(getPrefs().getFabSizePref());
-			if (floatingButton4 != null) floatingButton4.setScale(getPrefs().getFabSizePref());
-			if (floatingButton5 != null) floatingButton5.setScale(getPrefs().getFabSizePref());
-			if (floatingButton6 != null) floatingButton6.setScale(getPrefs().getFabSizePref());
+		} else if (prefs.contains(MainActivityPrefs.fab(this, FAB_SIZE))) {
+			if (floatingButton != null) floatingButton.setScale(getPrefs().getFabSizePref(this));
+			if (floatingButton2 != null) floatingButton2.setScale(getPrefs().getFabSizePref(this));
+			if (floatingButton3 != null) floatingButton3.setScale(getPrefs().getFabSizePref(this));
+			if (floatingButton4 != null) floatingButton4.setScale(getPrefs().getFabSizePref(this));
+			if (floatingButton5 != null) floatingButton5.setScale(getPrefs().getFabSizePref(this));
+			if (floatingButton6 != null) floatingButton6.setScale(getPrefs().getFabSizePref(this));
 		} else if (MainActivityPrefs.hasNavBarSizePref(this, prefs)) {
 			if (navBar != null) navBar.setSize(getPrefs().getNavBarSizePref(this));
 		} else if (MainActivityPrefs.hasToolBarSizePref(this, prefs)) {
@@ -2472,17 +2611,21 @@ public class MainActivityDelegate extends ActivityDelegate
 			// toolbar's private-mode button in sync with changes made from Settings, the nav-bar menu,
 			// or another FAB, not just whichever surface was actually tapped.
 			fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
-		} else if (prefs.contains(FAB2_ENABLED) || prefs.contains(FAB3_ENABLED) ||
-				prefs.contains(FAB4_ENABLED) || prefs.contains(FAB5_ENABLED) ||
-				prefs.contains(FAB6_ENABLED)) {
+		} else if (containsFabPref(prefs, extraFabEnabledPrefs())) {
 			updateExtraFabsVisibility();
-		} else if (prefs.contains(FAB2_ACTION) || prefs.contains(FAB3_ACTION) ||
-				prefs.contains(FAB4_ACTION) || prefs.contains(FAB5_ACTION) ||
-				prefs.contains(FAB6_ACTION)) {
+		} else if (containsFabPref(prefs, extraFabActionPrefs())) {
 			fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
-		} else if (prefs.contains(FAB_DRAGGABLE)) {
+		} else if (prefs.contains(MainActivityPrefs.fab(this, FAB_DRAGGABLE))) {
 			updateFabDraggable();
 		}
+	}
+
+	/** Whether one of these floating button prefs, as it applies to this screen, changed. */
+	private boolean containsFabPref(List<PreferenceStore.Pref<?>> changed, Pref<?>[] fabPrefs) {
+		for (Pref<?> p : fabPrefs) {
+			if (changed.contains(MainActivityPrefs.fab(this, p))) return true;
+		}
+		return false;
 	}
 
 	/** How far the floating buttons are currently lifted above their place -- see below. */
@@ -2540,7 +2683,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	private void updateFabDraggable() {
-		boolean draggable = getPrefs().getBooleanPref(FAB_DRAGGABLE);
+		boolean draggable = getPrefs().getBooleanPref(MainActivityPrefs.fab(this, FAB_DRAGGABLE));
 		if (floatingButton != null) floatingButton.setDraggable(draggable);
 		if (floatingButton2 != null) floatingButton2.setDraggable(draggable);
 		if (floatingButton3 != null) floatingButton3.setDraggable(draggable);
@@ -2606,13 +2749,14 @@ public class MainActivityDelegate extends ActivityDelegate
 		for (int i = 0; i < fabs.length; i++) {
 			FloatingButton fb = fabs[i];
 			if (fb == null) continue;
-			if (!getPrefs().getBooleanPref(on[i])) fb.setVisibility(GONE);
+			if (!getPrefs().getBooleanPref(MainActivityPrefs.fab(this, on[i]))) fb.setVisibility(GONE);
 			else if (isVideoMode()) fb.setVisibility(floatingButton.getVisibility());
 			else if (isWebBrowserActive()) fb.setVisibility(VISIBLE);
 			// A video playing while browsing Favorites/Playlists: its fullscreen button is one tap
 			// back to it.
 			else if (listWithVideo &&
-					(getPrefs().getIntPref(actions[i]) == Action.FULLSCREEN_TOGGLE.ordinal())) {
+					(getPrefs().getIntPref(MainActivityPrefs.fab(this, actions[i])) ==
+							Action.FULLSCREEN_TOGGLE.ordinal())) {
 				fb.setVisibility(VISIBLE);
 			} else {
 				fb.setVisibility(GONE);

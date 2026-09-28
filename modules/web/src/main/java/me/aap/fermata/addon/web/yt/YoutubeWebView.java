@@ -18,11 +18,13 @@ import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_QUALITIES;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_WAITING;
 
 import android.content.Context;
+import android.content.res.TypedArray;
 import android.graphics.Color;
 import android.util.AttributeSet;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.graphics.ColorUtils;
 
 import java.util.List;
 
@@ -195,10 +197,78 @@ public class YoutubeWebView extends FermataWebView {
 		disableAutoplay();
 		disableVideoPreviews();
 		addFocusHighlight();
+		injectThemeBackground();
 		interceptVideoLongPress();
 		interceptQueueMenu();
 		currentCookieManager().flush();
 		refreshAddressBarTitle();
+	}
+
+	/**
+	 * Paints YouTube's page background (and its sticky header, chip bar and bottom bar) in the
+	 * app's own background colour, so the page blends into the screen around it -- the floating
+	 * tool bar, the status bar and the top fade are all that colour -- rather than YouTube's own
+	 * near-black or white slab. Only while the page's own light/dark matches the app theme's: a
+	 * dark page (Force dark, or YouTube's own dark mode) under a light app theme keeps its colours,
+	 * as its text is light. Re-checked whenever YouTube flips its dark mode attribute. The video
+	 * player itself is never touched.
+	 */
+	private void injectThemeBackground() {
+		TypedArray ta = getContext().obtainStyledAttributes(
+				new int[]{android.R.attr.colorBackground});
+		int bg = ta.getColor(0, 0);
+		ta.recycle();
+		if ((bg >>> 24) == 0) return;
+		boolean appDark = ColorUtils.calculateLuminance(bg | 0xFF000000) < 0.5;
+		String hex = String.format("#%06X", bg & 0xFFFFFF);
+		// One line, no quotes or backslashes: it goes into a single-quoted JavaScript string below.
+		String css = ("html{--yt-spec-base-background:__BG__ !important;" +
+				"--yt-spec-general-background-a:__BG__ !important;" +
+				"--yt-spec-general-background-b:__BG__ !important;" +
+				"--yt-spec-brand-background-solid:__BG__ !important;" +
+				"--yt-spec-brand-background-primary:__BG__ !important;" +
+				"--yt-spec-menu-background:__BG__ !important}" +
+				"html,body,ytm-app,#app,.page-container,ytm-browse,ytm-search," +
+				"ytm-mobile-topbar-renderer,.mobile-topbar-header,header.mobile-topbar-header," +
+				"ytm-feed-filter-chip-bar-renderer,.feed-filter-chip-bar,.chip-bar," +
+				"ytm-pivot-bar-renderer,.pivot-bar-renderer,ytm-rich-grid-renderer," +
+				"ytm-item-section-renderer,ytm-section-list-renderer" +
+				"{background-color:__BG__ !important}").replace("__BG__", hex);
+		evaluateJavascript("""
+				(function() {
+				  var CSS = '__CSS__', APP_DARK = __DARK__, DARKENED = __DARKENED__;
+				  function lum(c) {
+				    var m = (c || '').match(/[0-9.]+/g);
+				    if (!m || (m.length < 3) || ((m.length > 3) && (+m[3] === 0))) return -1;
+				    return (0.299 * m[0] + 0.587 * m[1] + 0.114 * m[2]) / 255;
+				  }
+				  function apply() {
+				    if (!document.head || !document.body) return;
+				    var s = document.getElementById('zr-theme-bg');
+				    if (!s) {
+				      s = document.createElement('style');
+				      s.id = 'zr-theme-bg';
+				      document.head.appendChild(s);
+				    }
+				    s.textContent = CSS;
+				    s.disabled = true; // Measure the page's own colours, without ours
+				    var app = document.querySelector('ytm-app') || document.body;
+				    var l = lum(getComputedStyle(app).backgroundColor);
+				    if (l < 0) l = lum(getComputedStyle(document.body).backgroundColor);
+				    if (l < 0) l = document.documentElement.hasAttribute('dark') ? 0 : 1;
+				    // The WebView darkens the page itself: drawn dark whatever its CSS says.
+				    if (DARKENED) l = 0;
+				    s.disabled = APP_DARK ? (l >= 0.5) : (l < 0.5);
+				  }
+				  apply();
+				  if (!window.__zrThemeObs) {
+				    window.__zrThemeObs = new MutationObserver(apply);
+				    window.__zrThemeObs.observe(document.documentElement,
+				        {attributes: true, attributeFilter: ['dark', 'darker-dark-theme']});
+				  }
+				})()""".replace("__CSS__", css).replace("__DARK__", appDark ? "true" : "false")
+						.replace("__DARKENED__", isPageDarkened() ? "true" : "false"),
+				null);
 	}
 
 	/**

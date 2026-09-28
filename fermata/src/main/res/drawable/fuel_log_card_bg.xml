@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A Fuel Log Timeline entry: the Data Usage tab's flat rounded card (data_usage_card_bg),
+     tappable, in the Music palette. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="?attr/musicChipRipple">
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="22dp" />
+            <solid android:color="?attr/musicRowFill" />
+        </shape>
+    </item>
+</ripple>

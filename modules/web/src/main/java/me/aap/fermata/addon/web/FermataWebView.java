@@ -225,6 +225,16 @@ public class FermataWebView extends WebView
 		}
 	}
 
+	/**
+	 * Whether this WebView darkens pages itself (the addon's Force dark, or Auto dark with a dark
+	 * system theme): a light page is then drawn dark, although its own CSS colours -- all a
+	 * script can read -- are still the light ones.
+	 */
+	protected boolean isPageDarkened() {
+		WebBrowserAddon a = getAddon();
+		return (a != null) && (a.isForceDark() || (isDarkPhoneTheme() && a.isAutoDark()));
+	}
+
 	private boolean isDarkPhoneTheme() {
 		int mode = getResources().getConfiguration().uiMode;
 		return (mode & UI_MODE_NIGHT_MASK) == UI_MODE_NIGHT_YES;

@@ -1,81 +1,88 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- The Fuel Log's overview, in the Data Usage tab's look (see data_usage_fragment.xml): a flat
+     rounded card with the current trip and the last refuel, and the Refuel chip below it. In
+     landscape and on the car screen the chip sits in the title bar instead, see ToolBarChip.
+     Inflated with the Music tab's palette, see FuelLogFragment. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:paddingStart="16dp"
+    android:paddingTop="12dp"
+    android:paddingEnd="16dp">
 
-    <com.google.android.material.card.MaterialCardView
+    <LinearLayout
+        style="@style/DataUsageCard"
+        android:gravity="center_horizontal">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/fuel_log_current_trip"
+            android:textColor="?attr/musicTextSecondary"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/fuel_log_current_distance"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:singleLine="true"
+            android:textColor="?attr/musicTextPrimary"
+            android:textSize="30sp"
+            android:textStyle="bold"
+            tools:text="123.4 km" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="14dp"
+            android:background="?attr/musicSeekTrack" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/fuel_log_last_refuel"
+            android:textColor="?attr/musicTextSecondary"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/fuel_log_last_refuel_summary"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:gravity="center"
+            android:textColor="?attr/musicTextPrimary"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            tools:text="87.2 km • Shell Station" />
+
+        <TextView
+            android:id="@+id/fuel_log_last_refuel_date"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:gravity="center"
+            android:textColor="?attr/musicTextSecondary"
+            android:textSize="13sp"
+            tools:text="12 Sep 2026, 5:30 PM" />
+    </LinearLayout>
+
+    <!-- Same chip as the Data Usage settings one. -->
+    <LinearLayout
+        android:id="@+id/fuel_log_refuel_row"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:cardBackgroundColor="?attr/colorSurfaceVariant"
-        app:cardCornerRadius="12dp"
-        app:cardElevation="6dp"
-        app:rippleColor="?attr/rippleColor">
+        android:layout_marginTop="14dp"
+        android:gravity="center"
+        android:orientation="horizontal">
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/fuel_log_current_trip"
-                android:textAppearance="?attr/textAppearanceCaption" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/fuel_log_current_distance"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:textAppearance="?attr/textAppearanceHeadline4"
-                tools:text="123.4 km" />
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:layout_marginTop="12dp"
-                android:layout_marginBottom="12dp"
-                android:background="?android:attr/listDivider" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/fuel_log_last_refuel"
-                android:textAppearance="?attr/textAppearanceCaption" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/fuel_log_last_refuel_summary"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:textAppearance="?attr/textAppearanceBody1"
-                tools:text="87.2 km • Shell Station" />
-
-            <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/fuel_log_last_refuel_date"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textAppearance="?attr/textAppearanceCaption"
-                tools:text="12 Sep 2026, 5:30 PM" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/fuel_log_refuel_button"
-                style="@style/Widget.Material3.Button.OutlinedButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:text="@string/fuel_log_refuel"
-                android:textColor="?attr/colorControlActivated"
-                app:icon="@drawable/fuel"
-                app:iconTint="?attr/colorControlActivated"
-                app:rippleColor="?attr/colorControlActivated"
-                app:strokeColor="?attr/colorControlActivated" />
-        </LinearLayout>
-    </com.google.android.material.card.MaterialCardView>
-
+        <TextView
+            android:id="@+id/fuel_log_refuel_button"
+            style="@style/MusicChip"
+            android:drawableStart="@drawable/fuel"
+            android:text="@string/fuel_log_refuel" />
+    </LinearLayout>
 </LinearLayout>

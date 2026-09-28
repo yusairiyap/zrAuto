@@ -78,6 +78,7 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.view.InfoOverlayView;
+import me.aap.fermata.ui.view.ToolBarPill;
 import me.aap.fermata.ui.view.LoadingDimView;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
@@ -85,6 +86,7 @@ import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.text.TextUtils;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.fragment.ActivityFragment;
+import me.aap.utils.ui.view.NavBarView;
 import me.aap.utils.ui.view.ToolBarView;
 
 /**
@@ -183,7 +185,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	}
 
 	/** Whether the app's current theme is a light one, going by its background's lightness. */
-	static boolean isLightTheme(Context ctx) {
+	public static boolean isLightTheme(Context ctx) {
 		TypedValue tv = new TypedValue();
 		if (!ctx.getTheme().resolveAttribute(android.R.attr.colorBackground, tv, true)) return false;
 		int color;
@@ -313,6 +315,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 	@Override
 	public ToolBarView.Mediator getToolBarMediator() {
+		// Portrait with the nav bar at the bottom (a phone): the tool bar would only hold the tab's
+		// title -- the Info Overlay sits above the cover there -- so none at all, more room instead.
+		if ((getContext() != null) && !isLandscape()) {
+			NavBarView nb = getActivityDelegate().getNavBar();
+			if ((nb != null) && nb.isBottom()) return ToolBarView.Mediator.Invisible.instance;
+		}
 		return MusicToolBarMediator.instance;
 	}
 
@@ -326,16 +334,26 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		@Override
 		public void enable(ToolBarView tb, ActivityFragment f) {
 			ToolBarView.Mediator.BackTitle.super.enable(tb, f);
+			// The blurred cover shows through the tool bar's pill here, frosted-glass style.
+			ToolBarPill.setTranslucent(tb, true);
 			if (!(f instanceof MusicPlayerFragment mf) || (mf.getView() == null) || !mf.isLandscape()) {
 				return;
 			}
 			InfoOverlayView o = new InfoOverlayView(tb.getContext());
+			// The tool bar's pill is its backdrop already: no shade of its own on top of that.
+			o.setShaded(false);
 			addView(tb, o, R.id.music_toolbar_info);
 			ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) o.getLayoutParams();
 			lp.setMarginEnd(UiUtils.toIntPx(tb.getContext(), 16));
 			o.setLayoutParams(lp);
 			mf.infoOverlay = o;
 			mf.applyInfoOverlayPrefs();
+		}
+
+		@Override
+		public void disable(ToolBarView tb) {
+			ToolBarPill.setTranslucent(tb, false);
+			ToolBarView.Mediator.BackTitle.super.disable(tb);
 		}
 	}
 

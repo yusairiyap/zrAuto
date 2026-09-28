@@ -10,6 +10,7 @@ import static me.aap.utils.ui.UiUtils.toPx;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.util.AttributeSet;
@@ -23,6 +24,7 @@ import androidx.annotation.ColorInt;
 import androidx.annotation.LayoutRes;
 import androidx.annotation.Nullable;
 import androidx.appcompat.widget.LinearLayoutCompat;
+import androidx.core.graphics.ColorUtils;
 
 import com.google.android.material.textview.MaterialTextView;
 
@@ -45,6 +47,8 @@ public class OverlayMenuView extends ScrollView implements OverlayMenu {
 	private static final int CORNER_RADIUS_DP = 12;
 	@ColorInt
 	private final int headerColor;
+	@ColorInt
+	private final int bgColor;
 
 	@Nullable
 	MenuBuilder builder;
@@ -56,7 +60,7 @@ public class OverlayMenuView extends ScrollView implements OverlayMenu {
 				androidx.appcompat.R.attr.popupMenuStyle,
 				R.style.Theme_Utils_Base_PopupMenuStyle);
 		headerColor = ta.getColor(OverlayMenuView_colorPrimarySurface, Color.TRANSPARENT);
-		int bgColor = ta.getColor(OverlayMenuView_android_colorBackground, Color.TRANSPARENT);
+		bgColor = ta.getColor(OverlayMenuView_android_colorBackground, Color.TRANSPARENT);
 		setBackgroundColor(bgColor);
 		ta.recycle();
 	}
@@ -332,6 +336,10 @@ public class OverlayMenuView extends ScrollView implements OverlayMenu {
 			v.setId(R.id.overlay_menu_title);
 			v.setGravity(Gravity.CENTER);
 			v.setText(this.title);
+			// The theme's default text color can be the same light shade as the header on a light
+			// theme, leaving the title invisible: pick a color that reads on the header itself.
+			v.setTextColor(titleColor());
+			v.setTypeface(v.getTypeface(), Typeface.BOLD);
 			v.setLayoutParams(p);
 			v.setElevation(elevation);
 			v.setTranslationZ(elevation);
@@ -344,6 +352,14 @@ public class OverlayMenuView extends ScrollView implements OverlayMenu {
 			view.addView(v, 0);
 			v.setVisibility(VISIBLE);
 			return this;
+		}
+
+		/** Dark text on a light header, white on a dark one (the menu's own body if it has none). */
+		@ColorInt
+		private int titleColor() {
+			int c = (Color.alpha(headerColor) != 0) ? headerColor : bgColor;
+			if (Color.alpha(c) == 0) return 0xFFFFFFFF;
+			return (ColorUtils.calculateLuminance(c | 0xFF000000) > 0.5) ? 0xDE000000 : 0xFFFFFFFF;
 		}
 
 		@Override

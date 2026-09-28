@@ -14,10 +14,13 @@ import android.widget.TextView;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
 
+import com.google.android.material.card.MaterialCardView;
+
 import me.aap.fermata.R;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.MediaItemWrapper;
 import me.aap.utils.ui.UiUtils;
+import me.aap.utils.ui.view.NavBarView;
 
 /**
  * The floating panel shown while items of a Playlist or Favorites are selected: count, Move to
@@ -108,6 +111,11 @@ final class SelectionPanel {
 		p.findViewById(R.id.selection_panel_end).setOnClickListener(v -> actions.moveSelected(false));
 		p.findViewById(R.id.selection_panel_move).setOnClickListener(actions::playlistAction);
 		p.findViewById(R.id.selection_panel_remove).setOnClickListener(v -> actions.removeSelected());
+		// Flat, in the floating nav bar pill's colour (opaque: rows scroll underneath it).
+		if (p instanceof MaterialCardView card) {
+			int[] nbc = NavBarView.resolveStyleColors(ctx);
+			if ((nbc[1] >>> 24) != 0) card.setCardBackgroundColor(nbc[1] | 0xFF000000);
+		}
 
 		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
 				ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,

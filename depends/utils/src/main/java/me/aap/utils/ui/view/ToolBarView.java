@@ -17,6 +17,7 @@ import static me.aap.utils.ui.UiUtils.toPx;
 import static me.aap.utils.ui.fragment.ViewFragmentMediator.attachMediator;
 
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.content.res.TypedArray;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
@@ -26,6 +27,7 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.DecelerateInterpolator;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.ImageView;
@@ -88,13 +90,100 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 		setMediator(a.getActiveFragment());
 	}
 
+	// No LayoutTransition for buttons coming and going: mediators animate their own changes where
+	// they want to (e.g. YouTube's search field, with TransitionManager), and a second, generic
+	// animation on top of those ran twice and could leave the bar unresponsive mid-way.
+	private static final long ANIM_DURATION = 180L;
+
+	/** A new tab's title and buttons fade in, rising a little into place. */
+	private void animateContentIn() {
+		if (!isLaidOut() || !isAttachedToWindow()) return;
+		float dy = toPx(getContext(), 6);
+		for (int i = 0, n = getChildCount(); i < n; i++) {
+			View v = getChildAt(i);
+			float alpha = v.getAlpha();
+			if (alpha <= 0f) continue;
+			v.animate().cancel();
+			v.setAlpha(0f);
+			v.setTranslationY(dy);
+			v.animate().alpha(alpha).translationY(0f).setDuration(ANIM_DURATION)
+					.setStartDelay(i * 15L).setInterpolator(new DecelerateInterpolator()).start();
+		}
+	}
+
+	// The height the owner wants at least (e.g. the nav bar's thickness), 0 for none, and the
+	// vertical padding that keeps the buttons their own size inside it -- see setMinBarHeight().
+	private int minBarHeight;
+	private float sizeScale = 1F;
+	@Nullable
+	private ColorStateList iconTint;
+
+	/**
+	 * Makes the bar at least {@code height} tall (still taller if its own size setting says so),
+	 * padded by {@code vPad} at the top and bottom so the buttons keep the size the padding leaves
+	 * them rather than growing with the bar.
+	 */
+	public void setMinBarHeight(int height, int vPad) {
+		if ((height == minBarHeight) && (getPaddingTop() == vPad) && (getPaddingBottom() == vPad)) {
+			return;
+		}
+		minBarHeight = height;
+		setPadding(getPaddingLeft(), vPad, getPaddingRight(), vPad);
+		applyHeight((int) (size * sizeScale));
+	}
+
+	private void applyHeight(int own) {
+		ViewGroup.LayoutParams lp = getLayoutParams();
+		if (lp == null) return;
+		int h = Math.max(own, minBarHeight);
+		// Taller than the minimum: the padding would only squeeze the buttons.
+		if ((h > minBarHeight) && ((getPaddingTop() != 0) || (getPaddingBottom() != 0))) {
+			setPadding(getPaddingLeft(), 0, getPaddingRight(), 0);
+		}
+		if (lp.height == h) return;
+		lp.height = h;
+		setLayoutParams(lp);
+	}
+
+	/** The buttons' icon colour (e.g. the nav bar's, for the two to match), or null for the style's. */
+	public void setIconTint(@Nullable ColorStateList tint) {
+		iconTint = tint;
+		if (tint == null) return;
+		for (int i = 0, n = getChildCount(); i < n; i++) applyIconTint(getChildAt(i));
+	}
+
+	private void applyIconTint(View v) {
+		if ((iconTint != null) && (v instanceof ImageButton b)) b.setImageTintList(iconTint);
+	}
+
+	@Override
+	public void onViewAdded(View child) {
+		super.onViewAdded(child);
+		applyIconTint(child);
+		readableHint(child);
+	}
+
+	/**
+	 * A text field's hint (e.g. "Search YouTube") in its own text colour, dimmed: the theme's hint
+	 * colour is dark on some themes, unreadable on the tool bar's dark pill.
+	 */
+	private static void readableHint(View v) {
+		if (v instanceof EditText e) {
+			int c = e.getCurrentTextColor();
+			e.setHintTextColor((c & 0x00FFFFFF) | 0x99000000);
+		} else if (v instanceof ViewGroup g) {
+			for (int i = 0, n = g.getChildCount(); i < n; i++) {
+				if (g.getChildAt(i) instanceof EditText e) readableHint(e);
+			}
+		}
+	}
+
 	public void setSize(float scale) {
 		Context ctx = getContext();
 		float ts = getTextAppearanceSize(ctx, textAppearance) * scale;
 		float ets = getTextAppearanceSize(ctx, editTextAppearance) * scale;
-		ViewGroup.LayoutParams lp = getLayoutParams();
-		lp.height = (int) (size * scale);
-		setLayoutParams(lp);
+		sizeScale = scale;
+		applyHeight((int) (size * scale));
 
 		for (int i = 0, n = getChildCount(); i < n; i++) {
 			View v = getChildAt(i);
@@ -125,6 +214,7 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 		boolean attached = attachMediator(this, f, (f == null) ? null : f::getToolBarMediator,
 				this::getMediator, this::setMediator);
 		if (!attached || (f == null)) return false;
+		animateContentIn();
 		float scale = f.getActivityDelegate().getToolBarSize();
 		if (scale != 1F) {
 			setSize(scale);
@@ -134,9 +224,9 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 			// rendering at whatever height a previous fragment's setSize(scale) last left it at until
 			// some unrelated layout pass happens to pick up the mutated value, clipping this title
 			// text into (or letting it visually spill into) the fragment content below it.
-			ViewGroup.LayoutParams lp = getLayoutParams();
-			lp.height = size;
-			setLayoutParams(lp);
+			sizeScale = 1F;
+			applyHeight(size);
+			setLayoutParams(getLayoutParams());
 		}
 		setIconScale(f.getActivityDelegate().getIconSize());
 		return true;
@@ -159,6 +249,7 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 	private void updateOverflow(int width, int height) {
 		ViewGroup.LayoutParams tlp = getLayoutParams();
 		int h = ((tlp != null) && (tlp.height > 0)) ? tlp.height : height;
+		h -= getPaddingTop() + getPaddingBottom(); // The buttons' height, and so their width
 		if ((width <= 0) || (h <= 0)) return;
 
 		List<ImageButton> movable = new ArrayList<>();
@@ -476,7 +567,7 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 			lp.dimensionRatio = "1:1";
 			b.setImageResource(icon);
 			b.setScaleType(ImageView.ScaleType.FIT_CENTER);
-			b.setBackgroundResource(R.drawable.focusable_shape_transparent);
+			b.setBackgroundResource(R.drawable.tool_bar_button_bg);
 			if (onClick != null) b.setOnClickListener(onClick);
 			setButtonPadding(b);
 			return b;

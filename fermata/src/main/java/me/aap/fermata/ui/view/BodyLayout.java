@@ -7,8 +7,16 @@ import static me.aap.utils.async.Completed.completedVoid;
 
 import android.content.Context;
 import android.content.res.Configuration;
+import android.content.res.TypedArray;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.LinearGradient;
+import android.graphics.Paint;
+import android.graphics.Shader;
+import android.os.Build;
 import android.util.AttributeSet;
 import android.view.View;
+import android.view.ViewTreeObserver;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -60,6 +68,136 @@ public class BodyLayout extends SplitLayout
 			b.getMediaSessionCallback().addBroadcastListener(this);
 			onPlayableChanged(null, b.getCurrentItem());
 		});
+	}
+
+	private final Paint topFadePaint = new Paint();
+	private final float topFadeLen = UiUtils.toPx(getContext(), 20);
+	private int topFadeBg = Color.BLACK;
+	private boolean topFadeBgResolved;
+	// What the fade was last drawn for: the tool bar's bottom edge and how much of it is showing.
+	private float topFadeEnd = -1f;
+	private float topFadeAlpha;
+	// computeTopFade()'s results.
+	private float fadeEnd;
+	private float fadeAlpha;
+
+	/**
+	 * Redraws the top fade whenever the tool bar moves or fades (its show/hide animation), since
+	 * nothing else invalidates this layout then. Checked before every frame, cheaply.
+	 */
+	private final ViewTreeObserver.OnPreDrawListener topFadeSync = () -> {
+		syncRefreshOffset();
+		float end = -1f;
+		float alpha = 0f;
+		if (computeTopFade()) {
+			end = fadeEnd;
+			alpha = fadeAlpha;
+		}
+		if ((end != topFadeEnd) || (alpha != topFadeAlpha)) {
+			topFadeEnd = end;
+			topFadeAlpha = alpha;
+			invalidate();
+		}
+		return true;
+	};
+
+	private final int[] refreshLoc1 = new int[2];
+	private final int[] refreshLoc2 = new int[2];
+	private int refreshOffsetFor = Integer.MIN_VALUE;
+
+	/**
+	 * The pull-to-refresh spinner comes down from under the floating tool bar pill, not from the
+	 * top of the screen behind it. Only re-set once the tool bar is settled (not mid show/hide).
+	 */
+	private void syncRefreshOffset() {
+		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
+		SwipeRefreshLayout srl = getSwipeRefresh();
+		if ((a == null) || (srl == null) || srl.isRefreshing()) return;
+		View tb = a.getToolBar();
+		if ((tb == null) || (tb.getVisibility() != VISIBLE) || (tb.getHeight() == 0) ||
+				(tb.getAlpha() < 1f) || (tb.getTranslationY() != 0f) || !srl.isAttachedToWindow()) {
+			return;
+		}
+		srl.getLocationOnScreen(refreshLoc1);
+		tb.getLocationOnScreen(refreshLoc2);
+		int bottom = refreshLoc2[1] + tb.getHeight() - refreshLoc1[1];
+		if (bottom == refreshOffsetFor) return;
+		refreshOffsetFor = bottom;
+		int circle = srl.getProgressCircleDiameter();
+		srl.setProgressViewOffset(false, bottom - circle,
+				bottom + Math.round(UiUtils.toPx(getContext(), 24)));
+	}
+
+	@Override
+	protected void onAttachedToWindow() {
+		super.onAttachedToWindow();
+		getViewTreeObserver().addOnPreDrawListener(topFadeSync);
+	}
+
+	@Override
+	protected void onDetachedFromWindow() {
+		getViewTreeObserver().removeOnPreDrawListener(topFadeSync);
+		super.onDetachedFromWindow();
+	}
+
+	@Override
+	protected void dispatchDraw(@NonNull Canvas canvas) {
+		super.dispatchDraw(canvas);
+		drawTopFade(canvas);
+	}
+
+	/**
+	 * The One UI style top: content scrolling up under the floating tool bar pill fades into the
+	 * background toward the top edge, down to a little past the pill, instead of showing at full
+	 * strength in the gaps around it. Drawn over this layout's children but under the tool bar
+	 * (which is above this layout), so the pill itself stays untouched. The mirror of the fade at
+	 * the bottom, see FloatingBarsView#drawFade.
+	 * <p>
+	 * Never over video (fullscreen, or sharing the screen with a tab), a tab with its own
+	 * background under the bars (see MainActivityFragment#drawsTopFade), or a web page: the
+	 * YouTube tab and the browser start right below the pill (see
+	 * MainActivityDelegate#insetWebViewTop), so a fade reaching past it would tint the page's own
+	 * top bar. Follows the tool bar's own alpha, so it goes and comes back with the bars.
+	 */
+	private void drawTopFade(Canvas canvas) {
+		if ((topFadeEnd <= 0f) || (topFadeAlpha <= 0f)) return;
+		if (!topFadeBgResolved) {
+			TypedArray ta = getContext().obtainStyledAttributes(
+					new int[]{android.R.attr.colorBackground});
+			topFadeBg = ta.getColor(0, Color.BLACK);
+			ta.recycle();
+			topFadeBgResolved = true;
+		}
+		int rgb = topFadeBg & 0x00FFFFFF;
+		float a = topFadeAlpha;
+		int[] colors = {rgb | (Math.round(0xEB * a) << 24), rgb | (Math.round(0xA6 * a) << 24),
+				rgb};
+		float end = topFadeEnd;
+		float[] stops = {0f, Math.max(0f, Math.min(1f, (end - topFadeLen) / end)), 1f};
+		topFadePaint.setShader(new LinearGradient(0, 0, 0, end, colors, stops,
+				Shader.TileMode.CLAMP));
+		canvas.drawRect(0, 0, getWidth(), end, topFadePaint);
+	}
+
+	/** Into fadeEnd/fadeAlpha: where the fade ends in this view, and how strong; false for none. */
+	private boolean computeTopFade() {
+		if (getMode() != Mode.FRAME) return false;
+		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
+		if ((a == null) || a.isVideoMode() || a.isTopInsetWebViewShown()) return false;
+		if (!(a.getActiveFragment() instanceof MainActivityFragment f) || !f.drawsTopFade()) {
+			return false;
+		}
+		View tb = a.getToolBar();
+		if ((tb == null) || (tb.getVisibility() != VISIBLE) || (tb.getHeight() == 0)) return false;
+		float alpha = tb.getAlpha();
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) alpha *= tb.getTransitionAlpha();
+		if (alpha <= 0f) return false;
+		// Both are children of the same parent (main_activity).
+		float end = (tb.getY() + tb.getHeight()) - getTop() + topFadeLen;
+		if (end <= 0f) return false;
+		fadeEnd = end;
+		fadeAlpha = Math.min(1f, alpha);
+		return true;
 	}
 
 	@Override

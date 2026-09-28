@@ -7,6 +7,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.ColorStateList;
+import android.content.res.TypedArray;
 import android.os.BatteryManager;
 import android.text.format.Formatter;
 import android.util.TypedValue;
@@ -29,6 +30,7 @@ import me.aap.fermata.addon.data.DataUsageTracker;
 import me.aap.fermata.addon.fuel.FuelLogStore;
 import me.aap.fermata.addon.fuel.FuelTracker;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.fragment.MusicPlayerFragment;
 
 /**
  * Fullscreen video playback overlay showing any combination of the clock, battery percentage and
@@ -40,6 +42,7 @@ public class InfoOverlayView extends LinearLayout {
 	private static final IntentFilter BATTERY_FILTER =
 			new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
 	private static final float BASE_TEXT_SIZE_SP = 24f;
+	private static final float SIZE_SCALE = 0.65f;
 	private static final int BASE_PAD_H_DP = 10;
 	private static final int BASE_PAD_V_DP = 6;
 	private static final int BASE_DIVIDER_MARGIN_DP = 4;
@@ -95,12 +98,56 @@ public class InfoOverlayView extends LinearLayout {
 	private boolean onlyWhenControlPanelVisible;
 	private boolean controlPanelVisible = true;
 	private float size = 1f;
+	// The items' colour: white on the shade, see setShaded().
+	private int fgColor = ICON_COLOR;
+
+	/**
+	 * With (the default) or without its rounded dark shade behind the items. Without it (e.g. on
+	 * the tool bar's own pill), the items take the theme's text colour instead of white, which the
+	 * shade was there to make readable.
+	 */
+	public void setShaded(boolean shaded) {
+		if (shaded) {
+			setBackgroundResource(MusicPlayerFragment.isLightTheme(getContext()) ?
+					R.drawable.clock_bg_light : R.drawable.clock_bg);
+			setForegroundColor(ICON_COLOR);
+		} else {
+			setBackground(null);
+			TypedArray ta = getContext().obtainStyledAttributes(
+					new int[]{android.R.attr.textColorPrimary});
+			int c = ta.getColor(0, ICON_COLOR);
+			ta.recycle();
+			setForegroundColor(c);
+		}
+	}
+
+	private void setForegroundColor(int color) {
+		fgColor = color;
+		for (LinearLayout row : new LinearLayout[]{clockRow, batteryRow, tempRow, distanceRow,
+				dataUsageRow, dataRemainingRow}) {
+			for (int i = 0, n = row.getChildCount(); i < n; i++) {
+				View v = row.getChildAt(i);
+				if (v instanceof TextView t) t.setTextColor(color);
+				else if (v instanceof ImageView img) img.setImageTintList(ColorStateList.valueOf(color));
+			}
+		}
+		for (int i = 0, n = getChildCount(); i < n; i++) {
+			View v = getChildAt(i);
+			if (!(v instanceof LinearLayout)) v.setBackgroundColor(dividerColor());
+		}
+	}
+
+	private int dividerColor() {
+		return (fgColor & 0x00FFFFFF) | 0x4D000000;
+	}
 
 	public InfoOverlayView(Context context) {
 		super(context);
 		setOrientation(HORIZONTAL);
 		setGravity(Gravity.CENTER_VERTICAL);
-		setBackgroundResource(R.drawable.clock_bg);
+		// A darker shade on a light theme: the white text is otherwise hard to read over light tabs.
+		setBackgroundResource(MusicPlayerFragment.isLightTheme(context) ? R.drawable.clock_bg_light :
+				R.drawable.clock_bg);
 		clock = (TextClock) LayoutInflater.from(context).inflate(R.layout.clock_view, this, false);
 		clockIcon = newIconView(context);
 		clockIcon.setImageResource(R.drawable.clock);
@@ -157,7 +204,7 @@ public class InfoOverlayView extends LinearLayout {
 		LayoutParams lp = new LayoutParams(toIntPx(getContext(), 1), LayoutParams.MATCH_PARENT);
 		lp.setMargins(m, 0, m, 0);
 		v.setLayoutParams(lp);
-		v.setBackgroundColor(0x4DFFFFFF);
+		v.setBackgroundColor(dividerColor());
 		return v;
 	}
 
@@ -230,6 +277,8 @@ public class InfoOverlayView extends LinearLayout {
 	}
 
 	public void setSize(float size) {
+		// The size setting's 1.0 is this much of the original base size, which read as too big.
+		size *= SIZE_SCALE;
 		if (this.size == size) return;
 		this.size = size;
 		clock.setTextSize(TypedValue.COMPLEX_UNIT_SP, BASE_TEXT_SIZE_SP * size);

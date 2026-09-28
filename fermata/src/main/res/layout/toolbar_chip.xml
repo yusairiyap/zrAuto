@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A chip at the right end of the title bar, see ToolBarChip: the Data Usage settings and the
+     Fuel Log Refuel button in landscape and on the car screen. Wrapped in a FrameLayout so the
+     title bar's own resizing (ToolBarView#setSize, which restyles every TextView directly inside
+     it as a title) leaves the chip's text alone. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_marginEnd="12dp">
+
+    <TextView
+        android:id="@+id/toolbar_chip_text"
+        style="@style/MusicChip"
+        android:layout_height="36dp" />
+</FrameLayout>
