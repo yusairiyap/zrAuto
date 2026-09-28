@@ -4,17 +4,22 @@ import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
 
 import android.content.Context;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.util.AttributeSet;
 import android.view.Gravity;
 import android.view.SurfaceView;
 import android.view.View;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ProgressBar;
 
 import androidx.annotation.Nullable;
 
+import me.aap.fermata.media.engine.BufferingIndicator;
 import me.aap.fermata.ui.view.VideoView;
+import me.aap.utils.ui.UiUtils;
 
 /**
  * @author Andrey Pavlenko
@@ -58,7 +63,78 @@ public class YoutubeVideoView extends VideoView {
 	protected void init(Context context) {
 		addView(new FrameLayout(context), new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 		addDimOverlay(context);
+		addBufferingSpinner(context);
 		addTransitionOverlay(context);
+	}
+
+	@Nullable
+	private View bufferingSpinner;
+	private final Runnable bufferingListener = this::updateBuffering;
+
+	/**
+	 * A spinner in a soft dark circle over the middle of the picture while the video waits for data
+	 * (see {@link BufferingIndicator}), fading/growing in and out -- rather than a frozen frame
+	 * that leaves it unclear whether anything is still happening. Under the transition cover,
+	 * which has its own spinner.
+	 */
+	private void addBufferingSpinner(Context context) {
+		FrameLayout circle = new FrameLayout(context);
+		GradientDrawable bg = new GradientDrawable();
+		bg.setShape(GradientDrawable.OVAL);
+		bg.setColor(0x80000000);
+		circle.setBackground(bg);
+		int pad = UiUtils.toIntPx(context, 14);
+		circle.setPadding(pad, pad, pad, pad);
+		ProgressBar spinner = new ProgressBar(context);
+		spinner.setIndeterminateTintList(ColorStateList.valueOf(Color.WHITE));
+		circle.addView(spinner, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		int size = UiUtils.toIntPx(context, 72);
+		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(size, size, Gravity.CENTER);
+		circle.setVisibility(GONE);
+		circle.setClickable(false);
+		circle.setFocusable(false);
+		addView(circle, lp);
+		bufferingSpinner = circle;
+	}
+
+	@Override
+	protected void onAttachedToWindow() {
+		super.onAttachedToWindow();
+		BufferingIndicator.addListener(bufferingListener);
+		updateBuffering();
+	}
+
+	@Override
+	protected void onDetachedFromWindow() {
+		BufferingIndicator.removeListener(bufferingListener);
+		super.onDetachedFromWindow();
+	}
+
+	private void updateBuffering() {
+		View v = bufferingSpinner;
+		if (v == null) return;
+		boolean show = BufferingIndicator.isBuffering();
+		if (show == (v.getVisibility() == VISIBLE) && (v.getTag() == null)) return;
+		v.animate().cancel();
+		v.setTag(null);
+
+		if (show) {
+			if (v.getVisibility() != VISIBLE) {
+				v.setAlpha(0f);
+				v.setScaleX(0.7f);
+				v.setScaleY(0.7f);
+				v.setVisibility(VISIBLE);
+			}
+			v.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(FADE_MS)
+					.setInterpolator(new DecelerateInterpolator()).start();
+		} else {
+			v.setTag(Boolean.FALSE); // Hiding
+			v.animate().alpha(0f).scaleX(0.7f).scaleY(0.7f).setDuration(FADE_MS)
+					.setInterpolator(new DecelerateInterpolator()).withEndAction(() -> {
+						v.setVisibility(GONE);
+						v.setTag(null);
+					}).start();
+		}
 	}
 
 	/**

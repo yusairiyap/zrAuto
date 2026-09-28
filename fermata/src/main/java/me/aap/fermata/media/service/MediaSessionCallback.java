@@ -111,6 +111,7 @@ import me.aap.fermata.BuildConfig;
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
 import me.aap.fermata.media.engine.AudioEffects;
+import me.aap.fermata.media.engine.BufferingIndicator;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.engine.MediaEngineManager;
 import me.aap.fermata.media.engine.MediaEngineProvider;
@@ -1039,10 +1040,17 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onEngineBuffering(MediaEngine engine, int percent) {
+		// Mid-playback the session stays "playing"; only the UI shows the stall.
+		BufferingIndicator.setBuffering(true);
 		if (isPlaying()) return;
 		PlaybackStateCompat state = new PlaybackStateCompat.Builder().setActions(SUPPORTED_ACTIONS)
 				.setState(STATE_BUFFERING, 0, 1.0f).build();
 		setPlaybackState(state);
+	}
+
+	@Override
+	public void onEngineBufferingCompleted(MediaEngine engine) {
+		BufferingIndicator.setBuffering(false);
 	}
 
 	@Override
@@ -1084,6 +1092,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onEngineStarted(MediaEngine engine) {
+		BufferingIndicator.setBuffering(false);
 		resumeItem = null;
 		engine.getPosition().and(engine.getSpeed()).main()
 				.onSuccess(h -> setPlayingState(engine, true, h.value1, h.value2));
@@ -1197,6 +1206,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onEngineEnded(MediaEngine engine) {
+		BufferingIndicator.setBuffering(false);
 		playerTask.cancel();
 		playerTask = engineEnded(engine);
 	}
@@ -1247,6 +1257,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onEngineError(MediaEngine engine, Throwable ex) {
+		BufferingIndicator.setBuffering(false);
 		String msg;
 		PlayableItem i = engine.getSource();
 
@@ -1525,9 +1536,11 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 					"item=" + getCurrentItem());
 		}
 		currentState = state;
+		int st = state.getState();
+		// Paused, stopped, skipping...: whatever was stalled isn't anymore.
+		if ((st != STATE_PLAYING) && (st != STATE_BUFFERING)) BufferingIndicator.setBuffering(false);
 		// stopped() deactivates the session; anything to play or pause makes it the one the media
 		// buttons (and Android Auto's steering wheel controls) go to again.
-		int st = state.getState();
 		if ((st != STATE_NONE) && (st != STATE_STOPPED) && (st != STATE_ERROR) && !session.isActive())
 			session.setActive(true);
 		session.setPlaybackState(state);

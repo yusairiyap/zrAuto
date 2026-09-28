@@ -32,6 +32,7 @@ import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.addon.web.FermataChromeClient;
 import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.yt.YoutubeAddon.VideoScale;
+import me.aap.fermata.media.engine.BufferingIndicator;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.DefaultMediaLib;
 import me.aap.fermata.media.lib.ExtPlayable;
@@ -217,6 +218,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		}
 		web.removeCallbacks(stallCheck);
 		web.postDelayed(stallCheck, STALL_MS);
+		// The spinners (Music tab's play button, the video's own), not the session's state.
+		BufferingIndicator.setBuffering(true);
 	}
 
 	private void stallCheck() {
@@ -241,6 +244,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	/** Buffering is over (playing again, paused, stopped): no more stall to report. */
 	private void clearStall() {
 		waitingSince = 0;
+		BufferingIndicator.setBuffering(false);
 		web.removeCallbacks(stallCheck);
 		NetworkIssuePopup.dismiss();
 	}
