@@ -160,6 +160,22 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 	public void onViewAdded(View child) {
 		super.onViewAdded(child);
 		applyIconTint(child);
+		readableHint(child);
+	}
+
+	/**
+	 * A text field's hint (e.g. "Search YouTube") in its own text colour, dimmed: the theme's hint
+	 * colour is dark on some themes, unreadable on the tool bar's dark pill.
+	 */
+	private static void readableHint(View v) {
+		if (v instanceof EditText e) {
+			int c = e.getCurrentTextColor();
+			e.setHintTextColor((c & 0x00FFFFFF) | 0x99000000);
+		} else if (v instanceof ViewGroup g) {
+			for (int i = 0, n = g.getChildCount(); i < n; i++) {
+				if (g.getChildAt(i) instanceof EditText e) readableHint(e);
+			}
+		}
 	}
 
 	public void setSize(float scale) {

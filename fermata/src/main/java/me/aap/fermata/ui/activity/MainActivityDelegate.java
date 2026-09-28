@@ -223,6 +223,8 @@ public class MainActivityDelegate extends ActivityDelegate
 	private static final int FLOATING_BAR_MARGIN = 12;
 	/** tool_bar's padding inside its pill's rounded ends, in dp -- see ToolBarPill. */
 	private static final int TOOL_BAR_INNER_PAD = 6;
+	/** How far a web page (YouTube, the browser) reaches up under the tool bar pill, in dp. */
+	private static final int WEB_UNDER_TOOL_BAR = 8;
 	private static final long BARS_ANIM_MS = 260;
 	// Hiding matches the control panel's own fade (ControlPanelView.FADE_DURATION) and starts
 	// dimming from its very first frame: an ease-in curve here left the bar looking untouched for
@@ -1805,10 +1807,17 @@ public class MainActivityDelegate extends ActivityDelegate
 		int contentTop = insetLoc1[1];
 		int contentBottom = contentTop + content.getHeight();
 
-		toolBar.getLocationOnScreen(insetLoc1);
-		// A little room below the floating tool bar pill, so the first item doesn't sit against it.
-		int top = Math.max(0, (insetLoc1[1] + toolBar.getHeight() + toIntPx(getContext(), 6)) -
-				contentTop);
+		int top;
+		if ((toolBar.getVisibility() == GONE) && !isBarsHidden()) {
+			// A tab without a tool bar at all (the Music tab on a phone): nothing to keep clear of.
+			// (Hidden with the bars, it keeps its room, so the content doesn't jump each time.)
+			top = 0;
+		} else {
+			toolBar.getLocationOnScreen(insetLoc1);
+			// A little room below the floating tool bar pill, so the first item doesn't sit against it.
+			top = Math.max(0, (insetLoc1[1] + toolBar.getHeight() + toIntPx(getContext(), 6)) -
+					contentTop);
+		}
 
 		// Whichever bottom-anchored bar reaches furthest up the screen decides the inset -- usually
 		// control_panel (nav_bar, when it's bottom-positioned, sits below it per the bottom-nav
@@ -1883,8 +1892,11 @@ public class MainActivityDelegate extends ActivityDelegate
 		// (see setBarsHidden()) since a WebView draws its own navigation and toggling an invisible
 		// bar's visibility wouldn't change anything -- but the user still expects "hide bars" to
 		// reclaim that reserved space for the page, so treat it as zero-height ourselves here.
-		// Its bottom edge, not its height: the pill floats off the top of the screen.
-		int top = isBarsHidden() ? 0 : toolBar.getBottom();
+		// Its bottom edge, not its height: the pill floats off the top of the screen. A little less,
+		// tucking the page's own top spacing (YouTube's, a site's header padding) under the pill's
+		// bottom edge, so more of the page shows.
+		int top = isBarsHidden() ? 0 :
+				Math.max(0, toolBar.getBottom() - toIntPx(getContext(), WEB_UNDER_TOOL_BAR));
 		if (mlp.topMargin == top) return;
 		mlp.topMargin = top;
 		content.setLayoutParams(mlp);

@@ -86,6 +86,7 @@ import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.text.TextUtils;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.fragment.ActivityFragment;
+import me.aap.utils.ui.view.NavBarView;
 import me.aap.utils.ui.view.ToolBarView;
 
 /**
@@ -314,6 +315,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 	@Override
 	public ToolBarView.Mediator getToolBarMediator() {
+		// Portrait with the nav bar at the bottom (a phone): the tool bar would only hold the tab's
+		// title -- the Info Overlay sits above the cover there -- so none at all, more room instead.
+		if ((getContext() != null) && !isLandscape()) {
+			NavBarView nb = getActivityDelegate().getNavBar();
+			if ((nb != null) && nb.isBottom()) return ToolBarView.Mediator.Invisible.instance;
+		}
 		return MusicToolBarMediator.instance;
 	}
 
