@@ -6,7 +6,7 @@ zrAuto is a free, open source media player built for Android Auto, made by [Yusa
 ## Highlights
 What makes zrAuto worth having in the car, biggest first:
 
-* **A proper Music tab** — full-screen, audio only, with a blurred album-art backdrop, big controls and its own queue you can drag, swipe and shuffle. Local songs and YouTube tracks play side by side
+* **A proper Music tab** — a full-screen, audio-only player that taps into a huge range of music from all over the world, without wrecking your data plan. Only the sound streams, so it's easy on data, with a blurred album-art backdrop, big controls and its own queue you can drag, swipe and shuffle. Local songs and YouTube tracks play side by side
 * **YouTube, built for the road** — it plays right inside the app, with its own Favorites, Playlists and queue. Music mode drops the video to the lowest quality so you only pay data for the sound, and flipping between video and music never stops the song
 * **Search that never stops the music** — a panel slides over whatever's playing, with YouTube results, your saved tracks and an "Up next" queue. Play next is one tap away
 * **Data usage tracker** — see what YouTube, music mode and everything else cost you in mobile data, and set a warning or a hard limit before your plan runs dry
