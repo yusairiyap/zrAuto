@@ -32,6 +32,7 @@ import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.addon.web.FermataChromeClient;
 import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.yt.YoutubeAddon.VideoScale;
+import me.aap.fermata.media.engine.BufferingIndicator;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.DefaultMediaLib;
 import me.aap.fermata.media.lib.ExtPlayable;
@@ -217,6 +218,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		}
 		web.removeCallbacks(stallCheck);
 		web.postDelayed(stallCheck, STALL_MS);
+		// The spinners (Music tab's play button, the video's own), not the session's state.
+		BufferingIndicator.setBuffering(true);
 	}
 
 	private void stallCheck() {
@@ -241,6 +244,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	/** Buffering is over (playing again, paused, stopped): no more stall to report. */
 	private void clearStall() {
 		waitingSince = 0;
+		BufferingIndicator.setBuffering(false);
 		web.removeCallbacks(stallCheck);
 		NetworkIssuePopup.dismiss();
 	}
@@ -290,6 +294,28 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		String actualId =
 				!jsVideoId.isEmpty() ? jsVideoId : YoutubeVideoItem.extractVideoId(web.getUrl());
 		YoutubeAddon addon = web.getAddon();
+
+		// The phone's own YouTube page while Android Auto is connected: the car's player is the one
+		// that plays (see MainActivityDelegate#getPlaybackDelegate()). A video tapped here is handed
+		// over to it, as if tapped in the car; anything else this page starts by itself (autoplay,
+		// resuming as the tab opens) is just silenced, never allowed to cut into the car's playback.
+		MainActivityDelegate ui = MainActivityDelegate.get(web.getContext());
+		if (ui.isPlaybackOnCar()) {
+			boolean tapped = recentLinkClick || isUserPickPending();
+			clearUserPick();
+			lastActivePlayTime = 0; // A pause asked for: paused() mustn't retry play().
+			web.pause();
+			if (tapped && (actualId != null) &&
+					(ui.getPlaybackDelegate().showFragment(me.aap.fermata.R.id.youtube_fragment)
+							instanceof YoutubeFragment car)) {
+				Log.d("playing(): handing ", actualId, " over to the car's player");
+				car.playVideoNow(actualId, jsTitle.isEmpty() ? null : jsTitle);
+				UiUtils.showToast(web.getContext(), me.aap.fermata.R.string.playing_on_car,
+						jsTitle.isEmpty() ? actualId : jsTitle);
+			}
+			return;
+		}
+
 		String pendingVideoId = addon.getPendingVideoId();
 		// The user tapped a video on the page and this is (pickedThis), or may still be on its way to
 		// (pickPending: e.g. an ad is playing first), that video -- see userPickedVideoId.
@@ -410,10 +436,11 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		//  - YoutubeAddon's videoId -> title cache, so this video already has a proper name if it
 		//    later gets added to Favorites/a Playlist (or is resolved back out of one).
 		currentVideoAuthor = jsAuthor.isEmpty() ? null : MusicTrackItem.cleanArtist(jsAuthor);
+		if (actualId != null) addon.setLiveVideoInfo(actualId, currentVideoAuthor, -1);
 		if (!jsTitle.isEmpty()) {
 			currentVideoTitle = jsTitle;
 			if (actualId != null) addon.cacheVideoTitle(actualId, jsTitle);
-			web.showTitleInAddressBar(jsTitle);
+			web.showTitleInAddressBar(MusicTrackItem.titleWithoutArtist(jsTitle, currentVideoAuthor));
 		} else if (!Objects.equals(actualId, currentVideoId)) {
 			// A new video, but the player couldn't tell us its title (mid-navigation, or a page shape
 			// getVideoData() isn't available on) -- drop the previous video's title rather than
@@ -1422,7 +1449,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		@NonNull
 		@Override
 		public String getName() {
-			return (title != null) ? title : super.getName();
+			return (title != null) ? MusicTrackItem.titleWithoutArtist(title, author) : super.getName();
 		}
 
 		@NonNull
@@ -1457,8 +1484,12 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			// unletterboxed thumbnail everywhere else.
 			FutureSupplier<String> getTitle = (title != null) ? completed(title) : web.getVideoTitle();
 			return web.getDuration().then(dur -> getTitle.map(t -> {
+				// Kept for if this video is added to Favorites/a Playlist while (or after) playing.
+				if (videoId != null) web.getAddon().setLiveVideoInfo(videoId, author, dur);
 				MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
-				b.putString(MediaMetadataCompat.METADATA_KEY_TITLE, t);
+				// Without the channel in front: it's the artist line right under it.
+				b.putString(MediaMetadataCompat.METADATA_KEY_TITLE,
+						MusicTrackItem.titleWithoutArtist(t, author));
 				if (author != null) b.putString(MediaMetadataCompat.METADATA_KEY_ARTIST, author);
 				b.putLong(MediaMetadata.METADATA_KEY_DURATION, dur);
 				if ((videoId != null) && !videoId.isEmpty()) {
@@ -1562,6 +1593,20 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		pendingCorrections = 0;
 		transitioning();
 		web.afterAudioFadeOut(() -> web.loadVideo(videoId));
+	}
+
+	/**
+	 * "Play next in queue"/"Add to queue" picked in YouTube's own menu -- see YoutubeWebView#
+	 * interceptQueueMenu(). Goes into the app's queue (the Music tab's while playing as music, else
+	 * Up next) exactly like the app's own Play next/Add to Up next, instead of YouTube's page-only
+	 * queue, which the app never saw: it played next, but never showed in the Music tab's queue.
+	 */
+	void videoQueueRequested(String data) {
+		String[] parts = data.split("\\|", 3);
+		if ((parts.length < 2) || parts[1].isEmpty()) return;
+		String title = (parts.length > 2) ? Uri.decode(parts[2]).trim() : "";
+		YoutubeFragment.onVideoQueueRequested(web, parts[1], title.isEmpty() ? null : title,
+				"next".equals(parts[0]));
 	}
 
 	/** The user long-pressed a video on the page -- see {@link YoutubeWebView}'s injected menu hook. */

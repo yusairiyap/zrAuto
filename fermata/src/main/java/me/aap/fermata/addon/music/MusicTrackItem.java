@@ -167,6 +167,32 @@ public class MusicTrackItem extends ExtPlayable {
 		return artist;
 	}
 
+	/**
+	 * A YouTube video's title as it should be shown next to its channel: without the channel's
+	 * name in front ({@code "Madeon - Dancing On Your Grave"} by Madeon shows as
+	 * {@code "Dancing On Your Grave"}), which would only repeat the artist line right under it.
+	 * The name has to be followed by a separator ({@code - – — : | ~ •}) or a space; the title is
+	 * left as it is if nothing would remain. Case-insensitive, and {@code "<artist> - Topic"}
+	 * channels count as just the artist.
+	 */
+	public static String titleWithoutArtist(@Nullable String title, @Nullable String artist) {
+		if ((title == null) || (artist == null)) return title;
+		String a = cleanArtist(artist).trim();
+		String t = title.trim();
+		int n = a.length();
+		if ((n == 0) || (t.length() <= n) || !t.regionMatches(true, 0, a, 0, n)) return title;
+		char c = t.charAt(n);
+		if (!Character.isWhitespace(c) && (SEPARATORS.indexOf(c) < 0)) return title;
+		int i = n;
+		while ((i < t.length()) &&
+				(Character.isWhitespace(t.charAt(i)) || (SEPARATORS.indexOf(t.charAt(i)) >= 0))) {
+			i++;
+		}
+		return (i < t.length()) ? t.substring(i) : title;
+	}
+
+	private static final String SEPARATORS = "-–—:|~•·";
+
 	@Nullable
 	String getCachedTitle() {
 		return title;
@@ -295,7 +321,8 @@ public class MusicTrackItem extends ExtPlayable {
 	@NonNull
 	@Override
 	public String getName() {
-		if (title != null) return title;
+		// A YouTube track's title without its channel in front, see titleWithoutArtist().
+		if (title != null) return (videoId != null) ? titleWithoutArtist(title, artist) : title;
 		PlayableItem src = source;
 		if (src != null) return src.getName();
 		return (videoId != null) ? videoId : sourceId;

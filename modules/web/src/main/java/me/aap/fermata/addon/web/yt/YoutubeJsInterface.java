@@ -28,6 +28,11 @@ public class YoutubeJsInterface extends FermataJsInterface {
 	public static final int JS_VIDEO_LONG_PRESS = JS_LAST + 12;
 	/** The video stopped to wait for data (buffering) -- see YoutubeMediaEngine#waiting(). */
 	public static final int JS_VIDEO_WAITING = JS_LAST + 13;
+	/**
+	 * The user picked "Play next in queue"/"Add to queue" in YouTube's own menu for a video (data =
+	 * "next|id|encoded title" or "end|id|encoded title") -- see YoutubeWebView#interceptQueueMenu().
+	 */
+	public static final int JS_VIDEO_QUEUE = JS_LAST + 14;
 	private final YoutubeMediaEngine engine;
 	private Promise<String> result;
 
@@ -96,6 +101,10 @@ public class YoutubeJsInterface extends FermataJsInterface {
 				break;
 			case JS_VIDEO_WAITING:
 				engine.waiting(data);
+				break;
+			case JS_VIDEO_QUEUE:
+				Log.d("Video queued from the page's menu: ", data);
+				engine.videoQueueRequested(data);
 				break;
 			default:
 				super.handleEvent(event, data);

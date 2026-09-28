@@ -45,6 +45,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
 import me.aap.fermata.addon.AddonManager;
@@ -737,8 +738,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 					}
 					a.getLib().getItem("youtube:" + v.videoId).main().onCompletion((item, e) -> {
 						if (item instanceof MediaLib.ExternallyPlayableItem ext) {
-							ActivityFragment f = a.showFragment(ext.getPlayerFragmentId());
-							if (f != null) ext.loadInFragment(f, ext);
+							a.playExternally(ext, ext);
 						} else {
 							Utils.openUrl(ctx, v.watchUrl());
 						}
@@ -1302,7 +1302,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		private void bindTrack(Holder h, Track t) {
 			Context ctx = h.itemView.getContext();
 			Video m = t.match;
-			setText(h.title, (m != null) ? m.title : t.title);
+			setText(h.title, (m != null) ? MusicTrackItem.titleWithoutArtist(m.title, m.channel) : t.title);
 			setText(h.subtitle, t.displayName());
 
 			String detail;
@@ -1411,7 +1411,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		}
 
 		private void bindAlt(Holder h, Track t, Video v) {
-			setText(h.title, v.title);
+			setText(h.title, MusicTrackItem.titleWithoutArtist(v.title, v.channel));
 			setText(h.detail, videoDetail(v));
 			if (h.thumb != null) loadImage(h.thumb, v.thumbnailUrl(), R.drawable.video);
 			boolean chosen = (t.match != null) && t.match.videoId.equals(v.videoId);

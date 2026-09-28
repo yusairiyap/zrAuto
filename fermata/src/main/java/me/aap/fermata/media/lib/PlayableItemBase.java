@@ -165,6 +165,15 @@ public abstract class PlayableItemBase extends ItemBase implements PlayableItem,
 		}
 	}
 
+	/**
+	 * The subtitle when shown as a Favorites/Playlist entry ({@link ExportedItem}), whose list has
+	 * subtitle options of its own ({@code prefs}). Uses this item's own by default.
+	 */
+	protected String buildExportedSubtitle(MediaMetadataCompat md, SharedTextBuilder tb,
+																				 BrowsableItemPrefs prefs) {
+		return buildSubtitle(md, tb);
+	}
+
 	protected String buildSubtitle(MediaMetadataCompat md, SharedTextBuilder tb) {
 		BrowsableItemPrefs prefs = requireNonNull(getParent()).getPrefs();
 		String s;

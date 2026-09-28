@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
 import me.aap.fermata.addon.AddonManager;
@@ -36,6 +37,7 @@ import me.aap.fermata.media.lib.MediaLib.Favorites;
 import me.aap.fermata.media.lib.MediaLib.Item;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.lib.MediaLib.Playlist;
+import me.aap.fermata.spotify.SpotifyPlaylistWriter;
 import me.aap.fermata.spotify.SpotifyImportModel.Video;
 import me.aap.fermata.spotify.YoutubeSearch;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -199,6 +201,9 @@ public class YoutubeAlternativesFragment extends MainActivityFragment {
 				.onCompletion((addon, err) -> {
 					if (addon instanceof VideoTitleCache c) {
 						c.cacheVideoTitles(Collections.singletonMap(v.videoId, v.title));
+						// The replacement keeps its channel/duration in the playlist too.
+						c.cacheVideoInfo(Collections.singletonMap(v.videoId,
+								SpotifyPlaylistWriter.videoInfo(v, null)));
 					}
 					a.getLib().getItem(YT_PREFIX + v.videoId).main().onCompletion((ni, e) -> {
 						if (!(ni instanceof PlayableItem np) || (parent == null)) {
@@ -357,7 +362,8 @@ public class YoutubeAlternativesFragment extends MainActivityFragment {
 		private void bindVideo(View v, Video video) {
 			TextView title = v.findViewById(R.id.si_title);
 			TextView detail = v.findViewById(R.id.si_detail);
-			title.setText(video.title);
+			// The channel shows right under it: not in front of the title too.
+			title.setText(MusicTrackItem.titleWithoutArtist(video.title, video.channel));
 			String d = (video.channel != null) ? video.channel : "";
 			if (video.durationText != null) d = d.isEmpty() ? video.durationText :
 					(d + " • " + video.durationText);

@@ -1,6 +1,5 @@
 package me.aap.fermata.ui.view;
 
-import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
 
 import android.content.Context;
@@ -13,10 +12,12 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
-import android.widget.FrameLayout;
+import android.view.animation.OvershootInterpolator;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -24,6 +25,7 @@ import android.widget.TextView;
 import androidx.annotation.DrawableRes;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
+import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.content.ContextCompat;
 
 import java.lang.ref.WeakReference;
@@ -36,12 +38,13 @@ import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.fragment.ActivityFragment;
 
 /**
- * A translucent card over the playback screen saying streaming stopped because of the network --
+ * A banner at the top of the playback screen saying streaming stopped because of the network --
  * the connection dropped or is too slow to keep up -- rather than leaving the driver to guess why
- * it went quiet. Not a dialog: nothing else is blocked, the rest of the screen stays usable, and it
- * goes away by itself as soon as playback picks up again ({@link #dismiss()}). Its actions are
- * chips: try again, dismiss and, when the music queue has tracks stored on the phone, carry on
- * with those.
+ * it went quiet. The same banner as the data warning ({@code DataUsageAlerts}, same layout, place
+ * and slide-in), right under the title bar, or at the very top over fullscreen video. Not a
+ * dialog: nothing else is blocked, and it goes away by itself as soon as playback picks up again
+ * ({@link #dismiss()}). Its one action plays the music queue's tracks stored on the phone when
+ * there are any, else tries again; the X dismisses it.
  * <p>
  * Only over playback -- see {@link #isPlaybackScreen} -- never while the user is browsing.
  */
@@ -66,7 +69,7 @@ public final class NetworkIssuePopup {
 
 	/**
 	 * Whether what's on screen is playback (fullscreen video, or the Music tab) rather than
-	 * browsing -- the only time the card is worth interrupting for.
+	 * browsing -- the only time the banner is worth interrupting for.
 	 *
 	 * @param fullscreenVideo whether the caller's player is showing its video fullscreen
 	 */
@@ -77,120 +80,96 @@ public final class NetworkIssuePopup {
 	}
 
 	/**
-	 * Shows the card over {@code a}'s screen (the phone's or the car's), replacing one already up.
+	 * Shows the banner over {@code a}'s screen (the phone's or the car's), replacing one already up.
 	 *
 	 * @param retry what "Try again" does
 	 */
 	public static void show(MainActivityDelegate a, @Nullable Runnable retry) {
 		dismiss();
-		View body = a.getBody();
-		if (body == null) return;
-		View root = body.getRootView();
-		View content = root.findViewById(android.R.id.content);
-		FrameLayout host = (content instanceof FrameLayout f) ? f :
-				(root instanceof FrameLayout f) ? f : null;
-		if (host == null) return;
+		View main = a.findViewById(R.id.main_activity);
+		if (!(main instanceof ConstraintLayout root)) return;
 
-		Context ctx = host.getContext();
+		Context ctx = root.getContext();
 		boolean online = isOnline(ctx);
 		boolean offlineTracks = MusicPlayer.hasOfflineTrack(a);
 		DiagnosticLog.log("NETWORK", online ? "playback stalled (slow network)" :
 				"playback stalled (no connection)", "offlineTracks=" + offlineTracks);
 
-		// Always light text on a dark glass card: it sits over video, whatever the theme.
-		int fg = 0xFFFFFFFF;
-		int fg2 = 0xB3FFFFFF;
+		View b = LayoutInflater.from(ctx).inflate(R.layout.data_usage_banner, root, false);
+		ConstraintLayout.LayoutParams lp = new ConstraintLayout.LayoutParams(
+				ConstraintLayout.LayoutParams.MATCH_CONSTRAINT, ConstraintLayout.LayoutParams.WRAP_CONTENT);
+		lp.startToStart = ConstraintLayout.LayoutParams.PARENT_ID;
+		lp.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID;
+		// Under the title bar; at the very top when it's hidden (fullscreen video).
+		lp.topToBottom = R.id.tool_bar;
+		lp.matchConstraintMaxWidth = UiUtils.toIntPx(ctx, 600);
+		int m = UiUtils.toIntPx(ctx, 8);
+		lp.setMargins(m, m, m, 0);
+		b.setLayoutParams(lp);
+		b.setElevation(UiUtils.toIntPx(ctx, 26));
 
-		LinearLayout card = new LinearLayout(ctx);
-		card.setOrientation(LinearLayout.VERTICAL);
-		card.setClickable(true); // Taps on the card don't reach the video underneath.
-		int pad = UiUtils.toIntPx(ctx, 18);
-		card.setPadding(pad, pad, pad, UiUtils.toIntPx(ctx, 14));
-		GradientDrawable shape = new GradientDrawable();
-		shape.setColor(0xB3141418);
-		shape.setCornerRadius(UiUtils.toPx(ctx, 22));
-		shape.setStroke(UiUtils.toIntPx(ctx, 1), 0x33FFFFFF);
-		card.setBackground(shape);
-		card.setElevation(UiUtils.toPx(ctx, 32));
-
-		LinearLayout head = new LinearLayout(ctx);
-		head.setOrientation(LinearLayout.HORIZONTAL);
-		head.setGravity(Gravity.CENTER_VERTICAL);
-		card.addView(head, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-
-		// The connection's state, at a glance: a weak signal, or none at all.
-		ImageView icon = new ImageView(ctx);
+		// Offline: the limit's red, as serious as it gets; slow: the warning's amber.
+		int bg = ContextCompat.getColor(ctx, online ? R.color.data_usage_warning : R.color.data_usage_limit);
+		int fg = online ? 0xFF1A1A1A : 0xFFFFFFFF;
+		b.setBackgroundTintList(ColorStateList.valueOf(bg));
+		ImageView icon = b.findViewById(R.id.data_usage_banner_icon);
 		icon.setImageResource(online ? R.drawable.network_weak : R.drawable.network_off);
-		icon.setImageTintList(ColorStateList.valueOf(online ? 0xFFFFC857 : 0xFFFF6B6B));
-		int is = UiUtils.toIntPx(ctx, 30);
-		LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(is, is);
-		ilp.setMarginEnd(UiUtils.toIntPx(ctx, 14));
-		head.addView(icon, ilp);
-
-		LinearLayout texts = new LinearLayout(ctx);
-		texts.setOrientation(LinearLayout.VERTICAL);
-		head.addView(texts, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
-
-		TextView title = new TextView(ctx);
-		title.setText(online ? R.string.network_issue_slow_title : R.string.network_issue_offline_title);
+		icon.setImageTintList(ColorStateList.valueOf(bg));
+		icon.setBackgroundTintList(ColorStateList.valueOf(fg));
+		TextView title = b.findViewById(R.id.data_usage_banner_title);
 		title.setTextColor(fg);
-		title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
-		title.setTypeface(Typeface.DEFAULT_BOLD);
-		texts.addView(title, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-
-		TextView msg = new TextView(ctx);
-		msg.setText(offlineTracks ? R.string.network_issue_message_offline_tracks :
+		title.setText(online ? R.string.network_issue_slow_title : R.string.network_issue_offline_title);
+		TextView text = b.findViewById(R.id.data_usage_banner_text);
+		text.setTextColor(fg);
+		text.setAlpha(0.85f);
+		text.setMaxLines(3);
+		text.setText(offlineTracks ? R.string.network_issue_message_offline_tracks :
 				R.string.network_issue_message);
-		msg.setTextColor(fg2);
-		msg.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-		LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		mlp.topMargin = UiUtils.toIntPx(ctx, 2);
-		texts.addView(msg, mlp);
 
-		LinearLayout chips = new LinearLayout(ctx);
-		chips.setOrientation(LinearLayout.HORIZONTAL);
-		chips.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
-		LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		blp.topMargin = UiUtils.toIntPx(ctx, 14);
-		card.addView(chips, blp);
-
+		TextView action = b.findViewById(R.id.data_usage_banner_action);
+		action.setBackgroundTintList(ColorStateList.valueOf(fg));
+		action.setTextColor(bg);
 		if (offlineTracks) {
-			addChip(chips, R.drawable.music, R.string.network_issue_play_offline, fg, true, v -> {
+			action.setText(R.string.network_issue_play_offline);
+			action.setOnClickListener(v -> {
 				dismiss();
 				MusicPlayer.playOfflineTrack(a);
 			});
-		}
-		if (retry != null) {
-			addChip(chips, R.drawable.refresh, R.string.network_issue_retry, fg, !offlineTracks, v -> {
+		} else if (retry != null) {
+			action.setText(R.string.network_issue_retry);
+			action.setOnClickListener(v -> {
 				dismiss();
 				retry.run();
 			});
+		} else {
+			action.setVisibility(View.GONE);
 		}
-		addChip(chips, R.drawable.close_small, R.string.network_issue_dismiss, fg, false,
-				v -> dismiss());
 
-		int maxW = UiUtils.toIntPx(ctx, 520);
-		int w = Math.min(maxW, Math.max(0, host.getWidth() - UiUtils.toIntPx(ctx, 32)));
-		// Not a dialog: only the card itself takes touches; the rest of the screen stays live.
-		FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams((w > 0) ? w : MATCH_PARENT,
-				WRAP_CONTENT, Gravity.CENTER);
-		host.addView(card, clp);
+		ImageButton close = b.findViewById(R.id.data_usage_banner_close);
+		close.setImageResource(me.aap.utils.R.drawable.close);
+		close.setImageTintList(ColorStateList.valueOf(fg));
+		close.setContentDescription(ctx.getString(R.string.network_issue_dismiss));
+		close.setOnClickListener(v -> dismiss());
 
-		card.setAlpha(0f);
-		card.setScaleX(0.94f);
-		card.setScaleY(0.94f);
-		card.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(200)
-				.setInterpolator(new DecelerateInterpolator()).start();
-		shown = new WeakReference<>(card);
+		root.addView(b);
+		b.setAlpha(0f);
+		b.setTranslationY(-UiUtils.toIntPx(ctx, 48));
+		b.setScaleX(0.96f);
+		b.setScaleY(0.96f);
+		b.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f).setDuration(420)
+				.setInterpolator(new OvershootInterpolator(1.4f)).start();
+		shown = new WeakReference<>(b);
 	}
 
-	/** Takes the card down, if it's up -- playback carried on, or the user dismissed it. */
+	/** Takes the banner down, if it's up -- playback carried on, or the user dismissed it. */
 	public static void dismiss() {
 		View v = shown.get();
 		shown = new WeakReference<>(null);
 		if ((v == null) || !(v.getParent() instanceof ViewGroup g)) return;
 		v.animate().cancel();
-		v.animate().alpha(0f).setDuration(150).withEndAction(() -> g.removeView(v)).start();
+		v.animate().alpha(0f).translationY(-UiUtils.toIntPx(v.getContext(), 32)).setDuration(220)
+				.setInterpolator(new DecelerateInterpolator()).withEndAction(() -> g.removeView(v))
+				.start();
 	}
 
 	public static boolean isShown() {
@@ -199,7 +178,7 @@ public final class NetworkIssuePopup {
 	}
 
 	/** A pill-shaped chip with an icon; {@code primary} is filled, the others outlined. */
-	private static void addChip(LinearLayout parent, @DrawableRes int icon, @StringRes int text,
+	static TextView addChip(LinearLayout parent, @DrawableRes int icon, @StringRes int text,
 															int color, boolean primary, View.OnClickListener l) {
 		Context ctx = parent.getContext();
 		TextView c = new TextView(ctx);
@@ -237,6 +216,7 @@ public final class NetworkIssuePopup {
 		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
 		lp.setMarginStart(UiUtils.toIntPx(ctx, 8));
 		parent.addView(c, lp);
+		return c;
 	}
 
 	@Nullable

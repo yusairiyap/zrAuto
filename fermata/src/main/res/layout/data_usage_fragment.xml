@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The Data Usage tab, see DataUsageFragment. One scrolling column: the usage ring with the
      limit figures, the settings chip, the Overall / Day / Week / Month switch with the period
-     navigation, the bar chart, and the breakdown by category. Inflated with the Music tab's
+     navigation, the bar chart, and the breakdown by category. On a wide screen (landscape, a
+     tablet, the car) the two columns below sit side by side instead, the same way as the
+     YouTube Up next panel: the ring and its figures on the left, the period, chart and breakdown
+     on the right (see DataUsageFragment#updateSplit). Inflated with the Music tab's
      palette (MusicPalette in music.xml) for its cards and text, but no background of its own:
      like the Fuel Log tab it shows the app's own background through, which is what the floating
      nav bar's fade and the space around it blend into. -->
@@ -13,8 +16,10 @@
     android:fillViewport="true">
 
     <LinearLayout
+        android:id="@+id/data_usage_columns"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:baselineAligned="false"
         android:clipChildren="false"
         android:clipToPadding="false"
         android:orientation="vertical"
@@ -22,6 +27,14 @@
         android:paddingTop="12dp"
         android:paddingEnd="16dp"
         android:paddingBottom="24dp">
+
+    <LinearLayout
+        android:id="@+id/data_usage_col_start"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:orientation="vertical">
 
         <!-- Usage this cycle -->
         <LinearLayout
@@ -172,6 +185,15 @@
                 android:drawableStart="@drawable/settings"
                 android:text="@string/data_usage_settings" />
         </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/data_usage_col_end"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:orientation="vertical">
 
         <!-- The pill behind the selected option slides over to a newly picked one, see
              DataUsageFragment#moveFilterPill(). -->
@@ -326,5 +348,6 @@
             android:lineSpacingExtra="2dp"
             android:textColor="?attr/musicTextTertiary"
             android:textSize="12sp" />
+    </LinearLayout>
     </LinearLayout>
 </androidx.core.widget.NestedScrollView>

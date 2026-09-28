@@ -153,6 +153,8 @@ public final class SpotifyApi {
 				JSONObject album = t.optJSONObject("album");
 				// Album tracks carry no album object of their own: their art is the album's cover.
 				track.imageUrl = (album != null) ? smallImage(album) : pl.coverUrl;
+				track.album = (album != null) ? str(album, "name") :
+						(pl.ref.startsWith("album/") ? pl.name : null);
 				pl.tracks.add(track);
 			}
 

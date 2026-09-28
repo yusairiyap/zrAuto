@@ -938,6 +938,12 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	 */
 	void playFromList(MediaLib.PlayableItem pi) {
 		hideSearchPanel();
+		YoutubeFragment car = carPlayer(true);
+		if (car != null) {
+			car.playFromList(pi);
+			notifyPlayingOnCar(pi.getName());
+			return;
+		}
 		MainActivityDelegate a = MainActivityDelegate.get(requireContext());
 		if (pi instanceof MusicTrackItem t) {
 			// The Music tab's queue: played the way that tab plays it (as music, from its queue).
@@ -950,6 +956,31 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		} else {
 			MainActivityDelegate.get(requireContext()).getMediaSessionCallback().playItem(pi, 0);
 		}
+	}
+
+	/**
+	 * The car's YouTube tab while Android Auto is connected and this is the phone's -- everything
+	 * played or queued here goes there instead, as if done in the car: one player, one session (see
+	 * MainActivityDelegate#getPlaybackDelegate()). Null when this tab is the one that plays.
+	 *
+	 * @param show whether to bring the car's YouTube tab up (to play), or just have it ready (to queue)
+	 */
+	@Nullable
+	private YoutubeFragment carPlayer(boolean show) {
+		Context ctx = getContext();
+		if (ctx == null) return null;
+		MainActivityDelegate a = MainActivityDelegate.get(ctx);
+		if (!a.isPlaybackOnCar()) return null;
+		MainActivityDelegate car = a.getPlaybackDelegate();
+		int id = me.aap.fermata.R.id.youtube_fragment;
+		ActivityFragment f = show ? car.showFragment(id) : car.getFragment(id);
+		if (f == null) f = car.preloadFragment(id);
+		return ((f instanceof YoutubeFragment yt) && (yt != this)) ? yt : null;
+	}
+
+	private void notifyPlayingOnCar(String name) {
+		Context ctx = getContext();
+		if (ctx != null) UiUtils.showToast(ctx, me.aap.fermata.R.string.playing_on_car, name);
 	}
 
 	void toggleSearchPanel() {
@@ -1063,6 +1094,13 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	 * behind (Up next stays).
 	 */
 	void playVideoNow(String videoId, @Nullable String title) {
+		YoutubeFragment car = carPlayer(true);
+		if (car != null) {
+			hideSearchPanel();
+			car.playVideoNow(videoId, title);
+			notifyPlayingOnCar((title != null) ? title : videoId);
+			return;
+		}
 		YoutubeAddon addon = (YoutubeAddon) getAddon();
 		YoutubeWebView v = getWebView();
 		if ((addon == null) || (v == null)) return;
@@ -1085,36 +1123,52 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	 * no YouTube video playing there is nothing for it to wait for, so it just plays now.
 	 */
 	void queueVideo(String videoId, @Nullable String title, boolean first) {
+		// Into the car's queue while Android Auto is connected: the one that's playing.
+		YoutubeFragment car = carPlayer(false);
+		if (car != null) {
+			car.queueVideo(videoId, title, first);
+			return;
+		}
 		YoutubeAddon addon = (YoutubeAddon) getAddon();
 		YoutubeWebView v = getWebView();
 		if ((addon == null) || (v == null)) return;
 		YoutubeMediaEngine eng = v.getEngine();
+		MainActivityDelegate a = MainActivityDelegate.get(requireContext());
 
-		if ((eng == null) || !eng.isActive()) {
-			playVideoNow(videoId, title);
-			return;
-		}
-
-		// Playing as music (the Music tab): the music queue is what plays next, and what that tab
-		// shows -- queue there rather than in a separate Up next the Music tab knows nothing about.
-		if (MusicPlayer.isYoutubeAudioMode()) {
+		// Playing from the Music tab's queue -- as music (YouTube or a local file alike), or a queue
+		// track switched to video and watched here: the music queue is what plays next, and what
+		// that tab shows -- queue there rather than in a separate Up next the Music tab knows nothing
+		// about (it played next, but never showed in the tab's queue). Checked first: a local track
+		// playing leaves this tab's own player idle, which below would mean "nothing playing, play
+		// it now" and cut it off.
+		boolean fromQueue = MusicPlayer.getCurrentTrack(a.getMediaSessionCallback()) != null;
+		if (MusicPlayer.isYoutubeAudioMode() || MusicPlayer.isMusicModeActive(a) || fromQueue) {
 			if ((title != null) && !title.isEmpty()) addon.cacheVideoTitle(videoId, title);
-			MainActivityDelegate a = MainActivityDelegate.get(requireContext());
 			if ((a.getLib() instanceof DefaultMediaLib lib) && MusicPlayer.queueAfterCurrent(a,
 					new YoutubeVideoItem(videoId, addon.getRootItem(lib)), first)) {
-				String name = ((title != null) && !title.isEmpty()) ? title : addon.getVideoTitle(videoId);
+				DiagnosticLog.log("YT", "queued into the music queue", "id=" + videoId, "next=" + first,
+						"fromQueue=" + fromQueue);
+				String name = ((title != null) && !title.isEmpty()) ? title : addon.getDisplayTitle(videoId);
 				UiUtils.showToast(requireContext(), first ? me.aap.fermata.R.string.youtube_added_play_next :
 						me.aap.fermata.R.string.youtube_added_up_next, name);
 				return;
 			}
 		}
 
+		if ((eng == null) || !eng.isActive()) {
+			DiagnosticLog.log("YT", "queue request: nothing playing, playing now", "id=" + videoId);
+			playVideoNow(videoId, title);
+			return;
+		}
+
+		DiagnosticLog.log("YT", "queued into Up next", "id=" + videoId, "next=" + first,
+				"audioMode=" + MusicPlayer.isYoutubeAudioMode());
 		if (!addon.addUpNext(videoId, title, first)) {
 			UiUtils.showToast(requireContext(), me.aap.fermata.R.string.youtube_up_next_full,
 					addon.getUpNextMax());
 			return;
 		}
-		String name = ((title != null) && !title.isEmpty()) ? title : addon.getVideoTitle(videoId);
+		String name = ((title != null) && !title.isEmpty()) ? title : addon.getDisplayTitle(videoId);
 		UiUtils.showToast(requireContext(), first ? me.aap.fermata.R.string.youtube_added_play_next :
 				me.aap.fermata.R.string.youtube_added_up_next, name);
 	}
@@ -1140,6 +1194,16 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 				queueVideo(videoId, title, false);
 				return true;
 			});
+		});
+	}
+
+	/** See {@code YoutubeWebView#interceptQueueMenu()}. */
+	static void onVideoQueueRequested(YoutubeWebView web, String videoId, @Nullable String title,
+																		boolean next) {
+		MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a -> {
+			if (a.getFragment(me.aap.fermata.R.id.youtube_fragment) instanceof YoutubeFragment f) {
+				f.queueVideo(videoId, title, next);
+			}
 		});
 	}
 

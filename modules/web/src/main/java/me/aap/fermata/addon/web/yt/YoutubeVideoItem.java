@@ -1,6 +1,9 @@
 package me.aap.fermata.addon.web.yt;
 
+import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM;
 import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI;
+import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ARTIST;
+import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_DURATION;
 import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_TITLE;
 import static me.aap.fermata.media.pref.MediaPrefs.MEDIA_ENG_YT;
 import static me.aap.utils.async.Completed.completed;
@@ -13,16 +16,19 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import me.aap.fermata.addon.AddonManager;
+import me.aap.fermata.addon.VideoTitleCache.VideoInfo;
 import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.ExtPlayable;
 import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
+import me.aap.fermata.media.pref.BrowsableItemPrefs;
 import me.aap.fermata.media.service.PlaybackResume;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.text.SharedTextBuilder;
+import me.aap.utils.text.TextUtils;
 import me.aap.utils.ui.fragment.ActivityFragment;
 import me.aap.utils.vfs.generic.GenericFileSystem;
 
@@ -188,7 +194,7 @@ public class YoutubeVideoItem extends ExtPlayable implements MediaLib.Externally
 
 	private String cachedTitle() {
 		YoutubeAddon addon = AddonManager.get().getAddon(YoutubeAddon.class);
-		return (addon != null) ? addon.getVideoTitle(videoId) : videoId;
+		return (addon != null) ? addon.getDisplayTitle(videoId) : videoId;
 	}
 
 	@NonNull
@@ -201,11 +207,51 @@ public class YoutubeVideoItem extends ExtPlayable implements MediaLib.Externally
 		// is the true source-resolution 16:9 frame for the vast majority of videos (falls back to a
 		// generic icon on the rare video too old to have one, same as any other failed thumbnail load).
 		b.putString(METADATA_KEY_ALBUM_ART_URI, thumbnailUrl(videoId, true));
+		// Stored when it was added to Favorites/a Playlist or imported -- see VideoTitleCache.
+		YoutubeAddon addon = AddonManager.get().getAddon(YoutubeAddon.class);
+		VideoInfo info = (addon != null) ? addon.getVideoInfo(videoId) : null;
+		if (info != null) {
+			if (info.artist != null) b.putString(METADATA_KEY_ARTIST, info.artist);
+			if (info.album != null) b.putString(METADATA_KEY_ALBUM, info.album);
+			if (info.durationMs > 0) b.putLong(METADATA_KEY_DURATION, info.durationMs);
+		}
 		return completed(b.build());
 	}
 
 	@Override
 	protected String buildSubtitle(MediaMetadataCompat md, SharedTextBuilder tb) {
-		return null;
+		return buildSubtitle(md, tb, getParent().getPrefs());
+	}
+
+	/** In a Favorites/Playlist, that list's own subtitle choices apply -- see ExportedItem. */
+	@Override
+	protected String buildExportedSubtitle(MediaMetadataCompat md, SharedTextBuilder tb,
+																				 BrowsableItemPrefs prefs) {
+		return buildSubtitle(md, tb, prefs);
+	}
+
+	/**
+	 * Channel, album and duration as the list's subtitle options ask. Never the file name: for a
+	 * video that's just the watch URL.
+	 */
+	private String buildSubtitle(MediaMetadataCompat md, SharedTextBuilder tb,
+															 BrowsableItemPrefs prefs) {
+		if (prefs.getSubtitleNamePref()) append(tb, md.getString(METADATA_KEY_TITLE));
+		if (prefs.getSubtitleAlbumPref()) append(tb, md.getString(METADATA_KEY_ALBUM));
+		if (prefs.getSubtitleArtistPref()) append(tb, md.getString(METADATA_KEY_ARTIST));
+		if (prefs.getSubtitleDurationPref()) {
+			long dur = md.getLong(METADATA_KEY_DURATION);
+			if (dur > 0) {
+				if (tb.length() != 0) tb.append(" - ");
+				TextUtils.timeToString(tb, (int) (dur / 1000));
+			}
+		}
+		return tb.toString();
+	}
+
+	private static void append(SharedTextBuilder tb, @Nullable String s) {
+		if ((s == null) || (s = s.trim()).isEmpty()) return;
+		if (tb.length() != 0) tb.append(" - ");
+		tb.append(s);
 	}
 }

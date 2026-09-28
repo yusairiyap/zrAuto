@@ -76,6 +76,7 @@ public final class SpotifyImportStore {
 					j.put("a", t.artists);
 					j.put("d", t.durationMs);
 					j.putOpt("img", t.imageUrl);
+					j.putOpt("al", t.album);
 					if (!t.selected) j.put("off", true);
 					// An interrupted search is simply redone after a restart.
 					int state = (t.matchState == Track.MATCH_SEARCHING) ? Track.MATCH_NONE : t.matchState;
@@ -157,6 +158,7 @@ public final class SpotifyImportStore {
 						JSONObject j = tracks.getJSONObject(n);
 						Track t = new Track(j.optString("t"), j.optString("a"), j.optLong("d", -1));
 						t.imageUrl = str(j, "img");
+						t.album = str(j, "al");
 						t.selected = !j.optBoolean("off");
 						t.matchState = j.optInt("s", Track.MATCH_NONE);
 						JSONObject m = j.optJSONObject("m");

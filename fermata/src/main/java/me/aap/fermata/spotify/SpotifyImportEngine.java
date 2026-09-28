@@ -8,8 +8,10 @@ import androidx.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
@@ -578,14 +580,21 @@ public final class SpotifyImportEngine {
 
 		for (PlanEntry e : plan) {
 			List<Video> videos = new ArrayList<>(e.tracks.size());
+			Map<String, Track> byVideo = new HashMap<>();
 			Set<String> ids = new LinkedHashSet<>();
 
 			for (Track t : e.tracks) {
 				if (t.match == null) skipped++;
-				else if (ids.add(t.match.videoId)) videos.add(t.match);
+				else if (ids.add(t.match.videoId)) {
+					videos.add(t.match);
+					byVideo.put(t.match.videoId, t);
+				}
 			}
 
-			if (!videos.isEmpty()) entries.add(new SpotifyPlaylistWriter.Entry(e.playlist.name, videos));
+			if (!videos.isEmpty()) {
+				entries.add(new SpotifyPlaylistWriter.Entry(e.playlist.name, videos, byVideo,
+						e.playlist.ref));
+			}
 		}
 
 		if (entries.isEmpty()) {

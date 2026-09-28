@@ -110,7 +110,8 @@ public final class MusicPlayer {
 	}
 
 	/** Shows the YouTube tab with its video fullscreen (a no-op without the YouTube addon). */
-	public static void showYoutubeVideo(MainActivityDelegate a) {
+	public static void showYoutubeVideo(MainActivityDelegate from) {
+		MainActivityDelegate a = from.getPlaybackDelegate(); // The car's while Android Auto is on.
 		YoutubeHooks h = youtube;
 		if (h != null) h.showVideo(a);
 	}
@@ -302,12 +303,19 @@ public final class MusicPlayer {
 
 	/**
 	 * Puts {@code item} into the music queue -- right after the track playing now ({@code next}) or
-	 * at the end. False when no queue track is playing (nothing for it to follow).
+	 * at the end. False when no queue track is playing (nothing for it to follow) -- unless the
+	 * Music tab is what's playing ({@link #isMusicModeActive}), when YouTube's player may just not
+	 * be reporting its queue track at this very moment: then it goes after where the queue is (its
+	 * saved current track), so it still shows up in the Music tab's queue rather than nowhere.
 	 */
 	public static boolean queueAfterCurrent(MainActivityDelegate a, PlayableItem item, boolean next) {
 		MusicQueue q = getQueue(a);
+		if (q == null) return false;
 		MusicTrackItem cur = getCurrentTrack(a.getMediaSessionCallback());
-		if ((q == null) || (cur == null)) return false;
+		if (cur == null) {
+			if (!isMusicModeActive(a)) return false;
+			cur = q.getSavedCurrent();
+		}
 		List<PlayableItem> l = Collections.singletonList(item);
 		if (next) q.addAfter(cur, l);
 		else q.add(l);
@@ -531,7 +539,9 @@ public final class MusicPlayer {
 	 * playing it, so it's just a matter of showing it at its usual quality again; a local file
 	 * gets its picture back on the same engine.
 	 */
-	public static void switchToVideo(MainActivityDelegate a) {
+	public static void switchToVideo(MainActivityDelegate from) {
+		// The video shows where it plays: the car's screen while Android Auto is connected.
+		MainActivityDelegate a = from.getPlaybackDelegate();
 		MediaSessionCallback cb = a.getMediaSessionCallback();
 		MediaEngine eng = cb.getEngine();
 		MusicTrackItem t = getCurrentTrack(cb);
@@ -567,7 +577,8 @@ public final class MusicPlayer {
 	 * "Video" for the queue track shown while nothing is playing (where the queue left off): starts
 	 * it straight away as video, from where the queue left off.
 	 */
-	public static void watch(MainActivityDelegate a, MusicTrackItem t) {
+	public static void watch(MainActivityDelegate from, MusicTrackItem t) {
+		MainActivityDelegate a = from.getPlaybackDelegate(); // See switchToVideo().
 		MusicQueue q = getQueue(a);
 		long pos = ((q != null) && t.equals(q.getSavedCurrent())) ? q.getSavedPosition() : 0;
 		DiagnosticLog.log(TAG, "watch", "track=" + t, "pos=" + (pos / 1000) + 's');

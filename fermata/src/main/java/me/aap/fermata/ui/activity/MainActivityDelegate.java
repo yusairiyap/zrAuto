@@ -113,6 +113,7 @@ import com.google.android.material.color.MaterialColors;
 import com.google.android.material.textview.MaterialTextView;
 
 import java.io.IOException;
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -272,6 +273,47 @@ public class MainActivityDelegate extends ActivityDelegate
 		mediaServiceBinder = binder;
 	}
 
+	/** The native Android Auto UI while it's running, see {@link #getPlaybackDelegate()}. */
+	private static WeakReference<MainActivityDelegate> carDelegate = new WeakReference<>(null);
+
+	/** The native Android Auto UI, if it's running. */
+	@Nullable
+	public static MainActivityDelegate getCarDelegate() {
+		MainActivityDelegate d = carDelegate.get();
+		return ((d != null) && carActivityActive) ? d : null;
+	}
+
+	/**
+	 * Where playback started from this UI should happen: the car's screen while Android Auto is
+	 * connected (so a tap on the phone plays exactly as if tapped in the car -- one session, one
+	 * player, one queue), else this UI itself. Local audio already goes through the shared media
+	 * service either way; this matters for what plays inside a UI of its own, like the YouTube tab.
+	 */
+	public MainActivityDelegate getPlaybackDelegate() {
+		if (getAppActivity().isCarActivity()) return this;
+		MainActivityDelegate car = getCarDelegate();
+		return (car != null) ? car : this;
+	}
+
+	/** Whether playback started from this UI goes to the car's screen, see above. */
+	public boolean isPlaybackOnCar() {
+		return getPlaybackDelegate() != this;
+	}
+
+	/**
+	 * Plays an externally played item (a YouTube video, a Favorites/Playlist entry of one) in its
+	 * player's tab -- on the car's screen while Android Auto is connected, see
+	 * {@link #getPlaybackDelegate()}; then the phone just says so.
+	 */
+	public boolean playExternally(MediaLib.ExternallyPlayableItem ext, PlayableItem self) {
+		MainActivityDelegate p = getPlaybackDelegate();
+		ActivityFragment f = p.showFragment(ext.getPlayerFragmentId());
+		if (f == null) return false;
+		ext.loadInFragment(f, self);
+		if (p != this) UiUtils.showToast(getContext(), R.string.playing_on_car, self.getName());
+		return true;
+	}
+
 	/** See {@link #carActivityActive} -- true while the app is running as the native Android Auto
 	 * car Activity (mirroring mode is a separate check, see {@code FermataApplication#isMirroringMode}). */
 	public static boolean isCarActivityActive() {
@@ -320,7 +362,10 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Override
 	public void onActivityCreate(@Nullable Bundle state) {
 		super.onActivityCreate(state);
-		if (getAppActivity().isCarActivity()) carActivityActive = true;
+		if (getAppActivity().isCarActivity()) {
+			carActivityActive = true;
+			carDelegate = new WeakReference<>(this);
+		}
 		Intent intent = getIntent();
 		if ((intent != null) && INTENT_ACTION_FINISH.equals(intent.getAction())) {
 			finish();
@@ -632,7 +677,10 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Override
 	public void onActivityDestroy() {
 		super.onActivityDestroy();
-		if (getAppActivity().isCarActivity()) carActivityActive = false;
+		if (getAppActivity().isCarActivity()) {
+			carActivityActive = false;
+			if (carDelegate.get() == this) carDelegate = new WeakReference<>(null);
+		}
 		handler.close();
 		getMediaServiceBinder().getMediaSessionCallback().removeAssistant(this);
 		getPrefs().removeBroadcastListener(this);
@@ -967,6 +1015,9 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (videoMode) {
 			this.videoMode = true;
 			cancelVideoExitFade();
+			// Came from the Music tab's Video: lift the black now that the video is taking over.
+			ColorDrawable sf = videoSwitchFade;
+			if (sf != null) getHandler().postDelayed(() -> releaseVideoSwitchFade(sf), 150);
 			setSystemUiVisibility();
 			keepScreenOn(true);
 			cp.enableVideoMode();
@@ -1262,11 +1313,59 @@ public class MainActivityDelegate extends ActivityDelegate
 
 		ColorDrawable d = new ColorDrawable(Color.BLACK);
 		d.setBounds(0, 0, decor.getWidth(), decor.getHeight());
-		videoExitFade = d;
+		decor.getOverlay().add(d);
+		fadeOutOverlay(decor, d, 255, 120);
+	}
+
+	@Nullable
+	private ColorDrawable videoSwitchFade;
+
+	/**
+	 * The other way round from {@link #fadeInFromVideo()}: switching from the Music tab to its
+	 * video (the tab change, the video going fullscreen, bars and system bars going away) fades the
+	 * whole window to black first, and fades back in once the video has taken over (see
+	 * {@link #setVideoMode}) -- the same smooth fade as leaving fullscreen, instead of a series of
+	 * jumps. Lifts by itself after a moment should the video not show up.
+	 */
+	public void fadeToBlackForVideo() {
+		View decor = getWindow().getDecorView();
+		if (!decor.isLaidOut() || (decor.getWidth() == 0)) return;
+		cancelVideoExitFade();
+		ColorDrawable prev = videoSwitchFade;
+		if (prev != null) decor.getOverlay().remove(prev);
+
+		ColorDrawable d = new ColorDrawable(Color.BLACK);
+		d.setBounds(0, 0, decor.getWidth(), decor.getHeight());
+		d.setAlpha(0);
+		videoSwitchFade = d;
 		decor.getOverlay().add(d);
 
-		ValueAnimator anim = ValueAnimator.ofInt(255, 0);
-		anim.setStartDelay(120);
+		ValueAnimator anim = ValueAnimator.ofInt(0, 255);
+		anim.setDuration(200);
+		anim.setInterpolator(new PathInterpolator(0.4f, 0f, 0.2f, 1f));
+		anim.addUpdateListener(v -> {
+			if (videoSwitchFade != d) {
+				v.cancel();
+				return;
+			}
+			d.setAlpha((int) v.getAnimatedValue());
+			decor.invalidate();
+		});
+		anim.start();
+		getHandler().postDelayed(() -> releaseVideoSwitchFade(d), 2000);
+	}
+
+	private void releaseVideoSwitchFade(ColorDrawable d) {
+		if (videoSwitchFade != d) return;
+		videoSwitchFade = null;
+		fadeOutOverlay(getWindow().getDecorView(), d, d.getAlpha(), 0);
+	}
+
+	/** Fades {@code d}, already on the window's overlay, out from {@code from} and removes it. */
+	private void fadeOutOverlay(View decor, ColorDrawable d, int from, long delay) {
+		videoExitFade = d;
+		ValueAnimator anim = ValueAnimator.ofInt(from, 0);
+		anim.setStartDelay(delay);
 		anim.setDuration(320);
 		anim.setInterpolator(new PathInterpolator(0.4f, 0f, 0.2f, 1f));
 		anim.addUpdateListener(v -> {
@@ -1935,6 +2034,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		return findViewById(R.id.context_menu);
 	}
 
+	@Override
 	public OverlayMenu getToolBarMenu() {
 		return findViewById(R.id.tool_menu);
 	}

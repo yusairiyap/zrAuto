@@ -66,6 +66,7 @@ import me.aap.fermata.addon.music.MusicAddon;
 import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.music.MusicQueue;
 import me.aap.fermata.addon.music.MusicTrackItem;
+import me.aap.fermata.media.engine.BufferingIndicator;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
@@ -222,6 +223,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		shuffle = view.findViewById(R.id.music_shuffle);
 		playPause = view.findViewById(R.id.music_play_pause);
 		playLoading = view.findViewById(R.id.music_play_loading);
+		playLoadingShown = false; // A new view: the spinner starts hidden.
 		message = view.findViewById(R.id.music_message);
 		repeat = view.findViewById(R.id.music_repeat);
 		videoButton = view.findViewById(R.id.music_video_button);
@@ -441,6 +443,13 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		}
 	}
 
+	/** A stall mid-playback: the play button turns into the spinner too, see updatePlayState(). */
+	private final Runnable bufferingListener = () -> {
+		if ((getView() != null) && (playPause != null)) {
+			updatePlayState(getActivityDelegate().getMediaSessionCallback().getPlaybackState());
+		}
+	};
+
 	private void setListening(boolean on) {
 		if (listening == on) return;
 		listening = on;
@@ -448,6 +457,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		suppressOverlays(a, on);
 
 		if (on) {
+			BufferingIndicator.addListener(bufferingListener);
 			a.getMediaSessionCallback().addBroadcastListener(this);
 			a.getMediaServiceBinder().addBroadcastListener(this);
 			if (queue != null) queue.addListener(this);
@@ -456,6 +466,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			// The Info Overlay settings may have changed while this tab was away.
 			applyInfoOverlayPrefs();
 		} else {
+			BufferingIndicator.removeListener(bufferingListener);
 			a.getMediaSessionCallback().removeBroadcastListener(this);
 			a.getMediaServiceBinder().removeBroadcastListener(this);
 			if (queue != null) queue.removeListener(this);
@@ -831,7 +842,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		int st = (state == null) ? PlaybackStateCompat.STATE_NONE : state.getState();
 		boolean playing = (st == PlaybackStateCompat.STATE_PLAYING);
 		playPause.setImageResource(playing ? R.drawable.music_pause : R.drawable.play);
-		boolean busy = isBusy(st);
+		// Also while playing but stalled for data (the session stays "playing" through that).
+		boolean busy = isBusy(st) || (playing && BufferingIndicator.isBuffering());
 		loading.setLoading(busy);
 		setPlayLoading(busy);
 
@@ -912,13 +924,14 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		MainActivityDelegate a = getActivityDelegate();
 		if (!a.computeContentInsets(c, insets) || !a.computeSideInsets(c, sideInsets)) return;
 		int top = insets[0];
-		// Landscape: the cover and the controls sit side by side, each centred on the column's
-		// height -- with only the top reserved (for the toolbar), that centre was below the
-		// screen's own, and both read as sitting low. The same room at the bottom puts them on
-		// the screen's centre line.
+		// Landscape (Android Auto, a tablet on its side): the cover and the controls sit side by
+		// side, each centred on its column's height. Centred on just the room below the title bar
+		// they read as sitting low; centred on the whole screen (the title bar's height reserved at
+		// the bottom too), as sitting high. Half the title bar's height at the bottom is the
+		// balance between the two -- what reads as centred on the car's screen.
 		boolean land =
 				getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
-		int bottom = land ? Math.max(insets[1], top) : insets[1];
+		int bottom = land ? Math.max(insets[1], top / 2) : insets[1];
 		int left = sideInsets[0];
 		int right = sideInsets[1];
 		if (insetsSet && (top == insetTop) && (bottom == insetBottom) && (left == insetLeft)
@@ -979,19 +992,42 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				.withEndAction(() -> m.setVisibility(View.GONE)).start();
 	};
 
-	/** While loading, a spinner takes the place of the play/pause icon. */
+	@Nullable
+	private ValueAnimator playIconAnim;
+	private boolean playLoadingShown;
+
+	/**
+	 * While loading or buffering, a spinner takes the place of the play/pause icon: the two
+	 * crossfade (the spinner growing in a little), over the same time as the cover's own
+	 * crossfade when the track changes, so both read as one smooth change.
+	 */
 	private void setPlayLoading(boolean busy) {
-		if (busy == (playLoading.getVisibility() == View.VISIBLE)) return;
+		if (busy == playLoadingShown) return;
+		playLoadingShown = busy;
 		playLoading.animate().cancel();
+		if (playIconAnim != null) playIconAnim.cancel();
+
+		int from = playPause.getImageAlpha();
+		ValueAnimator ia = ValueAnimator.ofInt(from, busy ? 0 : 255);
+		ia.setDuration(FADE_MS);
+		ia.setInterpolator(new DecelerateInterpolator());
+		ia.addUpdateListener(v -> playPause.setImageAlpha((int) v.getAnimatedValue()));
+		ia.start();
+		playIconAnim = ia;
 
 		if (busy) {
-			playPause.setImageAlpha(0);
-			playLoading.setAlpha(0f);
-			playLoading.setVisibility(View.VISIBLE);
-			playLoading.animate().alpha(1f).setDuration(150).start();
+			if (playLoading.getVisibility() != View.VISIBLE) {
+				playLoading.setAlpha(0f);
+				playLoading.setScaleX(0.6f);
+				playLoading.setScaleY(0.6f);
+				playLoading.setVisibility(View.VISIBLE);
+			}
+			playLoading.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(FADE_MS)
+					.setInterpolator(new DecelerateInterpolator()).start();
 		} else {
-			playLoading.setVisibility(View.GONE);
-			playPause.setImageAlpha(255);
+			playLoading.animate().alpha(0f).scaleX(0.6f).scaleY(0.6f).setDuration(FADE_MS)
+					.setInterpolator(new DecelerateInterpolator())
+					.withEndAction(() -> playLoading.setVisibility(View.GONE)).start();
 		}
 	}
 
@@ -1324,7 +1360,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		MainActivityDelegate a = getActivityDelegate();
 		MusicTrackItem idle = idleVideoTrack();
 		if (idle != null) MusicPlayer.watch(a, idle);
-		else if (playingAsMusic()) MusicPlayer.switchToVideo(a);
+		else if (playingAsMusic()) {
+			// Into the video through black, the same fade as leaving fullscreen.
+			a.getPlaybackDelegate().fadeToBlackForVideo();
+			MusicPlayer.switchToVideo(a);
+		}
 		else if (a.getMediaSessionCallback().getCurrentItem() != null) {
 			MusicPlayer.playCurrentAsMusic(a);
 		}

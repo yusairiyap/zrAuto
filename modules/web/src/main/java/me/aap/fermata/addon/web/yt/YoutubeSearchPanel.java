@@ -334,7 +334,12 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 				searching = false;
 				failed = (result == null);
 				results.clear();
-				if (result != null) results.addAll(result);
+				if (result != null) {
+					results.addAll(result);
+					// Kept in memory: a result played and then added to Favorites/a Playlist keeps its
+					// channel and duration there, even before the player reports them.
+					for (Video v : result) addon.setLiveVideoInfo(v.videoId, v.channel, v.durationMs);
+				}
 				refresh();
 			});
 		});
@@ -399,7 +404,7 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 	private String libraryTitle(PlayableItem pi, @Nullable String videoId) {
 		String name = pi.getName();
 		if ((videoId != null) && ((name == null) || name.isEmpty() || name.equals(videoId))) {
-			name = addon.getVideoTitle(videoId);
+			name = addon.getDisplayTitle(videoId);
 		}
 		return (name == null) ? "" : name;
 	}
@@ -558,7 +563,7 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		rows.add(Row.header("h:queue", title, upNext.isEmpty() ? null :
 				ctx.getString(me.aap.fermata.R.string.youtube_up_next_clear), addon::clearUpNext));
 
-		for (String id : upNext) rows.add(Row.upNext(id, addon.getVideoTitle(id)));
+		for (String id : upNext) rows.add(Row.upNext(id, addon.getDisplayTitle(id)));
 		if (upNext.isEmpty() && !hasList) {
 			rows.add(Row.note("n:queue_empty", ctx.getString(me.aap.fermata.R.string.youtube_up_next_empty)));
 		}
@@ -731,8 +736,10 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		}
 
 		static Row result(Video v) {
-			return new Row(TYPE_VIDEO, "r:" + v.videoId, v.title, null, null, KIND_RESULT, v.videoId, v,
-					null);
+			// The channel shows right under it: not in front of the title too.
+			return new Row(TYPE_VIDEO, "r:" + v.videoId,
+					MusicTrackItem.titleWithoutArtist(v.title, v.channel), null, null, KIND_RESULT,
+					v.videoId, v, null);
 		}
 
 		static Row listItem(PlayableItem pi, boolean dim) {

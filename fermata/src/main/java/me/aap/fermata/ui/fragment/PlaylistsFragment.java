@@ -33,12 +33,14 @@ import me.aap.fermata.media.pref.BrowsableItemPrefs;
 import me.aap.fermata.media.pref.PlaylistPrefs;
 import me.aap.fermata.media.pref.PlaylistsPrefs;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
+import me.aap.fermata.spotify.SpotifyPlaylistSync;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.MediaItemMenuHandler;
 import me.aap.fermata.ui.view.MediaItemListView;
 import me.aap.fermata.ui.view.MediaItemView;
 import me.aap.fermata.ui.view.MediaItemViewHolder;
 import me.aap.fermata.ui.view.MediaItemWrapper;
+import me.aap.fermata.ui.view.ModalProgressPopup;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.ui.UiUtils;
@@ -139,13 +141,69 @@ public class PlaylistsFragment extends MediaLibFragment {
 		}
 
 		// Long-pressing a playlist offers the import too, next to Rename/Remove.
-		if (handler.getItem() instanceof Playlist) {
+		if (handler.getItem() instanceof Playlist pl) {
+			builder.addItem(R.id.spotify_sync, R.drawable.refresh, R.string.spotify_sync)
+					.setHandler(i -> {
+						syncWithSpotify(pl);
+						return true;
+					});
 			builder.addItem(R.id.spotify_import, R.drawable.playlist_import, R.string.spotify_import)
 					.setHandler(i -> {
 						SpotifyImportFragment.open(getMainActivity());
 						return true;
 					});
 		}
+	}
+
+	/**
+	 * Adds the songs of the Spotify playlist of the same name that aren't here yet, at the top --
+	 * see {@link SpotifyPlaylistSync}. Quick when there's nothing new; otherwise a modal card
+	 * shows what's going on, with Cancel, once it takes more than a moment.
+	 */
+	private void syncWithSpotify(Playlist pl) {
+		MainActivityDelegate a = getMainActivity();
+		Context ctx = requireContext();
+		String name = pl.getName();
+		ModalProgressPopup[] popup = {null};
+		SpotifyPlaylistSync[] sync = {null};
+		String[] last = {ctx.getString(R.string.spotify_sync_reading)};
+		int[] prog = {0, 0};
+		boolean[] finished = {false};
+
+		Runnable showPopup = () -> {
+			if (finished[0] || (popup[0] != null)) return;
+			popup[0] = ModalProgressPopup.show(a, R.drawable.playlist_import,
+					ctx.getString(R.string.spotify_sync_title, name), () -> {
+						if (sync[0] != null) sync[0].cancel();
+					});
+			if (popup[0] != null) popup[0].setProgress(last[0], prog[0], prog[1]);
+		};
+
+		sync[0] = SpotifyPlaylistSync.start(getLib(), pl, new SpotifyPlaylistSync.Callback() {
+			@Override
+			public void onProgress(String text, int done, int total) {
+				last[0] = text;
+				prog[0] = done;
+				prog[1] = total;
+				if (popup[0] != null) popup[0].setProgress(text, done, total);
+			}
+
+			@Override
+			public void onFinished(SpotifyPlaylistSync.Result r) {
+				finished[0] = true;
+				a.getHandler().removeCallbacks(showPopup);
+				String msg = r.getMessage(ctx, name);
+				boolean ok = (r.status == SpotifyPlaylistSync.Result.DONE) ||
+						(r.status == SpotifyPlaylistSync.Result.UP_TO_DATE);
+				if (popup[0] != null) popup[0].showResult(msg, ok);
+				else UiUtils.showToast(ctx, msg);
+				if (r.added > 0) {
+					MediaLibFragment f = a.getMediaLibFragment(R.id.playlists_fragment);
+					if (f != null) f.reload();
+				}
+			}
+		});
+		a.getHandler().postDelayed(showPopup, 500);
 	}
 
 	public boolean navBarMenuItemSelected(OverlayMenuItem item) {

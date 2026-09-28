@@ -9,13 +9,15 @@ import static androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.RIG
 import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED;
 
 import android.annotation.SuppressLint;
+import android.transition.AutoTransition;
+import android.transition.TransitionManager;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.animation.DecelerateInterpolator;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
-import android.widget.ImageButton;
 
 import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.WebToolBarMediator;
@@ -23,6 +25,7 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.activity.ActivityDelegate;
 import me.aap.utils.ui.fragment.ActivityFragment;
+import me.aap.utils.ui.view.ImageButton;
 import me.aap.utils.ui.view.ToolBarView;
 
 /**
@@ -46,10 +49,15 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 	public void enable(ToolBarView tb, ActivityFragment f) {
 		super.enable(tb, f);
 		YoutubeFragment yt = (YoutubeFragment) f;
-		addButton(tb, R.drawable.browser_home, v -> yt.loadUrl(YoutubeFragment.DEFAULT_URL),
-				R.id.browser_home, RIGHT);
+		// Labels double as the entries of the toolbar's "more" menu on a narrow screen (see
+		// ToolBarView#onMeasure()); the priorities decide which go there first.
+		ImageButton home = addButton(tb, R.drawable.browser_home,
+				v -> yt.loadUrl(YoutubeFragment.DEFAULT_URL), R.id.browser_home, RIGHT);
+		home.setContentDescription(tb.getContext().getString(me.aap.fermata.R.string.youtube_home));
 		ImageButton favBtn = addButton(tb, me.aap.fermata.R.drawable.favorite,
 				v -> yt.toggleCurrentVideoFavorite(), me.aap.fermata.R.id.favorites, RIGHT);
+		favBtn.setContentDescription(tb.getContext().getString(me.aap.fermata.R.string.favorites));
+		favBtn.setToolBarPriority(1);
 		// A tap now toggles the current video directly; long-press keeps the old menu around for
 		// browsing to other favorited videos, since nothing else on this toolbar reaches that list.
 		favBtn.setOnLongClickListener(v -> {
@@ -57,11 +65,19 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 			return true;
 		});
 		refreshFavoriteButton(tb, yt);
-		addButton(tb, me.aap.fermata.R.drawable.playlist, v -> yt.showPlaylistsMenu(),
+		ImageButton pl = addButton(tb, me.aap.fermata.R.drawable.playlist, v -> yt.showPlaylistsMenu(),
 				me.aap.fermata.R.id.playlists, RIGHT);
+		pl.setContentDescription(tb.getContext().getString(me.aap.fermata.R.string.playlists));
 		// Opens/closes the search panel with the Up next queue, without having to type anything.
-		addButton(tb, me.aap.fermata.R.drawable.up_next, v -> yt.toggleSearchPanel(),
-				me.aap.fermata.R.id.youtube_up_next, RIGHT);
+		// Never moves into the "more" menu: it's what closes the panel again.
+		ImageButton upNext = addButton(tb, me.aap.fermata.R.drawable.up_next,
+				v -> yt.toggleSearchPanel(), me.aap.fermata.R.id.youtube_up_next, RIGHT);
+		upNext.setContentDescription(tb.getContext().getString(me.aap.fermata.R.string.youtube_up_next));
+		upNext.setToolBarPriority(Integer.MAX_VALUE);
+		// Rarely toggled: the first to make room.
+		if (tb.findViewById(me.aap.fermata.R.id.private_mode) instanceof ImageButton pm) {
+			pm.setToolBarPriority(-1);
+		}
 		// The browser's bookmarks don't mean much here -- Favorites/Playlists (above) are this tab's.
 		View bookmarks = tb.findViewById(me.aap.fermata.R.id.bookmarks);
 		if (bookmarks != null) bookmarks.setVisibility(GONE);
@@ -99,6 +115,7 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 		// the results and closes the panel; the search button starts a search.
 		ImageButton clear = tb.findViewById(R.id.browser_addr_clear);
 		if (clear != null) {
+			clear.setToolBarPriority(Integer.MAX_VALUE);
 			clear.setOnClickListener(v -> {
 				if (!editing && !yt.isSearchPanelShown()) {
 					yt.startSearch();
@@ -173,10 +190,41 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 	void refreshClearButton(ToolBarView tb, YoutubeFragment yt) {
 		if (!(tb.findViewById(R.id.browser_addr_clear) instanceof ImageButton b)) return;
 		boolean searching = editing || yt.isSearchPanelShown();
+		setSearchLayout(tb, searching);
 		b.setVisibility(VISIBLE);
 		b.setImageResource(searching ? R.drawable.clear : me.aap.fermata.R.drawable.search);
 		b.setContentDescription(tb.getContext().getString(searching ?
 				me.aap.fermata.R.string.youtube_clear_search : me.aap.fermata.R.string.search));
+	}
+
+	/** Hidden while searching or the Up next panel is open, see {@link #setSearchLayout}. */
+	private static final int[] SEARCH_HIDDEN_IDS = {me.aap.fermata.R.id.private_mode,
+			R.id.browser_home, me.aap.fermata.R.id.favorites, me.aap.fermata.R.id.playlists};
+	private boolean searchLayout;
+
+	/**
+	 * While searching (the field being typed into, or the search/Up next panel open), the page
+	 * buttons step aside and the field stretches out to the X, which then sits right next to the
+	 * Up next button -- animated, so the field visibly grows/shrinks rather than jumping.
+	 */
+	private void setSearchLayout(ToolBarView tb, boolean searching) {
+		boolean changed = false;
+		for (int id : SEARCH_HIDDEN_IDS) {
+			View v = tb.findViewById(id);
+			if (v == null) continue;
+			int vis = searching ? GONE : VISIBLE;
+			int cur = (v instanceof ImageButton ib) ? ib.getRequestedVisibility() : v.getVisibility();
+			if (cur == vis) continue;
+			if (!changed && tb.isLaidOut() && (searchLayout != searching)) {
+				AutoTransition t = new AutoTransition();
+				t.setDuration(220);
+				t.setInterpolator(new DecelerateInterpolator());
+				TransitionManager.beginDelayedTransition(tb, t);
+			}
+			changed = true;
+			v.setVisibility(vis);
+		}
+		searchLayout = searching;
 	}
 
 	private boolean onSearchKey(YoutubeFragment yt, EditText t, int keyCode, KeyEvent event) {
