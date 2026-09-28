@@ -26,6 +26,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -50,6 +51,7 @@ import me.aap.fermata.ui.view.DataUsageRingView;
 import me.aap.utils.function.IntSupplier;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.pref.PreferenceStore.Pref;
+import me.aap.utils.ui.UiUtils;
 
 /**
  * The Data Usage tab: how much internet data the app has used and on what (YouTube videos,
@@ -191,6 +193,44 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 
 		// tool_bar/nav_bar are drawn over the fragment: the list has to keep clear of them itself.
 		a.insetScrollableContent(view.findViewById(R.id.data_usage_scroll));
+
+		// Not during layout: switching the columns' layout requests another one.
+		view.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+			if (((r - l) != (or - ol)) || ((b - t) != (ob - ot))) v.post(() -> updateSplit(v));
+		});
+	}
+
+	/**
+	 * Side by side (the ring and its figures on the left, the period, chart and breakdown on the
+	 * right) wherever there's room for two columns: on the car screen, in landscape, and on large
+	 * screens in either orientation -- the same rule as the YouTube Up next panel.
+	 */
+	private void updateSplit(View root) {
+		int w = root.getWidth();
+		if ((w == 0) || (getContext() == null)) return;
+		float dp = w / getResources().getDisplayMetrics().density;
+		boolean split = getActivityDelegate().isCarActivity() || (dp >= 720) ||
+				((w > root.getHeight()) && (dp >= 560));
+		LinearLayout cols = root.findViewById(R.id.data_usage_columns);
+		int orientation = split ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL;
+		if ((cols == null) || (cols.getOrientation() == orientation)) return;
+
+		cols.setOrientation(orientation);
+		View start = root.findViewById(R.id.data_usage_col_start);
+		View end = root.findViewById(R.id.data_usage_col_end);
+		LinearLayout.LayoutParams slp = (LinearLayout.LayoutParams) start.getLayoutParams();
+		LinearLayout.LayoutParams elp = (LinearLayout.LayoutParams) end.getLayoutParams();
+		slp.width = elp.width = split ? 0 : ViewGroup.LayoutParams.MATCH_PARENT;
+		slp.weight = elp.weight = split ? 1f : 0f;
+		elp.setMarginStart(split ? UiUtils.toIntPx(root.getContext(), 16) : 0);
+		start.setLayoutParams(slp);
+		end.setLayoutParams(elp);
+		// Side by side, the two columns start level with each other.
+		View f = root.findViewById(R.id.data_usage_filters);
+		ViewGroup.MarginLayoutParams flp = (ViewGroup.MarginLayoutParams) f.getLayoutParams();
+		flp.topMargin = split ? 0 : UiUtils.toIntPx(root.getContext(), 18);
+		f.setLayoutParams(flp);
+		f.post(() -> moveFilterPill(false));
 	}
 
 	@Override
