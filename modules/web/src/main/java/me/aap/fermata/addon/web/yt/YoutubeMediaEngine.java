@@ -1595,6 +1595,20 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		web.afterAudioFadeOut(() -> web.loadVideo(videoId));
 	}
 
+	/**
+	 * "Play next in queue"/"Add to queue" picked in YouTube's own menu -- see YoutubeWebView#
+	 * interceptQueueMenu(). Goes into the app's queue (the Music tab's while playing as music, else
+	 * Up next) exactly like the app's own Play next/Add to Up next, instead of YouTube's page-only
+	 * queue, which the app never saw: it played next, but never showed in the Music tab's queue.
+	 */
+	void videoQueueRequested(String data) {
+		String[] parts = data.split("\\|", 3);
+		if ((parts.length < 2) || parts[1].isEmpty()) return;
+		String title = (parts.length > 2) ? Uri.decode(parts[2]).trim() : "";
+		YoutubeFragment.onVideoQueueRequested(web, parts[1], title.isEmpty() ? null : title,
+				"next".equals(parts[0]));
+	}
+
 	/** The user long-pressed a video on the page -- see {@link YoutubeWebView}'s injected menu hook. */
 	void videoLongPressed(String data) {
 		String[] parts = data.split("\\|", 2);

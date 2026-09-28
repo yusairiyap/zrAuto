@@ -11,6 +11,7 @@ import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_ENDED;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_ENDING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_FOUND;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_LONG_PRESS;
+import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_QUEUE;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_PAUSED;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_PLAYING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_QUALITIES;
@@ -195,6 +196,7 @@ public class YoutubeWebView extends FermataWebView {
 		disableVideoPreviews();
 		addFocusHighlight();
 		interceptVideoLongPress();
+		interceptQueueMenu();
 		currentCookieManager().flush();
 		refreshAddressBarTitle();
 	}
@@ -554,6 +556,90 @@ public class YoutubeWebView extends FermataWebView {
 				  }, true);
 				})();
 				""".formatted(JS_EVENT, JS_VIDEO_LONG_PRESS), null);
+	}
+
+	/**
+	 * YouTube's own "Play next in queue"/"Add to queue" (the ⋮ menu of a video on the page) fills a
+	 * queue that lives only inside the page: it played next, but the app -- and so the Music tab's
+	 * queue -- never knew about it. Those two items are taken over instead: the video the menu was
+	 * opened for goes into the app's queue (see {@code YoutubeMediaEngine#videoQueueRequested}),
+	 * and the page's own is left alone. Which video that is comes from the tile whose ⋮ button was
+	 * tapped last, or the page's own video for the watch page's menu.
+	 */
+	private void interceptQueueMenu() {
+		evaluateJavascript("""
+				(function() {
+				  if (window.__fermataQueueMenu) return;
+				  window.__fermataQueueMenu = true;
+				  var menuVideo = null;
+				  var ITEMS = 'ytm-menu-service-item-renderer, ytm-menu-navigation-item-renderer, ' +
+				    'ytm-menu-item, [role=menuitem], .menu-item, yt-list-item-view-model, ' +
+				    'ytm-bottom-sheet-renderer button, .bottom-sheet-media-menu-item';
+				  var TILES = 'ytm-video-with-context-renderer, ytm-compact-video-renderer, ytm-media-item, ' +
+				    'ytm-rich-item-renderer, ytm-video-card-renderer, ytm-playlist-panel-video-renderer, ' +
+				    'ytm-reel-item-renderer, ytm-shorts-lockup-view-model, ytm-compact-radio-renderer, ' +
+				    'ytm-playlist-video-renderer';
+				  function videoId(u) {
+				    try {
+				      var url = new URL(u, location.href);
+				      if (url.pathname === '/watch') return url.searchParams.get('v') || '';
+				      var m = url.pathname.match(/^\\/(shorts|live)\\/([A-Za-z0-9_-]+)/);
+				      return m ? m[2] : '';
+				    } catch (e) { return ''; }
+				  }
+				  function tileVideo(tile) {
+				    var links = tile.querySelectorAll('a[href]');
+				    for (var i = 0; i < links.length; i++) {
+				      var id = videoId(links[i].href);
+				      if (!id) continue;
+				      var h = tile.querySelector('h3, h4, .media-item-headline, .compact-media-item-headline');
+				      var t = h ? h.textContent : (links[i].getAttribute('aria-label') || '');
+				      return { id: id, title: t.replace(/\\s+/g, ' ').trim() };
+				    }
+				    return null;
+				  }
+				  // Which video a menu is about to open for: the tile of the ⋮ button just tapped.
+				  document.addEventListener('click', function(e) {
+				    var t = e.target;
+				    if (!t || !t.closest || t.closest(ITEMS)) return; // Inside the menu itself.
+				    var btn = t.closest('ytm-menu-renderer button, ytm-menu button, ' +
+				      'button[aria-haspopup], button[aria-label*="menu" i], button[aria-label*="More" i]');
+				    if (!btn) return;
+				    var tile = btn.closest(TILES);
+				    var v = tile ? tileVideo(tile) : null;
+				    if (!v) {
+				      var id = videoId(location.href);
+				      v = id ? { id: id, title: document.title.replace(/ - YouTube$/, '') } : null;
+				    }
+				    menuVideo = v;
+				  }, true);
+				  function dismissMenu() {
+				    var o = document.querySelector('.bottom-sheet-overlay, .c3-overlay, ' +
+				      'tp-yt-iron-overlay-backdrop, ytm-bottom-sheet-renderer .overlay');
+				    if (o) o.click();
+				    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
+				  }
+				  // On the click itself (a touch that only scrolls the menu never becomes one), in the
+				  // capture phase, before the page's own handler can queue it in its page-only queue.
+				  function onItem(e) {
+				    var t = e.target;
+				    if (!t || !t.closest || !menuVideo) return;
+				    var item = t.closest(ITEMS);
+				    if (!item) return;
+				    var text = (item.textContent || '').toLowerCase();
+				    if (text.indexOf('queue') < 0) return;
+				    e.preventDefault();
+				    e.stopPropagation();
+				    e.stopImmediatePropagation();
+				    var v = menuVideo;
+				    menuVideo = null;
+				    var how = (text.indexOf('next') >= 0) ? 'next' : 'end';
+				    %s(%d, how + '|' + v.id + '|' + encodeURIComponent(v.title || ''));
+				    dismissMenu();
+				  }
+				  document.addEventListener('click', onItem, true);
+				})();
+				""".formatted(JS_EVENT, JS_VIDEO_QUEUE), null);
 	}
 
 	private void injectSponsorBlock() {

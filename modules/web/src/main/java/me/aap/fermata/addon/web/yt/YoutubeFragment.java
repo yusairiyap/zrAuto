@@ -1189,6 +1189,16 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		});
 	}
 
+	/** See {@code YoutubeWebView#interceptQueueMenu()}. */
+	static void onVideoQueueRequested(YoutubeWebView web, String videoId, @Nullable String title,
+																		boolean next) {
+		MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a -> {
+			if (a.getFragment(me.aap.fermata.R.id.youtube_fragment) instanceof YoutubeFragment f) {
+				f.queueVideo(videoId, title, next);
+			}
+		});
+	}
+
 	/** See {@code YoutubeWebView#interceptVideoLongPress()}. */
 	static void onVideoLongPressed(YoutubeWebView web, String videoId, @Nullable String title) {
 		MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a -> {
