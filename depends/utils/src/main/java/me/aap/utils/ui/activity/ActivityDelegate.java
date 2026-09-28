@@ -546,6 +546,12 @@ public abstract class ActivityDelegate implements EventBroadcaster<ActivityListe
 		return new OverlayMenuView(getAppActivity().getContext(), null);
 	}
 
+	/** The menu that drops down from the toolbar, e.g. its overflow ("more") menu. */
+	@Nullable
+	public OverlayMenu getToolBarMenu() {
+		return createMenu(null);
+	}
+
 	public void setActiveMenu(@Nullable OverlayMenu menu) {
 		hideActiveMenu();
 		this.activeMenu = menu;

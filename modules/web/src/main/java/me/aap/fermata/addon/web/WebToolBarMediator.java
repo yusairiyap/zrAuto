@@ -45,10 +45,14 @@ public class WebToolBarMediator implements ToolBarView.Mediator {
 		if (url != null) t.setText(url);
 		addView(tb, t, R.id.browser_addr, LEFT);
 		addButton(tb, R.drawable.forward, v ->
-				requireNonNull(b.getWebView()).goForward(), R.id.browser_forward, LEFT);
+				requireNonNull(b.getWebView()).goForward(), R.id.browser_forward, LEFT)
+				.setToolBarPriority(2);
+		// Back and clear never move into the toolbar's "more" menu (see ToolBarView#onMeasure()).
 		addButton(tb, me.aap.utils.R.drawable.back, v ->
-				requireNonNull(b.getWebView()).goBack(), me.aap.utils.R.id.tool_bar_back_button, LEFT);
-		addButton(tb, R.drawable.clear, v -> t.setText(""), R.id.browser_addr_clear);
+				requireNonNull(b.getWebView()).goBack(), me.aap.utils.R.id.tool_bar_back_button, LEFT)
+				.setToolBarPriority(Integer.MAX_VALUE);
+		addButton(tb, R.drawable.clear, v -> t.setText(""), R.id.browser_addr_clear)
+				.setToolBarPriority(Integer.MAX_VALUE);
 		addButton(tb, me.aap.fermata.R.drawable.bookmark_filled, v ->
 				onBookmarksButtonClick(b), me.aap.fermata.R.id.bookmarks);
 		ImageButton pm = addButton(tb, me.aap.fermata.R.drawable.private_mode, v ->

@@ -699,6 +699,7 @@
     <string name="youtube_search_no_results">No videos found.</string>
     <string name="youtube_search_close">Close search</string>
     <string name="youtube_up_next">Up next</string>
+    <string name="youtube_home">YouTube home</string>
     <string name="youtube_up_next_count">Up next (%1$d)</string>
     <string name="youtube_up_next_clear">Clear</string>
     <string name="youtube_up_next_remove">Remove from Up next</string>

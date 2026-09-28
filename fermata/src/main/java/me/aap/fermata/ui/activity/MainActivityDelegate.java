@@ -1935,6 +1935,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		return findViewById(R.id.context_menu);
 	}
 
+	@Override
 	public OverlayMenu getToolBarMenu() {
 		return findViewById(R.id.tool_menu);
 	}

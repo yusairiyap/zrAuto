@@ -19,6 +19,7 @@ import static me.aap.utils.ui.fragment.ViewFragmentMediator.attachMediator;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Color;
+import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.view.KeyEvent;
@@ -40,11 +41,14 @@ import androidx.constraintlayout.widget.ConstraintLayout;
 
 import com.google.android.material.textview.MaterialTextView;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedList;
+import java.util.List;
 
 import me.aap.utils.R;
 import me.aap.utils.event.EventBroadcaster;
+import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.activity.ActivityDelegate;
 import me.aap.utils.ui.activity.ActivityListener;
 import me.aap.utils.ui.fragment.ActivityFragment;
@@ -136,6 +140,153 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 		}
 		setIconScale(f.getActivityDelegate().getIconSize());
 		return true;
+	}
+
+	/**
+	 * Keeps a crowded toolbar usable, on a phone especially: when the buttons don't all fit next to
+	 * the title/text field, the lowest-priority ones (the rightmost first, on a tie) move into a
+	 * "more" menu at the far right, and come back as soon as there is room again (rotation, a wider
+	 * window, the owner hiding other buttons). Only plain {@link ImageButton}s move; back/filter
+	 * buttons ({@link ForcedVisibilityButton}) and buttons with {@link Integer#MAX_VALUE} priority
+	 * stay put.
+	 */
+	@Override
+	protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+		updateOverflow(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.getSize(heightMeasureSpec));
+		super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+	}
+
+	private void updateOverflow(int width, int height) {
+		ViewGroup.LayoutParams tlp = getLayoutParams();
+		int h = ((tlp != null) && (tlp.height > 0)) ? tlp.height : height;
+		if ((width <= 0) || (h <= 0)) return;
+
+		List<ImageButton> movable = new ArrayList<>();
+		int fixed = 0; // Buttons that stay regardless
+		boolean hasText = false;
+
+		for (int i = 0, n = getChildCount(); i < n; i++) {
+			View v = getChildAt(i);
+			if (v.getId() == R.id.tool_bar_overflow) continue;
+			if ((v instanceof ImageButton b) && !(v instanceof ForcedVisibilityButton) &&
+					(b.getToolBarPriority() != Integer.MAX_VALUE)) {
+				if (b.getRequestedVisibility() == VISIBLE) movable.add(b);
+				else b.setOverflowed(false);
+			} else if (v.getVisibility() == VISIBLE) {
+				if (v instanceof ImageView) fixed++;
+				else if (v instanceof TextView) hasText = true;
+			}
+		}
+
+		// A title/text field shrinks to nothing rather than pushing buttons off, so keep it some room
+		int avail = width - (hasText ? Math.max(width * 3 / 10, toIntPx(getContext(), 96)) : 0);
+		int slots = Math.max(0, avail / h - fixed);
+		int keep = (movable.size() <= slots) ? movable.size() : Math.max(0, slots - 1);
+
+		List<ImageButton> order = new ArrayList<>(movable);
+		// Stable: on a tie, the rightmost (last added) goes first
+		order.sort((a, b) -> Integer.compare(b.getToolBarPriority(), a.getToolBarPriority()));
+		for (int i = 0; i < order.size(); i++) order.get(i).setOverflowed(i >= keep);
+		setOverflowButtonVisible(keep < movable.size());
+	}
+
+	private void setOverflowButtonVisible(boolean visible) {
+		View ob = findViewById(R.id.tool_bar_overflow);
+
+		if (visible) {
+			if ((ob != null) && (indexOfChild(ob) == getChildCount() - 1)) return;
+			if (ob != null) unlink(ob);
+			Mediator m = getMediator();
+			if (m == null) return;
+			ImageButton b = new ImageButton(getContext(), null, androidx.appcompat.R.attr.toolbarStyle);
+			m.initButton(b, R.drawable.tool_bar_overflow, v -> showOverflowMenu());
+			b.setContentDescription(getContext().getString(R.string.tool_bar_more));
+			b.setToolBarPriority(Integer.MAX_VALUE);
+			float scale = getActivity().getIconSize();
+			b.setScaleX(scale);
+			b.setScaleY(scale);
+			m.addView(this, b, R.id.tool_bar_overflow, RIGHT);
+		} else if (ob != null) {
+			unlink(ob);
+		}
+	}
+
+	/** Removes a child from the chain, joining its neighbours. */
+	private void unlink(View v) {
+		int idx = indexOfChild(v);
+		if (idx < 0) return;
+		View l = (idx > 0) ? getChildAt(idx - 1) : null;
+		View r = (idx < getChildCount() - 1) ? getChildAt(idx + 1) : null;
+
+		if (l != null) {
+			ConstraintLayout.LayoutParams lp = (ConstraintLayout.LayoutParams) l.getLayoutParams();
+			if (r != null) {
+				lp.endToStart = r.getId();
+				lp.endToEnd = UNSET;
+			} else {
+				lp.endToStart = UNSET;
+				lp.endToEnd = PARENT_ID;
+			}
+			lp.resolveLayoutDirection(LAYOUT_DIRECTION_LTR);
+		}
+		if (r != null) {
+			ConstraintLayout.LayoutParams lp = (ConstraintLayout.LayoutParams) r.getLayoutParams();
+			if (l != null) {
+				lp.startToEnd = l.getId();
+				lp.startToStart = UNSET;
+			} else {
+				lp.startToEnd = UNSET;
+				lp.startToStart = PARENT_ID;
+			}
+			lp.resolveLayoutDirection(LAYOUT_DIRECTION_LTR);
+		}
+
+		removeView(v);
+	}
+
+	private void showOverflowMenu() {
+		List<ImageButton> hidden = new ArrayList<>();
+		for (int i = 0, n = getChildCount(); i < n; i++) {
+			if ((getChildAt(i) instanceof ImageButton b) && b.isOverflowed()) hidden.add(b);
+		}
+		if (hidden.isEmpty()) return;
+
+		OverlayMenu menu = getActivity().getToolBarMenu();
+		if (menu == null) return;
+		menu.show(mb -> {
+			for (ImageButton b : hidden) {
+				Drawable d = b.getDrawable();
+				Drawable.ConstantState cs = (d != null) ? d.getConstantState() : null;
+				if (cs != null) d = cs.newDrawable(getResources()).mutate();
+				mb.addItem(b.getId(), d, getButtonLabel(b)).setData(b);
+			}
+			mb.setSelectionHandler(item -> {
+				if (item.getData() instanceof ImageButton b) {
+					// After the menu is gone: most buttons open a menu of their own
+					post(b::performClick);
+				}
+				return true;
+			});
+		});
+	}
+
+	private CharSequence getButtonLabel(ImageButton b) {
+		CharSequence d = b.getContentDescription();
+		if (!TextUtils.isEmpty(d)) return d;
+		String name;
+		try {
+			name = getResources().getResourceEntryName(b.getId());
+		} catch (Exception ex) {
+			return "";
+		}
+		for (String p : new String[]{"tool_bar_", "tool_", "browser_", "youtube_"}) {
+			if (name.startsWith(p)) {
+				name = name.substring(p.length());
+				break;
+			}
+		}
+		name = name.replace('_', ' ');
+		return name.isEmpty() ? name : Character.toUpperCase(name.charAt(0)) + name.substring(1);
 	}
 
 	public boolean onBackPressed() {

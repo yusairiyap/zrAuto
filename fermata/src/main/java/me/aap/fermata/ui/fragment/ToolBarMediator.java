@@ -63,17 +63,21 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 	public void enable(ToolBarView tb, ActivityFragment f) {
 		ToolBarView.Mediator.BackTitleFilter.super.enable(tb, f);
 		MainActivityDelegate a = MainActivityDelegate.get(tb.getContext());
-		addButton(tb, R.drawable.title, ToolBarMediator::onViewButtonClick, R.id.tool_view);
-		addButton(tb, R.drawable.sort, ToolBarMediator::onSortButtonClick, R.id.tool_sort);
+		// Labels double as the entries of the toolbar's "more" menu when these don't all fit (see
+		// ToolBarView#onMeasure()); priorities decide which go there first.
+		label(addButton(tb, R.drawable.title, ToolBarMediator::onViewButtonClick, R.id.tool_view),
+				R.string.view, 0);
+		label(addButton(tb, R.drawable.sort, ToolBarMediator::onSortButtonClick, R.id.tool_sort),
+				R.string.sort_by, 1);
 		if (f instanceof MediaLibFragment) {
-			addButton(tb, R.drawable.select_multiple, ToolBarMediator::onSelectButtonClick,
-					R.id.tool_select);
+			label(addButton(tb, R.drawable.select_multiple, ToolBarMediator::onSelectButtonClick,
+					R.id.tool_select), R.string.select, 0);
 		}
 
 		// Grid/list lives in the card size popup (as a switch), one toolbar button fewer.
 		if ((f instanceof MediaLibFragment) && ((MediaLibFragment) f).isGridSupported()) {
-			addButton(tb, R.drawable.card_size, ToolBarMediator::onCardSizeButtonClick,
-					R.id.tool_card_size);
+			label(addButton(tb, R.drawable.card_size, ToolBarMediator::onCardSizeButtonClick,
+					R.id.tool_card_size), R.string.card_size, -1);
 		}
 
 		if ((f instanceof MediaLibFragment) && a.getPrefs().getShowPgUpDownPref(a)) {
@@ -98,6 +102,11 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 			last.setNextFocusRightId(first.getId());
 			first.setNextFocusLeftId(last.getId());
 		}
+	}
+
+	private static void label(ImageButton b, @StringRes int label, int priority) {
+		b.setContentDescription(b.getContext().getString(label));
+		b.setToolBarPriority(priority);
 	}
 
 	@Override

@@ -24,6 +24,12 @@ public class ImageButton extends AppCompatImageButton implements OnLongClickList
 	private final Animation animation = AnimationUtils.loadAnimation(getContext(), R.anim.button_press);
 	private OnLongClickListener longClickListener;
 	private long enterPressedTime = -1;
+	/** What the owner last asked for, see {@link #setVisibility(int)}. */
+	private int requestedVisibility; // VISIBLE == 0, and no initializer: a super constructor may set it
+	/** Moved into a {@link ToolBarView}'s overflow menu for lack of room, see there. */
+	private boolean overflowed;
+	/** Higher stays on a crowded toolbar longer; {@link Integer#MAX_VALUE} never overflows. */
+	private int toolBarPriority;
 
 	public ImageButton(Context context, @Nullable AttributeSet attrs) {
 		this(context, attrs, androidx.appcompat.R.attr.imageButtonStyle);
@@ -96,6 +102,42 @@ public class ImageButton extends AppCompatImageButton implements OnLongClickList
 			setScaleY(1);
 		}
 		super.onVisibilityChanged(changedView, visibility);
+	}
+
+	/**
+	 * Remembers what the owner asked for, so a button a crowded {@link ToolBarView} moved into its
+	 * overflow menu comes back exactly as its owner left it once there is room again.
+	 */
+	@Override
+	public void setVisibility(int visibility) {
+		requestedVisibility = visibility;
+		super.setVisibility(overflowed ? GONE : visibility);
+	}
+
+	/** The visibility the owner asked for, regardless of the toolbar overflow. */
+	public int getRequestedVisibility() {
+		return requestedVisibility;
+	}
+
+	public boolean isOverflowed() {
+		return overflowed;
+	}
+
+	void setOverflowed(boolean overflowed) {
+		if (this.overflowed == overflowed) return;
+		this.overflowed = overflowed;
+		super.setVisibility(overflowed ? GONE : requestedVisibility);
+	}
+
+	public int getToolBarPriority() {
+		return toolBarPriority;
+	}
+
+	/** See {@link #toolBarPriority}. */
+	public void setToolBarPriority(int priority) {
+		if (toolBarPriority == priority) return;
+		toolBarPriority = priority;
+		if (getParent() instanceof View p) p.requestLayout();
 	}
 
 	private boolean isEnter(int keyCode) {
