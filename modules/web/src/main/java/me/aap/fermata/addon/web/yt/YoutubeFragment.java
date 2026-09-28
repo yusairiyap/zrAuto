@@ -938,6 +938,12 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	 */
 	void playFromList(MediaLib.PlayableItem pi) {
 		hideSearchPanel();
+		YoutubeFragment car = carPlayer(true);
+		if (car != null) {
+			car.playFromList(pi);
+			notifyPlayingOnCar(pi.getName());
+			return;
+		}
 		MainActivityDelegate a = MainActivityDelegate.get(requireContext());
 		if (pi instanceof MusicTrackItem t) {
 			// The Music tab's queue: played the way that tab plays it (as music, from its queue).
@@ -950,6 +956,31 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		} else {
 			MainActivityDelegate.get(requireContext()).getMediaSessionCallback().playItem(pi, 0);
 		}
+	}
+
+	/**
+	 * The car's YouTube tab while Android Auto is connected and this is the phone's -- everything
+	 * played or queued here goes there instead, as if done in the car: one player, one session (see
+	 * MainActivityDelegate#getPlaybackDelegate()). Null when this tab is the one that plays.
+	 *
+	 * @param show whether to bring the car's YouTube tab up (to play), or just have it ready (to queue)
+	 */
+	@Nullable
+	private YoutubeFragment carPlayer(boolean show) {
+		Context ctx = getContext();
+		if (ctx == null) return null;
+		MainActivityDelegate a = MainActivityDelegate.get(ctx);
+		if (!a.isPlaybackOnCar()) return null;
+		MainActivityDelegate car = a.getPlaybackDelegate();
+		int id = me.aap.fermata.R.id.youtube_fragment;
+		ActivityFragment f = show ? car.showFragment(id) : car.getFragment(id);
+		if (f == null) f = car.preloadFragment(id);
+		return ((f instanceof YoutubeFragment yt) && (yt != this)) ? yt : null;
+	}
+
+	private void notifyPlayingOnCar(String name) {
+		Context ctx = getContext();
+		if (ctx != null) UiUtils.showToast(ctx, me.aap.fermata.R.string.playing_on_car, name);
 	}
 
 	void toggleSearchPanel() {
@@ -1063,6 +1094,13 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	 * behind (Up next stays).
 	 */
 	void playVideoNow(String videoId, @Nullable String title) {
+		YoutubeFragment car = carPlayer(true);
+		if (car != null) {
+			hideSearchPanel();
+			car.playVideoNow(videoId, title);
+			notifyPlayingOnCar((title != null) ? title : videoId);
+			return;
+		}
 		YoutubeAddon addon = (YoutubeAddon) getAddon();
 		YoutubeWebView v = getWebView();
 		if ((addon == null) || (v == null)) return;
@@ -1085,6 +1123,12 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	 * no YouTube video playing there is nothing for it to wait for, so it just plays now.
 	 */
 	void queueVideo(String videoId, @Nullable String title, boolean first) {
+		// Into the car's queue while Android Auto is connected: the one that's playing.
+		YoutubeFragment car = carPlayer(false);
+		if (car != null) {
+			car.queueVideo(videoId, title, first);
+			return;
+		}
 		YoutubeAddon addon = (YoutubeAddon) getAddon();
 		YoutubeWebView v = getWebView();
 		if ((addon == null) || (v == null)) return;

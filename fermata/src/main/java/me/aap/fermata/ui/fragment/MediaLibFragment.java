@@ -858,8 +858,8 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 			}
 
 			if (i instanceof MediaLib.ExternallyPlayableItem ext) {
-				var f = a.showFragment(ext.getPlayerFragmentId());
-				if (f != null) ext.loadInFragment(f, i);
+				// On the car's screen while Android Auto is connected -- one player, one session.
+				a.playExternally(ext, i);
 				return;
 			}
 

@@ -924,13 +924,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		MainActivityDelegate a = getActivityDelegate();
 		if (!a.computeContentInsets(c, insets) || !a.computeSideInsets(c, sideInsets)) return;
 		int top = insets[0];
-		// Landscape: the cover and the controls sit side by side, each centred on the column's
-		// height -- with only the top reserved (for the toolbar), that centre was below the
-		// screen's own, and both read as sitting low. The same room at the bottom puts them on
-		// the screen's centre line.
-		boolean land =
-				getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
-		int bottom = land ? Math.max(insets[1], top) : insets[1];
+		// Landscape (Android Auto, a tablet on its side): the cover and the controls sit side by
+		// side, each centred on its column's height -- the room between the title bar and the
+		// bottom, i.e. the space actually visible for them. (Reserving the title bar's height at the
+		// bottom too, to centre them on the whole screen instead, read as sitting too high.)
+		int bottom = insets[1];
 		int left = sideInsets[0];
 		int right = sideInsets[1];
 		if (insetsSet && (top == insetTop) && (bottom == insetBottom) && (left == insetLeft)
@@ -1361,7 +1359,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if (idle != null) MusicPlayer.watch(a, idle);
 		else if (playingAsMusic()) {
 			// Into the video through black, the same fade as leaving fullscreen.
-			a.fadeToBlackForVideo();
+			a.getPlaybackDelegate().fadeToBlackForVideo();
 			MusicPlayer.switchToVideo(a);
 		}
 		else if (a.getMediaSessionCallback().getCurrentItem() != null) {

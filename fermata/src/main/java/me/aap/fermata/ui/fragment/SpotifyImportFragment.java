@@ -737,8 +737,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 					}
 					a.getLib().getItem("youtube:" + v.videoId).main().onCompletion((item, e) -> {
 						if (item instanceof MediaLib.ExternallyPlayableItem ext) {
-							ActivityFragment f = a.showFragment(ext.getPlayerFragmentId());
-							if (f != null) ext.loadInFragment(f, ext);
+							a.playExternally(ext, ext);
 						} else {
 							Utils.openUrl(ctx, v.watchUrl());
 						}

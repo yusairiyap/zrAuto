@@ -110,7 +110,8 @@ public final class MusicPlayer {
 	}
 
 	/** Shows the YouTube tab with its video fullscreen (a no-op without the YouTube addon). */
-	public static void showYoutubeVideo(MainActivityDelegate a) {
+	public static void showYoutubeVideo(MainActivityDelegate from) {
+		MainActivityDelegate a = from.getPlaybackDelegate(); // The car's while Android Auto is on.
 		YoutubeHooks h = youtube;
 		if (h != null) h.showVideo(a);
 	}
@@ -531,7 +532,9 @@ public final class MusicPlayer {
 	 * playing it, so it's just a matter of showing it at its usual quality again; a local file
 	 * gets its picture back on the same engine.
 	 */
-	public static void switchToVideo(MainActivityDelegate a) {
+	public static void switchToVideo(MainActivityDelegate from) {
+		// The video shows where it plays: the car's screen while Android Auto is connected.
+		MainActivityDelegate a = from.getPlaybackDelegate();
 		MediaSessionCallback cb = a.getMediaSessionCallback();
 		MediaEngine eng = cb.getEngine();
 		MusicTrackItem t = getCurrentTrack(cb);
@@ -567,7 +570,8 @@ public final class MusicPlayer {
 	 * "Video" for the queue track shown while nothing is playing (where the queue left off): starts
 	 * it straight away as video, from where the queue left off.
 	 */
-	public static void watch(MainActivityDelegate a, MusicTrackItem t) {
+	public static void watch(MainActivityDelegate from, MusicTrackItem t) {
+		MainActivityDelegate a = from.getPlaybackDelegate(); // See switchToVideo().
 		MusicQueue q = getQueue(a);
 		long pos = ((q != null) && t.equals(q.getSavedCurrent())) ? q.getSavedPosition() : 0;
 		DiagnosticLog.log(TAG, "watch", "track=" + t, "pos=" + (pos / 1000) + 's');

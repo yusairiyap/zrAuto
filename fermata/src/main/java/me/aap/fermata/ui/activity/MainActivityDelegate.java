@@ -113,6 +113,7 @@ import com.google.android.material.color.MaterialColors;
 import com.google.android.material.textview.MaterialTextView;
 
 import java.io.IOException;
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -272,6 +273,47 @@ public class MainActivityDelegate extends ActivityDelegate
 		mediaServiceBinder = binder;
 	}
 
+	/** The native Android Auto UI while it's running, see {@link #getPlaybackDelegate()}. */
+	private static WeakReference<MainActivityDelegate> carDelegate = new WeakReference<>(null);
+
+	/** The native Android Auto UI, if it's running. */
+	@Nullable
+	public static MainActivityDelegate getCarDelegate() {
+		MainActivityDelegate d = carDelegate.get();
+		return ((d != null) && carActivityActive) ? d : null;
+	}
+
+	/**
+	 * Where playback started from this UI should happen: the car's screen while Android Auto is
+	 * connected (so a tap on the phone plays exactly as if tapped in the car -- one session, one
+	 * player, one queue), else this UI itself. Local audio already goes through the shared media
+	 * service either way; this matters for what plays inside a UI of its own, like the YouTube tab.
+	 */
+	public MainActivityDelegate getPlaybackDelegate() {
+		if (getAppActivity().isCarActivity()) return this;
+		MainActivityDelegate car = getCarDelegate();
+		return (car != null) ? car : this;
+	}
+
+	/** Whether playback started from this UI goes to the car's screen, see above. */
+	public boolean isPlaybackOnCar() {
+		return getPlaybackDelegate() != this;
+	}
+
+	/**
+	 * Plays an externally played item (a YouTube video, a Favorites/Playlist entry of one) in its
+	 * player's tab -- on the car's screen while Android Auto is connected, see
+	 * {@link #getPlaybackDelegate()}; then the phone just says so.
+	 */
+	public boolean playExternally(MediaLib.ExternallyPlayableItem ext, PlayableItem self) {
+		MainActivityDelegate p = getPlaybackDelegate();
+		ActivityFragment f = p.showFragment(ext.getPlayerFragmentId());
+		if (f == null) return false;
+		ext.loadInFragment(f, self);
+		if (p != this) UiUtils.showToast(getContext(), R.string.playing_on_car, self.getName());
+		return true;
+	}
+
 	/** See {@link #carActivityActive} -- true while the app is running as the native Android Auto
 	 * car Activity (mirroring mode is a separate check, see {@code FermataApplication#isMirroringMode}). */
 	public static boolean isCarActivityActive() {
@@ -320,7 +362,10 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Override
 	public void onActivityCreate(@Nullable Bundle state) {
 		super.onActivityCreate(state);
-		if (getAppActivity().isCarActivity()) carActivityActive = true;
+		if (getAppActivity().isCarActivity()) {
+			carActivityActive = true;
+			carDelegate = new WeakReference<>(this);
+		}
 		Intent intent = getIntent();
 		if ((intent != null) && INTENT_ACTION_FINISH.equals(intent.getAction())) {
 			finish();
@@ -632,7 +677,10 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Override
 	public void onActivityDestroy() {
 		super.onActivityDestroy();
-		if (getAppActivity().isCarActivity()) carActivityActive = false;
+		if (getAppActivity().isCarActivity()) {
+			carActivityActive = false;
+			if (carDelegate.get() == this) carDelegate = new WeakReference<>(null);
+		}
 		handler.close();
 		getMediaServiceBinder().getMediaSessionCallback().removeAssistant(this);
 		getPrefs().removeBroadcastListener(this);

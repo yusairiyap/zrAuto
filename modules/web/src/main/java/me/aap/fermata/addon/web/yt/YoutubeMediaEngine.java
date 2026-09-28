@@ -294,6 +294,28 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		String actualId =
 				!jsVideoId.isEmpty() ? jsVideoId : YoutubeVideoItem.extractVideoId(web.getUrl());
 		YoutubeAddon addon = web.getAddon();
+
+		// The phone's own YouTube page while Android Auto is connected: the car's player is the one
+		// that plays (see MainActivityDelegate#getPlaybackDelegate()). A video tapped here is handed
+		// over to it, as if tapped in the car; anything else this page starts by itself (autoplay,
+		// resuming as the tab opens) is just silenced, never allowed to cut into the car's playback.
+		MainActivityDelegate ui = MainActivityDelegate.get(web.getContext());
+		if (ui.isPlaybackOnCar()) {
+			boolean tapped = recentLinkClick || isUserPickPending();
+			clearUserPick();
+			lastActivePlayTime = 0; // A pause asked for: paused() mustn't retry play().
+			web.pause();
+			if (tapped && (actualId != null) &&
+					(ui.getPlaybackDelegate().showFragment(me.aap.fermata.R.id.youtube_fragment)
+							instanceof YoutubeFragment car)) {
+				Log.d("playing(): handing ", actualId, " over to the car's player");
+				car.playVideoNow(actualId, jsTitle.isEmpty() ? null : jsTitle);
+				UiUtils.showToast(web.getContext(), me.aap.fermata.R.string.playing_on_car,
+						jsTitle.isEmpty() ? actualId : jsTitle);
+			}
+			return;
+		}
+
 		String pendingVideoId = addon.getPendingVideoId();
 		// The user tapped a video on the page and this is (pickedThis), or may still be on its way to
 		// (pickPending: e.g. an ad is playing first), that video -- see userPickedVideoId.
