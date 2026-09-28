@@ -310,11 +310,11 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 			// One panel rather than a card per row: the rows lose their own box, margins and
 			// elevation and sit straight on the popup's background. A modest fixed width: a switch
 			// and a slider. Not focused right away (see PreferenceSet#addToMenu's requestFocus).
-			RecyclerView v = set.createView(ctx, toIntPx(ctx, 280));
+			RecyclerView list = set.createView(ctx, toIntPx(ctx, 280));
 			int pad = toIntPx(ctx, 6);
-			v.setPadding(0, pad, 0, pad);
-			v.setClipToPadding(false);
-			v.addOnChildAttachStateChangeListener(new RecyclerView.OnChildAttachStateChangeListener() {
+			list.setPadding(0, pad, 0, pad);
+			list.setClipToPadding(false);
+			list.addOnChildAttachStateChangeListener(new RecyclerView.OnChildAttachStateChangeListener() {
 				@Override
 				public void onChildViewAttachedToWindow(@NonNull View row) {
 					row.setBackground(null);
@@ -332,9 +332,9 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 				}
 			});
 			b.setCloseHandlerHandler(m -> {
-				if (v.getAdapter() instanceof PreferenceViewAdapter pa) pa.onDestroy();
+				if (list.getAdapter() instanceof PreferenceViewAdapter pa) pa.onDestroy();
 			});
-			b.setView(v);
+			b.setView(list);
 		});
 	}
 
