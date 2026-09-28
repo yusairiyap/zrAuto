@@ -43,6 +43,15 @@
     <item name="data_usage_addon" type="id" />
     <item name="music_toolbar_info" type="id" />
     <item name="music_play" type="id" />
+    <item name="item_play" type="id" />
+    <item name="fab_cat_playback" type="id" />
+    <item name="fab_cat_screen" type="id" />
+    <item name="fab_cat_library" type="id" />
+    <item name="fab_cat_youtube" type="id" />
+    <item name="fab_cat_tools" type="id" />
+    <item name="floating_button5" type="id" />
+    <item name="floating_button6" type="id" />
+    <item name="play_as_video" type="id" />
     <item name="music_queue_add" type="id" />
     <item name="subgen_addon" type="id" />
     <item name="whisper_addon" type="id" />

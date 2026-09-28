@@ -52,6 +52,11 @@ public class MusicQueue extends ExtRoot {
 	private List<MusicTrackItem> shuffleOrder;
 	// Where the playing track was when it got removed from the queue: "next" carries on from there.
 	private int removedCurrentIdx = -1;
+	// See addAfter(): the track "Play next" last queued behind, and the last track it queued there.
+	@Nullable
+	private MusicTrackItem insertAfterCurrent;
+	@Nullable
+	private MusicTrackItem insertAfterLast;
 	private long serial;
 
 	MusicQueue(MediaLib lib) {
@@ -149,10 +154,6 @@ public class MusicQueue extends ExtRoot {
 
 	/**
 	 * Replaces the whole queue with {@code items} (in order) and returns the new tracks, in the same
-	 * order. The track for an item that's already playing as music is reused as-is.
-	 */
-	/**
-	 * Replaces the whole queue with {@code items} (in order) and returns the new tracks, in the same
 	 * order. With Shuffle on, the new shuffled order starts with the track at {@code first}, the one
 	 * about to play.
 	 */
@@ -161,6 +162,8 @@ public class MusicQueue extends ExtRoot {
 
 		synchronized (this) {
 			tracks.clear();
+			insertAfterCurrent = null;
+			insertAfterLast = null;
 			added = new ArrayList<>(items.size());
 			for (PlayableItem i : items) added.add(newTrack(i));
 			tracks.addAll(added);
@@ -185,6 +188,73 @@ public class MusicQueue extends ExtRoot {
 
 		changed();
 		return added;
+	}
+
+	/**
+	 * Inserts {@code items} to play right after {@code after} (or appends them when it's null or no
+	 * longer queued), in the queue's own order and its shuffled order alike. Successive inserts
+	 * after the same track line up behind each other -- the second "Play next" plays after the
+	 * first, like any music player's queue -- rather than each one jumping ahead of the last.
+	 */
+	public List<MusicTrackItem> addAfter(@Nullable MusicTrackItem after,
+																			 List<? extends PlayableItem> items) {
+		List<MusicTrackItem> added;
+
+		synchronized (this) {
+			added = new ArrayList<>(items.size());
+			for (PlayableItem i : items) added.add(newTrack(i));
+			if (added.isEmpty()) return added;
+
+			MusicTrackItem anchor = after;
+			List<MusicTrackItem> order = playOrder(null);
+			int ci = (after == null) ? -1 : order.indexOf(after);
+			if ((ci != -1) && (after == insertAfterCurrent) && (insertAfterLast != null)) {
+				int li = order.indexOf(insertAfterLast);
+				// Still lined up right behind the current track: keep appending to that run.
+				if (li > ci) anchor = insertAfterLast;
+			}
+
+			insertAt(tracks, anchor, added);
+			if (shuffleOrder != null) insertAt(shuffleOrder, anchor, added);
+			if (ci != -1) {
+				insertAfterCurrent = after;
+				insertAfterLast = added.get(added.size() - 1);
+			}
+		}
+
+		changed();
+		return added;
+	}
+
+	private static void insertAt(List<MusicTrackItem> list, @Nullable MusicTrackItem after,
+															 List<MusicTrackItem> items) {
+		int i = (after == null) ? -1 : list.indexOf(after);
+		if (i == -1) list.addAll(items);
+		else list.addAll(i + 1, items);
+	}
+
+	/**
+	 * Moves the track {@code t} to play right after {@code current} (see {@link #addAfter}): "Play
+	 * next" for a track that's already queued. False if either isn't queued.
+	 */
+	public boolean moveAfter(MusicTrackItem current, MusicTrackItem t) {
+		synchronized (this) {
+			if (current.equals(t)) return false;
+			List<MusicTrackItem> order = playOrder(null);
+			if (!order.contains(current) || !order.remove(t)) return false;
+			int ci = order.indexOf(current);
+			int to = ci + 1;
+			if ((current == insertAfterCurrent) && (insertAfterLast != null) &&
+					!insertAfterLast.equals(t)) {
+				int li = order.indexOf(insertAfterLast);
+				if (li > ci) to = li + 1;
+			}
+			order.add(to, t);
+			insertAfterCurrent = current;
+			insertAfterLast = t;
+		}
+		changed();
+		return true;
 	}
 
 	/** Removes the track at {@code idx} of the play order (as the queue is shown). */
@@ -257,6 +327,8 @@ public class MusicQueue extends ExtRoot {
 	public void clear() {
 		synchronized (this) {
 			tracks.clear();
+			insertAfterCurrent = null;
+			insertAfterLast = null;
 			shuffleOrder = null;
 		}
 		changed();

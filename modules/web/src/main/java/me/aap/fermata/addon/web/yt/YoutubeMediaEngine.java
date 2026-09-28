@@ -43,6 +43,7 @@ import me.aap.fermata.media.pref.BrowsableItemPrefs;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.media.service.PlaybackResume;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.view.NetworkIssuePopup;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
@@ -75,6 +76,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	private final YoutubeItem end;
 	private YoutubeItem current;
 	private String qualityUrl;
+	// The video the user picked a quality for by hand (the quality menu): the preferred-quality
+	// setting leaves that video alone, see playing().
+	@Nullable
+	private String manualQualityVideoId;
 	private boolean ignorePause;
 	// See paused() below: how long after our own start() or the page's own last confirmed playing()
 	// a page-reported pause is still treated as suspect, and how many times it's retried before
@@ -167,6 +172,16 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	private long userPickedTime;
 	private static final long USER_PICK_WINDOW_MS = 90_000L;
 
+	/**
+	 * How long the video may sit buffering, while the session says it's playing, before the network
+	 * is blamed out loud (see {@link #waiting()}). Long enough that a seek, the start of a video or
+	 * an ordinary hiccup never gets there.
+	 */
+	private static final long STALL_MS = 10_000L;
+	// When the page last reported buffering with no 'playing' since; 0 when not buffering.
+	private long waitingSince;
+	private final Runnable stallCheck = this::stallCheck;
+
 	public YoutubeMediaEngine(YoutubeWebView web, MainActivityDelegate a) {
 		this.web = web;
 		cb = a.getMediaSessionCallback();
@@ -188,7 +203,51 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		};
 	}
 
+	/**
+	 * The page's video stopped to wait for data. Mostly a beat at a seek or a video's start; when it
+	 * lasts (see {@link #STALL_MS}) while playback is supposed to be going, the connection is lost or
+	 * too slow, and the driver is told so rather than left with silence -- see NetworkIssuePopup.
+	 */
+	void waiting(@Nullable String page) {
+		if (cb.getEngine() != this) return;
+		if (waitingSince == 0) {
+			waitingSince = SystemClock.elapsedRealtime();
+			// Whether the page was really hidden (another tab showing) -- see attachListeners().
+			DiagnosticLog.log("YT", "buffering", "id=" + currentVideoId, "page=" + page);
+		}
+		web.removeCallbacks(stallCheck);
+		web.postDelayed(stallCheck, STALL_MS);
+	}
+
+	private void stallCheck() {
+		if ((waitingSince == 0) || (cb.getEngine() != this) || !cb.isPlaying()) return;
+		if (NetworkIssuePopup.isShown()) return;
+		DiagnosticLog.log("YT", "stalled", "id=" + currentVideoId,
+				"for=" + ((SystemClock.elapsedRealtime() - waitingSince) / 1000) + 's');
+		boolean fullscreen = getFullScreenView() != null;
+		MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a -> {
+			// Over playback only -- fullscreen video or the Music tab -- never while browsing.
+			if (!NetworkIssuePopup.isPlaybackScreen(a, fullscreen)) return;
+			NetworkIssuePopup.show(a, () -> {
+					waitingSince = 0;
+					lastActivePlayTime = System.currentTimeMillis();
+					playRetries = 0;
+					web.onResume();
+					web.play();
+				});
+		});
+	}
+
+	/** Buffering is over (playing again, paused, stopped): no more stall to report. */
+	private void clearStall() {
+		waitingSince = 0;
+		web.removeCallbacks(stallCheck);
+		NetworkIssuePopup.dismiss();
+	}
+
 	void playing(String data) {
+		boolean wasBuffering = waitingSince != 0;
+		clearStall();
 		// Every confirmed-playing moment re-arms the retry guard in paused() below -- not just an
 		// explicit native start() -- since a page-reported pause can also follow a resize-triggered
 		// player restart the app never asked for (confirmed on-device: a window resize alone, with
@@ -382,11 +441,15 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				userQualityChecked = true;
 				web.restoreUserQuality();
 			}
+		} else if (!music && (actualId != null) && actualId.equals(manualQualityVideoId)) {
+			// Picked by hand for this video: the setting doesn't override the user's choice.
+			qualityUrl = url;
 		} else if (!url.isEmpty() && !url.equals(qualityUrl)) {
 			qualityUrl = url;
 			web.applyQualityPolicy(music ? "lowest" : preferred);
 		}
-		DiagnosticLog.log("YT", "playing", "id=" + actualId, "title=" + currentVideoTitle);
+		DiagnosticLog.log("YT", wasBuffering ? "playing (after buffering)" : "playing",
+				"id=" + actualId, "title=" + currentVideoTitle);
 		cb.setEngine(this);
 		cb.onEngineStarted(this);
 
@@ -428,6 +491,30 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		userPickedTime = 0;
 	}
 
+	/**
+	 * Plays the current video again from the start, in place -- Repeat One, whether YouTube's own
+	 * (the video player's menu) or the Music tab's (the queue's Repeat One, which resolves "next" to
+	 * this very track, see prepare()). A navigation to the video the page is already on does
+	 * nothing at all, which left music mode's Repeat One stuck on the ended video.
+	 */
+	private void replayCurrent() {
+		lastActivePlayTime = System.currentTimeMillis();
+		lastPausedTime = 0;
+		playRetries = 0;
+		blockedWidth = 0;
+		blockedHeight = 0;
+		// Also armed as a pendingVideoId correction target: if YouTube's own autonav wins the race
+		// on this same "ended" moment (see YoutubeWebView's capture-phase interceptors -- best
+		// effort, not a guarantee) and jumps to a different video before this lightweight seek+play
+		// takes effect, playing() above will notice the mismatch against currentVideoId and force a
+		// full reload back to it instead of silently looping the wrong video.
+		if (currentVideoId != null) {
+			web.getAddon().setPendingVideoId(currentVideoId);
+			pendingCorrections = 0;
+		}
+		web.replay();
+	}
+
 	void ended() {
 		// Repeat One loops whatever video is currently playing, regardless of whether it's part of a
 		// Favorites/Playlist queue (see YoutubeAddon#isRepeatOneEnabled()) -- handled here directly,
@@ -442,21 +529,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			// playback originally started, possibly minutes ago) and treats that pause as genuine,
 			// calling cb.onPause() instead of retrying -- which is exactly why the loop would play once
 			// and then just sit there paused instead of looping again.
-			lastActivePlayTime = System.currentTimeMillis();
-			lastPausedTime = 0;
-			playRetries = 0;
-			blockedWidth = 0;
-			blockedHeight = 0;
-			// Also armed as a pendingVideoId correction target: if YouTube's own autonav wins the race
-			// on this same "ended" moment (see YoutubeWebView's capture-phase interceptors -- best
-			// effort, not a guarantee) and jumps to a different video before this lightweight seek+play
-			// takes effect, playing() above will notice the mismatch against currentVideoId and force a
-			// full reload back to it instead of silently looping the wrong video.
-			if (currentVideoId != null) {
-				web.getAddon().setPendingVideoId(currentVideoId);
-				pendingCorrections = 0;
-			}
-			web.replay();
+			replayCurrent();
 			return;
 		}
 
@@ -655,6 +728,18 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// a host takeover, so it's called out loudly in the trace rather than logged as a plain pause.
 		DiagnosticLog.logAndToast("YT", appRequestedPause ? "paused (app asked)" : "PAUSED BY PAGE",
 				"id=" + currentVideoId, "size=" + web.getWidth() + 'x' + web.getHeight());
+		boolean stalled = waitingSince != 0;
+		clearStall();
+		// The page gave up on its own while waiting for data, or with no connection at all: that's
+		// the network, not the user -- say so, with the way out.
+		if (!appRequestedPause && (stalled || !NetworkIssuePopup.isOnline(web.getContext()))) {
+			boolean fullscreen = getFullScreenView() != null;
+			MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a -> {
+				if (NetworkIssuePopup.isPlaybackScreen(a, fullscreen)) {
+					NetworkIssuePopup.show(a, () -> cb.onPlay());
+				}
+			});
+		}
 		if (appRequestedPause) {
 			appRequestedPause = false;
 			lastExternalPauseTime = 0;
@@ -740,6 +825,13 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			pendingCorrections = 0;
 			// From 0:00, not wherever YouTube would resume it -- see YoutubeWebView#loadVideo.
 			web.afterAudioFadeOut(() -> web.loadVideo(queueVideoId, true));
+		} else if ((queueVideoId != null) && queueVideoId.equals(currentVideoId) &&
+				!web.getAddon().isRepeatOneEnabled()) {
+			// The queue resolved to the video that's on the page already -- the Music tab's Repeat One
+			// (or the same video queued twice): replay it in place, see replayCurrent().
+			Log.d("prepare(): replaying ", queueVideoId, " (", source.getName(), ")");
+			web.getAddon().setQueueItem(source);
+			replayCurrent();
 		} else if (queueVideoId != null) {
 			// Reached from MediaSessionCallback.skipTo()/engineEnded() when queueAwareNextPlayable()/
 			// PrevPlayable() below resolved a real sibling from the app's own Favorites/Playlist --
@@ -773,6 +865,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 */
 	void applyQuality() {
 		qualityUrl = null;
+		manualQualityVideoId = null;
 		String preferred = web.getAddon().preferredQuality();
 		if (MusicPlayer.isYoutubeAudioMode()) web.applyQualityPolicy("lowest");
 		else if (preferred != null) web.applyQualityPolicy(preferred);
@@ -819,6 +912,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	@Override
 	public void stop() {
 		DiagnosticLog.log("YT", "engine stop()", "id=" + currentVideoId);
+		clearStall();
 		lastActivePlayTime = 0;
 		appRequestedPause = false;
 		lastExternalPauseTime = 0;
@@ -832,6 +926,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	public void pause() {
 		DiagnosticLog.log("YT", "engine pause()", "id=" + currentVideoId,
 				"reentrant=" + ignorePause);
+		if (!ignorePause) clearStall();
 		lastActivePlayTime = 0;
 		// ignorePause is set only while paused() above is re-entering through
 		// MediaSessionCallback#onPause() for a pause the PAGE reported; anything else reaching here is
@@ -1221,10 +1316,17 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			web.setScale(VideoScale.NONE);
 			return true;
 		} else if ((item.getData() instanceof String l) && l.startsWith(QUALITY_LEVEL_PREFIX)) {
+			manualQualityVideoId = currentVideoId;
 			web.setPlayerQuality(l.substring(QUALITY_LEVEL_PREFIX.length()));
 		} else if (item.getData() instanceof Integer) {
 			int d = item.getData();
-			if ((d & VIDEO_QUALITY_MASK) != 0) web.setVideoQuality(d & ~VIDEO_QUALITY_MASK);
+			if ((d & VIDEO_QUALITY_MASK) != 0) {
+				// The preferred-quality policy re-applies itself on every buffering; stop it first, or
+				// the page's own quality menu choice is undone moments later.
+				manualQualityVideoId = currentVideoId;
+				web.stopQualityPolicy();
+				web.setVideoQuality(d & ~VIDEO_QUALITY_MASK);
+			}
 		}
 		return false;
 	}

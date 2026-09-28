@@ -255,6 +255,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			public void onReceive(Context context, Intent intent) {
 				if (ACTION_AUDIO_BECOMING_NOISY.equals(intent.getAction())) {
 					Log.i("Received ACTION_AUDIO_BECOMING_NOISY event");
+					DiagnosticLog.log("NOISY", "audio output changed, pausing", "playing=" + isPlaying());
 					onPause();
 				}
 			}
@@ -547,6 +548,31 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	}
 
 	/**
+	 * Who asked for a pause, for the diagnostic trace: the controlling app when the command came
+	 * through the media session (Android Auto, a Bluetooth head unit, the notification), else the
+	 * first app class up the call stack. A pause nobody on screen asked for is otherwise
+	 * indistinguishable in the trace from one the user did ask for.
+	 */
+	private String pauseSource() {
+		if (!DiagnosticLog.isEnabled()) return "?";
+		StringBuilder sb = new StringBuilder();
+		try {
+			var info = session.getCurrentControllerInfo();
+			if (info != null) sb.append(info.getPackageName()).append(' ');
+		} catch (Throwable ignore) {
+			// Only valid inside a session callback -- a direct call has no controller.
+		}
+		for (StackTraceElement e : new Throwable().getStackTrace()) {
+			String c = e.getClassName();
+			if (!c.startsWith("me.aap.") || c.startsWith(MediaSessionCallback.class.getName())) continue;
+			sb.append(c.substring(c.lastIndexOf('.') + 1)).append('.').append(e.getMethodName())
+					.append(':').append(e.getLineNumber());
+			break;
+		}
+		return (sb.length() == 0) ? "session" : sb.toString().trim();
+	}
+
+	/**
 	 * Readable {@link PlaybackStateCompat} state for the diagnostic trace -- a bare int is what this
 	 * log exists to save the reader from decoding.
 	 */
@@ -646,7 +672,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	@Override
 	public void onPause() {
 		DiagnosticLog.log("TRANSPORT", "onPause",
-				"state=" + stateName(getPlaybackState().getState()));
+				"state=" + stateName(getPlaybackState().getState()), "from=" + pauseSource());
 		PlayableItem i;
 		MediaEngine eng = getEngine();
 		if ((eng == null) || ((i = eng.getSource()) == null)) return;
@@ -733,8 +759,29 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onSkipToPrevious() {
+		clearRepeatOneOnSkip();
 		playerTask.cancel();
 		playerTask = skipTo(false, false);
+	}
+
+	/**
+	 * An explicit skip (next/previous) turns Repeat One off, so the track actually changes -- as
+	 * YouTube's own Repeat One already did. Left on, a skip resolved to the very same track: music
+	 * mode's queue replayed it (or, for YouTube, sat on the loading cover) instead of moving on.
+	 * Covers the session's item and, for YouTube in music mode, the queue track behind it.
+	 */
+	private void clearRepeatOneOnSkip() {
+		clearRepeatOne(getCurrentItem());
+		clearRepeatOne(me.aap.fermata.addon.music.MusicPlayer.getCurrentTrack(this));
+	}
+
+	private static void clearRepeatOne(@Nullable PlayableItem i) {
+		if (i == null) return;
+		BrowsableItemPrefs p = i.getParent().getPrefs();
+		if (i.getId().equals(p.getRepeatItemPref())) {
+			DiagnosticLog.log("TRANSPORT", "skip turns Repeat One off", "item=" + i);
+			p.setRepeatItemPref(null);
+		}
 	}
 
 	public void onSkipToPreviousFolder() {
@@ -744,6 +791,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onSkipToNext() {
+		clearRepeatOneOnSkip();
 		playerTask.cancel();
 		playerTask = skipTo(true, false);
 	}

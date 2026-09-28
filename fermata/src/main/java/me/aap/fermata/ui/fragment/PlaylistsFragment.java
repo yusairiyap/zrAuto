@@ -39,7 +39,7 @@ import me.aap.fermata.ui.view.MediaItemListView;
 import me.aap.fermata.ui.view.MediaItemView;
 import me.aap.fermata.ui.view.MediaItemViewHolder;
 import me.aap.fermata.ui.view.MediaItemWrapper;
-import me.aap.utils.async.Async;
+import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.pref.PreferenceStore;
@@ -54,6 +54,11 @@ public class PlaylistsFragment extends MediaLibFragment {
 	@Override
 	protected ListAdapter createAdapter(FermataServiceUiBinder b) {
 		return new PlaylistsAdapter(getMainActivity(), b.getLib().getPlaylists());
+	}
+
+	@Override
+	protected boolean playsAsMusicInMusicMode() {
+		return true;
 	}
 
 	@Override
@@ -78,12 +83,9 @@ public class PlaylistsFragment extends MediaLibFragment {
 
 		OverlayMenu.Builder b = builder.withSelectionHandler(this::navBarMenuItemSelected);
 
-		if (a.getListView().isSelectionActive() && a.hasSelected()) {
-			if (a.getParent() instanceof Playlist) {
-				addSelectionActions(b);
-			} else {
-				b.addItem(R.id.favorites_add, R.drawable.favorite, R.string.favorites_add);
-			}
+		if (a.getListView().isSelectionActive() && a.hasSelected() &&
+				(a.getParent() instanceof Playlist)) {
+			addSelectionActions(b);
 		}
 
 		b.addItem(R.id.spotify_import, R.drawable.playlist_import, R.string.spotify_import);
@@ -174,11 +176,41 @@ public class PlaylistsFragment extends MediaLibFragment {
 	// ---- Selection panel ----
 
 	@Nullable
-	private View selectionPanel;
+	private SelectionPanel selectionPanel;
 
 	@Override
 	public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
 		super.onViewCreated(view, savedInstanceState);
+		selectionPanel = new SelectionPanel(this, R.string.playlist_move, new SelectionPanel.Actions() {
+			@Override
+			public void moveSelected(boolean toTop) {
+				PlaylistsFragment.this.moveSelected(toTop);
+			}
+
+			@Override
+			public void playlistAction(View anchor) {
+				PlaylistsAdapter a = getAdapter();
+				if (a.getParent() instanceof Playlist pl) {
+					MainActivityDelegate m = getMainActivity();
+					m.showMoveToPlaylistDialog(m.getContextMenu(), pl, a.getSelectedItems());
+				}
+			}
+
+			@Override
+			public void removeSelected() {
+				PlaylistsAdapter a = getAdapter();
+				if (a.getParent() instanceof Playlist pl) {
+					getMainActivity().removeFromPlaylist(pl, a.getSelectedItems());
+				} else if (a.getParent() instanceof Playlists pls) {
+					removeSelectedPlaylists(pls);
+				}
+			}
+
+			@Override
+			public boolean hasPlaylistAction() {
+				return getAdapter().getParent() instanceof Playlist;
+			}
+		});
 		getListView().setSelectionListener(v -> updateSelectionPanel());
 	}
 
@@ -192,208 +224,40 @@ public class PlaylistsFragment extends MediaLibFragment {
 	@Override
 	public void onDestroyView() {
 		hideSelectionPanel(false);
+		selectionPanel = null;
 		super.onDestroyView();
 	}
 
-	/**
-	 * The floating panel shown while items of a playlist are selected: count, Move to top, Move to
-	 * end, Move to playlist, Remove, and close (ends the selection).
-	 */
 	private void updateSelectionPanel() {
 		PlaylistsAdapter a = getAdapter();
-		if ((a == null) || (getView() == null)) return;
-		boolean active = a.getListView().isSelectionActive() && (a.getParent() instanceof Playlist);
-
-		// Shown for the whole of selection mode, from the moment it starts, even with nothing
-		// selected yet (the actions are just disabled then).
-		if (!active || isHidden()) {
-			hideSelectionPanel(true);
-			return;
-		}
-
-		// The count is the model's; bring the visible checkboxes in line with it too, in case a
-		// recycled row still shows an earlier state.
-		int n = 0;
-		for (MediaItemWrapper w : a.getList()) {
-			if (w.isSelected()) n++;
-			w.refreshViewCheckbox();
-		}
-
-		View panel = (selectionPanel != null) ? selectionPanel : createSelectionPanel();
-		if (panel == null) return;
-		((TextView) panel.findViewById(R.id.selection_panel_count))
-				.setText(getString(R.string.selection_count, n));
-		boolean enabled = n > 0;
-		for (int id : new int[]{R.id.selection_panel_top, R.id.selection_panel_end,
-				R.id.selection_panel_move, R.id.selection_panel_remove}) {
-			View b = panel.findViewById(id);
-			b.setEnabled(enabled);
-			b.setAlpha(enabled ? 1f : 0.4f);
-		}
-		positionSelectionPanel(panel);
-		// Again once laid out: the nav bar/control panel/FAB positions may only be known then.
-		panel.post(() -> {
-			if (selectionPanel == panel) positionSelectionPanel(panel);
-		});
+		if ((a == null) || (selectionPanel == null)) return;
+		BrowsableItem p = a.getParent();
+		selectionPanel.update(a.getListView().isSelectionActive() &&
+				((p instanceof Playlist) || (p instanceof Playlists)));
 	}
 
-	@Nullable
-	private View createSelectionPanel() {
-		FrameLayout content = findPanelHost();
-		if (content == null) return null;
-
-		View panel = LayoutInflater.from(requireContext())
-				.inflate(R.layout.playlist_selection_panel, content, false);
-		panel.findViewById(R.id.selection_panel_close).setOnClickListener(v -> discardSelection());
-		panel.findViewById(R.id.selection_panel_top).setOnClickListener(v -> moveSelected(true));
-		panel.findViewById(R.id.selection_panel_end).setOnClickListener(v -> moveSelected(false));
-		panel.findViewById(R.id.selection_panel_move).setOnClickListener(v -> {
-			PlaylistsAdapter a = getAdapter();
-			if (a.getParent() instanceof Playlist pl) {
-				MainActivityDelegate m = getMainActivity();
-				m.showMoveToPlaylistDialog(m.getContextMenu(), pl, a.getSelectedItems());
-			}
+	/** The list of playlists: removes the selected ones, once the user confirms. */
+	private void removeSelectedPlaylists(Playlists pls) {
+		List<Playlist> sel = new ArrayList<>();
+		for (MediaItemWrapper w : getAdapter().getList()) {
+			if (w.isSelected() && (w.getItem() instanceof Playlist pl)) sel.add(pl);
+		}
+		if (sel.isEmpty()) return;
+		UiUtils.showQuestion(requireContext(), getString(R.string.playlist_remove),
+				getResources().getQuantityString(R.plurals.playlists_remove_confirm, sel.size(),
+						sel.size()), null).onSuccess(v -> {
+			pls.removeItems(sel);
+			discardSelection();
 		});
-		panel.findViewById(R.id.selection_panel_remove).setOnClickListener(v -> {
-			PlaylistsAdapter a = getAdapter();
-			if (a.getParent() instanceof Playlist pl) {
-				getMainActivity().removeFromPlaylist(pl, a.getSelectedItems());
-			}
-		});
-
-		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-				ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-				Gravity.BOTTOM);
-		content.addView(panel, lp);
-		selectionPanel = panel;
-
-		// Slides up and fades in.
-		panel.setAlpha(0f);
-		panel.setTranslationY(UiUtils.toPx(requireContext(), 120));
-		panel.animate().alpha(1f).translationY(0f).setDuration(220)
-				.setInterpolator(new DecelerateInterpolator()).start();
-		return panel;
-	}
-
-	/**
-	 * A full-window FrameLayout to float the panel in: the window's content frame, or failing
-	 * that (the Android Auto car screen's window is set up differently) its root, or the highest
-	 * FrameLayout above this list.
-	 */
-	@Nullable
-	private FrameLayout findPanelHost() {
-		View view = requireView();
-		View root = view.getRootView();
-		View c = root.findViewById(android.R.id.content);
-		if (c instanceof FrameLayout f) return f;
-		if (root instanceof FrameLayout f) return f;
-		FrameLayout host = null;
-		for (ViewParent p = view.getParent(); p != null; p = p.getParent()) {
-			if (p instanceof FrameLayout f) host = f;
-		}
-		return host;
-	}
-
-	/** Above the bottom nav bar and the control panel, whichever are showing. */
-	private void positionSelectionPanel(View panel) {
-		MainActivityDelegate a = getMainActivity();
-		Context ctx = requireContext();
-		int side = UiUtils.toIntPx(ctx, 12);
-		int gap = UiUtils.toIntPx(ctx, 12);
-		int bottom = gap;
-
-		// Clear whatever sits over the bottom of the host (nav bar, control panel), measured on
-		// screen, so it works whether they're inside the host or laid out next to it.
-		if (panel.getParent() instanceof View host) {
-			int[] hLoc = new int[2];
-			host.getLocationOnScreen(hLoc);
-			int hostBottom = hLoc[1] + host.getHeight();
-			for (View v : new View[]{a.getNavBar(), a.getControlPanel()}) {
-				if ((v == null) || !v.isShown() || (v.getHeight() == 0)) continue;
-				if ((v == a.getNavBar()) && !a.getNavBar().isBottom()) continue;
-				int[] loc = new int[2];
-				v.getLocationOnScreen(loc);
-				// Only bars across the lower part of the host count (not, say, a side nav bar).
-				if ((loc[1] < hostBottom) && (loc[1] > hLoc[1] + host.getHeight() / 2)) {
-					bottom = Math.max(bottom, hostBottom - loc[1] + gap);
-				}
-			}
-		}
-
-		// Leave the floating button(s) uncovered: stop short of their column, on whichever side
-		// they are, instead of hiding them.
-		int left = side;
-		int right = side;
-		if (panel.getParent() instanceof View content) {
-			int[] cLoc = new int[2];
-			content.getLocationOnScreen(cLoc);
-			int width = content.getWidth();
-			int fabLeft = Integer.MAX_VALUE;
-			int fabRight = Integer.MIN_VALUE;
-
-			for (View fab : new View[]{a.getFloatingButton(), a.getFloatingButton2(),
-					a.getFloatingButton3(), a.getFloatingButton4()}) {
-				if ((fab == null) || !fab.isShown() || (fab.getWidth() == 0)) continue;
-				int[] loc = new int[2];
-				fab.getLocationOnScreen(loc);
-				fabLeft = Math.min(fabLeft, loc[0] - cLoc[0]);
-				fabRight = Math.max(fabRight, loc[0] - cLoc[0] + fab.getWidth());
-			}
-
-			if ((fabLeft != Integer.MAX_VALUE) && (width > 0)) {
-				if ((fabLeft + fabRight) / 2 > width / 2) right = Math.max(side, width - fabLeft + side);
-				else left = Math.max(side, fabRight + side);
-			}
-		}
-
-		FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) panel.getLayoutParams();
-
-		if ((lp.bottomMargin != bottom) || (lp.leftMargin != left) || (lp.rightMargin != right)) {
-			lp.setMargins(left, 0, right, bottom);
-			panel.setLayoutParams(lp);
-		}
 	}
 
 	private void hideSelectionPanel(boolean animate) {
-		View panel = selectionPanel;
-		if (panel == null) return;
-		selectionPanel = null;
-		panel.animate().cancel();
-
-		if (animate) {
-			panel.animate().alpha(0f).translationY(UiUtils.toPx(panel.getContext(), 120))
-					.setDuration(180).setInterpolator(new AccelerateInterpolator())
-					.withEndAction(() -> removeFromParent(panel)).start();
-		} else {
-			removeFromParent(panel);
-		}
+		if (selectionPanel != null) selectionPanel.hide(animate);
 	}
 
-	private static void removeFromParent(View v) {
-		if (v.getParent() instanceof ViewGroup g) g.removeView(v);
-	}
-
-	/** Moves the selected items, in their current order, to the top or the end of the playlist. */
+	/** Moves the selected items, in their current order, to the top or the end of the list. */
 	private void moveSelected(boolean toTop) {
-		PlaylistsAdapter a = getAdapter();
-		if (!(a.getParent() instanceof Playlist pl)) return;
-		if (!a.isCustomOrder()) {
-			UiUtils.showToast(requireContext(), R.string.playlist_sorted_hint);
-			return;
-		}
-		List<MediaItemWrapper> sel = new ArrayList<>();
-		List<MediaItemWrapper> rest = new ArrayList<>();
-		for (MediaItemWrapper w : a.getList()) (w.isSelected() ? sel : rest).add(w);
-		if (sel.isEmpty()) return;
-		List<MediaItemWrapper> order = new ArrayList<>(a.getList().size());
-		if (toTop) {
-			order.addAll(sel);
-			order.addAll(rest);
-		} else {
-			order.addAll(rest);
-			order.addAll(sel);
-		}
-		a.applyOrder(pl, order);
+		getAdapter().moveSelected(toTop);
 	}
 
 	@Override
@@ -411,7 +275,8 @@ public class PlaylistsFragment extends MediaLibFragment {
 		if (a.isCallbackCall() || (a.getParent() == null)) return;
 
 		if (prefs.contains(PlaylistsPrefs.PLAYLIST_IDS) && (a.getParent() == getLib().getPlaylists())) {
-			a.reload();
+			// A bulk reorder reloads once itself when done; otherwise keep any selection alive.
+			if (!a.reordering) a.reloadKeepSelection();
 		} else if (prefs.contains(PlaylistPrefs.PLAYLIST_ITEMS)) {
 			// A bulk reorder reloads once itself when done; otherwise keep any selection alive.
 			if (!a.reordering) a.reloadKeepSelection();
@@ -442,104 +307,36 @@ public class PlaylistsFragment extends MediaLibFragment {
 			return super.onItemMove(fromPosition, toPosition);
 		}
 
-		/** Not sorted: the list shows the playlist's own order, which moves can edit. */
-		boolean isCustomOrder() {
-			BrowsableItem p = getParent();
-			return (p == null) || (p.getPrefs().getSortByPref() == BrowsableItemPrefs.SORT_BY_NONE);
-		}
-
-		/** Dragging edits the playlist's own order, so only while it's shown unsorted. */
+		/**
+		 * Dragging edits the playlist's (or the list of playlists') own order, so only while it's shown
+		 * unsorted -- and only in selection mode (the toolbar's Select), so that a long press in the
+		 * normal view is always the item's menu, never a drag fighting it (on the car screen
+		 * especially).
+		 */
 		@Override
 		public boolean isLongPressDragEnabled() {
-			return super.isLongPressDragEnabled() && isCustomOrder();
-		}
-
-		/** A bulk reorder is running: its own reload follows, the per-move ones are skipped. */
-		boolean reordering;
-		/** The dragged item is one of several selected ones: they all follow it on drop. */
-		private boolean multiDrag;
-
-		@Override
-		protected void onDragStarted(@NonNull RecyclerView.ViewHolder vh) {
-			super.onDragStarted(vh);
-			multiDrag = false;
-			MediaItemWrapper dragged = (vh instanceof MediaItemViewHolder h) ? h.getItemWrapper() : null;
-			if ((dragged == null) || !dragged.isSelected() || !getListView().isSelectionActive() ||
-					!(getParent() instanceof Playlist) || (getSelectedItems().size() < 2)) {
-				return;
-			}
-			multiDrag = true;
-			// The others fade while dragging: they'll be gathered around the dragged one on drop.
-			for (MediaItemWrapper w : getList()) {
-				MediaItemView v = w.getView();
-				if ((w != dragged) && w.isSelected() && (v != null)) v.animate().alpha(0.35f).start();
-			}
+			return super.isLongPressDragEnabled() && isCustomOrder() &&
+					(isSelectionActive() || tapOpensMenu());
 		}
 
 		@Override
-		protected void onDragEnded(@NonNull RecyclerView.ViewHolder vh) {
-			super.onDragEnded(vh);
-			if (!multiDrag) return;
-			multiDrag = false;
-			for (MediaItemWrapper w : getList()) {
-				MediaItemView v = w.getView();
-				if (v != null) v.animate().alpha(1f).start();
-			}
-
-			MediaItemWrapper dragged = (vh instanceof MediaItemViewHolder h) ? h.getItemWrapper() : null;
-			if ((dragged == null) || !(getParent() instanceof Playlist pl)) return;
-			List<MediaItemWrapper> sel = new ArrayList<>();
-			for (MediaItemWrapper w : getList()) if (w.isSelected()) sel.add(w);
-			List<MediaItemWrapper> order = new ArrayList<>(getList().size());
-
-			for (MediaItemWrapper w : getList()) {
-				if (w == dragged) order.addAll(sel); // The whole selection, in its existing order.
-				else if (!w.isSelected()) order.add(w);
-			}
-
-			applyOrder(pl, order);
+		public boolean isDragOnlyInSelection() {
+			return true;
 		}
 
-		/**
-		 * Reorders the playlist to {@code order} (a permutation of the current list) with the
-		 * fewest moves, then reloads once, keeping the selection.
-		 */
-		void applyOrder(Playlist pl, List<MediaItemWrapper> order) {
-			List<MediaItemWrapper> cur = new ArrayList<>(getList());
-			List<int[]> moves = new ArrayList<>();
-
-			for (int to = 0; to < order.size(); to++) {
-				int from = cur.indexOf(order.get(to));
-				if (from > to) {
-					moves.add(new int[]{from, to});
-					cur.add(to, cur.remove(from));
-				}
-			}
-
-			if (moves.isEmpty()) return;
-			reordering = true;
-			Async.forEach(m -> pl.moveItem(m[0], m[1]), moves).main().onCompletion((v, err) -> {
-				reordering = false;
-				if (err != null) Log.e(err, "Failed to reorder the playlist");
-				reloadKeepSelection();
-			});
+		@Override
+		protected boolean isReorderable() {
+			BrowsableItem p = getParent();
+			return (p instanceof Playlist) || (p instanceof Playlists);
 		}
 
-		/** Reloads the list; if items are selected, they stay selected. */
-		void reloadKeepSelection() {
-			MediaItemListView lv = getListView();
-			if (!lv.isSelectionActive()) {
-				reload();
-				return;
-			}
-			Set<MediaLib.Item> sel = new HashSet<>();
-			for (MediaItemWrapper w : getList()) if (w.isSelected()) sel.add(w.getItem());
-			setParent(getParent(), false).main().onSuccess(v -> {
-				for (MediaItemWrapper w : getList()) {
-					if (sel.contains(w.getItem())) w.setSelected(true, true);
-				}
-				lv.notifySelectionChanged();
-			});
+		@Nullable
+		@Override
+		protected FutureSupplier<Void> moveInModel(int from, int to) {
+			BrowsableItem p = getParent();
+			if (p instanceof Playlist pl) return pl.moveItem(from, to);
+			if (p instanceof Playlists pls) return pls.moveItem(from, to);
+			return null;
 		}
 	}
 }

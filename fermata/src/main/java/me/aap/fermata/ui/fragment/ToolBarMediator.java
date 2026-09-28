@@ -17,17 +17,23 @@ import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED
 
 import android.content.Context;
 import android.view.View;
+import android.view.ViewGroup;
 
 import androidx.annotation.IdRes;
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
+import androidx.recyclerview.widget.RecyclerView;
 
+import me.aap.fermata.BuildConfig;
 import me.aap.fermata.R;
 import me.aap.fermata.addon.AddonManager;
 import me.aap.fermata.addon.FermataAddon;
 import me.aap.fermata.addon.FermataToolAddon;
 import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
+import me.aap.fermata.media.lib.MediaLib.Favorites;
 import me.aap.fermata.media.lib.MediaLib.Playlist;
+import me.aap.fermata.media.lib.MediaLib.Playlists;
 import me.aap.fermata.media.lib.MediaLib.StreamItem;
 import me.aap.fermata.media.pref.BrowsableItemPrefs;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -35,6 +41,8 @@ import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.ui.view.MediaItemListView;
 import me.aap.utils.pref.PreferenceSet;
+import me.aap.utils.pref.PrefCondition;
+import me.aap.utils.pref.PreferenceViewAdapter;
 import me.aap.utils.ui.activity.ActivityDelegate;
 import me.aap.utils.ui.fragment.ActivityFragment;
 import me.aap.utils.ui.menu.OverlayMenu;
@@ -62,9 +70,8 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 					R.id.tool_select);
 		}
 
+		// Grid/list lives in the card size popup (as a switch), one toolbar button fewer.
 		if ((f instanceof MediaLibFragment) && ((MediaLibFragment) f).isGridSupported()) {
-			int gridIcon = a.isGridView() ? R.drawable.view_list : R.drawable.view_grid;
-			addButton(tb, gridIcon, ToolBarMediator::onGridButtonClick, R.id.tool_grid);
 			addButton(tb, R.drawable.card_size, ToolBarMediator::onCardSizeButtonClick,
 					R.id.tool_card_size);
 		}
@@ -134,17 +141,20 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 		BrowsableItem b = a.getParent();
 
 		// Multi-select: wherever the list has selectable (playable) items.
-		setButtonVisibility(tb, R.id.tool_select,
-				((b == null) || (b == b.getRoot()) || (b instanceof StreamItem)) ? GONE : VISIBLE);
+		// Favorites is a root, but a list of playable items like any playlist: select (and, in
+		// selection mode, reorder) there too.
+		setButtonVisibility(tb, R.id.tool_select, ((b == null) || (b instanceof StreamItem) ||
+				((b == b.getRoot()) && !(b instanceof Favorites) && !(b instanceof Playlists))) ?
+				GONE : VISIBLE);
 
-		if ((b == null) || (b == b.getRoot()) || (b instanceof StreamItem)) {
+		// Favorites is a root, but a list of tracks like any folder: titles and sorting apply.
+		if ((b == null) || ((b == b.getRoot()) && !(b instanceof Favorites)) ||
+				(b instanceof StreamItem)) {
 			setButtonVisibility(tb, R.id.tool_view, GONE);
 			setButtonVisibility(tb, R.id.tool_sort, GONE);
-			setButtonVisibility(tb, R.id.tool_grid, (b instanceof StreamItem) ? GONE : VISIBLE);
 			setButtonVisibility(tb, R.id.tool_card_size, (b instanceof StreamItem) ? GONE : VISIBLE);
 		} else {
 			setButtonVisibility(tb, R.id.tool_view, VISIBLE);
-			setButtonVisibility(tb, R.id.tool_grid, VISIBLE);
 			setButtonVisibility(tb, R.id.tool_card_size, VISIBLE);
 			setButtonVisibility(tb, R.id.tool_sort, b.sortChildrenEnabled() ? VISIBLE : GONE);
 		}
@@ -254,14 +264,6 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 		adapter.getParent().updateTitles().main().thenRun(adapter::reload);
 	}
 
-	private static void onGridButtonClick(View v) {
-		MainActivityDelegate a = MainActivityDelegate.get(v.getContext());
-		MainActivityPrefs prefs = a.getPrefs();
-		boolean grid = a.isGridView();
-		((ImageButton) v).setImageResource(grid ? R.drawable.view_grid : R.drawable.view_list);
-		prefs.setGridViewPref(a, !grid);
-	}
-
 	private static void onCardSizeButtonClick(View v) {
 		MainActivityDelegate a = MainActivityDelegate.get(v.getContext());
 		MediaLibFragment f = a.getActiveMediaLibFragment();
@@ -271,27 +273,68 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 		// Pops up right under the toolbar button, same as the sort/view menus, with a single
 		// slider the user can drag to resize grid cards live.
 		a.getToolBarMenu().show(b -> {
+			Context ctx = b.getMenu().getContext();
+			MainActivityPrefs prefs = a.getPrefs();
+			var gridPref = MainActivityPrefs.getGridViewPrefKey(a);
 			PreferenceSet set = new PreferenceSet();
+			// Grid or list, as a switch -- the same row style as the slider below, so it follows
+			// the theme like every other setting.
+			set.addBooleanPref(o -> {
+				o.store = prefs;
+				o.pref = gridPref;
+				o.title = R.string.grid_view;
+				o.asSwitch = true;
+			});
+			// Grid: the card size. List: the rows' text and icon size.
 			set.addFloatPref(o -> {
 				o.title = R.string.card_size;
-				o.store = a.getPrefs();
+				o.store = prefs;
 				o.pref = MainActivityPrefs.GRID_ITEM_SIZE;
 				o.scale = 0.05f;
 				o.seekMin = 10;
 				o.seekMax = 40;
-				// The live-resizing grid behind this popup is its own feedback; the numeric value
-				// field next to the slider is redundant here and just adds clutter to a menu meant
-				// to be a single slider.
+				// The live-resizing list behind this popup is its own feedback.
 				o.showValue = false;
+				o.visibility = PrefCondition.create(prefs, gridPref);
 			});
-			// A modest fixed width rather than addToMenu's other callers' 2/3-screen-width minimum
-			// (meant for a readable list of options, e.g. sort/view) -- this popup holds a single
-			// slider row, so it just needs enough width for that row to lay out and the seek bar to
-			// actually have room to drag in, not nearly the whole screen. requestFocus=false skips
-			// the platform preference row's default focused-state highlight, which otherwise shows up
-			// as a second, inner colored box nested inside this popup's own rounded background the
-			// moment it opens -- not needed here since there's only one control to reach anyway.
-			set.addToMenu(b, toIntPx(v.getContext(), 260), false);
+			set.addFloatPref(o -> {
+				o.title = R.string.list_size;
+				o.store = prefs;
+				o.pref = MainActivityPrefs.LIST_ITEM_SIZE;
+				o.scale = 0.05f;
+				o.seekMin = 10;
+				o.seekMax = 40;
+				o.showValue = false;
+				o.visibility = new PrefCondition<>(prefs, gridPref, p -> !prefs.getBooleanPref(p));
+			});
+			// One panel rather than a card per row: the rows lose their own box, margins and
+			// elevation and sit straight on the popup's background. A modest fixed width: a switch
+			// and a slider. Not focused right away (see PreferenceSet#addToMenu's requestFocus).
+			RecyclerView list = set.createView(ctx, toIntPx(ctx, 280));
+			int pad = toIntPx(ctx, 6);
+			list.setPadding(0, pad, 0, pad);
+			list.setClipToPadding(false);
+			list.addOnChildAttachStateChangeListener(new RecyclerView.OnChildAttachStateChangeListener() {
+				@Override
+				public void onChildViewAttachedToWindow(@NonNull View row) {
+					row.setBackground(null);
+					row.setElevation(0f);
+					if (row.getLayoutParams() instanceof ViewGroup.MarginLayoutParams lp) {
+						lp.setMargins(0, 0, 0, 0);
+						row.setLayoutParams(lp);
+					}
+					row.setPadding(row.getPaddingLeft(), toIntPx(ctx, 6), row.getPaddingRight(),
+							toIntPx(ctx, 6));
+				}
+
+				@Override
+				public void onChildViewDetachedFromWindow(@NonNull View row) {
+				}
+			});
+			b.setCloseHandlerHandler(m -> {
+				if (list.getAdapter() instanceof PreferenceViewAdapter pa) pa.onDestroy();
+			});
+			b.setView(list);
 		});
 	}
 
@@ -322,7 +365,8 @@ public class ToolBarMediator implements ToolBarView.Mediator.BackTitleFilter {
 			addSortItem(b, R.id.tool_sort_date, R.string.date, SORT_BY_DATE, sort, m);
 			addSortItem(b, R.id.tool_sort_random, R.string.random, SORT_BY_RND, sort, m);
 			// A playlist's unsorted order is the user's own arrangement.
-			addSortItem(b, R.id.tool_sort_none, (adapter.getParent() instanceof Playlist) ?
+			addSortItem(b, R.id.tool_sort_none,
+					((adapter.getParent() instanceof Playlist) || (adapter.getParent() instanceof Favorites)) ?
 					R.string.sort_custom : R.string.do_not_sort, SORT_BY_NONE, sort, m);
 
 			if ((sort != SORT_BY_NONE) && (sort != SORT_BY_RND)) {

@@ -70,6 +70,22 @@ public enum Action {
 	// Key bindings and the secondary FAB's action are persisted as ordinals, so new entries go at
 	// the end: inserting one mid-enum silently remaps every existing user's saved bindings.
 	FULLSCREEN_TOGGLE(R.string.action_fullscreen_toggle, a(a -> {
+		// From another tab (Favorites, Playlists) while a video plays: back to that video,
+		// fullscreen.
+		var f = a.getActiveFragment();
+		if (!a.isVideoMode() && a.isVideoPlaying() && (f != null) &&
+				(f.getFragmentId() != R.id.youtube_fragment)) {
+			var eng = a.getMediaSessionCallback().getEngine();
+			if ((eng != null) && (eng.getId() == me.aap.fermata.media.pref.MediaPrefs.MEDIA_ENG_YT)) {
+				me.aap.fermata.addon.music.MusicPlayer.showYoutubeVideo(a);
+				return;
+			}
+			var b = a.getBody();
+			if (b != null) {
+				b.setMode(me.aap.fermata.ui.view.BodyLayout.Mode.VIDEO);
+				return;
+			}
+		}
 		var vv = a.getActiveVideoView();
 		boolean handled = (vv != null) && vv.toggleNativeFullscreen();
 		Log.d("FULLSCREEN_TOGGLE: activeVideoView=", vv, ", handled=", handled);
@@ -96,6 +112,14 @@ public enum Action {
 			a(a -> me.aap.fermata.addon.music.MusicPlayer.openYoutubeSearch(a, false))),
 	YOUTUBE_UP_NEXT(R.string.action_youtube_up_next,
 			a(a -> me.aap.fermata.addon.music.MusicPlayer.openYoutubeSearch(a, true))),
+	OPEN_FAVORITES(R.string.action_open_favorites, a(a -> {
+		a.exitVideoMode();
+		a.showFragment(R.id.favorites_fragment);
+	})),
+	OPEN_PLAYLISTS(R.string.action_open_playlists, a(a -> {
+		a.exitVideoMode();
+		a.showFragment(R.id.playlists_fragment);
+	})),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

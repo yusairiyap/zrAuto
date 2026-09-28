@@ -425,6 +425,7 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 		String[] names;
 		int highlight = -1;
 		long[] totals;
+		long[] played;
 		String title;
 		String totalText;
 
@@ -444,6 +445,7 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 				}
 				if (offset == 0) highlight = now.get(Calendar.HOUR_OF_DAY);
 				totals = store.days(day, day, mobile);
+				played = store.playTimeDays(day, day);
 				title = (offset == 0) ? getString(R.string.data_usage_today) :
 						(offset == -1) ? getString(R.string.data_usage_yesterday) :
 								formatDateTime(ctx, from.getTimeInMillis(),
@@ -476,6 +478,7 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 				Calendar end = (Calendar) from.clone();
 				end.add(Calendar.DAY_OF_YEAR, 6);
 				totals = store.days(dayKey(from), dayKey(end), mobile);
+				played = store.playTimeDays(dayKey(from), dayKey(end));
 				title = (offset == 0) ? getString(R.string.data_usage_this_week) :
 						(offset == -1) ? getString(R.string.data_usage_last_week) :
 								formatDateRange(ctx, from.getTimeInMillis(), end.getTimeInMillis(),
@@ -503,6 +506,7 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 				Calendar end = (Calendar) from.clone();
 				end.set(Calendar.DAY_OF_MONTH, n);
 				totals = store.days(dayKey(from), dayKey(end), mobile);
+				played = store.playTimeDays(dayKey(from), dayKey(end));
 				title = (offset == 0) ? getString(R.string.data_usage_this_month) :
 						formatDateTime(ctx, from.getTimeInMillis(),
 								FORMAT_SHOW_DATE | FORMAT_NO_MONTH_DAY | FORMAT_SHOW_YEAR);
@@ -529,6 +533,7 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 					m.add(Calendar.MONTH, 1);
 				}
 				totals = store.total(mobile);
+				played = store.playTimeTotal();
 				Calendar end = (Calendar) m.clone();
 				end.add(Calendar.DAY_OF_YEAR, -1);
 				title = (offset == 0) ? getString(R.string.data_usage_last_12_months) :
@@ -545,10 +550,10 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 		setEnabled(next, offset < 0);
 		long first = store.firstDay();
 		setEnabled(prev, (first != 0) && (first < dayKey(from)));
-		refreshBreakdown(totals);
+		refreshBreakdown(totals, played);
 	}
 
-	private void refreshBreakdown(long[] totals) {
+	private void refreshBreakdown(long[] totals, long[] played) {
 		long total = sum(totals);
 		for (int cat = 0; cat < CATS; cat++) {
 			View r = rows[cat];
@@ -559,7 +564,29 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 					String.format(Locale.getDefault(), "%d%%", Math.round(permille / 10f)));
 			LinearProgressIndicator bar = r.findViewById(R.id.data_usage_row_bar);
 			bar.setProgressCompat(permille, true);
+
+			// YouTube's categories: how long it was actually played, and what that cost per hour --
+			// the figure that shows how much cheaper music mode really is than video.
+			TextView time = r.findViewById(R.id.data_usage_row_time);
+			long ms = (cat == CAT_OTHER) ? 0 : played[cat];
+			if (ms < 60_000) {
+				time.setVisibility((cat == CAT_OTHER) ? View.GONE : View.VISIBLE);
+				time.setText((cat == CAT_OTHER) ? "" : getString(R.string.data_usage_not_played));
+			} else {
+				long perHour = Math.round(v * (3_600_000.0 / ms));
+				time.setVisibility(View.VISIBLE);
+				time.setText(getString(R.string.data_usage_played, duration(ms), size(perHour)));
+			}
 		}
+	}
+
+	/** "2 h 13 min" / "45 min". */
+	private String duration(long ms) {
+		long min = ms / 60_000;
+		long h = min / 60;
+		min %= 60;
+		return (h > 0) ? getString(R.string.data_usage_hours_minutes, h, min) :
+				getString(R.string.data_usage_minutes, min);
 	}
 
 	private static void setEnabled(View v, boolean enabled) {

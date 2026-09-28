@@ -220,7 +220,10 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 	void focusSearchField(MainActivityDelegate a) {
 		EditText t = a.getToolBar().findViewById(R.id.browser_addr);
 		if ((t == null) || !(a.getActiveFragment() instanceof YoutubeFragment yt)) return;
-		beginSearchInput(yt, t);
+		// Already editing (e.g. the car keyboard left the field in edit mode): start over empty
+		// rather than keeping whatever was typed or left there before.
+		if (editing) t.setText("");
+		else beginSearchInput(yt, t);
 		t.requestFocus();
 		if (a.isCarActivity()) {
 			t.performClick();

@@ -119,7 +119,7 @@
         <item name="borderFocusColor">?attr/colorAccent</item>
         <item name="tint">?attr/colorOnPrimary</item>
         <item name="backgroundTint">?attr/colorPrimary</item>
-        <item name="rippleColor">?colorAccent</item>
+        <item name="rippleColor">@android:color/transparent</item>
     </style>
 
     <style name="ShapeAppearanceOverlay.Utils.FloatingButton" parent="">

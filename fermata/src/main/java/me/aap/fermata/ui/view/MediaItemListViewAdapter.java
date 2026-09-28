@@ -212,8 +212,18 @@ public class MediaItemListViewAdapter extends MovableRecyclerViewAdapter<MediaIt
 	 * dragging disabled for this list, or the drag couldn't start).
 	 */
 	public boolean startDragOnLongPress(MediaItemViewHolder h) {
+		return startDragOnLongPress(h, false);
+	}
+
+	/**
+	 * See {@link #startDragOnLongPress(MediaItemViewHolder)}; {@code anyScreen}: on the phone too
+	 * (selection mode of a list that only drags there -- see {@link #isDragOnlyInSelection()}).
+	 */
+	public boolean startDragOnLongPress(MediaItemViewHolder h, boolean anyScreen) {
 		ItemTouchHelper th = touchHelper;
-		if ((th == null) || !activity.isCarActivity() || !isLongPressDragEnabled()) return false;
+		if ((th == null) || (!anyScreen && !activity.isCarActivity()) || !isLongPressDragEnabled()) {
+			return false;
+		}
 		menuAfterDrag = h;
 		movedDuringDrag = false;
 		dragStarted = false;
@@ -309,6 +319,19 @@ public class MediaItemListViewAdapter extends MovableRecyclerViewAdapter<MediaIt
 	@Override
 	public boolean isLongPressDragEnabled() {
 		return filter == null;
+	}
+
+	/**
+	 * Whether items only move in selection mode: then a long press in the normal view always opens
+	 * the item's menu straight away, and in selection mode it always starts a drag.
+	 */
+	public boolean isDragOnlyInSelection() {
+		return false;
+	}
+
+	protected boolean isSelectionActive() {
+		MediaItemListView l = listView;
+		return (l != null) && l.isSelectionActive();
 	}
 
 	public boolean isItemViewSwipeEnabled() {

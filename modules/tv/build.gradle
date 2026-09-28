@@ -12,7 +12,8 @@ ext {
                     name : 'tv',
                     icon : 'tv',
                     class: 'me.aap.fermata.addon.tv.TvAddon',
-                    order: 1
+                    order: 1,
+                    enabled: false
             ]
     ]
 }

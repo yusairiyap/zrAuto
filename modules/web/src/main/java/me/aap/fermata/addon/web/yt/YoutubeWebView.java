@@ -14,6 +14,7 @@ import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_LONG_PRESS
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_PAUSED;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_PLAYING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_QUALITIES;
+import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_VIDEO_WAITING;
 
 import android.content.Context;
 import android.graphics.Color;
@@ -93,6 +94,10 @@ public class YoutubeWebView extends FermataWebView {
 	 * {@code YoutubeVideoView#showTransitionOverlay}).
 	 */
 	private static final int NAVIGATION_FALLBACK_MS = 1000;
+	/** See navigateToVideoJs(): more time for a navigation the router has visibly started. */
+	private static final int NAVIGATION_STARTED_WAIT_MS = 8000;
+	/** See navigateToVideoJs(): a second look before forcing, when no navigation was seen. */
+	private static final int NAVIGATION_RECHECK_MS = 2000;
 	/**
 	 * How long an explicit next/prev/queue switch lets the current video's audio fade out (see
 	 * {@code youtube_fade.js}) before actually navigating -- see {@link #afterAudioFadeOut}.
@@ -307,6 +312,27 @@ public class YoutubeWebView extends FermataWebView {
 				"    return (d && d.author) ? encodeURIComponent(d.author) : '';\n" +
 				"  } catch (e) { return ''; }\n" +
 				"}\n" +
+				// The page always reads as visible to YouTube's own scripts: with the tab switched away
+				// (the WebView hidden) its player otherwise adapts to "in the background" about 30s in
+				// -- reloading the stream, heard as a pause and resume. The real state stays available
+				// to our own scripts (youtube_fade.js) as __fermataPageHidden().
+				"(function() {\n" +
+				"  if (window.__fermataPageHidden) return;\n" +
+				"  try {\n" +
+				"    var hd = Object.getOwnPropertyDescriptor(Document.prototype, 'hidden');\n" +
+				"    var real = (hd && hd.get) ? hd.get.bind(document) : function() { return false; };\n" +
+				"    window.__fermataPageHidden = real;\n" +
+				"    Object.defineProperty(document, 'hidden', { configurable: true, get: function() { return false; } });\n" +
+				"    Object.defineProperty(document, 'webkitHidden', { configurable: true, get: function() { return false; } });\n" +
+				"    Object.defineProperty(document, 'visibilityState', { configurable: true, get: function() { return 'visible'; } });\n" +
+				"    Object.defineProperty(document, 'webkitVisibilityState', { configurable: true, get: function() { return 'visible'; } });\n" +
+				"    var stop = function(e) { e.stopImmediatePropagation(); };\n" +
+				"    window.addEventListener('visibilitychange', stop, true);\n" +
+				"    window.addEventListener('webkitvisibilitychange', stop, true);\n" +
+				"    document.addEventListener('visibilitychange', stop, true);\n" +
+				"    document.addEventListener('webkitvisibilitychange', stop, true);\n" +
+				"  } catch (e) {}\n" +
+				"})();\n" +
 				"function attachVideoListeners(v) {\n" +
 				"  if (!(window.__fermataAdShowing && window.__fermataAdSkipEnabled)) v.muted = false;\n" +
 				"  if (v.getAttribute('FermataAttached') === 'true') return;\n" +
@@ -328,6 +354,10 @@ public class YoutubeWebView extends FermataWebView {
 				"  });\n" +
 				"  v.addEventListener('pause', function(e) {" + JS_EVENT + "(" + JS_VIDEO_PAUSED +
 				", v.currentSrc);});\n" +
+				// Buffering: stalled for data. Resolved by the next 'playing' -- see
+				// YoutubeMediaEngine#waiting(), which tells a long stall (the network) apart.
+				"  v.addEventListener('waiting', function(e) {" + JS_EVENT + "(" + JS_VIDEO_WAITING +
+				", (window.__fermataPageHidden && window.__fermataPageHidden()) ? 'hidden' : 'shown');});\n" +
 				// Deliberately NOT a plain v.addEventListener('ended', ...) here -- see the
 				// document-level capture-phase listener below, which replaces it.
 				"}\n" +
@@ -980,6 +1010,24 @@ public class YoutubeWebView extends FermataWebView {
 				    catch (e) { return location.search.indexOf('v=' + id) >= 0; }
 				  }
 				  if (onTarget()) return true;
+				  // Whether YouTube's router took the click: on a slow connection it can take well
+				  // over a second to get to the new URL. Forcing loadVideoById() meanwhile started the
+				  // video, then the router's own navigation landed and loaded it again from the start --
+				  // heard as a track playing for a while and then restarting.
+				  var navStarted = false;
+				  function onNav() { navStarted = true; }
+				  var navEvents = ['yt-navigate-start', 'yt-navigate', 'state-navigatestart'];
+				  navEvents.forEach(function(n) { window.addEventListener(n, onNav, true); });
+				  function stopListening() {
+				    navEvents.forEach(function(n) { window.removeEventListener(n, onNav, true); });
+				  }
+				  function playerOnTarget() {
+				    try {
+				      var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+				      var d = (p && p.getVideoData) ? p.getVideoData() : null;
+				      return !!d && (d.video_id === id);
+				    } catch (e) { return false; }
+				  }
 				  try {
 				    var a = document.createElement('a');
 				    a.href = navUrl;
@@ -995,8 +1043,9 @@ public class YoutubeWebView extends FermataWebView {
 				      window.__fermataLastLinkClickTime = 0;
 				    }, 0);
 				  } catch (e) { return false; }
-				  setTimeout(function() {
-				    if (onTarget()) return;
+				  function force() {
+				    stopListening();
+				    if (onTarget() || playerOnTarget()) return;
 				    var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
 				    if (p && (typeof p.loadVideoById === 'function')) {
 				      if (fromStart) p.loadVideoById(id, 0);
@@ -1005,10 +1054,17 @@ public class YoutubeWebView extends FermataWebView {
 				    } else {
 				      location.assign(navUrl);
 				    }
+				  }
+				  setTimeout(function() {
+				    if (onTarget() || playerOnTarget()) { stopListening(); return; }
+				    // The router is on its way (or may be, on a slow network): give it longer before
+				    // concluding the click was swallowed.
+				    setTimeout(force, navStarted ? %4$d : %5$d);
 				  }, %2$d);
 				  return true;
 				})();
-				""".formatted(videoId, NAVIGATION_FALLBACK_MS, fromStart);
+				""".formatted(videoId, NAVIGATION_FALLBACK_MS, fromStart, NAVIGATION_STARTED_WAIT_MS,
+				NAVIGATION_RECHECK_MS);
 	}
 
 	private void prevNext(boolean next) {
@@ -1230,6 +1286,15 @@ public class YoutubeWebView extends FermataWebView {
 	 * Stops {@link #applyQualityPolicy} and hands the quality choice back to the viewer: their own
 	 * saved preference if music mode had replaced it, else YouTube's automatic choice.
 	 */
+	/** Stops {@link #applyQualityPolicy} without touching the quality itself. */
+	void stopQualityPolicy() {
+		loadUrl("javascript:\n" +
+				"(function() {\n" +
+				CLEAR_HIGHEST_VIDEO_QUALITY_JS +
+				"  clearFermataQ();\n" +
+				"})();");
+	}
+
 	void clearQualityPolicy() {
 		loadUrl("javascript:\n" +
 				"(function() {\n" +

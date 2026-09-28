@@ -125,6 +125,9 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 			MediaLibFragment f = a.getActiveMediaLibFragment();
 			if (f != null) f.contributeToContextMenu(builder, this);
 			builder.setSelectionHandler(this);
+			// The card stays outlined while its menu is open -- see MediaItemView#showItemMenu().
+			MediaItemView iv = view;
+			if (iv != null) builder.setCloseHandlerHandler(m -> iv.menuClosed());
 		});
 	}
 
@@ -139,8 +142,16 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 
 	protected void buildPlayableMenu(MainActivityDelegate a, OverlayMenu.Builder b, PlayableItem pi,
 																	 boolean initRepeat) {
+		// Favorites and playlists: Play first, doing exactly what a tap does; and no per-item Repeat
+		// there (the lists' own Repeat/Shuffle live in the control panel and the Music tab).
+		BrowsableItem parent = pi.getParent();
+		boolean inList = (view != null) && ((parent instanceof Favorites) || (parent instanceof Playlist));
+		if ((view != null) && (inList || a.getPrefs().getTapOpensMenuPref(a))) {
+			b.addItem(R.id.item_play, R.drawable.play, R.string.play);
+		}
+
 		if (!pi.isExternal() || (pi instanceof ExternallyPlayableItem)) {
-			if (initRepeat) {
+			if (initRepeat && !inList) {
 				if (pi.isRepeatItemEnabled()) {
 					b.addItem(R.id.repeat_disable, R.drawable.repeat_filled, R.string.repeat_disable);
 				} else {
@@ -150,7 +161,12 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 
 			if ((view != null) && MusicPlayer.isEnabled() && !(pi instanceof StreamItem) &&
 					!(pi instanceof ArchiveItem)) {
-				b.addItem(R.id.music_play, R.drawable.music, R.string.play_as_music);
+				// Already listening as music: the other way round is what's worth offering.
+				if (MusicPlayer.isMusicModeActive(a)) {
+					b.addItem(R.id.play_as_video, R.drawable.video, R.string.play_as_video);
+				} else {
+					b.addItem(R.id.music_play, R.drawable.music, R.string.play_as_music);
+				}
 				b.addItem(R.id.music_queue_add, R.drawable.queue_music, R.string.music_queue_add);
 			}
 
@@ -532,7 +548,13 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 		MediaLibFragment f;
 		Item item = getItem();
 
-		if (id == R.id.music_play) {
+		if ((id == R.id.item_play) || (id == R.id.play_as_video)) {
+			if (item instanceof PlayableItem pi) {
+				f = getMainActivity().getActiveMediaLibFragment();
+				if (f != null) f.getAdapter().playTapped(pi, id == R.id.item_play);
+				else getMainActivity().getMediaServiceBinder().playItem(pi);
+			}
+		} else if (id == R.id.music_play) {
 			MusicPlayer.play(getMainActivity(), item);
 		} else if (id == R.id.music_queue_add) {
 			MusicPlayer.addToQueue(getMainActivity(), item);

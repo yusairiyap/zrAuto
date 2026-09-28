@@ -36,6 +36,7 @@ import android.util.Pair;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.SeekBar;
@@ -204,8 +205,8 @@ public class PreferenceView extends ConstraintLayout {
 	}
 
 	private void setBooleanPreference(BooleanOpts o) {
-		setPreference(R.layout.boolean_pref_layout, o);
-		CheckBox b = findViewById(R.id.pref_value);
+		setPreference(o.asSwitch ? R.layout.switch_pref_layout : R.layout.boolean_pref_layout, o);
+		CompoundButton b = findViewById(R.id.pref_value);
 		b.setChecked(o.store.getBooleanPref(o.pref));
 		b.setOnCheckedChangeListener(
 				(v, checked) -> o.store.applyBooleanPref(o.removeDefault, o.pref, checked));
@@ -721,7 +722,10 @@ public class PreferenceView extends ConstraintLayout {
 		public boolean removeDefault = true;
 	}
 
-	public static class BooleanOpts extends PrefOpts<BooleanSupplier> {}
+	public static class BooleanOpts extends PrefOpts<BooleanSupplier> {
+		/** A switch instead of a checkbox -- for an on/off mode rather than an option to tick. */
+		public boolean asSwitch;
+	}
 
 	public static class StringOpts extends PrefOpts<Supplier<String>> {
 		@SuppressLint("InlinedApi")

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Drawn over a card while it's selected (multi-select) or its long-press menu is open: a
+     translucent primary tint, no border. Part of the foreground, so the card's size and position
+     never change. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/media_item_selected_fill" />
+    <corners android:radius="12dp" />
+</shape>
