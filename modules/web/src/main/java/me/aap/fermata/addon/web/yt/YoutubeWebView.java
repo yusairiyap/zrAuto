@@ -221,13 +221,24 @@ public class YoutubeWebView extends FermataWebView {
 		if ((bg >>> 24) == 0) return;
 		boolean appDark = ColorUtils.calculateLuminance(bg | 0xFF000000) < 0.5;
 		String hex = String.format("#%06X", bg & 0xFFFFFF);
-		String css = """
-				html{--yt-spec-base-background:__BG__ !important;				--yt-spec-general-background-a:__BG__ !important;				--yt-spec-general-background-b:__BG__ !important;				--yt-spec-brand-background-solid:__BG__ !important;				--yt-spec-brand-background-primary:__BG__ !important;				--yt-spec-menu-background:__BG__ !important}				html,body,ytm-app,#app,.page-container,ytm-browse,ytm-search,				ytm-mobile-topbar-renderer,.mobile-topbar-header,header.mobile-topbar-header,				ytm-feed-filter-chip-bar-renderer,.feed-filter-chip-bar,.chip-bar,				ytm-pivot-bar-renderer,.pivot-bar-renderer,ytm-rich-grid-renderer,				ytm-item-section-renderer,ytm-section-list-renderer				{background-color:__BG__ !important}""".replace("__BG__", hex);
+		// One line, no quotes or backslashes: it goes into a single-quoted JavaScript string below.
+		String css = ("html{--yt-spec-base-background:__BG__ !important;" +
+				"--yt-spec-general-background-a:__BG__ !important;" +
+				"--yt-spec-general-background-b:__BG__ !important;" +
+				"--yt-spec-brand-background-solid:__BG__ !important;" +
+				"--yt-spec-brand-background-primary:__BG__ !important;" +
+				"--yt-spec-menu-background:__BG__ !important}" +
+				"html,body,ytm-app,#app,.page-container,ytm-browse,ytm-search," +
+				"ytm-mobile-topbar-renderer,.mobile-topbar-header,header.mobile-topbar-header," +
+				"ytm-feed-filter-chip-bar-renderer,.feed-filter-chip-bar,.chip-bar," +
+				"ytm-pivot-bar-renderer,.pivot-bar-renderer,ytm-rich-grid-renderer," +
+				"ytm-item-section-renderer,ytm-section-list-renderer" +
+				"{background-color:__BG__ !important}").replace("__BG__", hex);
 		evaluateJavascript("""
 				(function() {
 				  var CSS = '__CSS__', APP_DARK = __DARK__;
 				  function lum(c) {
-				    var m = (c || '').match(/[\d.]+/g);
+				    var m = (c || '').match(/[0-9.]+/g);
 				    if (!m || (m.length < 3) || ((m.length > 3) && (+m[3] === 0))) return -1;
 				    return (0.299 * m[0] + 0.587 * m[1] + 0.114 * m[2]) / 255;
 				  }
