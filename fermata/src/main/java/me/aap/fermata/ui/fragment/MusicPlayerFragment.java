@@ -25,6 +25,8 @@ import android.graphics.Bitmap;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.TransitionDrawable;
+import android.os.Build.VERSION;
+import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
@@ -37,6 +39,7 @@ import android.view.VelocityTracker;
 import android.view.ViewConfiguration;
 import android.view.ViewTreeObserver;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
@@ -925,15 +928,45 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			right = Math.max(0, (extLoc2[0] + body.getWidth()) - (extLoc[0] + root.getWidth()));
 		}
 
+		int top = statusBarExtension(root);
+
 		for (View v : layers) {
 			if ((v == null) || !(v.getLayoutParams() instanceof ViewGroup.MarginLayoutParams lp)) continue;
-			if ((lp.leftMargin == -left) && (lp.rightMargin == -right)) continue;
+			if ((lp.leftMargin == -left) && (lp.rightMargin == -right) && (lp.topMargin == -top)) {
+				continue;
+			}
 			lp.leftMargin = -left;
 			lp.rightMargin = -right;
+			lp.topMargin = -top;
 			lp.setMarginStart(-left);
 			lp.setMarginEnd(-right);
 			v.setLayoutParams(lp);
 		}
+	}
+
+	/**
+	 * How far the background reaches up past this tab, under the transparent status bar, so the
+	 * blurred cover and its gradient run on behind the clock and icons instead of stopping at a
+	 * plain bar. Only from Android 15, where the window is already drawn edge to edge (see
+	 * MainActivityDelegate#init); before that the system owns the bar and nothing can show there.
+	 * Zero on the car screen. Every other tab leaves the bar in the app's own background colour
+	 * (MainActivityDelegate#matchStatusBarToBackground), so leaving this tab restores it as before.
+	 */
+	private int statusBarExtension(View root) {
+		if (VERSION.SDK_INT < VERSION_CODES.VANILLA_ICE_CREAM) return 0;
+		MainActivityDelegate a = getActivityDelegate();
+		if (a.isCarActivity()) return 0;
+		root.getLocationInWindow(extLoc);
+		int top = Math.max(0, extLoc[1]);
+		if (top == 0) return 0;
+		// The bar's area is main_activity's own top padding: every container between it and this tab
+		// has to let the layers draw out into it.
+		for (ViewParent p = root.getParent(); p instanceof ViewGroup g; p = g.getParent()) {
+			g.setClipToPadding(false);
+			if (g.getId() == R.id.main_activity) break;
+			g.setClipChildren(false);
+		}
+		return top;
 	}
 
 	private void syncInsets() {
