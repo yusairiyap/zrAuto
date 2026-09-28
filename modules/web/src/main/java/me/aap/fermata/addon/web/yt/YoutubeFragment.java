@@ -1135,14 +1135,19 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		YoutubeMediaEngine eng = v.getEngine();
 		MainActivityDelegate a = MainActivityDelegate.get(requireContext());
 
-		// Playing as music (the Music tab, YouTube or a local file alike): the music queue is what
-		// plays next, and what that tab shows -- queue there rather than in a separate Up next the
-		// Music tab knows nothing about. Checked first: a local track playing leaves this tab's
-		// own player idle, which below would mean "nothing playing, play it now" and cut it off.
-		if (MusicPlayer.isYoutubeAudioMode() || MusicPlayer.isMusicModeActive(a)) {
+		// Playing from the Music tab's queue -- as music (YouTube or a local file alike), or a queue
+		// track switched to video and watched here: the music queue is what plays next, and what
+		// that tab shows -- queue there rather than in a separate Up next the Music tab knows nothing
+		// about (it played next, but never showed in the tab's queue). Checked first: a local track
+		// playing leaves this tab's own player idle, which below would mean "nothing playing, play
+		// it now" and cut it off.
+		boolean fromQueue = MusicPlayer.getCurrentTrack(a.getMediaSessionCallback()) != null;
+		if (MusicPlayer.isYoutubeAudioMode() || MusicPlayer.isMusicModeActive(a) || fromQueue) {
 			if ((title != null) && !title.isEmpty()) addon.cacheVideoTitle(videoId, title);
 			if ((a.getLib() instanceof DefaultMediaLib lib) && MusicPlayer.queueAfterCurrent(a,
 					new YoutubeVideoItem(videoId, addon.getRootItem(lib)), first)) {
+				DiagnosticLog.log("YT", "queued into the music queue", "id=" + videoId, "next=" + first,
+						"fromQueue=" + fromQueue);
 				String name = ((title != null) && !title.isEmpty()) ? title : addon.getDisplayTitle(videoId);
 				UiUtils.showToast(requireContext(), first ? me.aap.fermata.R.string.youtube_added_play_next :
 						me.aap.fermata.R.string.youtube_added_up_next, name);
@@ -1151,10 +1156,13 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		}
 
 		if ((eng == null) || !eng.isActive()) {
+			DiagnosticLog.log("YT", "queue request: nothing playing, playing now", "id=" + videoId);
 			playVideoNow(videoId, title);
 			return;
 		}
 
+		DiagnosticLog.log("YT", "queued into Up next", "id=" + videoId, "next=" + first,
+				"audioMode=" + MusicPlayer.isYoutubeAudioMode());
 		if (!addon.addUpNext(videoId, title, first)) {
 			UiUtils.showToast(requireContext(), me.aap.fermata.R.string.youtube_up_next_full,
 					addon.getUpNextMax());
