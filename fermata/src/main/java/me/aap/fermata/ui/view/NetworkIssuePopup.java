@@ -199,7 +199,7 @@ public final class NetworkIssuePopup {
 	}
 
 	/** A pill-shaped chip with an icon; {@code primary} is filled, the others outlined. */
-	private static void addChip(LinearLayout parent, @DrawableRes int icon, @StringRes int text,
+	static TextView addChip(LinearLayout parent, @DrawableRes int icon, @StringRes int text,
 															int color, boolean primary, View.OnClickListener l) {
 		Context ctx = parent.getContext();
 		TextView c = new TextView(ctx);
@@ -237,6 +237,7 @@ public final class NetworkIssuePopup {
 		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
 		lp.setMarginStart(UiUtils.toIntPx(ctx, 8));
 		parent.addView(c, lp);
+		return c;
 	}
 
 	@Nullable

@@ -592,7 +592,8 @@ public final class SpotifyImportEngine {
 			}
 
 			if (!videos.isEmpty()) {
-				entries.add(new SpotifyPlaylistWriter.Entry(e.playlist.name, videos, byVideo));
+				entries.add(new SpotifyPlaylistWriter.Entry(e.playlist.name, videos, byVideo,
+						e.playlist.ref));
 			}
 		}
 

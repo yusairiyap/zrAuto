@@ -323,6 +323,18 @@
     <string name="spotify_import_preparing">Preparing…</string>
     <string name="spotify_import_matching">Matching %1$d of %2$d: %3$s</string>
     <string name="spotify_import_saving">Saving playlists…</string>
+    <string name="spotify_sync">Sync with Spotify</string>
+    <string name="spotify_sync_title">Syncing “%s” with Spotify</string>
+    <string name="spotify_sync_reading">Reading the Spotify playlist…</string>
+    <string name="spotify_sync_finding">Finding %1$d of %2$d: %3$s</string>
+    <string name="spotify_sync_saving">Adding the new songs…</string>
+    <string name="spotify_sync_up_to_date">Already up to date with Spotify.</string>
+    <string name="spotify_sync_missing">%d not found on YouTube, will try again next sync.</string>
+    <string name="spotify_sync_cancelled">Sync cancelled. The playlist is unchanged.</string>
+    <string name="spotify_sync_not_found">No Spotify playlist named “%s” in your account.</string>
+    <string name="spotify_sync_login">Log in to Spotify (Settings &gt; Other &gt; Import from Spotify) to sync this playlist.</string>
+    <string name="spotify_sync_failed">Sync failed: %s</string>
+    <string name="close">Close</string>
     <string name="spotify_import_cancelling">Cancelling…</string>
     <string name="spotify_import_cancelled">Import cancelled. No playlists were changed.</string>
     <string name="spotify_import_nothing_selected">Select at least one track to import.</string>
@@ -676,6 +688,10 @@
     <string name="music_queue_clear">Clear queue</string>
     <string name="music_effects_play_first">Start playing something to adjust its audio effects</string>
     <string name="music_effects_unavailable">Audio effects aren\'t available for this playback</string>
+    <plurals name="spotify_sync_added">
+        <item quantity="one">Added %d new song to the top.</item>
+        <item quantity="other">Added %d new songs to the top.</item>
+    </plurals>
     <plurals name="music_queue_size">
         <item quantity="one">%d song</item>
         <item quantity="other">%d songs</item>

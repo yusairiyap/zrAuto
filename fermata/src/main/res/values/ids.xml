@@ -96,6 +96,7 @@
     <item name="playlist_selected_remove" type="id" />
     <item name="playlist_select_item" type="id" />
     <item name="spotify_import" type="id" />
+    <item name="spotify_sync" type="id" />
     <item name="spotify_import_fragment" type="id" />
     <item name="spotify_preview" type="id" />
     <item name="spotify_remove" type="id" />

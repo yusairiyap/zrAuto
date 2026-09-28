@@ -23,6 +23,7 @@ import me.aap.fermata.spotify.SpotifyImportModel.Track;
 import me.aap.fermata.spotify.SpotifyImportModel.Video;
 import me.aap.utils.async.Async;
 import me.aap.utils.async.FutureSupplier;
+import me.aap.utils.function.Function;
 
 /**
  * Writes the resolved import into the local media library: one local playlist per Spotify
@@ -43,15 +44,20 @@ public final class SpotifyPlaylistWriter {
 		final List<Video> videos;
 		/** videoId to the Spotify track it was matched for, if known. */
 		final Map<String, Track> tracks;
+		/** The Spotify playlist it came from, remembered for a later sync; null if unknown. */
+		@Nullable
+		final String ref;
 
 		public Entry(String name, List<Video> videos) {
-			this(name, videos, Collections.emptyMap());
+			this(name, videos, Collections.emptyMap(), null);
 		}
 
-		public Entry(String name, List<Video> videos, Map<String, Track> tracks) {
+		public Entry(String name, List<Video> videos, Map<String, Track> tracks,
+								 @Nullable String ref) {
 			this.name = name;
 			this.videos = videos;
 			this.tracks = tracks;
+			this.ref = ref;
 		}
 	}
 
@@ -68,6 +74,19 @@ public final class SpotifyPlaylistWriter {
 
 	/** @return the number of videos written. */
 	public static FutureSupplier<Integer> write(MediaLib lib, List<Entry> entries) {
+		return write(lib, entries, e -> findOrCreate(lib.getPlaylists(), sanitizeName(e.name)));
+	}
+
+	/**
+	 * Adds {@code e}'s videos into {@code pl} -- at the top, as a block in their Spotify order
+	 * (playlists put new entries first). Used by {@link SpotifyPlaylistSync}.
+	 */
+	public static FutureSupplier<Integer> writeInto(MediaLib lib, Playlist pl, Entry e) {
+		return write(lib, Collections.singletonList(e), x -> completed(pl));
+	}
+
+	private static FutureSupplier<Integer> write(MediaLib lib, List<Entry> entries,
+																							 Function<Entry, FutureSupplier<Playlist>> target) {
 		Map<String, String> titles = new LinkedHashMap<>();
 		Map<String, VideoInfo> info = new LinkedHashMap<>();
 		for (Entry e : entries) {
@@ -85,15 +104,18 @@ public final class SpotifyPlaylistWriter {
 						c.cacheVideoInfo(info);
 					}
 					int[] count = {0};
-					return Async.forEach(e -> writeEntry(lib, e).main().onSuccess(n -> count[0] += n),
-							entries).map(v -> count[0]);
+					return Async.forEach(e -> writeEntry(lib, e, target).main().onSuccess(n -> {
+						count[0] += n;
+						SpotifyPlaylistSync.remember(e);
+					}), entries).map(v -> count[0]);
 				});
 	}
 
-	private static FutureSupplier<Integer> writeEntry(MediaLib lib, Entry e) {
+	private static FutureSupplier<Integer> writeEntry(MediaLib lib, Entry e,
+																										Function<Entry, FutureSupplier<Playlist>> target) {
 		if (e.videos.isEmpty()) return completed(0);
 
-		return findOrCreate(lib.getPlaylists(), sanitizeName(e.name)).main().then(pl -> {
+		return target.apply(e).main().then(pl -> {
 			List<PlayableItem> items = new ArrayList<>(e.videos.size());
 			return Async.forEach(v -> lib.getItem("youtube:" + v.videoId).main().onSuccess(i -> {
 						if (i instanceof PlayableItem) items.add((PlayableItem) i);
