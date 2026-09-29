@@ -136,6 +136,17 @@ public abstract class ItemBase implements Item, MediaPrefs, SharedPreferenceStor
 		return b;
 	}
 
+	/**
+	 * The media description if it's already built, else null -- never starts building it, so it's
+	 * safe to ask from the UI thread where building it (a playlist's, say, resolves every item in
+	 * it) could stall a frame.
+	 */
+	@Nullable
+	public FutureSupplier<MediaDescriptionCompat> peekMediaDescription() {
+		FutureSupplier<MediaDescriptionCompat> d = MD.get(this);
+		return ((d != null) && d.isDone() && isMediaDescriptionValid(d)) ? d : null;
+	}
+
 	protected boolean isMediaDescriptionValid(FutureSupplier<MediaDescriptionCompat> d) {
 		return d != null;
 	}

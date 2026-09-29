@@ -56,6 +56,7 @@ import java.util.Objects;
 
 import me.aap.fermata.BuildConfig;
 import me.aap.fermata.R;
+import me.aap.fermata.media.lib.ItemBase;
 import me.aap.fermata.media.lib.MediaLib.ArchiveItem;
 import me.aap.fermata.media.lib.MediaLib.EpgItem;
 import me.aap.fermata.media.lib.MediaLib.Item;
@@ -63,8 +64,11 @@ import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.PlayableItemPrefs;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.fragment.MediaLibFragment;
+import me.aap.utils.app.App;
 import me.aap.utils.async.FutureSupplier;
+import me.aap.utils.async.Promise;
 import me.aap.utils.function.Cancellable;
+import me.aap.utils.function.ProgressiveResultConsumer;
 import me.aap.utils.log.Log;
 import me.aap.utils.ui.activity.ActivityDelegate;
 import me.aap.utils.ui.fragment.ActivityFragment;
@@ -282,8 +286,8 @@ public class MediaItemView extends ConstraintLayout
 			setProgress(i, 0, 0);
 		}
 
-		FutureSupplier<MediaDescriptionCompat> load =
-				loading = i.getMediaDescription().main().addConsumer((md, fail, p, total) -> {
+		ProgressiveResultConsumer<MediaDescriptionCompat> consumer =
+				(md, fail, p, total) -> {
 					if (getItemWrapper() != w) return;
 
 					if (fail != null) {
@@ -345,7 +349,33 @@ public class MediaItemView extends ConstraintLayout
 							cancelLoading();
 						}
 					}
+				};
+
+		FutureSupplier<MediaDescriptionCompat> cached =
+				(i instanceof ItemBase ib) ? ib.peekMediaDescription() : null;
+		FutureSupplier<MediaDescriptionCompat> load;
+
+		if (cached != null) {
+			load = loading = cached.main().addConsumer(consumer);
+		} else {
+			// Building a description can be heavy (a playlist's subtitle resolves every item in it,
+			// its cover reads the first few): started on a worker, so a screen full of such cards
+			// shows at once with placeholders instead of freezing until they're all built. The main
+			// thread then only picks up the finished (or running) build, progress steps and all.
+			Promise<MediaDescriptionCompat> pending = new Promise<>();
+			load = loading = pending;
+			App.get().execute(() -> {
+				i.getMediaDescription();
+			}).main().onCompletion((r, err) -> {
+				if ((loading != pending) || pending.isDone()) return;
+				FutureSupplier<MediaDescriptionCompat> d = i.getMediaDescription().main();
+				d.addConsumer(consumer);
+				d.onCompletion((md, fail) -> {
+					if (fail != null) pending.completeExceptionally(fail);
+					else pending.complete(md);
 				});
+			});
+		}
 
 		if (!load.isDone()) setDefaults(i, showLoading);
 		return load;
