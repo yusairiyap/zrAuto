@@ -963,8 +963,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		// has to let the layers draw out into it.
 		for (ViewParent p = root.getParent(); p instanceof ViewGroup g; p = g.getParent()) {
 			g.setClipToPadding(false);
-			if (g.getId() == R.id.main_activity) break;
+			// A view's own drawing is clipped to its bounds by its parent's clipChildren, so every
+			// container up to and including main_activity (which clips body_layout) must let go.
 			g.setClipChildren(false);
+			if (g.getId() == R.id.main_activity) break;
 		}
 		return top;
 	}

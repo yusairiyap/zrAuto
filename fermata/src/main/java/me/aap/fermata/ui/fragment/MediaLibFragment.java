@@ -586,7 +586,9 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 
 		public ListAdapter(MainActivityDelegate activity, BrowsableItem parent) {
 			super(activity);
-			super.setParent(parent, false);
+			// The tab's first load is no user action, but a long one (a big playlist) should still
+			// show the loading indicator -- which only appears if it takes a noticeable moment.
+			activity.setContentLoading(super.setParent(parent, false));
 		}
 
 		/** See MainActivityPrefs#getTapOpensMenuPref(). */

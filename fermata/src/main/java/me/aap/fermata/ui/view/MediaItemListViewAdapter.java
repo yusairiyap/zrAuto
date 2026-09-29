@@ -29,6 +29,7 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.utils.app.App;
 import me.aap.utils.async.Async;
 import me.aap.utils.async.FutureSupplier;
+import me.aap.utils.async.Promise;
 import me.aap.utils.collection.CollectionUtils;
 import me.aap.utils.log.Log;
 import me.aap.utils.ui.UiUtils;
@@ -107,20 +108,38 @@ public class MediaItemListViewAdapter extends MovableRecyclerViewAdapter<MediaIt
 		if (parent == null) return completedVoid();
 		parent.addChangeListener(this);
 
-		FutureSupplier<?> f = parent.getChildren().main()
-				.addConsumer((result, fail, progress, total) -> {
-					if (this.parent != parent) return;
+		// Building a big list's children (each item resolved, its metadata read, then sorted) can take
+		// a while and, once cached, would otherwise run start to finish on this (the UI) thread while
+		// a tab opens -- a stutter. Started on a worker instead; the main thread then only picks up
+		// the already running (or finished) load, with all its progress steps, and shows the result.
+		Promise<Object> f = new Promise<>();
+		App.get().execute(() -> {
+			parent.getChildren();
+		}).main().onCompletion((r, err) -> {
+			if (this.parent != parent) {
+				f.cancel();
+				return;
+			}
 
-					if (fail != null) {
-						if (isCancellation(fail)) return;
-						Log.e(fail, "Failed to load children");
-						UiUtils.showAlert(activity.getContext(), fail.getLocalizedMessage());
-					} else {
-						setChildren(result);
-					}
+			FutureSupplier<List<Item>> load = parent.getChildren().main();
+			load.addConsumer((result, fail, progress, total) -> {
+				if (this.parent != parent) return;
 
-					if (animate) listView.animate().alpha(1f).setDuration(ENTER_FADE_DURATION).start();
-				});
+				if (fail != null) {
+					if (isCancellation(fail)) return;
+					Log.e(fail, "Failed to load children");
+					UiUtils.showAlert(activity.getContext(), fail.getLocalizedMessage());
+				} else {
+					setChildren(result);
+				}
+
+				if (animate) listView.animate().alpha(1f).setDuration(ENTER_FADE_DURATION).start();
+			});
+			load.onCompletion((result, fail) -> {
+				if (fail != null) f.completeExceptionally(fail);
+				else f.complete(result);
+			});
+		});
 
 		if (userAction) activity.setContentLoading(f);
 		return f;
