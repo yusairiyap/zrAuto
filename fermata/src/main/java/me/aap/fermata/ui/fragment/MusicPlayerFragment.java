@@ -1024,13 +1024,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if (!a.computeContentInsets(c, insets) || !a.computeSideInsets(c, sideInsets)) return;
 		int top = insets[0];
 		// Landscape (Android Auto, a tablet on its side): the cover and the controls sit side by
-		// side, each centred on its column's height. Centred on just the room below the title bar
-		// they read as sitting low; centred on the whole screen (the title bar's height reserved at
-		// the bottom too), as sitting high. Half the title bar's height at the bottom is the
-		// balance between the two -- what reads as centred on the car's screen.
-		boolean land =
-				getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
-		int bottom = land ? Math.max(insets[1], top / 2) : insets[1];
+		// side, each centred on its column's height -- which is the room below the title bar (and
+		// above whatever bottom bar there is), so the gap under the title bar and the gap at the
+		// bottom are equal. (Reserving some of the title bar's height at the bottom too, to centre
+		// on the whole screen, left the pair visibly high on the car's screen.)
+		int bottom = insets[1];
 		int left = sideInsets[0];
 		int right = sideInsets[1];
 		if (insetsSet && (top == insetTop) && (bottom == insetBottom) && (left == insetLeft)
