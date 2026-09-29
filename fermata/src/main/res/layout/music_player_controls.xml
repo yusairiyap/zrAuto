@@ -160,7 +160,7 @@
             android:tint="?attr/musicIconSecondary" />
     </LinearLayout>
 
-    <!-- Animated layout changes: the other chips slide over as the Video / Play as music chip comes,
+    <!-- Queue, Video / Play as music, and the more menu. Animated layout changes: the other chips slide over as the Video / Play as music chip comes,
          goes or changes width (see MusicPlayerFragment#setVideoButton). -->
     <LinearLayout
         android:id="@+id/music_actions"
@@ -178,18 +178,22 @@
             android:text="@string/music_queue_short" />
 
         <TextView
-            android:id="@+id/music_effects_button"
-            style="@style/MusicChip"
-            android:layout_marginStart="8dp"
-            android:drawableStart="@drawable/equalizer"
-            android:text="@string/effects" />
-
-        <TextView
             android:id="@+id/music_video_button"
             style="@style/MusicChip"
             android:layout_marginStart="8dp"
             android:drawableStart="@drawable/video"
             android:text="@string/video"
             android:visibility="gone" />
+
+        <!-- Effects and the sleep timer live behind this; it also shows the timer's countdown. -->
+        <TextView
+            android:id="@+id/music_more_button"
+            style="@style/MusicChip"
+            android:layout_marginStart="8dp"
+            android:contentDescription="@string/music_more"
+            android:drawableStart="@drawable/more"
+            android:drawablePadding="0dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp" />
     </LinearLayout>
 </LinearLayout>

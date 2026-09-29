@@ -86,5 +86,14 @@
         <item name="android:textSize">14sp</item>
     </style>
 
+    <!-- The Music tab's frosted-glass "more" menu (effects, sleep timer): a floating dialog with a
+         see-through window, so MusicMoreMenu can blur what's behind it. -->
+    <style name="MusicMenuDialog" parent="@android:style/Theme.Translucent.NoTitleBar">
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.2</item>
+    </style>
+
     <color name="music_accent">#FF1ED760</color>
 </resources>
