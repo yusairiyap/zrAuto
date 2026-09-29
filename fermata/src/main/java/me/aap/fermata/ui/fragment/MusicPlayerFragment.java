@@ -119,6 +119,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	@Nullable
 	private View[] behind;
 	private final int[] extLoc = new int[2];
+	private final int[] barExt = new int[2];
 	// The containers unclipped for the status bar, and how they were, see unclipForStatusBar().
 	@Nullable
 	private ViewGroup[] clipViews;
@@ -934,16 +935,20 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			right = Math.max(0, (extLoc2[0] + body.getWidth()) - (extLoc[0] + root.getWidth()));
 		}
 
-		int top = statusBarExtension(root);
+		barExtensions(root, barExt);
+		int top = barExt[0];
+		int bottom = barExt[1];
 
 		for (View v : layers) {
 			if ((v == null) || !(v.getLayoutParams() instanceof ViewGroup.MarginLayoutParams lp)) continue;
-			if ((lp.leftMargin == -left) && (lp.rightMargin == -right) && (lp.topMargin == -top)) {
+			if ((lp.leftMargin == -left) && (lp.rightMargin == -right) && (lp.topMargin == -top)
+					&& (lp.bottomMargin == -bottom)) {
 				continue;
 			}
 			lp.leftMargin = -left;
 			lp.rightMargin = -right;
 			lp.topMargin = -top;
+			lp.bottomMargin = -bottom;
 			lp.setMarginStart(-left);
 			lp.setMarginEnd(-right);
 			v.setLayoutParams(lp);
@@ -951,24 +956,29 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	}
 
 	/**
-	 * How far the background reaches up past this tab, under the transparent status bar, so the
-	 * blurred cover and its gradient run on behind the clock and icons instead of stopping at a
-	 * plain bar. Only from Android 15, where the window is already drawn edge to edge (see
-	 * MainActivityDelegate#init); before that the system owns the bar and nothing can show there.
-	 * Zero on the car screen. Every other tab leaves the bar in the app's own background colour
-	 * (MainActivityDelegate#matchStatusBarToBackground), so leaving this tab restores it as before.
+	 * How far the background reaches past this tab's top and bottom edges, into {@code out[0]} and
+	 * {@code out[1]}: under the transparent status bar and the system navigation area, so the
+	 * blurred cover and its gradient run on behind the clock and icons and the gesture bar instead
+	 * of stopping at plain strips. Only from Android 15, where the window is already drawn edge to
+	 * edge (see MainActivityDelegate#init); before that the system owns the bars and nothing can
+	 * show there. Zero on the car screen. Every other tab leaves both in the app's own background
+	 * colour (MainActivityDelegate#matchStatusBarToBackground), so leaving this tab restores it.
 	 */
-	private int statusBarExtension(View root) {
-		if (VERSION.SDK_INT < VERSION_CODES.VANILLA_ICE_CREAM) return 0;
+	private void barExtensions(View root, int[] out) {
+		out[0] = 0;
+		out[1] = 0;
+		if (VERSION.SDK_INT < VERSION_CODES.VANILLA_ICE_CREAM) return;
 		MainActivityDelegate a = getActivityDelegate();
-		if (a.isCarActivity()) return 0;
+		if (a.isCarActivity()) return;
 		root.getLocationInWindow(extLoc);
 		int top = Math.max(0, extLoc[1]);
+		int bottom = Math.max(0, root.getRootView().getHeight() - (extLoc[1] + root.getHeight()));
 		// Only while this tab is on screen: with the containers unclipped, every other tab's content
-		// would scroll up behind the status bar too, which those tabs keep opaque.
-		if ((top == 0) || !root.isShown()) restoreClipping();
+		// would scroll out behind the bars too, which those tabs keep opaque.
+		if (((top == 0) && (bottom == 0)) || !root.isShown()) restoreClipping();
 		else unclipForStatusBar(root);
-		return top;
+		out[0] = top;
+		out[1] = bottom;
 	}
 
 	/**
