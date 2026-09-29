@@ -40,6 +40,7 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.ColorInt;
+import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.StyleRes;
@@ -55,6 +56,7 @@ import java.util.Objects;
 
 import me.aap.fermata.BuildConfig;
 import me.aap.fermata.R;
+import me.aap.fermata.media.lib.ItemBase;
 import me.aap.fermata.media.lib.MediaLib.ArchiveItem;
 import me.aap.fermata.media.lib.MediaLib.EpgItem;
 import me.aap.fermata.media.lib.MediaLib.Item;
@@ -62,8 +64,11 @@ import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.PlayableItemPrefs;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.fragment.MediaLibFragment;
+import me.aap.utils.app.App;
 import me.aap.utils.async.FutureSupplier;
+import me.aap.utils.async.Promise;
 import me.aap.utils.function.Cancellable;
+import me.aap.utils.function.ProgressiveResultConsumer;
 import me.aap.utils.log.Log;
 import me.aap.utils.ui.activity.ActivityDelegate;
 import me.aap.utils.ui.fragment.ActivityFragment;
@@ -117,6 +122,8 @@ public class MediaItemView extends ConstraintLayout
 	private ProgressUpdater progressUpdater;
 	private VectorDrawableCompat watchedVideoDrawable;
 	private VectorDrawableCompat watchingVideoDrawable;
+	@DrawableRes
+	private int outlineRes = R.drawable.media_item_outline;
 	private VectorDrawableCompat archiveLabelDrawable;
 	private FutureSupplier<MediaDescriptionCompat> loading;
 
@@ -140,7 +147,6 @@ public class MediaItemView extends ConstraintLayout
 		setLongClickable(true);
 		setOnLongClickListener(this);
 		getCheckBox().setOnCheckedChangeListener(this);
-		setBackgroundResource(R.drawable.media_item_bg);
 		// Clips the full-bleed thumbnail/gradient/text to media_item_bg's own rounded-rect outline --
 		// without this the card's corners look square, since the thumbnail (unlike before, when it
 		// only covered a smaller inset square) now extends all the way to the view's real edges.
@@ -149,7 +155,6 @@ public class MediaItemView extends ConstraintLayout
 		// hide the ripple (drawn as a background, so it renders beneath all children) under an
 		// opaque bitmap -- a foreground-only ripple (no solid layer of its own) keeps touch feedback
 		// visible over the thumbnail without changing the card's resting appearance.
-		setForeground(ContextCompat.getDrawable(ctx, R.drawable.media_item_ripple_fg));
 		setFocusable(true);
 	}
 
@@ -159,8 +164,21 @@ public class MediaItemView extends ConstraintLayout
 		// The layout's views are all new: the checkbox has to be wired up again, or ticking it after
 		// a list/grid switch only changes how it looks, not the actual selection.
 		getCheckBox().setOnCheckedChangeListener(this);
+		setCardShape(ctx, grid);
 		setSize(ctx, grid, size);
 		refreshCheckbox();
+	}
+
+	/**
+	 * A list row is a Settings-style card (22dp corners), a grid card keeps the tighter 12dp ones.
+	 * The background, the touch ripple and the selection outline all follow the same corners.
+	 */
+	private void setCardShape(Context ctx, boolean grid) {
+		setBackgroundResource(grid ? R.drawable.media_item_bg : R.drawable.media_item_list_bg);
+		setForeground(ContextCompat.getDrawable(ctx,
+				grid ? R.drawable.media_item_ripple_fg : R.drawable.media_item_list_ripple_fg));
+		outlineRes = grid ? R.drawable.media_item_outline : R.drawable.media_item_list_outline;
+		outline = null;
 	}
 
 	public void setSize(Context ctx, boolean grid, float size) {
@@ -268,8 +286,8 @@ public class MediaItemView extends ConstraintLayout
 			setProgress(i, 0, 0);
 		}
 
-		FutureSupplier<MediaDescriptionCompat> load =
-				loading = i.getMediaDescription().main().addConsumer((md, fail, p, total) -> {
+		ProgressiveResultConsumer<MediaDescriptionCompat> consumer =
+				(md, fail, p, total) -> {
 					if (getItemWrapper() != w) return;
 
 					if (fail != null) {
@@ -331,7 +349,33 @@ public class MediaItemView extends ConstraintLayout
 							cancelLoading();
 						}
 					}
+				};
+
+		FutureSupplier<MediaDescriptionCompat> cached =
+				(i instanceof ItemBase ib) ? ib.peekMediaDescription() : null;
+		FutureSupplier<MediaDescriptionCompat> load;
+
+		if (cached != null) {
+			load = loading = cached.main().addConsumer(consumer);
+		} else {
+			// Building a description can be heavy (a playlist's subtitle resolves every item in it,
+			// its cover reads the first few): started on a worker, so a screen full of such cards
+			// shows at once with placeholders instead of freezing until they're all built. The main
+			// thread then only picks up the finished (or running) build, progress steps and all.
+			Promise<MediaDescriptionCompat> pending = new Promise<>();
+			load = loading = pending;
+			App.get().execute(() -> {
+				i.getMediaDescription();
+			}).main().onCompletion((r, err) -> {
+				if ((loading != pending) || pending.isDone()) return;
+				FutureSupplier<MediaDescriptionCompat> d = i.getMediaDescription().main();
+				d.addConsumer(consumer);
+				d.onCompletion((md, fail) -> {
+					if (fail != null) pending.completeExceptionally(fail);
+					else pending.complete(md);
 				});
+			});
+		}
 
 		if (!load.isDone()) setDefaults(i, showLoading);
 		return load;
@@ -428,7 +472,7 @@ public class MediaItemView extends ConstraintLayout
 
 	private static Drawable getLoadingDrawable(Context ctx) {
 		if (loadingDrawable == null) {
-			loadingDrawable = ContextCompat.getDrawable(ctx, R.drawable.loading);
+			loadingDrawable = ContextCompat.getDrawable(ctx, R.drawable.loading_spinner);
 			Objects.requireNonNull(loadingDrawable).setTint(iconColor);
 			MainActivityDelegate.get(ctx)
 					.addBroadcastListener(MediaItemView::onActivityDestroyEvent, ACTIVITY_DESTROY);
@@ -682,7 +726,7 @@ public class MediaItemView extends ConstraintLayout
 		if (outlineFraction <= 0f) return;
 		Drawable d = outline;
 		if (d == null) {
-			d = outline = ContextCompat.getDrawable(getContext(), R.drawable.media_item_outline);
+			d = outline = ContextCompat.getDrawable(getContext(), outlineRes);
 			if (d == null) return;
 			d = outline = d.mutate();
 		}

@@ -25,6 +25,8 @@ import android.graphics.Bitmap;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.TransitionDrawable;
+import android.os.Build.VERSION;
+import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
@@ -37,6 +39,7 @@ import android.view.VelocityTracker;
 import android.view.ViewConfiguration;
 import android.view.ViewTreeObserver;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
@@ -116,6 +119,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	@Nullable
 	private View[] behind;
 	private final int[] extLoc = new int[2];
+	private final int[] barExt = new int[2];
+	// The containers unclipped for the status bar, and how they were, see unclipForStatusBar().
+	@Nullable
+	private ViewGroup[] clipViews;
+	private boolean[] clipChildrenWas;
+	private boolean[] clipToPaddingWas;
 	private final int[] extLoc2 = new int[2];
 	private ImageView art;
 	private LoadingDimView loading;
@@ -434,6 +443,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 	@Override
 	public void onDestroyView() {
+		restoreClipping();
 		setListening(false);
 		stopProgress();
 		if (content != null) content.getViewTreeObserver().removeOnPreDrawListener(insetSync);
@@ -925,14 +935,85 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			right = Math.max(0, (extLoc2[0] + body.getWidth()) - (extLoc[0] + root.getWidth()));
 		}
 
+		barExtensions(root, barExt);
+		int top = barExt[0];
+		int bottom = barExt[1];
+
 		for (View v : layers) {
 			if ((v == null) || !(v.getLayoutParams() instanceof ViewGroup.MarginLayoutParams lp)) continue;
-			if ((lp.leftMargin == -left) && (lp.rightMargin == -right)) continue;
+			if ((lp.leftMargin == -left) && (lp.rightMargin == -right) && (lp.topMargin == -top)
+					&& (lp.bottomMargin == -bottom)) {
+				continue;
+			}
 			lp.leftMargin = -left;
 			lp.rightMargin = -right;
+			lp.topMargin = -top;
+			lp.bottomMargin = -bottom;
 			lp.setMarginStart(-left);
 			lp.setMarginEnd(-right);
 			v.setLayoutParams(lp);
+		}
+	}
+
+	/**
+	 * How far the background reaches past this tab's top and bottom edges, into {@code out[0]} and
+	 * {@code out[1]}: under the transparent status bar and the system navigation area, so the
+	 * blurred cover and its gradient run on behind the clock and icons and the gesture bar instead
+	 * of stopping at plain strips. Only from Android 15, where the window is already drawn edge to
+	 * edge (see MainActivityDelegate#init); before that the system owns the bars and nothing can
+	 * show there. Zero on the car screen. Every other tab leaves both in the app's own background
+	 * colour (MainActivityDelegate#matchStatusBarToBackground), so leaving this tab restores it.
+	 */
+	private void barExtensions(View root, int[] out) {
+		out[0] = 0;
+		out[1] = 0;
+		if (VERSION.SDK_INT < VERSION_CODES.VANILLA_ICE_CREAM) return;
+		MainActivityDelegate a = getActivityDelegate();
+		if (a.isCarActivity()) return;
+		root.getLocationInWindow(extLoc);
+		int top = Math.max(0, extLoc[1]);
+		int bottom = Math.max(0, root.getRootView().getHeight() - (extLoc[1] + root.getHeight()));
+		// Only while this tab is on screen: with the containers unclipped, every other tab's content
+		// would scroll out behind the bars too, which those tabs keep opaque.
+		if (((top == 0) && (bottom == 0)) || !root.isShown()) restoreClipping();
+		else unclipForStatusBar(root);
+		out[0] = top;
+		out[1] = bottom;
+	}
+
+	/**
+	 * The bar's area is main_activity's own top padding: every container between it and this tab
+	 * has to let the background draw out into it. A view's own drawing is clipped to its bounds by
+	 * its parent's clipChildren, so that includes main_activity itself (which clips body_layout).
+	 * The previous settings are kept, for restoreClipping().
+	 */
+	private void unclipForStatusBar(View root) {
+		if (clipViews != null) return;
+		List<ViewGroup> l = new ArrayList<>();
+		for (ViewParent p = root.getParent(); p instanceof ViewGroup g; p = g.getParent()) {
+			l.add(g);
+			if (g.getId() == R.id.main_activity) break;
+		}
+		ViewGroup[] views = l.toArray(new ViewGroup[0]);
+		clipChildrenWas = new boolean[views.length];
+		clipToPaddingWas = new boolean[views.length];
+		for (int i = 0; i < views.length; i++) {
+			clipChildrenWas[i] = views[i].getClipChildren();
+			clipToPaddingWas[i] = views[i].getClipToPadding();
+			views[i].setClipChildren(false);
+			views[i].setClipToPadding(false);
+		}
+		clipViews = views;
+	}
+
+	/** Puts the containers' clipping back as unclipForStatusBar() found it. */
+	private void restoreClipping() {
+		ViewGroup[] views = clipViews;
+		if (views == null) return;
+		clipViews = null;
+		for (int i = 0; i < views.length; i++) {
+			views[i].setClipChildren(clipChildrenWas[i]);
+			views[i].setClipToPadding(clipToPaddingWas[i]);
 		}
 	}
 
@@ -943,13 +1024,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if (!a.computeContentInsets(c, insets) || !a.computeSideInsets(c, sideInsets)) return;
 		int top = insets[0];
 		// Landscape (Android Auto, a tablet on its side): the cover and the controls sit side by
-		// side, each centred on its column's height. Centred on just the room below the title bar
-		// they read as sitting low; centred on the whole screen (the title bar's height reserved at
-		// the bottom too), as sitting high. Half the title bar's height at the bottom is the
-		// balance between the two -- what reads as centred on the car's screen.
-		boolean land =
-				getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
-		int bottom = land ? Math.max(insets[1], top / 2) : insets[1];
+		// side, each centred on its column's height -- which is the room below the title bar (and
+		// above whatever bottom bar there is), so the gap under the title bar and the gap at the
+		// bottom are equal. (Reserving some of the title bar's height at the bottom too, to centre
+		// on the whole screen, left the pair visibly high on the car's screen.)
+		int bottom = insets[1];
 		int left = sideInsets[0];
 		int right = sideInsets[1];
 		if (insetsSet && (top == insetTop) && (bottom == insetBottom) && (left == insetLeft)

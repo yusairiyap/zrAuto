@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- media_item_outline with a list row card's 22dp corners, see media_item_list_bg.xml. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/media_item_selected_fill" />
+    <corners android:radius="22dp" />
+</shape>

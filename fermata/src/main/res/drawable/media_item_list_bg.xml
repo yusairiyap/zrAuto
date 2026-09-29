@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A list row card: the same flat card as a Settings row (box_secondary.xml), 22dp corners and
+     the same surface colour. The grid cards keep media_item_bg's tighter corners. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="?attr/rippleColor">
+    <item android:id="@android:id/mask">
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/rippleColor" />
+            <corners android:radius="22dp" />
+        </shape>
+    </item>
+
+    <item android:id="@android:id/background">
+        <shape>
+            <solid android:color="@color/media_item" />
+            <corners android:radius="22dp" />
+        </shape>
+    </item>
+</ripple>

@@ -1956,22 +1956,40 @@ public class MainActivityDelegate extends ActivityDelegate
 		return videoMode;
 	}
 
+	/**
+	 * The spinner in the middle of the page, after a short beat so a quick load doesn't flash it
+	 * (ContentLoadingProgressBar's own show() waits half a second, long enough to read as a freeze).
+	 */
+	private void showContentLoading() {
+		progressBar.removeCallbacks(showLoadingBar);
+		progressBar.postDelayed(showLoadingBar, 120);
+	}
+
+	private void hideContentLoading() {
+		progressBar.removeCallbacks(showLoadingBar);
+		progressBar.setVisibility(GONE);
+	}
+
+	private final Runnable showLoadingBar = () -> {
+		if (progressBar != null) progressBar.setVisibility(VISIBLE);
+	};
+
 	public void setContentLoading(FutureSupplier<?> contentLoading) {
 		if (this.contentLoading != null) {
 			this.contentLoading.cancel();
 			this.contentLoading = null;
 		}
 
-		progressBar.hide();
+		hideContentLoading();
 		if (contentLoading.isDone()) return;
-		if (!loadingSuppressed) progressBar.show();
+		if (!loadingSuppressed) showContentLoading();
 
 		var cl = this.contentLoading = contentLoading.main();
 		cl.onCompletion((r, f) -> {
 			if ((f != null) && !isCancellation(f)) Log.d(f);
 			if (this.contentLoading == cl) {
 				this.contentLoading = null;
-				progressBar.hide();
+				hideContentLoading();
 			}
 		});
 	}
@@ -2719,8 +2737,8 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (cp != null) cp.setSuppressed(suppressed);
 		loadingSuppressed = suppressed;
 		if (progressBar != null) {
-			if (suppressed) progressBar.hide();
-			else if (contentLoading != null) progressBar.show();
+			if (suppressed) hideContentLoading();
+			else if (contentLoading != null) showContentLoading();
 		}
 		// The primary one first: the others may mirror its visibility.
 		if (floatingButton != null) floatingButton.setSuppressed(suppressed);
