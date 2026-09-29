@@ -10,7 +10,6 @@ import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
-import android.graphics.Outline;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -23,7 +22,6 @@ import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
-import android.view.ViewOutlineProvider;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.PathInterpolator;
@@ -93,8 +91,6 @@ public final class MusicMoreMenu {
 	private TextView timerStatus;
 	private TextView minutesLabel;
 	private FrameLayout pages;
-	private FrostView frost;
-	private View tint;
 	private boolean dismissing;
 	private boolean centered;
 	private int usableTop;
@@ -180,20 +176,8 @@ public final class MusicMoreMenu {
 		card = new DraggableCard(ctx);
 		card.setClickable(true);
 		card.setAlpha(0f);
-		// Rounded, and everything inside (the blurred backdrop included) is cut to it.
-		card.setClipToOutline(true);
-		card.setOutlineProvider(new ViewOutlineProvider() {
-			@Override
-			public void getOutline(View v, Outline outline) {
-				outline.setRoundRect(0, 0, v.getWidth(), v.getHeight(), dp(28));
-			}
-		});
-		// Frosted glass, bottom to top: the blurred backdrop, the translucent tint, the content.
-		frost = new FrostView(ctx);
-		tint = new View(ctx);
-		tint.setBackgroundResource(R.drawable.music_glass_bg);
-		card.addView(frost, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
-		card.addView(tint, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		// Translucent frosted-glass tint; rounded by its own corners.
+		card.setBackground(glass());
 		card.addView(scroll, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
 		int w = Math.min(dp(380), host.getWidth() - dp(32));
@@ -248,17 +232,6 @@ public final class MusicMoreMenu {
 		lp.bottomMargin = margin;
 		card.setLayoutParams(lp);
 
-		// The backdrop: what's behind the card's final place, blurred. Taken with the overlay hidden.
-		boolean glass = FrostView.isSupported();
-		if (glass) {
-			overlay.setVisibility(View.INVISIBLE);
-			int left = lp.leftMargin + (hostW - lp.leftMargin - lp.rightMargin - card.getWidth()) / 2;
-			glass = frost.capture(host, left, hostH - margin - ch, dp(22));
-			overlay.setVisibility(View.VISIBLE);
-		}
-		// Without one (older Android) the tint is a solid panel instead.
-		tint.setBackground(glass ? ctx.getDrawable(R.drawable.music_glass_bg) : solid());
-
 		card.setTranslationY(ch + margin);
 		card.setAlpha(1f);
 		card.animate().translationY(0f).setDuration(280).setInterpolator(new DecelerateInterpolator(1.6f))
@@ -300,7 +273,6 @@ public final class MusicMoreMenu {
 
 	private void remove() {
 		if (pageAnim != null) pageAnim.cancel();
-		frost.clear();
 		host.removeView(overlay);
 		if (open == this) open = null;
 	}
@@ -309,10 +281,11 @@ public final class MusicMoreMenu {
 	// The frosted glass
 	// ---------------------------------------------------------------------------------------------
 
-	/** The panel's fill where there's no blur to see through: opaque, in the palette's panel colour. */
-	private Drawable solid() {
-		GradientDrawable d = new GradientDrawable();
-		d.setColor(color(R.attr.musicPanelFill));
+	/** The card's frosted-glass tint: translucent, a little lighter at the top, in the palette's glass colours. */
+	private Drawable glass() {
+		GradientDrawable d = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+				new int[]{color(R.attr.musicGlassTop), color(R.attr.musicGlassBottom)});
+		d.setCornerRadius(dp(28));
 		return d;
 	}
 

@@ -44,8 +44,8 @@
         <item name="musicCardFill">#FF1E1E2A</item>
         <item name="musicPanelFill">#F2141418</item>
         <item name="musicRowFill">#14FFFFFF</item>
-        <item name="musicGlassTop">#A6161620</item>
-        <item name="musicGlassBottom">#8C0E0E16</item>
+        <item name="musicGlassTop">#D9161620</item>
+        <item name="musicGlassBottom">#CC0E0E16</item>
         <item name="musicPlaceholderTop">#FF3A3A52</item>
         <item name="musicPlaceholderBottom">#FF1E1E2A</item>
         <item name="musicPlaceholderNote">#59FFFFFF</item>
@@ -69,8 +69,8 @@
         <item name="musicCardFill">#FFE6E8EE</item>
         <item name="musicPanelFill">#F7FBFBFD</item>
         <item name="musicRowFill">#0D000000</item>
-        <item name="musicGlassTop">#DBFFFFFF</item>
-        <item name="musicGlassBottom">#C4FFFFFF</item>
+        <item name="musicGlassTop">#F2FFFFFF</item>
+        <item name="musicGlassBottom">#E6FFFFFF</item>
         <item name="musicPlaceholderTop">#FFE9EBF1</item>
         <item name="musicPlaceholderBottom">#FFD3D7E0</item>
         <item name="musicPlaceholderNote">#4D000000</item>

@@ -83,7 +83,6 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.view.EffectsUi;
-import me.aap.fermata.ui.view.FrostView;
 import me.aap.fermata.ui.view.InfoOverlayView;
 import me.aap.fermata.ui.view.ToolBarPill;
 import me.aap.fermata.ui.view.LoadingDimView;
@@ -145,10 +144,6 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private ImageButton repeat;
 	private TextView videoButton;
 	private TextView moreButton;
-	@Nullable
-	private FrostView queueFrost;
-	private View queueTint;
-	private boolean queueWanted;
 	private final Runnable timerChipTask = this::updateTimerChip;
 	private View queuePanel;
 	private View queueDismiss;
@@ -1561,21 +1556,14 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		queuePanel.animate().cancel();
 		showQueueDismiss(show);
 
-		queueWanted = show;
-
 		if (show) {
 			adapter.reload();
 			layoutQueuePanel();
 			queuePanel.setVisibility(View.VISIBLE);
 			queuePanel.setAlpha(0f);
-			// Once laid out: the glass backdrop is taken (with the panel still invisible), then it slides in.
-			queuePanel.post(() -> {
-				if (!queueWanted || (getView() == null)) return;
-				applyQueueGlass();
-				queuePanel.setTranslationY(queuePanel.getHeight() / 3f);
-				queuePanel.animate().alpha(1f).translationY(0f).setDuration(250)
-						.setInterpolator(new DecelerateInterpolator()).start();
-			});
+			queuePanel.setTranslationY(queuePanel.getHeight() / 3f);
+			queuePanel.animate().alpha(1f).translationY(0f).setDuration(250)
+					.setInterpolator(new DecelerateInterpolator()).start();
 			scrollToCurrent();
 		} else {
 			queuePanel.animate().alpha(0f).translationY(queuePanel.getHeight() / 3f).setDuration(200)
@@ -1680,37 +1668,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				}).start();
 	}
 
-	/**
-	 * Frosted glass for the queue panel, like the more menu's: a blurred snapshot of what's behind
-	 * it under a translucent tint. Android 12+; older versions keep the solid panel.
-	 */
+	/** Frosted glass for the queue panel, like the more menu's: a translucent tint instead of a solid fill. */
 	private void setUpQueueGlass() {
-		if (!FrostView.isSupported() || !(queuePanel instanceof MaterialCardView card)) return;
-		queueFrost = new FrostView(requireContext());
-		queueTint = new View(palette);
-		queueTint.setBackgroundResource(R.drawable.music_glass_bg);
-		queueTint.setVisibility(View.GONE);
-		card.addView(queueFrost, 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-				ViewGroup.LayoutParams.MATCH_PARENT));
-		card.addView(queueTint, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-				ViewGroup.LayoutParams.MATCH_PARENT));
-	}
-
-	/** Takes the glass backdrop for the panel's place; without one (or when it fails) the panel is solid. */
-	private void applyQueueGlass() {
 		if (!(queuePanel instanceof MaterialCardView card)) return;
-		boolean glass = false;
-		View root = getView();
-
-		if ((queueFrost != null) && (root instanceof ViewGroup host)) {
-			glass = queueFrost.capture(host, queuePanel.getLeft(), queuePanel.getTop(),
-					UiUtils.toIntPx(requireContext(), 22));
-		}
-
-		card.setCardBackgroundColor(glass ? android.graphics.Color.TRANSPARENT :
-				paletteColor(R.attr.musicPanelFill));
-		card.setCardElevation(glass ? 0f : UiUtils.toIntPx(requireContext(), 24));
-		if (queueTint != null) queueTint.setVisibility(glass ? View.VISIBLE : View.GONE);
+		card.setCardBackgroundColor(paletteColor(R.attr.musicGlassTop));
+		// No shadow: it would show through the translucent panel.
+		card.setCardElevation(0f);
 	}
 
 	private void layoutQueuePanel() {
