@@ -329,6 +329,11 @@ public class StreamEngine implements MediaEngine, MediaEngine.Listener {
 	}
 
 	@Override
+	public boolean supportsSoundStage() {
+		return eng.supportsSoundStage();
+	}
+
+	@Override
 	@Nullable
 	public AudioEffects ensureAudioEffects() {
 		return eng.ensureAudioEffects();

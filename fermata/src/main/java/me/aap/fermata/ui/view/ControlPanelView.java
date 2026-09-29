@@ -1028,7 +1028,7 @@ public class ControlPanelView extends ConstraintLayout
 				// a video is playing), and Settings/Exit are video-only entries to begin with.
 				eng.contributeToMenu(b);
 				buildPlaybackItems(a, b, eng, pi, p, stream);
-				if (eng.supportsAudioEffects()) {
+				if ((eng.supportsAudioEffects() || eng.supportsSoundStage())) {
 					b.addItem(R.id.audio_effects_fragment, R.drawable.equalizer, R.string.audio_effects);
 				}
 				if (MusicPlayer.isEnabled() && !(pi instanceof MusicTrackItem)) {
@@ -1075,7 +1075,7 @@ public class ControlPanelView extends ConstraintLayout
 			if (MusicPlayer.isEnabled()) {
 				b.addItem(R.id.music_play, R.drawable.music, R.string.play_as_music);
 			}
-			if (eng.supportsAudioEffects()) {
+			if ((eng.supportsAudioEffects() || eng.supportsSoundStage())) {
 				b.addItem(R.id.audio_effects_fragment, R.drawable.equalizer, R.string.effects);
 			}
 			// Engine-contributed items that also navigate away (e.g. YouTube's own Effects/Equalizer
@@ -1151,7 +1151,7 @@ public class ControlPanelView extends ConstraintLayout
 				return true;
 			} else if (id == R.id.audio_effects_fragment) {
 				eng = getActivity().getMediaSessionCallback().getEngine();
-				if ((eng != null) && eng.supportsAudioEffects())
+				if ((eng != null) && (eng.supportsAudioEffects() || eng.supportsSoundStage()))
 					getActivity().showFragment(R.id.audio_effects_fragment);
 				return true;
 			} else if (id == R.id.repeat_track || id == R.id.repeat_folder ||

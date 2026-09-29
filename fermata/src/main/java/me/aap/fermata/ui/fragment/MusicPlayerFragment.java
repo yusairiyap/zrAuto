@@ -59,6 +59,7 @@ import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -80,9 +81,11 @@ import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.fermata.ui.view.EffectsUi;
 import me.aap.fermata.ui.view.InfoOverlayView;
 import me.aap.fermata.ui.view.ToolBarPill;
 import me.aap.fermata.ui.view.LoadingDimView;
+import me.aap.fermata.ui.view.MusicMoreMenu;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.pref.PreferenceStore;
@@ -139,6 +142,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private ImageButton playPause;
 	private ImageButton repeat;
 	private TextView videoButton;
+	private TextView moreButton;
+	private final Runnable timerChipTask = this::updateTimerChip;
 	private View queuePanel;
 	private View queueDismiss;
 	private TextView queueCount;
@@ -238,6 +243,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		message = view.findViewById(R.id.music_message);
 		repeat = view.findViewById(R.id.music_repeat);
 		videoButton = view.findViewById(R.id.music_video_button);
+		moreButton = view.findViewById(R.id.music_more_button);
 		videoButtonText = 0; // A new view: the chip starts hidden.
 		// The chips also slide over when the Video / Play as music chip just changes width.
 		LayoutTransition lt = ((ViewGroup) view.findViewById(R.id.music_actions)).getLayoutTransition();
@@ -269,7 +275,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		shuffle.setOnClickListener(v -> onShuffle());
 		repeat.setOnClickListener(v -> onRepeat());
 		view.findViewById(R.id.music_queue_button).setOnClickListener(v -> toggleQueue());
-		view.findViewById(R.id.music_effects_button).setOnClickListener(v -> onEffects());
+		moreButton.setOnClickListener(v -> onMore());
+		updateTimerChip();
 		videoButton.setOnClickListener(v -> onVideo());
 		view.findViewById(R.id.music_queue_close).setOnClickListener(v -> showQueue(false));
 		view.findViewById(R.id.music_queue_clear).setOnClickListener(v -> {
@@ -1378,7 +1385,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private void onPrev() {
 		MediaSessionCallback cb = getActivityDelegate().getMediaSessionCallback();
 		MediaEngine eng = cb.getEngine();
-		if ((eng == null) || (eng.getSource() == null)) return;
+		if ((eng == null) || (eng.getSource() == null)) {
+			skipFromSavedQueue(false);
+			return;
+		}
 		// Like any music player: back to the start of the song first, unless it's only just begun.
 		eng.getPosition().main().onSuccess(pos -> {
 			if (pos > RESTART_THRESHOLD) cb.onSeekTo(0);
@@ -1389,6 +1399,25 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private void onNext() {
 		MediaSessionCallback cb = getActivityDelegate().getMediaSessionCallback();
 		if (cb.getCurrentItem() != null) cb.onSkipToNext();
+		else skipFromSavedQueue(true);
+	}
+
+	/**
+	 * Next/previous right after the app started: nothing is loaded in a player yet, only the queue's
+	 * saved track is shown, so the session has nothing to skip from. Starts the neighbouring track in
+	 * the queue's play order instead (wrapping around), like play does for the saved one.
+	 */
+	private void skipFromSavedQueue(boolean next) {
+		if (queueIsEmpty()) return;
+		List<MusicTrackItem> order = queue.getPlayOrder();
+		int n = order.size();
+		if (n == 0) return;
+		MusicTrackItem cur = queue.getSavedCurrent();
+		int idx = (cur == null) ? -1 : order.indexOf(cur);
+		int target = (idx < 0) ? (next ? 0 : n - 1) : Math.floorMod(idx + (next ? 1 : -1), n);
+		DiagnosticLog.log("MUSIC", "skip from saved queue", "next=" + next, "from=" + cur,
+				"to=" + order.get(target));
+		MusicPlayer.playTrack(getActivityDelegate(), order.get(target), 0);
 	}
 
 	private void onShuffle() {
@@ -1433,6 +1462,49 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				(mode == REPEAT_MODE_ALL) ? R.string.music_repeat_all : R.string.music_repeat_off));
 	}
 
+	@Override
+	public boolean onBackPressed() {
+		return MusicMoreMenu.dismissOpen() || super.onBackPressed();
+	}
+
+	/** The chip's frosted-glass menu: Effects and the sleep timer. */
+	private void onMore() {
+		MusicMoreMenu.show(palette, (ViewGroup) requireView(), content, moreButton,
+				getActivityDelegate().getMediaSessionCallback(), this::onEffects);
+	}
+
+	/**
+	 * The more chip doubles as the sleep timer's indicator: it turns accent-colored and counts down
+	 * while a timer runs (ticking once a second only for as long as one does).
+	 */
+	private void updateTimerChip() {
+		if ((getView() == null) || (moreButton == null)) return;
+		moreButton.removeCallbacks(timerChipTask);
+		MediaSessionCallback cb = getActivityDelegate().getMediaSessionCallback();
+		String label = "";
+		int t = cb.getPlaybackTimer();
+
+		if (cb.isPlaybackTimerWaitingForTrackEnd()) {
+			label = getString(R.string.music_timer_waiting_short);
+		} else if (t > 0) {
+			label = time(t);
+		}
+
+		boolean active = !label.isEmpty();
+		int color = active ? EffectsUi.accent(palette) :
+				paletteColor(R.attr.musicIconPrimary);
+		moreButton.setCompoundDrawablePadding(active ? Math.round(6 * getResources().getDisplayMetrics().density) : 0);
+		setText(moreButton, label);
+		moreButton.setTextColor(color);
+		moreButton.setCompoundDrawableTintList(ColorStateList.valueOf(color));
+		if (active) moreButton.postDelayed(timerChipTask, 1000);
+	}
+
+	@Override
+	public void onPlaybackTimerChanged(MediaSessionCallback cb) {
+		if (moreButton != null) moreButton.post(this::updateTimerChip);
+	}
+
 	private void onEffects() {
 		MainActivityDelegate a = getActivityDelegate();
 		MediaEngine eng = a.getMediaSessionCallback().getEngine();
@@ -1440,7 +1512,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 		// The effects screen works on the live engine's effects: with nothing playing (or an engine
 		// without effects support) it would just close itself again straight away.
-		if ((src != null) && eng.supportsAudioEffects()) {
+		if ((src != null) && (eng.supportsAudioEffects() || eng.supportsSoundStage())) {
 			a.showFragment(R.id.audio_effects_fragment);
 		} else if ((src != null) && eng.showOwnAudioEffects()) {
 			// The YouTube player: its own in-page equalizer, since Android's effects can't reach a web

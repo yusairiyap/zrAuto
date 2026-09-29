@@ -15,7 +15,6 @@ import android.widget.TextView;
 import androidx.annotation.IdRes;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
-import androidx.appcompat.widget.AppCompatSeekBar;
 import androidx.appcompat.widget.SwitchCompat;
 
 import com.google.android.material.card.MaterialCardView;
@@ -25,6 +24,8 @@ import java.util.List;
 import java.util.Locale;
 
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.view.EffectsUi;
+import me.aap.fermata.ui.view.StepSeekBar;
 import me.aap.utils.function.BooleanConsumer;
 import me.aap.utils.function.IntConsumer;
 import me.aap.utils.pref.PreferenceStore;
@@ -102,7 +103,7 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 	void init(YoutubeWebView web) {
 		this.web = web;
 		YoutubeAddon addon = this.addon = web.getAddon();
-		inflate(getContext(), me.aap.fermata.R.layout.audio_effects, this);
+		EffectsUi.inflater(getContext()).inflate(me.aap.fermata.R.layout.audio_effects, this, true);
 		hide(me.aap.fermata.R.id.apply_to, me.aap.fermata.R.id.virtualizer_mode,
 				me.aap.fermata.R.id.equalizer_preset_save, me.aap.fermata.R.id.equalizer_preset_delete);
 		addon.getPreferenceStore().addBroadcastListener(this);
@@ -147,6 +148,10 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 			return o;
 		});
 
+		findViewById(me.aap.fermata.R.id.eq_all_down).setOnClickListener(v -> shiftBands(-100, false));
+		findViewById(me.aap.fermata.R.id.eq_all_up).setOnClickListener(v -> shiftBands(100, false));
+		findViewById(me.aap.fermata.R.id.eq_reset).setOnClickListener(v -> shiftBands(0, true));
+
 		createChannels(addon);
 	}
 
@@ -160,7 +165,7 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 	private void createChannels(YoutubeAddon addon) {
 		LinearLayout channels = findViewById(me.aap.fermata.R.id.equalizer_channels);
 		LinearLayout effects = findViewById(me.aap.fermata.R.id.equalizer_effects);
-		LayoutInflater inflater = LayoutInflater.from(getContext());
+		LayoutInflater inflater = EffectsUi.inflater(getContext());
 		int[] bands = addon.eqBands();
 		int range = YoutubeEqualizerPresets.BAND_MAX - YoutubeEqualizerPresets.BAND_MIN;
 
@@ -225,7 +230,10 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 	private void bindBandChannel(View ch, int band, int[] bands, int range) {
 		TextView value = ch.findViewById(me.aap.fermata.R.id.eq_channel_value);
 		TextView label = ch.findViewById(me.aap.fermata.R.id.eq_channel_label);
-		AppCompatSeekBar sb = ch.findViewById(me.aap.fermata.R.id.eq_channel_seek);
+		StepSeekBar sb = ch.findViewById(me.aap.fermata.R.id.eq_channel_seek);
+		sb.setStep(100);
+		sb.bindButtons(ch.findViewById(me.aap.fermata.R.id.eq_channel_minus),
+				ch.findViewById(me.aap.fermata.R.id.eq_channel_plus));
 
 		value.setText(formatDb(bands[band]));
 		sb.setMax(range);
@@ -259,7 +267,10 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 		SwitchCompat sw = ch.findViewById(me.aap.fermata.R.id.eq_channel_switch);
 		TextView value = ch.findViewById(me.aap.fermata.R.id.eq_channel_value);
 		TextView label = ch.findViewById(me.aap.fermata.R.id.eq_channel_label);
-		AppCompatSeekBar sb = ch.findViewById(me.aap.fermata.R.id.eq_channel_seek);
+		StepSeekBar sb = ch.findViewById(me.aap.fermata.R.id.eq_channel_seek);
+		sb.setStep(50);
+		sb.bindButtons(ch.findViewById(me.aap.fermata.R.id.eq_channel_minus),
+				ch.findViewById(me.aap.fermata.R.id.eq_channel_plus));
 
 		sw.setVisibility(VISIBLE);
 		sw.setChecked(enabled);
@@ -296,7 +307,10 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 
 		TextView value = ch.findViewById(me.aap.fermata.R.id.eq_channel_value);
 		TextView label = ch.findViewById(me.aap.fermata.R.id.eq_channel_label);
-		AppCompatSeekBar sb = ch.findViewById(me.aap.fermata.R.id.eq_channel_seek);
+		StepSeekBar sb = ch.findViewById(me.aap.fermata.R.id.eq_channel_seek);
+		sb.setStep(100);
+		sb.bindButtons(ch.findViewById(me.aap.fermata.R.id.eq_channel_minus),
+				ch.findViewById(me.aap.fermata.R.id.eq_channel_plus));
 
 		label.setText(labelRes);
 		value.setText(formatSeconds(durationMs));
@@ -319,6 +333,24 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 		});
 	}
 
+	/** Moves every band together by {@code delta} centibels (100 = 1 dB), or back to flat. */
+	private void shiftBands(int delta, boolean reset) {
+		YoutubeAddon addon = this.addon;
+		if (addon == null) return;
+		int[] bands = addon.eqBands();
+
+		for (int i = 0; i < bands.length; i++) {
+			int level = reset ? 0 : (bands[i] + delta);
+			bands[i] = Math.max(YoutubeEqualizerPresets.BAND_MIN,
+					Math.min(YoutubeEqualizerPresets.BAND_MAX, level));
+		}
+
+		addon.setEqBands(bands);
+		if (addon.eqPreset() != 0) addon.setEqPreset(0);
+		setBandValues(bands);
+		push();
+	}
+
 	private void bandChanged(int band, short level) {
 		YoutubeAddon addon = this.addon;
 		if (addon == null) return;
@@ -333,7 +365,7 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 		LinearLayout channels = findViewById(me.aap.fermata.R.id.equalizer_channels);
 		for (int i = 0; i < YoutubeEqualizerPresets.NUM_BANDS; i++) {
 			View ch = channels.getChildAt(i);
-			AppCompatSeekBar sb = ch.findViewById(me.aap.fermata.R.id.eq_channel_seek);
+			StepSeekBar sb = ch.findViewById(me.aap.fermata.R.id.eq_channel_seek);
 			TextView value = ch.findViewById(me.aap.fermata.R.id.eq_channel_value);
 			sb.setProgress(bands[i] - YoutubeEqualizerPresets.BAND_MIN);
 			value.setText(formatDb(bands[i]));

@@ -1208,11 +1208,26 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	public void onEngineEnded(MediaEngine engine) {
 		BufferingIndicator.setBuffering(false);
 		playerTask.cancel();
+
+		if (playbackTimerWaitingForTrackEnd) {
+			// The sleep timer ran out mid-song and the song was allowed to finish: stop here rather
+			// than moving on to the next track.
+			playbackTimerWaitingForTrackEnd = false;
+			playbackTimerFinishTrack = false;
+			PlayableItem i = engine.getSource();
+			if (i != null) setLastPlayed(i, 0);
+			playerTask = onStop(false);
+			fireBroadcastEvent(l -> l.onPlaybackTimerChanged(this));
+			return;
+		}
+
 		playerTask = engineEnded(engine);
 	}
 
 	private FutureSupplier<?> engineEnded(MediaEngine engine) {
 		PlayableItem i = engine.getSource();
+		DiagnosticLog.log("TRANSPORT", "engine ended", "engine=" + engine, "item=" + i,
+				"playNext=" + ((i == null) ? null : i.getParent().getPrefs().getPlayNextPref()));
 
 		if (i != null) {
 			if (i instanceof StreamItem) {
@@ -1229,6 +1244,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			}
 
 			return getNextPlayable(i).then(this::prepareItem).then(next -> {
+				DiagnosticLog.log("TRANSPORT", "engine ended: next", "next=" + next);
 				if (next != null) {
 					skipTo(true, next);
 				} else {
@@ -1894,6 +1910,9 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	public interface Listener {
 		default void onPlaybackStateChanged(MediaSessionCallback cb, PlaybackStateCompat state) {}
 
+		/** The sleep timer was set, cancelled, ran out, or finished waiting for the song's end. */
+		default void onPlaybackTimerChanged(MediaSessionCallback cb) {}
+
 		default void onSubtitleStreamChanged(MediaSessionCallback cb,
 																				 @Nullable SubtitleStreamInfo info) {}
 	}
@@ -1925,13 +1944,44 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	}
 
 	private PlaybackTimer playbackTimer;
+	// "Let the current song finish": once the timer runs out, playback carries on to the end of the
+	// track that is playing and only then stops, instead of cutting it off mid-song.
+	private boolean playbackTimerFinishTrack;
+	private boolean playbackTimerWaitingForTrackEnd;
 
+	/** Seconds left until the sleep timer runs out; 0 if there's none (or it's waiting for the song's end). */
 	public int getPlaybackTimer() {
 		return (playbackTimer == null) ? 0 :
 				Math.max((int) (playbackTimer.time - System.currentTimeMillis()) / 1000, 0);
 	}
 
+	/** Whether a sleep timer is set, counting down or waiting for the current song to end. */
+	public boolean hasPlaybackTimer() {
+		return (playbackTimer != null) || playbackTimerWaitingForTrackEnd;
+	}
+
+	/** The timer ran out and playback stops as soon as the current song ends. */
+	public boolean isPlaybackTimerWaitingForTrackEnd() {
+		return playbackTimerWaitingForTrackEnd;
+	}
+
+	/** Whether the timer (counting down or not) is set to let the current song finish first. */
+	public boolean isPlaybackTimerFinishTrack() {
+		return playbackTimerFinishTrack;
+	}
+
 	public void setPlaybackTimer(int time) {
+		setPlaybackTimer(time, false);
+	}
+
+	/**
+	 * Stops playback after {@code time} seconds ({@code 0} cancels the timer); with {@code finishTrack}
+	 * the song playing at that moment is played to its end first.
+	 */
+	public void setPlaybackTimer(int time, boolean finishTrack) {
+		playbackTimerWaitingForTrackEnd = false;
+		playbackTimerFinishTrack = finishTrack && (time != 0);
+
 		if (time == 0) {
 			playbackTimer = null;
 		} else {
@@ -1940,6 +1990,12 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 					this.playbackTimer = new PlaybackTimer(delay + System.currentTimeMillis());
 			handler.postDelayed(timer, delay);
 		}
+
+		fireBroadcastEvent(l -> l.onPlaybackTimerChanged(this));
+	}
+
+	public void cancelPlaybackTimer() {
+		setPlaybackTimer(0, false);
 	}
 
 	private final class PlaybackTimer implements Runnable {
@@ -1951,7 +2007,17 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 		@Override
 		public void run() {
-			if (playbackTimer == this) onStop();
+			if (playbackTimer != this) return;
+			playbackTimer = null;
+
+			if (playbackTimerFinishTrack && isPlaying()) {
+				playbackTimerWaitingForTrackEnd = true;
+			} else {
+				playbackTimerFinishTrack = false;
+				onStop();
+			}
+
+			fireBroadcastEvent(l -> l.onPlaybackTimerChanged(MediaSessionCallback.this));
 		}
 	}
 }
