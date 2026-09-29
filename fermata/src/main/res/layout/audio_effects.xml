@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The audio effects screen (AudioEffectsView, and YouTube's YoutubeEqualizerView): one scrolling
      column of cards in the Music tab's palette, like the Music and Data Usage tabs. The effects
-     first, then the equalizer, the sound stage (width, differential surround, 3D speaker), and
+     first, then the sound stage (width, differential surround, 3D speaker), the equalizer, and
      where the settings apply. Every slider has round minus / plus buttons (see
      equalizer_channel.xml), and the equalizer has buttons that move all of its bands together, so
      it can all be operated with taps. Inflated with the palette (see EffectsUi). -->
@@ -50,6 +50,13 @@
             android:layout_height="wrap_content"
             android:orientation="vertical" />
     </LinearLayout>
+
+    <!-- ====================== Sound stage ====================== -->
+    <me.aap.fermata.ui.view.SoundStageView
+        android:id="@+id/sound_stage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="14dp" />
 
     <!-- ====================== Equalizer ====================== -->
     <LinearLayout
@@ -194,13 +201,6 @@
             android:layout_marginTop="6dp"
             android:orientation="vertical" />
     </LinearLayout>
-
-    <!-- ====================== Sound stage ====================== -->
-    <me.aap.fermata.ui.view.SoundStageView
-        android:id="@+id/sound_stage"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="14dp" />
 
     <!-- ====================== Apply to ====================== -->
     <LinearLayout
