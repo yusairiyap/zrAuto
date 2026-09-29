@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The audio effects screen (AudioEffectsView, and YouTube's YoutubeEqualizerView): one scrolling
-     column of cards in the Music tab's palette, like the Music and Data Usage tabs. The sound
-     stage first (width, differential surround, 3D speaker), then the equalizer and the effects,
-     then where the settings apply. Every slider has round minus / plus buttons (see
+     column of cards in the Music tab's palette, like the Music and Data Usage tabs. The effects
+     first, then the equalizer, the sound stage (width, differential surround, 3D speaker), and
+     where the settings apply. Every slider has round minus / plus buttons (see
      equalizer_channel.xml), and the equalizer has buttons that move all of its bands together, so
      it can all be operated with taps. Inflated with the palette (see EffectsUi). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -17,12 +17,39 @@
     android:paddingEnd="16dp"
     android:paddingBottom="24dp">
 
-    <!-- ====================== Sound stage ====================== -->
-    <me.aap.fermata.ui.view.SoundStageView
-        android:id="@+id/sound_stage"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="14dp" />
+    <!-- ====================== Effects ====================== -->
+    <LinearLayout
+        android:id="@+id/effects_card"
+        style="@style/DataUsageCard"
+        android:layout_marginBottom="14dp">
+
+        <TextView
+            android:id="@+id/effects_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="36dp"
+            android:gravity="center_vertical"
+            android:text="@string/effects"
+            android:textColor="?attr/musicTextPrimary"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <me.aap.utils.pref.PreferenceView
+            android:id="@+id/virtualizer_mode"
+            style="?attr/appEqualizerStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/focusable_shape_transparent"
+            android:focusable="true"
+            tools:ignore="RtlSymmetry" />
+
+        <LinearLayout
+            android:id="@+id/equalizer_effects"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </LinearLayout>
 
     <!-- ====================== Equalizer ====================== -->
     <LinearLayout
@@ -168,39 +195,12 @@
             android:orientation="vertical" />
     </LinearLayout>
 
-    <!-- ====================== Effects ====================== -->
-    <LinearLayout
-        android:id="@+id/effects_card"
-        style="@style/DataUsageCard"
-        android:layout_marginBottom="14dp">
-
-        <TextView
-            android:id="@+id/effects_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="36dp"
-            android:gravity="center_vertical"
-            android:text="@string/effects"
-            android:textColor="?attr/musicTextPrimary"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <me.aap.utils.pref.PreferenceView
-            android:id="@+id/virtualizer_mode"
-            style="?attr/appEqualizerStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:background="@drawable/focusable_shape_transparent"
-            android:focusable="true"
-            tools:ignore="RtlSymmetry" />
-
-        <LinearLayout
-            android:id="@+id/equalizer_effects"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
-    </LinearLayout>
+    <!-- ====================== Sound stage ====================== -->
+    <me.aap.fermata.ui.view.SoundStageView
+        android:id="@+id/sound_stage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="14dp" />
 
     <!-- ====================== Apply to ====================== -->
     <LinearLayout

@@ -80,6 +80,7 @@ import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.fermata.ui.view.EffectsUi;
 import me.aap.fermata.ui.view.InfoOverlayView;
 import me.aap.fermata.ui.view.ToolBarPill;
 import me.aap.fermata.ui.view.LoadingDimView;
@@ -1460,9 +1461,15 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				(mode == REPEAT_MODE_ALL) ? R.string.music_repeat_all : R.string.music_repeat_off));
 	}
 
+	@Override
+	public boolean onBackPressed() {
+		return MusicMoreMenu.dismissOpen() || super.onBackPressed();
+	}
+
 	/** The chip's frosted-glass menu: Effects and the sleep timer. */
 	private void onMore() {
-		MusicMoreMenu.show(palette, getActivityDelegate().getMediaSessionCallback(), this::onEffects);
+		MusicMoreMenu.show(palette, (ViewGroup) requireView(), moreButton,
+				getActivityDelegate().getMediaSessionCallback(), this::onEffects);
 	}
 
 	/**
@@ -1483,7 +1490,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		}
 
 		boolean active = !label.isEmpty();
-		int color = active ? ContextCompat.getColor(requireContext(), R.color.music_accent) :
+		int color = active ? EffectsUi.accent(palette) :
 				paletteColor(R.attr.musicIconPrimary);
 		moreButton.setCompoundDrawablePadding(active ? Math.round(6 * getResources().getDisplayMetrics().density) : 0);
 		setText(moreButton, label);

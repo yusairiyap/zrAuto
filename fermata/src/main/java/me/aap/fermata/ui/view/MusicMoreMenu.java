@@ -4,33 +4,38 @@ import static android.os.Build.VERSION.SDK_INT;
 import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
 
-import android.app.Dialog;
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.RenderEffect;
+import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.transition.TransitionManager;
-import android.util.DisplayMetrics;
+import android.transition.AutoTransition;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
-import android.view.Window;
-import android.view.WindowManager;
+import android.view.MotionEvent;
+import android.view.VelocityTracker;
+import android.view.ViewConfiguration;
+import android.view.ViewGroup;
+import android.view.animation.AccelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.annotation.AttrRes;
 import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
 import androidx.appcompat.widget.SwitchCompat;
-import androidx.core.content.ContextCompat;
 import androidx.core.graphics.ColorUtils;
 
 import java.util.ArrayList;
@@ -60,55 +65,91 @@ public final class MusicMoreMenu {
 	private static int lastMinutes = 30;
 	private static boolean lastFinishSong = true;
 
+	private static MusicMoreMenu open;
+
 	private final Context ctx;
+	private final ViewGroup host;
+	private final View anchor;
 	private final MediaSessionCallback cb;
 	private final Runnable onEffects;
-	private final Dialog dialog;
 	private final boolean light;
 	private final int primary;
 	private final int secondary;
 	private final int accent;
+	private final int onAccent;
 	private final int chipFill;
 	private final int ripple;
 	private final float density;
 	private final Runnable tick = this::updateStatus;
 	private final List<TextView> presetChips = new ArrayList<>();
+	private FrameLayout overlay;
+	private FrameLayout card;
 	private LinearLayout root;
 	private View mainPage;
 	private View timerPage;
 	private TextView timerTileSub;
 	private TextView timerStatus;
 	private TextView minutesLabel;
+	private boolean blurred;
+	private boolean dismissing;
+	private ValueAnimator blurAnim;
 	private int minutes = lastMinutes;
 	private boolean finishSong = lastFinishSong;
 
-	private MusicMoreMenu(Context ctx, MediaSessionCallback cb, Runnable onEffects) {
+	private MusicMoreMenu(Context ctx, ViewGroup host, View anchor, MediaSessionCallback cb,
+												Runnable onEffects) {
 		this.ctx = ctx;
+		this.host = host;
+		this.anchor = anchor;
 		this.cb = cb;
 		this.onEffects = onEffects;
-		this.dialog = new Dialog(ctx, R.style.MusicMenuDialog);
 		this.light = MusicPlayerFragment.isLightTheme(ctx);
 		this.primary = color(R.attr.musicTextPrimary);
 		this.secondary = color(R.attr.musicTextSecondary);
 		this.chipFill = color(R.attr.musicChipFill);
 		this.ripple = color(R.attr.musicChipRipple);
-		this.accent = ContextCompat.getColor(ctx, R.color.music_accent);
+		this.accent = EffectsUi.accent(ctx);
+		this.onAccent = EffectsUi.onAccent(accent);
 		this.density = ctx.getResources().getDisplayMetrics().density;
 	}
 
 	/**
-	 * Shows the menu.
+	 * Shows the menu over {@code host} (the Music tab's root), sliding up from just above
+	 * {@code anchor}. An overlay view rather than a dialog: Android Auto's window context doesn't
+	 * allow adding dialog windows at all.
 	 *
 	 * @param ctx       a context carrying the Music tab's palette (see {@code MusicPalette} in music.xml)
 	 * @param onEffects what the Effects tile does
 	 */
-	public static void show(@NonNull Context ctx, @NonNull MediaSessionCallback cb,
-													@NonNull Runnable onEffects) {
-		new MusicMoreMenu(ctx, cb, onEffects).show();
+	public static void show(@NonNull Context ctx, @NonNull ViewGroup host, @NonNull View anchor,
+													@NonNull MediaSessionCallback cb, @NonNull Runnable onEffects) {
+		dismissOpen();
+		MusicMoreMenu m = new MusicMoreMenu(ctx, host, anchor, cb, onEffects);
+		open = m;
+		m.show();
+	}
+
+	/** Closes the menu if it's open (for the back button); returns whether it was. */
+	public static boolean dismissOpen() {
+		MusicMoreMenu m = open;
+		if ((m == null) || (m.overlay == null) || (m.overlay.getParent() == null)) {
+			open = null;
+			return false;
+		}
+		m.dismiss();
+		return true;
 	}
 
 	private void show() {
-		root = new LinearLayout(dialog.getContext());
+		overlay = new FrameLayout(ctx);
+		overlay.setClickable(true);
+		overlay.setFocusable(false);
+		overlay.setElevation(dp(30));
+		overlay.setOnClickListener(v -> dismiss());
+		overlay.setBackgroundColor(0x33000000);
+		overlay.setAlpha(0f);
+
+		root = new LinearLayout(ctx);
 		root.setOrientation(LinearLayout.VERTICAL);
 		root.setPadding(dp(16), dp(16), dp(16), dp(16));
 
@@ -120,38 +161,90 @@ public final class MusicMoreMenu {
 		pages.addView(timerPage, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 		root.addView(pages, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
-		dialog.setContentView(root);
-		dialog.setCanceledOnTouchOutside(true);
-		dialog.setOnDismissListener(d -> root.removeCallbacks(tick));
-		configureWindow();
-		dialog.show();
+		// On a short screen (landscape) the card scrolls rather than running off it.
+		ScrollView scroll = new ScrollView(ctx);
+		scroll.setVerticalScrollBarEnabled(false);
+		scroll.addView(root, new ViewGroup.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
-		root.setAlpha(0f);
-		root.setTranslationY(dp(24));
-		root.animate().alpha(1f).translationY(0f).setDuration(220)
-				.setInterpolator(new DecelerateInterpolator()).start();
+		card = new DraggableCard(ctx);
+		card.setBackground(glass());
+		card.setClickable(true);
+		card.setAlpha(0f);
+		card.addView(scroll, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+
+		int w = Math.min(dp(380), host.getWidth() - dp(32));
+		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, WRAP_CONTENT,
+				Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+		lp.bottomMargin = dp(12);
+		overlay.addView(card, lp);
+		host.addView(overlay, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+
 		updateStatus();
+		// Once laid out: sit just above the chip that opened it, then slide up.
+		card.post(this::placeAndEnter);
+	}
+
+	private void placeAndEnter() {
+		if (overlay.getParent() == null) return;
+		int hostH = host.getHeight();
+		int ch = card.getHeight();
+		int[] a = new int[2];
+		int[] h = new int[2];
+		anchor.getLocationInWindow(a);
+		host.getLocationInWindow(h);
+		int anchorTop = a[1] - h[1];
+		int margin = hostH - anchorTop + dp(10);
+		margin = Math.min(margin, hostH - ch - dp(12));
+		margin = Math.max(margin, dp(12));
+		FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) card.getLayoutParams();
+		lp.bottomMargin = margin;
+		card.setLayoutParams(lp);
+		card.setTranslationY(ch + margin);
+		card.setAlpha(1f);
+		card.animate().translationY(0f).setDuration(280).setInterpolator(new DecelerateInterpolator(1.6f))
+				.start();
+		overlay.animate().alpha(1f).setDuration(220).start();
+		animateBlur(true);
+	}
+
+	/** Slides the card back down and away. */
+	private void dismiss() {
+		if (dismissing) return;
+		dismissing = true;
+		root.removeCallbacks(tick);
+		animateBlur(false);
+		overlay.animate().alpha(0f).setDuration(200).start();
+		card.animate().translationY(card.getHeight() + dp(80)).setDuration(220)
+				.setInterpolator(new AccelerateInterpolator(1.4f)).withEndAction(this::remove).start();
+	}
+
+	/** Closes at once, without the slide (leaving for another screen). */
+	private void dismissNow() {
+		dismissing = true;
+		root.removeCallbacks(tick);
+		overlay.animate().cancel();
+		card.animate().cancel();
+		remove();
+	}
+
+	private void remove() {
+		if (blurAnim != null) blurAnim.cancel();
+		setBlur(0f);
+		host.removeView(overlay);
+		if (open == this) open = null;
 	}
 
 	// ---------------------------------------------------------------------------------------------
-	// Window: the frosted glass
+	// The frosted glass
 	// ---------------------------------------------------------------------------------------------
 
-	private void configureWindow() {
-		Window w = dialog.getWindow();
-		if (w == null) return;
-
-		boolean blurred = false;
-		if (SDK_INT >= 31) {
-			WindowManager wm = ctx.getSystemService(WindowManager.class);
-			blurred = (wm != null) && wm.isCrossWindowBlurEnabled();
-		}
-
+	private Drawable glass() {
+		blurred = SDK_INT >= 31;
 		int top;
 		int bottom;
 		if (blurred) {
-			top = light ? 0xB8FFFFFF : 0x40FFFFFF;
-			bottom = light ? 0x8CFFFFFF : 0x24FFFFFF;
+			top = light ? 0xB8FFFFFF : 0x4DFFFFFF;
+			bottom = light ? 0x94FFFFFF : 0x26FFFFFF;
 		} else {
 			top = light ? 0xF7FFFFFF : 0xF2262632;
 			bottom = light ? 0xF7F1F2F6 : 0xF21A1A24;
@@ -160,23 +253,95 @@ public final class MusicMoreMenu {
 		GradientDrawable glass = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
 				new int[]{top, bottom});
 		glass.setCornerRadius(dp(28));
-		glass.setStroke(Math.max(1, dp(1)), light ? 0x33FFFFFF : 0x55FFFFFF);
-		w.setBackgroundDrawable(glass);
+		return glass;
+	}
 
-		DisplayMetrics dm = ctx.getResources().getDisplayMetrics();
-		WindowManager.LayoutParams lp = w.getAttributes();
-		lp.width = Math.min(dp(380), dm.widthPixels - dp(32));
-		lp.height = WRAP_CONTENT;
-		lp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
-		lp.y = dp(32);
+	/** Blurs everything of the Music tab behind the card (Android 12+), so the card reads as frosted glass. */
+	private void animateBlur(boolean in) {
+		if (!blurred || (SDK_INT < 31)) return;
+		if (blurAnim != null) blurAnim.cancel();
+		blurAnim = ValueAnimator.ofFloat(in ? 0f : 1f, in ? 1f : 0f);
+		blurAnim.setDuration(240);
+		blurAnim.addUpdateListener(a -> setBlur((float) a.getAnimatedValue()));
+		blurAnim.start();
+	}
 
-		if (blurred && (SDK_INT >= 31)) {
-			w.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
-			lp.setBlurBehindRadius(24);
-			w.setBackgroundBlurRadius(110);
+	private void setBlur(float amount) {
+		if (SDK_INT < 31) return;
+		RenderEffect effect = (amount <= 0.01f) ? null :
+				RenderEffect.createBlurEffect(dp(20) * amount, dp(20) * amount, Shader.TileMode.CLAMP);
+		for (int i = 0; i < host.getChildCount(); i++) {
+			View c = host.getChildAt(i);
+			if (c != overlay) c.setRenderEffect(effect);
+		}
+	}
+
+	/** The card, which a downward drag pulls away (and, dragged far or flung, dismisses). */
+	private final class DraggableCard extends FrameLayout {
+		private final int slop = ViewConfiguration.get(getContext()).getScaledTouchSlop();
+		private float downY;
+		private boolean dragging;
+		private VelocityTracker velocity;
+
+		DraggableCard(Context c) {
+			super(c);
 		}
 
-		w.setAttributes(lp);
+		@Override
+		public boolean onInterceptTouchEvent(MotionEvent e) {
+			switch (e.getActionMasked()) {
+				case MotionEvent.ACTION_DOWN:
+					downY = e.getRawY();
+					dragging = false;
+					break;
+				case MotionEvent.ACTION_MOVE:
+					if (!dragging && (e.getRawY() - downY > slop)) {
+						dragging = true;
+						begin();
+						return true;
+					}
+					break;
+				default:
+					break;
+			}
+			return false;
+		}
+
+		private void begin() {
+			velocity = VelocityTracker.obtain();
+		}
+
+		@Override
+		public boolean onTouchEvent(MotionEvent e) {
+			if (velocity == null) velocity = VelocityTracker.obtain();
+			velocity.addMovement(e);
+
+			switch (e.getActionMasked()) {
+				case MotionEvent.ACTION_DOWN:
+					downY = e.getRawY();
+					return true;
+				case MotionEvent.ACTION_MOVE:
+					dragging = true;
+					setTranslationY(Math.max(0, e.getRawY() - downY));
+					return true;
+				case MotionEvent.ACTION_UP:
+				case MotionEvent.ACTION_CANCEL:
+					velocity.computeCurrentVelocity(1000);
+					float vy = velocity.getYVelocity();
+					velocity.recycle();
+					velocity = null;
+					if (dragging && ((getTranslationY() > getHeight() / 3f) || (vy > 1200))) {
+						dismiss();
+					} else {
+						animate().translationY(0f).setDuration(180)
+								.setInterpolator(new DecelerateInterpolator()).start();
+					}
+					dragging = false;
+					return true;
+				default:
+					return true;
+			}
+		}
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -198,7 +363,7 @@ public final class MusicMoreMenu {
 		TextView[] sub = new TextView[1];
 		View effects = tile(R.drawable.equalizer, ctx.getString(R.string.effects),
 				ctx.getString(R.string.music_more_effects_hint), sub, () -> {
-					dialog.dismiss();
+					dismissNow();
 					onEffects.run();
 				});
 		View timer = tile(R.drawable.timer, ctx.getString(R.string.music_sleep_timer), "", sub,
@@ -211,7 +376,7 @@ public final class MusicMoreMenu {
 	}
 
 	private LinearLayout.LayoutParams tileParams() {
-		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(132), 1f);
+		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f);
 		lp.setMargins(dp(4), 0, dp(4), 0);
 		return lp;
 	}
@@ -222,7 +387,8 @@ public final class MusicMoreMenu {
 		LinearLayout t = new LinearLayout(ctx);
 		t.setOrientation(LinearLayout.VERTICAL);
 		t.setGravity(Gravity.CENTER);
-		t.setPadding(dp(10), dp(12), dp(10), dp(12));
+		t.setMinimumHeight(dp(132));
+		t.setPadding(dp(10), dp(14), dp(10), dp(14));
 		t.setBackground(pressable(chipFill, 22));
 		t.setClickable(true);
 		t.setFocusable(true);
@@ -236,7 +402,7 @@ public final class MusicMoreMenu {
 		disc.setBackground(d);
 		ImageView iv = new ImageView(ctx);
 		iv.setImageResource(icon);
-		iv.setImageTintList(ColorStateList.valueOf(0xFF000000));
+		iv.setImageTintList(ColorStateList.valueOf(onAccent));
 		disc.addView(iv, new FrameLayout.LayoutParams(dp(28), dp(28), Gravity.CENTER));
 		t.addView(disc, new LinearLayout.LayoutParams(dp(52), dp(52)));
 
@@ -359,7 +525,7 @@ public final class MusicMoreMenu {
 		TextView off = pill(ctx.getString(R.string.music_timer_turn_off), false, () -> {
 			cb.cancelPlaybackTimer();
 			UiUtils.showToast(ctx, ctx.getString(R.string.music_timer_cancelled));
-			dialog.dismiss();
+			dismiss();
 		});
 		off.setTag("off");
 		TextView start = pill(ctx.getString(R.string.music_timer_start), true, this::startTimer);
@@ -382,7 +548,7 @@ public final class MusicMoreMenu {
 		lastFinishSong = finishSong;
 		cb.setPlaybackTimer(minutes * 60, finishSong);
 		UiUtils.showToast(ctx, ctx.getString(R.string.music_timer_set, minutesText(minutes)));
-		dialog.dismiss();
+		dismiss();
 	}
 
 	private void setMinutes(int m) {
@@ -404,7 +570,7 @@ public final class MusicMoreMenu {
 		for (TextView chip : presetChips) {
 			boolean sel = ((Integer) chip.getTag()) == minutes;
 			chip.setBackground(pillBackground(sel));
-			chip.setTextColor(sel ? 0xFF000000 : primary);
+			chip.setTextColor(sel ? onAccent : primary);
 		}
 	}
 
@@ -415,7 +581,7 @@ public final class MusicMoreMenu {
 	}
 
 	private void showPage(boolean timer) {
-		TransitionManager.beginDelayedTransition(root);
+		TransitionManager.beginDelayedTransition(root, new AutoTransition().setDuration(140));
 		mainPage.setVisibility(timer ? View.GONE : View.VISIBLE);
 		timerPage.setVisibility(timer ? View.VISIBLE : View.GONE);
 		updateStatus();
@@ -463,7 +629,7 @@ public final class MusicMoreMenu {
 	}
 
 	private TextView pill(String label, boolean filled, Runnable onClick) {
-		TextView t = text(label, 14, filled ? 0xFF000000 : primary, true);
+		TextView t = text(label, 14, filled ? onAccent : primary, true);
 		t.setGravity(Gravity.CENTER);
 		t.setSingleLine(true);
 		t.setBackground(pillBackground(filled));

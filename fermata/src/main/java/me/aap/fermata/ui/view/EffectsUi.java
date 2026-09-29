@@ -1,6 +1,7 @@
 package me.aap.fermata.ui.view;
 
 import android.content.Context;
+import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -9,6 +10,8 @@ import android.widget.TextView;
 
 import androidx.annotation.StringRes;
 import androidx.appcompat.view.ContextThemeWrapper;
+import androidx.core.content.ContextCompat;
+import androidx.core.graphics.ColorUtils;
 
 import java.util.function.IntConsumer;
 import java.util.function.IntFunction;
@@ -30,6 +33,30 @@ public final class EffectsUi {
 				R.style.MusicPalette_Light : R.style.MusicPalette_Dark);
 	}
 
+	/**
+	 * The theme's own accent color (the one the app's sliders and switches are drawn in), so the
+	 * effects screens and the more menu follow whichever theme is picked.
+	 */
+	public static int accent(Context ctx) {
+		TypedValue tv = new TypedValue();
+		try {
+			if (ctx.getTheme().resolveAttribute(androidx.appcompat.R.attr.colorControlActivated, tv, true)) {
+				if ((tv.type >= TypedValue.TYPE_FIRST_COLOR_INT) && (tv.type <= TypedValue.TYPE_LAST_COLOR_INT)) {
+					return tv.data;
+				}
+				if (tv.resourceId != 0) return ContextCompat.getColor(ctx, tv.resourceId);
+			}
+		} catch (RuntimeException ignore) {
+			// Falls through to the default below.
+		}
+		return ContextCompat.getColor(ctx, R.color.music_accent);
+	}
+
+	/** Black or white, whichever reads on {@code accent}. */
+	public static int onAccent(int accent) {
+		return (ColorUtils.calculateLuminance(accent) > 0.5) ? 0xFF000000 : 0xFFFFFFFF;
+	}
+
 	public static LayoutInflater inflater(Context ctx) {
 		return LayoutInflater.from(palette(ctx));
 	}
@@ -48,6 +75,16 @@ public final class EffectsUi {
 			label = view.findViewById(R.id.eq_channel_label);
 			value = view.findViewById(R.id.eq_channel_value);
 			seek = view.findViewById(R.id.eq_channel_seek);
+		}
+
+		/** Greys the row out and makes it ignore touches while its feature is off. */
+		public void setEnabled(boolean enabled) {
+			view.setAlpha(enabled ? 1f : 0.4f);
+			seek.setEnabled(enabled);
+			View minus = view.findViewById(R.id.eq_channel_minus);
+			View plus = view.findViewById(R.id.eq_channel_plus);
+			if (minus != null) minus.setEnabled(enabled);
+			if (plus != null) plus.setEnabled(enabled);
 		}
 
 		/** Moves the slider without telling the listener. */

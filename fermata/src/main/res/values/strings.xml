@@ -175,7 +175,6 @@
     <string name="eq_reset">Flat</string>
     <string name="eq_bands_hint">Move every band together</string>
     <string name="stage_title">Sound stage</string>
-    <string name="stage_hint">Width, differential surround and 3D position. Works in the app\'s player and on YouTube.</string>
     <string name="stage_width">Stereo width</string>
     <string name="stage_diff">Differential surround</string>
     <string name="stage_diff_strength">Amount</string>
@@ -715,7 +714,7 @@
     <string name="music_effects_play_first">Start playing something to adjust its audio effects</string>
     <string name="music_effects_unavailable">Audio effects aren\'t available for this playback</string>
     <string name="music_more">More</string>
-    <string name="music_more_effects_hint">Equalizer, sound modes, 3D</string>
+    <string name="music_more_effects_hint">Equalizer, sound modes</string>
     <string name="music_sleep_timer">Sleep timer</string>
     <string name="music_timer_off">Off</string>
     <string name="music_timer_left">%1$s left</string>

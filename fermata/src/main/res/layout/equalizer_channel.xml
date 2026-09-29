@@ -1,77 +1,89 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- One slider row of the effects screens: label, an optional switch, a minus button, the slider,
-     a plus button and the value. The round buttons step the slider (hold to keep going), so a
-     value can be set with taps alone, which is a lot easier in a car than dragging a thumb; see
-     StepSeekBar. Inflated with the Music tab's palette (see EffectsUi). The switch is INVISIBLE,
-     not GONE, when unused, so every row's slider starts at the same place. -->
+<!-- One slider of the effects screens, on two lines so the slider itself gets the full width: the
+     label (with its switch, if it has one) and the value on top; below, a minus button, the slider
+     and a plus button. The round buttons step the slider (hold to keep going), so a value can be set
+     with taps alone, which is a lot easier in a car than dragging a thumb; see StepSeekBar.
+     Inflated with the Music tab's palette (see EffectsUi). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="2dp"
-    android:layout_marginBottom="2dp"
-    android:gravity="center_vertical"
-    android:minHeight="48dp"
-    android:orientation="horizontal">
+    android:layout_marginTop="4dp"
+    android:layout_marginBottom="4dp"
+    android:orientation="vertical">
 
-    <TextView
-        android:id="@+id/eq_channel_label"
-        android:layout_width="72dp"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="start|center_vertical"
-        android:maxLines="2"
-        android:textColor="?attr/musicTextPrimary"
-        android:textSize="14sp" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
 
-    <androidx.appcompat.widget.SwitchCompat
-        android:id="@+id/eq_channel_switch"
-        style="?attr/appEqualizerStyle"
-        android:layout_width="wrap_content"
+        <TextView
+            android:id="@+id/eq_channel_label"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="start|center_vertical"
+            android:maxLines="2"
+            android:textColor="?attr/musicTextPrimary"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/eq_channel_value"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:gravity="end|center_vertical"
+            android:lines="1"
+            android:textColor="?attr/musicTextSecondary"
+            android:textSize="13sp" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/eq_channel_switch"
+            style="?attr/appEqualizerStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="4dp"
-        android:layout_marginEnd="2dp"
-        android:visibility="invisible" />
+        android:layout_marginTop="2dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
 
-    <ImageButton
-        android:id="@+id/eq_channel_minus"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:layout_marginStart="4dp"
-        android:background="@drawable/step_button_bg"
-        android:contentDescription="@string/eq_step_down"
-        android:focusable="true"
-        android:padding="9dp"
-        android:scaleType="fitCenter"
-        android:src="@drawable/step_minus"
-        android:tint="?attr/musicIconPrimary" />
+        <ImageButton
+            android:id="@+id/eq_channel_minus"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/step_button_bg"
+            android:contentDescription="@string/eq_step_down"
+            android:focusable="true"
+            android:padding="9dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/step_minus"
+            android:tint="?attr/musicIconPrimary" />
 
-    <me.aap.fermata.ui.view.StepSeekBar
-        android:id="@+id/eq_channel_seek"
-        style="?attr/appEqualizerStyle"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="4dp"
-        android:layout_marginEnd="4dp"
-        android:layout_weight="1" />
+        <me.aap.fermata.ui.view.StepSeekBar
+            android:id="@+id/eq_channel_seek"
+            style="?attr/appEqualizerStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:layout_marginEnd="6dp"
+            android:layout_weight="1" />
 
-    <ImageButton
-        android:id="@+id/eq_channel_plus"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:background="@drawable/step_button_bg"
-        android:contentDescription="@string/eq_step_up"
-        android:focusable="true"
-        android:padding="9dp"
-        android:scaleType="fitCenter"
-        android:src="@drawable/step_plus"
-        android:tint="?attr/musicIconPrimary" />
-
-    <TextView
-        android:id="@+id/eq_channel_value"
-        android:layout_width="48dp"
-        android:layout_height="wrap_content"
-        android:gravity="end|center_vertical"
-        android:lines="1"
-        android:textColor="?attr/musicTextSecondary"
-        android:textSize="13sp" />
-
+        <ImageButton
+            android:id="@+id/eq_channel_plus"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/step_button_bg"
+            android:contentDescription="@string/eq_step_up"
+            android:focusable="true"
+            android:padding="9dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/step_plus"
+            android:tint="?attr/musicIconPrimary" />
+    </LinearLayout>
 </LinearLayout>

@@ -13,13 +13,6 @@
         android:textSize="18sp"
         android:textStyle="bold" />
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:text="@string/stage_hint"
-        android:textColor="?attr/musicTextSecondary"
-        android:textSize="12sp" />
 
     <!-- Stereo width -->
     <LinearLayout

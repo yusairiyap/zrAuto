@@ -10,10 +10,10 @@ import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.ViewConfiguration;
 import android.view.View;
 
 import androidx.annotation.AttrRes;
-import androidx.core.content.ContextCompat;
 import androidx.core.graphics.ColorUtils;
 
 import me.aap.fermata.R;
@@ -43,6 +43,11 @@ public class StagePadView extends View {
 	private final Path nose = new Path();
 	private final float density;
 	private final int accent;
+	private final int onAccent;
+	private final int slop;
+	private boolean dragging;
+	private float downX;
+	private float downY;
 	private int discColor;
 	private int lineColor;
 	private int iconColor;
@@ -62,7 +67,9 @@ public class StagePadView extends View {
 	public StagePadView(Context context, AttributeSet attrs) {
 		super(context, attrs);
 		density = context.getResources().getDisplayMetrics().density;
-		accent = ContextCompat.getColor(context, R.color.music_accent);
+		accent = EffectsUi.accent(context);
+		onAccent = EffectsUi.onAccent(accent);
+		slop = ViewConfiguration.get(context).getScaledTouchSlop();
 		discColor = color(R.attr.musicChipFill);
 		lineColor = color(R.attr.musicSeekTrack);
 		iconColor = color(R.attr.musicIconSecondary);
@@ -171,7 +178,7 @@ public class StagePadView extends View {
 			if (orbit == 0) c.drawLine(px, py, sx, sy, stroke);
 			fill.setColor(ColorUtils.setAlphaComponent(accent, (int) (0xB0 * dim)));
 			c.drawCircle(sx, sy, 8 * density, fill);
-			text.setColor(0xFF000000);
+			text.setColor(onAccent);
 			c.drawText((i == 0) ? "L" : "R", sx, sy + ty, text);
 		}
 
@@ -182,29 +189,51 @@ public class StagePadView extends View {
 		c.drawCircle(px, py, 34 * density, glow);
 		fill.setColor(ColorUtils.setAlphaComponent(accent, (int) (0xFF * dim)));
 		c.drawCircle(px, py, 13 * density, fill);
-		fill.setColor(0xFF000000);
+		fill.setColor(onAccent);
 		c.drawCircle(px, py, 4 * density, fill);
 
 		if (orbit > 0 && active) postInvalidateOnAnimation();
 	}
 
+	/**
+	 * A touch that starts on the puck drags it. A touch that starts anywhere else is left to the page
+	 * to scroll, and only places the puck there if it turns out to be a tap: the pad sits in a
+	 * scrolling screen, and a finger going by on its way up or down must not move the sound.
+	 * Nothing is grabbed at all while the 3D speaker is off.
+	 */
 	@Override
 	public boolean onTouchEvent(MotionEvent e) {
+		if (!active) return false;
+
 		switch (e.getActionMasked()) {
-			case MotionEvent.ACTION_DOWN:
-				getParent().requestDisallowInterceptTouchEvent(true);
-				requestFocus();
-				moveTo(e.getX(), e.getY(), false);
+			case MotionEvent.ACTION_DOWN: {
+				downX = e.getX();
+				downY = e.getY();
+				float r = radius();
+				float px = getWidth() / 2f + posX / 100f * r;
+				float py = getHeight() / 2f - posY / 100f * r;
+				dragging = Math.hypot(e.getX() - px, e.getY() - py) <= 44 * density;
+				if (dragging) {
+					getParent().requestDisallowInterceptTouchEvent(true);
+					requestFocus();
+				}
 				return true;
+			}
 			case MotionEvent.ACTION_MOVE:
-				moveTo(e.getX(), e.getY(), false);
+				if (dragging) moveTo(e.getX(), e.getY(), false);
 				return true;
 			case MotionEvent.ACTION_UP:
-				moveTo(e.getX(), e.getY(), true);
+				if (dragging) {
+					moveTo(e.getX(), e.getY(), true);
+				} else if (Math.hypot(e.getX() - downX, e.getY() - downY) <= slop) {
+					moveTo(e.getX(), e.getY(), true);
+				}
+				dragging = false;
 				performClick();
 				return true;
 			case MotionEvent.ACTION_CANCEL:
-				moveTo(e.getX(), e.getY(), true);
+				if (dragging) moveTo(e.getX(), e.getY(), true);
+				dragging = false;
 				return true;
 			default:
 				return super.onTouchEvent(e);

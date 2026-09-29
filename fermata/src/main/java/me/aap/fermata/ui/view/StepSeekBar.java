@@ -80,6 +80,7 @@ public class StepSeekBar extends AppCompatSeekBar {
 		};
 
 		b.setOnTouchListener((v, e) -> {
+			if (!v.isEnabled()) return true;
 			switch (e.getActionMasked()) {
 				case MotionEvent.ACTION_DOWN:
 					v.setPressed(true);
@@ -102,7 +103,7 @@ public class StepSeekBar extends AppCompatSeekBar {
 		b.setOnClickListener(v -> {
 		});
 		b.setOnKeyListener((v, keyCode, e) -> {
-			if ((e.getAction() == android.view.KeyEvent.ACTION_DOWN) &&
+			if (v.isEnabled() && (e.getAction() == android.view.KeyEvent.ACTION_DOWN) &&
 					((keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER) ||
 							(keyCode == android.view.KeyEvent.KEYCODE_ENTER))) {
 				stepBy(direction);
