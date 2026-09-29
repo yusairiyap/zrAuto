@@ -158,11 +158,6 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 			}
 		}
 
-		// No fade over video, nor over a tab running its own background on behind a side pill (the
-		// Music tab's blurred cover): there the background itself should show through, untinted.
-		boolean ownBg = !nb.isBottom() && (a.getActiveFragment() instanceof MainActivityFragment f)
-				&& f.drawsBehindSideNavBar();
-		float newFadeA = (a.isVideoMode() || ownBg) ? 0f : navA;
 		int pos = nb.getPosition();
 
 		// Over a tab running its own (blurred) background under the bars, the pill turns into frosted
@@ -173,6 +168,11 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 		if (newGlass != glassTarget) {
 			newGlass += Math.max(-GLASS_STEP, Math.min(GLASS_STEP, glassTarget - newGlass));
 		}
+
+		// No fade over video, nor over a tab running its own background under the bars (the Music
+		// tab's blurred cover, with the pill as frosted glass): there the background itself should
+		// show through, untinted -- so it fades out along with the glass look coming in.
+		float newFadeA = a.isVideoMode() ? 0f : navA * (1f - newGlass);
 
 		if ((glass != newGlass) || !main.equals(tmp) || !aux.equals(newAux) || (mainAlpha != newMainA)
 				|| (auxAlpha != newAuxA) || (dividerAlpha != newDivA) || (dividerPos != newDivPos)
