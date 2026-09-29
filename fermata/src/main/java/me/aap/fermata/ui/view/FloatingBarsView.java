@@ -40,6 +40,10 @@ import me.aap.utils.ui.view.NavBarView;
  * side nav bar, fading with it, or growing and shrinking as the control panel row comes and goes.
  */
 public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDrawListener {
+	/** How far the pill eases toward or away from see-through, per frame. */
+	private static final float GLASS_STEP = 0.1f;
+	/** The pill's opacity over a blurred background, against the usual 0xF2. */
+	private static final int GLASS_ALPHA = 0x73;
 	private final Paint pillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 	private final Paint dividerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 	private final Paint fadePaint = new Paint();
@@ -63,6 +67,9 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 	private float dividerPos;
 	private float fadeAlpha;
 	private int navPos;
+	// 0 = the usual, mostly opaque pill; 1 = see-through, over the Music tab's blurred cover. Eased
+	// from one to the other so the pill doesn't snap when the tab changes.
+	private float glass;
 
 	public FloatingBarsView(@NonNull Context ctx, @Nullable AttributeSet attrs) {
 		super(ctx, attrs);
@@ -158,7 +165,16 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 		float newFadeA = (a.isVideoMode() || ownBg) ? 0f : navA;
 		int pos = nb.getPosition();
 
-		if (!main.equals(tmp) || !aux.equals(newAux) || (mainAlpha != newMainA)
+		// Over a tab running its own (blurred) background under the bars, the pill turns into frosted
+		// glass: that background shows through it.
+		float glassTarget = (a.getActiveFragment() instanceof MainActivityFragment mf)
+				&& mf.drawsBehindSideNavBar() ? 1f : 0f;
+		float newGlass = glass;
+		if (newGlass != glassTarget) {
+			newGlass += Math.max(-GLASS_STEP, Math.min(GLASS_STEP, glassTarget - newGlass));
+		}
+
+		if ((glass != newGlass) || !main.equals(tmp) || !aux.equals(newAux) || (mainAlpha != newMainA)
 				|| (auxAlpha != newAuxA) || (dividerAlpha != newDivA) || (dividerPos != newDivPos)
 				|| (fadeAlpha != newFadeA) || (navPos != pos)) {
 			main.set(tmp);
@@ -169,6 +185,7 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 			dividerPos = newDivPos;
 			fadeAlpha = newFadeA;
 			navPos = pos;
+			glass = newGlass;
 			invalidate();
 		}
 
@@ -208,11 +225,14 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 		if (r.isEmpty() || (alpha <= 0f)) return;
 		float radius = Math.min(maxRadius, Math.min(r.width(), r.height()) / 2f);
 		pillPaint.setColor(pillColor);
-		pillPaint.setAlpha(Math.round(Color.alpha(pillColor) * alpha));
+		float fill = Color.alpha(pillColor) + (GLASS_ALPHA - Color.alpha(pillColor)) * glass;
+		pillPaint.setAlpha(Math.round(fill * alpha));
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
 			// The shadow fades with the pill: left at full strength, it lingers as a grey smear
-			// while the pill itself is already fading or sliding away.
-			pillPaint.setShadowLayer(shadowRadius, 0, shadowDy, Math.round(0x40 * alpha) << 24);
+			// while the pill itself is already fading or sliding away. None under the glass look,
+			// where it would show through the pill as a dark smudge.
+			pillPaint.setShadowLayer(shadowRadius, 0, shadowDy,
+					Math.round(0x40 * alpha * (1f - glass)) << 24);
 		}
 		canvas.drawRoundRect(r, radius, radius, pillPaint);
 	}
