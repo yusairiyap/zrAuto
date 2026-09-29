@@ -119,6 +119,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	@Nullable
 	private View[] behind;
 	private final int[] extLoc = new int[2];
+	// The containers unclipped for the status bar, and how they were, see unclipForStatusBar().
+	@Nullable
+	private ViewGroup[] clipViews;
+	private boolean[] clipChildrenWas;
+	private boolean[] clipToPaddingWas;
 	private final int[] extLoc2 = new int[2];
 	private ImageView art;
 	private LoadingDimView loading;
@@ -437,6 +442,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 	@Override
 	public void onDestroyView() {
+		restoreClipping();
 		setListening(false);
 		stopProgress();
 		if (content != null) content.getViewTreeObserver().removeOnPreDrawListener(insetSync);
@@ -958,17 +964,47 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if (a.isCarActivity()) return 0;
 		root.getLocationInWindow(extLoc);
 		int top = Math.max(0, extLoc[1]);
-		if (top == 0) return 0;
-		// The bar's area is main_activity's own top padding: every container between it and this tab
-		// has to let the layers draw out into it.
+		// Only while this tab is on screen: with the containers unclipped, every other tab's content
+		// would scroll up behind the status bar too, which those tabs keep opaque.
+		if ((top == 0) || !root.isShown()) restoreClipping();
+		else unclipForStatusBar(root);
+		return top;
+	}
+
+	/**
+	 * The bar's area is main_activity's own top padding: every container between it and this tab
+	 * has to let the background draw out into it. A view's own drawing is clipped to its bounds by
+	 * its parent's clipChildren, so that includes main_activity itself (which clips body_layout).
+	 * The previous settings are kept, for restoreClipping().
+	 */
+	private void unclipForStatusBar(View root) {
+		if (clipViews != null) return;
+		List<ViewGroup> l = new ArrayList<>();
 		for (ViewParent p = root.getParent(); p instanceof ViewGroup g; p = g.getParent()) {
-			g.setClipToPadding(false);
-			// A view's own drawing is clipped to its bounds by its parent's clipChildren, so every
-			// container up to and including main_activity (which clips body_layout) must let go.
-			g.setClipChildren(false);
+			l.add(g);
 			if (g.getId() == R.id.main_activity) break;
 		}
-		return top;
+		ViewGroup[] views = l.toArray(new ViewGroup[0]);
+		clipChildrenWas = new boolean[views.length];
+		clipToPaddingWas = new boolean[views.length];
+		for (int i = 0; i < views.length; i++) {
+			clipChildrenWas[i] = views[i].getClipChildren();
+			clipToPaddingWas[i] = views[i].getClipToPadding();
+			views[i].setClipChildren(false);
+			views[i].setClipToPadding(false);
+		}
+		clipViews = views;
+	}
+
+	/** Puts the containers' clipping back as unclipForStatusBar() found it. */
+	private void restoreClipping() {
+		ViewGroup[] views = clipViews;
+		if (views == null) return;
+		clipViews = null;
+		for (int i = 0; i < views.length; i++) {
+			views[i].setClipChildren(clipChildrenWas[i]);
+			views[i].setClipToPadding(clipToPaddingWas[i]);
+		}
 	}
 
 	private void syncInsets() {

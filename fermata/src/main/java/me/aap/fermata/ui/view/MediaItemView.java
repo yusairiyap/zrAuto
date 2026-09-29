@@ -472,7 +472,7 @@ public class MediaItemView extends ConstraintLayout
 
 	private static Drawable getLoadingDrawable(Context ctx) {
 		if (loadingDrawable == null) {
-			loadingDrawable = ContextCompat.getDrawable(ctx, R.drawable.loading);
+			loadingDrawable = ContextCompat.getDrawable(ctx, R.drawable.loading_spinner);
 			Objects.requireNonNull(loadingDrawable).setTint(iconColor);
 			MainActivityDelegate.get(ctx)
 					.addBroadcastListener(MediaItemView::onActivityDestroyEvent, ACTIVITY_DESTROY);
