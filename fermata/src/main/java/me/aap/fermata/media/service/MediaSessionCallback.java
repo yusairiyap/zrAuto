@@ -1226,6 +1226,8 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	private FutureSupplier<?> engineEnded(MediaEngine engine) {
 		PlayableItem i = engine.getSource();
+		DiagnosticLog.log("TRANSPORT", "engine ended", "engine=" + engine, "item=" + i,
+				"playNext=" + ((i == null) ? null : i.getParent().getPrefs().getPlayNextPref()));
 
 		if (i != null) {
 			if (i instanceof StreamItem) {
@@ -1242,6 +1244,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			}
 
 			return getNextPlayable(i).then(this::prepareItem).then(next -> {
+				DiagnosticLog.log("TRANSPORT", "engine ended: next", "next=" + next);
 				if (next != null) {
 					skipTo(true, next);
 				} else {

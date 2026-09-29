@@ -59,6 +59,8 @@ import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.material.card.MaterialCardView;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -81,6 +83,7 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.view.EffectsUi;
+import me.aap.fermata.ui.view.FrostView;
 import me.aap.fermata.ui.view.InfoOverlayView;
 import me.aap.fermata.ui.view.ToolBarPill;
 import me.aap.fermata.ui.view.LoadingDimView;
@@ -142,6 +145,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private ImageButton repeat;
 	private TextView videoButton;
 	private TextView moreButton;
+	@Nullable
+	private FrostView queueFrost;
+	private View queueTint;
+	private boolean queueWanted;
 	private final Runnable timerChipTask = this::updateTimerChip;
 	private View queuePanel;
 	private View queueDismiss;
@@ -248,6 +255,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		LayoutTransition lt = ((ViewGroup) view.findViewById(R.id.music_actions)).getLayoutTransition();
 		if (lt != null) lt.enableTransitionType(LayoutTransition.CHANGING);
 		queuePanel = view.findViewById(R.id.music_queue_panel);
+		setUpQueueGlass();
 		queueDismiss = view.findViewById(R.id.music_queue_dismiss);
 		queueDismiss.setOnClickListener(v -> showQueue(false));
 		queueCount = view.findViewById(R.id.music_queue_count);
@@ -1468,7 +1476,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 	/** The chip's frosted-glass menu: Effects and the sleep timer. */
 	private void onMore() {
-		MusicMoreMenu.show(palette, (ViewGroup) requireView(), moreButton,
+		MusicMoreMenu.show(palette, (ViewGroup) requireView(), content, moreButton,
 				getActivityDelegate().getMediaSessionCallback(), this::onEffects);
 	}
 
@@ -1553,14 +1561,21 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		queuePanel.animate().cancel();
 		showQueueDismiss(show);
 
+		queueWanted = show;
+
 		if (show) {
 			adapter.reload();
 			layoutQueuePanel();
 			queuePanel.setVisibility(View.VISIBLE);
 			queuePanel.setAlpha(0f);
-			queuePanel.setTranslationY(queuePanel.getHeight() / 3f);
-			queuePanel.animate().alpha(1f).translationY(0f).setDuration(250)
-					.setInterpolator(new DecelerateInterpolator()).start();
+			// Once laid out: the glass backdrop is taken (with the panel still invisible), then it slides in.
+			queuePanel.post(() -> {
+				if (!queueWanted || (getView() == null)) return;
+				applyQueueGlass();
+				queuePanel.setTranslationY(queuePanel.getHeight() / 3f);
+				queuePanel.animate().alpha(1f).translationY(0f).setDuration(250)
+						.setInterpolator(new DecelerateInterpolator()).start();
+			});
 			scrollToCurrent();
 		} else {
 			queuePanel.animate().alpha(0f).translationY(queuePanel.getHeight() / 3f).setDuration(200)
@@ -1663,6 +1678,39 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 					queuePanel.setTranslationY(0f);
 					queuePanel.setAlpha(1f);
 				}).start();
+	}
+
+	/**
+	 * Frosted glass for the queue panel, like the more menu's: a blurred snapshot of what's behind
+	 * it under a translucent tint. Android 12+; older versions keep the solid panel.
+	 */
+	private void setUpQueueGlass() {
+		if (!FrostView.isSupported() || !(queuePanel instanceof MaterialCardView card)) return;
+		queueFrost = new FrostView(requireContext());
+		queueTint = new View(palette);
+		queueTint.setBackgroundResource(R.drawable.music_glass_bg);
+		queueTint.setVisibility(View.GONE);
+		card.addView(queueFrost, 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.MATCH_PARENT));
+		card.addView(queueTint, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.MATCH_PARENT));
+	}
+
+	/** Takes the glass backdrop for the panel's place; without one (or when it fails) the panel is solid. */
+	private void applyQueueGlass() {
+		if (!(queuePanel instanceof MaterialCardView card)) return;
+		boolean glass = false;
+		View root = getView();
+
+		if ((queueFrost != null) && (root instanceof ViewGroup host)) {
+			glass = queueFrost.capture(host, queuePanel.getLeft(), queuePanel.getTop(),
+					UiUtils.toIntPx(requireContext(), 22));
+		}
+
+		card.setCardBackgroundColor(glass ? android.graphics.Color.TRANSPARENT :
+				paletteColor(R.attr.musicPanelFill));
+		card.setCardElevation(glass ? 0f : UiUtils.toIntPx(requireContext(), 24));
+		if (queueTint != null) queueTint.setVisibility(glass ? View.VISIBLE : View.GONE);
 	}
 
 	private void layoutQueuePanel() {

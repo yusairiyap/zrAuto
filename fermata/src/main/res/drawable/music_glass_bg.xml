@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The translucent tint of the Music tab's frosted-glass panels (the more menu, the queue), drawn
+     over the blurred backdrop, see FrostView. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="270"
+        android:endColor="?attr/musicGlassBottom"
+        android:startColor="?attr/musicGlassTop" />
+</shape>

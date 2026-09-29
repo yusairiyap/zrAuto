@@ -4,19 +4,18 @@ import static android.os.Build.VERSION.SDK_INT;
 import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
-import android.graphics.RenderEffect;
-import android.graphics.Shader;
+import android.graphics.Outline;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.graphics.drawable.StateListDrawable;
-import android.transition.TransitionManager;
-import android.transition.AutoTransition;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -24,8 +23,10 @@ import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.view.ViewOutlineProvider;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
+import android.view.animation.PathInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -69,6 +70,7 @@ public final class MusicMoreMenu {
 
 	private final Context ctx;
 	private final ViewGroup host;
+	private final View insets;
 	private final View anchor;
 	private final MediaSessionCallback cb;
 	private final Runnable onEffects;
@@ -90,16 +92,22 @@ public final class MusicMoreMenu {
 	private TextView timerTileSub;
 	private TextView timerStatus;
 	private TextView minutesLabel;
-	private boolean blurred;
+	private FrameLayout pages;
+	private FrostView frost;
+	private View tint;
 	private boolean dismissing;
-	private ValueAnimator blurAnim;
+	private boolean centered;
+	private int usableTop;
+	private int usableBottom;
+	private ValueAnimator pageAnim;
 	private int minutes = lastMinutes;
 	private boolean finishSong = lastFinishSong;
 
-	private MusicMoreMenu(Context ctx, ViewGroup host, View anchor, MediaSessionCallback cb,
-												Runnable onEffects) {
+	private MusicMoreMenu(Context ctx, ViewGroup host, View insets, View anchor,
+											MediaSessionCallback cb, Runnable onEffects) {
 		this.ctx = ctx;
 		this.host = host;
+		this.insets = insets;
 		this.anchor = anchor;
 		this.cb = cb;
 		this.onEffects = onEffects;
@@ -118,13 +126,16 @@ public final class MusicMoreMenu {
 	 * {@code anchor}. An overlay view rather than a dialog: Android Auto's window context doesn't
 	 * allow adding dialog windows at all.
 	 *
+	 * @param insets    the view whose padding is the room the tool bar and nav bar take (the menu stays
+	 *                  clear of it, and centres in what's left when it doesn't fit above the anchor)
 	 * @param ctx       a context carrying the Music tab's palette (see {@code MusicPalette} in music.xml)
 	 * @param onEffects what the Effects tile does
 	 */
-	public static void show(@NonNull Context ctx, @NonNull ViewGroup host, @NonNull View anchor,
-													@NonNull MediaSessionCallback cb, @NonNull Runnable onEffects) {
+	public static void show(@NonNull Context ctx, @NonNull ViewGroup host, @NonNull View insets,
+													@NonNull View anchor, @NonNull MediaSessionCallback cb,
+													@NonNull Runnable onEffects) {
 		dismissOpen();
-		MusicMoreMenu m = new MusicMoreMenu(ctx, host, anchor, cb, onEffects);
+		MusicMoreMenu m = new MusicMoreMenu(ctx, host, insets, anchor, cb, onEffects);
 		open = m;
 		m.show();
 	}
@@ -153,7 +164,7 @@ public final class MusicMoreMenu {
 		root.setOrientation(LinearLayout.VERTICAL);
 		root.setPadding(dp(16), dp(16), dp(16), dp(16));
 
-		FrameLayout pages = new FrameLayout(ctx);
+		pages = new FrameLayout(ctx);
 		mainPage = buildMainPage();
 		timerPage = buildTimerPage();
 		timerPage.setVisibility(View.GONE);
@@ -167,9 +178,22 @@ public final class MusicMoreMenu {
 		scroll.addView(root, new ViewGroup.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
 		card = new DraggableCard(ctx);
-		card.setBackground(glass());
 		card.setClickable(true);
 		card.setAlpha(0f);
+		// Rounded, and everything inside (the blurred backdrop included) is cut to it.
+		card.setClipToOutline(true);
+		card.setOutlineProvider(new ViewOutlineProvider() {
+			@Override
+			public void getOutline(View v, Outline outline) {
+				outline.setRoundRect(0, 0, v.getWidth(), v.getHeight(), dp(28));
+			}
+		});
+		// Frosted glass, bottom to top: the blurred backdrop, the translucent tint, the content.
+		frost = new FrostView(ctx);
+		tint = new View(ctx);
+		tint.setBackgroundResource(R.drawable.music_glass_bg);
+		card.addView(frost, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		card.addView(tint, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 		card.addView(scroll, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
 		int w = Math.min(dp(380), host.getWidth() - dp(32));
@@ -186,25 +210,73 @@ public final class MusicMoreMenu {
 
 	private void placeAndEnter() {
 		if (overlay.getParent() == null) return;
+		int hostW = host.getWidth();
 		int hostH = host.getHeight();
+		// Room for the taller of the two pages, so the card grows upwards into free space when the
+		// timer page opens instead of running off the top.
+		int contentW = card.getWidth() - dp(32);
+		timerPage.measure(View.MeasureSpec.makeMeasureSpec(contentW, View.MeasureSpec.EXACTLY),
+				View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
 		int ch = card.getHeight();
+		int tallest = Math.max(ch, timerPage.getMeasuredHeight() + dp(32));
 		int[] a = new int[2];
 		int[] h = new int[2];
 		anchor.getLocationInWindow(a);
 		host.getLocationInWindow(h);
 		int anchorTop = a[1] - h[1];
-		int margin = hostH - anchorTop + dp(10);
-		margin = Math.min(margin, hostH - ch - dp(12));
-		margin = Math.max(margin, dp(12));
+
+		// The room the tool bar and the nav bar leave.
+		usableTop = insets.getPaddingTop();
+		usableBottom = hostH - insets.getPaddingBottom();
+		int usableH = usableBottom - usableTop - dp(16);
 		FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) card.getLayoutParams();
+		lp.leftMargin = insets.getPaddingLeft();
+		lp.rightMargin = insets.getPaddingRight();
+
+		int margin;
+		if (tallest <= anchorTop - dp(10) - usableTop) {
+			// Fits above the chip that opened it: sits right over it.
+			centered = false;
+			margin = hostH - anchorTop + dp(10);
+		} else {
+			// Doesn't (a short screen, Android Auto): centred in the usable area, scrolling if taller.
+			centered = true;
+			if (tallest > usableH) lp.height = usableH;
+			margin = centeredMargin(Math.min(ch, usableH));
+			ch = Math.min(ch, usableH);
+		}
 		lp.bottomMargin = margin;
 		card.setLayoutParams(lp);
+
+		// The backdrop: what's behind the card's final place, blurred. Taken with the overlay hidden.
+		boolean glass = FrostView.isSupported();
+		if (glass) {
+			overlay.setVisibility(View.INVISIBLE);
+			int left = lp.leftMargin + (hostW - lp.leftMargin - lp.rightMargin - card.getWidth()) / 2;
+			glass = frost.capture(host, left, hostH - margin - ch, dp(22));
+			overlay.setVisibility(View.VISIBLE);
+		}
+		// Without one (older Android) the tint is a solid panel instead.
+		tint.setBackground(glass ? ctx.getDrawable(R.drawable.music_glass_bg) : solid());
+
 		card.setTranslationY(ch + margin);
 		card.setAlpha(1f);
 		card.animate().translationY(0f).setDuration(280).setInterpolator(new DecelerateInterpolator(1.6f))
 				.start();
 		overlay.animate().alpha(1f).setDuration(220).start();
-		animateBlur(true);
+	}
+
+	/** The bottom margin that centres a card {@code cardH} tall in the usable area. */
+	private int centeredMargin(int cardH) {
+		int hostH = host.getHeight();
+		return hostH - usableBottom + Math.max(0, (usableBottom - usableTop - cardH) / 2);
+	}
+
+	/** Keeps a centred card centred while its height changes. */
+	private void recenter(int cardH) {
+		FrameLayout.LayoutParams clp = (FrameLayout.LayoutParams) card.getLayoutParams();
+		clp.bottomMargin = centeredMargin(Math.min(cardH, usableBottom - usableTop - dp(16)));
+		card.setLayoutParams(clp);
 	}
 
 	/** Slides the card back down and away. */
@@ -212,7 +284,6 @@ public final class MusicMoreMenu {
 		if (dismissing) return;
 		dismissing = true;
 		root.removeCallbacks(tick);
-		animateBlur(false);
 		overlay.animate().alpha(0f).setDuration(200).start();
 		card.animate().translationY(card.getHeight() + dp(80)).setDuration(220)
 				.setInterpolator(new AccelerateInterpolator(1.4f)).withEndAction(this::remove).start();
@@ -228,8 +299,8 @@ public final class MusicMoreMenu {
 	}
 
 	private void remove() {
-		if (blurAnim != null) blurAnim.cancel();
-		setBlur(0f);
+		if (pageAnim != null) pageAnim.cancel();
+		frost.clear();
 		host.removeView(overlay);
 		if (open == this) open = null;
 	}
@@ -238,42 +309,11 @@ public final class MusicMoreMenu {
 	// The frosted glass
 	// ---------------------------------------------------------------------------------------------
 
-	private Drawable glass() {
-		blurred = SDK_INT >= 31;
-		int top;
-		int bottom;
-		if (blurred) {
-			top = light ? 0xB8FFFFFF : 0x4DFFFFFF;
-			bottom = light ? 0x94FFFFFF : 0x26FFFFFF;
-		} else {
-			top = light ? 0xF7FFFFFF : 0xF2262632;
-			bottom = light ? 0xF7F1F2F6 : 0xF21A1A24;
-		}
-
-		GradientDrawable glass = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-				new int[]{top, bottom});
-		glass.setCornerRadius(dp(28));
-		return glass;
-	}
-
-	/** Blurs everything of the Music tab behind the card (Android 12+), so the card reads as frosted glass. */
-	private void animateBlur(boolean in) {
-		if (!blurred || (SDK_INT < 31)) return;
-		if (blurAnim != null) blurAnim.cancel();
-		blurAnim = ValueAnimator.ofFloat(in ? 0f : 1f, in ? 1f : 0f);
-		blurAnim.setDuration(240);
-		blurAnim.addUpdateListener(a -> setBlur((float) a.getAnimatedValue()));
-		blurAnim.start();
-	}
-
-	private void setBlur(float amount) {
-		if (SDK_INT < 31) return;
-		RenderEffect effect = (amount <= 0.01f) ? null :
-				RenderEffect.createBlurEffect(dp(20) * amount, dp(20) * amount, Shader.TileMode.CLAMP);
-		for (int i = 0; i < host.getChildCount(); i++) {
-			View c = host.getChildAt(i);
-			if (c != overlay) c.setRenderEffect(effect);
-		}
+	/** The panel's fill where there's no blur to see through: opaque, in the palette's panel colour. */
+	private Drawable solid() {
+		GradientDrawable d = new GradientDrawable();
+		d.setColor(color(R.attr.musicPanelFill));
+		return d;
 	}
 
 	/** The card, which a downward drag pulls away (and, dragged far or flung, dismisses). */
@@ -580,11 +620,56 @@ public final class MusicMoreMenu {
 		return ctx.getString(R.string.music_timer_hours_minutes, m / 60, m % 60);
 	}
 
+	/**
+	 * Switches between the tiles and the timer page: the card's height glides to the new page's while
+	 * the old page fades and drifts out and the new one fades and drifts in.
+	 */
 	private void showPage(boolean timer) {
-		TransitionManager.beginDelayedTransition(root, new AutoTransition().setDuration(140));
-		mainPage.setVisibility(timer ? View.GONE : View.VISIBLE);
-		timerPage.setVisibility(timer ? View.VISIBLE : View.GONE);
+		View out = timer ? mainPage : timerPage;
+		View in = timer ? timerPage : mainPage;
+		if (in.getVisibility() == View.VISIBLE) return;
+		if (pageAnim != null) pageAnim.cancel();
 		updateStatus();
+
+		int fromH = pages.getHeight();
+		in.measure(View.MeasureSpec.makeMeasureSpec(pages.getWidth(), View.MeasureSpec.EXACTLY),
+				View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+		int toH = in.getMeasuredHeight();
+		float drift = dp(24) * (timer ? 1 : -1);
+		ViewGroup.LayoutParams lp = pages.getLayoutParams();
+		lp.height = fromH;
+		pages.setLayoutParams(lp);
+		in.setAlpha(0f);
+		in.setTranslationX(drift);
+		in.setVisibility(View.VISIBLE);
+
+		pageAnim = ValueAnimator.ofFloat(0f, 1f);
+		pageAnim.setDuration(240);
+		pageAnim.setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f));
+		pageAnim.addUpdateListener(a -> {
+			float t = (float) a.getAnimatedValue();
+			lp.height = Math.round(fromH + (toH - fromH) * t);
+			pages.setLayoutParams(lp);
+			if (centered) recenter(dp(32) + lp.height);
+			out.setAlpha(Math.max(0f, 1f - t / 0.4f));
+			out.setTranslationX(-drift * t);
+			in.setAlpha(Math.max(0f, (t - 0.25f) / 0.75f));
+			in.setTranslationX(drift * (1f - t));
+		});
+		pageAnim.addListener(new AnimatorListenerAdapter() {
+			@Override
+			public void onAnimationEnd(Animator animation) {
+				out.setVisibility(View.GONE);
+				out.setAlpha(1f);
+				out.setTranslationX(0f);
+				in.setAlpha(1f);
+				in.setTranslationX(0f);
+				lp.height = WRAP_CONTENT;
+				pages.setLayoutParams(lp);
+				if (centered) card.post(() -> recenter(card.getHeight()));
+			}
+		});
+		pageAnim.start();
 	}
 
 	/** Refreshes what the timer tile / page say about the running timer, once a second while it counts down. */
