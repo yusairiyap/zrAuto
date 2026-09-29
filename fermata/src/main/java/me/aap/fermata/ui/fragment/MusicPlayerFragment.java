@@ -59,7 +59,6 @@ import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.google.android.material.card.MaterialCardView;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -250,7 +249,6 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		LayoutTransition lt = ((ViewGroup) view.findViewById(R.id.music_actions)).getLayoutTransition();
 		if (lt != null) lt.enableTransitionType(LayoutTransition.CHANGING);
 		queuePanel = view.findViewById(R.id.music_queue_panel);
-		setUpQueueGlass();
 		queueDismiss = view.findViewById(R.id.music_queue_dismiss);
 		queueDismiss.setOnClickListener(v -> showQueue(false));
 		queueCount = view.findViewById(R.id.music_queue_count);
@@ -1666,14 +1664,6 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 					queuePanel.setTranslationY(0f);
 					queuePanel.setAlpha(1f);
 				}).start();
-	}
-
-	/** Frosted glass for the queue panel, like the more menu's: a translucent tint instead of a solid fill. */
-	private void setUpQueueGlass() {
-		if (!(queuePanel instanceof MaterialCardView card)) return;
-		card.setCardBackgroundColor(paletteColor(R.attr.musicGlassTop));
-		// No shadow: it would show through the translucent panel.
-		card.setCardElevation(0f);
 	}
 
 	private void layoutQueuePanel() {

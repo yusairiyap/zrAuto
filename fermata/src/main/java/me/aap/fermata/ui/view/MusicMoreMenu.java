@@ -176,8 +176,8 @@ public final class MusicMoreMenu {
 		card = new DraggableCard(ctx);
 		card.setClickable(true);
 		card.setAlpha(0f);
-		// Translucent frosted-glass tint; rounded by its own corners.
-		card.setBackground(glass());
+		card.setBackground(panel());
+		card.setElevation(dp(12));
 		card.addView(scroll, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
 		int w = Math.min(dp(380), host.getWidth() - dp(32));
@@ -218,12 +218,13 @@ public final class MusicMoreMenu {
 		lp.rightMargin = insets.getPaddingRight();
 
 		int margin;
-		if (tallest <= anchorTop - dp(10) - usableTop) {
-			// Fits above the chip that opened it: sits right over it.
+		boolean wide = hostW > hostH;
+		if (!wide && (tallest <= anchorTop - dp(10) - usableTop)) {
+			// A phone held upright: sits right over the chip that opened it.
 			centered = false;
 			margin = hostH - anchorTop + dp(10);
 		} else {
-			// Doesn't (a short screen, Android Auto): centred in the usable area, scrolling if taller.
+			// A tablet, Android Auto, any landscape screen: centred, scrolling if it's taller than the room.
 			centered = true;
 			if (tallest > usableH) lp.height = usableH;
 			margin = centeredMargin(Math.min(ch, usableH));
@@ -239,10 +240,17 @@ public final class MusicMoreMenu {
 		overlay.animate().alpha(1f).setDuration(220).start();
 	}
 
-	/** The bottom margin that centres a card {@code cardH} tall in the usable area. */
+	/**
+	 * The bottom margin that centres a card {@code cardH} tall on the screen, kept inside the room
+	 * the tool bar and nav bar leave.
+	 */
 	private int centeredMargin(int cardH) {
 		int hostH = host.getHeight();
-		return hostH - usableBottom + Math.max(0, (usableBottom - usableTop - cardH) / 2);
+		int pad = dp(8);
+		int top = (hostH - cardH) / 2;
+		top = Math.min(top, usableBottom - cardH - pad);
+		top = Math.max(top, usableTop + pad);
+		return Math.max(pad, hostH - top - cardH);
 	}
 
 	/** Keeps a centred card centred while its height changes. */
@@ -278,13 +286,13 @@ public final class MusicMoreMenu {
 	}
 
 	// ---------------------------------------------------------------------------------------------
-	// The frosted glass
+	// The panel
 	// ---------------------------------------------------------------------------------------------
 
-	/** The card's frosted-glass tint: translucent, a little lighter at the top, in the palette's glass colours. */
-	private Drawable glass() {
-		GradientDrawable d = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-				new int[]{color(R.attr.musicGlassTop), color(R.attr.musicGlassBottom)});
+	/** The card's fill: the palette's panel colour (the queue panel's), a clean, near-opaque surface. */
+	private Drawable panel() {
+		GradientDrawable d = new GradientDrawable();
+		d.setColor(color(R.attr.musicPanelFill));
 		d.setCornerRadius(dp(28));
 		return d;
 	}
