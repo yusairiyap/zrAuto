@@ -100,6 +100,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	private final Accessor accessor = new Accessor(this);
 	private final Timeline.Period period = new Timeline.Period();
 	private final PendingLoadAudioProcessor audioProc = new PendingLoadAudioProcessor(accessor);
+	private final StageAudioProcessor stageProc = new StageAudioProcessor();
 	private final ExoPlayer player;
 	@Nullable
 	private AudioEffects audioEffects;
@@ -130,7 +131,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 								.setPcmBufferMultiplicationFactor(16)
 								.setOffloadBufferDurationUs(120_000_000).build())
 						.setAudioProcessorChain(
-								new DefaultAudioSink.DefaultAudioProcessorChain(audioProc)).build();
+								new DefaultAudioSink.DefaultAudioProcessorChain(audioProc, stageProc)).build();
 			}
 		}).setMediaSourceFactory(msFactory).build();
 		player.addListener(this);
@@ -311,6 +312,11 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	@Override
 	public boolean supportsAudioEffects() {
 		return AudioEffects.isSupported();
+	}
+
+	@Override
+	public boolean supportsSoundStage() {
+		return true;
 	}
 
 	@Nullable

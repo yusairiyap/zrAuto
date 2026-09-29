@@ -113,7 +113,8 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 				if (pi != null) {
 					AudioEffects effects = eng.ensureAudioEffects();
 
-					if (effects != null) {
+					// Without platform effects the sound stage alone is still worth showing.
+					if ((effects != null) || eng.supportsSoundStage()) {
 						view.init(cb, effects, pi);
 						return;
 					}
@@ -185,11 +186,11 @@ public class AudioEffectsFragment extends MainActivityFragment implements
 				break;
 			default:
 				MediaEngine eng = cb.getEngine();
-				PlayableItem pi;
-				AudioEffects effects;
+				PlayableItem pi = (eng == null) ? null : eng.getSource();
+				AudioEffects effects = (pi == null) ? null : eng.ensureAudioEffects();
+				view = getView();
 
-				if ((eng == null) || ((pi = eng.getSource()) == null)
-						|| ((effects = eng.ensureAudioEffects()) == null) || ((view = getView()) == null)) {
+				if ((pi == null) || ((effects == null) && !eng.supportsSoundStage()) || (view == null)) {
 					getMainActivity().onSuccess(this::close);
 				} else if (view.getEffects() != effects) {
 					view.cleanup();

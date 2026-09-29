@@ -1,102 +1,93 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<!-- The audio effects screen (AudioEffectsView, and YouTube's YoutubeEqualizerView): one scrolling
+     column of cards in the Music tab's palette, like the Music and Data Usage tabs. The sound
+     stage first (width, differential surround, 3D speaker), then the equalizer and the effects,
+     then where the settings apply. Every slider has round minus / plus buttons (see
+     equalizer_channel.xml), and the equalizer has buttons that move all of its bands together, so
+     it can all be operated with taps. Inflated with the palette (see EffectsUi). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content">
+    android:layout_height="wrap_content"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:orientation="vertical"
+    android:paddingStart="16dp"
+    android:paddingTop="12dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="24dp">
 
-    <!-- ====================== Header + mixer strip (one card, one color) ====================== -->
-    <me.aap.utils.ui.view.OutlinedConstraintLayout
-        android:id="@+id/equalizer_header"
+    <!-- ====================== Sound stage ====================== -->
+    <me.aap.fermata.ui.view.SoundStageView
+        android:id="@+id/sound_stage"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="6dp"
-        android:orientation="vertical"
-        app:boxStrokeWidth="0dp"
-        app:cornerRadius="?attr/cornerRadius"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:numLabels="2">
+        android:layout_marginBottom="14dp" />
 
-        <me.aap.utils.ui.view.ScalableTextView
-            android:id="@+id/equalizer_title"
-            style="?attr/appEqualizerStyle"
-            android:layout_width="wrap_content"
+    <!-- ====================== Equalizer ====================== -->
+    <LinearLayout
+        android:id="@+id/equalizer_header"
+        style="@style/DataUsageCard"
+        android:layout_marginBottom="14dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="20dp"
-            android:layout_marginTop="8dp"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            android:text="@string/equalier"
-            android:textAppearance="?attr/textAppearanceListItem"
-            app:layout_constraintBottom_toTopOf="@id/preset_row"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/equalizer_effects" />
+            android:gravity="center_vertical"
+            android:minHeight="44dp"
+            android:orientation="horizontal">
 
-        <androidx.appcompat.widget.SwitchCompat
-            android:id="@+id/equalizer_switch"
-            style="?attr/appEqualizerStyle"
-            android:layout_width="wrap_content"
-            android:layout_height="0dp"
-            android:layout_marginEnd="20dp"
-            android:background="@drawable/focusable_shape_transparent"
-            android:focusable="true"
-            android:nextFocusDown="@id/equalizer_preset"
-            android:paddingStart="4dp"
-            android:paddingEnd="4dp"
-            android:scaleX="1.3"
-            android:scaleY="1.3"
-            app:layout_constraintBottom_toBottomOf="@id/equalizer_title"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toTopOf="@id/equalizer_title" />
+            <TextView
+                android:id="@+id/equalizer_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/equalier"
+                android:textColor="?attr/musicTextPrimary"
+                android:textSize="18sp"
+                android:textStyle="bold" />
 
-        <!-- Same [100dp label][invisible switch-width spacer][content] geometry as
-             equalizer_channel.xml's rows (label style/width matched exactly), so the preset
-             dropdown starts at the same horizontal position as the seekbars below it instead of
-             flush against its own (much shorter) label. -->
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/equalizer_switch"
+                style="?attr/appEqualizerStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/focusable_shape_transparent"
+                android:focusable="true"
+                android:nextFocusDown="@id/equalizer_preset"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp"
+                android:scaleX="1.3"
+                android:scaleY="1.3" />
+        </LinearLayout>
+
         <LinearLayout
             android:id="@+id/preset_row"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="6dp"
             android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
-            app:layout_constraintBottom_toTopOf="@id/virtualizer_mode"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/equalizer_title">
+            android:orientation="horizontal">
 
-            <com.google.android.material.textview.MaterialTextView
+            <TextView
                 android:id="@+id/preset_label"
-                style="?attr/appEqualizerStyle"
-                android:layout_width="100dp"
+                android:layout_width="72dp"
                 android:layout_height="wrap_content"
                 android:gravity="start|center_vertical"
                 android:text="@string/preset"
-                android:textAppearance="?attr/textAppearanceBody1" />
-
-            <androidx.appcompat.widget.SwitchCompat
-                style="?attr/appEqualizerStyle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:layout_marginEnd="4dp"
-                android:visibility="invisible" />
+                android:textColor="?attr/musicTextPrimary"
+                android:textSize="14sp" />
 
             <me.aap.utils.pref.PreferenceView
                 android:id="@+id/equalizer_preset"
                 style="?attr/appEqualizerStyle"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
                 android:layout_weight="1"
-                android:paddingStart="8dp"
                 android:background="@drawable/focusable_shape_transparent"
                 android:focusable="true"
                 android:nextFocusUp="@id/equalizer_switch"
+                android:paddingStart="8dp"
                 tools:ignore="RtlSymmetry" />
 
             <me.aap.utils.ui.view.ImageButton
@@ -125,100 +116,114 @@
                 android:visibility="gone" />
         </LinearLayout>
 
+        <!-- Move every band at once: one dB down or up, or back to flat. -->
+        <LinearLayout
+            android:id="@+id/eq_group_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/eq_all_down"
+                style="@style/MusicChip"
+                android:layout_width="0dp"
+                android:layout_marginEnd="4dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="@string/eq_all_down" />
+
+            <TextView
+                android:id="@+id/eq_all_up"
+                style="@style/MusicChip"
+                android:layout_width="0dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="@string/eq_all_up" />
+
+            <TextView
+                android:id="@+id/eq_reset"
+                style="@style/MusicChip"
+                android:layout_width="0dp"
+                android:layout_marginStart="4dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="@string/eq_reset" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/equalizer_channels"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="vertical" />
+    </LinearLayout>
+
+    <!-- ====================== Effects ====================== -->
+    <LinearLayout
+        android:id="@+id/effects_card"
+        style="@style/DataUsageCard"
+        android:layout_marginBottom="14dp">
+
+        <TextView
+            android:id="@+id/effects_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="36dp"
+            android:gravity="center_vertical"
+            android:text="@string/effects"
+            android:textColor="?attr/musicTextPrimary"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
         <me.aap.utils.pref.PreferenceView
             android:id="@+id/virtualizer_mode"
             style="?attr/appEqualizerStyle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_margin="6dp"
+            android:layout_marginTop="4dp"
             android:background="@drawable/focusable_shape_transparent"
             android:focusable="true"
-            app:layout_constraintBottom_toTopOf="@id/equalizer_channels"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/preset_row"
             tools:ignore="RtlSymmetry" />
-
-        <!-- Channels stack vertically (one equalizer_channel.xml row each) instead of sitting side
-             by side in a horizontally-scrolling strip: each row's own fader is a left/right drag,
-             so it no longer competes with the page's vertical scroll the way a vertical fader did,
-             and each row is far shorter than the old fixed-height fader column was. -->
-        <LinearLayout
-            android:id="@+id/equalizer_channels"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:paddingStart="12dp"
-            android:paddingTop="12dp"
-            android:paddingEnd="12dp"
-            android:paddingBottom="6dp"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/virtualizer_mode" />
-
-        <me.aap.utils.ui.view.ScalableTextView
-            android:id="@+id/effects_title"
-            style="?attr/appEqualizerStyle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="20dp"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            android:text="@string/effects"
-            android:textAppearance="?attr/textAppearanceListItem"
-            app:layout_constraintBottom_toTopOf="@id/equalizer_effects"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
 
         <LinearLayout
             android:id="@+id/equalizer_effects"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:paddingStart="12dp"
-            android:paddingTop="6dp"
-            android:paddingEnd="12dp"
-            android:paddingBottom="12dp"
-            app:layout_constraintBottom_toTopOf="@id/equalizer_title"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/effects_title" />
-    </me.aap.utils.ui.view.OutlinedConstraintLayout>
-    <!-- ======================================================================================= -->
+            android:orientation="vertical" />
+    </LinearLayout>
 
-    <!-- ====================== Apply to  ====================== -->
-    <me.aap.utils.ui.view.OutlinedLinearLayout
+    <!-- ====================== Apply to ====================== -->
+    <LinearLayout
         android:id="@+id/apply_to"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_margin="6dp"
-        android:orientation="vertical"
-        app:boxStrokeWidth="0dp"
-        app:cornerRadius="?attr/cornerRadius"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/equalizer_header">
+        style="@style/DataUsageCard">
 
-        <me.aap.utils.ui.view.ScalableTextView
+        <TextView
             android:id="@+id/apply_to_title"
-            style="?attr/appEqualizerStyle"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="20dp"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
+            android:minHeight="36dp"
+            android:gravity="center_vertical"
             android:text="@string/apply_to"
-            android:textAppearance="?attr/textAppearanceListItem" />
+            android:textColor="?attr/musicTextPrimary"
+            android:textSize="18sp"
+            android:textStyle="bold" />
 
         <me.aap.utils.pref.PreferenceView
             android:id="@+id/track"
             style="?attr/appEqualizerStyle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:layout_marginTop="6dp"
-            android:layout_marginEnd="6dp"
+            android:layout_marginTop="4dp"
             android:background="@drawable/focusable_shape_transparent"
             android:focusable="true"
             android:paddingStart="5dp"
@@ -229,15 +234,10 @@
             style="?attr/appEqualizerStyle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:layout_marginTop="6dp"
-            android:layout_marginEnd="6dp"
+            android:layout_marginTop="4dp"
             android:background="@drawable/focusable_shape_transparent"
             android:focusable="true"
             android:paddingStart="5dp"
             tools:ignore="RtlSymmetry" />
-
-    </me.aap.utils.ui.view.OutlinedLinearLayout>
-    <!-- ======================================================== -->
-
-</androidx.constraintlayout.widget.ConstraintLayout>
+    </LinearLayout>
+</LinearLayout>

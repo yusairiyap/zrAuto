@@ -23,6 +23,19 @@
       bassGain: 0,
       virtEnabled: false,
       virtStrength: 0,
+      // The sound stage (see the "Sound stage" section below): width 0..2 (1 = as recorded),
+      // differential surround (diffK 0..0.7, diffDelay in seconds), and the 3D position on the
+      // pad (posX to the right, posY to the front, both -1..1; spread in degrees, orbit in rpm).
+      widthOn: false,
+      width: 1,
+      diffOn: false,
+      diffK: 0,
+      diffDelay: 0.008,
+      posOn: false,
+      posX: 0,
+      posY: 1,
+      spread: 30,
+      orbit: 0,
       reverbEnabled: false,
       reverbStrength: 0,
       reverbDuration: REVERB_DURATION_DEFAULT,
@@ -295,6 +308,170 @@
     return chain.smoothReverb;
   }
 
+
+  // ------------------------------------------------------------------------------------------
+  // Sound stage: stereo width, differential surround and 3D position. Each is its own block,
+  // built the first time it's switched on and spliced into the signal path by rewireSpine() only
+  // while it's on, so a disabled one costs nothing. The same three effects (and the same maths)
+  // run natively for local playback, see StageDsp.java.
+  // ------------------------------------------------------------------------------------------
+
+  const STAGE_MAX_DELAY = 0.03;
+
+  function clamp(v, min, max) {
+    return Math.max(min, Math.min(max, v));
+  }
+
+  // Width: mid/side scaling. L' = a*L + b*R and R' = a*R + b*L, with a = (1+w)/2 and b = (1-w)/2:
+  // w = 0 is mono, w = 1 leaves the signal alone, w = 2 doubles the side (L-R) signal.
+  function buildWidthBlock(ctx) {
+    const splitter = ctx.createChannelSplitter(2);
+    const merger = ctx.createChannelMerger(2);
+    const ll = ctx.createGain();
+    const rl = ctx.createGain();
+    const rr = ctx.createGain();
+    const lr = ctx.createGain();
+    splitter.connect(ll, 0);
+    ll.connect(merger, 0, 0);
+    splitter.connect(rl, 1);
+    rl.connect(merger, 0, 0);
+    splitter.connect(rr, 1);
+    rr.connect(merger, 0, 1);
+    splitter.connect(lr, 0);
+    lr.connect(merger, 0, 1);
+    return {input: splitter, output: merger, ll, rl, rr, lr,
+            nodes: [splitter, merger, ll, rl, rr, lr]};
+  }
+
+  // Differential surround, like ViPER4Android's: the L-R difference, high-passed so the bass stays
+  // in the middle, delayed a few milliseconds and added to the left and subtracted from the right.
+  function buildDiffBlock(ctx) {
+    const splitter = ctx.createChannelSplitter(2);
+    const merger = ctx.createChannelMerger(2);
+    const invert = ctx.createGain();
+    invert.gain.value = -1;
+    const diffSum = ctx.createGain();
+    const delay = ctx.createDelay(STAGE_MAX_DELAY);
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 200;
+    const wetL = ctx.createGain();
+    const wetR = ctx.createGain();
+    const norm = ctx.createGain();
+    splitter.connect(merger, 0, 0);
+    splitter.connect(merger, 1, 1);
+    splitter.connect(diffSum, 0);
+    splitter.connect(invert, 1);
+    invert.connect(diffSum);
+    diffSum.connect(delay);
+    delay.connect(hp);
+    hp.connect(wetL);
+    wetL.connect(merger, 0, 0);
+    hp.connect(wetR);
+    wetR.connect(merger, 0, 1);
+    merger.connect(norm);
+    return {input: splitter, output: norm, delay, wetL, wetR, norm,
+            nodes: [splitter, merger, invert, diffSum, delay, hp, wetL, wetR, norm]};
+  }
+
+  // 3D position: the left and right channels become two virtual speakers, `spread` degrees either
+  // side of the chosen direction, rendered to the ears with the browser's HRTF panner. Close to the
+  // listener the dry signal takes over, so the middle of the pad is plain stereo.
+  function buildPosBlock(ctx) {
+    const input = ctx.createGain();
+    const output = ctx.createGain();
+    const splitter = ctx.createChannelSplitter(2);
+    const dry = ctx.createGain();
+    const wet = ctx.createGain();
+    const panners = [0, 1].map((ch) => {
+      const p = ctx.createPanner();
+      p.panningModel = 'HRTF';
+      p.distanceModel = 'linear';
+      p.rolloffFactor = 0;
+      splitter.connect(p, ch);
+      p.connect(wet);
+      return p;
+    });
+    input.connect(splitter);
+    input.connect(dry);
+    dry.connect(output);
+    wet.connect(output);
+    return {input, output, dry, wet, panners, orbitAngle: 0, orbitTimer: null,
+            nodes: [input, output, splitter, dry, wet, ...panners]};
+  }
+
+  function placePanner(ctx, p, x, y, z) {
+    if (p.positionX) {
+      rampValue(ctx, p.positionX, x);
+      rampValue(ctx, p.positionY, y);
+      rampValue(ctx, p.positionZ, z);
+    } else {
+      p.setPosition(x, y, z);
+    }
+  }
+
+  function updatePos(chain, cfg) {
+    const pos = chain.pos;
+    if (!pos) return;
+    const ctx = chain.ctx;
+    const dist = Math.min(1, Math.hypot(cfg.posX, cfg.posY));
+    const x = clamp((dist - 0.03) / 0.3, 0, 1);
+    const wet = x * x * (3 - 2 * x);
+    rampValue(ctx, pos.dry.gain, 1 - wet);
+    rampValue(ctx, pos.wet.gain, wet * 0.75 / (1 + 0.5 * dist));
+
+    const az = Math.atan2(cfg.posX, cfg.posY) + ((cfg.orbit > 0) ? pos.orbitAngle : 0);
+    const spread = clamp(cfg.spread, 0, 60) * Math.PI / 180;
+    // Left channel a little to the left of the direction, right channel a little to the right; the
+    // listener faces -z, so straight ahead is z = -1.
+    [-spread, spread].forEach((off, i) => {
+      placePanner(ctx, pos.panners[i], Math.sin(az + off), 0, -Math.cos(az + off));
+    });
+  }
+
+  const ORBIT_TICK = 0.05;
+
+  // Circling (8D): turn the direction a little every tick, while the position is on and Orbit is set.
+  function manageOrbit(chain, cfg) {
+    const pos = chain.pos;
+    if (!pos) return;
+    const wanted = cfg.posOn && cfg.orbit > 0;
+    if (wanted && !pos.orbitTimer) {
+      pos.orbitTimer = setInterval(() => {
+        const c = state.config;
+        pos.orbitAngle = (pos.orbitAngle + 2 * Math.PI * c.orbit / 60 * ORBIT_TICK) % (2 * Math.PI);
+        updatePos(chain, c);
+      }, ORBIT_TICK * 1000);
+    } else if (!wanted && pos.orbitTimer) {
+      clearInterval(pos.orbitTimer);
+      pos.orbitTimer = null;
+      pos.orbitAngle = 0;
+    }
+  }
+
+  function applyStage(chain, cfg) {
+    const ctx = chain.ctx;
+
+    if (chain.width) {
+      const w = cfg.widthOn ? clamp(cfg.width, 0, 2) : 1;
+      rampValue(ctx, chain.width.ll.gain, (1 + w) / 2);
+      rampValue(ctx, chain.width.rr.gain, (1 + w) / 2);
+      rampValue(ctx, chain.width.rl.gain, (1 - w) / 2);
+      rampValue(ctx, chain.width.lr.gain, (1 - w) / 2);
+    }
+
+    if (chain.diff) {
+      const k = cfg.diffOn ? clamp(cfg.diffK, 0, 0.7) : 0;
+      rampValue(ctx, chain.diff.delay.delayTime, clamp(cfg.diffDelay, 0.001, STAGE_MAX_DELAY));
+      rampValue(ctx, chain.diff.wetL.gain, k);
+      rampValue(ctx, chain.diff.wetR.gain, -k);
+      rampValue(ctx, chain.diff.norm.gain, 1 / (1 + 0.5 * k));
+    }
+
+    updatePos(chain, cfg);
+    manageOrbit(chain, cfg);
+  }
+
   function buildChain(video) {
     const ctx = getContext();
     const source = ctx.createMediaElementSource(video);
@@ -373,6 +550,7 @@
     return {video, ctx, source, bands, bass, splitter, merger, dryR, delay, wetR, wetL,
             reverbDry, reverbWet, limiter, fade, smoothReverb: null, convolutionReverb: null,
             reverbEngineName: null, reverbConnected: false, reverbDuration: null,
+            width: null, diff: null, pos: null,
             spineKey: null, tail: null};
   }
 
@@ -382,7 +560,8 @@
   // pushes new gain values on every frame, and rewiring the graph on each one would risk an
   // audible micro-glitch for no reason.
   function rewireSpine(chain, cfg) {
-    const key = (cfg.eqEnabled ? 'E' : '') + (cfg.bassEnabled ? 'B' : '') + (cfg.virtEnabled ? 'V' : '');
+    const key = (cfg.eqEnabled ? 'E' : '') + (cfg.bassEnabled ? 'B' : '') + (cfg.virtEnabled ? 'V' : '') +
+        (cfg.widthOn ? 'W' : '') + (cfg.diffOn ? 'D' : '') + (cfg.posOn ? 'P' : '');
     if (chain.spineKey === key) return;
 
     if (chain.tail) {
@@ -396,6 +575,11 @@
     try { chain.bands[chain.bands.length - 1].disconnect(); } catch (err) { /* already disconnected */ }
     try { chain.bass.disconnect(); } catch (err) { /* already disconnected */ }
     try { chain.merger.disconnect(); } catch (err) { /* already disconnected */ }
+    for (const block of [chain.width, chain.diff, chain.pos]) {
+      if (block) {
+        try { block.output.disconnect(); } catch (err) { /* already disconnected */ }
+      }
+    }
 
     let tail = chain.source;
     if (cfg.eqEnabled) {
@@ -409,6 +593,21 @@
     if (cfg.virtEnabled) {
       tail.connect(chain.splitter);
       tail = chain.merger;
+    }
+    if (cfg.widthOn) {
+      if (!chain.width) chain.width = buildWidthBlock(chain.ctx);
+      tail.connect(chain.width.input);
+      tail = chain.width.output;
+    }
+    if (cfg.diffOn) {
+      if (!chain.diff) chain.diff = buildDiffBlock(chain.ctx);
+      tail.connect(chain.diff.input);
+      tail = chain.diff.output;
+    }
+    if (cfg.posOn) {
+      if (!chain.pos) chain.pos = buildPosBlock(chain.ctx);
+      tail.connect(chain.pos.input);
+      tail = chain.pos.output;
     }
 
     tail.connect(chain.reverbDry);
@@ -458,6 +657,8 @@
     rampValue(ctx, chain.dryR.gain, 1 - 0.5 * strength);
     rampValue(ctx, chain.wetR.gain, 0.5 * strength);
     rampValue(ctx, chain.wetL.gain, 0.3 * strength);
+
+    applyStage(chain, cfg);
 
     const engineName = (cfg.reverbEngine === 'convolution') ? 'convolution' : 'smooth';
 
@@ -510,7 +711,8 @@
   }
 
   function anyEffectEnabled(cfg) {
-    return cfg.eqEnabled || cfg.bassEnabled || cfg.virtEnabled || cfg.reverbEnabled;
+    return cfg.eqEnabled || cfg.bassEnabled || cfg.virtEnabled || cfg.reverbEnabled ||
+        cfg.widthOn || cfg.diffOn || cfg.posOn;
   }
 
   function attach(video) {
@@ -546,6 +748,13 @@
     // loop is otherwise left fully interconnected with itself, and while modern Web Audio
     // implementations are specified to still collect a cycle with no path to the destination,
     // that's not something to lean on across every WebView version this app runs on.
+    for (const block of [chain.width, chain.diff, chain.pos]) {
+      if (block) nodes.push(...block.nodes);
+    }
+    if (chain.pos && chain.pos.orbitTimer) {
+      clearInterval(chain.pos.orbitTimer);
+      chain.pos.orbitTimer = null;
+    }
     if (chain.smoothReverb) nodes.push(...chain.smoothReverb.nodes);
     if (chain.convolutionReverb) nodes.push(chain.convolutionReverb.convolver);
     for (const n of nodes) {

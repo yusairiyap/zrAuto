@@ -10,6 +10,8 @@ import java.io.IOException;
 import java.io.InputStream;
 
 import me.aap.fermata.addon.web.R;
+import me.aap.fermata.media.engine.stage.SoundStage;
+import me.aap.fermata.media.engine.stage.StageParams;
 import me.aap.utils.log.Log;
 
 /**
@@ -40,6 +42,20 @@ final class YoutubeEqualizerScript {
 		}
 	}
 
+	/** The sound stage, in the units youtube_equalizer.js works in (see its config defaults). */
+	private static void appendStage(StringBuilder sb, StageParams p) {
+		sb.append(",\"widthOn\":").append(p.widthOn)
+				.append(",\"width\":").append(p.width / 100f)
+				.append(",\"diffOn\":").append(p.diffOn)
+				.append(",\"diffK\":").append(p.diffStrength / 100f * 0.7f)
+				.append(",\"diffDelay\":").append(p.diffDelayMs / 1000f)
+				.append(",\"posOn\":").append(p.posOn)
+				.append(",\"posX\":").append(p.posX / 100f)
+				.append(",\"posY\":").append(p.posY / 100f)
+				.append(",\"spread\":").append(p.spread)
+				.append(",\"orbit\":").append(p.orbit / 10f);
+	}
+
 	static String getConfigJson(YoutubeAddon addon) {
 		int[] bands = addon.eqBands();
 		StringBuilder sb = new StringBuilder(256);
@@ -58,7 +74,8 @@ final class YoutubeEqualizerScript {
 				.append(",\"reverbStrength\":").append(addon.reverbStrength() / 1000f)
 				.append(",\"reverbDuration\":").append(addon.reverbDuration() / 1000f)
 				.append(",\"reverbEngine\":\"").append((addon.reverbEngine() == 1) ? "convolution" : "smooth")
-				.append("\"}");
-		return sb.toString();
+				.append("\"");
+		appendStage(sb, SoundStage.get().getParams());
+		return sb.append('}').toString();
 	}
 }

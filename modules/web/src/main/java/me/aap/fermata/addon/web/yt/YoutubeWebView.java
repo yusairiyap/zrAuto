@@ -28,6 +28,7 @@ import androidx.core.graphics.ColorUtils;
 
 import java.util.List;
 
+import me.aap.fermata.media.engine.stage.SoundStage;
 import me.aap.fermata.BuildConfig;
 import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.web.FermataChromeClient;
@@ -155,6 +156,22 @@ public class YoutubeWebView extends FermataWebView {
 	@Override
 	public YoutubeAddon getAddon() {
 		return (YoutubeAddon) super.getAddon();
+	}
+
+	// The sound stage (width, differential surround, 3D position) is app-wide, not the YouTube
+	// addon's own setting: pushed to the page's equalizer script whenever it changes.
+	private final SoundStage.Listener soundStageListener = p -> post(this::configureEqualizer);
+
+	@Override
+	protected void onAttachedToWindow() {
+		super.onAttachedToWindow();
+		SoundStage.get().addListener(soundStageListener);
+	}
+
+	@Override
+	protected void onDetachedFromWindow() {
+		SoundStage.get().removeListener(soundStageListener);
+		super.onDetachedFromWindow();
 	}
 
 	@Override

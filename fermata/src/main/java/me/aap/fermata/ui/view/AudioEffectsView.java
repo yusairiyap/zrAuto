@@ -31,7 +31,6 @@ import android.widget.TextView;
 import androidx.annotation.IdRes;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
-import androidx.appcompat.widget.AppCompatSeekBar;
 
 import java.util.Arrays;
 import java.util.List;
@@ -92,13 +91,27 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 		return effects;
 	}
 
-	public void init(MediaSessionCallback cb, AudioEffects effects, PlayableItem pi) {
+	/**
+	 * Shows the screen. {@code effects} is null when the device has no platform audio effects but the
+	 * engine still plays the sound stage: only that card is shown then.
+	 */
+	public void init(MediaSessionCallback cb, @Nullable AudioEffects effects, PlayableItem pi) {
 		this.cb = cb;
 		this.effects = effects;
+		EffectsUi.inflater(getContext()).inflate(R.layout.audio_effects, this, true);
+
+		MediaEngine engine = cb.getEngine();
+		findViewById(R.id.sound_stage).setVisibility(
+				((engine != null) && engine.supportsSoundStage()) ? VISIBLE : GONE);
+
+		if (effects == null) {
+			hide(R.id.equalizer_header, R.id.effects_card, R.id.apply_to);
+			return;
+		}
+
 		this.store = new BasicPreferenceStore();
 		this.store.addBroadcastListener(this);
 		this.ctrlPrefs = cb.getPlaybackControlPrefs();
-		inflate(getContext(), R.layout.audio_effects, this);
 
 		Equalizer eq = effects.getEqualizer();
 		Virtualizer virt = effects.getVirtualizer();
@@ -115,6 +128,9 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 			if (preset < 0) preset = -preset + numPresets;
 
 			configureSwitch(findViewById(R.id.equalizer_switch), () -> eq);
+			findViewById(R.id.eq_all_down).setOnClickListener(v -> shiftBands(-100, false));
+			findViewById(R.id.eq_all_up).setOnClickListener(v -> shiftBands(100, false));
+			findViewById(R.id.eq_reset).setOnClickListener(v -> shiftBands(0, true));
 			findViewById(R.id.equalizer_preset_save).setOnClickListener(this::savePreset);
 			findViewById(R.id.equalizer_preset_delete).setOnClickListener(this::deletePreset);
 
@@ -141,7 +157,7 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 
 			store.applyIntPref(MediaPrefs.EQ_PRESET, preset);
 		} else {
-			hide(R.id.equalizer_switch, R.id.preset_row);
+			hide(R.id.equalizer_header);
 		}
 
 		// Virtualizer mode dropdown (header)
@@ -349,7 +365,7 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 
 		boolean hasEffects = (bass != null) || (virt != null) || (le != null) || (reverb != null);
 		if (!hasEffects) {
-			hide(R.id.effects_title, R.id.equalizer_effects);
+			hide(R.id.effects_card);
 			return;
 		}
 
@@ -379,8 +395,10 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 	private void bindBandChannel(View ch, Equalizer eq, short band, short[] range) {
 		TextView value = ch.findViewById(R.id.eq_channel_value);
 		TextView label = ch.findViewById(R.id.eq_channel_label);
-		AppCompatSeekBar sb = ch.findViewById(R.id.eq_channel_seek);
+		StepSeekBar sb = ch.findViewById(R.id.eq_channel_seek);
 		int sbMax = range[1] - range[0];
+		sb.setStep(100);
+		sb.bindButtons(ch.findViewById(R.id.eq_channel_minus), ch.findViewById(R.id.eq_channel_plus));
 		short level = eq.getBandLevel(band);
 
 		value.setText(formatDb(level));
@@ -412,7 +430,9 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 		CompoundButton sw = ch.findViewById(R.id.eq_channel_switch);
 		TextView value = ch.findViewById(R.id.eq_channel_value);
 		TextView label = ch.findViewById(R.id.eq_channel_label);
-		AppCompatSeekBar sb = ch.findViewById(R.id.eq_channel_seek);
+		StepSeekBar sb = ch.findViewById(R.id.eq_channel_seek);
+		sb.setStep(50);
+		sb.bindButtons(ch.findViewById(R.id.eq_channel_minus), ch.findViewById(R.id.eq_channel_plus));
 
 		sw.setVisibility(VISIBLE);
 		configureSwitch(sw, effect);
@@ -438,7 +458,9 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 		CompoundButton sw = ch.findViewById(R.id.eq_channel_switch);
 		TextView value = ch.findViewById(R.id.eq_channel_value);
 		TextView label = ch.findViewById(R.id.eq_channel_label);
-		AppCompatSeekBar sb = ch.findViewById(R.id.eq_channel_seek);
+		StepSeekBar sb = ch.findViewById(R.id.eq_channel_seek);
+		sb.setStep(50);
+		sb.bindButtons(ch.findViewById(R.id.eq_channel_minus), ch.findViewById(R.id.eq_channel_plus));
 
 		sw.setVisibility(VISIBLE);
 		configureSwitch(sw, () -> reverb);
@@ -463,13 +485,37 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 		});
 	}
 
+	/**
+	 * Moves all the equalizer's bands together by {@code delta} centibels (100 = 1 dB), or, with
+	 * {@code reset}, back to flat. Like dragging a band, it leaves a built-in preset for Manual.
+	 */
+	private void shiftBands(int delta, boolean reset) {
+		AudioEffects effects = this.effects;
+		Equalizer eq = (effects == null) ? null : effects.getEqualizer();
+		PreferenceStore store = this.store;
+		if ((eq == null) || (store == null)) return;
+
+		runWithRetry(() -> {
+			short[] range = eq.getBandLevelRange();
+
+			for (short n = eq.getNumberOfBands(), i = 0; i < n; i++) {
+				int level = reset ? 0 : (eq.getBandLevel(i) + delta);
+				eq.setBandLevel(i, (short) Math.max(range[0], Math.min(range[1], level)));
+			}
+
+			setBandValues(eq);
+			int p = store.getIntPref(MediaPrefs.EQ_PRESET);
+			if ((p != 0) && (p <= eq.getNumberOfPresets())) store.applyIntPref(EQ_PRESET, 0);
+		});
+	}
+
 	private void setBandValues(Equalizer eq) {
 		short[] range = eq.getBandLevelRange();
 		LinearLayout channels = findViewById(R.id.equalizer_channels);
 
 		for (short n = eq.getNumberOfBands(), i = 0; i < n; i++) {
 			View ch = channels.getChildAt(i);
-			AppCompatSeekBar sb = ch.findViewById(R.id.eq_channel_seek);
+			StepSeekBar sb = ch.findViewById(R.id.eq_channel_seek);
 			TextView value = ch.findViewById(R.id.eq_channel_value);
 			short level = eq.getBandLevel(i);
 			sb.setProgress(level - range[0]);
@@ -484,7 +530,7 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 
 		for (short n = eq.getNumberOfBands(), i = 0; (i < n) && (i < bands.length); i++) {
 			View ch = channels.getChildAt(i);
-			AppCompatSeekBar sb = ch.findViewById(R.id.eq_channel_seek);
+			StepSeekBar sb = ch.findViewById(R.id.eq_channel_seek);
 			TextView value = ch.findViewById(R.id.eq_channel_value);
 			eq.setBandLevel(i, (short) bands[i]);
 			short level = eq.getBandLevel(i);

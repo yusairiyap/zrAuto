@@ -162,6 +162,15 @@ public interface MediaEngine extends Closeable {
 	}
 
 	/**
+	 * Whether this engine plays the sound stage (stereo width, differential surround, 3D position,
+	 * see {@link me.aap.fermata.media.engine.stage.SoundStage}): those run inside the player's own
+	 * audio pipeline, so unlike {@link #supportsAudioEffects()} they need nothing from the system.
+	 */
+	default boolean supportsSoundStage() {
+		return false;
+	}
+
+	/**
 	 * Lazily creates (and wires up) this engine's {@link AudioEffects} on first call, so a session
 	 * with every effect disabled never pays for platform effect objects it doesn't use. Returns the
 	 * existing instance if one was already created. By default just returns {@link #getAudioEffects()}.

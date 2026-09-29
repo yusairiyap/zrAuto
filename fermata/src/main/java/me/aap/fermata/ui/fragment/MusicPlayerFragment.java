@@ -1504,7 +1504,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 		// The effects screen works on the live engine's effects: with nothing playing (or an engine
 		// without effects support) it would just close itself again straight away.
-		if ((src != null) && eng.supportsAudioEffects()) {
+		if ((src != null) && (eng.supportsAudioEffects() || eng.supportsSoundStage())) {
 			a.showFragment(R.id.audio_effects_fragment);
 		} else if ((src != null) && eng.showOwnAudioEffects()) {
 			// The YouTube player: its own in-page equalizer, since Android's effects can't reach a web

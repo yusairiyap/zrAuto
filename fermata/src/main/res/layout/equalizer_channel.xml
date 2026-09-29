@@ -1,56 +1,77 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- One mixer channel as a horizontal row: label, switch, a natural (unrotated) left-to-right
-     SeekBar, then the current value: dragging the fader is a left/right gesture, orthogonal to
-     the page's own vertical scroll, so the two no longer compete for the same up/down drag the
-     previous vertical-fader design used. Rows stack vertically in the channels/effects containers
-     (see audio_effects.xml) instead of sitting side by side in a horizontally-scrolling strip, so
-     each channel is much shorter and more of them are visible without scrolling to find one. -->
+<!-- One slider row of the effects screens: label, an optional switch, a minus button, the slider,
+     a plus button and the value. The round buttons step the slider (hold to keep going), so a
+     value can be set with taps alone, which is a lot easier in a car than dragging a thumb; see
+     StepSeekBar. Inflated with the Music tab's palette (see EffectsUi). The switch is INVISIBLE,
+     not GONE, when unused, so every row's slider starts at the same place. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="8dp"
-    android:layout_marginBottom="8dp"
+    android:layout_marginTop="2dp"
+    android:layout_marginBottom="2dp"
     android:gravity="center_vertical"
+    android:minHeight="48dp"
     android:orientation="horizontal">
 
-    <com.google.android.material.textview.MaterialTextView
+    <TextView
         android:id="@+id/eq_channel_label"
-        style="?attr/appEqualizerStyle"
-        android:layout_width="100dp"
+        android:layout_width="72dp"
         android:layout_height="wrap_content"
         android:gravity="start|center_vertical"
         android:maxLines="2"
-        android:textAppearance="?attr/textAppearanceBody1" />
+        android:textColor="?attr/musicTextPrimary"
+        android:textSize="14sp" />
 
-    <!-- Default (not just this row's) visibility is INVISIBLE rather than GONE: a row with no
-         switch of its own (the EQ bands, Hall Size) still reserves the same space a shown switch
-         (Bass Boost/Virtualizer/Live Hall) takes, so every row's SeekBar lines up starting at the
-         same horizontal position regardless of whether that row happens to have a switch. -->
     <androidx.appcompat.widget.SwitchCompat
         android:id="@+id/eq_channel_switch"
         style="?attr/appEqualizerStyle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
-        android:layout_marginEnd="4dp"
+        android:layout_marginStart="4dp"
+        android:layout_marginEnd="2dp"
         android:visibility="invisible" />
 
-    <androidx.appcompat.widget.AppCompatSeekBar
+    <ImageButton
+        android:id="@+id/eq_channel_minus"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_marginStart="4dp"
+        android:background="@drawable/step_button_bg"
+        android:contentDescription="@string/eq_step_down"
+        android:focusable="true"
+        android:padding="9dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/step_minus"
+        android:tint="?attr/musicIconPrimary" />
+
+    <me.aap.fermata.ui.view.StepSeekBar
         android:id="@+id/eq_channel_seek"
         style="?attr/appEqualizerStyle"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
-        android:layout_marginEnd="8dp"
+        android:layout_marginStart="4dp"
+        android:layout_marginEnd="4dp"
         android:layout_weight="1" />
 
-    <com.google.android.material.textview.MaterialTextView
+    <ImageButton
+        android:id="@+id/eq_channel_plus"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="@drawable/step_button_bg"
+        android:contentDescription="@string/eq_step_up"
+        android:focusable="true"
+        android:padding="9dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/step_plus"
+        android:tint="?attr/musicIconPrimary" />
+
+    <TextView
         android:id="@+id/eq_channel_value"
-        style="?attr/appEqualizerStyle"
-        android:layout_width="52dp"
+        android:layout_width="48dp"
         android:layout_height="wrap_content"
         android:gravity="end|center_vertical"
         android:lines="1"
-        android:textAppearance="?attr/textAppearanceBody2" />
+        android:textColor="?attr/musicTextSecondary"
+        android:textSize="13sp" />
 
 </LinearLayout>
