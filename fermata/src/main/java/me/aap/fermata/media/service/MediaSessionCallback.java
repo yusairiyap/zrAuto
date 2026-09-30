@@ -686,11 +686,22 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		eng.pause();
 		eng.getPosition().and(eng.getSpeed()).main().onSuccess(h -> {
 			if (eng != getEngine()) return;
+			// The position comes back asynchronously. An engine that plays everything in one page (the
+			// YouTube player) can have moved on to the next track by then -- the pause the ended track's
+			// own page reported -- and this stale answer must not stop that one, nor make its record
+			// the one to resume from.
+			if (!isSameSource(eng.getSource(), i)) return;
 			long qid = currentState.getActiveQueueItemId();
 			setLastPlayed(i, h.value1);
 			PlaybackStateCompat state = createPlayingState(i, true, qid, h.value1, h.value2);
 			setPlaybackState(state);
 		});
+	}
+
+	private static boolean isSameSource(@Nullable PlayableItem a, @Nullable PlayableItem b) {
+		if (a == b) return true;
+		if ((a == null) || (b == null)) return false;
+		return a.getId().equals(b.getId()) && java.util.Objects.equals(a.getResumeId(), b.getResumeId());
 	}
 
 	@Override
@@ -1094,8 +1105,15 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	public void onEngineStarted(MediaEngine engine) {
 		BufferingIndicator.setBuffering(false);
 		resumeItem = null;
-		engine.getPosition().and(engine.getSpeed()).main()
-				.onSuccess(h -> setPlayingState(engine, true, h.value1, h.value2));
+		engine.getPosition().and(engine.getSpeed()).main().onSuccess(h -> {
+			setPlayingState(engine, true, h.value1, h.value2);
+			// A track played in its own player is otherwise only recorded when paused or stopped, so
+			// closing the app (or the car dropping the connection) mid-song left the previous track as
+			// the one to resume -- opened again at its very end, then swapped for the real one a moment
+			// later, which is the stutter at start-up.
+			PlayableItem i = engine.getSource();
+			if ((engine == getEngine()) && (i != null) && i.isExternal()) setLastPlayed(i, h.value1);
+		});
 	}
 
 	private void setPlayingState(MediaEngine engine, boolean playing, long pos, float speed) {

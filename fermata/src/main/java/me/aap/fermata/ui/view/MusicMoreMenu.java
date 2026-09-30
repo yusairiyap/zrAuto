@@ -93,6 +93,8 @@ public final class MusicMoreMenu {
 	private FrameLayout pages;
 	private boolean dismissing;
 	private boolean centered;
+	// A short screen (Android Auto, a phone on its side): tighter pages so the timer fits without scrolling.
+	private final boolean compact;
 	private int usableTop;
 	private int usableBottom;
 	private ValueAnimator pageAnim;
@@ -115,6 +117,8 @@ public final class MusicMoreMenu {
 		this.accent = EffectsUi.accent(ctx);
 		this.onAccent = EffectsUi.onAccent(accent);
 		this.density = ctx.getResources().getDisplayMetrics().density;
+		int room = host.getHeight() - insets.getPaddingTop() - insets.getPaddingBottom();
+		this.compact = (host.getWidth() > host.getHeight()) && (room < dp(400));
 	}
 
 	/**
@@ -180,7 +184,7 @@ public final class MusicMoreMenu {
 		card.setElevation(dp(12));
 		card.addView(scroll, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
-		int w = Math.min(dp(380), host.getWidth() - dp(32));
+		int w = Math.min(dp(compact ? 520 : 380), host.getWidth() - dp(32));
 		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, WRAP_CONTENT,
 				Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
 		lp.bottomMargin = dp(12);
@@ -225,10 +229,13 @@ public final class MusicMoreMenu {
 			margin = hostH - anchorTop + dp(10);
 		} else {
 			// A tablet, Android Auto, any landscape screen: centred, scrolling if it's taller than the room.
+			// Sized to the page showing (the timer page grows it later, see fitCard()), never stretched
+			// to fill the room: a card taller than its content is empty at the bottom and no longer reads
+			// as centred.
 			centered = true;
-			if (tallest > usableH) lp.height = usableH;
-			margin = centeredMargin(Math.min(ch, usableH));
+			if (ch > usableH) lp.height = usableH;
 			ch = Math.min(ch, usableH);
+			margin = centeredMargin(ch);
 		}
 		lp.bottomMargin = margin;
 		card.setLayoutParams(lp);
@@ -241,22 +248,27 @@ public final class MusicMoreMenu {
 	}
 
 	/**
-	 * The bottom margin that centres a card {@code cardH} tall on the screen, kept inside the room
-	 * the tool bar and nav bar leave.
+	 * The bottom margin that centres a card {@code cardH} tall in the room the tool bar and nav bar
+	 * leave.
 	 */
 	private int centeredMargin(int cardH) {
-		int hostH = host.getHeight();
 		int pad = dp(8);
-		int top = (hostH - cardH) / 2;
+		int top = usableTop + (usableBottom - usableTop - cardH) / 2;
 		top = Math.min(top, usableBottom - cardH - pad);
 		top = Math.max(top, usableTop + pad);
-		return Math.max(pad, hostH - top - cardH);
+		return Math.max(pad, host.getHeight() - top - cardH);
 	}
 
-	/** Keeps a centred card centred while its height changes. */
-	private void recenter(int cardH) {
+	/**
+	 * Keeps a centred card centred while the page inside it changes height: as tall as its content,
+	 * or, when that doesn't fit the room, as tall as the room (it then scrolls).
+	 */
+	private void fitCard(int contentH) {
+		int room = usableBottom - usableTop - dp(16);
+		int cardH = dp(32) + contentH;
 		FrameLayout.LayoutParams clp = (FrameLayout.LayoutParams) card.getLayoutParams();
-		clp.bottomMargin = centeredMargin(Math.min(cardH, usableBottom - usableTop - dp(16)));
+		clp.height = (cardH > room) ? room : WRAP_CONTENT;
+		clp.bottomMargin = centeredMargin(Math.min(cardH, room));
 		card.setLayoutParams(clp);
 	}
 
@@ -374,7 +386,7 @@ public final class MusicMoreMenu {
 		page.setOrientation(LinearLayout.VERTICAL);
 
 		TextView title = text(ctx.getString(R.string.music_more), 18, primary, true);
-		title.setPadding(dp(8), dp(2), dp(8), dp(12));
+		title.setPadding(dp(8), dp(2), dp(8), dp(compact ? 6 : 12));
 		page.addView(title);
 
 		LinearLayout tiles = new LinearLayout(ctx);
@@ -408,8 +420,8 @@ public final class MusicMoreMenu {
 		LinearLayout t = new LinearLayout(ctx);
 		t.setOrientation(LinearLayout.VERTICAL);
 		t.setGravity(Gravity.CENTER);
-		t.setMinimumHeight(dp(132));
-		t.setPadding(dp(10), dp(14), dp(10), dp(14));
+		t.setMinimumHeight(dp(compact ? 104 : 132));
+		t.setPadding(dp(10), dp(compact ? 8 : 14), dp(10), dp(compact ? 8 : 14));
 		t.setBackground(pressable(chipFill, 22));
 		t.setClickable(true);
 		t.setFocusable(true);
@@ -425,7 +437,7 @@ public final class MusicMoreMenu {
 		iv.setImageResource(icon);
 		iv.setImageTintList(ColorStateList.valueOf(onAccent));
 		disc.addView(iv, new FrameLayout.LayoutParams(dp(28), dp(28), Gravity.CENTER));
-		t.addView(disc, new LinearLayout.LayoutParams(dp(52), dp(52)));
+		t.addView(disc, new LinearLayout.LayoutParams(dp(compact ? 44 : 52), dp(compact ? 44 : 52)));
 
 		TextView name = text(title, 15, primary, true);
 		name.setGravity(Gravity.CENTER);
@@ -469,24 +481,26 @@ public final class MusicMoreMenu {
 		header.addView(title, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
 		timerStatus = text("", 14, accent, true);
 		header.addView(timerStatus, new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
-		page.addView(header, new LinearLayout.LayoutParams(MATCH_PARENT, dp(44)));
+		page.addView(header, new LinearLayout.LayoutParams(MATCH_PARENT, dp(compact ? 40 : 44)));
 
-		// Presets, three to a row.
+		// Presets, three to a row (all six in one on a short, wide screen).
+		int perRow = compact ? PRESETS.length : 3;
+		int chipH = compact ? 38 : 44;
 		presetChips.clear();
-		for (int i = 0; i < PRESETS.length; i += 3) {
+		for (int i = 0; i < PRESETS.length; i += perRow) {
 			LinearLayout row = new LinearLayout(ctx);
 			row.setOrientation(LinearLayout.HORIZONTAL);
-			for (int j = i; (j < i + 3) && (j < PRESETS.length); j++) {
+			for (int j = i; (j < i + perRow) && (j < PRESETS.length); j++) {
 				int m = PRESETS[j];
 				TextView chip = pill(minutesText(m), false, () -> setMinutes(m));
 				chip.setTag(m);
 				presetChips.add(chip);
-				LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(44), 1f);
+				LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(chipH), 1f);
 				lp.setMargins(dp(4), dp(4), dp(4), dp(4));
 				row.addView(chip, lp);
 			}
 			LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-			if (i == 0) rlp.topMargin = dp(8);
+			if (i == 0) rlp.topMargin = dp(compact ? 4 : 8);
 			page.addView(row, rlp);
 		}
 
@@ -502,18 +516,18 @@ public final class MusicMoreMenu {
 		TextView plus = pill("+", false, () -> setMinutes(snapUp(minutes)));
 		plus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
 		plus.setContentDescription("+" + STEP);
-		stepper.addView(minus, new LinearLayout.LayoutParams(dp(64), dp(48)));
+		stepper.addView(minus, new LinearLayout.LayoutParams(dp(64), dp(compact ? 40 : 48)));
 		stepper.addView(minutesLabel, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
-		stepper.addView(plus, new LinearLayout.LayoutParams(dp(64), dp(48)));
+		stepper.addView(plus, new LinearLayout.LayoutParams(dp(64), dp(compact ? 40 : 48)));
 		LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		slp.setMargins(dp(4), dp(8), dp(4), dp(4));
+		slp.setMargins(dp(4), dp(compact ? 2 : 8), dp(4), dp(compact ? 0 : 4));
 		page.addView(stepper, slp);
 
 		// Let the current song finish.
 		LinearLayout finish = new LinearLayout(ctx);
 		finish.setOrientation(LinearLayout.HORIZONTAL);
 		finish.setGravity(Gravity.CENTER_VERTICAL);
-		finish.setPadding(dp(14), dp(10), dp(10), dp(10));
+		finish.setPadding(dp(14), dp(compact ? 6 : 10), dp(10), dp(compact ? 6 : 10));
 		finish.setBackground(pressable(chipFill, 18));
 		finish.setClickable(true);
 		finish.setFocusable(true);
@@ -537,7 +551,7 @@ public final class MusicMoreMenu {
 		});
 		finish.addView(sw, new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
 		LinearLayout.LayoutParams flp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		flp.setMargins(dp(4), dp(8), dp(4), 0);
+		flp.setMargins(dp(4), dp(compact ? 4 : 8), dp(4), 0);
 		page.addView(finish, flp);
 
 		// Start / turn off.
@@ -550,14 +564,14 @@ public final class MusicMoreMenu {
 		});
 		off.setTag("off");
 		TextView start = pill(ctx.getString(R.string.music_timer_start), true, this::startTimer);
-		LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(0, dp(48), 1f);
+		LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(0, dp(compact ? 42 : 48), 1f);
 		olp.setMargins(dp(4), 0, dp(4), 0);
-		LinearLayout.LayoutParams stlp = new LinearLayout.LayoutParams(0, dp(48), 1.5f);
+		LinearLayout.LayoutParams stlp = new LinearLayout.LayoutParams(0, dp(compact ? 42 : 48), 1.5f);
 		stlp.setMargins(dp(4), 0, dp(4), 0);
 		actions.addView(off, olp);
 		actions.addView(start, stlp);
 		LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		alp.topMargin = dp(14);
+		alp.topMargin = dp(compact ? 8 : 14);
 		page.addView(actions, alp);
 
 		refreshMinutes();
@@ -631,7 +645,7 @@ public final class MusicMoreMenu {
 			float t = (float) a.getAnimatedValue();
 			lp.height = Math.round(fromH + (toH - fromH) * t);
 			pages.setLayoutParams(lp);
-			if (centered) recenter(dp(32) + lp.height);
+			if (centered) fitCard(lp.height);
 			out.setAlpha(Math.max(0f, 1f - t / 0.4f));
 			out.setTranslationX(-drift * t);
 			in.setAlpha(Math.max(0f, (t - 0.25f) / 0.75f));
@@ -647,7 +661,7 @@ public final class MusicMoreMenu {
 				in.setTranslationX(0f);
 				lp.height = WRAP_CONTENT;
 				pages.setLayoutParams(lp);
-				if (centered) card.post(() -> recenter(card.getHeight()));
+				if (centered) fitCard(toH);
 			}
 		});
 		pageAnim.start();
