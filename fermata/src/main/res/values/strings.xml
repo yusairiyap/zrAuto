@@ -25,6 +25,7 @@
     <string name="addons">Addons</string>
     <string name="addon_name_tv">TV</string>
     <string name="addon_name_web_browser">Web browser</string>
+    <string name="addon_name_youtube_bubbles">YouTube suggestions</string>
     <string name="addon_name_youtube" translatable="false">Youtube</string>
     <string name="addon_name_felex" translatable="false">Felex</string>
     <string name="addon_name_cast" translatable="false">Google Cast</string>

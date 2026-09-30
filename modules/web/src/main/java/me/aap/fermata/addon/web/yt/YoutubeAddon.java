@@ -74,6 +74,15 @@ public class YoutubeAddon extends WebBrowserAddon
 	private static final String[] QUALITY_LABELS = {null, null, "2160p", "1440p", "1080p", "720p",
 			"480p", "360p", "240p", "144p"};
 	private static final Pref<BooleanSupplier> YT_SKIP_ADD = Pref.b("YT_SKIP_ADD", true);
+	/** How many of the videos on the user's YouTube feed float around on the suggestions tab. */
+	static final Pref<IntSupplier> BUBBLES_COUNT = Pref.i("YT_BUBBLES_COUNT", 12);
+	static final int BUBBLES_TAP_AUTO = 0;
+	static final int BUBBLES_TAP_VIDEO = 1;
+	static final int BUBBLES_TAP_MUSIC = 2;
+	/** What tapping a bubble does: follows the current mode, or always video, or always music. */
+	static final Pref<IntSupplier> BUBBLES_TAP = Pref.i("YT_BUBBLES_TAP", BUBBLES_TAP_AUTO);
+	/** How fast the bubbles drift, in percent of the normal speed. */
+	static final Pref<IntSupplier> BUBBLES_SPEED = Pref.i("YT_BUBBLES_SPEED", 100);
 	private static final Pref<Supplier<String[]>> YT_VIDEO_TITLES = Pref.sa("YT_VIDEO_TITLES");
 	/** Flat {videoId, channel, album, durationMs} groups, see {@link #cacheVideoInfo}. */
 	private static final Pref<Supplier<String[]>> YT_VIDEO_INFO = Pref.sa("YT_VIDEO_INFO");
@@ -596,6 +605,37 @@ public class YoutubeAddon extends WebBrowserAddon
 			o.pref = YT_SKIP_ADD;
 			o.title = R.string.try_to_skip_ad;
 			o.visibility = visibility;
+		});
+
+		set.addIntPref(o -> {
+			o.store = getPreferenceStore();
+			o.pref = BUBBLES_COUNT;
+			o.title = R.string.yt_bubbles_count;
+			o.subtitle = R.string.yt_bubbles_count_sub;
+			o.seekMin = 3;
+			o.seekMax = 40;
+			o.ems = 3;
+			o.visibility = visibility.copy();
+		});
+		set.addListPref(o -> {
+			o.store = getPreferenceStore();
+			o.pref = BUBBLES_TAP;
+			o.title = R.string.yt_bubbles_tap;
+			o.subtitle = me.aap.fermata.R.string.string_format;
+			o.formatSubtitle = true;
+			o.values = new int[]{R.string.yt_bubbles_tap_auto, R.string.yt_bubbles_tap_video,
+					R.string.yt_bubbles_tap_music};
+			o.visibility = visibility.copy();
+		});
+		set.addIntPref(o -> {
+			o.store = getPreferenceStore();
+			o.pref = BUBBLES_SPEED;
+			o.title = R.string.yt_bubbles_speed;
+			o.seekMin = 25;
+			o.seekMax = 300;
+			o.seekScale = 5;
+			o.ems = 3;
+			o.visibility = visibility.copy();
 		});
 
 		YoutubeSponsorBlock.contributeSettings(getPreferenceStore(), set, visibility);

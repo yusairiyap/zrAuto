@@ -44,12 +44,15 @@ public class WebToolBarMediator implements ToolBarView.Mediator {
 		String url = b.getUrl();
 		if (url != null) t.setText(url);
 		addView(tb, t, R.id.browser_addr, LEFT);
+		// Reads, from the left: Back, Forward, Home, the address.
+		addButton(tb, R.drawable.browser_home, v -> b.goHome(), R.id.browser_home, LEFT)
+				.setToolBarPriority(3);
 		addButton(tb, R.drawable.forward, v ->
 				requireNonNull(b.getWebView()).goForward(), R.id.browser_forward, LEFT)
 				.setToolBarPriority(2);
 		// Back and clear never move into the toolbar's "more" menu (see ToolBarView#onMeasure()).
-		addButton(tb, me.aap.utils.R.drawable.back, v ->
-				requireNonNull(b.getWebView()).goBack(), me.aap.utils.R.id.tool_bar_back_button, LEFT)
+		addButton(tb, me.aap.utils.R.drawable.back, v -> b.goBackInBrowser(),
+				me.aap.utils.R.id.tool_bar_back_button, LEFT)
 				.setToolBarPriority(Integer.MAX_VALUE);
 		addButton(tb, R.drawable.clear, v -> t.setText(""), R.id.browser_addr_clear)
 				.setToolBarPriority(Integer.MAX_VALUE);
@@ -58,8 +61,7 @@ public class WebToolBarMediator implements ToolBarView.Mediator {
 		ImageButton pm = addButton(tb, me.aap.fermata.R.drawable.private_mode, v ->
 				onPrivateModeButtonClick((ImageButton) v), me.aap.fermata.R.id.private_mode);
 		updatePrivateModeButton(pm);
-		FermataWebView wv = b.getWebView();
-		setButtonsVisibility(tb, (wv != null) && wv.canGoBack(), (wv != null) && wv.canGoForward());
+		setButtonsVisibility(tb, b.canGoBackInBrowser(), b.canGoForwardInBrowser());
 		ToolBarView.Mediator.super.enable(tb, f);
 	}
 
@@ -111,6 +113,7 @@ public class WebToolBarMediator implements ToolBarView.Mediator {
 		t.setOnKeyListener((v, keyCode, event) -> onKey(f, t, keyCode, event));
 		t.setMaxLines(1);
 		t.setSingleLine(true);
+		t.setHint(R.string.browser_search_hint);
 		return t;
 	}
 

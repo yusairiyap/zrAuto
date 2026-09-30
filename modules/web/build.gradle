@@ -15,6 +15,13 @@ ext {
                     order: 2
             ],
             [
+                    // Right after YouTube: floating thumbnails of the videos on the user's feed.
+                    name : 'youtube_bubbles',
+                    icon : 'youtube_bubbles',
+                    class: 'me.aap.fermata.addon.web.yt.YoutubeBubblesAddon',
+                    order: 2
+            ],
+            [
                     name : 'web_browser',
                     icon : 'web',
                     class: 'me.aap.fermata.addon.web.WebBrowserAddon',

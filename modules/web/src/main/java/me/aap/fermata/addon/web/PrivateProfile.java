@@ -23,12 +23,12 @@ import me.aap.fermata.ui.activity.MainActivityPrefs;
  * device from the last few years); {@link WebBrowserAddon} falls back to a simpler, honestly
  * non-restoring shared-jar clear where it isn't.
  */
-final class PrivateProfile {
+public final class PrivateProfile {
 	static final String NAME = "zrAutoPrivate";
 
 	private PrivateProfile() {}
 
-	static boolean isSupported() {
+	public static boolean isSupported() {
 		return WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE);
 	}
 
@@ -38,7 +38,7 @@ final class PrivateProfile {
 	}
 
 	@NonNull
-	static String currentName(MainActivityPrefs mp) {
+	public static String currentName(MainActivityPrefs mp) {
 		return nameFor(mp.isPrivateModeEnabled());
 	}
 

@@ -60,6 +60,8 @@ public class FermataWebView extends WebView
 	private WebBrowserAddon addon;
 	private FermataWebClient webClient;
 	private FermataChromeClient chrome;
+	@Nullable
+	private PageListener pageListener;
 
 	public FermataWebView(Context context) {
 		this(context, null);
@@ -273,22 +275,36 @@ public class FermataWebView extends WebView
 		addFocusHighlight();
 		getAddon().setLastUrl(uri);
 		getActivity().onSuccess(a -> {
-			ActivityFragment f = a.getActiveFragment();
-			if (f == null) return;
+			// A browser tab that isn't the selected one has no id (see BrowserTabs): whatever it just
+			// loaded must not touch the tool bar, which belongs to the selected tab.
+			if (getId() != NO_ID) {
+				ActivityFragment f = a.getActiveFragment();
+				if (f != null) {
+					ToolBarView.Mediator m = f.getToolBarMediator();
 
-			ToolBarView.Mediator m = f.getToolBarMediator();
-
-			if (m instanceof WebToolBarMediator wm) {
-				ToolBarView tb = a.getToolBar();
-				wm.setAddress(tb, uri);
-				wm.setButtonsVisibility(tb, canGoBack(), canGoForward());
+					if (m instanceof WebToolBarMediator wm) {
+						ToolBarView tb = a.getToolBar();
+						wm.setAddress(tb, uri);
+						wm.setButtonsVisibility(tb, canGoBack(), canGoForward());
+					}
+				}
 			}
 
 			// Safe to always flush now, even in Private Mode: this targets whichever profile's cookie
 			// jar this WebView is actually bound to, and the private profile's jar is wiped on its own
 			// on the next entry (or on a manual "clear now") regardless of what's flushed to it here.
 			currentCookieManager().flush();
+			if (pageListener != null) pageListener.onPageLoaded(this, uri);
 		});
+	}
+
+	/** Told whenever a page has finished loading; see {@link BrowserTabs}. */
+	interface PageListener {
+		void onPageLoaded(FermataWebView view, String url);
+	}
+
+	void setPageListener(@Nullable PageListener l) {
+		pageListener = l;
 	}
 
 	protected void addFocusHighlight() {

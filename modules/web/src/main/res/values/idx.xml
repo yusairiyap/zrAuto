@@ -10,4 +10,14 @@
     <item name="video_scaling_fill_proportional" type="id" />
     <item name="video_quality" type="id" />
     <item name="youtube_equalizer" type="id" />
+    <item name="browserRoot" type="id" />
+    <item name="browserTabHost" type="id" />
+    <item name="browser_card_open" type="id" />
+    <item name="browser_card_open_tab" type="id" />
+    <item name="browser_card_edit" type="id" />
+    <item name="browser_card_earlier" type="id" />
+    <item name="browser_card_later" type="id" />
+    <item name="browser_card_remove" type="id" />
+    <item name="yt_bubble_play_video" type="id" />
+    <item name="yt_bubble_play_music" type="id" />
 </resources>
