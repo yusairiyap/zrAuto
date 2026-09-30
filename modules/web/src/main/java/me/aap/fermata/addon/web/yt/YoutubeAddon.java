@@ -607,37 +607,6 @@ public class YoutubeAddon extends WebBrowserAddon
 			o.visibility = visibility;
 		});
 
-		set.addIntPref(o -> {
-			o.store = getPreferenceStore();
-			o.pref = BUBBLES_COUNT;
-			o.title = R.string.yt_bubbles_count;
-			o.subtitle = R.string.yt_bubbles_count_sub;
-			o.seekMin = 3;
-			o.seekMax = 40;
-			o.ems = 3;
-			o.visibility = visibility.copy();
-		});
-		set.addListPref(o -> {
-			o.store = getPreferenceStore();
-			o.pref = BUBBLES_TAP;
-			o.title = R.string.yt_bubbles_tap;
-			o.subtitle = me.aap.fermata.R.string.string_format;
-			o.formatSubtitle = true;
-			o.values = new int[]{R.string.yt_bubbles_tap_auto, R.string.yt_bubbles_tap_video,
-					R.string.yt_bubbles_tap_music};
-			o.visibility = visibility.copy();
-		});
-		set.addIntPref(o -> {
-			o.store = getPreferenceStore();
-			o.pref = BUBBLES_SPEED;
-			o.title = R.string.yt_bubbles_speed;
-			o.seekMin = 25;
-			o.seekMax = 300;
-			o.seekScale = 5;
-			o.ems = 3;
-			o.visibility = visibility.copy();
-		});
-
 		YoutubeSponsorBlock.contributeSettings(getPreferenceStore(), set, visibility);
 	}
 

@@ -142,7 +142,9 @@ final class BrowserTabs implements BrowserHomeView.Host, FermataWebView.PageList
 		GradientDrawable pbg = new GradientDrawable();
 		pbg.setCornerRadius(dp(28));
 		panel.setBackground(pbg);
-		panel.setElevation(dp(4));
+		// Above the home page's cards (raised 6dp), the strip above the panel.
+		panel.setElevation(dp(12));
+		bar.setElevation(dp(13));
 		panel.setVisibility(View.GONE);
 		root.addView(panel, root.indexOfChild(homeView) + 1, new FrameLayout.LayoutParams(0, 0));
 		bar.setVisibility(View.GONE);

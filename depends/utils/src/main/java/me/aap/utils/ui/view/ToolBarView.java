@@ -271,7 +271,7 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 
 		// A title/text field shrinks to nothing rather than pushing buttons off, so keep it some room
 		int avail = width - (hasText ? Math.max(width * 3 / 10, toIntPx(getContext(), 96)) : 0);
-		int slots = Math.max(0, avail / h - fixed);
+		int slots = Math.max(0, avail / Math.max(1, h * 5 / 6) - fixed);
 		int keep = (movable.size() <= slots) ? movable.size() : Math.max(0, slots - 1);
 
 		List<ImageButton> order = new ArrayList<>(movable);
@@ -564,7 +564,8 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 		default <B extends ImageButton> B initButton(B b, @DrawableRes int icon, OnClickListener onClick) {
 			ConstraintLayout.LayoutParams lp = setLayoutParams(b, 0, MATCH_PARENT);
 			lp.horizontalWeight = 1;
-			lp.dimensionRatio = "1:1";
+			// A little narrower than tall: the icons keep their size, the gaps between them shrink.
+			lp.dimensionRatio = "5:6";
 			b.setImageResource(icon);
 			b.setScaleType(ImageView.ScaleType.FIT_CENTER);
 			b.setBackgroundResource(R.drawable.tool_bar_button_bg);
@@ -581,7 +582,7 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 
 		default void setButtonPadding(View v) {
 			float scale = ActivityDelegate.get(v.getContext()).getToolBarSize();
-			int pad = toIntPx(v.getContext(), Math.round(13 * scale));
+			int pad = toIntPx(v.getContext(), Math.round(9 * scale));
 			v.setPadding(pad, pad, pad, pad);
 		}
 
@@ -740,6 +741,38 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 
 			default void setFilterVisibility(ToolBarView tb, boolean visible) {
 				EditText f = tb.findViewById(getFilterId());
+				if (f == null) return;
+				// Same as the YouTube search: the other buttons step aside and the field grows
+				// smoothly out to the X, which closes it again.
+				boolean open = f.getVisibility() == VISIBLE;
+				if ((open != visible) && tb.isLaidOut()) {
+					android.transition.AutoTransition tr = new android.transition.AutoTransition();
+					tr.setDuration(220);
+					tr.setInterpolator(new DecelerateInterpolator());
+					android.transition.TransitionManager.beginDelayedTransition(tb, tr);
+				}
+				int bid = getBackButtonId();
+				int fid = getFilterButtonId();
+				@SuppressWarnings("unchecked")
+				List<View> hidden = (List<View>) tb.getTag(R.id.tool_bar_filter);
+				if (visible && (hidden == null)) {
+					hidden = new ArrayList<>();
+					for (int i = 0, n = tb.getChildCount(); i < n; i++) {
+						View c = tb.getChildAt(i);
+						if (!(c instanceof ImageButton ib) || (c.getId() == bid) || (c.getId() == fid) ||
+								(c.getId() == R.id.tool_bar_overflow)) {
+							continue;
+						}
+						if (ib.getRequestedVisibility() == VISIBLE) hidden.add(c);
+					}
+					for (View c : hidden) c.setVisibility(GONE);
+					tb.setTag(R.id.tool_bar_filter, hidden);
+				} else if (!visible && (hidden != null)) {
+					for (View c : hidden) c.setVisibility(VISIBLE);
+					tb.setTag(R.id.tool_bar_filter, null);
+				}
+				ForcedVisibilityButton fbtn = tb.findViewById(fid);
+				if (fbtn != null) fbtn.setImageResource(visible ? R.drawable.close : getFilterButtonIcon());
 				TextView t = tb.findViewById(getTitleId());
 				ForcedVisibilityButton bb = tb.findViewById(getBackButtonId());
 				ForcedVisibilityButton fb = tb.findViewById(getFilterButtonId());
@@ -748,7 +781,6 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 
 				if (visible) {
 					bb.forceVisibility(true);
-					fb.setVisibility(GONE);
 					t.setVisibility(GONE);
 					f.setVisibility(VISIBLE);
 					f.requestFocus();
@@ -792,7 +824,9 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 			@Override
 			default void onClick(View v) {
 				if (v.getId() == getFilterButtonId()) {
-					setFilterVisibility((ToolBarView) v.getParent(), true);
+					ToolBarView tb = (ToolBarView) v.getParent();
+					EditText f = tb.findViewById(getFilterId());
+					setFilterVisibility(tb, (f == null) || (f.getVisibility() != VISIBLE));
 				} else {
 					BackTitle.super.onClick(v);
 				}

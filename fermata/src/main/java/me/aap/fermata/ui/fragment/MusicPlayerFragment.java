@@ -226,7 +226,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		super.onViewCreated(view, savedInstanceState);
 		MainActivityDelegate a = getActivityDelegate();
 		if ((savedInstanceState != null) || a.isInitialFragmentShow()) {
-			quietUntil = android.os.SystemClock.uptimeMillis() + 2500;
+			// The first moments are a burst of layout (bars, insets, cover loading) that showed as
+			// the tab jumping about: stay invisible while it settles, then fade in once, calmly.
+			quietUntil = android.os.SystemClock.uptimeMillis() + 1300;
+			view.setAlpha(0f);
+			view.postDelayed(() -> view.animate().alpha(1f).setDuration(350).start(), 800);
 		}
 		content = view.findViewById(R.id.music_content);
 		bg = view.findViewById(R.id.music_bg);

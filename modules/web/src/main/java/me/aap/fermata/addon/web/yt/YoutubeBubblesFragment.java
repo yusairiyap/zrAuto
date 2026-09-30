@@ -71,6 +71,7 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 	private android.animation.ValueAnimator insetAnim;
 	private float curTop = -1;
 	private LinearLayout controlsView;
+	private View rootView;
 	private TextView videoPill;
 	private TextView musicPill;
 	private BehindBarsLayers layers;
@@ -246,6 +247,7 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 	public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
 		super.onViewCreated(view, savedInstanceState);
 		field.setListener(this);
+		rootView = view;
 		view.getViewTreeObserver().addOnPreDrawListener(insetSync);
 		layers.attach();
 		YoutubeAddon addon = addon();
@@ -260,8 +262,11 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 	public void onDestroyView() {
 		YoutubeAddon addon = addon();
 		if (addon != null) addon.getPreferenceStore().removeBroadcastListener(this);
-		View v = getView();
-		if (v != null) v.getViewTreeObserver().removeOnPreDrawListener(insetSync);
+		if (rootView != null) {
+			ViewTreeObserver vto = rootView.getViewTreeObserver();
+			if (vto.isAlive()) vto.removeOnPreDrawListener(insetSync);
+			rootView = null;
+		}
 		if (layers != null) layers.detach();
 		if (field != null) field.setRunning(false);
 		if (feed != null) feed.cancel();
@@ -276,6 +281,9 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 
 	/** Keeps the bubbles clear of the tool bar, the switch pill under it and the bottom bars. */
 	private void syncInsets() {
+		// A frame can still be drawn for a view whose fragment is already detached (the theme
+		// changing recreates the activity).
+		if ((getContext() == null) || (field == null) || !isAdded()) return;
 		MainActivityDelegate a = getActivityDelegate();
 		if ((field == null) || !a.computeContentInsets(field, ins)) return;
 		field.setInsets((int) curTop + dp(56), ins[1]);

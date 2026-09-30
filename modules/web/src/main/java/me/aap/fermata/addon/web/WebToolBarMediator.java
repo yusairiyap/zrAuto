@@ -13,6 +13,10 @@ import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED
 import static me.aap.utils.ui.UiUtils.toPx;
 
 import android.content.Context;
+import android.transition.AutoTransition;
+import android.transition.TransitionManager;
+import android.view.animation.DecelerateInterpolator;
+import android.view.inputmethod.InputMethodManager;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.EditText;
@@ -58,8 +62,13 @@ public class WebToolBarMediator implements ToolBarView.Mediator {
 		addButton(tb, me.aap.utils.R.drawable.back, v -> b.goBackInBrowser(),
 				me.aap.utils.R.id.tool_bar_back_button, LEFT)
 				.setToolBarPriority(Integer.MAX_VALUE);
-		addButton(tb, R.drawable.clear, v -> t.setText(""), R.id.browser_addr_clear)
-				.setToolBarPriority(Integer.MAX_VALUE);
+		// The X only while the address is being edited, see setSearchLayout().
+		me.aap.utils.ui.view.ImageButton clear = addButton(tb, R.drawable.clear, v -> onClearClick(b, t),
+				R.id.browser_addr_clear);
+		clear.setToolBarPriority(Integer.MAX_VALUE);
+		clear.setVisibility(GONE);
+		searchLayout = false;
+		t.setOnFocusChangeListener((v, focused) -> setSearchLayout(tb, b, focused));
 		addButton(tb, me.aap.fermata.R.drawable.bookmark_filled, v ->
 				onBookmarksButtonClick(b), me.aap.fermata.R.id.bookmarks);
 		ImageButton pm = addButton(tb, me.aap.fermata.R.drawable.private_mode, v ->
@@ -128,7 +137,52 @@ public class WebToolBarMediator implements ToolBarView.Mediator {
 		View bb = tb.findViewById(me.aap.utils.R.id.tool_bar_back_button);
 		View fb = tb.findViewById(R.id.browser_forward);
 		if (bb != null) bb.setVisibility(back ? VISIBLE : GONE);
-		if (fb != null) fb.setVisibility(forward ? VISIBLE : GONE);
+		if ((fb != null) && !searchLayout) fb.setVisibility(forward ? VISIBLE : GONE);
+	}
+
+	/** Whether the address is being edited: the other buttons are out of the way. */
+	private boolean searchLayout;
+
+	private static final int[] SEARCH_HIDDEN_IDS = {R.id.browser_home, R.id.browser_forward,
+			me.aap.fermata.R.id.bookmarks, me.aap.fermata.R.id.private_mode};
+
+	/**
+	 * The same as the YouTube tab's search: while the address is typed into, the page buttons step
+	 * aside and the field grows, animated, out to the X, which clears it and then closes it.
+	 */
+	private void setSearchLayout(ToolBarView tb, WebBrowserFragment f, boolean searching) {
+		if (searchLayout == searching) return;
+		if (tb.isLaidOut()) {
+			AutoTransition tr = new AutoTransition();
+			tr.setDuration(220);
+			tr.setInterpolator(new DecelerateInterpolator());
+			TransitionManager.beginDelayedTransition(tb, tr);
+		}
+		searchLayout = searching;
+		for (int id : SEARCH_HIDDEN_IDS) {
+			View v = tb.findViewById(id);
+			if (v == null) continue;
+			if (id == R.id.browser_forward) v.setVisibility((!searching && f.canGoForwardInBrowser()) ?
+					VISIBLE : GONE);
+			else v.setVisibility(searching ? GONE : VISIBLE);
+		}
+		View clear = tb.findViewById(R.id.browser_addr_clear);
+		if (clear != null) clear.setVisibility(searching ? VISIBLE : GONE);
+	}
+
+	private void onClearClick(WebBrowserFragment f, EditText t) {
+		if (t.getText().length() > 0) {
+			t.setText("");
+			return;
+		}
+		closeSearch(t);
+	}
+
+	/** Takes the focus (and the keyboard) off the address, which puts the buttons back. */
+	private void closeSearch(EditText t) {
+		InputMethodManager imm = t.getContext().getSystemService(InputMethodManager.class);
+		if (imm != null) imm.hideSoftInputFromWindow(t.getWindowToken(), 0);
+		t.clearFocus();
 	}
 
 	private EditText createAddress(ToolBarView tb, WebBrowserFragment f) {
@@ -151,6 +205,7 @@ public class WebToolBarMediator implements ToolBarView.Mediator {
 			case KEYCODE_ENTER:
 			case KEYCODE_NUMPAD_ENTER:
 				f.loadUrl(text.getText().toString());
+				closeSearch(text);
 				return true;
 			default:
 				return UiUtils.dpadFocusHelper(text, keyCode, event);
