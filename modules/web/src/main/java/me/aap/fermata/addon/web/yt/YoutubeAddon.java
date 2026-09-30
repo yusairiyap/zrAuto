@@ -81,6 +81,9 @@ public class YoutubeAddon extends WebBrowserAddon
 	static final int BUBBLES_TAP_MUSIC = 2;
 	/** What tapping a bubble does: follows the current mode, or always video, or always music. */
 	static final Pref<IntSupplier> BUBBLES_TAP = Pref.i("YT_BUBBLES_TAP", BUBBLES_TAP_AUTO);
+	/** Titles over the bubbles; and thumbnails on them, or else one-line text cards. */
+	static final Pref<BooleanSupplier> BUBBLES_TEXT = Pref.b("YT_BUBBLES_TEXT", true);
+	static final Pref<BooleanSupplier> BUBBLES_THUMBS = Pref.b("YT_BUBBLES_THUMBS", true);
 	/** How fast the bubbles drift, in percent of the normal speed. */
 	static final Pref<IntSupplier> BUBBLES_SPEED = Pref.i("YT_BUBBLES_SPEED", 100);
 	private static final Pref<Supplier<String[]>> YT_VIDEO_TITLES = Pref.sa("YT_VIDEO_TITLES");

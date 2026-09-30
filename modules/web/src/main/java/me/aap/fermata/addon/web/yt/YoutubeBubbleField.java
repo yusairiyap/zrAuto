@@ -52,6 +52,9 @@ final class YoutubeBubbleField extends FrameLayout implements Choreographer.Fram
 	@Nullable
 	private Listener listener;
 	private float speed = 1f;
+	/** Titles and channel over the cards; and the thumbnails, or else one-line text cards. */
+	private boolean showText = true;
+	private boolean showThumbs = true;
 	private int insetTop;
 	private int insetBottom;
 	private boolean running;
@@ -68,6 +71,13 @@ final class YoutubeBubbleField extends FrameLayout implements Choreographer.Fram
 
 	void setListener(@Nullable Listener l) {
 		listener = l;
+	}
+
+	/** What the cards show; applies to the ones made after this, see setVideos(). */
+	void setOptions(boolean text, boolean thumbs) {
+		showThumbs = thumbs;
+		// Without thumbnails the title is all there is.
+		showText = text || !thumbs;
 	}
 
 	/** 1 is the normal drift; 0.5 half of that, 2 twice as fast. */
@@ -145,6 +155,16 @@ final class YoutubeBubbleField extends FrameLayout implements Choreographer.Fram
 			Bubble b = bubbles.get(i);
 			int bw = Math.min(w, Math.round(base * b.sizeFactor));
 			int bh = Math.round(bw * 9f / 16f);
+			if (!showThumbs) {
+				// One line of text in a wide pill with generous padding: the text as big as the room
+				// allows, the pill as wide as the text.
+				float ts = Math.max(dp(car ? 22 : 18), Math.min(dp(car ? 34 : 26), base * 0.13f));
+				b.title.setTextSize(TypedValue.COMPLEX_UNIT_PX, ts);
+				float tw = b.title.getPaint().measureText(b.video.title);
+				bh = Math.round(ts * 3.0f);
+				bw = Math.min(Math.round(w * 0.92f), Math.round(tw + ts * 3.2f));
+				bw = Math.max(bw, Math.round(ts * 6f));
+			}
 			if ((b.w != bw) || (b.h != bh)) {
 				b.w = bw;
 				b.h = bh;
@@ -152,7 +172,8 @@ final class YoutubeBubbleField extends FrameLayout implements Choreographer.Fram
 				lp.width = bw;
 				lp.height = bh;
 				b.setLayoutParams(lp);
-				b.fitText();
+				if (showThumbs) b.fitText();
+				b.invalidateOutline();
 			}
 			if (scatter || !b.placed) place(b, i, top, bottom);
 			else clamp(b, top, bottom);
@@ -324,6 +345,9 @@ final class YoutubeBubbleField extends FrameLayout implements Choreographer.Fram
 		int w, h;
 		boolean placed;
 		boolean held;
+		boolean dragging;
+		float downRawX, downRawY, lastRawX, lastRawY, startX, startY, flingX, flingY;
+		long lastT;
 
 		@SuppressLint("ClickableViewAccessibility")
 		Bubble(Context ctx, YoutubeFeed.Video video) {
@@ -334,7 +358,8 @@ final class YoutubeBubbleField extends FrameLayout implements Choreographer.Fram
 			setOutlineProvider(new ViewOutlineProvider() {
 				@Override
 				public void getOutline(View v, Outline o) {
-					o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), radius);
+					o.setRoundRect(0, 0, v.getWidth(), v.getHeight(),
+							showThumbs ? radius : v.getHeight() / 2f);
 				}
 			});
 			setElevation(dp(10));
@@ -356,18 +381,27 @@ final class YoutubeBubbleField extends FrameLayout implements Choreographer.Fram
 			View fade = new View(ctx);
 			fade.setBackground(new GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,
 					new int[]{0xF0000000, 0xB0000000, 0x00000000}));
+			if (!showThumbs) fade.setVisibility(GONE);
 			addView(fade, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
 			LinearLayout texts = new LinearLayout(ctx);
 			texts.setOrientation(LinearLayout.VERTICAL);
 			texts.setPadding(dp(14), dp(10), dp(14), dp(12));
-			addView(texts, new LayoutParams(LayoutParams.MATCH_PARENT, WRAP_CONTENT, Gravity.BOTTOM));
+			if (!showThumbs) {
+				texts.setPadding(dp(24), 0, dp(24), 0);
+				texts.setGravity(Gravity.CENTER_VERTICAL);
+				addView(texts, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+			} else {
+				addView(texts, new LayoutParams(LayoutParams.MATCH_PARENT, WRAP_CONTENT, Gravity.BOTTOM));
+			}
+			if (!showText) texts.setVisibility(GONE);
 
 			title = new TextView(ctx);
 			title.setText(video.title);
 			title.setTextColor(Color.WHITE);
 			title.setTypeface(Typeface.DEFAULT_BOLD);
-			title.setMaxLines(3);
+			title.setMaxLines(showThumbs ? 3 : 1);
+			title.setGravity(showThumbs ? Gravity.START : Gravity.CENTER);
 			title.setEllipsize(TextUtils.TruncateAt.END);
 			title.setShadowLayer(4f, 0f, 1.5f, 0xC0000000);
 			title.setLineSpacing(0f, 0.95f);
@@ -379,7 +413,7 @@ final class YoutubeBubbleField extends FrameLayout implements Choreographer.Fram
 			channel.setSingleLine(true);
 			channel.setEllipsize(TextUtils.TruncateAt.END);
 			channel.setShadowLayer(3f, 0f, 1f, 0xB0000000);
-			channel.setVisibility((video.channel == null) ? GONE : VISIBLE);
+			channel.setVisibility(((video.channel == null) || !showThumbs) ? GONE : VISIBLE);
 			texts.addView(channel);
 
 			setOnClickListener(v -> {
@@ -391,10 +425,58 @@ final class YoutubeBubbleField extends FrameLayout implements Choreographer.Fram
 				return true;
 			});
 			// Stands still and rises a little while touched (or focused, with a rotary controller).
+			// A tap plays it; dragging moves it about, and letting go sends it off at the speed the
+			// finger had.
+			final float slop = android.view.ViewConfiguration.get(ctx).getScaledTouchSlop();
 			setOnTouchListener((v, e) -> {
 				switch (e.getActionMasked()) {
-					case MotionEvent.ACTION_DOWN -> hold(true);
-					case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> hold(false);
+					case MotionEvent.ACTION_DOWN -> {
+						hold(true);
+						downRawX = lastRawX = e.getRawX();
+						downRawY = lastRawY = e.getRawY();
+						startX = x;
+						startY = y;
+						lastT = e.getEventTime();
+						flingX = flingY = 0;
+						dragging = false;
+						return false;
+					}
+					case MotionEvent.ACTION_MOVE -> {
+						float dx = e.getRawX() - downRawX;
+						float dy = e.getRawY() - downRawY;
+						if (!dragging && (Math.hypot(dx, dy) > slop)) {
+							dragging = true;
+							cancelLongPress();
+							setPressed(false);
+							if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
+						}
+						if (!dragging) return false;
+						long t = e.getEventTime();
+						float dt = Math.max(1, t - lastT) / 1000f;
+						flingX = 0.6f * flingX + 0.4f * ((e.getRawX() - lastRawX) / dt);
+						flingY = 0.6f * flingY + 0.4f * ((e.getRawY() - lastRawY) / dt);
+						lastRawX = e.getRawX();
+						lastRawY = e.getRawY();
+						lastT = t;
+						x = Math.max(0, Math.min(YoutubeBubbleField.this.getWidth() - w, startX + dx));
+						y = Math.max(0, Math.min(YoutubeBubbleField.this.getHeight() - h, startY + dy));
+						return true;
+					}
+					case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+						boolean was = dragging;
+						dragging = false;
+						hold(false);
+						if (was) {
+							// Thrown: the drift continues the way it was let go, never faster than a
+							// brisk glide (the speed setting scales it on top of that).
+							float cap = dp(car ? 260 : 220);
+							float sp = (float) Math.hypot(flingX, flingY);
+							float k = (sp > cap) ? cap / sp : 1f;
+							vx = flingX * k / speed;
+							vy = flingY * k / speed;
+						}
+						return was;
+					}
 					default -> {
 					}
 				}
@@ -402,8 +484,10 @@ final class YoutubeBubbleField extends FrameLayout implements Choreographer.Fram
 			});
 			setOnFocusChangeListener((v, focus) -> hold(focus));
 
-			Bitmap cached = YoutubeFeed.cachedThumbnail(video);
-			if (cached != null) {
+			Bitmap cached = showThumbs ? YoutubeFeed.cachedThumbnail(video) : null;
+			if (!showThumbs) {
+				// Just the colour: no thumbnail is loaded at all.
+			} else if (cached != null) {
 				image.setImageBitmap(cached);
 			} else {
 				image.setAlpha(1f);

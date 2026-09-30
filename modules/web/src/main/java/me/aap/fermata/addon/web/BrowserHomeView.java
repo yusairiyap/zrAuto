@@ -65,7 +65,7 @@ import me.aap.utils.pref.PreferenceStore;
 @SuppressLint("ViewConstructor")
 final class BrowserHomeView extends FrameLayout implements PreferenceStore.Listener {
 	/** The room the tab strip takes at the top, which the home page's content has to clear. */
-	static final int TABS_BAR_HEIGHT_DP = 54;
+	static final int TABS_BAR_HEIGHT_DP = 44;
 	private static final int T_HEADER = 0;
 	private static final int T_CARD = 1;
 	private static final int T_ADD = 2;
@@ -179,7 +179,7 @@ final class BrowserHomeView extends FrameLayout implements PreferenceStore.Liste
 				int type = parent.getChildViewHolder(v).getItemViewType();
 				if (compact) {
 					// Clears the tab strip under the tool bar; one row, so the room left is the cards'.
-					out.set(gap, toIntPx(getContext(), car ? 58 : 54), gap, gap);
+					out.set(gap, toIntPx(getContext(), car ? 52 : 44), gap, gap);
 				} else if (type == T_HEADER) {
 					out.set(0, 0, 0, gap);
 				} else {
@@ -251,7 +251,7 @@ final class BrowserHomeView extends FrameLayout implements PreferenceStore.Liste
 	private void updateCardSide() {
 		if (!compact) return;
 		int avail = list.getHeight() - list.getPaddingTop() - list.getPaddingBottom() -
-				dp(car ? 58 : 54) - dp(14);
+				dp(car ? 52 : 44) - dp(14);
 		int side = Math.max(dp(110), avail);
 		if (Math.abs(side - cardSide) > dp(3)) {
 			cardSide = side;
@@ -564,7 +564,7 @@ final class BrowserHomeView extends FrameLayout implements PreferenceStore.Liste
 		col.setOrientation(LinearLayout.VERTICAL);
 		col.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 		// Room for the tab strip, which floats over the top of this page.
-		col.setPadding(dp(8), dp(car ? 58 : TABS_BAR_HEIGHT_DP), dp(8), dp(4));
+		col.setPadding(dp(8), dp(car ? 52 : TABS_BAR_HEIGHT_DP), dp(8), dp(4));
 
 		LinearLayout row = new LinearLayout(ctx);
 		row.setOrientation(LinearLayout.HORIZONTAL);

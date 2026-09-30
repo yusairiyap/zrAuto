@@ -421,13 +421,17 @@ final class BrowserTabs implements BrowserHomeView.Host, FermataWebView.PageList
 
 	// ---------------------------------------------------------------- the panel
 
+	private int tabOverlap() {
+		return dp(10);
+	}
+
 	private int stripHeight() {
 		return dp(car ? 50 : 42);
 	}
 
 	/** The room under the tool bar that the strip takes, panel bottom padding included. */
 	private int panelExtra() {
-		return stripHeight() + dp(6);
+		return stripHeight() + dp(6) - tabOverlap();
 	}
 
 	/** Starts the strip growing out of the tool bar's pill; the tab just came on screen. */
@@ -518,7 +522,8 @@ final class BrowserTabs implements BrowserHomeView.Host, FermataWebView.PageList
 		}
 
 		FrameLayout.LayoutParams blp = (FrameLayout.LayoutParams) bar.getLayoutParams();
-		int bt = Math.round(bottom) + dp(2);
+		// Tucked up into the tool bar's own bottom padding, so the gap to its buttons is small.
+		int bt = Math.round(bottom) - tabOverlap();
 		int bl = Math.round(left) + dp(8);
 		int bw = pw - dp(16);
 		int bh = stripHeight();

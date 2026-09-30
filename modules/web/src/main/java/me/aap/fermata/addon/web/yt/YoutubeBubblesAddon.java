@@ -45,6 +45,19 @@ public class YoutubeBubblesAddon implements FermataFragmentAddon {
 		YoutubeAddon yt = AddonManager.get().getAddon(YoutubeAddon.class);
 		if (yt == null) return;
 		PreferenceStore ys = yt.getPreferenceStore();
+		set.addBooleanPref(o -> {
+			o.store = ys;
+			o.pref = YoutubeAddon.BUBBLES_THUMBS;
+			o.title = R.string.yt_bubbles_show_thumbs;
+			o.subtitle = R.string.yt_bubbles_show_thumbs_sub;
+			o.visibility = visibility.copy();
+		});
+		set.addBooleanPref(o -> {
+			o.store = ys;
+			o.pref = YoutubeAddon.BUBBLES_TEXT;
+			o.title = R.string.yt_bubbles_show_text;
+			o.visibility = visibility.copy();
+		});
 		set.addIntPref(o -> {
 			o.store = ys;
 			o.pref = YoutubeAddon.BUBBLES_COUNT;

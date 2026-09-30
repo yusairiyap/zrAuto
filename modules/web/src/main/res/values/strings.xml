@@ -73,4 +73,7 @@
     <string name="browser_tab_limit">Too many tabs open. Close one first.</string>
     <string name="browser_open_new_tab">Open in a new tab</string>
     <string name="browser_open">Open</string>
+    <string name="yt_bubbles_show_thumbs">Show video thumbnails</string>
+    <string name="yt_bubbles_show_thumbs_sub">Off: every video is a wide one-line card with just its title.</string>
+    <string name="yt_bubbles_show_text">Show titles on the bubbles</string>
 </resources>

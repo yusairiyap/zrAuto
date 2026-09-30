@@ -253,6 +253,7 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 		YoutubeAddon addon = addon();
 		if (addon != null) addon.getPreferenceStore().addBroadcastListener(this);
 		applySpeed();
+		applyOptions();
 		updateModePills();
 		updateRunning();
 		if (!isHidden()) maybeLoad();
@@ -383,6 +384,14 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 		return Math.max(1, addon.getPreferenceStore().getIntPref(YoutubeAddon.BUBBLES_COUNT));
 	}
 
+	private void applyOptions() {
+		YoutubeAddon addon = addon();
+		if ((addon == null) || (field == null)) return;
+		PreferenceStore ps = addon.getPreferenceStore();
+		field.setOptions(ps.getBooleanPref(YoutubeAddon.BUBBLES_TEXT),
+				ps.getBooleanPref(YoutubeAddon.BUBBLES_THUMBS));
+	}
+
 	private void applySpeed() {
 		YoutubeAddon addon = addon();
 		if ((addon != null) && (field != null)) {
@@ -462,6 +471,12 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 	public void onPreferenceChanged(PreferenceStore store, List<PreferenceStore.Pref<?>> prefs) {
 		if (getView() == null) return;
 		if (prefs.contains(YoutubeAddon.BUBBLES_SPEED)) applySpeed();
+		if (prefs.contains(YoutubeAddon.BUBBLES_TEXT) || prefs.contains(YoutubeAddon.BUBBLES_THUMBS)) {
+			applyOptions();
+			// Shown afresh the next time the tab is opened, if it isn't on screen now.
+			if (isHidden()) field.setVideos(Collections.emptyList());
+			else show();
+		}
 		if (prefs.contains(YoutubeAddon.BUBBLES_TAP)) updateModePills();
 		if (prefs.contains(YoutubeAddon.BUBBLES_COUNT) && !isHidden()) maybeLoad();
 		if (prefs.contains(YoutubeAddon.BUBBLES_COUNT) && isHidden()) {
