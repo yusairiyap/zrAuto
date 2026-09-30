@@ -96,7 +96,9 @@ final class YoutubeFeed {
 			  function add(id, title, channel) {
 			    if (!id || !/^[\\w-]{11}$/.test(id) || seen[id]) return;
 			    title = (title || '').replace(/\\s+/g, ' ').trim();
-			    if (title.length < 2) return;
+			    // A duration badge ("3:16") or a bare number is not a title: leave the id for a later,
+			    // better match instead of keeping it.
+			    if (title.length < 2 || /^[\\d:.\\s]+$/.test(title) || /^(shorts|live|new)$/i.test(title)) return;
 			    seen[id] = 1;
 			    out.push({id: id, title: title, channel: (channel || '').trim()});
 			  }

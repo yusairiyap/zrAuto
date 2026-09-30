@@ -14,6 +14,7 @@ import static me.aap.utils.ui.UiUtils.toPx;
 
 import android.content.Context;
 import android.view.KeyEvent;
+import android.view.View;
 import android.widget.EditText;
 import android.widget.ImageButton;
 
@@ -101,8 +102,12 @@ public class WebToolBarMediator implements ToolBarView.Mediator {
 	}
 
 	public void setButtonsVisibility(ToolBarView tb, boolean back, boolean forward) {
-		tb.findViewById(me.aap.utils.R.id.tool_bar_back_button).setVisibility(back ? VISIBLE : GONE);
-		tb.findViewById(R.id.browser_forward).setVisibility(forward ? VISIBLE : GONE);
+		// Not there while another tab's tool bar is still showing (the fragment's view is created
+		// before its mediator is enabled).
+		View bb = tb.findViewById(me.aap.utils.R.id.tool_bar_back_button);
+		View fb = tb.findViewById(R.id.browser_forward);
+		if (bb != null) bb.setVisibility(back ? VISIBLE : GONE);
+		if (fb != null) fb.setVisibility(forward ? VISIBLE : GONE);
 	}
 
 	private EditText createAddress(ToolBarView tb, WebBrowserFragment f) {

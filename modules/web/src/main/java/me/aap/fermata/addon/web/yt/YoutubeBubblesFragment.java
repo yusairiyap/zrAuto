@@ -22,6 +22,7 @@ import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import androidx.annotation.Keep;
@@ -62,6 +63,12 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 
 	private YoutubeBubbleField field;
 	private TextView status;
+	private android.widget.ProgressBar shuffleSpinner;
+	private TextView shuffleLabel;
+	private android.animation.ValueAnimator spinnerAnim;
+	private android.animation.ValueAnimator insetAnim;
+	private float curTop = -1;
+	private LinearLayout controlsView;
 	private TextView videoPill;
 	private TextView musicPill;
 	private BehindBarsLayers layers;
@@ -84,6 +91,12 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 	@Override
 	public CharSequence getTitle() {
 		return dynCtx(requireContext()).getString(R.string.yt_bubbles_title);
+	}
+
+	/** No tool bar on this tab: the bubbles get the room; it comes back with the next tab. */
+	@Override
+	public me.aap.utils.ui.view.ToolBarView.Mediator getToolBarMediator() {
+		return me.aap.utils.ui.view.ToolBarView.Mediator.Invisible.instance;
 	}
 
 	/** The background runs on behind a side nav bar's pill, like the Music tab's. */
@@ -146,7 +159,26 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 		cbg.setCornerRadius(dp(40));
 		controls.setBackground(cbg);
 		controls.setElevation(dp(6));
-		TextView shuffle = pill(ctx, dynCtx(ctx).getString(R.string.yt_bubbles_refresh), false, car);
+		// Shuffle: a spinner grows in ahead of the label while the feed reloads.
+		LinearLayout shuffle = new LinearLayout(ctx);
+		shuffle.setOrientation(LinearLayout.HORIZONTAL);
+		shuffle.setGravity(Gravity.CENTER);
+		shuffle.setPadding(dp(18), 0, dp(18), 0);
+		shuffle.setClickable(true);
+		shuffle.setFocusable(true);
+		shuffleSpinner = new ProgressBar(ctx);
+		shuffleSpinner.setIndeterminate(true);
+		shuffleSpinner.setIndeterminateTintList(ColorStateList.valueOf(light ? 0xDE000000 : 0xFFFFFFFF));
+		shuffleSpinner.setVisibility(View.GONE);
+		shuffle.addView(shuffleSpinner, new LinearLayout.LayoutParams(0, dp(car ? 24 : 20)));
+		shuffleLabel = new TextView(ctx);
+		shuffleLabel.setText(dynCtx(ctx).getString(R.string.yt_bubbles_refresh));
+		shuffleLabel.setTypeface(Typeface.DEFAULT_BOLD);
+		shuffleLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, car ? 17 : 14);
+		shuffleLabel.setSingleLine(true);
+		shuffleLabel.setTextColor(light ? 0xDE000000 : 0xFFFFFFFF);
+		shuffle.addView(shuffleLabel, new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
+		stylePill(shuffle, false);
 		shuffle.setOnClickListener(v -> onShuffle());
 		videoPill = pill(ctx, dynCtx(ctx).getString(R.string.yt_bubbles_mode_video), false, car);
 		videoPill.setOnClickListener(v -> setMode(YoutubeAddon.BUBBLES_TAP_VIDEO));
@@ -160,8 +192,7 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 		FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT,
 				Gravity.TOP | Gravity.CENTER_HORIZONTAL);
 		root.addView(controls, clp);
-		// Right under the tool bar's pill, like a web page's top.
-		a.insetWebViewTop(controls);
+		controlsView = controls;
 
 		layers = new BehindBarsLayers(a, root, backdrop, glow);
 		return root;
@@ -181,9 +212,12 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 		return t;
 	}
 
-	private void stylePill(TextView t, boolean selected) {
+	private void stylePill(View t, boolean selected) {
 		int fill = selected ? (light ? 0xFF1C1C1E : 0xFFFFFFFF) : 0x00000000;
-		t.setTextColor(selected ? (light ? 0xFFFFFFFF : 0xFF000000) : (light ? 0xDE000000 : 0xFFFFFFFF));
+		if (t instanceof TextView tv) {
+			tv.setTextColor(selected ? (light ? 0xFFFFFFFF : 0xFF000000) :
+					(light ? 0xDE000000 : 0xFFFFFFFF));
+		}
 		GradientDrawable content = new GradientDrawable();
 		content.setColor(fill);
 		content.setCornerRadius(dp(40));
@@ -220,6 +254,10 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 		if (feed != null) feed.cancel();
 		feed = null;
 		loading = false;
+		if (spinnerAnim != null) spinnerAnim.cancel();
+		if (insetAnim != null) insetAnim.cancel();
+		insetAnim = null;
+		curTop = -1;
 		super.onDestroyView();
 	}
 
@@ -227,7 +265,66 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 	private void syncInsets() {
 		MainActivityDelegate a = getActivityDelegate();
 		if ((field == null) || !a.computeContentInsets(field, ins)) return;
-		field.setInsets(ins[0] + dp(56), ins[1]);
+		field.setInsets((int) curTop + dp(56), ins[1]);
+		float target = ins[0];
+		if (curTop < 0) {
+			curTop = target;
+			applyTop();
+		} else if ((insetAnim == null) && (Math.abs(target - curTop) > 0.5f)) {
+			// The tool bar going or coming: the bubbles and the switch glide to their new room.
+			insetAnim = android.animation.ValueAnimator.ofFloat(curTop, target);
+			insetAnim.setDuration(320);
+			insetAnim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+			insetAnim.addUpdateListener(v -> {
+				curTop = (float) v.getAnimatedValue();
+				applyTop();
+			});
+			insetAnim.addListener(new android.animation.AnimatorListenerAdapter() {
+				@Override
+				public void onAnimationEnd(android.animation.Animator animation) {
+					insetAnim = null;
+				}
+			});
+			insetAnim.start();
+		}
+	}
+
+	private void applyTop() {
+		if (controlsView == null) return;
+		ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) controlsView.getLayoutParams();
+		int m = (int) curTop + dp(8);
+		if (lp.topMargin != m) {
+			lp.topMargin = m;
+			controlsView.setLayoutParams(lp);
+		}
+		field.setInsets((int) curTop + dp(56), ins[1]);
+	}
+
+	/** Spinner in the Shuffle pill: grows in while loading, shrinks away after. */
+	private void setLoadingChip(boolean on) {
+		if (shuffleSpinner == null) return;
+		if (spinnerAnim != null) spinnerAnim.cancel();
+		int from = shuffleSpinner.getLayoutParams().width;
+		int to = on ? dp(20) : 0;
+		if (on) shuffleSpinner.setVisibility(View.VISIBLE);
+		spinnerAnim = android.animation.ValueAnimator.ofInt(from, to);
+		spinnerAnim.setDuration(220);
+		spinnerAnim.addUpdateListener(v -> {
+			ViewGroup.LayoutParams lp = shuffleSpinner.getLayoutParams();
+			lp.width = (int) v.getAnimatedValue();
+			shuffleSpinner.setLayoutParams(lp);
+			shuffleSpinner.setAlpha(Math.min(1f, lp.width / (float) dp(20)));
+		});
+		if (!on) {
+			spinnerAnim.addListener(new android.animation.AnimatorListenerAdapter() {
+				@Override
+				public void onAnimationEnd(android.animation.Animator animation) {
+					if (shuffleSpinner.getLayoutParams().width == 0) shuffleSpinner.setVisibility(View.GONE);
+				}
+			});
+		}
+		shuffleLabel.animate().alpha(on ? 0.7f : 1f).setDuration(200).start();
+		spinnerAnim.start();
 	}
 
 	@Override
@@ -291,12 +388,14 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 		if ((addon == null) || loading) return;
 		int wanted = Math.min(40, Math.max(count(addon), 24));
 		loading = true;
+		setLoadingChip(true);
 		if (field.isEmpty()) showStatus(R.string.yt_bubbles_loading);
 		if (feed != null) feed.cancel();
 		feed = new YoutubeFeed(requireContext());
 		feed.start(wanted, list -> {
 			loading = false;
 			if (getView() == null) return;
+			setLoadingChip(false);
 			if (!list.isEmpty()) {
 				cache = list;
 				cacheTime = SystemClock.elapsedRealtime();
