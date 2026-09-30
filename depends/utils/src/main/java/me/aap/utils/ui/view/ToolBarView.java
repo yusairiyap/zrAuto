@@ -273,7 +273,7 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 
 		// A title/text field shrinks to nothing rather than pushing buttons off, so keep it some room
 		int avail = width - (hasText ? Math.max(width * 3 / 10, toIntPx(getContext(), 96)) : 0);
-		int slots = Math.max(0, avail / Math.max(1, h * 5 / 6) - fixed);
+		int slots = Math.max(0, avail / h - fixed);
 		int keep = (movable.size() <= slots) ? movable.size() : Math.max(0, slots - 1);
 
 		List<ImageButton> order = new ArrayList<>(movable);
@@ -566,8 +566,7 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 		default <B extends ImageButton> B initButton(B b, @DrawableRes int icon, OnClickListener onClick) {
 			ConstraintLayout.LayoutParams lp = setLayoutParams(b, 0, MATCH_PARENT);
 			lp.horizontalWeight = 1;
-			// A little narrower than tall: the icons keep their size, the gaps between them shrink.
-			lp.dimensionRatio = "5:6";
+			lp.dimensionRatio = "1:1";
 			b.setImageResource(icon);
 			b.setScaleType(ImageView.ScaleType.FIT_CENTER);
 			b.setBackgroundResource(R.drawable.tool_bar_button_bg);
@@ -600,7 +599,7 @@ public class ToolBarView extends ConstraintLayout implements ActivityListener,
 
 		default void setButtonPadding(View v) {
 			float scale = ActivityDelegate.get(v.getContext()).getToolBarSize();
-			int pad = toIntPx(v.getContext(), Math.round(9 * scale));
+			int pad = toIntPx(v.getContext(), Math.round(13 * scale));
 			v.setPadding(pad, pad, pad, pad);
 		}
 
