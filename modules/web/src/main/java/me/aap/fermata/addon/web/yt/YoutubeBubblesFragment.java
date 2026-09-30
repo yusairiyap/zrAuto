@@ -65,6 +65,8 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 	private TextView status;
 	private android.widget.ProgressBar shuffleSpinner;
 	private TextView shuffleLabel;
+	private LinearLayout statusBox;
+	private YoutubeShimmerIcon shimmer;
 	private android.animation.ValueAnimator spinnerAnim;
 	private android.animation.ValueAnimator insetAnim;
 	private float curTop = -1;
@@ -147,7 +149,18 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 		status.setTextSize(TypedValue.COMPLEX_UNIT_SP, car ? 22 : 17);
 		status.setGravity(Gravity.CENTER);
 		status.setPadding(dp(32), 0, dp(32), 0);
-		root.addView(status, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.CENTER));
+		// While loading, the tab's own icon, big, with a band of light sweeping over it.
+		shimmer = new YoutubeShimmerIcon(ctx, me.aap.fermata.R.drawable.youtube_bubbles,
+				light ? 0x33000000 : 0x40FFFFFF, light ? 0xCC000000 : 0xFFFFFFFF);
+		statusBox = new LinearLayout(ctx);
+		statusBox.setOrientation(LinearLayout.VERTICAL);
+		statusBox.setGravity(Gravity.CENTER_HORIZONTAL);
+		int icon = dp(car ? 168 : 128);
+		statusBox.addView(shimmer, new LinearLayout.LayoutParams(icon, icon));
+		LinearLayout.LayoutParams stlp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+		stlp.topMargin = dp(16);
+		statusBox.addView(status, stlp);
+		root.addView(statusBox, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.CENTER));
 
 		// Shuffle and the Video/Music switch, in a pill under the tool bar.
 		LinearLayout controls = new LinearLayout(ctx);
@@ -312,6 +325,8 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 		spinnerAnim.addUpdateListener(v -> {
 			ViewGroup.LayoutParams lp = shuffleSpinner.getLayoutParams();
 			lp.width = (int) v.getAnimatedValue();
+			// The gap to the label grows with it, so the two never touch.
+			((LinearLayout.LayoutParams) lp).setMarginEnd(Math.round(dp(8) * lp.width / (float) dp(20)));
 			shuffleSpinner.setLayoutParams(lp);
 			shuffleSpinner.setAlpha(Math.min(1f, lp.width / (float) dp(20)));
 		});
@@ -416,13 +431,18 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 		}
 		int n = Math.min(count(addon), cache.size());
 		field.setVideos(new ArrayList<>(cache.subList(0, n)));
-		status.setVisibility(View.GONE);
+		statusBox.setVisibility(View.GONE);
+		shimmer.stop();
 	}
 
 	private void showStatus(int text) {
 		if (status == null) return;
 		status.setText(dynCtx(requireContext()).getString(text));
-		status.setVisibility(View.VISIBLE);
+		statusBox.setVisibility(View.VISIBLE);
+		boolean busy = text == R.string.yt_bubbles_loading;
+		if (busy) shimmer.start();
+		else shimmer.stop();
+		shimmer.setAlpha(busy ? 1f : 0.5f);
 	}
 
 	private void onShuffle() {

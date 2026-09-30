@@ -417,6 +417,7 @@ public abstract class ActivityDelegate implements EventBroadcaster<ActivityListe
 		if (switchingFrom != null) switchingFrom.switchingTo(switchingTo);
 		switchingTo.switchingFrom(switchingFrom);
 		if (input != null) switchingTo.setInput(input);
+		initialFragmentShow = (activeId == ID_NULL);
 		// Grabbed before commitNow() -- hide()/show() only ever toggle this same View's visibility,
 		// never destroy it, so the reference stays valid across the transaction and lets the
 		// crossfade below animate the outgoing screen's actual last-laid-out view.
@@ -431,6 +432,16 @@ public abstract class ActivityDelegate implements EventBroadcaster<ActivityListe
 			Log.d(err);
 			return null;
 		}
+	}
+
+	private boolean initialFragmentShow;
+
+	/**
+	 * Whether the fragment being shown is the very first one since the app started (nothing was on
+	 * screen before it) -- a tab may then skip its entrance animations, see the Music tab.
+	 */
+	public boolean isInitialFragmentShow() {
+		return initialFragmentShow;
 	}
 
 	private static final long FRAGMENT_FADE_IN_DURATION = 200L;

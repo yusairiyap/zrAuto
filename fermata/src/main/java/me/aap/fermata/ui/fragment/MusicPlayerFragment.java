@@ -225,6 +225,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
 		super.onViewCreated(view, savedInstanceState);
 		MainActivityDelegate a = getActivityDelegate();
+		if ((savedInstanceState != null) || a.isInitialFragmentShow()) {
+			quietUntil = android.os.SystemClock.uptimeMillis() + 2500;
+		}
 		content = view.findViewById(R.id.music_content);
 		bg = view.findViewById(R.id.music_bg);
 		behind = new View[]{view.findViewById(R.id.music_backdrop), bg,
@@ -627,12 +630,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 		if (bm == null) {
 			// Through the palette: the placeholder is drawn in its colors.
-			crossfade(art, ContextCompat.getDrawable(palette, R.drawable.music_art_placeholder));
-			crossfade(bg, null);
+			fade(art, ContextCompat.getDrawable(palette, R.drawable.music_art_placeholder));
+			fade(bg, null);
 			return;
 		}
 
-		crossfade(art, new BitmapDrawable(getResources(), bm));
+		fade(art, new BitmapDrawable(getResources(), bm));
 		updateBackground(true);
 	}
 
@@ -646,7 +649,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if ((bm == null) || (bg == null)) return;
 		Bitmap blurred = blur(bm, settings().getIntPref(MusicAddon.BG_BLUR));
 		Drawable d = (blurred != null) ? new BitmapDrawable(getResources(), blurred) : null;
-		if (fade) crossfade(bg, d);
+		if (fade) fade(bg, d);
 		else bg.setImageDrawable(d);
 	}
 
@@ -693,6 +696,27 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		} catch (Throwable ex) {
 			return bm;
 		}
+	}
+
+	/**
+	 * See crossfade(), except right after the app started on this tab (see quiet()): there the
+	 * picture just appears, instead of fading in while everything else is still settling.
+	 */
+	private void fade(ImageView v, @Nullable Drawable to) {
+		if (quiet()) v.setImageDrawable(to);
+		else crossfade(v, to);
+	}
+
+	/**
+	 * Set while the app has just started on this tab (launched straight into it, or restored):
+	 * the first couple of seconds are a burst of layout and loading, and animating each of those
+	 * (insets gliding, cover and spinner fading) only made the start look janky. Switching to the
+	 * tab later keeps all of its animations.
+	 */
+	private long quietUntil;
+
+	private boolean quiet() {
+		return android.os.SystemClock.uptimeMillis() < quietUntil;
 	}
 
 	private static void crossfade(ImageView v, @Nullable Drawable to) {
@@ -1048,7 +1072,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		insetRight = right;
 		if (insetAnim != null) insetAnim.cancel();
 
-		if (!insetsSet) {
+		if (!insetsSet || quiet()) {
 			insetsSet = true;
 			c.setPadding(left, top, right, bottom);
 			return;
@@ -1110,6 +1134,14 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		playLoadingShown = busy;
 		playLoading.animate().cancel();
 		if (playIconAnim != null) playIconAnim.cancel();
+		if (quiet()) {
+			playPause.setImageAlpha(busy ? 0 : 255);
+			playLoading.setAlpha(1f);
+			playLoading.setScaleX(1f);
+			playLoading.setScaleY(1f);
+			playLoading.setVisibility(busy ? View.VISIBLE : View.GONE);
+			return;
+		}
 
 		int from = playPause.getImageAlpha();
 		ValueAnimator ia = ValueAnimator.ofInt(from, busy ? 0 : 255);

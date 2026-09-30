@@ -31,6 +31,7 @@ import java.util.List;
 
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.fragment.MusicPlayerFragment;
+import me.aap.fermata.ui.view.ToolBarPill;
 import me.aap.utils.function.Supplier;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.pref.PreferenceStore.Pref;
@@ -84,6 +85,18 @@ final class BrowserTabs implements BrowserHomeView.Host, FermataWebView.PageList
 	private final int ripple;
 	private int active = -1;
 	private int justAdded = -1;
+	private final View panel;
+	private final int[] loc1 = new int[2];
+	private final int[] loc2 = new int[2];
+	private final android.graphics.RectF pillRect = new android.graphics.RectF();
+	private final android.view.ViewTreeObserver.OnPreDrawListener panelSync = () -> {
+		syncPanel();
+		return true;
+	};
+	/** How much of the tab strip is out: 0 when entering the tab, growing to 1. */
+	private float expand;
+	private boolean expandStarted;
+	private android.animation.ValueAnimator expandAnim;
 
 	BrowserTabs(WebBrowserFragment fragment, WebBrowserAddon addon, MainActivityDelegate activity,
 							FrameLayout root, FrameLayout tabHost, FermataWebView first) {
@@ -101,9 +114,6 @@ final class BrowserTabs implements BrowserHomeView.Host, FermataWebView.PageList
 		pillActive = light ? 0x29000000 : 0x4DFFFFFF;
 		ripple = light ? 0x29000000 : 0x40FFFFFF;
 
-		// The pages start below the tab strip; each WebView adds the room for the tool bar itself.
-		tabHost.setPadding(0, dp(BrowserHomeView.TABS_BAR_HEIGHT_DP), 0, 0);
-
 		homeView = new BrowserHomeView(ctx, addon, activity, this);
 		root.addView(homeView, root.indexOfChild(tabHost) + 1,
 				new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
@@ -112,11 +122,6 @@ final class BrowserTabs implements BrowserHomeView.Host, FermataWebView.PageList
 		bar.setOrientation(LinearLayout.HORIZONTAL);
 		bar.setGravity(Gravity.CENTER_VERTICAL);
 		bar.setPadding(dp(6), 0, dp(6), 0);
-		bar.setElevation(dp(8));
-		GradientDrawable bg = new GradientDrawable();
-		bg.setColor(light ? 0xF2F5F6FA : 0xE61C1C22);
-		bg.setCornerRadius(dp(40));
-		bar.setBackground(bg);
 		scroller = new HorizontalScrollView(ctx);
 		scroller.setHorizontalScrollBarEnabled(false);
 		scroller.setOverScrollMode(View.OVER_SCROLL_NEVER);
@@ -131,12 +136,18 @@ final class BrowserTabs implements BrowserHomeView.Host, FermataWebView.PageList
 		LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(dp(car ? 46 : 38), dp(car ? 46 : 38));
 		plp.setMarginStart(dp(4));
 		bar.addView(plus, plp);
-		FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(MATCH_PARENT, dp(car ? 52 : 46));
-		blp.setMargins(dp(10), 0, dp(10), 0);
-		blp.bottomMargin = dp(BrowserHomeView.TABS_BAR_HEIGHT_DP - (car ? 52 : 46));
-		root.addView(bar, root.indexOfChild(homeView) + 1, blp);
-		// The strip sits right under the tool bar's pill, like the pages do.
-		activity.insetWebViewTop(bar);
+		// One pill with the tool bar: a panel in the tool bar's colour reaching down from it, the
+		// tab strip on it. Both follow the tool bar's position every frame, see syncPanel().
+		panel = new View(ctx);
+		GradientDrawable pbg = new GradientDrawable();
+		pbg.setCornerRadius(dp(28));
+		panel.setBackground(pbg);
+		panel.setElevation(dp(4));
+		panel.setVisibility(View.GONE);
+		root.addView(panel, root.indexOfChild(homeView) + 1, new FrameLayout.LayoutParams(0, 0));
+		bar.setVisibility(View.GONE);
+		root.addView(bar, root.indexOfChild(panel) + 1, new FrameLayout.LayoutParams(0, 0));
+		root.getViewTreeObserver().addOnPreDrawListener(panelSync);
 
 		add(first, addon.getHomeUrl() == null, false);
 		select(0, false);
@@ -244,6 +255,8 @@ final class BrowserTabs implements BrowserHomeView.Host, FermataWebView.PageList
 
 	/** Tears everything down with the fragment's view. */
 	void release() {
+		root.getViewTreeObserver().removeOnPreDrawListener(panelSync);
+		if (expandAnim != null) expandAnim.cancel();
 		homeView.release();
 		for (Tab t : tabs) {
 			t.web.setPageListener(null);
@@ -402,6 +415,132 @@ final class BrowserTabs implements BrowserHomeView.Host, FermataWebView.PageList
 
 	void reloadHome() {
 		homeView.reload();
+	}
+
+	// ---------------------------------------------------------------- the panel
+
+	private int stripHeight() {
+		return dp(car ? 50 : 42);
+	}
+
+	/** The room under the tool bar that the strip takes, panel bottom padding included. */
+	private int panelExtra() {
+		return stripHeight() + dp(6);
+	}
+
+	/** Starts the strip growing out of the tool bar's pill; the tab just came on screen. */
+	void playEnter() {
+		expandStarted = false;
+		expand = 0f;
+	}
+
+	private void startExpand() {
+		expandStarted = true;
+		if (expandAnim != null) expandAnim.cancel();
+		expandAnim = android.animation.ValueAnimator.ofFloat(0f, 1f);
+		expandAnim.setDuration(380);
+		expandAnim.setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f));
+		expandAnim.addUpdateListener(v -> {
+			expand = (float) v.getAnimatedValue();
+			root.invalidate();
+		});
+		expandAnim.start();
+	}
+
+	/**
+	 * Lays the panel and the strip out against the tool bar, in this view's own coordinates (the
+	 * tool bar overlays the top of the tab): the panel runs from the tool bar's pill top down past
+	 * its bottom by the strip's room, and the pages and the home page start below it.
+	 */
+	private void syncPanel() {
+		FermataWebView cur = getWebView();
+		FermataChromeClient cc = (cur != null) ? cur.getWebChromeClient() : null;
+		if ((cc != null) && cc.isFullScreen()) {
+			// A video over everything: the panel (raised above its siblings) must not cover it.
+			panel.setVisibility(View.GONE);
+			bar.setVisibility(View.GONE);
+			return;
+		}
+		ToolBarView tb = activity.getToolBar();
+		boolean tbShown = (tb != null) && (tb.getVisibility() == View.VISIBLE) && tb.isLaidOut();
+		boolean merged = tbShown && ToolBarPill.isMerged(tb) && ToolBarPill.getPillRect(tb, pillRect);
+		float left;
+		float right;
+		float top;
+		float bottom;
+
+		if (merged) {
+			tb.getLocationOnScreen(loc1);
+			root.getLocationOnScreen(loc2);
+			float ox = loc1[0] - loc2[0];
+			float oy = loc1[1] - loc2[1];
+			left = ox + pillRect.left;
+			right = ox + pillRect.right;
+			top = oy + pillRect.top;
+			bottom = oy + pillRect.bottom;
+		} else if (!tbShown) {
+			// No tool bar (bars hidden): the strip alone, at the top.
+			left = dp(12);
+			right = root.getWidth() - dp(12);
+			top = dp(8);
+			bottom = top;
+		} else {
+			// Another tool bar is still showing: nothing of ours yet.
+			panel.setVisibility(View.GONE);
+			bar.setVisibility(View.GONE);
+			expandStarted = false;
+			expand = 0f;
+			return;
+		}
+
+		if (!expandStarted) startExpand();
+		float extra = panelExtra() * expand;
+		int ip = Math.round(top);
+		int ib = Math.round(bottom + extra);
+
+		panel.setVisibility(View.VISIBLE);
+		bar.setVisibility(View.VISIBLE);
+		((GradientDrawable) panel.getBackground()).setColor(merged ? ToolBarPill.getColor(tb) :
+				(light ? 0xF2F5F6FA : 0xF21C1C22));
+		FrameLayout.LayoutParams plp = (FrameLayout.LayoutParams) panel.getLayoutParams();
+		int pw = Math.round(right - left);
+		int ph = ib - ip;
+		if ((plp.leftMargin != Math.round(left)) || (plp.topMargin != ip) || (plp.width != pw) ||
+				(plp.height != ph)) {
+			plp.gravity = Gravity.TOP | Gravity.START;
+			plp.leftMargin = Math.round(left);
+			plp.topMargin = ip;
+			plp.width = pw;
+			plp.height = ph;
+			panel.setLayoutParams(plp);
+		}
+
+		FrameLayout.LayoutParams blp = (FrameLayout.LayoutParams) bar.getLayoutParams();
+		int bt = Math.round(bottom) + dp(2);
+		int bl = Math.round(left) + dp(8);
+		int bw = pw - dp(16);
+		int bh = stripHeight();
+		if ((blp.leftMargin != bl) || (blp.topMargin != bt) || (blp.width != bw) || (blp.height != bh)) {
+			blp.gravity = Gravity.TOP | Gravity.START;
+			blp.leftMargin = bl;
+			blp.topMargin = bt;
+			blp.width = bw;
+			blp.height = bh;
+			bar.setLayoutParams(blp);
+		}
+		bar.setAlpha(expand);
+
+		// The pages begin under the panel: each WebView already keeps a top margin for the tool bar,
+		// this padding is the rest of the way.
+		int wantTop = ib + dp(2);
+		int have = 0;
+		FermataWebView w = getWebView();
+		if ((w != null) && (w.getLayoutParams() instanceof ViewGroup.MarginLayoutParams m)) {
+			have = m.topMargin;
+		}
+		int pad = Math.max(0, wantTop - have);
+		if (tabHost.getPaddingTop() != pad) tabHost.setPadding(0, pad, 0, 0);
+		homeView.setShift(-(1f - expand) * panelExtra());
 	}
 
 	// ---------------------------------------------------------------- tool bar

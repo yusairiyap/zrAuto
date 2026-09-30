@@ -489,6 +489,8 @@ public class WebBrowserFragment extends MainActivityFragment
 	@Override
 	public void onHiddenChanged(boolean hidden) {
 		super.onHiddenChanged(hidden);
+		// The tab strip grows out of the tool bar each time the tab comes on screen.
+		if (tabs != null) tabs.playEnter();
 		if (hidden) return;
 
 		if (profileSwitchPending) {

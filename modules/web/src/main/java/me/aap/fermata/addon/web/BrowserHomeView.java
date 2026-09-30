@@ -65,10 +65,11 @@ import me.aap.utils.pref.PreferenceStore;
 @SuppressLint("ViewConstructor")
 final class BrowserHomeView extends FrameLayout implements PreferenceStore.Listener {
 	/** The room the tab strip takes at the top, which the home page's content has to clear. */
-	static final int TABS_BAR_HEIGHT_DP = 52;
+	static final int TABS_BAR_HEIGHT_DP = 54;
 	private static final int T_HEADER = 0;
 	private static final int T_CARD = 1;
 	private static final int T_ADD = 2;
+	private static final int T_HEADER_COMPACT = 3;
 	private static final int ANIM_MS = 260;
 
 	interface Host {
@@ -107,6 +108,13 @@ final class BrowserHomeView extends FrameLayout implements PreferenceStore.Liste
 	private final BehindBarsLayers layers;
 	private final List<BrowserBookmarks.Item> items = new ArrayList<>();
 	private boolean editing;
+	/**
+	 * A short screen (the car's, a phone on its side): one row of big cards to swipe through instead
+	 * of a grid, which would be cut off after a few cards. See applyMode().
+	 */
+	private boolean compact;
+	/** The card size in compact mode: the room there is, top to bottom. */
+	private int cardSide;
 	private boolean homeShown = true;
 	private float shown = 1f;
 	@Nullable
@@ -152,7 +160,8 @@ final class BrowserHomeView extends FrameLayout implements PreferenceStore.Liste
 		layout.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
 			@Override
 			public int getSpanSize(int position) {
-				return (adapter.getItemViewType(position) == T_HEADER) ? layout.getSpanCount() : 1;
+				int t = adapter.getItemViewType(position);
+				return ((t == T_HEADER) || (t == T_HEADER_COMPACT)) ? layout.getSpanCount() : 1;
 			}
 		});
 		list.setLayoutManager(layout);
@@ -168,8 +177,14 @@ final class BrowserHomeView extends FrameLayout implements PreferenceStore.Liste
 																 @NonNull RecyclerView parent, @NonNull RecyclerView.State s) {
 				int gap = toIntPx(getContext(), 6);
 				int type = parent.getChildViewHolder(v).getItemViewType();
-				if (type == T_HEADER) out.set(0, 0, 0, gap);
-				else out.set(gap, gap, gap, gap);
+				if (compact) {
+					// Clears the tab strip under the tool bar; one row, so the room left is the cards'.
+					out.set(gap, toIntPx(getContext(), car ? 58 : 54), gap, gap);
+				} else if (type == T_HEADER) {
+					out.set(0, 0, 0, gap);
+				} else {
+					out.set(gap, gap, gap, gap);
+				}
 			}
 		});
 		addView(list, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
@@ -177,6 +192,7 @@ final class BrowserHomeView extends FrameLayout implements PreferenceStore.Liste
 		// MainActivityDelegate#insetScrollableContent.
 		activity.insetScrollableContent(list);
 
+		list.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> updateCardSide());
 		touchHelper = new ItemTouchHelper(new DragCallback());
 		touchHelper.attachToRecyclerView(list);
 
@@ -213,9 +229,34 @@ final class BrowserHomeView extends FrameLayout implements PreferenceStore.Liste
 	@Override
 	protected void onSizeChanged(int w, int h, int oldw, int oldh) {
 		super.onSizeChanged(w, h, oldw, oldh);
+		boolean c = h < toIntPx(getContext(), 500);
+		if (c != compact) {
+			compact = c;
+			applyMode();
+		}
+		if (compact) return;
 		int target = toIntPx(getContext(), car ? 250 : 176);
 		int cols = Math.max(2, Math.min(6, w / Math.max(1, target)));
 		if (layout.getSpanCount() != cols) layout.setSpanCount(cols);
+	}
+
+	private void applyMode() {
+		layout.setOrientation(compact ? RecyclerView.HORIZONTAL : RecyclerView.VERTICAL);
+		layout.setSpanCount(compact ? 1 : 2);
+		adapter.notifyDataSetChanged();
+		list.post(this::updateCardSide);
+	}
+
+	/** In compact mode the cards are as tall as the room under the tab strip allows. */
+	private void updateCardSide() {
+		if (!compact) return;
+		int avail = list.getHeight() - list.getPaddingTop() - list.getPaddingBottom() -
+				dp(car ? 58 : 54) - dp(14);
+		int side = Math.max(dp(110), avail);
+		if (Math.abs(side - cardSide) > dp(3)) {
+			cardSide = side;
+			adapter.notifyDataSetChanged();
+		}
 	}
 
 	// ---------------------------------------------------------------- data
@@ -260,6 +301,11 @@ final class BrowserHomeView extends FrameLayout implements PreferenceStore.Liste
 
 	boolean isHomeShown() {
 		return homeShown;
+	}
+
+	/** Moves the cards vertically, following the tab strip growing out of the tool bar. */
+	void setShift(float px) {
+		list.setTranslationY(px);
 	}
 
 	/** Fades the home page (cards and background) in or out. */
@@ -480,13 +526,45 @@ final class BrowserHomeView extends FrameLayout implements PreferenceStore.Liste
 		return t;
 	}
 
+	/** The header in compact mode: a narrow column at the start of the row. */
+	private View createCompactHeader() {
+		Context ctx = getContext();
+		LinearLayout col = new LinearLayout(ctx);
+		col.setOrientation(LinearLayout.VERTICAL);
+		col.setGravity(Gravity.CENTER_VERTICAL);
+		col.setLayoutParams(new RecyclerView.LayoutParams(WRAP_CONTENT, MATCH_PARENT));
+		col.setPadding(dp(8), 0, dp(14), 0);
+		TextView title = new TextView(ctx);
+		title.setText(me.aap.fermata.R.string.bookmarks);
+		title.setTextColor(textPrimary);
+		title.setTypeface(Typeface.DEFAULT_BOLD);
+		title.setTextSize(TypedValue.COMPLEX_UNIT_SP, car ? 26 : 22);
+		col.addView(title);
+		TextView edit = pill(editing ? R.string.browser_done : R.string.browser_edit_cards);
+		edit.setOnClickListener(v -> setEditing(!editing));
+		editPill = edit;
+		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+		lp.topMargin = dp(10);
+		col.addView(edit, lp);
+		TextView note = new TextView(ctx);
+		note.setText(R.string.browser_home_empty);
+		note.setTextColor(textSecondary);
+		note.setTextSize(TypedValue.COMPLEX_UNIT_SP, car ? 16 : 13);
+		note.setMaxWidth(dp(200));
+		note.setPadding(0, dp(8), 0, 0);
+		note.setVisibility(items.isEmpty() ? VISIBLE : GONE);
+		emptyNote = note;
+		col.addView(note);
+		return col;
+	}
+
 	private View createHeader() {
 		Context ctx = getContext();
 		LinearLayout col = new LinearLayout(ctx);
 		col.setOrientation(LinearLayout.VERTICAL);
 		col.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 		// Room for the tab strip, which floats over the top of this page.
-		col.setPadding(dp(8), dp(TABS_BAR_HEIGHT_DP + 8), dp(8), dp(4));
+		col.setPadding(dp(8), dp(car ? 58 : TABS_BAR_HEIGHT_DP), dp(8), dp(4));
 
 		LinearLayout row = new LinearLayout(ctx);
 		row.setOrientation(LinearLayout.HORIZONTAL);
@@ -523,7 +601,7 @@ final class BrowserHomeView extends FrameLayout implements PreferenceStore.Liste
 
 		@Override
 		public int getItemViewType(int position) {
-			if (position == 0) return T_HEADER;
+			if (position == 0) return compact ? T_HEADER_COMPACT : T_HEADER;
 			return (position == items.size() + 1) ? T_ADD : T_CARD;
 		}
 
@@ -532,9 +610,12 @@ final class BrowserHomeView extends FrameLayout implements PreferenceStore.Liste
 		public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
 			View v;
 			if (type == T_HEADER) v = createHeader();
+			else if (type == T_HEADER_COMPACT) v = createCompactHeader();
 			else if (type == T_ADD) v = new AddCard(parent.getContext());
 			else v = new Card(parent.getContext());
-			if (type != T_HEADER) v.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+			if ((type != T_HEADER) && (type != T_HEADER_COMPACT)) {
+				v.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+			}
 			return new RecyclerView.ViewHolder(v) {
 			};
 		}
@@ -542,6 +623,16 @@ final class BrowserHomeView extends FrameLayout implements PreferenceStore.Liste
 		@Override
 		public void onBindViewHolder(@NonNull RecyclerView.ViewHolder h, int position) {
 			int type = getItemViewType(position);
+			if ((type == T_CARD) || (type == T_ADD)) {
+				RecyclerView.LayoutParams lp = (RecyclerView.LayoutParams) h.itemView.getLayoutParams();
+				int w = (compact && (cardSide > 0)) ? cardSide : MATCH_PARENT;
+				int ht = (compact && (cardSide > 0)) ? cardSide : WRAP_CONTENT;
+				if ((lp.width != w) || (lp.height != ht)) {
+					lp.width = w;
+					lp.height = ht;
+					h.itemView.setLayoutParams(lp);
+				}
+			}
 			if (type == T_CARD) ((Card) h.itemView).bind(items.get(position - 1), position - 1);
 			else if (type == T_ADD) h.itemView.setVisibility(editing ? GONE : VISIBLE);
 		}

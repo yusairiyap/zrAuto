@@ -49,7 +49,7 @@ public final class ToolBarPill {
 						Math.round(r.bottom), radius(r, maxRadius));
 				// A soft shadow, like the one FloatingBarsView paints under the nav bar's pill -- none
 				// under a see-through pill (see setTranslucent()), where it would show as a smudge.
-				boolean clear = (view.getBackground() instanceof PillDrawable d) && d.translucent;
+				boolean clear = (view.getBackground() instanceof PillDrawable d) && (d.translucent || d.merged);
 				outline.setAlpha(clear ? 0f : 0.35f);
 			}
 		});
@@ -65,6 +65,33 @@ public final class ToolBarPill {
 		d.translucent = translucent;
 		d.invalidateSelf();
 		tb.invalidateOutline();
+	}
+
+	/**
+	 * The tool bar's pill is drawn by someone else (a tab's panel reaching down from it, see the
+	 * browser's tab strip): the tool bar then paints nothing of its own, only its buttons.
+	 */
+	public static void setMerged(View tb, boolean merged) {
+		if (!(tb.getBackground() instanceof PillDrawable d) || (d.merged == merged)) return;
+		d.merged = merged;
+		d.invalidateSelf();
+		tb.invalidateOutline();
+	}
+
+	public static boolean isMerged(View tb) {
+		return (tb.getBackground() instanceof PillDrawable d) && d.merged;
+	}
+
+	/** The pill's colour, 0 if the tool bar has none. */
+	public static int getColor(View tb) {
+		return (tb.getBackground() instanceof PillDrawable d) ? d.color : 0;
+	}
+
+	/** The pill's rectangle in the tool bar's own coordinates; false if it has none. */
+	public static boolean getPillRect(View tb, RectF out) {
+		if (!(tb.getBackground() instanceof PillDrawable d)) return false;
+		pillRect(tb, d.inner, 0, 0, tb.getWidth(), tb.getHeight(), out);
+		return !out.isEmpty();
 	}
 
 	static void pillRect(View v, int inner, int left, int top, int right, int bottom, RectF out) {
@@ -87,6 +114,7 @@ public final class ToolBarPill {
 		private final float maxRadius;
 		private int alpha = 255;
 		boolean translucent;
+		boolean merged;
 
 		PillDrawable(View view, int color, int inner, float maxRadius) {
 			this.view = view;
@@ -98,6 +126,7 @@ public final class ToolBarPill {
 
 		@Override
 		public void draw(@NonNull Canvas canvas) {
+			if (merged) return;
 			Rect b = getBounds();
 			pillRect(view, inner, b.left, b.top, b.right, b.bottom, rect);
 			if (rect.isEmpty()) return;

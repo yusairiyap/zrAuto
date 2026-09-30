@@ -21,6 +21,7 @@ import android.widget.ImageButton;
 import androidx.constraintlayout.widget.ConstraintLayout;
 
 import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.fermata.ui.view.ToolBarPill;
 import me.aap.utils.log.Log;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.activity.ActivityDelegate;
@@ -46,8 +47,10 @@ public class WebToolBarMediator implements ToolBarView.Mediator {
 		if (url != null) t.setText(url);
 		addView(tb, t, R.id.browser_addr, LEFT);
 		// Reads, from the left: Back, Forward, Home, the address.
-		addButton(tb, R.drawable.browser_home, v -> b.goHome(), R.id.browser_home, LEFT)
-				.setToolBarPriority(3);
+		if (hasHomeButton()) {
+			addButton(tb, R.drawable.browser_home, v -> b.goHome(), R.id.browser_home, LEFT)
+					.setToolBarPriority(3);
+		}
 		addButton(tb, R.drawable.forward, v ->
 				requireNonNull(b.getWebView()).goForward(), R.id.browser_forward, LEFT)
 				.setToolBarPriority(2);
@@ -64,6 +67,24 @@ public class WebToolBarMediator implements ToolBarView.Mediator {
 		updatePrivateModeButton(pm);
 		setButtonsVisibility(tb, b.canGoBackInBrowser(), b.canGoForwardInBrowser());
 		ToolBarView.Mediator.super.enable(tb, f);
+		// The tab strip continues the tool bar's pill downwards, see BrowserTabs.
+		if (mergesWithTabs()) ToolBarPill.setMerged(tb, true);
+	}
+
+	@Override
+	public void disable(ToolBarView tb) {
+		ToolBarPill.setMerged(tb, false);
+		ToolBarView.Mediator.super.disable(tb);
+	}
+
+	/** Whether this tool bar carries the browser's Home button (the YouTube tab adds its own). */
+	protected boolean hasHomeButton() {
+		return true;
+	}
+
+	/** Whether the tool bar and the browser's tab strip are drawn as one pill. */
+	protected boolean mergesWithTabs() {
+		return true;
 	}
 
 	@Override
