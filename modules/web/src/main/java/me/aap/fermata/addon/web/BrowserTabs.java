@@ -222,7 +222,41 @@ final class BrowserTabs implements BrowserHomeView.Host, FermataWebView.PageList
 		refreshToolbar();
 	}
 
+	private boolean closingTab;
+
+	/** Closes a tab: its pill shrinks away first, then the page goes. */
 	void close(int idx) {
+		if ((idx < 0) || (idx >= tabs.size()) || closingTab) return;
+		View pill = (idx < row.getChildCount()) ? row.getChildAt(idx) : null;
+		if ((pill == null) || !pill.isAttachedToWindow() || (pill.getWidth() <= 0)) {
+			doClose(idx);
+			return;
+		}
+		closingTab = true;
+		int w = pill.getWidth();
+		LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) pill.getLayoutParams();
+		int margin = lp.getMarginEnd();
+		android.animation.ValueAnimator a = android.animation.ValueAnimator.ofFloat(1f, 0f);
+		a.setDuration(200);
+		a.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+		a.addUpdateListener(v -> {
+			float f = (float) v.getAnimatedValue();
+			lp.width = Math.round(w * f);
+			lp.setMarginEnd(Math.round(margin * f));
+			pill.setAlpha(f);
+			pill.setLayoutParams(lp);
+		});
+		a.addListener(new android.animation.AnimatorListenerAdapter() {
+			@Override
+			public void onAnimationEnd(android.animation.Animator animation) {
+				closingTab = false;
+				doClose(idx);
+			}
+		});
+		a.start();
+	}
+
+	private void doClose(int idx) {
 		if ((idx < 0) || (idx >= tabs.size())) return;
 		Tab t = tabs.get(idx);
 		if (tabs.size() == 1) {

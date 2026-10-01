@@ -165,7 +165,7 @@ public enum Action {
 		return (pi != null) && pi.isFavoriteItem();
 	}
 
-	private static void toggleCurrentFavorite(MainActivityDelegate a) {
+	public static void toggleCurrentFavorite(MainActivityDelegate a) {
 		Context ctx = a.getContext();
 		PlayableItem pi = getFavoritableItem(a);
 		if (pi == null) {
@@ -213,7 +213,7 @@ public enum Action {
 	 * directly: this also runs from the FAB's own long-press menu, which is still finishing its
 	 * item selection (and hiding itself) at this point, on the same overlay.
 	 */
-	private static void addCurrentToPlaylist(MainActivityDelegate a) {
+	public static void addCurrentToPlaylist(MainActivityDelegate a) {
 		PlayableItem pi = getFavoritableItem(a);
 		if (pi == null) {
 			UiUtils.showToast(a.getContext(), R.string.playlist_nothing_playing);

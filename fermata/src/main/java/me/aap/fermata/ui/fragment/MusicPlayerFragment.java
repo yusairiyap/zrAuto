@@ -1506,7 +1506,18 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	/** The chip's frosted-glass menu: Effects and the sleep timer. */
 	private void onMore() {
 		MusicMoreMenu.show(palette, (ViewGroup) requireView(), content, moreButton,
-				getActivityDelegate().getMediaSessionCallback(), this::onEffects);
+				getActivityDelegate().getMediaSessionCallback(), this::onEffects,
+				() -> me.aap.fermata.action.Action.toggleCurrentFavorite(getActivityDelegate()),
+				() -> me.aap.fermata.action.Action.isCurrentFavorite(getActivityDelegate()),
+				() -> {
+					MainActivityDelegate a = getActivityDelegate();
+					PlayableItem pi = me.aap.fermata.action.Action.getFavoritableItem(a);
+					if (pi == null) {
+						UiUtils.showToast(a.getContext(), R.string.playlist_nothing_playing);
+					} else {
+						a.showAddToPlaylistDialog(Collections.singletonList(pi));
+					}
+				});
 	}
 
 	/**

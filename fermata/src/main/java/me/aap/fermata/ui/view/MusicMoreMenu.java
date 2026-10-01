@@ -72,6 +72,9 @@ public final class MusicMoreMenu {
 	private final View anchor;
 	private final MediaSessionCallback cb;
 	private final Runnable onEffects;
+	private final Runnable onFavorite;
+	private final Runnable onPlaylist;
+	private final java.util.function.BooleanSupplier isFavorite;
 	private final boolean light;
 	private final int primary;
 	private final int secondary;
@@ -102,8 +105,12 @@ public final class MusicMoreMenu {
 	private boolean finishSong = lastFinishSong;
 
 	private MusicMoreMenu(Context ctx, ViewGroup host, View insets, View anchor,
-											MediaSessionCallback cb, Runnable onEffects) {
+											MediaSessionCallback cb, Runnable onEffects, Runnable onFavorite,
+											java.util.function.BooleanSupplier isFavorite, Runnable onPlaylist) {
 		this.ctx = ctx;
+		this.onFavorite = onFavorite;
+		this.isFavorite = isFavorite;
+		this.onPlaylist = onPlaylist;
 		this.host = host;
 		this.insets = insets;
 		this.anchor = anchor;
@@ -130,12 +137,17 @@ public final class MusicMoreMenu {
 	 *                  clear of it, and centres in what's left when it doesn't fit above the anchor)
 	 * @param ctx       a context carrying the Music tab's palette (see {@code MusicPalette} in music.xml)
 	 * @param onEffects what the Effects tile does
+	 * @param onFavorite toggles what's playing in the favorites
+	 * @param onPlaylist opens the playlist picker for what's playing
 	 */
 	public static void show(@NonNull Context ctx, @NonNull ViewGroup host, @NonNull View insets,
 													@NonNull View anchor, @NonNull MediaSessionCallback cb,
-													@NonNull Runnable onEffects) {
+													@NonNull Runnable onEffects, @NonNull Runnable onFavorite,
+													@NonNull java.util.function.BooleanSupplier isFavorite,
+													@NonNull Runnable onPlaylist) {
 		dismissOpen();
-		MusicMoreMenu m = new MusicMoreMenu(ctx, host, insets, anchor, cb, onEffects);
+		MusicMoreMenu m = new MusicMoreMenu(ctx, host, insets, anchor, cb, onEffects, onFavorite,
+				isFavorite, onPlaylist);
 		open = m;
 		m.show();
 	}
@@ -405,6 +417,28 @@ public final class MusicMoreMenu {
 
 		tiles.addView(effects, tileParams());
 		tiles.addView(timer, tileParams());
+
+		// The second row: what's playing, into the favorites or a playlist.
+		LinearLayout tiles2 = new LinearLayout(ctx);
+		tiles2.setOrientation(LinearLayout.HORIZONTAL);
+		LinearLayout.LayoutParams t2lp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		t2lp.topMargin = dp(8);
+		page.addView(tiles2, t2lp);
+		boolean fav = isFavorite.getAsBoolean();
+		TextView[] sub2 = new TextView[1];
+		View favorite = tile(fav ? R.drawable.favorite_filled : R.drawable.favorite,
+				ctx.getString(fav ? R.string.favorites_remove : R.string.favorites_add),
+				ctx.getString(R.string.music_more_favorite_hint), sub2, () -> {
+					dismiss();
+					onFavorite.run();
+				});
+		View playlist = tile(R.drawable.playlist_add, ctx.getString(R.string.playlist_add),
+				ctx.getString(R.string.music_more_playlist_hint), sub2, () -> {
+					dismissNow();
+					onPlaylist.run();
+				});
+		tiles2.addView(favorite, tileParams());
+		tiles2.addView(playlist, tileParams());
 		return page;
 	}
 

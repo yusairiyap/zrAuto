@@ -108,6 +108,8 @@ final class BrowserHomeView extends FrameLayout implements PreferenceStore.Liste
 	private final BehindBarsLayers layers;
 	private final List<BrowserBookmarks.Item> items = new ArrayList<>();
 	private boolean editing;
+	private int basePad;
+	private final int[] sideIns = new int[2];
 	/**
 	 * A short screen (the car's, a phone on its side): one row of big cards to swipe through instead
 	 * of a grid, which would be cut off after a few cards. See applyMode().
@@ -170,6 +172,7 @@ final class BrowserHomeView extends FrameLayout implements PreferenceStore.Liste
 		list.setClipToPadding(false);
 		list.setOverScrollMode(OVER_SCROLL_NEVER);
 		int side = toIntPx(ctx, car ? 20 : 12);
+		basePad = side;
 		list.setPadding(side, 0, side, 0);
 		list.addItemDecoration(new RecyclerView.ItemDecoration() {
 			@Override
@@ -192,7 +195,10 @@ final class BrowserHomeView extends FrameLayout implements PreferenceStore.Liste
 		// MainActivityDelegate#insetScrollableContent.
 		activity.insetScrollableContent(list);
 
-		list.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> updateCardSide());
+		list.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+			updateCardSide();
+			applySideInsets();
+		});
 		touchHelper = new ItemTouchHelper(new DragCallback());
 		touchHelper.attachToRecyclerView(list);
 
@@ -245,6 +251,22 @@ final class BrowserHomeView extends FrameLayout implements PreferenceStore.Liste
 		layout.setSpanCount(compact ? 1 : 2);
 		adapter.notifyDataSetChanged();
 		list.post(this::updateCardSide);
+	}
+
+	/**
+	 * Keeps the cards clear of a side nav bar's pill (Android Auto): padded, and clipped to the room
+	 * left, so scrolled cards go under it instead of drawing over it.
+	 */
+	private void applySideInsets() {
+		if (!activity.computeSideInsets(list, sideIns)) return;
+		int l = basePad + sideIns[0];
+		int r = basePad + sideIns[1];
+		if ((list.getPaddingLeft() != l) || (list.getPaddingRight() != r)) {
+			list.setPadding(l, list.getPaddingTop(), r, list.getPaddingBottom());
+		}
+		boolean clip = (sideIns[0] > 0) || (sideIns[1] > 0);
+		list.setClipBounds(clip ? new android.graphics.Rect(sideIns[0], 0, list.getWidth() - sideIns[1],
+				list.getHeight()) : null);
 	}
 
 	/** In compact mode the cards are as tall as the room under the tab strip allows. */
@@ -532,7 +554,8 @@ final class BrowserHomeView extends FrameLayout implements PreferenceStore.Liste
 		LinearLayout col = new LinearLayout(ctx);
 		col.setOrientation(LinearLayout.VERTICAL);
 		col.setGravity(Gravity.CENTER_VERTICAL);
-		col.setLayoutParams(new RecyclerView.LayoutParams(WRAP_CONTENT, MATCH_PARENT));
+		// A fixed width: left to wrap, the title was cut short by the first card.
+		col.setLayoutParams(new RecyclerView.LayoutParams(dp(car ? 230 : 190), MATCH_PARENT));
 		col.setPadding(dp(8), 0, dp(14), 0);
 		TextView title = new TextView(ctx);
 		title.setText(me.aap.fermata.R.string.bookmarks);

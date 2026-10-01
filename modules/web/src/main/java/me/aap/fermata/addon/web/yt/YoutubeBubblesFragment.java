@@ -528,6 +528,16 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 				play(video, YoutubeAddon.BUBBLES_TAP_VIDEO);
 				return true;
 			});
+			b.addItem(me.aap.fermata.R.id.youtube_play_next, me.aap.fermata.R.drawable.up_next,
+					me.aap.fermata.R.string.youtube_play_next).setHandler(i -> {
+				queue(video, true);
+				return true;
+			});
+			b.addItem(me.aap.fermata.R.id.youtube_add_to_up_next, me.aap.fermata.R.drawable.up_next,
+					me.aap.fermata.R.string.youtube_add_to_up_next).setHandler(i -> {
+				queue(video, false);
+				return true;
+			});
 			if (MusicPlayer.isEnabled()) {
 				b.addItem(R.id.yt_bubble_play_music, me.aap.fermata.R.drawable.music,
 						ctx.getString(R.string.yt_bubbles_mode_music)).setHandler(i -> {
@@ -536,6 +546,15 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 				});
 			}
 		});
+	}
+
+	/** Puts {@code video} next in the queue, or at its end; plays it if nothing is playing. */
+	private void queue(YoutubeFeed.Video video, boolean first) {
+		MainActivityDelegate a = getActivityDelegate();
+		int id = me.aap.fermata.R.id.youtube_fragment;
+		ActivityFragment f = a.getFragment(id);
+		if (f == null) f = a.preloadFragment(id);
+		if (f instanceof YoutubeFragment yf) yf.queueVideo(video.id, video.title, first);
 	}
 
 	/** Plays {@code video} in the YouTube tab, or as music in the Music tab. */

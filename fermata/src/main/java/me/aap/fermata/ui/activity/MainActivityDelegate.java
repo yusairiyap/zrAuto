@@ -174,6 +174,7 @@ import me.aap.fermata.ui.fragment.YoutubeAlternativesFragment;
 import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.ui.view.FermataNavBarView;
+import me.aap.fermata.ui.view.PlaylistPicker;
 import me.aap.fermata.ui.view.ToolBarPill;
 import me.aap.fermata.ui.view.QuaternaryFloatingButton;
 import me.aap.fermata.ui.view.QuinaryFloatingButton;
@@ -2320,24 +2321,21 @@ public class MainActivityDelegate extends ActivityDelegate
 																	 Supplier<? extends CharSequence> initName) {
 		getLib().getPlaylists().getUnsortedChildren().main().onSuccess(playlists -> {
 			Context ctx = getContext();
-			CharSequence[] items = new CharSequence[playlists.size() + 1];
-			items[0] = ctx.getString(R.string.playlist_create);
-			for (int i = 0; i < playlists.size(); i++) {
-				items[i + 1] = ((Playlist) playlists.get(i)).getName();
-			}
-
 			try {
-				DialogBuilder.create(menu).setTitle(R.drawable.playlist_add, R.string.playlist_add)
-						.setSingleChoiceItems(items, -1, (d, which) -> {
-							d.dismiss();
-							if (which == 0) {
+				List<Playlist> pls = new ArrayList<>(playlists.size());
+				for (Item it : playlists) pls.add((Playlist) it);
+				PlaylistPicker.show(this, R.string.playlist_add, R.drawable.playlist_add, pls, true,
+						new PlaylistPicker.Callback() {
+							@Override
+							public void onCreate() {
 								createPlaylist(selection.get(), initName);
-							} else {
-								addToPlaylist(((Playlist) playlists.get(which - 1)).getName(), selection.get());
 							}
-						})
-						.setNegativeButton(android.R.string.cancel, (d, w) -> d.dismiss())
-						.show();
+
+							@Override
+							public void onPick(Playlist pl) {
+								addToPlaylist(pl.getName(), selection.get());
+							}
+						});
 			} catch (Exception err) {
 				// Seen crashing specifically on the CarActivity surface: an InflateException/
 				// UnsupportedOperationException resolving a TextAppearance attribute while inflating
@@ -2361,21 +2359,9 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * FAB action (see {@code Action.PLAYLIST_ADD}), where a quick pick list suits a single tap.
 	 */
 	public void showAddToPlaylistMenu(OverlayMenu menu, List<PlayableItem> items) {
-		FutureSupplier<List<PlayableItem>> selection = completed(items);
-		CharSequence initName = items.isEmpty() ? "" : items.get(0).getName();
-		menu.showFuture(b -> {
-			b.setTitle(R.string.playlist_add);
-			b.addItem(R.id.playlist_create, R.drawable.playlist_add, R.string.playlist_create)
-					.setHandler(i -> createPlaylist(selection, () -> initName));
-			return getLib().getPlaylists().getUnsortedChildren().main().then(playlists -> {
-				for (int i = 0; i < playlists.size(); i++) {
-					String name = ((Playlist) playlists.get(i)).getName();
-					b.addItem(UiUtils.getArrayItemId(i), R.drawable.playlist, name)
-							.setHandler(item -> addToPlaylist(name, selection));
-				}
-				return completedVoid();
-			});
-		});
+		if (items.isEmpty()) return;
+		CharSequence initName = items.get(0).getName();
+		showPlaylistDialog(menu, () -> completed(items), () -> initName);
 	}
 
 	private boolean createPlaylist(FutureSupplier<List<PlayableItem>> selection,
@@ -2429,15 +2415,11 @@ public class MainActivityDelegate extends ActivityDelegate
 			for (Item i : children) {
 				if ((i instanceof Playlist pl) && !pl.equals(from)) targets.add(pl);
 			}
-			CharSequence[] names = new CharSequence[targets.size() + 1];
-			names[0] = ctx.getString(R.string.playlist_create);
-			for (int i = 0; i < targets.size(); i++) names[i + 1] = targets.get(i).getName();
-
 			try {
-				DialogBuilder.create(menu).setTitle(R.drawable.playlist_move, R.string.playlist_move)
-						.setSingleChoiceItems(names, -1, (d, which) -> {
-							d.dismiss();
-							if (which == 0) {
+				PlaylistPicker.show(this, R.string.playlist_move, R.drawable.playlist_move, targets, true,
+						new PlaylistPicker.Callback() {
+							@Override
+							public void onCreate() {
 								UiUtils.queryText(ctx, R.string.playlist_name, R.drawable.playlist, from.getName())
 										.onSuccess(name -> {
 											if (name == null) return;
@@ -2445,12 +2427,13 @@ public class MainActivityDelegate extends ActivityDelegate
 													.onFailure(err -> showAlert(ctx, err.getMessage()))
 													.onSuccess(pl -> moveToPlaylist(from, pl, items));
 										});
-							} else {
-								moveToPlaylist(from, targets.get(which - 1), items);
 							}
-						})
-						.setNegativeButton(android.R.string.cancel, (d, w) -> d.dismiss())
-						.show();
+
+							@Override
+							public void onPick(Playlist pl) {
+								moveToPlaylist(from, pl, items);
+							}
+						});
 			} catch (Exception err) {
 				Log.e(err, "Failed to show the move-to-playlist dialog");
 				UiUtils.showToast(ctx, R.string.playlist_add_failed);
@@ -2477,6 +2460,12 @@ public class MainActivityDelegate extends ActivityDelegate
 					MediaLibFragment f = getMediaLibFragment(R.id.playlists_fragment);
 					if (f != null) f.getAdapter().reload();
 				});
+	}
+
+	@Override
+	public void onBackPressed() {
+		if (PlaylistPicker.dismissOpen()) return;
+		super.onBackPressed();
 	}
 
 	private void discardSelection() {
