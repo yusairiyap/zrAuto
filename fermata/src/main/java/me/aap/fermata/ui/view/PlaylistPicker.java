@@ -179,15 +179,32 @@ public final class PlaylistPicker {
 
 		int hostW = host.getWidth();
 		int hostH = host.getHeight();
+		// Centred in the room the tabs have (not the whole screen): on Android Auto the nav bar's pill
+		// takes one side, and the screen's edges aren't the app's.
+		View body = a.getBody();
 		int[] side = new int[2];
-		a.computeSideInsets(host, side);
+		int[] bl = new int[2];
+		int[] hl = new int[2];
+		int top = 0;
+		int bottom = 0;
+		if ((body != null) && body.isAttachedToWindow()) {
+			a.computeSideInsets(body, side);
+			body.getLocationInWindow(bl);
+			host.getLocationInWindow(hl);
+			side[0] += Math.max(0, bl[0] - hl[0]);
+			side[1] += Math.max(0, (hl[0] + hostW) - (bl[0] + body.getWidth()));
+			top = Math.max(0, bl[1] - hl[1]);
+			bottom = Math.max(0, (hl[1] + hostH) - (bl[1] + body.getHeight()));
+		}
 		int w = Math.min(dp(420), hostW - dp(32) - side[0] - side[1]);
 		// As tall as its rows need, up to most of the screen (the rows scroll beyond that).
 		int rowsH = dp(10 + 26 + 10 + 46 + 32) + (playlists.size() + (create ? 1 : 0)) * dp(72);
-		int h = Math.min(rowsH, Math.round(hostH * 0.78f));
+		int h = Math.min(rowsH, Math.round((hostH - top - bottom) * 0.86f));
 		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, h, Gravity.CENTER);
 		lp.leftMargin = side[0];
 		lp.rightMargin = side[1];
+		lp.topMargin = top;
+		lp.bottomMargin = bottom;
 		overlay.addView(card, lp);
 		host.addView(overlay, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 

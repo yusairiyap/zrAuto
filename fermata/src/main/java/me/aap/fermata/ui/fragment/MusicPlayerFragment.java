@@ -1507,13 +1507,21 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private void onMore() {
 		MusicMoreMenu.show(palette, (ViewGroup) requireView(), content, moreButton,
 				getActivityDelegate().getMediaSessionCallback(), this::onEffects,
-				() -> me.aap.fermata.action.Action.toggleCurrentFavorite(getActivityDelegate()),
+				() -> {
+					MainActivityDelegate a = getActivityDelegate();
+					// Nothing playing: said over the cover, like the Effects tile does.
+					if (me.aap.fermata.action.Action.getFavoritableItem(a) == null) {
+						showMessage(getString(R.string.favorites_nothing_playing));
+					} else {
+						me.aap.fermata.action.Action.toggleCurrentFavorite(a);
+					}
+				},
 				() -> me.aap.fermata.action.Action.isCurrentFavorite(getActivityDelegate()),
 				() -> {
 					MainActivityDelegate a = getActivityDelegate();
 					PlayableItem pi = me.aap.fermata.action.Action.getFavoritableItem(a);
 					if (pi == null) {
-						UiUtils.showToast(a.getContext(), R.string.playlist_nothing_playing);
+						showMessage(getString(R.string.playlist_nothing_playing));
 					} else {
 						a.showAddToPlaylistDialog(Collections.singletonList(pi));
 					}

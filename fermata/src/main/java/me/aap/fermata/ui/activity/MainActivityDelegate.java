@@ -2482,6 +2482,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		ZrAutoActivity a = getAppActivity();
 		a.setContentView(getLayout());
 		matchStatusBarToBackground();
+		me.aap.utils.ui.view.DialogView.setStyler(me.aap.fermata.ui.view.DialogStyle::apply);
 		toolBar = a.findViewById(R.id.tool_bar);
 		progressBar = a.findViewById(R.id.content_loading_progress);
 		navBar = a.findViewById(R.id.nav_bar);

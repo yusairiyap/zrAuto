@@ -33,6 +33,13 @@ import com.google.android.material.R;
 @SuppressLint("ViewConstructor")
 public class DialogView extends FrameLayout implements DialogInterface {
 	private Runnable dismiss;
+	@Nullable
+	private static java.util.function.Consumer<DialogView> styler;
+
+	/** Restyles every dialog as it's built, so an app gives all of them one look. */
+	public static void setStyler(@Nullable java.util.function.Consumer<DialogView> s) {
+		styler = s;
+	}
 
 	private DialogView(Context context, int layout) {
 		super(context);
@@ -252,6 +259,12 @@ public class DialogView extends FrameLayout implements DialogInterface {
 			}
 
 			dialog.dismiss = dismiss;
+			try {
+				if (styler != null) styler.accept(dialog);
+			} catch (RuntimeException ex) {
+				// A styling problem must never stop a dialog from showing.
+				me.aap.utils.log.Log.e(ex, "Failed to style a dialog");
+			}
 			return dialog;
 		}
 	}
