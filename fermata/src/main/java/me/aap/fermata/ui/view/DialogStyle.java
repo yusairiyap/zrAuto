@@ -49,6 +49,22 @@ public final class DialogStyle {
 		int pad = Math.round(8 * density);
 		dv.setPadding(pad, pad, pad, pad);
 
+		// Room between the parts: title, message or field, buttons.
+		int gap = Math.round(12 * density);
+		for (int id : new int[]{com.google.android.material.R.id.topPanel,
+				com.google.android.material.R.id.contentPanel, com.google.android.material.R.id.customPanel}) {
+			View p = dv.findViewById(id);
+			if ((p != null) && (p.getVisibility() == View.VISIBLE)) {
+				p.setPadding(p.getPaddingLeft() + gap / 2, p.getPaddingTop(), p.getPaddingRight() + gap / 2,
+						p.getPaddingBottom() + gap);
+			}
+		}
+		View buttonPanel = dv.findViewById(com.google.android.material.R.id.buttonPanel);
+		if (buttonPanel != null) {
+			buttonPanel.setPadding(buttonPanel.getPaddingLeft() + gap / 2, gap / 2,
+					buttonPanel.getPaddingRight() + gap / 2, buttonPanel.getPaddingBottom() + gap / 2);
+		}
+
 		View divider = dv.findViewById(com.google.android.material.R.id.titleDividerNoCustom);
 		if (divider != null) divider.setVisibility(View.GONE);
 
@@ -69,6 +85,11 @@ public final class DialogStyle {
 		for (int id : new int[]{android.R.id.button1, android.R.id.button2, android.R.id.button3}) {
 			if (!(dv.findViewById(id) instanceof Button b) || (b.getVisibility() != View.VISIBLE)) continue;
 			boolean main = (id == android.R.id.button1);
+			if (b.getLayoutParams() instanceof ViewGroup.MarginLayoutParams mlp) {
+				// Apart from one another.
+				mlp.setMargins(Math.round(6 * density), 0, Math.round(6 * density), 0);
+				b.setLayoutParams(mlp);
+			}
 			int fill = main ? accent : chipFill;
 			b.setAllCaps(false);
 			b.setTypeface(Typeface.DEFAULT_BOLD);
@@ -87,6 +108,23 @@ public final class DialogStyle {
 				b.setBackground(pressable(fill, ripple, accent, density));
 			}
 		}
+
+		// Opens with a soft pop, see DialogView#dismiss() for the way out.
+		dv.setAlpha(0f);
+		dv.setScaleX(0.9f);
+		dv.setScaleY(0.9f);
+		dv.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+			@Override
+			public void onViewAttachedToWindow(View v) {
+				v.removeOnAttachStateChangeListener(this);
+				v.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(240)
+						.setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f)).start();
+			}
+
+			@Override
+			public void onViewDetachedFromWindow(View v) {
+			}
+		});
 
 		View custom = dv.findViewById(com.google.android.material.R.id.custom);
 		if (custom instanceof ViewGroup g) styleFields(g, primary, secondary, chipFill, density);

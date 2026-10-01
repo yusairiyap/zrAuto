@@ -62,8 +62,15 @@ public class DialogView extends FrameLayout implements DialogInterface {
 	@Override
 	public void dismiss() {
 		if (dismiss != null) {
-			dismiss.run();
+			Runnable r = dismiss;
 			dismiss = null;
+			if ((styler != null) && isAttachedToWindow()) {
+				// An app that styles its dialogs gets them closed with a short fade and shrink too.
+				animate().cancel();
+				animate().alpha(0f).scaleX(0.92f).scaleY(0.92f).setDuration(150).withEndAction(r).start();
+			} else {
+				r.run();
+			}
 		}
 	}
 
