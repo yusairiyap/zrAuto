@@ -95,6 +95,8 @@ public final class DialogStyle {
 					if (field != null) {
 						v.postDelayed(() -> {
 							field.requestFocus();
+							// Editing existing text (a rename): the cursor after it, not before.
+							field.setSelection(field.getText().length());
 							android.view.inputmethod.InputMethodManager imm = field.getContext()
 									.getSystemService(android.view.inputmethod.InputMethodManager.class);
 							if (imm != null) imm.showSoftInput(field, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
