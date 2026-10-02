@@ -42,10 +42,36 @@ public final class DialogStyle {
 		int accent = EffectsUi.accent(ctx);
 		int onAccent = EffectsUi.onAccent(accent);
 
-		GradientDrawable panel = new GradientDrawable();
-		panel.setColor(color(ctx, R.attr.musicPanelFill));
-		panel.setCornerRadius(28 * density);
-		dv.setBackground(panel);
+		// The panel is the menu's own card the dialog sits in (so there's one rounded surface, not a
+		// card in a card): recoloured while the dialog is up, put back after.
+		int panelColor = color(ctx, R.attr.musicPanelFill);
+		float radius = 28 * density;
+		dv.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+			private View menu;
+			private Drawable was;
+
+			@Override
+			public void onViewAttachedToWindow(View v) {
+				for (android.view.ViewParent p = v.getParent(); p != null; p = p.getParent()) {
+					if (p instanceof me.aap.utils.ui.menu.OverlayMenuView m) {
+						menu = m;
+						was = m.getBackground();
+						GradientDrawable g = new GradientDrawable();
+						g.setColor(panelColor);
+						g.setCornerRadius(radius);
+						m.setBackground(g);
+						break;
+					}
+				}
+			}
+
+			@Override
+			public void onViewDetachedFromWindow(View v) {
+				v.removeOnAttachStateChangeListener(this);
+				if (menu != null) menu.setBackground(was);
+				menu = null;
+			}
+		});
 		int pad = Math.round(8 * density);
 		dv.setPadding(pad, pad, pad, pad);
 
@@ -108,23 +134,6 @@ public final class DialogStyle {
 				b.setBackground(pressable(fill, ripple, accent, density));
 			}
 		}
-
-		// Opens with a soft pop, see DialogView#dismiss() for the way out.
-		dv.setAlpha(0f);
-		dv.setScaleX(0.9f);
-		dv.setScaleY(0.9f);
-		dv.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
-			@Override
-			public void onViewAttachedToWindow(View v) {
-				v.removeOnAttachStateChangeListener(this);
-				v.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(240)
-						.setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f)).start();
-			}
-
-			@Override
-			public void onViewDetachedFromWindow(View v) {
-			}
-		});
 
 		View custom = dv.findViewById(com.google.android.material.R.id.custom);
 		if (custom instanceof ViewGroup g) styleFields(g, primary, secondary, chipFill, density);
