@@ -417,6 +417,7 @@ public abstract class ActivityDelegate implements EventBroadcaster<ActivityListe
 		if (switchingFrom != null) switchingFrom.switchingTo(switchingTo);
 		switchingTo.switchingFrom(switchingFrom);
 		if (input != null) switchingTo.setInput(input);
+		initialFragmentShow = (activeId == ID_NULL);
 		// Grabbed before commitNow() -- hide()/show() only ever toggle this same View's visibility,
 		// never destroy it, so the reference stays valid across the transaction and lets the
 		// crossfade below animate the outgoing screen's actual last-laid-out view.
@@ -431,6 +432,16 @@ public abstract class ActivityDelegate implements EventBroadcaster<ActivityListe
 			Log.d(err);
 			return null;
 		}
+	}
+
+	private boolean initialFragmentShow;
+
+	/**
+	 * Whether the fragment being shown is the very first one since the app started (nothing was on
+	 * screen before it) -- a tab may then skip its entrance animations, see the Music tab.
+	 */
+	public boolean isInitialFragmentShow() {
+		return initialFragmentShow;
 	}
 
 	private static final long FRAGMENT_FADE_IN_DURATION = 200L;
@@ -491,7 +502,31 @@ public abstract class ActivityDelegate implements EventBroadcaster<ActivityListe
 	public void insetScrollableContent(ViewGroup content) {
 	}
 
+	/**
+	 * Puts the on-screen keyboard away if it's up, and says so. Asked two ways, since the insets
+	 * alone don't always report it: the window's own insets, or a text field still being typed
+	 * into -- whose focus is then dropped, so that the next Back goes on to what's behind it.
+	 */
+	public boolean hideKeyboardIfShown() {
+		View decor = getWindow().getDecorView();
+		android.view.inputmethod.InputMethodManager imm = decor.getContext()
+				.getSystemService(android.view.inputmethod.InputMethodManager.class);
+		androidx.core.view.WindowInsetsCompat wi = androidx.core.view.ViewCompat.getRootWindowInsets(decor);
+		boolean shown = (wi != null) && wi.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime());
+		View focus = decor.findFocus();
+		boolean typing = (focus instanceof android.widget.EditText) && (imm != null) &&
+				imm.isAcceptingText();
+		if (!shown && !typing) return false;
+		if (imm != null) imm.hideSoftInputFromWindow(decor.getWindowToken(), 0);
+		androidx.core.view.WindowCompat.getInsetsController(getWindow(), decor)
+				.hide(androidx.core.view.WindowInsetsCompat.Type.ime());
+		if (focus != null) focus.clearFocus();
+		return true;
+	}
+
 	public void onBackPressed() {
+		// With the keyboard up, back only puts it away -- not the dialog or screen behind it.
+		if (hideKeyboardIfShown()) return;
 		if (backPressed) {
 			finish();
 			return;

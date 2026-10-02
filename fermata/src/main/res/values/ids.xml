@@ -35,6 +35,7 @@
     <item name="tv_fragment" type="id" />
     <item name="youtube_fragment" type="id" />
     <item name="web_browser_fragment" type="id" />
+    <item name="youtube_bubbles_fragment" type="id" />
     <item name="felex_fragment" type="id" />
     <item name="cast_addon" type="id" />
     <item name="chat_addon" type="id" />

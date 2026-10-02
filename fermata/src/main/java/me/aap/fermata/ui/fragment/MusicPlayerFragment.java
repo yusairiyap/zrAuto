@@ -143,6 +143,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private ImageButton repeat;
 	private TextView videoButton;
 	private TextView moreButton;
+	private TextView effectsButton;
+	private TextView favoriteChip;
+	private TextView playlistChip;
+	private TextView timerChip;
 	private final Runnable timerChipTask = this::updateTimerChip;
 	private View queuePanel;
 	private View queueDismiss;
@@ -225,6 +229,13 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
 		super.onViewCreated(view, savedInstanceState);
 		MainActivityDelegate a = getActivityDelegate();
+		if ((savedInstanceState != null) || a.isInitialFragmentShow()) {
+			// The first moments are a burst of layout (bars, insets, cover loading) that showed as
+			// the tab jumping about: stay invisible while it settles, then fade in once, calmly.
+			quietUntil = android.os.SystemClock.uptimeMillis() + 1300;
+			view.setAlpha(0f);
+			view.postDelayed(() -> view.animate().alpha(1f).setDuration(350).start(), 800);
+		}
 		content = view.findViewById(R.id.music_content);
 		bg = view.findViewById(R.id.music_bg);
 		behind = new View[]{view.findViewById(R.id.music_backdrop), bg,
@@ -244,6 +255,20 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		repeat = view.findViewById(R.id.music_repeat);
 		videoButton = view.findViewById(R.id.music_video_button);
 		moreButton = view.findViewById(R.id.music_more_button);
+		effectsButton = view.findViewById(R.id.music_effects_button);
+		effectsButton.setOnClickListener(v -> onEffects());
+		favoriteChip = view.findViewById(R.id.music_favorite_button);
+		favoriteChip.setOnClickListener(v -> {
+			onFavoriteTap();
+			v.postDelayed(this::refreshFavoriteChip, 400);
+		});
+		playlistChip = view.findViewById(R.id.music_playlist_button);
+		playlistChip.setOnClickListener(v -> onPlaylistTap());
+		timerChip = view.findViewById(R.id.music_timer_button);
+		timerChip.setOnClickListener(v -> onMore(true));
+		// Effects sits on the row itself when there's room for it, else only behind the more button.
+		view.findViewById(R.id.music_actions).addOnLayoutChangeListener(
+				(v, l, t, r, b, ol, ot, or, ob) -> updateEffectsChip((ViewGroup) v));
 		videoButtonText = 0; // A new view: the chip starts hidden.
 		// The chips also slide over when the Video / Play as music chip just changes width.
 		LayoutTransition lt = ((ViewGroup) view.findViewById(R.id.music_actions)).getLayoutTransition();
@@ -275,7 +300,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		shuffle.setOnClickListener(v -> onShuffle());
 		repeat.setOnClickListener(v -> onRepeat());
 		view.findViewById(R.id.music_queue_button).setOnClickListener(v -> toggleQueue());
-		moreButton.setOnClickListener(v -> onMore());
+		moreButton.setOnClickListener(v -> onMore(false));
 		updateTimerChip();
 		videoButton.setOnClickListener(v -> onVideo());
 		view.findViewById(R.id.music_queue_close).setOnClickListener(v -> showQueue(false));
@@ -627,12 +652,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 		if (bm == null) {
 			// Through the palette: the placeholder is drawn in its colors.
-			crossfade(art, ContextCompat.getDrawable(palette, R.drawable.music_art_placeholder));
-			crossfade(bg, null);
+			fade(art, ContextCompat.getDrawable(palette, R.drawable.music_art_placeholder));
+			fade(bg, null);
 			return;
 		}
 
-		crossfade(art, new BitmapDrawable(getResources(), bm));
+		fade(art, new BitmapDrawable(getResources(), bm));
 		updateBackground(true);
 	}
 
@@ -646,7 +671,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if ((bm == null) || (bg == null)) return;
 		Bitmap blurred = blur(bm, settings().getIntPref(MusicAddon.BG_BLUR));
 		Drawable d = (blurred != null) ? new BitmapDrawable(getResources(), blurred) : null;
-		if (fade) crossfade(bg, d);
+		if (fade) fade(bg, d);
 		else bg.setImageDrawable(d);
 	}
 
@@ -693,6 +718,27 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		} catch (Throwable ex) {
 			return bm;
 		}
+	}
+
+	/**
+	 * See crossfade(), except right after the app started on this tab (see quiet()): there the
+	 * picture just appears, instead of fading in while everything else is still settling.
+	 */
+	private void fade(ImageView v, @Nullable Drawable to) {
+		if (quiet()) v.setImageDrawable(to);
+		else crossfade(v, to);
+	}
+
+	/**
+	 * Set while the app has just started on this tab (launched straight into it, or restored):
+	 * the first couple of seconds are a burst of layout and loading, and animating each of those
+	 * (insets gliding, cover and spinner fading) only made the start look janky. Switching to the
+	 * tab later keeps all of its animations.
+	 */
+	private long quietUntil;
+
+	private boolean quiet() {
+		return android.os.SystemClock.uptimeMillis() < quietUntil;
 	}
 
 	private static void crossfade(ImageView v, @Nullable Drawable to) {
@@ -1048,7 +1094,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		insetRight = right;
 		if (insetAnim != null) insetAnim.cancel();
 
-		if (!insetsSet) {
+		if (!insetsSet || quiet()) {
 			insetsSet = true;
 			c.setPadding(left, top, right, bottom);
 			return;
@@ -1110,6 +1156,14 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		playLoadingShown = busy;
 		playLoading.animate().cancel();
 		if (playIconAnim != null) playIconAnim.cancel();
+		if (quiet()) {
+			playPause.setImageAlpha(busy ? 0 : 255);
+			playLoading.setAlpha(1f);
+			playLoading.setScaleX(1f);
+			playLoading.setScaleY(1f);
+			playLoading.setVisibility(busy ? View.VISIBLE : View.GONE);
+			return;
+		}
 
 		int from = playPause.getImageAlpha();
 		ValueAnimator ia = ValueAnimator.ofInt(from, busy ? 0 : 255);
@@ -1467,10 +1521,130 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		return MusicMoreMenu.dismissOpen() || super.onBackPressed();
 	}
 
+	/**
+	 * Puts Effects, Favorite, Playlist and Timer on the row of chips, in that order, as many as the
+	 * row has the width for next to the chips that are always there (Queue, Video / Play as music,
+	 * the more button) -- a wide screen, a tablet or the car shows them all, a narrow phone none.
+	 * What doesn't fit is reached through the more button as before. Re-decided on every layout, so a
+	 * long timer countdown or the Video chip appearing makes room again.
+	 */
+	private void updateEffectsChip(ViewGroup row) {
+		TextView[] optional = {effectsButton, favoriteChip, playlistChip, timerChip};
+		if ((effectsButton == null) || (timerChip == null) || (row.getWidth() <= 0)) return;
+		float density = getResources().getDisplayMetrics().density;
+		int avail = row.getWidth() - row.getPaddingLeft() - row.getPaddingRight() -
+				Math.round(24 * density);
+		int used = 0;
+		for (int i = 0; i < row.getChildCount(); i++) {
+			View c = row.getChildAt(i);
+			if (isOptionalChip(c, optional) || (c == moreButton) || (c.getVisibility() == View.GONE)) {
+				continue;
+			}
+			used += outerWidth(c);
+		}
+		// The widths the chips would have, worked out from their text and icon: measuring the views
+		// themselves from here would leave them with sizes the row never asked for.
+		int[] need = new int[optional.length];
+		int all = 0;
+		for (int i = 0; i < optional.length; i++) {
+			need[i] = chipWidth(optional[i]);
+			all += need[i];
+		}
+
+		// Everything fits without the more button: no need for it. Otherwise as many as fit beside it.
+		boolean allFit = used + all <= avail;
+		if (!allFit) used += chipWidth(moreButton);
+		boolean[] show = new boolean[optional.length];
+		for (int i = 0; i < optional.length; i++) {
+			show[i] = allFit || (used + need[i] <= avail);
+			if (show[i] && !allFit) used += need[i];
+		}
+
+		// A new width (rotating, resizing) is applied at once; the layout animation is for chips
+		// coming and going within the same width, and glitched across a rotation.
+		boolean widthChanged = row.getWidth() != lastRowWidth;
+		lastRowWidth = row.getWidth();
+		LayoutTransition lt = row.getLayoutTransition();
+		if (widthChanged && (lt != null)) row.setLayoutTransition(null);
+		for (int i = 0; i < optional.length; i++) {
+			int vis = show[i] ? View.VISIBLE : View.GONE;
+			if (optional[i].getVisibility() != vis) optional[i].setVisibility(vis);
+		}
+		int moreVis = allFit ? View.GONE : View.VISIBLE;
+		if (moreButton.getVisibility() != moreVis) moreButton.setVisibility(moreVis);
+		if (widthChanged && (lt != null)) {
+			row.post(() -> {
+				row.setLayoutTransition(lt);
+				lt.enableTransitionType(LayoutTransition.CHANGING);
+			});
+		}
+		refreshFavoriteChip();
+	}
+
+	private int lastRowWidth;
+
+	/** What a chip's width is (or would be): its text, icon, padding and margins. */
+	private static int chipWidth(TextView t) {
+		int w = Math.round(t.getPaint().measureText(t.getText().toString())) + t.getPaddingStart() +
+				t.getPaddingEnd();
+		Drawable[] d = t.getCompoundDrawablesRelative();
+		if (d[0] != null) {
+			w += d[0].getIntrinsicWidth();
+			if (t.getText().length() > 0) w += t.getCompoundDrawablePadding();
+		}
+		ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) t.getLayoutParams();
+		return w + lp.leftMargin + lp.rightMargin;
+	}
+
+	private static int outerWidth(View c) {
+		ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) c.getLayoutParams();
+		return c.getMeasuredWidth() + lp.leftMargin + lp.rightMargin;
+	}
+
+	private static boolean isOptionalChip(View c, TextView[] optional) {
+		for (TextView t : optional) {
+			if (t == c) return true;
+		}
+		return false;
+	}
+
+	/** The Favorite chip's heart: filled when what's playing already is a favorite. */
+	private void refreshFavoriteChip() {
+		if ((favoriteChip == null) || (favoriteChip.getVisibility() != View.VISIBLE)) return;
+		boolean fav = me.aap.fermata.action.Action.isCurrentFavorite(getActivityDelegate());
+		favoriteChip.setCompoundDrawablesRelativeWithIntrinsicBounds(
+				fav ? R.drawable.favorite_filled : R.drawable.favorite, 0, 0, 0);
+	}
+
+	private void onFavoriteTap() {
+		MainActivityDelegate a = getActivityDelegate();
+		// Nothing playing: said over the cover, like the Effects tile does.
+		if (me.aap.fermata.action.Action.getFavoritableItem(a) == null) {
+			showMessage(getString(R.string.favorites_nothing_playing));
+		} else {
+			me.aap.fermata.action.Action.toggleCurrentFavorite(a);
+		}
+	}
+
+	private void onPlaylistTap() {
+		MainActivityDelegate a = getActivityDelegate();
+		PlayableItem pi = me.aap.fermata.action.Action.getFavoritableItem(a);
+		if (pi == null) showMessage(getString(R.string.playlist_nothing_playing));
+		else a.showAddToPlaylistDialog(Collections.singletonList(pi));
+	}
+
+	private interface MenuOpener {
+		void open(Context ctx, ViewGroup host, View insets, View anchor, MediaSessionCallback cb,
+							Runnable onEffects, Runnable onFavorite, java.util.function.BooleanSupplier isFavorite,
+							Runnable onPlaylist);
+	}
+
 	/** The chip's frosted-glass menu: Effects and the sleep timer. */
-	private void onMore() {
-		MusicMoreMenu.show(palette, (ViewGroup) requireView(), content, moreButton,
-				getActivityDelegate().getMediaSessionCallback(), this::onEffects);
+	private void onMore(boolean timer) {
+		(timer ? (MenuOpener) MusicMoreMenu::showTimer : (MenuOpener) MusicMoreMenu::show).open(palette, (ViewGroup) requireView(), content, moreButton,
+				getActivityDelegate().getMediaSessionCallback(), this::onEffects, this::onFavoriteTap,
+				() -> me.aap.fermata.action.Action.isCurrentFavorite(getActivityDelegate()),
+				this::onPlaylistTap);
 	}
 
 	/**
@@ -1497,6 +1671,13 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		setText(moreButton, label);
 		moreButton.setTextColor(color);
 		moreButton.setCompoundDrawableTintList(ColorStateList.valueOf(color));
+		// The Timer chip, when it's out on the row, carries the countdown (the more button is gone then).
+		if (timerChip != null) {
+			CharSequence txt = active ? label : getString(R.string.music_timer_short);
+			if (!txt.toString().contentEquals(timerChip.getText())) timerChip.setText(txt);
+			timerChip.setTextColor(active ? color : paletteColor(R.attr.musicTextPrimary));
+			timerChip.setCompoundDrawableTintList(ColorStateList.valueOf(color));
+		}
 		if (active) moreButton.postDelayed(timerChipTask, 1000);
 	}
 

@@ -1,11 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The browser tab: the pages of every open tab live in browserTabHost (only the selected one carries the id browserWebView), the home page and the tab strip are added over it by BrowserTabs. Nothing here clips its children, the home page's background reaches out under the bars. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/browserRoot"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:clipChildren="false"
+    android:clipToPadding="false">
 
-    <me.aap.fermata.addon.web.FermataWebView
-        android:id="@+id/browserWebView"
+    <FrameLayout
+        android:id="@+id/browserTabHost"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:clipChildren="false"
+        android:clipToPadding="false">
+
+        <me.aap.fermata.addon.web.FermataWebView
+            android:id="@+id/browserWebView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+    </FrameLayout>
 
     <FrameLayout
         android:id="@+id/browserFullScreenView"

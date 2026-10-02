@@ -25,6 +25,7 @@
     <string name="addons">Addons</string>
     <string name="addon_name_tv">TV</string>
     <string name="addon_name_web_browser">Web browser</string>
+    <string name="addon_name_youtube_bubbles">YouTube suggestions</string>
     <string name="addon_name_youtube" translatable="false">Youtube</string>
     <string name="addon_name_felex" translatable="false">Felex</string>
     <string name="addon_name_cast" translatable="false">Google Cast</string>
@@ -291,6 +292,11 @@
     <string name="shuffle">Shuffle</string>
     <string name="shuffle_disable">Do not shuffle</string>
     <string name="programme_guide">Programme guide</string>
+    <string name="music_more_favorite_hint">The song playing now</string>
+    <string name="music_more_playlist_hint">Pick or create one</string>
+    <string name="music_favorite_short">Favorite</string>
+    <string name="music_playlist_short">Playlist</string>
+    <string name="music_timer_short">Timer</string>
     <string name="favorites_add">Add to favorites</string>
     <string name="favorites_remove">Remove from favorites</string>
     <string name="favorites_added">Added to favorites: %1$s</string>

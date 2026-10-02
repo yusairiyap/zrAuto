@@ -74,6 +74,18 @@ public class YoutubeAddon extends WebBrowserAddon
 	private static final String[] QUALITY_LABELS = {null, null, "2160p", "1440p", "1080p", "720p",
 			"480p", "360p", "240p", "144p"};
 	private static final Pref<BooleanSupplier> YT_SKIP_ADD = Pref.b("YT_SKIP_ADD", true);
+	/** How many of the videos on the user's YouTube feed float around on the suggestions tab. */
+	static final Pref<IntSupplier> BUBBLES_COUNT = Pref.i("YT_BUBBLES_COUNT", 12);
+	static final int BUBBLES_TAP_AUTO = 0;
+	static final int BUBBLES_TAP_VIDEO = 1;
+	static final int BUBBLES_TAP_MUSIC = 2;
+	/** What tapping a bubble does: follows the current mode, or always video, or always music. */
+	static final Pref<IntSupplier> BUBBLES_TAP = Pref.i("YT_BUBBLES_TAP", BUBBLES_TAP_AUTO);
+	/** Titles over the bubbles; and thumbnails on them, or else one-line text cards. */
+	static final Pref<BooleanSupplier> BUBBLES_TEXT = Pref.b("YT_BUBBLES_TEXT", true);
+	static final Pref<BooleanSupplier> BUBBLES_THUMBS = Pref.b("YT_BUBBLES_THUMBS", true);
+	/** How fast the bubbles drift, in percent of the normal speed. */
+	static final Pref<IntSupplier> BUBBLES_SPEED = Pref.i("YT_BUBBLES_SPEED", 100);
 	private static final Pref<Supplier<String[]>> YT_VIDEO_TITLES = Pref.sa("YT_VIDEO_TITLES");
 	/** Flat {videoId, channel, album, durationMs} groups, see {@link #cacheVideoInfo}. */
 	private static final Pref<Supplier<String[]>> YT_VIDEO_INFO = Pref.sa("YT_VIDEO_INFO");

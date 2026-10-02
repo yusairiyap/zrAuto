@@ -9,8 +9,10 @@ import android.webkit.WebViewDatabase;
 import androidx.annotation.IdRes;
 import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.webkit.Profile;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -61,6 +63,21 @@ public class WebBrowserAddon implements FermataFragmentAddon, FermataActivityAdd
 					"Chrome/{CHROME_VERSION} Safari/{WEBKIT_VERSION}");
 	private static final Pref<BooleanSupplier> DESKTOP_VERSION = Pref.b("DESKTOP_VERSION", false);
 	private static final Pref<Supplier<String[]>> BOOKMARKS = Pref.sa("BOOKMARKS");
+	/** The page a new tab and the toolbar's Home button open: blank = the built-in home page. */
+	public static final Pref<Supplier<String>> HOME_URL = Pref.s("HOME_URL", "");
+	/** Whether the built-in home page has a background of its own behind the cards. */
+	public static final Pref<BooleanSupplier> HOME_BG_ENABLED = Pref.b("HOME_BG_ENABLED", true);
+	/** How blurred that background is: 0 (sharp) to 100. */
+	public static final Pref<IntSupplier> HOME_BG_BLUR = Pref.i("HOME_BG_BLUR", 60);
+	/** How far it's zoomed in, in percent: 100 (fits the screen) to 300. */
+	public static final Pref<IntSupplier> HOME_BG_ZOOM = Pref.i("HOME_BG_ZOOM", 120);
+	public static final int HOME_BG_LAST_SITE = 0;
+	public static final int HOME_BG_FIRST_BOOKMARK = 1;
+	public static final int HOME_BG_IMAGE = 2;
+	/** What the background is made of, see the HOME_BG_* constants. */
+	public static final Pref<IntSupplier> HOME_BG_SOURCE = Pref.i("HOME_BG_SOURCE", HOME_BG_LAST_SITE);
+	/** The picture used when {@link #HOME_BG_SOURCE} is {@link #HOME_BG_IMAGE}. */
+	public static final Pref<Supplier<String>> HOME_BG_IMAGE_URL = Pref.s("HOME_BG_IMAGE_URL", "");
 	private final SharedPreferences prefs;
 	private boolean ignorePrefChange;
 	// EventBroadcaster keeps listeners via WeakReference (ListenerRef extends WeakReference<L>), so
@@ -289,6 +306,57 @@ public class WebBrowserAddon implements FermataFragmentAddon, FermataActivityAdd
 		if (getClass() == WebBrowserAddon.class) {
 			set.addStringPref(o -> {
 				o.store = getPreferenceStore();
+				o.pref = HOME_URL;
+				o.title = R.string.home_page;
+				o.subtitle = R.string.home_page_sub;
+				o.stringHint = "https://www.google.com";
+				o.visibility = visibility.copy();
+			});
+			set.addBooleanPref(o -> {
+				o.store = getPreferenceStore();
+				o.pref = HOME_BG_ENABLED;
+				o.title = R.string.home_bg_enabled;
+				o.visibility = visibility.copy();
+			});
+			set.addIntPref(o -> {
+				o.store = getPreferenceStore();
+				o.pref = HOME_BG_BLUR;
+				o.title = R.string.home_bg_blur;
+				o.seekMin = 0;
+				o.seekMax = 100;
+				o.seekScale = 5;
+				o.ems = 3;
+				o.visibility = visibility.copy();
+			});
+			set.addIntPref(o -> {
+				o.store = getPreferenceStore();
+				o.pref = HOME_BG_ZOOM;
+				o.title = R.string.home_bg_zoom;
+				o.seekMin = 100;
+				o.seekMax = 300;
+				o.seekScale = 5;
+				o.ems = 3;
+				o.visibility = visibility.copy();
+			});
+			set.addListPref(o -> {
+				o.store = getPreferenceStore();
+				o.pref = HOME_BG_SOURCE;
+				o.title = R.string.home_bg_source;
+				o.subtitle = me.aap.fermata.R.string.string_format;
+				o.formatSubtitle = true;
+				o.values = new int[]{R.string.home_bg_source_last, R.string.home_bg_source_first,
+						R.string.home_bg_source_image};
+				o.visibility = visibility.copy();
+			});
+			set.addStringPref(o -> {
+				o.store = getPreferenceStore();
+				o.pref = HOME_BG_IMAGE_URL;
+				o.title = R.string.home_bg_image_url;
+				o.stringHint = "https://";
+				o.visibility = visibility.copy();
+			});
+			set.addStringPref(o -> {
+				o.store = getPreferenceStore();
 				o.pref = getUserAgentPref();
 				o.title = R.string.user_agent;
 				o.stringHint = o.pref.getDefaultValue().get();
@@ -417,6 +485,36 @@ public class WebBrowserAddon implements FermataFragmentAddon, FermataActivityAdd
 			m.remove(url);
 			setBookmarks(m);
 		}
+	}
+
+	/** The configured home page, normalised to a URL; null for the built-in home page. */
+	@Nullable
+	String getHomeUrl() {
+		String u = getPreferenceStore().getStringPref(HOME_URL);
+		if (u == null) return null;
+		u = u.trim();
+		if (u.isEmpty()) return null;
+		return (u.indexOf("://") == -1) ? "https://" + u : u;
+	}
+
+	/** Replaces {@code oldUrl}'s bookmark with a new name/URL, keeping its place in the list. */
+	void updateBookmark(String oldUrl, String name, String url) {
+		Map<String, String> m = new LinkedHashMap<>();
+		for (Map.Entry<String, String> e : getBookmarks().entrySet()) {
+			if (e.getKey().equals(oldUrl)) m.put(url, name);
+			else if (!e.getKey().equals(url)) m.put(e.getKey(), e.getValue());
+		}
+		setBookmarks(m);
+	}
+
+	/** Moves the bookmark at {@code from} to position {@code to}. */
+	void moveBookmark(int from, int to) {
+		List<Map.Entry<String, String>> l = new ArrayList<>(getBookmarks().entrySet());
+		if ((from < 0) || (from >= l.size()) || (to < 0) || (to >= l.size()) || (from == to)) return;
+		l.add(to, l.remove(from));
+		Map<String, String> m = new LinkedHashMap<>();
+		for (Map.Entry<String, String> e : l) m.put(e.getKey(), e.getValue());
+		setBookmarks(m);
 	}
 
 	void setBookmarks(Map<String, String> m) {

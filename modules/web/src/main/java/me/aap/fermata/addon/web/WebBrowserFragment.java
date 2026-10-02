@@ -13,6 +13,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
+import android.widget.FrameLayout;
 
 import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
@@ -24,6 +25,8 @@ import androidx.webkit.WebViewCompat;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import me.aap.fermata.BuildConfig;
@@ -87,6 +90,10 @@ public class WebBrowserFragment extends MainActivityFragment
 	// time -- with no user-facing overlay to explain the resulting jank/ANR risk. Deferring it to
 	// onHiddenChanged(false) means it only ever runs while this fragment is the one actually shown.
 	private boolean profileSwitchPending;
+	// The browser's tabs and home page, see BrowserTabs. Null in YoutubeFragment, which is a single
+	// page of its own, and until the activity delegate is there.
+	@Nullable
+	private BrowserTabs tabs;
 
 	@Override
 	public int getFragmentId() {
@@ -109,14 +116,67 @@ public class WebBrowserFragment extends MainActivityFragment
 		Context ctx = view.getContext();
 		FermataWebView webView = view.findViewById(R.id.browserWebView);
 		initWebView(webView, addon, view);
-		webView.loadUrl(addon.getLastUrl());
-		MainActivityDelegate.getActivityDelegate(ctx).onSuccess(this::registerListeners);
+		MainActivityDelegate.getActivityDelegate(ctx).onSuccess(a -> {
+			FrameLayout root = view.findViewById(R.id.browserRoot);
+			FrameLayout host = view.findViewById(R.id.browserTabHost);
+			tabs = new BrowserTabs(this, addon, a, root, host, webView);
+			// By default a new browser opens on our home page; the page set in Settings replaces it.
+			String home = addon.getHomeUrl();
+			if (home != null) webView.loadUrl(home);
+			registerListeners(a);
+		});
 	}
 
 	@Override
 	public void onDestroyView() {
 		MainActivityDelegate.getActivityDelegate(requireContext()).onSuccess(this::unregisterListeners);
+		if (tabs != null) {
+			tabs.release();
+			tabs = null;
+		}
 		super.onDestroyView();
+	}
+
+	/** A WebView for another tab: set up exactly like the first one. */
+	FermataWebView createTabWebView(Context ctx) {
+		FermataWebView v = createWebView(ctx);
+		WebBrowserAddon addon = getAddon();
+		View root = getView();
+		if ((addon != null) && (root != null)) initWebView(v, addon, root);
+		return v;
+	}
+
+	/** The toolbar's Home button. */
+	void goHome() {
+		if (tabs != null) tabs.goHome();
+	}
+
+	/** The toolbar's Back button: back in the page, or up to the home page. */
+	void goBackInBrowser() {
+		if (tabs != null) {
+			tabs.goBack();
+			return;
+		}
+		FermataWebView v = getWebView();
+		if (v != null) v.goBack();
+	}
+
+	boolean canGoBackInBrowser() {
+		if (tabs != null) return tabs.canGoBack();
+		FermataWebView v = getWebView();
+		return (v != null) && v.canGoBack();
+	}
+
+	boolean canGoForwardInBrowser() {
+		if (tabs != null) return tabs.canGoForward();
+		FermataWebView v = getWebView();
+		return (v != null) && v.canGoForward();
+	}
+
+	/** The home page runs its background on behind the floating nav pill, like the Music tab. */
+	@Override
+	public boolean drawsBehindSideNavBar() {
+		return (tabs != null) && tabs.isHomeShown();
 	}
 
 	/** Creates a fresh WebView instance carrying the same id as the one declared in this
@@ -165,6 +225,39 @@ public class WebBrowserFragment extends MainActivityFragment
 
 		MainActivityPrefs mp = MainActivityPrefs.get();
 		if (PrivateProfile.matchesCurrentProfile(old, mp)) return;
+
+		BrowserTabs t = tabs;
+		if (t != null) {
+			// Every tab's page lives on the profile that's being left: all of them are swapped.
+			List<FermataWebView> olds = t.getWebViews();
+			List<String> urls = new ArrayList<>(olds.size());
+			for (FermataWebView w : olds) urls.add(w.getUrl());
+			Context tctx = root.getContext();
+
+			MainActivityDelegate.getActivityDelegate(tctx).onSuccess(a -> {
+				ProfileSwitchOverlay overlay = ProfileSwitchOverlay.show(parent);
+				List<FermataWebView> fresh = new ArrayList<>(olds.size());
+				for (int i = 0; i < olds.size(); i++) {
+					FermataWebView w = olds.get(i);
+					int index = parent.indexOfChild(w);
+					ViewGroup.LayoutParams lp = w.getLayoutParams();
+					w.stopLoading();
+					parent.removeView(w);
+					w.destroy();
+					FermataWebView f = createWebView(tctx);
+					initWebView(f, addon, root);
+					parent.addView(f, index, lp);
+					fresh.add(f);
+				}
+				t.replaceWebViews(fresh);
+				for (int i = 0; i < fresh.size(); i++) {
+					String u = urls.get(i);
+					if (u != null) fresh.get(i).loadUrl(u);
+				}
+				overlay.watch(a);
+			});
+			return;
+		}
 
 		String url = urlToLoadAfterProfileSwitch(old, addon);
 		int index = parent.indexOfChild(old);
@@ -396,6 +489,8 @@ public class WebBrowserFragment extends MainActivityFragment
 	@Override
 	public void onHiddenChanged(boolean hidden) {
 		super.onHiddenChanged(hidden);
+		// The tab strip grows out of the tool bar each time the tab comes on screen.
+		if (tabs != null) tabs.playEnter();
 		if (hidden) return;
 
 		if (profileSwitchPending) {
@@ -449,7 +544,8 @@ public class WebBrowserFragment extends MainActivityFragment
 
 	public void loadUrl(String url) {
 		if (Uri.parse(url).getScheme() == null) {
-			url = getSearchUrl() + url;
+			// Something like "example.com" is an address, anything else is a search.
+			url = looksLikeAddress(url) ? "https://" + url : getSearchUrl() + url;
 		}
 
 		FermataWebView v = getWebView();
@@ -462,6 +558,8 @@ public class WebBrowserFragment extends MainActivityFragment
 					if (a.showFragment(me.aap.fermata.R.id.youtube_fragment) instanceof YoutubeFragment f)
 						f.loadUrl(u);
 				});
+			} else if (tabs != null) {
+				tabs.navigate(url);
 			} else {
 				v.loadUrl(url);
 			}
@@ -471,8 +569,16 @@ public class WebBrowserFragment extends MainActivityFragment
 		}
 	}
 
+	/** A single word with a dot and no spaces: "example.com" -- a web address, not a search. */
+	private static boolean looksLikeAddress(String s) {
+		String t = s.trim();
+		return (t.indexOf(' ') == -1) && (t.indexOf('.') > 0) && !t.endsWith(".") &&
+				!t.startsWith(".");
+	}
+
 	@Nullable
 	public String getUrl() {
+		if ((tabs != null) && tabs.isHomeShown()) return null;
 		WebView v = getWebView();
 		return (v == null) ? null : v.getUrl();
 	}
@@ -481,6 +587,7 @@ public class WebBrowserFragment extends MainActivityFragment
 	public boolean isRootPage() {
 		FermataWebView v = getWebView();
 		if ((v == null) || (v.getWebChromeClient() == null)) return true;
+		if (tabs != null) return !v.getWebChromeClient().isFullScreen() && !tabs.canGoBack();
 		return !v.getWebChromeClient().isFullScreen() && !v.canGoBack();
 	}
 
@@ -494,6 +601,8 @@ public class WebBrowserFragment extends MainActivityFragment
 			chrome.exitFullScreen();
 			return true;
 		}
+
+		if (tabs != null) return tabs.goBack();
 
 		if (v.canGoBack()) {
 			v.goBack();
@@ -636,7 +745,14 @@ public class WebBrowserFragment extends MainActivityFragment
 		set.addToMenu(b, true);
 		b.setCloseHandlerHandler(m -> {
 			WebBrowserAddon a = getAddon();
-			if (a != null) a.addBookmark(store.getStringPref(name), store.getStringPref(url));
+			if (a == null) return;
+			String u = store.getStringPref(url);
+			a.addBookmark(store.getStringPref(name), u);
+			// The card of a bookmark made from the page it's showing gets that page's picture.
+			if (tabs != null) {
+				tabs.captureForBookmark(u);
+				tabs.reloadHome();
+			}
 		});
 	}
 
@@ -648,6 +764,8 @@ public class WebBrowserFragment extends MainActivityFragment
 							.setHandler(i -> {
 								WebBrowserAddon a = getAddon();
 								if (a != null) a.removeBookmark(url);
+								BrowserBookmarks.deleteThumbnail(url);
+								if (tabs != null) tabs.reloadHome();
 								return true;
 							})
 			);

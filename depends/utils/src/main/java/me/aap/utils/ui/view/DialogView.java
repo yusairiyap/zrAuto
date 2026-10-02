@@ -33,6 +33,20 @@ import com.google.android.material.R;
 @SuppressLint("ViewConstructor")
 public class DialogView extends FrameLayout implements DialogInterface {
 	private Runnable dismiss;
+	@Nullable
+	private static java.util.function.Consumer<DialogView> styler;
+	@Nullable
+	private Runnable onDismissStart;
+
+	/** Run just before the dialog closes, e.g. to start a closing animation. */
+	public void setOnDismissStart(@Nullable Runnable r) {
+		onDismissStart = r;
+	}
+
+	/** Restyles every dialog as it's built, so an app gives all of them one look. */
+	public static void setStyler(@Nullable java.util.function.Consumer<DialogView> s) {
+		styler = s;
+	}
 
 	private DialogView(Context context, int layout) {
 		super(context);
@@ -55,6 +69,15 @@ public class DialogView extends FrameLayout implements DialogInterface {
 	@Override
 	public void dismiss() {
 		if (dismiss != null) {
+			// The keyboard goes with the dialog.
+			View f = findFocus();
+			if (f instanceof android.widget.EditText) {
+				android.view.inputmethod.InputMethodManager imm = getContext()
+						.getSystemService(android.view.inputmethod.InputMethodManager.class);
+				if (imm != null) imm.hideSoftInputFromWindow(f.getWindowToken(), 0);
+				f.clearFocus();
+			}
+			if (onDismissStart != null) onDismissStart.run();
 			dismiss.run();
 			dismiss = null;
 		}
@@ -252,6 +275,12 @@ public class DialogView extends FrameLayout implements DialogInterface {
 			}
 
 			dialog.dismiss = dismiss;
+			try {
+				if (styler != null) styler.accept(dialog);
+			} catch (RuntimeException ex) {
+				// A styling problem must never stop a dialog from showing.
+				me.aap.utils.log.Log.e(ex, "Failed to style a dialog");
+			}
 			return dialog;
 		}
 	}

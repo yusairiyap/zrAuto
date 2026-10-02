@@ -44,6 +44,17 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 		return instance;
 	}
 
+	/** It adds its own Home button, in another place. */
+	@Override
+	protected boolean hasHomeButton() {
+		return false;
+	}
+
+	@Override
+	protected boolean mergesWithTabs() {
+		return false;
+	}
+
 	@SuppressLint("ClickableViewAccessibility") // the touch listener never consumes the event
 	@Override
 	public void enable(ToolBarView tb, ActivityFragment f) {
