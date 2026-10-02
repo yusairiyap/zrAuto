@@ -104,6 +104,9 @@ public final class MusicMoreMenu {
 	private int minutes = lastMinutes;
 	private boolean finishSong = lastFinishSong;
 
+	/** Opens on the timer page instead of the tiles. */
+	private boolean startOnTimer;
+
 	private MusicMoreMenu(Context ctx, ViewGroup host, View insets, View anchor,
 											MediaSessionCallback cb, Runnable onEffects, Runnable onFavorite,
 											java.util.function.BooleanSupplier isFavorite, Runnable onPlaylist) {
@@ -152,6 +155,20 @@ public final class MusicMoreMenu {
 		m.show();
 	}
 
+	/** Like {@link #show}, opening straight on the sleep timer page. */
+	public static void showTimer(@NonNull Context ctx, @NonNull ViewGroup host, @NonNull View insets,
+															 @NonNull View anchor, @NonNull MediaSessionCallback cb,
+															 @NonNull Runnable onEffects, @NonNull Runnable onFavorite,
+															 @NonNull java.util.function.BooleanSupplier isFavorite,
+															 @NonNull Runnable onPlaylist) {
+		dismissOpen();
+		MusicMoreMenu m = new MusicMoreMenu(ctx, host, insets, anchor, cb, onEffects, onFavorite,
+				isFavorite, onPlaylist);
+		m.startOnTimer = true;
+		open = m;
+		m.show();
+	}
+
 	/** Closes the menu if it's open (for the back button); returns whether it was. */
 	public static boolean dismissOpen() {
 		MusicMoreMenu m = open;
@@ -180,6 +197,10 @@ public final class MusicMoreMenu {
 		mainPage = buildMainPage();
 		timerPage = buildTimerPage();
 		timerPage.setVisibility(View.GONE);
+		if (startOnTimer) {
+			mainPage.setVisibility(View.GONE);
+			timerPage.setVisibility(View.VISIBLE);
+		}
 		pages.addView(mainPage, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 		pages.addView(timerPage, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 		root.addView(pages, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));

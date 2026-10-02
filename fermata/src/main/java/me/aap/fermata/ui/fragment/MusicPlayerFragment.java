@@ -265,7 +265,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		playlistChip = view.findViewById(R.id.music_playlist_button);
 		playlistChip.setOnClickListener(v -> onPlaylistTap());
 		timerChip = view.findViewById(R.id.music_timer_button);
-		timerChip.setOnClickListener(v -> onMore());
+		timerChip.setOnClickListener(v -> onMore(true));
 		// Effects sits on the row itself when there's room for it, else only behind the more button.
 		view.findViewById(R.id.music_actions).addOnLayoutChangeListener(
 				(v, l, t, r, b, ol, ot, or, ob) -> updateEffectsChip((ViewGroup) v));
@@ -300,7 +300,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		shuffle.setOnClickListener(v -> onShuffle());
 		repeat.setOnClickListener(v -> onRepeat());
 		view.findViewById(R.id.music_queue_button).setOnClickListener(v -> toggleQueue());
-		moreButton.setOnClickListener(v -> onMore());
+		moreButton.setOnClickListener(v -> onMore(false));
 		updateTimerChip();
 		videoButton.setOnClickListener(v -> onVideo());
 		view.findViewById(R.id.music_queue_close).setOnClickListener(v -> showQueue(false));
@@ -1542,20 +1542,18 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			}
 			used += outerWidth(c);
 		}
+		// The widths the chips would have, worked out from their text and icon: measuring the views
+		// themselves from here would leave them with sizes the row never asked for.
 		int[] need = new int[optional.length];
 		int all = 0;
 		for (int i = 0; i < optional.length; i++) {
-			optional[i].measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
-					View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-			need[i] = outerWidth(optional[i]);
+			need[i] = chipWidth(optional[i]);
 			all += need[i];
 		}
-		moreButton.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
-				View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
 
 		// Everything fits without the more button: no need for it. Otherwise as many as fit beside it.
 		boolean allFit = used + all <= avail;
-		if (!allFit) used += outerWidth(moreButton);
+		if (!allFit) used += chipWidth(moreButton);
 		boolean[] show = new boolean[optional.length];
 		for (int i = 0; i < optional.length; i++) {
 			show[i] = allFit || (used + need[i] <= avail);
@@ -1584,6 +1582,19 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	}
 
 	private int lastRowWidth;
+
+	/** What a chip's width is (or would be): its text, icon, padding and margins. */
+	private static int chipWidth(TextView t) {
+		int w = Math.round(t.getPaint().measureText(t.getText().toString())) + t.getPaddingStart() +
+				t.getPaddingEnd();
+		Drawable[] d = t.getCompoundDrawablesRelative();
+		if (d[0] != null) {
+			w += d[0].getIntrinsicWidth();
+			if (t.getText().length() > 0) w += t.getCompoundDrawablePadding();
+		}
+		ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) t.getLayoutParams();
+		return w + lp.leftMargin + lp.rightMargin;
+	}
 
 	private static int outerWidth(View c) {
 		ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) c.getLayoutParams();
@@ -1622,9 +1633,15 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		else a.showAddToPlaylistDialog(Collections.singletonList(pi));
 	}
 
+	private interface MenuOpener {
+		void open(Context ctx, ViewGroup host, View insets, View anchor, MediaSessionCallback cb,
+							Runnable onEffects, Runnable onFavorite, java.util.function.BooleanSupplier isFavorite,
+							Runnable onPlaylist);
+	}
+
 	/** The chip's frosted-glass menu: Effects and the sleep timer. */
-	private void onMore() {
-		MusicMoreMenu.show(palette, (ViewGroup) requireView(), content, moreButton,
+	private void onMore(boolean timer) {
+		(timer ? (MenuOpener) MusicMoreMenu::showTimer : (MenuOpener) MusicMoreMenu::show).open(palette, (ViewGroup) requireView(), content, moreButton,
 				getActivityDelegate().getMediaSessionCallback(), this::onEffects, this::onFavoriteTap,
 				() -> me.aap.fermata.action.Action.isCurrentFavorite(getActivityDelegate()),
 				this::onPlaylistTap);
