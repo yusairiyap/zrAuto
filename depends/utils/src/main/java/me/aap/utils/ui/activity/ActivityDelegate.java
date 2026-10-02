@@ -503,6 +503,14 @@ public abstract class ActivityDelegate implements EventBroadcaster<ActivityListe
 	}
 
 	public void onBackPressed() {
+		// With the keyboard up, back only puts it away -- not the dialog or screen behind it.
+		View decor = getWindow().getDecorView();
+		androidx.core.view.WindowInsetsCompat wi = androidx.core.view.ViewCompat.getRootWindowInsets(decor);
+		if ((wi != null) && wi.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())) {
+			androidx.core.view.WindowCompat.getInsetsController(getWindow(), decor)
+					.hide(androidx.core.view.WindowInsetsCompat.Type.ime());
+			return;
+		}
 		if (backPressed) {
 			finish();
 			return;

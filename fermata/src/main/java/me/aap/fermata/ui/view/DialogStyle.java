@@ -46,29 +46,102 @@ public final class DialogStyle {
 		// card in a card): recoloured while the dialog is up, put back after.
 		int panelColor = color(ctx, R.attr.musicPanelFill);
 		float radius = 28 * density;
+		final boolean car = me.aap.fermata.ui.activity.MainActivityDelegate.get(dv.getContext())
+				.isCarActivity();
 		dv.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
 			private View menu;
 			private Drawable was;
+			private float lift;
+			private android.view.ViewTreeObserver.OnPreDrawListener keyboardSync;
 
 			@Override
 			public void onViewAttachedToWindow(View v) {
 				for (android.view.ViewParent p = v.getParent(); p != null; p = p.getParent()) {
 					if (p instanceof me.aap.utils.ui.menu.OverlayMenuView m) {
 						menu = m;
-						was = m.getBackground();
-						GradientDrawable g = new GradientDrawable();
-						g.setColor(panelColor);
-						g.setCornerRadius(radius);
-						m.setBackground(g);
 						break;
 					}
 				}
+				if (menu == null) return;
+				was = menu.getBackground();
+				GradientDrawable g = new GradientDrawable();
+				g.setColor(panelColor);
+				g.setCornerRadius(radius);
+				menu.setBackground(g);
+
+				// Rises into place while the menu fades in.
+				menu.setScaleX(0.92f);
+				menu.setScaleY(0.92f);
+				menu.setTranslationY(24 * density);
+				menu.animate().scaleX(1f).scaleY(1f).translationY(0f).setDuration(280)
+						.setInterpolator(new android.view.animation.DecelerateInterpolator(1.8f)).start();
+				dv.setOnDismissStart(() -> {
+					View m = menu;
+					if (m == null) return;
+					m.animate().cancel();
+					m.animate().scaleX(0.94f).scaleY(0.94f).translationY(16 * density).setDuration(200)
+							.setInterpolator(new android.view.animation.AccelerateInterpolator(1.3f)).start();
+				});
+
+				// Out of the keyboard's way: lifted when it would cover the card.
+				if (!car) {
+					keyboardSync = () -> {
+						liftAboveKeyboard(v);
+						return true;
+					};
+					v.getViewTreeObserver().addOnPreDrawListener(keyboardSync);
+					// The keyboard up at once when there's a field to type into.
+					EditText field = firstField(v);
+					if (field != null) {
+						v.postDelayed(() -> {
+							field.requestFocus();
+							android.view.inputmethod.InputMethodManager imm = field.getContext()
+									.getSystemService(android.view.inputmethod.InputMethodManager.class);
+							if (imm != null) imm.showSoftInput(field, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+						}, 120);
+					}
+				}
+			}
+
+			/** Eases the menu up by however much the keyboard covers of it, and back down. */
+			private void liftAboveKeyboard(View v) {
+				if (menu == null) return;
+				androidx.core.view.WindowInsetsCompat wi = androidx.core.view.ViewCompat
+						.getRootWindowInsets(v);
+				int ime = (wi == null) ? 0 : wi.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime()).bottom;
+				float target = 0;
+				if (ime > 0) {
+					int[] loc = new int[2];
+					menu.getLocationInWindow(loc);
+					float bottom = loc[1] - menu.getTranslationY() + menu.getHeight();
+					float room = v.getRootView().getHeight() - ime - 12 * density;
+					target = Math.max(0f, bottom - room);
+					// Never past the top of the screen.
+					target = Math.min(target, Math.max(0f, loc[1] - menu.getTranslationY() - 8 * density));
+				}
+				if (Math.abs(target - lift) < 0.5f) {
+					if (lift != target) {
+						lift = target;
+						menu.setTranslationY(-lift);
+					}
+					return;
+				}
+				lift += (target - lift) * 0.25f;
+				menu.setTranslationY(-lift);
+				menu.postInvalidateOnAnimation();
 			}
 
 			@Override
 			public void onViewDetachedFromWindow(View v) {
 				v.removeOnAttachStateChangeListener(this);
-				if (menu != null) menu.setBackground(was);
+				if (keyboardSync != null) v.getViewTreeObserver().removeOnPreDrawListener(keyboardSync);
+				if (menu != null) {
+					menu.animate().cancel();
+					menu.setBackground(was);
+					menu.setScaleX(1f);
+					menu.setScaleY(1f);
+					menu.setTranslationY(0f);
+				}
 				menu = null;
 			}
 		});
@@ -137,6 +210,17 @@ public final class DialogStyle {
 
 		View custom = dv.findViewById(com.google.android.material.R.id.custom);
 		if (custom instanceof ViewGroup g) styleFields(g, primary, secondary, chipFill, density);
+	}
+
+	private static EditText firstField(View v) {
+		if (v instanceof EditText e) return e;
+		if (v instanceof ViewGroup g) {
+			for (int i = 0, n = g.getChildCount(); i < n; i++) {
+				EditText e = firstField(g.getChildAt(i));
+				if (e != null) return e;
+			}
+		}
+		return null;
 	}
 
 	/** Text fields inside the dialog's own view: rounded, filled, roomy. */

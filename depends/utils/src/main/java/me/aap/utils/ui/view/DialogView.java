@@ -35,6 +35,13 @@ public class DialogView extends FrameLayout implements DialogInterface {
 	private Runnable dismiss;
 	@Nullable
 	private static java.util.function.Consumer<DialogView> styler;
+	@Nullable
+	private Runnable onDismissStart;
+
+	/** Run just before the dialog closes, e.g. to start a closing animation. */
+	public void setOnDismissStart(@Nullable Runnable r) {
+		onDismissStart = r;
+	}
 
 	/** Restyles every dialog as it's built, so an app gives all of them one look. */
 	public static void setStyler(@Nullable java.util.function.Consumer<DialogView> s) {
@@ -62,6 +69,7 @@ public class DialogView extends FrameLayout implements DialogInterface {
 	@Override
 	public void dismiss() {
 		if (dismiss != null) {
+			if (onDismissStart != null) onDismissStart.run();
 			dismiss.run();
 			dismiss = null;
 		}
