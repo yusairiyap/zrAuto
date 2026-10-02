@@ -144,6 +144,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private TextView videoButton;
 	private TextView moreButton;
 	private TextView effectsButton;
+	private TextView favoriteChip;
+	private TextView playlistChip;
+	private TextView timerChip;
 	private final Runnable timerChipTask = this::updateTimerChip;
 	private View queuePanel;
 	private View queueDismiss;
@@ -254,6 +257,15 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		moreButton = view.findViewById(R.id.music_more_button);
 		effectsButton = view.findViewById(R.id.music_effects_button);
 		effectsButton.setOnClickListener(v -> onEffects());
+		favoriteChip = view.findViewById(R.id.music_favorite_button);
+		favoriteChip.setOnClickListener(v -> {
+			onFavoriteTap();
+			v.postDelayed(this::refreshFavoriteChip, 400);
+		});
+		playlistChip = view.findViewById(R.id.music_playlist_button);
+		playlistChip.setOnClickListener(v -> onPlaylistTap());
+		timerChip = view.findViewById(R.id.music_timer_button);
+		timerChip.setOnClickListener(v -> onMore());
 		// Effects sits on the row itself when there's room for it, else only behind the more button.
 		view.findViewById(R.id.music_actions).addOnLayoutChangeListener(
 				(v, l, t, r, b, ol, ot, or, ob) -> updateEffectsChip((ViewGroup) v));
@@ -1510,53 +1522,77 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	}
 
 	/**
-	 * Shows the Effects chip when the row of chips has the width for it next to the others (a wide
-	 * screen, a tablet, the car), hides it again when it doesn't (a narrow phone, a long timer
-	 * countdown): then it's reached through the more button as before.
+	 * Puts Effects, Favorite, Playlist and Timer on the row of chips, in that order, as many as the
+	 * row has the width for next to the chips that are always there (Queue, Video / Play as music,
+	 * the more button) -- a wide screen, a tablet or the car shows them all, a narrow phone none.
+	 * What doesn't fit is reached through the more button as before. Re-decided on every layout, so a
+	 * long timer countdown or the Video chip appearing makes room again.
 	 */
 	private void updateEffectsChip(ViewGroup row) {
-		TextView e = effectsButton;
-		if ((e == null) || (row.getWidth() <= 0)) return;
-		int avail = row.getWidth() - row.getPaddingLeft() - row.getPaddingRight();
+		TextView[] optional = {effectsButton, favoriteChip, playlistChip, timerChip};
+		if ((effectsButton == null) || (timerChip == null) || (row.getWidth() <= 0)) return;
+		float density = getResources().getDisplayMetrics().density;
+		int avail = row.getWidth() - row.getPaddingLeft() - row.getPaddingRight() -
+				Math.round(24 * density);
 		int used = 0;
 		for (int i = 0; i < row.getChildCount(); i++) {
 			View c = row.getChildAt(i);
-			if ((c == e) || (c.getVisibility() == View.GONE)) continue;
+			if (isOptionalChip(c, optional) || (c.getVisibility() == View.GONE)) continue;
 			ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) c.getLayoutParams();
 			used += c.getMeasuredWidth() + lp.leftMargin + lp.rightMargin;
 		}
-		e.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
-				View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-		ViewGroup.MarginLayoutParams elp = (ViewGroup.MarginLayoutParams) e.getLayoutParams();
-		int need = e.getMeasuredWidth() + elp.leftMargin + elp.rightMargin;
-		// A little spare, so the row isn't packed edge to edge.
-		boolean fit = used + need + Math.round(24 * getResources().getDisplayMetrics().density) <= avail;
-		int vis = fit ? View.VISIBLE : View.GONE;
-		if (e.getVisibility() != vis) e.setVisibility(vis);
+		for (TextView e : optional) {
+			e.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+					View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+			ViewGroup.MarginLayoutParams elp = (ViewGroup.MarginLayoutParams) e.getLayoutParams();
+			int need = e.getMeasuredWidth() + elp.leftMargin + elp.rightMargin;
+			boolean fit = used + need <= avail;
+			if (fit) used += need;
+			int vis = fit ? View.VISIBLE : View.GONE;
+			if (e.getVisibility() != vis) e.setVisibility(vis);
+		}
+		refreshFavoriteChip();
+	}
+
+	private static boolean isOptionalChip(View c, TextView[] optional) {
+		for (TextView t : optional) {
+			if (t == c) return true;
+		}
+		return false;
+	}
+
+	/** The Favorite chip's heart: filled when what's playing already is a favorite. */
+	private void refreshFavoriteChip() {
+		if ((favoriteChip == null) || (favoriteChip.getVisibility() != View.VISIBLE)) return;
+		boolean fav = me.aap.fermata.action.Action.isCurrentFavorite(getActivityDelegate());
+		favoriteChip.setCompoundDrawablesRelativeWithIntrinsicBounds(
+				fav ? R.drawable.favorite_filled : R.drawable.favorite, 0, 0, 0);
+	}
+
+	private void onFavoriteTap() {
+		MainActivityDelegate a = getActivityDelegate();
+		// Nothing playing: said over the cover, like the Effects tile does.
+		if (me.aap.fermata.action.Action.getFavoritableItem(a) == null) {
+			showMessage(getString(R.string.favorites_nothing_playing));
+		} else {
+			me.aap.fermata.action.Action.toggleCurrentFavorite(a);
+		}
+	}
+
+	private void onPlaylistTap() {
+		MainActivityDelegate a = getActivityDelegate();
+		PlayableItem pi = me.aap.fermata.action.Action.getFavoritableItem(a);
+		if (pi == null) showMessage(getString(R.string.playlist_nothing_playing));
+		else a.showAddToPlaylistDialog(Collections.singletonList(pi));
 	}
 
 	/** The chip's frosted-glass menu: Effects and the sleep timer. */
 	private void onMore() {
 		MusicMoreMenu.show(palette, (ViewGroup) requireView(), content, moreButton,
-				getActivityDelegate().getMediaSessionCallback(), this::onEffects,
-				() -> {
-					MainActivityDelegate a = getActivityDelegate();
-					// Nothing playing: said over the cover, like the Effects tile does.
-					if (me.aap.fermata.action.Action.getFavoritableItem(a) == null) {
-						showMessage(getString(R.string.favorites_nothing_playing));
-					} else {
-						me.aap.fermata.action.Action.toggleCurrentFavorite(a);
-					}
-				},
+				getActivityDelegate().getMediaSessionCallback(), this::onEffects, this::onFavoriteTap,
 				() -> me.aap.fermata.action.Action.isCurrentFavorite(getActivityDelegate()),
-				() -> {
-					MainActivityDelegate a = getActivityDelegate();
-					PlayableItem pi = me.aap.fermata.action.Action.getFavoritableItem(a);
-					if (pi == null) {
-						showMessage(getString(R.string.playlist_nothing_playing));
-					} else {
-						a.showAddToPlaylistDialog(Collections.singletonList(pi));
-					}
+				this::onPlaylistTap);
+	}
 				});
 	}
 

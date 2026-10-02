@@ -187,6 +187,30 @@
             android:visibility="gone" />
 
         <TextView
+            android:id="@+id/music_favorite_button"
+            style="@style/MusicChip"
+            android:layout_marginStart="8dp"
+            android:drawableStart="@drawable/favorite"
+            android:text="@string/music_favorite_short"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/music_playlist_button"
+            style="@style/MusicChip"
+            android:layout_marginStart="8dp"
+            android:drawableStart="@drawable/playlist_add"
+            android:text="@string/music_playlist_short"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/music_timer_button"
+            style="@style/MusicChip"
+            android:layout_marginStart="8dp"
+            android:drawableStart="@drawable/timer"
+            android:text="@string/music_timer_short"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/music_video_button"
             style="@style/MusicChip"
             android:layout_marginStart="8dp"
