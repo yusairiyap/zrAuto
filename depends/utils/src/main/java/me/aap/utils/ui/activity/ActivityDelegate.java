@@ -502,15 +502,31 @@ public abstract class ActivityDelegate implements EventBroadcaster<ActivityListe
 	public void insetScrollableContent(ViewGroup content) {
 	}
 
+	/**
+	 * Puts the on-screen keyboard away if it's up, and says so. Asked two ways, since the insets
+	 * alone don't always report it: the window's own insets, or a text field still being typed
+	 * into -- whose focus is then dropped, so that the next Back goes on to what's behind it.
+	 */
+	public boolean hideKeyboardIfShown() {
+		View decor = getWindow().getDecorView();
+		android.view.inputmethod.InputMethodManager imm = decor.getContext()
+				.getSystemService(android.view.inputmethod.InputMethodManager.class);
+		androidx.core.view.WindowInsetsCompat wi = androidx.core.view.ViewCompat.getRootWindowInsets(decor);
+		boolean shown = (wi != null) && wi.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime());
+		View focus = decor.findFocus();
+		boolean typing = (focus instanceof android.widget.EditText) && (imm != null) &&
+				imm.isAcceptingText();
+		if (!shown && !typing) return false;
+		if (imm != null) imm.hideSoftInputFromWindow(decor.getWindowToken(), 0);
+		androidx.core.view.WindowCompat.getInsetsController(getWindow(), decor)
+				.hide(androidx.core.view.WindowInsetsCompat.Type.ime());
+		if (focus != null) focus.clearFocus();
+		return true;
+	}
+
 	public void onBackPressed() {
 		// With the keyboard up, back only puts it away -- not the dialog or screen behind it.
-		View decor = getWindow().getDecorView();
-		androidx.core.view.WindowInsetsCompat wi = androidx.core.view.ViewCompat.getRootWindowInsets(decor);
-		if ((wi != null) && wi.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())) {
-			androidx.core.view.WindowCompat.getInsetsController(getWindow(), decor)
-					.hide(androidx.core.view.WindowInsetsCompat.Type.ime());
-			return;
-		}
+		if (hideKeyboardIfShown()) return;
 		if (backPressed) {
 			finish();
 			return;

@@ -69,6 +69,14 @@ public class DialogView extends FrameLayout implements DialogInterface {
 	@Override
 	public void dismiss() {
 		if (dismiss != null) {
+			// The keyboard goes with the dialog.
+			View f = findFocus();
+			if (f instanceof android.widget.EditText) {
+				android.view.inputmethod.InputMethodManager imm = getContext()
+						.getSystemService(android.view.inputmethod.InputMethodManager.class);
+				if (imm != null) imm.hideSoftInputFromWindow(f.getWindowToken(), 0);
+				f.clearFocus();
+			}
 			if (onDismissStart != null) onDismissStart.run();
 			dismiss.run();
 			dismiss = null;
