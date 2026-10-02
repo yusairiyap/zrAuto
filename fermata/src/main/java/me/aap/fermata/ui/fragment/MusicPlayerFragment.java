@@ -1593,8 +1593,6 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				() -> me.aap.fermata.action.Action.isCurrentFavorite(getActivityDelegate()),
 				this::onPlaylistTap);
 	}
-				});
-	}
 
 	/**
 	 * The more chip doubles as the sleep timer's indicator: it turns accent-colored and counts down
