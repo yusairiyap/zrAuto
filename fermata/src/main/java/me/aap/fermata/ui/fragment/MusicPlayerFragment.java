@@ -1537,21 +1537,57 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		int used = 0;
 		for (int i = 0; i < row.getChildCount(); i++) {
 			View c = row.getChildAt(i);
-			if (isOptionalChip(c, optional) || (c.getVisibility() == View.GONE)) continue;
-			ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) c.getLayoutParams();
-			used += c.getMeasuredWidth() + lp.leftMargin + lp.rightMargin;
+			if (isOptionalChip(c, optional) || (c == moreButton) || (c.getVisibility() == View.GONE)) {
+				continue;
+			}
+			used += outerWidth(c);
 		}
-		for (TextView e : optional) {
-			e.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+		int[] need = new int[optional.length];
+		int all = 0;
+		for (int i = 0; i < optional.length; i++) {
+			optional[i].measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
 					View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-			ViewGroup.MarginLayoutParams elp = (ViewGroup.MarginLayoutParams) e.getLayoutParams();
-			int need = e.getMeasuredWidth() + elp.leftMargin + elp.rightMargin;
-			boolean fit = used + need <= avail;
-			if (fit) used += need;
-			int vis = fit ? View.VISIBLE : View.GONE;
-			if (e.getVisibility() != vis) e.setVisibility(vis);
+			need[i] = outerWidth(optional[i]);
+			all += need[i];
+		}
+		moreButton.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+				View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+
+		// Everything fits without the more button: no need for it. Otherwise as many as fit beside it.
+		boolean allFit = used + all <= avail;
+		if (!allFit) used += outerWidth(moreButton);
+		boolean[] show = new boolean[optional.length];
+		for (int i = 0; i < optional.length; i++) {
+			show[i] = allFit || (used + need[i] <= avail);
+			if (show[i] && !allFit) used += need[i];
+		}
+
+		// A new width (rotating, resizing) is applied at once; the layout animation is for chips
+		// coming and going within the same width, and glitched across a rotation.
+		boolean widthChanged = row.getWidth() != lastRowWidth;
+		lastRowWidth = row.getWidth();
+		LayoutTransition lt = row.getLayoutTransition();
+		if (widthChanged && (lt != null)) row.setLayoutTransition(null);
+		for (int i = 0; i < optional.length; i++) {
+			int vis = show[i] ? View.VISIBLE : View.GONE;
+			if (optional[i].getVisibility() != vis) optional[i].setVisibility(vis);
+		}
+		int moreVis = allFit ? View.GONE : View.VISIBLE;
+		if (moreButton.getVisibility() != moreVis) moreButton.setVisibility(moreVis);
+		if (widthChanged && (lt != null)) {
+			row.post(() -> {
+				row.setLayoutTransition(lt);
+				lt.enableTransitionType(LayoutTransition.CHANGING);
+			});
 		}
 		refreshFavoriteChip();
+	}
+
+	private int lastRowWidth;
+
+	private static int outerWidth(View c) {
+		ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) c.getLayoutParams();
+		return c.getMeasuredWidth() + lp.leftMargin + lp.rightMargin;
 	}
 
 	private static boolean isOptionalChip(View c, TextView[] optional) {
@@ -1618,6 +1654,13 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		setText(moreButton, label);
 		moreButton.setTextColor(color);
 		moreButton.setCompoundDrawableTintList(ColorStateList.valueOf(color));
+		// The Timer chip, when it's out on the row, carries the countdown (the more button is gone then).
+		if (timerChip != null) {
+			CharSequence txt = active ? label : getString(R.string.music_timer_short);
+			if (!txt.toString().contentEquals(timerChip.getText())) timerChip.setText(txt);
+			timerChip.setTextColor(active ? color : paletteColor(R.attr.musicTextPrimary));
+			timerChip.setCompoundDrawableTintList(ColorStateList.valueOf(color));
+		}
 		if (active) moreButton.postDelayed(timerChipTask, 1000);
 	}
 
