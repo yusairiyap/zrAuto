@@ -143,6 +143,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private ImageButton repeat;
 	private TextView videoButton;
 	private TextView moreButton;
+	private TextView effectsButton;
 	private final Runnable timerChipTask = this::updateTimerChip;
 	private View queuePanel;
 	private View queueDismiss;
@@ -251,6 +252,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		repeat = view.findViewById(R.id.music_repeat);
 		videoButton = view.findViewById(R.id.music_video_button);
 		moreButton = view.findViewById(R.id.music_more_button);
+		effectsButton = view.findViewById(R.id.music_effects_button);
+		effectsButton.setOnClickListener(v -> onEffects());
+		// Effects sits on the row itself when there's room for it, else only behind the more button.
+		view.findViewById(R.id.music_actions).addOnLayoutChangeListener(
+				(v, l, t, r, b, ol, ot, or, ob) -> updateEffectsChip((ViewGroup) v));
 		videoButtonText = 0; // A new view: the chip starts hidden.
 		// The chips also slide over when the Video / Play as music chip just changes width.
 		LayoutTransition lt = ((ViewGroup) view.findViewById(R.id.music_actions)).getLayoutTransition();
@@ -1501,6 +1507,32 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	@Override
 	public boolean onBackPressed() {
 		return MusicMoreMenu.dismissOpen() || super.onBackPressed();
+	}
+
+	/**
+	 * Shows the Effects chip when the row of chips has the width for it next to the others (a wide
+	 * screen, a tablet, the car), hides it again when it doesn't (a narrow phone, a long timer
+	 * countdown): then it's reached through the more button as before.
+	 */
+	private void updateEffectsChip(ViewGroup row) {
+		TextView e = effectsButton;
+		if ((e == null) || (row.getWidth() <= 0)) return;
+		int avail = row.getWidth() - row.getPaddingLeft() - row.getPaddingRight();
+		int used = 0;
+		for (int i = 0; i < row.getChildCount(); i++) {
+			View c = row.getChildAt(i);
+			if ((c == e) || (c.getVisibility() == View.GONE)) continue;
+			ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) c.getLayoutParams();
+			used += c.getMeasuredWidth() + lp.leftMargin + lp.rightMargin;
+		}
+		e.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+				View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+		ViewGroup.MarginLayoutParams elp = (ViewGroup.MarginLayoutParams) e.getLayoutParams();
+		int need = e.getMeasuredWidth() + elp.leftMargin + elp.rightMargin;
+		// A little spare, so the row isn't packed edge to edge.
+		boolean fit = used + need + Math.round(24 * getResources().getDisplayMetrics().density) <= avail;
+		int vis = fit ? View.VISIBLE : View.GONE;
+		if (e.getVisibility() != vis) e.setVisibility(vis);
 	}
 
 	/** The chip's frosted-glass menu: Effects and the sleep timer. */
