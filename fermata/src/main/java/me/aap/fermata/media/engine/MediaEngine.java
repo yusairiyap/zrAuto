@@ -119,6 +119,15 @@ public interface MediaEngine extends Closeable {
 	}
 
 	/**
+	 * A downloaded video's file is about to play in another engine in place of this one: stops this
+	 * one and takes down whatever it left on screen. The web-hosted YouTube player, whose close() is
+	 * deliberately inert, also clears its fullscreen view and loading cover.
+	 */
+	default void yieldToLocal() {
+		pause();
+	}
+
+	/**
 	 * For an engine whose audio effects aren't the platform's (see {@link #supportsAudioEffects()})
 	 * but its own -- the web-hosted YouTube player's in-page equalizer: shows its effects screen and
 	 * returns true, or returns false if it has none.

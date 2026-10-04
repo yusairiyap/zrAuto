@@ -271,6 +271,11 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 * left on screen -- its fullscreen view, the fade over a switch to the next video and its
 	 * spinner -- or they would sit over the file's picture.
 	 */
+	@Override
+	public void yieldToLocal() {
+		leavePageForLocal();
+	}
+
 	private void leavePageForLocal() {
 		web.pause();
 		clearStall();

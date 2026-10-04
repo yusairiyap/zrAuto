@@ -120,6 +120,6 @@ public final class YtOffline {
 	/** The YouTube page's player must be told to stop: its engine's close() leaves it playing. */
 	private static void silenceYoutubePage(MainActivityDelegate a) {
 		MediaEngine eng = a.getMediaSessionCallback().getEngine();
-		if ((eng != null) && (eng.getId() == MediaPrefs.MEDIA_ENG_YT)) eng.pause();
+		if ((eng != null) && (eng.getId() == MediaPrefs.MEDIA_ENG_YT)) eng.yieldToLocal();
 	}
 }

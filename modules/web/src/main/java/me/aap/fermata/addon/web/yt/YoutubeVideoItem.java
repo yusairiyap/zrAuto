@@ -133,7 +133,7 @@ public class YoutubeVideoItem extends ExtPlayable implements MediaLib.Externally
 		// Downloaded, and no usable connection: the usual engines play the file (see getResource()).
 		// The page's player, whose close() leaves it playing, has to be silenced by hand.
 		if (YtOffline.useLocal(videoId)) {
-			if (current instanceof YoutubeMediaEngine) current.pause();
+			if (current instanceof YoutubeMediaEngine) current.yieldToLocal();
 			// ExoPlayer when it's there: it runs the YouTube equalizer's effects on the file.
 			return getLib().getMediaEngineManager().createPreferringExo(current, this, listener);
 		}

@@ -110,6 +110,7 @@ import java.util.Queue;
 import me.aap.fermata.BuildConfig;
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.engine.AudioEffects;
 import me.aap.fermata.media.engine.BufferingIndicator;
 import me.aap.fermata.media.engine.MediaEngine;
@@ -131,6 +132,8 @@ import me.aap.fermata.media.sub.SubGrid;
 import me.aap.fermata.media.sub.Subtitles;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.ytdl.YtDownloads;
+import me.aap.fermata.ytdl.YtOffline;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.collection.CollectionUtils;
 import me.aap.utils.event.EventBroadcaster;
@@ -851,7 +854,30 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		b.setState(next ? STATE_SKIPPING_TO_NEXT : STATE_SKIPPING_TO_PREVIOUS, pos,
 				state.getPlaybackSpeed());
 		setPlaybackState(b.build());
+		if (handOverYoutube(i, pos)) return;
 		playPreparedItem(i, pos);
+	}
+
+	/**
+	 * A YouTube video (a Favorites/Playlist entry, not a Music tab track) that this engine can't carry
+	 * on with is handed to the UI, which knows where it plays: its file when it's downloaded
+	 * (fullscreen for a video), else the YouTube tab. Without this a Favorites/Playlist next or
+	 * previous after (or into) a downloaded video was given to whichever engine was playing -- ExoPlayer
+	 * on the watch page's address. Not for the YouTube player moving to another streamed video, which
+	 * is how its own queue handling works.
+	 */
+	private boolean handOverYoutube(PlayableItem i, long pos) {
+		if (!i.isExternal() || (i instanceof MusicTrackItem) || (YtDownloads.videoIdOf(i) == null)) {
+			return false;
+		}
+		MediaSessionCallbackAssistant a = getAssistant();
+		if (a == this) return false;
+		MediaEngine eng = getEngine();
+		boolean onYoutube = (eng != null) && (eng.getId() == MediaPrefs.MEDIA_ENG_YT);
+		if (onYoutube && !YtOffline.isDownloadedYoutube(i)) return false;
+		DiagnosticLog.log("TRANSPORT", "next is a YouTube video: handed to the UI", "item=" + i,
+				"downloaded=" + YtOffline.isDownloadedYoutube(i), "fromYoutube=" + onYoutube);
+		return a.playExternal(i, pos);
 	}
 
 	@Override

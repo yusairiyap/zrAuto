@@ -814,7 +814,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	/** Whether what's playing is playing as music: a queue track, with YouTube in music mode. */
 	private boolean playingAsMusic() {
 		MusicTrackItem t = currentTrack();
-		if (t != null) return (t.getVideoId() == null) || MusicPlayer.isYoutubeAudioMode();
+		if (t != null) {
+			if (t.getVideoId() == null) return true;
+			// A downloaded video's file: music unless its picture is showing.
+			return t.isDownloaded() ? !t.isVideo() : MusicPlayer.isYoutubeAudioMode();
+		}
 		// YouTube in music mode momentarily not reporting its queue track (e.g. switching to the next
 		// one): still music, never a video to "play as music".
 		return isYoutubeEngine() && MusicPlayer.isYoutubeAudioMode();

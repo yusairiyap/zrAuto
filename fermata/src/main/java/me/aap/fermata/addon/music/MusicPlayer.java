@@ -146,9 +146,10 @@ public final class MusicPlayer {
 	 * Whether the YouTube queue track about to play is to be watched rather than listened to: "Video"
 	 * was asked for, or YouTube is already out of music mode with its tab showing the video.
 	 */
-	private static boolean isWatchingVideo() {
+	private static boolean isWatchingVideo(@Nullable MediaEngine current) {
 		if (watchRequested) return true;
 		if (youtubeAudioMode) return false;
+		if (isShowingDownloadedVideo(current)) return true;
 		MainActivityDelegate a = activity.get();
 		if (a == null) return false;
 		ActivityFragment f = a.getActiveFragment();
@@ -173,7 +174,10 @@ public final class MusicPlayer {
 		// Music unless the user switched to watching it (the Music tab's "Video"): then Next/Prev
 		// through the queue keep showing video, at its usual quality, instead of dropping back to
 		// the lowest one.
-		if (!isWatchingVideo()) setYoutubeAudioMode(true);
+		// A downloaded video shown fullscreen counts as watching: the track after it, streamed, is a
+		// video too (at its usual quality), shown in the YouTube tab.
+		if (!isWatchingVideo(current)) setYoutubeAudioMode(true);
+		else if (isShowingDownloadedVideo(current)) watchRequested = true;
 		if ((current != null) && (current.getId() == MediaPrefs.MEDIA_ENG_YT) &&
 				!t.hasStartPosition()) {
 			DiagnosticLog.log(TAG, "YouTube track on the playing YouTube player", "id=" + t.getVideoId());
@@ -183,6 +187,30 @@ public final class MusicPlayer {
 			return current;
 		}
 		return new YoutubeStartEngine(t, listener);
+	}
+
+	/** Whether {@code eng} is playing a downloaded video's file with its picture on screen. */
+	private static boolean isShowingDownloadedVideo(@Nullable MediaEngine eng) {
+		return (eng != null) && (eng.getId() != MediaPrefs.MEDIA_ENG_YT) &&
+				(eng.getSource() instanceof MusicTrackItem t) && t.isVideo();
+	}
+
+	/**
+	 * A downloaded track is about to play from its file on a non-YouTube engine: music, or -- if the
+	 * player is in video mode (the YouTube tab watched, or a downloaded video shown) and the file
+	 * has a picture -- video, fullscreen like the YouTube player's.
+	 */
+	static void startingDownloadedTrack(@Nullable MediaEngine current, boolean hasPicture) {
+		if (!isWatchingVideo(current)) {
+			setYoutubeAudioMode(true);
+			return;
+		}
+		watchRequested = false;
+		MainActivityDelegate a = activity.get();
+		if (hasPicture && (a != null)) {
+			BodyLayout b = a.getBody();
+			if ((b != null) && !b.isVideoMode()) b.setMode(BodyLayout.Mode.VIDEO);
+		}
 	}
 
 	/**
@@ -487,7 +515,13 @@ public final class MusicPlayer {
 				// Already a queue track (switched to video and back): its queue stays as it is, but
 				// whatever was queued in the video player since goes in right after it.
 				if (playing != null) moveUpNextIntoQueue(q, eng, playing);
-				setYoutubeAudioMode(eng.getId() == MediaPrefs.MEDIA_ENG_YT);
+				boolean yt = (eng.getId() == MediaPrefs.MEDIA_ENG_YT);
+				boolean local = !yt && (playing != null) && playing.isDownloaded();
+				setYoutubeAudioMode(yt || local);
+				open(a);
+				// A downloaded video's file: the same engine goes on without the picture.
+				if (local) continueAsMusic(a, eng, playing);
+				return;
 			}
 			open(a);
 			return;
@@ -570,6 +604,21 @@ public final class MusicPlayer {
 		boolean yt = (eng.getId() == MediaPrefs.MEDIA_ENG_YT);
 		// YouTube in music mode may momentarily not report its queue track: still its video to show.
 		if ((t == null) && !(yt && youtubeAudioMode)) return;
+
+		if ((t != null) && (t.getVideoId() != null) && !yt) {
+			// A downloaded video: its file has the picture, on the very same engine.
+			if (!t.hasVideo()) return;
+			DiagnosticLog.log(TAG, "switch to video (downloaded)", "id=" + t.getVideoId());
+			setYoutubeAudioMode(false);
+			BodyLayout b = a.getBody();
+			if ((b != null) && !b.isVideoMode()) b.setMode(BodyLayout.Mode.VIDEO);
+			if (!cb.switchItem(t)) {
+				eng.getPosition().main().onSuccess(pos -> {
+					if (cb.getEngine() == eng) playTrack(a, t, pos);
+				});
+			}
+			return;
+		}
 
 		if ((t == null) || (t.getVideoId() != null)) {
 			DiagnosticLog.log(TAG, "switch to video", "id=" + ((t != null) ? t.getVideoId() : "?"));
