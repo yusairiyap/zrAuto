@@ -465,6 +465,7 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		TextView chip1;
 		TextView chip2;
 		TextView info;
+		TextView quality;
 		Card card;
 
 		Holder(View v) {
@@ -513,16 +514,19 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 			Entry e = d.getEntry(r.id);
 			if (e == null) return;
 			h.title.setText(e.getDisplayTitle());
+			// "720p", or "Audio": a small chip, over the thumbnail's corner in the grid, at the right in a row.
+			h.quality.setText(e.video ? (shownHeight(e) + "p") : ctx.getString(R.string.ytdl_kind_audio));
 			loadImage(h.thumb, "https://i.ytimg.com/vi/" + e.videoId + "/mqdefault.jpg");
 
 			if (r.type == VT_PROGRESS) {
 				bindProgress(h, e, d, ctx);
 			} else {
 				StringBuilder sb = new StringBuilder();
-				if (e.durationMs > 0) sb.append(time(e.durationMs)).append(" • ");
-				sb.append(ctx.getString(e.video ? R.string.ytdl_kind_video : R.string.ytdl_kind_audio));
-				if (e.video) sb.append(' ').append(shownHeight(e)).append('p');
-				if (e.total > 0) sb.append(" • ").append(Formatter.formatShortFileSize(ctx, e.total));
+				if (e.durationMs > 0) {
+					sb.append(time(e.durationMs));
+					if (e.total > 0) sb.append(" • ");
+				}
+				if (e.total > 0) sb.append(Formatter.formatShortFileSize(ctx, e.total));
 				h.subtitle.setText(sb);
 				h.card.setOnClickListener(v -> play(e.videoId));
 				h.card.setOnLongClickListener(v -> {
@@ -619,8 +623,7 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 			}
 
 			h.status.setText(status);
-			String kind = ctx.getString(e.video ? R.string.ytdl_kind_video : R.string.ytdl_kind_audio);
-			h.subtitle.setText(e.video ? (kind + ' ' + shownHeight(e) + 'p') : kind);
+			h.subtitle.setVisibility(View.GONE);
 			h.pause.setImageResource(running ? R.drawable.pause : R.drawable.play);
 			h.pause.setContentDescription(ctx.getString(running ? R.string.ytdl_pause : R.string.ytdl_resume));
 			h.pause.setOnClickListener(v -> {
@@ -704,6 +707,19 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 			return t;
 		}
 
+		/** The small dark pill with the quality in it, readable over any thumbnail. */
+		private TextView qualityChip(Context ctx) {
+			TextView t = text(ctx, 11, 0xFFFFFFFF, true);
+			t.setSingleLine(true);
+			t.setGravity(Gravity.CENTER);
+			t.setPadding(dp(ctx, 8), dp(ctx, 3), dp(ctx, 8), dp(ctx, 3));
+			GradientDrawable bg = new GradientDrawable();
+			bg.setCornerRadius(dp(ctx, 10));
+			bg.setColor(0xB0000000);
+			t.setBackground(bg);
+			return t;
+		}
+
 		private Holder empty(Context ctx) {
 			TextView t = text(ctx, 14, pal.secondary, false);
 			t.setText(R.string.ytdl_empty);
@@ -748,6 +764,11 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 			h.subtitle.setEllipsize(TextUtils.TruncateAt.END);
 			col.addView(h.subtitle);
 
+			h.quality = qualityChip(ctx);
+			LinearLayout.LayoutParams qp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+			qp.setMarginEnd(dp(ctx, progress ? 2 : 16));
+			l.addView(h.quality, qp);
+
 			if (progress) {
 				h.status = text(ctx, 13, pal.primary, false);
 				h.status.setMaxLines(2);
@@ -788,6 +809,12 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 			View scrim = new View(ctx);
 			scrim.setBackgroundResource(R.drawable.media_item_grid_scrim);
 			card.addView(scrim, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+
+			h.quality = qualityChip(ctx);
+			FrameLayout.LayoutParams qp = new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT,
+					Gravity.TOP | Gravity.END);
+			qp.setMargins(0, dp(ctx, 8), dp(ctx, 8), 0);
+			card.addView(h.quality, qp);
 
 			LinearLayout col = new LinearLayout(ctx);
 			col.setOrientation(LinearLayout.VERTICAL);
