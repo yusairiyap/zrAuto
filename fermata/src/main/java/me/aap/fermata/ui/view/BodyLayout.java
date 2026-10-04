@@ -441,12 +441,12 @@ public class BodyLayout extends SplitLayout
 	public void playLocalVideo(MediaLib.PlayableItem i) {
 		startingPlayback.cancel();
 		MainActivityDelegate a = getActivity();
-		Runnable play = () -> {
-			a.getMediaServiceBinder().playItem(i);
-			setMode(Mode.VIDEO);
-		};
+		// Fullscreen first, and once: the engine is given the picture's surface only if it is there
+		// when the engine is created, and changing the mode again and again while it is still
+		// moving leaves the two panes half-way (the info overlay stretched, no picture).
+		if (!isVideoMode()) setMode(Mode.VIDEO);
+		Runnable play = () -> a.getMediaServiceBinder().playItem(i);
 		if (!getVideoView().isSurfaceCreated() && !a.getMediaSessionCallback().hasCustomEngineProvider()) {
-			setMode(Mode.VIDEO);
 			getVideoView().onSurfaceCreated(play);
 		} else {
 			play.run();

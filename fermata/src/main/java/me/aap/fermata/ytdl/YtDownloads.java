@@ -539,9 +539,9 @@ public final class YtDownloads {
 		}
 	}
 
-	/** The stream's address has expired (they last a few hours): ask YouTube for a new one. */
-	private static final class ExpiredException extends IOException {
-		ExpiredException() {
+	/** YouTube refused to send this stream (HTTP 403/410): another app, or another quality, may be let through. */
+	static final class RefusedException extends IOException {
+		RefusedException() {
 			super("YouTube refused to send the video. Try a lower quality or try again later");
 		}
 	}
@@ -554,45 +554,72 @@ public final class YtDownloads {
 
 		int client = 0;
 		int height = e.height;
+		boolean combined = false;
 
+		resolving:
 		for (; ; ) {
 			checkStop();
 			YtStreamResolver.Result r = YtStreamResolver.resolve(e.videoId, e.video, height, client);
 			if ((e.title == null) || e.title.isEmpty()) e.title = r.title;
 			if (e.artist == null) e.artist = r.author;
 			if (e.durationMs <= 0) e.durationMs = r.durationMs;
-			e.total = r.audio.length + ((r.video != null) ? r.video.length : 0);
-			e.gotHeight = (r.video != null) ? r.video.height : 0;
-			changed(true);
 
-			try {
-				fetch(e, r, r.audio, audioPart, 0);
-				if (r.video != null) fetch(e, r, r.video, videoPart, r.audio.length);
-				break;
-			} catch (ExpiredException ex) {
-				DiagnosticLog.log("YTDL", "stream refused", "id=" + e.videoId, "client=" + r.client,
-						"height=" + e.gotHeight);
-				// What was fetched belongs to the stream that is being given up on.
-				audioPart.delete();
-				videoPart.delete();
-				e.bytes = 0;
-				// The next app first (they are let through differently); with none left, a lower
-				// picture, which is often fetchable when the high one isn't.
-				if (r.client + 1 < YtStreamResolver.CLIENT_COUNT) {
-					client = r.client + 1;
-				} else if (e.video && (lowerHeight(height) > 0)) {
-					height = lowerHeight(height);
-					client = 0;
-				} else {
-					throw ex;
+			// What this answer offers, best first: the picture and the sound as two streams (any
+			// quality), or one 360p file with both (the one YouTube still hands out freely).
+			boolean adaptive = (r.audio != null) && (!e.video || (r.video != null));
+			for (int pass = adaptive ? 0 : 1; pass < 2; pass++) {
+				if ((pass == 1) && (r.combined == null)) break;
+				combined = pass == 1;
+
+				try {
+					if (!combined) {
+						e.total = r.audio.length + ((r.video != null) ? r.video.length : 0);
+						e.gotHeight = (r.video != null) ? r.video.height : 0;
+						changed(true);
+						fetch(e, r, r.audio, audioPart, 0);
+						if (r.video != null) fetch(e, r, r.video, videoPart, r.audio.length);
+					} else {
+						YtStreamResolver.Stream st = YtStreamResolver.withLength(r.combined, r.userAgent);
+						e.total = st.length;
+						e.gotHeight = e.video ? st.height : 0;
+						changed(true);
+						fetch(e, r, st, videoPart, 0);
+					}
+					break resolving;
+				} catch (RefusedException ex) {
+					DiagnosticLog.log("YTDL", "stream refused", "id=" + e.videoId, "client=" + r.client,
+							"combined=" + combined, "height=" + e.gotHeight);
+					// What was fetched belongs to the stream that is being given up on.
+					audioPart.delete();
+					videoPart.delete();
+					e.bytes = 0;
 				}
+			}
+
+			// The next app first (they are let through differently); with none left, a lower
+			// picture, which is often fetchable when the high one isn't.
+			if (r.client + 1 < YtStreamResolver.CLIENT_COUNT) {
+				client = r.client + 1;
+			} else if (e.video && (lowerHeight(height) > 0)) {
+				height = lowerHeight(height);
+				client = 0;
+			} else {
+				throw new RefusedException();
 			}
 		}
 
 		File out = new File(dir, outName);
 		File tmp = new File(dir, outName + ".tmp");
 		try {
-			if (e.video) {
+			if (combined) {
+				if (e.video) {
+					if (!videoPart.renameTo(tmp)) throw new IOException("Failed to store the download");
+				} else {
+					// Only the sound of the file with both, copied as it is.
+					extractAudio(videoPart, tmp);
+					videoPart.delete();
+				}
+			} else if (e.video) {
 				mux(videoPart, audioPart, tmp);
 				audioPart.delete();
 				videoPart.delete();
@@ -647,7 +674,7 @@ public final class YtDownloads {
 					// What the server said, for the diagnostic log (never the address: it carries tokens).
 					DiagnosticLog.log("YTDL", "stream HTTP " + code, "id=" + e.videoId,
 							"host=" + new URL(s.url).getHost(), "len=" + s.length, "from=" + have);
-					throw new ExpiredException();
+					throw new RefusedException();
 				}
 				// 200: the server ignored the range and sends it all, fine from the start.
 				if ((code != 206) && !((code == 200) && (have == 0))) {
@@ -735,6 +762,46 @@ public final class YtDownloads {
 			}
 			vx.release();
 			ax.release();
+		}
+	}
+
+	/** Copies the sound track of {@code src} into a file of its own, without re-encoding it. */
+	private static void extractAudio(File src, File out) throws IOException {
+		MediaExtractor x = new MediaExtractor();
+		MediaMuxer mm = null;
+		boolean started = false;
+
+		try {
+			x.setDataSource(src.getPath());
+			int t = findTrack(x, "audio/");
+			if (t < 0) throw new IOException("The download has no sound");
+			mm = new MediaMuxer(out.getPath(), MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+			int mt = mm.addTrack(x.getTrackFormat(t));
+			x.selectTrack(t);
+			mm.start();
+			started = true;
+
+			ByteBuffer buf = ByteBuffer.allocate(1024 * 1024);
+			MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+			for (; ; ) {
+				buf.clear();
+				int n = x.readSampleData(buf, 0);
+				if (n < 0) break;
+				info.set(0, n, x.getSampleTime(), x.getSampleFlags());
+				mm.writeSampleData(mt, buf, info);
+				x.advance();
+			}
+		} catch (RuntimeException ex) {
+			throw new IOException("Failed to take the sound out of the download", ex);
+		} finally {
+			if (mm != null) {
+				try {
+					if (started) mm.stop();
+				} catch (RuntimeException ignored) {
+				}
+				mm.release();
+			}
+			x.release();
 		}
 	}
 

@@ -54,12 +54,23 @@ final class YtStreamResolver {
 		}
 	}
 
+	/**
+	 * In the order they are tried. YouTube switches these off one after another (the VR app, the
+	 * first that was used here, lost its streams in August 2026; yt-dlp moved to the Vision Pro
+	 * one), so this list is what to look at first when downloads stop working.
+	 */
 	private static final Client[] CLIENTS = {
-			new Client("ANDROID_VR", "1.62.27", "28",
-					"com.google.android.apps.youtube.vr.oculus/1.62.27 (Linux; U; Android 12L; " +
+			new Client("VISIONOS", "1.02", "101",
+					"Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15",
+					"\"deviceMake\":\"Apple\",\"deviceModel\":\"RealityDevice17,1\",\"osName\":\"visionOS\"," +
+							"\"osVersion\":\"26.5.23O471\""),
+			new Client("ANDROID_VR", "1.65.10", "28",
+					"com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; " +
 							"eureka-user Build/SQ3A.220605.009.A1) gzip",
 					"\"deviceMake\":\"Oculus\",\"deviceModel\":\"Quest 3\",\"osName\":\"Android\"," +
 							"\"osVersion\":\"12L\",\"androidSdkVersion\":32"),
+			new Client("WEB_EMBEDDED_PLAYER", "2.20260708.00.00", "56",
+					"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", "\"clientScreen\":\"EMBED\""),
 			new Client("TVHTML5_SIMPLY_EMBEDDED_PLAYER", "2.0", "85",
 					"Mozilla/5.0 (PlayStation; PlayStation 4/12.00) AppleWebKit/605.1.15 (KHTML, like Gecko) " +
 							"Version/15.4 Safari/605.1.15",
@@ -98,6 +109,9 @@ final class YtStreamResolver {
 		/** H.264 in an MP4 container, no sound; null when only audio was asked for. */
 		@Nullable
 		Stream video;
+		/** One 360p MP4 with picture and sound together (itag 18), the one still given out freely. */
+		@Nullable
+		Stream combined;
 		/** What the streams' server expects to be told. */
 		String userAgent;
 		/** Which of the apps answered, an index into the list tried in order. */
@@ -160,7 +174,8 @@ final class YtStreamResolver {
 
 			JSONObject sd = resp.optJSONObject("streamingData");
 			JSONArray formats = (sd != null) ? sd.optJSONArray("adaptiveFormats") : null;
-			if (formats == null) throw new IOException("No downloadable stream");
+			JSONArray progressive = (sd != null) ? sd.optJSONArray("formats") : null;
+			if ((formats == null) && (progressive == null)) throw new IOException("No downloadable stream");
 
 			Result r = new Result();
 			r.userAgent = c.userAgent;
@@ -171,7 +186,7 @@ final class YtStreamResolver {
 				r.durationMs = vd.optLong("lengthSeconds", 0) * 1000;
 			}
 
-			for (int i = 0; i < formats.length(); i++) {
+			for (int i = 0; (formats != null) && (i < formats.length()); i++) {
 				JSONObject f = formats.optJSONObject(i);
 				if (f == null) continue;
 				String url = f.optString("url", null);
@@ -195,8 +210,21 @@ final class YtStreamResolver {
 				}
 			}
 
-			if (r.audio == null) throw new IOException("No downloadable stream");
-			if (wantVideo && (r.video == null)) throw new IOException("No downloadable video stream");
+			for (int i = 0; (progressive != null) && (i < progressive.length()); i++) {
+				JSONObject f = progressive.optJSONObject(i);
+				if (f == null) continue;
+				String url = f.optString("url", null);
+				String mime = f.optString("mimeType");
+				if ((url == null) || !mime.startsWith("video/mp4") || !mime.contains("mp4a")) continue;
+				int height = f.optInt("height", 360);
+				// Its length may not be told: asked for before it's fetched, see withLength().
+				if ((r.combined == null) || (height > r.combined.height)) {
+					r.combined = new Stream(url, f.optLong("contentLength", 0), height, f.optInt("bitrate", 0));
+				}
+			}
+
+			boolean adaptive = (r.audio != null) && (!wantVideo || (r.video != null));
+			if (!adaptive && (r.combined == null)) throw new IOException("No downloadable stream");
 			return r;
 		} catch (JSONException ex) {
 			throw new IOException("Unexpected YouTube response", ex);
@@ -248,6 +276,29 @@ final class YtStreamResolver {
 			}
 		} finally {
 			h.disconnect();
+		}
+	}
+
+	/** {@code s} with its length filled in, asked of the server if the player answer didn't say. */
+	static Stream withLength(Stream s, String userAgent) throws IOException {
+		if (s.length > 0) return s;
+		HttpURLConnection c = (HttpURLConnection) new URL(s.url).openConnection();
+		try {
+			c.setConnectTimeout(15_000);
+			c.setReadTimeout(20_000);
+			applyStreamHeaders(c, userAgent);
+			c.setRequestProperty("Range", "bytes=0-0");
+			int code = c.getResponseCode();
+			if ((code == 403) || (code == 410)) throw new YtDownloads.RefusedException();
+			String range = c.getHeaderField("Content-Range");
+			int slash = (range == null) ? -1 : range.lastIndexOf('/');
+			long total = (slash > 0) ? Long.parseLong(range.substring(slash + 1).trim()) : -1;
+			if (total <= 0) throw new IOException("Unknown length of the download");
+			return new Stream(s.url, total, s.height, s.bitrate);
+		} catch (NumberFormatException ex) {
+			throw new IOException("Unknown length of the download", ex);
+		} finally {
+			c.disconnect();
 		}
 	}
 

@@ -571,7 +571,7 @@ public class MediaItemView extends ConstraintLayout
 			d = downloadedDrawable;
 			if (d == null) {
 				d = downloadedDrawable =
-						VectorDrawableCompat.create(getResources(), R.drawable.download_done, null);
+						VectorDrawableCompat.create(getResources(), R.drawable.download, null);
 				if (d == null) return;
 				d.setTint(BADGE_ICON_COLOR);
 			}
