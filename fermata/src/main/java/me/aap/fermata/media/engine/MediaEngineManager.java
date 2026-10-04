@@ -130,6 +130,21 @@ public class MediaEngineManager implements PreferenceStore.Listener {
 		return create(getProvider(id), null, i, listener);
 	}
 
+	/**
+	 * The engine for a downloaded YouTube video: ExoPlayer, whose audio pipeline runs the YouTube
+	 * equalizer's effects on the file, when it is there; null otherwise, and the usual choice is made.
+	 * A {@code current} engine of another kind is left to the caller to close, as {@link #createEngine}
+	 * does.
+	 */
+	@Nullable
+	public MediaEngine createPreferringExo(@Nullable MediaEngine current, PlayableItem i,
+																				 Listener listener) {
+		MediaEngineProvider p = exoPlayer;
+		if (p == null) return null;
+		if ((current != null) && (current.getId() == MEDIA_ENG_EXO)) return create(null, current, i, listener);
+		return create(p, null, i, listener);
+	}
+
 	public MediaEngine createAnotherEngine(@NonNull MediaEngine current, Listener listener) {
 		if (engineProvider != null) return engineProvider.createEngine(listener);
 		int id = current.getId();

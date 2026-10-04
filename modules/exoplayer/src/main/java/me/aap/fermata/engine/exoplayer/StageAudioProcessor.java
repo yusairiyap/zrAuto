@@ -8,13 +8,17 @@ import androidx.media3.common.util.UnstableApi;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
+import me.aap.fermata.media.engine.stage.FxDsp;
+import me.aap.fermata.media.engine.stage.FxParams;
+import me.aap.fermata.media.engine.stage.FxSettings;
 import me.aap.fermata.media.engine.stage.SoundStage;
-import me.aap.fermata.media.engine.stage.StageDsp;
 import me.aap.fermata.media.engine.stage.StageParams;
 
 /**
- * Runs the sound stage ({@link StageDsp}: stereo width, differential surround, 3D position) on
- * ExoPlayer's audio, in the player's own audio pipeline, so it needs no root and no system effect.
+ * Runs the sound stage ({@link me.aap.fermata.media.engine.stage.StageDsp}: stereo width,
+ * differential surround, 3D position) -- and, for a downloaded YouTube video, the YouTube
+ * equalizer's effects ({@link FxDsp}: equalizer, bass, virtualizer, Live Hall) -- on ExoPlayer's
+ * audio, in the player's own audio pipeline, so it needs no root and no system effect.
  * Takes 16-bit stereo, which is what the decoders produce here, and lets anything else through
  * untouched. Settings are read from {@link SoundStage} for every block, so changes apply at once;
  * while nothing is switched on the audio is just copied through.
@@ -25,8 +29,15 @@ final class StageAudioProcessor implements AudioProcessor {
 	private ByteBuffer scratch = EMPTY_BUFFER;
 	private ByteBuffer output = EMPTY_BUFFER;
 	private boolean inputEnded;
-	private StageDsp dsp;
+	private FxDsp dsp;
+	/** Whether the YouTube equalizer's effects apply to what is playing: only for a downloaded video. */
+	private volatile boolean fx;
 	private float[] samples = new float[0];
+
+	/** The YouTube equalizer's effects on or off for what plays from now on. */
+	void setFx(boolean on) {
+		fx = on;
+	}
 
 	@Override
 	public long getDurationAfterProcessorApplied(long durationUs) {
@@ -43,7 +54,7 @@ final class StageAudioProcessor implements AudioProcessor {
 		}
 
 		format = inputAudioFormat;
-		dsp = new StageDsp(inputAudioFormat.sampleRate);
+		dsp = new FxDsp(inputAudioFormat.sampleRate);
 		return inputAudioFormat;
 	}
 
@@ -64,9 +75,10 @@ final class StageAudioProcessor implements AudioProcessor {
 		}
 
 		StageParams p = SoundStage.get().getParams();
-		StageDsp dsp = this.dsp;
+		FxParams f = fx ? FxSettings.get().getParams() : FxParams.OFF;
+		FxDsp dsp = this.dsp;
 
-		if ((dsp == null) || !p.isActive()) {
+		if ((dsp == null) || (!p.isActive() && !f.isActive())) {
 			scratch.put(input);
 		} else {
 			ByteOrder order = input.order();
@@ -78,7 +90,7 @@ final class StageAudioProcessor implements AudioProcessor {
 				samples[i] = input.getShort() / 32768f;
 			}
 
-			dsp.process(samples, 0, samples, 0, frames, p);
+			dsp.process(samples, frames, f, p);
 
 			for (int i = 0, n = frames * 2; i < n; i++) {
 				int v = Math.round(samples[i] * 32767f);

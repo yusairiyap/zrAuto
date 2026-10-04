@@ -2013,6 +2013,10 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Nullable
 	@Override
 	public ActivityFragment showFragment(int id, Object input) {
+		// A downloaded YouTube video's effects are the YouTube equalizer's, on their own screen.
+		if ((id == R.id.audio_effects_fragment) && MusicPlayer.showDownloadedEffects(this)) {
+			return getActiveFragment();
+		}
 		// A WebView-hosted player's (YouTube's) native fullscreen is drawn as its own overlay on
 		// the activity root, entirely outside BodyLayout's video mode -- leave it first so the
 		// fragment about to be shown isn't left hidden underneath it (matches what dim_settings'
@@ -2020,7 +2024,14 @@ public class MainActivityDelegate extends ActivityDelegate
 		VideoView v = getActiveVideoView();
 		if (v != null) v.exitNativeFullscreen();
 		BodyLayout b = getBody();
-		if (b.isVideoMode()) b.setMode(BodyLayout.Mode.BOTH);
+		// Leaving fullscreen video for another screen: the split of video and list -- except for a
+		// downloaded YouTube video, which is only ever watched fullscreen. Going through the split
+		// first and out of it again a moment later (the fragment change does that) left the two
+		// panes half-way.
+		if (b.isVideoMode()) {
+			b.setMode(YtOffline.isDownloadedYoutube(getMediaServiceBinder().getCurrentItem()) ?
+					BodyLayout.Mode.FRAME : BodyLayout.Mode.BOTH);
+		}
 		ActivityFragment f = super.showFragment(id, input);
 		updateExtraFabsVisibility();
 		return f;

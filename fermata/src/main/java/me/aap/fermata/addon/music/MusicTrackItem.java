@@ -301,7 +301,8 @@ public class MusicTrackItem extends ExtPlayable {
 			// The usual engines play the file; the YouTube page's player, whose close() leaves it
 			// playing, has to be silenced by hand.
 			if ((current != null) && (current.getId() == MediaPrefs.MEDIA_ENG_YT)) current.pause();
-			return null;
+			// ExoPlayer when it's there: it runs the YouTube equalizer's effects on the file.
+			return getLib().getMediaEngineManager().createPreferringExo(current, this, listener);
 		}
 		return (videoId != null) ? MusicPlayer.getYoutubeEngine(this, current, listener) : null;
 	}

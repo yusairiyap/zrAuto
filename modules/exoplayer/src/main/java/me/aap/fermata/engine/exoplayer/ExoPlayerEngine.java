@@ -166,6 +166,8 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		if (this.source == null) stopped(false);
 		else stop();
 		this.source = source;
+		// A downloaded YouTube video sounds as it does on YouTube: the page's equalizer applies.
+		stageProc.setFx(me.aap.fermata.ytdl.YtOffline.isDownloadedYoutube(source));
 		accessor.sourceChanged(source);
 		preparing = true;
 		buffering = false;

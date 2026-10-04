@@ -27,6 +27,7 @@ import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.WebBrowserAddon;
 import me.aap.fermata.media.engine.MediaEngine;
+import me.aap.fermata.media.engine.stage.FxSettings;
 import me.aap.fermata.media.lib.DefaultMediaLib;
 import me.aap.fermata.media.lib.MediaLib.Item;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
@@ -167,6 +168,9 @@ public class YoutubeAddon extends WebBrowserAddon
 		// Lets the Music tab play YouTube in this addon's own player -- see MusicHooks.
 		MusicPlayer.setYoutubeHooks(new MusicHooks());
 		MainActivityPrefs.get().addBroadcastListener(searchHistoryListener);
+		// The equalizer's settings are shared with the native player, which applies them to the
+		// downloaded videos it plays.
+		FxSettings.get().attach(this);
 	}
 
 	/**
@@ -266,10 +270,10 @@ public class YoutubeAddon extends WebBrowserAddon
 
 		@Override
 		public boolean showEffects(MainActivityDelegate a) {
-			if (!(a.getFragment(getFragmentId()) instanceof YoutubeFragment f)) return false;
-			YoutubeWebView web = f.getWebView();
-			if (web == null) return false;
-			YoutubeEqualizerView.show(web);
+			// The page is there for a YouTube video; a downloaded one has none to configure.
+			YoutubeWebView web = (a.getFragment(getFragmentId()) instanceof YoutubeFragment f) ?
+					f.getWebView() : null;
+			YoutubeEqualizerView.show(a, YoutubeAddon.this, web);
 			return true;
 		}
 

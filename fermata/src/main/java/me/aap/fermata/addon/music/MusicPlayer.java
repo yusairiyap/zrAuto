@@ -185,6 +185,18 @@ public final class MusicPlayer {
 		return new YoutubeStartEngine(t, listener);
 	}
 
+	/**
+	 * "Audio effects" while a downloaded YouTube video plays from its file: the YouTube equalizer's
+	 * own screen, not Android's -- the same settings, which the native player applies to the file's
+	 * sound (see FxDsp). False for anything else, and the usual effects screen opens.
+	 */
+	public static boolean showDownloadedEffects(MainActivityDelegate a) {
+		YoutubeHooks h = youtube;
+		MediaEngine eng = a.getMediaSessionCallback().getEngine();
+		if ((h == null) || (eng == null) || (eng.getId() == MediaPrefs.MEDIA_ENG_YT)) return false;
+		return YtOffline.isDownloadedYoutube(eng.getSource()) && h.showEffects(a);
+	}
+
 	/** Called by {@link YoutubeStartEngine#showOwnAudioEffects}. */
 	static boolean showYoutubeEffects() {
 		YoutubeHooks h = youtube;
