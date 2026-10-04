@@ -54,8 +54,6 @@ import me.aap.utils.log.Log;
  */
 public final class YtDownloads {
 	public static final String ID_PREFIX = "youtube:";
-	/** The tallest picture a video download takes. */
-	private static final int MAX_VIDEO_HEIGHT = 480;
 	/** Googlevideo slows a single long request down; chunks keep it fast and make resuming trivial. */
 	private static final long CHUNK = 8L * 1024 * 1024;
 	private static final int MAX_ATTEMPTS = 4;
@@ -78,6 +76,8 @@ public final class YtDownloads {
 		/** Downloaded so far, of {@link #total} (0 until the streams are known). */
 		public volatile long bytes;
 		public volatile long total;
+		/** Bytes per second, smoothed; 0 when not downloading. */
+		public volatile long speed;
 		@Nullable
 		public volatile String error;
 		@Nullable
@@ -458,6 +458,7 @@ public final class YtDownloads {
 	/** @param state the new state, or null to forget the video */
 	private void finish(Entry e, @Nullable State state, @Nullable String error) {
 		synchronized (lock) {
+			e.speed = 0;
 			if (state == null) {
 				removeLocked(e);
 			} else {
@@ -520,7 +521,7 @@ public final class YtDownloads {
 
 		for (int expired = 0; ; expired++) {
 			checkStop();
-			YtStreamResolver.Result r = YtStreamResolver.resolve(e.videoId, e.video, MAX_VIDEO_HEIGHT);
+			YtStreamResolver.Result r = YtStreamResolver.resolve(e.videoId, e.video, DownloadsAddon.getMaxVideoHeight());
 			if ((e.title == null) || e.title.isEmpty()) e.title = r.title;
 			if (e.artist == null) e.artist = r.author;
 			if (e.durationMs <= 0) e.durationMs = r.durationMs;
@@ -567,6 +568,8 @@ public final class YtDownloads {
 		}
 
 		byte[] buf = new byte[32 * 1024];
+		long winStart = SystemClock.elapsedRealtime();
+		long winBytes = 0;
 
 		while (have < s.length) {
 			checkStop();
@@ -592,6 +595,14 @@ public final class YtDownloads {
 						out.write(buf, 0, n);
 						have += n;
 						e.bytes = base + have;
+						winBytes += n;
+						long now = SystemClock.elapsedRealtime();
+						if (now - winStart >= 1000) {
+							long inst = winBytes * 1000 / (now - winStart);
+							e.speed = (e.speed == 0) ? inst : (long) (e.speed * 0.6 + inst * 0.4);
+							winStart = now;
+							winBytes = 0;
+						}
 						changed(false);
 					}
 				}

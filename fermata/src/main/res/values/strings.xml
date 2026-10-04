@@ -33,6 +33,7 @@
     <string name="addon_name_fuel_log">Fuel Log</string>
     <string name="addon_name_music">Music</string>
     <string name="addon_name_data_usage">Data usage</string>
+    <string name="addon_name_downloads">Downloads</string>
     <string name="addon_name_translate" translatable="false">Language translator</string>
     <string name="addon_name_subgen" translatable="false">Subtitles generator</string>
     <string name="addon_name_whisper" translatable="false">Whisper</string>
@@ -838,6 +839,25 @@
     <string name="network_issue_retry">Try again</string>
     <string name="network_issue_play_offline">Play offline music</string>
     <string name="network_issue_dismiss">Dismiss</string>
+    <string name="ytdl_pref_quality">Maximum video download quality</string>
+    <string name="ytdl_pref_toolbar">Downloads button in the YouTube toolbar</string>
+    <string name="ytdl_title">Downloads</string>
+    <string name="ytdl_section_progress">In progress</string>
+    <string name="ytdl_section_done">Downloaded</string>
+    <string name="ytdl_empty">Nothing downloaded yet. Long-press a video, a playlist or Favorites to download it.</string>
+    <string name="ytdl_waiting">Waiting</string>
+    <string name="ytdl_paused">Paused</string>
+    <string name="ytdl_failed">Failed. Tap to try again</string>
+    <string name="ytdl_kind_audio">Audio</string>
+    <string name="ytdl_kind_video">Video</string>
+    <string name="ytdl_storage">%1$s on this phone</string>
+    <string name="ytdl_progress_format">%1$s of %2$s</string>
+    <string name="ytdl_view_grid">Grid view</string>
+    <string name="ytdl_view_list">List view</string>
+    <string name="action_open_downloads">Open downloads</string>
+    <string name="action_download_current">Download what is playing</string>
+    <string name="action_downloads_pause_resume">Pause or resume downloads</string>
+    <string name="ytdl_nothing_playing">Nothing from YouTube is playing</string>
     <string name="ytdl_channel">YouTube downloads</string>
     <string name="ytdl_notif_title">Downloading %1$d of %2$d</string>
     <string name="ytdl_notif_title_one">Downloading</string>
@@ -863,7 +883,7 @@
     <string name="ytdl_nothing_queued">Already downloaded or waiting</string>
     <string name="ytdl_removed">Download removed</string>
     <string name="ytdl_play_downloaded">Play downloaded</string>
-    <string name="ytdl_playing_offline_copy">No connection: playing the downloaded copy</string>
+    <string name="ytdl_playing_offline_copy">Playing the downloaded copy</string>
     <string name="ytdl_not_downloaded">Not downloaded, and there is no connection</string>
     <string name="network_issue_message_downloaded">Streaming stopped because of the network. Your downloaded videos still play.</string>
     <string name="network_issue_play_downloaded">Play downloaded</string>

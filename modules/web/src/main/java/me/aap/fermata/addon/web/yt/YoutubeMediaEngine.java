@@ -265,6 +265,15 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		}
 	}
 
+	/** The page started a video that is on the phone: silence it, play the file. */
+	private void switchPageToDownload(String videoId) {
+		MainActivityDelegate a = MainActivityDelegate.get(web.getContext());
+		PlayableItem item = currentAsItem(a, videoId);
+		web.pause();
+		web.getPosition().main().onCompletion((pos, err) ->
+				YtOffline.switchToDownloaded(a, item, (pos == null) ? 0 : pos));
+	}
+
 	/** What's playing now as an item: its queue entry (so next/previous go on) when it is one. */
 	private PlayableItem currentAsItem(MainActivityDelegate a, String videoId) {
 		YoutubeAddon addon = web.getAddon();
@@ -326,6 +335,12 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		String actualId =
 				!jsVideoId.isEmpty() ? jsVideoId : YoutubeVideoItem.extractVideoId(web.getUrl());
 		YoutubeAddon addon = web.getAddon();
+
+		// A downloaded video never streams: the file plays instead, from where the page just started.
+		if ((actualId != null) && YtDownloads.get().isDownloaded(actualId) && (cb.getEngine() == this)) {
+			switchPageToDownload(actualId);
+			return;
+		}
 
 		// The phone's own YouTube page while Android Auto is connected: the car's player is the one
 		// that plays (see MainActivityDelegate#getPlaybackDelegate()). A video tapped here is handed

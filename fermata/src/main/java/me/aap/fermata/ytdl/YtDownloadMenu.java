@@ -3,11 +3,14 @@ package me.aap.fermata.ytdl;
 import android.content.Context;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import me.aap.fermata.R;
+import me.aap.fermata.action.Action;
+import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.utils.ui.UiUtils;
@@ -77,7 +80,7 @@ public final class YtDownloadMenu {
 	}
 
 	/** Pause/Resume and Cancel, while there is something queued, paused or failed. */
-	private static void addControls(OverlayMenu.Builder b, YtDownloads d) {
+	public static void addControls(OverlayMenu.Builder b, YtDownloads d) {
 		if (d.isBusy()) {
 			b.addItem(R.id.ytdl_pause_all, R.drawable.pause, R.string.ytdl_pause_all).setHandler(i -> {
 				d.pauseAll();
@@ -98,6 +101,30 @@ public final class YtDownloadMenu {
 					d.cancelAll();
 					return true;
 				});
+	}
+
+	/**
+	 * The FAB action: downloads what's playing -- as audio in the Music tab, as video otherwise.
+	 * Nothing happens (but a message) unless it's a YouTube video.
+	 */
+	public static void downloadCurrent(MainActivityDelegate a) {
+		PlayableItem pi = Action.getFavoritableItem(a);
+		String id = YtDownloads.videoIdOf(pi);
+		Context ctx = a.getContext();
+		if (id == null) {
+			UiUtils.showToast(ctx, R.string.ytdl_nothing_playing);
+			return;
+		}
+		boolean video = !MusicPlayer.isMusicModeActive(a);
+		queued(ctx, YtDownloads.get().enqueue(
+				Collections.singletonList(new YtDownloads.Request(id, pi.getName(), video))));
+	}
+
+	/** The FAB action: pauses what's downloading, or carries on with what was paused. */
+	public static void togglePause() {
+		YtDownloads d = YtDownloads.get();
+		if (d.isBusy()) d.pauseAll();
+		else d.resumeAll();
 	}
 
 	private static void queued(Context ctx, int n) {

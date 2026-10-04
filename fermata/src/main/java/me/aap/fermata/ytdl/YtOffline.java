@@ -1,21 +1,16 @@
 package me.aap.fermata.ytdl;
 
-import android.os.SystemClock;
-
 import androidx.annotation.Nullable;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
 import me.aap.fermata.media.engine.MediaEngine;
-import me.aap.fermata.media.lib.MediaLib.Item;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
-import me.aap.fermata.ui.view.NetworkIssuePopup;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.vfs.VirtualResource;
@@ -30,31 +25,15 @@ import me.aap.utils.vfs.local.LocalFileSystem;
  * to know about downloads.
  */
 public final class YtOffline {
-	/** How long "Play downloaded" keeps downloaded videos on the file after a bad connection. */
-	private static final long FORCE_MS = 15 * 60_000L;
-	private static volatile long forcedUntil;
-
 	private YtOffline() {
 	}
 
-	/** Prefers the downloaded copies for a while even though a connection exists (but is poor). */
-	public static void force() {
-		forcedUntil = SystemClock.elapsedRealtime() + FORCE_MS;
-	}
-
-	public static boolean isForced() {
-		return SystemClock.elapsedRealtime() < forcedUntil;
-	}
-
 	/**
-	 * Whether the video player should play {@code videoId}'s file: it's downloaded, and the
-	 * connection is gone or has just proved too weak. With a good connection, a video is still
-	 * streamed (full quality, and its page); the Music tab uses the file whenever it exists, see
-	 * {@link YtDownloads#isDownloaded}.
+	 * Whether {@code videoId} plays from its downloaded copy: always when there is one, so a video
+	 * that was downloaded never uses the internet again -- the point of downloading it.
 	 */
 	public static boolean useLocal(@Nullable String videoId) {
-		if (!YtDownloads.get().isDownloaded(videoId)) return false;
-		return isForced() || !NetworkIssuePopup.isOnline(FermataApplication.get());
+		return YtDownloads.get().isDownloaded(videoId);
 	}
 
 	/** The downloaded file of {@code videoId}, or null. */
@@ -81,7 +60,6 @@ public final class YtOffline {
 
 	/** Same, from where the page's player was when the connection gave out. */
 	public static void switchToDownloaded(MainActivityDelegate a, PlayableItem item, long pos) {
-		force();
 		if (!tryPlayLocal(a, item, pos)) {
 			UiUtils.showToast(a.getContext(), R.string.ytdl_not_downloaded);
 			return;
@@ -101,7 +79,6 @@ public final class YtOffline {
 	public static boolean playAllDownloaded(MainActivityDelegate a) {
 		List<YtDownloads.Entry> list = YtDownloads.get().getDownloaded();
 		if (list.isEmpty()) return false;
-		force();
 		DiagnosticLog.log("YTDL", "playing all downloads", "count=" + list.size());
 
 		List<PlayableItem> items = new ArrayList<>(list.size());

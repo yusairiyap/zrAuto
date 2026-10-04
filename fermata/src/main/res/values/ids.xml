@@ -215,4 +215,7 @@
     <item name="ytdl_pause_all" type="id" />
     <item name="ytdl_resume_all" type="id" />
     <item name="ytdl_cancel_all" type="id" />
+    <item name="downloads_addon" type="id" />
+    <item name="ytdl_toolbar_button" type="id" />
+    <item name="ytdl_view_toggle" type="id" />
 </resources>

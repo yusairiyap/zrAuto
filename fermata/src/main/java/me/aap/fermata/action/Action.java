@@ -120,6 +120,15 @@ public enum Action {
 		a.exitVideoMode();
 		a.showFragment(R.id.playlists_fragment);
 	})),
+	// Persisted by ordinal: new actions only ever go at the end.
+	OPEN_DOWNLOADS(R.string.action_open_downloads, a(a -> {
+		a.exitVideoMode();
+		a.showFragment(R.id.downloads_addon);
+	})),
+	DOWNLOAD_CURRENT(R.string.action_download_current,
+			a(me.aap.fermata.ytdl.YtDownloadMenu::downloadCurrent)),
+	DOWNLOADS_PAUSE_RESUME(R.string.action_downloads_pause_resume,
+			a(a -> me.aap.fermata.ytdl.YtDownloadMenu.togglePause())),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

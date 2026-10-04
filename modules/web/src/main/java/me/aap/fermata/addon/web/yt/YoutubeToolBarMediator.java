@@ -22,6 +22,7 @@ import android.widget.EditText;
 import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.WebToolBarMediator;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ytdl.DownloadsAddon;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.activity.ActivityDelegate;
 import me.aap.utils.ui.fragment.ActivityFragment;
@@ -85,6 +86,15 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 				v -> yt.toggleSearchPanel(), me.aap.fermata.R.id.youtube_up_next, RIGHT);
 		upNext.setContentDescription(tb.getContext().getString(me.aap.fermata.R.string.youtube_up_next));
 		upNext.setToolBarPriority(Integer.MAX_VALUE);
+		// The Downloads tab; hidden by the addon's own setting.
+		if (DownloadsAddon.isYoutubeToolbarButtonShown()) {
+			ImageButton dl = addButton(tb, me.aap.fermata.R.drawable.download,
+					v -> MainActivityDelegate.get(v.getContext())
+							.showFragment(me.aap.fermata.R.id.downloads_addon),
+					me.aap.fermata.R.id.ytdl_toolbar_button, RIGHT);
+			dl.setContentDescription(tb.getContext().getString(me.aap.fermata.R.string.ytdl_title));
+			dl.setToolBarPriority(0);
+		}
 		// Rarely toggled: the first to make room.
 		if (tb.findViewById(me.aap.fermata.R.id.private_mode) instanceof ImageButton pm) {
 			pm.setToolBarPriority(-1);
