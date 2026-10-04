@@ -9,6 +9,7 @@ import java.util.List;
 
 import me.aap.fermata.addon.AddonManager;
 import me.aap.fermata.media.lib.DefaultMediaLib;
+import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ytdl.YtDownloadMenu;
@@ -33,18 +34,20 @@ final class YoutubeVideoActions {
 		if ((title != null) && !title.isEmpty()) addon.cacheVideoTitle(videoId, title);
 		YoutubeVideoItem item = new YoutubeVideoItem(videoId, addon.getRootItem(lib));
 		List<PlayableItem> selection = Collections.singletonList(item);
+		// Through the interface: the library's own class doesn't expose these publicly.
+		MediaLib.Favorites favorites = lib.getFavorites();
 
 		if (item.isFavoriteItem()) {
 			b.addItem(me.aap.fermata.R.id.favorites_remove, me.aap.fermata.R.drawable.favorite_filled,
 					me.aap.fermata.R.string.favorites_remove).setHandler(i -> {
-				lib.getFavorites().removeItem(item);
+				favorites.removeItem(item);
 				a.fireBroadcastEvent(me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED);
 				return true;
 			});
 		} else {
 			b.addItem(me.aap.fermata.R.id.favorites_add, me.aap.fermata.R.drawable.favorite,
 					me.aap.fermata.R.string.favorites_add).setHandler(i -> {
-				lib.getFavorites().addItem(item);
+				favorites.addItem(item);
 				a.fireBroadcastEvent(me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED);
 				return true;
 			});
