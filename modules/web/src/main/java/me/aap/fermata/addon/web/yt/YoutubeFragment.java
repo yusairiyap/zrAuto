@@ -45,6 +45,8 @@ import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ytdl.YtDownloadMenu;
+import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
@@ -1320,6 +1322,34 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 			addon.cacheVideoTitle(videoId, ((title == null) || title.isEmpty()) ? videoId : title);
 		}
 		return new YoutubeVideoItem(videoId, addon.getRootItem(lib));
+	}
+
+	/** The toolbar's Download button: asks what to download the video on screen as. */
+	void downloadCurrentVideo() {
+		String id = getCurrentVideoId();
+		MainActivityDelegate a = MainActivityDelegate.get(requireContext());
+		if (id == null) return;
+		if (YtDownloads.get().isDownloaded(id)) {
+			// Already on the phone: the Downloads tab.
+			a.showFragment(me.aap.fermata.R.id.downloads_addon);
+			return;
+		}
+		if (YtDownloads.get().isActive(id)) {
+			UiUtils.showToast(requireContext(), me.aap.fermata.R.string.ytdl_nothing_queued);
+			return;
+		}
+		FermataWebView v = getWebView();
+		String title = (v != null) ? v.getTitle() : null;
+		YoutubeAddon addon = (YoutubeAddon) getAddon();
+		if ((addon != null) && ((title == null) || title.isEmpty() || title.equals(id))) {
+			title = addon.getVideoTitle(id);
+		}
+		if ((addon != null) && (title != null)) addon.cacheVideoTitle(id, title);
+		YtDownloadMenu.pickAndDownload(a, id, title);
+	}
+
+	boolean isCurrentVideoDownloaded() {
+		return YtDownloads.get().isDownloaded(getCurrentVideoId());
 	}
 
 	/** Whether the video currently on screen is already a favorite -- see YoutubeToolBarMediator,

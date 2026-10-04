@@ -27,11 +27,15 @@ import me.aap.utils.ui.fragment.ActivityFragment;
 @Keep
 public class DownloadsAddon implements FermataFragmentAddon {
 	private static final AddonInfo info = FermataAddon.findAddonInfo(DownloadsAddon.class.getName());
-	/** The tallest picture a video download takes; the pref is an index into {@link #QUALITIES}. */
-	private static final int[] QUALITIES = {360, 480, 720, 1080};
+	/** The quality the Download picker offers first; the pref is an index into {@link #QUALITIES}. */
+	public static final int[] QUALITIES = {360, 480, 720, 1080};
 	private static final Pref<IntSupplier> QUALITY = Pref.i("DOWNLOADS_QUALITY", 2);
 	private static final Pref<BooleanSupplier> YT_TOOLBAR = Pref.b("DOWNLOADS_YT_TOOLBAR", true);
-	private static final Pref<BooleanSupplier> GRID = Pref.b("DOWNLOADS_GRID", false);
+	private static final Pref<BooleanSupplier> GRID = Pref.b("DOWNLOADS_GRID", true);
+	public static final int SORT_DATE = 0;
+	public static final int SORT_NAME = 1;
+	public static final int SORT_SIZE = 2;
+	private static final Pref<IntSupplier> SORT = Pref.i("DOWNLOADS_SORT", SORT_DATE);
 
 	@Override
 	public int getAddonId() {
@@ -93,6 +97,15 @@ public class DownloadsAddon implements FermataFragmentAddon {
 
 	public static void setGrid(boolean grid) {
 		store().applyBooleanPref(GRID, grid);
+	}
+
+	/** One of {@link #SORT_DATE} (newest first), {@link #SORT_NAME} or {@link #SORT_SIZE} (largest first). */
+	public static int getSort() {
+		return store().getIntPref(SORT);
+	}
+
+	public static void setSort(int sort) {
+		store().applyIntPref(SORT, sort);
 	}
 
 	private static PreferenceStore store() {

@@ -41,7 +41,8 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 			Action.FULLSCREEN_TOGGLE, Action.VOLUME_MUTE_UNMUTE, Action.PLAY_PAUSE, Action.DIM_TOGGLE,
 			Action.PRIVATE_MODE_TOGGLE, Action.REFUEL, Action.FAVORITE_ADD,
 			Action.PLAYLIST_ADD, Action.PLAY_AS_MUSIC, Action.YOUTUBE_SEARCH, Action.YOUTUBE_UP_NEXT,
-			Action.OPEN_FAVORITES, Action.OPEN_PLAYLISTS);
+			Action.OPEN_FAVORITES, Action.OPEN_PLAYLISTS, Action.OPEN_DOWNLOADS, Action.DOWNLOAD_CURRENT,
+			Action.DOWNLOADS_PAUSE_RESUME);
 
 	private final Pref<IntSupplier> actionPref;
 	@Nullable

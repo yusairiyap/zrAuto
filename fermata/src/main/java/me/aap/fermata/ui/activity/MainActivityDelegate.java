@@ -174,6 +174,7 @@ import me.aap.fermata.ui.fragment.SubtitlesFragment;
 import me.aap.fermata.ui.fragment.YoutubeAlternativesFragment;
 import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.ui.view.ControlPanelView;
+import me.aap.fermata.ui.view.DownloadPicker;
 import me.aap.fermata.ui.view.FermataNavBarView;
 import me.aap.fermata.ui.view.PlaylistPicker;
 import me.aap.fermata.ui.view.ToolBarPill;
@@ -2469,6 +2470,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Override
 	public void onBackPressed() {
 		if (PlaylistPicker.dismissOpen()) return;
+		if (DownloadPicker.dismissOpen()) return;
 		super.onBackPressed();
 	}
 

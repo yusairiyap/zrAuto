@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import me.aap.fermata.R;
+import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.MediaPrefs;
@@ -50,12 +51,27 @@ public final class YtOffline {
 	public static boolean tryPlayLocal(MainActivityDelegate a, PlayableItem item, long pos) {
 		String id = YtDownloads.videoIdOf(item);
 		if (!useLocal(id)) return false;
+		YtDownloads.Entry e = YtDownloads.get().getEntry(id);
 		DiagnosticLog.log("YTDL", "playing the downloaded copy", "id=" + id, "pos=" + pos);
 		silenceYoutubePage(a);
 		if (pos > 0) item.getPrefs().setPositionPref(pos);
-		// The item points at the file by now, see the class comment.
-		a.getBody().playItem(item);
+
+		if ((e != null) && e.video) {
+			// The picture: fullscreen, like a local video. The item points at the file by now, see
+			// the class comment.
+			a.getBody().playLocalVideo(item);
+		} else if (MusicPlayer.isEnabled()) {
+			// Just the sound: the Music tab, like a track.
+			MusicPlayer.play(a, item, true);
+		} else {
+			a.getMediaServiceBinder().playItem(item);
+		}
 		return true;
+	}
+
+	/** Whether {@code item} is a YouTube video that plays from its downloaded copy. */
+	public static boolean isDownloadedYoutube(@Nullable PlayableItem item) {
+		return useLocal(YtDownloads.videoIdOf(item));
 	}
 
 	/** Same, from where the page's player was when the connection gave out. */
@@ -91,7 +107,7 @@ public final class YtOffline {
 		if (i == list.size()) {
 			if (out.isEmpty()) return;
 			silenceYoutubePage(a);
-			me.aap.fermata.addon.music.MusicPlayer.play(a, out, 0);
+			MusicPlayer.play(a, out, 0);
 			return;
 		}
 

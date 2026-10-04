@@ -2,6 +2,8 @@ package me.aap.fermata.ytdl;
 
 import android.content.Context;
 
+import androidx.annotation.Nullable;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -10,17 +12,18 @@ import java.util.Map;
 
 import me.aap.fermata.R;
 import me.aap.fermata.action.Action;
-import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.view.DownloadPicker;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.menu.OverlayMenu;
 
 /**
- * The download entries of the item menus: Download (audio or video) for YouTube videos that aren't
- * on the phone yet, Remove download for those that are, and Pause/Resume/Cancel while there is a
- * queue. One place, so a single video, a selection and a whole playlist or Favorites all offer the
- * same things.
+ * The download entries of the item menus: one Download that asks, in a card like Add to playlist,
+ * what to download it as (the audio, or a picture quality), Remove download for videos that are
+ * on the phone, and Pause/Resume/Cancel for the videos of the menu that are being downloaded --
+ * only those, never somebody else's. One place, so a single video, a selection and a whole
+ * playlist or Favorites all offer the same things.
  */
 public final class YtDownloadMenu {
 
@@ -38,33 +41,27 @@ public final class YtDownloadMenu {
 		if (videos.isEmpty()) return;
 
 		YtDownloads d = YtDownloads.get();
-		List<YtDownloads.Request> audio = new ArrayList<>();
-		List<YtDownloads.Request> video = new ArrayList<>();
+		Map<String, String> todo = new LinkedHashMap<>();
 		List<String> downloaded = new ArrayList<>();
+		List<String> running = new ArrayList<>();
+		List<String> stopped = new ArrayList<>();
 
 		for (Map.Entry<String, String> e : videos.entrySet()) {
-			if (d.isDownloaded(e.getKey())) {
-				downloaded.add(e.getKey());
-			} else {
-				audio.add(new YtDownloads.Request(e.getKey(), e.getValue(), false));
-				video.add(new YtDownloads.Request(e.getKey(), e.getValue(), true));
-			}
+			String id = e.getKey();
+			if (d.isDownloaded(id)) downloaded.add(id);
+			else if (d.isRunning(id)) running.add(id);
+			else if (d.isActive(id)) stopped.add(id);
+			else todo.put(id, e.getValue());
 		}
 
-		boolean many = videos.size() > 1;
 		Context ctx = a.getContext();
 
-		if (!audio.isEmpty()) {
-			b.addItem(R.id.ytdl_download_audio, R.drawable.download,
-					many ? R.string.ytdl_download_all_audio : R.string.ytdl_download_audio).setHandler(i -> {
-				queued(ctx, d.enqueue(audio));
-				return true;
-			});
-			b.addItem(R.id.ytdl_download_video, R.drawable.download,
-					many ? R.string.ytdl_download_all_video : R.string.ytdl_download_video).setHandler(i -> {
-				queued(ctx, d.enqueue(video));
-				return true;
-			});
+		if (!todo.isEmpty()) {
+			b.addItem(R.id.ytdl_download, R.drawable.download, R.string.ytdl_download)
+					.setHandler(i -> {
+						pickAndDownload(a, todo);
+						return true;
+					});
 		}
 
 		if (!downloaded.isEmpty()) {
@@ -76,10 +73,58 @@ public final class YtDownloadMenu {
 					});
 		}
 
-		addControls(b, d);
+		// Only for what is really being downloaded.
+		if (!running.isEmpty()) {
+			b.addItem(R.id.ytdl_pause_all, R.drawable.pause, R.string.ytdl_pause_one).setHandler(i -> {
+				for (String id : running) d.pause(id);
+				return true;
+			});
+		}
+		if (!stopped.isEmpty()) {
+			b.addItem(R.id.ytdl_resume_all, R.drawable.download, R.string.ytdl_resume_one)
+					.setHandler(i -> {
+						for (String id : stopped) d.resume(id);
+						return true;
+					});
+		}
+		if (!running.isEmpty() || !stopped.isEmpty()) {
+			b.addItem(R.id.ytdl_cancel_all, me.aap.utils.R.drawable.close, R.string.ytdl_cancel_one)
+					.setHandler(i -> {
+						for (String id : running) d.remove(id);
+						for (String id : stopped) d.remove(id);
+						return true;
+					});
+		}
 	}
 
-	/** Pause/Resume and Cancel, while there is something queued, paused or failed. */
+	/**
+	 * Asks what to download {@code videos} (id to title) as, then queues them. The one entry point
+	 * of every Download in the app.
+	 */
+	public static void pickAndDownload(MainActivityDelegate a, Map<String, String> videos) {
+		if (videos.isEmpty()) return;
+		Context ctx = a.getContext();
+		String name = (videos.size() == 1) ? videos.values().iterator().next() :
+				ctx.getResources().getQuantityString(R.plurals.ytdl_videos, videos.size(), videos.size());
+		DownloadPicker.show(a, name, height -> {
+			List<YtDownloads.Request> list = new ArrayList<>(videos.size());
+			for (Map.Entry<String, String> e : videos.entrySet()) {
+				list.add(new YtDownloads.Request(e.getKey(), e.getValue(), height));
+			}
+			queued(ctx, YtDownloads.get().enqueue(list));
+		});
+	}
+
+	/** Same for one video. */
+	public static void pickAndDownload(MainActivityDelegate a, String videoId, @Nullable String title) {
+		pickAndDownload(a, Collections.singletonMap(videoId,
+				((title == null) || title.isEmpty()) ? videoId : title));
+	}
+
+	/**
+	 * Pause/Resume and Cancel for the whole queue, while there is something queued, paused or
+	 * failed -- the Downloads tab's menu.
+	 */
 	public static void addControls(OverlayMenu.Builder b, YtDownloads d) {
 		if (d.isBusy()) {
 			b.addItem(R.id.ytdl_pause_all, R.drawable.pause, R.string.ytdl_pause_all).setHandler(i -> {
@@ -104,20 +149,22 @@ public final class YtDownloadMenu {
 	}
 
 	/**
-	 * The FAB action: downloads what's playing -- as audio in the Music tab, as video otherwise.
-	 * Nothing happens (but a message) unless it's a YouTube video.
+	 * The FAB action: downloads what's playing -- asks what to download it as. Nothing happens (but
+	 * a message) unless it's a YouTube video.
 	 */
 	public static void downloadCurrent(MainActivityDelegate a) {
 		PlayableItem pi = Action.getFavoritableItem(a);
 		String id = YtDownloads.videoIdOf(pi);
-		Context ctx = a.getContext();
 		if (id == null) {
-			UiUtils.showToast(ctx, R.string.ytdl_nothing_playing);
+			UiUtils.showToast(a.getContext(), R.string.ytdl_nothing_playing);
 			return;
 		}
-		boolean video = !MusicPlayer.isMusicModeActive(a);
-		queued(ctx, YtDownloads.get().enqueue(
-				Collections.singletonList(new YtDownloads.Request(id, pi.getName(), video))));
+		if (YtDownloads.get().isDownloaded(id) || YtDownloads.get().isActive(id)) {
+			UiUtils.showToast(a.getContext(), R.string.ytdl_nothing_queued);
+			return;
+		}
+		// Posted: this also runs from the FAB's own menu, which is still closing at this point.
+		me.aap.utils.app.App.get().getHandler().post(() -> pickAndDownload(a, id, pi.getName()));
 	}
 
 	/** The FAB action: pauses what's downloading, or carries on with what was paused. */

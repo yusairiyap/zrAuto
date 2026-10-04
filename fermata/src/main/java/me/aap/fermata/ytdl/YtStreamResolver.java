@@ -16,22 +16,59 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * Finds the media streams of a YouTube video, the same key-less "InnerTube" way the rest of the app
- * talks to YouTube ({@code YoutubeSearch}): the {@code player} endpoint, asked as the YouTube VR
- * app, answers with plain (not signature-ciphered) stream URLs that can be fetched straight away.
+ * talks to YouTube ({@code YoutubeSearch}): the {@code player} endpoint, asked as one of YouTube's
+ * own apps, answers with plain (not signature-ciphered) stream URLs that can be fetched straight
+ * away.
+ * <p>
+ * YouTube answers "Sign in to confirm you're not a bot" to a client it has decided to distrust,
+ * for a while or for some videos only -- so the apps are tried one after the other (the VR app,
+ * the TV embedded player, the iPhone app) until one of them is let through. The visitor id YouTube
+ * hands out is kept and sent with the next request, as a real app's session would.
  * <p>
  * YouTube changes what this endpoint accepts from time to time; when downloads suddenly start
- * failing with "no downloadable stream", {@link #CLIENT_VERSION} is the first thing to look at.
+ * failing with "no downloadable stream", the client versions below are the first thing to look at.
  * <p>
  * All methods block -- call them on a background thread.
  */
 final class YtStreamResolver {
-	static final String CLIENT_VERSION = "1.62.27";
 	private static final String PLAYER_URL = "https://www.youtube.com/youtubei/v1/player?prettyPrint=false";
-	private static final String USER_AGENT = "com.google.android.apps.youtube.vr.oculus/" +
-			CLIENT_VERSION + " (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip";
+	private static volatile String visitorData;
 
 	private YtStreamResolver() {
 	}
+
+	/** The way one of YouTube's apps introduces itself. */
+	private static final class Client {
+		final String name;
+		final String version;
+		final String headerId;
+		final String userAgent;
+		final String extra;
+
+		Client(String name, String version, String headerId, String userAgent, String extra) {
+			this.name = name;
+			this.version = version;
+			this.headerId = headerId;
+			this.userAgent = userAgent;
+			this.extra = extra;
+		}
+	}
+
+	private static final Client[] CLIENTS = {
+			new Client("ANDROID_VR", "1.62.27", "28",
+					"com.google.android.apps.youtube.vr.oculus/1.62.27 (Linux; U; Android 12L; " +
+							"eureka-user Build/SQ3A.220605.009.A1) gzip",
+					"\"deviceMake\":\"Oculus\",\"deviceModel\":\"Quest 3\",\"osName\":\"Android\"," +
+							"\"osVersion\":\"12L\",\"androidSdkVersion\":32"),
+			new Client("TVHTML5_SIMPLY_EMBEDDED_PLAYER", "2.0", "85",
+					"Mozilla/5.0 (PlayStation; PlayStation 4/12.00) AppleWebKit/605.1.15 (KHTML, like Gecko) " +
+							"Version/15.4 Safari/605.1.15",
+					"\"clientScreen\":\"EMBED\""),
+			new Client("IOS", "20.10.4", "5",
+					"com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
+					"\"deviceMake\":\"Apple\",\"deviceModel\":\"iPhone16,2\",\"osName\":\"iPhone\"," +
+							"\"osVersion\":\"18.3.2.22D82\""),
+	};
 
 	/** One downloadable stream. */
 	static final class Stream {
@@ -59,6 +96,15 @@ final class YtStreamResolver {
 		/** H.264 in an MP4 container, no sound; null when only audio was asked for. */
 		@Nullable
 		Stream video;
+		/** What the streams' server expects to be told. */
+		String userAgent;
+	}
+
+	/** YouTube refused to talk to us ("Sign in to confirm you're not a bot"): trying again soon won't help. */
+	static final class BlockedException extends IOException {
+		BlockedException(String msg) {
+			super(msg);
+		}
 	}
 
 	/**
@@ -66,12 +112,41 @@ final class YtStreamResolver {
 	 * @param maxHeight the tallest picture to take (lines)
 	 */
 	static Result resolve(String videoId, boolean wantVideo, int maxHeight) throws IOException {
+		IOException first = null;
+		boolean blocked = false;
+
+		for (Client c : CLIENTS) {
+			try {
+				return resolve(c, videoId, wantVideo, maxHeight);
+			} catch (BlockedException ex) {
+				blocked = true;
+				if (first == null) first = ex;
+			} catch (IOException ex) {
+				if (first == null) first = ex;
+			}
+		}
+
+		if (blocked) {
+			throw new BlockedException("YouTube asked to confirm you're not a bot. Try again later");
+		}
+		throw (first != null) ? first : new IOException("No downloadable stream");
+	}
+
+	private static Result resolve(Client c, String videoId, boolean wantVideo, int maxHeight)
+			throws IOException {
 		try {
-			JSONObject resp = new JSONObject(post(videoId));
+			JSONObject resp = new JSONObject(post(c, videoId));
+			JSONObject rc = resp.optJSONObject("responseContext");
+			String vd0 = (rc != null) ? rc.optString("visitorData", null) : null;
+			if ((vd0 != null) && !vd0.isEmpty()) visitorData = vd0;
+
 			JSONObject ps = resp.optJSONObject("playabilityStatus");
 			String status = (ps != null) ? ps.optString("status") : "";
 			if (!"OK".equals(status)) {
 				String reason = (ps != null) ? ps.optString("reason") : "";
+				if (reason.toLowerCase().contains("not a bot") || reason.toLowerCase().contains("sign in")) {
+					throw new BlockedException(reason);
+				}
 				throw new IOException(reason.isEmpty() ? ("Not playable: " + status) : reason);
 			}
 
@@ -80,6 +155,7 @@ final class YtStreamResolver {
 			if (formats == null) throw new IOException("No downloadable stream");
 
 			Result r = new Result();
+			r.userAgent = c.userAgent;
 			JSONObject vd = resp.optJSONObject("videoDetails");
 			if (vd != null) {
 				r.title = vd.optString("title", null);
@@ -119,51 +195,55 @@ final class YtStreamResolver {
 		}
 	}
 
-	private static String post(String videoId) throws IOException, JSONException {
-		JSONObject client = new JSONObject()
-				.put("clientName", "ANDROID_VR")
-				.put("clientVersion", CLIENT_VERSION)
-				.put("deviceMake", "Oculus")
-				.put("deviceModel", "Quest 3")
-				.put("osName", "Android")
-				.put("osVersion", "12L")
-				.put("androidSdkVersion", 32)
+	private static String post(Client c, String videoId) throws IOException, JSONException {
+		JSONObject client = new JSONObject("{" + c.extra + "}")
+				.put("clientName", c.name)
+				.put("clientVersion", c.version)
 				.put("hl", "en");
+		String vd = visitorData;
+		if (vd != null) client.put("visitorData", vd);
+
+		JSONObject context = new JSONObject().put("client", client);
+		if ("TVHTML5_SIMPLY_EMBEDDED_PLAYER".equals(c.name)) {
+			context.put("thirdParty", new JSONObject()
+					.put("embedUrl", "https://www.youtube.com/watch?v=" + videoId));
+		}
 		JSONObject body = new JSONObject()
-				.put("context", new JSONObject().put("client", client))
+				.put("context", context)
 				.put("videoId", videoId)
 				.put("contentCheckOk", true)
 				.put("racyCheckOk", true);
 
-		HttpURLConnection c = (HttpURLConnection) new URL(PLAYER_URL).openConnection();
+		HttpURLConnection h = (HttpURLConnection) new URL(PLAYER_URL).openConnection();
 		try {
-			c.setConnectTimeout(15_000);
-			c.setReadTimeout(20_000);
-			c.setRequestMethod("POST");
-			c.setDoOutput(true);
-			c.setRequestProperty("Content-Type", "application/json");
-			c.setRequestProperty("User-Agent", USER_AGENT);
-			c.setRequestProperty("X-YouTube-Client-Name", "28");
-			c.setRequestProperty("X-YouTube-Client-Version", CLIENT_VERSION);
-			try (OutputStream out = c.getOutputStream()) {
+			h.setConnectTimeout(15_000);
+			h.setReadTimeout(20_000);
+			h.setRequestMethod("POST");
+			h.setDoOutput(true);
+			h.setRequestProperty("Content-Type", "application/json");
+			h.setRequestProperty("User-Agent", c.userAgent);
+			h.setRequestProperty("X-YouTube-Client-Name", c.headerId);
+			h.setRequestProperty("X-YouTube-Client-Version", c.version);
+			if (vd != null) h.setRequestProperty("X-Goog-Visitor-Id", vd);
+			try (OutputStream out = h.getOutputStream()) {
 				out.write(body.toString().getBytes(StandardCharsets.UTF_8));
 			}
 
-			int code = c.getResponseCode();
+			int code = h.getResponseCode();
 			if (code != 200) throw new IOException("YouTube answered HTTP " + code);
-			try (InputStream in = c.getInputStream()) {
+			try (InputStream in = h.getInputStream()) {
 				ByteArrayOutputStream bos = new ByteArrayOutputStream(64 * 1024);
 				byte[] buf = new byte[16 * 1024];
 				for (int n; (n = in.read(buf)) != -1; ) bos.write(buf, 0, n);
 				return new String(bos.toByteArray(), StandardCharsets.UTF_8);
 			}
 		} finally {
-			c.disconnect();
+			h.disconnect();
 		}
 	}
 
 	/** The request headers a stream URL expects. */
-	static void applyStreamHeaders(HttpURLConnection c) {
-		c.setRequestProperty("User-Agent", USER_AGENT);
+	static void applyStreamHeaders(HttpURLConnection c, String userAgent) {
+		c.setRequestProperty("User-Agent", userAgent);
 	}
 }

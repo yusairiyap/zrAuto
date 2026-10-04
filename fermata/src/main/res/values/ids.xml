@@ -209,8 +209,7 @@
     <item name="fuel_range_this_month" type="id" />
     <item name="fuel_range_last_month" type="id" />
     <item name="fuel_range_this_year" type="id" />
-    <item name="ytdl_download_audio" type="id" />
-    <item name="ytdl_download_video" type="id" />
+    <item name="ytdl_download" type="id" />
     <item name="ytdl_remove" type="id" />
     <item name="ytdl_pause_all" type="id" />
     <item name="ytdl_resume_all" type="id" />
@@ -218,4 +217,11 @@
     <item name="downloads_addon" type="id" />
     <item name="ytdl_toolbar_button" type="id" />
     <item name="ytdl_view_toggle" type="id" />
+    <item name="ytdl_tool_view" type="id" />
+    <item name="ytdl_tool_sort" type="id" />
+    <item name="ytdl_tool_pause" type="id" />
+    <item name="ytdl_tool_clear" type="id" />
+    <item name="ytdl_sort_date" type="id" />
+    <item name="ytdl_sort_name" type="id" />
+    <item name="ytdl_sort_size" type="id" />
 </resources>

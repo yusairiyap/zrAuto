@@ -32,6 +32,7 @@ import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ytdl.YtOffline;
 import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.fermata.ui.fragment.MainActivityFragment;
 import me.aap.fermata.ui.fragment.SubtitlesFragment;
@@ -399,8 +400,9 @@ public class BodyLayout extends SplitLayout
 
 				MediaLib.PlayableItem i = eng.getSource();
 
+				// A downloaded YouTube video is watched fullscreen, never in a split with the list.
 				if ((i != null) && i.isVideo() && eng.isSplitModeSupported() &&
-						(cb.getVideoView() == getVideoView())) {
+						(cb.getVideoView() == getVideoView()) && !YtOffline.isDownloadedYoutube(i)) {
 					setMode(Mode.BOTH);
 				} else {
 					setMode(Mode.FRAME);
@@ -428,6 +430,27 @@ public class BodyLayout extends SplitLayout
 		MediaEngine eng = b.getCurrentEngine();
 		if (i.equals(cur) && (eng != null) && eng.isVideoModeRequired())
 			setMode(BodyLayout.Mode.VIDEO);
+	}
+
+	/**
+	 * Plays a downloaded YouTube video (an external item, whose own player is the YouTube tab's
+	 * page) from its file, fullscreen, from wherever it was started -- the way a local video
+	 * plays: the picture's surface first, then the engine. Leaving fullscreen returns to the
+	 * screen it was started from, never to a split with the list.
+	 */
+	public void playLocalVideo(MediaLib.PlayableItem i) {
+		startingPlayback.cancel();
+		MainActivityDelegate a = getActivity();
+		Runnable play = () -> {
+			a.getMediaServiceBinder().playItem(i);
+			setMode(Mode.VIDEO);
+		};
+		if (!getVideoView().isSurfaceCreated() && !a.getMediaSessionCallback().hasCustomEngineProvider()) {
+			setMode(Mode.VIDEO);
+			getVideoView().onSurfaceCreated(play);
+		} else {
+			play.run();
+		}
 	}
 
 	@Override

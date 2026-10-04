@@ -31,7 +31,9 @@ import androidx.annotation.AttrRes;
 import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.StringRes;
 import androidx.appcompat.view.ContextThemeWrapper;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -39,6 +41,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
@@ -53,20 +56,29 @@ import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.fermata.ytdl.YtDownloads.Entry;
 import me.aap.fermata.ytdl.YtDownloads.State;
 import me.aap.utils.ui.UiUtils;
+import me.aap.utils.ui.activity.ActivityDelegate;
+import me.aap.utils.ui.fragment.ActivityFragment;
 import me.aap.utils.ui.menu.OverlayMenu;
+import me.aap.utils.ui.view.ImageButton;
+import me.aap.utils.ui.view.ToolBarView;
 
 /**
  * The Downloads tab, in two sections: what is being downloaded right now (a card per video that
  * fills up as it arrives, with the transfer rate, Pause/Resume and Cancel), and what's on the phone
- * (a list or grid of cards that play from the file). Drawn in the Music tab's palette, like the
- * Fuel Log and Data Usage tabs.
+ * (cards that play from the file). The cards are drawn like the Favorites and Playlists ones --
+ * same backgrounds, the dark gradient over a full-bleed thumbnail in the grid -- and the title bar
+ * has the same kind of buttons (view, sort, ...). Drawn in the Music tab's palette, like the Fuel
+ * Log and Data Usage tabs.
  */
 public class DownloadsFragment extends MainActivityFragment implements YtDownloads.Listener {
+	private static final ToolBarView.Mediator TOOL_BAR = new ToolBar();
 	private static final int VT_HEADER = 0;
 	private static final int VT_PROGRESS = 1;
 	private static final int VT_ROW = 2;
 	private static final int VT_GRID = 3;
 	private static final int VT_EMPTY = 4;
+	private static final int HEADER_PROGRESS = 0;
+	private static final int HEADER_DONE = 1;
 	private static final Object PAYLOAD = new Object();
 	private final List<Row> rows = new ArrayList<>();
 	private Adapter adapter;
@@ -84,6 +96,17 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		return getString(R.string.ytdl_title);
 	}
 
+	@Override
+	public ToolBarView.Mediator getToolBarMediator() {
+		return TOOL_BAR;
+	}
+
+	/** Lets a downloaded video play fullscreen from this tab, like a video from a list. */
+	@Override
+	public boolean isVideoModeSupported() {
+		return true;
+	}
+
 	@Nullable
 	@Override
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
@@ -93,7 +116,6 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 				R.style.MusicPalette_Light : R.style.MusicPalette_Dark);
 		RecyclerView rv = new RecyclerView(palette);
 		rv.setLayoutParams(new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
-		rv.setScrollBarStyle(View.SCROLLBARS_OUTSIDE_OVERLAY);
 		rv.setVerticalScrollBarEnabled(true);
 		return rv;
 	}
@@ -146,15 +168,92 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 	@Override
 	public void contributeToNavBarMenu(OverlayMenu.Builder builder) {
 		super.contributeToNavBarMenu(builder);
-		boolean grid = DownloadsAddon.isGrid();
-		builder.addItem(R.id.ytdl_view_toggle, grid ? R.drawable.playlist : R.drawable.view_grid,
-				grid ? R.string.ytdl_view_list : R.string.ytdl_view_grid).setHandler(i -> {
-			DownloadsAddon.setGrid(!grid);
-			updateSpan();
-			rebuild();
-			return true;
-		});
 		YtDownloadMenu.addControls(builder, YtDownloads.get());
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Title bar
+
+	/** Back, title and the buttons the Favorites and Playlists tabs have: view, sort; plus the downloads' own. */
+	private static final class ToolBar implements ToolBarView.Mediator.BackTitle {
+		@Override
+		public void enable(ToolBarView tb, ActivityFragment f) {
+			ToolBarView.Mediator.BackTitle.super.enable(tb, f);
+			label(addButton(tb, DownloadsAddon.isGrid() ? R.drawable.playlist : R.drawable.view_grid,
+					v -> with(v, DownloadsFragment::toggleView), R.id.ytdl_tool_view),
+					R.string.view, 0);
+			label(addButton(tb, R.drawable.sort, v -> with(v, DownloadsFragment::showSortMenu),
+					R.id.ytdl_tool_sort), R.string.sort_by, 1);
+			label(addButton(tb, R.drawable.pause, v -> YtDownloadMenu.togglePause(),
+					R.id.ytdl_tool_pause), R.string.ytdl_pause_all, 2);
+			label(addButton(tb, R.drawable.download_remove, v -> with(v, DownloadsFragment::confirmClear),
+					R.id.ytdl_tool_clear), R.string.ytdl_clear, 3);
+			if (f instanceof DownloadsFragment d) d.refreshToolBar();
+		}
+
+		private static void label(ImageButton b, @StringRes int label, int priority) {
+			b.setContentDescription(b.getContext().getString(label));
+			b.setToolBarPriority(priority);
+		}
+
+		private static void with(View v, java.util.function.Consumer<DownloadsFragment> c) {
+			ActivityFragment f = MainActivityDelegate.get(v.getContext()).getActiveFragment();
+			if (f instanceof DownloadsFragment d) c.accept(d);
+		}
+	}
+
+	/** Icons and visibility that follow what's downloading and what's on the phone. */
+	private void refreshToolBar() {
+		if (!isAdded()) return;
+		ToolBarView tb = getActivityDelegate().getToolBar();
+		YtDownloads d = YtDownloads.get();
+		ImageButton view = tb.findViewById(R.id.ytdl_tool_view);
+		if (view != null) {
+			view.setImageResource(DownloadsAddon.isGrid() ? R.drawable.playlist : R.drawable.view_grid);
+		}
+		ImageButton pause = tb.findViewById(R.id.ytdl_tool_pause);
+		if (pause != null) {
+			boolean busy = d.isBusy();
+			pause.setImageResource(busy ? R.drawable.pause : R.drawable.download);
+			pause.setVisibility((busy || d.hasResumable()) ? View.VISIBLE : View.GONE);
+			pause.setContentDescription(getString(busy ? R.string.ytdl_pause_all : R.string.ytdl_resume_all));
+		}
+		View clear = tb.findViewById(R.id.ytdl_tool_clear);
+		if (clear != null) clear.setVisibility(d.getDownloaded().isEmpty() ? View.GONE : View.VISIBLE);
+	}
+
+	private void toggleView() {
+		DownloadsAddon.setGrid(!DownloadsAddon.isGrid());
+		updateSpan();
+		rebuild();
+	}
+
+	private void showSortMenu() {
+		MainActivityDelegate a = getActivityDelegate();
+		a.getToolBarMenu().show(b -> {
+			int sort = DownloadsAddon.getSort();
+			b.setSelectionHandler(item -> {
+				int id = item.getItemId();
+				if (id == R.id.ytdl_sort_date) DownloadsAddon.setSort(DownloadsAddon.SORT_DATE);
+				else if (id == R.id.ytdl_sort_name) DownloadsAddon.setSort(DownloadsAddon.SORT_NAME);
+				else if (id == R.id.ytdl_sort_size) DownloadsAddon.setSort(DownloadsAddon.SORT_SIZE);
+				else return false;
+				rebuild();
+				return true;
+			});
+			b.addItem(R.id.ytdl_sort_date, R.string.ytdl_sort_date)
+					.setChecked(sort == DownloadsAddon.SORT_DATE, true);
+			b.addItem(R.id.ytdl_sort_name, R.string.ytdl_sort_name)
+					.setChecked(sort == DownloadsAddon.SORT_NAME, true);
+			b.addItem(R.id.ytdl_sort_size, R.string.ytdl_sort_size)
+					.setChecked(sort == DownloadsAddon.SORT_SIZE, true);
+		});
+	}
+
+	private void confirmClear() {
+		if (YtDownloads.get().getDownloaded().isEmpty()) return;
+		UiUtils.showQuestion(requireContext(), R.string.ytdl_clear_title, R.string.ytdl_clear_question,
+				R.drawable.download_remove).onSuccess(v -> YtDownloads.get().clearDownloaded());
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -171,9 +270,6 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		}
 	}
 
-	private static final int HEADER_PROGRESS = 0;
-	private static final int HEADER_DONE = 1;
-
 	private void rebuild() {
 		YtDownloads d = YtDownloads.get();
 		List<Entry> progress = new ArrayList<>();
@@ -182,8 +278,14 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 			if (e.state == State.DONE) done.add(e);
 			else progress.add(e);
 		}
-		// Newest first.
-		Collections.reverse(done);
+
+		switch (DownloadsAddon.getSort()) {
+			case DownloadsAddon.SORT_NAME ->
+					done.sort((a, b) -> a.getDisplayTitle().compareToIgnoreCase(b.getDisplayTitle()));
+			case DownloadsAddon.SORT_SIZE -> done.sort((a, b) -> Long.compare(b.total, a.total));
+			// Newest first.
+			default -> Collections.reverse(done);
+		}
 
 		List<Row> n = new ArrayList<>();
 		if (!progress.isEmpty()) {
@@ -202,7 +304,7 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		for (int i = 0; same && (i < n.size()); i++) {
 			Row a = n.get(i);
 			Row b = rows.get(i);
-			same = (a.type == b.type) && java.util.Objects.equals(a.id, b.id);
+			same = (a.type == b.type) && Objects.equals(a.id, b.id);
 		}
 
 		rows.clear();
@@ -210,6 +312,7 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		// The same cards: only the numbers moved, so they are rebound in place -- no flicker.
 		if (same) adapter.notifyItemRangeChanged(0, rows.size(), PAYLOAD);
 		else adapter.notifyDataSetChanged();
+		refreshToolBar();
 	}
 
 	private void updateSpan() {
@@ -273,7 +376,6 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		final int fill;
 		final int ripple;
 		final int accent;
-		final int onAccent;
 
 		Palette(Context ctx) {
 			primary = color(ctx, R.attr.musicTextPrimary);
@@ -281,7 +383,6 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 			fill = color(ctx, R.attr.musicChipFill);
 			ripple = color(ctx, R.attr.musicChipRipple);
 			accent = EffectsUi.accent(ctx);
-			onAccent = EffectsUi.onAccent(accent);
 		}
 
 		private static int color(Context ctx, @AttrRes int attr) {
@@ -291,7 +392,10 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		}
 	}
 
-	/** A card whose left part, up to {@link #setFraction}, is filled with the accent color. */
+	/**
+	 * A card in the look of a Favorites/Playlists one ({@code bg} is the very background those
+	 * use) whose left part, up to {@link #setFraction}, is filled with the accent color.
+	 */
 	private static final class Card extends FrameLayout {
 		private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 		private final Path clip = new Path();
@@ -299,17 +403,21 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		private final float radius;
 		private float fraction;
 
-		Card(Context ctx, int fill, int accent, float radius) {
+		Card(Context ctx, @DrawableRes int bg, int accent, float radius) {
 			super(ctx);
 			this.radius = radius;
-			paint.setColor((accent & 0x00FFFFFF) | 0x55000000);
-			GradientDrawable bg = new GradientDrawable();
-			bg.setColor(fill);
-			bg.setCornerRadius(radius);
-			setBackground(bg);
+			paint.setColor((accent & 0x00FFFFFF) | 0x66000000);
+			setBackground(ContextCompat.getDrawable(ctx, bg));
 			setWillNotDraw(false);
 			setClickable(true);
 			setFocusable(true);
+			setClipToOutline(true);
+			setOutlineProvider(new ViewOutlineProvider() {
+				@Override
+				public void getOutline(View v, Outline o) {
+					o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), radius);
+				}
+			});
 		}
 
 		void setFraction(float f) {
@@ -333,15 +441,30 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		}
 	}
 
-	private final class Holder extends RecyclerView.ViewHolder {
+	/** An image that is as tall as it is wide. */
+	private static final class SquareImage extends ImageView {
+		SquareImage(Context ctx) {
+			super(ctx);
+		}
+
+		@Override
+		protected void onMeasure(int w, int h) {
+			int width = MeasureSpec.getSize(w);
+			super.onMeasure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
+					MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY));
+		}
+	}
+
+	private static final class Holder extends RecyclerView.ViewHolder {
 		TextView title;
 		TextView subtitle;
 		TextView status;
 		ImageView thumb;
 		ImageView pause;
 		ImageView cancel;
-		TextView act1;
-		TextView act2;
+		TextView chip1;
+		TextView chip2;
+		TextView info;
 		Card card;
 
 		Holder(View v) {
@@ -367,16 +490,12 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		public Holder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
 			Context ctx = parent.getContext();
 			if (pal == null) pal = new Palette(ctx);
-			switch (type) {
-				case VT_HEADER:
-					return header(ctx);
-				case VT_EMPTY:
-					return empty(ctx);
-				case VT_GRID:
-					return gridCard(ctx);
-				default:
-					return rowCard(ctx, type == VT_PROGRESS);
-			}
+			return switch (type) {
+				case VT_HEADER -> header(ctx);
+				case VT_EMPTY -> empty(ctx);
+				case VT_GRID -> gridCard(ctx);
+				default -> rowCard(ctx, type == VT_PROGRESS);
+			};
 		}
 
 		@Override
@@ -386,7 +505,7 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 			Context ctx = h.itemView.getContext();
 
 			if (r.type == VT_HEADER) {
-				bindHeader(h, Integer.parseInt(r.id), d);
+				bindHeader(h, Integer.parseInt(Objects.requireNonNull(r.id)), d);
 				return;
 			}
 			if (r.type == VT_EMPTY) return;
@@ -400,9 +519,9 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 				bindProgress(h, e, d, ctx);
 			} else {
 				StringBuilder sb = new StringBuilder();
-				String artist = e.artist;
-				if ((artist != null) && !artist.isEmpty()) sb.append(artist).append(" • ");
+				if (e.durationMs > 0) sb.append(time(e.durationMs)).append(" • ");
 				sb.append(ctx.getString(e.video ? R.string.ytdl_kind_video : R.string.ytdl_kind_audio));
+				if (e.video && (e.height > 0)) sb.append(' ').append(e.height).append('p');
 				if (e.total > 0) sb.append(" • ").append(Formatter.formatShortFileSize(ctx, e.total));
 				h.subtitle.setText(sb);
 				h.card.setOnClickListener(v -> play(e.videoId));
@@ -413,35 +532,50 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 			}
 		}
 
+		private String time(long ms) {
+			long s = ms / 1000;
+			long h = s / 3600;
+			return (h > 0) ? String.format(java.util.Locale.ROOT, "%d:%02d:%02d", h, (s / 60) % 60, s % 60) :
+					String.format(java.util.Locale.ROOT, "%02d:%02d", s / 60, s % 60);
+		}
+
 		private void bindHeader(Holder h, int which, YtDownloads d) {
-			Context ctx = h.itemView.getContext();
 			if (which == HEADER_PROGRESS) {
 				h.title.setText(R.string.ytdl_section_progress);
+				h.info.setVisibility(View.GONE);
 				boolean busy = d.isBusy();
-				h.act1.setVisibility(View.VISIBLE);
-				h.act1.setText(busy ? R.string.ytdl_pause_all : R.string.ytdl_resume_all);
-				h.act1.setOnClickListener(v -> {
-					if (d.isBusy()) d.pauseAll();
-					else d.resumeAll();
-				});
-				h.act2.setVisibility(View.VISIBLE);
-				h.act2.setText(R.string.ytdl_cancel_all);
-				h.act2.setOnClickListener(v -> d.cancelAll());
+				setChip(h.chip1, busy ? R.drawable.pause : R.drawable.download,
+						busy ? R.string.ytdl_pause_all : R.string.ytdl_resume_all);
+				h.chip1.setOnClickListener(v -> YtDownloadMenu.togglePause());
+				setChip(h.chip2, me.aap.utils.R.drawable.close, R.string.ytdl_cancel_all);
+				h.chip2.setOnClickListener(v -> d.cancelAll());
 			} else {
 				h.title.setText(R.string.ytdl_section_done);
 				long bytes = 0;
-				for (Entry e : d.getDownloaded()) bytes += e.total;
-				h.act2.setVisibility(View.GONE);
+				List<Entry> done = d.getDownloaded();
+				for (Entry e : done) bytes += e.total;
+				Context ctx = h.itemView.getContext();
 				if (bytes > 0) {
-					h.act1.setVisibility(View.VISIBLE);
-					h.act1.setText(ctx.getString(R.string.ytdl_storage,
-							Formatter.formatShortFileSize(ctx, bytes)));
-					h.act1.setOnClickListener(null);
-					h.act1.setClickable(false);
+					h.info.setVisibility(View.VISIBLE);
+					h.info.setText(Formatter.formatShortFileSize(ctx, bytes));
 				} else {
-					h.act1.setVisibility(View.GONE);
+					h.info.setVisibility(View.GONE);
+				}
+				h.chip2.setVisibility(View.GONE);
+				if (done.isEmpty()) {
+					h.chip1.setVisibility(View.GONE);
+				} else {
+					setChip(h.chip1, R.drawable.download_remove, R.string.ytdl_clear);
+					h.chip1.setOnClickListener(v -> confirmClear());
 				}
 			}
+		}
+
+		private void setChip(TextView c, @DrawableRes int icon, @StringRes int text) {
+			c.setVisibility(View.VISIBLE);
+			c.setText(text);
+			c.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, 0, 0, 0);
+			c.setCompoundDrawableTintList(ColorStateList.valueOf(pal.primary));
 		}
 
 		private void bindProgress(Holder h, Entry e, YtDownloads d, Context ctx) {
@@ -475,8 +609,10 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 			}
 
 			h.status.setText(status);
-			h.subtitle.setText(e.video ? R.string.ytdl_kind_video : R.string.ytdl_kind_audio);
+			String kind = ctx.getString(e.video ? R.string.ytdl_kind_video : R.string.ytdl_kind_audio);
+			h.subtitle.setText(e.video ? (kind + ' ' + e.height + 'p') : kind);
 			h.pause.setImageResource(running ? R.drawable.pause : R.drawable.play);
+			h.pause.setContentDescription(ctx.getString(running ? R.string.ytdl_pause : R.string.ytdl_resume));
 			h.pause.setOnClickListener(v -> {
 				if (running) d.pause(e.videoId);
 				else d.resume(e.videoId);
@@ -512,20 +648,10 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 			return v;
 		}
 
-		private ImageView thumb(Context ctx) {
+		private ImageView thumbView(Context ctx) {
 			ImageView v = new ImageView(ctx);
 			v.setScaleType(ImageView.ScaleType.CENTER_CROP);
-			GradientDrawable ph = new GradientDrawable();
-			ph.setColor(0x33808080);
-			v.setBackground(ph);
-			float r = dp(ctx, 10);
-			v.setOutlineProvider(new ViewOutlineProvider() {
-				@Override
-				public void getOutline(View view, Outline o) {
-					o.setRoundRect(0, 0, view.getWidth(), view.getHeight(), r);
-				}
-			});
-			v.setClipToOutline(true);
+			v.setBackgroundColor(0x33808080);
 			return v;
 		}
 
@@ -538,19 +664,33 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 			Holder h = new Holder(l);
 			h.title = text(ctx, 18, pal.primary, true);
 			l.addView(h.title, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
-			h.act1 = chip(ctx);
-			h.act2 = chip(ctx);
-			l.addView(h.act1);
-			l.addView(h.act2);
+			h.info = text(ctx, 13, pal.secondary, false);
+			h.info.setPadding(dp(ctx, 8), 0, dp(ctx, 8), 0);
+			l.addView(h.info);
+			h.chip1 = chip(ctx);
+			h.chip2 = chip(ctx);
+			l.addView(h.chip1);
+			l.addView(h.chip2);
 			return h;
 		}
 
+		/** A pill with an icon, in the look of the Music tab's chips. */
 		private TextView chip(Context ctx) {
-			TextView t = text(ctx, 13, pal.secondary, false);
-			t.setPadding(dp(ctx, 10), dp(ctx, 6), dp(ctx, 10), dp(ctx, 6));
+			TextView t = text(ctx, 13, pal.primary, true);
+			t.setGravity(Gravity.CENTER_VERTICAL);
+			t.setMaxLines(1);
+			t.setCompoundDrawablePadding(dp(ctx, 6));
+			t.setPadding(dp(ctx, 10), 0, dp(ctx, 14), 0);
+			t.setMinHeight(dp(ctx, 36));
+			GradientDrawable bg = new GradientDrawable();
+			bg.setCornerRadius(dp(ctx, 18));
+			bg.setColor(pal.fill);
+			t.setBackground(bg);
 			t.setClickable(true);
 			t.setFocusable(true);
-			t.setMaxLines(1);
+			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+			lp.setMarginStart(dp(ctx, 8));
+			t.setLayoutParams(lp);
 			return t;
 		}
 
@@ -563,30 +703,30 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 			return new Holder(t);
 		}
 
-		/** A full-width card: thumbnail on the left, texts, and (in progress) the buttons. */
+		/** A full-width card, like a list row: thumbnail on the left, texts, (in progress) buttons. */
 		private Holder rowCard(Context ctx, boolean progress) {
-			Card card = new Card(ctx, pal.fill, pal.accent, dp(ctx, 16));
+			Card card = new Card(ctx, R.drawable.media_item_list_bg, pal.accent, dp(ctx, 22));
 			RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
 			lp.setMargins(dp(ctx, 12), dp(ctx, 4), dp(ctx, 12), dp(ctx, 4));
 			card.setLayoutParams(lp);
-			card.setForeground(null);
 
 			LinearLayout l = new LinearLayout(ctx);
 			l.setOrientation(LinearLayout.HORIZONTAL);
 			l.setGravity(Gravity.CENTER_VERTICAL);
-			l.setPadding(dp(ctx, 10), dp(ctx, 10), dp(ctx, 6), dp(ctx, 10));
 			card.addView(l, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
 			Holder h = new Holder(card);
 			h.card = card;
-			h.thumb = thumb(ctx);
-			l.addView(h.thumb, new LinearLayout.LayoutParams(dp(ctx, 112), dp(ctx, 63)));
+			h.thumb = thumbView(ctx);
+			// As tall as a list row, the full height of the card.
+			l.addView(h.thumb, new LinearLayout.LayoutParams(dp(ctx, 84), dp(ctx, progress ? 96 : 84)));
 
 			LinearLayout col = new LinearLayout(ctx);
 			col.setOrientation(LinearLayout.VERTICAL);
+			col.setPadding(0, dp(ctx, 8), 0, dp(ctx, 8));
 			LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f);
-			cp.setMarginStart(dp(ctx, 12));
-			cp.setMarginEnd(dp(ctx, 4));
+			cp.setMarginStart(dp(ctx, 14));
+			cp.setMarginEnd(dp(ctx, 6));
 			l.addView(col, cp);
 
 			h.title = text(ctx, 15, pal.primary, true);
@@ -607,61 +747,54 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 				col.addView(h.status, sp);
 
 				h.pause = icon(ctx, R.drawable.pause);
-				h.pause.setContentDescription(ctx.getString(R.string.ytdl_pause));
 				l.addView(h.pause, new LinearLayout.LayoutParams(dp(ctx, 44), dp(ctx, 44)));
 				h.cancel = icon(ctx, me.aap.utils.R.drawable.close);
 				h.cancel.setContentDescription(ctx.getString(R.string.ytdl_cancel));
-				l.addView(h.cancel, new LinearLayout.LayoutParams(dp(ctx, 44), dp(ctx, 44)));
+				LinearLayout.LayoutParams xp = new LinearLayout.LayoutParams(dp(ctx, 44), dp(ctx, 44));
+				xp.setMarginEnd(dp(ctx, 8));
+				l.addView(h.cancel, xp);
 			}
 			return h;
 		}
 
-		/** A grid cell: the thumbnail on top, the texts under it. */
+		/**
+		 * A grid cell, like a Favorites/Playlists one: the thumbnail fills the card and the title
+		 * and details sit on the dark gradient over its bottom.
+		 */
 		private Holder gridCard(Context ctx) {
-			Card card = new Card(ctx, pal.fill, pal.accent, dp(ctx, 16));
+			Card card = new Card(ctx, R.drawable.media_item_bg, pal.accent, dp(ctx, 12));
 			RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
 			lp.setMargins(dp(ctx, 6), dp(ctx, 6), dp(ctx, 6), dp(ctx, 6));
 			card.setLayoutParams(lp);
 
-			LinearLayout col = new LinearLayout(ctx);
-			col.setOrientation(LinearLayout.VERTICAL);
-			col.setPadding(dp(ctx, 8), dp(ctx, 8), dp(ctx, 8), dp(ctx, 10));
-			card.addView(col, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-
 			Holder h = new Holder(card);
 			h.card = card;
-			h.thumb = new ImageView(ctx) {
-				@Override
-				protected void onMeasure(int w, int hh) {
-					// Always 16:9.
-					int width = MeasureSpec.getSize(w);
-					super.onMeasure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
-							MeasureSpec.makeMeasureSpec(width * 9 / 16, MeasureSpec.EXACTLY));
-				}
-			};
-			h.thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
-			GradientDrawable ph = new GradientDrawable();
-			ph.setColor(0x33808080);
-			h.thumb.setBackground(ph);
-			float r = dp(ctx, 10);
-			h.thumb.setOutlineProvider(new ViewOutlineProvider() {
-				@Override
-				public void getOutline(View view, Outline o) {
-					o.setRoundRect(0, 0, view.getWidth(), view.getHeight(), r);
-				}
-			});
-			h.thumb.setClipToOutline(true);
-			col.addView(h.thumb, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+			ImageView img = new SquareImage(ctx);
+			img.setScaleType(ImageView.ScaleType.CENTER_CROP);
+			img.setBackgroundColor(0x33808080);
+			h.thumb = img;
+			card.addView(img, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
-			h.title = text(ctx, 14, pal.primary, true);
+			View scrim = new View(ctx);
+			scrim.setBackgroundResource(R.drawable.media_item_grid_scrim);
+			card.addView(scrim, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+
+			LinearLayout col = new LinearLayout(ctx);
+			col.setOrientation(LinearLayout.VERTICAL);
+			col.setPadding(dp(ctx, 10), 0, dp(ctx, 10), dp(ctx, 10));
+			FrameLayout.LayoutParams cp = new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT,
+					Gravity.BOTTOM);
+			card.addView(col, cp);
+
+			h.title = text(ctx, 14, 0xFFFFFFFF, false);
 			h.title.setMaxLines(2);
 			h.title.setEllipsize(TextUtils.TruncateAt.END);
-			LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
-			tp.topMargin = dp(ctx, 8);
-			col.addView(h.title, tp);
-			h.subtitle = text(ctx, 12, pal.secondary, false);
-			h.subtitle.setMaxLines(2);
+			h.title.setShadowLayer(3f, 0f, 1f, 0xB0000000);
+			col.addView(h.title);
+			h.subtitle = text(ctx, 12, 0xFFFFFFFF, false);
+			h.subtitle.setMaxLines(1);
 			h.subtitle.setEllipsize(TextUtils.TruncateAt.END);
+			h.subtitle.setShadowLayer(3f, 0f, 1f, 0xB0000000);
 			col.addView(h.subtitle);
 			return h;
 		}

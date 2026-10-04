@@ -72,6 +72,8 @@ public final class YtDownloads {
 		public volatile String artist;
 		public volatile long durationMs;
 		public final boolean video;
+		/** The tallest picture it was asked for, in lines; 0 for audio only. */
+		public final int height;
 		public volatile State state = State.QUEUED;
 		/** Downloaded so far, of {@link #total} (0 until the streams are known). */
 		public volatile long bytes;
@@ -83,9 +85,10 @@ public final class YtDownloads {
 		@Nullable
 		volatile String fileName;
 
-		Entry(String videoId, boolean video) {
+		Entry(String videoId, int height) {
 			this.videoId = videoId;
-			this.video = video;
+			this.height = height;
+			this.video = height > 0;
 		}
 
 		public String getDisplayTitle() {
@@ -98,12 +101,13 @@ public final class YtDownloads {
 		final String videoId;
 		@Nullable
 		final String title;
-		final boolean video;
+		final int height;
 
-		public Request(String videoId, @Nullable String title, boolean video) {
+		/** @param height the tallest picture to take, in lines; 0 for the audio alone */
+		public Request(String videoId, @Nullable String title, int height) {
 			this.videoId = videoId;
 			this.title = title;
-			this.video = video;
+			this.height = height;
 		}
 	}
 
@@ -221,6 +225,29 @@ public final class YtDownloads {
 		}
 	}
 
+	/** Whether the video is queued, downloading, paused or failed -- anything but finished. */
+	public boolean isActive(@Nullable String videoId) {
+		Entry e = getEntry(videoId);
+		return (e != null) && (e.state != State.DONE);
+	}
+
+	/** Whether the video is downloading or waiting its turn. */
+	public boolean isRunning(@Nullable String videoId) {
+		Entry e = getEntry(videoId);
+		return (e != null) && ((e.state == State.QUEUED) || (e.state == State.DOWNLOADING));
+	}
+
+	/** Removes every finished download (the files too); what is still downloading carries on. */
+	public void clearDownloaded() {
+		synchronized (lock) {
+			for (Entry e : new ArrayList<>(entries.values())) {
+				if (e.state == State.DONE) removeLocked(e);
+			}
+			saveLocked();
+		}
+		changed(true);
+	}
+
 	public int getBatchTotal() {
 		return batchTotal;
 	}
@@ -261,7 +288,7 @@ public final class YtDownloads {
 				Entry old = entries.get(r.videoId);
 				if (old != null) {
 					if ((old.state == State.QUEUED) || (old.state == State.DOWNLOADING)) continue;
-					if (old.video == r.video) {
+					if (old.height == r.height) {
 						if (old.state == State.DONE) continue;
 						// Paused or failed: carries on from what's already on disk.
 						old.state = State.QUEUED;
@@ -271,7 +298,7 @@ public final class YtDownloads {
 					}
 					removeLocked(old);
 				}
-				Entry e = new Entry(r.videoId, r.video);
+				Entry e = new Entry(r.videoId, r.height);
 				e.title = r.title;
 				entries.put(r.videoId, e);
 				added++;
@@ -431,7 +458,7 @@ public final class YtDownloads {
 	}
 
 	private void process(Entry e) {
-		DiagnosticLog.log("YTDL", "start", "id=" + e.videoId, "video=" + e.video);
+		DiagnosticLog.log("YTDL", "start", "id=" + e.videoId, "height=" + e.height);
 		IOException failure = null;
 
 		for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -441,6 +468,10 @@ public final class YtDownloads {
 				return;
 			} catch (StopException ex) {
 				finish(e, (ex.reason == STOP_CANCEL) ? null : State.PAUSED, null);
+				return;
+			} catch (YtStreamResolver.BlockedException ex) {
+				// Asking again straight away only digs the hole deeper.
+				finish(e, State.FAILED, ex.getMessage());
 				return;
 			} catch (IOException ex) {
 				failure = ex;
@@ -521,7 +552,7 @@ public final class YtDownloads {
 
 		for (int expired = 0; ; expired++) {
 			checkStop();
-			YtStreamResolver.Result r = YtStreamResolver.resolve(e.videoId, e.video, DownloadsAddon.getMaxVideoHeight());
+			YtStreamResolver.Result r = YtStreamResolver.resolve(e.videoId, e.video, e.height);
 			if ((e.title == null) || e.title.isEmpty()) e.title = r.title;
 			if (e.artist == null) e.artist = r.author;
 			if (e.durationMs <= 0) e.durationMs = r.durationMs;
@@ -529,8 +560,8 @@ public final class YtDownloads {
 			changed(true);
 
 			try {
-				fetch(e, r.audio, audioPart, 0);
-				if (r.video != null) fetch(e, r.video, videoPart, r.audio.length);
+				fetch(e, r, r.audio, audioPart, 0);
+				if (r.video != null) fetch(e, r, r.video, videoPart, r.audio.length);
 			} catch (ExpiredException ex) {
 				if (expired >= 2) throw ex;
 				continue;
@@ -560,7 +591,8 @@ public final class YtDownloads {
 		if (s != STOP_NONE) throw new StopException(s);
 	}
 
-	private void fetch(Entry e, YtStreamResolver.Stream s, File part, long base) throws IOException {
+	private void fetch(Entry e, YtStreamResolver.Result r, YtStreamResolver.Stream s, File part,
+										long base) throws IOException {
 		long have = part.length();
 		if (have > s.length) {
 			part.delete();
@@ -579,7 +611,7 @@ public final class YtDownloads {
 			try {
 				c.setConnectTimeout(15_000);
 				c.setReadTimeout(20_000);
-				YtStreamResolver.applyStreamHeaders(c);
+				YtStreamResolver.applyStreamHeaders(c, r.userAgent);
 				c.setRequestProperty("Range", "bytes=" + have + '-' + end);
 				int code = c.getResponseCode();
 				if ((code == 403) || (code == 410)) throw new ExpiredException();
@@ -714,7 +746,8 @@ public final class YtDownloads {
 
 			for (int i = 0; i < a.length(); i++) {
 				JSONObject o = a.getJSONObject(i);
-				Entry e = new Entry(o.getString("id"), o.optBoolean("video"));
+				Entry e = new Entry(o.getString("id"),
+						o.optInt("height", o.optBoolean("video") ? 480 : 0));
 				e.title = o.optString("title", null);
 				e.artist = o.optString("artist", null);
 				e.durationMs = o.optLong("dur");
@@ -743,6 +776,7 @@ public final class YtDownloads {
 				JSONObject o = new JSONObject();
 				o.put("id", e.videoId);
 				o.put("video", e.video);
+				o.put("height", e.height);
 				o.put("title", e.title);
 				o.put("artist", e.artist);
 				o.put("dur", e.durationMs);
