@@ -643,7 +643,12 @@ public final class YtDownloads {
 				YtStreamResolver.applyStreamHeaders(c, r.userAgent);
 				c.setRequestProperty("Range", "bytes=" + have + '-' + end);
 				int code = c.getResponseCode();
-				if ((code == 403) || (code == 410)) throw new ExpiredException();
+				if ((code == 403) || (code == 410)) {
+					// What the server said, for the diagnostic log (never the address: it carries tokens).
+					DiagnosticLog.log("YTDL", "stream HTTP " + code, "id=" + e.videoId,
+							"host=" + new URL(s.url).getHost(), "len=" + s.length, "from=" + have);
+					throw new ExpiredException();
+				}
 				// 200: the server ignored the range and sends it all, fine from the start.
 				if ((code != 206) && !((code == 200) && (have == 0))) {
 					throw new IOException("YouTube answered HTTP " + code);

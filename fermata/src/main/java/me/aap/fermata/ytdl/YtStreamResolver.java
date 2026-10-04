@@ -208,7 +208,8 @@ final class YtStreamResolver {
 				.put("clientName", c.name)
 				.put("clientVersion", c.version)
 				.put("hl", "en");
-		String vd = visitorData;
+		// Only for the other apps: the VR one was let through without it before, keep it as it was.
+		String vd = "ANDROID_VR".equals(c.name) ? null : visitorData;
 		if (vd != null) client.put("visitorData", vd);
 
 		JSONObject context = new JSONObject().put("client", client);
