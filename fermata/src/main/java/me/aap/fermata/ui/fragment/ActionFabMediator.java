@@ -172,9 +172,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 						addAction(a, fb, sb, Action.PLAYLIST_ADD, 1);
 						addAction(a, fb, sb, Action.OPEN_FAVORITES, 2);
 						addAction(a, fb, sb, Action.OPEN_PLAYLISTS, 3);
-						addAction(a, fb, sb, Action.OPEN_DOWNLOADS, 4);
-						addAction(a, fb, sb, Action.DOWNLOAD_CURRENT, 5);
-						addAction(a, fb, sb, Action.DOWNLOADS_PAUSE_RESUME, 6);
+						addAction(a, fb, sb, Action.DOWNLOAD_CURRENT, 4);
 					});
 			if (MusicPlayer.hasYoutube()) {
 				category(a, fb, b, R.id.fab_cat_youtube, R.drawable.search, R.string.fab_cat_youtube,

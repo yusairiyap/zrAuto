@@ -352,7 +352,9 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 															 @Nullable PresetReverb reverb, PlayableItem pi,
 															 PreferenceStore ctrlPrefs) {
 		LinearLayout channels = findViewById(R.id.equalizer_channels);
-		LayoutInflater inflater = LayoutInflater.from(getContext());
+		// In the screen's own palette: the rows' text colors are palette attributes, which a plain
+		// inflater's theme doesn't have (inflating them threw).
+		LayoutInflater inflater = EffectsUi.inflater(getContext());
 
 		if (eq != null) {
 			short[] range = eq.getBandLevelRange();

@@ -70,6 +70,8 @@ final class YtStreamResolver {
 							"\"osVersion\":\"18.3.2.22D82\""),
 	};
 
+	static final int CLIENT_COUNT = CLIENTS.length;
+
 	/** One downloadable stream. */
 	static final class Stream {
 		final String url;
@@ -98,6 +100,8 @@ final class YtStreamResolver {
 		Stream video;
 		/** What the streams' server expects to be told. */
 		String userAgent;
+		/** Which of the apps answered, an index into the list tried in order. */
+		int client;
 	}
 
 	/** YouTube refused to talk to us ("Sign in to confirm you're not a bot"): trying again soon won't help. */
@@ -111,13 +115,17 @@ final class YtStreamResolver {
 	 * @param wantVideo whether a picture is wanted as well
 	 * @param maxHeight the tallest picture to take (lines)
 	 */
-	static Result resolve(String videoId, boolean wantVideo, int maxHeight) throws IOException {
+	static Result resolve(String videoId, boolean wantVideo, int maxHeight, int firstClient)
+			throws IOException {
 		IOException first = null;
 		boolean blocked = false;
 
-		for (Client c : CLIENTS) {
+		for (int i = firstClient; i < CLIENTS.length; i++) {
+			Client c = CLIENTS[i];
 			try {
-				return resolve(c, videoId, wantVideo, maxHeight);
+				Result r = resolve(c, videoId, wantVideo, maxHeight);
+				r.client = i;
+				return r;
 			} catch (BlockedException ex) {
 				blocked = true;
 				if (first == null) first = ex;

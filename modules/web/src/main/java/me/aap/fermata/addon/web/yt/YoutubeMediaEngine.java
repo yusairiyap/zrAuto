@@ -47,6 +47,7 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.NetworkIssuePopup;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.ytdl.YtDownloadMenu;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.fermata.ytdl.YtOffline;
 import me.aap.utils.async.FutureSupplier;
@@ -265,11 +266,26 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		}
 	}
 
+	/**
+	 * The page is about to give way to a downloaded video's file: silence it and take down what it
+	 * left on screen -- its fullscreen view, the fade over a switch to the next video and its
+	 * spinner -- or they would sit over the file's picture.
+	 */
+	private void leavePageForLocal() {
+		web.pause();
+		clearStall();
+		switching = false;
+		YoutubeVideoView v = getFullScreenView();
+		if (v != null) v.hideTransitionOverlay();
+		FermataChromeClient chrome = web.getWebChromeClient();
+		if ((chrome != null) && chrome.isFullScreen()) chrome.onHideCustomView();
+	}
+
 	/** The page started a video that is on the phone: silence it, play the file. */
 	private void switchPageToDownload(String videoId) {
 		MainActivityDelegate a = MainActivityDelegate.get(web.getContext());
 		PlayableItem item = currentAsItem(a, videoId);
-		web.pause();
+		leavePageForLocal();
 		web.getPosition().main().onCompletion((pos, err) ->
 				YtOffline.switchToDownloaded(a, item, (pos == null) ? 0 : pos));
 	}
@@ -906,6 +922,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			// it replaces this engine, which is in the middle of being prepared.
 			Log.d("prepare(): playing the downloaded copy of ", queueVideoId);
 			web.getAddon().setQueueItem(source);
+			leavePageForLocal();
 			web.post(() -> YtOffline.tryPlayLocal(MainActivityDelegate.get(web.getContext()), source, 0));
 		} else if (queueVideoId != null) {
 			// Reached from MediaSessionCallback.skipTo()/engineEnded() when queueAwareNextPlayable()/
@@ -1236,6 +1253,18 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	public void contributeToPlaybackMenuEnd(OverlayMenu.Builder b) {
 		Context ctx = dynCtx(web.getContext());
 		Resources r = ctx.getResources();
+		// Download what's playing (asks what as), unless it's on the phone or on its way already.
+		String id = currentVideoId;
+		if ((id != null) && !YtDownloads.get().isDownloaded(id) && !YtDownloads.get().isActive(id)) {
+			b.addItem(me.aap.fermata.R.id.ytdl_download,
+					ResourcesCompat.getDrawable(r, me.aap.fermata.R.drawable.download, ctx.getTheme()),
+					r.getString(me.aap.fermata.R.string.ytdl_download)).setHandler(i -> {
+				MainActivityDelegate a = MainActivityDelegate.get(web.getContext());
+				// Posted: this menu is still closing.
+				web.post(() -> YtDownloadMenu.pickAndDownload(a, id, web.getAddon().getVideoTitle(id)));
+				return true;
+			});
+		}
 		b.addItem(me.aap.fermata.R.id.youtube_search,
 				ResourcesCompat.getDrawable(r, me.aap.fermata.R.drawable.search, ctx.getTheme()),
 				r.getString(me.aap.fermata.R.string.search)).setHandler(i -> {

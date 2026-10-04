@@ -78,6 +78,8 @@ public final class YtDownloads {
 		/** Downloaded so far, of {@link #total} (0 until the streams are known). */
 		public volatile long bytes;
 		public volatile long total;
+		/** The picture's actual height once known (a refused stream steps down to a lower one); 0 before. */
+		public volatile int gotHeight;
 		/** Bytes per second, smoothed; 0 when not downloading. */
 		public volatile long speed;
 		@Nullable
@@ -540,7 +542,7 @@ public final class YtDownloads {
 	/** The stream's address has expired (they last a few hours): ask YouTube for a new one. */
 	private static final class ExpiredException extends IOException {
 		ExpiredException() {
-			super("The stream address expired");
+			super("YouTube refused to send the video. Try a lower quality or try again later");
 		}
 	}
 
@@ -550,23 +552,41 @@ public final class YtDownloads {
 		File videoPart = new File(dir, e.videoId + ".video.part");
 		String outName = e.videoId + (e.video ? ".mp4" : ".m4a");
 
-		for (int expired = 0; ; expired++) {
+		int client = 0;
+		int height = e.height;
+
+		for (; ; ) {
 			checkStop();
-			YtStreamResolver.Result r = YtStreamResolver.resolve(e.videoId, e.video, e.height);
+			YtStreamResolver.Result r = YtStreamResolver.resolve(e.videoId, e.video, height, client);
 			if ((e.title == null) || e.title.isEmpty()) e.title = r.title;
 			if (e.artist == null) e.artist = r.author;
 			if (e.durationMs <= 0) e.durationMs = r.durationMs;
 			e.total = r.audio.length + ((r.video != null) ? r.video.length : 0);
+			e.gotHeight = (r.video != null) ? r.video.height : 0;
 			changed(true);
 
 			try {
 				fetch(e, r, r.audio, audioPart, 0);
 				if (r.video != null) fetch(e, r, r.video, videoPart, r.audio.length);
+				break;
 			} catch (ExpiredException ex) {
-				if (expired >= 2) throw ex;
-				continue;
+				DiagnosticLog.log("YTDL", "stream refused", "id=" + e.videoId, "client=" + r.client,
+						"height=" + e.gotHeight);
+				// What was fetched belongs to the stream that is being given up on.
+				audioPart.delete();
+				videoPart.delete();
+				e.bytes = 0;
+				// The next app first (they are let through differently); with none left, a lower
+				// picture, which is often fetchable when the high one isn't.
+				if (r.client + 1 < YtStreamResolver.CLIENT_COUNT) {
+					client = r.client + 1;
+				} else if (e.video && (lowerHeight(height) > 0)) {
+					height = lowerHeight(height);
+					client = 0;
+				} else {
+					throw ex;
+				}
 			}
-			break;
 		}
 
 		File out = new File(dir, outName);
@@ -584,6 +604,15 @@ public final class YtDownloads {
 			tmp.delete();
 		}
 		e.fileName = outName;
+	}
+
+	/** The next picture quality below {@code height}, or 0 if there is none. */
+	private static int lowerHeight(int height) {
+		int lower = 0;
+		for (int q : DownloadsAddon.QUALITIES) {
+			if (q < height) lower = q;
+		}
+		return lower;
 	}
 
 	private void checkStop() throws StopException {
@@ -748,6 +777,7 @@ public final class YtDownloads {
 				JSONObject o = a.getJSONObject(i);
 				Entry e = new Entry(o.getString("id"),
 						o.optInt("height", o.optBoolean("video") ? 480 : 0));
+				e.gotHeight = o.optInt("got");
 				e.title = o.optString("title", null);
 				e.artist = o.optString("artist", null);
 				e.durationMs = o.optLong("dur");
@@ -777,6 +807,7 @@ public final class YtDownloads {
 				o.put("id", e.videoId);
 				o.put("video", e.video);
 				o.put("height", e.height);
+				o.put("got", e.gotHeight);
 				o.put("title", e.title);
 				o.put("artist", e.artist);
 				o.put("dur", e.durationMs);

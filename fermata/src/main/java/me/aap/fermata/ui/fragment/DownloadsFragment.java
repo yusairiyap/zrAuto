@@ -521,7 +521,7 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 				StringBuilder sb = new StringBuilder();
 				if (e.durationMs > 0) sb.append(time(e.durationMs)).append(" • ");
 				sb.append(ctx.getString(e.video ? R.string.ytdl_kind_video : R.string.ytdl_kind_audio));
-				if (e.video && (e.height > 0)) sb.append(' ').append(e.height).append('p');
+				if (e.video) sb.append(' ').append(shownHeight(e)).append('p');
 				if (e.total > 0) sb.append(" • ").append(Formatter.formatShortFileSize(ctx, e.total));
 				h.subtitle.setText(sb);
 				h.card.setOnClickListener(v -> play(e.videoId));
@@ -530,6 +530,10 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 					return true;
 				});
 			}
+		}
+
+		private int shownHeight(Entry e) {
+			return (e.gotHeight > 0) ? e.gotHeight : e.height;
 		}
 
 		private String time(long ms) {
@@ -572,8 +576,14 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		}
 
 		private void setChip(TextView c, @DrawableRes int icon, @StringRes int text) {
+			Context ctx = c.getContext();
 			c.setVisibility(View.VISIBLE);
-			c.setText(text);
+			// Just the icon where the words would crowd the title out (a phone held upright).
+			boolean narrow = ctx.getResources().getConfiguration().screenWidthDp < 600;
+			c.setText(narrow ? "" : ctx.getString(text));
+			c.setContentDescription(ctx.getString(text));
+			c.setCompoundDrawablePadding(narrow ? 0 : dp(ctx, 6));
+			c.setPadding(dp(ctx, narrow ? 11 : 10), 0, dp(ctx, narrow ? 11 : 14), 0);
 			c.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, 0, 0, 0);
 			c.setCompoundDrawableTintList(ColorStateList.valueOf(pal.primary));
 		}
@@ -610,7 +620,7 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 
 			h.status.setText(status);
 			String kind = ctx.getString(e.video ? R.string.ytdl_kind_video : R.string.ytdl_kind_audio);
-			h.subtitle.setText(e.video ? (kind + ' ' + e.height + 'p') : kind);
+			h.subtitle.setText(e.video ? (kind + ' ' + shownHeight(e) + 'p') : kind);
 			h.pause.setImageResource(running ? R.drawable.pause : R.drawable.play);
 			h.pause.setContentDescription(ctx.getString(running ? R.string.ytdl_pause : R.string.ytdl_resume));
 			h.pause.setOnClickListener(v -> {

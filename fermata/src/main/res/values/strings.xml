@@ -873,7 +873,7 @@
     <string name="ytdl_view_grid">Grid view</string>
     <string name="ytdl_view_list">List view</string>
     <string name="action_open_downloads">Open downloads</string>
-    <string name="action_download_current">Download what is playing</string>
+    <string name="action_download_current">Download</string>
     <string name="action_downloads_pause_resume">Pause or resume downloads</string>
     <string name="ytdl_nothing_playing">Nothing from YouTube is playing</string>
     <string name="ytdl_channel">YouTube downloads</string>
