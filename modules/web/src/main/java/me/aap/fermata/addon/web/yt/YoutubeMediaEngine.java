@@ -47,6 +47,8 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.NetworkIssuePopup;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.ytdl.YtDownloads;
+import me.aap.fermata.ytdl.YtOffline;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.text.SharedTextBuilder;
@@ -179,6 +181,14 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 * an ordinary hiccup never gets there.
 	 */
 	private static final long STALL_MS = 10_000L;
+	/**
+	 * The same for an ad or a switch to the next video, which load on their own schedule and
+	 * shouldn't be blamed on the network right away.
+	 */
+	private static final long SWITCH_STALL_MS = 30_000L;
+	// An ad is on the page / the app asked for another video and it hasn't started yet.
+	private boolean adActive;
+	private boolean switching;
 	// When the page last reported buffering with no 'playing' since; 0 when not buffering.
 	private long waitingSince;
 	private final Runnable stallCheck = this::stallCheck;
@@ -225,10 +235,42 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	private void stallCheck() {
 		if ((waitingSince == 0) || (cb.getEngine() != this) || !cb.isPlaying()) return;
 		if (NetworkIssuePopup.isShown()) return;
-		DiagnosticLog.log("YT", "stalled", "id=" + currentVideoId,
-				"for=" + ((SystemClock.elapsedRealtime() - waitingSince) / 1000) + 's');
-		// No popup: the buffering spinner already says so, and a slow moment while the next video
-		// loads isn't worth interrupting the screen for.
+		long waited = SystemClock.elapsedRealtime() - waitingSince;
+		boolean loadingOther = adActive || switching || expectingPageNav ||
+				(web.getAddon().getPendingVideoId() != null);
+		// Loading the next video or an ad: only blamed on the network once it drags on.
+		if (loadingOther && (waited < SWITCH_STALL_MS)) {
+			web.postDelayed(stallCheck, SWITCH_STALL_MS - waited);
+			return;
+		}
+
+		DiagnosticLog.log("YT", "stalled", "id=" + currentVideoId, "for=" + (waited / 1000) + 's');
+		MainActivityDelegate a = MainActivityDelegate.get(web.getContext());
+		String id = currentVideoId;
+
+		// Downloaded: carries on from the file, from the very same spot -- no popup needed.
+		if ((id != null) && YtDownloads.get().isDownloaded(id)) {
+			PlayableItem item = currentAsItem(a, id);
+			web.getPosition().main().onCompletion((pos, err) -> {
+				if (cb.getEngine() != this) return;
+				YtOffline.switchToDownloaded(a, item, (pos == null) ? 0 : pos);
+			});
+			return;
+		}
+
+		boolean fullscreen = getFullScreenView() != null;
+		if (NetworkIssuePopup.isPlaybackScreen(a, fullscreen) ||
+				(a.getActiveFragment() instanceof YoutubeFragment)) {
+			NetworkIssuePopup.show(a, web::reload);
+		}
+	}
+
+	/** What's playing now as an item: its queue entry (so next/previous go on) when it is one. */
+	private PlayableItem currentAsItem(MainActivityDelegate a, String videoId) {
+		YoutubeAddon addon = web.getAddon();
+		PlayableItem q = addon.getQueueItem();
+		if (videoId.equals(YoutubeVideoItem.extractYoutubeVideoId(q))) return q;
+		return new YoutubeVideoItem(videoId, addon.getRootItem((DefaultMediaLib) a.getLib()));
 	}
 
 	/** Buffering is over (playing again, paused, stopped): no more stall to report. */
@@ -576,12 +618,14 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	/** The page-side ad detector (see {@link YoutubeWebView}) just started muting/skipping an ad. */
 	void adShowing() {
+		adActive = true;
 		YoutubeVideoView v = getFullScreenView();
 		if (v != null) v.showTransitionOverlay(true);
 	}
 
 	/** The page-side ad detector cleared -- either the ad ended or it was never really one. */
 	void adEnded() {
+		adActive = false;
 		YoutubeVideoView v = getFullScreenView();
 		if (v != null) v.hideTransitionOverlay();
 	}
@@ -592,6 +636,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 * indeterminate wait) until {@link #contentPlaying()} confirms the new video is actually up.
 	 */
 	private void transitioning() {
+		switching = true;
 		YoutubeVideoView v = getFullScreenView();
 		if (v != null) v.showTransitionOverlay(false);
 	}
@@ -602,6 +647,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 * {@link #adShowing()} is currently covering the screen; a no-op if neither is.
 	 */
 	void contentPlaying() {
+		switching = false;
 		YoutubeVideoView v = getFullScreenView();
 		if (v != null) v.hideTransitionOverlay();
 	}
@@ -839,6 +885,13 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			Log.d("prepare(): replaying ", queueVideoId, " (", source.getName(), ")");
 			web.getAddon().setQueueItem(source);
 			replayCurrent();
+		} else if ((queueVideoId != null) && YtOffline.useLocal(queueVideoId)) {
+			// The next entry is downloaded and there's no usable connection: it plays from its file
+			// (its resource points there, see YoutubeVideoItem#getResource()). Posted, since playing
+			// it replaces this engine, which is in the middle of being prepared.
+			Log.d("prepare(): playing the downloaded copy of ", queueVideoId);
+			web.getAddon().setQueueItem(source);
+			web.post(() -> YtOffline.tryPlayLocal(MainActivityDelegate.get(web.getContext()), source, 0));
 		} else if (queueVideoId != null) {
 			// Reached from MediaSessionCallback.skipTo()/engineEnded() when queueAwareNextPlayable()/
 			// PrevPlayable() below resolved a real sibling from the app's own Favorites/Playlist --

@@ -18,6 +18,9 @@ import me.aap.fermata.media.lib.ExtPlayable;
 import me.aap.fermata.media.lib.MediaLib.Item;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.BrowsableItemPrefs;
+import me.aap.fermata.media.pref.MediaPrefs;
+import me.aap.fermata.ytdl.YtDownloads;
+import me.aap.fermata.ytdl.YtOffline;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.text.SharedTextBuilder;
@@ -254,7 +257,15 @@ public class MusicTrackItem extends ExtPlayable {
 	@Override
 	public VirtualResource getResource() {
 		PlayableItem src = source;
-		return (src != null) ? src.getResource() : super.getResource();
+		if (src != null) return src.getResource();
+		// A downloaded YouTube video plays from its file -- no connection or data needed.
+		VirtualResource local = (videoId != null) ? YtOffline.getResource(videoId) : null;
+		return (local != null) ? local : super.getResource();
+	}
+
+	/** Whether this is a YouTube video that's on the phone, so it plays from the file. */
+	private boolean isDownloaded() {
+		return (videoId != null) && YtDownloads.get().isDownloaded(videoId);
 	}
 
 	@NonNull
@@ -286,6 +297,12 @@ public class MusicTrackItem extends ExtPlayable {
 	@Nullable
 	@Override
 	public MediaEngine getMediaEngine(@Nullable MediaEngine current, MediaEngine.Listener listener) {
+		if (isDownloaded()) {
+			// The usual engines play the file; the YouTube page's player, whose close() leaves it
+			// playing, has to be silenced by hand.
+			if ((current != null) && (current.getId() == MediaPrefs.MEDIA_ENG_YT)) current.pause();
+			return null;
+		}
 		return (videoId != null) ? MusicPlayer.getYoutubeEngine(this, current, listener) : null;
 	}
 

@@ -34,17 +34,17 @@ import me.aap.fermata.R;
 import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.ytdl.YtOffline;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.fragment.ActivityFragment;
 
 /**
- * A banner at the top of the playback screen saying streaming stopped because of the network --
+ * A card in the middle of the playback screen saying streaming stopped because of the network --
  * the connection dropped or is too slow to keep up -- rather than leaving the driver to guess why
- * it went quiet. The same banner as the data warning ({@code DataUsageAlerts}, same layout, place
- * and slide-in), right under the title bar, or at the very top over fullscreen video. Not a
+ * it went quiet. The same card as the data warning ({@code DataUsageAlerts}, same layout). Not a
  * dialog: nothing else is blocked, and it goes away by itself as soon as playback picks up again
- * ({@link #dismiss()}). Its one action plays the music queue's tracks stored on the phone when
- * there are any, else tries again; the X dismisses it.
+ * ({@link #dismiss()}). Its one action plays what's stored on the phone -- the music queue's local tracks, or the
+ * downloaded YouTube videos -- when there is any, else tries again; the X dismisses it.
  * <p>
  * Only over playback -- see {@link #isPlaybackScreen} -- never while the user is browsing.
  */
@@ -100,11 +100,13 @@ public final class NetworkIssuePopup {
 				ConstraintLayout.LayoutParams.MATCH_CONSTRAINT, ConstraintLayout.LayoutParams.WRAP_CONTENT);
 		lp.startToStart = ConstraintLayout.LayoutParams.PARENT_ID;
 		lp.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID;
-		// Under the title bar; at the very top when it's hidden (fullscreen video).
-		lp.topToBottom = R.id.tool_bar;
+		// In the middle of the screen: it's about the playback that stopped, so it's where the eyes are.
+		lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID;
+		lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID;
+		lp.verticalBias = 0.5f;
 		lp.matchConstraintMaxWidth = UiUtils.toIntPx(ctx, 600);
-		int m = UiUtils.toIntPx(ctx, 8);
-		lp.setMargins(m, m, m, 0);
+		int m = UiUtils.toIntPx(ctx, 16);
+		lp.setMargins(m, m, m, m);
 		b.setLayoutParams(lp);
 		b.setElevation(UiUtils.toIntPx(ctx, 26));
 
@@ -123,14 +125,17 @@ public final class NetworkIssuePopup {
 		text.setTextColor(fg);
 		text.setAlpha(0.85f);
 		text.setMaxLines(3);
-		text.setText(offlineTracks ? R.string.network_issue_message_offline_tracks :
-				R.string.network_issue_message);
+		boolean downloaded = YtOffline.hasDownloaded();
+		text.setText(downloaded ? R.string.network_issue_message_downloaded :
+				offlineTracks ? R.string.network_issue_message_offline_tracks :
+						R.string.network_issue_message);
 
 		TextView action = b.findViewById(R.id.data_usage_banner_action);
 		action.setBackgroundTintList(ColorStateList.valueOf(fg));
 		action.setTextColor(bg);
 		if (offlineTracks) {
-			action.setText(R.string.network_issue_play_offline);
+			action.setText(downloaded ? R.string.network_issue_play_downloaded :
+					R.string.network_issue_play_offline);
 			action.setOnClickListener(v -> {
 				dismiss();
 				MusicPlayer.playOfflineTrack(a);
@@ -153,7 +158,7 @@ public final class NetworkIssuePopup {
 
 		root.addView(b);
 		b.setAlpha(0f);
-		b.setTranslationY(-UiUtils.toIntPx(ctx, 48));
+		b.setTranslationY(UiUtils.toIntPx(ctx, 24));
 		b.setScaleX(0.96f);
 		b.setScaleY(0.96f);
 		b.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f).setDuration(420)

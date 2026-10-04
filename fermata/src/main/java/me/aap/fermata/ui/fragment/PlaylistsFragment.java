@@ -36,6 +36,7 @@ import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.spotify.SpotifyPlaylistSync;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.MediaItemMenuHandler;
+import me.aap.fermata.ytdl.YtDownloadMenu;
 import me.aap.fermata.ui.view.MediaItemListView;
 import me.aap.fermata.ui.view.MediaItemView;
 import me.aap.fermata.ui.view.MediaItemViewHolder;
@@ -88,6 +89,13 @@ public class PlaylistsFragment extends MediaLibFragment {
 		if (a.getListView().isSelectionActive() && a.hasSelected() &&
 				(a.getParent() instanceof Playlist)) {
 			addSelectionActions(b);
+		} else if (a.getParent() instanceof Playlist) {
+			// An open playlist, nothing selected: all of it.
+			List<PlayableItem> all = new ArrayList<>();
+			for (MediaItemWrapper w : a.getList()) {
+				if (w.getItem() instanceof PlayableItem pi) all.add(pi);
+			}
+			YtDownloadMenu.addTo(b, getMainActivity(), all);
 		}
 
 		b.addItem(R.id.spotify_import, R.drawable.playlist_import, R.string.spotify_import);
@@ -110,6 +118,7 @@ public class PlaylistsFragment extends MediaLibFragment {
 			return true;
 		});
 		getMainActivity().addPlaylistMenu(b, completed(a.getSelectedItems()));
+		YtDownloadMenu.addTo(b, getMainActivity(), a.getSelectedItems());
 		b.addItem(R.id.playlist_move, R.drawable.playlist_move, R.string.playlist_move_selected)
 				.setHandler(i -> {
 					getMainActivity().showMoveToPlaylistDialog(i.getMenu(), pl, a.getSelectedItems());

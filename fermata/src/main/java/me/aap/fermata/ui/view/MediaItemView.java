@@ -64,6 +64,7 @@ import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.PlayableItemPrefs;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.fragment.MediaLibFragment;
+import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.utils.app.App;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.async.Promise;
@@ -122,6 +123,9 @@ public class MediaItemView extends ConstraintLayout
 	private ProgressUpdater progressUpdater;
 	private VectorDrawableCompat watchedVideoDrawable;
 	private VectorDrawableCompat watchingVideoDrawable;
+	private VectorDrawableCompat downloadedDrawable;
+	/** A download finished or was removed: the "downloaded" badge may have to appear or go. */
+	private final YtDownloads.Listener downloadListener = () -> invalidate();
 	@DrawableRes
 	private int outlineRes = R.drawable.media_item_outline;
 	private VectorDrawableCompat archiveLabelDrawable;
@@ -521,6 +525,13 @@ public class MediaItemView extends ConstraintLayout
 	protected void onAttachedToWindow() {
 		attaching = true;
 		super.onAttachedToWindow();
+		YtDownloads.get().addListener(downloadListener);
+	}
+
+	@Override
+	protected void onDetachedFromWindow() {
+		YtDownloads.get().removeListener(downloadListener);
+		super.onDetachedFromWindow();
 	}
 
 	@Override
@@ -544,6 +555,7 @@ public class MediaItemView extends ConstraintLayout
 		super.onDrawForeground(canvas);
 		drawOutline(canvas);
 		Item item = getItem();
+		drawDownloadedBadge(canvas, item);
 		VectorDrawableCompat d;
 
 		if ((item instanceof ArchiveItem) && !((ArchiveItem) item).isExpired()) {
@@ -594,6 +606,45 @@ public class MediaItemView extends ConstraintLayout
 		radius = Math.max(badgeMinRadius, Math.min(radius, badgeMaxRadius));
 		float margin = radius * 0.85f;
 		float cx = r - margin - radius;
+		float cy = t + margin + radius;
+
+		Paint paint = getBadgePaint();
+		paint.setColor(BADGE_SHADOW_COLOR);
+		canvas.drawCircle(cx, cy + radius * 0.12f, radius * 1.1f, paint);
+		paint.setColor(BADGE_BG_COLOR);
+		canvas.drawCircle(cx, cy, radius, paint);
+
+		int inset = Math.round(radius * 0.5f);
+		d.setBounds(Math.round(cx - inset), Math.round(cy - inset), Math.round(cx + inset),
+				Math.round(cy + inset));
+		d.draw(canvas);
+	}
+
+	/**
+	 * A badge in the thumbnail's top-left corner on YouTube videos that are on the phone (see
+	 * YtDownloads), in the look of the watched badge in the opposite corner.
+	 */
+	private void drawDownloadedBadge(Canvas canvas, @Nullable Item item) {
+		if (!(item instanceof PlayableItem p)) return;
+		String id = YtDownloads.videoIdOf(p);
+		if ((id == null) || !YtDownloads.get().isDownloaded(id)) return;
+
+		VectorDrawableCompat d = downloadedDrawable;
+		if (d == null) {
+			d = downloadedDrawable = VectorDrawableCompat.create(getResources(), R.drawable.download_done, null);
+			if (d == null) return;
+			d.setTint(BADGE_ICON_COLOR);
+		}
+
+		ImageView i = getIcon();
+		int l = i.getLeft();
+		int t = i.getTop();
+		int r = i.getRight();
+		int b = i.getBottom();
+		float radius = Math.min(r - l, b - t) * BADGE_RADIUS_FRACTION;
+		radius = Math.max(badgeMinRadius, Math.min(radius, badgeMaxRadius));
+		float margin = radius * 0.85f;
+		float cx = l + margin + radius;
 		float cy = t + margin + radius;
 
 		Paint paint = getBadgePaint();

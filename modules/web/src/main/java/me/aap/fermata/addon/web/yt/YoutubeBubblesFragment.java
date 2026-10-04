@@ -545,6 +545,7 @@ public class YoutubeBubblesFragment extends MainActivityFragment
 					return true;
 				});
 			}
+			YoutubeVideoActions.addTo(getActivityDelegate(), b, video.id, video.title);
 		});
 	}
 

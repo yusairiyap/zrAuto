@@ -21,6 +21,8 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.ytdl.YtDownloads;
+import me.aap.fermata.ytdl.YtOffline;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.fragment.ActivityFragment;
@@ -363,14 +365,20 @@ public final class MusicPlayer {
 		int start = (cur == null) ? -1 : order.indexOf(cur);
 		for (int i = 1, n = order.size(); i <= n; i++) {
 			MusicTrackItem t = order.get(Math.floorMod(start + i, n));
-			if ((t.getVideoId() == null) && !t.equals(cur)) return t;
+			if (((t.getVideoId() == null) || YtDownloads.get().isDownloaded(t.getVideoId())) &&
+					!t.equals(cur)) {
+				return t;
+			}
 		}
 		return null;
 	}
 
-	/** Whether the music queue has a track that plays without the internet. */
+	/**
+	 * Whether something plays without the internet: a queue track, or any downloaded YouTube
+	 * video (see {@link #playOfflineTrack}).
+	 */
 	public static boolean hasOfflineTrack(MainActivityDelegate a) {
-		return nextOfflineTrack(a) != null;
+		return (nextOfflineTrack(a) != null) || YtOffline.hasDownloaded();
 	}
 
 	/**
@@ -379,7 +387,8 @@ public final class MusicPlayer {
 	 */
 	public static boolean playOfflineTrack(MainActivityDelegate a) {
 		MusicTrackItem t = nextOfflineTrack(a);
-		if (t == null) return false;
+		// Nothing offline in the queue: everything that was downloaded becomes the queue.
+		if (t == null) return YtOffline.playAllDownloaded(a);
 		DiagnosticLog.log(TAG, "network lost: playing an offline track", "track=" + t);
 		playTrack(a, t, 0);
 		return true;

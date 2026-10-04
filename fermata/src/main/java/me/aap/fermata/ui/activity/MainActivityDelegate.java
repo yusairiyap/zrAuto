@@ -158,6 +158,7 @@ import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.media.service.MediaSessionCallbackAssistant;
 import me.aap.fermata.media.service.PlaybackResume;
+import me.aap.fermata.ytdl.YtOffline;
 import me.aap.fermata.spotify.SpotifyAuth;
 import me.aap.fermata.ui.fragment.AudioEffectsFragment;
 import me.aap.fermata.ui.fragment.DiagnosticLogFragment;
@@ -320,6 +321,8 @@ public class MainActivityDelegate extends ActivityDelegate
 	 */
 	public boolean playExternally(MediaLib.ExternallyPlayableItem ext, PlayableItem self) {
 		MainActivityDelegate p = getPlaybackDelegate();
+		// Downloaded, and no (usable) connection: plays from the file instead of the page.
+		if (YtOffline.tryPlayLocal(p, self, 0)) return true;
 		ActivityFragment f = p.showFragment(ext.getPlayerFragmentId());
 		if (f == null) return false;
 		ext.loadInFragment(f, self);
@@ -582,6 +585,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			return true;
 		}
 		if (i instanceof MediaLib.ExternallyPlayableItem ext) {
+			if (YtOffline.tryPlayLocal(this, ext, pos)) return true;
 			String origId = ext.getOrigId();
 			if (origId != null) PlaybackResume.set(origId, pos, false);
 			ActivityFragment f = showFragment(ext.getPlayerFragmentId());

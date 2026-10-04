@@ -874,6 +874,11 @@
             android:foregroundServiceType="dataSync" />
 
         <service
+            android:name="me.aap.fermata.ytdl.YtDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <service
             android:name="me.aap.fermata.service.SpeechRecognitionService"
             android:exported="false"
             android:permission="android.permission.BIND_VOICE_INTERACTION">

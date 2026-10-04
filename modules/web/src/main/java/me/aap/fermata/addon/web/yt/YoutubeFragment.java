@@ -1194,6 +1194,8 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 				queueVideo(videoId, title, false);
 				return true;
 			});
+			// Add to favorites / playlist and the downloads, same as in the lists.
+			YoutubeVideoActions.addTo(MainActivityDelegate.get(ctx), b, videoId, title);
 		});
 	}
 
