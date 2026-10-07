@@ -1,6 +1,12 @@
 package me.aap.fermata.ytdl;
 
 import android.content.Context;
+import android.content.res.ColorStateList;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.widget.ImageButton;
+import android.widget.ImageView;
+import android.widget.TextView;
 
 import androidx.annotation.Nullable;
 
@@ -15,6 +21,7 @@ import me.aap.fermata.action.Action;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.DownloadPicker;
+import me.aap.fermata.ui.view.TopPopup;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.menu.OverlayMenu;
 
@@ -111,7 +118,7 @@ public final class YtDownloadMenu {
 			for (Map.Entry<String, String> e : videos.entrySet()) {
 				list.add(new YtDownloads.Request(e.getKey(), e.getValue(), height));
 			}
-			queued(ctx, YtDownloads.get().enqueue(list));
+			queued(a, YtDownloads.get().enqueue(list));
 		});
 	}
 
@@ -174,8 +181,50 @@ public final class YtDownloadMenu {
 		else d.resumeAll();
 	}
 
-	private static void queued(Context ctx, int n) {
-		if (n > 0) UiUtils.showToast(ctx, R.string.ytdl_queued, n);
-		else UiUtils.showToast(ctx, R.string.ytdl_nothing_queued);
+	/**
+	 * Says what was queued: a card at the top of the screen (like the other popups) that goes to the
+	 * Downloads tab, rather than a toast that is gone before it can be acted on.
+	 */
+	private static void queued(MainActivityDelegate a, int n) {
+		Context ctx = a.getContext();
+		if (n <= 0) {
+			UiUtils.showToast(ctx, R.string.ytdl_nothing_queued);
+			return;
+		}
+
+		int bg = 0xFF263238;
+		int fg = 0xFFFFFFFF;
+		View b = LayoutInflater.from(ctx).inflate(R.layout.data_usage_banner, null, false);
+		b.setElevation(UiUtils.toIntPx(ctx, 8));
+		b.setBackgroundTintList(ColorStateList.valueOf(bg));
+		ImageView icon = b.findViewById(R.id.data_usage_banner_icon);
+		icon.setImageResource(R.drawable.download);
+		icon.setImageTintList(ColorStateList.valueOf(bg));
+		icon.setBackgroundTintList(ColorStateList.valueOf(fg));
+		TextView title = b.findViewById(R.id.data_usage_banner_title);
+		title.setTextColor(fg);
+		title.setText(ctx.getString(R.string.ytdl_queued, n));
+		TextView text = b.findViewById(R.id.data_usage_banner_text);
+		text.setTextColor(fg);
+		text.setAlpha(0.85f);
+		text.setText(R.string.ytdl_queued_hint);
+		TextView action = b.findViewById(R.id.data_usage_banner_action);
+		action.setBackgroundTintList(ColorStateList.valueOf(fg));
+		action.setTextColor(bg);
+		action.setText(R.string.ytdl_title);
+		action.setOnClickListener(v -> {
+			TopPopup.dismiss(b);
+			a.showFragment(R.id.downloads_addon);
+		});
+		ImageButton close = b.findViewById(R.id.data_usage_banner_close);
+		close.setImageResource(me.aap.utils.R.drawable.close);
+		close.setImageTintList(ColorStateList.valueOf(fg));
+		close.setOnClickListener(v -> TopPopup.dismiss(b));
+
+		if (TopPopup.show(a, b, null)) {
+			b.postDelayed(() -> TopPopup.dismiss(b), 6000);
+		} else {
+			UiUtils.showToast(ctx, R.string.ytdl_queued, n);
+		}
 	}
 }

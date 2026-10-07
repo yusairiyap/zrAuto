@@ -305,6 +305,17 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		return (eng == null) ? null : eng.getSource();
 	}
 
+	/** What was restored paused at the start (the last played item), not played yet; else null. */
+	@Nullable
+	public PlayableItem getResumeItem() {
+		return (getEngine() == null) ? resumeItem : null;
+	}
+
+	/** Where {@link #getResumeItem()} was left off. */
+	public long getResumePosition() {
+		return resumePos;
+	}
+
 	public MediaSessionCompat getSession() {
 		return session;
 	}
@@ -774,9 +785,36 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onSkipToPrevious() {
+		skipWithFade(false);
+	}
+
+	// A skip is waiting for the sound to fade out -- see skipWithFade().
+	// (until when -- a fade that gets cancelled never calls back, and must not leave the buttons dead)
+	private long skipFadingUntil;
+
+	/**
+	 * Next/previous: the sound fades out first (as YouTube's does, see MediaEngine#fadeOut), then the
+	 * next item starts and fades in. A second press during the fade is the same skip, not another.
+	 */
+	private void skipWithFade(boolean next) {
+		if (SystemClock.uptimeMillis() < skipFadingUntil) return;
 		clearRepeatOneOnSkip();
 		playerTask.cancel();
-		playerTask = skipTo(false, false);
+		MediaEngine eng = getEngine();
+
+		if ((eng == null) || !isPlaying()) {
+			playerTask = skipTo(next, false);
+			return;
+		}
+
+		skipFadingUntil = SystemClock.uptimeMillis() + 700;
+		eng.fadeOut(() -> {
+			skipFadingUntil = 0;
+			// Whatever took over while it faded (a stop, another item) wins.
+			if (getEngine() != eng) return;
+			playerTask.cancel();
+			playerTask = skipTo(next, false);
+		});
 	}
 
 	/**
@@ -806,9 +844,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onSkipToNext() {
-		clearRepeatOneOnSkip();
-		playerTask.cancel();
-		playerTask = skipTo(true, false);
+		skipWithFade(true);
 	}
 
 	public void onSkipToNextFolder() {

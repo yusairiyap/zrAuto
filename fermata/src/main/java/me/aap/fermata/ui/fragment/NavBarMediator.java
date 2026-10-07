@@ -241,7 +241,7 @@ public class NavBarMediator extends PrefNavBarMediator
 	@Override
 	public void itemReselected(View item, int id, ActivityDelegate a) {
 		BodyLayout b = ((MainActivityDelegate) a).getBody();
-		if (b.isVideoMode()) b.setMode(BodyLayout.Mode.BOTH);
+		if (b.isVideoMode()) b.setMode(BodyLayout.Mode.FRAME);
 		else super.itemReselected(item, id, a);
 	}
 

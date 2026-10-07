@@ -618,16 +618,7 @@ public class VideoView extends FrameLayout
 
 	@Override
 	public View focusSearch(View focused, int direction) {
-		MainActivityDelegate a = getActivity().peek();
-		if ((a == null) || !a.getBody().isBothMode()) return focused;
-
-		if (direction == FOCUS_LEFT) {
-			return MediaItemListView.focusSearchActive(getContext(), focused);
-		} else if (direction == FOCUS_RIGHT) {
-			NavBarView n = a.getNavBar();
-			if (n.isRight()) return n.focusSearch();
-		}
-
+		// Fullscreen: nothing else to move the focus to.
 		return focused;
 	}
 

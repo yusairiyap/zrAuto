@@ -233,13 +233,13 @@ public class MusicTrackItem extends ExtPlayable {
 	}
 
 	/**
-	 * A downloaded video played from its file shows its picture while the player is in video mode
-	 * (see {@link MusicPlayer#isYoutubeAudioMode()}), like the YouTube player does; everything else
+	 * A downloaded video played from its file shows its picture while the player is being watched
+	 * (see {@link MusicPlayer#isWatchingLocal()}), like the YouTube player does; everything else
 	 * in the Music tab is sound only.
 	 */
 	@Override
 	public boolean isVideo() {
-		return (videoId != null) && hasDownloadedVideo() && !MusicPlayer.isYoutubeAudioMode();
+		return (videoId != null) && MusicPlayer.isWatchingLocal() && hasDownloadedVideo();
 	}
 
 	@Override

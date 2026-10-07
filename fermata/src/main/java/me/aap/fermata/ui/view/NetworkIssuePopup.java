@@ -28,8 +28,6 @@ import androidx.annotation.StringRes;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.content.ContextCompat;
 
-import java.lang.ref.WeakReference;
-
 import me.aap.fermata.R;
 import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -39,7 +37,7 @@ import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.fragment.ActivityFragment;
 
 /**
- * A card in the middle of the playback screen saying streaming stopped because of the network --
+ * A card at the top of the screen (see {@link TopPopup}) saying streaming stopped because of the network --
  * the connection dropped or is too slow to keep up -- rather than leaving the driver to guess why
  * it went quiet. The same card as the data warning ({@code DataUsageAlerts}, same layout). Not a
  * dialog: nothing else is blocked, and it goes away by itself as soon as playback picks up again
@@ -49,8 +47,6 @@ import me.aap.utils.ui.fragment.ActivityFragment;
  * Only over playback -- see {@link #isPlaybackScreen} -- never while the user is browsing.
  */
 public final class NetworkIssuePopup {
-	private static WeakReference<View> shown = new WeakReference<>(null);
-
 	private NetworkIssuePopup() {
 	}
 
@@ -85,30 +81,14 @@ public final class NetworkIssuePopup {
 	 * @param retry what "Try again" does
 	 */
 	public static void show(MainActivityDelegate a, @Nullable Runnable retry) {
-		dismiss();
-		View main = a.findViewById(R.id.main_activity);
-		if (!(main instanceof ConstraintLayout root)) return;
-
-		Context ctx = root.getContext();
+		Context ctx = a.getContext();
 		boolean online = isOnline(ctx);
 		boolean offlineTracks = MusicPlayer.hasOfflineTrack(a);
 		DiagnosticLog.log("NETWORK", online ? "playback stalled (slow network)" :
 				"playback stalled (no connection)", "offlineTracks=" + offlineTracks);
 
-		View b = LayoutInflater.from(ctx).inflate(R.layout.data_usage_banner, root, false);
-		ConstraintLayout.LayoutParams lp = new ConstraintLayout.LayoutParams(
-				ConstraintLayout.LayoutParams.MATCH_CONSTRAINT, ConstraintLayout.LayoutParams.WRAP_CONTENT);
-		lp.startToStart = ConstraintLayout.LayoutParams.PARENT_ID;
-		lp.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID;
-		// In the middle of the screen: it's about the playback that stopped, so it's where the eyes are.
-		lp.topToTop = ConstraintLayout.LayoutParams.PARENT_ID;
-		lp.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID;
-		lp.verticalBias = 0.5f;
-		lp.matchConstraintMaxWidth = UiUtils.toIntPx(ctx, 600);
-		int m = UiUtils.toIntPx(ctx, 16);
-		lp.setMargins(m, m, m, m);
-		b.setLayoutParams(lp);
-		b.setElevation(UiUtils.toIntPx(ctx, 26));
+		View b = LayoutInflater.from(ctx).inflate(R.layout.data_usage_banner, null, false);
+		b.setElevation(UiUtils.toIntPx(ctx, 8));
 
 		// Offline: the limit's red, as serious as it gets; slow: the warning's amber.
 		int bg = ContextCompat.getColor(ctx, online ? R.color.data_usage_warning : R.color.data_usage_limit);
@@ -156,30 +136,16 @@ public final class NetworkIssuePopup {
 		close.setContentDescription(ctx.getString(R.string.network_issue_dismiss));
 		close.setOnClickListener(v -> dismiss());
 
-		root.addView(b);
-		b.setAlpha(0f);
-		b.setTranslationY(UiUtils.toIntPx(ctx, 24));
-		b.setScaleX(0.96f);
-		b.setScaleY(0.96f);
-		b.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f).setDuration(420)
-				.setInterpolator(new OvershootInterpolator(1.4f)).start();
-		shown = new WeakReference<>(b);
+		TopPopup.show(a, b, null);
 	}
 
 	/** Takes the banner down, if it's up -- playback carried on, or the user dismissed it. */
 	public static void dismiss() {
-		View v = shown.get();
-		shown = new WeakReference<>(null);
-		if ((v == null) || !(v.getParent() instanceof ViewGroup g)) return;
-		v.animate().cancel();
-		v.animate().alpha(0f).translationY(-UiUtils.toIntPx(v.getContext(), 32)).setDuration(220)
-				.setInterpolator(new DecelerateInterpolator()).withEndAction(() -> g.removeView(v))
-				.start();
+		TopPopup.dismiss();
 	}
 
 	public static boolean isShown() {
-		View v = shown.get();
-		return (v != null) && (v.getParent() != null);
+		return TopPopup.isShown();
 	}
 
 	/** A pill-shaped chip with an icon; {@code primary} is filled, the others outlined. */

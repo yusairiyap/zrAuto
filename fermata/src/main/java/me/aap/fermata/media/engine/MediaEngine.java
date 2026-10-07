@@ -119,6 +119,14 @@ public interface MediaEngine extends Closeable {
 	}
 
 	/**
+	 * Fades the sound out, then runs {@code then} -- what a skip to the next or previous item does
+	 * first, as the YouTube player's does. An engine that can't fade (or isn't playing) runs it at once.
+	 */
+	default void fadeOut(Runnable then) {
+		then.run();
+	}
+
+	/**
 	 * A downloaded video's file is about to play in another engine in place of this one: stops this
 	 * one and takes down whatever it left on screen. The web-hosted YouTube player, whose close() is
 	 * deliberately inert, also clears its fullscreen view and loading cover.
@@ -349,10 +357,6 @@ public interface MediaEngine extends Closeable {
 	default boolean isVideoModeRequired() {
 		PlayableItem src = getSource();
 		return (src != null) && src.isVideo();
-	}
-
-	default boolean isSplitModeSupported() {
-		return true;
 	}
 
 	default boolean setSurfaceSize(VideoView view) {

@@ -1443,11 +1443,6 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		return false;
 	}
 
-	@Override
-	public boolean isSplitModeSupported() {
-		return false;
-	}
-
 	static boolean isYoutubeItem(MediaLib.Item i) {
 		return (i instanceof YoutubeItem);
 	}

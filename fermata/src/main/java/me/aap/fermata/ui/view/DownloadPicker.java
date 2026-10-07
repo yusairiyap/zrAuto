@@ -164,31 +164,8 @@ public final class DownloadPicker {
 		card.setElevation(dp(12));
 		card.addView(root, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 
-		int hostW = host.getWidth();
-		int hostH = host.getHeight();
-		View body = a.getBody();
-		int[] side = new int[2];
-		int[] bl = new int[2];
-		int[] hl = new int[2];
-		int top = 0;
-		int bottom = 0;
-		if ((body != null) && body.isAttachedToWindow()) {
-			a.computeSideInsets(body, side);
-			body.getLocationInWindow(bl);
-			host.getLocationInWindow(hl);
-			side[0] += Math.max(0, bl[0] - hl[0]);
-			side[1] += Math.max(0, (hl[0] + hostW) - (bl[0] + body.getWidth()));
-			top = Math.max(0, bl[1] - hl[1]);
-			bottom = Math.max(0, (hl[1] + hostH) - (bl[1] + body.getHeight()));
-		}
-		int w = Math.min(dp(420), hostW - dp(32) - side[0] - side[1]);
 		int rowsH = dp(10 + 26 + 10 + 46 + 32) + (1 + DownloadsAddon.QUALITIES.length) * dp(72);
-		int h = Math.min(rowsH, Math.round((hostH - top - bottom) * 0.86f));
-		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, h, Gravity.CENTER);
-		lp.leftMargin = side[0];
-		lp.rightMargin = side[1];
-		lp.topMargin = top;
-		lp.bottomMargin = bottom;
+		FrameLayout.LayoutParams lp = OverlayCard.params(a, host, rowsH);
 		overlay.addView(card, lp);
 		host.addView(overlay, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 

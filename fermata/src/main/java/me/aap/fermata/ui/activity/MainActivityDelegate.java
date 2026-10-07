@@ -96,6 +96,7 @@ import android.view.animation.Interpolator;
 import android.view.ViewPropertyAnimator;
 import android.view.ViewTreeObserver;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 
 import androidx.annotation.LayoutRes;
@@ -107,7 +108,6 @@ import androidx.appcompat.widget.LinearLayoutCompat;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
-import androidx.core.widget.ContentLoadingProgressBar;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
 
@@ -166,6 +166,7 @@ import me.aap.fermata.ui.fragment.FavoritesFragment;
 import me.aap.fermata.ui.fragment.FoldersFragment;
 import me.aap.fermata.ui.fragment.MainActivityFragment;
 import me.aap.fermata.ui.fragment.MediaLibFragment;
+import me.aap.fermata.ui.fragment.MusicPlayerFragment;
 import me.aap.fermata.ui.fragment.NavBarMediator;
 import me.aap.fermata.ui.fragment.PlaylistsFragment;
 import me.aap.fermata.ui.fragment.SettingsFragment;
@@ -176,6 +177,7 @@ import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.ui.view.DownloadPicker;
 import me.aap.fermata.ui.view.FermataNavBarView;
+import me.aap.fermata.ui.view.LoadingCircleView;
 import me.aap.fermata.ui.view.PlaylistPicker;
 import me.aap.fermata.ui.view.ToolBarPill;
 import me.aap.fermata.ui.view.QuaternaryFloatingButton;
@@ -246,7 +248,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	private QuaternaryFloatingButton floatingButton4;
 	private QuinaryFloatingButton floatingButton5;
 	private SenaryFloatingButton floatingButton6;
-	private ContentLoadingProgressBar progressBar;
+	private LoadingCircleView progressBar;
 	// See setOverlaysSuppressed().
 	private boolean loadingSuppressed;
 	private FutureSupplier<?> contentLoading;
@@ -592,7 +594,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			// From a video on screen (a downloaded one) to a streamed one: through black, so the
 			// watch page loading is never seen -- lifted once the video plays (see
 			// YoutubeMediaEngine#playing).
-			if (isVideoMode()) fadeToBlackForVideo();
+			if (isVideoMode()) fadeToBlackForYoutube();
 			ActivityFragment f = showFragment(ext.getPlayerFragmentId());
 			if (f == null) return false;
 			ext.loadInFragment(f, ext);
@@ -818,8 +820,8 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	/**
 	 * Toggles the system status/navigation bars <em>and</em> the app's own tool/nav bar visible or
-	 * hidden during active video playback, without leaving {@link BodyLayout.Mode#VIDEO}/
-	 * {@link BodyLayout.Mode#BOTH} -- the local-video equivalent of a WebView-hosted player's
+	 * hidden during active video playback, without leaving {@link BodyLayout.Mode#VIDEO}
+	 * -- the local-video equivalent of a WebView-hosted player's
 	 * {@link VideoView#toggleNativeFullscreen()}, used as
 	 * {@link me.aap.fermata.action.Action#FULLSCREEN_TOGGLE}'s fallback when there's no such native
 	 * handler to defer to (so this never runs for YouTube, whose own fullscreen chrome/behavior is
@@ -1040,8 +1042,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			this.videoMode = true;
 			cancelVideoExitFade();
 			// Came from the Music tab's Video: lift the black now that the video is taking over.
-			ColorDrawable sf = videoSwitchFade;
-			if (sf != null) getHandler().postDelayed(() -> releaseVideoSwitchFade(sf), 150);
+			if (coverIntoVideo) liftVideoSwitchFadeSoon();
 			setSystemUiVisibility();
 			keepScreenOn(true);
 			cp.enableVideoMode();
@@ -1415,8 +1416,58 @@ public class MainActivityDelegate extends ActivityDelegate
 		return true;
 	}
 
+	// The black that covers the whole window while the screen changes between fullscreen video and
+	// the rest of the app (or into the YouTube page): one view at a time, whose generation says whether
+	// what is still to happen to it (its fade, its failsafe removal) is for it or for an older one.
 	@Nullable
-	private ColorDrawable videoExitFade;
+	private View windowCover;
+	private int windowCoverGen;
+	// Whether the cover is the one on the way into a video (lifted when the video is up).
+	private boolean coverIntoVideo;
+
+	private View newWindowCover(boolean spinner) {
+		removeWindowCover();
+		Context ctx = getContext();
+		FrameLayout f = new FrameLayout(ctx);
+		f.setBackgroundColor(Color.BLACK);
+		f.setClickable(false);
+		f.setFocusable(false);
+		// Above everything the screen shows, the elevated bars and the floating buttons included.
+		f.setElevation(toIntPx(ctx, 200));
+		if (spinner) {
+			LoadingCircleView c = new LoadingCircleView(ctx);
+			f.addView(c, new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER));
+			// After a moment: a switch that is quick never shows it.
+			f.postDelayed(() -> c.setLoading(true), 300);
+		}
+		getAppActivity().addContentView(f, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		windowCover = f;
+		return f;
+	}
+
+	private void removeWindowCover() {
+		View c = windowCover;
+		windowCover = null;
+		windowCoverGen++;
+		coverIntoVideo = false;
+		if (c == null) return;
+		c.animate().cancel();
+		if (c.getParent() instanceof ViewGroup p) p.removeView(c);
+	}
+
+	/** Fades the cover out and takes it away; whatever else happens, it is gone after {@code failsafe}. */
+	private void fadeOutWindowCover(View c, long startDelay) {
+		int gen = windowCoverGen;
+		c.animate().cancel();
+		c.animate().alpha(0f).setStartDelay(startDelay).setDuration(320)
+				.setInterpolator(new PathInterpolator(0.4f, 0f, 0.2f, 1f))
+				.withEndAction(() -> {
+					if (gen == windowCoverGen) removeWindowCover();
+				}).start();
+		c.postDelayed(() -> {
+			if (gen == windowCoverGen) removeWindowCover();
+		}, startDelay + 1000);
+	}
 
 	/**
 	 * Leaving fullscreen video relayouts the whole screen at once (bars back, the video pane
@@ -1428,17 +1479,12 @@ public class MainActivityDelegate extends ActivityDelegate
 	private void fadeInFromVideo() {
 		View decor = getWindow().getDecorView();
 		if (!decor.isLaidOut() || (decor.getWidth() == 0)) return;
-		ColorDrawable prev = videoExitFade;
-		if (prev != null) decor.getOverlay().remove(prev);
-
-		ColorDrawable d = new ColorDrawable(Color.BLACK);
-		d.setBounds(0, 0, decor.getWidth(), decor.getHeight());
-		decor.getOverlay().add(d);
-		fadeOutOverlay(decor, d, 255, 120);
+		// Already covered on the way into another video (YouTube's, from a downloaded one): that
+		// cover is lifted when the video is up, not now.
+		if (coverIntoVideo && (windowCover != null)) return;
+		View c = newWindowCover(false);
+		fadeOutWindowCover(c, 120);
 	}
-
-	@Nullable
-	private ColorDrawable videoSwitchFade;
 
 	/**
 	 * The other way round from {@link #fadeInFromVideo()}: switching from the Music tab to its
@@ -1448,31 +1494,30 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * jumps. Lifts by itself after a moment should the video not show up.
 	 */
 	public void fadeToBlackForVideo() {
+		fadeToBlack(false);
+	}
+
+	/**
+	 * Same, into a YouTube video from another screen (a downloaded video, say): the black also
+	 * carries the loading circle if the page takes a moment, and is lifted by the video playing (see
+	 * {@link #liftVideoSwitchFade()}) -- so the watch page loading is never seen.
+	 */
+	public void fadeToBlackForYoutube() {
+		fadeToBlack(true);
+	}
+
+	private void fadeToBlack(boolean spinner) {
 		View decor = getWindow().getDecorView();
 		if (!decor.isLaidOut() || (decor.getWidth() == 0)) return;
-		cancelVideoExitFade();
-		ColorDrawable prev = videoSwitchFade;
-		if (prev != null) decor.getOverlay().remove(prev);
-
-		ColorDrawable d = new ColorDrawable(Color.BLACK);
-		d.setBounds(0, 0, decor.getWidth(), decor.getHeight());
-		d.setAlpha(0);
-		videoSwitchFade = d;
-		decor.getOverlay().add(d);
-
-		ValueAnimator anim = ValueAnimator.ofInt(0, 255);
-		anim.setDuration(200);
-		anim.setInterpolator(new PathInterpolator(0.4f, 0f, 0.2f, 1f));
-		anim.addUpdateListener(v -> {
-			if (videoSwitchFade != d) {
-				v.cancel();
-				return;
-			}
-			d.setAlpha((int) v.getAnimatedValue());
-			decor.invalidate();
-		});
-		anim.start();
-		getHandler().postDelayed(() -> releaseVideoSwitchFade(d), 2000);
+		View c = newWindowCover(spinner);
+		coverIntoVideo = true;
+		int gen = windowCoverGen;
+		c.setAlpha(0f);
+		c.animate().alpha(1f).setDuration(200).setInterpolator(new PathInterpolator(0.4f, 0f, 0.2f, 1f))
+				.start();
+		getHandler().postDelayed(() -> {
+			if ((gen == windowCoverGen) && (windowCover != null)) fadeOutWindowCover(windowCover, 0);
+		}, spinner ? 8000 : 2000);
 	}
 
 	/**
@@ -1480,47 +1525,26 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * out (shortly after, once it has had a moment to draw). A no-op when there's no such black.
 	 */
 	public void liftVideoSwitchFade() {
-		ColorDrawable d = videoSwitchFade;
-		if (d != null) getHandler().postDelayed(() -> releaseVideoSwitchFade(d), 250);
+		View c = windowCover;
+		if ((c == null) || !coverIntoVideo) return;
+		int gen = windowCoverGen;
+		getHandler().postDelayed(() -> {
+			if ((gen == windowCoverGen) && (windowCover != null)) fadeOutWindowCover(windowCover, 0);
+		}, 250);
 	}
 
-	private void releaseVideoSwitchFade(ColorDrawable d) {
-		if (videoSwitchFade != d) return;
-		videoSwitchFade = null;
-		fadeOutOverlay(getWindow().getDecorView(), d, d.getAlpha(), 0);
-	}
-
-	/** Fades {@code d}, already on the window's overlay, out from {@code from} and removes it. */
-	private void fadeOutOverlay(View decor, ColorDrawable d, int from, long delay) {
-		videoExitFade = d;
-		ValueAnimator anim = ValueAnimator.ofInt(from, 0);
-		anim.setStartDelay(delay);
-		anim.setDuration(320);
-		anim.setInterpolator(new PathInterpolator(0.4f, 0f, 0.2f, 1f));
-		anim.addUpdateListener(v -> {
-			if (videoExitFade != d) {
-				v.cancel();
-				return;
-			}
-			d.setAlpha((int) v.getAnimatedValue());
-			decor.invalidate();
-		});
-		anim.addListener(new AnimatorListenerAdapter() {
-			@Override
-			public void onAnimationEnd(Animator animation) {
-				decor.getOverlay().remove(d);
-				if (videoExitFade == d) videoExitFade = null;
-			}
-		});
-		anim.start();
+	private void liftVideoSwitchFadeSoon() {
+		View c = windowCover;
+		if (c == null) return;
+		int gen = windowCoverGen;
+		getHandler().postDelayed(() -> {
+			if ((gen == windowCoverGen) && (windowCover != null)) fadeOutWindowCover(windowCover, 0);
+		}, 150);
 	}
 
 	/** Back into video before the exit fade finished: drop it, it'd only dim the new video. */
 	private void cancelVideoExitFade() {
-		ColorDrawable d = videoExitFade;
-		if (d == null) return;
-		videoExitFade = null;
-		getWindow().getDecorView().getOverlay().remove(d);
+		if (!coverIntoVideo) removeWindowCover();
 	}
 
 	/**
@@ -1760,9 +1784,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * overlaps {@code content}'s own on-screen bounds, with clipToPadding off, so rows already at
 	 * rest show inset from the bars but can still scroll fully into view. Computed from actual
 	 * screen position rather than assuming {@code content} always starts at the true top/bottom of
-	 * the screen: BodyLayout.Mode.BOTH (a fragment shown alongside a still-playing video, e.g. Audio
-	 * Effects) sits {@code content} below the video pane instead, where tool_bar may not reach it at
-	 * all. Kept in sync with tool_bar/control_panel/nav_bar's actual size and position for as long as
+	 * the screen. Kept in sync with tool_bar/control_panel/nav_bar's actual size and position for as long as
 	 * {@code content} stays attached to the window; each caller (e.g. MediaItemListView, the
 	 * Settings list) is expected to call this once, typically from its own constructor.
 	 */
@@ -1986,11 +2008,11 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	private void hideContentLoading() {
 		progressBar.removeCallbacks(showLoadingBar);
-		progressBar.setVisibility(GONE);
+		progressBar.setLoading(false);
 	}
 
 	private final Runnable showLoadingBar = () -> {
-		if (progressBar != null) progressBar.setVisibility(VISIBLE);
+		if (progressBar != null) progressBar.setLoading(true);
 	};
 
 	public void setContentLoading(FutureSupplier<?> contentLoading) {
@@ -2037,14 +2059,8 @@ public class MainActivityDelegate extends ActivityDelegate
 		VideoView v = getActiveVideoView();
 		if (v != null) v.exitNativeFullscreen();
 		BodyLayout b = getBody();
-		// Leaving fullscreen video for another screen: the split of video and list -- except for a
-		// downloaded YouTube video, which is only ever watched fullscreen. Going through the split
-		// first and out of it again a moment later (the fragment change does that) left the two
-		// panes half-way.
-		if (b.isVideoMode()) {
-			b.setMode(YtOffline.isDownloadedYoutube(getMediaServiceBinder().getCurrentItem()) ?
-					BodyLayout.Mode.FRAME : BodyLayout.Mode.BOTH);
-		}
+		// Leaving fullscreen video for another screen: the video plays on behind it.
+		if (b.isVideoMode()) b.setMode(BodyLayout.Mode.FRAME);
 		ActivityFragment f = super.showFragment(id, input);
 		updateExtraFabsVisibility();
 		return f;
@@ -2752,6 +2768,24 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * the content loading indicator) while a screen with its own controls and loading indicator
 	 * (the Music tab) shows.
 	 */
+	// Whether the overlays are away because the activity is in picture-in-picture.
+	private boolean pipSuppressed;
+
+	/**
+	 * Picture-in-picture (a video playing in a small window): the control panel and the floating
+	 * buttons would only cover it, so they are away until it is back to a full screen.
+	 */
+	public void onPictureInPictureChanged(boolean pip) {
+		if (pip) {
+			pipSuppressed = true;
+			setOverlaysSuppressed(true);
+		} else if (pipSuppressed) {
+			pipSuppressed = false;
+			// Back to where the Music tab keeps them away by itself.
+			setOverlaysSuppressed(getActiveFragment() instanceof MusicPlayerFragment);
+		}
+	}
+
 	public void setOverlaysSuppressed(boolean suppressed) {
 		ControlPanelView cp = getControlPanel();
 		if (cp != null) cp.setSuppressed(suppressed);
@@ -2783,15 +2817,15 @@ public class MainActivityDelegate extends ActivityDelegate
 		FloatingButton[] fabs = getExtraFloatingButtons();
 		Pref<BooleanSupplier>[] on = extraFabEnabledPrefs();
 		Pref<IntSupplier>[] actions = extraFabActionPrefs();
-		boolean listWithVideo = isFavoritesOrPlaylistsActive() && isVideoPlaying();
+		boolean listWithVideo = isVideoTabActive() && isVideoPlaying();
 		for (int i = 0; i < fabs.length; i++) {
 			FloatingButton fb = fabs[i];
 			if (fb == null) continue;
 			if (!getPrefs().getBooleanPref(MainActivityPrefs.fab(this, on[i]))) fb.setVisibility(GONE);
 			else if (isVideoMode()) fb.setVisibility(floatingButton.getVisibility());
 			else if (isWebBrowserActive()) fb.setVisibility(VISIBLE);
-			// A video playing while browsing Favorites/Playlists: its fullscreen button is one tap
-			// back to it.
+			// A video playing while browsing a tab that plays video (Favorites, Playlists, Folders,
+			// Downloads, ...): its fullscreen button is one tap back to it.
 			else if (listWithVideo &&
 					(getPrefs().getIntPref(MainActivityPrefs.fab(this, actions[i])) ==
 							Action.FULLSCREEN_TOGGLE.ordinal())) {
@@ -2807,11 +2841,9 @@ public class MainActivityDelegate extends ActivityDelegate
 		return new Pref[]{FAB2_ACTION, FAB3_ACTION, FAB4_ACTION, FAB5_ACTION, FAB6_ACTION};
 	}
 
-	private boolean isFavoritesOrPlaylistsActive() {
-		ActivityFragment f = getActiveFragment();
-		if (f == null) return false;
-		int id = f.getFragmentId();
-		return (id == R.id.favorites_fragment) || (id == R.id.playlists_fragment);
+	/** Whether the tab showing is one a video is played from (and so came back to from fullscreen). */
+	private boolean isVideoTabActive() {
+		return (getActiveFragment() instanceof MainActivityFragment f) && f.isVideoModeSupported();
 	}
 
 	/** Whether a video (not music) is playing: YouTube out of music mode, or a local video. */

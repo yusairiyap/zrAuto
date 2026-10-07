@@ -18,6 +18,7 @@ import android.widget.ProgressBar;
 import androidx.annotation.Nullable;
 
 import me.aap.fermata.media.engine.BufferingIndicator;
+import me.aap.fermata.ui.view.LoadingCircleView;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.utils.ui.UiUtils;
 
@@ -45,7 +46,7 @@ public class YoutubeVideoView extends VideoView {
 	// instead of just sitting on a plain dark screen.
 	private static final long SPINNER_REVEAL_DELAY_MS = 400L;
 	private View transitionOverlay;
-	private View transitionSpinner;
+	private LoadingCircleView transitionSpinner;
 	private final Runnable hideTransitionOverlayTask = this::hideTransitionOverlay;
 	private final Runnable showSpinnerTask = this::revealSpinner;
 	/** See {@link #setTransitionCoverHiddenListener(Runnable)}. */
@@ -68,32 +69,17 @@ public class YoutubeVideoView extends VideoView {
 	}
 
 	@Nullable
-	private View bufferingSpinner;
+	private LoadingCircleView bufferingSpinner;
 	private final Runnable bufferingListener = this::updateBuffering;
 
 	/**
-	 * A spinner in a soft dark circle over the middle of the picture while the video waits for data
-	 * (see {@link BufferingIndicator}), fading/growing in and out -- rather than a frozen frame
-	 * that leaves it unclear whether anything is still happening. Under the transition cover,
-	 * which has its own spinner.
+	 * The app's loading circle over the middle of the picture while the video waits for data (see
+	 * {@link BufferingIndicator}) -- rather than a frozen frame that leaves it unclear whether
+	 * anything is still happening. Under the transition cover, which has its own.
 	 */
 	private void addBufferingSpinner(Context context) {
-		FrameLayout circle = new FrameLayout(context);
-		GradientDrawable bg = new GradientDrawable();
-		bg.setShape(GradientDrawable.OVAL);
-		bg.setColor(0x80000000);
-		circle.setBackground(bg);
-		int pad = UiUtils.toIntPx(context, 14);
-		circle.setPadding(pad, pad, pad, pad);
-		ProgressBar spinner = new ProgressBar(context);
-		spinner.setIndeterminateTintList(ColorStateList.valueOf(Color.WHITE));
-		circle.addView(spinner, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
-		int size = UiUtils.toIntPx(context, 72);
-		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(size, size, Gravity.CENTER);
-		circle.setVisibility(GONE);
-		circle.setClickable(false);
-		circle.setFocusable(false);
-		addView(circle, lp);
+		LoadingCircleView circle = new LoadingCircleView(context);
+		addView(circle, new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER));
 		bufferingSpinner = circle;
 	}
 
@@ -111,30 +97,8 @@ public class YoutubeVideoView extends VideoView {
 	}
 
 	private void updateBuffering() {
-		View v = bufferingSpinner;
-		if (v == null) return;
-		boolean show = BufferingIndicator.isBuffering();
-		if (show == (v.getVisibility() == VISIBLE) && (v.getTag() == null)) return;
-		v.animate().cancel();
-		v.setTag(null);
-
-		if (show) {
-			if (v.getVisibility() != VISIBLE) {
-				v.setAlpha(0f);
-				v.setScaleX(0.7f);
-				v.setScaleY(0.7f);
-				v.setVisibility(VISIBLE);
-			}
-			v.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(FADE_MS)
-					.setInterpolator(new DecelerateInterpolator()).start();
-		} else {
-			v.setTag(Boolean.FALSE); // Hiding
-			v.animate().alpha(0f).scaleX(0.7f).scaleY(0.7f).setDuration(FADE_MS)
-					.setInterpolator(new DecelerateInterpolator()).withEndAction(() -> {
-						v.setVisibility(GONE);
-						v.setTag(null);
-					}).start();
-		}
+		LoadingCircleView v = bufferingSpinner;
+		if (v != null) v.setLoading(BufferingIndicator.isBuffering());
 	}
 
 	/**
@@ -168,7 +132,7 @@ public class YoutubeVideoView extends VideoView {
 		FrameLayout scrim = new FrameLayout(context);
 		// Fully opaque -- a translucent scrim still let an ad show through, faintly, underneath it.
 		scrim.setBackgroundColor(Color.BLACK);
-		ProgressBar spinner = new ProgressBar(context);
+		LoadingCircleView spinner = new LoadingCircleView(context);
 		FrameLayout.LayoutParams spp = new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
 		spp.gravity = Gravity.CENTER;
 		scrim.addView(spinner, spp);
@@ -218,12 +182,10 @@ public class YoutubeVideoView extends VideoView {
 			setVisibility(VISIBLE);
 		}
 		transitionSpinner.removeCallbacks(showSpinnerTask);
-		transitionSpinner.animate().cancel();
 		if (withSpinner) {
-			transitionSpinner.setAlpha(1f);
-			transitionSpinner.setVisibility(VISIBLE);
+			transitionSpinner.setLoading(true);
 		} else {
-			transitionSpinner.setVisibility(GONE);
+			transitionSpinner.setLoading(false);
 			transitionSpinner.postDelayed(showSpinnerTask, fadeMs + SPINNER_REVEAL_DELAY_MS);
 		}
 
@@ -241,9 +203,7 @@ public class YoutubeVideoView extends VideoView {
 	}
 
 	private void revealSpinner() {
-		transitionSpinner.setAlpha(0f);
-		transitionSpinner.setVisibility(VISIBLE);
-		transitionSpinner.animate().alpha(1f).setDuration(FADE_MS).start();
+		transitionSpinner.setLoading(true);
 	}
 
 	/** See {@code YoutubeMediaEngine#adEnded()}/{@code #contentPlaying()}. */
@@ -256,6 +216,7 @@ public class YoutubeVideoView extends VideoView {
 		coverIsVideoSwitch = false;
 		transitionOverlay.removeCallbacks(hideTransitionOverlayTask);
 		transitionSpinner.removeCallbacks(showSpinnerTask);
+		transitionSpinner.setLoading(false);
 		transitionOverlay.animate().cancel();
 		transitionOverlay.animate().alpha(0f).setDuration(wasShowing ? REVEAL_MS : FADE_MS)
 				.withEndAction(() -> transitionOverlay.setVisibility(GONE)).start();

@@ -1,6 +1,5 @@
 package me.aap.fermata.ui.fragment;
 
-import static android.content.res.Configuration.ORIENTATION_PORTRAIT;
 import static java.util.Collections.singletonList;
 import static java.util.Objects.requireNonNull;
 import static me.aap.fermata.media.engine.MediaEngine.NO_SUBTITLES;
@@ -213,7 +212,8 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 		BodyLayout b = ad.getBody();
 
 		if (b.isVideoMode()) {
-			b.setMode(BodyLayout.Mode.BOTH);
+			// Out of fullscreen, back to this list (a native fullscreen player leaves its own first).
+			ad.exitVideoMode();
 			return true;
 		}
 
@@ -385,8 +385,7 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 	}
 
 	public boolean isGridSupported() {
-		return (getResources().getConfiguration().orientation == ORIENTATION_PORTRAIT) ||
-				!getActivityDelegate().getBody().isBothMode();
+		return true;
 	}
 
 	public int getSupportedSortOpts() {
@@ -441,13 +440,7 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 
 	@Override
 	public void onActivityEvent(MainActivityDelegate a, long e) {
-		if (e == MODE_CHANGED) {
-			if (isHidden()) return;
-			MainActivityPrefs store = a.getPrefs();
-			if (!store.getGridViewPref(a)) return;
-			List<PreferenceStore.Pref<?>> prefs = singletonList(getGridViewPrefKey(a));
-			store.fireBroadcastEvent(l -> l.onPreferenceChanged(store, prefs));
-		} else if (e == ACTIVITY_DESTROY) {
+		if (e == ACTIVITY_DESTROY) {
 			cleanUp(a);
 		}
 	}

@@ -13,6 +13,10 @@ import static me.aap.utils.async.Completed.completedVoid;
 import static me.aap.utils.collection.CollectionUtils.comparing;
 import static me.aap.utils.text.TextUtils.timeToString;
 
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
+
 import androidx.annotation.CallSuper;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -46,6 +50,129 @@ public abstract class MediaEngineBase implements MediaEngine {
 	private SubMgr subMgr;
 
 	protected MediaEngineBase(Listener listener) {this.listener = listener;}
+
+	// ---------------------------------------------------------------------------------------------
+	// Volume fades: the sound comes in when playback starts and goes out before it pauses or skips,
+	// as YouTube's does (youtube_fade.js), for every engine that can set its volume.
+
+	private static final long FADE_IN_MS = 450;
+	private static final long FADE_OUT_MS = 250;
+	private static final long FADE_STEP_MS = 25;
+	// The level a fade ends at: 1, or 0 while muted.
+	private float volumeTarget = 1f;
+	private float volumeNow = 1f;
+	@Nullable
+	private Runnable fade;
+	@Nullable
+	private Handler fadeHandler;
+
+	/** Whether the engine can set its volume (see {@link #setFadeVolume}), so the fades apply. */
+	protected boolean supportsFade() {
+		return false;
+	}
+
+	/** Sets the player's volume, 0 (silent) to 1; only called if {@link #supportsFade()}. */
+	protected void setFadeVolume(float volume) {
+	}
+
+	private Handler fadeHandler() {
+		Handler h = fadeHandler;
+		if (h == null) fadeHandler = h = new Handler(Looper.getMainLooper());
+		return h;
+	}
+
+	private void applyVolume(float v) {
+		volumeNow = v;
+		if (!supportsFade()) return;
+		try {
+			setFadeVolume(v);
+		} catch (RuntimeException ex) {
+			// The player isn't in a state to take it (released, in error): the fade has no more to do.
+			Log.d(ex, "Failed to set the volume");
+		}
+	}
+
+	/** The engine's mute/unmute: the level fades return to. */
+	protected final void setMuteLevel(boolean muted) {
+		volumeTarget = muted ? 0f : 1f;
+		cancelFade();
+		applyVolume(volumeTarget);
+	}
+
+	/** Stops any fade in progress and puts the volume back to the level of the day. */
+	protected final void resetFade() {
+		cancelFade();
+		applyVolume(volumeTarget);
+	}
+
+	private void cancelFade() {
+		Runnable f = fade;
+		fade = null;
+		if ((f != null) && (fadeHandler != null)) fadeHandler.removeCallbacks(f);
+	}
+
+	/** Just before the player starts: the sound comes in over a moment. */
+	protected final void fadeIn() {
+		if (!supportsFade() || (volumeTarget <= 0f)) return;
+		cancelFade();
+		applyVolume(0f);
+		fadeTo(volumeTarget, FADE_IN_MS, null);
+	}
+
+	/**
+	 * The engine's pause(): records the pause (see {@link #stopped}), then lets the sound go out
+	 * before {@code realPause} pauses the player -- at once if it wasn't playing.
+	 */
+	protected final void pauseWithFade(Runnable realPause) {
+		boolean playing = isPlaying();
+		stopped(true);
+		fadeOut(playing, () -> {
+			realPause.run();
+			applyVolume(volumeTarget);
+		});
+	}
+
+	@Override
+	public void fadeOut(Runnable then) {
+		fadeOut(isPlaying(), () -> {
+			then.run();
+			// The next thing to play starts with its own fade in; nothing is left quiet for good.
+			applyVolume(volumeTarget);
+		});
+	}
+
+	private void fadeOut(boolean playing, Runnable then) {
+		if (!playing || !supportsFade() || (volumeTarget <= 0f)) {
+			cancelFade();
+			then.run();
+			return;
+		}
+		fadeTo(0f, FADE_OUT_MS, then);
+	}
+
+	/** Ramps the volume to {@code to} over {@code ms}, then runs {@code done}. */
+	private void fadeTo(float to, long ms, @Nullable Runnable done) {
+		cancelFade();
+		float from = volumeNow;
+		long t0 = SystemClock.uptimeMillis();
+		Handler h = fadeHandler();
+		Runnable step = new Runnable() {
+			@Override
+			public void run() {
+				if (fade != this) return;
+				float k = Math.min(1f, (SystemClock.uptimeMillis() - t0) / (float) ms);
+				applyVolume(from + (to - from) * k);
+				if (k < 1f) {
+					h.postDelayed(this, FADE_STEP_MS);
+				} else {
+					fade = null;
+					if (done != null) done.run();
+				}
+			}
+		};
+		fade = step;
+		h.post(step);
+	}
 
 	@CallSuper
 	@Override
@@ -166,6 +293,7 @@ public abstract class MediaEngineBase implements MediaEngine {
 	@CallSuper
 	@Override
 	public void close() {
+		cancelFade();
 		stopped(false);
 	}
 

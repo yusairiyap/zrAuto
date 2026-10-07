@@ -898,6 +898,7 @@
     <string name="ytdl_resume_all">Resume downloads</string>
     <string name="ytdl_cancel_all">Cancel downloads</string>
     <string name="ytdl_queued">Added %1$d to downloads</string>
+    <string name="ytdl_queued_hint">They download in the background</string>
     <string name="ytdl_nothing_queued">Already downloaded or waiting</string>
     <string name="ytdl_removed">Download removed</string>
     <string name="ytdl_play_downloaded">Play downloaded</string>

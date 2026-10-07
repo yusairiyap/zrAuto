@@ -49,6 +49,10 @@ public final class MusicPlayer {
 	private static long pendingVideoPos;
 	// See watch(): the YouTube track about to start is to be watched, not listened to.
 	private static boolean watchRequested;
+	// A downloaded video's picture is being watched (fullscreen), the queue carrying on through it:
+	// set by "Video" and by playing downloads as videos, dropped by anything that starts a track as
+	// music. Not the YouTube player's music mode ({@link #youtubeAudioMode}), which it leaves alone.
+	private static boolean watchingLocal;
 	private static WeakReference<MainActivityDelegate> activity = new WeakReference<>(null);
 
 	private MusicPlayer() {
@@ -124,6 +128,11 @@ public final class MusicPlayer {
 		return youtubeAudioMode;
 	}
 
+	/** Whether a downloaded video's picture is being watched, see {@link #watchingLocal}. */
+	static boolean isWatchingLocal() {
+		return watchingLocal;
+	}
+
 	public static void setYoutubeAudioMode(boolean on) {
 		if (youtubeAudioMode == on) return;
 		youtubeAudioMode = on;
@@ -149,8 +158,8 @@ public final class MusicPlayer {
 	 */
 	private static boolean isWatchingVideo(@Nullable MediaEngine current) {
 		if (watchRequested) return true;
-		if (youtubeAudioMode) return false;
 		if (isShowingDownloadedVideo(current)) return true;
+		if (youtubeAudioMode) return false;
 		MainActivityDelegate a = activity.get();
 		if (a == null) return false;
 		ActivityFragment f = a.getActiveFragment();
@@ -177,8 +186,14 @@ public final class MusicPlayer {
 		// the lowest one.
 		// A downloaded video shown fullscreen counts as watching: the track after it, streamed, is a
 		// video too (at its usual quality), shown in the YouTube tab.
-		if (!isWatchingVideo(current)) setYoutubeAudioMode(true);
-		else if (isShowingDownloadedVideo(current)) watchRequested = true;
+		if (!isWatchingVideo(current)) {
+			setYoutubeAudioMode(true);
+		} else if (isShowingDownloadedVideo(current)) {
+			// Out of the file's player and into YouTube's, at its usual quality.
+			watchRequested = true;
+			setYoutubeAudioMode(false);
+		}
+		watchingLocal = false;
 		if ((current != null) && (current.getId() == MediaPrefs.MEDIA_ENG_YT) &&
 				!t.hasStartPosition()) {
 			DiagnosticLog.log(TAG, "YouTube track on the playing YouTube player", "id=" + t.getVideoId());
@@ -202,11 +217,13 @@ public final class MusicPlayer {
 	 * has a picture -- video, fullscreen like the YouTube player's.
 	 */
 	static void startingDownloadedTrack(@Nullable MediaEngine current, boolean hasPicture) {
-		if (!isWatchingVideo(current)) {
+		boolean watching = isWatchingVideo(current);
+		watchRequested = false;
+		watchingLocal = watching && hasPicture;
+		if (!watching) {
 			setYoutubeAudioMode(true);
 			return;
 		}
-		watchRequested = false;
 		MainActivityDelegate a = activity.get();
 		if (hasPicture && (a != null)) {
 			BodyLayout b = a.getBody();
@@ -248,7 +265,7 @@ public final class MusicPlayer {
 		// Showing the YouTube tab ends music mode (see YoutubeFragment#switchingFrom). Through black
 		// from a video on screen, so the page loading isn't seen.
 		if (watch) {
-			if (a.isVideoMode()) a.fadeToBlackForVideo();
+			if (a.isVideoMode()) a.fadeToBlackForYoutube();
 			a.showFragment(R.id.youtube_fragment);
 		}
 		return true;
@@ -321,6 +338,49 @@ public final class MusicPlayer {
 	}
 
 	/**
+	 * Plays {@code item} (the one that was playing when the app last ran, say) as music, from
+	 * {@code pos}, within its own list -- as "Play as music" does -- when the Music tab's play is
+	 * pressed with nothing playing.
+	 */
+	public static void playAsMusic(MainActivityDelegate from, PlayableItem item, long pos) {
+		MainActivityDelegate a = from.getPlaybackDelegate();
+		MusicQueue q = getQueue(a);
+		if (q == null) return;
+		siblings(item).main().onSuccess(list -> {
+			int idx = indexOfSame(list, item);
+			List<? extends PlayableItem> items = list;
+			if (idx == -1) {
+				items = Collections.singletonList(item);
+				idx = 0;
+			}
+			MusicTrackItem t = q.replace(items, idx).get(idx);
+			DiagnosticLog.log(TAG, "play last item as music", "item=" + item, "pos=" + (pos / 1000) + 's');
+			playTrack(a, t, pos);
+		});
+	}
+
+	/**
+	 * "Video" for what plays on in the background (a local or downloaded video, the Music tab being
+	 * showing): the video, fullscreen, from the tab it belongs to. The YouTube player's own is shown
+	 * in its tab.
+	 */
+	public static void showCurrentVideo(MainActivityDelegate from) {
+		MainActivityDelegate a = from.getPlaybackDelegate();
+		MediaEngine eng = a.getMediaSessionCallback().getEngine();
+		PlayableItem src = (eng == null) ? null : eng.getSource();
+		if ((src == null) || !src.isVideo()) return;
+
+		if (eng.getId() == MediaPrefs.MEDIA_ENG_YT) {
+			showYoutubeVideo(a);
+			return;
+		}
+
+		a.goToItem(src);
+		BodyLayout b = a.getBody();
+		if ((b != null) && !b.isVideoMode()) b.setMode(BodyLayout.Mode.VIDEO);
+	}
+
+	/**
 	 * Plays a list of downloaded videos as the queue from {@code startIdx}, watched: fullscreen
 	 * wherever the file has a picture, the next ones following on like a Favorites list does. The
 	 * tab it is started from stays as it is, and is where leaving fullscreen goes back to.
@@ -341,7 +401,7 @@ public final class MusicPlayer {
 		}
 
 		DiagnosticLog.log(TAG, "play downloaded videos", "first=" + t, "count=" + items.size());
-		setYoutubeAudioMode(false);
+		watchingLocal = true;
 		watchRequested = true;
 		// Fullscreen first, and once: the engine is given the picture's surface only if it is there
 		// when the engine is created (see BodyLayout#playLocalVideo).
@@ -530,6 +590,8 @@ public final class MusicPlayer {
 			eng.pause();
 		}
 		t.setStartPosition(pos);
+		// Started as music unless a picture was asked for ("Video", the downloads played as videos).
+		if (!watchRequested) watchingLocal = false;
 		cb.playItem(t, pos);
 	}
 
@@ -557,6 +619,7 @@ public final class MusicPlayer {
 				boolean yt = (eng.getId() == MediaPrefs.MEDIA_ENG_YT);
 				boolean local = !yt && (playing != null) && playing.isDownloaded();
 				setYoutubeAudioMode(yt || local);
+				if (local) watchingLocal = false;
 				open(a);
 				// A downloaded video's file: the same engine goes on without the picture.
 				if (local) continueAsMusic(a, eng, playing);
@@ -648,7 +711,7 @@ public final class MusicPlayer {
 			// A downloaded video: its file has the picture, on the very same engine.
 			if (!t.hasVideo()) return;
 			DiagnosticLog.log(TAG, "switch to video (downloaded)", "id=" + t.getVideoId());
-			setYoutubeAudioMode(false);
+			watchingLocal = true;
 			// Out of the Music tab, which keeps the floating buttons and the control panel away: the
 			// downloads list is where the picture is shown from, and where leaving fullscreen returns.
 			if (a.showFragment(R.id.downloads_addon) == null) a.backToNavFragment();
@@ -656,7 +719,9 @@ public final class MusicPlayer {
 			if ((b != null) && !b.isVideoMode()) b.setMode(BodyLayout.Mode.VIDEO);
 			if (!cb.switchItem(t)) {
 				eng.getPosition().main().onSuccess(pos -> {
-					if (cb.getEngine() == eng) playTrack(a, t, pos);
+					if (cb.getEngine() != eng) return;
+					watchRequested = true;
+					playTrack(a, t, pos);
 				});
 			}
 			return;

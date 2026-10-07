@@ -239,10 +239,20 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 		if (lib != null) lib.clearCache();
 	}
 
+	// Whether startForegroundService() was called for this run of playback, see updateNotification().
+	private boolean started;
+
 	@SuppressLint("SwitchIntDef")
 	void updateNotification(int st, PlayableItem currentItem) {
 		switch (st) {
-			case STATE_NONE, STATE_STOPPED, STATE_ERROR -> stopForeground(true);
+			case STATE_NONE, STATE_STOPPED, STATE_ERROR -> {
+				stopForeground(true);
+				// Started while playing (below): no longer needed once it has stopped.
+				if (started) {
+					started = false;
+					stopSelf();
+				}
+			}
 			case STATE_PAUSED -> {
 				if (ActivityCompat.checkSelfPermission(this, POST_NOTIFICATIONS) != PERMISSION_GRANTED) {
 					return;
@@ -250,7 +260,30 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 				NotificationManagerCompat.from(this).notify(NOTIF_ID, createNotification(st, currentItem));
 				stopForeground(false);
 			}
-			case STATE_PLAYING -> startForeground(NOTIF_ID, createNotification(st, currentItem));
+			case STATE_PLAYING -> {
+				// The service is only bound to the UI, which can go away (and take a bound-only service
+				// with it) while the screen is off; a started foreground one keeps playing.
+				if (!started) {
+					try {
+						ContextCompat.startForegroundService(this, new Intent(this, FermataMediaService.class));
+						started = true;
+					} catch (Throwable ex) {
+						Log.w(ex, "Failed to start the media service");
+					}
+				}
+				Notification n = createNotification(st, currentItem);
+				try {
+					if (android.os.Build.VERSION.SDK_INT >= 29) {
+						startForeground(NOTIF_ID, n,
+								android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+					} else {
+						startForeground(NOTIF_ID, n);
+					}
+				} catch (Throwable ex) {
+					// Not allowed to start from the background right now: playback itself carries on.
+					Log.w(ex, "Failed to start the media foreground service");
+				}
+			}
 			default -> {
 			}
 		}

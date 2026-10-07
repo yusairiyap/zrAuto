@@ -659,11 +659,6 @@ public class ControlPanelView extends ConstraintLayout
 		MainActivityDelegate a = getActivity();
 		BodyLayout b = a.getBody();
 
-		if (b.getMode() == BodyLayout.Mode.BOTH) {
-			b.setMode(BodyLayout.Mode.VIDEO);
-			return true;
-		}
-
 		int delay = getTouchDelay();
 		if (delay == 0) return false;
 

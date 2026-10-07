@@ -84,6 +84,7 @@ import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.view.EffectsUi;
 import me.aap.fermata.ui.view.InfoOverlayView;
 import me.aap.fermata.ui.view.ToolBarPill;
+import me.aap.fermata.ui.view.LoadingCircleView;
 import me.aap.fermata.ui.view.LoadingDimView;
 import me.aap.fermata.ui.view.MusicMoreMenu;
 import me.aap.fermata.util.DiagnosticLog;
@@ -131,6 +132,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private final int[] extLoc2 = new int[2];
 	private ImageView art;
 	private LoadingDimView loading;
+	// The app's loading circle over the cover, the same one every other wait shows.
+	private LoadingCircleView loadingCircle;
 	private View playLoading;
 	private TextView message;
 	private TextView title;
@@ -242,6 +245,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				view.findViewById(R.id.music_scrim)};
 		art = view.findViewById(R.id.music_art);
 		loading = view.findViewById(R.id.music_loading);
+		if (loading.getParent() instanceof android.widget.FrameLayout fl) {
+			loadingCircle = new LoadingCircleView(requireContext());
+			fl.addView(loadingCircle, new android.widget.FrameLayout.LayoutParams(
+					android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+					android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER));
+		}
 		title = view.findViewById(R.id.music_track_title);
 		artist = view.findViewById(R.id.music_track_artist);
 		position = view.findViewById(R.id.music_position);
@@ -482,6 +491,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if (insetAnim != null) insetAnim.cancel();
 		insetAnim = null;
 		insetsSet = false;
+		loadingCircle = null;
 		super.onDestroyView();
 	}
 
@@ -851,8 +861,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 		if ((playingAsMusic() && ((t == null) || t.hasVideo())) || (idleVideoTrack() != null)) {
 			setVideoButton(R.string.video, R.drawable.video);
+		} else if ((i != null) && isPlayingVideo() && !isYoutubeEngine()) {
+			// A local video plays on in the background: "Video" brings its picture back, here as
+			// everywhere else in this tab.
+			setVideoButton(R.string.video, R.drawable.video);
 		} else if ((i != null) && isPlayingVideo()) {
-			// A video is playing right now (e.g. in the split view): offer to drop the picture.
+			// A YouTube video is playing: offer to drop the picture.
 			setVideoButton(R.string.play_as_music, R.drawable.music);
 		} else {
 			setVideoButton(0, 0);
@@ -930,6 +944,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		// Also while playing but stalled for data (the session stays "playing" through that).
 		boolean busy = isBusy(st) || (playing && BufferingIndicator.isBuffering());
 		loading.setLoading(busy);
+		if (loadingCircle != null) loadingCircle.setLoading(busy);
 		setPlayLoading(busy);
 
 		if (playing) {
@@ -1426,6 +1441,14 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			return;
 		}
 
+		// What was playing when the app last ran, if it wasn't a queue track (a local video, say):
+		// play that, as music, from where it was left -- rather than nothing at all.
+		PlayableItem last = cb.getResumeItem();
+		if ((last != null) && !(last instanceof MusicTrackItem) && !last.isExternal()) {
+			MusicPlayer.playAsMusic(a, last, cb.getResumePosition());
+			return;
+		}
+
 		if (queueIsEmpty()) {
 			showQueue(true);
 			return;
@@ -1718,6 +1741,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			// Into the video through black, the same fade as leaving fullscreen.
 			a.getPlaybackDelegate().fadeToBlackForVideo();
 			MusicPlayer.switchToVideo(a);
+		}
+		else if (isPlayingVideo() && !isYoutubeEngine()) {
+			MusicPlayer.showCurrentVideo(a);
 		}
 		else if (a.getMediaSessionCallback().getCurrentItem() != null) {
 			MusicPlayer.playCurrentAsMusic(a);

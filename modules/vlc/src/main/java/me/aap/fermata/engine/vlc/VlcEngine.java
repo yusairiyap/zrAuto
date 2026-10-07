@@ -167,11 +167,13 @@ public class VlcEngine extends MediaEngineBase
 
 	@Override
 	public void start() {
+		fadeIn();
 		player.play();
 	}
 
 	@Override
 	public void stop() {
+		resetFade();
 		stopped(false);
 		pendingPosition = -1;
 		player.stop();
@@ -182,8 +184,17 @@ public class VlcEngine extends MediaEngineBase
 
 	@Override
 	public void pause() {
-		stopped(true);
-		player.pause();
+		pauseWithFade(player::pause);
+	}
+
+	@Override
+	protected boolean supportsFade() {
+		return true;
+	}
+
+	@Override
+	protected void setFadeVolume(float volume) {
+		player.setVolume(Math.round(volume * 100));
 	}
 
 	@Override
@@ -666,12 +677,12 @@ public class VlcEngine extends MediaEngineBase
 
 	@Override
 	public void mute(Context ctx) {
-		player.setVolume(0);
+		setMuteLevel(true);
 	}
 
 	@Override
 	public void unmute(Context ctx) {
-		player.setVolume(100);
+		setMuteLevel(false);
 	}
 
 	private static class Source implements Closeable {
