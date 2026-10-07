@@ -53,6 +53,7 @@ import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.media.pref.PlayableItemPrefs;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ytdl.YtDownloadMenu;
+import me.aap.fermata.ytdl.YtOffline;
 import me.aap.fermata.ui.fragment.MediaLibFragment;
 import me.aap.fermata.ui.fragment.YoutubeAlternativesFragment;
 import me.aap.utils.async.FutureSupplier;
@@ -152,6 +153,10 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 			b.addItem(R.id.item_play, R.drawable.play, R.string.play);
 		}
 
+		// A downloaded YouTube video's menu is YouTube's: no bookmarks, subtitles or engine choice,
+		// which mean nothing for it and only crowd the menu (the car's screen most of all).
+		boolean offline = YtOffline.isDownloadedYoutube(pi);
+
 		if (!pi.isExternal() || (pi instanceof ExternallyPlayableItem)) {
 			if (initRepeat && !inList) {
 				if (pi.isRepeatItemEnabled()) {
@@ -197,7 +202,7 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 						R.string.youtube_refresh_thumbnail);
 			}
 
-			if (!(item instanceof StreamItem) && !(item instanceof ArchiveItem)) {
+			if (!offline && !(item instanceof StreamItem) && !(item instanceof ArchiveItem)) {
 				if (pi.getPrefs().hasPref(BOOKMARKS)) {
 					b.addItem(R.id.bookmarks, R.drawable.bookmark_filled, R.string.bookmarks)
 							.setFutureSubmenu(this::buildBookmarksMenu);
@@ -212,12 +217,12 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 			b.addItem(R.id.video, R.drawable.video, R.string.video).setSubmenu(this::buildVideoMenu);
 		}
 
-		if (addSubtitlesMenu()) {
+		if (!offline && addSubtitlesMenu()) {
 			b.addItem(R.id.subtitle_prefs, R.drawable.subtitles, R.string.subtitles)
 					.setSubmenu(this::buildSubtitlesMenu);
 		}
 
-		if (addMediaEngMenu()) {
+		if (!offline && addMediaEngMenu()) {
 			b.addItem(R.id.preferred_media_engine, R.drawable.media_engine,
 							R.string.preferred_media_engine)
 					.setSubmenu(pi.isVideo() ? this::buildVideoEngMenu : this::buildAudioEngMenu);

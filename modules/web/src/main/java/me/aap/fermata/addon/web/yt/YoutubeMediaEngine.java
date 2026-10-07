@@ -547,6 +547,9 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				"id=" + actualId, "title=" + currentVideoTitle);
 		cb.setEngine(this);
 		cb.onEngineStarted(this);
+		// The black that covered the page loading after a downloaded video (see
+		// MainActivityDelegate#playExternal) is lifted now that the video is up.
+		MainActivityDelegate.get(web.getContext()).liftVideoSwitchFade();
 
 		// Reopened where it was left off (see MainActivityDelegate#resumeLastPlayed()): the video is
 		// only to be loaded, ready to play, not played.

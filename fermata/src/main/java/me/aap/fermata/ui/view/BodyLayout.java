@@ -388,6 +388,12 @@ public class BodyLayout extends SplitLayout
 			b.getMediaSessionCallback().removeBroadcastListener(this);
 		} else if (e == FRAGMENT_CHANGED) {
 			if (a.getActiveMediaLibFragment() == null) {
+				// A tab that plays video itself (Downloads) keeps the fullscreen a video was started
+				// into from it -- or switched to from the Music tab, which moves here first.
+				if (isVideoMode() && (a.getActiveFragment() instanceof MainActivityFragment f) &&
+						f.isVideoModeSupported()) {
+					return;
+				}
 				setMode(Mode.FRAME);
 			} else {
 				MediaSessionCallback cb = a.getMediaSessionCallback();

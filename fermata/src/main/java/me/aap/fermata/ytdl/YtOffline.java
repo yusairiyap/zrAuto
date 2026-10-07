@@ -5,6 +5,7 @@ import androidx.annotation.Nullable;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 import me.aap.fermata.R;
 import me.aap.fermata.addon.music.MusicPlayer;
@@ -100,6 +101,29 @@ public final class YtOffline {
 		List<PlayableItem> items = new ArrayList<>(list.size());
 		resolve(a, list, 0, items);
 		return true;
+	}
+
+	/**
+	 * The library items of the downloaded videos {@code ids}, in that order (any that can't be
+	 * resolved left out), handed to {@code done} on the main thread -- what a list of downloads is
+	 * played as a queue from.
+	 */
+	public static void resolveAll(MainActivityDelegate a, List<String> ids,
+																Consumer<List<PlayableItem>> done) {
+		resolveIds(a, ids, 0, new ArrayList<>(ids.size()), done);
+	}
+
+	private static void resolveIds(MainActivityDelegate a, List<String> ids, int i,
+																 List<PlayableItem> out, Consumer<List<PlayableItem>> done) {
+		if (i == ids.size()) {
+			done.accept(out);
+			return;
+		}
+
+		a.getLib().getItem(YtDownloads.ID_PREFIX + ids.get(i)).main().onCompletion((it, err) -> {
+			if ((err == null) && (it instanceof PlayableItem pi)) out.add(pi);
+			resolveIds(a, ids, i + 1, out, done);
+		});
 	}
 
 	private static void resolve(MainActivityDelegate a, List<YtDownloads.Entry> list, int i,

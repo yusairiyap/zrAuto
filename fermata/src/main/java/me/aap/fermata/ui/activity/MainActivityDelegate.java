@@ -589,6 +589,10 @@ public class MainActivityDelegate extends ActivityDelegate
 			if (YtOffline.tryPlayLocal(this, ext, pos)) return true;
 			String origId = ext.getOrigId();
 			if (origId != null) PlaybackResume.set(origId, pos, false);
+			// From a video on screen (a downloaded one) to a streamed one: through black, so the
+			// watch page loading is never seen -- lifted once the video plays (see
+			// YoutubeMediaEngine#playing).
+			if (isVideoMode()) fadeToBlackForVideo();
 			ActivityFragment f = showFragment(ext.getPlayerFragmentId());
 			if (f == null) return false;
 			ext.loadInFragment(f, ext);
@@ -1469,6 +1473,15 @@ public class MainActivityDelegate extends ActivityDelegate
 		});
 		anim.start();
 		getHandler().postDelayed(() -> releaseVideoSwitchFade(d), 2000);
+	}
+
+	/**
+	 * The video the black of {@link #fadeToBlackForVideo()} was covering for is up: fades it back
+	 * out (shortly after, once it has had a moment to draw). A no-op when there's no such black.
+	 */
+	public void liftVideoSwitchFade() {
+		ColorDrawable d = videoSwitchFade;
+		if (d != null) getHandler().postDelayed(() -> releaseVideoSwitchFade(d), 250);
 	}
 
 	private void releaseVideoSwitchFade(ColorDrawable d) {

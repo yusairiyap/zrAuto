@@ -20,6 +20,7 @@ import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.BodyLayout;
+import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.fermata.ytdl.YtOffline;
@@ -244,8 +245,12 @@ public final class MusicPlayer {
 		boolean watch = watchRequested;
 		watchRequested = false;
 		if (!h.play(a, t)) return false;
-		// Showing the YouTube tab ends music mode (see YoutubeFragment#switchingFrom).
-		if (watch) a.showFragment(R.id.youtube_fragment);
+		// Showing the YouTube tab ends music mode (see YoutubeFragment#switchingFrom). Through black
+		// from a video on screen, so the page loading isn't seen.
+		if (watch) {
+			if (a.isVideoMode()) a.fadeToBlackForVideo();
+			a.showFragment(R.id.youtube_fragment);
+		}
 		return true;
 	}
 
@@ -312,6 +317,40 @@ public final class MusicPlayer {
 				if (list.isEmpty()) UiUtils.showToast(a.getContext(), R.string.music_nothing_to_play);
 				else play(a, list, 0, show);
 			});
+		}
+	}
+
+	/**
+	 * Plays a list of downloaded videos as the queue from {@code startIdx}, watched: fullscreen
+	 * wherever the file has a picture, the next ones following on like a Favorites list does. The
+	 * tab it is started from stays as it is, and is where leaving fullscreen goes back to.
+	 */
+	public static void playDownloadedVideos(MainActivityDelegate from,
+																					List<? extends PlayableItem> items, int startIdx) {
+		MainActivityDelegate a = from.getPlaybackDelegate();
+		MusicQueue q = getQueue(a);
+		if ((q == null) || items.isEmpty()) return;
+		int first = Math.max(0, Math.min(startIdx, items.size() - 1));
+		MusicTrackItem t = q.replace(items, first).get(first);
+		BodyLayout b = a.getBody();
+
+		if ((b == null) || !t.hasVideo()) {
+			setYoutubeAudioMode(true);
+			playTrack(a, t, 0);
+			return;
+		}
+
+		DiagnosticLog.log(TAG, "play downloaded videos", "first=" + t, "count=" + items.size());
+		setYoutubeAudioMode(false);
+		watchRequested = true;
+		// Fullscreen first, and once: the engine is given the picture's surface only if it is there
+		// when the engine is created (see BodyLayout#playLocalVideo).
+		if (!b.isVideoMode()) b.setMode(BodyLayout.Mode.VIDEO);
+		VideoView vv = b.getVideoView();
+		if (!vv.isSurfaceCreated() && !a.getMediaSessionCallback().hasCustomEngineProvider()) {
+			vv.onSurfaceCreated(() -> playTrack(a, t, 0));
+		} else {
+			playTrack(a, t, 0);
 		}
 	}
 
@@ -610,6 +649,9 @@ public final class MusicPlayer {
 			if (!t.hasVideo()) return;
 			DiagnosticLog.log(TAG, "switch to video (downloaded)", "id=" + t.getVideoId());
 			setYoutubeAudioMode(false);
+			// Out of the Music tab, which keeps the floating buttons and the control panel away: the
+			// downloads list is where the picture is shown from, and where leaving fullscreen returns.
+			if (a.showFragment(R.id.downloads_addon) == null) a.backToNavFragment();
 			BodyLayout b = a.getBody();
 			if ((b != null) && !b.isVideoMode()) b.setMode(BodyLayout.Mode.VIDEO);
 			if (!cb.switchItem(t)) {

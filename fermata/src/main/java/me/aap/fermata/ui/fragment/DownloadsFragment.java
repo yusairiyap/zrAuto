@@ -49,12 +49,14 @@ import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.media.lib.MediaLib.ExternallyPlayableItem;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.ui.view.EffectsUi;
 import me.aap.fermata.ytdl.DownloadsAddon;
 import me.aap.fermata.ytdl.YtDownloadMenu;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.fermata.ytdl.YtDownloads.Entry;
 import me.aap.fermata.ytdl.YtDownloads.State;
+import me.aap.fermata.ytdl.YtOffline;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.activity.ActivityDelegate;
 import me.aap.utils.ui.fragment.ActivityFragment;
@@ -99,6 +101,18 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 	@Override
 	public ToolBarView.Mediator getToolBarMediator() {
 		return TOOL_BAR;
+	}
+
+	/** Back from a downloaded video's fullscreen: the list again, the video playing on. */
+	@Override
+	public boolean onBackPressed() {
+		MainActivityDelegate a = getActivityDelegate();
+		BodyLayout b = a.getBody();
+		if ((b != null) && b.isVideoMode()) {
+			a.exitVideoMode();
+			return true;
+		}
+		return super.onBackPressed();
 	}
 
 	/** Lets a downloaded video play fullscreen from this tab, like a video from a list. */
@@ -329,12 +343,41 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 	// ---------------------------------------------------------------------------------------------
 	// Actions
 
+	/**
+	 * Plays the tapped download with the rest of the downloaded list after it, in the order shown,
+	 * like a tap in Favorites does: a video watched fullscreen (or music, once listening to music
+	 * or if it is only the sound), the next ones following on.
+	 */
 	private void play(String videoId) {
 		MainActivityDelegate a = getActivityDelegate();
-		a.getLib().getItem(YtDownloads.ID_PREFIX + videoId).main().onSuccess(it -> {
-			if (!(it instanceof PlayableItem pi)) return;
-			if (MusicPlayer.isMusicModeActive(a)) MusicPlayer.play(a, pi, true);
-			else if (pi instanceof ExternallyPlayableItem ext) a.playExternally(ext, pi);
+		List<String> ids = new ArrayList<>();
+		for (Row r : rows) {
+			if (((r.type == VT_ROW) || (r.type == VT_GRID)) && (r.id != null)) ids.add(r.id);
+		}
+		if (!ids.contains(videoId)) {
+			ids.clear();
+			ids.add(videoId);
+		}
+
+		YtOffline.resolveAll(a, ids, items -> {
+			int idx = -1;
+			for (int i = 0; i < items.size(); i++) {
+				if (videoId.equals(YtDownloads.videoIdOf(items.get(i)))) {
+					idx = i;
+					break;
+				}
+			}
+			if (idx == -1) return;
+			PlayableItem pi = items.get(idx);
+			Entry e = YtDownloads.get().getEntry(videoId);
+			boolean video = (e != null) && e.video;
+
+			if (MusicPlayer.isEnabled()) {
+				if (video && !MusicPlayer.isMusicModeActive(a)) MusicPlayer.playDownloadedVideos(a, items, idx);
+				else MusicPlayer.play(a, items, idx);
+			} else if (pi instanceof ExternallyPlayableItem ext) {
+				a.playExternally(ext, pi);
+			}
 		});
 	}
 

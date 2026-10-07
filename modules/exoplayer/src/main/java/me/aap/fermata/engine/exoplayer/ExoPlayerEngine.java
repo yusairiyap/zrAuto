@@ -11,6 +11,7 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.media.audiofx.PresetReverb;
 import android.net.Uri;
+import android.os.Handler;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -109,6 +110,13 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	private boolean buffering;
 	private boolean isHls;
 	private Runnable drainBuffer;
+	// The volume a fade ends at: 1, or 0 while muted.
+	private float volumeTarget = 1f;
+	private static final long FADE_IN_MS = 450;
+	private static final long FADE_OUT_MS = 250;
+	private static final long FADE_STEP_MS = 25;
+	@Nullable
+	private Runnable fade;
 
 	public ExoPlayerEngine(Context ctx, Listener listener) {
 		super(listener);
@@ -203,6 +211,12 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 
 	@Override
 	public void start() {
+		// The sound comes in rather than starting at full volume, as YouTube's does.
+		if (volumeTarget > 0f) {
+			cancelFade();
+			player.setVolume(0f);
+			fadeTo(volumeTarget, FADE_IN_MS, null);
+		}
 		player.setPlayWhenReady(true);
 		listener.onEngineStarted(this);
 		started();
@@ -210,6 +224,8 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 
 	@Override
 	public void stop() {
+		cancelFade();
+		player.setVolume(volumeTarget);
 		stopped(false);
 		player.stop();
 		source = null;
@@ -219,7 +235,47 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	@Override
 	public void pause() {
 		stopped(true);
-		player.setPlayWhenReady(false);
+		if ((volumeTarget > 0f) && player.isPlaying()) {
+			// The sound goes out rather than being cut off: paused once it has faded.
+			fadeTo(0f, FADE_OUT_MS, () -> {
+				player.setPlayWhenReady(false);
+				player.setVolume(volumeTarget);
+			});
+		} else {
+			cancelFade();
+			player.setPlayWhenReady(false);
+			player.setVolume(volumeTarget);
+		}
+	}
+
+	private void cancelFade() {
+		Runnable f = fade;
+		fade = null;
+		if (f != null) new Handler(player.getApplicationLooper()).removeCallbacks(f);
+	}
+
+	/** Ramps the volume to {@code to} over {@code ms}, then runs {@code done}. */
+	private void fadeTo(float to, long ms, @Nullable Runnable done) {
+		cancelFade();
+		Handler h = new Handler(player.getApplicationLooper());
+		float from = player.getVolume();
+		long t0 = android.os.SystemClock.uptimeMillis();
+		Runnable step = new Runnable() {
+			@Override
+			public void run() {
+				if (fade != this) return;
+				float k = Math.min(1f, (android.os.SystemClock.uptimeMillis() - t0) / (float) ms);
+				player.setVolume(from + (to - from) * k);
+				if (k < 1f) {
+					h.postDelayed(this, FADE_STEP_MS);
+				} else {
+					fade = null;
+					if (done != null) done.run();
+				}
+			}
+		};
+		fade = step;
+		h.post(step);
 	}
 
 	@Override
@@ -450,6 +506,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 
 	@Override
 	public void close() {
+		cancelFade();
 		stop();
 		super.close();
 		drainBuffer = null;
@@ -462,11 +519,15 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 
 	@Override
 	public void mute(Context ctx) {
+		volumeTarget = 0f;
+		cancelFade();
 		player.setVolume(0f);
 	}
 
 	@Override
 	public void unmute(Context ctx) {
+		volumeTarget = 1f;
+		cancelFade();
 		player.setVolume(1f);
 	}
 
