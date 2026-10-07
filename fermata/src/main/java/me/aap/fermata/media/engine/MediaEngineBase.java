@@ -108,8 +108,62 @@ public abstract class MediaEngineBase implements MediaEngine {
 
 	/** Stops any fade in progress and puts the volume back to the level of the day. */
 	protected final void resetFade() {
+		stopEndWatch();
 		cancelFade();
 		applyVolume(volumeTarget);
+	}
+
+	// How close to its end a track is when the sound starts going out, so it is silent as it ends, as
+	// YouTube's page does (youtube_fade.js) -- the next track comes in with its own fade.
+	private static final long END_FADE_MS = 400;
+	private static final long END_WATCH_MS = 150;
+	private boolean endWatching;
+	private boolean endFaded;
+
+	/** While playing, checks how long is left and fades the sound out for the end of the track. */
+	private void watchEnd() {
+		endFaded = false;
+		if (endWatching) return;
+		endWatching = true;
+		fadeHandler().postDelayed(endWatch, END_WATCH_MS);
+	}
+
+	private final Runnable endWatch = new Runnable() {
+		@Override
+		public void run() {
+			if (!endWatching) return;
+			if (!isPlaying() && (fade == null)) {
+				// Paused or stopped: watching starts again with the next start.
+				endWatching = false;
+				return;
+			}
+
+			try {
+				var dur = getDuration();
+				var pos = getPosition();
+				if (dur.isDoneNotFailed() && pos.isDoneNotFailed() && (fade == null) && isPlaying()) {
+					long d = dur.getOrThrow();
+					long left = (d > 0) ? (d - pos.getOrThrow()) : -1;
+					if ((left > 0) && (left <= END_FADE_MS + END_WATCH_MS) && !endFaded &&
+							(volumeTarget > 0f)) {
+						endFaded = true;
+						fadeTo(0f, Math.max(100, left - 50), null, false);
+					} else if (endFaded && (left > 2000)) {
+						// Back from the end (repeat, a seek): the sound with it.
+						endFaded = false;
+						fadeTo(volumeTarget, FADE_IN_MS, null, false);
+					}
+				}
+			} catch (RuntimeException ex) {
+				Log.d(ex, "Failed to check the end of the track");
+			}
+			fadeHandler().postDelayed(this, END_WATCH_MS);
+		}
+	};
+
+	private void stopEndWatch() {
+		endWatching = false;
+		if (fadeHandler != null) fadeHandler.removeCallbacks(endWatch);
 	}
 
 	@Override
@@ -131,8 +185,10 @@ public abstract class MediaEngineBase implements MediaEngine {
 
 	/** Just before the player starts: the sound comes in over a moment. */
 	protected final void fadeIn() {
+		if (!supportsFade()) return;
+		watchEnd();
 		// Started again while already playing (a repeated play, audio focus back): nothing to fade in.
-		if (!supportsFade() || (volumeTarget <= 0f) || isPlaying()) return;
+		if ((volumeTarget <= 0f) || isPlaying()) return;
 		// Playing again: the pause the sound was going out for no longer applies.
 		if (fadeDoneIsPause) {
 			fadeDone = null;
@@ -326,6 +382,7 @@ public abstract class MediaEngineBase implements MediaEngine {
 	@CallSuper
 	@Override
 	public void close() {
+		stopEndWatch();
 		cancelFade();
 		stopped(false);
 	}
