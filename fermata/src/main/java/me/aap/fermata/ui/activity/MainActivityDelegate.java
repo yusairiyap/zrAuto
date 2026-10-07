@@ -1440,7 +1440,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			// After a moment: a switch that is quick never shows it.
 			f.postDelayed(() -> c.setLoading(true), 300);
 		}
-		getAppActivity().addContentView(f, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		getWindow().addContentView(f, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 		windowCover = f;
 		return f;
 	}
