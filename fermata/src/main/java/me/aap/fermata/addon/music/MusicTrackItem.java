@@ -276,9 +276,7 @@ public class MusicTrackItem extends ExtPlayable {
 
 	/** Whether the file on the phone has the picture too, not just the sound. */
 	private boolean hasDownloadedVideo() {
-		if (!isDownloaded()) return false;
-		YtDownloads.Entry e = YtDownloads.get().getEntry(videoId);
-		return (e != null) && e.video;
+		return YtDownloads.get().isVideoDownloaded(videoId);
 	}
 
 	@NonNull

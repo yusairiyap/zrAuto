@@ -277,6 +277,9 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	private void leavePageForLocal() {
+		// As the engine's own pause() records it: a pause the page reports next is the app's doing.
+		lastActivePlayTime = 0;
+		appRequestedPause = true;
 		web.pause();
 		clearStall();
 		switching = false;

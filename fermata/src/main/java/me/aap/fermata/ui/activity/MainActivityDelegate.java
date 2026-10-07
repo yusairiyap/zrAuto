@@ -1511,6 +1511,8 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (!decor.isLaidOut() || (decor.getWidth() == 0)) return;
 		View c = newWindowCover(spinner);
 		coverIntoVideo = true;
+		// Taps do not reach what is underneath while it is covered (and cannot be seen).
+		c.setClickable(true);
 		int gen = windowCoverGen;
 		c.setAlpha(0f);
 		c.animate().alpha(1f).setDuration(200).setInterpolator(new PathInterpolator(0.4f, 0f, 0.2f, 1f))
@@ -2781,12 +2783,15 @@ public class MainActivityDelegate extends ActivityDelegate
 			setOverlaysSuppressed(true);
 		} else if (pipSuppressed) {
 			pipSuppressed = false;
-			// Back to where the Music tab keeps them away by itself.
+			// Back to where the Music tab keeps them away by itself (fullscreen video keeps its own
+			// bars hidden: unsuppressing does not show them).
 			setOverlaysSuppressed(getActiveFragment() instanceof MusicPlayerFragment);
 		}
 	}
 
 	public void setOverlaysSuppressed(boolean suppressed) {
+		// In picture-in-picture they stay away whatever the tab showing says.
+		if (pipSuppressed) suppressed = true;
 		ControlPanelView cp = getControlPanel();
 		if (cp != null) cp.setSuppressed(suppressed);
 		loadingSuppressed = suppressed;

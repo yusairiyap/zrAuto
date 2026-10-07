@@ -89,6 +89,7 @@ public class VlcEngine extends MediaEngineBase
 
 	@Override
 	public void prepare(PlayableItem source) {
+		resetFade();
 		stopped(false);
 		this.source.close();
 		this.source = Source.NULL;

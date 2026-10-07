@@ -814,6 +814,10 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			if (getEngine() != eng) return;
 			playerTask.cancel();
 			playerTask = skipTo(next, false);
+			// Nothing took the engine's place (no next item, a failed hand-over): sound again.
+			me.aap.utils.app.App.get().getHandler().postDelayed(() -> {
+				if (getEngine() == eng) eng.restoreVolume();
+			}, 3000);
 		});
 	}
 
@@ -884,13 +888,15 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	}
 
 	private void skipTo(boolean next, PlayableItem i) {
-		PlaybackStateCompat state = getPlaybackState();
 		long pos = i.getPrefs().getPositionPref();
+		// Handed to the UI before the state says "skipping": it may come to nothing, and the session
+		// must not be left in that state with the old engine untouched.
+		if (handOverYoutube(i, pos)) return;
+		PlaybackStateCompat state = getPlaybackState();
 		PlaybackStateCompat.Builder b = new PlaybackStateCompat.Builder(state);
 		b.setState(next ? STATE_SKIPPING_TO_NEXT : STATE_SKIPPING_TO_PREVIOUS, pos,
 				state.getPlaybackSpeed());
 		setPlaybackState(b.build());
-		if (handOverYoutube(i, pos)) return;
 		playPreparedItem(i, pos);
 	}
 

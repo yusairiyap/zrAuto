@@ -13,6 +13,7 @@ import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.PowerManager;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
@@ -34,8 +35,22 @@ public class YtDownloadService extends Service implements YtDownloads.Listener {
 	private static final String ACTION_PAUSE = "me.aap.fermata.ytdl.PAUSE";
 	private static final String ACTION_RESUME = "me.aap.fermata.ytdl.RESUME";
 	private static final String ACTION_CANCEL = "me.aap.fermata.ytdl.CANCEL";
+	// How long the CPU is kept awake at a time while there is something to fetch (renewed while busy).
+	private static final long WAKE_LOCK_MS = 30 * 60 * 1000L;
 	private boolean foreground;
+	private boolean reportShown;
 	private YtDownloads downloads;
+	@Nullable
+	private PowerManager.WakeLock wakeLock;
+	// Built once: they are the same for every update of the notification.
+	@Nullable
+	private PendingIntent openPi;
+	@Nullable
+	private PendingIntent pausePi;
+	@Nullable
+	private PendingIntent resumePi;
+	@Nullable
+	private PendingIntent cancelPi;
 
 	/** Starts the service (it stops by itself). Main thread. */
 	static void start(Context ctx) {
@@ -62,6 +77,8 @@ public class YtDownloadService extends Service implements YtDownloads.Listener {
 		if (ACTION_PAUSE.equals(action)) downloads.pauseAll();
 		else if (ACTION_RESUME.equals(action)) downloads.resumeAll();
 		else if (ACTION_CANCEL.equals(action)) downloads.cancelAll();
+		// The card that said "paused" or "failed" is stale once it is acted on.
+		if (ACTION_RESUME.equals(action) || ACTION_CANCEL.equals(action)) clearReport();
 
 		// startForegroundService() demands startForeground() in return, busy or not.
 		try {
@@ -82,14 +99,52 @@ public class YtDownloadService extends Service implements YtDownloads.Listener {
 
 	@Override
 	public void onDestroy() {
+		releaseWakeLock();
 		super.onDestroy();
 		downloads.removeListener(this);
+	}
+
+	private void clearReport() {
+		NotificationManager nm = getSystemService(NotificationManager.class);
+		if ((nm != null) && reportShown) nm.cancel(REPORT_NOTIF_ID);
+		reportShown = false;
+	}
+
+	/** The CPU stays awake while downloading with the screen off: a foreground service alone doesn't. */
+	private void holdWakeLock() {
+		try {
+			PowerManager.WakeLock wl = wakeLock;
+			if (wl == null) {
+				PowerManager pm = getSystemService(PowerManager.class);
+				if (pm == null) return;
+				wl = wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "zrauto:ytdl");
+				wl.setReferenceCounted(false);
+			}
+			if (!wl.isHeld()) wl.acquire(WAKE_LOCK_MS);
+		} catch (Exception ex) {
+			Log.w(ex, "Failed to hold the wake lock");
+		}
+	}
+
+	private void releaseWakeLock() {
+		try {
+			PowerManager.WakeLock wl = wakeLock;
+			if ((wl != null) && wl.isHeld()) wl.release();
+		} catch (Exception ex) {
+			Log.w(ex, "Failed to release the wake lock");
+		}
 	}
 
 	/** Android 15+: data sync services get at most 6 hours a day. Pause (progress is kept), stop. */
 	@Override
 	public void onTimeout(int startId, int fgsType) {
 		downloads.pauseAll();
+		NotificationManager nm = getSystemService(NotificationManager.class);
+		stopForeground(STOP_FOREGROUND_REMOVE);
+		foreground = false;
+		releaseWakeLock();
+		// Said, not just done: the downloads wait for Resume.
+		if (nm != null) report(nm, true);
 		stopSelf();
 	}
 
@@ -105,6 +160,8 @@ public class YtDownloadService extends Service implements YtDownloads.Listener {
 		if (nm == null) return;
 
 		if (downloads.isBusy()) {
+			holdWakeLock();
+			clearReport();
 			try {
 				nm.notify(NOTIF_ID, buildOngoing());
 			} catch (Exception ex) {
@@ -114,21 +171,26 @@ public class YtDownloadService extends Service implements YtDownloads.Listener {
 		}
 
 		// Nothing left to fetch: say how it went, leaving a Resume behind for what's paused.
-		if (!foreground) return;
-		stopForeground(STOP_FOREGROUND_REMOVE);
-		foreground = false;
-		report(nm);
-		downloads.batchReported();
+		releaseWakeLock();
+		if (foreground) {
+			stopForeground(STOP_FOREGROUND_REMOVE);
+			foreground = false;
+			report(nm, false);
+			downloads.batchReported();
+		}
+		// Also when it never made it to the foreground: it must not linger with nothing to do.
 		stopSelf();
 	}
 
-	private void report(NotificationManager nm) {
+	private void report(NotificationManager nm, boolean timedOut) {
 		int done = downloads.getBatchDone();
 		int failed = downloads.getBatchFailed();
 		int paused = 0;
 		for (Entry e : downloads.snapshot()) {
 			if (e.state == YtDownloads.State.PAUSED) paused++;
 		}
+		// The one that was downloading is only marked paused a moment later.
+		if (timedOut) paused = Math.max(1, paused);
 
 		NotificationCompat.Builder b = new NotificationCompat.Builder(this, CHANNEL_ID)
 				.setSmallIcon(R.drawable.download)
@@ -154,11 +216,13 @@ public class YtDownloadService extends Service implements YtDownloads.Listener {
 		} else {
 			// Cancelled: nothing to report.
 			nm.cancel(REPORT_NOTIF_ID);
+			reportShown = false;
 			return;
 		}
 
 		try {
 			nm.notify(REPORT_NOTIF_ID, b.build());
+			reportShown = true;
 		} catch (Exception ex) {
 			Log.e(ex, "Failed to post the YouTube download notification");
 		}
@@ -201,18 +265,32 @@ public class YtDownloadService extends Service implements YtDownloads.Listener {
 	}
 
 	private PendingIntent serviceIntent(String action, int requestCode) {
+		PendingIntent p = switch (action) {
+			case ACTION_PAUSE -> pausePi;
+			case ACTION_RESUME -> resumePi;
+			default -> cancelPi;
+		};
+		if (p != null) return p;
+
 		Intent i = new Intent(this, YtDownloadService.class);
 		i.setAction(action);
-		return PendingIntent.getForegroundService(this, requestCode, i,
+		p = PendingIntent.getForegroundService(this, requestCode, i,
 				FLAG_IMMUTABLE | FLAG_UPDATE_CURRENT);
+		switch (action) {
+			case ACTION_PAUSE -> pausePi = p;
+			case ACTION_RESUME -> resumePi = p;
+			default -> cancelPi = p;
+		}
+		return p;
 	}
 
 	@Nullable
 	private PendingIntent openIntent() {
+		if (openPi != null) return openPi;
 		Intent i = getPackageManager().getLaunchIntentForPackage(getPackageName());
 		if (i == null) return null;
 		i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-		return PendingIntent.getActivity(this, 0, i, FLAG_IMMUTABLE | FLAG_UPDATE_CURRENT);
+		return openPi = PendingIntent.getActivity(this, 0, i, FLAG_IMMUTABLE | FLAG_UPDATE_CURRENT);
 	}
 
 	private void createChannel() {

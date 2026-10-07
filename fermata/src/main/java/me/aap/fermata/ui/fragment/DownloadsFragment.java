@@ -324,8 +324,15 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		rows.clear();
 		rows.addAll(n);
 		// The same cards: only the numbers moved, so they are rebound in place -- no flicker.
-		if (same) adapter.notifyItemRangeChanged(0, rows.size(), PAYLOAD);
-		else adapter.notifyDataSetChanged();
+		if (same) {
+			// Only what moves with the transfer: the progress cards and the header counting them.
+			for (int i = 0; i < rows.size(); i++) {
+				int t = rows.get(i).type;
+				if ((t == VT_PROGRESS) || (t == VT_HEADER)) adapter.notifyItemChanged(i, PAYLOAD);
+			}
+		} else {
+			adapter.notifyDataSetChanged();
+		}
 		refreshToolBar();
 	}
 

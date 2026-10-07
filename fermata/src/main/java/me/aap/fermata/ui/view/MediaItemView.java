@@ -126,7 +126,18 @@ public class MediaItemView extends ConstraintLayout
 	private VectorDrawableCompat watchingVideoDrawable;
 	private VectorDrawableCompat downloadedDrawable;
 	/** A download finished or was removed: the "downloaded" badge may have to appear or go. */
-	private final YtDownloads.Listener downloadListener = () -> invalidate();
+	private final YtDownloads.Listener downloadListener = this::downloadsChanged;
+	// What the badge showed last: the listener is told of every progress tick, and a redraw is for the
+	// badge appearing or going only.
+	private boolean badgeShown;
+
+	private void downloadsChanged() {
+		Item i = getItem();
+		boolean now = (i instanceof PlayableItem p) && YtOffline.isDownloadedYoutube(p);
+		if (now == badgeShown) return;
+		badgeShown = now;
+		invalidate();
+	}
 	@DrawableRes
 	private int outlineRes = R.drawable.media_item_outline;
 	private VectorDrawableCompat archiveLabelDrawable;
@@ -566,7 +577,7 @@ public class MediaItemView extends ConstraintLayout
 				if (d == null) return;
 				d.setTint(BADGE_ICON_COLOR);
 			}
-		} else if ((item instanceof PlayableItem dp) && YtOffline.isDownloadedYoutube(dp)) {
+		} else if ((item instanceof PlayableItem dp) && (badgeShown = YtOffline.isDownloadedYoutube(dp))) {
 			// A video that is on the phone: the same badge, in place of watched/watching.
 			d = downloadedDrawable;
 			if (d == null) {

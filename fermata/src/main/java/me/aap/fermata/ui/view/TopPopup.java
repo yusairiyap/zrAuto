@@ -114,6 +114,12 @@ public final class TopPopup {
 		if ((h != null) && (card.getParent() == h)) dismiss();
 	}
 
+	/** Whether {@code card} is the popup showing. */
+	public static boolean isShown(@Nullable View card) {
+		SwipeDismissLayout h = shown.get();
+		return (h != null) && (card != null) && (card.getParent() == h) && (h.getParent() != null);
+	}
+
 	public static boolean isShown() {
 		SwipeDismissLayout h = shown.get();
 		return (h != null) && (h.getParent() != null);

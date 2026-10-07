@@ -28,6 +28,8 @@ import androidx.annotation.StringRes;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.content.ContextCompat;
 
+import java.lang.ref.WeakReference;
+
 import me.aap.fermata.R;
 import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -47,6 +49,8 @@ import me.aap.utils.ui.fragment.ActivityFragment;
  * Only over playback -- see {@link #isPlaybackScreen} -- never while the user is browsing.
  */
 public final class NetworkIssuePopup {
+	private static WeakReference<View> card = new WeakReference<>(null);
+
 	private NetworkIssuePopup() {
 	}
 
@@ -81,6 +85,7 @@ public final class NetworkIssuePopup {
 	 * @param retry what "Try again" does
 	 */
 	public static void show(MainActivityDelegate a, @Nullable Runnable retry) {
+		dismiss();
 		Context ctx = a.getContext();
 		boolean online = isOnline(ctx);
 		boolean offlineTracks = MusicPlayer.hasOfflineTrack(a);
@@ -136,16 +141,19 @@ public final class NetworkIssuePopup {
 		close.setContentDescription(ctx.getString(R.string.network_issue_dismiss));
 		close.setOnClickListener(v -> dismiss());
 
-		TopPopup.show(a, b, null);
+		if (TopPopup.show(a, b, null)) card = new WeakReference<>(b);
 	}
 
 	/** Takes the banner down, if it's up -- playback carried on, or the user dismissed it. */
 	public static void dismiss() {
-		TopPopup.dismiss();
+		// Only this warning's own card: another popup (a download queued) may be up meanwhile.
+		View c = card.get();
+		card = new WeakReference<>(null);
+		if (c != null) TopPopup.dismiss(c);
 	}
 
 	public static boolean isShown() {
-		return TopPopup.isShown();
+		return TopPopup.isShown(card.get());
 	}
 
 	/** A pill-shaped chip with an icon; {@code primary} is filled, the others outlined. */

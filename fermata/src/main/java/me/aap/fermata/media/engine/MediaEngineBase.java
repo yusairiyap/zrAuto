@@ -61,8 +61,15 @@ public abstract class MediaEngineBase implements MediaEngine {
 	// The level a fade ends at: 1, or 0 while muted.
 	private float volumeTarget = 1f;
 	private float volumeNow = 1f;
+	// The step of the fade that is going on.
 	@Nullable
 	private Runnable fade;
+	// What runs once that fade is over...
+	@Nullable
+	private Runnable fadeDone;
+	// ...and whether that is the pause the sound was going out for: one that is cut short still has to
+	// pause the player (or it plays on, silently marked paused), while a skip's follow-up is dropped.
+	private boolean fadeDoneIsPause;
 	@Nullable
 	private Handler fadeHandler;
 
@@ -105,18 +112,35 @@ public abstract class MediaEngineBase implements MediaEngine {
 		applyVolume(volumeTarget);
 	}
 
+	@Override
+	public void restoreVolume() {
+		if (fade == null) applyVolume(volumeTarget);
+	}
+
+	/** Ends the fade in progress where it is; the pause it was for, if it was one, still happens. */
 	private void cancelFade() {
 		Runnable f = fade;
 		fade = null;
 		if ((f != null) && (fadeHandler != null)) fadeHandler.removeCallbacks(f);
+		Runnable d = fadeDone;
+		boolean pause = fadeDoneIsPause;
+		fadeDone = null;
+		fadeDoneIsPause = false;
+		if ((d != null) && pause) d.run();
 	}
 
 	/** Just before the player starts: the sound comes in over a moment. */
 	protected final void fadeIn() {
-		if (!supportsFade() || (volumeTarget <= 0f)) return;
+		// Started again while already playing (a repeated play, audio focus back): nothing to fade in.
+		if (!supportsFade() || (volumeTarget <= 0f) || isPlaying()) return;
+		// Playing again: the pause the sound was going out for no longer applies.
+		if (fadeDoneIsPause) {
+			fadeDone = null;
+			fadeDoneIsPause = false;
+		}
 		cancelFade();
 		applyVolume(0f);
-		fadeTo(volumeTarget, FADE_IN_MS, null);
+		fadeTo(volumeTarget, FADE_IN_MS, null, false);
 	}
 
 	/**
@@ -126,36 +150,42 @@ public abstract class MediaEngineBase implements MediaEngine {
 	protected final void pauseWithFade(Runnable realPause) {
 		boolean playing = isPlaying();
 		stopped(true);
-		fadeOut(playing, () -> {
-			realPause.run();
+		Runnable pause = () -> {
+			try {
+				realPause.run();
+			} catch (RuntimeException ex) {
+				// The player is in no state to pause (being prepared, in error): nothing to pause.
+				Log.d(ex, "Failed to pause");
+			}
 			applyVolume(volumeTarget);
-		});
+		};
+		cancelFade();
+		if (!playing || !supportsFade() || (volumeTarget <= 0f)) {
+			pause.run();
+			return;
+		}
+		fadeTo(0f, FADE_OUT_MS, pause, true);
 	}
 
 	@Override
 	public void fadeOut(Runnable then) {
-		fadeOut(isPlaying(), () -> {
-			then.run();
-			// The next thing to play starts with its own fade in; nothing is left quiet for good.
-			applyVolume(volumeTarget);
-		});
-	}
-
-	private void fadeOut(boolean playing, Runnable then) {
-		if (!playing || !supportsFade() || (volumeTarget <= 0f)) {
-			cancelFade();
+		cancelFade();
+		if (!isPlaying() || !supportsFade() || (volumeTarget <= 0f)) {
 			then.run();
 			return;
 		}
-		fadeTo(0f, FADE_OUT_MS, then);
+		// Not brought back up afterwards: what plays next sets its own volume (and this engine is
+		// closed or restarted by then); see restoreVolume() for a skip that came to nothing.
+		fadeTo(0f, FADE_OUT_MS, then, false);
 	}
 
 	/** Ramps the volume to {@code to} over {@code ms}, then runs {@code done}. */
-	private void fadeTo(float to, long ms, @Nullable Runnable done) {
-		cancelFade();
+	private void fadeTo(float to, long ms, @Nullable Runnable done, boolean isPause) {
 		float from = volumeNow;
 		long t0 = SystemClock.uptimeMillis();
 		Handler h = fadeHandler();
+		fadeDone = done;
+		fadeDoneIsPause = isPause;
 		Runnable step = new Runnable() {
 			@Override
 			public void run() {
@@ -166,7 +196,10 @@ public abstract class MediaEngineBase implements MediaEngine {
 					h.postDelayed(this, FADE_STEP_MS);
 				} else {
 					fade = null;
-					if (done != null) done.run();
+					Runnable d = fadeDone;
+					fadeDone = null;
+					fadeDoneIsPause = false;
+					if (d != null) d.run();
 				}
 			}
 		};

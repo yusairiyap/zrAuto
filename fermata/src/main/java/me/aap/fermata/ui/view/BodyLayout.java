@@ -291,11 +291,12 @@ public class BodyLayout extends SplitLayout
 		out.animate().cancel();
 
 		boolean inShown = (in.getVisibility() == VISIBLE) && (in.getAlpha() >= 1f);
+		// A pane that is still on its way out comes back from where it is, not from nothing.
+		if (in.getVisibility() != VISIBLE) in.setAlpha(0f);
 		in.setVisibility(VISIBLE);
 		paneFadeEnd = animate ? (SystemClock.uptimeMillis() + FADE_MS) : 0L;
 
 		if (animate && !inShown) {
-			in.setAlpha(0f);
 			in.animate().alpha(1f).setDuration(FADE_MS).start();
 		} else {
 			in.setAlpha(1f);
@@ -430,6 +431,8 @@ public class BodyLayout extends SplitLayout
 
 	@Override
 	public void onPlaybackError(String message) {
+		// The black that covered the way to a video that is not coming.
+		getActivity().liftVideoSwitchFade();
 		onPlaybackStopped();
 		Toast.makeText(getContext(), message, Toast.LENGTH_LONG).show();
 	}

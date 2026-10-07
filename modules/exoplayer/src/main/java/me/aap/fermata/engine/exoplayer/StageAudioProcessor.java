@@ -30,6 +30,8 @@ final class StageAudioProcessor implements AudioProcessor {
 	private ByteBuffer output = EMPTY_BUFFER;
 	private boolean inputEnded;
 	private FxDsp dsp;
+	// Whether the last block went through the effects.
+	private boolean processing;
 	/** Whether the YouTube equalizer's effects apply to what is playing: only for a downloaded video. */
 	private volatile boolean fx;
 	private float[] samples = new float[0];
@@ -79,8 +81,13 @@ final class StageAudioProcessor implements AudioProcessor {
 		FxDsp dsp = this.dsp;
 
 		if ((dsp == null) || (!p.isActive() && !f.isActive())) {
+			// Effects just switched off: what the filters and the hall still hold must not come back as
+			// a burst when they are switched on again.
+			if (processing && (dsp != null)) dsp.reset();
+			processing = false;
 			scratch.put(input);
 		} else {
+			processing = true;
 			ByteOrder order = input.order();
 			input.order(ByteOrder.nativeOrder());
 			int frames = size / 4;

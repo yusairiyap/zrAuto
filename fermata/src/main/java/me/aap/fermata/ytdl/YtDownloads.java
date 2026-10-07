@@ -121,6 +121,8 @@ public final class YtDownloads {
 	private final Object lock = new Object();
 	private final Map<String, Entry> entries = new LinkedHashMap<>();
 	private final Set<String> done = ConcurrentHashMap.newKeySet();
+	// Of those, the ones with a picture: read without the lock, as the list rows and the player ask.
+	private final Set<String> doneVideo = ConcurrentHashMap.newKeySet();
 	private final List<Listener> listeners = new CopyOnWriteArrayList<>();
 	private final Handler main = new Handler(Looper.getMainLooper());
 	private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
@@ -128,12 +130,12 @@ public final class YtDownloads {
 		t.setDaemon(true);
 		return t;
 	});
-	private boolean loaded;
+	private volatile boolean loaded;
 	private boolean workerRunning;
 	@Nullable
 	private Entry current;
 	private volatile int stop = STOP_NONE;
-	private long lastNotify;
+	private volatile long lastNotify;
 	/** Of the downloads queued since the queue was last empty: how many, and how they ended. */
 	private int batchTotal;
 	private int batchDone;
@@ -164,6 +166,13 @@ public final class YtDownloads {
 		if (videoId == null) return false;
 		ensureLoaded();
 		return done.contains(videoId);
+	}
+
+	/** Whether the video is on the phone, complete, with its picture (not just the sound). */
+	public boolean isVideoDownloaded(@Nullable String videoId) {
+		if (videoId == null) return false;
+		ensureLoaded();
+		return doneVideo.contains(videoId);
 	}
 
 	/** The finished download's file, or null if there's none. */
@@ -447,7 +456,13 @@ public final class YtDownloads {
 					e.error = null;
 				}
 				changed(true);
-				process(e);
+				try {
+					process(e);
+				} catch (Throwable ex) {
+					// Whatever it was, this one is over -- never left "downloading" for good.
+					Log.e(ex, "The YouTube download crashed: ", e.videoId);
+					finish(e, State.FAILED, "Download failed");
+				}
 			}
 		} catch (Throwable ex) {
 			Log.e(ex, "The YouTube download queue crashed");
@@ -464,6 +479,7 @@ public final class YtDownloads {
 		IOException failure = null;
 
 		for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+			long before = e.bytes;
 			try {
 				download(e);
 				finish(e, State.DONE, null);
@@ -478,6 +494,8 @@ public final class YtDownloads {
 			} catch (IOException ex) {
 				failure = ex;
 				Log.w(ex, "YouTube download failed (attempt ", attempt, "): ", e.videoId);
+				// The attempts are for failing in a row: one that got further than the last starts anew.
+				if (e.bytes > before) attempt = 0;
 				if (!sleepUnlessStopped(attempt * 3000L)) {
 					finish(e, (stop == STOP_CANCEL) ? null : State.PAUSED, null);
 					return;
@@ -492,6 +510,8 @@ public final class YtDownloads {
 	private void finish(Entry e, @Nullable State state, @Nullable String error) {
 		synchronized (lock) {
 			e.speed = 0;
+			// Cancelled just as it finished: the user asked for it gone.
+			if ((state == State.DONE) && (stop == STOP_CANCEL)) state = null;
 			if (state == null) {
 				removeLocked(e);
 			} else {
@@ -500,6 +520,7 @@ public final class YtDownloads {
 				if (state == State.DONE) {
 					e.bytes = e.total;
 					done.add(e.videoId);
+					if (e.video) doneVideo.add(e.videoId);
 					batchDone++;
 				} else if (state == State.FAILED) {
 					batchFailed++;
@@ -555,6 +576,9 @@ public final class YtDownloads {
 		int client = 0;
 		int height = e.height;
 		boolean combined = false;
+		// A refused stream that had some of its bytes gets one more try as it is (the address may just
+		// have expired or the network changed) before it is given up on.
+		boolean retriedSame = false;
 
 		resolving:
 		for (; ; ) {
@@ -589,9 +613,15 @@ public final class YtDownloads {
 				} catch (RefusedException ex) {
 					DiagnosticLog.log("YTDL", "stream refused", "id=" + e.videoId, "client=" + r.client,
 							"combined=" + combined, "height=" + e.gotHeight);
+					if (!retriedSame && ((audioPart.length() > 0) || (videoPart.length() > 0))) {
+						retriedSame = true;
+						client = r.client;
+						continue resolving;
+					}
+					retriedSame = false;
 					// What was fetched belongs to the stream that is being given up on.
-					audioPart.delete();
-					videoPart.delete();
+					deletePart(audioPart);
+					deletePart(videoPart);
 					e.bytes = 0;
 				}
 			}
@@ -614,23 +644,56 @@ public final class YtDownloads {
 			if (combined) {
 				if (e.video) {
 					if (!videoPart.renameTo(tmp)) throw new IOException("Failed to store the download");
+					deletePart(videoPart);
 				} else {
 					// Only the sound of the file with both, copied as it is.
 					extractAudio(videoPart, tmp);
-					videoPart.delete();
+					deletePart(videoPart);
 				}
 			} else if (e.video) {
 				mux(videoPart, audioPart, tmp);
-				audioPart.delete();
-				videoPart.delete();
+				deletePart(audioPart);
+				deletePart(videoPart);
 			} else if (!audioPart.renameTo(tmp)) {
 				throw new IOException("Failed to store the download");
+			} else {
+				deletePart(audioPart);
 			}
 			Files.move(tmp.toPath(), out.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+		} catch (IOException ex) {
+			// Parts that can't be joined would fail the same way every time: fetched again instead.
+			if (!(ex instanceof StopException)) {
+				deletePart(audioPart);
+				deletePart(videoPart);
+				e.bytes = 0;
+			}
+			throw ex;
 		} finally {
 			tmp.delete();
 		}
 		e.fileName = outName;
+	}
+
+	/** Deletes a part file and the note of which stream it is of. */
+	private static void deletePart(File part) {
+		part.delete();
+		new File(part.getPath() + ".len").delete();
+	}
+
+	private static long readLong(File f) {
+		try {
+			return Long.parseLong(new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8).trim());
+		} catch (Exception ex) {
+			return -1;
+		}
+	}
+
+	private static void writeLong(File f, long v) {
+		try {
+			Files.write(f.toPath(), Long.toString(v).getBytes(StandardCharsets.UTF_8));
+		} catch (Exception ex) {
+			Log.w(ex, "Failed to write ", f);
+		}
 	}
 
 	/** The next picture quality below {@code height}, or 0 if there is none. */
@@ -650,10 +713,14 @@ public final class YtDownloads {
 	private void fetch(Entry e, YtStreamResolver.Result r, YtStreamResolver.Stream s, File part,
 										long base) throws IOException {
 		long have = part.length();
-		if (have > s.length) {
-			part.delete();
+		// What is on disk goes on only with the very stream it came from: the length written beside
+		// it says which (a new answer may pick another client or quality).
+		File meta = new File(part.getPath() + ".len");
+		if ((have > 0) && ((readLong(meta) != s.length) || (have > s.length))) {
+			deletePart(part);
 			have = 0;
 		}
+		if (have == 0) writeLong(meta, s.length);
 
 		byte[] buf = new byte[32 * 1024];
 		long winStart = SystemClock.elapsedRealtime();
@@ -724,14 +791,24 @@ public final class YtDownloads {
 			if ((vt < 0) || (at < 0)) throw new IOException("The download has no picture or no sound");
 
 			mm = new MediaMuxer(out.getPath(), MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
-			int mv = mm.addTrack(vx.getTrackFormat(vt));
-			int ma = mm.addTrack(ax.getTrackFormat(at));
+			MediaFormat vf = vx.getTrackFormat(vt);
+			MediaFormat af = ax.getTrackFormat(at);
+			int mv = mm.addTrack(vf);
+			int ma = mm.addTrack(af);
 			vx.selectTrack(vt);
 			ax.selectTrack(at);
 			mm.start();
 			started = true;
 
-			ByteBuffer buf = ByteBuffer.allocate(2 * 1024 * 1024);
+			// Big enough for the largest sample the streams say they have (a 4K key frame).
+			int cap = 2 * 1024 * 1024;
+			if (vf.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
+				cap = Math.max(cap, vf.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE));
+			}
+			if (af.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
+				cap = Math.max(cap, af.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE));
+			}
+			ByteBuffer buf = ByteBuffer.allocate(cap);
 			MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
 			// Whichever stream is behind goes next, so the two stay interleaved in the file.
 			for (; ; ) {
@@ -830,6 +907,9 @@ public final class YtDownloads {
 	}
 
 	private void ensureLoaded() {
+		// Without the lock once loaded: this is asked while lists are drawn, and the worker holds the
+		// lock while it writes the index.
+		if (loaded) return;
 		synchronized (lock) {
 			ensureLoadedLocked();
 		}
@@ -846,25 +926,36 @@ public final class YtDownloads {
 			JSONArray a = new JSONArray(s);
 
 			for (int i = 0; i < a.length(); i++) {
-				JSONObject o = a.getJSONObject(i);
-				Entry e = new Entry(o.getString("id"),
-						o.optInt("height", o.optBoolean("video") ? 480 : 0));
-				e.gotHeight = o.optInt("got");
-				e.title = o.optString("title", null);
-				e.artist = o.optString("artist", null);
-				e.durationMs = o.optLong("dur");
-				e.bytes = o.optLong("bytes");
-				e.total = o.optLong("total");
-				e.fileName = o.optString("file", null);
-				State st = State.valueOf(o.optString("state", State.PAUSED.name()));
-				// Whatever was running when the app died picks up from what's on disk once resumed.
-				if ((st == State.DOWNLOADING) || (st == State.QUEUED)) st = State.PAUSED;
-				if (st == State.DONE) {
-					if ((e.fileName == null) || !new File(dir(), e.fileName).isFile()) continue;
-					done.add(e.videoId);
+				// One bad entry must not lose the others: the index is rewritten from what was read.
+				try {
+					JSONObject o = a.getJSONObject(i);
+					Entry e = new Entry(o.getString("id"),
+							o.optInt("height", o.optBoolean("video") ? 480 : 0));
+					e.gotHeight = o.optInt("got");
+					e.title = o.optString("title", null);
+					e.artist = o.optString("artist", null);
+					e.durationMs = o.optLong("dur");
+					e.bytes = o.optLong("bytes");
+					e.total = o.optLong("total");
+					e.fileName = o.optString("file", null);
+					State st;
+					try {
+						st = State.valueOf(o.optString("state", State.PAUSED.name()));
+					} catch (IllegalArgumentException ex) {
+						st = State.PAUSED;
+					}
+					// Whatever was running when the app died picks up from what's on disk once resumed.
+					if ((st == State.DOWNLOADING) || (st == State.QUEUED)) st = State.PAUSED;
+					if (st == State.DONE) {
+						if ((e.fileName == null) || !new File(dir(), e.fileName).isFile()) continue;
+						done.add(e.videoId);
+						if (e.video) doneVideo.add(e.videoId);
+					}
+					e.state = st;
+					entries.put(e.videoId, e);
+				} catch (Exception ex) {
+					Log.e(ex, "Skipped an entry of the YouTube downloads index");
 				}
-				e.state = st;
-				entries.put(e.videoId, e);
 			}
 		} catch (Exception ex) {
 			Log.e(ex, "Failed to read the YouTube downloads index");
@@ -901,9 +992,10 @@ public final class YtDownloads {
 	private void removeLocked(Entry e) {
 		entries.remove(e.videoId);
 		done.remove(e.videoId);
+		doneVideo.remove(e.videoId);
 		File d = dir();
-		new File(d, e.videoId + ".audio.part").delete();
-		new File(d, e.videoId + ".video.part").delete();
+		deletePart(new File(d, e.videoId + ".audio.part"));
+		deletePart(new File(d, e.videoId + ".video.part"));
 		if (e.fileName != null) new File(d, e.fileName).delete();
 	}
 

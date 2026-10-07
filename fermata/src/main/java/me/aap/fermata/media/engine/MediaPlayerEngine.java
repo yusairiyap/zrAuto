@@ -59,6 +59,7 @@ public class MediaPlayerEngine extends MediaEngineBase
 
 	@Override
 	public void prepare(PlayableItem source) {
+		resetFade();
 		stopped(false);
 		this.source = source;
 		Uri u = source.getLocation();

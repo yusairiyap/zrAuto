@@ -163,8 +163,12 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	@SuppressLint("SwitchIntDef")
 	@Override
 	public void prepare(PlayableItem source) {
-		if (this.source == null) stopped(false);
-		else stop();
+		if (this.source == null) {
+			resetFade();
+			stopped(false);
+		} else {
+			stop();
+		}
 		this.source = source;
 		// A downloaded YouTube video sounds as it does on YouTube: the page's equalizer applies.
 		stageProc.setFx(me.aap.fermata.ytdl.YtOffline.isDownloadedYoutube(source));

@@ -126,6 +126,10 @@ public interface MediaEngine extends Closeable {
 		then.run();
 	}
 
+	/** Back to the normal volume after a {@link #fadeOut} whose follow-up did not replace this engine. */
+	default void restoreVolume() {
+	}
+
 	/**
 	 * A downloaded video's file is about to play in another engine in place of this one: stops this
 	 * one and takes down whatever it left on screen. The web-hosted YouTube player, whose close() is

@@ -26,6 +26,8 @@ import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.os.Binder;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.IBinder;
 import android.support.v4.media.MediaBrowserCompat.MediaItem;
 import android.support.v4.media.MediaDescriptionCompat;
@@ -148,6 +150,7 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 			if (a instanceof FermataMediaServiceAddon)
 				((FermataMediaServiceAddon) a).onServiceDestroy(callback);
 		}
+		stopHandler.removeCallbacks(stopStarted);
 		super.onDestroy();
 		NotificationManagerCompat.from(this).cancel(NOTIF_ID);
 		if (intentReceiver != null) unregisterReceiver(intentReceiver);
@@ -242,18 +245,26 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 	// Whether startForegroundService() was called for this run of playback, see updateNotification().
 	private boolean started;
 
+	// Stops the service once playback has stayed stopped for a while (a track change that passes
+	// through "stopped" mustn't drop it from the foreground and start it again from the background).
+	private final Runnable stopStarted = () -> {
+		if (!started) return;
+		started = false;
+		stopSelf();
+	};
+	private final Handler stopHandler = new Handler(Looper.getMainLooper());
+
 	@SuppressLint("SwitchIntDef")
 	void updateNotification(int st, PlayableItem currentItem) {
 		switch (st) {
 			case STATE_NONE, STATE_STOPPED, STATE_ERROR -> {
 				stopForeground(true);
-				// Started while playing (below): no longer needed once it has stopped.
-				if (started) {
-					started = false;
-					stopSelf();
-				}
+				// Started while playing (below): no longer needed once it has stayed stopped.
+				stopHandler.removeCallbacks(stopStarted);
+				if (started) stopHandler.postDelayed(stopStarted, 5000);
 			}
 			case STATE_PAUSED -> {
+				stopHandler.removeCallbacks(stopStarted);
 				if (ActivityCompat.checkSelfPermission(this, POST_NOTIFICATIONS) != PERMISSION_GRANTED) {
 					return;
 				}
@@ -261,27 +272,36 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 				stopForeground(false);
 			}
 			case STATE_PLAYING -> {
-				// The service is only bound to the UI, which can go away (and take a bound-only service
-				// with it) while the screen is off; a started foreground one keeps playing.
-				if (!started) {
-					try {
+				stopHandler.removeCallbacks(stopStarted);
+				try {
+					Notification n = createNotification(st, currentItem);
+					// The service is only bound to the UI, which can go away (and take a bound-only
+					// service with it) while the screen is off; a started foreground one keeps playing.
+					// Started only once it is certain to get to the foreground: startForegroundService()
+					// demands startForeground() within seconds, or the app is killed.
+					boolean wasStarted = started;
+					if (!wasStarted) {
 						ContextCompat.startForegroundService(this, new Intent(this, FermataMediaService.class));
 						started = true;
-					} catch (Throwable ex) {
-						Log.w(ex, "Failed to start the media service");
 					}
-				}
-				Notification n = createNotification(st, currentItem);
-				try {
-					if (android.os.Build.VERSION.SDK_INT >= 29) {
-						startForeground(NOTIF_ID, n,
-								android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
-					} else {
-						startForeground(NOTIF_ID, n);
+					try {
+						if (android.os.Build.VERSION.SDK_INT >= 29) {
+							startForeground(NOTIF_ID, n,
+									android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+						} else {
+							startForeground(NOTIF_ID, n);
+						}
+					} catch (Throwable ex) {
+						// Not allowed right now: playback itself carries on; the service is not left
+						// started without a foreground notification.
+						Log.w(ex, "Failed to start the media foreground service");
+						if (!wasStarted) {
+							started = false;
+							stopSelf();
+						}
 					}
 				} catch (Throwable ex) {
-					// Not allowed to start from the background right now: playback itself carries on.
-					Log.w(ex, "Failed to start the media foreground service");
+					Log.w(ex, "Failed to show the playback notification");
 				}
 			}
 			default -> {

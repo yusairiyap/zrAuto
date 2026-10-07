@@ -52,7 +52,7 @@ public final class MusicPlayer {
 	// A downloaded video's picture is being watched (fullscreen), the queue carrying on through it:
 	// set by "Video" and by playing downloads as videos, dropped by anything that starts a track as
 	// music. Not the YouTube player's music mode ({@link #youtubeAudioMode}), which it leaves alone.
-	private static boolean watchingLocal;
+	private static volatile boolean watchingLocal;
 	private static WeakReference<MainActivityDelegate> activity = new WeakReference<>(null);
 
 	private MusicPlayer() {
@@ -401,16 +401,14 @@ public final class MusicPlayer {
 		}
 
 		DiagnosticLog.log(TAG, "play downloaded videos", "first=" + t, "count=" + items.size());
-		watchingLocal = true;
-		watchRequested = true;
 		// Fullscreen first, and once: the engine is given the picture's surface only if it is there
 		// when the engine is created (see BodyLayout#playLocalVideo).
 		if (!b.isVideoMode()) b.setMode(BodyLayout.Mode.VIDEO);
 		VideoView vv = b.getVideoView();
 		if (!vv.isSurfaceCreated() && !a.getMediaSessionCallback().hasCustomEngineProvider()) {
-			vv.onSurfaceCreated(() -> playTrack(a, t, 0));
+			vv.onSurfaceCreated(() -> startTrack(a, t, 0, true));
 		} else {
-			playTrack(a, t, 0);
+			startTrack(a, t, 0, true);
 		}
 	}
 
@@ -580,18 +578,27 @@ public final class MusicPlayer {
 
 	/** Plays a queue track -- from the Music tab itself (a queue row, or play with nothing on). */
 	public static void playTrack(MainActivityDelegate a, MusicTrackItem t, long pos) {
+		startTrack(a, t, pos, false);
+	}
+
+	/**
+	 * @param watch the track's picture is wanted ("Video", downloads played as videos): the flags
+	 *              that say so are set here, with the track, so they never outlive a start that
+	 *              did not happen; any other start clears them
+	 */
+	private static void startTrack(MainActivityDelegate a, MusicTrackItem t, long pos, boolean watch) {
 		MediaSessionCallback cb = a.getMediaSessionCallback();
 		MediaEngine eng = cb.getEngine();
 		DiagnosticLog.log(TAG, "play", "track=" + t, "id=" + t.getSourceId(),
-				"pos=" + (pos / 1000) + 's');
+				"pos=" + (pos / 1000) + 's', "watch=" + watch);
 		// The YouTube player's close() is deliberately inert: a local track taking over from it has
 		// to silence its page explicitly.
 		if ((t.getVideoId() == null) && (eng != null) && (eng.getId() == MediaPrefs.MEDIA_ENG_YT)) {
 			eng.pause();
 		}
 		t.setStartPosition(pos);
-		// Started as music unless a picture was asked for ("Video", the downloads played as videos).
-		if (!watchRequested) watchingLocal = false;
+		watchRequested = watch;
+		watchingLocal = watch;
 		cb.playItem(t, pos);
 	}
 
@@ -720,8 +727,7 @@ public final class MusicPlayer {
 			if (!cb.switchItem(t)) {
 				eng.getPosition().main().onSuccess(pos -> {
 					if (cb.getEngine() != eng) return;
-					watchRequested = true;
-					playTrack(a, t, pos);
+					startTrack(a, t, pos, true);
 				});
 			}
 			return;
@@ -761,8 +767,7 @@ public final class MusicPlayer {
 		DiagnosticLog.log(TAG, "watch", "track=" + t, "pos=" + (pos / 1000) + 's');
 
 		if (t.getVideoId() != null) {
-			watchRequested = true;
-			playTrack(a, t, pos);
+			startTrack(a, t, pos, true);
 			return;
 		}
 

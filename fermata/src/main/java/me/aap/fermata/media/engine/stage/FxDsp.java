@@ -216,6 +216,9 @@ public final class FxDsp {
 			double y = b0 * x + z1;
 			z1 = b1 * x - a1 * y + z2;
 			z2 = b2 * x - a2 * y;
+			// Through silence the state decays toward the denormal range, where ARM slows to a crawl.
+			if (Math.abs(z1) < 1e-20) z1 = 0;
+			if (Math.abs(z2) < 1e-20) z2 = 0;
 			return (float) y;
 		}
 	}
