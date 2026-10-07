@@ -84,7 +84,6 @@ import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.view.EffectsUi;
 import me.aap.fermata.ui.view.InfoOverlayView;
 import me.aap.fermata.ui.view.ToolBarPill;
-import me.aap.fermata.ui.view.LoadingCircleView;
 import me.aap.fermata.ui.view.LoadingDimView;
 import me.aap.fermata.ui.view.MusicMoreMenu;
 import me.aap.fermata.util.DiagnosticLog;
@@ -132,8 +131,6 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private final int[] extLoc2 = new int[2];
 	private ImageView art;
 	private LoadingDimView loading;
-	// The app's loading circle over the cover, the same one every other wait shows.
-	private LoadingCircleView loadingCircle;
 	private View playLoading;
 	private TextView message;
 	private TextView title;
@@ -245,12 +242,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				view.findViewById(R.id.music_scrim)};
 		art = view.findViewById(R.id.music_art);
 		loading = view.findViewById(R.id.music_loading);
-		if (loading.getParent() instanceof android.widget.FrameLayout fl) {
-			loadingCircle = new LoadingCircleView(requireContext());
-			fl.addView(loadingCircle, new android.widget.FrameLayout.LayoutParams(
-					android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-					android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER));
-		}
+
 		title = view.findViewById(R.id.music_track_title);
 		artist = view.findViewById(R.id.music_track_artist);
 		position = view.findViewById(R.id.music_position);
@@ -491,7 +483,6 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if (insetAnim != null) insetAnim.cancel();
 		insetAnim = null;
 		insetsSet = false;
-		loadingCircle = null;
 		super.onDestroyView();
 	}
 
@@ -944,7 +935,6 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		// Also while playing but stalled for data (the session stays "playing" through that).
 		boolean busy = isBusy(st) || (playing && BufferingIndicator.isBuffering());
 		loading.setLoading(busy);
-		if (loadingCircle != null) loadingCircle.setLoading(busy);
 		setPlayLoading(busy);
 
 		if (playing) {

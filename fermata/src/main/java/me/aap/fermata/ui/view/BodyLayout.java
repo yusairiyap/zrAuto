@@ -396,12 +396,16 @@ public class BodyLayout extends SplitLayout
 		MainActivityDelegate a = getActivity();
 		if (!(a.getActiveFragment() instanceof MainActivityFragment f)) return;
 		if (f instanceof SubtitlesFragment) a.goToCurrent();
-		else if (!f.isVideoModeSupported()) return;
 		MediaEngine eng = a.getMediaServiceBinder().getCurrentEngine();
 
 		if ((newItem == null) || !newItem.isVideo() || (eng == null) ||
 				(eng.getId() == MediaPrefs.MEDIA_ENG_YT)) {
+			// Whatever tab is showing: a track without a picture must never find the fullscreen video
+			// pane still up (black, over the Music tab) from the video before it.
 			setMode(Mode.FRAME);
+		} else if (!f.isVideoModeSupported()) {
+			// The video plays on behind a tab that does not show it.
+			return;
 		} else {
 			if (!eng.isVideoModeRequired()) setMode(Mode.FRAME);
 			else if (isFrameMode()) setMode(Mode.VIDEO);

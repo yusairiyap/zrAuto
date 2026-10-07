@@ -151,6 +151,7 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 				((FermataMediaServiceAddon) a).onServiceDestroy(callback);
 		}
 		stopHandler.removeCallbacks(stopStarted);
+		holdPlayWakeLock(false);
 		super.onDestroy();
 		NotificationManagerCompat.from(this).cancel(NOTIF_ID);
 		if (intentReceiver != null) unregisterReceiver(intentReceiver);
@@ -254,8 +255,34 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 	};
 	private final Handler stopHandler = new Handler(Looper.getMainLooper());
 
+	// Held while playing, for every engine: with the screen off the CPU would otherwise go to sleep
+	// and playback stall or pause after a while in the background.
+	@androidx.annotation.Nullable
+	private android.os.PowerManager.WakeLock playWakeLock;
+
+	private void holdPlayWakeLock(boolean hold) {
+		try {
+			android.os.PowerManager.WakeLock wl = playWakeLock;
+			if (hold) {
+				if (wl == null) {
+					android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
+					if (pm == null) return;
+					wl = playWakeLock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "zrauto:play");
+					wl.setReferenceCounted(false);
+				}
+				// Renewed on every state change while playing; lapses by itself if the app is killed.
+				wl.acquire(4 * 60 * 60 * 1000L);
+			} else if ((wl != null) && wl.isHeld()) {
+				wl.release();
+			}
+		} catch (Exception ex) {
+			Log.w(ex, "Failed to ", hold ? "hold" : "release", " the playback wake lock");
+		}
+	}
+
 	@SuppressLint("SwitchIntDef")
 	void updateNotification(int st, PlayableItem currentItem) {
+		holdPlayWakeLock(st == STATE_PLAYING);
 		switch (st) {
 			case STATE_NONE, STATE_STOPPED, STATE_ERROR -> {
 				stopForeground(true);

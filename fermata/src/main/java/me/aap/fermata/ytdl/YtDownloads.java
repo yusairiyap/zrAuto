@@ -4,6 +4,7 @@ import android.content.Context;
 import android.media.MediaCodec;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
+import android.media.MediaMetadataRetriever;
 import android.media.MediaMuxer;
 import android.net.Uri;
 import android.os.Handler;
@@ -659,6 +660,7 @@ public final class YtDownloads {
 			} else {
 				deletePart(audioPart);
 			}
+			verifyPlayable(tmp, e);
 			Files.move(tmp.toPath(), out.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 		} catch (IOException ex) {
 			// Parts that can't be joined would fail the same way every time: fetched again instead.
@@ -672,6 +674,31 @@ public final class YtDownloads {
 			tmp.delete();
 		}
 		e.fileName = outName;
+	}
+
+	/**
+	 * A file that will not play (parts of two streams appended, a join that went wrong) is found
+	 * out now, while it can still be fetched again, not when it stalls the player: it must have a
+	 * length, close to the video's own.
+	 */
+	private static void verifyPlayable(File f, Entry e) throws IOException {
+		MediaMetadataRetriever r = new MediaMetadataRetriever();
+		try {
+			r.setDataSource(f.getPath());
+			String d = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+			long ms = (d == null) ? 0 : Long.parseLong(d);
+			if (ms <= 0) throw new IOException("The download is damaged");
+			if ((e.durationMs > 0) && (Math.abs(ms - e.durationMs) > Math.max(5000, e.durationMs / 5))) {
+				throw new IOException("The download is damaged");
+			}
+		} catch (RuntimeException ex) {
+			throw new IOException("The download is damaged", ex);
+		} finally {
+			try {
+				r.release();
+			} catch (Exception ignored) {
+			}
+		}
 	}
 
 	/** Deletes a part file and the note of which stream it is of. */

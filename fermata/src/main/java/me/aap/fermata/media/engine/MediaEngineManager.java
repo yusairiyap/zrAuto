@@ -151,6 +151,11 @@ public class MediaEngineManager implements PreferenceStore.Listener {
 		PlayableItem i = current.getSource();
 		current.close();
 
+		// A downloaded video ExoPlayer could not play (it stalls on some muxed files): the platform's.
+		if ((id == MEDIA_ENG_EXO) && me.aap.fermata.ytdl.YtOffline.isDownloadedYoutube(i)) {
+			return create(mediaPlayer, null, i, listener);
+		}
+
 		if (i.getPrefs().getBooleanPref(SubGenAddon.ENABLED) && isExoPlayerSupported()) {
 			return create(exoPlayer, null, i, listener);
 		}

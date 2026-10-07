@@ -222,6 +222,10 @@ public final class MusicPlayer {
 		watchingLocal = watching && hasPicture;
 		if (!watching) {
 			setYoutubeAudioMode(true);
+			// Started as music: the fullscreen of a video before it is over.
+			MainActivityDelegate a = activity.get();
+			BodyLayout b = (a == null) ? null : a.getBody();
+			if ((b != null) && b.isVideoMode()) b.setMode(BodyLayout.Mode.FRAME);
 			return;
 		}
 		MainActivityDelegate a = activity.get();
@@ -378,6 +382,7 @@ public final class MusicPlayer {
 		a.goToItem(src);
 		BodyLayout b = a.getBody();
 		if ((b != null) && !b.isVideoMode()) b.setMode(BodyLayout.Mode.VIDEO);
+		a.post(a::updateExtraFabsVisibility);
 	}
 
 	/**
@@ -724,6 +729,8 @@ public final class MusicPlayer {
 			if (a.showFragment(R.id.downloads_addon) == null) a.backToNavFragment();
 			BodyLayout b = a.getBody();
 			if ((b != null) && !b.isVideoMode()) b.setMode(BodyLayout.Mode.VIDEO);
+			// The Music tab lets go of the floating buttons a moment later: they come with the video.
+			a.post(a::updateExtraFabsVisibility);
 			if (!cb.switchItem(t)) {
 				eng.getPosition().main().onSuccess(pos -> {
 					if (cb.getEngine() != eng) return;
@@ -746,6 +753,7 @@ public final class MusicPlayer {
 
 		eng.getPosition().main().onSuccess(pos -> {
 			a.goToItem(src);
+			a.post(a::updateExtraFabsVisibility);
 			// Same file on the same engine: it just gets its video surface back (the library tab
 			// just shown supports video mode, and switches into it as soon as the item becomes a
 			// video again). Otherwise re-prepare it at the current position.
