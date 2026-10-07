@@ -1440,7 +1440,12 @@ public class MainActivityDelegate extends ActivityDelegate
 			// After a moment: a switch that is quick never shows it.
 			f.postDelayed(() -> c.setLoading(true), 300);
 		}
-		getWindow().addContentView(f, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		try {
+			getWindow().addContentView(f, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		} catch (RuntimeException ex) {
+			// A window that takes no views (the car's, say): no cover, the screen just changes.
+			Log.w(ex, "Failed to cover the window");
+		}
 		windowCover = f;
 		return f;
 	}
