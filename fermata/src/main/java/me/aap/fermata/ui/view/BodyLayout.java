@@ -236,6 +236,12 @@ public class BodyLayout extends SplitLayout
 			mode = Mode.FRAME;
 		}
 		Mode oldMode = this.mode;
+		if (oldMode != mode) {
+			MainActivityDelegate act = MainActivityDelegate.getActivityDelegate(getContext()).peek();
+			ActivityFragment shown = (act == null) ? null : act.getActiveFragment();
+			DiagnosticLog.log("BODY", "mode " + oldMode + " -> " + mode,
+					"fragment=" + ((shown == null) ? null : shown.getClass().getSimpleName()));
+		}
 		this.mode = mode;
 		Guideline gl = getGuideline();
 		ConstraintLayout.LayoutParams lp = (ConstraintLayout.LayoutParams) gl.getLayoutParams();
