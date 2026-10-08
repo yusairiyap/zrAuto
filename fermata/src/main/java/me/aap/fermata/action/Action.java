@@ -96,7 +96,11 @@ public enum Action {
 		// has videoMode itself already forcing fullscreen regardless of that pref's value.
 		// Same as Back: out of the fullscreen video, to the tab it plays from (the bars shown over a
 		// video left a half-laid-out screen).
-		if (a.isVideoMode()) a.exitVideoMode();
+		var eng = a.getMediaSessionCallback().getEngine();
+		boolean youtube = (eng != null) && (eng.getId() == me.aap.fermata.media.pref.MediaPrefs.MEDIA_ENG_YT);
+		// Only local playback: YouTube keeps its own behaviour.
+		if (a.isVideoMode() && !youtube) a.exitVideoMode();
+		else if (a.isVideoMode()) a.toggleVideoBars();
 		else a.getPrefs().setFullscreenPref(a, !a.getPrefs().getFullscreenPref(a));
 	})),
 	DIM_TOGGLE(R.string.action_dim_toggle, a(a ->
