@@ -271,7 +271,7 @@ public class MusicTrackItem extends ExtPlayable {
 
 	/** Whether this is a YouTube video that's on the phone, so it plays from the file. */
 	public boolean isDownloaded() {
-		return (videoId != null) && YtDownloads.get().isDownloaded(videoId);
+		return YtOffline.useLocal(videoId);
 	}
 
 	/** Whether the file on the phone has the picture too, not just the sound. */

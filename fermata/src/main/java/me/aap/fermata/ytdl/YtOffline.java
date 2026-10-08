@@ -35,7 +35,9 @@ public final class YtOffline {
 	 * that was downloaded never uses the internet again -- the point of downloading it.
 	 */
 	public static boolean useLocal(@Nullable String videoId) {
-		return YtDownloads.get().isDownloaded(videoId);
+		// A file that has gone (deleted by hand, being fetched again) is no copy: the video is
+		// streamed rather than handed to a player as the address of its watch page.
+		return YtDownloads.get().isDownloaded(videoId) && (YtDownloads.get().getFile(videoId) != null);
 	}
 
 	/** The downloaded file of {@code videoId}, or null. */

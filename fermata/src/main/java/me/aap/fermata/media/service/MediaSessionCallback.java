@@ -1375,6 +1375,9 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 				"cause=" + describe(ex), "location=" + ((i == null) ? null : safeHost(i)));
 
 		if (tryAnotherEngine && (engine.getSource() != null)) {
+			// The next engine carries on from where this one gave out, not from the start.
+			Long failedAt = engine.getPosition().peek();
+			if ((failedAt != null) && (failedAt > 1000)) setLastPlayed(i, failedAt);
 			this.engine = getEngineManager().createAnotherEngine(engine, this);
 
 			if (this.engine != null) {
@@ -1531,6 +1534,10 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	private void playPreparedItem(PlayableItem i, long pos) {
 		resumeItem = null;
+		// A YouTube video that is not on the phone is the YouTube tab's to play, from wherever it is
+		// asked for (a Favorites entry whose download was removed, say): no other engine can play
+		// the address of its watch page.
+		if (!YtOffline.isDownloadedYoutube(i) && handOverYoutube(i, pos)) return;
 		MediaEngine eng = getEngine();
 
 		if (eng != null) {

@@ -164,6 +164,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private Context palette;
 	@Nullable
 	private PlayableItem shownItem;
+	// What was shown before it, and since when: a switch of track passes through states in which the
+	// engine still reports the old one, which must not bring its cover back for a moment.
+	private PlayableItem previousShown;
+	private long shownAt;
 	@Nullable
 	private Object shownArt;
 	// The cover currently shown, kept so the background can be re-blurred when the Background
@@ -564,8 +568,22 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		adapter.reload();
 	}
 
+	/** Whether playback is between one track and the next (the engine may still report the old one). */
+	private boolean isSwitching() {
+		int st = getActivityDelegate().getMediaSessionCallback().getPlaybackState().getState();
+		return (st == PlaybackStateCompat.STATE_CONNECTING) || (st == PlaybackStateCompat.STATE_BUFFERING) ||
+				(st == PlaybackStateCompat.STATE_SKIPPING_TO_NEXT) ||
+				(st == PlaybackStateCompat.STATE_SKIPPING_TO_PREVIOUS);
+	}
+
 	private void displayItem(@Nullable PlayableItem i, boolean force) {
 		if (!force && (i == shownItem) && (i != null)) return;
+		long now = android.os.SystemClock.uptimeMillis();
+		if (!force && (i != null) && (i == previousShown) && (now - shownAt < 1500) && isSwitching()) return;
+		if (shownItem != i) {
+			previousShown = shownItem;
+			shownAt = now;
+		}
 		shownItem = i;
 		updateVideoButton(i);
 

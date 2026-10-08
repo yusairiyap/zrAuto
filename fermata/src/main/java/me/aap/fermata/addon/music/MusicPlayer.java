@@ -26,6 +26,7 @@ import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.fermata.ytdl.YtOffline;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.ui.UiUtils;
+import me.aap.fermata.ui.fragment.MainActivityFragment;
 import me.aap.utils.ui.fragment.ActivityFragment;
 
 /**
@@ -217,7 +218,15 @@ public final class MusicPlayer {
 	 * has a picture -- video, fullscreen like the YouTube player's.
 	 */
 	static void startingDownloadedTrack(@Nullable MediaEngine current, boolean hasPicture) {
+		boolean requested = watchRequested;
 		boolean watching = isWatchingVideo(current);
+		MainActivityDelegate act = activity.get();
+		ActivityFragment shown = (act == null) ? null : act.getActiveFragment();
+		// Started from the Music tab (a track tapped there, or from a list while music mode is on): music,
+		// whatever was watched before -- the fullscreen picture would come up over the tab itself.
+		if (watching && !requested && (shown != null) && (shown.getFragmentId() == R.id.music_addon)) {
+			watching = false;
+		}
 		watchRequested = false;
 		watchingLocal = watching && hasPicture;
 		if (!watching) {
@@ -229,7 +238,8 @@ public final class MusicPlayer {
 			return;
 		}
 		MainActivityDelegate a = activity.get();
-		if (hasPicture && (a != null)) {
+		boolean showsVideo = (shown instanceof MainActivityFragment f) && f.isVideoModeSupported();
+		if (hasPicture && (a != null) && showsVideo) {
 			BodyLayout b = a.getBody();
 			if ((b != null) && !b.isVideoMode()) b.setMode(BodyLayout.Mode.VIDEO);
 		}
@@ -408,7 +418,10 @@ public final class MusicPlayer {
 		DiagnosticLog.log(TAG, "play downloaded videos", "first=" + t, "count=" + items.size());
 		// Fullscreen first, and once: the engine is given the picture's surface only if it is there
 		// when the engine is created (see BodyLayout#playLocalVideo).
-		if (!b.isVideoMode()) b.setMode(BodyLayout.Mode.VIDEO);
+		if (!b.isVideoMode()) {
+			a.fadeToBlackForLocalVideo();
+			b.setMode(BodyLayout.Mode.VIDEO);
+		}
 		VideoView vv = b.getVideoView();
 		if (!vv.isSurfaceCreated() && !a.getMediaSessionCallback().hasCustomEngineProvider()) {
 			vv.onSurfaceCreated(() -> startTrack(a, t, 0, true));

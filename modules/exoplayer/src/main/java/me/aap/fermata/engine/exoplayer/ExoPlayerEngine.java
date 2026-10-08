@@ -309,6 +309,10 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	public void setVideoView(VideoView view) {
 		super.setVideoView(view);
 		player.setVideoSurfaceHolder((view == null) ? null : view.getVideoSurface().getHolder());
+		// With nowhere to show it (the app in the background) the picture is not decoded at all: the
+		// sound plays on without a video decoder that can stall or be taken away.
+		PlayableItem s = source;
+		if (s != null) setVideoTrackDisabled((view == null) || s.isAudioOnlyPlayback());
 	}
 
 	@Override

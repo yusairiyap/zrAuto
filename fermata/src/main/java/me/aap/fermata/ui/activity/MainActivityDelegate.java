@@ -1424,6 +1424,9 @@ public class MainActivityDelegate extends ActivityDelegate
 	private int windowCoverGen;
 	// Whether the cover is the one on the way into a video (lifted when the video is up).
 	private boolean coverIntoVideo;
+	// How long the cover stays once the video's screen is up: a file's picture takes a moment to
+	// come, YouTube's lifts by its own signal.
+	private long coverHoldMs = 150;
 
 	private View newWindowCover(boolean spinner) {
 		removeWindowCover();
@@ -1455,6 +1458,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		windowCover = null;
 		windowCoverGen++;
 		coverIntoVideo = false;
+		coverHoldMs = 150;
 		if (c == null) return;
 		c.animate().cancel();
 		if (c.getParent() instanceof ViewGroup p) p.removeView(c);
@@ -1503,6 +1507,16 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	/**
+	 * Same, into a downloaded video started from a list: the picture comes up out of the black
+	 * once the file has had a moment to start, as YouTube's does.
+	 */
+	public void fadeToBlackForLocalVideo() {
+		if (isVideoMode() || (windowCover != null)) return;
+		fadeToBlack(false);
+		if (coverIntoVideo) coverHoldMs = 650;
+	}
+
+	/**
 	 * Same, into a YouTube video from another screen (a downloaded video, say): the black also
 	 * carries the loading circle if the page takes a moment, and is lifted by the video playing (see
 	 * {@link #liftVideoSwitchFade()}) -- so the watch page loading is never seen.
@@ -1546,7 +1560,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		int gen = windowCoverGen;
 		getHandler().postDelayed(() -> {
 			if ((gen == windowCoverGen) && (windowCover != null)) fadeOutWindowCover(windowCover, 0);
-		}, 150);
+		}, coverHoldMs);
 	}
 
 	/** Back into video before the exit fade finished: drop it, it'd only dim the new video. */
