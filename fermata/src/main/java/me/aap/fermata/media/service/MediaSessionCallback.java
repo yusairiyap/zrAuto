@@ -808,6 +808,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		}
 
 		skipFadingUntil = SystemClock.uptimeMillis() + 700;
+		notifySkipFade(eng);
 		eng.fadeOut(() -> {
 			skipFadingUntil = 0;
 			// Whatever took over while it faded (a stop, another item) wins.
@@ -819,6 +820,12 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 				if (getEngine() == eng) eng.restoreVolume();
 			}, 3000);
 		});
+	}
+
+	private void notifySkipFade(@Nullable MediaEngine eng) {
+		if (eng == null) return;
+		MediaSessionCallbackAssistant a = getAssistant();
+		if (a != this) a.skipFadeStarted(eng);
 	}
 
 	/**
@@ -892,6 +899,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		// Handed to the UI before the state says "skipping": it may come to nothing, and the session
 		// must not be left in that state with the old engine untouched.
 		if (handOverYoutube(i, pos)) return;
+		notifySkipFade(getEngine());
 		PlaybackStateCompat state = getPlaybackState();
 		PlaybackStateCompat.Builder b = new PlaybackStateCompat.Builder(state);
 		b.setState(next ? STATE_SKIPPING_TO_NEXT : STATE_SKIPPING_TO_PREVIOUS, pos,

@@ -416,6 +416,12 @@ public class BodyLayout extends SplitLayout
 			else getVideoView().showVideo();
 		}
 
+		// A black that covered the switch from one file to the next (never YouTube's: its own video
+		// lifts that).
+		if ((eng != null) && (newItem != null) && (eng.getId() != MediaPrefs.MEDIA_ENG_YT)) {
+			a.liftLocalVideoCover();
+		}
+
 		if ((eng != null) && (newItem != null) && !newItem.isVideo() && (getMode() == Mode.FRAME)) {
 			eng.selectSubtitleStream();
 		}

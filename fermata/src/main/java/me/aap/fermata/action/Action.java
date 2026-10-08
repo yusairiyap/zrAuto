@@ -94,7 +94,9 @@ public enum Action {
 		// none, so while it's playing this toggles the system bars directly instead -- flipping the
 		// persisted fullscreenPref here would be a no-op, since MainActivityDelegate.isFullScreen()
 		// has videoMode itself already forcing fullscreen regardless of that pref's value.
-		if (a.isVideoMode()) a.toggleVideoBars();
+		// Same as Back: out of the fullscreen video, to the tab it plays from (the bars shown over a
+		// video left a half-laid-out screen).
+		if (a.isVideoMode()) a.exitVideoMode();
 		else a.getPrefs().setFullscreenPref(a, !a.getPrefs().getFullscreenPref(a));
 	})),
 	DIM_TOGGLE(R.string.action_dim_toggle, a(a ->

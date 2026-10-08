@@ -22,6 +22,13 @@ public interface MediaSessionCallbackAssistant {
 		return false;
 	}
 
+	/**
+	 * The item {@code eng} plays is about to give way to another (a skip, the end of a track): the UI
+	 * may take the picture through black meanwhile, as YouTube's video does.
+	 */
+	default void skipFadeStarted(me.aap.fermata.media.engine.MediaEngine eng) {
+	}
+
 	@NonNull
 	default FutureSupplier<MediaLib.PlayableItem> getPrevPlayable(Item i) {
 		return i.getPrevPlayable();

@@ -1541,6 +1541,22 @@ public class MainActivityDelegate extends ActivityDelegate
 		}, spinner ? 8000 : 2000);
 	}
 
+	/** A fullscreen file's picture gives way to the next one's: through black, lifted by BodyLayout. */
+	@Override
+	public void skipFadeStarted(MediaEngine eng) {
+		if (!isVideoMode() || (eng.getId() == MediaPrefs.MEDIA_ENG_YT)) return;
+		// Already covered (the cover of the sound's fade, then the skip itself).
+		if (windowCover != null) return;
+		fadeToBlack(false);
+		if (coverIntoVideo) coverHoldMs = 450;
+	}
+
+	/** The next file is on its way up: the black of {@link #skipFadeStarted} goes shortly after. */
+	public void liftLocalVideoCover() {
+		if (!coverIntoVideo || (windowCover == null)) return;
+		liftVideoSwitchFadeSoon();
+	}
+
 	/**
 	 * The video the black of {@link #fadeToBlackForVideo()} was covering for is up: fades it back
 	 * out (shortly after, once it has had a moment to draw). A no-op when there's no such black.
