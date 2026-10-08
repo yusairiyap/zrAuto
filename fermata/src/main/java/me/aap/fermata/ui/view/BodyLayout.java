@@ -27,6 +27,7 @@ import androidx.constraintlayout.widget.Guideline;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import me.aap.fermata.R;
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.engine.SubtitleStreamInfo;
 import me.aap.fermata.media.lib.MediaLib;
@@ -464,6 +465,13 @@ public class BodyLayout extends SplitLayout
 		if ((i == null) || i.isVideo()) return;
 		var a = getActivity();
 		var f = a.getActiveFragment();
+		// A Music tab track (a downloaded video played as music, say) that has a subtitle stream
+		// is still shown by the Music tab: its own screen, never the Subtitles tab, which with
+		// nothing to show is the blank page with the control panel in front.
+		if ((info != null) && ((i instanceof MusicTrackItem) || isMusicTabActive())) {
+			DiagnosticLog.log("BODY", "subtitle stream on a Music tab track: Subtitles tab not shown");
+			return;
+		}
 		if (info == null) {
 			if (f instanceof SubtitlesFragment) a.goToCurrent();
 		} else if (f instanceof SubtitlesFragment) {
