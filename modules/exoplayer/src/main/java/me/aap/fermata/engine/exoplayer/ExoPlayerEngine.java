@@ -165,6 +165,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	@Override
 	public void prepare(PlayableItem source) {
 		stallGen++;
+		firstFrame = false;
 		if (this.source == null) {
 			resetFade();
 			stopped(false);
@@ -217,6 +218,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		listener.onEngineStarted(this);
 		started();
 		watchForStall();
+		if (shown != null) watchBlackPicture();
 	}
 
 	// Identifies the latest start, so that what an earlier one still has to check is dropped.
@@ -347,6 +349,48 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		// sound plays on without a video decoder that can stall or be taken away.
 		PlayableItem s = source;
 		if (s != null) setVideoTrackDisabled((view == null) || s.isAudioOnlyPlayback());
+		shown = view;
+		firstFrame = false;
+		if (view != null) watchBlackPicture();
+	}
+
+	// The view the picture is given to, whether the first frame of it has been drawn, and the
+	// latest check of that (see watchBlackPicture()).
+	private VideoView shown;
+	private boolean firstFrame;
+	private int blackGen;
+
+	@Override
+	public void onRenderedFirstFrame() {
+		firstFrame = true;
+	}
+
+	/**
+	 * A video that plays (sound) with its screen up but whose picture does not come -- the decoder
+	 * lost its surface, or the picture's track was left switched off -- is put right: track on, surface
+	 * given again. Logged, so what it was shows in the diagnostic log.
+	 */
+	private void watchBlackPicture() {
+		int gen = ++blackGen;
+		FermataApplication.get().getHandler().postDelayed(() -> {
+			VideoView v = shown;
+			PlayableItem src = source;
+			if ((gen != blackGen) || firstFrame || (v == null) || (src == null) ||
+					(accessor.player == null) || !src.isVideo()) return;
+			if (!player.getPlayWhenReady() || (player.getPlaybackState() != Player.STATE_READY)) return;
+			Format f = player.getVideoFormat();
+			boolean valid = v.getVideoSurface().getHolder().getSurface().isValid();
+			DiagnosticLog.log("ENGINE", "no picture 3 s after the screen was given", "item=" + src,
+					"videoOff=" + player.getTrackSelectionParameters().disabledTrackTypes
+							.contains(C.TRACK_TYPE_VIDEO),
+					"format=" + ((f == null) ? null : f.sampleMimeType + "/" + f.width + "x" + f.height),
+					"surfaceValid=" + valid);
+			setVideoTrackDisabled(false);
+			if (valid) {
+				player.clearVideoSurface();
+				player.setVideoSurfaceHolder(v.getVideoSurface().getHolder());
+			}
+		}, 3000);
 	}
 
 	@Override
