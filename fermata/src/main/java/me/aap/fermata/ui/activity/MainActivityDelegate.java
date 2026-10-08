@@ -1042,7 +1042,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			this.videoMode = true;
 			cancelVideoExitFade();
 			// Came from the Music tab's Video: lift the black now that the video is taking over.
-			if (coverIntoVideo) liftVideoSwitchFadeSoon();
+			if (coverIntoVideo && !coverUntilPlaying) liftVideoSwitchFadeSoon();
 			setSystemUiVisibility();
 			keepScreenOn(true);
 			cp.enableVideoMode();
@@ -1427,6 +1427,8 @@ public class MainActivityDelegate extends ActivityDelegate
 	// How long the cover stays once the video's screen is up: a file's picture takes a moment to
 	// come, YouTube's lifts by its own signal.
 	private long coverHoldMs = 150;
+	// Whether the cover stays until the video plays (a downloaded video starting), not for a set time.
+	private boolean coverUntilPlaying;
 
 	private View newWindowCover(boolean spinner) {
 		removeWindowCover();
@@ -1459,6 +1461,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		windowCoverGen++;
 		coverIntoVideo = false;
 		coverHoldMs = 150;
+		coverUntilPlaying = false;
 		if (c == null) return;
 		c.animate().cancel();
 		if (c.getParent() instanceof ViewGroup p) p.removeView(c);
@@ -1512,8 +1515,12 @@ public class MainActivityDelegate extends ActivityDelegate
 	 */
 	public void fadeToBlackForLocalVideo() {
 		if (isVideoMode() || (windowCover != null)) return;
-		fadeToBlack(false);
-		if (coverIntoVideo) coverHoldMs = 650;
+		// With the loading circle, should the file take a moment; lifted once it plays.
+		fadeToBlack(true);
+		if (coverIntoVideo) {
+			coverHoldMs = 650;
+			coverUntilPlaying = true;
+		}
 	}
 
 	/**
@@ -1547,13 +1554,19 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (!isVideoMode() || (eng.getId() == MediaPrefs.MEDIA_ENG_YT)) return;
 		// Already covered (the cover of the sound's fade, then the skip itself).
 		if (windowCover != null) return;
-		fadeToBlack(false);
+		fadeToBlack(true);
 		if (coverIntoVideo) coverHoldMs = 450;
 	}
 
-	/** The next file is on its way up: the black of {@link #skipFadeStarted} goes shortly after. */
-	public void liftLocalVideoCover() {
+	/**
+	 * The next file is on its way up ({@code playing}: it plays): the black of {@link #skipFadeStarted}
+	 * or of a downloaded video starting goes shortly after. The latter waits for it to play.
+	 */
+	public void liftLocalVideoCover(boolean playing) {
 		if (!coverIntoVideo || (windowCover == null)) return;
+		if (coverUntilPlaying && !playing) return;
+		coverUntilPlaying = false;
+		coverHoldMs = playing ? 200 : 450;
 		liftVideoSwitchFadeSoon();
 	}
 

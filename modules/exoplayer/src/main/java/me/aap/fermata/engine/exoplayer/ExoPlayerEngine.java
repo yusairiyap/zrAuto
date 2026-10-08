@@ -55,6 +55,7 @@ import me.aap.fermata.FermataApplication;
 import me.aap.fermata.addon.SubGenAddon;
 import me.aap.fermata.addon.TranslateAddon;
 import me.aap.fermata.addon.TranslateAddon.Translator;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.media.engine.AudioEffects;
 import me.aap.fermata.media.engine.AudioStreamInfo;
 import me.aap.fermata.media.engine.MediaEngine;
@@ -163,6 +164,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	@SuppressLint("SwitchIntDef")
 	@Override
 	public void prepare(PlayableItem source) {
+		stallGen++;
 		if (this.source == null) {
 			resetFade();
 			stopped(false);
@@ -214,10 +216,41 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		player.setPlayWhenReady(true);
 		listener.onEngineStarted(this);
 		started();
+		watchForStall();
+	}
+
+	// Identifies the latest start, so that what an earlier one still has to check is dropped.
+	private int stallGen;
+
+	/**
+	 * A file on the phone that is ready and told to play, yet does not move at all for a few seconds,
+	 * is stuck (some files stall this player from their first second): reported as an error at once,
+	 * so the platform player takes over, instead of after the 10 seconds of silence the player itself
+	 * waits before saying so.
+	 */
+	private void watchForStall() {
+		int gen = ++stallGen;
+		PlayableItem src = source;
+		if ((src == null) || src.isNetResource()) return;
+		long at = player.getCurrentPosition();
+		FermataApplication.get().getHandler().postDelayed(() -> {
+			if ((gen != stallGen) || (source == null) || (accessor.player == null)) return;
+			if (!player.getPlayWhenReady() || (player.getPlaybackState() != Player.STATE_READY)) return;
+			if (player.getCurrentPosition() > at + 300) return;
+			Format a = player.getAudioFormat();
+			Format v = player.getVideoFormat();
+			DiagnosticLog.log("ENGINE", "no progress after start", "item=" + source,
+					"pos=" + player.getCurrentPosition(),
+					"audio=" + ((a == null) ? null : a.sampleMimeType + "/" + a.sampleRate + "Hz/" + a.channelCount + "ch"),
+					"video=" + ((v == null) ? null : v.sampleMimeType + "/" + v.width + "x" + v.height),
+					"videoOff=" + player.getTrackSelectionParameters().disabledTrackTypes.contains(C.TRACK_TYPE_VIDEO));
+			listener.onEngineError(this, new java.io.IOException("Playback stalled"));
+		}, 4000);
 	}
 
 	@Override
 	public void stop() {
+		stallGen++;
 		resetFade();
 		stopped(false);
 		player.stop();
@@ -227,6 +260,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 
 	@Override
 	public void pause() {
+		stallGen++;
 		pauseWithFade(() -> player.setPlayWhenReady(false));
 	}
 

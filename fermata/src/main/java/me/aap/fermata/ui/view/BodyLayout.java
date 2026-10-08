@@ -32,7 +32,10 @@ import me.aap.fermata.media.engine.SubtitleStreamInfo;
 import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
+import android.support.v4.media.session.PlaybackStateCompat;
+
 import me.aap.fermata.media.service.MediaSessionCallback;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.fermata.ui.fragment.MainActivityFragment;
@@ -226,6 +229,12 @@ public class BodyLayout extends SplitLayout
 	}
 
 	public void setMode(Mode mode) {
+		// The Music tab has no video mode: the fullscreen pane over it is a blank page with the video's
+		// control panel on it. Whatever asks for it, the tab stays as it is.
+		if ((mode == Mode.VIDEO) && isMusicTabActive()) {
+			DiagnosticLog.log("BODY", "video mode refused over the Music tab");
+			mode = Mode.FRAME;
+		}
 		Mode oldMode = this.mode;
 		this.mode = mode;
 		Guideline gl = getGuideline();
@@ -268,6 +277,12 @@ public class BodyLayout extends SplitLayout
 		} else if (SystemClock.uptimeMillis() >= paneFadeEnd) {
 			showPane(mode, false);
 		}
+	}
+
+	private boolean isMusicTabActive() {
+		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
+		ActivityFragment f = (a == null) ? null : a.getActiveFragment();
+		return (f != null) && (f.getFragmentId() == R.id.music_addon);
 	}
 
 	// Identifies the latest fade of the panes, so that what an earlier one still has to do is dropped.
@@ -419,12 +434,21 @@ public class BodyLayout extends SplitLayout
 		// A black that covered the switch from one file to the next (never YouTube's: its own video
 		// lifts that).
 		if ((eng != null) && (newItem != null) && (eng.getId() != MediaPrefs.MEDIA_ENG_YT)) {
-			a.liftLocalVideoCover();
+			a.liftLocalVideoCover(false);
 		}
 
 		if ((eng != null) && (newItem != null) && !newItem.isVideo() && (getMode() == Mode.FRAME)) {
 			eng.selectSubtitleStream();
 		}
+	}
+
+	@Override
+	public void onPlaybackStateChanged(MediaSessionCallback cb, PlaybackStateCompat state) {
+		MainActivityDelegate a = getActivity();
+		// The black over the start of a downloaded video goes once it plays.
+		if (state.getState() == PlaybackStateCompat.STATE_PLAYING) a.liftLocalVideoCover(true);
+		// Over a list the fullscreen button comes and goes with whether a video plays.
+		if (!isVideoMode()) a.updateExtraFabsVisibility();
 	}
 
 	@Override

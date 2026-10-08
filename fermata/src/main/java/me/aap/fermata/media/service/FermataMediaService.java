@@ -170,6 +170,8 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 	@Override
 	public void onTaskRemoved(Intent rootIntent) {
 		super.onTaskRemoved(rootIntent);
+		// Swiped away from Recents: what plays ends with the app.
+		callback.onStop();
 		// The user swiping the app away from Recents is the closest thing to "exiting the app" on
 		// Android, but a foreground playback notification (see updateNotification()) can keep this
 		// service -- and the whole process, private-profile cookies included -- alive well past

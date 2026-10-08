@@ -350,6 +350,8 @@ public class NavBarMediator extends PrefNavBarMediator
 			return true;
 		} else if (itemId == R.id.nav_exit) {
 			MainActivityDelegate a = MainActivityDelegate.get(item.getContext());
+			// Leaving the app ends what plays.
+			a.getMediaSessionCallback().onStop();
 			a.finish();
 			if (a.isCarActivityNotMirror()) {
 				a.getHandler().postDelayed(() -> System.exit(0), 500);

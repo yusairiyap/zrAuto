@@ -388,6 +388,12 @@ public final class MusicPlayer {
 			showYoutubeVideo(a);
 			return;
 		}
+		// A queue track belongs to the Music tab, which has no picture: its video is shown from the
+		// list it came from, or Downloads.
+		if (src instanceof MusicTrackItem) {
+			switchToVideo(a);
+			return;
+		}
 
 		a.goToItem(src);
 		BodyLayout b = a.getBody();
