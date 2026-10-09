@@ -54,6 +54,11 @@ public final class MusicPlayer {
 	// set by "Video" and by playing downloads as videos, dropped by anything that starts a track as
 	// music. Not the YouTube player's music mode ({@link #youtubeAudioMode}), which it leaves alone.
 	private static volatile boolean watchingLocal;
+	// How startTrack() asked for its track to be shown, for that track only: applied to the flags
+	// above when that track's engine is chosen, dropped when any other track's is, so it never
+	// outlives a start that did not happen (e.g. superseded by a library item).
+	@Nullable
+	private static volatile StartRequest startRequest;
 	private static WeakReference<MainActivityDelegate> activity = new WeakReference<>(null);
 
 	private MusicPlayer() {
@@ -129,9 +134,31 @@ public final class MusicPlayer {
 		return youtubeAudioMode;
 	}
 
-	/** Whether a downloaded video's picture is being watched, see {@link #watchingLocal}. */
-	static boolean isWatchingLocal() {
-		return watchingLocal;
+	/**
+	 * Whether {@code t}'s downloaded picture is to be watched: as its pending start asked, if it
+	 * has one (see {@link #startRequest}), otherwise {@link #watchingLocal}.
+	 */
+	static boolean isWatchingLocal(MusicTrackItem t) {
+		StartRequest r = startRequest;
+		return ((r != null) && r.track.equals(t)) ? r.watch : watchingLocal;
+	}
+
+	private record StartRequest(MusicTrackItem track, boolean watch) {}
+
+	/**
+	 * {@code t}'s engine is being chosen: the start startTrack() asked for it takes effect now, and a
+	 * request left by a start for another track is dropped.
+	 */
+	private static void applyStartRequest(MusicTrackItem t) {
+		StartRequest r = startRequest;
+		if (r == null) return;
+		startRequest = null;
+		if (!r.track.equals(t)) {
+			DiagnosticLog.log(TAG, "start request dropped", "for=" + r.track, "starting=" + t);
+			return;
+		}
+		watchRequested = r.watch;
+		watchingLocal = r.watch;
 	}
 
 	public static void setYoutubeAudioMode(boolean on) {
@@ -182,6 +209,7 @@ public final class MusicPlayer {
 	 */
 	static MediaEngine getYoutubeEngine(MusicTrackItem t, @Nullable MediaEngine current,
 																			MediaEngine.Listener listener) {
+		applyStartRequest(t);
 		// Music unless the user switched to watching it (the Music tab's "Video"): then Next/Prev
 		// through the queue keep showing video, at its usual quality, instead of dropping back to
 		// the lowest one.
@@ -217,7 +245,9 @@ public final class MusicPlayer {
 	 * player is in video mode (the YouTube tab watched, or a downloaded video shown) and the file
 	 * has a picture -- video, fullscreen like the YouTube player's.
 	 */
-	static void startingDownloadedTrack(@Nullable MediaEngine current, boolean hasPicture) {
+	static void startingDownloadedTrack(MusicTrackItem t, @Nullable MediaEngine current,
+																			boolean hasPicture) {
+		applyStartRequest(t);
 		boolean requested = watchRequested;
 		boolean watching = isWatchingVideo(current);
 		MainActivityDelegate act = activity.get();
@@ -612,9 +642,9 @@ public final class MusicPlayer {
 	}
 
 	/**
-	 * @param watch the track's picture is wanted ("Video", downloads played as videos): the flags
-	 *              that say so are set here, with the track, so they never outlive a start that
-	 *              did not happen; any other start clears them
+	 * @param watch the track's picture is wanted ("Video", downloads played as videos): kept with
+	 *              the track (see {@link #startRequest}) until its engine is chosen, so it never
+	 *              outlives a start that did not happen
 	 */
 	private static void startTrack(MainActivityDelegate a, MusicTrackItem t, long pos, boolean watch) {
 		MediaSessionCallback cb = a.getMediaSessionCallback();
@@ -627,8 +657,7 @@ public final class MusicPlayer {
 			eng.pause();
 		}
 		t.setStartPosition(pos);
-		watchRequested = watch;
-		watchingLocal = watch;
+		startRequest = new StartRequest(t, watch);
 		cb.playItem(t, pos);
 	}
 

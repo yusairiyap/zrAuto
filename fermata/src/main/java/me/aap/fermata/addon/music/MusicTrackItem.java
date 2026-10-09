@@ -240,12 +240,12 @@ public class MusicTrackItem extends ExtPlayable {
 
 	/**
 	 * A downloaded video played from its file shows its picture while the player is being watched
-	 * (see {@link MusicPlayer#isWatchingLocal()}), like the YouTube player does; everything else
+	 * (see {@link MusicPlayer#isWatchingLocal}), like the YouTube player does; everything else
 	 * in the Music tab is sound only.
 	 */
 	@Override
 	public boolean isVideo() {
-		return (videoId != null) && MusicPlayer.isWatchingLocal() && hasDownloadedVideo();
+		return (videoId != null) && MusicPlayer.isWatchingLocal(this) && hasDownloadedVideo();
 	}
 
 	@Override
@@ -318,7 +318,7 @@ public class MusicTrackItem extends ExtPlayable {
 			// The usual engines play the file; the YouTube page's player, whose close() leaves it
 			// playing, has to be silenced by hand (and its fullscreen view taken down).
 			if ((current != null) && (current.getId() == MediaPrefs.MEDIA_ENG_YT)) current.yieldToLocal();
-			MusicPlayer.startingDownloadedTrack(current, hasDownloadedVideo());
+			MusicPlayer.startingDownloadedTrack(this, current, hasDownloadedVideo());
 			// ExoPlayer when it's there: it runs the YouTube equalizer's effects on the file.
 			return getLib().getMediaEngineManager().createPreferringExo(current, this, listener);
 		}

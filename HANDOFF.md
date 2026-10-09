@@ -1,6 +1,6 @@
 # HANDOFF (one-time: delete this file with `git rm HANDOFF.md` once the pickup below is done)
 
-Branch: `ccr-d32fd790-dpebv3` (develop and push only here, no PR unless asked). Last CI-green commit
+Branch: `ccr-8b7dca94-medecy` (was `ccr-d32fd790-dpebv3`) (develop and push only here, no PR unless asked). Last CI-green commit
 before this file: `5b479a0`; later commits on top are uncompiled until CI runs (check Build APK).
 Follow `CLAUDE.md` (no local Gradle, CI is the compile loop, ask for adb/diagnostic logs when stuck).
 The device is a Samsung SM-X736B (Android 16, One UI). The user tests on it and pastes the Diagnostic log.
@@ -82,7 +82,10 @@ cleared when playing.
    the three independent covers and the deferred-exit special cases. Add a generation id per transition.
 3. Make the session publish **item-scoped state**: metadata, playback state, notification are built from
    `(engine, item)` pairs and rejected if either is no longer current (already done for metadata).
-4. Replace `MusicPlayer` static flags with per-track/per-play fields.
+4. Replace `MusicPlayer` static flags with per-track/per-play fields. **Partly done**: `startTrack` no
+   longer sets `watchRequested/watchingLocal` up front; it leaves a `StartRequest(track, watch)` that is
+   applied only when that same track's engine is chosen (`applyStartRequest`), else dropped (logged
+   `MUSIC start request dropped`). Problem 5 is instrumented (`MUSIC display ...` lines).
 5. Keep logs: after stable, cut NOTIF/META/BODY lines to state changes only.
 
 ## Pickup prompt for the user to paste into the new session
