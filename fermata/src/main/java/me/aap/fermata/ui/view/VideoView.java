@@ -96,6 +96,11 @@ public class VideoView extends FrameLayout
 	 * {@code ControlPanelView} -- see {@link #setControlPanelVisible}. Assumed visible until told
 	 * otherwise so the overlay isn't wrongly hidden before the first real update arrives. */
 	private boolean controlPanelVisible = true;
+	/** The YouTube-like title/center buttons/double tap feedback over the picture. */
+	private final VideoControlsOverlay controls;
+	/** Whether the Info Overlay is moved to the top right, out of the shown title's way. */
+	private boolean infoAtRight;
+	private static final long INFO_MOVE_MS = 250L;
 
 	public VideoView(Context context) {
 		this(context, null);
@@ -104,6 +109,9 @@ public class VideoView extends FrameLayout
 	public VideoView(Context context, AttributeSet attrs) {
 		super(context, attrs);
 		init(context);
+		// Over everything init() put in (the picture, the black fades, the dim, YouTube's cover).
+		controls = new VideoControlsOverlay(context);
+		addView(controls, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 		getActivity().onSuccess(a -> {
 			a.addBroadcastListener(this);
 			a.getLib().getPrefs().addBroadcastListener(this);
@@ -404,6 +412,15 @@ public class VideoView extends FrameLayout
 			FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
 			lp.setMargins(m, m, m, m);
 			addView(infoOverlay, lp);
+			// Keeps it at the top right while the title is shown, however its width or place changes.
+			infoOverlay.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+				if ((l == ol) && (r == or)) return;
+				if (infoAtRight) {
+					v.animate().cancel();
+					v.setTranslationX(infoRightShift(v));
+				}
+				updateTitleInset();
+			});
 		}
 
 		int gravity = Gravity.TOP;
@@ -432,6 +449,54 @@ public class VideoView extends FrameLayout
 		if (this.controlPanelVisible == controlPanelVisible) return;
 		this.controlPanelVisible = controlPanelVisible;
 		if (infoOverlay != null) infoOverlay.setControlPanelVisible(controlPanelVisible);
+	}
+
+	public VideoControlsOverlay getControls() {
+		return controls;
+	}
+
+	/**
+	 * Shows/hides the middle buttons and the title over the picture (see {@link
+	 * VideoControlsOverlay}). While the title is up, the Info Overlay glides over to the top right,
+	 * out of its way, and back to its own place once the title goes.
+	 */
+	public void showControls(boolean center, boolean title, boolean animate) {
+		controls.setShown(center, title, animate);
+		moveInfoOverlay(title, animate);
+	}
+
+	private void moveInfoOverlay(boolean right, boolean animate) {
+		boolean changed = infoAtRight != right;
+		infoAtRight = right;
+		InfoOverlayView io = infoOverlay;
+		if (io == null) return;
+		float to = right ? infoRightShift(io) : 0f;
+		if (!animate || !io.isLaidOut()) {
+			io.animate().cancel();
+			io.setTranslationX(to);
+		} else if (changed || (io.getTranslationX() != to)) {
+			io.animate().cancel();
+			io.animate().translationX(to).setDuration(INFO_MOVE_MS)
+					.setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+		}
+		updateTitleInset();
+	}
+
+	/** How far the Info Overlay goes from its own place to the top right corner. */
+	private float infoRightShift(View io) {
+		if (!io.isLaidOut() || (getWidth() == 0)) return 0f;
+		FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) io.getLayoutParams();
+		return (getWidth() - lp.rightMargin - io.getWidth()) - io.getLeft();
+	}
+
+	private void updateTitleInset() {
+		InfoOverlayView io = infoOverlay;
+		int inset = 0;
+		if ((io != null) && (io.getVisibility() == VISIBLE) && (io.getWidth() > 0)) {
+			FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) io.getLayoutParams();
+			inset = io.getWidth() + lp.leftMargin + lp.rightMargin;
+		}
+		controls.setTitleEndInset(inset);
 	}
 
 	public void showVideo() {
@@ -743,6 +808,17 @@ public class VideoView extends FrameLayout
 
 	@Override
 	public View focusSearch(View focused, int direction) {
+		if ((focused != null) && controls.isButton(focused)) {
+			View v = controls.focusSearchButtons(focused, direction);
+			if (v != null) return v;
+			if (direction == FOCUS_DOWN) {
+				MainActivityDelegate a = getActivity().peek();
+				if ((a != null) && isVisible(a.getControlPanel())) {
+					v = a.getControlPanel().focusSearch();
+					if (v != null) return v;
+				}
+			}
+		}
 		// Fullscreen: nothing else to move the focus to.
 		return focused;
 	}

@@ -191,6 +191,12 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
 - **Item-scoped state.** Session metadata is published per item (`publishMetadata(m, item)` drops
   stale ones; `metadata`/`metadataItem` is what the subtitle callback re-publishes). Music tab "watch"
   requests are tied to their track (`MusicPlayer.StartRequest`).
+- **Fullscreen controls overlay.** Every `VideoView` (YouTube's too) carries a `VideoControlsOverlay`
+  on top: title, prev/play-pause/next in the middle and the double tap seek feedback. `ControlPanelView`
+  decides when it shows (`showVideoControls`): buttons with the panel, the title only on a single tap.
+  The overlay takes every touch that misses its buttons and hands it to `VideoView.onTouchEvent`, which
+  also keeps taps off YouTube's page (its own player controls are hidden in fullscreen by CSS, see
+  `YoutubeWebView#hideFullscreenControlsJs`). In fullscreen the panel hides its own play/pause/rw/ff.
 - **Grid vs list** for media lists comes from the grid preference, never from `isGridView()` (which
   asks the active tab and is wrong while tabs switch).
 - Known open items: media card art can look blocky on One UI (1280x720 art); a YouTube hand-over

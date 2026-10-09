@@ -224,4 +224,7 @@
     <item name="ytdl_sort_date" type="id" />
     <item name="ytdl_sort_name" type="id" />
     <item name="ytdl_sort_size" type="id" />
+    <item name="video_controls_prev" type="id" />
+    <item name="video_controls_play_pause" type="id" />
+    <item name="video_controls_next" type="id" />
 </resources>
