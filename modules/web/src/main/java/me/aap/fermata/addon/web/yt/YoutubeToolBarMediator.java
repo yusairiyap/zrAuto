@@ -166,7 +166,7 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 		if (clear != null) {
 			clear.setToolBarPriority(Integer.MAX_VALUE);
 			clear.setOnClickListener(v -> {
-				if (!editing && !yt.isSearchPanelShown()) {
+				if (!editing && !yt.isSearchPartShown()) {
 					yt.startSearch();
 					return;
 				}
@@ -207,7 +207,19 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 	public void setAddress(ToolBarView tb, String addr) {
 		title = (addr != null) ? addr : "";
 		EditText et = tb.findViewById(R.id.browser_addr);
-		if ((et != null) && !editing) et.setText(title);
+		if ((et != null) && !editing) setText(et, displayText(tb));
+	}
+
+	/**
+	 * What the field shows while it isn't being typed into: the search whose results are on screen,
+	 * else the current video's title.
+	 */
+	private String displayText(ToolBarView tb) {
+		if (tb.getActiveFragment() instanceof YoutubeFragment yt && yt.isSearchPartShown()) {
+			String q = yt.getLastSearchQuery();
+			if ((q != null) && !q.isEmpty()) return q;
+		}
+		return title;
 	}
 
 	/** Title out, last search (or the hint) in -- once per edit. */
@@ -227,7 +239,7 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 	private void endSearchInput(EditText t) {
 		if (!editing) return;
 		editing = false;
-		setText(t, title);
+		setText(t, (t.getParent() instanceof ToolBarView tb) ? displayText(tb) : title);
 		if ((t.getParent() instanceof ToolBarView tb) &&
 				(tb.getActiveFragment() instanceof YoutubeFragment yt)) {
 			// Done typing (submitted, or walked away): the predictions give way to past searches.
@@ -255,8 +267,14 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 	/** See the search/clear button in {@link #enable}. */
 	void refreshClearButton(ToolBarView tb, YoutubeFragment yt) {
 		if (!(tb.findViewById(R.id.browser_addr_clear) instanceof ImageButton b)) return;
-		boolean searching = editing || yt.isSearchPanelShown();
-		setSearchLayout(tb, searching);
+		// Up next on its own (see YoutubeFragment#showSearchPanel(boolean)) isn't searching: the
+		// toolbar stays as it is, with the search button to switch over to searching.
+		boolean searching = editing || yt.isSearchPartShown();
+		setSearchLayout(tb, searching, searching && YoutubeFragment.isSeparatePanels());
+		if (!editing && (tb.findViewById(R.id.browser_addr) instanceof EditText et)) {
+			String text = displayText(tb);
+			if (!text.contentEquals(et.getText())) setText(et, text);
+		}
 		b.setVisibility(VISIBLE);
 		b.setImageResource(searching ? R.drawable.clear : me.aap.fermata.R.drawable.search);
 		b.setContentDescription(tb.getContext().getString(searching ?
@@ -268,21 +286,30 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 			R.id.browser_home, me.aap.fermata.R.id.favorites, me.aap.fermata.R.id.playlists,
 			me.aap.fermata.R.id.ytdl_toolbar_button};
 	private boolean searchLayout;
+	private boolean upNextHidden;
 
 	/**
 	 * While searching (the field being typed into, or the search/Up next panel open), the page
 	 * buttons step aside and the field stretches out to the X, which then sits right next to the
 	 * Up next button -- animated, so the field visibly grows/shrinks rather than jumping.
 	 */
-	private void setSearchLayout(ToolBarView tb, boolean searching) {
+	private void setSearchLayout(ToolBarView tb, boolean searching, boolean hideUpNext) {
 		boolean changed = false;
-		for (int id : SEARCH_HIDDEN_IDS) {
-			View v = tb.findViewById(id);
+		boolean animate = tb.isLaidOut() && ((searchLayout != searching) || (upNextHidden != hideUpNext));
+		// With search and Up next opened separately, the Up next button goes too while searching:
+		// the queue is a screen of its own then, not a part of this one.
+		int n = SEARCH_HIDDEN_IDS.length;
+		int[] ids = new int[n + 1];
+		System.arraycopy(SEARCH_HIDDEN_IDS, 0, ids, 0, n);
+		ids[n] = me.aap.fermata.R.id.youtube_up_next;
+		for (int i = 0; i <= n; i++) {
+			View v = tb.findViewById(ids[i]);
 			if (v == null) continue;
-			int vis = searching ? GONE : VISIBLE;
+			boolean hide = (i == n) ? hideUpNext : searching;
+			int vis = hide ? GONE : VISIBLE;
 			int cur = (v instanceof ImageButton ib) ? ib.getRequestedVisibility() : v.getVisibility();
 			if (cur == vis) continue;
-			if (!changed && tb.isLaidOut() && (searchLayout != searching)) {
+			if (!changed && animate) {
 				AutoTransition t = new AutoTransition();
 				t.setDuration(220);
 				t.setInterpolator(new DecelerateInterpolator());
@@ -292,6 +319,7 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 			v.setVisibility(vis);
 		}
 		searchLayout = searching;
+		upNextHidden = hideUpNext;
 	}
 
 	private boolean onSearchKey(YoutubeFragment yt, EditText t, int keyCode, KeyEvent event) {

@@ -890,6 +890,16 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		return panelOpen && (searchPanel != null);
 	}
 
+	/** The panel is open with its search part -- not just Up next on its own. */
+	boolean isSearchPartShown() {
+		return isSearchPanelShown() && (searchPanel.getPart() != YoutubeSearchPanel.PART_QUEUE);
+	}
+
+	/** Search and Up next open on their own (Settings > YouTube search & Up next). */
+	static boolean isSeparatePanels() {
+		return MainActivityPrefs.get().getBooleanPref(MainActivityPrefs.YT_SEPARATE_PANELS);
+	}
+
 	/**
 	 * Shows the search/Up next panel over the page. The page underneath is left completely alone --
 	 * not navigated, hidden or paused -- so whatever is playing keeps playing. See
@@ -915,11 +925,15 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 					ViewGroup.LayoutParams.MATCH_PARENT));
 		}
 		searchPanel.bringToFront();
+		int oldPart = searchPanel.getPart();
 		searchPanel.setPart(panelPart(forSearch));
 		if (!panelOpen) {
 			panelOpen = true;
 			searchPanel.slideIn();
 			coverControlPanel(true);
+			onSearchPanelToggled();
+		} else if (oldPart != searchPanel.getPart()) {
+			// Switched between search and Up next: the toolbar follows.
 			onSearchPanelToggled();
 		}
 		searchPanel.refresh();
@@ -936,9 +950,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 
 	/** Search and Up next together, unless set to open on their own (Settings > Up next). */
 	private static int panelPart(boolean forSearch) {
-		if (!MainActivityPrefs.get().getBooleanPref(MainActivityPrefs.YT_SEPARATE_PANELS)) {
-			return YoutubeSearchPanel.PART_BOTH;
-		}
+		if (!isSeparatePanels()) return YoutubeSearchPanel.PART_BOTH;
 		return forSearch ? YoutubeSearchPanel.PART_SEARCH : YoutubeSearchPanel.PART_QUEUE;
 	}
 
@@ -1047,6 +1059,8 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	void search(String query) {
 		YoutubeSearchPanel p = showSearchPanel();
 		if (p != null) p.search(query);
+		// The field shows the search now on screen rather than the video's title.
+		onSearchPanelToggled();
 	}
 
 	/** See {@link YoutubeChromeClient#onShowCustomView}. */
