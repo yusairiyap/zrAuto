@@ -340,12 +340,20 @@ public class BodyLayout extends SplitLayout
 		out.animate().cancel();
 
 		boolean inShown = (in.getVisibility() == VISIBLE) && (in.getAlpha() >= 1f);
+		// The video pane never fades in: its picture is a SurfaceView, whose surface does not reliably
+		// follow its parent's alpha. Faded in from 0, an already existing surface could keep the
+		// alpha of the fade's start: the pane at 1, the picture invisible, only the pane's black
+		// background showing (sound playing, controls fine). It comes up at once; the list fades out.
+		boolean video = (m == Mode.VIDEO);
 		// A pane that is still on its way out comes back from where it is, not from nothing.
-		if (in.getVisibility() != VISIBLE) in.setAlpha(0f);
+		if ((in.getVisibility() != VISIBLE) && !video) in.setAlpha(0f);
 		in.setVisibility(VISIBLE);
 		paneFadeEnd = animate ? (SystemClock.uptimeMillis() + FADE_MS) : 0L;
 
-		if (animate && !inShown) {
+		if (video) {
+			in.setAlpha(1f);
+			refreshSurfaces(in);
+		} else if (animate && !inShown) {
 			in.animate().alpha(1f).setDuration(FADE_MS).start();
 		} else {
 			in.setAlpha(1f);
@@ -357,6 +365,20 @@ public class BodyLayout extends SplitLayout
 			out.postDelayed(() -> hidePane(out, gen), FADE_MS + 100);
 		} else {
 			hidePane(out, gen);
+		}
+	}
+
+	/**
+	 * Has every SurfaceView under {@code v} take its view's alpha again (setAlpha updates the
+	 * surface's own), whatever an earlier fade of a parent left on the surface.
+	 */
+	private static void refreshSurfaces(View v) {
+		if (v instanceof android.view.SurfaceView sv) {
+			float a = sv.getAlpha();
+			sv.setAlpha((a == 1f) ? 0.99f : 1f);
+			sv.setAlpha(a);
+		} else if (v instanceof ViewGroup g) {
+			for (int i = 0, n = g.getChildCount(); i < n; i++) refreshSurfaces(g.getChildAt(i));
 		}
 	}
 

@@ -55,7 +55,9 @@ cleared when playing.
    (first frame drawn, pane fine) and skipped on. `MusicPlayer.switchToVideo` now restarts the track at its
    position with the picture on (`startTrack(.., true)`) instead of `switchItem`. Log 00:23:49 after that: restart works, frames drawn, position real-time, pane visible, yet the user still sees
    black, so something is OVER the picture. `BODY over the video cover=... top=...` (topmost view chain at the
-   picture's centre, [bg] = paints a background) names it. Any other mid-play re-enable
+   picture's centre, [bg] = paints a background) names it. User: only the video area is black, sound plays, controls fine. Likely the SurfaceView keeping a stale alpha
+   from the video pane's 0->1 fade (`BodyLayout.showPane`); the video pane now never fades in and its
+   SurfaceViews get their alpha re-applied (`refreshSurfaces`). Any other mid-play re-enable
    of the video track (`ExoPlayerEngine.setVideoTrackDisabled(false)`) may have the same problem. Earlier notes: Instrumented: `BODY video pane 3 s in ...` (pane visible/alpha/size, surface valid, registered
    with the session, engine item isVideo), `ENGINE picture: screen given/taken away`, `ENGINE picture: first frame
    drawn after=Nms`. `addVideoView` now re-gives a re-created surface to the engine (it used to return early).
