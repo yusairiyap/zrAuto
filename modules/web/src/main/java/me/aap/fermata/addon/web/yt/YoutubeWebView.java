@@ -1021,6 +1021,22 @@ public class YoutubeWebView extends FermataWebView {
 				"})();");
 	}
 
+	/**
+	 * The page's own media session (what the system's media card shows next to the app's) forgets
+	 * its video: the page is only paused while a downloaded file plays, and its last video would
+	 * otherwise stay on the card in place of what plays.
+	 */
+	void clearMediaSession() {
+		loadUrl("javascript:(function() {\n" +
+				"  try {\n" +
+				"    if (navigator.mediaSession) {\n" +
+				"      navigator.mediaSession.metadata = null;\n" +
+				"      navigator.mediaSession.playbackState = 'none';\n" +
+				"    }\n" +
+				"  } catch (e) {}\n" +
+				"})();");
+	}
+
 	/** Same as {@link #pause()}, rewinding to the start once the fade-out finishes. */
 	void stop() {
 		loadUrl("javascript:(function() {\n" +

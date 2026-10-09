@@ -156,7 +156,13 @@ public class MusicTrackItem extends ExtPlayable {
 	/** The artist, once known. */
 	@Nullable
 	public String getArtistName() {
-		return cleanArtist(artist);
+		String a = artist;
+		if ((a == null) && (videoId != null)) {
+			// A track made without its channel: the one the download was made with.
+			YtDownloads.Entry e = YtDownloads.get().getEntry(videoId);
+			if (e != null) a = e.artist;
+		}
+		return cleanArtist(a);
 	}
 
 	/**
@@ -364,7 +370,8 @@ public class MusicTrackItem extends ExtPlayable {
 		if (videoId != null) {
 			MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
 			b.putString(METADATA_KEY_TITLE, getName());
-			if (artist != null) b.putString(METADATA_KEY_ARTIST, getArtistName());
+			String an = getArtistName();
+			if (an != null) b.putString(METADATA_KEY_ARTIST, an);
 			if (durationMs > 0) b.putLong(METADATA_KEY_DURATION, durationMs);
 			b.putString(METADATA_KEY_ALBUM_ART_URI, thumbnailUrl(videoId));
 			return completed(b.build());

@@ -493,6 +493,10 @@ public class BodyLayout extends SplitLayout
 	public void onPlaybackStopped() {
 		startingPlayback.cancel();
 		var a = getActivity();
+		// Nothing plays any more (an error, the end of the list, a stop): the fullscreen video would
+		// only be a black screen with the control panel on it.
+		a.liftLocalVideoCover(true);
+		if (isVideoMode()) setMode(Mode.FRAME);
 		if (a.getActiveFragment() instanceof SubtitlesFragment) a.goToCurrent();
 	}
 

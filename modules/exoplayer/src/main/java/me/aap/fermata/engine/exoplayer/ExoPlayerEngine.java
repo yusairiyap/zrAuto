@@ -186,6 +186,10 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		MediaItem m = MediaItem.fromUri(uri);
 		isHls = Util.inferContentType(uri) == C.CONTENT_TYPE_HLS;
 		setVideoTrackDisabled(videoOff(source, shown));
+		String oid = source.getOrigId();
+		if ((shown == null) && (dummySurface == null) && (oid != null) && keepPicture.contains(oid)) {
+			useDummySurface();
+		}
 		player.setMediaItem(m);
 		player.prepare();
 	}
@@ -249,6 +253,13 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 				if (id != null) keepPicture.add(id);
 				DiagnosticLog.log("ENGINE", "no progress with the picture off: switched on", "item=" + src);
 				setVideoTrackDisabled(false);
+				watchForStall();
+				return;
+			}
+			if (!off && (shown == null) && (dummySurface == null) && useDummySurface()) {
+				// Stuck with the picture on but nowhere to show it: given a surface of its own, which
+				// is what a file that plays on screen but not off it needs.
+				DiagnosticLog.log("ENGINE", "no progress without a screen: given a hidden one", "item=" + src);
 				watchForStall();
 				return;
 			}
@@ -362,6 +373,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		// sound plays on without a video decoder that can stall or be taken away.
 		PlayableItem s = source;
 		shown = view;
+		if ((view == null) && (dummySurface != null)) player.setVideoSurface(dummySurface);
 		if (s != null) setVideoTrackDisabled(videoOff(s, view));
 		firstFrame = false;
 		if (view != null) watchBlackPicture();
@@ -372,6 +384,28 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	private static final java.util.Set<String> keepPicture =
 			java.util.concurrent.ConcurrentHashMap.newKeySet();
 	private boolean stallRetried;
+	// A surface nothing is shown on, for the file that stalls without one (see watchForStall()).
+	private android.graphics.SurfaceTexture dummyTexture;
+	private android.view.Surface dummySurface;
+
+	private boolean useDummySurface() {
+		try {
+			dummyTexture = new android.graphics.SurfaceTexture(false);
+			dummySurface = new android.view.Surface(dummyTexture);
+			player.setVideoSurface(dummySurface);
+			return true;
+		} catch (Throwable ex) {
+			releaseDummySurface();
+			return false;
+		}
+	}
+
+	private void releaseDummySurface() {
+		if (dummySurface != null) dummySurface.release();
+		if (dummyTexture != null) dummyTexture.release();
+		dummySurface = null;
+		dummyTexture = null;
+	}
 
 	/** Whether the picture's track is to be off for {@code s}: no screen for it, or sound only. */
 	private static boolean videoOff(PlayableItem s, @Nullable VideoView view) {
@@ -582,6 +616,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		accessor.player = null;
 		player.removeListener(this);
 		player.release();
+		releaseDummySurface();
 		source = null;
 		if (audioEffects != null) audioEffects.release();
 	}

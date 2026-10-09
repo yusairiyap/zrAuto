@@ -1282,6 +1282,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		if (art != null) {
 			b.putString(METADATA_KEY_ALBUM_ART_URI, null);
 			return lib.getBitmap(art).then(bm -> {
+				DiagnosticLog.log("META", "album art", "size=" + ((bm == null) ? null : bm.getWidth() + "x" + bm.getHeight()));
 				b.putBitmap(METADATA_KEY_ALBUM_ART, (bm != null) ? bm : getDefaultImage());
 				return completed(b.build());
 			});

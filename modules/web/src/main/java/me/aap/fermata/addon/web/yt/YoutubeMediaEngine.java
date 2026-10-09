@@ -281,6 +281,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		lastActivePlayTime = 0;
 		appRequestedPause = true;
 		web.pause();
+		web.clearMediaSession();
 		clearStall();
 		switching = false;
 		YoutubeVideoView v = getFullScreenView();
