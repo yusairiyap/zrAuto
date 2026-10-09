@@ -1,5 +1,6 @@
 package me.aap.fermata.addon.data;
 
+import static me.aap.fermata.addon.data.DataUsageStore.CAT_DOWNLOAD;
 import static me.aap.fermata.addon.data.DataUsageStore.CAT_MUSIC;
 import static me.aap.fermata.addon.data.DataUsageStore.CAT_OTHER;
 import static me.aap.fermata.addon.data.DataUsageStore.CAT_VIDEO;
@@ -24,6 +25,7 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
@@ -109,6 +111,12 @@ public final class DataUsageTracker implements MediaSessionCallback.Listener {
 	private static final long MAX_PLAY_GAP = 3 * INTERVAL;
 	// Playback was paused for reaching the limit, and not resumed since.
 	private boolean limitPaused;
+	// Bytes the downloader received (see countDownloaded()), not yet booked; and what of them a
+	// reading could not book yet (Android's count can lag the downloader's by a moment).
+	private static final AtomicLong downloaded = new AtomicLong();
+	private long downloadPending;
+	/** More than this waiting to be booked is dropped: the system count never caught up with it. */
+	private static final long MAX_DOWNLOAD_PENDING = 64L * 1024 * 1024;
 
 	/** Told on the main thread about warnings, the limit, and pausing for it. */
 	public interface AlertListener {
@@ -123,6 +131,14 @@ public final class DataUsageTracker implements MediaSessionCallback.Listener {
 	private DataUsageTracker() {
 		PreferenceStore ps = prefs();
 		if (ps.getLongPref(SINCE) == 0) ps.applyLongPref(SINCE, System.currentTimeMillis());
+	}
+
+	/**
+	 * The downloader (any thread) received {@code bytes}: booked to {@link DataUsageStore#CAT_DOWNLOAD}
+	 * out of the next reading, rather than to whatever plays meanwhile or to other data.
+	 */
+	public static void countDownloaded(long bytes) {
+		if (bytes > 0) downloaded.addAndGet(bytes);
 	}
 
 	/** Main thread only. */
@@ -184,6 +200,7 @@ public final class DataUsageTracker implements MediaSessionCallback.Listener {
 		sample();
 		store.clear();
 		limitPaused = false;
+		downloadPending = 0;
 		PreferenceStore ps = prefs();
 		try (PreferenceStore.Edit e = ps.editPreferenceStore()) {
 			e.setLongPref(SINCE, System.currentTimeMillis());
@@ -306,6 +323,9 @@ public final class DataUsageTracker implements MediaSessionCallback.Listener {
 	 * phone hasn't restarted since (the count starts over from 0 when it does).
 	 */
 	private void resume() {
+		// What was downloaded while not measuring is in the system count already, booked below.
+		downloaded.set(0);
+		downloadPending = 0;
 		long bytes = readBytes();
 		if (bytes < 0) return;
 		PreferenceStore ps = prefs();
@@ -343,7 +363,15 @@ public final class DataUsageTracker implements MediaSessionCallback.Listener {
 		long used = (lastBytes >= 0) ? (bytes - lastBytes) : 0;
 		lastBytes = bytes;
 		// Less than last time: the count started over (not while the app is running, normally).
-		if (used > 0) store.add(System.currentTimeMillis(), lastCat, lastNet, used);
+		if (used > 0) {
+			long time = System.currentTimeMillis();
+			// What the downloader received is the downloads' share; the rest goes to what played.
+			long dl = downloadPending + downloaded.getAndSet(0);
+			long toDownloads = Math.min(dl, used);
+			downloadPending = Math.min(dl - toDownloads, MAX_DOWNLOAD_PENDING);
+			store.add(time, CAT_DOWNLOAD, lastNet, toDownloads);
+			store.add(time, lastCat, lastNet, used - toDownloads);
+		}
 		lastCat = currentCategory();
 		lastNet = currentNetwork();
 

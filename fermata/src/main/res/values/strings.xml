@@ -799,6 +799,7 @@
     <string name="data_usage_cat_video">YouTube videos</string>
     <string name="data_usage_cat_music">YouTube music mode</string>
     <string name="data_usage_cat_other">Other app data</string>
+    <string name="data_usage_cat_downloads">Downloads</string>
     <string name="data_usage_cycle_range">%1$s · %2$s</string>
     <string name="data_usage_today">Today</string>
     <string name="data_usage_yesterday">Yesterday</string>
@@ -909,7 +910,7 @@
     <string name="data_usage_total_since">%1$s in total since counting started</string>
     <string name="data_usage_no_hours">hourly detail is only kept for 2 months</string>
     <string name="data_usage_footer_since">Counting since %1$s</string>
-    <string name="data_usage_footer_note">Counts everything this app sends and receives while it runs: YouTube, thumbnails, browsing and other streams.</string>
+    <string name="data_usage_footer_note">Counts everything this app sends and receives while it runs: YouTube, downloads, thumbnails, browsing and other streams.</string>
     <string name="data_usage_unsupported">This device does not report per-app data usage, so nothing can be counted.</string>
     <string name="data_usage_networks">Count data used over</string>
     <string name="data_usage_networks_all">All networks</string>

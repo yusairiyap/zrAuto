@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- The Data Usage tab's category colours: YouTube videos, YouTube music mode, other data. -->
+    <!-- The Data Usage tab's category colours: YouTube videos, YouTube music mode, other data, downloads. -->
     <color name="data_usage_video">#FFFF5A4E</color>
     <color name="data_usage_music">#FF1ED760</color>
     <color name="data_usage_other">#FF5B8DEF</color>
+    <color name="data_usage_downloads">#FFB388FF</color>
     <!-- Status colours: under the warning, past the warning, past the limit. -->
     <color name="data_usage_ok">#FF1ED760</color>
     <color name="data_usage_warning">#FFFFB020</color>

@@ -884,6 +884,8 @@ public final class YtDownloads {
 						checkStop();
 						out.write(buf, 0, n);
 						have += n;
+						// The Data Usage tab books this to Downloads, not to other data.
+						me.aap.fermata.addon.data.DataUsageTracker.countDownloaded(n);
 						e.bytes = base + have;
 						winBytes += n;
 						long now = SystemClock.elapsedRealtime();

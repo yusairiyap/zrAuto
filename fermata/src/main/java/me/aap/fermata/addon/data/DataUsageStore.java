@@ -32,7 +32,11 @@ public final class DataUsageStore {
 	public static final int CAT_MUSIC = 1;
 	/** Everything else the app downloads: thumbnails, browsing, other streams. */
 	public static final int CAT_OTHER = 2;
-	public static final int CATS = 3;
+	/** Videos downloaded for offline playback (the Downloads tab). */
+	public static final int CAT_DOWNLOAD = 3;
+	public static final int CATS = 4;
+	// The categories before CAT_DOWNLOAD came: lines saved then are read with the new one at 0.
+	private static final int OLD_CATS = 3;
 	public static final int NET_MOBILE = 0;
 	public static final int NET_OTHER = 1;
 	static final int NETS = 2;
@@ -191,17 +195,19 @@ public final class DataUsageStore {
 				StandardCharsets.UTF_8))) {
 			for (String line = r.readLine(); line != null; line = r.readLine()) {
 				String[] f = line.trim().split(" ");
-				if ((f.length == CATS + 2) && ("TH".equals(f[0]) || "TD".equals(f[0]))) {
+				if (((f.length == CATS + 2) || (f.length == OLD_CATS + 2)) &&
+						("TH".equals(f[0]) || "TD".equals(f[0]))) {
 					long[] b = new long[CATS];
-					for (int i = 0; i < CATS; i++) b[i] = Long.parseLong(f[i + 2]);
+					for (int i = 0, n = f.length - 2; i < n; i++) b[i] = Long.parseLong(f[i + 2]);
 					("TH".equals(f[0]) ? playHours : playDays).put(Long.parseLong(f[1]), b);
 					continue;
 				}
-				if (f.length != SLOTS + 2) continue;
+				// Slots are cat * NETS + net, so an older, shorter line maps onto the first ones as it is.
+				if ((f.length != SLOTS + 2) && (f.length != OLD_CATS * NETS + 2)) continue;
 				TreeMap<Long, long[]> m = "H".equals(f[0]) ? hours : "D".equals(f[0]) ? days : null;
 				if (m == null) continue;
 				long[] b = new long[SLOTS];
-				for (int i = 0; i < SLOTS; i++) b[i] = Long.parseLong(f[i + 2]);
+				for (int i = 0, n = f.length - 2; i < n; i++) b[i] = Long.parseLong(f[i + 2]);
 				m.put(Long.parseLong(f[1]), b);
 			}
 		} catch (java.io.FileNotFoundException ignore) {

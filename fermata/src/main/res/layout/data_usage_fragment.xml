@@ -337,6 +337,10 @@
                 layout="@layout/data_usage_row" />
 
             <include
+                android:id="@+id/data_usage_row_downloads"
+                layout="@layout/data_usage_row" />
+
+            <include
                 android:id="@+id/data_usage_row_other"
                 layout="@layout/data_usage_row" />
         </LinearLayout>
