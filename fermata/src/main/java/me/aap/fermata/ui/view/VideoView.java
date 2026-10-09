@@ -68,6 +68,7 @@ import me.aap.fermata.media.sub.Subtitles;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.async.Promise;
 import me.aap.utils.function.BiConsumer;
@@ -118,25 +119,16 @@ public class VideoView extends FrameLayout
 
 	protected void init(Context context) {
 		setBackgroundColor(Color.BLACK);
-		addView(new SurfaceView(getContext()) {
-			{
-				FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT);
-				lp.gravity = Gravity.CENTER_HORIZONTAL | Gravity.CENTER_VERTICAL;
-				setLayoutParams(lp);
-				getHolder().addCallback(VideoView.this);
-			}
-		});
-		addView(new SurfaceView(getContext()) {
-			{
-				FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT);
-				lp.gravity = Gravity.FILL;
-				setLayoutParams(lp);
-				setZOrderMediaOverlay(true);
-				setZOrderOnTop(true);
-				getHolder().setFormat(PixelFormat.TRANSLUCENT);
-				getHolder().addCallback(VideoView.this);
-			}
-		});
+		addView(newVideoSurfaceView(), 0);
+		addView(newSubtitleSurfaceView(), 1);
+
+		fadeOverlay = new View(context);
+		fadeOverlay.setLayoutParams(new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		fadeOverlay.setBackgroundColor(Color.BLACK);
+		fadeOverlay.setVisibility(GONE);
+		fadeOverlay.setClickable(false);
+		fadeOverlay.setFocusable(false);
+		addView(fadeOverlay);
 
 		addDimOverlay(context);
 
@@ -151,6 +143,133 @@ public class VideoView extends FrameLayout
 	 * {@code YoutubeVideoView}, which builds its own child structure) must call this themselves to
 	 * support {@link #setDimOverlay}.
 	 */
+	/**
+	 * The picture's surfaces follow the pane: hidden with it, made again when it shows. A SurfaceView
+	 * reacts only to its own visibility, not its parent's: left visible in a hidden pane, its surface
+	 * lived on, lost its place on screen, and was not always put back when the pane came back (frames
+	 * drawn into it, the pane up, only its black showing). Hidden with the pane, it is made anew each
+	 * time, the way a first start always worked.
+	 */
+	public void setSurfacesShown(boolean shown) {
+		int vis = shown ? VISIBLE : GONE;
+		for (int i = 0, n = getChildCount(); i < n; i++) {
+			View c = getChildAt(i);
+			if ((c instanceof SurfaceView) && (c.getVisibility() != vis)) c.setVisibility(vis);
+		}
+	}
+
+	private SurfaceView newVideoSurfaceView() {
+		SurfaceView v = new SurfaceView(getContext());
+		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT);
+		lp.gravity = Gravity.CENTER_HORIZONTAL | Gravity.CENTER_VERTICAL;
+		v.setLayoutParams(lp);
+		v.getHolder().addCallback(this);
+		return v;
+	}
+
+	private SurfaceView newSubtitleSurfaceView() {
+		SurfaceView v = new SurfaceView(getContext());
+		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT);
+		lp.gravity = Gravity.FILL;
+		v.setLayoutParams(lp);
+		v.setZOrderMediaOverlay(true);
+		v.setZOrderOnTop(true);
+		v.getHolder().setFormat(PixelFormat.TRANSLUCENT);
+		v.getHolder().addCallback(this);
+		return v;
+	}
+
+	/**
+	 * Throws the picture's two SurfaceViews away and puts new ones in their place, so that the video
+	 * comes up on surfaces made just now: what a first start always has, and what a return to video
+	 * (from music, from the background) did not, its old surface reused and staying black although
+	 * frames were drawn into it. Wait for {@link #onSurfaceCreated} before giving them to a player.
+	 * A no-op for subclasses that build other children (YoutubeVideoView).
+	 */
+	public void recreateSurfaces() {
+		if (!(getChildAt(0) instanceof SurfaceView old) || !(getChildAt(1) instanceof SurfaceView oldSub)) {
+			return;
+		}
+		DiagnosticLog.log("BODY", "video surfaces made anew");
+		old.getHolder().removeCallback(this);
+		oldSub.getHolder().removeCallback(this);
+		if (createSurface.isDone()) createSurface = new Promise<>();
+		// The player lets go of the old one before it goes.
+		getActivity().onSuccess(a -> a.getMediaSessionCallback().removeVideoView(this));
+		int vis = old.getVisibility();
+		SurfaceView v = newVideoSurfaceView();
+		SurfaceView s = newSubtitleSurfaceView();
+		v.setVisibility(vis);
+		s.setVisibility(vis);
+		removeViewAt(1);
+		removeViewAt(0);
+		addView(v, 0);
+		addView(s, 1);
+	}
+
+	/** Whether {@code h} belongs to one of the surfaces in place now (not a discarded one). */
+	private boolean isCurrent(SurfaceHolder h) {
+		return (h == getVideoSurface().getHolder()) || (h == getSubtitleSurface().getHolder());
+	}
+
+	// Black over the picture, faded out when the video comes up (see fadeInFromBlack()).
+	@Nullable
+	private View fadeOverlay;
+
+	/**
+	 * The picture fades in from black: a black view over it fading out. The pane itself can't be
+	 * faded (alpha on it): the picture is a SurfaceView, a separate layer that does not reliably
+	 * follow its parent's alpha and could stay invisible after such a fade (a black video area with
+	 * the sound playing). An ordinary view over it fades like any other. A no-op for subclasses that
+	 * build their own children (YoutubeVideoView: its WebView fades with the pane as usual).
+	 */
+	public void fadeInFromBlack(long durationMs) {
+		View o = fadeOverlay;
+		if (o == null) return;
+		o.animate().cancel();
+		o.setAlpha(1f);
+		o.setVisibility(VISIBLE);
+		o.animate().alpha(0f).setDuration(durationMs).withEndAction(() -> o.setVisibility(GONE)).start();
+		// Whatever happens to the animation, the black does not stay.
+		o.postDelayed(() -> {
+			if (o.getAlpha() > 0f) {
+				o.animate().cancel();
+				o.setVisibility(GONE);
+			}
+		}, durationMs + 500);
+	}
+
+	/**
+	 * The last moments of a local video fade to black (see MediaEngineBase's end watch), as
+	 * YouTube's do: the same black view as {@link #fadeInFromBlack}, from wherever it is. Lifted by
+	 * the next picture's first frame ({@link #liftBlack}), or after a while should none come.
+	 */
+	public void fadeToBlack(long durationMs) {
+		View o = fadeOverlay;
+		if (o == null) return;
+		o.animate().cancel();
+		if (o.getVisibility() != VISIBLE) o.setAlpha(0f);
+		o.setVisibility(VISIBLE);
+		o.animate().alpha(1f).setDuration(durationMs).start();
+		int gen = ++blackGen;
+		o.postDelayed(() -> {
+			if (gen == blackGen) liftBlack(FADE_IN_FAILSAFE_MS);
+		}, durationMs + 5000);
+	}
+
+	/** Takes the black of {@link #fadeToBlack} away, from wherever it is; a no-op when it is not up. */
+	public void liftBlack(long durationMs) {
+		View o = fadeOverlay;
+		if ((o == null) || (o.getVisibility() != VISIBLE)) return;
+		blackGen++;
+		o.animate().cancel();
+		o.animate().alpha(0f).setDuration(durationMs).withEndAction(() -> o.setVisibility(GONE)).start();
+	}
+
+	// Identifies the latest fadeToBlack(), so that the failsafe of an earlier one is dropped.
+	private int blackGen;
+	private static final long FADE_IN_FAILSAFE_MS = 300;
+
 	protected View addDimOverlay(Context context) {
 		dimOverlay = new View(context);
 		dimOverlay.setLayoutParams(new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
@@ -483,6 +602,9 @@ public class VideoView extends FrameLayout
 
 	@Override
 	public void surfaceCreated(@NonNull SurfaceHolder holder) {
+		if (!isCurrent(holder)) return;
+		DiagnosticLog.log("BODY", "video surface created",
+				"valid=" + getVideoSurface().getHolder().getSurface().isValid());
 		if (!getVideoSurface().getHolder().getSurface().isValid()) return;
 		SurfaceView s = getSubtitleSurface();
 		if ((s != null) && !s.getHolder().getSurface().isValid()) return;
@@ -496,7 +618,10 @@ public class VideoView extends FrameLayout
 
 	@Override
 	public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
-		createSurface = new Promise<>();
+		if (!isCurrent(holder)) return;
+		DiagnosticLog.log("BODY", "video surface destroyed");
+		// A wait already pending (see onSurfaceCreated) is kept, not dropped with a new promise.
+		if (createSurface.isDone()) createSurface = new Promise<>();
 		getActivity().onSuccess(a -> a.getMediaSessionCallback().removeVideoView(this));
 	}
 
@@ -618,16 +743,7 @@ public class VideoView extends FrameLayout
 
 	@Override
 	public View focusSearch(View focused, int direction) {
-		MainActivityDelegate a = getActivity().peek();
-		if ((a == null) || !a.getBody().isBothMode()) return focused;
-
-		if (direction == FOCUS_LEFT) {
-			return MediaItemListView.focusSearchActive(getContext(), focused);
-		} else if (direction == FOCUS_RIGHT) {
-			NavBarView n = a.getNavBar();
-			if (n.isRight()) return n.focusSearch();
-		}
-
+		// Fullscreen: nothing else to move the focus to.
 		return focused;
 	}
 

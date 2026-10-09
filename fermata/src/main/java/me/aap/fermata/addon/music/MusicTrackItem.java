@@ -18,6 +18,9 @@ import me.aap.fermata.media.lib.ExtPlayable;
 import me.aap.fermata.media.lib.MediaLib.Item;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.BrowsableItemPrefs;
+import me.aap.fermata.media.pref.MediaPrefs;
+import me.aap.fermata.ytdl.YtDownloads;
+import me.aap.fermata.ytdl.YtOffline;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.text.SharedTextBuilder;
@@ -125,7 +128,8 @@ public class MusicTrackItem extends ExtPlayable {
 
 	/** Whether switching this track to video playback means anything (see MusicPlayer). */
 	public boolean hasVideo() {
-		if (videoId != null) return true;
+		// A downloaded one has the picture only if it was downloaded as a video.
+		if (videoId != null) return !isDownloaded() || hasDownloadedVideo();
 		PlayableItem src = source;
 		return (src != null) && src.isVideo();
 	}
@@ -152,7 +156,13 @@ public class MusicTrackItem extends ExtPlayable {
 	/** The artist, once known. */
 	@Nullable
 	public String getArtistName() {
-		return cleanArtist(artist);
+		String a = artist;
+		if ((a == null) && (videoId != null)) {
+			// A track made without its channel: the one the download was made with.
+			YtDownloads.Entry e = YtDownloads.get().getEntry(videoId);
+			if (e != null) a = e.artist;
+		}
+		return cleanArtist(a);
 	}
 
 	/**
@@ -228,14 +238,19 @@ public class MusicTrackItem extends ExtPlayable {
 		// Nothing to persist per track -- the queue remembers where it was.
 	}
 
+	/**
+	 * A downloaded video played from its file shows its picture while the player is being watched
+	 * (see {@link MusicPlayer#isWatchingLocal}), like the YouTube player does; everything else
+	 * in the Music tab is sound only.
+	 */
 	@Override
 	public boolean isVideo() {
-		return false;
+		return (videoId != null) && MusicPlayer.isWatchingLocal(this) && hasDownloadedVideo();
 	}
 
 	@Override
 	public boolean isAudioOnlyPlayback() {
-		return true;
+		return !isVideo();
 	}
 
 	@Override
@@ -254,7 +269,20 @@ public class MusicTrackItem extends ExtPlayable {
 	@Override
 	public VirtualResource getResource() {
 		PlayableItem src = source;
-		return (src != null) ? src.getResource() : super.getResource();
+		if (src != null) return src.getResource();
+		// A downloaded YouTube video plays from its file -- no connection or data needed.
+		VirtualResource local = (videoId != null) ? YtOffline.getResource(videoId) : null;
+		return (local != null) ? local : super.getResource();
+	}
+
+	/** Whether this is a YouTube video that's on the phone, so it plays from the file. */
+	public boolean isDownloaded() {
+		return YtOffline.useLocal(videoId);
+	}
+
+	/** Whether the file on the phone has the picture too, not just the sound. */
+	private boolean hasDownloadedVideo() {
+		return YtDownloads.get().isVideoDownloaded(videoId);
 	}
 
 	@NonNull
@@ -286,6 +314,14 @@ public class MusicTrackItem extends ExtPlayable {
 	@Nullable
 	@Override
 	public MediaEngine getMediaEngine(@Nullable MediaEngine current, MediaEngine.Listener listener) {
+		if (isDownloaded()) {
+			// The usual engines play the file; the YouTube page's player, whose close() leaves it
+			// playing, has to be silenced by hand (and its fullscreen view taken down).
+			if ((current != null) && (current.getId() == MediaPrefs.MEDIA_ENG_YT)) current.yieldToLocal();
+			MusicPlayer.startingDownloadedTrack(this, current, hasDownloadedVideo());
+			// ExoPlayer when it's there: it runs the YouTube equalizer's effects on the file.
+			return getLib().getMediaEngineManager().createPreferringExo(current, this, listener);
+		}
 		return (videoId != null) ? MusicPlayer.getYoutubeEngine(this, current, listener) : null;
 	}
 
@@ -334,7 +370,8 @@ public class MusicTrackItem extends ExtPlayable {
 		if (videoId != null) {
 			MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
 			b.putString(METADATA_KEY_TITLE, getName());
-			if (artist != null) b.putString(METADATA_KEY_ARTIST, getArtistName());
+			String an = getArtistName();
+			if (an != null) b.putString(METADATA_KEY_ARTIST, an);
 			if (durationMs > 0) b.putLong(METADATA_KEY_DURATION, durationMs);
 			b.putString(METADATA_KEY_ALBUM_ART_URI, thumbnailUrl(videoId));
 			return completed(b.build());

@@ -13,6 +13,7 @@ import android.widget.FrameLayout;
 import android.widget.ProgressBar;
 
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.view.LoadingCircleView;
 import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.utils.app.App;
 
@@ -37,11 +38,12 @@ final class ProfileSwitchOverlay {
 		Context ctx = parent.getContext();
 		FrameLayout scrim = new FrameLayout(ctx);
 		scrim.setBackgroundColor(Color.argb(204, 0, 0, 0));
-		ProgressBar spinner = new ProgressBar(ctx);
+		LoadingCircleView spinner = new LoadingCircleView(ctx);
 		FrameLayout.LayoutParams spp = new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
 		spp.gravity = Gravity.CENTER;
 		scrim.addView(spinner, spp);
 		parent.addView(scrim, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		spinner.setLoading(true);
 		return new ProfileSwitchOverlay(parent, scrim);
 	}
 

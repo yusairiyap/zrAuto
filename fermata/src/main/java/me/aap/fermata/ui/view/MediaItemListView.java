@@ -53,7 +53,10 @@ public class MediaItemListView extends RecyclerView implements PreferenceStore.L
 		Context ctx = getContext();
 		MainActivityDelegate.getActivityDelegate(getContext()).onSuccess(a -> {
 			MainActivityPrefs prefs = a.getPrefs();
-			grid = a.isGridView();
+			// The grid preference itself, not isGridView(): that asks the tab active right now, and a
+			// list (and its cards) created during a switch from a tab without a grid (Downloads, Music)
+			// came out as a one-column list of grid cards, each stretched to the full width.
+			grid = prefs.getGridViewPref(a);
 
 			if (grid) {
 				float scale = prefs.getTextIconSizePref(a) * prefs.getGridItemSizePref();
@@ -341,7 +344,7 @@ public class MediaItemListView extends RecyclerView implements PreferenceStore.L
 	private View focusRight(@Nullable View focused) {
 		MainActivityDelegate a = getActivity();
 		BodyLayout b = a.getBody();
-		if (b.isBothMode() || b.isVideoMode()) return b.getVideoView();
+		if (b.isVideoMode()) return b.getVideoView();
 		View v = a.getFloatingButton();
 		if (isVisible(v)) return v;
 		NavBarView n = a.getNavBar();

@@ -49,6 +49,15 @@ ext {
                     hasSettings: true
             ],
             [
+                    // Offline YouTube downloads: the Downloads tab (in progress and finished) and its
+                    // settings. Next to the data usage tab.
+                    name       : 'downloads',
+                    icon       : 'download',
+                    class      : 'me.aap.fermata.ytdl.DownloadsAddon',
+                    order      : 7,
+                    hasSettings: true
+            ],
+            [
                     // How much internet data the app uses, split into YouTube videos, YouTube music
                     // mode and the rest, with a data limit/warning. Right after the Fuel Log.
                     name       : 'data_usage',

@@ -8,6 +8,7 @@ import static android.text.format.DateUtils.FORMAT_SHOW_YEAR;
 import static android.text.format.DateUtils.formatDateRange;
 import static android.text.format.DateUtils.formatDateTime;
 import static me.aap.fermata.addon.data.DataUsageStore.CATS;
+import static me.aap.fermata.addon.data.DataUsageStore.CAT_DOWNLOAD;
 import static me.aap.fermata.addon.data.DataUsageStore.CAT_MUSIC;
 import static me.aap.fermata.addon.data.DataUsageStore.CAT_OTHER;
 import static me.aap.fermata.addon.data.DataUsageStore.CAT_VIDEO;
@@ -77,9 +78,11 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 	private static final int FILTER_WEEK = 2;
 	private static final int FILTER_MONTH = 3;
 	private static final Pref<IntSupplier> FILTER = Pref.i("DATA_USAGE_FILTER", FILTER_DAY);
-	private static final int[] CAT_ICONS = {R.drawable.video, R.drawable.music, R.drawable.data_usage};
+	private static final int[] CAT_ICONS = {R.drawable.video, R.drawable.music, R.drawable.data_usage,
+			R.drawable.download};
 	private static final int[] CAT_NAMES = {R.string.data_usage_cat_video,
-			R.string.data_usage_cat_music, R.string.data_usage_cat_other};
+			R.string.data_usage_cat_music, R.string.data_usage_cat_other,
+			R.string.data_usage_cat_downloads};
 
 	private final Runnable trackerListener = this::refresh;
 	private Context palette;
@@ -148,7 +151,8 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 		Context ctx = requireContext();
 		catColors = new int[]{ContextCompat.getColor(ctx, R.color.data_usage_video),
 				ContextCompat.getColor(ctx, R.color.data_usage_music),
-				ContextCompat.getColor(ctx, R.color.data_usage_other)};
+				ContextCompat.getColor(ctx, R.color.data_usage_other),
+				ContextCompat.getColor(ctx, R.color.data_usage_downloads)};
 
 		ring = view.findViewById(R.id.data_usage_ring);
 		chart = view.findViewById(R.id.data_usage_chart);
@@ -171,6 +175,7 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 		rows[CAT_VIDEO] = view.findViewById(R.id.data_usage_row_video);
 		rows[CAT_MUSIC] = view.findViewById(R.id.data_usage_row_music);
 		rows[CAT_OTHER] = view.findViewById(R.id.data_usage_row_other);
+		rows[CAT_DOWNLOAD] = view.findViewById(R.id.data_usage_row_downloads);
 
 		int track = paletteColor(R.attr.musicSeekTrack);
 		ring.setColors(catColors, track, ContextCompat.getColor(ctx, R.color.data_usage_warning),
@@ -632,10 +637,12 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 			// YouTube's categories: how long it was actually played, and what that cost per hour --
 			// the figure that shows how much cheaper music mode really is than video.
 			TextView time = r.findViewById(R.id.data_usage_row_time);
-			long ms = (cat == CAT_OTHER) ? 0 : played[cat];
+			// Other data and downloads aren't played: no time line for them.
+			boolean unplayed = (cat == CAT_OTHER) || (cat == CAT_DOWNLOAD);
+			long ms = unplayed ? 0 : played[cat];
 			if (ms < 60_000) {
-				time.setVisibility((cat == CAT_OTHER) ? View.GONE : View.VISIBLE);
-				time.setText((cat == CAT_OTHER) ? "" : getString(R.string.data_usage_not_played));
+				time.setVisibility(unplayed ? View.GONE : View.VISIBLE);
+				time.setText(unplayed ? "" : getString(R.string.data_usage_not_played));
 			} else {
 				long perHour = Math.round(v * (3_600_000.0 / ms));
 				time.setVisibility(View.VISIBLE);

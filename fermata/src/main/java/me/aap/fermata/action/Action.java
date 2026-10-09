@@ -94,7 +94,13 @@ public enum Action {
 		// none, so while it's playing this toggles the system bars directly instead -- flipping the
 		// persisted fullscreenPref here would be a no-op, since MainActivityDelegate.isFullScreen()
 		// has videoMode itself already forcing fullscreen regardless of that pref's value.
-		if (a.isVideoMode()) a.toggleVideoBars();
+		// Same as Back: out of the fullscreen video, to the tab it plays from (the bars shown over a
+		// video left a half-laid-out screen).
+		var eng = a.getMediaSessionCallback().getEngine();
+		boolean youtube = (eng != null) && (eng.getId() == me.aap.fermata.media.pref.MediaPrefs.MEDIA_ENG_YT);
+		// Only local playback: YouTube keeps its own behaviour.
+		if (a.isVideoMode() && !youtube) a.exitVideoMode();
+		else if (a.isVideoMode()) a.toggleVideoBars();
 		else a.getPrefs().setFullscreenPref(a, !a.getPrefs().getFullscreenPref(a));
 	})),
 	DIM_TOGGLE(R.string.action_dim_toggle, a(a ->
@@ -120,6 +126,15 @@ public enum Action {
 		a.exitVideoMode();
 		a.showFragment(R.id.playlists_fragment);
 	})),
+	// Persisted by ordinal: new actions only ever go at the end.
+	OPEN_DOWNLOADS(R.string.action_open_downloads, a(a -> {
+		a.exitVideoMode();
+		a.showFragment(R.id.downloads_addon);
+	})),
+	DOWNLOAD_CURRENT(R.string.action_download_current,
+			a(me.aap.fermata.ytdl.YtDownloadMenu::downloadCurrent)),
+	DOWNLOADS_PAUSE_RESUME(R.string.action_downloads_pause_resume,
+			a(a -> me.aap.fermata.ytdl.YtDownloadMenu.togglePause())),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

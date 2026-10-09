@@ -59,6 +59,7 @@ public class MediaPlayerEngine extends MediaEngineBase
 
 	@Override
 	public void prepare(PlayableItem source) {
+		resetFade();
 		stopped(false);
 		this.source = source;
 		Uri u = source.getLocation();
@@ -148,6 +149,7 @@ public class MediaPlayerEngine extends MediaEngineBase
 
 	@Override
 	public void start() {
+		fadeIn();
 		player.start();
 		started();
 		listener.onEngineStarted(this);
@@ -155,6 +157,7 @@ public class MediaPlayerEngine extends MediaEngineBase
 
 	@Override
 	public void stop() {
+		resetFade();
 		stopped(false);
 		player.stop();
 		player.reset();
@@ -163,8 +166,17 @@ public class MediaPlayerEngine extends MediaEngineBase
 
 	@Override
 	public void pause() {
-		stopped(true);
-		player.pause();
+		pauseWithFade(player::pause);
+	}
+
+	@Override
+	protected boolean supportsFade() {
+		return true;
+	}
+
+	@Override
+	protected void setFadeVolume(float volume) {
+		player.setVolume(volume, volume);
 	}
 
 	@Override
@@ -320,12 +332,12 @@ public class MediaPlayerEngine extends MediaEngineBase
 
 	@Override
 	public void mute(Context ctx) {
-		player.setVolume(0f, 0f);
+		setMuteLevel(true);
 	}
 
 	@Override
 	public void unmute(Context ctx) {
-		player.setVolume(1f, 1f);
+		setMuteLevel(false);
 	}
 
 	@Override

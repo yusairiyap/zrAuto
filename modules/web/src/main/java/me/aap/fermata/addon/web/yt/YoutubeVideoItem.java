@@ -25,11 +25,14 @@ import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
 import me.aap.fermata.media.pref.BrowsableItemPrefs;
 import me.aap.fermata.media.service.PlaybackResume;
+import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ytdl.YtOffline;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.text.SharedTextBuilder;
 import me.aap.utils.text.TextUtils;
 import me.aap.utils.ui.fragment.ActivityFragment;
+import me.aap.utils.vfs.VirtualResource;
 import me.aap.utils.vfs.generic.GenericFileSystem;
 
 /**
@@ -127,7 +130,28 @@ public class YoutubeVideoItem extends ExtPlayable implements MediaLib.Externally
 	@Nullable
 	@Override
 	public MediaEngine getMediaEngine(@Nullable MediaEngine current, MediaEngine.Listener listener) {
+		// Downloaded, and no usable connection: the usual engines play the file (see getResource()).
+		// The page's player, whose close() leaves it playing, has to be silenced by hand.
+		if (YtOffline.useLocal(videoId)) {
+			if (current instanceof YoutubeMediaEngine) current.yieldToLocal();
+			// ExoPlayer when it's there: it runs the YouTube equalizer's effects on the file.
+			return getLib().getMediaEngineManager().createPreferringExo(current, this, listener);
+		}
 		return (current instanceof YoutubeMediaEngine) ? current : null;
+	}
+
+	/**
+	 * The downloaded copy while there's no usable connection (see {@link YtOffline#useLocal}),
+	 * which is what makes every way of playing this video -- a tap, next/previous, the car --
+	 * play the file; otherwise the watch page.
+	 */
+	@Override
+	public VirtualResource getResource() {
+		if (YtOffline.useLocal(videoId)) {
+			VirtualResource local = YtOffline.getResource(videoId);
+			if (local != null) return local;
+		}
+		return super.getResource();
 	}
 
 	@Override
@@ -153,6 +177,9 @@ public class YoutubeVideoItem extends ExtPlayable implements MediaLib.Externally
 
 	@Override
 	public void loadInFragment(ActivityFragment fragment, MediaLib.PlayableItem self) {
+		// Reached by paths that don't go through MainActivityDelegate#playExternally() (the toolbar's
+		// favorites and playlists menus): same rule, a downloaded copy plays when there's no connection.
+		if (YtOffline.tryPlayLocal(MainActivityDelegate.get(fragment.requireContext()), self, 0)) return;
 		YoutubeAddon addon = AddonManager.get().getAddon(YoutubeAddon.class);
 		// Remembers self (not "this") as the playback queue: for a Favorites/Playlist entry, self is
 		// the exported wrapper the user actually tapped -- its getParent() is that real container,

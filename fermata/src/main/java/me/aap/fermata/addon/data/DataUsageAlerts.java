@@ -26,6 +26,8 @@ import java.util.List;
 import me.aap.fermata.R;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.BodyLayout;
+import me.aap.fermata.ui.view.SwipeDismissLayout;
+import me.aap.fermata.ui.view.TopPopup;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.ui.activity.ActivityDelegate;
 import me.aap.utils.ui.activity.ActivityListener;
@@ -197,20 +199,15 @@ public final class DataUsageAlerts implements DataUsageTracker.AlertListener, Ac
 	}
 
 	private View createBanner(Context ctx, ViewGroup r) {
-		View b = LayoutInflater.from(ctx).inflate(R.layout.data_usage_banner, r, false);
-		ConstraintLayout.LayoutParams lp = new ConstraintLayout.LayoutParams(
-				ConstraintLayout.LayoutParams.MATCH_CONSTRAINT, ConstraintLayout.LayoutParams.WRAP_CONTENT);
-		lp.startToStart = ConstraintLayout.LayoutParams.PARENT_ID;
-		lp.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID;
-		// Under the title bar; at the very top when it's hidden (fullscreen video), as the
-		// constraint to a gone view collapses to that view's own top.
-		lp.topToBottom = R.id.tool_bar;
-		lp.matchConstraintMaxWidth = toIntPx(ctx, 600);
-		int m = toIntPx(ctx, 8);
-		lp.setMargins(m, m, m, 0);
-		b.setLayoutParams(lp);
-		b.setElevation(toIntPx(ctx, 24));
+		View card = LayoutInflater.from(ctx).inflate(R.layout.data_usage_banner, null, false);
+		card.setElevation(toIntPx(ctx, 8));
+		// At the top, in the middle, like the other popups; swiped up to dismiss.
+		SwipeDismissLayout b = TopPopup.holder(r, card);
 		b.setVisibility(View.GONE);
+		b.setOnDismissed(() -> {
+			dismissedLevel = shownLevel;
+			hideBanner(false);
+		});
 		ImageButton close = b.findViewById(R.id.data_usage_banner_close);
 		close.setImageResource(me.aap.utils.R.drawable.close);
 		close.setOnClickListener(v -> {
@@ -230,6 +227,7 @@ public final class DataUsageAlerts implements DataUsageTracker.AlertListener, Ac
 
 		bannerShown = true;
 		b.animate().cancel();
+		if (b.getParent() instanceof ViewGroup p) TopPopup.layoutTop(b, p);
 		b.setVisibility(View.VISIBLE);
 		b.setAlpha(0f);
 		b.setTranslationY(-toIntPx(b.getContext(), 48));
@@ -331,10 +329,10 @@ public final class DataUsageAlerts implements DataUsageTracker.AlertListener, Ac
 		return g;
 	}
 
-	/** Whether a video is showing: fullscreen, or next to the list. */
+	/** Whether a video is showing fullscreen. */
 	private boolean isVideoShown() {
 		BodyLayout body = activity.getBody();
-		return (body != null) && (body.isVideoMode() || body.isBothMode());
+		return (body != null) && (body.isVideoMode());
 	}
 
 	// ---------------------------------------------------------------------------------------------

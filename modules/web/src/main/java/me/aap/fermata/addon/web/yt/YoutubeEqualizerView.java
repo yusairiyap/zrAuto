@@ -57,7 +57,16 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 	 * menu and by the Music tab's Effects button.
 	 */
 	static void show(YoutubeWebView web) {
-		MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a -> {
+		MainActivityDelegate.getActivityDelegate(web.getContext())
+				.onSuccess(a -> show(a, web.getAddon(), web));
+	}
+
+	/**
+	 * Same, without a page: for a downloaded video, whose sound the native player processes with
+	 * these very settings.
+	 */
+	static void show(MainActivityDelegate a, YoutubeAddon addon, @Nullable YoutubeWebView web) {
+		{
 			// Showing this as a fragment hides YoutubeFragment's own root view -- the same
 			// FragmentTransaction that shows this one briefly flips the still-playing YoutubeWebView's
 			// visibility to GONE (Fragment.hide() on the outgoing fragment) as part of that. Some
@@ -75,7 +84,7 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 			f.setTitle(a.getContext().getString(me.aap.fermata.R.string.audio_effects));
 			f.setContentProvider(g -> {
 				YoutubeEqualizerView v = new YoutubeEqualizerView(g.getContext());
-				v.init(web);
+				v.init(addon, web);
 				g.addView(v, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 				// GenericFragment's root never insets itself against tool_bar/control_panel/nav_bar,
 				// so without this the first and last equalizer rows sit underneath them. Same call
@@ -87,7 +96,7 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 			if (wasPlaying) a.postDelayed(() -> {
 				if (!a.getMediaSessionCallback().isPlaying()) a.getMediaSessionCallback().onPlay();
 			}, 500L);
-		});
+		}
 	}
 
 	public YoutubeEqualizerView(Context context) {
@@ -100,9 +109,9 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 		setBackgroundColor(Color.TRANSPARENT);
 	}
 
-	void init(YoutubeWebView web) {
+	void init(YoutubeAddon addonArg, @Nullable YoutubeWebView web) {
 		this.web = web;
-		YoutubeAddon addon = this.addon = web.getAddon();
+		YoutubeAddon addon = this.addon = addonArg;
 		EffectsUi.inflater(getContext()).inflate(me.aap.fermata.R.layout.audio_effects, this, true);
 		hide(me.aap.fermata.R.id.apply_to, me.aap.fermata.R.id.virtualizer_mode,
 				me.aap.fermata.R.id.equalizer_preset_save, me.aap.fermata.R.id.equalizer_preset_delete);

@@ -130,11 +130,46 @@ public class MediaEngineManager implements PreferenceStore.Listener {
 		return create(getProvider(id), null, i, listener);
 	}
 
+	/**
+	 * The engine for a downloaded YouTube video: ExoPlayer, whose audio pipeline runs the YouTube
+	 * equalizer's effects on the file, when it is there; null otherwise, and the usual choice is made.
+	 * A {@code current} engine of another kind is left to the caller to close, as {@link #createEngine}
+	 * does.
+	 */
+	@Nullable
+	public MediaEngine createPreferringExo(@Nullable MediaEngine current, PlayableItem i,
+																				 Listener listener) {
+		MediaEngineProvider p = exoPlayer;
+		if (p == null) return null;
+		if ((current != null) && (current.getId() == MEDIA_ENG_EXO)) return create(null, current, i, listener);
+		return create(p, null, i, listener);
+	}
+
+	// Downloaded files that got a fresh ExoPlayer after a stall and have not yet been given up on.
+	private final java.util.Set<String> freshExoTried = new java.util.HashSet<>();
+
+	/** A new play of something starts the fallbacks over (see {@link #createAnotherEngine}). */
+	public void resetFreshTried() {
+		freshExoTried.clear();
+	}
+
 	public MediaEngine createAnotherEngine(@NonNull MediaEngine current, Listener listener) {
 		if (engineProvider != null) return engineProvider.createEngine(listener);
 		int id = current.getId();
 		PlayableItem i = current.getSource();
 		current.close();
+
+		// A downloaded video ExoPlayer stalled on: a fresh ExoPlayer first (a stuck player or decoder is
+		// often only that, the same file plays on the next one), then the platform's.
+		if ((id == MEDIA_ENG_EXO) && me.aap.fermata.ytdl.YtOffline.isDownloadedYoutube(i)) {
+			String oid = i.getOrigId();
+			if ((oid != null) && (exoPlayer != null) && freshExoTried.add(oid)) {
+				me.aap.fermata.util.DiagnosticLog.log("ENGINE", "fresh ExoPlayer for a stalled file", "item=" + i);
+				return create(exoPlayer, null, i, listener);
+			}
+			freshExoTried.remove(oid);
+			return create(mediaPlayer, null, i, listener);
+		}
 
 		if (i.getPrefs().getBooleanPref(SubGenAddon.ENABLED) && isExoPlayerSupported()) {
 			return create(exoPlayer, null, i, listener);

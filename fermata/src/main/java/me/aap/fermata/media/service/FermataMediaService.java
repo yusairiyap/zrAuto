@@ -26,6 +26,8 @@ import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.os.Binder;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.IBinder;
 import android.support.v4.media.MediaBrowserCompat.MediaItem;
 import android.support.v4.media.MediaDescriptionCompat;
@@ -148,6 +150,8 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 			if (a instanceof FermataMediaServiceAddon)
 				((FermataMediaServiceAddon) a).onServiceDestroy(callback);
 		}
+		stopHandler.removeCallbacks(stopStarted);
+		holdPlayWakeLock(false);
 		super.onDestroy();
 		NotificationManagerCompat.from(this).cancel(NOTIF_ID);
 		if (intentReceiver != null) unregisterReceiver(intentReceiver);
@@ -166,6 +170,8 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 	@Override
 	public void onTaskRemoved(Intent rootIntent) {
 		super.onTaskRemoved(rootIntent);
+		// Swiped away from Recents: what plays ends with the app.
+		callback.onStop();
 		// The user swiping the app away from Recents is the closest thing to "exiting the app" on
 		// Android, but a foreground playback notification (see updateNotification()) can keep this
 		// service -- and the whole process, private-profile cookies included -- alive well past
@@ -239,18 +245,96 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 		if (lib != null) lib.clearCache();
 	}
 
+	// Whether startForegroundService() was called for this run of playback, see updateNotification().
+	private boolean started;
+
+	// Stops the service once playback has stayed stopped for a while (a track change that passes
+	// through "stopped" mustn't drop it from the foreground and start it again from the background).
+	private final Runnable stopStarted = () -> {
+		if (!started) return;
+		started = false;
+		stopSelf();
+	};
+	private final Handler stopHandler = new Handler(Looper.getMainLooper());
+
+	// Held while playing, for every engine: with the screen off the CPU would otherwise go to sleep
+	// and playback stall or pause after a while in the background.
+	@androidx.annotation.Nullable
+	private android.os.PowerManager.WakeLock playWakeLock;
+
+	private void holdPlayWakeLock(boolean hold) {
+		try {
+			android.os.PowerManager.WakeLock wl = playWakeLock;
+			if (hold) {
+				if (wl == null) {
+					android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
+					if (pm == null) return;
+					wl = playWakeLock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "zrauto:play");
+					wl.setReferenceCounted(false);
+				}
+				// Renewed on every state change while playing; lapses by itself if the app is killed.
+				wl.acquire(4 * 60 * 60 * 1000L);
+			} else if ((wl != null) && wl.isHeld()) {
+				wl.release();
+			}
+		} catch (Exception ex) {
+			Log.w(ex, "Failed to ", hold ? "hold" : "release", " the playback wake lock");
+		}
+	}
+
 	@SuppressLint("SwitchIntDef")
 	void updateNotification(int st, PlayableItem currentItem) {
+		holdPlayWakeLock(st == STATE_PLAYING);
 		switch (st) {
-			case STATE_NONE, STATE_STOPPED, STATE_ERROR -> stopForeground(true);
+			case STATE_NONE, STATE_STOPPED, STATE_ERROR -> {
+				stopForeground(true);
+				// Started while playing (below): no longer needed once it has stayed stopped.
+				stopHandler.removeCallbacks(stopStarted);
+				if (started) stopHandler.postDelayed(stopStarted, 5000);
+			}
 			case STATE_PAUSED -> {
-				if (ActivityCompat.checkSelfPermission(this, POST_NOTIFICATIONS) != PERMISSION_GRANTED) {
+				stopHandler.removeCallbacks(stopStarted);
+				// The permission exists from Android 13; before it nothing is asked for.
+				if ((android.os.Build.VERSION.SDK_INT >= 33) &&
+						(ActivityCompat.checkSelfPermission(this, POST_NOTIFICATIONS) != PERMISSION_GRANTED)) {
 					return;
 				}
 				NotificationManagerCompat.from(this).notify(NOTIF_ID, createNotification(st, currentItem));
 				stopForeground(false);
 			}
-			case STATE_PLAYING -> startForeground(NOTIF_ID, createNotification(st, currentItem));
+			case STATE_PLAYING -> {
+				stopHandler.removeCallbacks(stopStarted);
+				try {
+					Notification n = createNotification(st, currentItem);
+					// The service is only bound to the UI, which can go away (and take a bound-only
+					// service with it) while the screen is off; a started foreground one keeps playing.
+					// Started only once it is certain to get to the foreground: startForegroundService()
+					// demands startForeground() within seconds, or the app is killed.
+					boolean wasStarted = started;
+					if (!wasStarted) {
+						ContextCompat.startForegroundService(this, new Intent(this, FermataMediaService.class));
+						started = true;
+					}
+					try {
+						if (android.os.Build.VERSION.SDK_INT >= 29) {
+							startForeground(NOTIF_ID, n,
+									android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+						} else {
+							startForeground(NOTIF_ID, n);
+						}
+					} catch (Throwable ex) {
+						// Not allowed right now: playback itself carries on; the service is not left
+						// started without a foreground notification.
+						Log.w(ex, "Failed to start the media foreground service");
+						if (!wasStarted) {
+							started = false;
+							stopSelf();
+						}
+					}
+				} catch (Throwable ex) {
+					Log.w(ex, "Failed to show the playback notification");
+				}
+			}
 			default -> {
 			}
 		}
@@ -261,7 +345,8 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 
 		Context ctx = this;
 		MediaControllerCompat controller = session.getController();
-		MediaMetadataCompat mediaMetadata = controller.getMetadata();
+		MediaMetadataCompat mediaMetadata = callback.getPublishedMetadata();
+		if (mediaMetadata == null) mediaMetadata = controller.getMetadata();
 		NotificationCompat.Builder builder =
 				new NotificationCompat.Builder(ctx, NOTIF_CHANNEL_ID).setContentIntent(notifContentIntent)
 						.setDeleteIntent(pi(INTENT_STOP)).setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -274,6 +359,10 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 			Bitmap largeIcon = description.getIconBitmap();
 			builder.setContentTitle(description.getTitle()).setContentText(description.getSubtitle())
 					.setSubText(description.getDescription());
+			me.aap.fermata.util.DiagnosticLog.log("NOTIF", "built", "state=" + st,
+					"title=" + description.getTitle(), "subtitle=" + description.getSubtitle(),
+					"icon=" + ((description.getIconBitmap() == null) ? null :
+							description.getIconBitmap().getWidth() + "x" + description.getIconBitmap().getHeight()));
 
 			if (callback.isDefaultImage(largeIcon)) {
 				if ((i != null) && i.isVideo()) {

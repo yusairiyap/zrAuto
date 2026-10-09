@@ -26,6 +26,8 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.app.PictureInPictureParams;
+import android.util.Rational;
 import android.graphics.Rect;
 import android.view.MotionEvent;
 import android.view.View;
@@ -53,8 +55,13 @@ import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
 import me.aap.fermata.addon.AddonInfo;
 import me.aap.fermata.addon.AddonManager;
+import me.aap.fermata.media.engine.MediaEngine;
+import me.aap.fermata.media.lib.MediaLib.PlayableItem;
+import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.media.service.FermataMediaServiceConnection;
+import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.ui.fragment.MainActivityFragment;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.app.App;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.collection.NaturalOrderComparator;
@@ -182,6 +189,7 @@ public class MainActivity extends SplitCompatActivityBase
 	protected void onResume() {
 		super.onResume();
 		activeInstance = this;
+		DiagnosticLog.log("STATE", "activity resumed");
 
 		// Fragment switches within the app never pause/resume the Activity -- only actually leaving
 		// it (home button, task switcher, another app taking focus) does -- so this is the signal for
@@ -199,6 +207,13 @@ public class MainActivity extends SplitCompatActivityBase
 	protected void onPause() {
 		super.onPause();
 		activeInstance = null;
+		DiagnosticLog.log("STATE", "activity paused (left the app or covered)");
+	}
+
+	@Override
+	protected void onStop() {
+		super.onStop();
+		DiagnosticLog.log("STATE", "activity stopped (in the background)");
 	}
 
 	/**
@@ -260,9 +275,44 @@ public class MainActivity extends SplitCompatActivityBase
 	protected void onUserLeaveHint() {
 		super.onUserLeaveHint();
 		MainActivityDelegate a = getActivityDelegate().peek();
-		if ((a != null) && (a.getActiveFragment() instanceof MainActivityFragment f)) {
-			f.onUserLeaveHint();
+		if (a == null) return;
+		if (a.getActiveFragment() instanceof MainActivityFragment f) f.onUserLeaveHint();
+		if (!isInPictureInPictureMode()) enterLocalVideoPip(a);
+	}
+
+	/**
+	 * A local (or downloaded) video playing fullscreen goes on in a small window as the user leaves
+	 * the app, as YouTube's does (see above).
+	 */
+	private void enterLocalVideoPip(MainActivityDelegate a) {
+		if ((SDK_INT < Build.VERSION_CODES.O) || !a.isVideoMode()) return;
+		var cb = a.getMediaSessionCallback();
+		MediaEngine eng = cb.getEngine();
+		if ((eng == null) || (eng.getId() == MediaPrefs.MEDIA_ENG_YT) || !cb.isPlaying()) return;
+		PlayableItem src = eng.getSource();
+		if ((src == null) || !src.isVideo()) return;
+
+		try {
+			float w = eng.getVideoWidth();
+			float h = eng.getVideoHeight();
+			// The window's ratio must stay within what Android accepts.
+			float r = ((w > 0) && (h > 0)) ? Math.max(0.42f, Math.min(2.39f, w / h)) : (16f / 9f);
+			PictureInPictureParams.Builder pb = new PictureInPictureParams.Builder()
+					.setAspectRatio(new Rational(Math.round(r * 1000), 1000));
+			VideoView vv = a.getActiveVideoView();
+			Rect rect = new Rect();
+			if ((vv != null) && vv.getGlobalVisibleRect(rect)) pb.setSourceRectHint(rect);
+			enterPictureInPictureMode(pb.build());
+		} catch (Throwable ex) {
+			Log.w(ex, "Failed to enter picture-in-picture");
 		}
+	}
+
+	@Override
+	public void onPictureInPictureModeChanged(boolean pip, @NonNull Configuration cfg) {
+		super.onPictureInPictureModeChanged(pip, cfg);
+		MainActivityDelegate a = getActivityDelegate().peek();
+		if (a != null) a.onPictureInPictureChanged(pip);
 	}
 
 	@Override

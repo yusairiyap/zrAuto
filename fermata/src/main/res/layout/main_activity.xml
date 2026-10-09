@@ -138,9 +138,8 @@
         app:layout_constraintBottom_toTopOf="@id/control_panel"
         app:layout_constraintEnd_toStartOf="@id/floating_button5" />
 
-    <androidx.core.widget.ContentLoadingProgressBar
+    <me.aap.fermata.ui.view.LoadingCircleView
         android:id="@+id/content_loading_progress"
-        style="?android:attr/progressBarStyleLarge"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:visibility="gone"

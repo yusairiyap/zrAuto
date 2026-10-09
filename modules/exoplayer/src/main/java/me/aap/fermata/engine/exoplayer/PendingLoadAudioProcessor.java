@@ -23,6 +23,11 @@ class PendingLoadAudioProcessor implements AudioProcessor {
 	private final AtomicInteger state = new AtomicInteger();
 	private AudioFormat pendingConfiguration;
 	private FutureSupplier<AudioTranscriptProcessor> delegate = completedNull();
+	// Subtitle generation left out of the sound's way: the transcriptor only lets the sound through
+	// once it has read it, so whenever it falls behind (a big model, the app throttled in the
+	// background) the playback itself stops. Taken out of the pipeline at the next flush (see
+	// AudioProcessingPipeline#flush, which asks isActive() again).
+	private volatile boolean bypass;
 
 	PendingLoadAudioProcessor(ExoPlayerEngine.Accessor player) {
 		this.player = player;
@@ -71,8 +76,22 @@ class PendingLoadAudioProcessor implements AudioProcessor {
 
 	@Override
 	public boolean isActive() {
+		return !bypass && isTranscribing();
+	}
+
+	/** Whether subtitles are being generated: the sound then waits on the transcriptor. */
+	boolean isTranscribing() {
 		var d = get();
 		return (d != null) && d.isActive() || !delegate.isDone();
+	}
+
+	boolean isBypassed() {
+		return bypass;
+	}
+
+	/** See {@link #bypass}: takes effect at the next flush (a prepare or a seek). */
+	void setBypass(boolean bypass) {
+		this.bypass = bypass;
 	}
 
 	@Override

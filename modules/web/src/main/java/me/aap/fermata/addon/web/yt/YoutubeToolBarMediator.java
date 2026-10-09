@@ -22,6 +22,7 @@ import android.widget.EditText;
 import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.WebToolBarMediator;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ytdl.DownloadsAddon;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.activity.ActivityDelegate;
 import me.aap.utils.ui.fragment.ActivityFragment;
@@ -85,6 +86,15 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 				v -> yt.toggleSearchPanel(), me.aap.fermata.R.id.youtube_up_next, RIGHT);
 		upNext.setContentDescription(tb.getContext().getString(me.aap.fermata.R.string.youtube_up_next));
 		upNext.setToolBarPriority(Integer.MAX_VALUE);
+		// Downloads the video on screen (asks what as); a ticked icon once it's on the phone, and
+		// then it opens the Downloads tab. Hidden by the Downloads addon's own setting.
+		if (DownloadsAddon.isYoutubeToolbarButtonShown()) {
+			ImageButton dl = addButton(tb, me.aap.fermata.R.drawable.download,
+					v -> yt.downloadCurrentVideo(), me.aap.fermata.R.id.ytdl_toolbar_button, RIGHT);
+			dl.setContentDescription(tb.getContext().getString(me.aap.fermata.R.string.ytdl_download));
+			dl.setToolBarPriority(0);
+			refreshDownloadButton(tb, yt);
+		}
 		// Rarely toggled: the first to make room.
 		if (tb.findViewById(me.aap.fermata.R.id.private_mode) instanceof ImageButton pm) {
 			pm.setToolBarPriority(-1);
@@ -160,6 +170,7 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 		// long-press menu) -- either way, whether it should show filled or outline can have changed.
 		if ((e == FRAGMENT_CONTENT_CHANGED) && (a.getActiveFragment() instanceof YoutubeFragment yt)) {
 			refreshFavoriteButton(tb, yt);
+			refreshDownloadButton(tb, yt);
 		}
 	}
 
@@ -289,6 +300,14 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 		} else {
 			InputMethodManager imm = t.getContext().getSystemService(InputMethodManager.class);
 			if (imm != null) imm.showSoftInput(t, InputMethodManager.SHOW_IMPLICIT);
+		}
+	}
+
+	private void refreshDownloadButton(ToolBarView tb, YoutubeFragment yt) {
+		ImageButton b = tb.findViewById(me.aap.fermata.R.id.ytdl_toolbar_button);
+		if (b != null) {
+			b.setImageResource(yt.isCurrentVideoDownloaded()
+					? me.aap.fermata.R.drawable.download_done : me.aap.fermata.R.drawable.download);
 		}
 	}
 

@@ -87,6 +87,7 @@ import me.aap.fermata.ui.view.ToolBarPill;
 import me.aap.fermata.ui.view.LoadingDimView;
 import me.aap.fermata.ui.view.MusicMoreMenu;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.text.TextUtils;
@@ -164,6 +165,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private Context palette;
 	@Nullable
 	private PlayableItem shownItem;
+	// What was shown before it, and since when: a switch of track passes through states in which the
+	// engine still reports the old one, which must not bring its cover back for a moment.
+	private PlayableItem previousShown;
+	private long shownAt;
 	@Nullable
 	private Object shownArt;
 	// The cover currently shown, kept so the background can be re-blurred when the Background
@@ -234,7 +239,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			// the tab jumping about: stay invisible while it settles, then fade in once, calmly.
 			quietUntil = android.os.SystemClock.uptimeMillis() + 1300;
 			view.setAlpha(0f);
-			view.postDelayed(() -> view.animate().alpha(1f).setDuration(350).start(), 800);
+			// Not once the tab has been left: its own fade out is not to be cut short.
+			view.postDelayed(() -> {
+				if (isAdded() && !isHidden()) view.animate().alpha(1f).setDuration(350).start();
+			}, 800);
 		}
 		content = view.findViewById(R.id.music_content);
 		bg = view.findViewById(R.id.music_bg);
@@ -242,6 +250,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				view.findViewById(R.id.music_scrim)};
 		art = view.findViewById(R.id.music_art);
 		loading = view.findViewById(R.id.music_loading);
+
 		title = view.findViewById(R.id.music_track_title);
 		artist = view.findViewById(R.id.music_track_artist);
 		position = view.findViewById(R.id.music_position);
@@ -547,6 +556,16 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		PlayableItem cur = getActivityDelegate().getMediaSessionCallback().getCurrentItem();
 		if (cur != null) return cur;
 		if (queue == null) return null;
+		// Nothing current for a moment while one engine hands over to the next (a YouTube track
+		// starting in the YouTube player passes through STOPPED with no item): the queue track shown
+		// stays, rather than the queue's saved one, which still names the track before it (its cover
+		// flashed up in between).
+		PlayableItem shown = shownItem;
+		int st = getActivityDelegate().getMediaSessionCallback().getPlaybackState().getState();
+		if ((shown instanceof MusicTrackItem s) && (st == PlaybackStateCompat.STATE_STOPPED) &&
+				(queue.indexInPlayOrder(s) >= 0)) {
+			return s;
+		}
 		MusicTrackItem t = queue.getSavedCurrent();
 		return (t != null) ? t : queue.getTrack(0);
 	}
@@ -563,8 +582,22 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		adapter.reload();
 	}
 
+	/** Whether playback is between one track and the next (the engine may still report the old one). */
+	private boolean isSwitching() {
+		int st = getActivityDelegate().getMediaSessionCallback().getPlaybackState().getState();
+		return (st == PlaybackStateCompat.STATE_CONNECTING) || (st == PlaybackStateCompat.STATE_BUFFERING) ||
+				(st == PlaybackStateCompat.STATE_SKIPPING_TO_NEXT) ||
+				(st == PlaybackStateCompat.STATE_SKIPPING_TO_PREVIOUS);
+	}
+
 	private void displayItem(@Nullable PlayableItem i, boolean force) {
 		if (!force && (i == shownItem) && (i != null)) return;
+		long now = android.os.SystemClock.uptimeMillis();
+		if (!force && (i != null) && (i == previousShown) && (now - shownAt < 1500) && isSwitching()) return;
+		if (shownItem != i) {
+			previousShown = shownItem;
+			shownAt = now;
+		}
 		shownItem = i;
 		updateVideoButton(i);
 
@@ -641,6 +674,16 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		MediaLib lib = getActivityDelegate().getLib();
 		lib.getBitmap(uri).main().onCompletion((bm, err) -> {
 			if (shownItem != i) return;
+			String vid = (bm == null) ? YtDownloads.thumbnailVideoId(uri) : null;
+			if (vid != null) {
+				// No connection: a downloaded video's saved cover, or a picture out of its file.
+				me.aap.utils.app.App.get().getExecutor().submitTask(() -> YtDownloads.get().localArt(vid))
+						.main().onCompletion((fr, e2) -> {
+							if (shownItem != i) return;
+							setArt((fr != null) ? fr : null, uri);
+						});
+				return;
+			}
 			setArt(isYoutube(i) ? cropLetterbox(bm) : bm, uri);
 		});
 	}
@@ -814,7 +857,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	/** Whether what's playing is playing as music: a queue track, with YouTube in music mode. */
 	private boolean playingAsMusic() {
 		MusicTrackItem t = currentTrack();
-		if (t != null) return (t.getVideoId() == null) || MusicPlayer.isYoutubeAudioMode();
+		if (t != null) {
+			if (t.getVideoId() == null) return true;
+			// A downloaded video's file: music unless its picture is showing.
+			return t.isDownloaded() ? !t.isVideo() : MusicPlayer.isYoutubeAudioMode();
+		}
 		// YouTube in music mode momentarily not reporting its queue track (e.g. switching to the next
 		// one): still music, never a video to "play as music".
 		return isYoutubeEngine() && MusicPlayer.isYoutubeAudioMode();
@@ -847,8 +894,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 		if ((playingAsMusic() && ((t == null) || t.hasVideo())) || (idleVideoTrack() != null)) {
 			setVideoButton(R.string.video, R.drawable.video);
+		} else if ((i != null) && isPlayingVideo() && !isYoutubeEngine()) {
+			// A local video plays on in the background: "Video" brings its picture back, here as
+			// everywhere else in this tab.
+			setVideoButton(R.string.video, R.drawable.video);
 		} else if ((i != null) && isPlayingVideo()) {
-			// A video is playing right now (e.g. in the split view): offer to drop the picture.
+			// A YouTube video is playing: offer to drop the picture.
 			setVideoButton(R.string.play_as_music, R.drawable.music);
 		} else {
 			setVideoButton(0, 0);
@@ -1422,6 +1473,14 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			return;
 		}
 
+		// What was playing when the app last ran, if it wasn't a queue track (a local video, say):
+		// play that, as music, from where it was left -- rather than nothing at all.
+		PlayableItem last = cb.getResumeItem();
+		if ((last != null) && !(last instanceof MusicTrackItem) && !last.isExternal()) {
+			MusicPlayer.playAsMusic(a, last, cb.getResumePosition());
+			return;
+		}
+
 		if (queueIsEmpty()) {
 			showQueue(true);
 			return;
@@ -1714,6 +1773,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			// Into the video through black, the same fade as leaving fullscreen.
 			a.getPlaybackDelegate().fadeToBlackForVideo();
 			MusicPlayer.switchToVideo(a);
+		}
+		else if (isPlayingVideo() && !isYoutubeEngine()) {
+			MusicPlayer.showCurrentVideo(a);
 		}
 		else if (a.getMediaSessionCallback().getCurrentItem() != null) {
 			MusicPlayer.playCurrentAsMusic(a);

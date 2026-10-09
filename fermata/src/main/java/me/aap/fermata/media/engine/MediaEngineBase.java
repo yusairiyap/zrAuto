@@ -13,6 +13,10 @@ import static me.aap.utils.async.Completed.completedVoid;
 import static me.aap.utils.collection.CollectionUtils.comparing;
 import static me.aap.utils.text.TextUtils.timeToString;
 
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
+
 import androidx.annotation.CallSuper;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -23,6 +27,7 @@ import java.util.List;
 
 import me.aap.fermata.BuildConfig;
 import me.aap.fermata.addon.SubGenAddon;
+import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.sub.FileSubtitles;
 import me.aap.fermata.media.sub.SubGrid;
 import me.aap.fermata.media.sub.SubScheduler;
@@ -46,6 +51,238 @@ public abstract class MediaEngineBase implements MediaEngine {
 	private SubMgr subMgr;
 
 	protected MediaEngineBase(Listener listener) {this.listener = listener;}
+
+	// ---------------------------------------------------------------------------------------------
+	// Volume fades: the sound comes in when playback starts and goes out before it pauses or skips,
+	// as YouTube's does (youtube_fade.js), for every engine that can set its volume.
+
+	private static final long FADE_IN_MS = 450;
+	private static final long FADE_OUT_MS = 250;
+	private static final long FADE_STEP_MS = 25;
+	// The level a fade ends at: 1, or 0 while muted.
+	private float volumeTarget = 1f;
+	private float volumeNow = 1f;
+	// The step of the fade that is going on.
+	@Nullable
+	private Runnable fade;
+	// What runs once that fade is over...
+	@Nullable
+	private Runnable fadeDone;
+	// ...and whether that is the pause the sound was going out for: one that is cut short still has to
+	// pause the player (or it plays on, silently marked paused), while a skip's follow-up is dropped.
+	private boolean fadeDoneIsPause;
+	@Nullable
+	private Handler fadeHandler;
+
+	/** Whether the engine can set its volume (see {@link #setFadeVolume}), so the fades apply. */
+	protected boolean supportsFade() {
+		return false;
+	}
+
+	/** Sets the player's volume, 0 (silent) to 1; only called if {@link #supportsFade()}. */
+	protected void setFadeVolume(float volume) {
+	}
+
+	private Handler fadeHandler() {
+		Handler h = fadeHandler;
+		if (h == null) fadeHandler = h = new Handler(Looper.getMainLooper());
+		return h;
+	}
+
+	private void applyVolume(float v) {
+		volumeNow = v;
+		if (!supportsFade()) return;
+		try {
+			setFadeVolume(v);
+		} catch (RuntimeException ex) {
+			// The player isn't in a state to take it (released, in error): the fade has no more to do.
+			Log.d(ex, "Failed to set the volume");
+		}
+	}
+
+	/** The engine's mute/unmute: the level fades return to. */
+	protected final void setMuteLevel(boolean muted) {
+		volumeTarget = muted ? 0f : 1f;
+		cancelFade();
+		applyVolume(volumeTarget);
+	}
+
+	/** Stops any fade in progress and puts the volume back to the level of the day. */
+	protected final void resetFade() {
+		stopEndWatch();
+		cancelFade();
+		applyVolume(volumeTarget);
+	}
+
+	// How close to its end a track is when the sound (and a video's picture) starts going out, so it is
+	// silent and black as it ends, as YouTube's page does (youtube_fade.js, END_FADE_S): the next
+	// track comes in with its own fade. Not for tracks shorter than END_FADE_MIN_DURATION_MS (same
+	// rule as the page's), which would spend too much of themselves fading.
+	private static final long END_FADE_MS = 1600;
+	private static final long END_FADE_MIN_DURATION_MS = 8000;
+	private static final long END_WATCH_MS = 150;
+	private boolean endWatching;
+	private boolean endFaded;
+
+	/** While playing, checks how long is left and fades the sound out for the end of the track. */
+	private void watchEnd() {
+		endFaded = false;
+		if (endWatching) return;
+		endWatching = true;
+		fadeHandler().postDelayed(endWatch, END_WATCH_MS);
+	}
+
+	private final Runnable endWatch = new Runnable() {
+		@Override
+		public void run() {
+			if (!endWatching) return;
+			if (!isPlaying() && (fade == null)) {
+				// Paused or stopped: watching starts again with the next start.
+				endWatching = false;
+				return;
+			}
+
+			try {
+				var dur = getDuration();
+				var pos = getPosition();
+				if (dur.isDoneNotFailed() && pos.isDoneNotFailed() && (fade == null) && isPlaying()) {
+					long d = dur.getOrThrow();
+					long left = (d > 0) ? (d - pos.getOrThrow()) : -1;
+					if ((left > 0) && (left <= END_FADE_MS + END_WATCH_MS) && !endFaded &&
+							(d >= END_FADE_MIN_DURATION_MS)) {
+						endFaded = true;
+						long ms = Math.max(100, left - 50);
+						if (volumeTarget > 0f) fadeTo(0f, ms, null, false);
+						// The picture goes to black with the sound, as YouTube's does (its videoEnding()).
+						VideoView v = videoView;
+						if ((v != null) && isVideoWithRepeatOff()) v.fadeToBlack(ms);
+					} else if (endFaded && (left > END_FADE_MS + 1000)) {
+						// Back from the end (repeat, a seek): the sound and the picture with it.
+						endFaded = false;
+						fadeTo(volumeTarget, FADE_IN_MS, null, false);
+						VideoView v = videoView;
+						if (v != null) v.liftBlack(FADE_IN_MS);
+					}
+				}
+			} catch (RuntimeException ex) {
+				Log.d(ex, "Failed to check the end of the track");
+			}
+			fadeHandler().postDelayed(this, END_WATCH_MS);
+		}
+	};
+
+	/** A video whose end leads elsewhere: Repeat One just starts it again, a black blink for nothing. */
+	private boolean isVideoWithRepeatOff() {
+		try {
+			PlayableItem i = getSource();
+			if ((i == null) || !i.isVideo()) return false;
+			return !i.getId().equals(i.getParent().getPrefs().getRepeatItemPref());
+		} catch (RuntimeException ex) {
+			return false;
+		}
+	}
+
+	private void stopEndWatch() {
+		endWatching = false;
+		if (fadeHandler != null) fadeHandler.removeCallbacks(endWatch);
+	}
+
+	@Override
+	public void restoreVolume() {
+		if (fade == null) applyVolume(volumeTarget);
+	}
+
+	/** Ends the fade in progress where it is; the pause it was for, if it was one, still happens. */
+	private void cancelFade() {
+		Runnable f = fade;
+		fade = null;
+		if ((f != null) && (fadeHandler != null)) fadeHandler.removeCallbacks(f);
+		Runnable d = fadeDone;
+		boolean pause = fadeDoneIsPause;
+		fadeDone = null;
+		fadeDoneIsPause = false;
+		if ((d != null) && pause) d.run();
+	}
+
+	/** Just before the player starts: the sound comes in over a moment. */
+	protected final void fadeIn() {
+		if (!supportsFade()) return;
+		watchEnd();
+		// Started again while already playing (a repeated play, audio focus back): nothing to fade in.
+		if ((volumeTarget <= 0f) || isPlaying()) return;
+		// Playing again: the pause the sound was going out for no longer applies.
+		if (fadeDoneIsPause) {
+			fadeDone = null;
+			fadeDoneIsPause = false;
+		}
+		cancelFade();
+		applyVolume(0f);
+		fadeTo(volumeTarget, FADE_IN_MS, null, false);
+	}
+
+	/**
+	 * The engine's pause(): records the pause (see {@link #stopped}), then lets the sound go out
+	 * before {@code realPause} pauses the player -- at once if it wasn't playing.
+	 */
+	protected final void pauseWithFade(Runnable realPause) {
+		boolean playing = isPlaying();
+		stopped(true);
+		Runnable pause = () -> {
+			try {
+				realPause.run();
+			} catch (RuntimeException ex) {
+				// The player is in no state to pause (being prepared, in error): nothing to pause.
+				Log.d(ex, "Failed to pause");
+			}
+			applyVolume(volumeTarget);
+		};
+		cancelFade();
+		if (!playing || !supportsFade() || (volumeTarget <= 0f)) {
+			pause.run();
+			return;
+		}
+		fadeTo(0f, FADE_OUT_MS, pause, true);
+	}
+
+	@Override
+	public void fadeOut(Runnable then) {
+		cancelFade();
+		if (!isPlaying() || !supportsFade() || (volumeTarget <= 0f)) {
+			then.run();
+			return;
+		}
+		// Not brought back up afterwards: what plays next sets its own volume (and this engine is
+		// closed or restarted by then); see restoreVolume() for a skip that came to nothing.
+		fadeTo(0f, FADE_OUT_MS, then, false);
+	}
+
+	/** Ramps the volume to {@code to} over {@code ms}, then runs {@code done}. */
+	private void fadeTo(float to, long ms, @Nullable Runnable done, boolean isPause) {
+		float from = volumeNow;
+		long t0 = SystemClock.uptimeMillis();
+		Handler h = fadeHandler();
+		fadeDone = done;
+		fadeDoneIsPause = isPause;
+		Runnable step = new Runnable() {
+			@Override
+			public void run() {
+				if (fade != this) return;
+				float k = Math.min(1f, (SystemClock.uptimeMillis() - t0) / (float) ms);
+				applyVolume(from + (to - from) * k);
+				if (k < 1f) {
+					h.postDelayed(this, FADE_STEP_MS);
+				} else {
+					fade = null;
+					Runnable d = fadeDone;
+					fadeDone = null;
+					fadeDoneIsPause = false;
+					if (d != null) d.run();
+				}
+			}
+		};
+		fade = step;
+		h.post(step);
+	}
 
 	@CallSuper
 	@Override
@@ -166,6 +403,8 @@ public abstract class MediaEngineBase implements MediaEngine {
 	@CallSuper
 	@Override
 	public void close() {
+		stopEndWatch();
+		cancelFade();
 		stopped(false);
 	}
 

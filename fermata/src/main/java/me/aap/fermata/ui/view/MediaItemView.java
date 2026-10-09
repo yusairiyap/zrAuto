@@ -64,6 +64,8 @@ import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.PlayableItemPrefs;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.fragment.MediaLibFragment;
+import me.aap.fermata.ytdl.YtDownloads;
+import me.aap.fermata.ytdl.YtOffline;
 import me.aap.utils.app.App;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.async.Promise;
@@ -122,6 +124,20 @@ public class MediaItemView extends ConstraintLayout
 	private ProgressUpdater progressUpdater;
 	private VectorDrawableCompat watchedVideoDrawable;
 	private VectorDrawableCompat watchingVideoDrawable;
+	private VectorDrawableCompat downloadedDrawable;
+	/** A download finished or was removed: the "downloaded" badge may have to appear or go. */
+	private final YtDownloads.Listener downloadListener = this::downloadsChanged;
+	// What the badge showed last: the listener is told of every progress tick, and a redraw is for the
+	// badge appearing or going only.
+	private boolean badgeShown;
+
+	private void downloadsChanged() {
+		Item i = getItem();
+		boolean now = (i instanceof PlayableItem p) && YtOffline.isDownloadedYoutube(p);
+		if (now == badgeShown) return;
+		badgeShown = now;
+		invalidate();
+	}
 	@DrawableRes
 	private int outlineRes = R.drawable.media_item_outline;
 	private VectorDrawableCompat archiveLabelDrawable;
@@ -142,7 +158,8 @@ public class MediaItemView extends ConstraintLayout
 		badgeMinRadius = toPx(ctx, 9);
 		badgeMaxRadius = toPx(ctx, 16);
 		MainActivityDelegate a = getMainActivity();
-		applyLayout(ctx, a.isGridView(), a.getPrefs().getTextIconSizePref(a));
+		// The preference, like the list's (MediaItemListView#configure): not whatever tab is active.
+		applyLayout(ctx, a.getPrefs().getGridViewPref(a), a.getPrefs().getTextIconSizePref(a));
 		iconTint = getIcon().getImageTintList();
 		setLongClickable(true);
 		setOnLongClickListener(this);
@@ -521,6 +538,13 @@ public class MediaItemView extends ConstraintLayout
 	protected void onAttachedToWindow() {
 		attaching = true;
 		super.onAttachedToWindow();
+		YtDownloads.get().addListener(downloadListener);
+	}
+
+	@Override
+	protected void onDetachedFromWindow() {
+		YtDownloads.get().removeListener(downloadListener);
+		super.onDetachedFromWindow();
 	}
 
 	@Override
@@ -551,6 +575,15 @@ public class MediaItemView extends ConstraintLayout
 			if (d == null) {
 				d = archiveLabelDrawable =
 						VectorDrawableCompat.create(getResources(), R.drawable.archive_label, null);
+				if (d == null) return;
+				d.setTint(BADGE_ICON_COLOR);
+			}
+		} else if ((item instanceof PlayableItem dp) && (badgeShown = YtOffline.isDownloadedYoutube(dp))) {
+			// A video that is on the phone: the same badge, in place of watched/watching.
+			d = downloadedDrawable;
+			if (d == null) {
+				d = downloadedDrawable =
+						VectorDrawableCompat.create(getResources(), R.drawable.download, null);
 				if (d == null) return;
 				d.setTint(BADGE_ICON_COLOR);
 			}

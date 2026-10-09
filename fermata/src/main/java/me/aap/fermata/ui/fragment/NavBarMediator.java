@@ -241,7 +241,7 @@ public class NavBarMediator extends PrefNavBarMediator
 	@Override
 	public void itemReselected(View item, int id, ActivityDelegate a) {
 		BodyLayout b = ((MainActivityDelegate) a).getBody();
-		if (b.isVideoMode()) b.setMode(BodyLayout.Mode.BOTH);
+		if (b.isVideoMode()) b.setMode(BodyLayout.Mode.FRAME);
 		else super.itemReselected(item, id, a);
 	}
 
@@ -350,6 +350,8 @@ public class NavBarMediator extends PrefNavBarMediator
 			return true;
 		} else if (itemId == R.id.nav_exit) {
 			MainActivityDelegate a = MainActivityDelegate.get(item.getContext());
+			// Leaving the app ends what plays.
+			a.getMediaSessionCallback().onStop();
 			a.finish();
 			if (a.isCarActivityNotMirror()) {
 				a.getHandler().postDelayed(() -> System.exit(0), 500);

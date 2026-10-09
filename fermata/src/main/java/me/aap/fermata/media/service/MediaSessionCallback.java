@@ -10,6 +10,7 @@ import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ARTIST;
 import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM;
 import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE;
 import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE;
+import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_DURATION;
 import static android.support.v4.media.session.PlaybackStateCompat.ACTION_FAST_FORWARD;
 import static android.support.v4.media.session.PlaybackStateCompat.ACTION_PAUSE;
 import static android.support.v4.media.session.PlaybackStateCompat.ACTION_PLAY;
@@ -110,6 +111,7 @@ import java.util.Queue;
 import me.aap.fermata.BuildConfig;
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.engine.AudioEffects;
 import me.aap.fermata.media.engine.BufferingIndicator;
 import me.aap.fermata.media.engine.MediaEngine;
@@ -131,6 +133,8 @@ import me.aap.fermata.media.sub.SubGrid;
 import me.aap.fermata.media.sub.Subtitles;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.ytdl.YtDownloads;
+import me.aap.fermata.ytdl.YtOffline;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.collection.CollectionUtils;
 import me.aap.utils.event.EventBroadcaster;
@@ -196,7 +200,9 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	private Queue<Prioritized<VideoView>> videoView;
 	private Queue<Prioritized<MediaSessionCallbackAssistant>> assistants;
 	private FutureSupplier<?> playerTask = completedVoid();
+	// The playing item's own metadata (no subtitle text in it), and the item it is for.
 	private MediaMetadataCompat metadata;
+	private PlayableItem metadataItem;
 	// What was last played, restored by prepare() as a paused, not yet loaded item -- see there.
 	// Only meaningful while there is no engine: the first engine to be created takes over.
 	@Nullable
@@ -302,6 +308,17 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		return (eng == null) ? null : eng.getSource();
 	}
 
+	/** What was restored paused at the start (the last played item), not played yet; else null. */
+	@Nullable
+	public PlayableItem getResumeItem() {
+		return (getEngine() == null) ? resumeItem : null;
+	}
+
+	/** Where {@link #getResumeItem()} was left off. */
+	public long getResumePosition() {
+		return resumePos;
+	}
+
 	public MediaSessionCompat getSession() {
 		return session;
 	}
@@ -321,7 +338,13 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			videoView = new PriorityQueue<>(2);
 		} else {
 			for (Prioritized<VideoView> s : videoView) {
-				if (s.obj == view) return;
+				if (s.obj != view) continue;
+				// Already known, its surface made again (shown after being hidden without the destroy
+				// being seen): the player is given it again all the same, or it keeps the dead one.
+				MediaEngine eng = getEngine();
+				PlayableItem i = (eng == null) ? null : eng.getSource();
+				if ((i != null) && i.isVideo() && (getVideoView() == view)) eng.setVideoView(view);
+				return;
 			}
 		}
 
@@ -509,7 +532,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		DiagnosticLog.log("RESUME", "restored paused", "item=" + i, "pos=" + (pos / 1000) + 's');
 		setPlaybackState(createPlayingState(i, STATE_PAUSED, 0, pos, 1f));
 		i.getMediaData().main().onSuccess(md -> {
-			if ((resumeItem == i) && (getEngine() == null)) setMetadata(md);
+			if ((resumeItem == i) && (getEngine() == null)) publishMetadata(md, i);
 		});
 	}
 
@@ -771,9 +794,67 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onSkipToPrevious() {
+		skipWithFade(false);
+	}
+
+	// A skip is waiting for the sound to fade out -- see skipWithFade().
+	// (until when -- a fade that gets cancelled never calls back, and must not leave the buttons dead)
+	private long skipFadingUntil;
+
+	/**
+	 * Next/previous: the sound fades out first (as YouTube's does, see MediaEngine#fadeOut), then the
+	 * next item starts and fades in. A second press during the fade is the same skip, not another.
+	 */
+	private void skipWithFade(boolean next) {
+		if (SystemClock.uptimeMillis() < skipFadingUntil) return;
 		clearRepeatOneOnSkip();
 		playerTask.cancel();
-		playerTask = skipTo(false, false);
+		MediaEngine eng = getEngine();
+
+		if ((eng == null) || !isPlaying()) {
+			playerTask = skipTo(next, false);
+			return;
+		}
+
+		long fadeStart = SystemClock.uptimeMillis();
+		skipFadingUntil = fadeStart + 700;
+		notifySkipFade(eng);
+		eng.fadeOut(() -> {
+			skipFadingUntil = 0;
+			// Whatever took over while it faded (a stop, another item) wins.
+			if (getEngine() != eng) return;
+			playerTask.cancel();
+			playerTask = skipTo(next, false);
+			// Nothing took the engine's place (no next item, a failed hand-over): sound again.
+			me.aap.utils.app.App.get().getHandler().postDelayed(() -> {
+				// Not while the next item is being handed to YouTube's page: it takes over (and closes
+				// this engine) a moment later, and the sound coming back first was the stutter.
+				if (getEngine() != eng) return;
+				if (handedOverAt >= fadeStart) {
+					DiagnosticLog.log("TRANSPORT", "hand-over pending: volume stays down");
+					return;
+				}
+				eng.restoreVolume();
+			}, 3000);
+		});
+	}
+
+	// When an item was last handed to another player (YouTube's page), see skipWithFade().
+	private volatile long handedOverAt;
+
+	/** The video screen is put right if the picture's player lost it (see {@code MediaEngine#setVideoView}). */
+	public void reattachVideoView() {
+		MediaEngine eng = getEngine();
+		VideoView v = getVideoView();
+		if ((eng == null) || (v == null) || (eng.getId() == MediaPrefs.MEDIA_ENG_YT)) return;
+		PlayableItem i = eng.getSource();
+		if ((i != null) && i.isVideo()) eng.setVideoView(v);
+	}
+
+	private void notifySkipFade(@Nullable MediaEngine eng) {
+		if (eng == null) return;
+		MediaSessionCallbackAssistant a = getAssistant();
+		if (a != this) a.skipFadeStarted(eng);
 	}
 
 	/**
@@ -803,9 +884,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onSkipToNext() {
-		clearRepeatOneOnSkip();
-		playerTask.cancel();
-		playerTask = skipTo(true, false);
+		skipWithFade(true);
 	}
 
 	public void onSkipToNextFolder() {
@@ -845,13 +924,42 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	}
 
 	private void skipTo(boolean next, PlayableItem i) {
-		PlaybackStateCompat state = getPlaybackState();
 		long pos = i.getPrefs().getPositionPref();
+		// Handed to the UI before the state says "skipping": it may come to nothing, and the session
+		// must not be left in that state with the old engine untouched.
+		if (handOverYoutube(i, pos)) {
+			handedOverAt = SystemClock.uptimeMillis();
+			return;
+		}
+		notifySkipFade(getEngine());
+		PlaybackStateCompat state = getPlaybackState();
 		PlaybackStateCompat.Builder b = new PlaybackStateCompat.Builder(state);
 		b.setState(next ? STATE_SKIPPING_TO_NEXT : STATE_SKIPPING_TO_PREVIOUS, pos,
 				state.getPlaybackSpeed());
 		setPlaybackState(b.build());
 		playPreparedItem(i, pos);
+	}
+
+	/**
+	 * A YouTube video (a Favorites/Playlist entry, not a Music tab track) that this engine can't carry
+	 * on with is handed to the UI, which knows where it plays: its file when it's downloaded
+	 * (fullscreen for a video), else the YouTube tab. Without this a Favorites/Playlist next or
+	 * previous after (or into) a downloaded video was given to whichever engine was playing -- ExoPlayer
+	 * on the watch page's address. Not for the YouTube player moving to another streamed video, which
+	 * is how its own queue handling works.
+	 */
+	private boolean handOverYoutube(PlayableItem i, long pos) {
+		if (!i.isExternal() || (i instanceof MusicTrackItem) || (YtDownloads.videoIdOf(i) == null)) {
+			return false;
+		}
+		MediaSessionCallbackAssistant a = getAssistant();
+		if (a == this) return false;
+		MediaEngine eng = getEngine();
+		boolean onYoutube = (eng != null) && (eng.getId() == MediaPrefs.MEDIA_ENG_YT);
+		if (onYoutube && !YtOffline.isDownloadedYoutube(i)) return false;
+		DiagnosticLog.log("TRANSPORT", "next is a YouTube video: handed to the UI", "item=" + i,
+				"downloaded=" + YtOffline.isDownloadedYoutube(i), "fromYoutube=" + onYoutube);
+		return a.playExternal(i, pos);
 	}
 
 	@Override
@@ -1106,6 +1214,8 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		BufferingIndicator.setBuffering(false);
 		resumeItem = null;
 		engine.getPosition().and(engine.getSpeed()).main().onSuccess(h -> {
+			// Another engine took over while the position was fetched: not this one's state to publish.
+			if ((engine != getEngine()) || (engine.getSource() == null)) return;
 			setPlayingState(engine, true, h.value1, h.value2);
 			// A track played in its own player is otherwise only recorded when paused or stopped, so
 			// closing the app (or the car dropping the connection) mid-song left the previous track as
@@ -1116,8 +1226,16 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		});
 	}
 
+	// How many engines this play has already been handed on to after an error, see onEngineError().
+	private int fallbackStage;
+
+	// Bumped by every setPlayingState(): what an earlier one still has to publish when its metadata
+	// loads (a YouTube video's, after a local file took over) is dropped.
+	private volatile int metaEpoch;
+
 	private void setPlayingState(MediaEngine engine, boolean playing, long pos, float speed) {
 		PlayableItem i = engine.getSource();
+		final int epoch = ++metaEpoch;
 		BrowsableItemPrefs prefs = i.getParent().getPrefs();
 		int shuffle = prefs.getShufflePref() ? SHUFFLE_MODE_ALL : SHUFFLE_MODE_NONE;
 		int repeat;
@@ -1141,9 +1259,9 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			update.get().accept(md1);
 
 			return getQid.then(qid -> i.getMediaDescription().main().then(dsc -> {
-				if (getCurrentItem() != i) return completedVoid();
+				if ((getCurrentItem() != i) || (epoch != metaEpoch)) return completedVoid();
 				MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder(md1);
-				FutureSupplier<MediaMetadataCompat> md2 = buildMetadata(b, md1, dsc);
+				FutureSupplier<MediaMetadataCompat> md2 = buildMetadata(i, b, md1, dsc);
 
 				if (md2.isDone()) {
 					update.get().accept(md2.get(b::build));
@@ -1173,20 +1291,23 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			b.putString(METADATA_KEY_DISPLAY_TITLE, i.getName());
 			md = b.build();
 			update.set(m -> engine.getPosition().main().onSuccess(position -> {
-				if (getCurrentItem() != i) return;
+				if ((getCurrentItem() != i) || (epoch != metaEpoch)) return;
 				PlaybackStateCompat s =
 						createPlayingState(i, !isPlaying(), getQid.peek(0L), position, speed);
-				session.setMetadata(m);
+				publishMetadata(m, i);
 				setPlaybackState(s);
 			}));
 		}
 
 		PlaybackStateCompat s = createPlayingState(i, !playing, getQid.peek(0L), pos, speed);
-		session.setMetadata(md);
+		publishMetadata(md, i);
+		DiagnosticLog.log("META", "session metadata", "item=" + i,
+				"title=" + md.getString(METADATA_KEY_DISPLAY_TITLE), "loaded=" + load.isDone());
 		setPlaybackState(s);
 	}
 
-	private FutureSupplier<MediaMetadataCompat> buildMetadata(MediaMetadataCompat.Builder b,
+	private FutureSupplier<MediaMetadataCompat> buildMetadata(PlayableItem item,
+																														MediaMetadataCompat.Builder b,
 																														MediaMetadataCompat meta,
 																														MediaDescriptionCompat dsc) {
 		ifNotNull(dsc.getTitle(), t -> b.putString(METADATA_KEY_DISPLAY_TITLE, t.toString()));
@@ -1196,6 +1317,18 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		// so without this the channel shows in the phone's notification but not on the car.
 		if ((sub == null) || (sub.length() == 0)) sub = meta.getString(METADATA_KEY_ARTIST);
 		if ((sub == null) || (sub.length() == 0)) sub = meta.getString(METADATA_KEY_ALBUM);
+		// A downloaded video played from Favorites or a playlist has neither: the channel and the length
+		// it was downloaded with, so the media card names the artist and shows the time like a track's.
+		String dlId = YtDownloads.videoIdOf(item);
+		YtDownloads.Entry dl = (dlId == null) ? null : YtDownloads.get().getEntry(dlId);
+		if (dl != null) {
+			if (((sub == null) || (sub.length() == 0)) && (dl.artist != null) && !dl.artist.isEmpty()) {
+				sub = MusicTrackItem.cleanArtist(dl.artist);
+			}
+			if ((meta.getLong(METADATA_KEY_DURATION) <= 0) && (dl.durationMs > 0)) {
+				b.putLong(METADATA_KEY_DURATION, dl.durationMs);
+			}
+		}
 		if ((sub != null) && (sub.length() > 0)) b.putString(METADATA_KEY_DISPLAY_SUBTITLE, sub.toString());
 		if (meta.getBitmap(METADATA_KEY_ALBUM_ART) != null) return completed(b.build());
 
@@ -1204,8 +1337,19 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		if (art != null) {
 			b.putString(METADATA_KEY_ALBUM_ART_URI, null);
 			return lib.getBitmap(art).then(bm -> {
-				b.putBitmap(METADATA_KEY_ALBUM_ART, (bm != null) ? bm : getDefaultImage());
-				return completed(b.build());
+				DiagnosticLog.log("META", "album art", "size=" + ((bm == null) ? null : bm.getWidth() + "x" + bm.getHeight()));
+				String vid = (bm == null) ? YtDownloads.thumbnailVideoId(art) : null;
+				if (vid == null) {
+					b.putBitmap(METADATA_KEY_ALBUM_ART, (bm != null) ? bm : getDefaultImage());
+					return completed(b.build());
+				}
+				// No thumbnail (no connection) for a downloaded video: its saved one, or a picture out of its file, rather
+				// than the small default image the media card blows up and blurs.
+				return me.aap.utils.app.App.get().getExecutor()
+						.submitTask(() -> YtDownloads.get().localArt(vid)).then(fr -> {
+							b.putBitmap(METADATA_KEY_ALBUM_ART, (fr != null) ? fr : getDefaultImage());
+							return completed(b.build());
+						});
 			});
 		}
 
@@ -1224,6 +1368,8 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onEngineEnded(MediaEngine engine) {
+		// A closed or replaced engine reporting late must not move the session on.
+		if (engine != getEngine()) return;
 		BufferingIndicator.setBuffering(false);
 		playerTask.cancel();
 
@@ -1292,6 +1438,8 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	@Override
 	public void onEngineError(MediaEngine engine, Throwable ex) {
 		BufferingIndicator.setBuffering(false);
+		// A closed or replaced engine reporting late: the current one is not to be swapped for it.
+		if (engine != getEngine()) return;
 		String msg;
 		PlayableItem i = engine.getSource();
 
@@ -1306,12 +1454,19 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		DiagnosticLog.log("ENGINE", "error", engine.getClass().getSimpleName(), "item=" + i,
 				"cause=" + describe(ex), "location=" + ((i == null) ? null : safeHost(i)));
 
-		if (tryAnotherEngine && (engine.getSource() != null)) {
+		if (tryAnotherEngine && (engine.getSource() != null) &&
+				(engine.getId() != MediaPrefs.MEDIA_ENG_YT)) {
+			// The next engine carries on from where this one gave out, not from the start.
+			Long failedAt = engine.getPosition().peek();
+			if ((failedAt != null) && (failedAt > 1000)) setLastPlayed(i, failedAt);
 			this.engine = getEngineManager().createAnotherEngine(engine, this);
 
 			if (this.engine != null) {
 				Log.i("Trying another engine: ", this.engine);
-				tryAnotherEngine = false;
+				// A downloaded file given a fresh ExoPlayer may still be given the platform player after it.
+				// Only the first fallback (the fresh ExoPlayer) may be followed by one more.
+				tryAnotherEngine = (fallbackStage++ == 0) && (engine.getId() == MediaPrefs.MEDIA_ENG_EXO) &&
+						YtOffline.isDownloadedYoutube(i);
 				if (i.isVideo() && (videoView != null)) this.engine.setVideoView(getVideoView());
 				ensureAudioEffectsBeforePrepare(this.engine, i);
 				this.engine.prepare(i);
@@ -1349,12 +1504,14 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void accept(SubGrid.Position position, Subtitles.Text text) {
-		if (metadata == null ||
+		// Only the playing item's own metadata: this used to re-publish whatever was set last, which could
+		// be a restored item's from long before (the media card then named a track not playing).
+		if ((metadata == null) || (metadataItem != getCurrentItem()) ||
 				(position != SubGrid.Position.BOTTOM_CENTER && position != SubGrid.Position.BOTTOM_LEFT))
 			return;
 
 		if (text == null) {
-			session.setMetadata(metadata);
+			if (publishedMetadata != metadata) publishMetadata(metadata);
 			return;
 		}
 
@@ -1375,19 +1532,44 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			}
 		}
 
-		var t = metadata.getText(METADATA_KEY_DISPLAY_TITLE);
-		var s = metadata.getText(METADATA_KEY_DISPLAY_SUBTITLE);
+		// The same text already out: nothing to publish.
+		MediaMetadataCompat out = publishedMetadata;
+		var t = (out == null) ? null : out.getText(METADATA_KEY_DISPLAY_TITLE);
+		var s = (out == null) ? null : out.getText(METADATA_KEY_DISPLAY_SUBTITLE);
 		if (t1.equals(t == null ? "" : t.toString()) && t2.equals(s == null ? "" : s.toString()))
 			return;
 		var b = new MediaMetadataCompat.Builder(metadata);
 		b.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, t1);
 		b.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, t2);
-		setMetadata(b.build());
+		// Published only: the item's own metadata stays as it is, to go back to without the text.
+		publishMetadata(b.build());
 	}
 
-	private void setMetadata(MediaMetadataCompat metadata) {
-		this.metadata = metadata;
-		session.setMetadata(metadata);
+	// What the session was last given: the notification is built from it, not read back from the
+	// session's controller, which can still answer with the previous item's for a moment after a
+	// set (the media card then showed the track before).
+	private volatile MediaMetadataCompat publishedMetadata;
+
+	/** Only what belongs to the item playing right now goes out: a late answer for an earlier one is dropped. */
+	private void publishMetadata(MediaMetadataCompat m, PlayableItem forItem) {
+		if (forItem != getCurrentItem()) {
+			DiagnosticLog.log("META", "stale metadata dropped", "for=" + forItem,
+					"playing=" + getCurrentItem());
+			return;
+		}
+		metadata = m;
+		metadataItem = forItem;
+		publishMetadata(m);
+	}
+
+	private void publishMetadata(MediaMetadataCompat m) {
+		publishedMetadata = m;
+		session.setMetadata(m);
+	}
+
+	@Nullable
+	MediaMetadataCompat getPublishedMetadata() {
+		return publishedMetadata;
 	}
 
 	@Override
@@ -1463,6 +1645,12 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	private void playPreparedItem(PlayableItem i, long pos) {
 		resumeItem = null;
+		fallbackStage = 0;
+		getEngineManager().resetFreshTried();
+		// A YouTube video that is not on the phone is the YouTube tab's to play, from wherever it is
+		// asked for (a Favorites entry whose download was removed, say): no other engine can play
+		// the address of its watch page.
+		if (!YtOffline.isDownloadedYoutube(i) && handOverYoutube(i, pos)) return;
 		MediaEngine eng = getEngine();
 
 		if (eng != null) {

@@ -14,6 +14,7 @@ import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Shader;
 import android.os.Build;
+import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.view.View;
 import android.view.ViewTreeObserver;
@@ -26,11 +27,16 @@ import androidx.constraintlayout.widget.Guideline;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import me.aap.fermata.R;
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.engine.SubtitleStreamInfo;
 import me.aap.fermata.media.lib.MediaLib;
+import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
+import android.support.v4.media.session.PlaybackStateCompat;
+
 import me.aap.fermata.media.service.MediaSessionCallback;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.fermata.ui.fragment.MainActivityFragment;
@@ -49,6 +55,7 @@ import me.aap.utils.ui.fragment.ActivityFragment;
 public class BodyLayout extends SplitLayout
 		implements SwipeRefreshLayout.OnRefreshListener, SwipeRefreshLayout.OnChildScrollUpCallback,
 		MainActivityListener, FermataServiceUiBinder.Listener, MediaSessionCallback.Listener {
+	private static final long FADE_MS = 300L;
 	private Mode mode;
 	private FutureSupplier<?> startingPlayback = completedVoid();
 
@@ -222,30 +229,32 @@ public class BodyLayout extends SplitLayout
 		return getMode() == Mode.VIDEO;
 	}
 
-	public boolean isBothMode() {
-		return getMode() == Mode.BOTH;
-	}
-
 	public void setMode(Mode mode) {
+		// The Music tab has no video mode: the fullscreen pane over it is a blank page with the video's
+		// control panel on it. Whatever asks for it, the tab stays as it is.
+		if ((mode == Mode.VIDEO) && isMusicTabActive()) {
+			DiagnosticLog.log("BODY", "video mode refused over the Music tab");
+			mode = Mode.FRAME;
+		}
 		Mode oldMode = this.mode;
+		if (oldMode != mode) {
+			MainActivityDelegate act = MainActivityDelegate.getActivityDelegate(getContext()).peek();
+			ActivityFragment shown = (act == null) ? null : act.getActiveFragment();
+			DiagnosticLog.log("BODY", "mode " + oldMode + " -> " + mode,
+					"fragment=" + ((shown == null) ? null : shown.getClass().getSimpleName()));
+		}
 		this.mode = mode;
 		Guideline gl = getGuideline();
 		ConstraintLayout.LayoutParams lp = (ConstraintLayout.LayoutParams) gl.getLayoutParams();
 		MainActivityDelegate a = getActivity();
 		VideoView vv = getVideoView();
-		View sr = getSwipeRefresh();
-		// Captured before the switch below touches visibility/bounds, so the animation after it can
-		// FLIP from exactly what was on screen a moment ago. Left null (skipping the animation) for
-		// a view that's about to newly appear or disappear -- UiUtils.flipAnimate no-ops on a 0-size
-		// end, and there's nothing meaningful to animate from/to there anyway.
-		boolean animate = isAttachedToWindow() && (getWidth() > 0);
-		int[] vvBounds = animate ? UiUtils.captureBounds(vv) : null;
-		int[] srBounds = animate ? UiUtils.captureBounds(sr) : null;
+		boolean animate = (oldMode != mode) && isAttachedToWindow() && (getWidth() > 0);
+
+		getSplitLine().setVisibility(GONE);
+		getSplitHandle().setVisibility(GONE);
 
 		switch (mode) {
 			case FRAME -> {
-				getSplitLine().setVisibility(GONE);
-				getSplitHandle().setVisibility(GONE);
 				lp.guidePercent = isPortrait() ? 0f : 1f;
 				// Only push this to the delegate when BodyLayout's own video mode is actually
 				// changing -- e.g. FRAGMENT_CHANGED re-enters this with FRAME on every tab switch
@@ -258,116 +267,99 @@ public class BodyLayout extends SplitLayout
 				if (oldMode != Mode.FRAME) a.setVideoMode(false, vv);
 			}
 			case VIDEO -> {
-				getSplitLine().setVisibility(GONE);
-				getSplitHandle().setVisibility(GONE);
 				lp.guidePercent = isPortrait() ? 1f : 0f;
 				vv.showVideo();
 				a.setVideoMode(true, vv);
 				App.get().getHandler().post(vv::requestFocus);
-			}
-			case BOTH -> {
-				// Either pane can arrive here mid-crossfade or already faded to alpha 0 by a prior
-				// FRAME/VIDEO transition (e.g. fullscreen video fades sr out, then navigating to
-				// Audio Effects/Settings forces BOTH straight from VIDEO) -- unlike FRAME/VIDEO's
-				// own transitions, nothing below ever restores that alpha, so a pane can end up
-				// VISIBLE but fully transparent despite being correctly sized and positioned.
-				vv.animate().cancel();
-				vv.setAlpha(1f);
-				vv.setVisibility(VISIBLE);
-				getSplitLine().setVisibility(VISIBLE);
-				getSplitHandle().setVisibility(VISIBLE);
-				sr.animate().cancel();
-				sr.setAlpha(1f);
-				sr.setVisibility(VISIBLE);
-				lp.guidePercent = a.getPrefs().getFloatPref(getSplitPercentPref(isPortrait()));
-				vv.showVideo();
-				a.setVideoMode(true, vv);
-				MediaItemListView.focusActive(getContext(), vv);
+				// Whatever the surface's own events did or did not do, the picture is handed to the
+				// player once the screen has settled.
+				postDelayed(() -> {
+					if (isVideoMode()) a.getMediaSessionCallback().reattachVideoView();
+				}, 500);
 			}
 		}
 
 		gl.setLayoutParams(lp);
 
-		// FRAME and VIDEO each hide one of vv/sr entirely while showing the other -- animated as a
-		// crossfade rather than an instant visibility swap, e.g. entering/leaving fullscreen video
-		// playback. Both ending up visible (BOTH) needs no such swap, so is left to the plain
-		// setVisibility(VISIBLE) calls above.
-		// Only when the mode is actually changing: setMode() is routinely re-entered with the *same*
-		// mode it's already in (see the FRAGMENT_CHANGED comment above -- exitVideoMode() alone can
-		// trigger this right on top of an already-running transition), and re-running the crossfade
-		// on every one of those redundant calls would restart it mid-fade each time via
-		// animate().cancel(), which can leave a view stuck at a partial alpha if that keeps
-		// happening faster than 300ms apart -- observed as the screen going blank until something
-		// else (e.g. pressing back) happens to reset it.
-		if (oldMode != mode) {
-			if (mode == Mode.FRAME) {
-				if (animate) crossfade(vv, sr, 300L);
-				else {
-					vv.setVisibility(GONE);
-					// A prior crossfade a caller interrupted (e.g. a second setMode() call arriving
-					// before the 300ms fade finished) can leave sr's alpha short of 1 -- animate().cancel()
-					// stops mid-fade without snapping the value to its target, so it's reset explicitly
-					// here rather than relying on it already being 1.
-					sr.animate().cancel();
-					sr.setAlpha(1f);
-					sr.setVisibility(VISIBLE);
-				}
-			} else if (mode == Mode.VIDEO) {
-				if (animate) crossfade(sr, vv, 300L);
-				else {
-					sr.setVisibility(GONE);
-					vv.animate().cancel();
-					vv.setAlpha(1f);
-					vv.setVisibility(VISIBLE);
-				}
-			}
-		}
-
-		// Animates the video pane/list growing or shrinking against the guideline's new split
-		// instead of snapping there instantly -- a no-op (by design, see UiUtils.flipAnimate) for
-		// the FRAME/VIDEO collapse-to/grow-from-zero above, which the crossfade already covers;
-		// meaningful for BOTH's split-percent changes.
+		// Only one of the video pane and the list shows: the other fades out as it fades in. Re-entered
+		// with the mode it is already in (a tab change, a rotation), the panes are only put right --
+		// never while the fade is still on its way, which that would cut short.
 		if (animate) {
-			UiUtils.flipAnimate(vv, vvBounds, 300L);
-			UiUtils.flipAnimate(sr, srBounds, 300L);
+			showPane(mode, true);
+		} else if (SystemClock.uptimeMillis() >= paneFadeEnd) {
+			showPane(mode, false);
 		}
-		a.fireBroadcastEvent(MODE_CHANGED);
 	}
 
+	private boolean isMusicTabActive() {
+		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
+		ActivityFragment f = (a == null) ? null : a.getActiveFragment();
+		return (f != null) && (f.getFragmentId() == R.id.music_addon);
+	}
+
+	// Identifies the latest fade of the panes, so that what an earlier one still has to do is dropped.
+	private int paneFadeGen;
+	// When that fade is over.
+	private long paneFadeEnd;
+
 	/**
-	 * Fades {@code incoming} in while fading {@code outgoing} out, only actually hiding
-	 * {@code outgoing} once its fade completes -- the same idiom as
-	 * {@code ActivityDelegate.crossfadeFragmentViews}, used here for vv/sr instead of fragments.
-	 * <p>
-	 * Coming from {@code Mode.BOTH} (e.g. switching to the YouTube tab during local video playback),
-	 * {@code incoming} is already fully opaque and visible -- forcing it back down to alpha 0 first
-	 * would flash it blank for the length of this fade for no reason, so that reset is skipped
-	 * whenever it's already showing at full opacity.
+	 * Shows the pane of {@code m} (the video, or the list) and hides the other one, fading when
+	 * {@code animate}. Whatever the panes were left in by an earlier, interrupted fade -- hidden,
+	 * half transparent -- is dealt with first: cancelling a view animation runs its end action, which
+	 * for the fade-out of the other pane means hiding it, so that has to happen before this shows
+	 * anything (hiding a pane that is meant to be showing left the screen blank, or a transparent
+	 * black video pane over the list).
 	 */
-	private static void crossfade(@Nullable View outgoing, @Nullable View incoming, long duration) {
-		if (incoming != null) {
-			boolean alreadyShown = (incoming.getVisibility() == VISIBLE) && (incoming.getAlpha() >= 1f);
-			incoming.setVisibility(VISIBLE);
-			incoming.animate().cancel();
-			if (alreadyShown) {
-				incoming.setAlpha(1f);
-			} else {
-				incoming.setAlpha(0f);
-				incoming.animate().alpha(1f).setDuration(duration).start();
-			}
+	private void showPane(Mode m, boolean animate) {
+		View in = (m == Mode.VIDEO) ? getVideoView() : getSwipeRefresh();
+		View out = (m == Mode.VIDEO) ? getSwipeRefresh() : getVideoView();
+		int gen = ++paneFadeGen;
+		in.animate().cancel();
+		out.animate().cancel();
+
+		boolean inShown = (in.getVisibility() == VISIBLE) && (in.getAlpha() >= 1f);
+		// The video pane is not faded with its own alpha: its picture is a SurfaceView, whose surface
+		// does not reliably follow its parent's alpha. Faded in from 0, an already existing surface
+		// could keep the alpha of the fade's start: the pane at 1, the picture invisible, only the
+		// pane's black background showing (sound playing, controls fine). It is up at once and its
+		// picture fades in from black instead (VideoView#fadeInFromBlack), the list fading out.
+		boolean video = (m == Mode.VIDEO);
+		// A pane that is still on its way out comes back from where it is, not from nothing.
+		if ((in.getVisibility() != VISIBLE) && !video) in.setAlpha(0f);
+		if (in instanceof VideoView v) v.setSurfacesShown(true);
+		in.setVisibility(VISIBLE);
+		paneFadeEnd = animate ? (SystemClock.uptimeMillis() + FADE_MS) : 0L;
+
+		if (video) {
+			in.setAlpha(1f);
+			if (animate && !inShown && (in instanceof VideoView vv)) vv.fadeInFromBlack(FADE_MS);
+		} else if (animate && !inShown) {
+			in.animate().alpha(1f).setDuration(FADE_MS).start();
+		} else {
+			in.setAlpha(1f);
 		}
-		if ((outgoing != null) && (outgoing != incoming)) {
-			outgoing.animate().cancel();
-			outgoing.setAlpha(1f);
-			outgoing.setVisibility(VISIBLE);
-			outgoing.animate().alpha(0f).setDuration(duration)
-					.withEndAction(() -> outgoing.setVisibility(GONE)).start();
+
+		if (animate && (out.getVisibility() == VISIBLE)) {
+			out.animate().alpha(0f).setDuration(FADE_MS).withEndAction(() -> hidePane(out, gen)).start();
+			// Should the end action be lost to a cancelled animation, the pane is still taken away.
+			out.postDelayed(() -> hidePane(out, gen), FADE_MS + 100);
+		} else {
+			hidePane(out, gen);
 		}
+	}
+
+	private void hidePane(View pane, int gen) {
+		if (gen != paneFadeGen) return;
+		// See VideoView#setSurfacesShown: the picture's surfaces go with the pane.
+		if (pane instanceof VideoView v) v.setSurfacesShown(false);
+		pane.setVisibility(GONE);
+		pane.setAlpha(1f);
 	}
 
 	public VideoView getVideoView() {
 		return findViewById(R.id.video_view);
 	}
+
 
 	private SwipeRefreshLayout getSwipeRefresh() {
 		return findViewById(R.id.swiperefresh);
@@ -386,26 +378,13 @@ public class BodyLayout extends SplitLayout
 			b.removeBroadcastListener(this);
 			b.getMediaSessionCallback().removeBroadcastListener(this);
 		} else if (e == FRAGMENT_CHANGED) {
-			if (a.getActiveMediaLibFragment() == null) {
-				setMode(Mode.FRAME);
-			} else {
-				MediaSessionCallback cb = a.getMediaSessionCallback();
-				MediaEngine eng = cb.getEngine();
-
-				if (eng == null) {
-					setMode(Mode.FRAME);
-					return;
-				}
-
-				MediaLib.PlayableItem i = eng.getSource();
-
-				if ((i != null) && i.isVideo() && eng.isSplitModeSupported() &&
-						(cb.getVideoView() == getVideoView())) {
-					setMode(Mode.BOTH);
-				} else {
-					setMode(Mode.FRAME);
-				}
+			// Fullscreen video carries on over a tab that plays video itself (the one it was started
+			// from, Downloads); any other tab is in front of a video that plays on behind it.
+			if (isVideoMode() && (a.getActiveFragment() instanceof MainActivityFragment f) &&
+					f.isVideoModeSupported()) {
+				return;
 			}
+			setMode(Mode.FRAME);
 		}
 	}
 
@@ -430,26 +409,75 @@ public class BodyLayout extends SplitLayout
 			setMode(BodyLayout.Mode.VIDEO);
 	}
 
+	/**
+	 * Plays a downloaded YouTube video (an external item, whose own player is the YouTube tab's
+	 * page) from its file, fullscreen, from wherever it was started -- the way a local video
+	 * plays: the picture's surface first, then the engine. Leaving fullscreen returns to the
+	 * screen it was started from.
+	 */
+	public void playLocalVideo(MediaLib.PlayableItem i) {
+		startingPlayback.cancel();
+		MainActivityDelegate a = getActivity();
+		// Fullscreen first, and once: the engine is given the picture's surface only if it is there
+		// when the engine is created, and changing the mode again and again while it is still
+		// moving leaves the two panes half-way (the info overlay stretched, no picture).
+		if (!isVideoMode()) {
+			// Through black into the picture, as YouTube's video comes.
+			a.fadeToBlackForLocalVideo();
+			setMode(Mode.VIDEO);
+		}
+		Runnable play = () -> a.getMediaServiceBinder().playItem(i);
+		if (!getVideoView().isSurfaceCreated() && !a.getMediaSessionCallback().hasCustomEngineProvider()) {
+			getVideoView().onSurfaceCreated(play);
+		} else {
+			play.run();
+		}
+	}
+
 	@Override
 	public void onPlayableChanged(MediaLib.PlayableItem oldItem, MediaLib.PlayableItem newItem) {
 		startingPlayback.cancel();
 		MainActivityDelegate a = getActivity();
 		if (!(a.getActiveFragment() instanceof MainActivityFragment f)) return;
 		if (f instanceof SubtitlesFragment) a.goToCurrent();
-		else if (!f.isVideoModeSupported()) return;
 		MediaEngine eng = a.getMediaServiceBinder().getCurrentEngine();
 
-		if ((newItem == null) || !newItem.isVideo() || (eng == null) || !eng.isSplitModeSupported()) {
+		if ((newItem == null) || !newItem.isVideo() || (eng == null) ||
+				(eng.getId() == MediaPrefs.MEDIA_ENG_YT)) {
+			// Whatever tab is showing: a track without a picture must never find the fullscreen video
+			// pane still up (black, over the Music tab) from the video before it.
 			setMode(Mode.FRAME);
+		} else if (!f.isVideoModeSupported()) {
+			// The video plays on behind a tab that does not show it.
+			return;
 		} else {
 			if (!eng.isVideoModeRequired()) setMode(Mode.FRAME);
 			else if (isFrameMode()) setMode(Mode.VIDEO);
 			else getVideoView().showVideo();
 		}
 
+		// A black that covered the switch from one file to the next (never YouTube's: its own video
+		// lifts that).
+		if ((eng != null) && (newItem != null) && (eng.getId() != MediaPrefs.MEDIA_ENG_YT)) {
+			a.liftLocalVideoCover(false);
+		}
+
 		if ((eng != null) && (newItem != null) && !newItem.isVideo() && (getMode() == Mode.FRAME)) {
 			eng.selectSubtitleStream();
 		}
+	}
+
+	@Override
+	public void onPlaybackStateChanged(MediaSessionCallback cb, PlaybackStateCompat state) {
+		MainActivityDelegate a = getActivity();
+		// The black over the start of a downloaded video goes once it plays.
+		if (state.getState() == PlaybackStateCompat.STATE_PLAYING) {
+			a.liftLocalVideoCover(true);
+			// Playing: the loading circle of the start (shown over whatever tab is up) has done its job.
+			startingPlayback.cancel();
+		}
+		// Over a list the fullscreen button comes and goes with whether a video plays.
+		if (!isVideoMode()) a.updateExtraFabsVisibility();
 	}
 
 	@Override
@@ -459,6 +487,13 @@ public class BodyLayout extends SplitLayout
 		if ((i == null) || i.isVideo()) return;
 		var a = getActivity();
 		var f = a.getActiveFragment();
+		// A Music tab track (a downloaded video played as music, say) that has a subtitle stream
+		// is still shown by the Music tab: its own screen, never the Subtitles tab, which with
+		// nothing to show is the blank page with the control panel in front.
+		if ((info != null) && ((i instanceof MusicTrackItem) || isMusicTabActive())) {
+			DiagnosticLog.log("BODY", "subtitle stream on a Music tab track: Subtitles tab not shown");
+			return;
+		}
 		if (info == null) {
 			if (f instanceof SubtitlesFragment) a.goToCurrent();
 		} else if (f instanceof SubtitlesFragment) {
@@ -470,6 +505,8 @@ public class BodyLayout extends SplitLayout
 
 	@Override
 	public void onPlaybackError(String message) {
+		// The black that covered the way to a video that is not coming.
+		getActivity().liftVideoSwitchFade();
 		onPlaybackStopped();
 		Toast.makeText(getContext(), message, Toast.LENGTH_LONG).show();
 	}
@@ -478,6 +515,10 @@ public class BodyLayout extends SplitLayout
 	public void onPlaybackStopped() {
 		startingPlayback.cancel();
 		var a = getActivity();
+		// Nothing plays any more (an error, the end of the list, a stop): the fullscreen video would
+		// only be a black screen with the control panel on it.
+		a.liftLocalVideoCover(true);
+		if (isVideoMode()) setMode(Mode.FRAME);
 		if (a.getActiveFragment() instanceof SubtitlesFragment) a.goToCurrent();
 	}
 
@@ -496,6 +537,6 @@ public class BodyLayout extends SplitLayout
 	}
 
 	public enum Mode {
-		FRAME, VIDEO, BOTH
+		FRAME, VIDEO
 	}
 }

@@ -41,7 +41,8 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 			Action.FULLSCREEN_TOGGLE, Action.VOLUME_MUTE_UNMUTE, Action.PLAY_PAUSE, Action.DIM_TOGGLE,
 			Action.PRIVATE_MODE_TOGGLE, Action.REFUEL, Action.FAVORITE_ADD,
 			Action.PLAYLIST_ADD, Action.PLAY_AS_MUSIC, Action.YOUTUBE_SEARCH, Action.YOUTUBE_UP_NEXT,
-			Action.OPEN_FAVORITES, Action.OPEN_PLAYLISTS);
+			Action.OPEN_FAVORITES, Action.OPEN_PLAYLISTS, Action.OPEN_DOWNLOADS, Action.DOWNLOAD_CURRENT,
+			Action.DOWNLOADS_PAUSE_RESUME);
 
 	private final Pref<IntSupplier> actionPref;
 	@Nullable
@@ -110,6 +111,12 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		if (action == Action.YOUTUBE_UP_NEXT) return R.drawable.up_next;
 		if (action == Action.OPEN_FAVORITES) return R.drawable.favorite_filled;
 		if (action == Action.OPEN_PLAYLISTS) return R.drawable.playlist;
+		if ((action == Action.OPEN_DOWNLOADS) || (action == Action.DOWNLOAD_CURRENT)) {
+			return R.drawable.download;
+		}
+		if (action == Action.DOWNLOADS_PAUSE_RESUME) {
+			return me.aap.fermata.ytdl.YtDownloads.get().isBusy() ? R.drawable.pause : R.drawable.download;
+		}
 		if (action == Action.FAVORITE_ADD) return Action.isCurrentFavorite(a) ?
 				R.drawable.favorite_filled : R.drawable.favorite;
 		if (action == Action.PLAY_PAUSE)
@@ -165,6 +172,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 						addAction(a, fb, sb, Action.PLAYLIST_ADD, 1);
 						addAction(a, fb, sb, Action.OPEN_FAVORITES, 2);
 						addAction(a, fb, sb, Action.OPEN_PLAYLISTS, 3);
+						addAction(a, fb, sb, Action.DOWNLOAD_CURRENT, 4);
 					});
 			if (MusicPlayer.hasYoutube()) {
 				category(a, fb, b, R.id.fab_cat_youtube, R.drawable.search, R.string.fab_cat_youtube,

@@ -55,6 +55,7 @@ import me.aap.fermata.FermataApplication;
 import me.aap.fermata.addon.SubGenAddon;
 import me.aap.fermata.addon.TranslateAddon;
 import me.aap.fermata.addon.TranslateAddon.Translator;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.media.engine.AudioEffects;
 import me.aap.fermata.media.engine.AudioStreamInfo;
 import me.aap.fermata.media.engine.MediaEngine;
@@ -133,7 +134,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 						.setAudioProcessorChain(
 								new DefaultAudioSink.DefaultAudioProcessorChain(audioProc, stageProc)).build();
 			}
-		}).setMediaSourceFactory(msFactory).build();
+		}).setMediaSourceFactory(msFactory).setWakeMode(C.WAKE_MODE_LOCAL).build();
 		player.addListener(this);
 
 		try {
@@ -163,17 +164,49 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	@SuppressLint("SwitchIntDef")
 	@Override
 	public void prepare(PlayableItem source) {
-		if (this.source == null) stopped(false);
-		else stop();
+		stallGen++;
+		stallRetried = false;
+		stallNudged = false;
+		subGenWaits = 0;
+		firstFrame = false;
+		// A reused player keeps playWhenReady through stop() and the end of a track: the next item would
+		// start playing at full volume before start() fades it in.
+		player.setPlayWhenReady(false);
+		if (this.source == null) {
+			resetFade();
+			stopped(false);
+		} else {
+			stop();
+		}
 		this.source = source;
+		// A Music tab track never shows subtitles (its tab does not, and its picture is off): generating
+		// them would only make its sound wait on the transcriptor.
+		boolean musicTrack = source instanceof me.aap.fermata.addon.music.MusicTrackItem;
+		audioProc.setBypass(musicTrack);
+		if (musicTrack && source.getPrefs().getBooleanPref(me.aap.fermata.addon.SubGenAddon.ENABLED)) {
+			DiagnosticLog.log("ENGINE", "SubGen off for a Music tab track", "item=" + source);
+		}
+		// A downloaded YouTube video sounds as it does on YouTube: the page's equalizer applies.
+		stageProc.setFx(me.aap.fermata.ytdl.YtOffline.isDownloadedYoutube(source));
 		accessor.sourceChanged(source);
+		// Keeps the CPU (and for a stream the network) awake while playing with the screen off.
+		player.setWakeMode(source.isNetResource() ? C.WAKE_MODE_NETWORK : C.WAKE_MODE_LOCAL);
 		preparing = true;
 		buffering = false;
 
 		Uri uri = source.getLocation();
 		MediaItem m = MediaItem.fromUri(uri);
 		isHls = Util.inferContentType(uri) == C.CONTENT_TYPE_HLS;
-		setVideoTrackDisabled(source.isAudioOnlyPlayback());
+		setVideoTrackDisabled(videoOff(source, shown));
+		String oid = source.getOrigId();
+		// The hidden surface a stalled file needed is not for the files after it.
+		if ((dummySurface != null) && ((oid == null) || !keepPicture.contains(oid))) {
+			player.clearVideoSurface(dummySurface);
+			releaseDummySurface();
+		}
+		if ((shown == null) && (dummySurface == null) && (oid != null) && keepPicture.contains(oid)) {
+			useDummySurface();
+		}
 		player.setMediaItem(m);
 		player.prepare();
 	}
@@ -187,6 +220,12 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		if (params.disabledTrackTypes.contains(C.TRACK_TYPE_VIDEO) == disabled) return;
 		player.setTrackSelectionParameters(
 				params.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, disabled).build());
+		// The picture switched on while the file plays on: its samples were not kept while it was off,
+		// so it would stay black until the next key frame (a still-image video has very few of them).
+		// Seeking to where it is starts the picture from the key frame before it.
+		if (!disabled && !preparing && (player.getPlaybackState() == Player.STATE_READY)) {
+			player.seekTo(player.getCurrentPosition());
+		}
 	}
 
 	@Override
@@ -195,19 +234,115 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		if ((cur == null) || !cur.getLocation().equals(src.getLocation())) return false;
 		source = src;
 		accessor.sourceChanged(src);
-		setVideoTrackDisabled(src.isAudioOnlyPlayback());
+		setVideoTrackDisabled(videoOff(src, shown));
 		return true;
 	}
 
 	@Override
 	public void start() {
+		// The sound comes in rather than starting at full volume, as YouTube's does.
+		fadeIn();
 		player.setPlayWhenReady(true);
 		listener.onEngineStarted(this);
 		started();
+		watchForStall();
+		if (shown != null) watchBlackPicture();
+	}
+
+	// Identifies the latest start, so that what an earlier one still has to check is dropped.
+	private int stallGen;
+
+	/**
+	 * A file on the phone that is ready and told to play, yet does not move at all for a few seconds,
+	 * is stuck (some files stall this player from their first second): reported as an error at once,
+	 * so the platform player takes over, instead of after the 10 seconds of silence the player itself
+	 * waits before saying so.
+	 * <p>
+	 * Kept up for as long as the track plays, not only after its start: a file can also freeze half
+	 * way through (seen in the background, picture off, with no pause and no error: the position just
+	 * stopped). Then it is nudged first (picture on, a surface, a seek to where it is) before the error.
+	 */
+	private void watchForStall() {
+		int gen = ++stallGen;
+		PlayableItem src = source;
+		if ((src == null) || src.isNetResource()) return;
+		checkStall(gen, src, player.getCurrentPosition(), false, 3000);
+	}
+
+	private void checkStall(int gen, PlayableItem src, long at, boolean midPlay, long delay) {
+		FermataApplication.get().getHandler().postDelayed(() -> {
+			if ((gen != stallGen) || (source != src) || (accessor.player == null)) return;
+			// Paused: start() watches again.
+			if (!player.getPlayWhenReady()) return;
+			long now = player.getCurrentPosition();
+			if ((player.getPlaybackState() != Player.STATE_READY) || (now > at + 300)) {
+				// Moving (or legitimately not: buffering, ended): watched on.
+				checkStall(gen, src, now, true, 4000);
+				return;
+			}
+			boolean off = player.getTrackSelectionParameters().disabledTrackTypes
+					.contains(C.TRACK_TYPE_VIDEO);
+			Format a = player.getAudioFormat();
+			Format v = player.getVideoFormat();
+			DiagnosticLog.log("ENGINE", midPlay ? "no progress while playing" : "no progress after start",
+					"item=" + src, "pos=" + now, "videoOff=" + off, "screen=" + (shown != null),
+					"hiddenSurface=" + (dummySurface != null), "retried=" + stallRetried,
+					"nudged=" + stallNudged, "subGen=" + (!audioProc.isBypassed() && audioProc.isTranscribing()),
+					"audio=" + ((a == null) ? null : a.sampleMimeType + "/" + a.sampleRate + "Hz/" + a.channelCount + "ch"),
+					"video=" + ((v == null) ? null : v.sampleMimeType + "/" + v.width + "x" + v.height));
+			if (!audioProc.isBypassed() && audioProc.isTranscribing() && !midPlay && (shown != null) &&
+					(subGenWaits++ < 3)) {
+				// A video watched with generated subtitles waits for the first of them at its start, by
+				// design: a few more seconds before it counts as stuck.
+				checkStall(gen, src, now, false, 3000);
+				return;
+			}
+			if (!audioProc.isBypassed() && audioProc.isTranscribing()) {
+				// Subtitle generation is what holds the sound (and with it the picture, which follows
+				// the sound's clock): off for this track, the seek's flush takes it out of the pipeline.
+				audioProc.setBypass(true);
+				DiagnosticLog.log("ENGINE", "stall: SubGen holding the sound, off for this track",
+						"item=" + src, "pos=" + now);
+				player.seekTo(now);
+				checkStall(gen, src, now, midPlay, 4000);
+				return;
+			}
+			if (off && !stallRetried) {
+				// Stuck with the picture switched off: on again (and for good, for this file).
+				stallRetried = true;
+				String id = src.getOrigId();
+				if (id != null) keepPicture.add(id);
+				DiagnosticLog.log("ENGINE", "stall: picture switched on", "item=" + src);
+				setVideoTrackDisabled(false);
+				// With nowhere to show it too: what is stuck with the picture off is also stuck without a screen.
+				if ((shown == null) && (dummySurface == null)) useDummySurface();
+				checkStall(gen, src, now, midPlay, 3000);
+				return;
+			}
+			if (!off && (shown == null) && (dummySurface == null) && useDummySurface()) {
+				// Stuck with the picture on but nowhere to show it: given a surface of its own, which
+				// is what a file that plays on screen but not off it needs.
+				DiagnosticLog.log("ENGINE", "stall: given a hidden surface", "item=" + src);
+				checkStall(gen, src, now, midPlay, 3000);
+				return;
+			}
+			if (midPlay && !stallNudged) {
+				// Frozen part way through: a seek to where it is restarts the decoders from a key frame.
+				stallNudged = true;
+				DiagnosticLog.log("ENGINE", "stall: seek in place", "item=" + src, "pos=" + now);
+				player.seekTo(now);
+				checkStall(gen, src, now, true, 4000);
+				return;
+			}
+			DiagnosticLog.log("ENGINE", "stall: given up, reported as an error", "item=" + src);
+			listener.onEngineError(this, new java.io.IOException("Playback stalled"));
+		}, delay);
 	}
 
 	@Override
 	public void stop() {
+		stallGen++;
+		resetFade();
 		stopped(false);
 		player.stop();
 		source = null;
@@ -216,8 +351,18 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 
 	@Override
 	public void pause() {
-		stopped(true);
-		player.setPlayWhenReady(false);
+		stallGen++;
+		pauseWithFade(() -> player.setPlayWhenReady(false));
+	}
+
+	@Override
+	protected boolean supportsFade() {
+		return true;
+	}
+
+	@Override
+	protected void setFadeVolume(float volume) {
+		player.setVolume(volume);
 	}
 
 	@Override
@@ -266,6 +411,11 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		if (source == null) return;
 		var pos = source.getOffset() + position;
 		player.seekTo(pos);
+		// A seek is not a stall (a file with few key frames takes seconds to show the new position):
+		// what the watchdog was waiting on is dropped, and it watches on only well after the seek.
+		int gen = ++stallGen;
+		PlayableItem src = source;
+		if (!src.isNetResource()) checkStall(gen, src, pos, true, 8000);
 		accessor.setSubGenTimeOffset(this);
 		syncSub(true);
 	}
@@ -289,6 +439,100 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	public void setVideoView(VideoView view) {
 		super.setVideoView(view);
 		player.setVideoSurfaceHolder((view == null) ? null : view.getVideoSurface().getHolder());
+		// With nowhere to show it (the app in the background) the picture is not decoded at all: the
+		// sound plays on without a video decoder that can stall or be taken away.
+		PlayableItem s = source;
+		shown = view;
+		if ((view == null) && (dummySurface != null)) player.setVideoSurface(dummySurface);
+		if (s != null) setVideoTrackDisabled(videoOff(s, view));
+		firstFrame = false;
+		if (view != null) watchBlackPicture();
+	}
+
+	// Files whose picture has to stay switched on even for the sound alone: some stall from their
+	// first second without it (and the platform player fails on them too).
+	private static final java.util.Set<String> keepPicture =
+			java.util.concurrent.ConcurrentHashMap.newKeySet();
+	private boolean stallRetried;
+	// The frozen track was already seeked in place once (see checkStall()).
+	private boolean stallNudged;
+	// Checks a watched video's start has waited for its generated subtitles (see checkStall()).
+	private int subGenWaits;
+	// A surface nothing is shown on, for the file that stalls without one (see watchForStall()).
+	private android.graphics.SurfaceTexture dummyTexture;
+	private android.view.Surface dummySurface;
+
+	private boolean useDummySurface() {
+		try {
+			dummyTexture = new android.graphics.SurfaceTexture(false);
+			dummySurface = new android.view.Surface(dummyTexture);
+			player.setVideoSurface(dummySurface);
+			return true;
+		} catch (Throwable ex) {
+			releaseDummySurface();
+			return false;
+		}
+	}
+
+	private void releaseDummySurface() {
+		if (dummySurface != null) dummySurface.release();
+		if (dummyTexture != null) dummyTexture.release();
+		dummySurface = null;
+		dummyTexture = null;
+	}
+
+	/** Whether the picture's track is to be off for {@code s}: no screen for it, or sound only. */
+	private static boolean videoOff(PlayableItem s, @Nullable VideoView view) {
+		String id = s.getOrigId();
+		if ((id != null) && keepPicture.contains(id)) return false;
+		return (view == null) || s.isAudioOnlyPlayback();
+	}
+
+	// The view the picture is given to, whether the first frame of it has been drawn, and the
+	// latest check of that (see watchBlackPicture()).
+	private VideoView shown;
+	private boolean firstFrame;
+	private int blackGen;
+
+	@Override
+	public void onRenderedFirstFrame() {
+		firstFrame = true;
+		// The picture is here: the black its predecessor's end faded to (VideoView#fadeToBlack) lifts.
+		VideoView v = shown;
+		if (v != null) v.liftBlack(450);
+	}
+
+	/**
+	 * A video that plays (sound) with its screen up but whose picture does not come -- the decoder
+	 * lost its surface, or the picture's track was left switched off -- is put right: track on, surface
+	 * given again. Logged, so what it was shows in the diagnostic log.
+	 */
+	private void watchBlackPicture() {
+		int gen = ++blackGen;
+		FermataApplication.get().getHandler().postDelayed(() -> {
+			VideoView v = shown;
+			PlayableItem src = source;
+			if ((gen != blackGen) || firstFrame || (v == null) || (src == null) ||
+					(accessor.player == null) || !src.isVideo()) return;
+			if (!player.getPlayWhenReady()) return;
+			if (player.getPlaybackState() != Player.STATE_READY) {
+				// Still seeking to the key frame (or buffering): looked at again, not given up on.
+				if (gen == blackGen) watchBlackPicture();
+				return;
+			}
+			Format f = player.getVideoFormat();
+			boolean valid = v.getVideoSurface().getHolder().getSurface().isValid();
+			DiagnosticLog.log("ENGINE", "no picture 3 s after the screen was given", "item=" + src,
+					"videoOff=" + player.getTrackSelectionParameters().disabledTrackTypes
+							.contains(C.TRACK_TYPE_VIDEO),
+					"format=" + ((f == null) ? null : f.sampleMimeType + "/" + f.width + "x" + f.height),
+					"surfaceValid=" + valid);
+			setVideoTrackDisabled(false);
+			if (valid) {
+				player.clearVideoSurface();
+				player.setVideoSurfaceHolder(v.getVideoSurface().getHolder());
+			}
+		}, 3000);
 	}
 
 	@Override
@@ -454,18 +698,19 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		accessor.player = null;
 		player.removeListener(this);
 		player.release();
+		releaseDummySurface();
 		source = null;
 		if (audioEffects != null) audioEffects.release();
 	}
 
 	@Override
 	public void mute(Context ctx) {
-		player.setVolume(0f);
+		setMuteLevel(true);
 	}
 
 	@Override
 	public void unmute(Context ctx) {
-		player.setVolume(1f);
+		setMuteLevel(false);
 	}
 
 	@Override
@@ -493,6 +738,21 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 			stopped(false);
 			listener.onEngineEnded(this);
 		}
+	}
+
+	// Open problem: playback pausing in the background with no session pause logged. A pause the
+	// player decides on itself (audio becoming noisy, focus, suppression) never goes through the
+	// session's onPause, so it is only visible here.
+	@Override
+	public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
+		if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) return;
+		DiagnosticLog.log("ENGINE", "exo playWhenReady=" + playWhenReady, "reason=" + reason,
+				"item=" + source);
+	}
+
+	@Override
+	public void onPlaybackSuppressionReasonChanged(int reason) {
+		DiagnosticLog.log("ENGINE", "exo playback suppression", "reason=" + reason, "item=" + source);
 	}
 
 	@Override

@@ -34,22 +34,22 @@ import me.aap.fermata.R;
 import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.ytdl.YtOffline;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.fragment.ActivityFragment;
 
 /**
- * A banner at the top of the playback screen saying streaming stopped because of the network --
+ * A card at the top of the screen (see {@link TopPopup}) saying streaming stopped because of the network --
  * the connection dropped or is too slow to keep up -- rather than leaving the driver to guess why
- * it went quiet. The same banner as the data warning ({@code DataUsageAlerts}, same layout, place
- * and slide-in), right under the title bar, or at the very top over fullscreen video. Not a
+ * it went quiet. The same card as the data warning ({@code DataUsageAlerts}, same layout). Not a
  * dialog: nothing else is blocked, and it goes away by itself as soon as playback picks up again
- * ({@link #dismiss()}). Its one action plays the music queue's tracks stored on the phone when
- * there are any, else tries again; the X dismisses it.
+ * ({@link #dismiss()}). Its one action plays what's stored on the phone -- the music queue's local tracks, or the
+ * downloaded YouTube videos -- when there is any, else tries again; the X dismisses it.
  * <p>
  * Only over playback -- see {@link #isPlaybackScreen} -- never while the user is browsing.
  */
 public final class NetworkIssuePopup {
-	private static WeakReference<View> shown = new WeakReference<>(null);
+	private static WeakReference<View> card = new WeakReference<>(null);
 
 	private NetworkIssuePopup() {
 	}
@@ -86,27 +86,14 @@ public final class NetworkIssuePopup {
 	 */
 	public static void show(MainActivityDelegate a, @Nullable Runnable retry) {
 		dismiss();
-		View main = a.findViewById(R.id.main_activity);
-		if (!(main instanceof ConstraintLayout root)) return;
-
-		Context ctx = root.getContext();
+		Context ctx = a.getContext();
 		boolean online = isOnline(ctx);
 		boolean offlineTracks = MusicPlayer.hasOfflineTrack(a);
 		DiagnosticLog.log("NETWORK", online ? "playback stalled (slow network)" :
 				"playback stalled (no connection)", "offlineTracks=" + offlineTracks);
 
-		View b = LayoutInflater.from(ctx).inflate(R.layout.data_usage_banner, root, false);
-		ConstraintLayout.LayoutParams lp = new ConstraintLayout.LayoutParams(
-				ConstraintLayout.LayoutParams.MATCH_CONSTRAINT, ConstraintLayout.LayoutParams.WRAP_CONTENT);
-		lp.startToStart = ConstraintLayout.LayoutParams.PARENT_ID;
-		lp.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID;
-		// Under the title bar; at the very top when it's hidden (fullscreen video).
-		lp.topToBottom = R.id.tool_bar;
-		lp.matchConstraintMaxWidth = UiUtils.toIntPx(ctx, 600);
-		int m = UiUtils.toIntPx(ctx, 8);
-		lp.setMargins(m, m, m, 0);
-		b.setLayoutParams(lp);
-		b.setElevation(UiUtils.toIntPx(ctx, 26));
+		View b = LayoutInflater.from(ctx).inflate(R.layout.data_usage_banner, null, false);
+		b.setElevation(UiUtils.toIntPx(ctx, 8));
 
 		// Offline: the limit's red, as serious as it gets; slow: the warning's amber.
 		int bg = ContextCompat.getColor(ctx, online ? R.color.data_usage_warning : R.color.data_usage_limit);
@@ -123,14 +110,17 @@ public final class NetworkIssuePopup {
 		text.setTextColor(fg);
 		text.setAlpha(0.85f);
 		text.setMaxLines(3);
-		text.setText(offlineTracks ? R.string.network_issue_message_offline_tracks :
-				R.string.network_issue_message);
+		boolean downloaded = YtOffline.hasDownloaded();
+		text.setText(downloaded ? R.string.network_issue_message_downloaded :
+				offlineTracks ? R.string.network_issue_message_offline_tracks :
+						R.string.network_issue_message);
 
 		TextView action = b.findViewById(R.id.data_usage_banner_action);
 		action.setBackgroundTintList(ColorStateList.valueOf(fg));
 		action.setTextColor(bg);
 		if (offlineTracks) {
-			action.setText(R.string.network_issue_play_offline);
+			action.setText(downloaded ? R.string.network_issue_play_downloaded :
+					R.string.network_issue_play_offline);
 			action.setOnClickListener(v -> {
 				dismiss();
 				MusicPlayer.playOfflineTrack(a);
@@ -151,30 +141,19 @@ public final class NetworkIssuePopup {
 		close.setContentDescription(ctx.getString(R.string.network_issue_dismiss));
 		close.setOnClickListener(v -> dismiss());
 
-		root.addView(b);
-		b.setAlpha(0f);
-		b.setTranslationY(-UiUtils.toIntPx(ctx, 48));
-		b.setScaleX(0.96f);
-		b.setScaleY(0.96f);
-		b.animate().alpha(1f).translationY(0f).scaleX(1f).scaleY(1f).setDuration(420)
-				.setInterpolator(new OvershootInterpolator(1.4f)).start();
-		shown = new WeakReference<>(b);
+		if (TopPopup.show(a, b, null)) card = new WeakReference<>(b);
 	}
 
 	/** Takes the banner down, if it's up -- playback carried on, or the user dismissed it. */
 	public static void dismiss() {
-		View v = shown.get();
-		shown = new WeakReference<>(null);
-		if ((v == null) || !(v.getParent() instanceof ViewGroup g)) return;
-		v.animate().cancel();
-		v.animate().alpha(0f).translationY(-UiUtils.toIntPx(v.getContext(), 32)).setDuration(220)
-				.setInterpolator(new DecelerateInterpolator()).withEndAction(() -> g.removeView(v))
-				.start();
+		// Only this warning's own card: another popup (a download queued) may be up meanwhile.
+		View c = card.get();
+		card = new WeakReference<>(null);
+		if (c != null) TopPopup.dismiss(c);
 	}
 
 	public static boolean isShown() {
-		View v = shown.get();
-		return (v != null) && (v.getParent() != null);
+		return TopPopup.isShown(card.get());
 	}
 
 	/** A pill-shaped chip with an icon; {@code primary} is filled, the others outlined. */
