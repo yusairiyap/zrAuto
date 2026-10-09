@@ -87,6 +87,7 @@ import me.aap.fermata.ui.view.ToolBarPill;
 import me.aap.fermata.ui.view.LoadingDimView;
 import me.aap.fermata.ui.view.MusicMoreMenu;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.text.TextUtils;
@@ -660,6 +661,16 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		MediaLib lib = getActivityDelegate().getLib();
 		lib.getBitmap(uri).main().onCompletion((bm, err) -> {
 			if (shownItem != i) return;
+			String vid = (bm == null) ? YtDownloads.thumbnailVideoId(uri) : null;
+			if (vid != null) {
+				// No connection: a downloaded video's saved cover, or a picture out of its file.
+				me.aap.utils.app.App.get().getExecutor().submitTask(() -> YtDownloads.get().localArt(vid))
+						.main().onCompletion((fr, e2) -> {
+							if (shownItem != i) return;
+							setArt((fr != null) ? fr : null, uri);
+						});
+				return;
+			}
 			setArt(isYoutube(i) ? cropLetterbox(bm) : bm, uri);
 		});
 	}

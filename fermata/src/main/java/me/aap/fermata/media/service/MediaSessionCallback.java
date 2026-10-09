@@ -1288,10 +1288,10 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 					b.putBitmap(METADATA_KEY_ALBUM_ART, (bm != null) ? bm : getDefaultImage());
 					return completed(b.build());
 				}
-				// No thumbnail (no connection) for a downloaded video: a picture out of its file, rather
+				// No thumbnail (no connection) for a downloaded video: its saved one, or a picture out of its file, rather
 				// than the small default image the media card blows up and blurs.
 				return me.aap.utils.app.App.get().getExecutor()
-						.submitTask(() -> YtDownloads.get().frameOf(vid)).then(fr -> {
+						.submitTask(() -> YtDownloads.get().localArt(vid)).then(fr -> {
 							b.putBitmap(METADATA_KEY_ALBUM_ART, (fr != null) ? fr : getDefaultImage());
 							return completed(b.build());
 						});

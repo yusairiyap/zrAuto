@@ -726,6 +726,57 @@ public final class YtDownloads {
 			tmp.delete();
 		}
 		e.fileName = outName;
+		saveThumbnail(e.videoId);
+	}
+
+	private File thumbFile(String videoId) {
+		return new File(dir(), videoId + ".jpg");
+	}
+
+	/**
+	 * Keeps the video's thumbnail beside the file, while there is a connection: its cover (the media
+	 * card, the Music tab) then needs none. Best effort.
+	 */
+	private void saveThumbnail(String videoId) {
+		for (String name : new String[]{"maxresdefault.jpg", "hqdefault.jpg"}) {
+			java.net.HttpURLConnection c = null;
+			File tmp = new File(dir(), videoId + ".jpg.tmp");
+			try {
+				c = (java.net.HttpURLConnection) new java.net.URL(
+						"https://img.youtube.com/vi/" + videoId + "/" + name).openConnection();
+				c.setConnectTimeout(8000);
+				c.setReadTimeout(8000);
+				if (c.getResponseCode() != 200) continue;
+				try (java.io.InputStream in = c.getInputStream()) {
+					Files.copy(in, tmp.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+				}
+				if (tmp.length() > 0) {
+					Files.move(tmp.toPath(), thumbFile(videoId).toPath(),
+							java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+					return;
+				}
+			} catch (Exception ex) {
+				Log.w(ex, "Failed to save the thumbnail of ", videoId);
+			} finally {
+				tmp.delete();
+				if (c != null) c.disconnect();
+			}
+		}
+	}
+
+	/**
+	 * The cover of a downloaded video without a connection: its saved thumbnail, else a picture out
+	 * of the file. Blocks while reading: not for the main thread.
+	 */
+	@Nullable
+	public android.graphics.Bitmap localArt(@Nullable String videoId) {
+		if (videoId == null) return null;
+		File t = thumbFile(videoId);
+		if (t.isFile() && (getEntry(videoId) != null)) {
+			android.graphics.Bitmap bm = android.graphics.BitmapFactory.decodeFile(t.getPath());
+			if (bm != null) return bm;
+		}
+		return frameOf(videoId);
 	}
 
 	/**
@@ -1076,6 +1127,7 @@ public final class YtDownloads {
 		deletePart(new File(d, e.videoId + ".audio.part"));
 		deletePart(new File(d, e.videoId + ".video.part"));
 		if (e.fileName != null) new File(d, e.fileName).delete();
+		new File(d, e.videoId + ".jpg").delete();
 	}
 
 	private boolean isBusyLocked() {
