@@ -239,9 +239,15 @@ public final class MusicPlayer {
 		}
 		MainActivityDelegate a = activity.get();
 		boolean showsVideo = (shown instanceof MainActivityFragment f) && f.isVideoModeSupported();
-		if (hasPicture && (a != null) && showsVideo) {
-			BodyLayout b = a.getBody();
-			if ((b != null) && !b.isVideoMode()) b.setMode(BodyLayout.Mode.VIDEO);
+		BodyLayout b = (a == null) ? null : a.getBody();
+		if (hasPicture && (b != null) && !b.isVideoMode()) {
+			// From a tab that cannot show video (YouTube's, left a moment ago): through the Downloads tab,
+			// as YtOffline#tryPlayLocal does, or the file would play with no picture on a page behind.
+			if (!showsVideo) {
+				a.fadeToBlackForLocalVideo();
+				a.showFragment(R.id.downloads_addon);
+			}
+			b.setMode(BodyLayout.Mode.VIDEO);
 		}
 	}
 

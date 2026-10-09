@@ -1049,6 +1049,11 @@ public class MainActivityDelegate extends ActivityDelegate
 		} else {
 			this.videoMode = false;
 			fadeInFromVideo();
+			// Out of fullscreen before the video came up: the black held for it is only in the way now.
+			if (coverIntoVideo && (windowCover != null)) {
+				coverUntilPlaying = false;
+				liftVideoSwitchFadeSoon();
+			}
 			setSystemUiVisibility();
 			keepScreenOn(false);
 			if (cp != null) cp.disableVideoMode();
@@ -1514,7 +1519,23 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * once the file has had a moment to start, as YouTube's does.
 	 */
 	public void fadeToBlackForLocalVideo() {
-		if (isVideoMode() || (windowCover != null)) return;
+		if (isVideoMode()) return;
+		View covering = windowCover;
+		if (covering != null) {
+			// Already covered (the exit from YouTube's fullscreen, or a cover on its way out): that cover
+			// stays, and is held until the file plays, rather than lifting under the new video.
+			covering.animate().cancel();
+			covering.setAlpha(1f);
+			covering.setClickable(true);
+			int gen = ++windowCoverGen;
+			coverIntoVideo = true;
+			coverUntilPlaying = true;
+			coverHoldMs = 650;
+			getHandler().postDelayed(() -> {
+				if ((gen == windowCoverGen) && (windowCover != null)) fadeOutWindowCover(windowCover, 0);
+			}, 8000);
+			return;
+		}
 		// With the loading circle, should the file take a moment; lifted once it plays.
 		fadeToBlack(true);
 		if (coverIntoVideo) {

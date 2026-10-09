@@ -59,12 +59,15 @@ public class YoutubeChromeClient extends FermataChromeClient {
 		videoView.setNativeFullscreen(new VideoView.NativeFullscreen() {
 			@Override
 			public boolean isNativeFullscreen() {
-				return isFullScreen();
+				// Also while the exit waits behind the transition cover: Back or a tab change then
+				// still has the page's fullscreen to leave.
+				return isFullScreen() || isFullScreenExitDeferred();
 			}
 
 			@Override
 			public void setNativeFullscreen(boolean fullscreen) {
 				if (fullscreen) enterFullScreen();
+				else if (isFullScreenExitDeferred()) finishDeferredExit();
 				else exitFullScreen();
 			}
 		});

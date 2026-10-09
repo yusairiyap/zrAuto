@@ -239,7 +239,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			// the tab jumping about: stay invisible while it settles, then fade in once, calmly.
 			quietUntil = android.os.SystemClock.uptimeMillis() + 1300;
 			view.setAlpha(0f);
-			view.postDelayed(() -> view.animate().alpha(1f).setDuration(350).start(), 800);
+			// Not once the tab has been left: its own fade out is not to be cut short.
+			view.postDelayed(() -> {
+				if (isAdded() && !isHidden()) view.animate().alpha(1f).setDuration(350).start();
+			}, 800);
 		}
 		content = view.findViewById(R.id.music_content);
 		bg = view.findViewById(R.id.music_bg);
