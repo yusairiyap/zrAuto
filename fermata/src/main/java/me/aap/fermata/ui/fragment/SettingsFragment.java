@@ -1265,6 +1265,18 @@ public class SettingsFragment extends MainActivityFragment
 			o.title = R.string.search_history;
 			o.subtitle = R.string.search_history_sub;
 		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.YT_SEARCH_TAP_QUEUES;
+			o.title = R.string.yt_search_tap_queues;
+			o.subtitle = R.string.yt_search_tap_queues_sub;
+		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.YT_SEPARATE_PANELS;
+			o.title = R.string.yt_separate_panels;
+			o.subtitle = R.string.yt_separate_panels_sub;
+		});
 		ps.addIntPref(o -> {
 			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.UP_NEXT_MAX;

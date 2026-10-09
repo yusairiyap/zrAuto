@@ -9,6 +9,8 @@ import static androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.RIG
 import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED;
 
 import android.annotation.SuppressLint;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.transition.AutoTransition;
 import android.transition.TransitionManager;
 import android.view.KeyEvent;
@@ -40,6 +42,8 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 	private String title = "";
 	/** The field holds a search being typed, not the title -- see beginSearchInput(). */
 	private boolean editing;
+	/** The field's text is being set here, not typed -- not something to predict searches for. */
+	private boolean settingText;
 
 	public static YoutubeToolBarMediator getInstance() {
 		return instance;
@@ -129,6 +133,30 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 				if (e.getActionMasked() == MotionEvent.ACTION_DOWN) beginSearchInput(yt, addr);
 				return false;
 			});
+			// What's typed goes to the panel for YouTube's predictions. Once per field: enable() runs
+			// again every time the tab comes back, on the same field.
+			if (addr.getTag(R.id.browser_addr) == null) {
+				TextWatcher w = new TextWatcher() {
+					@Override
+					public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+					}
+
+					@Override
+					public void onTextChanged(CharSequence s, int start, int before, int count) {
+					}
+
+					@Override
+					public void afterTextChanged(Editable s) {
+						if (!editing || settingText) return;
+						if ((addr.getParent() instanceof ToolBarView bar) &&
+								(bar.getActiveFragment() instanceof YoutubeFragment ytf)) {
+							ytf.onSearchTyping(s.toString());
+						}
+					}
+				};
+				addr.setTag(R.id.browser_addr, w);
+				addr.addTextChangedListener(w);
+			}
 		}
 
 		// Right after the field: a search button that turns into an X while searching (the field
@@ -187,18 +215,34 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 		if (editing) return;
 		editing = true;
 		String q = yt.getLastSearchQuery();
-		t.setText((q != null) ? q : "");
+		setText(t, (q != null) ? q : "");
 		t.selectAll();
+		yt.onSearchTyping("");
+		// Tapping the title is starting a search: the panel comes down with it (just the search part
+		// when it's set to open on its own).
+		yt.showSearchPanel(true);
 		if (t.getParent() instanceof ToolBarView tb) refreshClearButton(tb, yt);
 	}
 
 	private void endSearchInput(EditText t) {
 		if (!editing) return;
 		editing = false;
-		t.setText(title);
+		setText(t, title);
 		if ((t.getParent() instanceof ToolBarView tb) &&
 				(tb.getActiveFragment() instanceof YoutubeFragment yt)) {
+			// Done typing (submitted, or walked away): the predictions give way to past searches.
+			yt.onSearchTyping("");
 			refreshClearButton(tb, yt);
+		}
+	}
+
+	/** Sets the field's text without it counting as typing -- see the TextWatcher in enable(). */
+	private void setText(EditText t, CharSequence text) {
+		settingText = true;
+		try {
+			t.setText(text);
+		} finally {
+			settingText = false;
 		}
 	}
 
@@ -221,7 +265,8 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 
 	/** Hidden while searching or the Up next panel is open, see {@link #setSearchLayout}. */
 	private static final int[] SEARCH_HIDDEN_IDS = {me.aap.fermata.R.id.private_mode,
-			R.id.browser_home, me.aap.fermata.R.id.favorites, me.aap.fermata.R.id.playlists};
+			R.id.browser_home, me.aap.fermata.R.id.favorites, me.aap.fermata.R.id.playlists,
+			me.aap.fermata.R.id.ytdl_toolbar_button};
 	private boolean searchLayout;
 
 	/**
@@ -292,8 +337,12 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 		if ((t == null) || !(a.getActiveFragment() instanceof YoutubeFragment yt)) return;
 		// Already editing (e.g. the car keyboard left the field in edit mode): start over empty
 		// rather than keeping whatever was typed or left there before.
-		if (editing) t.setText("");
-		else beginSearchInput(yt, t);
+		if (editing) {
+			setText(t, "");
+			yt.onSearchTyping("");
+		} else {
+			beginSearchInput(yt, t);
+		}
 		t.requestFocus();
 		if (a.isCarActivity()) {
 			t.performClick();

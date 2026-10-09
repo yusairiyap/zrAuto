@@ -122,6 +122,12 @@ public interface MainActivityPrefs
 	Pref<IntSupplier> UP_NEXT_MAX = Pref.i("UP_NEXT_MAX", 20);
 	// Whether the YouTube tab remembers past searches (shown as chips in its search panel).
 	Pref<BooleanSupplier> SEARCH_HISTORY_ENABLED = Pref.b("YT_SEARCH_HISTORY_ENABLED", true);
+	// Whether tapping a YouTube search result queues it (Play next) instead of playing it -- its
+	// row button then plays it instead.
+	Pref<BooleanSupplier> YT_SEARCH_TAP_QUEUES = Pref.b("YT_SEARCH_TAP_QUEUES", false);
+	// Whether the YouTube tab's search and Up next open on their own (the search field/button shows
+	// just the search, the Up next button just the queue) rather than together.
+	Pref<BooleanSupplier> YT_SEPARATE_PANELS = Pref.b("YT_SEPARATE_PANELS", false);
 	Pref<BooleanSupplier> DIM_ENABLED = Pref.b("DIM_ENABLED", false);
 	Pref<IntSupplier> DIM_OPACITY = Pref.i("DIM_OPACITY", 50);
 	Pref<IntSupplier> DIM_COLOR_PRESET = Pref.i("DIM_COLOR_PRESET", 0);
