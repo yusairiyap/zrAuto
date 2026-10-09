@@ -167,6 +167,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		stallGen++;
 		stallRetried = false;
 		stallNudged = false;
+		subGenWaits = 0;
 		firstFrame = false;
 		// A reused player keeps playWhenReady through stop() and the end of a track: the next item would
 		// start playing at full volume before start() fades it in.
@@ -178,6 +179,13 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 			stop();
 		}
 		this.source = source;
+		// A Music tab track never shows subtitles (its tab does not, and its picture is off): generating
+		// them would only make its sound wait on the transcriptor.
+		boolean musicTrack = source instanceof me.aap.fermata.addon.music.MusicTrackItem;
+		audioProc.setBypass(musicTrack);
+		if (musicTrack && source.getPrefs().getBooleanPref(me.aap.fermata.addon.SubGenAddon.ENABLED)) {
+			DiagnosticLog.log("ENGINE", "SubGen off for a Music tab track", "item=" + source);
+		}
 		// A downloaded YouTube video sounds as it does on YouTube: the page's equalizer applies.
 		stageProc.setFx(me.aap.fermata.ytdl.YtOffline.isDownloadedYoutube(source));
 		accessor.sourceChanged(source);
@@ -279,9 +287,26 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 			DiagnosticLog.log("ENGINE", midPlay ? "no progress while playing" : "no progress after start",
 					"item=" + src, "pos=" + now, "videoOff=" + off, "screen=" + (shown != null),
 					"hiddenSurface=" + (dummySurface != null), "retried=" + stallRetried,
-					"nudged=" + stallNudged,
+					"nudged=" + stallNudged, "subGen=" + (!audioProc.isBypassed() && audioProc.isTranscribing()),
 					"audio=" + ((a == null) ? null : a.sampleMimeType + "/" + a.sampleRate + "Hz/" + a.channelCount + "ch"),
 					"video=" + ((v == null) ? null : v.sampleMimeType + "/" + v.width + "x" + v.height));
+			if (!audioProc.isBypassed() && audioProc.isTranscribing() && !midPlay && (shown != null) &&
+					(subGenWaits++ < 3)) {
+				// A video watched with generated subtitles waits for the first of them at its start, by
+				// design: a few more seconds before it counts as stuck.
+				checkStall(gen, src, now, false, 3000);
+				return;
+			}
+			if (!audioProc.isBypassed() && audioProc.isTranscribing()) {
+				// Subtitle generation is what holds the sound (and with it the picture, which follows
+				// the sound's clock): off for this track, the seek's flush takes it out of the pipeline.
+				audioProc.setBypass(true);
+				DiagnosticLog.log("ENGINE", "stall: SubGen holding the sound, off for this track",
+						"item=" + src, "pos=" + now);
+				player.seekTo(now);
+				checkStall(gen, src, now, midPlay, 4000);
+				return;
+			}
 			if (off && !stallRetried) {
 				// Stuck with the picture switched off: on again (and for good, for this file).
 				stallRetried = true;
@@ -431,6 +456,8 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	private boolean stallRetried;
 	// The frozen track was already seeked in place once (see checkStall()).
 	private boolean stallNudged;
+	// Checks a watched video's start has waited for its generated subtitles (see checkStall()).
+	private int subGenWaits;
 	// A surface nothing is shown on, for the file that stalls without one (see watchForStall()).
 	private android.graphics.SurfaceTexture dummyTexture;
 	private android.view.Surface dummySurface;

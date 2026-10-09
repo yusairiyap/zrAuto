@@ -556,6 +556,16 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		PlayableItem cur = getActivityDelegate().getMediaSessionCallback().getCurrentItem();
 		if (cur != null) return cur;
 		if (queue == null) return null;
+		// Nothing current for a moment while one engine hands over to the next (a YouTube track
+		// starting in the YouTube player passes through STOPPED with no item): the queue track shown
+		// stays, rather than the queue's saved one, which still names the track before it (its cover
+		// flashed up in between).
+		PlayableItem shown = shownItem;
+		int st = getActivityDelegate().getMediaSessionCallback().getPlaybackState().getState();
+		if ((shown instanceof MusicTrackItem s) && (st == PlaybackStateCompat.STATE_STOPPED) &&
+				(queue.indexInPlayOrder(s) >= 0)) {
+			return s;
+		}
 		MusicTrackItem t = queue.getSavedCurrent();
 		return (t != null) ? t : queue.getTrack(0);
 	}

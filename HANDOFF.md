@@ -60,7 +60,11 @@ cleared when playing.
 2. **Card art looks blocky for local items** (YouTube items look the same in some screenshots; art is
    1280x720 either way). Possibly One UI's own style; unverified. Idea: crop/scale a square notification
    large icon once per item.
-3. **Partly understood**: log 22:50:52-22:51:56 shows Perfect Pinterest silently froze ~30 s in (pos 31 s
+3. **Root cause found (pending confirmation)**: SubGen (`AudioTranscriptProcessor`) only releases sound the
+   transcriptor has read; when Whisper falls behind (background throttling) playback freezes with Exo READY,
+   and the fullscreen picture is black because video follows the frozen audio clock. Now: Music tab tracks
+   bypass SubGen (`PendingLoadAudioProcessor.setBypass`, applied at flush), and a stall with SubGen active
+   bypasses it for the track + seeks in place (`ENGINE stall: SubGen holding the sound`). Earlier note: log 22:50:52-22:51:56 shows Perfect Pinterest silently froze ~30 s in (pos 31 s
    after 64 s of PLAYING, no pause, no Exo playWhenReady change). The Exo stall watchdog now runs for the
    whole track (`checkStall`: picture on, hidden surface, seek in place, then error) and logs
    `ENGINE no progress while playing ...`. Old note: **App backgrounded while a downloaded video plays as music: playback pauses sometimes; back in the
@@ -72,7 +76,8 @@ cleared when playing.
    Recovery now switches the picture on + hidden surface in one 3 s step. Root cause unknown (very
    sparse key frames, MTK decoder `c2.mtk.avc.decoder` init failure on the fresh Exo seen once).
    Consider: never disable the video track for files whose video has few key frames, or re-encode on download.
-5. Music tab can show the previous track while YouTube plays the next one (trace 21:10:5x, cause not found:
+5. Brief previous-cover flash fixed: during the engine hand-over STOPPED blip `getDisplayItem` keeps the shown
+   queue track instead of the queue's saved one. Earlier: Music tab can show the previous track while YouTube plays the next one (trace 21:10:5x, cause not found:
    instrument `MusicPlayerFragment.displayItem`).
 6. Silent hand-over: local item faded out + handed to YouTube; if the page never starts the local
    engine stays muted with no error and next-press re-hands the same item (audit finding).
