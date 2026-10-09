@@ -119,25 +119,8 @@ public class VideoView extends FrameLayout
 
 	protected void init(Context context) {
 		setBackgroundColor(Color.BLACK);
-		addView(new SurfaceView(getContext()) {
-			{
-				FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT);
-				lp.gravity = Gravity.CENTER_HORIZONTAL | Gravity.CENTER_VERTICAL;
-				setLayoutParams(lp);
-				getHolder().addCallback(VideoView.this);
-			}
-		});
-		addView(new SurfaceView(getContext()) {
-			{
-				FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT);
-				lp.gravity = Gravity.FILL;
-				setLayoutParams(lp);
-				setZOrderMediaOverlay(true);
-				setZOrderOnTop(true);
-				getHolder().setFormat(PixelFormat.TRANSLUCENT);
-				getHolder().addCallback(VideoView.this);
-			}
-		});
+		addView(newVideoSurfaceView(), 0);
+		addView(newSubtitleSurfaceView(), 1);
 
 		fadeOverlay = new View(context);
 		fadeOverlay.setLayoutParams(new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
@@ -173,6 +156,60 @@ public class VideoView extends FrameLayout
 			View c = getChildAt(i);
 			if ((c instanceof SurfaceView) && (c.getVisibility() != vis)) c.setVisibility(vis);
 		}
+	}
+
+	private SurfaceView newVideoSurfaceView() {
+		SurfaceView v = new SurfaceView(getContext());
+		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT);
+		lp.gravity = Gravity.CENTER_HORIZONTAL | Gravity.CENTER_VERTICAL;
+		v.setLayoutParams(lp);
+		v.getHolder().addCallback(this);
+		return v;
+	}
+
+	private SurfaceView newSubtitleSurfaceView() {
+		SurfaceView v = new SurfaceView(getContext());
+		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT);
+		lp.gravity = Gravity.FILL;
+		v.setLayoutParams(lp);
+		v.setZOrderMediaOverlay(true);
+		v.setZOrderOnTop(true);
+		v.getHolder().setFormat(PixelFormat.TRANSLUCENT);
+		v.getHolder().addCallback(this);
+		return v;
+	}
+
+	/**
+	 * Throws the picture's two SurfaceViews away and puts new ones in their place, so that the video
+	 * comes up on surfaces made just now: what a first start always has, and what a return to video
+	 * (from music, from the background) did not, its old surface reused and staying black although
+	 * frames were drawn into it. Wait for {@link #onSurfaceCreated} before giving them to a player.
+	 * A no-op for subclasses that build other children (YoutubeVideoView).
+	 */
+	public void recreateSurfaces() {
+		if (!(getChildAt(0) instanceof SurfaceView old) || !(getChildAt(1) instanceof SurfaceView oldSub)) {
+			return;
+		}
+		DiagnosticLog.log("BODY", "video surfaces made anew");
+		old.getHolder().removeCallback(this);
+		oldSub.getHolder().removeCallback(this);
+		if (createSurface.isDone()) createSurface = new Promise<>();
+		// The player lets go of the old one before it goes.
+		getActivity().onSuccess(a -> a.getMediaSessionCallback().removeVideoView(this));
+		int vis = old.getVisibility();
+		SurfaceView v = newVideoSurfaceView();
+		SurfaceView s = newSubtitleSurfaceView();
+		v.setVisibility(vis);
+		s.setVisibility(vis);
+		removeViewAt(1);
+		removeViewAt(0);
+		addView(v, 0);
+		addView(s, 1);
+	}
+
+	/** Whether {@code h} belongs to one of the surfaces in place now (not a discarded one). */
+	private boolean isCurrent(SurfaceHolder h) {
+		return (h == getVideoSurface().getHolder()) || (h == getSubtitleSurface().getHolder());
 	}
 
 	// Black over the picture, faded out when the video comes up (see fadeInFromBlack()).
@@ -534,6 +571,7 @@ public class VideoView extends FrameLayout
 
 	@Override
 	public void surfaceCreated(@NonNull SurfaceHolder holder) {
+		if (!isCurrent(holder)) return;
 		DiagnosticLog.log("BODY", "video surface created",
 				"valid=" + getVideoSurface().getHolder().getSurface().isValid());
 		if (!getVideoSurface().getHolder().getSurface().isValid()) return;
@@ -549,8 +587,10 @@ public class VideoView extends FrameLayout
 
 	@Override
 	public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
+		if (!isCurrent(holder)) return;
 		DiagnosticLog.log("BODY", "video surface destroyed");
-		createSurface = new Promise<>();
+		// A wait already pending (see onSurfaceCreated) is kept, not dropped with a new promise.
+		if (createSurface.isDone()) createSurface = new Promise<>();
 		getActivity().onSuccess(a -> a.getMediaSessionCallback().removeVideoView(this));
 	}
 

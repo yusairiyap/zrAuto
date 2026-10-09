@@ -63,7 +63,9 @@ cleared when playing.
    SurfaceViews are hidden/shown with it (`VideoView.setSurfacesShown`, `BodyLayout.hidePane/showPane`) and
    `switchToVideo` waits for the new surface before restarting. Side effect to watch: leaving fullscreen
    while a local video keeps playing now destroys its surface (video track disabled); coming back re-enables
-   it mid-play, the path that once raced to the end. Any other mid-play re-enable
+   it mid-play, the path that once raced to the end. setSurfacesShown did not trigger on the music path (no destroy logged). Now `switchToVideo` calls
+   `VideoView.recreateSurfaces()` (brand-new SurfaceViews at children 0/1; callbacks from discarded holders
+   ignored via `isCurrent`) and starts once `onSurfaceCreated` fires (1.5 s failsafe). Any other mid-play re-enable
    of the video track (`ExoPlayerEngine.setVideoTrackDisabled(false)`) may have the same problem. Earlier notes: Instrumented: `BODY video pane 3 s in ...` (pane visible/alpha/size, surface valid, registered
    with the session, engine item isVideo), `ENGINE picture: screen given/taken away`, `ENGINE picture: first frame
    drawn after=Nms`. `addVideoView` now re-gives a re-created surface to the engine (it used to return early).

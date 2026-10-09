@@ -789,15 +789,24 @@ public final class MusicPlayer {
 			// picture track back on mid-play (switchItem): after that ExoPlayer raced through the rest
 			// of the file (23 s to 177 s in 8 s in the log), its picture black, then skipped to the next
 			// track. A fresh start with the picture on always plays; a local file is ready in ~0.1 s.
-			// Once the picture's surface is there (made anew when the pane shows, see
-			// VideoView#setSurfacesShown): the engine gets it as it starts, as on a first start.
-			Runnable start = () -> eng.getPosition().main().onSuccess(pos -> {
-				if (cb.getEngine() != eng) return;
-				startTrack(a, t, pos, true);
-			});
+			// Once the picture's new surfaces are there: the engine gets them as it starts, as on a first
+			// start.
+			boolean[] started = {false};
+			Runnable start = () -> {
+				if (started[0]) return;
+				started[0] = true;
+				eng.getPosition().main().onSuccess(pos -> {
+					if (cb.getEngine() != eng) return;
+					startTrack(a, t, pos, true);
+				});
+			};
 			VideoView vv = (b == null) ? null : b.getVideoView();
-			if ((vv != null) && !vv.isSurfaceCreated() && !cb.hasCustomEngineProvider()) {
+			if ((vv != null) && !cb.hasCustomEngineProvider()) {
+				// New surfaces every time: a reused one could stay black (see VideoView#recreateSurfaces).
+				vv.recreateSurfaces();
 				vv.onSurfaceCreated(start);
+				// Should the new surface not come, the track still starts (on whatever screen there is).
+				a.getHandler().postDelayed(start, 1500);
 			} else {
 				start.run();
 			}
