@@ -357,6 +357,10 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 			Bitmap largeIcon = description.getIconBitmap();
 			builder.setContentTitle(description.getTitle()).setContentText(description.getSubtitle())
 					.setSubText(description.getDescription());
+			me.aap.fermata.util.DiagnosticLog.log("NOTIF", "built", "state=" + st,
+					"title=" + description.getTitle(), "subtitle=" + description.getSubtitle(),
+					"icon=" + ((description.getIconBitmap() == null) ? null :
+							description.getIconBitmap().getWidth() + "x" + description.getIconBitmap().getHeight()));
 
 			if (callback.isDefaultImage(largeIcon)) {
 				if ((i != null) && i.isVideo()) {

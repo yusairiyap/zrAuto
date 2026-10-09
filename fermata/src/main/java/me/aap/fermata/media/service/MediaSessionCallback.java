@@ -807,7 +807,8 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			return;
 		}
 
-		skipFadingUntil = SystemClock.uptimeMillis() + 700;
+		long fadeStart = SystemClock.uptimeMillis();
+		skipFadingUntil = fadeStart + 700;
 		notifySkipFade(eng);
 		eng.fadeOut(() -> {
 			skipFadingUntil = 0;
@@ -817,9 +818,28 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			playerTask = skipTo(next, false);
 			// Nothing took the engine's place (no next item, a failed hand-over): sound again.
 			me.aap.utils.app.App.get().getHandler().postDelayed(() -> {
-				if (getEngine() == eng) eng.restoreVolume();
+				// Not while the next item is being handed to YouTube's page: it takes over (and closes
+				// this engine) a moment later, and the sound coming back first was the stutter.
+				if (getEngine() != eng) return;
+				if (handedOverAt >= fadeStart) {
+					DiagnosticLog.log("TRANSPORT", "hand-over pending: volume stays down");
+					return;
+				}
+				eng.restoreVolume();
 			}, 3000);
 		});
+	}
+
+	// When an item was last handed to another player (YouTube's page), see skipWithFade().
+	private volatile long handedOverAt;
+
+	/** The video screen is put right if the picture's player lost it (see {@code MediaEngine#setVideoView}). */
+	public void reattachVideoView() {
+		MediaEngine eng = getEngine();
+		VideoView v = getVideoView();
+		if ((eng == null) || (v == null) || (eng.getId() == MediaPrefs.MEDIA_ENG_YT)) return;
+		PlayableItem i = eng.getSource();
+		if ((i != null) && i.isVideo()) eng.setVideoView(v);
 	}
 
 	private void notifySkipFade(@Nullable MediaEngine eng) {
@@ -898,7 +918,10 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		long pos = i.getPrefs().getPositionPref();
 		// Handed to the UI before the state says "skipping": it may come to nothing, and the session
 		// must not be left in that state with the old engine untouched.
-		if (handOverYoutube(i, pos)) return;
+		if (handOverYoutube(i, pos)) {
+			handedOverAt = SystemClock.uptimeMillis();
+			return;
+		}
 		notifySkipFade(getEngine());
 		PlaybackStateCompat state = getPlaybackState();
 		PlaybackStateCompat.Builder b = new PlaybackStateCompat.Builder(state);

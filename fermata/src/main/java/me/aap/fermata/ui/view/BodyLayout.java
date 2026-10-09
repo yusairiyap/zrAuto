@@ -271,6 +271,11 @@ public class BodyLayout extends SplitLayout
 				vv.showVideo();
 				a.setVideoMode(true, vv);
 				App.get().getHandler().post(vv::requestFocus);
+				// Whatever the surface's own events did or did not do, the picture is handed to the
+				// player once the screen has settled.
+				postDelayed(() -> {
+					if (isVideoMode()) a.getMediaSessionCallback().reattachVideoView();
+				}, 500);
 			}
 		}
 

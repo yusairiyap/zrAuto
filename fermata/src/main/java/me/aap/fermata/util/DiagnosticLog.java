@@ -128,7 +128,33 @@ public final class DiagnosticLog {
 				}
 			}
 			log("DIAG", "logging enabled");
+			logEnvironment();
 		});
+	}
+
+	/** What this run is: the build, the device, the memory it has -- the head of every trace. */
+	private static void logEnvironment() {
+		try {
+			Runtime rt = Runtime.getRuntime();
+			log("DIAG", "app", "version=" + me.aap.fermata.BuildConfig.VERSION_NAME,
+					"code=" + me.aap.fermata.BuildConfig.VERSION_CODE,
+					me.aap.fermata.BuildConfig.AUTO ? "flavor=auto" : "flavor=phone",
+					"debug=" + me.aap.fermata.BuildConfig.D);
+			log("DIAG", "device", android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL,
+					"android=" + android.os.Build.VERSION.RELEASE + " (sdk " + android.os.Build.VERSION.SDK_INT + ")",
+					"abi=" + ((android.os.Build.SUPPORTED_ABIS.length > 0) ? android.os.Build.SUPPORTED_ABIS[0] : "?"));
+			android.content.Context ctx = me.aap.fermata.FermataApplication.get();
+			android.app.ActivityManager am =
+					(android.app.ActivityManager) ctx.getSystemService(android.content.Context.ACTIVITY_SERVICE);
+			android.util.DisplayMetrics dm = ctx.getResources().getDisplayMetrics();
+			log("DIAG", "resources", "heapMax=" + (rt.maxMemory() >> 20) + "MB",
+					"heapUsed=" + ((rt.totalMemory() - rt.freeMemory()) >> 20) + "MB",
+					"memClass=" + ((am == null) ? "?" : am.getMemoryClass() + "MB"),
+					"screen=" + dm.widthPixels + "x" + dm.heightPixels + "@" + dm.densityDpi + "dpi",
+					"cpus=" + rt.availableProcessors());
+		} catch (Throwable ex) {
+			log("DIAG", "environment unavailable", ex);
+		}
 	}
 
 	public static boolean isEnabled() {

@@ -155,6 +155,9 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		// Reserves room under the translucent title bar, as every scrollable tab does.
 		getActivityDelegate().insetScrollableContent(list);
 		list.setClipChildren(false);
+		// Shown only once its columns are known (they depend on the width it is laid out at): the
+		// cards used to be laid out at the screen's width first and then again, a column fewer.
+		list.setAlpha(0f);
 		list.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
 			if ((r - l) != (or - ol)) updateSpan();
 		});
@@ -341,10 +344,11 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		int span = 1;
 		if (DownloadsAddon.isGrid()) {
 			int w = list.getWidth();
-			if (w == 0) w = getResources().getDisplayMetrics().widthPixels;
+			if (w == 0) return; // Not laid out yet: the layout listener comes back with the width.
 			span = Math.max(2, w / UiUtils.toIntPx(requireContext(), 170));
 		}
 		if (layout.getSpanCount() != span) layout.setSpanCount(span);
+		if (list.getAlpha() < 1f) list.animate().alpha(1f).setDuration(180).start();
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -893,7 +897,11 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		v.setImageDrawable(null);
 		FermataApplication.get().getBitmapCache().getBitmap(v.getContext(), url, false, false).main()
 				.onSuccess(bm -> {
-					if ((bm != null) && url.equals(v.getTag())) v.setImageBitmap(bm);
+					if ((bm == null) || !url.equals(v.getTag())) return;
+					v.setImageBitmap(bm);
+					// Fades in, rather than popping in over the card.
+					v.setAlpha(0f);
+					v.animate().alpha(1f).setDuration(150).start();
 				});
 	}
 }

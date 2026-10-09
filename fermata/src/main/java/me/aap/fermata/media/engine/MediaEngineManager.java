@@ -145,14 +145,24 @@ public class MediaEngineManager implements PreferenceStore.Listener {
 		return create(p, null, i, listener);
 	}
 
+	// Downloaded files that got a fresh ExoPlayer after a stall and have not yet been given up on.
+	private final java.util.Set<String> freshExoTried = new java.util.HashSet<>();
+
 	public MediaEngine createAnotherEngine(@NonNull MediaEngine current, Listener listener) {
 		if (engineProvider != null) return engineProvider.createEngine(listener);
 		int id = current.getId();
 		PlayableItem i = current.getSource();
 		current.close();
 
-		// A downloaded video ExoPlayer could not play (it stalls on some muxed files): the platform's.
+		// A downloaded video ExoPlayer stalled on: a fresh ExoPlayer first (a stuck player or decoder is
+		// often only that, the same file plays on the next one), then the platform's.
 		if ((id == MEDIA_ENG_EXO) && me.aap.fermata.ytdl.YtOffline.isDownloadedYoutube(i)) {
+			String oid = i.getOrigId();
+			if ((oid != null) && (exoPlayer != null) && freshExoTried.add(oid)) {
+				me.aap.fermata.util.DiagnosticLog.log("ENGINE", "fresh ExoPlayer for a stalled file", "item=" + i);
+				return create(exoPlayer, null, i, listener);
+			}
+			freshExoTried.remove(oid);
 			return create(mediaPlayer, null, i, listener);
 		}
 

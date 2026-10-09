@@ -62,6 +62,12 @@ public final class YtOffline {
 		if ((e != null) && e.video) {
 			// The picture: fullscreen, like a local video. The item points at the file by now, see
 			// the class comment.
+			// From a tab that cannot show video (YouTube's, say): fullscreen over it would leave that
+			// tab's bars and page behind it. Downloads is where a downloaded video plays from.
+			if (!(a.getActiveFragment() instanceof me.aap.fermata.ui.fragment.MainActivityFragment f &&
+					f.isVideoModeSupported())) {
+				a.showFragment(R.id.downloads_addon);
+			}
 			a.getBody().playLocalVideo(item);
 		} else if (MusicPlayer.isEnabled()) {
 			// Just the sound: the Music tab, like a track.
