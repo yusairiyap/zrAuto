@@ -200,7 +200,9 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	private Queue<Prioritized<VideoView>> videoView;
 	private Queue<Prioritized<MediaSessionCallbackAssistant>> assistants;
 	private FutureSupplier<?> playerTask = completedVoid();
+	// The playing item's own metadata (no subtitle text in it), and the item it is for.
 	private MediaMetadataCompat metadata;
+	private PlayableItem metadataItem;
 	// What was last played, restored by prepare() as a paused, not yet loaded item -- see there.
 	// Only meaningful while there is no engine: the first engine to be created takes over.
 	@Nullable
@@ -524,7 +526,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		DiagnosticLog.log("RESUME", "restored paused", "item=" + i, "pos=" + (pos / 1000) + 's');
 		setPlaybackState(createPlayingState(i, STATE_PAUSED, 0, pos, 1f));
 		i.getMediaData().main().onSuccess(md -> {
-			if ((resumeItem == i) && (getEngine() == null)) setMetadata(md);
+			if ((resumeItem == i) && (getEngine() == null)) publishMetadata(md, i);
 		});
 	}
 
@@ -1496,12 +1498,14 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void accept(SubGrid.Position position, Subtitles.Text text) {
-		if (metadata == null ||
+		// Only the playing item's own metadata: this used to re-publish whatever was set last, which could
+		// be a restored item's from long before (the media card then named a track not playing).
+		if ((metadata == null) || (metadataItem != getCurrentItem()) ||
 				(position != SubGrid.Position.BOTTOM_CENTER && position != SubGrid.Position.BOTTOM_LEFT))
 			return;
 
 		if (text == null) {
-			publishMetadata(metadata);
+			if (publishedMetadata != metadata) publishMetadata(metadata);
 			return;
 		}
 
@@ -1522,19 +1526,17 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			}
 		}
 
-		var t = metadata.getText(METADATA_KEY_DISPLAY_TITLE);
-		var s = metadata.getText(METADATA_KEY_DISPLAY_SUBTITLE);
+		// The same text already out: nothing to publish.
+		MediaMetadataCompat out = publishedMetadata;
+		var t = (out == null) ? null : out.getText(METADATA_KEY_DISPLAY_TITLE);
+		var s = (out == null) ? null : out.getText(METADATA_KEY_DISPLAY_SUBTITLE);
 		if (t1.equals(t == null ? "" : t.toString()) && t2.equals(s == null ? "" : s.toString()))
 			return;
 		var b = new MediaMetadataCompat.Builder(metadata);
 		b.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, t1);
 		b.putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, t2);
-		setMetadata(b.build());
-	}
-
-	private void setMetadata(MediaMetadataCompat metadata) {
-		this.metadata = metadata;
-		publishMetadata(metadata);
+		// Published only: the item's own metadata stays as it is, to go back to without the text.
+		publishMetadata(b.build());
 	}
 
 	// What the session was last given: the notification is built from it, not read back from the
@@ -1549,6 +1551,8 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 					"playing=" + getCurrentItem());
 			return;
 		}
+		metadata = m;
+		metadataItem = forItem;
 		publishMetadata(m);
 	}
 

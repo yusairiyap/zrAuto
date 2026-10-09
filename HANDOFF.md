@@ -50,14 +50,20 @@ below Android 13; diagnostic log trims in halves; YouTube cover not lifted early
 cleared when playing.
 
 ## Open problems (need device logs to confirm each)
-1. **Media card sometimes stale for local playback** (screenshot: card "Is There Really No Happiness"
+1. **FIXED (pending confirmation)**: root cause was `MediaSessionCallback.metadata` only being set by the
+   resume-restore path; the subtitle callback `accept()` re-published it (a restored item's) for any item
+   with a subtitle stream. Now `metadata` is set with `metadataItem` in `publishMetadata(m, item)` and
+   `accept()` ignores it unless it is the current item's. Old note: **Media card sometimes stale for local playback** (screenshot: card "Is There Really No Happiness"
    while Patient Lips plays; trace 22:11:50 `NOTIF built state=2 title=Is There Really...` with no
    preceding META line). Publisher still unknown; look for `META stale metadata dropped` lines now
    logged, that names the late publisher.
 2. **Card art looks blocky for local items** (YouTube items look the same in some screenshots; art is
    1280x720 either way). Possibly One UI's own style; unverified. Idea: crop/scale a square notification
    large icon once per item.
-3. **App backgrounded while a downloaded video plays as music: playback pauses sometimes; back in the
+3. **Partly understood**: log 22:50:52-22:51:56 shows Perfect Pinterest silently froze ~30 s in (pos 31 s
+   after 64 s of PLAYING, no pause, no Exo playWhenReady change). The Exo stall watchdog now runs for the
+   whole track (`checkStall`: picture on, hidden surface, seek in place, then error) and logs
+   `ENGINE no progress while playing ...`. Old note: **App backgrounded while a downloaded video plays as music: playback pauses sometimes; back in the
    app, fullscreen FAB shows a black screen.** No system pause appears in the logs seen; ask the user
    for the Diagnostic log around the Home press (TRANSPORT/AUDIOFOCUS/STATE/BODY/ENGINE lines). Suspects: video surface destroyed
    while the video track is enabled (`reattachVideoView`, `BodyLayout.setMode(VIDEO)` after 500 ms),

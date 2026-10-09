@@ -166,6 +166,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	public void prepare(PlayableItem source) {
 		stallGen++;
 		stallRetried = false;
+		stallNudged = false;
 		firstFrame = false;
 		// A reused player keeps playWhenReady through stop() and the end of a track: the next item would
 		// start playing at full volume before start() fades it in.
@@ -248,46 +249,69 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	 * is stuck (some files stall this player from their first second): reported as an error at once,
 	 * so the platform player takes over, instead of after the 10 seconds of silence the player itself
 	 * waits before saying so.
+	 * <p>
+	 * Kept up for as long as the track plays, not only after its start: a file can also freeze half
+	 * way through (seen in the background, picture off, with no pause and no error: the position just
+	 * stopped). Then it is nudged first (picture on, a surface, a seek to where it is) before the error.
 	 */
 	private void watchForStall() {
 		int gen = ++stallGen;
 		PlayableItem src = source;
 		if ((src == null) || src.isNetResource()) return;
-		long at = player.getCurrentPosition();
+		checkStall(gen, src, player.getCurrentPosition(), false, 3000);
+	}
+
+	private void checkStall(int gen, PlayableItem src, long at, boolean midPlay, long delay) {
 		FermataApplication.get().getHandler().postDelayed(() -> {
-			if ((gen != stallGen) || (source == null) || (accessor.player == null)) return;
-			if (!player.getPlayWhenReady() || (player.getPlaybackState() != Player.STATE_READY)) return;
-			if (player.getCurrentPosition() > at + 300) return;
+			if ((gen != stallGen) || (source != src) || (accessor.player == null)) return;
+			// Paused: start() watches again.
+			if (!player.getPlayWhenReady()) return;
+			long now = player.getCurrentPosition();
+			if ((player.getPlaybackState() != Player.STATE_READY) || (now > at + 300)) {
+				// Moving (or legitimately not: buffering, ended): watched on.
+				checkStall(gen, src, now, true, 4000);
+				return;
+			}
 			boolean off = player.getTrackSelectionParameters().disabledTrackTypes
 					.contains(C.TRACK_TYPE_VIDEO);
+			Format a = player.getAudioFormat();
+			Format v = player.getVideoFormat();
+			DiagnosticLog.log("ENGINE", midPlay ? "no progress while playing" : "no progress after start",
+					"item=" + src, "pos=" + now, "videoOff=" + off, "screen=" + (shown != null),
+					"hiddenSurface=" + (dummySurface != null), "retried=" + stallRetried,
+					"nudged=" + stallNudged,
+					"audio=" + ((a == null) ? null : a.sampleMimeType + "/" + a.sampleRate + "Hz/" + a.channelCount + "ch"),
+					"video=" + ((v == null) ? null : v.sampleMimeType + "/" + v.width + "x" + v.height));
 			if (off && !stallRetried) {
 				// Stuck with the picture switched off: on again (and for good, for this file).
 				stallRetried = true;
 				String id = src.getOrigId();
 				if (id != null) keepPicture.add(id);
-				DiagnosticLog.log("ENGINE", "no progress with the picture off: switched on", "item=" + src);
+				DiagnosticLog.log("ENGINE", "stall: picture switched on", "item=" + src);
 				setVideoTrackDisabled(false);
 				// With nowhere to show it too: what is stuck with the picture off is also stuck without a screen.
 				if ((shown == null) && (dummySurface == null)) useDummySurface();
-				watchForStall();
+				checkStall(gen, src, now, midPlay, 3000);
 				return;
 			}
 			if (!off && (shown == null) && (dummySurface == null) && useDummySurface()) {
 				// Stuck with the picture on but nowhere to show it: given a surface of its own, which
 				// is what a file that plays on screen but not off it needs.
-				DiagnosticLog.log("ENGINE", "no progress without a screen: given a hidden one", "item=" + src);
-				watchForStall();
+				DiagnosticLog.log("ENGINE", "stall: given a hidden surface", "item=" + src);
+				checkStall(gen, src, now, midPlay, 3000);
 				return;
 			}
-			Format a = player.getAudioFormat();
-			Format v = player.getVideoFormat();
-			DiagnosticLog.log("ENGINE", "no progress after start", "item=" + source,
-					"pos=" + player.getCurrentPosition(),
-					"audio=" + ((a == null) ? null : a.sampleMimeType + "/" + a.sampleRate + "Hz/" + a.channelCount + "ch"),
-					"video=" + ((v == null) ? null : v.sampleMimeType + "/" + v.width + "x" + v.height),
-					"videoOff=" + player.getTrackSelectionParameters().disabledTrackTypes.contains(C.TRACK_TYPE_VIDEO));
+			if (midPlay && !stallNudged) {
+				// Frozen part way through: a seek to where it is restarts the decoders from a key frame.
+				stallNudged = true;
+				DiagnosticLog.log("ENGINE", "stall: seek in place", "item=" + src, "pos=" + now);
+				player.seekTo(now);
+				checkStall(gen, src, now, true, 4000);
+				return;
+			}
+			DiagnosticLog.log("ENGINE", "stall: given up, reported as an error", "item=" + src);
 			listener.onEngineError(this, new java.io.IOException("Playback stalled"));
-		}, 3000);
+		}, delay);
 	}
 
 	@Override
@@ -363,8 +387,10 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		var pos = source.getOffset() + position;
 		player.seekTo(pos);
 		// A seek is not a stall (a file with few key frames takes seconds to show the new position):
-		// what the watchdog was waiting on is dropped.
-		stallGen++;
+		// what the watchdog was waiting on is dropped, and it watches on only well after the seek.
+		int gen = ++stallGen;
+		PlayableItem src = source;
+		if (!src.isNetResource()) checkStall(gen, src, pos, true, 8000);
 		accessor.setSubGenTimeOffset(this);
 		syncSub(true);
 	}
@@ -403,6 +429,8 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	private static final java.util.Set<String> keepPicture =
 			java.util.concurrent.ConcurrentHashMap.newKeySet();
 	private boolean stallRetried;
+	// The frozen track was already seeked in place once (see checkStall()).
+	private boolean stallNudged;
 	// A surface nothing is shown on, for the file that stalls without one (see watchForStall()).
 	private android.graphics.SurfaceTexture dummyTexture;
 	private android.view.Surface dummySurface;
