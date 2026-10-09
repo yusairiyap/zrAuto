@@ -160,6 +160,21 @@ public class VideoView extends FrameLayout
 	 * {@code YoutubeVideoView}, which builds its own child structure) must call this themselves to
 	 * support {@link #setDimOverlay}.
 	 */
+	/**
+	 * The picture's surfaces follow the pane: hidden with it, made again when it shows. A SurfaceView
+	 * reacts only to its own visibility, not its parent's: left visible in a hidden pane, its surface
+	 * lived on, lost its place on screen, and was not always put back when the pane came back (frames
+	 * drawn into it, the pane up, only its black showing). Hidden with the pane, it is made anew each
+	 * time, the way a first start always worked.
+	 */
+	public void setSurfacesShown(boolean shown) {
+		int vis = shown ? VISIBLE : GONE;
+		for (int i = 0, n = getChildCount(); i < n; i++) {
+			View c = getChildAt(i);
+			if ((c instanceof SurfaceView) && (c.getVisibility() != vis)) c.setVisibility(vis);
+		}
+	}
+
 	// Black over the picture, faded out when the video comes up (see fadeInFromBlack()).
 	@Nullable
 	private View fadeOverlay;

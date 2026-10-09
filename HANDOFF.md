@@ -57,7 +57,13 @@ cleared when playing.
    black, so something is OVER the picture. `BODY over the video cover=... top=...` (topmost view chain at the
    picture's centre, [bg] = paints a background) names it. User: only the video area is black, sound plays, controls fine. Likely the SurfaceView keeping a stale alpha
    from the video pane's 0->1 fade (`BodyLayout.showPane`); the video pane now never fades in and its
-   SurfaceViews get their alpha re-applied (`refreshSurfaces`). Any other mid-play re-enable
+   SurfaceViews get their alpha re-applied (`refreshSurfaces`). Fade/alpha theory did not hold (still black). Pattern: works when `BODY video surface created` precedes
+   (first start); black on music->Video where no surface destroy/create was logged, i.e. the SurfaceView
+   (which tracks only its OWN visibility) survived its GONE pane and was not re-shown. Now the pane's
+   SurfaceViews are hidden/shown with it (`VideoView.setSurfacesShown`, `BodyLayout.hidePane/showPane`) and
+   `switchToVideo` waits for the new surface before restarting. Side effect to watch: leaving fullscreen
+   while a local video keeps playing now destroys its surface (video track disabled); coming back re-enables
+   it mid-play, the path that once raced to the end. Any other mid-play re-enable
    of the video track (`ExoPlayerEngine.setVideoTrackDisabled(false)`) may have the same problem. Earlier notes: Instrumented: `BODY video pane 3 s in ...` (pane visible/alpha/size, surface valid, registered
    with the session, engine item isVideo), `ENGINE picture: screen given/taken away`, `ENGINE picture: first frame
    drawn after=Nms`. `addVideoView` now re-gives a re-created surface to the engine (it used to return early).
