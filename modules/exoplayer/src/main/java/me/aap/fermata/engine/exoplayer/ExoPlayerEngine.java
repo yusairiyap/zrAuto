@@ -165,6 +165,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	@Override
 	public void prepare(PlayableItem source) {
 		stallGen++;
+		stallRetried = false;
 		firstFrame = false;
 		if (this.source == null) {
 			resetFade();
@@ -184,7 +185,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		Uri uri = source.getLocation();
 		MediaItem m = MediaItem.fromUri(uri);
 		isHls = Util.inferContentType(uri) == C.CONTENT_TYPE_HLS;
-		setVideoTrackDisabled(source.isAudioOnlyPlayback());
+		setVideoTrackDisabled(videoOff(source, shown));
 		player.setMediaItem(m);
 		player.prepare();
 	}
@@ -206,7 +207,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		if ((cur == null) || !cur.getLocation().equals(src.getLocation())) return false;
 		source = src;
 		accessor.sourceChanged(src);
-		setVideoTrackDisabled(src.isAudioOnlyPlayback());
+		setVideoTrackDisabled(videoOff(src, shown));
 		return true;
 	}
 
@@ -239,6 +240,18 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 			if ((gen != stallGen) || (source == null) || (accessor.player == null)) return;
 			if (!player.getPlayWhenReady() || (player.getPlaybackState() != Player.STATE_READY)) return;
 			if (player.getCurrentPosition() > at + 300) return;
+			boolean off = player.getTrackSelectionParameters().disabledTrackTypes
+					.contains(C.TRACK_TYPE_VIDEO);
+			if (off && !stallRetried) {
+				// Stuck with the picture switched off: on again (and for good, for this file).
+				stallRetried = true;
+				String id = src.getOrigId();
+				if (id != null) keepPicture.add(id);
+				DiagnosticLog.log("ENGINE", "no progress with the picture off: switched on", "item=" + src);
+				setVideoTrackDisabled(false);
+				watchForStall();
+				return;
+			}
 			Format a = player.getAudioFormat();
 			Format v = player.getVideoFormat();
 			DiagnosticLog.log("ENGINE", "no progress after start", "item=" + source,
@@ -348,10 +361,23 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		// With nowhere to show it (the app in the background) the picture is not decoded at all: the
 		// sound plays on without a video decoder that can stall or be taken away.
 		PlayableItem s = source;
-		if (s != null) setVideoTrackDisabled((view == null) || s.isAudioOnlyPlayback());
 		shown = view;
+		if (s != null) setVideoTrackDisabled(videoOff(s, view));
 		firstFrame = false;
 		if (view != null) watchBlackPicture();
+	}
+
+	// Files whose picture has to stay switched on even for the sound alone: some stall from their
+	// first second without it (and the platform player fails on them too).
+	private static final java.util.Set<String> keepPicture =
+			java.util.concurrent.ConcurrentHashMap.newKeySet();
+	private boolean stallRetried;
+
+	/** Whether the picture's track is to be off for {@code s}: no screen for it, or sound only. */
+	private static boolean videoOff(PlayableItem s, @Nullable VideoView view) {
+		String id = s.getOrigId();
+		if ((id != null) && keepPicture.contains(id)) return false;
+		return (view == null) || s.isAudioOnlyPlayback();
 	}
 
 	// The view the picture is given to, whether the first frame of it has been drawn, and the

@@ -1259,6 +1259,8 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 		PlaybackStateCompat s = createPlayingState(i, !playing, getQid.peek(0L), pos, speed);
 		session.setMetadata(md);
+		DiagnosticLog.log("META", "session metadata", "item=" + i,
+				"title=" + md.getString(METADATA_KEY_DISPLAY_TITLE), "loaded=" + load.isDone());
 		setPlaybackState(s);
 	}
 
