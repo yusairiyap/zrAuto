@@ -50,8 +50,11 @@ below Android 13; diagnostic log trims in halves; YouTube cover not lifted early
 cleared when playing.
 
 ## Open problems (need device logs to confirm each)
-0. **Black fullscreen on "Video" after a downloaded video played as music (still sometimes)**: not explained by
-   the logs yet. Instrumented: `BODY video pane 3 s in ...` (pane visible/alpha/size, surface valid, registered
+0. **Black fullscreen on "Video" after a downloaded video played as music**: log 00:04:21 showed the cause.
+   After the picture track was re-enabled mid-play (+ seek in place), ExoPlayer raced from 23 s to 177 s in 8 s
+   (first frame drawn, pane fine) and skipped on. `MusicPlayer.switchToVideo` now restarts the track at its
+   position with the picture on (`startTrack(.., true)`) instead of `switchItem`. Any other mid-play re-enable
+   of the video track (`ExoPlayerEngine.setVideoTrackDisabled(false)`) may have the same problem. Earlier notes: Instrumented: `BODY video pane 3 s in ...` (pane visible/alpha/size, surface valid, registered
    with the session, engine item isVideo), `ENGINE picture: screen given/taken away`, `ENGINE picture: first frame
    drawn after=Nms`. `addVideoView` now re-gives a re-created surface to the engine (it used to return early).
    Grid/list mismatch in Favorites/Playlists (giant grid cards in a 1-column list) fixed: lists and cards read the

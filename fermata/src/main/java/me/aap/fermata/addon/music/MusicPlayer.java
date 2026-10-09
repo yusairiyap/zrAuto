@@ -785,12 +785,14 @@ public final class MusicPlayer {
 			if ((b != null) && !b.isVideoMode()) b.setMode(BodyLayout.Mode.VIDEO);
 			// The Music tab lets go of the floating buttons a moment later: they come with the video.
 			a.post(a::updateExtraFabsVisibility);
-			if (!cb.switchItem(t)) {
-				eng.getPosition().main().onSuccess(pos -> {
-					if (cb.getEngine() != eng) return;
-					startTrack(a, t, pos, true);
-				});
-			}
+			// Started again from where it is, picture on, rather than the same player switching its
+			// picture track back on mid-play (switchItem): after that ExoPlayer raced through the rest
+			// of the file (23 s to 177 s in 8 s in the log), its picture black, then skipped to the next
+			// track. A fresh start with the picture on always plays; a local file is ready in ~0.1 s.
+			eng.getPosition().main().onSuccess(pos -> {
+				if (cb.getEngine() != eng) return;
+				startTrack(a, t, pos, true);
+			});
 			return;
 		}
 
