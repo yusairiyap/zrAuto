@@ -14,6 +14,7 @@ import android.graphics.Color;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.os.Handler;
 import android.os.Looper;
 import android.support.v4.media.session.PlaybackStateCompat;
@@ -32,6 +33,7 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.widget.TooltipCompat;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -76,10 +78,17 @@ import me.aap.utils.ui.UiUtils;
  * Tapping a result plays it now; its Up next button puts it at the front of the queue (see
  * {@link YoutubeAddon#getUpNext()}), which plays before the current Favorites/Playlist continues --
  * the list's next few entries are previewed, dimmed, right below the queue to show exactly that.
+ * With {@link MainActivityPrefs#YT_SEARCH_TAP_QUEUES} on, the two swap: a tap queues, the button
+ * plays.
  * <p>
  * On a wide screen (landscape, a tablet, the car) results and the queue sit side by side; on a
- * narrow one they share a single list, queue first. Every change animates (DiffUtil), and the
- * panel itself slides in/out -- see {@link #slideIn()}/{@link #slideOut(Runnable)}.
+ * narrow one they share a single list, queue first. With {@link MainActivityPrefs#YT_SEPARATE_PANELS}
+ * on, the panel shows just one of the two (see {@link #setPart}) across its whole width. Every
+ * change animates (DiffUtil), and the panel itself slides in/out -- see
+ * {@link #slideIn()}/{@link #slideOut(Runnable)}.
+ * <p>
+ * While a search is being typed, YouTube's own predictions replace the past searches as chips
+ * (see {@link #setTyping}).
  */
 @SuppressLint("ViewConstructor")
 final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallback.Listener {
@@ -98,6 +107,16 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 	private static final int KIND_UP_NEXT = 1;
 	private static final int KIND_LIST = 2;
 	private static final int KIND_LIBRARY = 3;
+	/** Which part(s) the panel shows -- see {@link #setPart}. */
+	static final int PART_BOTH = 0;
+	static final int PART_SEARCH = 1;
+	static final int PART_QUEUE = 2;
+	/** YouTube's search predictions shown while typing. */
+	private static final int MAX_SUGGESTIONS = 10;
+	/** How long typing has to pause before predictions are fetched for it. */
+	private static final long SUGGEST_DELAY_MS = 200;
+	/** Predictions get their own thread: they shouldn't queue up behind a slow search. */
+	private static final ExecutorService suggestExecutor = Executors.newSingleThreadExecutor();
 	/** Favorites/Playlist entries matching a search, shown above YouTube's own results. */
 	private static final int MAX_LIBRARY_RESULTS = 12;
 	private final Handler handler = new Handler(Looper.getMainLooper());
@@ -131,6 +150,15 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 	private String listName;
 	private boolean listShuffled;
 	private boolean split;
+	private int part = PART_BOTH;
+	/** What's being typed into the search field (trimmed), or empty -- see {@link #setTyping}. */
+	private String typing = "";
+	private final List<String> suggestions = new ArrayList<>();
+	private int suggestGeneration;
+	@Nullable
+	private Runnable pendingSuggest;
+	/** The tap-to-queue setting the rows were last bound with -- see {@link #refresh()}. */
+	private boolean boundTapQueues = tapQueues();
 	/** "Show more" was tapped for the current results -- see {@link #refresh()}. */
 	private boolean resultsExpanded;
 	/** How far the panel is unrolled, 0..1 -- see {@link #slideIn()}. */
@@ -199,8 +227,10 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		if (musicQueue != null) musicQueue.removeListener(musicQueueListener);
 		musicQueue = null;
 		handler.removeCallbacksAndMessages(null);
+		pendingSuggest = null;
 		generation++;
 		listGeneration++;
+		suggestGeneration++;
 	}
 
 	@Override
@@ -222,7 +252,16 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 				((w > getHeight()) && (dp >= 560));
 		if (s == split) return;
 		split = s;
-		sideList.setVisibility(s ? VISIBLE : GONE);
+		relayout();
+	}
+
+	/** Two columns only for both parts on a wide screen. */
+	private boolean isTwoColumns() {
+		return split && (part == PART_BOTH);
+	}
+
+	private void relayout() {
+		sideList.setVisibility(isTwoColumns() ? VISIBLE : GONE);
 		// Start the other layout from scratch rather than animating every row across lists.
 		mainAdapter.rows.clear();
 		sideAdapter.rows.clear();
@@ -231,6 +270,72 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		//noinspection NotifyDataSetChanged
 		sideAdapter.notifyDataSetChanged();
 		refresh();
+	}
+
+	int getPart() {
+		return part;
+	}
+
+	/**
+	 * Search and Up next together ({@link #PART_BOTH}), or just one of them when they're set to
+	 * open separately -- see YoutubeFragment#showSearchPanel(boolean).
+	 */
+	void setPart(int p) {
+		if (p == part) return;
+		part = p;
+		relayout();
+	}
+
+	/**
+	 * What's being typed into the toolbar's search field: once typing pauses, YouTube's predictions
+	 * for it replace the past searches as chips (the row swap animates); empty puts the past
+	 * searches back. The previous predictions stay up while the next ones load, so the chips don't
+	 * blink on every key.
+	 */
+	void setTyping(String text) {
+		String t = text.trim();
+		if (t.equals(typing)) return;
+		typing = t;
+		int gen = ++suggestGeneration;
+		if (pendingSuggest != null) handler.removeCallbacks(pendingSuggest);
+		pendingSuggest = null;
+
+		if (t.isEmpty()) {
+			suggestions.clear();
+			refresh();
+			return;
+		}
+
+		refresh();
+		Runnable r = () -> suggestExecutor.execute(() -> {
+			List<String> found = null;
+			try {
+				found = YoutubeSearch.suggest(t, MAX_SUGGESTIONS);
+			} catch (Exception ex) {
+				Log.d(ex, "YouTube search predictions failed: ", t);
+			}
+			List<String> result = found;
+			handler.post(() -> {
+				if ((gen != suggestGeneration) || (result == null)) return;
+				suggestions.clear();
+				suggestions.addAll(result);
+				refresh();
+			});
+		});
+		pendingSuggest = r;
+		handler.postDelayed(r, SUGGEST_DELAY_MS);
+	}
+
+	private void stopTyping() {
+		typing = "";
+		suggestions.clear();
+		suggestGeneration++;
+		if (pendingSuggest != null) handler.removeCallbacks(pendingSuggest);
+		pendingSuggest = null;
+	}
+
+	private static boolean tapQueues() {
+		return MainActivityPrefs.get().getBooleanPref(MainActivityPrefs.YT_SEARCH_TAP_QUEUES);
 	}
 
 	/**
@@ -311,6 +416,7 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		String search = q;
 		int gen = ++generation;
 		query = q;
+		stopTyping();
 		resultsExpanded = false;
 		searching = true;
 		failed = false;
@@ -349,6 +455,7 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 	void clearSearch() {
 		generation++;
 		query = null;
+		stopTyping();
 		searching = false;
 		failed = false;
 		resultsExpanded = false;
@@ -534,19 +641,38 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 	void refresh() {
 		List<Row> queueRows = new ArrayList<>();
 		List<Row> searchRows = new ArrayList<>();
-		buildQueueRows(queueRows);
 
-		if (split) {
+		if (part == PART_QUEUE) {
+			buildQueueRows(queueRows);
+			mainAdapter.submit(queueRows);
+			sideAdapter.submit(Collections.emptyList());
+		} else if (part == PART_SEARCH) {
+			// The whole width for results: no "Show more" needed.
+			buildSearchRows(searchRows, Integer.MAX_VALUE);
+			mainAdapter.submit(searchRows);
+			sideAdapter.submit(Collections.emptyList());
+		} else if (split) {
+			buildQueueRows(queueRows);
 			buildSearchRows(searchRows, Integer.MAX_VALUE);
 			mainAdapter.submit(searchRows);
 			sideAdapter.submit(queueRows);
 		} else {
 			// One narrow column: the first few results, then the queue -- both in sight without
 			// scrolling past a long result list; "Show more" on the results header expands it.
+			buildQueueRows(queueRows);
 			buildSearchRows(searchRows, resultsExpanded ? Integer.MAX_VALUE : COLLAPSED_RESULTS);
 			searchRows.addAll(queueRows);
 			mainAdapter.submit(searchRows);
 			sideAdapter.submit(Collections.emptyList());
+		}
+
+		// The tap-to-queue setting changed since: the rows' tap and button swap roles, which their
+		// content comparison doesn't see.
+		boolean tq = tapQueues();
+		if (tq != boundTapQueues) {
+			boundTapQueues = tq;
+			mainAdapter.notifyItemRangeChanged(0, mainAdapter.getItemCount());
+			sideAdapter.notifyItemRangeChanged(0, sideAdapter.getItemCount());
 		}
 	}
 
@@ -556,7 +682,7 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		boolean hasList = (listName != null) && (listShuffled || !listItems.isEmpty());
 		// On a narrow screen an empty queue isn't worth the space; the car/wide layout keeps the
 		// column, with a hint, so it's clear where queued videos go.
-		if (upNext.isEmpty() && !hasList && !split) return;
+		if (upNext.isEmpty() && !hasList && !split && (part != PART_QUEUE)) return;
 
 		String title = upNext.isEmpty() ? ctx.getString(me.aap.fermata.R.string.youtube_up_next) :
 				ctx.getString(me.aap.fermata.R.string.youtube_up_next_count, upNext.size());
@@ -586,8 +712,13 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		Context ctx = getContext();
 
 		// Past searches, as chips right below the search field -- see YoutubeAddon#getSearchHistory().
-		List<String> history = addon.getSearchHistory();
-		if (!history.isEmpty()) rows.add(Row.history(history));
+		// While typing, YouTube's predictions take their place (a different row: the swap animates).
+		if (!typing.isEmpty()) {
+			if (!suggestions.isEmpty()) rows.add(Row.chips("c:suggest", suggestions, true));
+		} else {
+			List<String> history = addon.getSearchHistory();
+			if (!history.isEmpty()) rows.add(Row.chips("c:history", history, false));
+		}
 
 		if (query == null) return;
 
@@ -601,15 +732,19 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		}
 
 		boolean more = !searching && !failed && (results.size() > COLLAPSED_RESULTS) &&
-				(resultsExpanded || (limit < results.size()));
-		rows.add(Row.header("h:results",
+				(part == PART_BOTH) && !split;
+		String inPage = query;
+		Row header = Row.header("h:results",
 				ctx.getString(me.aap.fermata.R.string.youtube_search_results, query),
 				more ? ctx.getString(resultsExpanded ? me.aap.fermata.R.string.youtube_show_less :
 						me.aap.fermata.R.string.youtube_show_more) : null,
 				more ? () -> {
 					resultsExpanded = !resultsExpanded;
 					refresh();
-				} : null));
+				} : null);
+		// A small icon chip, not another label: the same search on YouTube's own results page.
+		header.iconAction = () -> fragment.searchInPage(inPage);
+		rows.add(header);
 		if (searching) {
 			rows.add(Row.note("n:searching", ctx.getString(me.aap.fermata.R.string.youtube_searching)));
 		} else if (failed) {
@@ -693,8 +828,13 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		final PlayableItem item;
 		/** Shown dimmed: a list entry that only plays after the queued videos. */
 		boolean dim;
-		/** {@link #TYPE_HISTORY}'s searches. */
+		/** {@link #TYPE_HISTORY}'s searches (past ones, or YouTube's predictions). */
 		List<String> queries = Collections.emptyList();
+		/** {@link #TYPE_HISTORY}: YouTube's predictions rather than past searches. */
+		boolean suggest;
+		/** {@link #TYPE_HEADER}: an icon chip after the text one (Search in page), or null. */
+		@Nullable
+		Runnable iconAction;
 
 		private Row(int type, String key, @Nullable String text, @Nullable String chip,
 								@Nullable Runnable action, int kind, @Nullable String videoId,
@@ -714,11 +854,12 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 			return new Row(TYPE_HEADER, key, text, chip, action, 0, null, null, null);
 		}
 
-		/** The chip row of past searches; {@code text} carries them for the content comparison. */
-		static Row history(List<String> queries) {
-			Row r = new Row(TYPE_HISTORY, "c:history", String.join("\n", queries), null, null, 0, null,
-					null, null);
-			r.queries = queries;
+		/** A chip row of searches; {@code text} carries them for the content comparison. */
+		static Row chips(String key, List<String> queries, boolean suggest) {
+			List<String> q = new ArrayList<>(queries);
+			Row r = new Row(TYPE_HISTORY, key, String.join("\n", q), null, null, 0, null, null, null);
+			r.queries = q;
+			r.suggest = suggest;
 			return r;
 		}
 
@@ -756,6 +897,7 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 
 		boolean sameContent(Row o) {
 			return (type == o.type) && (kind == o.kind) && (dim == o.dim) &&
+					((iconAction == null) == (o.iconAction == null)) &&
 					Objects.equals(text, o.text) && Objects.equals(chip, o.chip);
 		}
 	}
@@ -838,14 +980,19 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 				v.findViewById(me.aap.fermata.R.id.si_preview).setFocusable(true);
 				((TextView) v.findViewById(me.aap.fermata.R.id.si_title)).setTextColor(textPrimary);
 				((TextView) v.findViewById(me.aap.fermata.R.id.si_detail)).setTextColor(textSecondary);
-				((ImageView) v.findViewById(me.aap.fermata.R.id.si_preview))
-						.setImageTintList(ColorStateList.valueOf(textPrimary));
+				ImageView button = v.findViewById(me.aap.fermata.R.id.si_preview);
+				button.setImageTintList(ColorStateList.valueOf(textPrimary));
+				styleIconChip(button);
 			} else if (viewType == TYPE_HEADER) {
 				v = createHeader(ctx);
 			} else if (viewType == TYPE_HISTORY) {
 				HorizontalScrollView sv = new HorizontalScrollView(ctx);
 				sv.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 				sv.setHorizontalScrollBarEnabled(false);
+				// More chips than fit fade out at the edge (and back in at the start once scrolled),
+				// rather than being cut off mid-word -- e.g. against the Up next column.
+				sv.setHorizontalFadingEdgeEnabled(true);
+				sv.setFadingEdgeLength((int) UiUtils.toPx(ctx, 48));
 				LinearLayout chips = new LinearLayout(ctx);
 				chips.setId(me.aap.fermata.R.id.si_title);
 				chips.setOrientation(LinearLayout.HORIZONTAL);
@@ -903,7 +1050,49 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 			TextView chip = createChip(ctx);
 			chip.setId(me.aap.fermata.R.id.si_detail);
 			l.addView(chip, new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
+
+			// The optional icon chip (Search in page), lined up with the rows' buttons below it.
+			ImageView icon = new ImageView(ctx);
+			icon.setId(me.aap.fermata.R.id.si_preview);
+			icon.setImageTintList(ColorStateList.valueOf(textPrimary));
+			styleIconChip(icon);
+			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+					(int) UiUtils.toPx(ctx, 48), (int) UiUtils.toPx(ctx, 32));
+			lp.setMarginStart((int) UiUtils.toPx(ctx, 8));
+			l.addView(icon, lp);
 			return l;
+		}
+
+		/**
+		 * A row's (or header's) icon button drawn as a small outlined pill, like the text chips: an
+		 * obvious button, rather than a bare glyph floating at the row's end.
+		 */
+		private void styleIconChip(ImageView b) {
+			Context ctx = b.getContext();
+			int ph = (int) UiUtils.toPx(ctx, 12);
+			int pv = (int) UiUtils.toPx(ctx, 5);
+			b.setPadding(ph, pv, ph, pv);
+			b.setScaleType(ImageView.ScaleType.FIT_CENTER);
+			GradientDrawable bg = new GradientDrawable();
+			bg.setCornerRadius(UiUtils.toPx(ctx, 16));
+			bg.setStroke((int) UiUtils.toPx(ctx, 1), textSecondary);
+			bg.setColor(Color.TRANSPARENT);
+			GradientDrawable mask = new GradientDrawable();
+			mask.setCornerRadius(UiUtils.toPx(ctx, 16));
+			mask.setColor(Color.WHITE);
+			b.setBackground(new RippleDrawable(
+					ColorStateList.valueOf((textPrimary & 0x00FFFFFF) | 0x33000000), bg, mask));
+			b.setFocusable(true);
+			b.setClickable(true);
+			ViewGroup.LayoutParams lp = b.getLayoutParams();
+			if (lp != null) {
+				lp.width = (int) UiUtils.toPx(ctx, 48);
+				lp.height = (int) UiUtils.toPx(ctx, 32);
+				if (lp instanceof ViewGroup.MarginLayoutParams mlp) {
+					mlp.setMarginStart((int) UiUtils.toPx(ctx, 8));
+				}
+				b.setLayoutParams(lp);
+			}
 		}
 
 		private TextView createChip(Context ctx) {
@@ -936,13 +1125,24 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 			}
 		}
 
+		private boolean canPlayNext(Context ctx, PlayableItem pi, @Nullable String videoId) {
+			return (pi instanceof MusicTrackItem) || (videoId != null) ||
+					MusicPlayer.isMusicModeActive(MainActivityDelegate.get(ctx));
+		}
+
+		/** The row's button as "Play now" -- for when a tap on the row queues (tap-to-queue). */
+		private void bindPlayNow(ImageView button, Runnable play) {
+			button.setVisibility(VISIBLE);
+			button.setImageResource(me.aap.fermata.R.drawable.play);
+			button.setContentDescription(button.getContext()
+					.getString(me.aap.fermata.R.string.youtube_play_now));
+			button.setOnClickListener(x -> play.run());
+		}
+
 		/** The row's button as "Play next" for a library/list entry, where that's possible. */
 		private void bindPlayNext(ImageView button, PlayableItem pi, @Nullable String videoId,
 															String title) {
-			MainActivityDelegate a = MainActivityDelegate.get(button.getContext());
-			boolean can = (pi instanceof MusicTrackItem) || (videoId != null) ||
-					MusicPlayer.isMusicModeActive(a);
-			if (!can) {
+			if (!canPlayNext(button.getContext(), pi, videoId)) {
 				button.setVisibility(GONE);
 				button.setOnClickListener(null);
 				return;
@@ -961,6 +1161,12 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 
 			if (r.type == TYPE_HISTORY) {
 				LinearLayout chips = v.findViewById(me.aap.fermata.R.id.si_title);
+				// New predictions for the same row (typing went on): a quick fade rather than a jump.
+				if (r.suggest && (chips.getChildCount() > 0)) {
+					chips.animate().cancel();
+					chips.setAlpha(0.3f);
+					chips.animate().alpha(1f).setDuration(150).start();
+				}
 				chips.removeAllViews();
 				Context ctx = v.getContext();
 				int gap = (int) UiUtils.toPx(ctx, 8);
@@ -968,7 +1174,11 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 					TextView c = createChip(ctx);
 					c.setText(q);
 					c.setOnClickListener(x -> fragment.searchFromHistory(q));
-					c.setOnLongClickListener(x -> {
+					if (r.suggest) {
+						// A prediction, not a past search: nothing to remove.
+						c.setTypeface(Typeface.DEFAULT);
+						c.setOnLongClickListener(null);
+					} else c.setOnLongClickListener(x -> {
 						addon.removeSearchHistory(q);
 						return true;
 					});
@@ -982,6 +1192,7 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 			if (r.type == TYPE_HEADER) {
 				TextView title = v.findViewById(me.aap.fermata.R.id.si_title);
 				TextView chip = v.findViewById(me.aap.fermata.R.id.si_detail);
+				ImageView icon = v.findViewById(me.aap.fermata.R.id.si_preview);
 				title.setText(r.text);
 				Runnable a = r.action;
 				if ((r.chip != null) && (a != null)) {
@@ -991,6 +1202,18 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 				} else {
 					chip.setVisibility(GONE);
 					chip.setOnClickListener(null);
+				}
+				Runnable ia = r.iconAction;
+				if (ia != null) {
+					String label = v.getContext().getString(me.aap.fermata.R.string.youtube_search_in_page);
+					icon.setVisibility(VISIBLE);
+					icon.setImageResource(me.aap.fermata.R.drawable.youtube);
+					icon.setContentDescription(label);
+					TooltipCompat.setTooltipText(icon, label);
+					icon.setOnClickListener(x -> ia.run());
+				} else {
+					icon.setVisibility(GONE);
+					icon.setOnClickListener(null);
 				}
 				return;
 			}
@@ -1028,11 +1251,19 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 							(d + " • " + video.durationText);
 					detail.setText(d);
 					loadImage(thumb, video.thumbnailUrl());
-					button.setVisibility(VISIBLE);
-					button.setImageResource(me.aap.fermata.R.drawable.playlist_add);
-					button.setContentDescription(ctx.getString(me.aap.fermata.R.string.youtube_play_next));
-					button.setOnClickListener(x -> fragment.queueVideo(video.videoId, video.title, true));
-					v.setOnClickListener(x -> fragment.playVideoNow(video.videoId, video.title));
+					Runnable play = () -> fragment.playVideoNow(video.videoId, video.title);
+					Runnable queue = () -> fragment.queueVideo(video.videoId, video.title, true);
+					if (tapQueues()) {
+						// Swapped: a tap queues, the button plays.
+						bindPlayNow(button, play);
+						v.setOnClickListener(x -> queue.run());
+					} else {
+						button.setVisibility(VISIBLE);
+						button.setImageResource(me.aap.fermata.R.drawable.playlist_add);
+						button.setContentDescription(ctx.getString(me.aap.fermata.R.string.youtube_play_next));
+						button.setOnClickListener(x -> queue.run());
+						v.setOnClickListener(x -> play.run());
+					}
 					v.setOnLongClickListener(x -> {
 						fragment.showVideoActions(video.videoId, video.title);
 						return true;
@@ -1055,8 +1286,13 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 					detail.setText(ctx.getString(me.aap.fermata.R.string.youtube_from_list,
 							pi.getParent().getName()));
 					loadImage(thumb, thumbnailUrl(r.videoId));
-					bindPlayNext(button, pi, r.videoId, t);
-					v.setOnClickListener(x -> fragment.playFromList(pi));
+					if (tapQueues() && canPlayNext(ctx, pi, r.videoId)) {
+						bindPlayNow(button, () -> fragment.playFromList(pi));
+						v.setOnClickListener(x -> playNext(pi, r.videoId, t));
+					} else {
+						bindPlayNext(button, pi, r.videoId, t);
+						v.setOnClickListener(x -> fragment.playFromList(pi));
+					}
 					v.setOnLongClickListener(null);
 				}
 				default -> {

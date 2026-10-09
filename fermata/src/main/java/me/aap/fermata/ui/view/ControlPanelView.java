@@ -78,6 +78,9 @@ public class ControlPanelView extends ConstraintLayout
 	// Set while a screen with its own full player UI (the Music tab) is showing -- the panel stays
 	// out of the way without forgetting whether it's otherwise meant to be visible.
 	private static final byte MASK_SUPPRESSED = 4;
+	// Set while a panel laid over the screen (the YouTube tab's search/Up next) runs down to the
+	// bottom: the panel fades away and comes back, without forgetting whether it's meant to show.
+	private static final byte MASK_COVERED = 8;
 	/** The vertical padding control_panel_view.xml gives the transport buttons, in dp. */
 	private static final int LAYOUT_BUTTON_PAD_V = 6;
 	@IdRes
@@ -253,7 +256,7 @@ public class ControlPanelView extends ConstraintLayout
 	protected Parcelable onSaveInstanceState() {
 		Parcelable parentState = super.onSaveInstanceState();
 		Bundle b = new Bundle();
-		b.putByte("MASK", (byte) (mask & ~MASK_SUPPRESSED));
+		b.putByte("MASK", (byte) (mask & ~(MASK_SUPPRESSED | MASK_COVERED)));
 		b.putParcelable("PARENT", parentState);
 		return b;
 	}
@@ -389,7 +392,7 @@ public class ControlPanelView extends ConstraintLayout
 	}
 
 	public boolean isActive() {
-		return (mask & ~MASK_SUPPRESSED) != 0;
+		return (mask & ~(MASK_SUPPRESSED | MASK_COVERED)) != 0;
 	}
 
 	public boolean isSuppressed() {
@@ -423,7 +426,8 @@ public class ControlPanelView extends ConstraintLayout
 		} else {
 			mask &= ~MASK_SUPPRESSED;
 			if ((mask & MASK_VIDEO_MODE) == 0)
-				super.setVisibility(((mask & MASK_VISIBLE) != 0) ? VISIBLE : GONE);
+				super.setVisibility(((mask & (MASK_VISIBLE | MASK_COVERED)) == MASK_VISIBLE) ?
+						VISIBLE : GONE);
 		}
 
 		notifyControlPanelVisibility();
@@ -434,6 +438,41 @@ public class ControlPanelView extends ConstraintLayout
 		// once more after that pass, once everything has settled into its final place.
 		a.refreshContentInsets();
 		post(a::refreshContentInsets);
+	}
+
+	public boolean isCovered() {
+		return (mask & MASK_COVERED) != 0;
+	}
+
+	/**
+	 * Fades the panel away while something laid over the screen needs its room (the YouTube tab's
+	 * search/Up next panel), and fades it back in -- if it's otherwise meant to show -- once that
+	 * goes. Video mode (fullscreen) and the Music tab's suppression still decide on their own.
+	 */
+	public void setCovered(boolean covered) {
+		if (covered == isCovered()) return;
+		MainActivityDelegate a = getActivity();
+
+		if (covered) {
+			mask |= MASK_COVERED;
+			if ((mask & (MASK_VIDEO_MODE | MASK_SUPPRESSED)) == 0) hideAnimated(a);
+		} else {
+			mask &= ~MASK_COVERED;
+			if (((mask & (MASK_VIDEO_MODE | MASK_SUPPRESSED)) == 0) && ((mask & MASK_VISIBLE) != 0)) {
+				if (getVisibility() != VISIBLE) {
+					a.glideFabsAfterLayout();
+					fadeIn(this, true);
+					post(a::refreshContentInsets);
+				} else {
+					// Still fading out: back from wherever it got to.
+					animate().cancel();
+					animate().alpha(1f).setDuration(FADE_DURATION).start();
+				}
+			}
+		}
+
+		notifyControlPanelVisibility();
+		checkPlaybackTimer(a);
 	}
 
 	/**
@@ -454,7 +493,7 @@ public class ControlPanelView extends ConstraintLayout
 
 		if (visibility == VISIBLE) {
 			mask |= MASK_VISIBLE;
-			if ((mask & (MASK_VIDEO_MODE | MASK_SUPPRESSED)) != 0) return;
+			if ((mask & (MASK_VIDEO_MODE | MASK_SUPPRESSED | MASK_COVERED)) != 0) return;
 
 			if (getVisibility() != VISIBLE) {
 				// Fades in, while the floating buttons sitting on it glide up out of its way.
@@ -549,7 +588,7 @@ public class ControlPanelView extends ConstraintLayout
 		findViewById(R.id.show_hide_bars).setClickable(true);
 		findViewById(R.id.show_hide_bars_icon).setVisibility(VISIBLE);
 
-		if (((mask & MASK_VISIBLE) == 0) || ((mask & MASK_SUPPRESSED) != 0)) {
+		if (((mask & MASK_VISIBLE) == 0) || ((mask & (MASK_SUPPRESSED | MASK_COVERED)) != 0)) {
 			super.setVisibility(GONE);
 			a.setBarsHidden(false);
 		} else {
@@ -708,7 +747,9 @@ public class ControlPanelView extends ConstraintLayout
 			return;
 		}
 		animate().alpha(0f).setDuration(FADE_DURATION).withEndAction(() -> {
-			if ((mask & (MASK_VISIBLE | MASK_VIDEO_MODE)) == 0) {
+			// Not shown again meanwhile (or still covered), and video mode didn't take it over.
+			if (((mask & MASK_VIDEO_MODE) == 0) &&
+					(((mask & MASK_VISIBLE) == 0) || ((mask & MASK_COVERED) != 0))) {
 				a.glideFabsAfterLayout();
 				super.setVisibility(GONE);
 				notifyControlPanelVisibility();

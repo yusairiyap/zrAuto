@@ -64,6 +64,28 @@ public final class YoutubeSearch {
 	}
 
 	/**
+	 * YouTube's own search predictions for what's typed so far -- the list its search box drops
+	 * down. Key-less like {@link #search}; the "firefox" client answers plain JSON
+	 * ({@code ["query", ["prediction", ...]]}) rather than the JSONP the "youtube" one wraps it in.
+	 */
+	public static List<String> suggest(String query, int max) throws IOException {
+		Http.Response r = Http.get("https://suggestqueries.google.com/complete/search?client=firefox" +
+				"&ds=yt&ie=utf-8&oe=utf-8&q=" + URLEncoder.encode(query, "UTF-8"), null);
+		if (!r.isOk()) throw new IOException("YouTube returned HTTP " + r.code);
+		List<String> out = new ArrayList<>();
+		try {
+			JSONArray list = new JSONArray(r.body).getJSONArray(1);
+			for (int i = 0, n = list.length(); (i < n) && (out.size() < max); i++) {
+				String s = list.optString(i, "").trim();
+				if (!s.isEmpty() && !out.contains(s)) out.add(s);
+			}
+		} catch (JSONException ex) {
+			throw new IOException("Unexpected YouTube response", ex);
+		}
+		return out;
+	}
+
+	/**
 	 * Searches for {@code t} and returns the results ordered best match first: YouTube's own
 	 * relevance order, nudged towards videos whose length matches the Spotify track and away from
 	 * live/cover/karaoke-style variants the track title doesn't itself ask for.

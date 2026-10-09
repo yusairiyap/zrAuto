@@ -780,6 +780,7 @@
     <string name="youtube_then_shuffled">Then shuffled from %1$s</string>
     <string name="youtube_show_more">Show more</string>
     <string name="youtube_show_less">Show less</string>
+    <string name="youtube_search_in_page">Search in page</string>
     <string name="youtube_playing_from">Playing from %1$s</string>
     <string name="youtube_playing_shuffled">Playing shuffled from %1$s</string>
     <string name="youtube_clear_search">Clear search</string>
@@ -788,6 +789,10 @@
     <string name="up_next_prefs">YouTube search &amp; Up next</string>
     <string name="search_history">Remember searches</string>
     <string name="search_history_sub">Show recent searches as chips in the search panel. Not kept in Private Mode, and cleared along with browsing data. Long-press a chip to remove it.</string>
+    <string name="yt_search_tap_queues">Tap a search result to queue it</string>
+    <string name="yt_search_tap_queues_sub">Tapping a result adds it to Play next instead of playing it; its button then plays it now</string>
+    <string name="yt_separate_panels">Open search and Up next separately</string>
+    <string name="yt_separate_panels_sub">The title and search button show just the search; the Up next button shows just the queue</string>
     <string name="up_next_max">Queue size</string>
     <string name="up_next_max_sub">The most videos the Up next queue holds</string>
     <string name="up_next_list_preview">Playlist items shown</string>

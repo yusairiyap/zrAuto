@@ -45,6 +45,8 @@ import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.ytdl.YtDownloadMenu;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.fermata.ui.view.VideoView;
@@ -218,6 +220,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		unregisterListeners(a);
 		onPipModeChanged(false);
 		removeVideoViewOverlay(a);
+		if (panelOpen) coverControlPanel(false);
 		searchPanel = null;
 		panelOpen = false;
 		super.onDestroyView();
@@ -887,6 +890,16 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		return panelOpen && (searchPanel != null);
 	}
 
+	/** The panel is open with its search part -- not just Up next on its own. */
+	boolean isSearchPartShown() {
+		return isSearchPanelShown() && (searchPanel.getPart() != YoutubeSearchPanel.PART_QUEUE);
+	}
+
+	/** Search and Up next open on their own (Settings > YouTube search & Up next). */
+	static boolean isSeparatePanels() {
+		return MainActivityPrefs.get().getBooleanPref(MainActivityPrefs.YT_SEPARATE_PANELS);
+	}
+
 	/**
 	 * Shows the search/Up next panel over the page. The page underneath is left completely alone --
 	 * not navigated, hidden or paused -- so whatever is playing keeps playing. See
@@ -894,6 +907,15 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	 */
 	@Nullable
 	YoutubeSearchPanel showSearchPanel() {
+		return showSearchPanel(true);
+	}
+
+	/**
+	 * @param forSearch what it's opened for: searching (the field, the search button) or the queue
+	 *                  (the Up next button) -- which part shows when they're set to open separately
+	 */
+	@Nullable
+	YoutubeSearchPanel showSearchPanel(boolean forSearch) {
 		if (searchPanel == null) {
 			View root = getView();
 			YoutubeAddon addon = (YoutubeAddon) getAddon();
@@ -903,9 +925,15 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 					ViewGroup.LayoutParams.MATCH_PARENT));
 		}
 		searchPanel.bringToFront();
+		int oldPart = searchPanel.getPart();
+		searchPanel.setPart(panelPart(forSearch));
 		if (!panelOpen) {
 			panelOpen = true;
 			searchPanel.slideIn();
+			coverControlPanel(true);
+			onSearchPanelToggled();
+		} else if (oldPart != searchPanel.getPart()) {
+			// Switched between search and Up next: the toolbar follows.
 			onSearchPanelToggled();
 		}
 		searchPanel.refresh();
@@ -916,7 +944,40 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		if (!panelOpen || (searchPanel == null)) return;
 		panelOpen = false;
 		searchPanel.slideOut(null);
+		coverControlPanel(false);
 		onSearchPanelToggled();
+	}
+
+	/** Search and Up next together, unless set to open on their own (Settings > Up next). */
+	private static int panelPart(boolean forSearch) {
+		if (!isSeparatePanels()) return YoutubeSearchPanel.PART_BOTH;
+		return forSearch ? YoutubeSearchPanel.PART_SEARCH : YoutubeSearchPanel.PART_QUEUE;
+	}
+
+	/**
+	 * The control panel slides out of the way while the panel is open: the rows run down to the
+	 * bottom of the screen, and the transport buttons only covered the last of them.
+	 */
+	private void coverControlPanel(boolean cover) {
+		Context ctx = getContext();
+		if (ctx == null) return;
+		ControlPanelView cp = MainActivityDelegate.get(ctx).getControlPanel();
+		if (cp != null) cp.setCovered(cover);
+	}
+
+	/** What's being typed into the toolbar's search field, for YouTube's predictions. */
+	void onSearchTyping(String text) {
+		if (searchPanel != null) searchPanel.setTyping(text);
+	}
+
+	/**
+	 * The results header's "Search in page" chip: YouTube's own results page, in the page itself --
+	 * for what the panel doesn't show (channels, playlists, filters). Unlike the panel, this does
+	 * navigate the page, so whatever plays there stops.
+	 */
+	void searchInPage(String query) {
+		hideSearchPanel();
+		loadUrl(getSearchUrl() + Uri.encode(query));
 	}
 
 	/** The toolbar's clear button is only there while the panel (or a search being typed) is. */
@@ -985,15 +1046,21 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		if (ctx != null) UiUtils.showToast(ctx, me.aap.fermata.R.string.playing_on_car, name);
 	}
 
+	/** The Up next button: closes the panel, or brings up the queue (from search on its own). */
 	void toggleSearchPanel() {
-		if (isSearchPanelShown()) hideSearchPanel();
-		else showSearchPanel();
+		if (isSearchPanelShown() && (searchPanel.getPart() != YoutubeSearchPanel.PART_SEARCH)) {
+			hideSearchPanel();
+		} else {
+			showSearchPanel(false);
+		}
 	}
 
 	/** Searches YouTube natively, in the panel -- the page and its playback are left untouched. */
 	void search(String query) {
 		YoutubeSearchPanel p = showSearchPanel();
 		if (p != null) p.search(query);
+		// The field shows the search now on screen rather than the video's title.
+		onSearchPanelToggled();
 	}
 
 	/** See {@link YoutubeChromeClient#onShowCustomView}. */
@@ -1084,7 +1151,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 				FermataWebView v = f.getWebView();
 				FermataChromeClient chrome = (v != null) ? v.getWebChromeClient() : null;
 				if ((chrome != null) && chrome.isFullScreen()) chrome.exitFullScreen();
-				f.showSearchPanel();
+				f.showSearchPanel(false);
 			} else {
 				f.startSearch();
 			}

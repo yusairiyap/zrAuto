@@ -9,6 +9,8 @@ import static androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.RIG
 import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED;
 
 import android.annotation.SuppressLint;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.transition.AutoTransition;
 import android.transition.TransitionManager;
 import android.view.KeyEvent;
@@ -40,6 +42,8 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 	private String title = "";
 	/** The field holds a search being typed, not the title -- see beginSearchInput(). */
 	private boolean editing;
+	/** The field's text is being set here, not typed -- not something to predict searches for. */
+	private boolean settingText;
 
 	public static YoutubeToolBarMediator getInstance() {
 		return instance;
@@ -129,6 +133,30 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 				if (e.getActionMasked() == MotionEvent.ACTION_DOWN) beginSearchInput(yt, addr);
 				return false;
 			});
+			// What's typed goes to the panel for YouTube's predictions. Once per field: enable() runs
+			// again every time the tab comes back, on the same field.
+			if (addr.getTag(R.id.browser_addr) == null) {
+				TextWatcher w = new TextWatcher() {
+					@Override
+					public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+					}
+
+					@Override
+					public void onTextChanged(CharSequence s, int start, int before, int count) {
+					}
+
+					@Override
+					public void afterTextChanged(Editable s) {
+						if (!editing || settingText) return;
+						if ((addr.getParent() instanceof ToolBarView bar) &&
+								(bar.getActiveFragment() instanceof YoutubeFragment ytf)) {
+							ytf.onSearchTyping(s.toString());
+						}
+					}
+				};
+				addr.setTag(R.id.browser_addr, w);
+				addr.addTextChangedListener(w);
+			}
 		}
 
 		// Right after the field: a search button that turns into an X while searching (the field
@@ -138,7 +166,7 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 		if (clear != null) {
 			clear.setToolBarPriority(Integer.MAX_VALUE);
 			clear.setOnClickListener(v -> {
-				if (!editing && !yt.isSearchPanelShown()) {
+				if (!editing && !yt.isSearchPartShown()) {
 					yt.startSearch();
 					return;
 				}
@@ -179,7 +207,19 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 	public void setAddress(ToolBarView tb, String addr) {
 		title = (addr != null) ? addr : "";
 		EditText et = tb.findViewById(R.id.browser_addr);
-		if ((et != null) && !editing) et.setText(title);
+		if ((et != null) && !editing) setText(et, displayText(tb));
+	}
+
+	/**
+	 * What the field shows while it isn't being typed into: the search whose results are on screen,
+	 * else the current video's title.
+	 */
+	private String displayText(ToolBarView tb) {
+		if (tb.getActiveFragment() instanceof YoutubeFragment yt && yt.isSearchPartShown()) {
+			String q = yt.getLastSearchQuery();
+			if ((q != null) && !q.isEmpty()) return q;
+		}
+		return title;
 	}
 
 	/** Title out, last search (or the hint) in -- once per edit. */
@@ -187,18 +227,34 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 		if (editing) return;
 		editing = true;
 		String q = yt.getLastSearchQuery();
-		t.setText((q != null) ? q : "");
+		setText(t, (q != null) ? q : "");
 		t.selectAll();
+		yt.onSearchTyping("");
+		// Tapping the title is starting a search: the panel comes down with it (just the search part
+		// when it's set to open on its own).
+		yt.showSearchPanel(true);
 		if (t.getParent() instanceof ToolBarView tb) refreshClearButton(tb, yt);
 	}
 
 	private void endSearchInput(EditText t) {
 		if (!editing) return;
 		editing = false;
-		t.setText(title);
+		setText(t, (t.getParent() instanceof ToolBarView tb) ? displayText(tb) : title);
 		if ((t.getParent() instanceof ToolBarView tb) &&
 				(tb.getActiveFragment() instanceof YoutubeFragment yt)) {
+			// Done typing (submitted, or walked away): the predictions give way to past searches.
+			yt.onSearchTyping("");
 			refreshClearButton(tb, yt);
+		}
+	}
+
+	/** Sets the field's text without it counting as typing -- see the TextWatcher in enable(). */
+	private void setText(EditText t, CharSequence text) {
+		settingText = true;
+		try {
+			t.setText(text);
+		} finally {
+			settingText = false;
 		}
 	}
 
@@ -211,8 +267,14 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 	/** See the search/clear button in {@link #enable}. */
 	void refreshClearButton(ToolBarView tb, YoutubeFragment yt) {
 		if (!(tb.findViewById(R.id.browser_addr_clear) instanceof ImageButton b)) return;
-		boolean searching = editing || yt.isSearchPanelShown();
-		setSearchLayout(tb, searching);
+		// Up next on its own (see YoutubeFragment#showSearchPanel(boolean)) isn't searching: the
+		// toolbar stays as it is, with the search button to switch over to searching.
+		boolean searching = editing || yt.isSearchPartShown();
+		setSearchLayout(tb, searching, searching && YoutubeFragment.isSeparatePanels());
+		if (!editing && (tb.findViewById(R.id.browser_addr) instanceof EditText et)) {
+			String text = displayText(tb);
+			if (!text.contentEquals(et.getText())) setText(et, text);
+		}
 		b.setVisibility(VISIBLE);
 		b.setImageResource(searching ? R.drawable.clear : me.aap.fermata.R.drawable.search);
 		b.setContentDescription(tb.getContext().getString(searching ?
@@ -221,23 +283,33 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 
 	/** Hidden while searching or the Up next panel is open, see {@link #setSearchLayout}. */
 	private static final int[] SEARCH_HIDDEN_IDS = {me.aap.fermata.R.id.private_mode,
-			R.id.browser_home, me.aap.fermata.R.id.favorites, me.aap.fermata.R.id.playlists};
+			R.id.browser_home, me.aap.fermata.R.id.favorites, me.aap.fermata.R.id.playlists,
+			me.aap.fermata.R.id.ytdl_toolbar_button};
 	private boolean searchLayout;
+	private boolean upNextHidden;
 
 	/**
 	 * While searching (the field being typed into, or the search/Up next panel open), the page
 	 * buttons step aside and the field stretches out to the X, which then sits right next to the
 	 * Up next button -- animated, so the field visibly grows/shrinks rather than jumping.
 	 */
-	private void setSearchLayout(ToolBarView tb, boolean searching) {
+	private void setSearchLayout(ToolBarView tb, boolean searching, boolean hideUpNext) {
 		boolean changed = false;
-		for (int id : SEARCH_HIDDEN_IDS) {
-			View v = tb.findViewById(id);
+		boolean animate = tb.isLaidOut() && ((searchLayout != searching) || (upNextHidden != hideUpNext));
+		// With search and Up next opened separately, the Up next button goes too while searching:
+		// the queue is a screen of its own then, not a part of this one.
+		int n = SEARCH_HIDDEN_IDS.length;
+		int[] ids = new int[n + 1];
+		System.arraycopy(SEARCH_HIDDEN_IDS, 0, ids, 0, n);
+		ids[n] = me.aap.fermata.R.id.youtube_up_next;
+		for (int i = 0; i <= n; i++) {
+			View v = tb.findViewById(ids[i]);
 			if (v == null) continue;
-			int vis = searching ? GONE : VISIBLE;
+			boolean hide = (i == n) ? hideUpNext : searching;
+			int vis = hide ? GONE : VISIBLE;
 			int cur = (v instanceof ImageButton ib) ? ib.getRequestedVisibility() : v.getVisibility();
 			if (cur == vis) continue;
-			if (!changed && tb.isLaidOut() && (searchLayout != searching)) {
+			if (!changed && animate) {
 				AutoTransition t = new AutoTransition();
 				t.setDuration(220);
 				t.setInterpolator(new DecelerateInterpolator());
@@ -247,6 +319,7 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 			v.setVisibility(vis);
 		}
 		searchLayout = searching;
+		upNextHidden = hideUpNext;
 	}
 
 	private boolean onSearchKey(YoutubeFragment yt, EditText t, int keyCode, KeyEvent event) {
@@ -292,8 +365,12 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 		if ((t == null) || !(a.getActiveFragment() instanceof YoutubeFragment yt)) return;
 		// Already editing (e.g. the car keyboard left the field in edit mode): start over empty
 		// rather than keeping whatever was typed or left there before.
-		if (editing) t.setText("");
-		else beginSearchInput(yt, t);
+		if (editing) {
+			setText(t, "");
+			yt.onSearchTyping("");
+		} else {
+			beginSearchInput(yt, t);
+		}
 		t.requestFocus();
 		if (a.isCarActivity()) {
 			t.performClick();
