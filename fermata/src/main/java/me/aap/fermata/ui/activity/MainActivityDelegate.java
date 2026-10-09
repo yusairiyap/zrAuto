@@ -1551,7 +1551,32 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * {@link #liftVideoSwitchFade()}) -- so the watch page loading is never seen.
 	 */
 	public void fadeToBlackForYoutube() {
+		View covering = windowCover;
+		if (covering != null) {
+			// Already covered (an explicit skip's cover, say): that cover stays, opaque, until the video
+			// plays, rather than being swapped for a new one starting from transparent (a flash of what
+			// is underneath).
+			covering.animate().cancel();
+			covering.setAlpha(1f);
+			covering.setClickable(true);
+			int gen = ++windowCoverGen;
+			coverIntoVideo = true;
+			coverUntilPlaying = false;
+			getHandler().postDelayed(() -> {
+				if ((gen == windowCoverGen) && (windowCover != null)) fadeOutWindowCover(windowCover, 0);
+			}, 8000);
+			return;
+		}
+		boolean fromVideo = isVideoMode();
 		fadeToBlack(true);
+		// From a video on screen: black at once, not over 200 ms. Fullscreen is left right away (bars,
+		// control panel and the list come back) while the watch page loads; a fading cover let them
+		// show through. The local video's own end already faded its picture to black, so no jump.
+		View c = windowCover;
+		if (fromVideo && (c != null)) {
+			c.animate().cancel();
+			c.setAlpha(1f);
+		}
 	}
 
 	private void fadeToBlack(boolean spinner) {

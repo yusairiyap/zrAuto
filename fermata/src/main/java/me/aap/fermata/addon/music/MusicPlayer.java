@@ -311,13 +311,18 @@ public final class MusicPlayer {
 				"pos=" + (pos / 1000) + 's');
 		boolean watch = watchRequested;
 		watchRequested = false;
-		if (!h.play(a, t)) return false;
-		// Showing the YouTube tab ends music mode (see YoutubeFragment#switchingFrom). Through black
-		// from a video on screen, so the page loading isn't seen.
-		if (watch) {
-			if (a.isVideoMode()) a.fadeToBlackForYoutube();
-			a.showFragment(R.id.youtube_fragment);
+		// Through black from a video on screen, so neither the page loading nor the app's bars and
+		// control panel (back as soon as the local video's fullscreen is left, which starting the page
+		// does) are seen. Covered before play(): asked after it, the fullscreen was already gone and
+		// there was no cover at all.
+		boolean covered = watch && a.isVideoMode();
+		if (covered) a.fadeToBlackForYoutube();
+		if (!h.play(a, t)) {
+			if (covered) a.liftVideoSwitchFade();
+			return false;
 		}
+		// Showing the YouTube tab ends music mode (see YoutubeFragment#switchingFrom).
+		if (watch) a.showFragment(R.id.youtube_fragment);
 		return true;
 	}
 
