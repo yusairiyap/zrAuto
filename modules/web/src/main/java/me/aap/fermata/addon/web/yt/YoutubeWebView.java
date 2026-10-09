@@ -1072,6 +1072,13 @@ public class YoutubeWebView extends FermataWebView {
 	 * audible to fade -- already paused/ended (a natural end-of-video advance, whose last seconds
 	 * already faded out on their own), hidden, or the fade script isn't on this page.
 	 */
+	/** Drops a video switch still waiting on its fade (a local file took over meanwhile). */
+	void cancelPendingSwitch() {
+		switchGeneration++;
+		if (pendingSwitch != null) removeCallbacks(pendingSwitch);
+		pendingSwitch = null;
+	}
+
 	void afterAudioFadeOut(Runnable switchVideo) {
 		// A newer switch (rapid repeated skips) supersedes one still waiting on its fade -- only the
 		// last requested video should actually be navigated to.

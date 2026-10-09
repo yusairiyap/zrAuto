@@ -1206,6 +1206,8 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		BufferingIndicator.setBuffering(false);
 		resumeItem = null;
 		engine.getPosition().and(engine.getSpeed()).main().onSuccess(h -> {
+			// Another engine took over while the position was fetched: not this one's state to publish.
+			if ((engine != getEngine()) || (engine.getSource() == null)) return;
 			setPlayingState(engine, true, h.value1, h.value2);
 			// A track played in its own player is otherwise only recorded when paused or stopped, so
 			// closing the app (or the car dropping the connection) mid-song left the previous track as
@@ -1355,6 +1357,8 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onEngineEnded(MediaEngine engine) {
+		// A closed or replaced engine reporting late must not move the session on.
+		if (engine != getEngine()) return;
 		BufferingIndicator.setBuffering(false);
 		playerTask.cancel();
 
@@ -1423,6 +1427,8 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	@Override
 	public void onEngineError(MediaEngine engine, Throwable ex) {
 		BufferingIndicator.setBuffering(false);
+		// A closed or replaced engine reporting late: the current one is not to be swapped for it.
+		if (engine != getEngine()) return;
 		String msg;
 		PlayableItem i = engine.getSource();
 
@@ -1437,7 +1443,8 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		DiagnosticLog.log("ENGINE", "error", engine.getClass().getSimpleName(), "item=" + i,
 				"cause=" + describe(ex), "location=" + ((i == null) ? null : safeHost(i)));
 
-		if (tryAnotherEngine && (engine.getSource() != null)) {
+		if (tryAnotherEngine && (engine.getSource() != null) &&
+				(engine.getId() != MediaPrefs.MEDIA_ENG_YT)) {
 			// The next engine carries on from where this one gave out, not from the start.
 			Long failedAt = engine.getPosition().peek();
 			if ((failedAt != null) && (failedAt > 1000)) setLastPlayed(i, failedAt);
@@ -1445,7 +1452,9 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 			if (this.engine != null) {
 				Log.i("Trying another engine: ", this.engine);
-				tryAnotherEngine = false;
+				// A downloaded file given a fresh ExoPlayer may still be given the platform player after it.
+				tryAnotherEngine = (engine.getId() == MediaPrefs.MEDIA_ENG_EXO) &&
+						YtOffline.isDownloadedYoutube(i);
 				if (i.isVideo() && (videoView != null)) this.engine.setVideoView(getVideoView());
 				ensureAudioEffectsBeforePrepare(this.engine, i);
 				this.engine.prepare(i);
@@ -1612,6 +1621,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	private void playPreparedItem(PlayableItem i, long pos) {
 		resumeItem = null;
+		getEngineManager().resetFreshTried();
 		// A YouTube video that is not on the phone is the YouTube tab's to play, from wherever it is
 		// asked for (a Favorites entry whose download was removed, say): no other engine can play
 		// the address of its watch page.

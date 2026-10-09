@@ -148,6 +148,11 @@ public class MediaEngineManager implements PreferenceStore.Listener {
 	// Downloaded files that got a fresh ExoPlayer after a stall and have not yet been given up on.
 	private final java.util.Set<String> freshExoTried = new java.util.HashSet<>();
 
+	/** A new play of something starts the fallbacks over (see {@link #createAnotherEngine}). */
+	public void resetFreshTried() {
+		freshExoTried.clear();
+	}
+
 	public MediaEngine createAnotherEngine(@NonNull MediaEngine current, Listener listener) {
 		if (engineProvider != null) return engineProvider.createEngine(listener);
 		int id = current.getId();

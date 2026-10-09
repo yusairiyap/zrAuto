@@ -280,6 +280,9 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// As the engine's own pause() records it: a pause the page reports next is the app's doing.
 		lastActivePlayTime = 0;
 		appRequestedPause = true;
+		// A switch still waiting on its fade-out would load its video after the file has taken over,
+		// and the page's playing() would then take the session back from it.
+		web.cancelPendingSwitch();
 		web.pause();
 		web.clearMediaSession();
 		clearStall();
