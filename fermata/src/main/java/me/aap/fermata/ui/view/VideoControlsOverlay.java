@@ -195,6 +195,11 @@ public class VideoControlsOverlay extends FrameLayout {
 		if (showScrim != scrimWas) fade(scrim, showScrim, animate, 1f, 0f);
 		centerShown = showCenter;
 		titleShown = showTitle;
+		// Fading out, they no longer take taps: a quick tap meant for the video (a double tap seek
+		// right after them) must not land on one.
+		prev.setEnabled(showCenter);
+		playPause.setEnabled(showCenter);
+		next.setEnabled(showCenter);
 		if (!showCenter && center.hasFocus()) center.clearFocus();
 	}
 
@@ -236,6 +241,21 @@ public class VideoControlsOverlay extends FrameLayout {
 		title.setText(t);
 		subtitle.setText(sub);
 		subtitle.setVisibility(TextUtils.isEmpty(sub) ? GONE : VISIBLE);
+	}
+
+	/**
+	 * Where the title's text ends, from this view's left edge, at its full length (not cut short):
+	 * what the Info Overlay has to stay clear of.
+	 */
+	public int getTitleTextEnd() {
+		float w = textWidth(title);
+		if (subtitle.getVisibility() == VISIBLE) w = Math.max(w, textWidth(subtitle));
+		return Math.round(titleBar.getPaddingStart() + w);
+	}
+
+	private static float textWidth(TextView t) {
+		CharSequence s = t.getText();
+		return ((s == null) || (s.length() == 0)) ? 0f : t.getPaint().measureText(s, 0, s.length());
 	}
 
 	/** Keeps the title clear of something on the right of the top edge (the Info Overlay). */

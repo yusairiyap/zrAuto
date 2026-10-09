@@ -100,6 +100,8 @@ public class VideoView extends FrameLayout
 	private final VideoControlsOverlay controls;
 	/** Whether the Info Overlay is moved to the top right, out of the shown title's way. */
 	private boolean infoAtRight;
+	/** The Info Overlay's own place (MainActivityPrefs.CLOCK_POS_*). */
+	private int infoPos = MainActivityPrefs.CLOCK_POS_NONE;
 	private static final long INFO_MOVE_MS = 250L;
 
 	public VideoView(Context context) {
@@ -415,11 +417,16 @@ public class VideoView extends FrameLayout
 			// Keeps it at the top right while the title is shown, however its width or place changes.
 			infoOverlay.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
 				if ((l == ol) && (r == or)) return;
-				if (infoAtRight) {
-					v.animate().cancel();
-					v.setTranslationX(infoRightShift(v));
+				boolean right = controls.isTitleShown() && isInTitleWay((InfoOverlayView) v);
+				if (right != infoAtRight) {
+					moveInfoOverlay(right, true);
+				} else {
+					if (infoAtRight) {
+						v.animate().cancel();
+						v.setTranslationX(infoRightShift(v));
+					}
+					updateTitleInset();
 				}
-				updateTitleInset();
 			});
 		}
 
@@ -430,6 +437,7 @@ public class VideoView extends FrameLayout
 			case MainActivityPrefs.CLOCK_POS_CENTER -> gravity |= Gravity.CENTER;
 		}
 
+		infoPos = pos;
 		FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) infoOverlay.getLayoutParams();
 		lp.gravity = gravity;
 		infoOverlay.setLayoutParams(lp);
@@ -457,12 +465,26 @@ public class VideoView extends FrameLayout
 
 	/**
 	 * Shows/hides the middle buttons and the title over the picture (see {@link
-	 * VideoControlsOverlay}). While the title is up, the Info Overlay glides over to the top right,
-	 * out of its way, and back to its own place once the title goes.
+	 * VideoControlsOverlay}). While the title is up, the Info Overlay glides over to the top right if
+	 * it's in the title's way (see {@link #isInTitleWay}), and back to its own place once the title
+	 * goes.
 	 */
 	public void showControls(boolean center, boolean title, boolean animate) {
 		controls.setShown(center, title, animate);
-		moveInfoOverlay(title, animate);
+		InfoOverlayView io = infoOverlay;
+		moveInfoOverlay(title && (io != null) && isInTitleWay(io), animate);
+	}
+
+	/**
+	 * Whether the Info Overlay, in its own place, is where the title goes: always at the top left
+	 * (the title starts there), never at the top right (already where it would go; the title is cut
+	 * short before it instead), and at the top center only when the title is long enough to run into it.
+	 */
+	private boolean isInTitleWay(InfoOverlayView io) {
+		if (infoPos == MainActivityPrefs.CLOCK_POS_LEFT) return true;
+		if (infoPos != MainActivityPrefs.CLOCK_POS_CENTER) return false;
+		if (!io.isLaidOut() || (io.getWidth() == 0)) return false;
+		return controls.getTitleTextEnd() + toIntPx(getContext(), 12) > io.getLeft();
 	}
 
 	private void moveInfoOverlay(boolean right, boolean animate) {
@@ -492,7 +514,10 @@ public class VideoView extends FrameLayout
 	private void updateTitleInset() {
 		InfoOverlayView io = infoOverlay;
 		int inset = 0;
-		if ((io != null) && (io.getVisibility() == VISIBLE) && (io.getWidth() > 0)) {
+		// Only while it's on the right (moved there, or its own place): at the center it's only
+		// left there for a title too short to reach it.
+		if ((io != null) && (io.getVisibility() == VISIBLE) && (io.getWidth() > 0) &&
+				(infoAtRight || (infoPos == MainActivityPrefs.CLOCK_POS_RIGHT))) {
 			FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) io.getLayoutParams();
 			inset = io.getWidth() + lp.leftMargin + lp.rightMargin;
 		}

@@ -52,6 +52,7 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.function.BooleanSupplier;
 import me.aap.utils.function.DoubleSupplier;
@@ -141,6 +142,15 @@ public class ControlPanelView extends ConstraintLayout
 	private int seekStreakSeconds;
 	/** Set while the touch going on now is one of a seek streak's taps, swallowed whole. */
 	private boolean seekStreakTouch;
+	/**
+	 * Seconds the streak's taps have asked for so far, not applied yet (negative: back). A streak
+	 * makes one seek, once the taps stop (as YouTube does): a seek per tap made local engines
+	 * (ExoPlayer and the like) seek over and over while still busy with the last one.
+	 */
+	private int pendingSeekSec;
+	private final Runnable applySeekTask = this::applyPendingSeek;
+	/** How long after the last tap the streak's seek is made. */
+	private static final long SEEK_APPLY_DELAY_MS = 400L;
 	/** Seconds a double tap (and each further tap of its streak) seeks. */
 	private static final int DOUBLE_TAP_SEEK_SEC = 10;
 	/** How long after a seek tap another tap still counts as part of the streak. */
@@ -244,15 +254,18 @@ public class ControlPanelView extends ConstraintLayout
 	}
 
 	/**
-	 * Fullscreen video has play/pause in the middle of the picture and seeks with a double tap
-	 * (see {@link VideoControlsOverlay}), so the panel leaves out its own play/pause, rewind and fast
-	 * forward there; outside fullscreen they are back as before. Rewind/fast forward only for
+	 * Fullscreen video has previous/play-pause/next in the middle of the picture and seeks with a
+	 * double tap (see {@link VideoControlsOverlay}), so the panel leaves out its whole row of
+	 * transport buttons there, keeping the seek bar line only (see {@link #setSize} for the room left
+	 * under it); outside fullscreen they are back as before. Rewind/fast forward only for
 	 * something seekable, as {@code FermataServiceUiBinder} shows them (the seek bar is enabled
 	 * exactly then).
 	 */
 	private void applyTransportButtons() {
-		View pp = findViewById(R.id.control_play_pause);
-		if (pp != null) pp.setVisibility(videoLook ? GONE : VISIBLE);
+		for (int id : new int[]{R.id.control_prev, R.id.control_play_pause, R.id.control_next}) {
+			View v = findViewById(id);
+			if (v != null) v.setVisibility(videoLook ? GONE : VISIBLE);
+		}
 		boolean seek = !videoLook && findViewById(R.id.seek_bar).isEnabled();
 		View rw = findViewById(R.id.control_rw);
 		View ff = findViewById(R.id.control_ff);
@@ -378,7 +391,20 @@ public class ControlPanelView extends ConstraintLayout
 		}
 
 		setHeight(R.id.control_next, buttonSize);
+		// Fullscreen: no button row, the seek bar line only, with some room left under it so the
+		// slider stays clear of the system's gesture area at the bottom edge.
+		if (videoLook) panelSize = (seek.isEnabled() ? iconSize : buttonSize) + videoBottomGap();
 		getLayoutParams().height = panelSize + (videoLook ? 0 : pillPadTop);
+	}
+
+	/** The room under the fullscreen seek bar: the gesture area's height, and never under 28dp. */
+	private int videoBottomGap() {
+		int gap = toIntPx(getContext(), 28);
+		if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+			android.view.WindowInsets wi = getRootWindowInsets();
+			if (wi != null) gap = Math.max(gap, wi.getMandatorySystemGestureInsets().bottom);
+		}
+		return gap;
 	}
 
 	private void setIconPadding(int btnPadH, int btnPadV, int cornerPad) {
@@ -621,6 +647,7 @@ public class ControlPanelView extends ConstraintLayout
 		hideTimer = null;
 		mask &= ~MASK_VIDEO_MODE;
 		seekStreakUntil = 0;
+		applyPendingSeek();
 		hideVideoControls(false);
 		setVideoLook(false);
 		a.getFloatingButton().setVisibility(VISIBLE);
@@ -742,14 +769,33 @@ public class ControlPanelView extends ConstraintLayout
 		// The touch may come through the controls overlay, a child of the video view lying over all of
 		// it: either way these are the video view's own coordinates.
 		boolean ff = e.getX() >= (vv.getWidth() / 2f);
-		if (ff != seekStreakForward) seekStreakSeconds = 0;
+		if (ff != seekStreakForward) {
+			// The other side: what the first side asked for goes now, the new side counts from 0.
+			seekStreakSeconds = 0;
+			applyPendingSeek();
+		}
 		seekStreakForward = ff;
 		seekStreakSeconds += DOUBLE_TAP_SEEK_SEC;
 		seekStreakUntil = SystemClock.uptimeMillis() + SEEK_STREAK_MS;
-		b.getMediaSessionCallback().rewindFastForward(ff, DOUBLE_TAP_SEEK_SEC,
-				PlaybackControlPrefs.TIME_UNIT_SECOND, 1);
+		pendingSeekSec += ff ? DOUBLE_TAP_SEEK_SEC : -DOUBLE_TAP_SEEK_SEC;
+		DiagnosticLog.log("TRANSPORT", "double tap seek", "ff=" + ff, "streak=" + seekStreakSeconds,
+				"state=" + b.getMediaSessionCallback().getPlaybackState().getState());
+		removeCallbacks(applySeekTask);
+		postDelayed(applySeekTask, SEEK_APPLY_DELAY_MS);
 		onVideoSeek();
 		vv.getControls().showSeek(ff, seekStreakSeconds, e.getX(), e.getY());
+	}
+
+	/** Makes the seek the streak's taps asked for so far, if any. */
+	private void applyPendingSeek() {
+		removeCallbacks(applySeekTask);
+		int sec = pendingSeekSec;
+		pendingSeekSec = 0;
+		if (sec == 0) return;
+		MediaSessionCallback cb = getActivity().getMediaSessionCallback();
+		DiagnosticLog.log("TRANSPORT", "double tap seek applied", "sec=" + sec,
+				"state=" + cb.getPlaybackState().getState());
+		cb.rewindFastForward(sec > 0, Math.abs(sec), PlaybackControlPrefs.TIME_UNIT_SECOND, 1);
 	}
 
 	@Override
@@ -981,7 +1027,7 @@ public class ControlPanelView extends ConstraintLayout
 		View v = findViewById(R.id.seek_bar);
 		if (isVisible(v)) return v;
 		v = findViewById(R.id.control_play_pause);
-		return isVisible(v) ? v : findViewById(R.id.control_prev);
+		return isVisible(v) ? v : findViewById(R.id.control_menu_button);
 	}
 
 	@Override

@@ -196,7 +196,9 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   decides when it shows (`showVideoControls`): buttons with the panel, the title only on a single tap.
   The overlay takes every touch that misses its buttons and hands it to `VideoView.onTouchEvent`, which
   also keeps taps off YouTube's page (its own player controls are hidden in fullscreen by CSS, see
-  `YoutubeWebView#hideFullscreenControlsJs`). In fullscreen the panel hides its own play/pause/rw/ff.
+  `YoutubeWebView#hideFullscreenControlsJs`). In fullscreen the panel hides its whole transport row
+  (seek bar line only, plus a bottom gap for the gesture area). A double tap streak makes one seek when
+  the taps stop (`applyPendingSeek`): a seek per tap paused local video.
 - **Grid vs list** for media lists comes from the grid preference, never from `isGridView()` (which
   asks the active tab and is wrong while tabs switch).
 - Known open items: media card art can look blocky on One UI (1280x720 art); a YouTube hand-over
