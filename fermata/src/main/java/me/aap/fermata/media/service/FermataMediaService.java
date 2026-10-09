@@ -294,7 +294,9 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 			}
 			case STATE_PAUSED -> {
 				stopHandler.removeCallbacks(stopStarted);
-				if (ActivityCompat.checkSelfPermission(this, POST_NOTIFICATIONS) != PERMISSION_GRANTED) {
+				// The permission exists from Android 13; before it nothing is asked for.
+				if ((android.os.Build.VERSION.SDK_INT >= 33) &&
+						(ActivityCompat.checkSelfPermission(this, POST_NOTIFICATIONS) != PERMISSION_GRANTED)) {
 					return;
 				}
 				NotificationManagerCompat.from(this).notify(NOTIF_ID, createNotification(st, currentItem));

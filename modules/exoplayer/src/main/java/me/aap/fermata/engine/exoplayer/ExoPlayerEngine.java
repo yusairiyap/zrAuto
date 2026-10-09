@@ -167,6 +167,9 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		stallGen++;
 		stallRetried = false;
 		firstFrame = false;
+		// A reused player keeps playWhenReady through stop() and the end of a track: the next item would
+		// start playing at full volume before start() fades it in.
+		player.setPlayWhenReady(false);
 		if (this.source == null) {
 			resetFade();
 			stopped(false);
@@ -187,6 +190,11 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		isHls = Util.inferContentType(uri) == C.CONTENT_TYPE_HLS;
 		setVideoTrackDisabled(videoOff(source, shown));
 		String oid = source.getOrigId();
+		// The hidden surface a stalled file needed is not for the files after it.
+		if ((dummySurface != null) && ((oid == null) || !keepPicture.contains(oid))) {
+			player.clearVideoSurface(dummySurface);
+			releaseDummySurface();
+		}
 		if ((shown == null) && (dummySurface == null) && (oid != null) && keepPicture.contains(oid)) {
 			useDummySurface();
 		}
@@ -352,6 +360,9 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		if (source == null) return;
 		var pos = source.getOffset() + position;
 		player.seekTo(pos);
+		// A seek (back, say) is not a stall: the watchdog measures from the new position.
+		if (player.getPlayWhenReady() && !preparing) watchForStall();
+		else stallGen++;
 		accessor.setSubGenTimeOffset(this);
 		syncSub(true);
 	}

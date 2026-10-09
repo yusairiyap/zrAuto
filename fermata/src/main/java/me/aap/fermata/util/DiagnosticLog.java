@@ -288,10 +288,12 @@ public final class DiagnosticLog {
 		// roughly the same horizon across a long series of sessions. Rewriting from the buffer (not
 		// trimming the file in place) keeps the two consistent.
 		try {
-			if (f.length() <= (long) MAX_ENTRIES * 128L) return;
+			// Well past what is kept, then down to half of it: a rewrite is not paid on every line.
+			if (f.length() <= (long) MAX_ENTRIES * 256L) return;
 			List<String> copy;
 			synchronized (entries) {
-				copy = new ArrayList<>(entries);
+				List<String> all = new ArrayList<>(entries);
+				copy = all.subList(Math.max(0, all.size() - MAX_ENTRIES / 2), all.size());
 			}
 			try (FileWriter w = new FileWriter(f, false)) {
 				for (String e : copy) {
