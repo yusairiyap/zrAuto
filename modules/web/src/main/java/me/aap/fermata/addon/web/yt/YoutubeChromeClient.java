@@ -11,6 +11,7 @@ import me.aap.fermata.addon.web.FermataChromeClient;
 import me.aap.fermata.addon.web.FermataWebView;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.utils.async.FutureSupplier;
 
@@ -85,7 +86,34 @@ public class YoutubeChromeClient extends FermataChromeClient {
 	}
 
 	protected void setFullScreen(MainActivityDelegate a, boolean fullScreen) {
+		// A downloaded video that has taken over owns the video mode by now: this page leaving
+		// fullscreen (however late its exit comes) must not switch the mode off under that video.
+		if (!fullScreen) {
+			BodyLayout b = a.getBody();
+			if ((b != null) && b.isVideoMode()) return;
+		}
 		a.setVideoMode(fullScreen, getFullScreenView());
+	}
+
+	// Set while the page gives way to a downloaded video's file, see leaveForLocal().
+	private boolean leavingForLocal;
+
+	/**
+	 * The page gives way to a downloaded video: its fullscreen goes at once, never held back behind
+	 * the transition cover. Held back, the exit came up to ten seconds later, after the file's
+	 * video was already on screen, and took the fullscreen down under it.
+	 */
+	public void leaveForLocal() {
+		if (deferredExitView != null) {
+			finishDeferredExit();
+		} else if (isFullScreen()) {
+			leavingForLocal = true;
+			try {
+				onHideCustomView();
+			} finally {
+				leavingForLocal = false;
+			}
+		}
 	}
 
 	/**
@@ -105,7 +133,7 @@ public class YoutubeChromeClient extends FermataChromeClient {
 	@Override
 	protected void exitFullScreenUi(MainActivityDelegate a, View removed) {
 		VideoView v = getFullScreenView();
-		if ((v instanceof YoutubeVideoView yv) && yv.isTransitionCoverShowing()) {
+		if (!leavingForLocal && (v instanceof YoutubeVideoView yv) && yv.isTransitionCoverShowing()) {
 			// A previous deferral being superseded still owes its own view a detach -- do it now,
 			// under the cover, rather than leaving it stacked behind the next one.
 			if (deferredExitView != null) removeCustomView(deferredExitView);

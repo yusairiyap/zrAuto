@@ -277,7 +277,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 					"video=" + ((v == null) ? null : v.sampleMimeType + "/" + v.width + "x" + v.height),
 					"videoOff=" + player.getTrackSelectionParameters().disabledTrackTypes.contains(C.TRACK_TYPE_VIDEO));
 			listener.onEngineError(this, new java.io.IOException("Playback stalled"));
-		}, 4000);
+		}, 3000);
 	}
 
 	@Override

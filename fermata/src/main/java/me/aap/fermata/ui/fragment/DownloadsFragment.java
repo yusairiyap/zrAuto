@@ -131,14 +131,19 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		RecyclerView rv = new RecyclerView(palette);
 		rv.setLayoutParams(new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 		rv.setVerticalScrollBarEnabled(true);
+		// Known before the first layout, so the grid starts with the columns it keeps.
+		containerWidth = (container == null) ? 0 : container.getWidth();
 		return rv;
 	}
+
+	// The width the list is laid out at, as far as it is known before the first layout.
+	private int containerWidth;
 
 	@Override
 	public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
 		super.onViewCreated(view, savedInstanceState);
 		list = (RecyclerView) view;
-		layout = new GridLayoutManager(requireContext(), 1);
+		layout = new GridLayoutManager(requireContext(), spanFor(containerWidth));
 		layout.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
 			@Override
 			public int getSpanSize(int position) {
@@ -155,9 +160,8 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		// Reserves room under the translucent title bar, as every scrollable tab does.
 		getActivityDelegate().insetScrollableContent(list);
 		list.setClipChildren(false);
-		// Shown only once its columns are known (they depend on the width it is laid out at): the
-		// cards used to be laid out at the screen's width first and then again, a column fewer.
-		list.setAlpha(0f);
+		// The tab's own entrance and exit fade is the delegate's (it animates this view's alpha): never
+		// touched here, or the two fight and a tab on its way out stays up over the next one.
 		list.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
 			if ((r - l) != (or - ol)) updateSpan();
 		});
@@ -339,16 +343,18 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		refreshToolBar();
 	}
 
+	/** The columns for a list {@code width} px wide: one for the list view, as many as fit for the grid. */
+	private int spanFor(int width) {
+		if (!DownloadsAddon.isGrid()) return 1;
+		if (width <= 0) width = requireContext().getResources().getDisplayMetrics().widthPixels;
+		return Math.max(2, width / UiUtils.toIntPx(requireContext(), 170));
+	}
+
 	private void updateSpan() {
 		if ((layout == null) || (list == null)) return;
-		int span = 1;
-		if (DownloadsAddon.isGrid()) {
-			int w = list.getWidth();
-			if (w == 0) return; // Not laid out yet: the layout listener comes back with the width.
-			span = Math.max(2, w / UiUtils.toIntPx(requireContext(), 170));
-		}
+		int w = list.getWidth();
+		int span = spanFor((w > 0) ? w : containerWidth);
 		if (layout.getSpanCount() != span) layout.setSpanCount(span);
-		if (list.getAlpha() < 1f) list.animate().alpha(1f).setDuration(180).start();
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -894,6 +900,8 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 	private static void loadImage(ImageView v, String url) {
 		if (url.equals(v.getTag())) return;
 		v.setTag(url);
+		v.animate().cancel();
+		v.setAlpha(1f);
 		v.setImageDrawable(null);
 		FermataApplication.get().getBitmapCache().getBitmap(v.getContext(), url, false, false).main()
 				.onSuccess(bm -> {

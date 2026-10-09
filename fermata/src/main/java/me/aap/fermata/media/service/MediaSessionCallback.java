@@ -10,6 +10,7 @@ import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ARTIST;
 import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ALBUM;
 import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE;
 import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE;
+import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_DURATION;
 import static android.support.v4.media.session.PlaybackStateCompat.ACTION_FAST_FORWARD;
 import static android.support.v4.media.session.PlaybackStateCompat.ACTION_PAUSE;
 import static android.support.v4.media.session.PlaybackStateCompat.ACTION_PLAY;
@@ -1215,8 +1216,13 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		});
 	}
 
+	// Bumped by every setPlayingState(): what an earlier one still has to publish when its metadata
+	// loads (a YouTube video's, after a local file took over) is dropped.
+	private volatile int metaEpoch;
+
 	private void setPlayingState(MediaEngine engine, boolean playing, long pos, float speed) {
 		PlayableItem i = engine.getSource();
+		final int epoch = ++metaEpoch;
 		BrowsableItemPrefs prefs = i.getParent().getPrefs();
 		int shuffle = prefs.getShufflePref() ? SHUFFLE_MODE_ALL : SHUFFLE_MODE_NONE;
 		int repeat;
@@ -1240,9 +1246,9 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			update.get().accept(md1);
 
 			return getQid.then(qid -> i.getMediaDescription().main().then(dsc -> {
-				if (getCurrentItem() != i) return completedVoid();
+				if ((getCurrentItem() != i) || (epoch != metaEpoch)) return completedVoid();
 				MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder(md1);
-				FutureSupplier<MediaMetadataCompat> md2 = buildMetadata(b, md1, dsc);
+				FutureSupplier<MediaMetadataCompat> md2 = buildMetadata(i, b, md1, dsc);
 
 				if (md2.isDone()) {
 					update.get().accept(md2.get(b::build));
@@ -1272,7 +1278,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			b.putString(METADATA_KEY_DISPLAY_TITLE, i.getName());
 			md = b.build();
 			update.set(m -> engine.getPosition().main().onSuccess(position -> {
-				if (getCurrentItem() != i) return;
+				if ((getCurrentItem() != i) || (epoch != metaEpoch)) return;
 				PlaybackStateCompat s =
 						createPlayingState(i, !isPlaying(), getQid.peek(0L), position, speed);
 				publishMetadata(m);
@@ -1287,7 +1293,8 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		setPlaybackState(s);
 	}
 
-	private FutureSupplier<MediaMetadataCompat> buildMetadata(MediaMetadataCompat.Builder b,
+	private FutureSupplier<MediaMetadataCompat> buildMetadata(PlayableItem item,
+																														MediaMetadataCompat.Builder b,
 																														MediaMetadataCompat meta,
 																														MediaDescriptionCompat dsc) {
 		ifNotNull(dsc.getTitle(), t -> b.putString(METADATA_KEY_DISPLAY_TITLE, t.toString()));
@@ -1297,6 +1304,18 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		// so without this the channel shows in the phone's notification but not on the car.
 		if ((sub == null) || (sub.length() == 0)) sub = meta.getString(METADATA_KEY_ARTIST);
 		if ((sub == null) || (sub.length() == 0)) sub = meta.getString(METADATA_KEY_ALBUM);
+		// A downloaded video played from Favorites or a playlist has neither: the channel and the length
+		// it was downloaded with, so the media card names the artist and shows the time like a track's.
+		String dlId = YtDownloads.videoIdOf(item);
+		YtDownloads.Entry dl = (dlId == null) ? null : YtDownloads.get().getEntry(dlId);
+		if (dl != null) {
+			if (((sub == null) || (sub.length() == 0)) && (dl.artist != null) && !dl.artist.isEmpty()) {
+				sub = MusicTrackItem.cleanArtist(dl.artist);
+			}
+			if ((meta.getLong(METADATA_KEY_DURATION) <= 0) && (dl.durationMs > 0)) {
+				b.putLong(METADATA_KEY_DURATION, dl.durationMs);
+			}
+		}
 		if ((sub != null) && (sub.length() > 0)) b.putString(METADATA_KEY_DISPLAY_SUBTITLE, sub.toString());
 		if (meta.getBitmap(METADATA_KEY_ALBUM_ART) != null) return completed(b.build());
 

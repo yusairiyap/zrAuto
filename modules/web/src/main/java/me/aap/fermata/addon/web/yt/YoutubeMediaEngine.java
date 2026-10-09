@@ -287,7 +287,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		YoutubeVideoView v = getFullScreenView();
 		if (v != null) v.hideTransitionOverlay();
 		FermataChromeClient chrome = web.getWebChromeClient();
-		if ((chrome != null) && chrome.isFullScreen()) chrome.onHideCustomView();
+		if (chrome instanceof YoutubeChromeClient yc) yc.leaveForLocal();
+		else if ((chrome != null) && chrome.isFullScreen()) chrome.onHideCustomView();
 	}
 
 	/** The page started a video that is on the phone: silence it, play the file. */
