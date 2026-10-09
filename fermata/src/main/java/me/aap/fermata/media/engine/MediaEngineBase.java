@@ -27,6 +27,7 @@ import java.util.List;
 
 import me.aap.fermata.BuildConfig;
 import me.aap.fermata.addon.SubGenAddon;
+import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.sub.FileSubtitles;
 import me.aap.fermata.media.sub.SubGrid;
 import me.aap.fermata.media.sub.SubScheduler;
@@ -113,9 +114,12 @@ public abstract class MediaEngineBase implements MediaEngine {
 		applyVolume(volumeTarget);
 	}
 
-	// How close to its end a track is when the sound starts going out, so it is silent as it ends, as
-	// YouTube's page does (youtube_fade.js) -- the next track comes in with its own fade.
-	private static final long END_FADE_MS = 400;
+	// How close to its end a track is when the sound (and a video's picture) starts going out, so it is
+	// silent and black as it ends, as YouTube's page does (youtube_fade.js, END_FADE_S): the next
+	// track comes in with its own fade. Not for tracks shorter than END_FADE_MIN_DURATION_MS (same
+	// rule as the page's), which would spend too much of themselves fading.
+	private static final long END_FADE_MS = 1600;
+	private static final long END_FADE_MIN_DURATION_MS = 8000;
 	private static final long END_WATCH_MS = 150;
 	private boolean endWatching;
 	private boolean endFaded;
@@ -145,13 +149,19 @@ public abstract class MediaEngineBase implements MediaEngine {
 					long d = dur.getOrThrow();
 					long left = (d > 0) ? (d - pos.getOrThrow()) : -1;
 					if ((left > 0) && (left <= END_FADE_MS + END_WATCH_MS) && !endFaded &&
-							(volumeTarget > 0f)) {
+							(d >= END_FADE_MIN_DURATION_MS)) {
 						endFaded = true;
-						fadeTo(0f, Math.max(100, left - 50), null, false);
-					} else if (endFaded && (left > 2000)) {
-						// Back from the end (repeat, a seek): the sound with it.
+						long ms = Math.max(100, left - 50);
+						if (volumeTarget > 0f) fadeTo(0f, ms, null, false);
+						// The picture goes to black with the sound, as YouTube's does (its videoEnding()).
+						VideoView v = videoView;
+						if ((v != null) && isVideoWithRepeatOff()) v.fadeToBlack(ms);
+					} else if (endFaded && (left > END_FADE_MS + 1000)) {
+						// Back from the end (repeat, a seek): the sound and the picture with it.
 						endFaded = false;
 						fadeTo(volumeTarget, FADE_IN_MS, null, false);
+						VideoView v = videoView;
+						if (v != null) v.liftBlack(FADE_IN_MS);
 					}
 				}
 			} catch (RuntimeException ex) {
@@ -160,6 +170,17 @@ public abstract class MediaEngineBase implements MediaEngine {
 			fadeHandler().postDelayed(this, END_WATCH_MS);
 		}
 	};
+
+	/** A video whose end leads elsewhere: Repeat One just starts it again, a black blink for nothing. */
+	private boolean isVideoWithRepeatOff() {
+		try {
+			PlayableItem i = getSource();
+			if ((i == null) || !i.isVideo()) return false;
+			return !i.getId().equals(i.getParent().getPrefs().getRepeatItemPref());
+		} catch (RuntimeException ex) {
+			return false;
+		}
+	}
 
 	private void stopEndWatch() {
 		endWatching = false;

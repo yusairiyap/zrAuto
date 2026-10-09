@@ -593,19 +593,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private void displayItem(@Nullable PlayableItem i, boolean force) {
 		if (!force && (i == shownItem) && (i != null)) return;
 		long now = android.os.SystemClock.uptimeMillis();
-		if (!force && (i != null) && (i == previousShown) && (now - shownAt < 1500) && isSwitching()) {
-			DiagnosticLog.log("MUSIC", "display: previous track kept off while switching", "item=" + i,
-					"shown=" + shownItem);
-			return;
-		}
+		if (!force && (i != null) && (i == previousShown) && (now - shownAt < 1500) && isSwitching()) return;
 		if (shownItem != i) {
-			// Open problem: the tab showing the previous track while YouTube plays the next one. Names
-			// what was shown against what the session and engine report at that moment.
-			MediaSessionCallback cb = getActivityDelegate().getMediaSessionCallback();
-			MediaEngine eng = cb.getEngine();
-			DiagnosticLog.log("MUSIC", "display", "item=" + i, "was=" + shownItem,
-					"current=" + cb.getCurrentItem(), "engine=" + ((eng == null) ? null : eng.getSource()),
-					"state=" + cb.getPlaybackState().getState(), "force=" + force);
 			previousShown = shownItem;
 			shownAt = now;
 		}

@@ -438,13 +438,6 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	@Override
 	public void setVideoView(VideoView view) {
 		super.setVideoView(view);
-		if ((view != null) || (shown != null)) {
-			DiagnosticLog.log("ENGINE", (view == null) ? "picture: screen taken away" : "picture: screen given",
-					"item=" + source, "surfaceValid=" + ((view != null) &&
-							view.getVideoSurface().getHolder().getSurface().isValid()),
-					"state=" + player.getPlaybackState(), "pos=" + player.getCurrentPosition());
-		}
-		screenGivenAt = android.os.SystemClock.uptimeMillis();
 		player.setVideoSurfaceHolder((view == null) ? null : view.getVideoSurface().getHolder());
 		// With nowhere to show it (the app in the background) the picture is not decoded at all: the
 		// sound plays on without a video decoder that can stall or be taken away.
@@ -499,16 +492,14 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	// latest check of that (see watchBlackPicture()).
 	private VideoView shown;
 	private boolean firstFrame;
-	private long screenGivenAt;
 	private int blackGen;
 
 	@Override
 	public void onRenderedFirstFrame() {
-		if (!firstFrame && (shown != null)) {
-			DiagnosticLog.log("ENGINE", "picture: first frame drawn",
-					"after=" + (android.os.SystemClock.uptimeMillis() - screenGivenAt) + "ms", "item=" + source);
-		}
 		firstFrame = true;
+		// The picture is here: the black its predecessor's end faded to (VideoView#fadeToBlack) lifts.
+		VideoView v = shown;
+		if (v != null) v.liftBlack(450);
 	}
 
 	/**

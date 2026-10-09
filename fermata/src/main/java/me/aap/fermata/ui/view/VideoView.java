@@ -239,6 +239,37 @@ public class VideoView extends FrameLayout
 		}, durationMs + 500);
 	}
 
+	/**
+	 * The last moments of a local video fade to black (see MediaEngineBase's end watch), as
+	 * YouTube's do: the same black view as {@link #fadeInFromBlack}, from wherever it is. Lifted by
+	 * the next picture's first frame ({@link #liftBlack}), or after a while should none come.
+	 */
+	public void fadeToBlack(long durationMs) {
+		View o = fadeOverlay;
+		if (o == null) return;
+		o.animate().cancel();
+		if (o.getVisibility() != VISIBLE) o.setAlpha(0f);
+		o.setVisibility(VISIBLE);
+		o.animate().alpha(1f).setDuration(durationMs).start();
+		int gen = ++blackGen;
+		o.postDelayed(() -> {
+			if (gen == blackGen) liftBlack(FADE_IN_FAILSAFE_MS);
+		}, durationMs + 5000);
+	}
+
+	/** Takes the black of {@link #fadeToBlack} away, from wherever it is; a no-op when it is not up. */
+	public void liftBlack(long durationMs) {
+		View o = fadeOverlay;
+		if ((o == null) || (o.getVisibility() != VISIBLE)) return;
+		blackGen++;
+		o.animate().cancel();
+		o.animate().alpha(0f).setDuration(durationMs).withEndAction(() -> o.setVisibility(GONE)).start();
+	}
+
+	// Identifies the latest fadeToBlack(), so that the failsafe of an earlier one is dropped.
+	private int blackGen;
+	private static final long FADE_IN_FAILSAFE_MS = 300;
+
 	protected View addDimOverlay(Context context) {
 		dimOverlay = new View(context);
 		dimOverlay.setLayoutParams(new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));

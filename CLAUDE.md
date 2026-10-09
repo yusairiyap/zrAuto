@@ -171,6 +171,32 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
 5. Never bypass a failure by disabling the check, skipping a module, or force-pushing over history to
    "reset" CI — fix the underlying cause.
 
+## Local video / playback pitfalls (learned the hard way)
+
+- **SurfaceView, not a normal view.** Local video (ExoPlayer/MediaPlayer/VLC) draws into the two
+  `SurfaceView`s of `VideoView` (children 0 and 1). A SurfaceView reacts only to its *own* visibility
+  and never follows a parent's alpha: fading/hiding the video pane does not reliably reach the
+  surface, and a surface kept alive in a hidden pane could come back black (frames drawn, pane up,
+  sound playing). So: fade the picture with the black `fadeOverlay` view on top
+  (`VideoView.fadeInFromBlack/fadeToBlack/liftBlack`), never with the pane's alpha; and anything that
+  brings local video back should get fresh surfaces (`VideoView.recreateSurfaces()` then
+  `onSurfaceCreated`, as `MusicPlayer.switchToVideo` does). YouTube plays in a WebView and fades fine.
+- **Don't switch ExoPlayer's video track back on mid-play** to bring a picture back (music -> video):
+  it once raced through the rest of the file with a black picture. Restart the item at its position
+  with the picture on instead (`MusicPlayer.startTrack(.., true)`).
+- **SubGen gates the sound.** With on-device subtitle generation on, `AudioTranscriptProcessor` only
+  releases audio Whisper has read, so a slow/throttled Whisper freezes playback (READY, position
+  stuck). `PendingLoadAudioProcessor.setBypass` takes it out (applied at the next flush): Music tab
+  tracks always bypass it, and the Exo stall watchdog (`checkStall`) bypasses it on a stall.
+- **Item-scoped state.** Session metadata is published per item (`publishMetadata(m, item)` drops
+  stale ones; `metadata`/`metadataItem` is what the subtitle callback re-publishes). Music tab "watch"
+  requests are tied to their track (`MusicPlayer.StartRequest`).
+- **Grid vs list** for media lists comes from the grid preference, never from `isGridView()` (which
+  asks the active tab and is wrong while tabs switch).
+- Known open items: media card art can look blocky on One UI (1280x720 art); a YouTube hand-over
+  whose page never starts leaves the local engine muted with no error; the 150 ms end-of-track poll
+  and 1 s UI timer keep running in the background.
+
 ## Long/exhausting bug investigations: ask for adb logs
 
 **Note: the user currently has no adb access.** Their only window into a running app is the in-app
