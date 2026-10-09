@@ -458,7 +458,11 @@ public class BodyLayout extends SplitLayout
 	public void onPlaybackStateChanged(MediaSessionCallback cb, PlaybackStateCompat state) {
 		MainActivityDelegate a = getActivity();
 		// The black over the start of a downloaded video goes once it plays.
-		if (state.getState() == PlaybackStateCompat.STATE_PLAYING) a.liftLocalVideoCover(true);
+		if (state.getState() == PlaybackStateCompat.STATE_PLAYING) {
+			a.liftLocalVideoCover(true);
+			// Playing: the loading circle of the start (shown over whatever tab is up) has done its job.
+			startingPlayback.cancel();
+		}
 		// Over a list the fullscreen button comes and goes with whether a video plays.
 		if (!isVideoMode()) a.updateExtraFabsVisibility();
 	}

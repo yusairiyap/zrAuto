@@ -1286,13 +1286,13 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 				if ((getCurrentItem() != i) || (epoch != metaEpoch)) return;
 				PlaybackStateCompat s =
 						createPlayingState(i, !isPlaying(), getQid.peek(0L), position, speed);
-				publishMetadata(m);
+				publishMetadata(m, i);
 				setPlaybackState(s);
 			}));
 		}
 
 		PlaybackStateCompat s = createPlayingState(i, !playing, getQid.peek(0L), pos, speed);
-		publishMetadata(md);
+		publishMetadata(md, i);
 		DiagnosticLog.log("META", "session metadata", "item=" + i,
 				"title=" + md.getString(METADATA_KEY_DISPLAY_TITLE), "loaded=" + load.isDone());
 		setPlaybackState(s);
@@ -1541,6 +1541,16 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	// session's controller, which can still answer with the previous item's for a moment after a
 	// set (the media card then showed the track before).
 	private volatile MediaMetadataCompat publishedMetadata;
+
+	/** Only what belongs to the item playing right now goes out: a late answer for an earlier one is dropped. */
+	private void publishMetadata(MediaMetadataCompat m, PlayableItem forItem) {
+		if (forItem != getCurrentItem()) {
+			DiagnosticLog.log("META", "stale metadata dropped", "for=" + forItem,
+					"playing=" + getCurrentItem());
+			return;
+		}
+		publishMetadata(m);
+	}
 
 	private void publishMetadata(MediaMetadataCompat m) {
 		publishedMetadata = m;
