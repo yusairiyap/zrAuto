@@ -193,8 +193,9 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   requests are tied to their track (`MusicPlayer.StartRequest`).
 - **Fullscreen controls overlay.** Every `VideoView` (YouTube's too) carries a `VideoControlsOverlay`
   on top: title, prev/play-pause/next in the middle and the double tap seek feedback. `ControlPanelView`
-  decides when it shows (`showVideoControls`): the buttons always together with the panel (seeks too),
-  the title only on a single tap.
+  decides when it shows (`showVideoControls`): the buttons with the panel (hidden while seeking, back
+  once the seeking stops via `restoreControlsAfterSeek` if the panel is still up), the title only on a
+  single tap.
   The overlay takes every touch that misses its buttons and hands it to `VideoView.onTouchEvent`, which
   also keeps taps off YouTube's page (its own player controls are hidden in fullscreen by CSS, see
   `YoutubeWebView#hideFullscreenControlsJs`). In fullscreen the panel hides its whole transport row
