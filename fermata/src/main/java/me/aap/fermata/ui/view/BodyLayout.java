@@ -340,10 +340,11 @@ public class BodyLayout extends SplitLayout
 		out.animate().cancel();
 
 		boolean inShown = (in.getVisibility() == VISIBLE) && (in.getAlpha() >= 1f);
-		// The video pane never fades in: its picture is a SurfaceView, whose surface does not reliably
-		// follow its parent's alpha. Faded in from 0, an already existing surface could keep the
-		// alpha of the fade's start: the pane at 1, the picture invisible, only the pane's black
-		// background showing (sound playing, controls fine). It comes up at once; the list fades out.
+		// The video pane is not faded with its own alpha: its picture is a SurfaceView, whose surface
+		// does not reliably follow its parent's alpha. Faded in from 0, an already existing surface
+		// could keep the alpha of the fade's start: the pane at 1, the picture invisible, only the
+		// pane's black background showing (sound playing, controls fine). It is up at once and its
+		// picture fades in from black instead (VideoView#fadeInFromBlack), the list fading out.
 		boolean video = (m == Mode.VIDEO);
 		// A pane that is still on its way out comes back from where it is, not from nothing.
 		if ((in.getVisibility() != VISIBLE) && !video) in.setAlpha(0f);
@@ -353,6 +354,7 @@ public class BodyLayout extends SplitLayout
 		if (video) {
 			in.setAlpha(1f);
 			refreshSurfaces(in);
+			if (animate && !inShown && (in instanceof VideoView vv)) vv.fadeInFromBlack(FADE_MS);
 		} else if (animate && !inShown) {
 			in.animate().alpha(1f).setDuration(FADE_MS).start();
 		} else {

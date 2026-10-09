@@ -139,6 +139,14 @@ public class VideoView extends FrameLayout
 			}
 		});
 
+		fadeOverlay = new View(context);
+		fadeOverlay.setLayoutParams(new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		fadeOverlay.setBackgroundColor(Color.BLACK);
+		fadeOverlay.setVisibility(GONE);
+		fadeOverlay.setClickable(false);
+		fadeOverlay.setFocusable(false);
+		addView(fadeOverlay);
+
 		addDimOverlay(context);
 
 		addOnLayoutChangeListener(this);
@@ -152,6 +160,33 @@ public class VideoView extends FrameLayout
 	 * {@code YoutubeVideoView}, which builds its own child structure) must call this themselves to
 	 * support {@link #setDimOverlay}.
 	 */
+	// Black over the picture, faded out when the video comes up (see fadeInFromBlack()).
+	@Nullable
+	private View fadeOverlay;
+
+	/**
+	 * The picture fades in from black: a black view over it fading out. The pane itself can't be
+	 * faded (alpha on it): the picture is a SurfaceView, a separate layer that does not reliably
+	 * follow its parent's alpha and could stay invisible after such a fade (a black video area with
+	 * the sound playing). An ordinary view over it fades like any other. A no-op for subclasses that
+	 * build their own children (YoutubeVideoView: its WebView fades with the pane as usual).
+	 */
+	public void fadeInFromBlack(long durationMs) {
+		View o = fadeOverlay;
+		if (o == null) return;
+		o.animate().cancel();
+		o.setAlpha(1f);
+		o.setVisibility(VISIBLE);
+		o.animate().alpha(0f).setDuration(durationMs).withEndAction(() -> o.setVisibility(GONE)).start();
+		// Whatever happens to the animation, the black does not stay.
+		o.postDelayed(() -> {
+			if (o.getAlpha() > 0f) {
+				o.animate().cancel();
+				o.setVisibility(GONE);
+			}
+		}, durationMs + 500);
+	}
+
 	protected View addDimOverlay(Context context) {
 		dimOverlay = new View(context);
 		dimOverlay.setLayoutParams(new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
