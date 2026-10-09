@@ -1283,8 +1283,18 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			b.putString(METADATA_KEY_ALBUM_ART_URI, null);
 			return lib.getBitmap(art).then(bm -> {
 				DiagnosticLog.log("META", "album art", "size=" + ((bm == null) ? null : bm.getWidth() + "x" + bm.getHeight()));
-				b.putBitmap(METADATA_KEY_ALBUM_ART, (bm != null) ? bm : getDefaultImage());
-				return completed(b.build());
+				String vid = (bm == null) ? YtDownloads.thumbnailVideoId(art) : null;
+				if (vid == null) {
+					b.putBitmap(METADATA_KEY_ALBUM_ART, (bm != null) ? bm : getDefaultImage());
+					return completed(b.build());
+				}
+				// No thumbnail (no connection) for a downloaded video: a picture out of its file, rather
+				// than the small default image the media card blows up and blurs.
+				return me.aap.utils.app.App.get().getExecutor()
+						.submitTask(() -> YtDownloads.get().frameOf(vid)).then(fr -> {
+							b.putBitmap(METADATA_KEY_ALBUM_ART, (fr != null) ? fr : getDefaultImage());
+							return completed(b.build());
+						});
 			});
 		}
 

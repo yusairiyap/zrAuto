@@ -189,6 +189,58 @@ public final class YtDownloads {
 		}
 	}
 
+	private final android.util.LruCache<String, android.graphics.Bitmap> frames =
+			new android.util.LruCache<>(3);
+
+	/** The video id of a YouTube thumbnail address ({@code .../vi/<id>/...}), or null. */
+	@Nullable
+	public static String thumbnailVideoId(@Nullable String url) {
+		if (url == null) return null;
+		int i = url.indexOf("/vi/");
+		if (i < 0) return null;
+		int from = i + 4;
+		int to = url.indexOf('/', from);
+		return (to > from) ? url.substring(from, to) : null;
+	}
+
+	/**
+	 * A picture out of the downloaded video's file, for when its thumbnail can't be fetched (no
+	 * connection): the cover of the media card, say. Null for sound only or no file. Blocks while
+	 * reading the file: not for the main thread.
+	 */
+	@Nullable
+	public android.graphics.Bitmap frameOf(@Nullable String videoId) {
+		File f = getFile(videoId);
+		Entry e = getEntry(videoId);
+		if ((f == null) || (e == null) || !e.video) return null;
+		android.graphics.Bitmap c = frames.get(videoId);
+		if (c != null) return c;
+
+		MediaMetadataRetriever r = new MediaMetadataRetriever();
+		try {
+			r.setDataSource(f.getPath());
+			long at = Math.min(Math.max(e.durationMs, 0) / 5, 15000) * 1000;
+			android.graphics.Bitmap bm =
+					r.getFrameAtTime(at, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+			if (bm == null) return null;
+			int max = 1024;
+			if (bm.getWidth() > max) {
+				bm = android.graphics.Bitmap.createScaledBitmap(bm, max, bm.getHeight() * max / bm.getWidth(),
+						true);
+			}
+			frames.put(videoId, bm);
+			return bm;
+		} catch (Exception ex) {
+			Log.w(ex, "Failed to read a picture out of ", f);
+			return null;
+		} finally {
+			try {
+				r.release();
+			} catch (Exception ignored) {
+			}
+		}
+	}
+
 	@Nullable
 	public Entry getEntry(@Nullable String videoId) {
 		if (videoId == null) return null;
