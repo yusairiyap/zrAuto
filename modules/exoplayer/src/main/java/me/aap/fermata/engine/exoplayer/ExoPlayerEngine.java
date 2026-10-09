@@ -438,6 +438,13 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	@Override
 	public void setVideoView(VideoView view) {
 		super.setVideoView(view);
+		if ((view != null) || (shown != null)) {
+			DiagnosticLog.log("ENGINE", (view == null) ? "picture: screen taken away" : "picture: screen given",
+					"item=" + source, "surfaceValid=" + ((view != null) &&
+							view.getVideoSurface().getHolder().getSurface().isValid()),
+					"state=" + player.getPlaybackState(), "pos=" + player.getCurrentPosition());
+		}
+		screenGivenAt = android.os.SystemClock.uptimeMillis();
 		player.setVideoSurfaceHolder((view == null) ? null : view.getVideoSurface().getHolder());
 		// With nowhere to show it (the app in the background) the picture is not decoded at all: the
 		// sound plays on without a video decoder that can stall or be taken away.
@@ -492,10 +499,15 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	// latest check of that (see watchBlackPicture()).
 	private VideoView shown;
 	private boolean firstFrame;
+	private long screenGivenAt;
 	private int blackGen;
 
 	@Override
 	public void onRenderedFirstFrame() {
+		if (!firstFrame && (shown != null)) {
+			DiagnosticLog.log("ENGINE", "picture: first frame drawn",
+					"after=" + (android.os.SystemClock.uptimeMillis() - screenGivenAt) + "ms", "item=" + source);
+		}
 		firstFrame = true;
 	}
 
@@ -511,7 +523,12 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 			PlayableItem src = source;
 			if ((gen != blackGen) || firstFrame || (v == null) || (src == null) ||
 					(accessor.player == null) || !src.isVideo()) return;
-			if (!player.getPlayWhenReady() || (player.getPlaybackState() != Player.STATE_READY)) return;
+			if (!player.getPlayWhenReady()) return;
+			if (player.getPlaybackState() != Player.STATE_READY) {
+				// Still seeking to the key frame (or buffering): looked at again, not given up on.
+				if (gen == blackGen) watchBlackPicture();
+				return;
+			}
 			Format f = player.getVideoFormat();
 			boolean valid = v.getVideoSurface().getHolder().getSurface().isValid();
 			DiagnosticLog.log("ENGINE", "no picture 3 s after the screen was given", "item=" + src,

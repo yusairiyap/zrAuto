@@ -158,7 +158,8 @@ public class MediaItemView extends ConstraintLayout
 		badgeMinRadius = toPx(ctx, 9);
 		badgeMaxRadius = toPx(ctx, 16);
 		MainActivityDelegate a = getMainActivity();
-		applyLayout(ctx, a.isGridView(), a.getPrefs().getTextIconSizePref(a));
+		// The preference, like the list's (MediaItemListView#configure): not whatever tab is active.
+		applyLayout(ctx, a.getPrefs().getGridViewPref(a), a.getPrefs().getTextIconSizePref(a));
 		iconTint = getIcon().getImageTintList();
 		setLongClickable(true);
 		setOnLongClickListener(this);

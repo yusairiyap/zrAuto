@@ -50,6 +50,12 @@ below Android 13; diagnostic log trims in halves; YouTube cover not lifted early
 cleared when playing.
 
 ## Open problems (need device logs to confirm each)
+0. **Black fullscreen on "Video" after a downloaded video played as music (still sometimes)**: not explained by
+   the logs yet. Instrumented: `BODY video pane 3 s in ...` (pane visible/alpha/size, surface valid, registered
+   with the session, engine item isVideo), `ENGINE picture: screen given/taken away`, `ENGINE picture: first frame
+   drawn after=Nms`. `addVideoView` now re-gives a re-created surface to the engine (it used to return early).
+   Grid/list mismatch in Favorites/Playlists (giant grid cards in a 1-column list) fixed: lists and cards read the
+   grid pref, not `isGridView()` (which asks the active tab).
 1. **FIXED (pending confirmation)**: root cause was `MediaSessionCallback.metadata` only being set by the
    resume-restore path; the subtitle callback `accept()` re-published it (a restored item's) for any item
    with a subtitle stream. Now `metadata` is set with `metadataItem` in `publishMetadata(m, item)` and

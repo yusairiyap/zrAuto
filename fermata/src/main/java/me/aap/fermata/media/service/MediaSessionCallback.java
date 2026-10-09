@@ -338,7 +338,13 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			videoView = new PriorityQueue<>(2);
 		} else {
 			for (Prioritized<VideoView> s : videoView) {
-				if (s.obj == view) return;
+				if (s.obj != view) continue;
+				// Already known, its surface made again (shown after being hidden without the destroy
+				// being seen): the player is given it again all the same, or it keeps the dead one.
+				MediaEngine eng = getEngine();
+				PlayableItem i = (eng == null) ? null : eng.getSource();
+				if ((i != null) && i.isVideo() && (getVideoView() == view)) eng.setVideoView(view);
+				return;
 			}
 		}
 

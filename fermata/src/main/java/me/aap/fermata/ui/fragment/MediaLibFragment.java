@@ -466,7 +466,7 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 
 			if (list != null) {
 				Context ctx = getContext();
-				boolean grid = a.isGridView();
+				boolean grid = a.getPrefs().getGridViewPref(a);
 				float size = a.getPrefs().getTextIconSizePref(a);
 
 				for (MediaItemWrapper w : getAdapter().getList()) {

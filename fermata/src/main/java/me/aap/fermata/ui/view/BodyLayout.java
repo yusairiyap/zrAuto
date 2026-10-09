@@ -276,6 +276,21 @@ public class BodyLayout extends SplitLayout
 				postDelayed(() -> {
 					if (isVideoMode()) a.getMediaSessionCallback().reattachVideoView();
 				}, 500);
+				// Open problem: fullscreen sometimes black after a downloaded video played as music.
+				// Says whether the pane itself is up and has a screen, and what the player has.
+				postDelayed(() -> {
+					if (!isVideoMode()) return;
+					MediaEngine eng = a.getMediaSessionCallback().getEngine();
+					android.view.SurfaceView sv = vv.getVideoSurface();
+					DiagnosticLog.log("BODY", "video pane 3 s in", "visible=" + (vv.getVisibility() == VISIBLE),
+							"alpha=" + vv.getAlpha(), "size=" + vv.getWidth() + "x" + vv.getHeight(),
+							"surface=" + sv.getWidth() + "x" + sv.getHeight() + "/" +
+									(sv.getVisibility() == VISIBLE) + "/" + sv.getHolder().getSurface().isValid(),
+							"registered=" + (a.getMediaSessionCallback().getVideoView() == vv),
+							"engine=" + ((eng == null) ? null : eng.getClass().getSimpleName()),
+							"item=" + ((eng == null) ? null : eng.getSource()),
+							"isVideo=" + ((eng != null) && (eng.getSource() != null) && eng.getSource().isVideo()));
+				}, 3000);
 			}
 		}
 
