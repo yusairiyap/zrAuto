@@ -343,7 +343,8 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 
 		Context ctx = this;
 		MediaControllerCompat controller = session.getController();
-		MediaMetadataCompat mediaMetadata = controller.getMetadata();
+		MediaMetadataCompat mediaMetadata = callback.getPublishedMetadata();
+		if (mediaMetadata == null) mediaMetadata = controller.getMetadata();
 		NotificationCompat.Builder builder =
 				new NotificationCompat.Builder(ctx, NOTIF_CHANNEL_ID).setContentIntent(notifContentIntent)
 						.setDeleteIntent(pi(INTENT_STOP)).setVisibility(NotificationCompat.VISIBILITY_PUBLIC)

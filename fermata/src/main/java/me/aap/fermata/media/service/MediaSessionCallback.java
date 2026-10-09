@@ -1252,13 +1252,13 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 				if (getCurrentItem() != i) return;
 				PlaybackStateCompat s =
 						createPlayingState(i, !isPlaying(), getQid.peek(0L), position, speed);
-				session.setMetadata(m);
+				publishMetadata(m);
 				setPlaybackState(s);
 			}));
 		}
 
 		PlaybackStateCompat s = createPlayingState(i, !playing, getQid.peek(0L), pos, speed);
-		session.setMetadata(md);
+		publishMetadata(md);
 		DiagnosticLog.log("META", "session metadata", "item=" + i,
 				"title=" + md.getString(METADATA_KEY_DISPLAY_TITLE), "loaded=" + load.isDone());
 		setPlaybackState(s);
@@ -1446,7 +1446,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			return;
 
 		if (text == null) {
-			session.setMetadata(metadata);
+			publishMetadata(metadata);
 			return;
 		}
 
@@ -1479,7 +1479,22 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	private void setMetadata(MediaMetadataCompat metadata) {
 		this.metadata = metadata;
-		session.setMetadata(metadata);
+		publishMetadata(metadata);
+	}
+
+	// What the session was last given: the notification is built from it, not read back from the
+	// session's controller, which can still answer with the previous item's for a moment after a
+	// set (the media card then showed the track before).
+	private volatile MediaMetadataCompat publishedMetadata;
+
+	private void publishMetadata(MediaMetadataCompat m) {
+		publishedMetadata = m;
+		session.setMetadata(m);
+	}
+
+	@Nullable
+	MediaMetadataCompat getPublishedMetadata() {
+		return publishedMetadata;
 	}
 
 	@Override

@@ -203,6 +203,12 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		if (params.disabledTrackTypes.contains(C.TRACK_TYPE_VIDEO) == disabled) return;
 		player.setTrackSelectionParameters(
 				params.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, disabled).build());
+		// The picture switched on while the file plays on: its samples were not kept while it was off,
+		// so it would stay black until the next key frame (a still-image video has very few of them).
+		// Seeking to where it is starts the picture from the key frame before it.
+		if (!disabled && !preparing && (player.getPlaybackState() == Player.STATE_READY)) {
+			player.seekTo(player.getCurrentPosition());
+		}
 	}
 
 	@Override
