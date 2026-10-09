@@ -1218,6 +1218,9 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		});
 	}
 
+	// How many engines this play has already been handed on to after an error, see onEngineError().
+	private int fallbackStage;
+
 	// Bumped by every setPlayingState(): what an earlier one still has to publish when its metadata
 	// loads (a YouTube video's, after a local file took over) is dropped.
 	private volatile int metaEpoch;
@@ -1453,7 +1456,8 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			if (this.engine != null) {
 				Log.i("Trying another engine: ", this.engine);
 				// A downloaded file given a fresh ExoPlayer may still be given the platform player after it.
-				tryAnotherEngine = (engine.getId() == MediaPrefs.MEDIA_ENG_EXO) &&
+				// Only the first fallback (the fresh ExoPlayer) may be followed by one more.
+				tryAnotherEngine = (fallbackStage++ == 0) && (engine.getId() == MediaPrefs.MEDIA_ENG_EXO) &&
 						YtOffline.isDownloadedYoutube(i);
 				if (i.isVideo() && (videoView != null)) this.engine.setVideoView(getVideoView());
 				ensureAudioEffectsBeforePrepare(this.engine, i);
@@ -1621,6 +1625,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	private void playPreparedItem(PlayableItem i, long pos) {
 		resumeItem = null;
+		fallbackStage = 0;
 		getEngineManager().resetFreshTried();
 		// A YouTube video that is not on the phone is the YouTube tab's to play, from wherever it is
 		// asked for (a Favorites entry whose download was removed, say): no other engine can play

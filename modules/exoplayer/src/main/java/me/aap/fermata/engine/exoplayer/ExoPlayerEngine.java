@@ -267,6 +267,8 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 				if (id != null) keepPicture.add(id);
 				DiagnosticLog.log("ENGINE", "no progress with the picture off: switched on", "item=" + src);
 				setVideoTrackDisabled(false);
+				// With nowhere to show it too: what is stuck with the picture off is also stuck without a screen.
+				if ((shown == null) && (dummySurface == null)) useDummySurface();
 				watchForStall();
 				return;
 			}
@@ -360,9 +362,9 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		if (source == null) return;
 		var pos = source.getOffset() + position;
 		player.seekTo(pos);
-		// A seek (back, say) is not a stall: the watchdog measures from the new position.
-		if (player.getPlayWhenReady() && !preparing) watchForStall();
-		else stallGen++;
+		// A seek is not a stall (a file with few key frames takes seconds to show the new position):
+		// what the watchdog was waiting on is dropped.
+		stallGen++;
 		accessor.setSubGenTimeOffset(this);
 		syncSub(true);
 	}

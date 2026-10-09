@@ -1050,7 +1050,8 @@ public class MainActivityDelegate extends ActivityDelegate
 			this.videoMode = false;
 			fadeInFromVideo();
 			// Out of fullscreen before the video came up: the black held for it is only in the way now.
-			if (coverIntoVideo && (windowCover != null)) {
+			// Only the black held for a file that has not started: YouTube's own is lifted by its video.
+			if (coverUntilPlaying && (windowCover != null)) {
 				coverUntilPlaying = false;
 				liftVideoSwitchFadeSoon();
 			}
