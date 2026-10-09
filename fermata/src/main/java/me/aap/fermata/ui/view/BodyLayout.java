@@ -17,6 +17,7 @@ import android.os.Build;
 import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.widget.Toast;
 
@@ -290,6 +291,12 @@ public class BodyLayout extends SplitLayout
 							"engine=" + ((eng == null) ? null : eng.getClass().getSimpleName()),
 							"item=" + ((eng == null) ? null : eng.getSource()),
 							"isVideo=" + ((eng != null) && (eng.getSource() != null) && eng.getSource().isVideo()));
+					// What is on top of the middle of the picture: the video itself, or something over it.
+					int[] at = new int[2];
+					vv.getLocationOnScreen(at);
+					View root = getRootView();
+					DiagnosticLog.log("BODY", "over the video", "cover=" + a.describeWindowCover(),
+							"top=" + topViewAt(root, at[0] + vv.getWidth() / 2, at[1] + vv.getHeight() / 2));
 				}, 3000);
 			}
 		}
@@ -361,6 +368,40 @@ public class BodyLayout extends SplitLayout
 
 	public VideoView getVideoView() {
 		return findViewById(R.id.video_view);
+	}
+
+	/**
+	 * For the diagnostic log: the chain of views drawn last (topmost) at screen point x,y, with any
+	 * that paint a background of their own marked, so whatever hides the picture can be named.
+	 */
+	private static String topViewAt(View v, int x, int y) {
+		StringBuilder sb = new StringBuilder();
+		android.graphics.Rect r = new android.graphics.Rect();
+		for (int depth = 0; (v != null) && (depth < 40); depth++) {
+			if (sb.length() != 0) sb.append(" > ");
+			sb.append(v.getClass().getSimpleName());
+			if (v.getId() != NO_ID) {
+				try {
+					sb.append('#').append(v.getResources().getResourceEntryName(v.getId()));
+				} catch (Exception ignore) {
+				}
+			}
+			if (v.getBackground() != null) sb.append("[bg]");
+			if (v.getAlpha() < 1f) sb.append("[a=").append(v.getAlpha()).append(']');
+			if (!(v instanceof ViewGroup g)) break;
+			View next = null;
+			// The child drawn last that is showing at the point (elevation aside).
+			for (int i = g.getChildCount() - 1; i >= 0; i--) {
+				View c = g.getChildAt(i);
+				if ((c.getVisibility() != VISIBLE) || (c.getAlpha() == 0f)) continue;
+				if (c.getGlobalVisibleRect(r) && r.contains(x, y)) {
+					next = c;
+					break;
+				}
+			}
+			v = next;
+		}
+		return sb.toString();
 	}
 
 	private SwipeRefreshLayout getSwipeRefresh() {

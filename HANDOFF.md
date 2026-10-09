@@ -53,7 +53,9 @@ cleared when playing.
 0. **Black fullscreen on "Video" after a downloaded video played as music**: log 00:04:21 showed the cause.
    After the picture track was re-enabled mid-play (+ seek in place), ExoPlayer raced from 23 s to 177 s in 8 s
    (first frame drawn, pane fine) and skipped on. `MusicPlayer.switchToVideo` now restarts the track at its
-   position with the picture on (`startTrack(.., true)`) instead of `switchItem`. Any other mid-play re-enable
+   position with the picture on (`startTrack(.., true)`) instead of `switchItem`. Log 00:23:49 after that: restart works, frames drawn, position real-time, pane visible, yet the user still sees
+   black, so something is OVER the picture. `BODY over the video cover=... top=...` (topmost view chain at the
+   picture's centre, [bg] = paints a background) names it. Any other mid-play re-enable
    of the video track (`ExoPlayerEngine.setVideoTrackDisabled(false)`) may have the same problem. Earlier notes: Instrumented: `BODY video pane 3 s in ...` (pane visible/alpha/size, surface valid, registered
    with the session, engine item isVideo), `ENGINE picture: screen given/taken away`, `ENGINE picture: first frame
    drawn after=Nms`. `addVideoView` now re-gives a re-created surface to the engine (it used to return early).

@@ -1436,6 +1436,13 @@ public class MainActivityDelegate extends ActivityDelegate
 	// Whether the cover stays until the video plays (a downloaded video starting), not for a set time.
 	private boolean coverUntilPlaying;
 
+	/** For the diagnostic log: the window cover, if one is up. */
+	public String describeWindowCover() {
+		View c = windowCover;
+		return (c == null) ? "none" : ("alpha=" + c.getAlpha() + " intoVideo=" + coverIntoVideo +
+				" untilPlaying=" + coverUntilPlaying);
+	}
+
 	private View newWindowCover(boolean spinner) {
 		removeWindowCover();
 		Context ctx = getContext();
