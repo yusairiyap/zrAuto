@@ -814,9 +814,8 @@ public class ControlPanelView extends ConstraintLayout
 		View fb = a.getFloatingButton();
 		List<View> extra = a.getEnabledExtraFabs();
 
-		// Shown after a seek (the panel only), a tap brings up the rest rather than hiding it all.
-		boolean shown = (getVisibility() == VISIBLE) &&
-				((controlsHost != video) || video.getControls().isCenterShown());
+		// The panel and the middle buttons show and hide together.
+		boolean shown = getVisibility() == VISIBLE;
 
 		if (shown) {
 			fadeOut(this, true);
@@ -909,6 +908,14 @@ public class ControlPanelView extends ConstraintLayout
 		gestureDetector.onTouchEvent(e);
 	}
 
+	/**
+	 * Whether a double tap seek streak is going on: a tap now, even one landing on a middle button,
+	 * is one more seek (see VideoControlsOverlay).
+	 */
+	public boolean isSeekStreakActive() {
+		return SystemClock.uptimeMillis() < seekStreakUntil;
+	}
+
 	/** Restarts the countdown that hides the fullscreen video controls, if it's running. */
 	public void restartVideoHideTimer() {
 		if (hideTimer == null) return;
@@ -985,8 +992,9 @@ public class ControlPanelView extends ConstraintLayout
 		View fb = a.getFloatingButton();
 		List<View> extra = a.getEnabledExtraFabs();
 		int delay = getSeekDelay();
-		// Seeking shows the panel's seek bar only, as YouTube does: no middle buttons, no title.
-		hideVideoControls(true);
+		// The middle buttons always come and go with the panel (its seek bar line); the title only
+		// ever with a single tap, so a seek takes it away.
+		showVideoControls(vv, true, false);
 		super.setVisibility(VISIBLE);
 		fb.setVisibility(VISIBLE);
 		for (View f : extra) f.setVisibility(VISIBLE);

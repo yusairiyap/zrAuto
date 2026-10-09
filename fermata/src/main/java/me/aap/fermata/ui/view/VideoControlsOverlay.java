@@ -57,6 +57,8 @@ public class VideoControlsOverlay extends FrameLayout {
 	private final int titlePadH;
 	private boolean centerShown;
 	private boolean titleShown;
+	/** Set while a touch on a middle button goes to the video instead (see {@link #buttonTouch}). */
+	private boolean forwardingTouch;
 
 	public VideoControlsOverlay(Context ctx) {
 		super(ctx);
@@ -107,6 +109,7 @@ public class VideoControlsOverlay extends FrameLayout {
 		center.addView(next, lp);
 		addView(center, new LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER));
 
+		for (View btn : new View[]{prev, playPause, next}) btn.setOnTouchListener(this::buttonTouch);
 		prev.setOnClickListener(v -> onButton(b -> b.onPrevNextButtonClick(false)));
 		next.setOnClickListener(v -> onButton(b -> b.onPrevNextButtonClick(true)));
 		// Not the panel's play/pause handler: that one stops playback on a second tap within 300 ms,
@@ -115,6 +118,29 @@ public class VideoControlsOverlay extends FrameLayout {
 			if (b.isPlaying()) b.getMediaSessionCallback().onPause();
 			else b.getMediaSessionCallback().onPlay();
 		}));
+	}
+
+	/**
+	 * The middle buttons stay up with the panel during a double tap seek streak, so a quick tap of
+	 * the streak can land on one: then it's one more seek, handed to the video view like a tap that
+	 * missed them, not a press of the button.
+	 */
+	@SuppressLint("ClickableViewAccessibility")
+	private boolean buttonTouch(View v, MotionEvent e) {
+		int act = e.getActionMasked();
+		if (act == MotionEvent.ACTION_DOWN) {
+			forwardingTouch = MainActivityDelegate.get(getContext()).getControlPanel().isSeekStreakActive();
+		}
+		if (!forwardingTouch) return false;
+		if (getParent() instanceof VideoView vv) {
+			// From the button's own coordinates to this view's (the video view's).
+			MotionEvent c = MotionEvent.obtain(e);
+			c.offsetLocation(v.getLeft() + center.getLeft(), v.getTop() + center.getTop());
+			vv.onTouchEvent(c);
+			c.recycle();
+		}
+		if ((act == MotionEvent.ACTION_UP) || (act == MotionEvent.ACTION_CANCEL)) forwardingTouch = false;
+		return true;
 	}
 
 	private static TextView newText(Context ctx, int sp, int color, boolean bold) {
