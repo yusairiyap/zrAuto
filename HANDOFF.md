@@ -4,6 +4,9 @@ Branch: `ccr-8b7dca94-medecy` (was `ccr-d32fd790-dpebv3`) (develop and push only
 before this file: `5b479a0`; later commits on top are uncompiled until CI runs (check Build APK).
 Follow `CLAUDE.md` (no local Gradle, CI is the compile loop, ask for adb/diagnostic logs when stuck).
 The device is a Samsung SM-X736B (Android 16, One UI). The user tests on it and pastes the Diagnostic log.
+**The user has no adb**: everything must come through the in-app Diagnostic log. For problem 3 it now also
+logs activity resumed/paused/stopped (STATE), video surface created/destroyed (BODY) and ExoPlayer's own
+non-user pauses / suppression (ENGINE `exo playWhenReady=... reason=`: 2 focus loss, 3 noisy, 4 remote).
 
 ## What this is
 Offline YouTube downloads (Downloads tab, up to 1080p) that must play seamlessly mixed with live
@@ -56,7 +59,7 @@ cleared when playing.
    large icon once per item.
 3. **App backgrounded while a downloaded video plays as music: playback pauses sometimes; back in the
    app, fullscreen FAB shows a black screen.** No system pause appears in the logs seen; ask the user
-   for TRANSPORT/AUDIOFOCUS lines + `adb logcat` around Home press. Suspects: video surface destroyed
+   for the Diagnostic log around the Home press (TRANSPORT/AUDIOFOCUS/STATE/BODY/ENGINE lines). Suspects: video surface destroyed
    while the video track is enabled (`reattachVideoView`, `BodyLayout.setMode(VIDEO)` after 500 ms),
    `FermataMediaService` foreground/wake lock on PAUSED/BUFFERING, audio focus transient loss.
 4. **File 4l23KmKhtCQ (Perfect Pinterest) stalls when started as music (picture off)**; plays as video.

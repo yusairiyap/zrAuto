@@ -677,6 +677,21 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		}
 	}
 
+	// Open problem: playback pausing in the background with no session pause logged. A pause the
+	// player decides on itself (audio becoming noisy, focus, suppression) never goes through the
+	// session's onPause, so it is only visible here.
+	@Override
+	public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
+		if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) return;
+		DiagnosticLog.log("ENGINE", "exo playWhenReady=" + playWhenReady, "reason=" + reason,
+				"item=" + source);
+	}
+
+	@Override
+	public void onPlaybackSuppressionReasonChanged(int reason) {
+		DiagnosticLog.log("ENGINE", "exo playback suppression", "reason=" + reason, "item=" + source);
+	}
+
 	@Override
 	public void onVideoSizeChanged(VideoSize videoSize) {
 		listener.onVideoSizeChanged(this, videoSize.width, videoSize.height);

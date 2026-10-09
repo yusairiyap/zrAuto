@@ -173,6 +173,12 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
 
 ## Long/exhausting bug investigations: ask for adb logs
 
+**Note: the user currently has no adb access.** Their only window into a running app is the in-app
+**Diagnostic log** (`fermata/.../util/DiagnosticLog.java`, shared from the app). So when you need
+runtime evidence, add `DiagnosticLog.log(...)` lines for exactly what you need (under an existing
+category such as STATE/TRANSPORT/ENGINE/BODY/MUSIC), push, and ask the user to reproduce and paste the
+Diagnostic log; don't hand them adb commands. The adb examples below only apply if that changes.
+
 This session cannot run the app, attach a debugger, or capture logcat — there's no device/emulator
 and no adb here. If an investigation is dragging on (a bug can't be root-caused from reading code
 alone, a crash report is missing detail, or you're going back and forth on hypotheses without a way

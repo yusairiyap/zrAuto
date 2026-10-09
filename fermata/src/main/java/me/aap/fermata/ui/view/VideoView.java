@@ -68,6 +68,7 @@ import me.aap.fermata.media.sub.Subtitles;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.async.Promise;
 import me.aap.utils.function.BiConsumer;
@@ -483,6 +484,8 @@ public class VideoView extends FrameLayout
 
 	@Override
 	public void surfaceCreated(@NonNull SurfaceHolder holder) {
+		DiagnosticLog.log("BODY", "video surface created",
+				"valid=" + getVideoSurface().getHolder().getSurface().isValid());
 		if (!getVideoSurface().getHolder().getSurface().isValid()) return;
 		SurfaceView s = getSubtitleSurface();
 		if ((s != null) && !s.getHolder().getSurface().isValid()) return;
@@ -496,6 +499,7 @@ public class VideoView extends FrameLayout
 
 	@Override
 	public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
+		DiagnosticLog.log("BODY", "video surface destroyed");
 		createSurface = new Promise<>();
 		getActivity().onSuccess(a -> a.getMediaSessionCallback().removeVideoView(this));
 	}
