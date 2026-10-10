@@ -2646,7 +2646,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (floatingButton5 != null) floatingButton5.setScale(getPrefs().getFabSizePref(this));
 		floatingButton6 = a.findViewById(R.id.floating_button6);
 		if (floatingButton6 != null) floatingButton6.setScale(getPrefs().getFabSizePref(this));
-		fabPill = me.aap.fermata.ui.view.FabPillView.install(a,
+		fabPill = me.aap.fermata.ui.view.FabPillView.install(getContext(),
 				getPrefs().getBooleanPref(MainActivityPrefs.FAB_PILL), floatingButton, floatingButton2,
 				floatingButton3, floatingButton4, floatingButton5, floatingButton6);
 		updateFabDraggable();
