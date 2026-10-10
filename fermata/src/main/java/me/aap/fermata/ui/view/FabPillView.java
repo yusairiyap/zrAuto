@@ -42,7 +42,7 @@ import me.aap.utils.ui.view.NavBarView;
 public class FabPillView extends View implements ViewTreeObserver.OnPreDrawListener {
 	/** How far the pill eases toward where the buttons are, per frame. */
 	private static final float EASE = 0.3f;
-	private static final float PILL_PRESS_SCALE = 1.15f;
+	private static final float PILL_PRESS_SCALE = 1.3f;
 	private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 	private final RectF target = new RectF();
 	private final RectF cur = new RectF();
@@ -103,12 +103,14 @@ public class FabPillView extends View implements ViewTreeObserver.OnPreDrawListe
 			lp = new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 					ViewGroup.LayoutParams.MATCH_PARENT);
 		}
-		// Drawn just before the buttons: under them, over the content and bars drawn before. No
-		// elevation of its own: the buttons lose theirs as a pill (noShadow), and a raised pill would
-		// then be drawn over them.
+		// As high as the buttons and drawn just before them: right under them, and over everything
+		// lower, YouTube's fullscreen player included (added onto the root after the buttons, at no
+		// elevation: an unraised pill was hidden under it while the raised buttons still showed). Its
+		// own shadow is painted (onDraw); having no outline, it casts none from the elevation.
 		int idx = parent.indexOfChild(first);
 		for (FloatingButton f : l) idx = Math.min(idx, parent.indexOfChild(f));
 		parent.addView(v, idx, lp);
+		v.setElevation(first.getElevation());
 		v.pill = pill;
 		v.restyle();
 		return v;
@@ -171,8 +173,10 @@ public class FabPillView extends View implements ViewTreeObserver.OnPreDrawListe
 	 * No shadow at all: with no outline there is nothing to cast one. A lower elevation alone left
 	 * the theme's black outline shadow showing through a see-through fill as a dark smudge.
 	 */
-	private static void noShadow(FloatingButton f) {
-		f.setCompatElevation(0f);
+	private void noShadow(FloatingButton f) {
+		// The elevation stays (kept up with the pill's, so they stay above it and whatever covers the
+		// screen); without an outline it casts nothing.
+		f.setCompatElevation(getElevation());
 		f.setOutlineProvider(null);
 	}
 
