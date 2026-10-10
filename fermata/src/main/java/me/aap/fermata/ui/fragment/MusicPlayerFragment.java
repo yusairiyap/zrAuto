@@ -253,6 +253,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		loading = view.findViewById(R.id.music_loading);
 
 		title = view.findViewById(R.id.music_track_title);
+		// A long title scrolls a few times (marqueeRepeatLimit), not forever: while it scrolls the
+		// whole screen is drawn again every frame, a steady battery drain. A tap scrolls it again.
+		title.setOnClickListener(v -> {
+			v.setSelected(false);
+			v.setSelected(true);
+		});
 		artist = view.findViewById(R.id.music_track_artist);
 		position = view.findViewById(R.id.music_position);
 		duration = view.findViewById(R.id.music_duration);
@@ -1814,18 +1820,51 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		boolean active = !label.isEmpty();
 		int color = active ? EffectsUi.accent(palette) :
 				paletteColor(R.attr.musicIconPrimary);
-		moreButton.setCompoundDrawablePadding(active ? Math.round(6 * getResources().getDisplayMetrics().density) : 0);
+		// Only on a change: it lays the button out again even when it's the same.
+		int pad = active ? Math.round(6 * getResources().getDisplayMetrics().density) : 0;
+		if (moreButton.getCompoundDrawablePadding() != pad) moreButton.setCompoundDrawablePadding(pad);
+		fixCountdownWidth(moreButton, active ? label : null);
 		setText(moreButton, label);
 		moreButton.setTextColor(color);
 		moreButton.setCompoundDrawableTintList(ColorStateList.valueOf(color));
 		// The Timer chip, when it's out on the row, carries the countdown (the more button is gone then).
 		if (timerChip != null) {
 			CharSequence txt = active ? label : getString(R.string.music_timer_short);
+			fixCountdownWidth(timerChip, active ? label : null);
 			if (!txt.toString().contentEquals(timerChip.getText())) timerChip.setText(txt);
 			timerChip.setTextColor(active ? color : paletteColor(R.attr.musicTextPrimary));
 			timerChip.setCompoundDrawableTintList(ColorStateList.valueOf(color));
 		}
 		if (active) moreButton.postDelayed(timerChipTask, 1000);
+	}
+
+	/**
+	 * While a chip counts down, its width stays fixed (sized for the widest digits), so the new text
+	 * every second only redraws it: as wrap_content, each second laid the whole controls block out
+	 * again, which restarted the scrolling title every second. Back to wrap_content with no countdown.
+	 */
+	private static void fixCountdownWidth(TextView t, @Nullable String label) {
+		ViewGroup.LayoutParams lp = t.getLayoutParams();
+		int w = ViewGroup.LayoutParams.WRAP_CONTENT;
+
+		if (label != null) {
+			android.text.TextPaint p = t.getPaint();
+			char widest = '0';
+			float max = 0;
+			for (char c = '0'; c <= '9'; c++) {
+				float cw = p.measureText(String.valueOf(c));
+				if (cw > max) {
+					max = cw;
+					widest = c;
+				}
+			}
+			w = (int) Math.ceil(p.measureText(label.replaceAll("[0-9]", String.valueOf(widest)))) +
+					t.getCompoundPaddingStart() + t.getCompoundPaddingEnd();
+		}
+
+		if (lp.width == w) return;
+		lp.width = w;
+		t.setLayoutParams(lp);
 	}
 
 	@Override
