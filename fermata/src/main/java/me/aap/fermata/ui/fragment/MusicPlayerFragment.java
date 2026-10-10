@@ -16,9 +16,7 @@ import static android.support.v4.media.session.PlaybackStateCompat.SHUFFLE_MODE_
 import static android.support.v4.media.session.PlaybackStateCompat.SHUFFLE_MODE_NONE;
 
 import android.transition.ChangeBounds;
-import android.transition.Fade;
 import android.transition.TransitionManager;
-import android.transition.TransitionSet;
 import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
@@ -940,8 +938,14 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		b.animate().cancel();
 
 		if (text == 0) {
-			beginActionsTransition();
-			b.setVisibility(View.GONE);
+			// Fades out, then the others slide into its room.
+			if (b.getVisibility() != View.VISIBLE) return;
+			b.animate().alpha(0f).setDuration(150).setInterpolator(new DecelerateInterpolator())
+					.withEndAction(() -> {
+						beginActionsTransition();
+						b.setVisibility(View.GONE);
+						resetChip(b);
+					}).start();
 			return;
 		}
 
@@ -950,13 +954,14 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			b.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, 0, 0, 0);
 		};
 
-		if (was == 0) {
+		if ((was == 0) || (b.getVisibility() != View.VISIBLE)) {
+			// The others slide over to make room, and it fades in there.
 			beginActionsTransition();
 			apply.run();
-			b.setAlpha(1f);
-			b.setScaleX(1f);
-			b.setScaleY(1f);
+			resetChip(b);
+			b.setAlpha(0f);
 			b.setVisibility(View.VISIBLE);
+			b.animate().alpha(1f).setDuration(220).setInterpolator(new DecelerateInterpolator()).start();
 			return;
 		}
 
@@ -981,12 +986,21 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		View root = getView();
 		ViewGroup row = (root == null) ? null : root.findViewById(R.id.music_actions);
 		if ((row == null) || !row.isLaidOut() || !row.isAttachedToWindow()) return;
-		TransitionSet t = new TransitionSet().setOrdering(TransitionSet.ORDERING_TOGETHER)
-				.addTransition(new Fade(Fade.OUT)).addTransition(new ChangeBounds())
-				.addTransition(new Fade(Fade.IN));
+		// Positions only. No fades from here: a fade on a chip shown or hidden from a layout pass
+		// (updateEffectsChip) could be cut off and leave the chip laid out but invisible, a gap in
+		// the row pushing the more button off its end. The Video chip fades on its own (setVideoButton).
+		ChangeBounds t = new ChangeBounds();
 		t.setDuration(220);
 		t.setInterpolator(new DecelerateInterpolator());
 		TransitionManager.beginDelayedTransition(row, t);
+	}
+
+	/** A chip as it should look when shown: no fade or press left half done on it. */
+	private static void resetChip(View c) {
+		c.setAlpha(1f);
+		c.setScaleX(1f);
+		c.setScaleY(1f);
+		if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) c.setTransitionAlpha(1f);
 	}
 
 	private boolean isPlayingVideo() {
@@ -1647,9 +1661,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		for (int i = 0; i < optional.length; i++) {
 			int vis = show[i] ? View.VISIBLE : View.GONE;
 			if (optional[i].getVisibility() != vis) optional[i].setVisibility(vis);
+			// Never left see-through by an animation cut short: a shown chip is a seen chip.
+			if (show[i]) resetChip(optional[i]);
 		}
 		int moreVis = allFit ? View.GONE : View.VISIBLE;
 		if (moreButton.getVisibility() != moreVis) moreButton.setVisibility(moreVis);
+		if (!allFit) resetChip(moreButton);
 		refreshFavoriteChip();
 	}
 

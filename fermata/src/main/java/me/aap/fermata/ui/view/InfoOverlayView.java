@@ -171,7 +171,7 @@ public class InfoOverlayView extends LinearLayout {
 		setBackgroundResource(MusicPlayerFragment.isLightTheme(context) ? R.drawable.clock_bg_light :
 				R.drawable.clock_bg);
 		downloadedIcon = newIconView(context);
-		downloadedIcon.setImageResource(R.drawable.download_done);
+		downloadedIcon.setImageResource(R.drawable.download);
 		clock = (TextClock) LayoutInflater.from(context).inflate(R.layout.clock_view, this, false);
 		clockIcon = newIconView(context);
 		clockIcon.setImageResource(R.drawable.clock);
