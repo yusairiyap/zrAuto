@@ -375,6 +375,11 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 	 * {@code MainCarActivity#createEditText}), the soft keyboard otherwise.
 	 */
 	void focusSearchField(MainActivityDelegate a) {
+		focusSearchField(a, true);
+	}
+
+	/** @param keyboard false to only start the search (the field empty, the chips showing) */
+	void focusSearchField(MainActivityDelegate a, boolean keyboard) {
 		EditText t = a.getToolBar().findViewById(R.id.browser_addr);
 		if ((t == null) || !(a.getActiveFragment() instanceof YoutubeFragment yt)) return;
 		// Already editing (e.g. the car keyboard left the field in edit mode): start over empty
@@ -385,6 +390,7 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 		} else {
 			beginSearchInput(yt, t);
 		}
+		if (!keyboard) return;
 		t.requestFocus();
 		if (a.isCarActivity()) {
 			t.performClick();

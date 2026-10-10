@@ -162,6 +162,8 @@ import me.aap.fermata.ytdl.YtOffline;
 import me.aap.fermata.spotify.SpotifyAuth;
 import me.aap.fermata.ui.fragment.AudioEffectsFragment;
 import me.aap.fermata.ui.fragment.DiagnosticLogFragment;
+import me.aap.fermata.ui.fragment.KeyTesterFragment;
+import me.aap.fermata.ui.fragment.CarModeFragment;
 import me.aap.fermata.ui.fragment.FavoritesFragment;
 import me.aap.fermata.ui.fragment.FoldersFragment;
 import me.aap.fermata.ui.fragment.MainActivityFragment;
@@ -180,6 +182,7 @@ import me.aap.fermata.ui.view.FermataNavBarView;
 import me.aap.fermata.ui.view.LoadingCircleView;
 import me.aap.fermata.ui.view.PlaylistPicker;
 import me.aap.fermata.ui.view.ToolBarPill;
+import me.aap.fermata.ui.view.TopToast;
 import me.aap.fermata.ui.view.QuaternaryFloatingButton;
 import me.aap.fermata.ui.view.QuinaryFloatingButton;
 import me.aap.fermata.ui.view.SenaryFloatingButton;
@@ -296,6 +299,46 @@ public class MainActivityDelegate extends ActivityDelegate
 	/** The native Android Auto UI while it's running, see {@link #getPlaybackDelegate()}. */
 	private static WeakReference<MainActivityDelegate> carDelegate = new WeakReference<>(null);
 
+	/** The phone's UI while it exists (in front or not), see {@link #getUiDelegate()}. */
+	private static WeakReference<MainActivityDelegate> phoneDelegate = new WeakReference<>(null);
+
+	/**
+	 * The UI an action that needs one acts on when it was started from outside any UI: a car's
+	 * steering wheel button arrives as a media button through the media session, with no UI of its
+	 * own, and every key binding action that works on a screen (add to favorites, open a tab, the
+	 * YouTube search, ...) would otherwise do nothing. The car's screen while Android Auto runs the
+	 * app's UI, else the phone's.
+	 */
+	@Nullable
+	public static MainActivityDelegate getUiDelegate() {
+		MainActivityDelegate d = getCarDelegate();
+		return (d != null) ? d : phoneDelegate.get();
+	}
+
+	/**
+	 * Puts any keyboard away and takes the focus off the text field it was typing into: Android
+	 * Auto's own keyboard (the car's text input) as well as the phone's. For car mode, whose keys
+	 * move around the screen instead.
+	 *
+	 * @return whether there was one up
+	 */
+	public boolean dismissKeyboard() {
+		boolean was = false;
+		ZrAutoActivity aa = getAppActivity();
+		if (aa.isInputActive()) {
+			aa.stopInput();
+			was = true;
+		}
+		if (hideKeyboardIfShown()) was = true;
+		android.view.Window w = getWindow();
+		View focus = (w == null) ? null : w.getDecorView().findFocus();
+		if (focus instanceof android.widget.EditText) {
+			focus.clearFocus();
+			was = true;
+		}
+		return was;
+	}
+
 	/** The native Android Auto UI, if it's running. */
 	@Nullable
 	public static MainActivityDelegate getCarDelegate() {
@@ -387,6 +430,8 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (getAppActivity().isCarActivity()) {
 			carActivityActive = true;
 			carDelegate = new WeakReference<>(this);
+		} else {
+			phoneDelegate = new WeakReference<>(this);
 		}
 		Intent intent = getIntent();
 		if ((intent != null) && INTENT_ACTION_FINISH.equals(intent.getAction())) {
@@ -707,6 +752,8 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (getAppActivity().isCarActivity()) {
 			carActivityActive = false;
 			if (carDelegate.get() == this) carDelegate = new WeakReference<>(null);
+		} else if (phoneDelegate.get() == this) {
+			phoneDelegate = new WeakReference<>(null);
 		}
 		handler.close();
 		getMediaServiceBinder().getMediaSessionCallback().removeAssistant(this);
@@ -2163,6 +2210,10 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (b.isVideoMode()) b.setMode(BodyLayout.Mode.FRAME);
 		ActivityFragment f = super.showFragment(id, input);
 		updateExtraFabsVisibility();
+		// Leaving the Music tab gives the control panel back (it hides it while showing), but a
+		// switch made from a key binding, while the Music tab was mid-way through its own update,
+		// was seen leaving it hidden: once the switch has settled, make sure it matches what plays.
+		if (!(f instanceof MusicPlayerFragment)) post(this::resyncOverlaysAfterSwitch);
 		return f;
 	}
 
@@ -2185,6 +2236,10 @@ public class MainActivityDelegate extends ActivityDelegate
 			return new YoutubeAlternativesFragment();
 		} else if (id == R.id.diagnostic_log_fragment) {
 			return new DiagnosticLogFragment();
+		} else if (id == R.id.key_tester_fragment) {
+			return new KeyTesterFragment();
+		} else if (id == R.id.car_mode_fragment) {
+			return new CarModeFragment();
 		}
 		ActivityFragment f = FermataApplication.get().getAddonManager().createFragment(id);
 		return (f != null) ? f : super.createFragment(id);
@@ -2522,7 +2577,7 @@ public class MainActivityDelegate extends ActivityDelegate
 											.onFailure(err -> showAlert(getContext(), err.getMessage())).thenRun(() -> {
 												MediaLibFragment f = getMediaLibFragment(R.id.playlists_fragment);
 												if (f != null) f.getAdapter().reload();
-												UiUtils.showToast(getContext(), R.string.added_to_playlist, name);
+												TopToast.show(R.drawable.playlist_add, R.string.added_to_playlist, name);
 											})));
 				});
 		return true;
@@ -2539,7 +2594,7 @@ public class MainActivityDelegate extends ActivityDelegate
 						pl.addItems(items);
 						MediaLibFragment f = getMediaLibFragment(R.id.playlists_fragment);
 						if (f != null) f.getAdapter().reload();
-						UiUtils.showToast(getContext(), R.string.added_to_playlist, name);
+						TopToast.show(R.drawable.playlist_add, R.string.added_to_playlist, name);
 					});
 					break;
 				}
@@ -2594,7 +2649,7 @@ public class MainActivityDelegate extends ActivityDelegate
 				.onSuccess(v -> {
 					MediaLibFragment f = getMediaLibFragment(R.id.playlists_fragment);
 					if (f != null) f.getAdapter().reload();
-					UiUtils.showToast(ctx, R.string.playlist_moved, items.size(), to.getName());
+					TopToast.show(R.drawable.playlist_move, R.string.playlist_moved, items.size(), to.getName());
 				});
 	}
 
@@ -2792,6 +2847,12 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	/** How far the floating buttons are currently lifted above their place -- see below. */
 	private int fabKeyboardLift;
+	/** How much of fabKeyboardLift the margins carry right now (it animates there). */
+	private int fabLiftShown;
+	@Nullable
+	private android.animation.ValueAnimator fabLiftAnim;
+	// While lifted on the car: Android Auto can put its keyboard away by itself, without telling.
+	private final Runnable fabLiftRecheck = this::liftFabsAboveKeyboard;
 	private final Rect keyboardFrame = new Rect();
 	private final int[] fabParentLoc = new int[2];
 
@@ -2821,14 +2882,29 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (keyboard) {
 			parent.getLocationOnScreen(fabParentLoc);
 			// Where the buttons' bottom edge sits without any lift.
-			int bottom = fabParentLoc[1] + f.getBottom() + fabKeyboardLift;
+			int bottom = fabParentLoc[1] + f.getBottom() + fabLiftShown;
 			int gap = UiUtils.toIntPx(getContext(), 8);
 			lift = Math.max(0, bottom + gap - keyboardTop);
 		}
-		if (lift == fabKeyboardLift) return;
+		if (lift != fabKeyboardLift) {
+			fabKeyboardLift = lift;
+			// Glides there (up over the keyboard, back down once it's gone) rather than jumping.
+			if (fabLiftAnim != null) fabLiftAnim.cancel();
+			android.animation.ValueAnimator anim = android.animation.ValueAnimator.ofInt(fabLiftShown, lift);
+			anim.setDuration(220);
+			anim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+			anim.addUpdateListener(va -> shiftFabs((int) va.getAnimatedValue() - fabLiftShown));
+			fabLiftAnim = anim;
+			anim.start();
+		}
+		f.removeCallbacks(fabLiftRecheck);
+		if (lift > 0) f.postDelayed(fabLiftRecheck, 500);
+	}
 
-		int delta = lift - fabKeyboardLift;
-		fabKeyboardLift = lift;
+	/** Moves the floating buttons up by {@code delta} (down if negative), see fabLiftShown. */
+	private void shiftFabs(int delta) {
+		if (delta == 0) return;
+		fabLiftShown += delta;
 		for (View b : new View[]{floatingButton, floatingButton2, floatingButton3, floatingButton4,
 				floatingButton5, floatingButton6}) {
 			if ((b == null) || !(b.getLayoutParams() instanceof ViewGroup.MarginLayoutParams lp)) {
@@ -2917,6 +2993,16 @@ public class MainActivityDelegate extends ActivityDelegate
 			// bars hidden: unsuppressing does not show them).
 			setOverlaysSuppressed(getActiveFragment() instanceof MusicPlayerFragment);
 		}
+	}
+
+	private void resyncOverlaysAfterSwitch() {
+		if ((getActiveFragment() instanceof MusicPlayerFragment) || isVideoMode() || pipSuppressed) return;
+		ControlPanelView cp = getControlPanel();
+		if ((cp != null) && cp.isSuppressed()) {
+			DiagnosticLog.log("STATE", "control panel still suppressed after a tab switch: restored");
+		}
+		setOverlaysSuppressed(false);
+		getMediaServiceBinder().resyncControlPanel();
 	}
 
 	public void setOverlaysSuppressed(boolean suppressed) {

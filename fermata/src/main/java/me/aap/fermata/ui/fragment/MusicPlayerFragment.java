@@ -305,6 +305,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		queueCount = view.findViewById(R.id.music_queue_count);
 		queueEmpty = view.findViewById(R.id.music_queue_empty);
 		queueList = view.findViewById(R.id.music_queue_list);
+		// Car mode: the steering wheel moves through the queue, long previous closes it; never onto
+		// Clear, a long press there would empty the queue.
+		me.aap.fermata.action.CarNav.markScope(queuePanel, () -> showQueue(false));
+		me.aap.fermata.action.CarNav.skip(view.findViewById(R.id.music_queue_clear));
 		queue = MusicPlayer.getQueue(a);
 
 		// Like every other tab: tool_bar/nav_bar are drawn over the fragment, so the content has to

@@ -207,6 +207,107 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 		p.getChildren().main(getMainActivity().getHandler()).onSuccess(l -> getListView().focusTo(i));
 	}
 
+	/**
+	 * Whether opening this tab goes to what's playing in it (into its playlist) and highlights it:
+	 * Favorites and Playlists.
+	 */
+	protected boolean revealsPlaying() {
+		return false;
+	}
+
+	@Override
+	public void switchingFrom(@Nullable me.aap.utils.ui.fragment.ActivityFragment from) {
+		super.switchingFrom(from);
+		// Posted: this runs before the switch is committed (and before a new tab has its view).
+		if (revealsPlaying() && (from != this)) {
+			getMainActivityDelegate().onSuccess(a -> a.post(this::revealPlaying));
+		}
+	}
+
+	/**
+	 * See {@link #revealsPlaying()}. What's playing may not be this tab's own item even when it's in
+	 * it: a Music tab queue track plays the song it was queued from, YouTube plays its own video
+	 * item. So the session's item and the song behind it are tried first, then this tab is searched
+	 * for an entry of the same song (the open playlist first).
+	 */
+	private void revealPlaying() {
+		if (isHidden() || (getView() == null) || (adapter == null)) return;
+		MainActivityDelegate a = getMainActivity();
+		BrowsableItem root = getAdapter().getRoot();
+		if (root == null) return;
+
+		List<PlayableItem> cands = new ArrayList<>(3);
+		PlayableItem cur = a.getMediaSessionCallback().getCurrentItem();
+		if (cur != null) cands.add(cur);
+		if (cur instanceof me.aap.fermata.addon.music.MusicTrackItem t) {
+			if (t.getSource() != null) cands.add(t.getSource());
+		}
+		PlayableItem fav = me.aap.fermata.action.Action.getFavoritableItem(a);
+		if (fav != null) cands.add(fav);
+
+		Set<String> ids = new HashSet<>();
+		for (PlayableItem c : cands) {
+			if (root.equals(c.getRoot())) {
+				revealAndHighlight(a, c);
+				return;
+			}
+			ids.add(c.getOrigId());
+		}
+		if (cur instanceof me.aap.fermata.addon.music.MusicTrackItem t) ids.add(t.getSourceId());
+		if (ids.isEmpty()) return;
+
+		root.getUnsortedChildren().main(a.getHandler()).onSuccess(children -> {
+			List<BrowsableItem> folders = new ArrayList<>();
+			for (Item c : children) {
+				if ((c instanceof PlayableItem p) && ids.contains(p.getOrigId())) {
+					revealAndHighlight(a, p);
+					return;
+				}
+				if (c instanceof BrowsableItem b) folders.add(b);
+			}
+			// The open playlist first: the same song may be in several.
+			BrowsableItem open = getAdapter().getParent();
+			if ((open != null) && folders.remove(open)) folders.add(0, open);
+			searchFolders(a, folders, 0, ids);
+		});
+	}
+
+	/** One folder (playlist) at a time, until an entry of the playing song turns up. */
+	private void searchFolders(MainActivityDelegate a, List<BrowsableItem> folders, int idx,
+														 Set<String> ids) {
+		if ((idx >= folders.size()) || isHidden()) return;
+		folders.get(idx).getUnsortedChildren().main(a.getHandler()).onSuccess(children -> {
+			for (Item c : children) {
+				if ((c instanceof PlayableItem p) && ids.contains(p.getOrigId())) {
+					revealAndHighlight(a, p);
+					return;
+				}
+			}
+			searchFolders(a, folders, idx + 1, ids);
+		});
+	}
+
+	private void revealAndHighlight(MainActivityDelegate a, PlayableItem i) {
+		BrowsableItem p = i.getParent();
+		if (p == null) return;
+		ListAdapter ad = getAdapter();
+		if (!p.equals(ad.getParent())) ad.setParent(p);
+		p.getChildren().main(a.getHandler()).onSuccess(l -> highlightWhenListed(a, i, 10));
+	}
+
+	/** The list fills in asynchronously after a folder change: retried until the item is in it. */
+	private void highlightWhenListed(MainActivityDelegate a, Item i, int tries) {
+		if (isHidden() || (getView() == null)) return;
+		int pos = indexOf(getAdapter().getList(), i);
+		if (pos < 0) {
+			if (tries > 0) a.postDelayed(() -> highlightWhenListed(a, i, tries - 1), 100);
+			return;
+		}
+		MediaItemListView lv = getListView();
+		lv.scrollToPosition(pos, false);
+		a.postDelayed(() -> me.aap.fermata.action.CarNav.highlightRow(a, lv, pos), 120);
+	}
+
 	public boolean onBackPressed() {
 		MainActivityDelegate ad = getMainActivity();
 		BodyLayout b = ad.getBody();
@@ -223,7 +324,11 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 		BrowsableItem newParent = oldParent.getParent();
 		if (newParent == null) return false;
 		a.setParent(newParent);
-		ad.post(() -> revealItem(oldParent));
+		ad.post(() -> {
+			revealItem(oldParent);
+			// Car mode carries on from the folder (playlist) just left, outlined.
+			if (me.aap.fermata.action.CarNav.isEnabled()) highlightWhenListed(ad, oldParent, 10);
+		});
 		return true;
 	}
 
@@ -727,6 +832,8 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 			MediaItemListView list = scroll && same ? getListView() : null;
 			int scrollPos = (list != null) ? list.getScrollPosition() : 0;
 			FutureSupplier<?> set = super.setParent(parent, userAction);
+			// Another folder: car mode's next press starts from its first row.
+			if (!Objects.equals(prev, parent)) me.aap.fermata.action.CarNav.listChanged(getListView());
 
 			if (!isHidden() && !noScroll) {
 				getMainActivity().fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);

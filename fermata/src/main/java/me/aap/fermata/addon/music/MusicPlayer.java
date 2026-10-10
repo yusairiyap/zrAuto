@@ -638,7 +638,7 @@ public final class MusicPlayer {
 							R.plurals.video_added_to_queue, n, n));
 					return;
 				} else if (n == 0) {
-					UiUtils.showToast(ctx, R.string.video_queue_nothing_added);
+					me.aap.fermata.ui.view.TopToast.show(R.drawable.up_next, R.string.video_queue_nothing_added);
 					return;
 				}
 			}
@@ -647,7 +647,7 @@ public final class MusicPlayer {
 			MusicTrackItem cur = getCurrentTrack(a.getMediaSessionCallback());
 			if (cur == null) cur = q.getSavedCurrent();
 			q.addAfter(cur, list);
-			UiUtils.showToast(ctx, ctx.getResources().getQuantityString(R.plurals.music_added_to_queue,
+			me.aap.fermata.ui.view.TopToast.show(R.drawable.up_next, ctx.getResources().getQuantityString(R.plurals.music_added_to_queue,
 					list.size(), list.size()));
 		});
 	}

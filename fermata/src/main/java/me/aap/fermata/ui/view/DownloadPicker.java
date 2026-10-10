@@ -107,6 +107,8 @@ public final class DownloadPicker {
 		overlay.setElevation(dp(30));
 		overlay.setBackgroundColor(0x55000000);
 		overlay.setOnClickListener(v -> dismiss());
+		// Car mode: the steering wheel moves through the rows, long previous closes.
+		me.aap.fermata.action.CarNav.markModalScope(overlay, this::dismiss);
 		overlay.setAlpha(0f);
 
 		LinearLayout root = new LinearLayout(ctx);

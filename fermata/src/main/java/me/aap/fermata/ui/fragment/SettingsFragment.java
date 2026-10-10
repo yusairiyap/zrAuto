@@ -105,7 +105,10 @@ public class SettingsFragment extends MainActivityFragment
 	public static final Object SHOW_PRIVATE_MODE_SETTINGS = "private_mode_settings";
 	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Secondary/Tertiary FAB settings subsection. */
 	public static final Object SHOW_FAB_SETTINGS = "fab_settings";
+	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Key bindings page. */
+	public static final Object SHOW_KEY_BINDINGS = "key_bindings";
 	private static final String ADDON_SETTINGS = "addon_settings:";
+	private static final String KEY_SETTINGS = "key_settings:";
 
 	private PreferenceViewAdapter adapter;
 	private PreferenceSet dimSettingsSet;
@@ -113,6 +116,13 @@ public class SettingsFragment extends MainActivityFragment
 	private PreferenceSet fabSettingsSet;
 	// Each addon's own settings page, by module name, see addonSettings().
 	private final java.util.Map<String, PreferenceSet> addonSettingsSets = new java.util.HashMap<>();
+	@Nullable
+	private PreferenceSet keyBindingsSet;
+	// Each key's own bindings page, by Key name, see keySettings().
+	private final java.util.Map<String, PreferenceSet> keySettingsSets = new java.util.HashMap<>();
+	// The key page opened from the key simulator: Back from it goes back there.
+	@Nullable
+	private PreferenceSet returnToKeyTesterFrom;
 	@Nullable
 	private Object pendingInput;
 
@@ -122,6 +132,14 @@ public class SettingsFragment extends MainActivityFragment
 	 */
 	public static Object addonSettings(String moduleName) {
 		return ADDON_SETTINGS + moduleName;
+	}
+
+	/**
+	 * Same as {@link #SHOW_DIM_SETTINGS}, but for one key's bindings page (Settings > Key bindings),
+	 * opened from the key simulator: Back from that page returns to the simulator.
+	 */
+	public static Object keySettings(Key k) {
+		return KEY_SETTINGS + k.name();
 	}
 
 	@Override
@@ -145,6 +163,14 @@ public class SettingsFragment extends MainActivityFragment
 		} else if ((pendingInput instanceof String s) && s.startsWith(ADDON_SETTINGS)) {
 			PreferenceSet p = addonSettingsSets.get(s.substring(ADDON_SETTINGS.length()));
 			if (p != null) adapter.setPreferenceSet(p);
+		} else if ((pendingInput == SHOW_KEY_BINDINGS) && (keyBindingsSet != null)) {
+			adapter.setPreferenceSet(keyBindingsSet);
+		} else if ((pendingInput instanceof String ks) && ks.startsWith(KEY_SETTINGS)) {
+			PreferenceSet p = keySettingsSets.get(ks.substring(KEY_SETTINGS.length()));
+			if (p != null) {
+				adapter.setPreferenceSet(p);
+				returnToKeyTesterFrom = p;
+			}
 		}
 		pendingInput = null;
 	}
@@ -225,6 +251,13 @@ public class SettingsFragment extends MainActivityFragment
 	}
 
 	@Override
+	public void onHiddenChanged(boolean hidden) {
+		super.onHiddenChanged(hidden);
+		// Left for another screen: Back from that key page goes up as usual next time.
+		if (hidden) returnToKeyTesterFrom = null;
+	}
+
+	@Override
 	public boolean isRootPage() {
 		return (adapter == null) || (adapter.getPreferenceSet().getParent() == null);
 	}
@@ -232,6 +265,12 @@ public class SettingsFragment extends MainActivityFragment
 	@Override
 	public boolean onBackPressed() {
 		if (adapter == null) return false;
+		if ((returnToKeyTesterFrom != null) && (adapter.getPreferenceSet() == returnToKeyTesterFrom)) {
+			returnToKeyTesterFrom = null;
+			getActivityDelegate().showFragment(R.id.key_tester_fragment);
+			return true;
+		}
+		returnToKeyTesterFrom = null;
 		PreferenceSet p = adapter.getPreferenceSet().getParent();
 		if (p == null) return false;
 		adapter.setPreferenceSet(p);
@@ -421,10 +460,31 @@ public class SettingsFragment extends MainActivityFragment
 					v -> v.locale.getDisplayName(), String[]::new);
 		});
 
-		sub1 = set.subSet(o -> {
+		keyBindingsSet = sub1 = set.subSet(o -> {
 			o.title = R.string.key_bindings;
 			o.icon = R.drawable.keyboard;
 		});
+		sub1.addBooleanPref(o -> {
+			o.store = Key.getPrefs();
+			o.pref = Key.BIND_TRANSPORT;
+			o.title = R.string.key_bind_transport;
+			o.subtitle = R.string.key_bind_transport_sub;
+		});
+		// Its own page: the switch, and what the keys do with it on.
+		sub1.addButton(o -> {
+			o.title = R.string.key_car_mode;
+			o.icon = R.drawable.keyboard;
+			o.subtitle = R.string.key_car_mode_sub;
+			o.onClick = () -> a.showFragment(R.id.car_mode_fragment);
+		});
+		// Right above the keys themselves.
+		sub1.addButton(o -> {
+			o.title = R.string.key_tester;
+			o.icon = R.drawable.keyboard;
+			o.subtitle = R.string.key_tester_sub;
+			o.onClick = () -> a.showFragment(R.id.key_tester_fragment);
+		});
+		keySettingsSets.clear();
 		var actions = Action.getAll();
 		var actionNames = new int[actions.size()];
 		var actionOrdinals = new int[actions.size()];
@@ -438,6 +498,7 @@ public class SettingsFragment extends MainActivityFragment
 				o.ctitle = k.name();
 				o.icon = R.drawable.keyboard;
 			});
+			keySettingsSets.put(k.name(), sub2);
 			sub2.addListPref(o -> {
 				o.store = Key.getPrefs();
 				o.pref = k.getActionPref();

@@ -23,6 +23,7 @@ public class KeyEventHandler {
 	private static final int LONG_CLICK_INTERVAL = 1000;
 
 	private static Worker worker;
+	private static boolean performingKeyAction;
 
 	public static boolean handleKeyEvent(MediaSessionCallback cb, KeyEvent event,
 																			 IntObjectFunction<KeyEvent, Boolean> defaultHandler) {
@@ -39,10 +40,20 @@ public class KeyEventHandler {
 																				IntObjectFunction<KeyEvent, Boolean> defaultHandler) {
 		Log.i((activity == null) ? "Media: " : "Activity: ", event);
 
+		// The key tester is open: it sees every key first, and the bound actions don't run.
+		if (KeyTester.isActive()) {
+			worker = null;
+			if (KeyTester.onKeyEvent(event, activity == null)) return true;
+			return defaultHandler.apply(event.getKeyCode(), event);
+		}
+
 		if (event.isCanceled()) {
 			worker = null;
 			return defaultHandler.apply(event.getKeyCode(), event);
 		}
+
+		// Car mode: previous/next move through what's on screen instead, where there's anything to.
+		if (CarNav.handleKeyEvent(event, activity, cb)) return true;
 
 		if (worker != null) {
 			if (worker.handle(event)) return true;
@@ -85,11 +96,35 @@ public class KeyEventHandler {
 		return true;
 	}
 
+	/** Drops a click/double click/long click still being worked out. */
+	static void reset() {
+		worker = null;
+	}
+
 	private static void performAction(Action action, MediaSessionCallback cb,
 																		@Nullable MainActivityDelegate activity, long timestamp) {
 		worker = null;
 		Log.i("Performing action ", action);
-		action.getHandler().handle(cb, activity, timestamp);
+		performingKeyAction = true;
+		try {
+			action.getHandler().handle(cb, activity, timestamp);
+		} finally {
+			performingKeyAction = false;
+		}
+		// Over fullscreen video: what a tap on the screen would show (the controls, the seek).
+		MainActivityDelegate a = (activity != null) ? activity : MainActivityDelegate.getUiDelegate();
+		if (a != null) {
+			me.aap.fermata.ui.view.ControlPanelView cp = a.getControlPanel();
+			if (cp != null) cp.showKeyFeedback(action);
+		}
+	}
+
+	/**
+	 * Whether the action running now came from a key (a steering wheel button) rather than a tap:
+	 * in car mode such an action doesn't bring up the keyboard (the YouTube search).
+	 */
+	public static boolean isPerformingKeyAction() {
+		return performingKeyAction;
 	}
 
 	private static final class Worker implements Runnable {

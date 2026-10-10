@@ -126,6 +126,7 @@ class DefaultFavorites extends ItemContainer<PlayableItem> implements Favorites,
 	@Override
 	protected void itemAdded(PlayableItem i) {
 		getLib().getAtvInterface(a -> a.addProgram(i));
+		FavoritesNotice.changed(i, true);
 	}
 
 	/** A YouTube entry keeps its channel/duration for the list's subtitles. */
@@ -138,6 +139,7 @@ class DefaultFavorites extends ItemContainer<PlayableItem> implements Favorites,
 	protected void itemRemoved(PlayableItem i) {
 		super.itemRemoved(i);
 		getLib().getAtvInterface(a -> a.removeProgram(i));
+		FavoritesNotice.changed(i, false);
 	}
 
 	/**

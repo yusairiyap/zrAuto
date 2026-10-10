@@ -281,6 +281,12 @@ public class PlaylistsFragment extends MediaLibFragment {
 		getListView().setSelectionListener(v -> updateSelectionPanel());
 	}
 
+	/** Opening this tab goes to what's playing in it, highlighted. */
+	@Override
+	protected boolean revealsPlaying() {
+		return true;
+	}
+
 	@Override
 	public void onHiddenChanged(boolean hidden) {
 		super.onHiddenChanged(hidden);

@@ -22,6 +22,7 @@ import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.DownloadPicker;
 import me.aap.fermata.ui.view.TopPopup;
+import me.aap.fermata.ui.view.TopToast;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.menu.OverlayMenu;
 
@@ -75,7 +76,7 @@ public final class YtDownloadMenu {
 			b.addItem(R.id.ytdl_remove, R.drawable.download_remove, R.string.ytdl_remove)
 					.setHandler(i -> {
 						for (String id : downloaded) d.remove(id);
-						UiUtils.showToast(ctx, R.string.ytdl_removed);
+						TopToast.show(R.drawable.download_remove, R.string.ytdl_removed);
 						return true;
 					});
 		}
@@ -163,11 +164,11 @@ public final class YtDownloadMenu {
 		PlayableItem pi = Action.getFavoritableItem(a);
 		String id = YtDownloads.videoIdOf(pi);
 		if (id == null) {
-			UiUtils.showToast(a.getContext(), R.string.ytdl_nothing_playing);
+			TopToast.show(R.drawable.download, R.string.ytdl_nothing_playing);
 			return;
 		}
 		if (YtDownloads.get().isDownloaded(id) || YtDownloads.get().isActive(id)) {
-			UiUtils.showToast(a.getContext(), R.string.ytdl_nothing_queued);
+			TopToast.show(R.drawable.download, R.string.ytdl_nothing_queued);
 			return;
 		}
 		// Posted: this also runs from the FAB's own menu, which is still closing at this point.

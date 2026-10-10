@@ -111,6 +111,9 @@ import java.util.Queue;
 import me.aap.fermata.BuildConfig;
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
+import me.aap.fermata.action.Action;
+import me.aap.fermata.action.Key;
+import me.aap.fermata.action.KeyTester;
 import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.engine.AudioEffects;
 import me.aap.fermata.media.engine.BufferingIndicator;
@@ -192,6 +195,8 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	private final BroadcastReceiver onNoisy;
 	private MediaEngine engine;
 	private boolean playOnPrepared;
+	/** A controller's command is running as a key binding: see interceptTransport(). */
+	private boolean routingTransport;
 	private boolean playOnAudioFocus;
 	private boolean isMuted;
 	private boolean tryAnotherEngine;
@@ -298,7 +303,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	public void setEngine(MediaEngine engine) {
 		if (this.engine == engine) return;
 		playerTask.cancel();
-		onStop();
+		onStop(true);
 		this.engine = engine;
 	}
 
@@ -406,14 +411,14 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		getEngineManager().setCustomEngineProvider(engineProvider);
 		if (getEngine() != null) {
 			if (isPlaying()) onStop(true).onSuccess(v -> handler.post(this::play));
-			else onStop();
+			else onStop(true);
 		}
 	}
 
 	public void removeCustomEngineProvider(MediaEngineProvider engineProvider) {
 		if (getEngineManager().removeCustomEngineProvider(engineProvider)) {
 			if (isPlaying()) onStop(true).onSuccess(v -> handler.post(this::play));
-			else onStop();
+			else onStop(true);
 		}
 	}
 
@@ -452,7 +457,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	}
 
 	public void close() {
-		onStop();
+		onStop(true);
 		session.setActive(false);
 		lib.getContext().unregisterReceiver(onNoisy);
 		removeBroadcastListeners();
@@ -564,8 +569,46 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		return completedVoid();
 	}
 
+	/**
+	 * Play/pause/next/... from Android Auto or a head unit (a controller of the session, not this
+	 * app's own code): shown in the key tester and blocked while it's open, or, with
+	 * {@link Key#BIND_TRANSPORT} on, run as the matching media key's click binding.
+	 *
+	 * @return true if the command was handled here and must not run as usual
+	 */
+	private boolean interceptTransport(KeyTester.Transport t) {
+		if (routingTransport) return false;
+		String pkg;
+		try {
+			var info = session.getCurrentControllerInfo();
+			if (info == null) return false;
+			pkg = info.getPackageName();
+		} catch (Throwable ignore) {
+			return false; // A direct call, not from a controller.
+		}
+		if (KeyTester.onTransport(t)) return true;
+		if (((t == KeyTester.Transport.NEXT) || (t == KeyTester.Transport.PREV)) &&
+				me.aap.fermata.action.CarNav.onTransport(t == KeyTester.Transport.NEXT)) {
+			return true;
+		}
+		if (!Key.getPrefs().getBooleanPref(Key.BIND_TRANSPORT)) return false;
+		// This app's own controls mean exactly what they say.
+		if (lib.getContext().getPackageName().equals(pkg)) return false;
+		Action a = t.key.getClickAction();
+		if (a == null) return false;
+		DiagnosticLog.log("TRANSPORT", "bound command", "cmd=" + t, "action=" + a, "from=" + pkg);
+		routingTransport = true;
+		try {
+			a.getHandler().handle(this, null, SystemClock.uptimeMillis());
+		} finally {
+			routingTransport = false;
+		}
+		return true;
+	}
+
 	@Override
 	public void onPlay() {
+		if (interceptTransport(KeyTester.Transport.PLAY)) return;
 		DiagnosticLog.log("TRANSPORT", "onPlay", "state=" + stateName(getPlaybackState().getState()));
 		playerTask.cancel();
 		playerTask = play();
@@ -695,6 +738,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onPause() {
+		if (interceptTransport(KeyTester.Transport.PAUSE)) return;
 		DiagnosticLog.log("TRANSPORT", "onPause",
 				"state=" + stateName(getPlaybackState().getState()), "from=" + pauseSource());
 		PlayableItem i;
@@ -702,7 +746,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		if ((eng == null) || ((i = eng.getSource()) == null)) return;
 
 		if (!eng.canPause()) {
-			onStop();
+			onStop(true);
 			return;
 		}
 
@@ -729,6 +773,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onStop() {
+		if (interceptTransport(KeyTester.Transport.STOP)) return;
 		onStop(true);
 	}
 
@@ -794,6 +839,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onSkipToPrevious() {
+		if (interceptTransport(KeyTester.Transport.PREV)) return;
 		skipWithFade(false);
 	}
 
@@ -884,6 +930,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onSkipToNext() {
+		if (interceptTransport(KeyTester.Transport.NEXT)) return;
 		skipWithFade(true);
 	}
 
@@ -964,11 +1011,13 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onRewind() {
+		if (interceptTransport(KeyTester.Transport.RW)) return;
 		rewindFastForward(false, 1);
 	}
 
 	@Override
 	public void onFastForward() {
+		if (interceptTransport(KeyTester.Transport.FF)) return;
 		rewindFastForward(true, 1);
 	}
 
@@ -1478,7 +1527,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 				.setState(STATE_ERROR, 0, 1.0f)
 				.setErrorMessage(PlaybackStateCompat.ERROR_CODE_UNKNOWN_ERROR, msg).build();
 		setPlaybackState(state);
-		onStop();
+		onStop(true);
 	}
 
 	/** The whole cause chain, for the diagnostic log -- the top-level message is often empty. */
@@ -2220,7 +2269,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 				playbackTimerWaitingForTrackEnd = true;
 			} else {
 				playbackTimerFinishTrack = false;
-				onStop();
+				onStop(true);
 			}
 
 			fireBroadcastEvent(l -> l.onPlaybackTimerChanged(MediaSessionCallback.this));
