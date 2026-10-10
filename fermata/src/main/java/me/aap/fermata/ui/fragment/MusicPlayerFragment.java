@@ -1753,6 +1753,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private void refreshFavoriteChip() {
 		if ((favoriteChip == null) || (favoriteChip.getVisibility() != View.VISIBLE)) return;
 		boolean fav = me.aap.fermata.action.Action.isCurrentFavorite(getActivityDelegate());
+		// Only on a change: setting the icon lays the chip out again, and this runs after every layout
+		// of the chips row (see updateEffectsChip()), so setting it every time relaid the row out every
+		// frame, nonstop while this tab showed, playing or not (a big battery drain).
+		Boolean was = (Boolean) favoriteChip.getTag(R.id.music_favorite_button);
+		if ((was != null) && (was == fav)) return;
+		favoriteChip.setTag(R.id.music_favorite_button, fav);
 		favoriteChip.setCompoundDrawablesRelativeWithIntrinsicBounds(
 				fav ? R.drawable.favorite_filled : R.drawable.favorite, 0, 0, 0);
 	}
