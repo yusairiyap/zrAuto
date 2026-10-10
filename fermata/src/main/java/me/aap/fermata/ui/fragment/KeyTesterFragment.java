@@ -37,7 +37,7 @@ import me.aap.fermata.ui.view.EffectsUi;
 import me.aap.utils.ui.UiUtils;
 
 /**
- * Settings &gt; Key bindings &gt; Key tester: every key the app knows, laid out as tiles that light up
+ * Settings &gt; Key bindings &gt; Configure Key with Simulator: every key the app knows, laid out as tiles that light up
  * as the matching key (a keyboard, a remote, a car's steering wheel) is pressed, with what it's
  * bound to and a way to change that. While it's open nothing bound runs, see {@link KeyTester}: no
  * play/pause or skip by accident while trying the buttons out. Back has to be pressed twice to

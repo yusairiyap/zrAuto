@@ -5,7 +5,7 @@ import android.view.KeyEvent;
 import androidx.annotation.Nullable;
 
 /**
- * The hook the key binding tester (Settings &gt; Key bindings &gt; Key tester) listens on. While a
+ * The hook the key binding tester (Settings &gt; Key bindings &gt; Configure Key with Simulator) listens on. While a
  * listener is set, every key event the app sees (from the activity and from the media session, which
  * is where a car's steering wheel buttons usually land) and every play/pause/next/... command a
  * controller sends (Android Auto, a Bluetooth head unit) is reported to it first, and whatever it

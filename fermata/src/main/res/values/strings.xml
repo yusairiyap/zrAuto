@@ -84,8 +84,8 @@
     <string name="subtitles_size">Subtitles text size</string>
 
     <string name="key_bindings">Key bindings</string>
-    <string name="key_tester">Key tester</string>
-    <string name="key_tester_sub">Press keys on a keyboard, remote or steering wheel to see what each one is and does</string>
+    <string name="key_tester">Configure Key with Simulator</string>
+    <string name="key_tester_sub">Press keys on a keyboard, remote or steering wheel to see what each one is and does, and change its binding there</string>
     <string name="key_bind_transport">Use bindings for Android Auto controls</string>
     <string name="key_bind_transport_sub">Some cars send their steering wheel play/next/previous buttons as Android Auto commands rather than keys. When on, those run the matching media key\'s click binding (Android Auto\'s on-screen buttons too)</string>
     <string name="key_tester_idle">Press any key</string>
@@ -106,7 +106,7 @@
     <string name="key_tester_long">Long</string>
     <string name="key_tester_holding">Holding…</string>
     <string name="key_tester_long_click">Long click (%1$s s)</string>
-    <string name="key_tester_back_again">Press Back again to leave the key tester</string>
+    <string name="key_tester_back_again">Press Back again to leave the simulator</string>
     <string name="key_tester_src_media_button">Media button</string>
     <string name="key_tester_src_window">Key on this screen</string>
     <string name="key_tester_src_command">Media command</string>

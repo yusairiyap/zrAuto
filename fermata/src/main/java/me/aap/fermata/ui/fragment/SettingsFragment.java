@@ -120,6 +120,9 @@ public class SettingsFragment extends MainActivityFragment
 	private PreferenceSet keyBindingsSet;
 	// Each key's own bindings page, by Key name, see keySettings().
 	private final java.util.Map<String, PreferenceSet> keySettingsSets = new java.util.HashMap<>();
+	// The key page opened from the key simulator: Back from it goes back there.
+	@Nullable
+	private PreferenceSet returnToKeyTesterFrom;
 	@Nullable
 	private Object pendingInput;
 
@@ -131,7 +134,10 @@ public class SettingsFragment extends MainActivityFragment
 		return ADDON_SETTINGS + moduleName;
 	}
 
-	/** Same as {@link #SHOW_DIM_SETTINGS}, but for one key's bindings page (Settings > Key bindings). */
+	/**
+	 * Same as {@link #SHOW_DIM_SETTINGS}, but for one key's bindings page (Settings > Key bindings),
+	 * opened from the key simulator: Back from that page returns to the simulator.
+	 */
 	public static Object keySettings(Key k) {
 		return KEY_SETTINGS + k.name();
 	}
@@ -161,7 +167,10 @@ public class SettingsFragment extends MainActivityFragment
 			adapter.setPreferenceSet(keyBindingsSet);
 		} else if ((pendingInput instanceof String ks) && ks.startsWith(KEY_SETTINGS)) {
 			PreferenceSet p = keySettingsSets.get(ks.substring(KEY_SETTINGS.length()));
-			if (p != null) adapter.setPreferenceSet(p);
+			if (p != null) {
+				adapter.setPreferenceSet(p);
+				returnToKeyTesterFrom = p;
+			}
 		}
 		pendingInput = null;
 	}
@@ -242,6 +251,13 @@ public class SettingsFragment extends MainActivityFragment
 	}
 
 	@Override
+	public void onHiddenChanged(boolean hidden) {
+		super.onHiddenChanged(hidden);
+		// Left for another screen: Back from that key page goes up as usual next time.
+		if (hidden) returnToKeyTesterFrom = null;
+	}
+
+	@Override
 	public boolean isRootPage() {
 		return (adapter == null) || (adapter.getPreferenceSet().getParent() == null);
 	}
@@ -249,6 +265,12 @@ public class SettingsFragment extends MainActivityFragment
 	@Override
 	public boolean onBackPressed() {
 		if (adapter == null) return false;
+		if ((returnToKeyTesterFrom != null) && (adapter.getPreferenceSet() == returnToKeyTesterFrom)) {
+			returnToKeyTesterFrom = null;
+			getActivityDelegate().showFragment(R.id.key_tester_fragment);
+			return true;
+		}
+		returnToKeyTesterFrom = null;
 		PreferenceSet p = adapter.getPreferenceSet().getParent();
 		if (p == null) return false;
 		adapter.setPreferenceSet(p);
