@@ -13,7 +13,6 @@ import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Shader;
-import android.os.Build;
 import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
@@ -81,6 +80,8 @@ public class BodyLayout extends SplitLayout
 
 	private final Paint topFadePaint = new Paint();
 	private final float topFadeLen = UiUtils.toPx(getContext(), 20);
+	// How far past the top edge the fade still reaches while the tool bar is scrolled away.
+	private final float topFadeEdge = UiUtils.toPx(getContext(), 12);
 	private int topFadeBg = Color.BLACK;
 	private boolean topFadeBgResolved;
 	// What the fade was last drawn for: the tool bar's bottom edge and how much of it is showing.
@@ -198,12 +199,19 @@ public class BodyLayout extends SplitLayout
 		}
 		View tb = a.getToolBar();
 		if ((tb == null) || (tb.getVisibility() != VISIBLE) || (tb.getHeight() == 0)) return false;
+		// Its plain alpha only: going with the bars when they're hidden (fullscreen), but not with the
+		// fade of their sliding away while the content scrolls (ScrollBarsController, through the
+		// transition alpha), which keeps a fade at the top edge, as One UI does.
 		float alpha = tb.getAlpha();
-		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) alpha *= tb.getTransitionAlpha();
 		if (alpha <= 0f) return false;
-		// Both are children of the same parent (main_activity). Follows it as it slides away while
-		// the content scrolls (see ScrollBarsController).
-		float end = (tb.getY() + tb.getHeight()) - getTop() + topFadeLen;
+		// Both are children of the same parent (main_activity). Where the tool bar sits when not
+		// scrolled away; as it goes, the fade narrows down to a strip along the top edge.
+		ScrollBarsController sb = a.getScrollBars();
+		float slid = (sb != null) ? sb.getToolBarDy() : 0f;
+		float hidden = (sb != null) ? sb.getToolBarHidden() : 0f;
+		float rest = (tb.getY() - slid + tb.getHeight()) - getTop() + topFadeLen;
+		float edge = topFadeLen + topFadeEdge;
+		float end = rest + (edge - rest) * hidden;
 		if (end <= 0f) return false;
 		fadeEnd = end;
 		fadeAlpha = Math.min(1f, alpha);

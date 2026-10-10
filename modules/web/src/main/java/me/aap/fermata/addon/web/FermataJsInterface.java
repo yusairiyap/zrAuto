@@ -33,6 +33,14 @@ public class FermataJsInterface {
 		App.get().run(() -> handleEvent(event, data));
 	}
 
+	/** See {@link FermataWebView#injectScrollWatch()}. Called on the WebView's JavaScript thread. */
+	@Keep
+	@SuppressWarnings("unused")
+	@JavascriptInterface
+	public void pageScrolled(boolean scrolled) {
+		webView.setPageScrolled(scrolled);
+	}
+
 	protected void handleEvent(int event, String data) {
 		switch (event) {
 			case JS_EDIT:

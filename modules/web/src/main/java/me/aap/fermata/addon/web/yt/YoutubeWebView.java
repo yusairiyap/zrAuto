@@ -206,6 +206,8 @@ public class YoutubeWebView extends FermataWebView {
 	@Override
 	protected void pageLoaded(String uri) {
 		injectFade();
+		injectScrollWatch();
+		pinPageBars();
 		attachListeners();
 		injectSponsorBlock();
 		injectEqualizer();
@@ -811,6 +813,25 @@ public class YoutubeWebView extends FermataWebView {
 	void configureEqualizer() {
 		evaluateJavascript("if (window.FermataEqualizer) window.FermataEqualizer.configure(" +
 				YoutubeEqualizerScript.getConfigJson(getAddon()) + ");", null);
+	}
+
+	/**
+	 * Keeps YouTube's own top bar and bottom bar where they are instead of sliding them away as the
+	 * page scrolls: the app's own bars already make way for the page (see ScrollBarsController), and
+	 * both sets sliding at once read as the bars animating twice.
+	 */
+	private void pinPageBars() {
+		evaluateJavascript("""
+				(function() {
+				  if (document.getElementById('fermata-pin-bars')) return;
+				  var s = document.createElement('style');
+				  s.id = 'fermata-pin-bars';
+				  s.textContent = 'ytm-mobile-topbar-renderer,ytm-mobile-topbar-renderer header,' +
+				    '.mobile-topbar-header,header.mobile-topbar-header,ytm-pivot-bar-renderer,' +
+				    '.pivot-bar-renderer{transform:none !important;transition:none !important}';
+				  (document.head || document.documentElement).appendChild(s);
+				})();
+				""", null);
 	}
 
 	private void hideAppPromoBanners() {

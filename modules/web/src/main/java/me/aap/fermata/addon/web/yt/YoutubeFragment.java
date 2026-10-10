@@ -1343,7 +1343,9 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		FermataWebView v = getWebView();
 		if (v == null) return false;
 		FermataChromeClient chrome = v.getWebChromeClient();
-		return (chrome != null) && (chrome.isFullScreen() || (v.getScrollY() > 0));
+		// Only from the true top: not while whatever the finger is on scrolls inside the page (the
+		// comments panel), which leaves the WebView's own scroll position at its top.
+		return (chrome != null) && (chrome.isFullScreen() || v.isPageScrolled());
 	}
 
 	@Nullable

@@ -140,7 +140,10 @@ chasing the wrong theory for, as has happened before. If you add a dialog via
 `control_panel` (tucked behind a bottom nav bar, clipped at its top edge), then a bottom `nav_bar`,
 then `tool_bar`; scrolling up brings them back in reverse (all shown at the top), and the floating
 buttons stay just above whatever still shows. Something else resetting a FAB's translation must
-reset it to `scrollBars.getFabDy(fab)`, not 0 (see `resetFabPosition`). It only translates the bars, never resizes anything (the YouTube
+reset it to `scrollBars.getFabDy(fab)`, not 0 (see `resetFabPosition`). The bars fade as they slide
+through their *transition* alpha (Android 10+), which nothing else animates on them; the top and
+bottom edge fades (`BodyLayout#computeTopFade`, `FloatingBarsView`) read only the plain alpha, so they
+stay on screen (narrowed to a strip) while the bars are scrolled away. It only translates the bars, never resizes anything (the YouTube
 WebView restarts its player on a resize): a web page is laid out as tall as its parent with a
 negative bottom margin matching its top one (`insetWebViewTop`) and slides up into the tool bar's
 room (`slideWebViews`). List content follows through its bottom padding, since

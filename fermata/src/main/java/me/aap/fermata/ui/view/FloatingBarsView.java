@@ -52,8 +52,10 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 	private final RectF navRect = new RectF();
 	private final RectF cpRect = new RectF();
 	private final RectF tmp = new RectF();
+	private final RectF fadeRect = new RectF();
 	private final float maxRadius;
 	private final float fadeLen;
+	private final float fadeEdge;
 	private final float sideFadeLen;
 	private final float dividerInset;
 	private final float shadowRadius;
@@ -66,6 +68,8 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 	private float dividerAlpha;
 	private float dividerPos;
 	private float fadeAlpha;
+	// Where the bottom fade starts (bottom nav bar), see onPreDraw().
+	private float fadeTop;
 	private int navPos;
 	// 0 = the usual, mostly opaque pill; 1 = see-through, over the Music tab's blurred cover. Eased
 	// from one to the other so the pill doesn't snap when the tab changes.
@@ -78,6 +82,8 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 		setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
 		maxRadius = toPx(ctx, 28);
 		fadeLen = toPx(ctx, 16);
+		// How much of the fade is left at the bottom edge while the bars are scrolled away.
+		fadeEdge = toPx(ctx, 32);
 		// A side bar's content is padded clear of the pill by the pill's own margin (see
 		// MainActivityDelegate#syncSideNavInset), so fade out only across that gap, not the content.
 		sideFadeLen = toPx(ctx, 12);
@@ -172,11 +178,26 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 		// No fade over video, nor over a tab running its own background under the bars (the Music
 		// tab's blurred cover, with the pill as frosted glass): there the background itself should
 		// show through, untinted -- so it fades out along with the glass look coming in.
-		float newFadeA = a.isVideoMode() ? 0f : navA * (1f - newGlass);
+		// The nav bar's plain alpha only: the fade goes with the bars when they're hidden (fullscreen),
+		// but stays while they slide away as the content scrolls (ScrollBarsController fades them
+		// through the transition alpha), narrowing down to a strip along the bottom edge, as One UI
+		// keeps it.
+		float navPlainA = ((nb.getVisibility() == VISIBLE) && (nb.getHeight() > 0)) ?
+				Math.max(0f, Math.min(1f, nb.getAlpha())) : 0f;
+		float newFadeA = a.isVideoMode() ? 0f : navPlainA * (1f - newGlass);
+		float newFadeTop = 0f;
+		if ((pos == NavBarView.POSITION_BOTTOM) && (newFadeA > 0f)) {
+			float base = tmp.top;
+			if (tmp.isEmpty()) {
+				bounds(nb, fadeRect);
+				base = fadeRect.top;
+			}
+			newFadeTop = Math.max(0f, Math.min(base - fadeLen, getHeight() - fadeEdge));
+		}
 
 		if ((glass != newGlass) || !main.equals(tmp) || !aux.equals(newAux) || (mainAlpha != newMainA)
 				|| (auxAlpha != newAuxA) || (dividerAlpha != newDivA) || (dividerPos != newDivPos)
-				|| (fadeAlpha != newFadeA) || (navPos != pos)) {
+				|| (fadeAlpha != newFadeA) || (fadeTop != newFadeTop) || (navPos != pos)) {
 			main.set(tmp);
 			aux.set(newAux);
 			mainAlpha = newMainA;
@@ -184,6 +205,7 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 			dividerAlpha = newDivA;
 			dividerPos = newDivPos;
 			fadeAlpha = newFadeA;
+			fadeTop = newFadeTop;
 			navPos = pos;
 			glass = newGlass;
 			invalidate();
@@ -244,7 +266,8 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 	 */
 	private void drawFade(Canvas canvas) {
 		RectF r = main;
-		if ((fadeAlpha <= 0f) || r.isEmpty()) return;
+		if (fadeAlpha <= 0f) return;
+		if (r.isEmpty() && (navPos != NavBarView.POSITION_BOTTOM)) return;
 		int w = getWidth();
 		int h = getHeight();
 		int rgb = bgColor & 0x00FFFFFF;
@@ -253,7 +276,7 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 		float[] stops = {0f, 0.5f, 1f};
 
 		if (navPos == NavBarView.POSITION_BOTTOM) {
-			float top = Math.max(0, r.top - fadeLen);
+			float top = fadeTop;
 			tmp.set(0, top, w, h);
 			fadePaint.setShader(new LinearGradient(0, top, 0, h, colors, stops, Shader.TileMode.CLAMP));
 		} else if (navPos == NavBarView.POSITION_LEFT) {

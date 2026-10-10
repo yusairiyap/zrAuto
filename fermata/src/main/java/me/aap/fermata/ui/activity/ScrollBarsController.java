@@ -5,6 +5,7 @@ import static me.aap.utils.ui.UiUtils.toPx;
 
 import android.animation.ValueAnimator;
 import android.graphics.Rect;
+import android.os.Build;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
@@ -63,7 +64,7 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 	static final int PANEL_HIDDEN = 1;
 	static final int NAV_HIDDEN = 2;
 	static final int HIDDEN = 3;
-	private static final long ANIM_MS = 280;
+	private static final long ANIM_MS = 360;
 	private final MainActivityDelegate a;
 	// How far to scroll down for the first step away from all shown and for each next one, and up
 	// for each step back.
@@ -83,6 +84,7 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 	// (their own show/hide animations own their translation then).
 	private boolean applied;
 	private float toolBarDy;
+	private float toolBarHidden;
 	@Nullable
 	private ValueAnimator anim;
 	// The scrolled view followed, see onBodyTouch().
@@ -100,9 +102,9 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 
 	ScrollBarsController(MainActivityDelegate a) {
 		this.a = a;
-		firstStep = toPx(a.getContext(), 16);
-		nextStep = toPx(a.getContext(), 48);
-		upStep = toPx(a.getContext(), 24);
+		firstStep = toPx(a.getContext(), 24);
+		nextStep = toPx(a.getContext(), 140);
+		upStep = toPx(a.getContext(), 32);
 		touchSlop = ViewConfiguration.get(a.getContext()).getScaledTouchSlop();
 		shadowPad = toPx(a.getContext(), 16);
 		belowToolBar = toPx(a.getContext(), 72);
@@ -114,6 +116,11 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 		o.addOnScrollChangedListener(this);
 		o.addOnPreDrawListener(this);
 		o.addOnGlobalLayoutListener(this);
+	}
+
+	/** How far tool_bar is out of the way right now: 0 = in place, 1 = gone. */
+	public float getToolBarHidden() {
+		return toolBarHidden;
 	}
 
 	/** How far tool_bar is moved up out of the way right now, by this alone (zero or negative). */
@@ -278,7 +285,9 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 		}
 		ValueAnimator va = ValueAnimator.ofFloat(from, to);
 		va.setDuration(ANIM_MS);
-		va.setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f));
+		// Eases in and out (Material's standard curve): starting gently reads smoother than the
+		// emphasized one, which jumped off the mark.
+		va.setInterpolator(new PathInterpolator(0.4f, 0f, 0.2f, 1f));
 		va.addUpdateListener(v -> {
 			if (anim != v) return;
 			progress = (float) v.getAnimatedValue();
@@ -312,7 +321,10 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 
 		// A bottom nav bar slides down off the screen, the control panel on it with it.
 		float navDy = bottomNav ? n * (parentH - nb.getTop() + shadowPad) : 0f;
-		if (bottomNav) nb.setTranslationY(navDy);
+		if (bottomNav) {
+			nb.setTranslationY(navDy);
+			fade(nb, n);
+		}
 
 		// The control panel tucks away first: down behind a bottom nav bar, cut off at its top edge
 		// as it goes (the nav bar has no background of its own to hide it), or off the screen.
@@ -328,16 +340,21 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 				} else {
 					cp.setClipBounds(null);
 				}
+				// No fade while tucking: the pill behind it shrinks with the cut, which a fade would
+				// outrun. It fades out with the nav bar it's tucked behind (all of it cut off by then).
+				fade(cp, n);
 				fabDyNow = c * (nb.getTop() - cp.getTop());
 			} else {
 				cp.setTranslationY(c * (parentH - cp.getTop() + shadowPad));
 				cp.setClipBounds(null);
+				fade(cp, c);
 				fabDyNow = c * Math.max(0, floor - cp.getTop());
 			}
 		} else {
 			// Gone meanwhile (playback stopped): it comes back where it belongs.
 			cp.setTranslationY(0f);
 			cp.setClipBounds(null);
+			fade(cp, 0f);
 		}
 
 		// The floating buttons stay just above whatever of the bottom bars still shows.
@@ -351,16 +368,33 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 			// Far enough for whatever a tab hangs below its pill to clear the top as well: the
 			// browser's tab strip follows the tool bar wherever it is (see BrowserTabs#syncPanel).
 			toolBarDy = -t * (tb.getBottom() + belowToolBar);
+			toolBarHidden = t;
 			tb.setTranslationY(toolBarDy);
+			fade(tb, t);
 		} else {
 			// No tool bar to move (a tab whose page draws its own): none of ours left on it either.
 			toolBarDy = 0f;
+			toolBarHidden = 0f;
 			tb.setTranslationY(0f);
+			fade(tb, 0f);
 		}
 		a.slideWebViews(t);
 
 		applied = (p != 0f) || fabsLeft;
 		if (moved) a.refreshContentInsets();
+	}
+
+	/**
+	 * Fades {@code v} as it goes ({@code gone}: 0 = all there, 1 = gone), a little ahead of its
+	 * slide so it's faded out by the time it leaves the screen. Through the transition alpha,
+	 * which nothing else animates on the bars (their own show/hide and fades use the plain alpha);
+	 * FloatingBarsView reads it too, so the pill behind fades along. Only from Android 10, where
+	 * it can be set; before that the bars just slide.
+	 */
+	private static void fade(View v, float gone) {
+		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return;
+		float alpha = 1f - clamp(gone * 1.25f);
+		if (v.getTransitionAlpha() != alpha) v.setTransitionAlpha(alpha);
 	}
 
 	private static float clamp(float v) {
