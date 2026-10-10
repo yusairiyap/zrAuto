@@ -5,6 +5,19 @@ Your car deserves a better media player. zrAuto is a free, open source player bu
 
 ## Highlights
 
+### 🚗 Car mode: drive the whole app from your steering wheel
+Eyes on the road, hands on the wheel. Turn on Car mode and your steering wheel's Previous and Next buttons move around the screen, so you can browse, search and pick without reaching for the touchscreen.
+
+* **Previous / Next** move a glowing outline from item to item, in lists and grids alike.
+* **Hold Next** opens a playlist or folder, plays a song, picks a search result or flips a setting.
+* **Hold Previous** goes back; at the top of a tab it takes you straight to what's playing.
+* **Works where it matters**: Favorites, Playlists, Folders and Downloads, YouTube search and Up next, the Music queue, Add to playlist and every menu, even Settings and the audio effects' sliders.
+* **Picks up where you are**: open Playlists and you land on the song that's playing, outlined, with its neighbours one press away. Search results put you straight on the first result, with no keyboard in the way.
+* **YouTube, one hold away from fullscreen**, and in fullscreen your buttons keep doing exactly what you bound them to (with the controls popping up on screen so you see each press land).
+* **Only in the car**: Car mode wakes up when Android Auto is connected and stays out of the way on your phone.
+* **Find out what your car sends**: the Key Simulator lights up every button you press on the wheel, a keyboard or a remote, shows what it's bound to, and lets you change it on the spot. Mute, skip, step and voice buttons can be bound too.
+* **Messages you can actually see**: added to Favorites, added to a playlist or the queue, download finished... it all pops up on the car's screen, not just the phone.
+
 ### 📥 Take YouTube with you, offline
 Dead zones, tunnels, roaming, a data plan that's nearly gone. None of that matters once your favourite videos are on your phone.
 
