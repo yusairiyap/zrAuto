@@ -255,10 +255,17 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		title = view.findViewById(R.id.music_track_title);
 		// A long title scrolls a few times (marqueeRepeatLimit), not forever: while it scrolls the
 		// whole screen is drawn again every frame, a steady battery drain. A tap scrolls it again.
+		title.setMarqueeRepeatLimit(TITLE_SCROLLS);
 		title.setOnClickListener(v -> {
 			v.setSelected(false);
 			v.setSelected(true);
+			onTitleScrollStarted();
 		});
+		// While it scrolls, the title alone needs no more than 60 fps: on Android 15+ it tells the
+		// system so, and the screen needn't run at its top rate (120/144 Hz) for it.
+		if (VERSION.SDK_INT >= VERSION_CODES.VANILLA_ICE_CREAM) {
+			title.setRequestedFrameRate(View.REQUESTED_FRAME_RATE_CATEGORY_NORMAL);
+		}
 		artist = view.findViewById(R.id.music_track_artist);
 		position = view.findViewById(R.id.music_position);
 		duration = view.findViewById(R.id.music_duration);
@@ -496,6 +503,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 	@Override
 	public void onDestroyView() {
+		if (title != null) title.removeCallbacks(titleScrollEnded);
+		setLowRefreshRate(false);
 		restoreClipping();
 		setListening(false);
 		stopProgress();
@@ -509,6 +518,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private void updateActive() {
 		boolean visible = !isHidden() && (getView() != null);
 		setListening(visible);
+		if (!visible) {
+			if (title != null) title.removeCallbacks(titleScrollEnded);
+			setLowRefreshRate(false);
+		}
 		if (visible) {
 			// Also on every resume (e.g. Android Auto giving the screen back), not only when this tab
 			// is switched to: something may have shown them meanwhile.
@@ -1493,7 +1506,67 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	// Setting a TextView's text, even the same text, restarts the title's marquee (its own, or via
 	// the relayout); these only touch it when the text actually changes.
 	private void setTitle(CharSequence text) {
-		setText(title, text);
+		if (android.text.TextUtils.equals(title.getText(), text)) return;
+		title.setText(text);
+		onTitleScrollStarted(); // A new text scrolls again from the start, if it's too long.
+	}
+
+	/** How many times a long title scrolls before it stops (tap it to scroll again). */
+	private static final int TITLE_SCROLLS = 3;
+	// TextView's own marquee timing: a pause before each pass, then this speed.
+	private static final long MARQUEE_PAUSE_MS = 1200;
+	private static final float MARQUEE_DP_PER_SECOND = 30;
+	private final Runnable titleScrollEnded = () -> setLowRefreshRate(false);
+	private boolean lowRefreshRate;
+
+	/**
+	 * The title (maybe) starts scrolling: for as long as it does, the window asks for 60 Hz, so the
+	 * screen doesn't run at its top rate for a line of moving text (any moving thing keeps it there).
+	 * Back to no preference when the scrolling is over, or this tab hides, so the screen can drop
+	 * lower than 60 Hz again once nothing moves.
+	 */
+	private void onTitleScrollStarted() {
+		TextView t = title;
+		if (t == null) return;
+		t.removeCallbacks(titleScrollEnded);
+		// After the layout, which the new text may need, so the widths are right.
+		t.post(() -> {
+			long ms = titleScrollMs();
+			if (ms <= 0) {
+				setLowRefreshRate(false);
+				return;
+			}
+			setLowRefreshRate(true);
+			t.postDelayed(titleScrollEnded, ms);
+		});
+	}
+
+	/** How long the title scrolls, 0 if it fits (no scrolling at all). */
+	private long titleScrollMs() {
+		TextView t = title;
+		if ((t == null) || (getView() == null) || isHidden() || !t.isSelected() || (t.getLayout() == null)) {
+			return 0;
+		}
+		int textWidth = t.getWidth() - t.getCompoundPaddingLeft() - t.getCompoundPaddingRight();
+		float lineWidth = t.getLayout().getLineWidth(0);
+		if ((textWidth <= 0) || (lineWidth <= textWidth)) return 0;
+		// Each pass scrolls the text and the gap after it (a third of the width) out of view.
+		float px = lineWidth + textWidth / 3f;
+		float pxPerSec = MARQUEE_DP_PER_SECOND * getResources().getDisplayMetrics().density;
+		long pass = MARQUEE_PAUSE_MS + (long) (px * 1000 / pxPerSec);
+		return TITLE_SCROLLS * pass + 500;
+	}
+
+	private void setLowRefreshRate(boolean low) {
+		if (low == lowRefreshRate) return;
+		android.app.Activity act = getActivity();
+		if (low && ((act == null) || getActivityDelegate().isCarActivity())) return;
+		lowRefreshRate = low;
+		if (act == null) return;
+		android.view.Window w = act.getWindow();
+		android.view.WindowManager.LayoutParams lp = w.getAttributes();
+		lp.preferredRefreshRate = low ? 60f : 0f;
+		w.setAttributes(lp);
 	}
 
 	private static void setText(TextView v, CharSequence text) {
