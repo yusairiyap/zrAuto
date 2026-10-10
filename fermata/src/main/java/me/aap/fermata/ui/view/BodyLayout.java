@@ -16,6 +16,7 @@ import android.graphics.Shader;
 import android.os.Build;
 import android.os.SystemClock;
 import android.util.AttributeSet;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewTreeObserver;
 import android.widget.Toast;
@@ -39,6 +40,7 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityListener;
+import me.aap.fermata.ui.activity.ScrollBarsController;
 import me.aap.fermata.ui.fragment.MainActivityFragment;
 import me.aap.fermata.ui.fragment.SubtitlesFragment;
 import me.aap.utils.app.App;
@@ -199,8 +201,9 @@ public class BodyLayout extends SplitLayout
 		float alpha = tb.getAlpha();
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) alpha *= tb.getTransitionAlpha();
 		if (alpha <= 0f) return false;
-		// Both are children of the same parent (main_activity).
-		float end = (tb.getY() + tb.getHeight()) - getTop() + topFadeLen;
+		// Both are children of the same parent (main_activity). Its height as drawn: shrunk toward
+		// its top while the content scrolls (see ScrollBarsController).
+		float end = (tb.getY() + tb.getHeight() * tb.getScaleY()) - getTop() + topFadeLen;
 		if (end <= 0f) return false;
 		fadeEnd = end;
 		fadeAlpha = Math.min(1f, alpha);
@@ -219,6 +222,15 @@ public class BodyLayout extends SplitLayout
 
 	public Mode getMode() {
 		return mode;
+	}
+
+	@Override
+	public boolean dispatchTouchEvent(MotionEvent e) {
+		// Only watched, never taken: which content the finger scrolls, see ScrollBarsController.
+		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
+		ScrollBarsController sb = (a != null) ? a.getScrollBars() : null;
+		if (sb != null) sb.onBodyTouch(this, e);
+		return super.dispatchTouchEvent(e);
 	}
 
 	public boolean isFrameMode() {
@@ -378,6 +390,9 @@ public class BodyLayout extends SplitLayout
 			b.removeBroadcastListener(this);
 			b.getMediaSessionCallback().removeBroadcastListener(this);
 		} else if (e == FRAGMENT_CHANGED) {
+			// A new tab starts with the bars in full, wherever the last one had scrolled them.
+			ScrollBarsController sb = a.getScrollBars();
+			if (sb != null) sb.reset(false);
 			// Fullscreen video carries on over a tab that plays video itself (the one it was started
 			// from, Downloads); any other tab is in front of a video that plays on behind it.
 			if (isVideoMode() && (a.getActiveFragment() instanceof MainActivityFragment f) &&

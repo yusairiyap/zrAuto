@@ -269,6 +269,9 @@ public class MainActivityDelegate extends ActivityDelegate
 	private final Set<ViewGroup> paddingInsetContent = Collections.newSetFromMap(new WeakHashMap<>());
 	private final Set<View> topInsetContent = Collections.newSetFromMap(new WeakHashMap<>());
 	private boolean barsHidden;
+	// The bars making way for the content as it scrolls, see ScrollBarsController. Set up in init().
+	@Nullable
+	private ScrollBarsController scrollBars;
 	private boolean videoMode;
 	// Overrides the automatic bar-hiding that videoMode below otherwise forces in isFullScreen() --
 	// set by Action.FULLSCREEN_TOGGLE for local (non-WebView) video, whose VideoView has no
@@ -936,6 +939,12 @@ public class MainActivityDelegate extends ActivityDelegate
 		return body;
 	}
 
+	/** The bars making way for the content as it scrolls; null until the views are set up. */
+	@Nullable
+	public ScrollBarsController getScrollBars() {
+		return scrollBars;
+	}
+
 	public NavBarMediator getNavBarMediator() {
 		return navBarMediator;
 	}
@@ -1037,6 +1046,8 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	public void setBarsHidden(boolean barsHidden) {
 		App.get().getHandler().post(() -> {
+			// Their own show/hide below starts from the bars as they are when not scrolled away.
+			if (scrollBars != null) scrollBars.reset(false);
 			this.barsHidden = barsHidden;
 			ToolBarView tb = getToolBar();
 			if (tb.getMediator() != ToolBarView.Mediator.Invisible.instance) {
@@ -1076,6 +1087,7 @@ public class MainActivityDelegate extends ActivityDelegate
 
 		ControlPanelView cp = getControlPanel();
 		videoBarsShown = false;
+		if (scrollBars != null) scrollBars.reset(false);
 
 		// Set before cp.enableVideoMode() runs, not after -- that method reads getActiveVideoView()
 		// (to tell local playback from a web-embedded source like YouTube), and it would otherwise
@@ -2002,8 +2014,12 @@ public class MainActivityDelegate extends ActivityDelegate
 			top = 0;
 		} else {
 			toolBar.getLocationOnScreen(insetLoc1);
+			// Where the tool bar sits in full, even while it's scrolled away (see ScrollBarsController,
+			// which shrinks it toward its own top, so only its slide moves that): the content is
+			// always back at its top -- and the bars in full -- before this room is needed.
+			int tbTop = insetLoc1[1] - ((scrollBars != null) ? Math.round(scrollBars.getToolBarDy()) : 0);
 			// A little room below the floating tool bar pill, so the first item doesn't sit against it.
-			top = Math.max(0, (insetLoc1[1] + toolBar.getHeight() + toIntPx(getContext(), 6)) -
+			top = Math.max(0, (tbTop + toolBar.getHeight() + toIntPx(getContext(), 6)) -
 					contentTop);
 		}
 
@@ -2708,6 +2724,8 @@ public class MainActivityDelegate extends ActivityDelegate
 		updateFabDraggable();
 		controlPanel.bind(getMediaServiceBinder());
 		enableBodyOverlayLayout();
+		scrollBars = new ScrollBarsController(this);
+		scrollBars.attach(body);
 		// Catch-all re-sync -- see refreshContentInsets() -- for content whose own attach/layout
 		// listeners missed the layout change they needed, most notably a tab restored by the
 		// fragment manager across the recreate() that a theme or nav-bar-position change triggers.

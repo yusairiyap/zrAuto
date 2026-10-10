@@ -1122,6 +1122,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		return true;
 	}
 
+	/** A player screen laid out around the bars (see syncInsets()), not a list under them. */
+	@Override
+	public boolean collapsesBarsOnScroll() {
+		return false;
+	}
+
 	/**
 	 * With a left/right nav bar, body_layout pads every tab clear of the floating pill -- this one
 	 * included, so switching tabs never resizes anything (which would visibly stretch the tabs

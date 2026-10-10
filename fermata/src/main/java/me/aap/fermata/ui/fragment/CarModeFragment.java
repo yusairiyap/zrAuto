@@ -58,6 +58,12 @@ public class CarModeFragment extends MainActivityFragment {
 		return R.id.car_mode_fragment;
 	}
 
+	/** Its keys stay where the driver expects them: the bars never move away under them. */
+	@Override
+	public boolean collapsesBarsOnScroll() {
+		return false;
+	}
+
 	@Override
 	public CharSequence getTitle() {
 		return getResources().getString(R.string.key_car_mode);

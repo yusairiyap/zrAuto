@@ -135,6 +135,17 @@ chasing the wrong theory for, as has happened before. If you add a dialog via
 `ActivityDelegate.insetScrollableContent`, a no-op default in `depends/utils` that
 `MainActivityDelegate` overrides) — no extra step needed there.
 
+**Bars collapse on scroll.** `ScrollBarsController` (owned by `MainActivityDelegate`, fed by
+`BodyLayout#dispatchTouchEvent`) shrinks `tool_bar` and the bottom bars into compact pills as tab
+content scrolls down, hides them on further scrolling, and brings them back on the way up (always
+in full at the top). It only scales/translates the bars, never resizes anything (the YouTube WebView
+restarts its player on a resize); list content follows through its bottom padding, since
+`computeContentInsets` reads the bars' transformed position. It works for any `RecyclerView`,
+`ScrollView`, `ListView` or `WebView` under the finger with no per-tab code; a tab laid out around
+the bars instead (Music, Car mode) opts out with `MainActivityFragment#collapsesBarsOnScroll`. Don't
+animate the bars' scale/translation elsewhere without calling `scrollBars.reset(false)` first, the
+way `setBarsHidden`/`setVideoMode` do.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

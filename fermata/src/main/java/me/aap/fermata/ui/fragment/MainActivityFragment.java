@@ -53,6 +53,15 @@ public abstract class MainActivityFragment extends ActivityFragment {
 		return !drawsBehindSideNavBar();
 	}
 
+	/**
+	 * Whether the bars make way for this tab's content while it scrolls: compact pills on the way
+	 * down, then hidden, back as it scrolls up (see ScrollBarsController). Not for a tab that lays
+	 * itself out around the bars instead of scrolling under them.
+	 */
+	public boolean collapsesBarsOnScroll() {
+		return true;
+	}
+
 	@Override
 	public FloatingButton.Mediator getFloatingButtonMediator() {
 		return FloatingButtonMediator.instance;
