@@ -149,10 +149,6 @@ public class ControlPanelView extends ConstraintLayout
 	 */
 	private int pendingSeekSec;
 	private final Runnable applySeekTask = this::applyPendingSeek;
-	/** The video view of the last seek, to bring the middle buttons back on (see onVideoSeek). */
-	@Nullable
-	private VideoView seekVideoView;
-	private final Runnable restoreControlsTask = this::restoreControlsAfterSeek;
 	/** How long after the last tap the streak's seek is made. */
 	private static final long SEEK_APPLY_DELAY_MS = 400L;
 	/** Seconds a double tap (and each further tap of its streak) seeks. */
@@ -651,8 +647,6 @@ public class ControlPanelView extends ConstraintLayout
 		hideTimer = null;
 		mask &= ~MASK_VIDEO_MODE;
 		seekStreakUntil = 0;
-		removeCallbacks(restoreControlsTask);
-		seekVideoView = null;
 		applyPendingSeek();
 		hideVideoControls(false);
 		setVideoLook(false);
@@ -790,21 +784,6 @@ public class ControlPanelView extends ConstraintLayout
 		postDelayed(applySeekTask, SEEK_APPLY_DELAY_MS);
 		onVideoSeek();
 		vv.getControls().showSeek(ff, seekStreakSeconds, e.getX(), e.getY());
-	}
-
-	/**
-	 * The seeking has stopped: the middle buttons come back with the panel, if it's still up (the
-	 * title doesn't: that's only ever for a single tap).
-	 */
-	private void restoreControlsAfterSeek() {
-		if (isSeekStreakActive()) {
-			postDelayed(restoreControlsTask, SEEK_STREAK_MS);
-			return;
-		}
-		VideoView vv = seekVideoView;
-		seekVideoView = null;
-		if ((vv == null) || ((mask & MASK_VIDEO_MODE) == 0) || (getVisibility() != VISIBLE)) return;
-		showVideoControls(vv, true, false);
 	}
 
 	/** Makes the seek the streak's taps asked for so far, if any. */
@@ -963,8 +942,6 @@ public class ControlPanelView extends ConstraintLayout
 	}
 
 	private void hideVideoControls(boolean animate) {
-		// Hidden for good (a tap, the hide timer): no bringing them back after a seek either.
-		removeCallbacks(restoreControlsTask);
 		VideoView vv = controlsHost;
 		if (vv == null) return;
 		vv.showControls(false, false, animate);
@@ -1015,12 +992,9 @@ public class ControlPanelView extends ConstraintLayout
 		View fb = a.getFloatingButton();
 		List<View> extra = a.getEnabledExtraFabs();
 		int delay = getSeekDelay();
-		// While seeking, the panel's seek bar only, as YouTube does: no middle buttons, no title. The
-		// buttons come back once the seeking stops, if the panel is still up then.
-		hideVideoControls(true);
-		seekVideoView = vv;
-		removeCallbacks(restoreControlsTask);
-		postDelayed(restoreControlsTask, SEEK_STREAK_MS + 50);
+		// The middle buttons always come and go with the panel (its seek bar line); the title only
+		// ever with a single tap, so a seek takes it away.
+		showVideoControls(vv, true, false);
 		super.setVisibility(VISIBLE);
 		fb.setVisibility(VISIBLE);
 		for (View f : extra) f.setVisibility(VISIBLE);
