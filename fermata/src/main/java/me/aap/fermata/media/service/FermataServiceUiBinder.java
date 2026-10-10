@@ -249,7 +249,10 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 
 	/** See {@link ControlPanelView#syncVideoControls()}. */
 	private void syncVideoControls() {
-		if (controlPanel instanceof ControlPanelView cp) cp.syncVideoControls();
+		if (controlPanel instanceof ControlPanelView cp) {
+			cp.syncVideoControls();
+			cp.syncNowPlaying();
+		}
 	}
 
 	/**
@@ -377,6 +380,7 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 				PlayableItem old = currentItem;
 				currentItem = i;
 				fireBroadcastEvent(l -> l.onPlayableChanged(old, i));
+				syncVideoControls();
 			}
 		}
 

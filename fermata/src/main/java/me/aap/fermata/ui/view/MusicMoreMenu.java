@@ -448,7 +448,9 @@ public final class MusicMoreMenu {
 		boolean fav = isFavorite.getAsBoolean();
 		TextView[] sub2 = new TextView[1];
 		View favorite = tile(fav ? R.drawable.favorite_filled : R.drawable.favorite,
-				ctx.getString(fav ? R.string.favorites_remove : R.string.favorites_add),
+				// Short enough for one line, like "Add to favorites": a two-line title made this tile
+				// taller than the others in the grid.
+				ctx.getString(fav ? R.string.music_more_favorite_remove : R.string.favorites_add),
 				ctx.getString(R.string.music_more_favorite_hint), sub2, () -> {
 					dismiss();
 					onFavorite.run();

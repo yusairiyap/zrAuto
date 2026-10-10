@@ -219,7 +219,9 @@ public class FloatingButton extends FloatingActionButton implements ActivityList
 	private boolean moving;
 
 	private void animateScale(float targetScale, boolean pressing) {
-		animate().cancel();
+		// No animate().cancel(): that would also stop a fade in or out running on the button (the
+		// fullscreen video controls fade them), leaving it stuck half transparent. Starting a scale
+		// animation already replaces a running one on the same properties.
 		animate().scaleX(targetScale).scaleY(targetScale).setDuration(PRESS_ANIM_DURATION)
 				.setInterpolator(pressing ? PRESS_IN_INTERPOLATOR : PRESS_OUT_INTERPOLATOR).start();
 	}

@@ -152,7 +152,7 @@ public class WebBrowserFragment extends MainActivityFragment
 	}
 
 	/** The toolbar's Back button: back in the page, or up to the home page. */
-	void goBackInBrowser() {
+	protected void goBackInBrowser() {
 		if (tabs != null) {
 			tabs.goBack();
 			return;
@@ -161,13 +161,13 @@ public class WebBrowserFragment extends MainActivityFragment
 		if (v != null) v.goBack();
 	}
 
-	boolean canGoBackInBrowser() {
+	protected boolean canGoBackInBrowser() {
 		if (tabs != null) return tabs.canGoBack();
 		FermataWebView v = getWebView();
 		return (v != null) && v.canGoBack();
 	}
 
-	boolean canGoForwardInBrowser() {
+	protected boolean canGoForwardInBrowser() {
 		if (tabs != null) return tabs.canGoForward();
 		FermataWebView v = getWebView();
 		return (v != null) && v.canGoForward();

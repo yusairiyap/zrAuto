@@ -170,15 +170,7 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 					yt.startSearch();
 					return;
 				}
-				yt.clearSearch();
-				if (addr != null) {
-					if (editing) addr.setText("");
-					InputMethodManager imm = addr.getContext().getSystemService(InputMethodManager.class);
-					if (imm != null) imm.hideSoftInputFromWindow(addr.getWindowToken(), 0);
-					addr.clearFocus();
-					endSearchInput(addr);
-				}
-				yt.hideSearchPanel();
+				closeSearch(tb, yt);
 			});
 		}
 		refreshClearButton(tb, yt);
@@ -262,6 +254,28 @@ public class YoutubeToolBarMediator extends WebToolBarMediator {
 	private static boolean isCarInputActive(View v) {
 		MainActivityDelegate a = MainActivityDelegate.get(v.getContext());
 		return (a != null) && a.isCarActivity() && a.getAppActivity().isInputActive();
+	}
+
+	/**
+	 * The X: clears the text and the results, ends typing (keyboard down, the title back in the
+	 * field) and closes the panel. The toolbar's back button does the same while searching, see
+	 * YoutubeFragment#goBackInBrowser.
+	 */
+	void closeSearch(ToolBarView tb, YoutubeFragment yt) {
+		yt.clearSearch();
+		if (tb.findViewById(R.id.browser_addr) instanceof EditText addr) {
+			if (editing) addr.setText("");
+			InputMethodManager imm = addr.getContext().getSystemService(InputMethodManager.class);
+			if (imm != null) imm.hideSoftInputFromWindow(addr.getWindowToken(), 0);
+			addr.clearFocus();
+			endSearchInput(addr);
+		}
+		yt.hideSearchPanel();
+	}
+
+	/** Whether a search is going on: the field typed into, or the search part of the panel open. */
+	boolean isSearching(YoutubeFragment yt) {
+		return editing || yt.isSearchPartShown();
 	}
 
 	/** See the search/clear button in {@link #enable}. */
