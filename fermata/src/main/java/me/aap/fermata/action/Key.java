@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.utils.function.BooleanSupplier;
 import me.aap.utils.function.IntSupplier;
 import me.aap.utils.pref.PreferenceStore;
 
@@ -40,7 +41,24 @@ public enum Key {
 	M(KeyEvent.KEYCODE_M, Action.MENU, Action.CP_MENU, Action.CP_MENU),
 	P(KeyEvent.KEYCODE_P, Action.PLAY_PAUSE),
 	S(KeyEvent.KEYCODE_S, Action.STOP),
-	X(KeyEvent.KEYCODE_X, Action.EXIT);
+	X(KeyEvent.KEYCODE_X, Action.EXIT),
+	// Sent by some head units and steering wheels (a mute button, skip/step buttons that aren't the
+	// plain next/previous ones, a dedicated voice button). Saved by name, so the order here doesn't
+	// matter for anyone's bindings.
+	VOLUME_MUTE(KeyEvent.KEYCODE_VOLUME_MUTE, Action.VOLUME_MUTE_UNMUTE),
+	MEDIA_SKIP_FORWARD(KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD, Action.NEXT),
+	MEDIA_SKIP_BACKWARD(KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD, Action.PREV),
+	MEDIA_STEP_FORWARD(KeyEvent.KEYCODE_MEDIA_STEP_FORWARD, Action.FF, Action.FF, Action.FF),
+	MEDIA_STEP_BACKWARD(KeyEvent.KEYCODE_MEDIA_STEP_BACKWARD, Action.RW, Action.RW, Action.RW),
+	VOICE_ASSIST(KeyEvent.KEYCODE_VOICE_ASSIST, Action.ACTIVATE_VOICE_CTRL);
+
+	/**
+	 * Whether play/pause/next/... commands from Android Auto or a head unit (rather than key events)
+	 * run the matching media key's click binding instead of the plain command. Some cars send their
+	 * steering wheel buttons only this way, which otherwise leaves them out of the key bindings.
+	 */
+	public static final PreferenceStore.Pref<BooleanSupplier> BIND_TRANSPORT =
+			PreferenceStore.Pref.b("KEY_BIND_TRANSPORT", false);
 
 	private static final Map<Integer, Key> keys = new HashMap<>();
 

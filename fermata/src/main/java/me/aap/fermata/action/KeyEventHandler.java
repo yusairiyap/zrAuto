@@ -39,6 +39,13 @@ public class KeyEventHandler {
 																				IntObjectFunction<KeyEvent, Boolean> defaultHandler) {
 		Log.i((activity == null) ? "Media: " : "Activity: ", event);
 
+		// The key tester is open: it sees every key first, and the bound actions don't run.
+		if (KeyTester.isActive()) {
+			worker = null;
+			if (KeyTester.onKeyEvent(event, activity == null)) return true;
+			return defaultHandler.apply(event.getKeyCode(), event);
+		}
+
 		if (event.isCanceled()) {
 			worker = null;
 			return defaultHandler.apply(event.getKeyCode(), event);
@@ -83,6 +90,11 @@ public class KeyEventHandler {
 
 		worker = new Worker(cb, activity, k, clickAction, dblClickAction, longClickAction);
 		return true;
+	}
+
+	/** Drops a click/double click/long click still being worked out. */
+	static void reset() {
+		worker = null;
 	}
 
 	private static void performAction(Action action, MediaSessionCallback cb,

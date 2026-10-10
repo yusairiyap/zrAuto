@@ -46,6 +46,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.google.android.apps.auto.sdk.CarActivity;
 import com.google.android.apps.auto.sdk.CarUiController;
 
+import me.aap.fermata.action.KeyTester;
 import me.aap.fermata.R;
 import me.aap.fermata.media.service.FermataMediaServiceConnection;
 import me.aap.fermata.ui.activity.ZrAutoActivity;
@@ -308,7 +309,8 @@ public class MainCarActivity extends CarActivity implements ZrAutoActivity {
 		MainActivityDelegate d = delegate.peek();
 		if (d == null) return super.onKeyUp(keyCode, keyEvent);
 
-		if (d.getPrefs().useDpadCursor(d)) {
+		// The key tester shows the d-pad keys as they are, not as cursor moves.
+		if (d.getPrefs().useDpadCursor(d) && !KeyTester.isActive()) {
 			switch (keyCode) {
 				case KEYCODE_DPAD_UP, KEYCODE_DPAD_DOWN, KEYCODE_DPAD_RIGHT, KEYCODE_DPAD_LEFT,
 						KEYCODE_DPAD_UP_RIGHT, KEYCODE_DPAD_DOWN_LEFT, KEYCODE_DPAD_DOWN_RIGHT -> {
@@ -338,7 +340,9 @@ public class MainCarActivity extends CarActivity implements ZrAutoActivity {
 		Log.i(keyEvent);
 		MainActivityDelegate d = delegate.peek();
 		if (d == null) return super.onKeyDown(keyCode, keyEvent);
-		if (!d.getPrefs().useDpadCursor(d)) return d.onKeyDown(keyCode, keyEvent, super::onKeyDown);
+		if (!d.getPrefs().useDpadCursor(d) || KeyTester.isActive()) {
+			return d.onKeyDown(keyCode, keyEvent, super::onKeyDown);
+		}
 
 		float x = 0;
 		float y = 0;
