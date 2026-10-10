@@ -1167,6 +1167,13 @@ public class SettingsFragment extends MainActivityFragment
 				PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE);
 		ps.addBooleanPref(o -> {
 			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DOWNLOADED;
+			o.title = R.string.info_overlay_show_downloaded;
+			o.subtitle = R.string.info_overlay_show_downloaded_sub;
+			o.visibility = infoOverlayCond.copy();
+		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK;
 			o.title = R.string.info_overlay_show_clock;
 			o.visibility = infoOverlayCond.copy();

@@ -259,6 +259,17 @@ public final class MusicPlayer {
 		}
 		watchRequested = false;
 		watchingLocal = watching && hasPicture;
+		if (watching && !hasPicture) {
+			// A video was watched (YouTube's, or a downloaded one fullscreen) and this track has only
+			// its sound: the Music tab, as for any track played as music. Left to itself, the watched
+			// page's fullscreen just went away and the YouTube tab's page was what stayed on screen.
+			DiagnosticLog.log(TAG, "sound-only track after a watched video: to the Music tab",
+					"item=" + t);
+			setYoutubeAudioMode(true);
+			MainActivityDelegate a = activity.get();
+			if (a != null) a.post(() -> open(a));
+			return;
+		}
 		if (!watching) {
 			setYoutubeAudioMode(true);
 			// Started as music: the fullscreen of a video before it is over.

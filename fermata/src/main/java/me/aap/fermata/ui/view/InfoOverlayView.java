@@ -29,8 +29,11 @@ import me.aap.fermata.addon.data.DataUsageStore;
 import me.aap.fermata.addon.data.DataUsageTracker;
 import me.aap.fermata.addon.fuel.FuelLogStore;
 import me.aap.fermata.addon.fuel.FuelTracker;
+import me.aap.fermata.media.lib.MediaLib.PlayableItem;
+import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.fragment.MusicPlayerFragment;
+import me.aap.fermata.ytdl.YtDownloads;
 
 /**
  * Fullscreen video playback overlay showing any combination of the clock, battery percentage and
@@ -52,6 +55,24 @@ public class InfoOverlayView extends LinearLayout {
 	 * view, unlike settings-list icons. */
 	private static final int ICON_COLOR = 0xFFFFFFFF;
 
+	/** First, icon only: what's playing has a downloaded copy (see {@link #setDownloadedItem}). */
+	private final ImageView downloadedIcon;
+	private boolean showDownloaded;
+	// Whether the icon is laid out: the option is on and what's playing is downloaded.
+	private boolean downloadedShown;
+	private boolean playableListenerRegistered;
+	private final FermataServiceUiBinder.Listener playableListener =
+			new FermataServiceUiBinder.Listener() {
+				@Override
+				public void onPlayableChanged(PlayableItem oldItem, PlayableItem newItem) {
+					updateDownloaded();
+				}
+
+				@Override
+				public void onPlaybackStopped() {
+					updateDownloaded();
+				}
+			};
 	private final TextClock clock;
 	private final ImageView clockIcon;
 	private final LinearLayout clockRow;
@@ -131,9 +152,10 @@ public class InfoOverlayView extends LinearLayout {
 				else if (v instanceof ImageView img) img.setImageTintList(ColorStateList.valueOf(color));
 			}
 		}
+		downloadedIcon.setImageTintList(ColorStateList.valueOf(color));
 		for (int i = 0, n = getChildCount(); i < n; i++) {
 			View v = getChildAt(i);
-			if (!(v instanceof LinearLayout)) v.setBackgroundColor(dividerColor());
+			if (!(v instanceof LinearLayout) && (v != downloadedIcon)) v.setBackgroundColor(dividerColor());
 		}
 	}
 
@@ -148,6 +170,8 @@ public class InfoOverlayView extends LinearLayout {
 		// A darker shade on a light theme: the white text is otherwise hard to read over light tabs.
 		setBackgroundResource(MusicPlayerFragment.isLightTheme(context) ? R.drawable.clock_bg_light :
 				R.drawable.clock_bg);
+		downloadedIcon = newIconView(context);
+		downloadedIcon.setImageResource(R.drawable.download_done);
 		clock = (TextClock) LayoutInflater.from(context).inflate(R.layout.clock_view, this, false);
 		clockIcon = newIconView(context);
 		clockIcon.setImageResource(R.drawable.clock);
@@ -254,8 +278,56 @@ public class InfoOverlayView extends LinearLayout {
 		updateDataListenerState();
 	}
 
+	/**
+	 * The downloaded status item: an icon, first and without text, shown only while what's playing
+	 * (a YouTube video or track, streamed or from its file) has a downloaded copy.
+	 */
+	public void setDownloadedItem(boolean show) {
+		if (showDownloaded == show) return;
+		showDownloaded = show;
+		updatePlayableListenerState();
+		updateDownloaded();
+	}
+
+	private void updateDownloaded() {
+		boolean shown = showDownloaded && isPlayingDownloaded();
+		if (shown == downloadedShown) return;
+		downloadedShown = shown;
+		layoutRows();
+	}
+
+	@Nullable
+	private FermataServiceUiBinder binder() {
+		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
+		return (a == null) ? null : a.getMediaServiceBinder();
+	}
+
+	private boolean isPlayingDownloaded() {
+		FermataServiceUiBinder b = binder();
+		PlayableItem i = (b == null) ? null : b.getCurrentItem();
+		return YtDownloads.get().isDownloaded(YtDownloads.videoIdOf(i));
+	}
+
+	private void updatePlayableListenerState() {
+		boolean needed = isAttachedToWindow() && showDownloaded;
+		FermataServiceUiBinder b = binder();
+		if (needed && !playableListenerRegistered && (b != null)) {
+			b.addBroadcastListener(playableListener);
+			playableListenerRegistered = true;
+		} else if (!needed) {
+			unregisterPlayableListener();
+		}
+	}
+
+	private void unregisterPlayableListener() {
+		if (!playableListenerRegistered) return;
+		playableListenerRegistered = false;
+		FermataServiceUiBinder b = binder();
+		if (b != null) b.removeBroadcastListener(playableListener);
+	}
+
 	public boolean hasVisibleItems() {
-		return showClock || showBatteryPct || showBatteryTemp || showDistance || showDataUsage ||
+		return downloadedShown || showClock || showBatteryPct || showBatteryTemp || showDistance || showDataUsage ||
 				dataRemainingShown;
 	}
 
@@ -309,6 +381,8 @@ public class InfoOverlayView extends LinearLayout {
 			lp.setMarginEnd(margin);
 			icon.setLayoutParams(lp);
 		}
+		// On its own, no text beside it: no margin either.
+		downloadedIcon.setLayoutParams(new LayoutParams(iconSize, iconSize));
 	}
 
 	private void layoutRows() {
@@ -317,7 +391,12 @@ public class InfoOverlayView extends LinearLayout {
 		removeAllViews();
 		boolean first = true;
 
+		if (downloadedShown) {
+			addView(downloadedIcon);
+			first = false;
+		}
 		if (showClock) {
+			if (!first) addView(newDivider());
 			addView(clockRow);
 			first = false;
 		}
@@ -351,12 +430,50 @@ public class InfoOverlayView extends LinearLayout {
 
 	private void applyVisibility() {
 		boolean visible = hasVisibleItems() && (!onlyWhenControlPanelVisible || controlPanelVisible);
-		setVisibility(visible ? VISIBLE : GONE);
+		animate().cancel();
+
+		// Coming and going with the control panel, it fades in and out with it.
+		if (!onlyWhenControlPanelVisible || !isAttachedToWindow()) {
+			setAlpha(1f);
+			setVisibility(visible ? VISIBLE : GONE);
+			if (!visible) notifyHidden();
+		} else if (visible) {
+			if (getVisibility() != VISIBLE) {
+				setAlpha(0f);
+				setVisibility(VISIBLE);
+			}
+			animate().alpha(1f).setDuration(FADE_MS).start();
+		} else if (getVisibility() == VISIBLE) {
+			animate().alpha(0f).setDuration(FADE_MS).withEndAction(() -> {
+				setVisibility(GONE);
+				setAlpha(1f);
+				notifyHidden();
+			}).start();
+		}
+	}
+
+	private static final long FADE_MS = 200L;
+	@Nullable
+	private Runnable hiddenListener;
+
+	/** Called each time the overlay has gone out of sight (see {@code VideoView#moveInfoOverlay}). */
+	public void setHiddenListener(@Nullable Runnable l) {
+		hiddenListener = l;
+	}
+
+	private void notifyHidden() {
+		if (hiddenListener != null) hiddenListener.run();
+	}
+
+	public boolean isOnlyWhenControlPanelVisible() {
+		return onlyWhenControlPanelVisible;
 	}
 
 	@Override
 	protected void onAttachedToWindow() {
 		super.onAttachedToWindow();
+		updatePlayableListenerState();
+		updateDownloaded();
 		updateBatteryReceiverState();
 		updateDistanceListenerState();
 		updateDataListenerState();
@@ -365,6 +482,8 @@ public class InfoOverlayView extends LinearLayout {
 	@Override
 	protected void onDetachedFromWindow() {
 		super.onDetachedFromWindow();
+		// Still counts as attached in here: let go of it directly.
+		unregisterPlayableListener();
 		unregisterBatteryReceiver();
 		unregisterDistanceListener();
 		unregisterDataListener();

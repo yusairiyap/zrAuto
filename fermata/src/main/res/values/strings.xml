@@ -932,6 +932,8 @@
     <string name="info_overlay_show_data_usage">Show data usage</string>
     <string name="info_overlay_show_data_remaining">Show remaining data</string>
     <string name="info_overlay_show_data_icon">Show data usage icons</string>
+    <string name="info_overlay_show_downloaded">Show downloaded video status</string>
+    <string name="info_overlay_show_downloaded_sub">An icon while what\'s playing is downloaded</string>
     <string name="data_usage_overlay_sub">In the Info Overlay; its position is set under Interface > Info overlay</string>
     <string name="data_usage_overlay_remaining_sub">Only shown while a data limit is set</string>
     <string name="data_usage_reset">Reset data usage</string>

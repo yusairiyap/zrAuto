@@ -394,14 +394,16 @@ public class VideoView extends FrameLayout
 		MainActivityPrefs mp = MainActivityPrefs.get();
 		boolean dataUsage = mp.getInfoOverlayShowDataUsagePref();
 		boolean dataRemaining = mp.getInfoOverlayShowDataRemainingPref();
+		boolean downloaded = mp.getInfoOverlayShowDownloadedPref();
 		boolean show = (pos != MainActivityPrefs.CLOCK_POS_NONE) &&
 				(showClock || showBatteryPct || showBatteryTemp || showDistance || dataUsage ||
-						dataRemaining);
+						dataRemaining || downloaded);
 
 		if (!show) {
 			if (infoOverlay != null) {
 				infoOverlay.setItems(false, false, false, false, false, false, false, false);
 				infoOverlay.setDataItems(false, false, false);
+				infoOverlay.setDownloadedItem(false);
 			}
 			return;
 		}
@@ -414,6 +416,9 @@ public class VideoView extends FrameLayout
 			FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
 			lp.setMargins(m, m, m, m);
 			addView(infoOverlay, lp);
+			infoOverlay.setHiddenListener(() -> {
+				if (infoResetWhenHidden && !infoAtRight) setInfoTranslation(infoOverlay, 0f);
+			});
 			// Keeps it at the top right while the title is shown, however its width or place changes.
 			infoOverlay.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
 				if ((l == ol) && (r == or)) return;
@@ -421,10 +426,7 @@ public class VideoView extends FrameLayout
 				if (right != infoAtRight) {
 					moveInfoOverlay(right, true);
 				} else {
-					if (infoAtRight) {
-						v.animate().cancel();
-						v.setTranslationX(infoRightShift(v));
-					}
+					if (infoAtRight) setInfoTranslation(v, infoRightShift(v));
 					updateTitleInset();
 				}
 			});
@@ -446,6 +448,7 @@ public class VideoView extends FrameLayout
 		infoOverlay.setItems(showClock, showClockIcon, showBatteryPct, showBatteryIcon, showBatteryTemp,
 				showTempIcon, showDistance, showDistanceIcon);
 		infoOverlay.setDataItems(dataUsage, dataRemaining, mp.getInfoOverlayShowDataIconPref());
+		infoOverlay.setDownloadedItem(downloaded);
 	}
 
 	/**
@@ -493,15 +496,48 @@ public class VideoView extends FrameLayout
 		InfoOverlayView io = infoOverlay;
 		if (io == null) return;
 		float to = right ? infoRightShift(io) : 0f;
+
+		if (io.isOnlyWhenControlPanelVisible()) {
+			// It fades in and out with the panel: no gliding. Shown, it's already where it goes; back
+			// to its own place only once it's out of sight (see the hidden listener), not under the eye.
+			if (right || !io.isShown()) setInfoTranslation(io, to);
+			else infoResetWhenHidden = true;
+			updateTitleInset();
+			return;
+		}
+
 		if (!animate || !io.isLaidOut()) {
-			io.animate().cancel();
-			io.setTranslationX(to);
+			setInfoTranslation(io, to);
 		} else if (changed || (io.getTranslationX() != to)) {
-			io.animate().cancel();
-			io.animate().translationX(to).setDuration(INFO_MOVE_MS)
-					.setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+			cancelInfoMove();
+			infoMove = android.animation.ObjectAnimator.ofFloat(io, View.TRANSLATION_X, to);
+			infoMove.setDuration(INFO_MOVE_MS);
+			infoMove.setInterpolator(new android.view.animation.DecelerateInterpolator());
+			infoMove.start();
 		}
 		updateTitleInset();
+	}
+
+	/**
+	 * The Info Overlay's glide (its own animator: the overlay's ViewPropertyAnimator does its fade,
+	 * and cancelling one there would cancel the other).
+	 */
+	@Nullable
+	private android.animation.ObjectAnimator infoMove;
+	/** Set while the Info Overlay waits to be out of sight to go back to its own place. */
+	private boolean infoResetWhenHidden;
+
+	private void cancelInfoMove() {
+		if (infoMove != null) {
+			infoMove.cancel();
+			infoMove = null;
+		}
+	}
+
+	private void setInfoTranslation(View io, float x) {
+		cancelInfoMove();
+		infoResetWhenHidden = false;
+		io.setTranslationX(x);
 	}
 
 	/** How far the Info Overlay goes from its own place to the top right corner. */
