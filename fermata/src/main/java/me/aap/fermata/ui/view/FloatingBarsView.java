@@ -8,6 +8,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.os.Build;
@@ -223,11 +224,23 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 		return Math.max(0f, Math.min(1f, alpha));
 	}
 
-	/** v's live bounds, translation included, in this view's own coordinates (same parent). */
+	/**
+	 * v's live bounds, translation included, in this view's own coordinates (same parent). Only the
+	 * part its clip bounds leave showing: the control panel tucking down behind a bottom nav bar is
+	 * cut off at the nav bar's top edge (see ScrollBarsController), and the pill must not reach down
+	 * past the nav bar with the rest of it.
+	 */
 	private void bounds(View v, RectF out) {
 		float x = v.getX() - getLeft();
 		float y = v.getY() - getTop();
-		out.set(x, y, x + v.getWidth(), y + v.getHeight());
+		Rect clip = v.getClipBounds();
+		if (clip != null) {
+			out.set(x + Math.max(0, clip.left), y + Math.max(0, clip.top),
+					x + Math.min(v.getWidth(), clip.right), y + Math.min(v.getHeight(), clip.bottom));
+			if ((out.right < out.left) || (out.bottom < out.top)) out.set(x, y, x, y);
+		} else {
+			out.set(x, y, x + v.getWidth(), y + v.getHeight());
+		}
 	}
 
 	@Override

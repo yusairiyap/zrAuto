@@ -24,6 +24,8 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.constraintlayout.widget.Guideline;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import me.aap.fermata.R;
@@ -189,6 +191,17 @@ public class BodyLayout extends SplitLayout
 		canvas.drawRect(0, 0, getWidth(), end, topFadePaint);
 	}
 
+	private final int[] statusLoc = new int[2];
+
+	/** How far the status bar reaches down into this layout, 0 if it ends above it. */
+	private float statusBarInside() {
+		WindowInsetsCompat wi = ViewCompat.getRootWindowInsets(this);
+		if (wi == null) return 0f;
+		int top = wi.getInsets(WindowInsetsCompat.Type.statusBars()).top;
+		getLocationInWindow(statusLoc);
+		return Math.max(0, top - statusLoc[1]);
+	}
+
 	/** Into fadeEnd/fadeAlpha: where the fade ends in this view, and how strong; false for none. */
 	private boolean computeTopFade() {
 		if (getMode() != Mode.FRAME) return false;
@@ -210,7 +223,8 @@ public class BodyLayout extends SplitLayout
 		float slid = (sb != null) ? sb.getToolBarDy() : 0f;
 		float hidden = (sb != null) ? sb.getToolBarHidden() : 0f;
 		float rest = (tb.getY() - slid + tb.getHeight()) - getTop() + topFadeLen;
-		float edge = topFadeLen + topFadeEdge;
+		// Down past the status bar too, where the content runs on behind it (edge to edge).
+		float edge = statusBarInside() + topFadeLen + topFadeEdge;
 		float end = rest + (edge - rest) * hidden;
 		if (end <= 0f) return false;
 		fadeEnd = end;
