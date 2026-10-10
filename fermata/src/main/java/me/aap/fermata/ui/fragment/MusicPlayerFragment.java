@@ -277,8 +277,14 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		timerChip = view.findViewById(R.id.music_timer_button);
 		timerChip.setOnClickListener(v -> onMore(true));
 		// Effects sits on the row itself when there's room for it, else only behind the more button.
+		// Decided after the row's layout, not inside it: a chip shown or hidden from within the row's
+		// own layout pass asked for a layout the row never got (it still counted as being laid out),
+		// and the row stayed with the old places (a hole where a hidden chip was, the more button
+		// pushed off the end) until something else happened to lay it out again.
 		view.findViewById(R.id.music_actions).addOnLayoutChangeListener(
-				(v, l, t, r, b, ol, ot, or, ob) -> updateEffectsChip((ViewGroup) v));
+				(v, l, t, r, b, ol, ot, or, ob) -> v.post(() -> {
+					if (isAdded()) updateEffectsChip((ViewGroup) v);
+				}));
 		videoButtonText = 0; // A new view: the chip starts hidden.
 		queuePanel = view.findViewById(R.id.music_queue_panel);
 		queueDismiss = view.findViewById(R.id.music_queue_dismiss);
@@ -1658,15 +1664,24 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			if (show[i] && !allFit) used += need[i];
 		}
 
+		boolean changed = false;
 		for (int i = 0; i < optional.length; i++) {
 			int vis = show[i] ? View.VISIBLE : View.GONE;
-			if (optional[i].getVisibility() != vis) optional[i].setVisibility(vis);
+			if (optional[i].getVisibility() != vis) {
+				optional[i].setVisibility(vis);
+				changed = true;
+			}
 			// Never left see-through by an animation cut short: a shown chip is a seen chip.
 			if (show[i]) resetChip(optional[i]);
 		}
 		int moreVis = allFit ? View.GONE : View.VISIBLE;
-		if (moreButton.getVisibility() != moreVis) moreButton.setVisibility(moreVis);
+		if (moreButton.getVisibility() != moreVis) {
+			moreButton.setVisibility(moreVis);
+			changed = true;
+		}
 		if (!allFit) resetChip(moreButton);
+		// The row itself is laid out again for it, whatever else is pending.
+		if (changed) row.requestLayout();
 		refreshFavoriteChip();
 	}
 

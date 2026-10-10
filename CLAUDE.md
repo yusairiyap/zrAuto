@@ -193,13 +193,18 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   requests are tied to their track (`MusicPlayer.StartRequest`).
 - **Fullscreen controls overlay.** Every `VideoView` (YouTube's too) carries a `VideoControlsOverlay`
   on top: title, prev/play-pause/next in the middle and the double tap seek feedback. `ControlPanelView`
-  decides when it shows (`showVideoControls`): the buttons always together with the panel (seeks too),
-  the title only on a single tap.
+  decides when it shows (`showVideoControls`): the buttons always together with the panel, the title
+  only on a single tap; a double tap seek hides them all (`hideVideoUi`) and shows only its feedback.
+  While buffering, the play button shrinks away for the loading circle (YouTube's own, or the overlay's).
   The overlay takes every touch that misses its buttons and hands it to `VideoView.onTouchEvent`, which
   also keeps taps off YouTube's page (its own player controls are hidden in fullscreen by CSS, see
   `YoutubeWebView#hideFullscreenControlsJs`). In fullscreen the panel hides its whole transport row
   (seek bar line only, plus a bottom gap for the gesture area). A double tap streak makes one seek when
   the taps stop (`applyPendingSeek`): a seek per tap paused local video.
+- **Don't change visibility from a layout callback.** A view shown/hidden inside its parent's
+  `onLayoutChange` asks for a layout the parent never gets (it still counts as mid-layout), leaving stale
+  positions on screen (the Music tab chips row had a hole and a clipped more button for that). Post the
+  change and `requestLayout()` the parent (see `MusicPlayerFragment#updateEffectsChip`).
 - **Grid vs list** for media lists comes from the grid preference, never from `isGridView()` (which
   asks the active tab and is wrong while tabs switch).
 - Known open items: media card art can look blocky on One UI (1280x720 art); a YouTube hand-over

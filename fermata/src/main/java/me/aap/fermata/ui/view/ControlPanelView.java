@@ -782,7 +782,9 @@ public class ControlPanelView extends ConstraintLayout
 				"state=" + b.getMediaSessionCallback().getPlaybackState().getState());
 		removeCallbacks(applySeekTask);
 		postDelayed(applySeekTask, SEEK_APPLY_DELAY_MS);
-		onVideoSeek();
+		// Nothing but the seek feedback, as YouTube does: the controls (and an Info Overlay shown only
+		// with them) go if they were up, and don't come up for it.
+		if (((mask & MASK_VIDEO_MODE) != 0) && (getVisibility() == VISIBLE)) hideVideoUi(a);
 		vv.getControls().showSeek(ff, seekStreakSeconds, e.getX(), e.getY());
 	}
 
@@ -818,11 +820,7 @@ public class ControlPanelView extends ConstraintLayout
 		boolean shown = getVisibility() == VISIBLE;
 
 		if (shown) {
-			fadeOut(this, true);
-			fadeOut(fb, false);
-			for (View f : extra) fadeOut(f, false);
-			if (a.getPrefs().getSysBarsOnVideoTouchPref()) a.setFullScreen(true);
-			hideVideoControls(true);
+			hideVideoUi(a);
 		} else {
 			if (getVisibility() != VISIBLE) fadeIn(this, true);
 			if (fb.getVisibility() != VISIBLE) fadeIn(fb, false);
@@ -837,6 +835,19 @@ public class ControlPanelView extends ConstraintLayout
 
 		checkPlaybackTimer(a);
 		return true;
+	}
+
+	/**
+	 * Fades the fullscreen video controls away: the panel, the floating buttons, the middle
+	 * buttons and title (and with the panel, an Info Overlay shown only with it).
+	 */
+	private void hideVideoUi(MainActivityDelegate a) {
+		hideTimer = null;
+		fadeOut(this, true);
+		fadeOut(a.getFloatingButton(), false);
+		for (View f : a.getEnabledExtraFabs()) fadeOut(f, false);
+		if (a.getPrefs().getSysBarsOnVideoTouchPref()) a.setFullScreen(true);
+		hideVideoControls(true);
 	}
 
 	private static final long FADE_DURATION = 200L;

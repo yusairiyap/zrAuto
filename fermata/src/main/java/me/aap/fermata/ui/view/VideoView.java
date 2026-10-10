@@ -112,7 +112,7 @@ public class VideoView extends FrameLayout
 		super(context, attrs);
 		init(context);
 		// Over everything init() put in (the picture, the black fades, the dim, YouTube's cover).
-		controls = new VideoControlsOverlay(context);
+		controls = new VideoControlsOverlay(context, !hasBufferingSpinner());
 		addView(controls, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 		getActivity().onSuccess(a -> {
 			a.addBroadcastListener(this);
@@ -460,6 +460,11 @@ public class VideoView extends FrameLayout
 		if (this.controlPanelVisible == controlPanelVisible) return;
 		this.controlPanelVisible = controlPanelVisible;
 		if (infoOverlay != null) infoOverlay.setControlPanelVisible(controlPanelVisible);
+	}
+
+	/** Whether this view shows a loading circle of its own while the video buffers (YouTube's). */
+	protected boolean hasBufferingSpinner() {
+		return false;
 	}
 
 	public VideoControlsOverlay getControls() {

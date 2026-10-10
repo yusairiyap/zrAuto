@@ -27,6 +27,7 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.widget.AppCompatImageView;
 
 import me.aap.fermata.R;
+import me.aap.fermata.media.engine.BufferingIndicator;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 
@@ -60,7 +61,20 @@ public class VideoControlsOverlay extends FrameLayout {
 	/** Set while a touch on a middle button goes to the video instead (see {@link #buttonTouch}). */
 	private boolean forwardingTouch;
 
+	/**
+	 * A loading circle of its own in the middle, for a video view without one (local video; YouTube's
+	 * has its own under this view), see {@link #updateBuffering}.
+	 */
+	@Nullable
+	private LoadingCircleView ownSpinner;
+	private final Runnable bufferingListener = this::updateBuffering;
+	private boolean buffering;
+
 	public VideoControlsOverlay(Context ctx) {
+		this(ctx, true);
+	}
+
+	public VideoControlsOverlay(Context ctx, boolean withSpinner) {
 		super(ctx);
 		setClickable(false);
 		setFocusable(false);
@@ -107,6 +121,10 @@ public class VideoControlsOverlay extends FrameLayout {
 		lp = new LinearLayout.LayoutParams(small, small);
 		lp.setMarginStart(gap);
 		center.addView(next, lp);
+		if (withSpinner) {
+			ownSpinner = new LoadingCircleView(ctx);
+			addView(ownSpinner, new LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER));
+		}
 		addView(center, new LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER));
 
 		for (View btn : new View[]{prev, playPause, next}) btn.setOnTouchListener(this::buttonTouch);
@@ -201,6 +219,41 @@ public class VideoControlsOverlay extends FrameLayout {
 		return true;
 	}
 
+	@Override
+	protected void onAttachedToWindow() {
+		super.onAttachedToWindow();
+		BufferingIndicator.addListener(bufferingListener);
+		updateBuffering();
+	}
+
+	@Override
+	protected void onDetachedFromWindow() {
+		BufferingIndicator.removeListener(bufferingListener);
+		super.onDetachedFromWindow();
+	}
+
+	/**
+	 * While the video waits for data, the loading circle takes the play/pause button's place in the
+	 * middle: the button (and its round backing) shrinks and fades away over it, and comes back the
+	 * same way, rather than both being drawn on top of each other.
+	 */
+	private void updateBuffering() {
+		boolean b = BufferingIndicator.isBuffering();
+		if (ownSpinner != null) {
+			// A stall while playing only: before that (the start), the activity's own loading circle is
+			// already up in the middle, and two would sit on each other.
+			MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
+			FermataServiceUiBinder fb = (a == null) ? null : a.getMediaServiceBinder();
+			ownSpinner.setLoading(b && (fb != null) && fb.isPlaying());
+		}
+		if (b == buffering) return;
+		buffering = b;
+		playPause.setEnabled(centerShown && !b);
+		playPause.animate().cancel();
+		playPause.animate().alpha(b ? 0f : 1f).scaleX(b ? 0.6f : 1f).scaleY(b ? 0.6f : 1f)
+				.setDuration(FADE_MS).setInterpolator(new DecelerateInterpolator()).start();
+	}
+
 	public boolean isCenterShown() {
 		return centerShown;
 	}
@@ -224,7 +277,7 @@ public class VideoControlsOverlay extends FrameLayout {
 		// Fading out, they no longer take taps: a quick tap meant for the video (a double tap seek
 		// right after them) must not land on one.
 		prev.setEnabled(showCenter);
-		playPause.setEnabled(showCenter);
+		playPause.setEnabled(showCenter && !buffering);
 		next.setEnabled(showCenter);
 		if (!showCenter && center.hasFocus()) center.clearFocus();
 	}

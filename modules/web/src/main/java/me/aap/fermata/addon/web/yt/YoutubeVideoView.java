@@ -225,6 +225,11 @@ public class YoutubeVideoView extends VideoView {
 		if (l != null) l.run();
 	}
 
+	@Override
+	protected boolean hasBufferingSpinner() {
+		return true;
+	}
+
 	@Nullable
 	@Override
 	public SurfaceView getSubtitleSurface() {
