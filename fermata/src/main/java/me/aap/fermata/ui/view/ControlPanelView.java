@@ -1036,6 +1036,59 @@ public class ControlPanelView extends ConstraintLayout
 		vv.getControls().showSeek(ff, seekStreakSeconds, e.getX(), e.getY());
 	}
 
+	// A run of key seeks (FF/RW bound to a key, held or pressed again and again), for the feedback.
+	private boolean keySeekForward;
+	private int keySeekSeconds;
+	private long keySeekUntil;
+
+	/**
+	 * A key binding ran {@code action} while a video is fullscreen: shows what a tap on the screen
+	 * would have, so a steering wheel press can be seen to work. Play/pause, next/previous and stop
+	 * bring up the controls (the middle buttons follow the new state); rewind/fast forward show the
+	 * seek feedback of a double tap on that side, counting up with each press.
+	 */
+	public void showKeyFeedback(Action action) {
+		if ((mask & MASK_VIDEO_MODE) == 0) return;
+		MainActivityDelegate a = getActivity();
+		VideoView vv = a.getActiveVideoView();
+		if ((vv == null) || (vv.getWidth() == 0)) return;
+
+		switch (action) {
+			case RW, FF -> {
+				boolean ff = action == Action.FF;
+				long now = SystemClock.uptimeMillis();
+				if ((ff != keySeekForward) || (now > keySeekUntil)) keySeekSeconds = 0;
+				keySeekForward = ff;
+				keySeekSeconds += keySeekStep();
+				keySeekUntil = now + SEEK_STREAK_MS * 2;
+				if (getVisibility() == VISIBLE) hideVideoUi(a);
+				vv.getControls().showSeek(ff, keySeekSeconds, vv.getWidth() * (ff ? 0.75f : 0.25f),
+						vv.getHeight() / 2f);
+			}
+			case PLAY, PAUSE, PLAY_PAUSE, NEXT, PREV, STOP, NEXT_FOLDER, PREV_FOLDER -> {
+				if (getVisibility() == VISIBLE) {
+					restartVideoHideTimer();
+					syncVideoControls();
+				} else {
+					onTouch(vv); // Brings them up, as a tap does.
+				}
+			}
+			default -> {
+			}
+		}
+	}
+
+	/** One rewind/fast forward's step in seconds, as set in Settings (a percentage counts as 0). */
+	private int keySeekStep() {
+		PlaybackControlPrefs p = getActivity().getMediaSessionCallback().getPlaybackControlPrefs();
+		int t = p.getRwFfTimePref();
+		return switch (p.getRwFfTimeUnitPref()) {
+			case PlaybackControlPrefs.TIME_UNIT_SECOND -> t;
+			case PlaybackControlPrefs.TIME_UNIT_MINUTE -> t * 60;
+			default -> 0;
+		};
+	}
+
 	/** Makes the seek the streak's taps asked for so far, if any. */
 	private void applyPendingSeek() {
 		removeCallbacks(applySeekTask);

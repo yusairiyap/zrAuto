@@ -111,6 +111,12 @@ public class KeyEventHandler {
 		} finally {
 			performingKeyAction = false;
 		}
+		// Over fullscreen video: what a tap on the screen would show (the controls, the seek).
+		MainActivityDelegate a = (activity != null) ? activity : MainActivityDelegate.getUiDelegate();
+		if (a != null) {
+			me.aap.fermata.ui.view.ControlPanelView cp = a.getControlPanel();
+			if (cp != null) cp.showKeyFeedback(action);
+		}
 	}
 
 	/**

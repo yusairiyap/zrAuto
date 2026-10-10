@@ -103,6 +103,9 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 	private static final int TYPE_ACTION = 2;
 	private static final int TYPE_VIDEO = 3;
 	private static final int TYPE_HISTORY = 4;
+	/** A placeholder result while a search runs, see SkeletonRow. */
+	private static final int TYPE_SKELETON = 5;
+	private static final int SKELETON_ROWS = 4;
 	private static final int KIND_RESULT = 0;
 	private static final int KIND_UP_NEXT = 1;
 	private static final int KIND_LIST = 2;
@@ -428,7 +431,11 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		refreshInstantly();
 
 		addon.addSearchHistory(q);
-		searchLibrary(q, gen);
+		// After "Searching..." and the placeholders are on screen: going through Favorites and every
+		// playlist can take a moment, and run right here it held that first frame back.
+		handler.postDelayed(() -> {
+			if (gen == generation) searchLibrary(search, gen);
+		}, 60);
 
 		executor.execute(() -> {
 			List<Video> found = null;
@@ -449,7 +456,8 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 					// channel and duration there, even before the player reports them.
 					for (Video v : result) addon.setLiveVideoInfo(v.videoId, v.channel, v.durationMs);
 				}
-				refreshInstantly();
+				// Animated: the placeholders make way for the results.
+				refresh();
 				if ((result != null) && !result.isEmpty()) carNavToFirstResult();
 			});
 		});
@@ -802,6 +810,7 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		rows.add(header);
 		if (searching) {
 			rows.add(Row.note("n:searching", ctx.getString(me.aap.fermata.R.string.youtube_searching)));
+			for (int i = 0; i < SKELETON_ROWS; i++) rows.add(Row.skeleton(i));
 		} else if (failed) {
 			rows.add(Row.note("n:failed", ctx.getString(me.aap.fermata.R.string.youtube_search_failed)));
 			String q = query;
@@ -916,6 +925,10 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 			r.queries = q;
 			r.suggest = suggest;
 			return r;
+		}
+
+		static Row skeleton(int i) {
+			return new Row(TYPE_SKELETON, "s:" + i, null, null, null, 0, null, null, null);
 		}
 
 		static Row note(String key, String text) {
@@ -1040,6 +1053,8 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 				styleIconChip(button);
 			} else if (viewType == TYPE_HEADER) {
 				v = createHeader(ctx);
+			} else if (viewType == TYPE_SKELETON) {
+				v = new SkeletonRow(ctx, textPrimary);
 			} else if (viewType == TYPE_HISTORY) {
 				HorizontalScrollView sv = new HorizontalScrollView(ctx);
 				sv.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
@@ -1262,7 +1277,7 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 				if (ia != null) {
 					String label = v.getContext().getString(me.aap.fermata.R.string.youtube_search_in_page);
 					icon.setVisibility(VISIBLE);
-					icon.setImageResource(me.aap.fermata.R.drawable.youtube);
+					icon.setImageResource(me.aap.fermata.R.drawable.more);
 					icon.setContentDescription(label);
 					TooltipCompat.setTooltipText(icon, label);
 					icon.setOnClickListener(x -> ia.run());
@@ -1270,6 +1285,11 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 					icon.setVisibility(GONE);
 					icon.setOnClickListener(null);
 				}
+				return;
+			}
+
+			if (r.type == TYPE_SKELETON) {
+				((SkeletonRow) v).setIndex(position);
 				return;
 			}
 
@@ -1367,6 +1387,100 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 					v.setOnLongClickListener(null);
 				}
 			}
+		}
+	}
+
+	/**
+	 * A result's shape (thumbnail, title, channel) in a faint tint, pulsing while the search runs:
+	 * right away there's something where the results will be. Rows pulse one after another, a wave
+	 * down the list; it only runs while the row is on screen.
+	 */
+	private static final class SkeletonRow extends LinearLayout {
+		private final LinearLayout content;
+		@Nullable
+		private ValueAnimator pulse;
+		private int index;
+
+		SkeletonRow(Context ctx, int tint) {
+			super(ctx);
+			setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+			int h = (int) UiUtils.toPx(ctx, 12);
+			int vp = (int) UiUtils.toPx(ctx, 8);
+			setPadding(h, vp, h, vp);
+			// The pulse is on this inner layout, never on the row: the item animator owns the row's alpha.
+			content = new LinearLayout(ctx);
+			content.setOrientation(HORIZONTAL);
+			content.setGravity(Gravity.CENTER_VERTICAL);
+			addView(content, new LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+			int fill = (tint & 0x00FFFFFF) | 0x26000000;
+
+			View thumb = new View(ctx);
+			thumb.setBackground(block(ctx, fill, 8));
+			content.addView(thumb, new LayoutParams((int) UiUtils.toPx(ctx, 96),
+					(int) UiUtils.toPx(ctx, 54)));
+
+			LinearLayout lines = new LinearLayout(ctx);
+			lines.setOrientation(VERTICAL);
+			LayoutParams lp = new LayoutParams(0, WRAP_CONTENT, 1f);
+			lp.setMarginStart((int) UiUtils.toPx(ctx, 12));
+			content.addView(lines, lp);
+			lines.addView(bar(ctx, fill, 14, 24, 0));
+			lines.addView(bar(ctx, fill, 14, 72, 6));
+			lines.addView(bar(ctx, fill, 11, 120, 8));
+		}
+
+		private static View bar(Context ctx, int fill, int heightDp, int endDp, int topDp) {
+			View v = new View(ctx);
+			v.setBackground(block(ctx, fill, 6));
+			LayoutParams lp = new LayoutParams(MATCH_PARENT, (int) UiUtils.toPx(ctx, heightDp));
+			lp.setMarginEnd((int) UiUtils.toPx(ctx, endDp));
+			lp.topMargin = (int) UiUtils.toPx(ctx, topDp);
+			v.setLayoutParams(lp);
+			return v;
+		}
+
+		private static GradientDrawable block(Context ctx, int fill, int radiusDp) {
+			GradientDrawable g = new GradientDrawable();
+			g.setColor(fill);
+			g.setCornerRadius(UiUtils.toPx(ctx, radiusDp));
+			return g;
+		}
+
+		void setIndex(int i) {
+			if (index == i) return;
+			index = i;
+			if (pulse != null) start();
+		}
+
+		@Override
+		protected void onAttachedToWindow() {
+			super.onAttachedToWindow();
+			start();
+		}
+
+		@Override
+		protected void onDetachedFromWindow() {
+			stop();
+			super.onDetachedFromWindow();
+		}
+
+		private void start() {
+			stop();
+			ValueAnimator a = ValueAnimator.ofFloat(0.35f, 1f);
+			a.setDuration(650);
+			a.setStartDelay((index % SKELETON_ROWS) * 130L);
+			a.setRepeatMode(ValueAnimator.REVERSE);
+			a.setRepeatCount(ValueAnimator.INFINITE);
+			a.setInterpolator(new DecelerateInterpolator());
+			a.addUpdateListener(x -> content.setAlpha((float) x.getAnimatedValue()));
+			content.setAlpha(0.35f);
+			pulse = a;
+			a.start();
+		}
+
+		private void stop() {
+			if (pulse != null) pulse.cancel();
+			pulse = null;
 		}
 	}
 }

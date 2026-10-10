@@ -108,8 +108,34 @@ public final class CarNav {
 	private CarNav() {
 	}
 
+	/** Car mode is on and the app is on a car's screen (Android Auto connected). */
 	public static boolean isEnabled() {
-		return Key.getPrefs().getBooleanPref(Key.CAR_MODE);
+		return isCarConnected() && Key.getPrefs().getBooleanPref(Key.CAR_MODE);
+	}
+
+	/**
+	 * Whether Android Auto shows the app (its own car UI, or the phone's mirrored): the outline is
+	 * for the steering wheel, never shown on the phone alone.
+	 */
+	public static boolean isCarConnected() {
+		return MainActivityDelegate.isCarActivityActive() ||
+				me.aap.fermata.FermataApplication.get().isMirroringMode();
+	}
+
+	/**
+	 * {@code rv} now lists another folder (a playlist opened or left by a tap): the next press starts
+	 * again from its first row.
+	 */
+	public static void listChanged(@Nullable RecyclerView rv) {
+		Sel cur = sel;
+		if ((cur == null) || (cur.rv != rv)) return;
+		sel = null;
+		fresh = true;
+		adjusting = false;
+		handler.removeCallbacks(idleHide);
+		Highlight h = highlight;
+		highlight = null;
+		if (h != null) h.detach(true);
 	}
 
 	/**
@@ -449,6 +475,7 @@ public final class CarNav {
 	 * (the playing item when its tab opens).
 	 */
 	public static void highlightRow(MainActivityDelegate a, RecyclerView rv, int pos) {
+		if (!isCarConnected()) return;
 		Scope s = findScope(a);
 		if (s == null) return;
 		List<Object> segs = new ArrayList<>();
