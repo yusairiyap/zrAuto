@@ -133,8 +133,14 @@ public final class CarNav {
 				if (e.getRepeatCount() > 0) return downCode == code;
 				if (!isEnabled()) return false;
 				MainActivityDelegate a = (activity != null) ? activity : MainActivityDelegate.getUiDelegate();
-				Scope s = (a == null) ? null : findScope(a);
 				handler.removeCallbacks(longPress);
+				// Fullscreen video (YouTube's too): the keys are the user's own bindings, untouched.
+				if ((a != null) && isFullscreenVideo(a)) {
+					downCode = 0;
+					clear();
+					return false;
+				}
+				Scope s = (a == null) ? null : findScope(a);
 				if (s == null) {
 					clear();
 					// The YouTube tab, video not fullscreen: long next goes fullscreen, a click is still
@@ -187,7 +193,7 @@ public final class CarNav {
 	public static boolean onTransport(boolean next) {
 		if (!isEnabled()) return false;
 		MainActivityDelegate a = MainActivityDelegate.getUiDelegate();
-		Scope s = (a == null) ? null : findScope(a);
+		Scope s = ((a == null) || isFullscreenVideo(a)) ? null : findScope(a);
 		if (s == null) {
 			clear();
 			return false;
@@ -218,6 +224,13 @@ public final class CarNav {
 		if ((action == null) || (a == null)) return;
 		MediaSessionCallback cb = (downCb != null) ? downCb : a.getMediaSessionCallback();
 		action.getHandler().handle(cb, a, downTime);
+	}
+
+	/** A video is fullscreen: local video mode, or a WebView player's own (YouTube). */
+	private static boolean isFullscreenVideo(MainActivityDelegate a) {
+		if (a.isVideoMode()) return true;
+		me.aap.fermata.ui.view.VideoView vv = a.getActiveVideoView();
+		return (vv != null) && vv.isInNativeFullscreen();
 	}
 
 	/** The YouTube tab is showing, its video not fullscreen. */
