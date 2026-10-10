@@ -112,6 +112,9 @@ public interface MainActivityPrefs
 	Pref<IntSupplier> FAB6_ACTION = Pref.i("FAB6_ACTION", Action.OPEN_PLAYLISTS.ordinal());
 	// Fixed in place by default: dragging is easy to trigger by accident while driving.
 	Pref<BooleanSupplier> FAB_DRAGGABLE = Pref.b("FAB_DRAGGABLE", false);
+	// The floating buttons shown together as one pill (see FabPillView) rather than as separate
+	// round buttons; on by default.
+	Pref<BooleanSupplier> FAB_PILL = Pref.b("FAB_PILL", true);
 	// 5% smaller than the original 1.0 out of the box.
 	Pref<DoubleSupplier> FAB_SIZE = Pref.f("FAB_SIZE", 0.95f);
 	// How many upcoming Favorites/Playlist entries the YouTube tab's Up next list previews below the

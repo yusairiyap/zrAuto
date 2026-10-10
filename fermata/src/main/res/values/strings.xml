@@ -554,6 +554,8 @@
     <string name="fab4_action">Tap action</string>
     <string name="fab5_enable">Show fifth floating button</string>
     <string name="fab6_enable">Show sixth floating button</string>
+    <string name="fab_pill">Floating buttons as one pill</string>
+    <string name="fab_pill_sub">Show the floating buttons together in a single pill instead of separate round buttons (not draggable then)</string>
     <string name="fab_draggable">Draggable</string>
     <string name="fab_draggable_sub">Let the floating buttons be dragged to a different position on screen</string>
     <string name="fab_size">Floating button size</string>

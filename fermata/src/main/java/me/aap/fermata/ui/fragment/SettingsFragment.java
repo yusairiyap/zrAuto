@@ -1329,6 +1329,12 @@ public class SettingsFragment extends MainActivityFragment
 				fabActionNames, fabActionOrdinals);
 		ps.addBooleanPref(o -> {
 			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.FAB_PILL;
+			o.title = R.string.fab_pill;
+			o.subtitle = R.string.fab_pill_sub;
+		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
 			o.pref = fabPref(aa, MainActivityPrefs.FAB_DRAGGABLE);
 			o.title = R.string.fab_draggable;
 			o.subtitle = R.string.fab_draggable_sub;

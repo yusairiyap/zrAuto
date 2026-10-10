@@ -243,6 +243,9 @@ public class MainActivityDelegate extends ActivityDelegate
 	private BodyLayout body;
 	private ControlPanelView controlPanel;
 	private FloatingButton floatingButton;
+	/** Paints the floating buttons' shared pill and gives them their look, see FabPillView. */
+	@Nullable
+	private me.aap.fermata.ui.view.FabPillView fabPill;
 	private SecondaryFloatingButton floatingButton2;
 	private TertiaryFloatingButton floatingButton3;
 	private QuaternaryFloatingButton floatingButton4;
@@ -2643,6 +2646,9 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (floatingButton5 != null) floatingButton5.setScale(getPrefs().getFabSizePref(this));
 		floatingButton6 = a.findViewById(R.id.floating_button6);
 		if (floatingButton6 != null) floatingButton6.setScale(getPrefs().getFabSizePref(this));
+		fabPill = me.aap.fermata.ui.view.FabPillView.install(a,
+				getPrefs().getBooleanPref(MainActivityPrefs.FAB_PILL), floatingButton, floatingButton2,
+				floatingButton3, floatingButton4, floatingButton5, floatingButton6);
 		updateFabDraggable();
 		controlPanel.bind(getMediaServiceBinder());
 		enableBodyOverlayLayout();
@@ -2768,6 +2774,9 @@ public class MainActivityDelegate extends ActivityDelegate
 			fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 		} else if (prefs.contains(MainActivityPrefs.fab(this, FAB_DRAGGABLE))) {
 			updateFabDraggable();
+		} else if (prefs.contains(MainActivityPrefs.FAB_PILL)) {
+			if (fabPill != null) fabPill.setPill(getPrefs().getBooleanPref(MainActivityPrefs.FAB_PILL));
+			updateFabDraggable();
 		}
 	}
 
@@ -2833,8 +2842,16 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (floatingButton != null) floatingButton.post(this::liftFabsAboveKeyboard);
 	}
 
+	/** See {@link me.aap.fermata.ui.view.FabPillView}; null before the layout is set up. */
+	@Nullable
+	public me.aap.fermata.ui.view.FabPillView getFabPill() {
+		return fabPill;
+	}
+
 	private void updateFabDraggable() {
-		boolean draggable = getPrefs().getBooleanPref(MainActivityPrefs.fab(this, FAB_DRAGGABLE));
+		// Never as one pill: a button dragged off would stretch the pill across the screen.
+		boolean draggable = getPrefs().getBooleanPref(MainActivityPrefs.fab(this, FAB_DRAGGABLE)) &&
+				((fabPill == null) || !fabPill.isPill());
 		if (floatingButton != null) floatingButton.setDraggable(draggable);
 		if (floatingButton2 != null) floatingButton2.setDraggable(draggable);
 		if (floatingButton3 != null) floatingButton3.setDraggable(draggable);
