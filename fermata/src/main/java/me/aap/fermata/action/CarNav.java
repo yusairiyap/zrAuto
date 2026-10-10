@@ -121,6 +121,15 @@ public final class CarNav {
 		root.setTag(R.id.car_nav_scope, (back != null) ? back : NO_BACK);
 	}
 
+	/**
+	 * Same as {@link #markScope}, for a picker or menu opened over everything (add to playlist):
+	 * moved through even over fullscreen video, where the keys otherwise keep their bindings.
+	 */
+	public static void markModalScope(@NonNull View root, @Nullable Runnable back) {
+		markScope(root, back);
+		root.setTag(R.id.car_nav_modal, Boolean.TRUE);
+	}
+
 	/** Leaves {@code v} (and what's in it) out: a button too risky to land on, like Clear. */
 	public static void skip(@Nullable View v) {
 		if (v != null) v.setTag(R.id.car_nav_skip, Boolean.TRUE);
@@ -141,13 +150,15 @@ public final class CarNav {
 				if (!isEnabled()) return false;
 				MainActivityDelegate a = (activity != null) ? activity : MainActivityDelegate.getUiDelegate();
 				handler.removeCallbacks(longPress);
-				// Fullscreen video (YouTube's too): the keys are the user's own bindings, untouched.
-				if ((a != null) && isFullscreenVideo(a)) {
+				// Fullscreen video (YouTube's too): the keys are the user's own bindings, untouched,
+				// unless a picker or menu is open over it (add to playlist): that one is moved through.
+				boolean fullscreen = (a != null) && isFullscreenVideo(a);
+				Scope s = (a == null) ? null : findScope(a, fullscreen);
+				if (fullscreen && (s == null)) {
 					downCode = 0;
 					clear();
 					return false;
 				}
-				Scope s = (a == null) ? null : findScope(a);
 				if (s == null) {
 					clear();
 					// The YouTube tab, video not fullscreen: a long press (next or previous) goes
@@ -201,7 +212,7 @@ public final class CarNav {
 	public static boolean onTransport(boolean next) {
 		if (!isEnabled()) return false;
 		MainActivityDelegate a = MainActivityDelegate.getUiDelegate();
-		Scope s = ((a == null) || isFullscreenVideo(a)) ? null : findScope(a);
+		Scope s = (a == null) ? null : findScope(a, isFullscreenVideo(a));
 		if (s == null) {
 			clear();
 			return false;
@@ -279,10 +290,16 @@ public final class CarNav {
 
 	@Nullable
 	private static Scope findScope(MainActivityDelegate a) {
+		return findScope(a, false);
+	}
+
+	/** @param overlaysOnly only an open picker, menu or panel, not the tab under it */
+	@Nullable
+	private static Scope findScope(MainActivityDelegate a, boolean overlaysOnly) {
 		View main = a.findViewById(R.id.main_activity);
 		if (main != null) {
 			View[] top = new View[1];
-			findTopScope(main, top);
+			findTopScope(main, top, overlaysOnly);
 			if (top[0] != null) {
 				Object back = top[0].getTag(R.id.car_nav_scope);
 				Runnable r = (back instanceof Runnable b) && (b != NO_BACK) ? b : null;
@@ -290,6 +307,7 @@ public final class CarNav {
 			}
 		}
 
+		if (overlaysOnly) return null;
 		ActivityFragment f = a.getActiveFragment();
 		if ((f instanceof MediaLibFragment) || (f instanceof DownloadsFragment) ||
 				(f instanceof SettingsFragment) || (f instanceof AudioEffectsFragment)) {
@@ -300,13 +318,15 @@ public final class CarNav {
 	}
 
 	/** The last (so, drawn on top) shown scope in the tree. */
-	private static void findTopScope(View v, View[] top) {
+	private static void findTopScope(View v, View[] top, boolean modalOnly) {
 		if (v.getVisibility() != View.VISIBLE) return;
-		if ((v.getTag(R.id.car_nav_scope) != null) || (v instanceof OverlayMenuView)) {
-			if (v.isShown() && (v.getWidth() > 0)) top[0] = v;
-		}
+		boolean scope = (v instanceof OverlayMenuView) || (modalOnly ?
+				(v.getTag(R.id.car_nav_modal) != null) : (v.getTag(R.id.car_nav_scope) != null));
+		if (scope && v.isShown() && (v.getWidth() > 0)) top[0] = v;
 		if (v instanceof ViewGroup g) {
-			for (int i = 0, n = g.getChildCount(); i < n; i++) findTopScope(g.getChildAt(i), top);
+			for (int i = 0, n = g.getChildCount(); i < n; i++) {
+				findTopScope(g.getChildAt(i), top, modalOnly);
+			}
 		}
 	}
 

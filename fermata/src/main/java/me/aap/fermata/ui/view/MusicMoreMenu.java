@@ -187,7 +187,7 @@ public final class MusicMoreMenu {
 		overlay.setElevation(dp(30));
 		overlay.setOnClickListener(v -> dismiss());
 		// Car mode: the steering wheel moves through the rows, long previous closes.
-		me.aap.fermata.action.CarNav.markScope(overlay, this::dismiss);
+		me.aap.fermata.action.CarNav.markModalScope(overlay, this::dismiss);
 		overlay.setBackgroundColor(0x33000000);
 		overlay.setAlpha(0f);
 

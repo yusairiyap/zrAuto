@@ -34,6 +34,7 @@
     <item name="car_nav_scope" type="id" />
     <item name="car_mode_fragment" type="id" />
     <item name="car_nav_skip" type="id" />
+    <item name="car_nav_modal" type="id" />
     <item name="audio_effects_fragment" type="id" />
     <item name="subtitles_fragment" type="id" />
     <item name="tv_fragment" type="id" />
