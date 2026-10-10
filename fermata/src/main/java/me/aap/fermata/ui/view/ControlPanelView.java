@@ -122,7 +122,8 @@ public class ControlPanelView extends ConstraintLayout
 			R.id.control_next};
 	/** Every tappable part of the panel, given the same pill-shaped press/focus highlight. */
 	@IdRes
-	private static final int[] BUTTON_IDS = {R.id.show_hide_bars, R.id.control_menu_button,
+	private static final int[] BUTTON_IDS = {R.id.control_info, R.id.show_hide_bars,
+			R.id.control_menu_button,
 			R.id.control_prev, R.id.control_rw, R.id.control_play_pause, R.id.control_ff,
 			R.id.control_next};
 	/**
@@ -255,7 +256,28 @@ public class ControlPanelView extends ConstraintLayout
 		art.setBackground(artBg);
 		art.setClipToOutline(true);
 		setInfoColor(iconColor);
+		info.setOnClickListener(v -> openNowPlaying());
 		applyLayout();
+	}
+
+	/**
+	 * The art and title tapped: what's playing, full size. The Music tab while playing as music
+	 * (a queue track, or YouTube as music); a video fullscreen, in the tab it plays in (see
+	 * MusicPlayer#showCurrentVideo); anything else shown in its list.
+	 */
+	private void openNowPlaying() {
+		MainActivityDelegate a = getActivity();
+		if (MusicPlayer.isMusicModeActive(a)) {
+			a.showFragment(R.id.music_addon);
+			return;
+		}
+		MediaEngine eng = a.getMediaSessionCallback().getEngine();
+		PlayableItem src = (eng == null) ? null : eng.getSource();
+		if (src == null) return;
+		boolean video = (eng.getId() == me.aap.fermata.media.pref.MediaPrefs.MEDIA_ENG_YT)
+				? !MusicPlayer.isYoutubeAudioMode() : src.isVideo();
+		if (video) MusicPlayer.showCurrentVideo(a);
+		else a.goToItem(src);
 	}
 
 	/**
@@ -335,7 +357,6 @@ public class ControlPanelView extends ConstraintLayout
 		// two lines they left the buttons too cramped.
 		boolean nowPlaying = (mode == LAYOUT_ROW) || ((mode == LAYOUT_STACKED) && isOnCar());
 		showsNowPlaying = nowPlaying;
-		art.setVisibility(nowPlaying ? VISIBLE : GONE);
 		info.setVisibility(nowPlaying ? VISIBLE : GONE);
 		applyFocusOrder(mode, seek);
 		applyTransportButtons();
@@ -596,7 +617,9 @@ public class ControlPanelView extends ConstraintLayout
 		seTextAppearance(findViewById(R.id.seek_time), textSize * 0.85f);
 		seTextAppearance(findViewById(R.id.seek_total), textSize * 0.85f);
 
-		setSize(R.id.control_art, box - toIntPx(ctx, 4));
+		// The art and title sit in a pill padded 4dp all round (its press highlight): as tall as
+		// the buttons with it.
+		setSize(R.id.control_art, box - toIntPx(ctx, 8));
 		title.setTextSize(COMPLEX_UNIT_PX, textSize * 0.9f);
 		subtitle.setTextSize(COMPLEX_UNIT_PX, textSize * 0.75f);
 		updateArtPadding();

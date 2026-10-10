@@ -4,14 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content">
 
-    <!-- Placeholders for the compact layouts' art and title; see control_panel_view.xml. -->
-    <View
-        android:id="@+id/control_art"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
+    <!-- Placeholder for the compact layouts' art and title; see control_panel_view.xml. -->
     <View
         android:id="@+id/control_info"
         android:layout_width="0dp"
