@@ -30,9 +30,13 @@ import androidx.annotation.StyleRes;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.view.GestureDetectorCompat;
 
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.textview.MaterialTextView;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import me.aap.fermata.R;
 import me.aap.fermata.action.Action;
@@ -250,7 +254,46 @@ public class ControlPanelView extends ConstraintLayout
 
 		applyLookPadding();
 		applyTransportButtons();
+		applyFabVideoLook(video);
 		computeSize();
+	}
+
+	/** A floating button's own look (theme colors), kept while it wears the video look. */
+	private record FabLook(@Nullable ColorStateList bg, @Nullable ColorStateList icon,
+												 @Nullable ColorStateList ripple, float elevation) {}
+
+	private final Map<FloatingActionButton, FabLook> fabLooks = new HashMap<>();
+
+	/**
+	 * Over fullscreen video the floating buttons look like the round buttons in the middle of the
+	 * picture (see VideoControlsOverlay): a see-through dark circle, a white icon, no shadow (it
+	 * would show through the fill). Back to the theme's look when the video look ends.
+	 */
+	private void applyFabVideoLook(boolean video) {
+		MainActivityDelegate a = getActivity();
+		List<FloatingActionButton> fabs = new ArrayList<>();
+		if (a.getFloatingButton() != null) fabs.add(a.getFloatingButton());
+		for (FloatingActionButton f : a.getExtraFloatingButtons()) if (f != null) fabs.add(f);
+
+		for (FloatingActionButton f : fabs) {
+			if (video) {
+				if (!fabLooks.containsKey(f)) {
+					fabLooks.put(f, new FabLook(f.getBackgroundTintList(), f.getSupportImageTintList(),
+							f.getRippleColorStateList(), f.getCompatElevation()));
+				}
+				f.setBackgroundTintList(ColorStateList.valueOf(VideoControlsOverlay.BUTTON_BG));
+				f.setSupportImageTintList(ColorStateList.valueOf(VideoControlsOverlay.BUTTON_ICON));
+				f.setRippleColor(ColorStateList.valueOf(VideoControlsOverlay.BUTTON_RIPPLE));
+				f.setCompatElevation(0f);
+			} else {
+				FabLook l = fabLooks.remove(f);
+				if (l == null) continue;
+				f.setBackgroundTintList(l.bg());
+				f.setSupportImageTintList(l.icon());
+				f.setRippleColor(l.ripple());
+				f.setCompatElevation(l.elevation());
+			}
+		}
 	}
 
 	/**

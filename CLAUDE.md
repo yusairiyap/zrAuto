@@ -196,6 +196,8 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   decides when it shows (`showVideoControls`): the buttons always together with the panel, the title
   only on a single tap; a double tap seek hides them all (`hideVideoUi`) and shows only its feedback.
   While buffering, the play button shrinks away for the loading circle (YouTube's own, or the overlay's).
+  The floating buttons wear the same look (dark see-through circle, white icon) while the panel is in
+  its video look (`ControlPanelView#applyFabVideoLook`), their theme look restored after.
   The overlay takes every touch that misses its buttons and hands it to `VideoView.onTouchEvent`, which
   also keeps taps off YouTube's page (its own player controls are hidden in fullscreen by CSS, see
   `YoutubeWebView#hideFullscreenControlsJs`). In fullscreen the panel hides its whole transport row

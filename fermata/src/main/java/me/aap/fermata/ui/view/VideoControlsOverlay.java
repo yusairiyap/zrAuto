@@ -46,6 +46,11 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 public class VideoControlsOverlay extends FrameLayout {
 	private static final long FADE_MS = 200L;
 	private static final int SCRIM_COLOR = 0x66000000;
+	/** The round buttons' see-through dark fill and press ripple; the floating buttons take the same
+	 * over fullscreen video (see ControlPanelView#applyFabVideoLook). */
+	static final int BUTTON_BG = 0x59000000;
+	static final int BUTTON_RIPPLE = 0x40FFFFFF;
+	static final int BUTTON_ICON = 0xFFFFFFFF;
 	private final View scrim;
 	private final LinearLayout titleBar;
 	private final TextView title;
@@ -184,10 +189,10 @@ public class VideoControlsOverlay extends FrameLayout {
 
 		GradientDrawable normal = new GradientDrawable();
 		normal.setShape(GradientDrawable.OVAL);
-		normal.setColor(0x59000000);
+		normal.setColor(BUTTON_BG);
 		GradientDrawable focused = new GradientDrawable();
 		focused.setShape(GradientDrawable.OVAL);
-		focused.setColor(0x59000000);
+		focused.setColor(BUTTON_BG);
 		focused.setStroke(toIntPx(ctx, 2), 0xFFFFFFFF);
 		StateListDrawable bg = new StateListDrawable();
 		bg.addState(new int[]{android.R.attr.state_focused}, focused);
@@ -195,7 +200,7 @@ public class VideoControlsOverlay extends FrameLayout {
 		GradientDrawable mask = new GradientDrawable();
 		mask.setShape(GradientDrawable.OVAL);
 		mask.setColor(0xFFFFFFFF);
-		b.setBackground(new RippleDrawable(ColorStateList.valueOf(0x40FFFFFF), bg, mask));
+		b.setBackground(new RippleDrawable(ColorStateList.valueOf(BUTTON_RIPPLE), bg, mask));
 		b.setMinimumWidth(size);
 		b.setMinimumHeight(size);
 		return b;
