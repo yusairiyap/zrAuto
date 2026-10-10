@@ -689,15 +689,6 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 			activity.setContentLoading(super.setParent(parent, false));
 		}
 
-		@Override
-		public FutureSupplier<?> setParent(BrowsableItem parent, boolean userAction) {
-			BrowsableItem old = getParent();
-			FutureSupplier<?> f = super.setParent(parent, userAction);
-			// Another folder: car mode's next press starts from its first row.
-			if (!Objects.equals(old, parent)) me.aap.fermata.action.CarNav.listChanged(getListView());
-			return f;
-		}
-
 		/** See MainActivityPrefs#getTapOpensMenuPref(). */
 		protected boolean tapOpensMenu() {
 			MainActivityDelegate a = getMainActivity();
@@ -841,6 +832,8 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 			MediaItemListView list = scroll && same ? getListView() : null;
 			int scrollPos = (list != null) ? list.getScrollPosition() : 0;
 			FutureSupplier<?> set = super.setParent(parent, userAction);
+			// Another folder: car mode's next press starts from its first row.
+			if (!Objects.equals(prev, parent)) me.aap.fermata.action.CarNav.listChanged(getListView());
 
 			if (!isHidden() && !noScroll) {
 				getMainActivity().fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
