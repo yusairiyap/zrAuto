@@ -22,6 +22,8 @@ import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
+import android.widget.AbsSeekBar;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 
 import androidx.annotation.NonNull;
@@ -40,6 +42,8 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.fragment.DownloadsFragment;
 import me.aap.fermata.ui.fragment.MediaLibFragment;
+import me.aap.fermata.ui.fragment.SettingsFragment;
+import me.aap.fermata.ui.fragment.AudioEffectsFragment;
 import me.aap.fermata.ui.view.EffectsUi;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.ui.fragment.ActivityFragment;
@@ -91,9 +95,12 @@ public final class CarNav {
 	private static Sel sel;
 	/** The next selection starts at the first list row (rather than any button above it). */
 	private static boolean fresh = true;
+	/** A slider is grabbed: previous/next move it, see activate(). */
+	private static boolean adjusting;
 	@Nullable
 	private static Highlight highlight;
 	private static final Runnable idleHide = () -> {
+		if (adjusting) return;
 		Highlight h = highlight;
 		if (h != null) h.fadeOut();
 	};
@@ -143,9 +150,9 @@ public final class CarNav {
 				Scope s = (a == null) ? null : findScope(a);
 				if (s == null) {
 					clear();
-					// The YouTube tab, video not fullscreen: long next goes fullscreen, a click is still
-					// the key's own binding.
-					if ((code == KEYCODE_MEDIA_NEXT) && (a != null) && isYoutubeWindowed(a)) {
+					// The YouTube tab, video not fullscreen: a long press (next or previous) goes
+					// fullscreen, a click is still the key's own binding.
+					if ((a != null) && isYoutubeWindowed(a)) {
 						downCode = code;
 						downScope = null;
 						downActivity = a;
@@ -173,7 +180,8 @@ public final class CarNav {
 				handler.removeCallbacks(longPress);
 				if (!longFired) {
 					if (downScope != null) click(downScope, code == KEYCODE_MEDIA_NEXT);
-					else runBinding(Key.MEDIA_NEXT.getClickAction());
+					else runBinding((code == KEYCODE_MEDIA_NEXT) ? Key.MEDIA_NEXT.getClickAction() :
+							Key.MEDIA_PREVIOUS.getClickAction());
 				}
 				downScope = null;
 				return true;
@@ -208,7 +216,7 @@ public final class CarNav {
 		if (s == null) {
 			// See the YouTube tab case in handleKeyEvent().
 			longFired = true;
-			DiagnosticLog.log(TAG, "long next: YouTube fullscreen");
+			DiagnosticLog.log(TAG, "long press: YouTube fullscreen");
 			runBinding(Action.FULLSCREEN_TOGGLE);
 			return;
 		}
@@ -283,7 +291,8 @@ public final class CarNav {
 		}
 
 		ActivityFragment f = a.getActiveFragment();
-		if ((f instanceof MediaLibFragment) || (f instanceof DownloadsFragment)) {
+		if ((f instanceof MediaLibFragment) || (f instanceof DownloadsFragment) ||
+				(f instanceof SettingsFragment) || (f instanceof AudioEffectsFragment)) {
 			View v = f.getView();
 			if ((v != null) && v.isShown()) return new Scope(a, v, null, f);
 		}
@@ -311,8 +320,20 @@ public final class CarNav {
 		scope = s;
 	}
 
+	private static void setAdjusting(boolean on) {
+		adjusting = on;
+		Highlight h = highlight;
+		if (h != null) {
+			h.setStrong(on);
+			h.flash();
+		}
+		handler.removeCallbacks(idleHide);
+		if (!on) handler.postDelayed(idleHide, IDLE_HIDE_MS);
+	}
+
 	/** Forgets the selection and takes the highlight down. */
 	private static void clear() {
+		adjusting = false;
 		sel = null;
 		scope = null;
 		fresh = true;
@@ -327,6 +348,20 @@ public final class CarNav {
 
 	private static void click(Scope s, boolean next) {
 		enterScope(s);
+		// The keyboard (Android Auto's too) goes down: the keys are moving around the screen now, and
+		// the press moves on as meant (to the next search chip).
+		s.activity.dismissKeyboard();
+		if (adjusting) {
+			View v = (sel == null) ? null : resolve(sel);
+			if (v instanceof AbsSeekBar sb) {
+				int k = next ? KeyEvent.KEYCODE_DPAD_RIGHT : KeyEvent.KEYCODE_DPAD_LEFT;
+				sb.onKeyDown(k, new KeyEvent(KeyEvent.ACTION_DOWN, k));
+				sb.onKeyUp(k, new KeyEvent(KeyEvent.ACTION_UP, k));
+				show(sel);
+				return;
+			}
+			setAdjusting(false);
+		}
 		// After a while without a press the highlight fades: the first press brings it back where it
 		// was, rather than moving it somewhere unseen.
 		Sel cur = sel;
@@ -339,6 +374,7 @@ public final class CarNav {
 
 	private static void activate(Scope s) {
 		enterScope(s);
+		s.activity.dismissKeyboard();
 		Sel cur = sel;
 		View v = (cur == null) ? null : resolve(cur);
 		if (v == null) {
@@ -346,6 +382,11 @@ public final class CarNav {
 			return;
 		}
 		DiagnosticLog.log(TAG, "activate", v.getClass().getSimpleName());
+		// A slider: hold next grabs it (previous/next then move it), hold again lets go.
+		if (v instanceof AbsSeekBar) {
+			setAdjusting(!adjusting);
+			return;
+		}
 		Highlight h = highlight;
 		if (h != null) h.flash();
 		// What it opens (a folder, search results) starts again from its first row.
@@ -360,17 +401,22 @@ public final class CarNav {
 
 	private static void back(Scope s) {
 		enterScope(s);
+		// A grabbed slider: let go of it, staying on it.
+		if (adjusting) {
+			setAdjusting(false);
+			return;
+		}
 		if (s.back != null) {
 			clear();
 			s.back.run();
 			return;
 		}
-		// A list: up a folder, if in one; at the top, to what's playing, as a tap on the control
-		// panel's art/title does.
 		ActivityFragment f = s.fragment;
 		sel = null;
 		fresh = true;
-		if ((f != null) && !f.isRootPage()) {
+		// Up a folder / a settings page; a screen opened over a tab (Audio effects, Settings from the
+		// menu) back to that tab; only at the top of a tab itself, to what's playing.
+		if ((f != null) && (!f.isRootPage() || (f.getFragmentId() != s.activity.getActiveNavItemId()))) {
 			s.activity.onBackPressed();
 			return;
 		}
@@ -601,8 +647,14 @@ public final class CarNav {
 	}
 
 	private static boolean isUnit(View v) {
-		return v.isEnabled() && v.hasOnClickListeners() && !(v instanceof EditText) &&
-				(v.getWidth() > 0) && (v.getHeight() > 0) && (v.getTag(R.id.car_nav_skip) == null);
+		if (!v.isEnabled() || (v instanceof EditText) || (v.getWidth() <= 0) || (v.getHeight() <= 0) ||
+				(v.getTag(R.id.car_nav_skip) != null)) {
+			return false;
+		}
+		// A switch or check box reacts to a tap without a click listener of its own; a slider is
+		// moved with the keys once grabbed.
+		return v.hasOnClickListeners() || ((v instanceof CompoundButton) && v.isClickable()) ||
+				(v instanceof AbsSeekBar);
 	}
 
 	/** The view {@code s} stands for right now, or null if it's not on screen. */
@@ -639,6 +691,8 @@ public final class CarNav {
 		private Outline outline;
 		private boolean listening;
 		boolean faded;
+		/** A grabbed slider: drawn bolder. */
+		private boolean strong;
 
 		Highlight(View root) {
 			this.root = root;
@@ -681,6 +735,7 @@ public final class CarNav {
 			outline = null;
 			if ((v == null) || faded) return;
 			Outline o = new Outline(v);
+			o.strong = strong;
 			v.getOverlay().add(o);
 			outline = o;
 			if (animate) o.pop();
@@ -689,6 +744,14 @@ public final class CarNav {
 
 		void flash() {
 			if (outline != null) outline.flash();
+		}
+
+		void setStrong(boolean on) {
+			strong = on;
+			if (outline != null) {
+				outline.strong = on;
+				outline.invalidateSelf();
+			}
 		}
 
 		void fadeOut() {
@@ -732,6 +795,7 @@ public final class CarNav {
 		private float scale = 1f;
 		private float alpha = 1f;
 		private float flash;
+		boolean strong;
 		@Nullable
 		private ValueAnimator anim;
 
@@ -824,7 +888,8 @@ public final class CarNav {
 			float cy = rect.centerY();
 			c.save();
 			c.scale(scale, scale, cx, cy);
-			fill.setColor(withAlpha(accent, (0.16f + 0.30f * flash) * alpha));
+			fill.setColor(withAlpha(accent, ((strong ? 0.32f : 0.16f) + 0.30f * flash) * alpha));
+			stroke.setStrokeWidth(strong ? strokeW * 1.8f : strokeW);
 			c.drawRoundRect(rect, radius, radius, fill);
 			glow.setColor(withAlpha(accent, 0.25f * alpha));
 			c.drawRoundRect(rect, radius, radius, glow);

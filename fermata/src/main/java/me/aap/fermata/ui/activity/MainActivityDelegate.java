@@ -315,6 +315,30 @@ public class MainActivityDelegate extends ActivityDelegate
 		return (d != null) ? d : phoneDelegate.get();
 	}
 
+	/**
+	 * Puts any keyboard away and takes the focus off the text field it was typing into: Android
+	 * Auto's own keyboard (the car's text input) as well as the phone's. For car mode, whose keys
+	 * move around the screen instead.
+	 *
+	 * @return whether there was one up
+	 */
+	public boolean dismissKeyboard() {
+		boolean was = false;
+		ZrAutoActivity aa = getAppActivity();
+		if (aa.isInputActive()) {
+			aa.stopInput();
+			was = true;
+		}
+		if (hideKeyboardIfShown()) was = true;
+		android.view.Window w = getWindow();
+		View focus = (w == null) ? null : w.getDecorView().findFocus();
+		if (focus instanceof android.widget.EditText) {
+			focus.clearFocus();
+			was = true;
+		}
+		return was;
+	}
+
 	/** The native Android Auto UI, if it's running. */
 	@Nullable
 	public static MainActivityDelegate getCarDelegate() {

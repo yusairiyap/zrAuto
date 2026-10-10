@@ -450,8 +450,30 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 					for (Video v : result) addon.setLiveVideoInfo(v.videoId, v.channel, v.durationMs);
 				}
 				refresh();
+				if ((result != null) && !result.isEmpty()) carNavToFirstResult();
 			});
 		});
+	}
+
+	/**
+	 * Car mode: the results are what's wanted once they're in, so the outline goes straight to the
+	 * first one rather than back through the search chips.
+	 */
+	private void carNavToFirstResult() {
+		if (!me.aap.fermata.action.CarNav.isEnabled()) return;
+		List<Row> rows = mainAdapter.rows;
+		for (int i = 0, n = rows.size(); i < n; i++) {
+			Row r = rows.get(i);
+			if ((r.type == TYPE_VIDEO) && ((r.kind == KIND_LIBRARY) || (r.kind == KIND_RESULT))) {
+				int pos = i;
+				MainActivityDelegate a = MainActivityDelegate.get(getContext());
+				// After the rows' insert animation has laid them out.
+				handler.postDelayed(() -> {
+					if (isShown()) me.aap.fermata.action.CarNav.highlightRow(a, mainList, pos);
+				}, 250);
+				return;
+			}
+		}
 	}
 
 	/** Drops the last search and its results (the toolbar's clear button, the search icon). */

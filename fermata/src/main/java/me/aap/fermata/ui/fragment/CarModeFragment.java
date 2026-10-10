@@ -98,11 +98,13 @@ public class CarModeFragment extends MainActivityFragment {
 
 		section(content, R.string.car_mode_where);
 		for (int res : new int[]{R.string.car_mode_where_lists, R.string.car_mode_where_youtube,
-				R.string.car_mode_where_queue, R.string.car_mode_where_pickers}) {
+				R.string.car_mode_where_queue, R.string.car_mode_where_pickers,
+				R.string.car_mode_where_settings}) {
 			content.addView(bullet(res));
 		}
-		content.addView(keyCard("▶", R.string.car_mode_youtube_fullscreen, true),
-				margins(0, dp(8), 0, 0));
+		content.addView(keyCard("▶", R.string.car_mode_sliders, true), margins(0, dp(8), 0, 0));
+		content.addView(keyCard("◀ ▶", R.string.car_mode_youtube_fullscreen, true),
+				margins(0, dp(6), 0, 0));
 
 		TextView foot = text(R.string.car_mode_footnote, 13, textSecondary, false);
 		foot.setPadding(dp(4), dp(16), dp(4), 0);

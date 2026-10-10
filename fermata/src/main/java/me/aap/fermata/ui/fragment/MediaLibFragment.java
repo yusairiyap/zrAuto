@@ -224,29 +224,66 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 		}
 	}
 
-	/** See {@link #revealsPlaying()}. */
+	/**
+	 * See {@link #revealsPlaying()}. What's playing may not be this tab's own item even when it's in
+	 * it: a Music tab queue track plays the song it was queued from, YouTube plays its own video
+	 * item. So the session's item and the song behind it are tried first, then this tab is searched
+	 * for an entry of the same song (the open playlist first).
+	 */
 	private void revealPlaying() {
 		if (isHidden() || (getView() == null) || (adapter == null)) return;
 		MainActivityDelegate a = getMainActivity();
 		BrowsableItem root = getAdapter().getRoot();
 		if (root == null) return;
+
+		List<PlayableItem> cands = new ArrayList<>(3);
 		PlayableItem cur = a.getMediaSessionCallback().getCurrentItem();
-		if ((cur != null) && root.equals(cur.getRoot())) {
-			revealAndHighlight(a, cur);
-			return;
+		if (cur != null) cands.add(cur);
+		if (cur instanceof me.aap.fermata.addon.music.MusicTrackItem t) {
+			if (t.getSource() != null) cands.add(t.getSource());
 		}
-		// Played from elsewhere but a favorite: its entry in Favorites.
-		if (!(root instanceof MediaLib.Favorites fav)) return;
-		PlayableItem pi = me.aap.fermata.action.Action.getFavoritableItem(a);
-		if ((pi == null) || !fav.isFavoriteItem(pi)) return;
-		String id = pi.getOrigId();
-		fav.getUnsortedChildren().main(a.getHandler()).onSuccess(list -> {
-			for (Item c : list) {
-				if ((c instanceof PlayableItem p) && id.equals(p.getOrigId())) {
+		PlayableItem fav = me.aap.fermata.action.Action.getFavoritableItem(a);
+		if (fav != null) cands.add(fav);
+
+		Set<String> ids = new HashSet<>();
+		for (PlayableItem c : cands) {
+			if (root.equals(c.getRoot())) {
+				revealAndHighlight(a, c);
+				return;
+			}
+			ids.add(c.getOrigId());
+		}
+		if (cur instanceof me.aap.fermata.addon.music.MusicTrackItem t) ids.add(t.getSourceId());
+		if (ids.isEmpty()) return;
+
+		root.getUnsortedChildren().main(a.getHandler()).onSuccess(children -> {
+			List<BrowsableItem> folders = new ArrayList<>();
+			for (Item c : children) {
+				if ((c instanceof PlayableItem p) && ids.contains(p.getOrigId())) {
+					revealAndHighlight(a, p);
+					return;
+				}
+				if (c instanceof BrowsableItem b) folders.add(b);
+			}
+			// The open playlist first: the same song may be in several.
+			BrowsableItem open = getAdapter().getParent();
+			if ((open != null) && folders.remove(open)) folders.add(0, open);
+			searchFolders(a, folders, 0, ids);
+		});
+	}
+
+	/** One folder (playlist) at a time, until an entry of the playing song turns up. */
+	private void searchFolders(MainActivityDelegate a, List<BrowsableItem> folders, int idx,
+														 Set<String> ids) {
+		if ((idx >= folders.size()) || isHidden()) return;
+		folders.get(idx).getUnsortedChildren().main(a.getHandler()).onSuccess(children -> {
+			for (Item c : children) {
+				if ((c instanceof PlayableItem p) && ids.contains(p.getOrigId())) {
 					revealAndHighlight(a, p);
 					return;
 				}
 			}
+			searchFolders(a, folders, idx + 1, ids);
 		});
 	}
 
