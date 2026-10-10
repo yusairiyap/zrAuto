@@ -3,49 +3,36 @@ Your car deserves a better media player. zrAuto is a free, open source player bu
 
 [Download the latest release](https://github.com/yusairiyap/zrAuto/releases/latest)
 
-## Highlights
-
-### 🚗 Car mode: drive the whole app from your steering wheel
-Eyes on the road, hands on the wheel. Turn on Car mode and your steering wheel's Previous and Next buttons move around the screen, so you can browse, search and pick without reaching for the touchscreen.
-
-* **Previous / Next** move a glowing outline from item to item, in lists and grids alike.
-* **Hold Next** opens a playlist or folder, plays a song, picks a search result or flips a setting.
-* **Hold Previous** goes back; at the top of a tab it takes you straight to what's playing.
-* **Works where it matters**: Favorites, Playlists, Folders and Downloads, YouTube search and Up next, the Music queue, Add to playlist and every menu, even Settings and the audio effects' sliders.
-* **Picks up where you are**: open Playlists and you land on the song that's playing, outlined, with its neighbours one press away. Search results put you straight on the first result, with no keyboard in the way.
-* **YouTube, one hold away from fullscreen**, and in fullscreen your buttons keep doing exactly what you bound them to (with the controls popping up on screen so you see each press land).
-* **Only in the car**: Car mode wakes up when Android Auto is connected and stays out of the way on your phone.
-* **Find out what your car sends**: the Key Simulator lights up every button you press on the wheel, a keyboard or a remote, shows what it's bound to, and lets you change it on the spot. Mute, skip, step and voice buttons can be bound too.
-* **Messages you can actually see**: added to Favorites, added to a playlist or the queue, download finished... it all pops up on the car's screen, not just the phone.
-
-### 📥 Take YouTube with you, offline
-Dead zones, tunnels, roaming, a data plan that's nearly gone. None of that matters once your favourite videos are on your phone.
-
-* **Download anything**: a single video, a whole playlist, your Favorites, or a handful you picked. Long-press and tap Download.
-* **Up to 1080p video, or audio only** when you just want the song and the space.
-* **Set it and forget it**: downloads queue up, carry on in the background, pause and resume, and pick up where they stopped if the connection drops.
-* **Plays like it never left**: downloaded videos sit right inside your YouTube lists, Favorites and playlists, marked with a little Downloaded badge. Play a list that mixes online and offline videos and it just flows from one to the next, with the same smooth fades either way.
-* **Signal gone? Keep going.** When streaming stalls and there's a downloaded copy, zrAuto switches to it at the very same second.
-* **Watch it or just listen**: flip any download between full-screen video and the Music tab, even mid-song, and it keeps going in the background with the screen off.
-* **Same sound you tuned**: downloads get your YouTube equalizer, bass boost and Live Hall too.
-* **A Downloads tab of their own**, with sorting, quality badges and one-tap cleanup.
-
-### Everything else you'll love
-* **A real Music tab**: a full-screen, sound-only player with a blurred album-art backdrop, big thumb-friendly controls and a queue you can drag, swipe and shuffle. Your own songs and YouTube tracks play side by side.
-* **YouTube, made for the road**: it plays right inside the app with its own Favorites, Playlists and queue. Music mode drops the picture to the lowest quality, so you only pay data for what you hear, and switching between video and music never stops the song.
-* **Search without stopping the music**: a panel slides over whatever's playing, with YouTube results, your saved tracks and an "Up next" queue. Play next is one tap away.
-* **Know where your data goes**: see exactly what YouTube videos, music mode, downloads and everything else cost you, and set a warning or a hard limit before your plan runs dry.
-* **Bring your Spotify playlists**: import one and zrAuto finds every song on YouTube for you.
-* **Tidy lists in seconds**: Select mode moves, copies, reorders or deletes in bulk, while a normal long press just opens the menu, so nothing moves by accident.
-* **Fuel Log**: track refuels, distance and trips on a timeline, right from the car screen.
-* **Straight with you about bad signal**: when streaming stalls, a clear message offers Try again, Play downloaded, or the music already on your phone.
-* **Easy on the eyes**: rounded cards, a floating pill nav bar, soft shadows, and smooth fades between songs and videos.
-* **Easy to tap while driving**: a bigger toolbar, nav bar and controls, plus up to six floating buttons you set up your way.
-* **Night mode for video**: dim the picture with a colour of your choice, including a warm blue-light filter.
-* **Private Mode**: a clean, incognito-style YouTube and Browser session with tracker and cookie blocking.
-* **Better sound**: a mixer-style Equalizer, Bass Boost, Virtualizer and reverb, for YouTube too.
-* **A diagnostic log in your pocket**: read, copy and share what happened in the car, no laptop needed.
-* **Yours to keep**: no donation nagging, and it updates itself.
+## ✨ Why you'll love it
+* 🚗 **Car mode: drive it from your steering wheel**. Your wheel's Previous and Next buttons move a glowing outline around the screen, so you can browse, search and pick without touching it.
+  * Previous / Next move from item to item; hold Next to open or play, hold Previous to go back (or, at the top, straight to what's playing).
+  * Works in Favorites, Playlists, Folders and Downloads, YouTube search and Up next, the Music queue, Add to playlist, every menu, even Settings and the audio effects' sliders.
+  * Lands you where you need to be: open Playlists and you're on the song that's playing; search and you're on the first result, no keyboard in the way.
+  * YouTube is one hold away from fullscreen, and in fullscreen your buttons keep doing what you bound them to, with the controls popping up so you see each press land.
+  * Only wakes up when Android Auto is connected; your phone stays as it is.
+* 🎛️ **Key Simulator**: press any button on the wheel, a keyboard or a remote and watch it light up, see what it's bound to and change it on the spot. Mute, skip, step and voice buttons can be bound too.
+* 📥 **Take YouTube with you, offline**. Dead zones, tunnels, roaming, a nearly empty data plan: none of it matters once your favourites are on your phone.
+  * Download a single video, a whole playlist, your Favorites or a handful you picked, up to 1080p or audio only.
+  * Downloads queue up, carry on in the background, pause and resume, and pick up where they stopped.
+  * They sit right inside your lists with a little Downloaded badge, and a list mixing online and offline videos just flows from one to the next.
+  * Signal gone mid-song? zrAuto switches to the downloaded copy at the very same second.
+  * Watch or just listen, with your YouTube equalizer, bass boost and Live Hall, and a Downloads tab of their own.
+* 🔔 **Messages you can actually see**: added to Favorites, a playlist or the queue, download finished: it all pops up on the car's screen, not just the phone.
+* 🎵 **A real Music tab**: a full-screen, sound-only player with a blurred album-art backdrop, big thumb-friendly controls and a queue you can drag, swipe and shuffle. Your own songs and YouTube tracks play side by side.
+* ▶️ **YouTube, made for the road**: it plays right inside the app with its own Favorites, Playlists and queue. Music mode drops the picture to the lowest quality, so you only pay data for what you hear, and switching between video and music never stops the song.
+* 🔍 **Search without stopping the music**: a panel slides over whatever's playing, with YouTube results, your saved tracks and an "Up next" queue. Play next is one tap away.
+* 📊 **Know where your data goes**: see exactly what YouTube videos, music mode, downloads and everything else cost you, and set a warning or a hard limit before your plan runs dry.
+* 🟢 **Bring your Spotify playlists**: import one and zrAuto finds every song on YouTube for you.
+* 🗂️ **Tidy lists in seconds**: Select mode moves, copies, reorders or deletes in bulk, while a normal long press just opens the menu, so nothing moves by accident.
+* ⛽ **Fuel Log**: track refuels, distance and trips on a timeline, right from the car screen.
+* 📶 **Straight with you about bad signal**: when streaming stalls, a clear message offers Try again, Play downloaded, or the music already on your phone.
+* 🎨 **Easy on the eyes**: rounded cards, a floating pill nav bar, soft shadows, and smooth fades between songs and videos.
+* 👆 **Easy to tap while driving**: a bigger toolbar, nav bar and controls, plus up to six floating buttons you set up your way.
+* 🌙 **Night mode for video**: dim the picture with a colour of your choice, including a warm blue-light filter.
+* 🕶️ **Private Mode**: a clean, incognito-style YouTube and Browser session with tracker and cookie blocking.
+* 🎚️ **Better sound**: a mixer-style Equalizer, Bass Boost, Virtualizer and reverb, for YouTube too.
+* 🩺 **A diagnostic log in your pocket**: read, copy and share what happened in the car, no laptop needed.
+* 💚 **Yours to keep**: no donation nagging, and it updates itself.
 
 zrAuto is built on top of Andrey Pavlenko's original Fermata Auto.
 
