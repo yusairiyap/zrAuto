@@ -294,6 +294,7 @@
     <string name="shuffle_disable">Do not shuffle</string>
     <string name="programme_guide">Programme guide</string>
     <string name="music_more_favorite_hint">The song playing now</string>
+    <string name="music_more_favorite_remove">Remove favorites</string>
     <string name="music_more_playlist_hint">Pick or create one</string>
     <string name="music_favorite_short">Favorite</string>
     <string name="music_playlist_short">Playlist</string>

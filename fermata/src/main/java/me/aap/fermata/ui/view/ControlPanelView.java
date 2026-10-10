@@ -880,6 +880,17 @@ public class ControlPanelView extends ConstraintLayout
 		notifyControlPanelVisibility();
 	}
 
+	/**
+	 * A touch on the panel's own background (the gaps between and around its buttons and labels)
+	 * stops here: it used to fall through to whatever list lies under the floating panel, so a tap
+	 * just missing the duration label or the menu button opened the item behind it.
+	 */
+	@Override
+	public boolean onTouchEvent(MotionEvent e) {
+		super.onTouchEvent(e);
+		return true;
+	}
+
 	@Override
 	public boolean onInterceptTouchEvent(MotionEvent e) {
 		MainActivityDelegate a = getActivity();

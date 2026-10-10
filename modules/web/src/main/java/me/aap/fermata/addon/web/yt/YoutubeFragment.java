@@ -986,8 +986,24 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		if (ctx == null) return;
 		MainActivityDelegate a = MainActivityDelegate.get(ctx);
 		if (a.getActiveFragment() == this) {
-			YoutubeToolBarMediator.getInstance().refreshClearButton(a.getToolBar(), this);
+			YoutubeToolBarMediator m = YoutubeToolBarMediator.getInstance();
+			m.refreshClearButton(a.getToolBar(), this);
+			// The back button closes the panel while it's open (see goBackInBrowser), so it shows
+			// then even with no page to go back to.
+			m.setButtonsVisibility(a.getToolBar(), canGoBackInBrowser(), canGoForwardInBrowser());
 		}
+	}
+
+	/** The toolbar's back button: closes the search/Up next panel first, as the system back does. */
+	@Override
+	protected void goBackInBrowser() {
+		if (isSearchPanelShown()) hideSearchPanel();
+		else super.goBackInBrowser();
+	}
+
+	@Override
+	protected boolean canGoBackInBrowser() {
+		return isSearchPanelShown() || super.canGoBackInBrowser();
 	}
 
 	/** The toolbar's clear button: drops the search text and the results, keeps Up next. */
