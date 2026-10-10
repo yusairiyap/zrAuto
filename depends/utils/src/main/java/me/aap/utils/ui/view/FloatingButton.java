@@ -56,7 +56,7 @@ public class FloatingButton extends FloatingActionButton implements ActivityList
 
 		TypedArray ta = context.obtainStyledAttributes(attrs, R.styleable.FloatingButton,
 				defStyleAttr, R.style.Theme_Utils_Base_FloatingButtonStyle);
-		borderWidth = ta.getDimension(R.styleable.FloatingButton_borderWidth, 0);
+		borderWidth = ta.getDimension(R.styleable.FloatingButton_focusBorderWidth, 0);
 		borderColor = ta.getColor(R.styleable.FloatingButton_borderColor, Color.TRANSPARENT);
 		borderFocusColor = ta.getColor(R.styleable.FloatingButton_borderFocusColor, Color.TRANSPARENT);
 		ta.recycle();
@@ -184,6 +184,16 @@ public class FloatingButton extends FloatingActionButton implements ActivityList
 		return getActivity().interceptTouchEvent(e, this::handleTouchEvent);
 	}
 
+	/** The size it's shown at (see {@link #setScale}), whatever a press animation does meanwhile. */
+	public float getScale() {
+		return scale;
+	}
+
+	/** How much it grows while pressed (1.5 by default): less inside a pill of buttons. */
+	public void setPressScale(float pressScale) {
+		this.pressScale = pressScale;
+	}
+
 	public void setScale(float scale) {
 		int w = getWidth();
 		float diff = w * scale - w * this.scale;
@@ -195,6 +205,7 @@ public class FloatingButton extends FloatingActionButton implements ActivityList
 	}
 
 	private boolean draggable = true;
+	private float pressScale = 1.5f;
 
 	public void setDraggable(boolean draggable) {
 		this.draggable = draggable;
@@ -216,7 +227,7 @@ public class FloatingButton extends FloatingActionButton implements ActivityList
 	private boolean handleTouchEvent(@NonNull MotionEvent e) {
 		switch (e.getActionMasked()) {
 			case MotionEvent.ACTION_DOWN:
-				animateScale(scale * 1.5f, true);
+				animateScale(scale * pressScale, true);
 				downX = e.getRawX();
 				downY = e.getRawY();
 				dx = getX() - downX;

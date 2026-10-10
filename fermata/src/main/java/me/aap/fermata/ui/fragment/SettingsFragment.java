@@ -1167,6 +1167,13 @@ public class SettingsFragment extends MainActivityFragment
 				PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE);
 		ps.addBooleanPref(o -> {
 			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DOWNLOADED;
+			o.title = R.string.info_overlay_show_downloaded;
+			o.subtitle = R.string.info_overlay_show_downloaded_sub;
+			o.visibility = infoOverlayCond.copy();
+		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK;
 			o.title = R.string.info_overlay_show_clock;
 			o.visibility = infoOverlayCond.copy();
@@ -1322,9 +1329,18 @@ public class SettingsFragment extends MainActivityFragment
 				fabActionNames, fabActionOrdinals);
 		ps.addBooleanPref(o -> {
 			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.FAB_PILL;
+			o.title = R.string.fab_pill;
+			o.subtitle = R.string.fab_pill_sub;
+		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
 			o.pref = fabPref(aa, MainActivityPrefs.FAB_DRAGGABLE);
 			o.title = R.string.fab_draggable;
 			o.subtitle = R.string.fab_draggable_sub;
+			// Ruled out as one pill (a dragged button would stretch it): greyed out, and turned off.
+			o.enabled = new PrefCondition<>(a.getPrefs(), MainActivityPrefs.FAB_PILL,
+					p -> !a.getPrefs().getBooleanPref(p));
 		});
 		ps.addFloatPref(o -> {
 			o.store = a.getPrefs();

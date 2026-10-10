@@ -114,7 +114,8 @@
 
     <style name="Theme.Utils.Base.FloatingButtonStyle" parent="Widget.Material3.FloatingActionButton.Primary">
         <item name="shapeAppearanceOverlay">@style/ShapeAppearanceOverlay.Utils.FloatingButton</item>
-        <item name="borderWidth">2dp</item>
+        <item name="borderWidth">0dp</item>
+        <item name="focusBorderWidth">2dp</item>
         <item name="borderColor">?attr/colorOnPrimary</item>
         <item name="borderFocusColor">?attr/colorAccent</item>
         <item name="tint">?attr/colorOnPrimary</item>

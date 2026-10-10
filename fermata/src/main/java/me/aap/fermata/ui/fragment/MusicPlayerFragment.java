@@ -15,7 +15,8 @@ import static android.support.v4.media.session.PlaybackStateCompat.REPEAT_MODE_O
 import static android.support.v4.media.session.PlaybackStateCompat.SHUFFLE_MODE_ALL;
 import static android.support.v4.media.session.PlaybackStateCompat.SHUFFLE_MODE_NONE;
 
-import android.animation.LayoutTransition;
+import android.transition.ChangeBounds;
+import android.transition.TransitionManager;
 import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
@@ -276,12 +277,15 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		timerChip = view.findViewById(R.id.music_timer_button);
 		timerChip.setOnClickListener(v -> onMore(true));
 		// Effects sits on the row itself when there's room for it, else only behind the more button.
+		// Decided after the row's layout, not inside it: a chip shown or hidden from within the row's
+		// own layout pass asked for a layout the row never got (it still counted as being laid out),
+		// and the row stayed with the old places (a hole where a hidden chip was, the more button
+		// pushed off the end) until something else happened to lay it out again.
 		view.findViewById(R.id.music_actions).addOnLayoutChangeListener(
-				(v, l, t, r, b, ol, ot, or, ob) -> updateEffectsChip((ViewGroup) v));
+				(v, l, t, r, b, ol, ot, or, ob) -> v.post(() -> {
+					if (isAdded()) updateEffectsChip((ViewGroup) v, false);
+				}));
 		videoButtonText = 0; // A new view: the chip starts hidden.
-		// The chips also slide over when the Video / Play as music chip just changes width.
-		LayoutTransition lt = ((ViewGroup) view.findViewById(R.id.music_actions)).getLayoutTransition();
-		if (lt != null) lt.enableTransitionType(LayoutTransition.CHANGING);
 		queuePanel = view.findViewById(R.id.music_queue_panel);
 		queueDismiss = view.findViewById(R.id.music_queue_dismiss);
 		queueDismiss.setOnClickListener(v -> showQueue(false));
@@ -422,8 +426,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		boolean distance = p.getInfoOverlayShowDistancePref();
 		boolean dataUsage = p.getInfoOverlayShowDataUsagePref();
 		boolean dataRemaining = p.getInfoOverlayShowDataRemainingPref();
+		boolean downloaded = p.getInfoOverlayShowDownloadedPref();
 		boolean show = (p.getClockPosPref() != MainActivityPrefs.CLOCK_POS_NONE) &&
-				(clock || battery || temp || distance || dataUsage || dataRemaining);
+				(clock || battery || temp || distance || dataUsage || dataRemaining || downloaded);
 		// Its holder in portrait (so its padding goes too), the overlay itself in the title bar.
 		View parent = (View) o.getParent();
 		View target = ((parent != null) && (parent.getId() == R.id.music_info_holder)) ? parent : o;
@@ -434,6 +439,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				p.getInfoOverlayShowBatteryIconPref(), temp, p.getInfoOverlayShowTempIconPref(), distance,
 				p.getInfoOverlayShowDistanceIconPref());
 		o.setDataItems(dataUsage, dataRemaining, p.getInfoOverlayShowDataIconPref());
+		o.setDownloadedItem(downloaded);
 	}
 
 	@Override
@@ -938,7 +944,15 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		b.animate().cancel();
 
 		if (text == 0) {
-			b.setVisibility(View.GONE);
+			// Fades out, then the others slide into its room.
+			if (b.getVisibility() != View.VISIBLE) return;
+			b.animate().alpha(0f).setDuration(150).setInterpolator(new DecelerateInterpolator())
+					.withEndAction(() -> {
+						beginActionsTransition();
+						b.setVisibility(View.GONE);
+						resetChip(b);
+						refitChips();
+					}).start();
 			return;
 		}
 
@@ -947,21 +961,86 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			b.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, 0, 0, 0);
 		};
 
-		if (was == 0) {
+		if ((was == 0) || (b.getVisibility() != View.VISIBLE)) {
+			// The others slide over to make room, and it fades in there.
+			beginActionsTransition();
 			apply.run();
-			b.setAlpha(1f);
-			b.setScaleX(1f);
-			b.setScaleY(1f);
+			resetChip(b);
+			b.setAlpha(0f);
 			b.setVisibility(View.VISIBLE);
+			refitChips();
+			b.animate().alpha(1f).setDuration(220).setInterpolator(new DecelerateInterpolator()).start();
 			return;
 		}
 
 		b.animate().alpha(0f).scaleX(0.9f).scaleY(0.9f).setDuration(120)
 				.setInterpolator(new DecelerateInterpolator()).withEndAction(() -> {
+					// The new text's width: the other chips slide over to it.
+					beginActionsTransition();
 					apply.run();
+					refitChips();
 					b.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(220)
 							.setInterpolator(new OvershootInterpolator(1.5f)).start();
 				}).start();
+	}
+
+	/**
+	 * Animates whatever changes on the chips row next (the Video / Play as music chip coming, going
+	 * or changing width, and the chips that make or take room for it): the chip fades, the others
+	 * slide over. Started from where everything is on screen now, so a change in the middle of one
+	 * (a track change right after another) carries on smoothly, where the row's own layout
+	 * animation (animateLayoutChanges) left chips stuck part way with a gap between them.
+	 */
+	/**
+	 * Re-decides which optional chips fit right away, inside the transition just begun, so the row
+	 * moves once, smoothly, to where it ends up: decided only after the next layout, it first
+	 * overflowed with the new Video chip, then jumped again a frame later.
+	 */
+	private void refitChips() {
+		ViewGroup row = actionsRow();
+		if ((row != null) && (row.getWidth() > 0)) updateEffectsChip(row, true);
+	}
+
+	@Nullable
+	private ViewGroup actionsRow() {
+		View root = getView();
+		return (root == null) ? null : root.findViewById(R.id.music_actions);
+	}
+
+	private void beginActionsTransition() {
+		ViewGroup row = actionsRow();
+		if ((row == null) || !row.isLaidOut() || !row.isAttachedToWindow()) return;
+		// Positions only. No fades from here: a fade on a chip shown or hidden from a layout pass
+		// (updateEffectsChip) could be cut off and leave the chip laid out but invisible, a gap in
+		// the row pushing the more button off its end. The Video chip fades on its own (setVideoButton).
+		ChangeBounds t = new ChangeBounds();
+		t.setDuration(220);
+		t.setInterpolator(new DecelerateInterpolator());
+		TransitionManager.beginDelayedTransition(row, t);
+	}
+
+	/** When a chip's fade-in started (see fadeInChip), kept in the chip's tag. */
+	private static final int FADE_TAG = R.id.music_actions;
+	private static final long CHIP_FADE_MS = 220L;
+
+	private static void fadeInChip(View c) {
+		c.setTag(FADE_TAG, android.os.SystemClock.uptimeMillis());
+		c.setAlpha(0f);
+		c.animate().alpha(1f).setDuration(CHIP_FADE_MS).setInterpolator(new DecelerateInterpolator())
+				.start();
+	}
+
+	/** A chip as it should look when shown: no fade or press left half done on it. */
+	private static void resetChip(View c) {
+		// Except while its own fade-in runs.
+		if ((c.getTag(FADE_TAG) instanceof Long t) &&
+				(android.os.SystemClock.uptimeMillis() - t < CHIP_FADE_MS + 100)) {
+			return;
+		}
+		c.setAlpha(1f);
+		c.setScaleX(1f);
+		c.setScaleY(1f);
+		if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) c.setTransitionAlpha(1f);
 	}
 
 	private boolean isPlayingVideo() {
@@ -1587,7 +1666,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	 * What doesn't fit is reached through the more button as before. Re-decided on every layout, so a
 	 * long timer countdown or the Video chip appearing makes room again.
 	 */
-	private void updateEffectsChip(ViewGroup row) {
+	private void updateEffectsChip(ViewGroup row, boolean animate) {
 		TextView[] optional = {effectsButton, favoriteChip, playlistChip, timerChip};
 		if ((effectsButton == null) || (timerChip == null) || (row.getWidth() <= 0)) return;
 		float density = getResources().getDisplayMetrics().density;
@@ -1599,7 +1678,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			if (isOptionalChip(c, optional) || (c == moreButton) || (c.getVisibility() == View.GONE)) {
 				continue;
 			}
-			used += outerWidth(c);
+			// Worked out from the text, not measured: right even before the row is laid out again,
+			// so a Video chip just shown or renamed is counted at its new width in the same frame.
+			used += (c instanceof TextView t) ? chipWidth(t) : outerWidth(c);
 		}
 		// The widths the chips would have, worked out from their text and icon: measuring the views
 		// themselves from here would leave them with sizes the row never asked for.
@@ -1619,28 +1700,29 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			if (show[i] && !allFit) used += need[i];
 		}
 
-		// A new width (rotating, resizing) is applied at once; the layout animation is for chips
-		// coming and going within the same width, and glitched across a rotation.
-		boolean widthChanged = row.getWidth() != lastRowWidth;
-		lastRowWidth = row.getWidth();
-		LayoutTransition lt = row.getLayoutTransition();
-		if (widthChanged && (lt != null)) row.setLayoutTransition(null);
+		boolean changed = false;
 		for (int i = 0; i < optional.length; i++) {
 			int vis = show[i] ? View.VISIBLE : View.GONE;
-			if (optional[i].getVisibility() != vis) optional[i].setVisibility(vis);
+			if (optional[i].getVisibility() != vis) {
+				optional[i].setVisibility(vis);
+				changed = true;
+				// Back on the row along with a Video chip change: it fades in where it lands.
+				if (show[i] && animate) fadeInChip(optional[i]);
+			}
+			// Never left see-through by an animation cut short: a shown chip is a seen chip.
+			if (show[i]) resetChip(optional[i]);
 		}
 		int moreVis = allFit ? View.GONE : View.VISIBLE;
-		if (moreButton.getVisibility() != moreVis) moreButton.setVisibility(moreVis);
-		if (widthChanged && (lt != null)) {
-			row.post(() -> {
-				row.setLayoutTransition(lt);
-				lt.enableTransitionType(LayoutTransition.CHANGING);
-			});
+		if (moreButton.getVisibility() != moreVis) {
+			moreButton.setVisibility(moreVis);
+			changed = true;
 		}
+		if (!allFit) resetChip(moreButton);
+		// The row itself is laid out again for it, whatever else is pending.
+		if (changed) row.requestLayout();
 		refreshFavoriteChip();
 	}
 
-	private int lastRowWidth;
 
 	/** What a chip's width is (or would be): its text, icon, padding and margins. */
 	private static int chipWidth(TextView t) {

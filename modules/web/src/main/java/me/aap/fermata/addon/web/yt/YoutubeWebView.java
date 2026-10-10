@@ -463,7 +463,8 @@ public class YoutubeWebView extends FermataWebView {
 				interceptEndedJs() +
 				interceptNativeSkipButtonsJs() +
 				interceptLinkClicksJs() +
-				interceptUserNavigationJs());
+				interceptUserNavigationJs() +
+				hideFullscreenControlsJs());
 	}
 
 	/**
@@ -598,6 +599,33 @@ public class YoutubeWebView extends FermataWebView {
 				"    }\n" +
 				"  });\n" +
 				"}\n";
+	}
+
+	/**
+	 * In fullscreen the app draws its own YouTube-like controls over the video (title, previous /
+	 * play-pause / next, double tap seek; see {@code VideoControlsOverlay}), which also keeps taps
+	 * away from the page. The page's own player controls still show up by themselves now and then
+	 * (at the start, on pause), under the app's: hidden while the page is fullscreen, mobile and
+	 * desktop player alike. Captions are left alone. Outside fullscreen the page is as it was.
+	 */
+	private String hideFullscreenControlsJs() {
+		return """
+				(function() {
+				  if (document.getElementById('__fermataFsControlsCss')) return;
+				  var hidden = ['#player-control-overlay', '.player-controls-background',
+				    '.player-controls-top', '.player-controls-middle', '.player-controls-bottom',
+				    'ytm-custom-control', '[class*="fullscreen-action-menu"]',
+				    '[class*="fullscreen-watch-next"]', '[class*="fullscreen-engagement"]',
+				    '.ytp-chrome-top', '.ytp-chrome-bottom', '.ytp-gradient-top', '.ytp-gradient-bottom',
+				    '.ytp-large-play-button', '.ytp-pause-overlay', '.ytp-doubletap-ui-legacy',
+				    '.ytp-fullscreen-grid', '.ytp-ce-element'];
+				  var st = document.createElement('style');
+				  st.id = '__fermataFsControlsCss';
+				  st.textContent = hidden.map(function(s) { return ':fullscreen ' + s; }).join(', ') +
+				    ' { display: none !important; }';
+				  (document.head || document.documentElement).appendChild(st);
+				})();
+				""";
 	}
 
 	/**

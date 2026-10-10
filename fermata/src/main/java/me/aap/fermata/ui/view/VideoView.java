@@ -96,6 +96,13 @@ public class VideoView extends FrameLayout
 	 * {@code ControlPanelView} -- see {@link #setControlPanelVisible}. Assumed visible until told
 	 * otherwise so the overlay isn't wrongly hidden before the first real update arrives. */
 	private boolean controlPanelVisible = true;
+	/** The YouTube-like title/center buttons/double tap feedback over the picture. */
+	private final VideoControlsOverlay controls;
+	/** Whether the Info Overlay is moved to the top right, out of the shown title's way. */
+	private boolean infoAtRight;
+	/** The Info Overlay's own place (MainActivityPrefs.CLOCK_POS_*). */
+	private int infoPos = MainActivityPrefs.CLOCK_POS_NONE;
+	private static final long INFO_FADE_MS = 150L;
 
 	public VideoView(Context context) {
 		this(context, null);
@@ -104,6 +111,9 @@ public class VideoView extends FrameLayout
 	public VideoView(Context context, AttributeSet attrs) {
 		super(context, attrs);
 		init(context);
+		// Over everything init() put in (the picture, the black fades, the dim, YouTube's cover).
+		controls = new VideoControlsOverlay(context, !hasBufferingSpinner());
+		addView(controls, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 		getActivity().onSuccess(a -> {
 			a.addBroadcastListener(this);
 			a.getLib().getPrefs().addBroadcastListener(this);
@@ -384,14 +394,16 @@ public class VideoView extends FrameLayout
 		MainActivityPrefs mp = MainActivityPrefs.get();
 		boolean dataUsage = mp.getInfoOverlayShowDataUsagePref();
 		boolean dataRemaining = mp.getInfoOverlayShowDataRemainingPref();
+		boolean downloaded = mp.getInfoOverlayShowDownloadedPref();
 		boolean show = (pos != MainActivityPrefs.CLOCK_POS_NONE) &&
 				(showClock || showBatteryPct || showBatteryTemp || showDistance || dataUsage ||
-						dataRemaining);
+						dataRemaining || downloaded);
 
 		if (!show) {
 			if (infoOverlay != null) {
 				infoOverlay.setItems(false, false, false, false, false, false, false, false);
 				infoOverlay.setDataItems(false, false, false);
+				infoOverlay.setDownloadedItem(false);
 			}
 			return;
 		}
@@ -404,6 +416,20 @@ public class VideoView extends FrameLayout
 			FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
 			lp.setMargins(m, m, m, m);
 			addView(infoOverlay, lp);
+			infoOverlay.setHiddenListener(() -> {
+				if (infoResetWhenHidden && !infoAtRight) setInfoTranslation(infoOverlay, 0f);
+			});
+			// Keeps it at the top right while the title is shown, however its width or place changes.
+			infoOverlay.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+				if ((l == ol) && (r == or)) return;
+				boolean right = controls.isTitleShown() && isInTitleWay((InfoOverlayView) v);
+				if (right != infoAtRight) {
+					moveInfoOverlay(right, true);
+				} else {
+					if (infoAtRight) setInfoTranslation((InfoOverlayView) v, infoRightShift(v));
+					updateTitleInset();
+				}
+			});
 		}
 
 		int gravity = Gravity.TOP;
@@ -413,6 +439,7 @@ public class VideoView extends FrameLayout
 			case MainActivityPrefs.CLOCK_POS_CENTER -> gravity |= Gravity.CENTER;
 		}
 
+		infoPos = pos;
 		FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) infoOverlay.getLayoutParams();
 		lp.gravity = gravity;
 		infoOverlay.setLayoutParams(lp);
@@ -421,6 +448,7 @@ public class VideoView extends FrameLayout
 		infoOverlay.setItems(showClock, showClockIcon, showBatteryPct, showBatteryIcon, showBatteryTemp,
 				showTempIcon, showDistance, showDistanceIcon);
 		infoOverlay.setDataItems(dataUsage, dataRemaining, mp.getInfoOverlayShowDataIconPref());
+		infoOverlay.setDownloadedItem(downloaded);
 	}
 
 	/**
@@ -432,6 +460,107 @@ public class VideoView extends FrameLayout
 		if (this.controlPanelVisible == controlPanelVisible) return;
 		this.controlPanelVisible = controlPanelVisible;
 		if (infoOverlay != null) infoOverlay.setControlPanelVisible(controlPanelVisible);
+	}
+
+	/** Whether this view shows a loading circle of its own while the video buffers (YouTube's). */
+	protected boolean hasBufferingSpinner() {
+		return false;
+	}
+
+	public VideoControlsOverlay getControls() {
+		return controls;
+	}
+
+	/**
+	 * Shows/hides the middle buttons and the title over the picture (see {@link
+	 * VideoControlsOverlay}). While the title is up, the Info Overlay glides over to the top right if
+	 * it's in the title's way (see {@link #isInTitleWay}), and back to its own place once the title
+	 * goes.
+	 */
+	public void showControls(boolean center, boolean title, boolean animate) {
+		controls.setShown(center, title, animate);
+		InfoOverlayView io = infoOverlay;
+		moveInfoOverlay(title && (io != null) && isInTitleWay(io), animate);
+	}
+
+	/**
+	 * Whether the Info Overlay, in its own place, is where the title goes: always at the top left
+	 * (the title starts there), never at the top right (already where it would go; the title is cut
+	 * short before it instead), and at the top center only when the title is long enough to run into it.
+	 */
+	private boolean isInTitleWay(InfoOverlayView io) {
+		if (infoPos == MainActivityPrefs.CLOCK_POS_LEFT) return true;
+		if (infoPos != MainActivityPrefs.CLOCK_POS_CENTER) return false;
+		if (!io.isLaidOut() || (io.getWidth() == 0)) return false;
+		return controls.getTitleTextEnd() + toIntPx(getContext(), 12) > io.getLeft();
+	}
+
+	private void moveInfoOverlay(boolean right, boolean animate) {
+		boolean changed = infoAtRight != right;
+		infoAtRight = right;
+		InfoOverlayView io = infoOverlay;
+		if (io == null) return;
+		float to = right ? infoRightShift(io) : 0f;
+
+		if (io.isOnlyWhenControlPanelVisible()) {
+			// It fades in and out with the panel: no gliding. Shown, it's already where it goes; back
+			// to its own place only once it's out of sight (see the hidden listener), not under the eye.
+			if (right || !io.isShown()) setInfoTranslation(io, to);
+			else infoResetWhenHidden = true;
+			updateTitleInset();
+			return;
+		}
+
+		if (!animate || !io.isLaidOut()) {
+			setInfoTranslation(io, to);
+		} else if (changed || (io.getTranslationX() != to)) {
+			// No gliding across the screen: it fades out, changes place while unseen, and fades back in.
+			int gen = ++infoMoveGen;
+			io.animate().cancel();
+			io.animate().alpha(0f).setDuration(INFO_FADE_MS).withEndAction(() -> {
+				if (gen != infoMoveGen) return;
+				io.setTranslationX(infoAtRight ? infoRightShift(io) : 0f);
+				io.animate().alpha(1f).setDuration(INFO_FADE_MS).start();
+			}).start();
+		}
+		updateTitleInset();
+	}
+
+	/** Identifies the latest fade-move of the Info Overlay: an earlier one's end does nothing. */
+	private int infoMoveGen;
+	/** Set while the Info Overlay waits to be out of sight to go back to its own place. */
+	private boolean infoResetWhenHidden;
+
+	private void setInfoTranslation(InfoOverlayView io, float x) {
+		infoMoveGen++;
+		infoResetWhenHidden = false;
+		// A fade-move cut short leaves no half-faded overlay. Not when it fades with the panel: that
+		// fade (the overlay's own) is left alone.
+		if (!io.isOnlyWhenControlPanelVisible()) {
+			io.animate().cancel();
+			io.setAlpha(1f);
+		}
+		io.setTranslationX(x);
+	}
+
+	/** How far the Info Overlay goes from its own place to the top right corner. */
+	private float infoRightShift(View io) {
+		if (!io.isLaidOut() || (getWidth() == 0)) return 0f;
+		FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) io.getLayoutParams();
+		return (getWidth() - lp.rightMargin - io.getWidth()) - io.getLeft();
+	}
+
+	private void updateTitleInset() {
+		InfoOverlayView io = infoOverlay;
+		int inset = 0;
+		// Only while it's on the right (moved there, or its own place): at the center it's only
+		// left there for a title too short to reach it.
+		if ((io != null) && (io.getVisibility() == VISIBLE) && (io.getWidth() > 0) &&
+				(infoAtRight || (infoPos == MainActivityPrefs.CLOCK_POS_RIGHT))) {
+			FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) io.getLayoutParams();
+			inset = io.getWidth() + lp.leftMargin + lp.rightMargin;
+		}
+		controls.setTitleEndInset(inset);
 	}
 
 	public void showVideo() {
@@ -743,6 +872,17 @@ public class VideoView extends FrameLayout
 
 	@Override
 	public View focusSearch(View focused, int direction) {
+		if ((focused != null) && controls.isButton(focused)) {
+			View v = controls.focusSearchButtons(focused, direction);
+			if (v != null) return v;
+			if (direction == FOCUS_DOWN) {
+				MainActivityDelegate a = getActivity().peek();
+				if ((a != null) && isVisible(a.getControlPanel())) {
+					v = a.getControlPanel().focusSearch();
+					if (v != null) return v;
+				}
+			}
+		}
 		// Fullscreen: nothing else to move the focus to.
 		return focused;
 	}

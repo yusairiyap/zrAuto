@@ -15,6 +15,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.Parcelable;
 import android.os.SystemClock;
+import android.support.v4.media.MediaMetadataCompat;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
@@ -51,6 +52,7 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.function.BooleanSupplier;
 import me.aap.utils.function.DoubleSupplier;
@@ -128,6 +130,31 @@ public class ControlPanelView extends ConstraintLayout
 	/** The pill look's margins (see MainActivityDelegate#enableFloatingBars) while in the video look. */
 	@Nullable
 	private int[] pillMargins;
+	/** The video view whose middle buttons/title (see {@link VideoControlsOverlay}) were shown last. */
+	@Nullable
+	private VideoView controlsHost;
+	/**
+	 * A double tap seek streak: until this time (uptime), every further tap on the video seeks
+	 * again instead of starting a new gesture, like YouTube's tap-tap-tap for +10, +20, +30.
+	 */
+	private long seekStreakUntil;
+	private boolean seekStreakForward;
+	private int seekStreakSeconds;
+	/** Set while the touch going on now is one of a seek streak's taps, swallowed whole. */
+	private boolean seekStreakTouch;
+	/**
+	 * Seconds the streak's taps have asked for so far, not applied yet (negative: back). A streak
+	 * makes one seek, once the taps stop (as YouTube does): a seek per tap made local engines
+	 * (ExoPlayer and the like) seek over and over while still busy with the last one.
+	 */
+	private int pendingSeekSec;
+	private final Runnable applySeekTask = this::applyPendingSeek;
+	/** How long after the last tap the streak's seek is made. */
+	private static final long SEEK_APPLY_DELAY_MS = 400L;
+	/** Seconds a double tap (and each further tap of its streak) seeks. */
+	private static final int DOUBLE_TAP_SEEK_SEC = 10;
+	/** How long after a seek tap another tap still counts as part of the streak. */
+	private static final long SEEK_STREAK_MS = 700L;
 
 	public ControlPanelView(Context context, AttributeSet attrs) {
 		super(context, attrs, R.attr.appControlPanelStyle);
@@ -222,7 +249,38 @@ public class ControlPanelView extends ConstraintLayout
 		}
 
 		applyLookPadding();
+		applyTransportButtons();
+		applyFabVideoLook(video);
 		computeSize();
+	}
+
+	/**
+	 * Over fullscreen video the floating buttons look like the round buttons in the middle of the
+	 * picture (see VideoControlsOverlay), as separate buttons or as one pill: see FabPillView.
+	 */
+	private void applyFabVideoLook(boolean video) {
+		FabPillView p = getActivity().getFabPill();
+		if (p != null) p.setVideoLook(video);
+	}
+
+	/**
+	 * Fullscreen video has previous/play-pause/next in the middle of the picture and seeks with a
+	 * double tap (see {@link VideoControlsOverlay}), so the panel leaves out its whole row of
+	 * transport buttons there, keeping the seek bar line only (see {@link #setSize} for the room left
+	 * under it); outside fullscreen they are back as before. Rewind/fast forward only for
+	 * something seekable, as {@code FermataServiceUiBinder} shows them (the seek bar is enabled
+	 * exactly then).
+	 */
+	private void applyTransportButtons() {
+		for (int id : new int[]{R.id.control_prev, R.id.control_play_pause, R.id.control_next}) {
+			View v = findViewById(id);
+			if (v != null) v.setVisibility(videoLook ? GONE : VISIBLE);
+		}
+		boolean seek = !videoLook && findViewById(R.id.seek_bar).isEnabled();
+		View rw = findViewById(R.id.control_rw);
+		View ff = findViewById(R.id.control_ff);
+		if (rw != null) rw.setVisibility(seek ? VISIBLE : GONE);
+		if (ff != null) ff.setVisibility(seek ? VISIBLE : GONE);
 	}
 
 	private void applyLookPadding() {
@@ -343,7 +401,20 @@ public class ControlPanelView extends ConstraintLayout
 		}
 
 		setHeight(R.id.control_next, buttonSize);
+		// Fullscreen: no button row, the seek bar line only, with some room left under it so the
+		// slider stays clear of the system's gesture area at the bottom edge.
+		if (videoLook) panelSize = (seek.isEnabled() ? iconSize : buttonSize) + videoBottomGap();
 		getLayoutParams().height = panelSize + (videoLook ? 0 : pillPadTop);
+	}
+
+	/** The room under the fullscreen seek bar: the gesture area's height, and never under 28dp. */
+	private int videoBottomGap() {
+		int gap = toIntPx(getContext(), 28);
+		if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+			android.view.WindowInsets wi = getRootWindowInsets();
+			if (wi != null) gap = Math.max(gap, wi.getMandatorySystemGestureInsets().bottom);
+		}
+		return gap;
 	}
 
 	private void setIconPadding(int btnPadH, int btnPadV, int cornerPad) {
@@ -549,10 +620,13 @@ public class ControlPanelView extends ConstraintLayout
 			fb.setVisibility(GONE);
 			for (View f : extra) f.setVisibility(GONE);
 			super.setVisibility(GONE);
+			showVideoControls(a.getActiveVideoView(), false, false);
 		} else {
 			fb.setVisibility(VISIBLE);
 			for (View f : extra) f.setVisibility(VISIBLE);
 			super.setVisibility(VISIBLE);
+			// The middle buttons come with the panel; the title only ever with a tap on the video.
+			showVideoControls(a.getActiveVideoView(), true, false);
 			hideTimer = new HideTimer(a, delay, false, fabs(fb, extra));
 			a.postDelayed(hideTimer, delay);
 		}
@@ -582,6 +656,9 @@ public class ControlPanelView extends ConstraintLayout
 		MainActivityDelegate a = getActivity();
 		hideTimer = null;
 		mask &= ~MASK_VIDEO_MODE;
+		seekStreakUntil = 0;
+		applyPendingSeek();
+		hideVideoControls(false);
 		setVideoLook(false);
 		a.getFloatingButton().setVisibility(VISIBLE);
 		findViewById(R.id.show_hide_bars).setVisibility(VISIBLE);
@@ -603,11 +680,7 @@ public class ControlPanelView extends ConstraintLayout
 	@Override
 	public boolean onInterceptTouchEvent(MotionEvent e) {
 		MainActivityDelegate a = getActivity();
-		if (hideTimer != null) {
-			int delay = getTouchDelay();
-			hideTimer = new HideTimer(a, delay, false, hideTimer.views);
-			a.postDelayed(hideTimer, delay);
-		}
+		restartVideoHideTimer();
 		return a.interceptTouchEvent(e, me -> {
 			gestureSource = this;
 			gestureDetector.onTouchEvent(me);
@@ -681,11 +754,60 @@ public class ControlPanelView extends ConstraintLayout
 		return true;
 	}
 
+	/**
+	 * Like YouTube: a double tap on the right half of the video jumps {@link #DOUBLE_TAP_SEEK_SEC}
+	 * seconds forward, on the left half as much back, and every further tap that follows quickly
+	 * (see {@link #onVideoViewTouch}) jumps as much again.
+	 */
 	@Override
 	public boolean onDoubleTap(MotionEvent e) {
-		if (!(gestureSource instanceof VideoView)) return false;
-		getActivity().getMediaServiceBinder().onPlayPauseButtonClick();
+		if (!(gestureSource instanceof VideoView vv)) return false;
+		seekStreakSeconds = 0;
+		doubleTapSeek(vv, e);
 		return true;
+	}
+
+	private void doubleTapSeek(VideoView vv, MotionEvent e) {
+		MainActivityDelegate a = getActivity();
+		FermataServiceUiBinder b = a.getMediaServiceBinder();
+		MediaEngine eng = b.getCurrentEngine();
+		if ((eng == null) || !eng.canSeek()) {
+			seekStreakUntil = 0;
+			return;
+		}
+
+		// The touch may come through the controls overlay, a child of the video view lying over all of
+		// it: either way these are the video view's own coordinates.
+		boolean ff = e.getX() >= (vv.getWidth() / 2f);
+		if (ff != seekStreakForward) {
+			// The other side: what the first side asked for goes now, the new side counts from 0.
+			seekStreakSeconds = 0;
+			applyPendingSeek();
+		}
+		seekStreakForward = ff;
+		seekStreakSeconds += DOUBLE_TAP_SEEK_SEC;
+		seekStreakUntil = SystemClock.uptimeMillis() + SEEK_STREAK_MS;
+		pendingSeekSec += ff ? DOUBLE_TAP_SEEK_SEC : -DOUBLE_TAP_SEEK_SEC;
+		DiagnosticLog.log("TRANSPORT", "double tap seek", "ff=" + ff, "streak=" + seekStreakSeconds,
+				"state=" + b.getMediaSessionCallback().getPlaybackState().getState());
+		removeCallbacks(applySeekTask);
+		postDelayed(applySeekTask, SEEK_APPLY_DELAY_MS);
+		// Nothing but the seek feedback, as YouTube does: the controls (and an Info Overlay shown only
+		// with them) go if they were up, and don't come up for it.
+		if (((mask & MASK_VIDEO_MODE) != 0) && (getVisibility() == VISIBLE)) hideVideoUi(a);
+		vv.getControls().showSeek(ff, seekStreakSeconds, e.getX(), e.getY());
+	}
+
+	/** Makes the seek the streak's taps asked for so far, if any. */
+	private void applyPendingSeek() {
+		removeCallbacks(applySeekTask);
+		int sec = pendingSeekSec;
+		pendingSeekSec = 0;
+		if (sec == 0) return;
+		MediaSessionCallback cb = getActivity().getMediaSessionCallback();
+		DiagnosticLog.log("TRANSPORT", "double tap seek applied", "sec=" + sec,
+				"state=" + cb.getPlaybackState().getState());
+		cb.rewindFastForward(sec > 0, Math.abs(sec), PlaybackControlPrefs.TIME_UNIT_SECOND, 1);
 	}
 
 	@Override
@@ -704,23 +826,38 @@ public class ControlPanelView extends ConstraintLayout
 		View fb = a.getFloatingButton();
 		List<View> extra = a.getEnabledExtraFabs();
 
-		if (getVisibility() == VISIBLE) {
-			fadeOut(this, true);
-			fadeOut(fb, false);
-			for (View f : extra) fadeOut(f, false);
-			if (a.getPrefs().getSysBarsOnVideoTouchPref()) a.setFullScreen(true);
+		// The panel and the middle buttons show and hide together.
+		boolean shown = getVisibility() == VISIBLE;
+
+		if (shown) {
+			hideVideoUi(a);
 		} else {
-			fadeIn(this, true);
-			fadeIn(fb, false);
-			for (View f : extra) fadeIn(f, false);
+			if (getVisibility() != VISIBLE) fadeIn(this, true);
+			if (fb.getVisibility() != VISIBLE) fadeIn(fb, false);
+			for (View f : extra) if (f.getVisibility() != VISIBLE) fadeIn(f, false);
 			if (a.getPrefs().getSysBarsOnVideoTouchPref()) a.setFullScreen(false);
 			clearFocus();
+			video.getControls().hideSeek();
+			showVideoControls(video, true, true);
 			hideTimer = new HideTimer(a, delay, false, fabs(fb, extra));
 			a.postDelayed(hideTimer, delay);
 		}
 
 		checkPlaybackTimer(a);
 		return true;
+	}
+
+	/**
+	 * Fades the fullscreen video controls away: the panel, the floating buttons, the middle
+	 * buttons and title (and with the panel, an Info Overlay shown only with it).
+	 */
+	private void hideVideoUi(MainActivityDelegate a) {
+		hideTimer = null;
+		fadeOut(this, true);
+		fadeOut(a.getFloatingButton(), false);
+		for (View f : a.getEnabledExtraFabs()) fadeOut(f, false);
+		if (a.getPrefs().getSysBarsOnVideoTouchPref()) a.setFullScreen(true);
+		hideVideoControls(true);
 	}
 
 	private static final long FADE_DURATION = 200L;
@@ -771,7 +908,97 @@ public class ControlPanelView extends ConstraintLayout
 
 	public void onVideoViewTouch(VideoView view, MotionEvent e) {
 		gestureSource = view;
+
+		// Within a double tap seek streak, each further tap seeks again right away and is not a
+		// gesture of its own (it would otherwise be taken for a single tap, or start a new double tap).
+		if (e.getActionMasked() == MotionEvent.ACTION_DOWN) {
+			seekStreakTouch = (e.getPointerCount() == 1) &&
+					(SystemClock.uptimeMillis() < seekStreakUntil);
+			if (seekStreakTouch) {
+				doubleTapSeek(view, e);
+				return;
+			}
+		} else if (seekStreakTouch) {
+			int act = e.getActionMasked();
+			if ((act == MotionEvent.ACTION_UP) || (act == MotionEvent.ACTION_CANCEL)) {
+				seekStreakTouch = false;
+			}
+			return;
+		}
+
 		gestureDetector.onTouchEvent(e);
+	}
+
+	/**
+	 * Whether a double tap seek streak is going on: a tap now, even one landing on a middle button,
+	 * is one more seek (see VideoControlsOverlay).
+	 */
+	public boolean isSeekStreakActive() {
+		return SystemClock.uptimeMillis() < seekStreakUntil;
+	}
+
+	/** Restarts the countdown that hides the fullscreen video controls, if it's running. */
+	public void restartVideoHideTimer() {
+		if (hideTimer == null) return;
+		MainActivityDelegate a = getActivity();
+		int delay = getTouchDelay();
+		hideTimer = new HideTimer(a, delay, false, hideTimer.views);
+		a.postDelayed(hideTimer, delay);
+	}
+
+	/**
+	 * Shows the middle buttons (and, for a tap on the video, the title) over {@code vv}, synced to
+	 * the playback state and the item playing, and takes them off whichever video view had them
+	 * before. Fullscreen only.
+	 */
+	private void showVideoControls(@Nullable VideoView vv, boolean center, boolean title) {
+		if ((controlsHost != null) && (controlsHost != vv)) controlsHost.showControls(false, false, false);
+		controlsHost = vv;
+		if (vv == null) return;
+		if ((mask & MASK_VIDEO_MODE) == 0) {
+			center = title = false;
+		}
+		if (center || title) syncVideoControls();
+		vv.showControls(center, title, true);
+	}
+
+	private void hideVideoControls(boolean animate) {
+		VideoView vv = controlsHost;
+		if (vv == null) return;
+		vv.showControls(false, false, animate);
+		if (!animate) {
+			vv.getControls().hideSeek();
+			controlsHost = null;
+		}
+	}
+
+	/**
+	 * Copies the panel's play/pause state and the playing item's title onto the fullscreen video
+	 * controls -- called by {@code FermataServiceUiBinder} whenever either changes.
+	 */
+	public void syncVideoControls() {
+		VideoView vv = controlsHost;
+		if (vv == null) return;
+		VideoControlsOverlay c = vv.getControls();
+		View pp = findViewById(R.id.control_play_pause);
+		c.setPlayPauseState(pp.isSelected(), pp.isActivated());
+
+		MainActivityDelegate a = getActivity();
+		FermataServiceUiBinder b = a.getMediaServiceBinder();
+		MediaMetadataCompat md = b.getMetadata();
+		CharSequence t = null;
+		CharSequence sub = null;
+		if (md != null) {
+			// Not the DISPLAY_ ones: those can carry the current subtitle line (see
+			// MediaSessionCallback#accept).
+			t = md.getText(MediaMetadataCompat.METADATA_KEY_TITLE);
+			sub = md.getText(MediaMetadataCompat.METADATA_KEY_ARTIST);
+		}
+		if ((t == null) || (t.length() == 0)) {
+			PlayableItem i = b.getCurrentItem();
+			if (i != null) t = i.getName();
+		}
+		c.setTitle(t, sub);
 	}
 
 	public void onVideoSeek() {
@@ -786,6 +1013,9 @@ public class ControlPanelView extends ConstraintLayout
 		View fb = a.getFloatingButton();
 		List<View> extra = a.getEnabledExtraFabs();
 		int delay = getSeekDelay();
+		// The middle buttons always come and go with the panel (its seek bar line); the title only
+		// ever with a single tap, so a seek takes it away.
+		showVideoControls(vv, true, false);
 		super.setVisibility(VISIBLE);
 		fb.setVisibility(VISIBLE);
 		for (View f : extra) f.setVisibility(VISIBLE);
@@ -824,7 +1054,9 @@ public class ControlPanelView extends ConstraintLayout
 
 	public View focusSearch() {
 		View v = findViewById(R.id.seek_bar);
-		return isVisible(v) ? v : findViewById(R.id.control_play_pause);
+		if (isVisible(v)) return v;
+		v = findViewById(R.id.control_play_pause);
+		return isVisible(v) ? v : findViewById(R.id.control_menu_button);
 	}
 
 	@Override
@@ -834,7 +1066,13 @@ public class ControlPanelView extends ConstraintLayout
 		if (direction == FOCUS_UP) {
 			if (isLine1(focused)) {
 				MainActivityDelegate a = getActivity();
-				if (a.isVideoMode()) return a.getBody().getVideoView();
+				if (a.isVideoMode()) {
+					// Up to the play/pause in the middle of the picture, when it's there.
+					VideoView vv = controlsHost;
+					if ((vv != null) && vv.getControls().isCenterShown())
+						return vv.getControls().getPlayPauseButton();
+					return a.getBody().getVideoView();
+				}
 				View v = MediaItemListView.focusSearchLast(getContext(), focused);
 				if (v != null) return v;
 			} else {
@@ -1439,7 +1677,9 @@ public class ControlPanelView extends ConstraintLayout
 		public void run() {
 			if ((hideTimer != this) || ((mask & MASK_VIDEO_MODE) == 0)) return;
 
-			if (ControlPanelView.this.hasFocus()) {
+			VideoView vv = controlsHost;
+			if (ControlPanelView.this.hasFocus() ||
+					((vv != null) && vv.getControls().hasButtonFocus())) {
 				hideTimer = new HideTimer(activity, delay, seekMode, views);
 				activity.postDelayed(hideTimer, delay);
 				return;
@@ -1448,6 +1688,7 @@ public class ControlPanelView extends ConstraintLayout
 			if (activity.getPrefs().getSysBarsOnVideoTouchPref()) activity.setFullScreen(true);
 			ControlPanelView.super.setVisibility(GONE);
 			notifyControlPanelVisibility();
+			hideVideoControls(true);
 
 			for (View v : views) {
 				if (v != null) v.setVisibility(GONE);

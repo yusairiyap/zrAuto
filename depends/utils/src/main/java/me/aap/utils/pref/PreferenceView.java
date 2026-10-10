@@ -138,6 +138,7 @@ public class PreferenceView extends ConstraintLayout {
 	void cleanUp() {
 		if (this.opts != null) {
 			if (opts.visibility != null) opts.visibility.setListener(null);
+			if (opts.enabled != null) opts.enabled.setListener(null);
 			if ((this.opts instanceof PrefOpts<?>) && (this.prefListener != null)) {
 				(((PrefOpts<?>) this.opts).store).removeBroadcastListener(this.prefListener);
 			}
@@ -666,6 +667,26 @@ public class PreferenceView extends ConstraintLayout {
 				requestLayout();
 			}
 		}
+
+		if (opts.enabled != null) {
+			applyEnabled(opts.enabled.get());
+			opts.enabled.setListener(c -> applyEnabled(c.get()));
+		} else {
+			applyEnabled(true);
+		}
+	}
+
+	/** Greys the row out (and stops taps on it and its controls) while it doesn't apply. */
+	private void applyEnabled(boolean on) {
+		setEnabledTree(this, on);
+		setAlpha(on ? 1f : 0.4f);
+	}
+
+	private static void setEnabledTree(View v, boolean on) {
+		v.setEnabled(on);
+		if (!(v instanceof ViewGroup)) return;
+		ViewGroup g = (ViewGroup) v;
+		for (int i = 0, n = g.getChildCount(); i < n; i++) setEnabledTree(g.getChildAt(i), on);
 	}
 
 	private ImageView getIconView() {
@@ -714,6 +735,8 @@ public class PreferenceView extends ConstraintLayout {
 		public CharSequence ctitle;
 		public CharSequence csubtitle;
 		public ChangeableCondition visibility;
+		/** Shown but greyed out and not tappable while false (e.g. an option another one rules out). */
+		public ChangeableCondition enabled;
 	}
 
 	public static class PrefOpts<S> extends Opts {

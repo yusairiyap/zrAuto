@@ -112,6 +112,9 @@ public interface MainActivityPrefs
 	Pref<IntSupplier> FAB6_ACTION = Pref.i("FAB6_ACTION", Action.OPEN_PLAYLISTS.ordinal());
 	// Fixed in place by default: dragging is easy to trigger by accident while driving.
 	Pref<BooleanSupplier> FAB_DRAGGABLE = Pref.b("FAB_DRAGGABLE", false);
+	// The floating buttons shown together as one pill (see FabPillView) rather than as separate
+	// round buttons; on by default.
+	Pref<BooleanSupplier> FAB_PILL = Pref.b("FAB_PILL", true);
 	// 5% smaller than the original 1.0 out of the box.
 	Pref<DoubleSupplier> FAB_SIZE = Pref.f("FAB_SIZE", 0.95f);
 	// How many upcoming Favorites/Playlist entries the YouTube tab's Up next list previews below the
@@ -193,13 +196,15 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DATA_REMAINING =
 			Pref.b("INFO_OVERLAY_SHOW_DATA_REMAINING", false);
 	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DATA_ICON = Pref.b("INFO_OVERLAY_SHOW_DATA_ICON", true);
+	// An icon (first, no text) while what's playing has a downloaded copy (see YtDownloads).
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DOWNLOADED = Pref.b("INFO_OVERLAY_SHOW_DOWNLOADED", false);
 	// Every Info Overlay pref, for the views showing it (fullscreen video, the Music tab) to follow.
 	Set<Pref<?>> INFO_OVERLAY_PREFS = Set.of(CLOCK_POS, INFO_OVERLAY_SHOW_CLOCK,
 			INFO_OVERLAY_SHOW_CLOCK_ICON, INFO_OVERLAY_SHOW_BATTERY_PCT, INFO_OVERLAY_SHOW_BATTERY_ICON,
 			INFO_OVERLAY_SHOW_BATTERY_TEMP, INFO_OVERLAY_SHOW_TEMP_ICON, INFO_OVERLAY_SHOW_DISTANCE,
 			INFO_OVERLAY_SHOW_DISTANCE_ICON, INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE,
 			INFO_OVERLAY_SIZE, INFO_OVERLAY_SHOW_DATA_USAGE, INFO_OVERLAY_SHOW_DATA_REMAINING,
-			INFO_OVERLAY_SHOW_DATA_ICON);
+			INFO_OVERLAY_SHOW_DATA_ICON, INFO_OVERLAY_SHOW_DOWNLOADED);
 	Pref<IntSupplier> LOCALE =
 			Pref.i("LOCALE", () -> Lang.get(Locale.getDefault().getLanguage()).ordinal());
 
@@ -557,6 +562,10 @@ public interface MainActivityPrefs
 
 	default boolean getInfoOverlayShowDataRemainingPref() {
 		return getBooleanPref(INFO_OVERLAY_SHOW_DATA_REMAINING) && dataUsageEnabled();
+	}
+
+	default boolean getInfoOverlayShowDownloadedPref() {
+		return getBooleanPref(INFO_OVERLAY_SHOW_DOWNLOADED);
 	}
 
 	default boolean getInfoOverlayShowDataIconPref() {

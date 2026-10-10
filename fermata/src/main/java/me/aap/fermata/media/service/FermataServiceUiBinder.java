@@ -11,6 +11,7 @@ import static me.aap.fermata.media.lib.MediaLib.StreamItem.STREAM_START_TIME;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.SystemClock;
+import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaControllerCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
@@ -30,6 +31,7 @@ import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.lib.MediaLib.StreamItem;
 import me.aap.fermata.media.pref.PlaybackControlPrefs;
+import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.app.App;
 import me.aap.utils.async.FutureSupplier;
@@ -239,6 +241,25 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 		progressTotal.setVisibility(INVISIBLE);
 	}
 
+	/** What the session publishes now for the item playing, or null. */
+	@Nullable
+	public MediaMetadataCompat getMetadata() {
+		return mediaController.getMetadata();
+	}
+
+	/** See {@link ControlPanelView#syncVideoControls()}. */
+	private void syncVideoControls() {
+		if (controlPanel instanceof ControlPanelView cp) cp.syncVideoControls();
+	}
+
+	/**
+	 * Rewind/fast forward show for something seekable, except in fullscreen video, where a double
+	 * tap seeks instead (see ControlPanelView#applyTransportButtons).
+	 */
+	private boolean rwFfShown() {
+		return !((controlPanel instanceof ControlPanelView cp) && cp.isVideoLook());
+	}
+
 	public void bindControlPanel(View controlPanel) {
 		this.controlPanel = controlPanel;
 	}
@@ -315,6 +336,11 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 		FutureSupplier<Long> duration;
 
 		MediaControllerCallback() {
+		}
+
+		@Override
+		public void onMetadataChanged(MediaMetadataCompat metadata) {
+			if (bound) syncVideoControls();
 		}
 
 		@Override
@@ -510,8 +536,9 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 					progressTotal.setVisibility(VISIBLE);
 					progressTotal.setText(timeToString(dur));
 				}
-				if (rwButton != null) rwButton.setVisibility(VISIBLE);
-				if (ffButton != null) ffButton.setVisibility(VISIBLE);
+				int rwFf = rwFfShown() ? VISIBLE : GONE;
+				if (rwButton != null) rwButton.setVisibility(rwFf);
+				if (ffButton != null) ffButton.setVisibility(rwFf);
 			} else {
 				if (progressBar != null) {
 					progressBar.setEnabled(false);
@@ -545,6 +572,8 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 					playPauseButton.setActivated(false);
 				}
 			}
+
+			syncVideoControls();
 
 			showPanel(true);
 		}
