@@ -106,7 +106,7 @@
     <string name="car_mode_where_pickers">Add to playlist, downloads and menus</string>
     <string name="car_mode_where_settings">Settings and Audio effects</string>
     <string name="car_mode_sliders">Sliders: hold Next to grab one, then Previous / Next move it. Hold again to let go</string>
-    <string name="car_mode_youtube_fullscreen">On the YouTube tab: watch the video fullscreen. In fullscreen the keys do what they\'re bound to</string>
+    <string name="car_mode_youtube_fullscreen">On the YouTube tab (its search and Up next too): watch the video fullscreen. In fullscreen the keys do what they\'re bound to</string>
     <string name="car_mode_footnote">The selected item gets an outline, which fades after a few seconds. Everywhere else the keys do what they\'re bound to.</string>
     <string name="car_mode_demo_first">Next: selects</string>
     <string name="car_mode_demo_next">Next: moves along</string>

@@ -296,7 +296,7 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 	}
 
 	/** The list fills in asynchronously after a folder change: retried until the item is in it. */
-	private void highlightWhenListed(MainActivityDelegate a, PlayableItem i, int tries) {
+	private void highlightWhenListed(MainActivityDelegate a, Item i, int tries) {
 		if (isHidden() || (getView() == null)) return;
 		int pos = indexOf(getAdapter().getList(), i);
 		if (pos < 0) {
@@ -324,7 +324,11 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 		BrowsableItem newParent = oldParent.getParent();
 		if (newParent == null) return false;
 		a.setParent(newParent);
-		ad.post(() -> revealItem(oldParent));
+		ad.post(() -> {
+			revealItem(oldParent);
+			// Car mode carries on from the folder (playlist) just left, outlined.
+			if (me.aap.fermata.action.CarNav.isEnabled()) highlightWhenListed(ad, oldParent, 10);
+		});
 		return true;
 	}
 

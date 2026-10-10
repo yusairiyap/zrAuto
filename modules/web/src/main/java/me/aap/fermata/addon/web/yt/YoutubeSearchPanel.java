@@ -170,9 +170,9 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		super(ctx);
 		this.fragment = fragment;
 		this.addon = addon;
-		// Car mode: the steering wheel moves through the chips and rows; long previous is Back,
-		// which closes the panel (see YoutubeFragment#onBackPressed).
-		me.aap.fermata.action.CarNav.markScope(this, null);
+		// Car mode: the steering wheel moves through the chips and rows; long previous closes the
+		// panel and goes straight to the video, fullscreen.
+		me.aap.fermata.action.CarNav.markScope(this, fragment::closePanelToFullscreen);
 		// Mostly opaque: the rows must stay readable over a playing video, but the page underneath
 		// showing through faintly makes it obvious nothing was closed or stopped.
 		int bg = resolveColor(ctx, android.R.attr.colorBackground, Color.BLACK);
@@ -425,7 +425,7 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		failed = false;
 		results.clear();
 		libraryResults.clear();
-		refresh();
+		refreshInstantly();
 
 		addon.addSearchHistory(q);
 		searchLibrary(q, gen);
@@ -449,7 +449,7 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 					// channel and duration there, even before the player reports them.
 					for (Video v : result) addon.setLiveVideoInfo(v.videoId, v.channel, v.durationMs);
 				}
-				refresh();
+				refreshInstantly();
 				if ((result != null) && !result.isEmpty()) carNavToFirstResult();
 			});
 		});
@@ -660,6 +660,36 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 
 			refresh();
 		});
+	}
+
+	/**
+	 * {@link #refresh()} without the rows' animations: "Searching..." and then the results show at
+	 * once. Animated, a new row waited for the removals and moves before it (the chips row, the old
+	 * results) to finish first, which read as the search taking a while to start.
+	 */
+	private void refreshInstantly() {
+		RecyclerView.ItemAnimator ma = mainList.getItemAnimator();
+		RecyclerView.ItemAnimator sa = sideList.getItemAnimator();
+		mainList.setItemAnimator(null);
+		sideList.setItemAnimator(null);
+		refresh();
+		// Back once this change is laid out (animations are only recorded during layout).
+		android.view.ViewTreeObserver vto = getViewTreeObserver();
+		android.view.ViewTreeObserver.OnPreDrawListener[] l = new android.view.ViewTreeObserver.OnPreDrawListener[1];
+		Runnable restore = () -> {
+			if (mainList.getItemAnimator() == null) mainList.setItemAnimator(ma);
+			if (sideList.getItemAnimator() == null) sideList.setItemAnimator(sa);
+		};
+		l[0] = () -> {
+			if (vto.isAlive()) vto.removeOnPreDrawListener(l[0]);
+			else getViewTreeObserver().removeOnPreDrawListener(l[0]);
+			restore.run();
+			return true;
+		};
+		vto.addOnPreDrawListener(l[0]);
+		// Not drawn at all (the panel hidden meanwhile): back anyway.
+		handler.postDelayed(restore, 500);
+		invalidate();
 	}
 
 	/** Rebuilds the rows -- only what changed is animated, see {@link Adapter#submit}. */

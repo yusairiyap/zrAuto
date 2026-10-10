@@ -2210,6 +2210,10 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (b.isVideoMode()) b.setMode(BodyLayout.Mode.FRAME);
 		ActivityFragment f = super.showFragment(id, input);
 		updateExtraFabsVisibility();
+		// Leaving the Music tab gives the control panel back (it hides it while showing), but a
+		// switch made from a key binding, while the Music tab was mid-way through its own update,
+		// was seen leaving it hidden: once the switch has settled, make sure it matches what plays.
+		if (!(f instanceof MusicPlayerFragment)) post(this::resyncOverlaysAfterSwitch);
 		return f;
 	}
 
@@ -2843,6 +2847,12 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	/** How far the floating buttons are currently lifted above their place -- see below. */
 	private int fabKeyboardLift;
+	/** How much of fabKeyboardLift the margins carry right now (it animates there). */
+	private int fabLiftShown;
+	@Nullable
+	private android.animation.ValueAnimator fabLiftAnim;
+	// While lifted on the car: Android Auto can put its keyboard away by itself, without telling.
+	private final Runnable fabLiftRecheck = this::liftFabsAboveKeyboard;
 	private final Rect keyboardFrame = new Rect();
 	private final int[] fabParentLoc = new int[2];
 
@@ -2872,14 +2882,29 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (keyboard) {
 			parent.getLocationOnScreen(fabParentLoc);
 			// Where the buttons' bottom edge sits without any lift.
-			int bottom = fabParentLoc[1] + f.getBottom() + fabKeyboardLift;
+			int bottom = fabParentLoc[1] + f.getBottom() + fabLiftShown;
 			int gap = UiUtils.toIntPx(getContext(), 8);
 			lift = Math.max(0, bottom + gap - keyboardTop);
 		}
-		if (lift == fabKeyboardLift) return;
+		if (lift != fabKeyboardLift) {
+			fabKeyboardLift = lift;
+			// Glides there (up over the keyboard, back down once it's gone) rather than jumping.
+			if (fabLiftAnim != null) fabLiftAnim.cancel();
+			android.animation.ValueAnimator anim = android.animation.ValueAnimator.ofInt(fabLiftShown, lift);
+			anim.setDuration(220);
+			anim.setInterpolator(new android.view.animation.DecelerateInterpolator());
+			anim.addUpdateListener(va -> shiftFabs((int) va.getAnimatedValue() - fabLiftShown));
+			fabLiftAnim = anim;
+			anim.start();
+		}
+		f.removeCallbacks(fabLiftRecheck);
+		if (lift > 0) f.postDelayed(fabLiftRecheck, 500);
+	}
 
-		int delta = lift - fabKeyboardLift;
-		fabKeyboardLift = lift;
+	/** Moves the floating buttons up by {@code delta} (down if negative), see fabLiftShown. */
+	private void shiftFabs(int delta) {
+		if (delta == 0) return;
+		fabLiftShown += delta;
 		for (View b : new View[]{floatingButton, floatingButton2, floatingButton3, floatingButton4,
 				floatingButton5, floatingButton6}) {
 			if ((b == null) || !(b.getLayoutParams() instanceof ViewGroup.MarginLayoutParams lp)) {
@@ -2968,6 +2993,16 @@ public class MainActivityDelegate extends ActivityDelegate
 			// bars hidden: unsuppressing does not show them).
 			setOverlaysSuppressed(getActiveFragment() instanceof MusicPlayerFragment);
 		}
+	}
+
+	private void resyncOverlaysAfterSwitch() {
+		if ((getActiveFragment() instanceof MusicPlayerFragment) || isVideoMode() || pipSuppressed) return;
+		ControlPanelView cp = getControlPanel();
+		if ((cp != null) && cp.isSuppressed()) {
+			DiagnosticLog.log("STATE", "control panel still suppressed after a tab switch: restored");
+		}
+		setOverlaysSuppressed(false);
+		getMediaServiceBinder().resyncControlPanel();
 	}
 
 	public void setOverlaysSuppressed(boolean suppressed) {

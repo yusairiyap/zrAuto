@@ -1096,6 +1096,15 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		onSearchPanelToggled();
 	}
 
+	/** Car mode's long previous in the search / Up next panel: closes it, video fullscreen. */
+	void closePanelToFullscreen() {
+		hideSearchPanel();
+		Context ctx = getContext();
+		if (ctx == null) return;
+		me.aap.fermata.ui.view.VideoView vv = MainActivityDelegate.get(ctx).getActiveVideoView();
+		if ((vv != null) && !vv.isInNativeFullscreen()) vv.toggleNativeFullscreen();
+	}
+
 	/** See {@link YoutubeChromeClient#onShowCustomView}. */
 	static void closeSearchPanel(FermataWebView web) {
 		MainActivityDelegate.getActivityDelegate(web.getContext()).onSuccess(a -> {
