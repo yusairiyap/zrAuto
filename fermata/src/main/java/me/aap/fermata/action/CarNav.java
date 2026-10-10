@@ -776,6 +776,12 @@ public final class CarNav {
 
 		void fadeOut() {
 			faded = true;
+			// Nothing to follow while faded: no per-frame check either (track() adds it back).
+			if (listening) {
+				ViewTreeObserver vto = root.getViewTreeObserver();
+				if (vto.isAlive()) vto.removeOnPreDrawListener(this);
+				listening = false;
+			}
 			if ((on != null) && (outline != null)) {
 				View old = on;
 				Outline o = outline;
