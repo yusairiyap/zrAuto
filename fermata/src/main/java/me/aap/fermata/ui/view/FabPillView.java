@@ -43,6 +43,16 @@ public class FabPillView extends View implements ViewTreeObserver.OnPreDrawListe
 	/** How far the pill eases toward where the buttons are, per frame. */
 	private static final float EASE = 0.3f;
 	private static final float PILL_PRESS_SCALE = 1.3f;
+	/**
+	 * The buttons' elevation (dp), that of control_panel and the menus in main_activity.xml; the
+	 * pill sits half a dp under it. Both are set explicitly rather than read back from the buttons:
+	 * a FloatingActionButton's own elevation follows its state animator (the Material default once
+	 * it runs), and a pill that ended up level with or above the buttons was drawn over their icons:
+	 * the see-through dark pill greyed the white icons over fullscreen video, and the almost opaque
+	 * light one hid them altogether in the light theme (both seen on Android Auto).
+	 */
+	private static final int FAB_Z = 10;
+	private final float fabZ;
 	private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 	private final RectF target = new RectF();
 	private final RectF cur = new RectF();
@@ -71,6 +81,7 @@ public class FabPillView extends View implements ViewTreeObserver.OnPreDrawListe
 		int[] nb = NavBarView.resolveStyleColors(ctx);
 		pillColor = (nb[1] & 0x00FFFFFF) | 0xF2000000;
 		iconColor = nb[0] | 0xFF000000;
+		fabZ = toPx(ctx, FAB_Z);
 		shadowRadius = toPx(ctx, 12);
 		shadowDy = toPx(ctx, 3);
 
@@ -88,8 +99,10 @@ public class FabPillView extends View implements ViewTreeObserver.OnPreDrawListe
 	public static FabPillView install(Context ctx, boolean pill, FloatingButton... fabs) {
 		List<FloatingButton> l = new ArrayList<>(fabs.length);
 		for (FloatingButton f : fabs) if (f != null) l.add(f);
-		FabPillView v = new FabPillView(ctx, l);
 		FloatingButton first = l.get(0);
+		// The colors from the buttons' own (themed) context: on Android Auto the activity delegate's
+		// context isn't necessarily the one carrying the app theme.
+		FabPillView v = new FabPillView(first.getContext(), l);
 		ViewGroup parent = (ViewGroup) first.getParent();
 		// Every direct child of the root ConstraintLayout needs an id (see ControlPanelView).
 		v.setId(View.generateViewId());
@@ -110,7 +123,7 @@ public class FabPillView extends View implements ViewTreeObserver.OnPreDrawListe
 		int idx = parent.indexOfChild(first);
 		for (FloatingButton f : l) idx = Math.min(idx, parent.indexOfChild(f));
 		parent.addView(v, idx, lp);
-		v.setElevation(first.getElevation());
+		v.setElevation(v.fabZ - toPx(ctx, 1) / 2f);
 		v.pill = pill;
 		v.restyle();
 		return v;
@@ -174,9 +187,10 @@ public class FabPillView extends View implements ViewTreeObserver.OnPreDrawListe
 	 * the theme's black outline shadow showing through a see-through fill as a dark smudge.
 	 */
 	private void noShadow(FloatingButton f) {
-		// The elevation stays (kept up with the pill's, so they stay above it and whatever covers the
-		// screen); without an outline it casts nothing.
-		f.setCompatElevation(getElevation());
+		// Raised above the pill (see FAB_Z) and level with the panel and menus; without an outline
+		// it casts nothing. The view's elevation is set too, not only the state animator's target.
+		f.setCompatElevation(fabZ);
+		f.setElevation(fabZ);
 		f.setOutlineProvider(null);
 	}
 
