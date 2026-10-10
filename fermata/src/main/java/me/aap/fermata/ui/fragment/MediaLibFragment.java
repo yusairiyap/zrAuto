@@ -207,6 +207,70 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 		p.getChildren().main(getMainActivity().getHandler()).onSuccess(l -> getListView().focusTo(i));
 	}
 
+	/**
+	 * Whether opening this tab goes to what's playing in it (into its playlist) and highlights it:
+	 * Favorites and Playlists.
+	 */
+	protected boolean revealsPlaying() {
+		return false;
+	}
+
+	@Override
+	public void switchingFrom(@Nullable me.aap.utils.ui.fragment.ActivityFragment from) {
+		super.switchingFrom(from);
+		// Posted: this runs before the switch is committed (and before a new tab has its view).
+		if (revealsPlaying() && (from != this)) {
+			getMainActivityDelegate().onSuccess(a -> a.post(this::revealPlaying));
+		}
+	}
+
+	/** See {@link #revealsPlaying()}. */
+	private void revealPlaying() {
+		if (isHidden() || (getView() == null) || (adapter == null)) return;
+		MainActivityDelegate a = getMainActivity();
+		BrowsableItem root = getAdapter().getRoot();
+		if (root == null) return;
+		PlayableItem cur = a.getMediaSessionCallback().getCurrentItem();
+		if ((cur != null) && root.equals(cur.getRoot())) {
+			revealAndHighlight(a, cur);
+			return;
+		}
+		// Played from elsewhere but a favorite: its entry in Favorites.
+		if (!(root instanceof MediaLib.Favorites fav)) return;
+		PlayableItem pi = me.aap.fermata.action.Action.getFavoritableItem(a);
+		if ((pi == null) || !fav.isFavoriteItem(pi)) return;
+		String id = pi.getOrigId();
+		fav.getUnsortedChildren().main(a.getHandler()).onSuccess(list -> {
+			for (Item c : list) {
+				if ((c instanceof PlayableItem p) && id.equals(p.getOrigId())) {
+					revealAndHighlight(a, p);
+					return;
+				}
+			}
+		});
+	}
+
+	private void revealAndHighlight(MainActivityDelegate a, PlayableItem i) {
+		BrowsableItem p = i.getParent();
+		if (p == null) return;
+		ListAdapter ad = getAdapter();
+		if (!p.equals(ad.getParent())) ad.setParent(p);
+		p.getChildren().main(a.getHandler()).onSuccess(l -> highlightWhenListed(a, i, 10));
+	}
+
+	/** The list fills in asynchronously after a folder change: retried until the item is in it. */
+	private void highlightWhenListed(MainActivityDelegate a, PlayableItem i, int tries) {
+		if (isHidden() || (getView() == null)) return;
+		int pos = indexOf(getAdapter().getList(), i);
+		if (pos < 0) {
+			if (tries > 0) a.postDelayed(() -> highlightWhenListed(a, i, tries - 1), 100);
+			return;
+		}
+		MediaItemListView lv = getListView();
+		lv.scrollToPosition(pos, false);
+		a.postDelayed(() -> me.aap.fermata.action.CarNav.highlightRow(a, lv, pos), 120);
+	}
+
 	public boolean onBackPressed() {
 		MainActivityDelegate ad = getMainActivity();
 		BodyLayout b = ad.getBody();

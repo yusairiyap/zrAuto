@@ -341,6 +341,12 @@ public class VideoView extends FrameLayout
 	}
 
 	/** Returns {@code true} if a registered native fullscreen handled the toggle. */
+	/** Whether a WebView-hosted player (YouTube) is showing its video in its own fullscreen. */
+	public boolean isInNativeFullscreen() {
+		NativeFullscreen fs = nativeFullscreen;
+		return (fs != null) && fs.isNativeFullscreen();
+	}
+
 	public boolean toggleNativeFullscreen() {
 		NativeFullscreen fs = nativeFullscreen;
 		if (fs == null) return false;

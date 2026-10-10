@@ -80,6 +80,8 @@ public final class CarNav {
 	@Nullable
 	private static MediaSessionCallback downCb;
 	private static long downTime;
+	@Nullable
+	private static MainActivityDelegate downActivity;
 	private static final Runnable longPress = CarNav::onLongPress;
 
 	// What's selected.
@@ -134,12 +136,25 @@ public final class CarNav {
 				Scope s = (a == null) ? null : findScope(a);
 				handler.removeCallbacks(longPress);
 				if (s == null) {
-					downCode = 0;
 					clear();
+					// The YouTube tab, video not fullscreen: long next goes fullscreen, a click is still
+					// the key's own binding.
+					if ((code == KEYCODE_MEDIA_NEXT) && (a != null) && isYoutubeWindowed(a)) {
+						downCode = code;
+						downScope = null;
+						downActivity = a;
+						downCb = cb;
+						downTime = SystemClock.uptimeMillis();
+						longFired = false;
+						handler.postDelayed(longPress, LONG_MS);
+						return true;
+					}
+					downCode = 0;
 					return false;
 				}
 				downCode = code;
 				downScope = s;
+				downActivity = a;
 				downCb = cb;
 				downTime = SystemClock.uptimeMillis();
 				longFired = false;
@@ -150,7 +165,10 @@ public final class CarNav {
 				if (downCode != code) return false;
 				downCode = 0;
 				handler.removeCallbacks(longPress);
-				if (!longFired && (downScope != null)) click(downScope, code == KEYCODE_MEDIA_NEXT);
+				if (!longFired) {
+					if (downScope != null) click(downScope, code == KEYCODE_MEDIA_NEXT);
+					else runBinding(Key.MEDIA_NEXT.getClickAction());
+				}
 				downScope = null;
 				return true;
 			}
@@ -179,13 +197,35 @@ public final class CarNav {
 	}
 
 	private static void onLongPress() {
+		if (downCode == 0) return;
 		Scope s = downScope;
-		if ((downCode == 0) || (s == null)) return;
+		if (s == null) {
+			// See the YouTube tab case in handleKeyEvent().
+			longFired = true;
+			DiagnosticLog.log(TAG, "long next: YouTube fullscreen");
+			runBinding(Action.FULLSCREEN_TOGGLE);
+			return;
+		}
 		longFired = true;
 		boolean next = downCode == KEYCODE_MEDIA_NEXT;
 		DiagnosticLog.log(TAG, next ? "long next" : "long previous", "scope=" + s);
 		if (next) activate(s);
 		else back(s);
+	}
+
+	private static void runBinding(@Nullable Action action) {
+		MainActivityDelegate a = downActivity;
+		if ((action == null) || (a == null)) return;
+		MediaSessionCallback cb = (downCb != null) ? downCb : a.getMediaSessionCallback();
+		action.getHandler().handle(cb, a, downTime);
+	}
+
+	/** The YouTube tab is showing, its video not fullscreen. */
+	private static boolean isYoutubeWindowed(MainActivityDelegate a) {
+		ActivityFragment f = a.getActiveFragment();
+		if ((f == null) || (f.getFragmentId() != R.id.youtube_fragment) || a.isVideoMode()) return false;
+		me.aap.fermata.ui.view.VideoView vv = a.getActiveVideoView();
+		return (vv != null) && !vv.isInNativeFullscreen();
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -312,17 +352,33 @@ public final class CarNav {
 			s.back.run();
 			return;
 		}
-		// A list: up a folder, if in one; at the top it's the key's own long press binding.
+		// A list: up a folder, if in one; at the top, to what's playing, as a tap on the control
+		// panel's art/title does.
 		ActivityFragment f = s.fragment;
+		sel = null;
+		fresh = true;
 		if ((f != null) && !f.isRootPage()) {
-			sel = null;
-			fresh = true;
 			s.activity.onBackPressed();
 			return;
 		}
-		Action a = Key.MEDIA_PREVIOUS.getLongClickAction();
-		if (a != null) a.getHandler().handle((downCb != null) ? downCb : s.activity.getMediaSessionCallback(),
-				s.activity, downTime);
+		s.activity.getControlPanel().openNowPlaying();
+	}
+
+	/**
+	 * Puts the outline on row {@code pos} of {@code rv} (scrolled into view), as if the keys had
+	 * moved there: car mode carries on from it. Shown with car mode off too, to point something out
+	 * (the playing item when its tab opens).
+	 */
+	public static void highlightRow(MainActivityDelegate a, RecyclerView rv, int pos) {
+		Scope s = findScope(a);
+		if (s == null) return;
+		List<Object> segs = new ArrayList<>();
+		collect(s.root, segs, true);
+		int idx = segs.indexOf(rv);
+		if (idx < 0) return;
+		enterScope(s);
+		fresh = false;
+		seek(segs, idx, rv, pos, 1, 1);
 	}
 
 	// ---------------------------------------------------------------------------------------------

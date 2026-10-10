@@ -265,7 +265,8 @@ public class ControlPanelView extends ConstraintLayout
 	 * (a queue track, or YouTube as music); a video fullscreen, in the tab it plays in (see
 	 * MusicPlayer#showCurrentVideo); anything else shown in its list.
 	 */
-	private void openNowPlaying() {
+	/** What a tap on the art/title does: to what's playing (its list, its video, the Music tab). */
+	public void openNowPlaying() {
 		MainActivityDelegate a = getActivity();
 		if (MusicPlayer.isMusicModeActive(a)) {
 			a.showFragment(R.id.music_addon);

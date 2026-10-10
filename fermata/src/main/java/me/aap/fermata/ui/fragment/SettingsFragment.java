@@ -464,23 +464,25 @@ public class SettingsFragment extends MainActivityFragment
 			o.title = R.string.key_bindings;
 			o.icon = R.drawable.keyboard;
 		});
-		sub1.addButton(o -> {
-			o.title = R.string.key_tester;
-			o.icon = R.drawable.keyboard;
-			o.subtitle = R.string.key_tester_sub;
-			o.onClick = () -> a.showFragment(R.id.key_tester_fragment);
-		});
 		sub1.addBooleanPref(o -> {
 			o.store = Key.getPrefs();
 			o.pref = Key.BIND_TRANSPORT;
 			o.title = R.string.key_bind_transport;
 			o.subtitle = R.string.key_bind_transport_sub;
 		});
-		sub1.addBooleanPref(o -> {
-			o.store = Key.getPrefs();
-			o.pref = Key.CAR_MODE;
+		// Its own page: the switch, and what the keys do with it on.
+		sub1.addButton(o -> {
 			o.title = R.string.key_car_mode;
+			o.icon = R.drawable.keyboard;
 			o.subtitle = R.string.key_car_mode_sub;
+			o.onClick = () -> a.showFragment(R.id.car_mode_fragment);
+		});
+		// Right above the keys themselves.
+		sub1.addButton(o -> {
+			o.title = R.string.key_tester;
+			o.icon = R.drawable.keyboard;
+			o.subtitle = R.string.key_tester_sub;
+			o.onClick = () -> a.showFragment(R.id.key_tester_fragment);
 		});
 		keySettingsSets.clear();
 		var actions = Action.getAll();

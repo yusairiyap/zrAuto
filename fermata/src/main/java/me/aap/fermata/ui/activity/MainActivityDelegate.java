@@ -163,6 +163,7 @@ import me.aap.fermata.spotify.SpotifyAuth;
 import me.aap.fermata.ui.fragment.AudioEffectsFragment;
 import me.aap.fermata.ui.fragment.DiagnosticLogFragment;
 import me.aap.fermata.ui.fragment.KeyTesterFragment;
+import me.aap.fermata.ui.fragment.CarModeFragment;
 import me.aap.fermata.ui.fragment.FavoritesFragment;
 import me.aap.fermata.ui.fragment.FoldersFragment;
 import me.aap.fermata.ui.fragment.MainActivityFragment;
@@ -2209,6 +2210,8 @@ public class MainActivityDelegate extends ActivityDelegate
 			return new DiagnosticLogFragment();
 		} else if (id == R.id.key_tester_fragment) {
 			return new KeyTesterFragment();
+		} else if (id == R.id.car_mode_fragment) {
+			return new CarModeFragment();
 		}
 		ActivityFragment f = FermataApplication.get().getAddonManager().createFragment(id);
 		return (f != null) ? f : super.createFragment(id);

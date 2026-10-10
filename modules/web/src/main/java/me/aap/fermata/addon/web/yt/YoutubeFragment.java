@@ -1164,6 +1164,11 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	 * panel and puts the cursor in the toolbar's search field.
 	 */
 	void startSearch() {
+		startSearch(true);
+	}
+
+	/** @param keyboard false to leave the keyboard down: the past searches' chips are there instead */
+	void startSearch(boolean keyboard) {
 		FermataWebView v = getWebView();
 		FermataChromeClient chrome = (v != null) ? v.getWebChromeClient() : null;
 		if ((chrome != null) && chrome.isFullScreen()) chrome.exitFullScreen();
@@ -1172,11 +1177,15 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		clearSearch();
 		showSearchPanel();
 		MainActivityDelegate a = MainActivityDelegate.get(requireContext());
-		a.post(() -> YoutubeToolBarMediator.getInstance().focusSearchField(a));
+		a.post(() -> YoutubeToolBarMediator.getInstance().focusSearchField(a, keyboard));
 	}
 
 	/** See {@link #startSearch()}; {@code upNextOnly} just shows the panel. */
 	static void openSearch(Context ctx, boolean upNextOnly) {
+		// From a steering wheel key in car mode: no keyboard while driving, the chips are picked with
+		// the same keys.
+		boolean keyboard = !(me.aap.fermata.action.CarNav.isEnabled() &&
+				me.aap.fermata.action.KeyEventHandler.isPerformingKeyAction());
 		MainActivityDelegate.getActivityDelegate(ctx).onSuccess(a -> {
 			if (!(a.showFragment(me.aap.fermata.R.id.youtube_fragment) instanceof YoutubeFragment f))
 				return;
@@ -1186,7 +1195,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 				if ((chrome != null) && chrome.isFullScreen()) chrome.exitFullScreen();
 				f.showSearchPanel(false);
 			} else {
-				f.startSearch();
+				f.startSearch(keyboard);
 			}
 		});
 	}
@@ -1251,7 +1260,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 				DiagnosticLog.log("YT", "queued into the music queue", "id=" + videoId, "next=" + first,
 						"fromQueue=" + fromQueue);
 				String name = ((title != null) && !title.isEmpty()) ? title : addon.getDisplayTitle(videoId);
-				UiUtils.showToast(requireContext(), first ? me.aap.fermata.R.string.youtube_added_play_next :
+				me.aap.fermata.ui.view.TopToast.show(me.aap.fermata.R.drawable.up_next, first ? me.aap.fermata.R.string.youtube_added_play_next :
 						me.aap.fermata.R.string.youtube_added_up_next, name);
 				return;
 			}
@@ -1266,12 +1275,12 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		DiagnosticLog.log("YT", "queued into Up next", "id=" + videoId, "next=" + first,
 				"audioMode=" + MusicPlayer.isYoutubeAudioMode());
 		if (!addon.addUpNext(videoId, title, first)) {
-			UiUtils.showToast(requireContext(), me.aap.fermata.R.string.youtube_up_next_full,
+			me.aap.fermata.ui.view.TopToast.show(me.aap.fermata.R.drawable.up_next, me.aap.fermata.R.string.youtube_up_next_full,
 					addon.getUpNextMax());
 			return;
 		}
 		String name = ((title != null) && !title.isEmpty()) ? title : addon.getDisplayTitle(videoId);
-		UiUtils.showToast(requireContext(), first ? me.aap.fermata.R.string.youtube_added_play_next :
+		me.aap.fermata.ui.view.TopToast.show(me.aap.fermata.R.drawable.up_next, first ? me.aap.fermata.R.string.youtube_added_play_next :
 				me.aap.fermata.R.string.youtube_added_up_next, name);
 	}
 
@@ -1435,7 +1444,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 			return;
 		}
 		if (YtDownloads.get().isActive(id)) {
-			UiUtils.showToast(requireContext(), me.aap.fermata.R.string.ytdl_nothing_queued);
+			me.aap.fermata.ui.view.TopToast.show(me.aap.fermata.R.drawable.download, me.aap.fermata.R.string.ytdl_nothing_queued);
 			return;
 		}
 		FermataWebView v = getWebView();

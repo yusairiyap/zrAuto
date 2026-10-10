@@ -23,6 +23,7 @@ public class KeyEventHandler {
 	private static final int LONG_CLICK_INTERVAL = 1000;
 
 	private static Worker worker;
+	private static boolean performingKeyAction;
 
 	public static boolean handleKeyEvent(MediaSessionCallback cb, KeyEvent event,
 																			 IntObjectFunction<KeyEvent, Boolean> defaultHandler) {
@@ -104,7 +105,20 @@ public class KeyEventHandler {
 																		@Nullable MainActivityDelegate activity, long timestamp) {
 		worker = null;
 		Log.i("Performing action ", action);
-		action.getHandler().handle(cb, activity, timestamp);
+		performingKeyAction = true;
+		try {
+			action.getHandler().handle(cb, activity, timestamp);
+		} finally {
+			performingKeyAction = false;
+		}
+	}
+
+	/**
+	 * Whether the action running now came from a key (a steering wheel button) rather than a tap:
+	 * in car mode such an action doesn't bring up the keyboard (the YouTube search).
+	 */
+	public static boolean isPerformingKeyAction() {
+		return performingKeyAction;
 	}
 
 	private static final class Worker implements Runnable {

@@ -529,12 +529,12 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		Context ctx = getContext();
 		if (pi instanceof MusicTrackItem t) {
 			if (MusicPlayer.playNext(a, t)) {
-				UiUtils.showToast(ctx, me.aap.fermata.R.string.youtube_added_play_next, title);
+				me.aap.fermata.ui.view.TopToast.show(me.aap.fermata.R.drawable.up_next, me.aap.fermata.R.string.youtube_added_play_next, title);
 			}
 			return;
 		}
 		if (MusicPlayer.isMusicModeActive(a) && MusicPlayer.queueAfterCurrent(a, pi, true)) {
-			UiUtils.showToast(ctx, me.aap.fermata.R.string.youtube_added_play_next, title);
+			me.aap.fermata.ui.view.TopToast.show(me.aap.fermata.R.drawable.up_next, me.aap.fermata.R.string.youtube_added_play_next, title);
 			return;
 		}
 		if (videoId != null) fragment.queueVideo(videoId, title, true);
