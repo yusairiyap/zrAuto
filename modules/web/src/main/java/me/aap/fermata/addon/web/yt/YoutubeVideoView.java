@@ -87,6 +87,7 @@ public class YoutubeVideoView extends VideoView {
 	protected void onAttachedToWindow() {
 		super.onAttachedToWindow();
 		BufferingIndicator.addListener(bufferingListener);
+		getControls().setCenterListener(bufferingListener);
 		updateBuffering();
 	}
 
@@ -98,7 +99,11 @@ public class YoutubeVideoView extends VideoView {
 
 	private void updateBuffering() {
 		LoadingCircleView v = bufferingSpinner;
-		if (v != null) v.setLoading(BufferingIndicator.isBuffering());
+		// While the middle buttons are up, the controls' own circle shows instead, in front of their
+		// dim (this one, under it, was darkened by it).
+		if (v != null) {
+			v.setLoading(BufferingIndicator.isBuffering() && !getControls().isCenterShown());
+		}
 	}
 
 	/**

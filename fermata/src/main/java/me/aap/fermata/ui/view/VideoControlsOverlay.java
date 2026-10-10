@@ -70,8 +70,15 @@ public class VideoControlsOverlay extends FrameLayout {
 	 * A loading circle of its own in the middle, for a video view without one (local video; YouTube's
 	 * has its own under this view), see {@link #updateBuffering}.
 	 */
+	private final LoadingCircleView ownSpinner;
+	/**
+	 * Whether the video view has no loading circle of its own (local video): this one then shows for
+	 * any stall while playing. Otherwise (YouTube's) only while the middle buttons are up, in front
+	 * of their dim, the view's own one standing down meanwhile (see {@link #setCenterListener}).
+	 */
+	private final boolean spinnerAlways;
 	@Nullable
-	private LoadingCircleView ownSpinner;
+	private Runnable centerListener;
 	private final Runnable bufferingListener = this::updateBuffering;
 	private boolean buffering;
 
@@ -126,11 +133,11 @@ public class VideoControlsOverlay extends FrameLayout {
 		lp = new LinearLayout.LayoutParams(small, small);
 		lp.setMarginStart(gap);
 		center.addView(next, lp);
-		if (withSpinner) {
-			ownSpinner = new LoadingCircleView(ctx);
-			addView(ownSpinner, new LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER));
-		}
 		addView(center, new LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER));
+		// In front of everything here, the dim and the buttons included: not darkened by them.
+		spinnerAlways = withSpinner;
+		ownSpinner = new LoadingCircleView(ctx);
+		addView(ownSpinner, new LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER));
 
 		for (View btn : new View[]{prev, playPause, next}) btn.setOnTouchListener(this::buttonTouch);
 		prev.setOnClickListener(v -> onButton(b -> b.onPrevNextButtonClick(false)));
@@ -242,15 +249,27 @@ public class VideoControlsOverlay extends FrameLayout {
 	 * middle: the button (and its round backing) shrinks and fades away over it, and comes back the
 	 * same way, rather than both being drawn on top of each other.
 	 */
-	private void updateBuffering() {
+	private void updateSpinner() {
 		boolean b = BufferingIndicator.isBuffering();
-		if (ownSpinner != null) {
+		if (spinnerAlways) {
 			// A stall while playing only: before that (the start), the activity's own loading circle is
 			// already up in the middle, and two would sit on each other.
 			MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
 			FermataServiceUiBinder fb = (a == null) ? null : a.getMediaServiceBinder();
 			ownSpinner.setLoading(b && (fb != null) && fb.isPlaying());
+		} else {
+			ownSpinner.setLoading(b && centerShown);
 		}
+	}
+
+	/** Called whenever the middle buttons come or go (the video view's own loading circle follows). */
+	public void setCenterListener(@Nullable Runnable l) {
+		centerListener = l;
+	}
+
+	private void updateBuffering() {
+		boolean b = BufferingIndicator.isBuffering();
+		updateSpinner();
 		if (b == buffering) return;
 		buffering = b;
 		playPause.setEnabled(centerShown && !b);
@@ -277,7 +296,12 @@ public class VideoControlsOverlay extends FrameLayout {
 		if (showCenter != centerShown) fade(center, showCenter, animate, 0.9f, 0f);
 		if (showTitle != titleShown) fade(titleBar, showTitle, animate, 1f, -toIntPx(getContext(), 8));
 		if (showScrim != scrimWas) fade(scrim, showScrim, animate, 1f, 0f);
+		boolean centerChanged = centerShown != showCenter;
 		centerShown = showCenter;
+		if (centerChanged) {
+			updateSpinner();
+			if (centerListener != null) centerListener.run();
+		}
 		titleShown = showTitle;
 		// Fading out, they no longer take taps: a quick tap meant for the video (a double tap seek
 		// right after them) must not land on one.
