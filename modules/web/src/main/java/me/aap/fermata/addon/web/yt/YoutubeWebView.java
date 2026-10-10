@@ -255,9 +255,34 @@ public class YoutubeWebView extends FermataWebView {
 				(function() {
 				  var CSS = '__CSS__', APP_DARK = __DARK__, DARKENED = __DARKENED__;
 				  function lum(c) {
-				    var m = (c || '').match(/[0-9.]+/g);
+				    c = (c || '').trim();
+				    var h = c.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+				    if (h) {
+				      var x = h[1];
+				      if (x.length === 3) x = x[0] + x[0] + x[1] + x[1] + x[2] + x[2];
+				      c = 'rgb(' + parseInt(x.substr(0, 2), 16) + ',' + parseInt(x.substr(2, 2), 16) +
+				          ',' + parseInt(x.substr(4, 2), 16) + ')';
+				    }
+				    var m = c.match(/[0-9.]+/g);
 				    if (!m || (m.length < 3) || ((m.length > 3) && (+m[3] === 0))) return -1;
 				    return (0.299 * m[0] + 0.587 * m[1] + 0.114 * m[2]) / 255;
+				  }
+				  // How light the page is by its own colours (ours switched off meanwhile): YouTube's
+				  // base background variable first, then the first painted background up the tree,
+				  // then its dark mode markers, then the colour scheme the WebView reports.
+				  function pageLum() {
+				    var root = document.documentElement;
+				    var l = lum(getComputedStyle(root).getPropertyValue('--yt-spec-base-background'));
+				    if (l >= 0) return l;
+				    var els = [document.querySelector('ytm-app'), document.querySelector('#app'),
+				        document.querySelector('ytm-mobile-topbar-renderer'), document.body, root];
+				    for (var i = 0; i < els.length; i++) {
+				      if (!els[i]) continue;
+				      l = lum(getComputedStyle(els[i]).backgroundColor);
+				      if (l >= 0) return l;
+				    }
+				    if (root.hasAttribute('dark') || root.hasAttribute('darker-dark-theme')) return 0;
+				    return (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 0 : 1;
 				  }
 				  function apply() {
 				    if (!document.head || !document.body) return;
@@ -269,10 +294,7 @@ public class YoutubeWebView extends FermataWebView {
 				    }
 				    s.textContent = CSS;
 				    s.disabled = true; // Measure the page's own colours, without ours
-				    var app = document.querySelector('ytm-app') || document.body;
-				    var l = lum(getComputedStyle(app).backgroundColor);
-				    if (l < 0) l = lum(getComputedStyle(document.body).backgroundColor);
-				    if (l < 0) l = document.documentElement.hasAttribute('dark') ? 0 : 1;
+				    var l = pageLum();
 				    // The WebView darkens the page itself: drawn dark whatever its CSS says.
 				    if (DARKENED) l = 0;
 				    s.disabled = APP_DARK ? (l >= 0.5) : (l < 0.5);
@@ -282,6 +304,11 @@ public class YoutubeWebView extends FermataWebView {
 				    window.__zrThemeObs = new MutationObserver(apply);
 				    window.__zrThemeObs.observe(document.documentElement,
 				        {attributes: true, attributeFilter: ['dark', 'darker-dark-theme']});
+				    // YouTube moves between pages without a page load (and can restyle late): again
+				    // after each in-page navigation, and once the first render has settled.
+				    window.addEventListener('state-navigateend', apply);
+				    window.addEventListener('yt-navigate-finish', apply);
+				    setTimeout(apply, 1500);
 				  }
 				})()""".replace("__CSS__", css).replace("__DARK__", appDark ? "true" : "false")
 						.replace("__DARKENED__", isPageDarkened() ? "true" : "false"),
