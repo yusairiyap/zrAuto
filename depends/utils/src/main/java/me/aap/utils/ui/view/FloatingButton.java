@@ -56,7 +56,7 @@ public class FloatingButton extends FloatingActionButton implements ActivityList
 
 		TypedArray ta = context.obtainStyledAttributes(attrs, R.styleable.FloatingButton,
 				defStyleAttr, R.style.Theme_Utils_Base_FloatingButtonStyle);
-		borderWidth = ta.getDimension(R.styleable.FloatingButton_borderWidth, 0);
+		borderWidth = ta.getDimension(R.styleable.FloatingButton_focusBorderWidth, 0);
 		borderColor = ta.getColor(R.styleable.FloatingButton_borderColor, Color.TRANSPARENT);
 		borderFocusColor = ta.getColor(R.styleable.FloatingButton_borderFocusColor, Color.TRANSPARENT);
 		ta.recycle();

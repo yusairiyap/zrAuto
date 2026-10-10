@@ -1338,6 +1338,9 @@ public class SettingsFragment extends MainActivityFragment
 			o.pref = fabPref(aa, MainActivityPrefs.FAB_DRAGGABLE);
 			o.title = R.string.fab_draggable;
 			o.subtitle = R.string.fab_draggable_sub;
+			// Ruled out as one pill (a dragged button would stretch it): greyed out, and turned off.
+			o.enabled = new PrefCondition<>(a.getPrefs(), MainActivityPrefs.FAB_PILL,
+					p -> !a.getPrefs().getBooleanPref(p));
 		});
 		ps.addFloatPref(o -> {
 			o.store = a.getPrefs();

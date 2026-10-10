@@ -2649,6 +2649,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		fabPill = me.aap.fermata.ui.view.FabPillView.install(getContext(),
 				getPrefs().getBooleanPref(MainActivityPrefs.FAB_PILL), floatingButton, floatingButton2,
 				floatingButton3, floatingButton4, floatingButton5, floatingButton6);
+		clearDraggableForPill();
 		updateFabDraggable();
 		controlPanel.bind(getMediaServiceBinder());
 		enableBodyOverlayLayout();
@@ -2776,6 +2777,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			updateFabDraggable();
 		} else if (prefs.contains(MainActivityPrefs.FAB_PILL)) {
 			if (fabPill != null) fabPill.setPill(getPrefs().getBooleanPref(MainActivityPrefs.FAB_PILL));
+			clearDraggableForPill();
 			updateFabDraggable();
 		}
 	}
@@ -2840,6 +2842,22 @@ public class MainActivityDelegate extends ActivityDelegate
 	/** Re-checks {@link #liftFabsAboveKeyboard()} -- for keyboards that don't relayout the window. */
 	public void refreshFabKeyboardLift() {
 		if (floatingButton != null) floatingButton.post(this::liftFabsAboveKeyboard);
+	}
+
+	/**
+	 * As one pill the buttons can't be dragged: "Draggable" is turned off too (phone and car), so
+	 * the setting reads as it works, rather than ticked but doing nothing.
+	 */
+	private void clearDraggableForPill() {
+		MainActivityPrefs p = getPrefs();
+		if (!p.getBooleanPref(MainActivityPrefs.FAB_PILL)) return;
+		if (p.getBooleanPref(FAB_DRAGGABLE)) p.applyBooleanPref(FAB_DRAGGABLE, false);
+		PreferenceStore.Pref<?> aa = MainActivityPrefs.fabAA(FAB_DRAGGABLE);
+		if (aa != null) {
+			@SuppressWarnings("unchecked")
+			PreferenceStore.Pref<BooleanSupplier> b = (PreferenceStore.Pref<BooleanSupplier>) aa;
+			if (p.getBooleanPref(b)) p.applyBooleanPref(b, false);
+		}
 	}
 
 	/** See {@link me.aap.fermata.ui.view.FabPillView}; null before the layout is set up. */

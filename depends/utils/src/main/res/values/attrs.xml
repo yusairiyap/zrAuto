@@ -34,6 +34,9 @@
 
     <declare-styleable name="FloatingButton">
         <attr name="borderWidth" />
+        <!-- The focus ring's width. Not borderWidth: that name is Material's own FAB attribute, and
+             set in the style it also drew Material's gradient border ring around every button. -->
+        <attr name="focusBorderWidth" format="dimension" />
         <attr name="borderColor" format="color|reference" />
         <attr name="borderFocusColor" format="color|reference" />
     </declare-styleable>
