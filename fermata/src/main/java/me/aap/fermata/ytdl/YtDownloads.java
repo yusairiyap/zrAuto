@@ -38,6 +38,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import me.aap.fermata.FermataApplication;
+import me.aap.fermata.R;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.log.Log;
@@ -585,6 +586,19 @@ public final class YtDownloads {
 		}
 		DiagnosticLog.log("YTDL", "end", "id=" + e.videoId, "state=" + state, "error=" + error);
 		changed(true);
+		if ((state == State.DONE) || (state == State.FAILED)) notifyEnded(e, state == State.DONE);
+	}
+
+	/** A card at the top of the screen (the car's too), with a way to the Downloads tab. */
+	private static void notifyEnded(Entry e, boolean ok) {
+		String title = e.title;
+		me.aap.fermata.ui.view.TopToast.show(ok ? R.drawable.download_done : R.drawable.download,
+				me.aap.utils.app.App.get().getString(ok ? R.string.ytdl_finished : R.string.ytdl_failed_notice),
+				(title == null) ? null : title, R.string.ytdl_title, () -> {
+					me.aap.fermata.ui.activity.MainActivityDelegate a =
+							me.aap.fermata.ui.activity.MainActivityDelegate.getUiDelegate();
+					if (a != null) a.showFragment(R.id.downloads_addon);
+				});
 	}
 
 	private boolean sleepUnlessStopped(long ms) {

@@ -1,0 +1,785 @@
+package me.aap.fermata.action;
+
+import static android.view.KeyEvent.ACTION_DOWN;
+import static android.view.KeyEvent.ACTION_UP;
+import static android.view.KeyEvent.KEYCODE_MEDIA_NEXT;
+import static android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS;
+
+import android.animation.ValueAnimator;
+import android.graphics.Canvas;
+import android.graphics.ColorFilter;
+import android.graphics.Paint;
+import android.graphics.PixelFormat;
+import android.graphics.Rect;
+import android.graphics.RectF;
+import android.graphics.drawable.Drawable;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
+import android.view.KeyEvent;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
+import android.widget.EditText;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
+import java.lang.ref.WeakReference;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.function.Consumer;
+
+import me.aap.fermata.R;
+import me.aap.fermata.media.service.MediaSessionCallback;
+import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.fragment.DownloadsFragment;
+import me.aap.fermata.ui.fragment.MediaLibFragment;
+import me.aap.fermata.ui.view.EffectsUi;
+import me.aap.fermata.util.DiagnosticLog;
+import me.aap.utils.ui.fragment.ActivityFragment;
+import me.aap.utils.ui.menu.OverlayMenuView;
+
+/**
+ * Car mode (Settings &gt; Key bindings &gt; Car mode): the steering wheel's previous/next buttons
+ * move a highlight through whatever is on top of the screen, so it can be used without touching it.
+ * <ul>
+ *   <li>Previous / next: the item before / after (left / right in a grid).</li>
+ *   <li>Long next: taps the highlighted item (plays it, opens a folder, picks a playlist, runs a
+ *   search chip, ...).</li>
+ *   <li>Long previous: back (out of a folder, closes a panel or a picker).</li>
+ * </ul>
+ * What's "on top", first match wins: an open menu, picker or panel ({@link #markScope} - the
+ * YouTube search / Up next panel, the Music tab's queue, the add to playlist / download pickers, every
+ * overlay menu), else a Favorites / Playlists / Folders / Downloads list. Anywhere else, and with car
+ * mode off, the keys do what they're bound to.
+ * <p>
+ * The items are found, not declared: every visible view with a click listener inside the scope, and
+ * the rows of its lists (a list row without a click listener of its own offers the clickable views
+ * in it instead, like the YouTube panel's search chips).
+ */
+public final class CarNav {
+	private static final String TAG = "CARNAV";
+	private static final long LONG_MS = 800;
+	private static final long IDLE_HIDE_MS = 12000;
+	/** Rows without anything to select (section headers) skipped in one go, at most. */
+	private static final int MAX_SKIP = 64;
+	private static final Runnable NO_BACK = () -> {};
+	private static final Handler handler = new Handler(Looper.getMainLooper());
+
+	// The key being held, see handleKeyEvent().
+	private static int downCode;
+	private static boolean longFired;
+	@Nullable
+	private static Scope downScope;
+	@Nullable
+	private static MediaSessionCallback downCb;
+	private static long downTime;
+	private static final Runnable longPress = CarNav::onLongPress;
+
+	// What's selected.
+	@Nullable
+	private static Scope scope;
+	@Nullable
+	private static Sel sel;
+	/** The next selection starts at the first list row (rather than any button above it). */
+	private static boolean fresh = true;
+	@Nullable
+	private static Highlight highlight;
+	private static final Runnable idleHide = () -> {
+		Highlight h = highlight;
+		if (h != null) h.fadeOut();
+	};
+
+	private CarNav() {
+	}
+
+	public static boolean isEnabled() {
+		return Key.getPrefs().getBooleanPref(Key.CAR_MODE);
+	}
+
+	/**
+	 * Makes {@code root} something car mode moves through while it's shown, above the tab under it.
+	 *
+	 * @param back what long previous does in it; null for the usual back (the back button)
+	 */
+	public static void markScope(@NonNull View root, @Nullable Runnable back) {
+		root.setTag(R.id.car_nav_scope, (back != null) ? back : NO_BACK);
+	}
+
+	/** Leaves {@code v} (and what's in it) out: a button too risky to land on, like Clear. */
+	public static void skip(@Nullable View v) {
+		if (v != null) v.setTag(R.id.car_nav_skip, Boolean.TRUE);
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Keys
+
+	/** @return true if car mode took the event */
+	static boolean handleKeyEvent(KeyEvent e, @Nullable MainActivityDelegate activity,
+																MediaSessionCallback cb) {
+		int code = e.getKeyCode();
+		if ((code != KEYCODE_MEDIA_NEXT) && (code != KEYCODE_MEDIA_PREVIOUS)) return false;
+
+		switch (e.getAction()) {
+			case ACTION_DOWN -> {
+				if (e.getRepeatCount() > 0) return downCode == code;
+				if (!isEnabled()) return false;
+				MainActivityDelegate a = (activity != null) ? activity : MainActivityDelegate.getUiDelegate();
+				Scope s = (a == null) ? null : findScope(a);
+				handler.removeCallbacks(longPress);
+				if (s == null) {
+					downCode = 0;
+					clear();
+					return false;
+				}
+				downCode = code;
+				downScope = s;
+				downCb = cb;
+				downTime = SystemClock.uptimeMillis();
+				longFired = false;
+				handler.postDelayed(longPress, LONG_MS);
+				return true;
+			}
+			case ACTION_UP -> {
+				if (downCode != code) return false;
+				downCode = 0;
+				handler.removeCallbacks(longPress);
+				if (!longFired && (downScope != null)) click(downScope, code == KEYCODE_MEDIA_NEXT);
+				downScope = null;
+				return true;
+			}
+			default -> {
+				return downCode == code;
+			}
+		}
+	}
+
+	/**
+	 * A next/previous command from Android Auto rather than a key: no press and release to tell a
+	 * long press by, so it only ever moves the highlight.
+	 *
+	 * @return true if car mode took it
+	 */
+	public static boolean onTransport(boolean next) {
+		if (!isEnabled()) return false;
+		MainActivityDelegate a = MainActivityDelegate.getUiDelegate();
+		Scope s = (a == null) ? null : findScope(a);
+		if (s == null) {
+			clear();
+			return false;
+		}
+		click(s, next);
+		return true;
+	}
+
+	private static void onLongPress() {
+		Scope s = downScope;
+		if ((downCode == 0) || (s == null)) return;
+		longFired = true;
+		boolean next = downCode == KEYCODE_MEDIA_NEXT;
+		DiagnosticLog.log(TAG, next ? "long next" : "long previous", "scope=" + s);
+		if (next) activate(s);
+		else back(s);
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Scopes
+
+	private static final class Scope {
+		final MainActivityDelegate activity;
+		final View root;
+		/** Long previous: null for the back button, as in a list. */
+		@Nullable
+		final Runnable back;
+		@Nullable
+		final ActivityFragment fragment;
+
+		Scope(MainActivityDelegate activity, View root, @Nullable Runnable back,
+					@Nullable ActivityFragment fragment) {
+			this.activity = activity;
+			this.root = root;
+			this.back = back;
+			this.fragment = fragment;
+		}
+
+		@NonNull
+		@Override
+		public String toString() {
+			return (fragment != null) ? fragment.getClass().getSimpleName() :
+					root.getClass().getSimpleName();
+		}
+	}
+
+	@Nullable
+	private static Scope findScope(MainActivityDelegate a) {
+		View main = a.findViewById(R.id.main_activity);
+		if (main != null) {
+			View[] top = new View[1];
+			findTopScope(main, top);
+			if (top[0] != null) {
+				Object back = top[0].getTag(R.id.car_nav_scope);
+				Runnable r = (back instanceof Runnable b) && (b != NO_BACK) ? b : null;
+				return new Scope(a, top[0], (r != null) ? r : a::onBackPressed, null);
+			}
+		}
+
+		ActivityFragment f = a.getActiveFragment();
+		if ((f instanceof MediaLibFragment) || (f instanceof DownloadsFragment)) {
+			View v = f.getView();
+			if ((v != null) && v.isShown()) return new Scope(a, v, null, f);
+		}
+		return null;
+	}
+
+	/** The last (so, drawn on top) shown scope in the tree. */
+	private static void findTopScope(View v, View[] top) {
+		if (v.getVisibility() != View.VISIBLE) return;
+		if ((v.getTag(R.id.car_nav_scope) != null) || (v instanceof OverlayMenuView)) {
+			if (v.isShown() && (v.getWidth() > 0)) top[0] = v;
+		}
+		if (v instanceof ViewGroup g) {
+			for (int i = 0, n = g.getChildCount(); i < n; i++) findTopScope(g.getChildAt(i), top);
+		}
+	}
+
+	private static void enterScope(Scope s) {
+		if ((scope != null) && (scope.root == s.root)) {
+			scope = s;
+			return;
+		}
+		DiagnosticLog.log(TAG, "scope", s);
+		clear();
+		scope = s;
+	}
+
+	/** Forgets the selection and takes the highlight down. */
+	private static void clear() {
+		sel = null;
+		scope = null;
+		fresh = true;
+		handler.removeCallbacks(idleHide);
+		Highlight h = highlight;
+		highlight = null;
+		if (h != null) h.detach(true);
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Actions
+
+	private static void click(Scope s, boolean next) {
+		enterScope(s);
+		// After a while without a press the highlight fades: the first press brings it back where it
+		// was, rather than moving it somewhere unseen.
+		Sel cur = sel;
+		if ((cur != null) && (highlight != null) && highlight.faded && (resolve(cur) != null)) {
+			show(cur);
+			return;
+		}
+		step(s, next ? 1 : -1);
+	}
+
+	private static void activate(Scope s) {
+		enterScope(s);
+		Sel cur = sel;
+		View v = (cur == null) ? null : resolve(cur);
+		if (v == null) {
+			step(s, 1); // Nothing selected yet: select, don't guess what to tap.
+			return;
+		}
+		DiagnosticLog.log(TAG, "activate", v.getClass().getSimpleName());
+		Highlight h = highlight;
+		if (h != null) h.flash();
+		// What it opens (a folder, search results) starts again from its first row.
+		fresh = true;
+		sel = null;
+		handler.postDelayed(() -> {
+			if (h != null) h.detach(true);
+			if (highlight == h) highlight = null;
+		}, 260);
+		v.performClick();
+	}
+
+	private static void back(Scope s) {
+		enterScope(s);
+		if (s.back != null) {
+			clear();
+			s.back.run();
+			return;
+		}
+		// A list: up a folder, if in one; at the top it's the key's own long press binding.
+		ActivityFragment f = s.fragment;
+		if ((f != null) && !f.isRootPage()) {
+			sel = null;
+			fresh = true;
+			s.activity.onBackPressed();
+			return;
+		}
+		Action a = Key.MEDIA_PREVIOUS.getLongClickAction();
+		if (a != null) a.getHandler().handle((downCb != null) ? downCb : s.activity.getMediaSessionCallback(),
+				s.activity, downTime);
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Moving
+
+	/** A selected item: a view of its own, or a list row (and which clickable in it). */
+	private static final class Sel {
+		@Nullable
+		final RecyclerView rv;
+		final int pos;
+		final int sub;
+		@Nullable
+		final WeakReference<View> view;
+
+		Sel(View view) {
+			rv = null;
+			pos = -1;
+			sub = 0;
+			this.view = new WeakReference<>(view);
+		}
+
+		Sel(RecyclerView rv, int pos, int sub) {
+			this.rv = rv;
+			this.pos = pos;
+			this.sub = sub;
+			view = null;
+		}
+	}
+
+	private static void step(Scope s, int dir) {
+		List<Object> segs = new ArrayList<>();
+		collect(s.root, segs, true);
+		if (segs.isEmpty()) return;
+
+		Sel cur = sel;
+		int idx = (cur == null) ? -1 : segs.indexOf((cur.rv != null) ? cur.rv :
+				(cur.view != null) ? cur.view.get() : null);
+		if ((cur == null) || (idx < 0)) {
+			selectInitial(segs);
+			return;
+		}
+		if (cur.rv == null) {
+			moveFrom(segs, idx, dir);
+			return;
+		}
+
+		RecyclerView rv = cur.rv;
+		RecyclerView.ViewHolder vh = rv.findViewHolderForAdapterPosition(cur.pos);
+		List<View> units = (vh == null) ? Collections.emptyList() : unitsOf(vh.itemView);
+		int sub = cur.sub + dir;
+		if ((sub >= 0) && (sub < units.size())) {
+			select(new Sel(rv, cur.pos, sub), units.get(sub));
+			return;
+		}
+		seek(segs, idx, rv, cur.pos + dir, dir, MAX_SKIP);
+	}
+
+	/** The first row of the first list with any (the first visible one), else the first item. */
+	private static void selectInitial(List<Object> segs) {
+		boolean preferList = fresh;
+		fresh = false;
+		if (preferList) {
+			for (int i = 0; i < segs.size(); i++) {
+				if ((segs.get(i) instanceof RecyclerView rv) && (count(rv) > 0)) {
+					int first = 0;
+					if (rv.getLayoutManager() instanceof LinearLayoutManager lm) {
+						first = Math.max(0, lm.findFirstCompletelyVisibleItemPosition());
+						if (lm.findFirstCompletelyVisibleItemPosition() < 0) {
+							first = Math.max(0, lm.findFirstVisibleItemPosition());
+						}
+					}
+					seek(segs, i, rv, first, 1, MAX_SKIP);
+					return;
+				}
+			}
+		}
+		moveFrom(segs, -1, 1);
+	}
+
+	/** To the segment after (or before) {@code idx}: its first (or last) item. */
+	private static void moveFrom(List<Object> segs, int idx, int dir) {
+		int j = idx + dir;
+		if ((j < 0) || (j >= segs.size())) {
+			// The end: stay, and show where.
+			Highlight h = highlight;
+			if (h != null) h.flash();
+			return;
+		}
+		Object o = segs.get(j);
+		if (o instanceof RecyclerView rv) {
+			int n = count(rv);
+			if (n == 0) moveFrom(segs, j, dir);
+			else seek(segs, j, rv, (dir > 0) ? 0 : n - 1, dir, MAX_SKIP);
+		} else {
+			select(new Sel((View) o), (View) o);
+		}
+	}
+
+	/** Row {@code pos} of {@code rv}, or the next one in {@code dir} that has anything to select. */
+	private static void seek(List<Object> segs, int segIdx, RecyclerView rv, int pos, int dir,
+													 int budget) {
+		if ((pos < 0) || (pos >= count(rv)) || (budget <= 0)) {
+			moveFrom(segs, segIdx, dir);
+			return;
+		}
+		bound(rv, pos, vh -> {
+			List<View> units = (vh == null) ? Collections.emptyList() : unitsOf(vh.itemView);
+			if (units.isEmpty()) {
+				seek(segs, segIdx, rv, pos + dir, dir, budget - 1);
+				return;
+			}
+			int sub = (dir > 0) ? 0 : units.size() - 1;
+			select(new Sel(rv, pos, sub), units.get(sub));
+		});
+	}
+
+	/** Row {@code pos}'s view holder, scrolling it into the list first if it isn't laid out. */
+	private static void bound(RecyclerView rv, int pos, Consumer<RecyclerView.ViewHolder> then) {
+		RecyclerView.ViewHolder vh = rv.findViewHolderForAdapterPosition(pos);
+		if (vh != null) {
+			then.accept(vh);
+			return;
+		}
+		rv.scrollToPosition(pos);
+		ViewTreeObserver.OnGlobalLayoutListener[] l = new ViewTreeObserver.OnGlobalLayoutListener[1];
+		Runnable[] timeout = new Runnable[1];
+		l[0] = () -> {
+			rv.getViewTreeObserver().removeOnGlobalLayoutListener(l[0]);
+			handler.removeCallbacks(timeout[0]);
+			then.accept(rv.findViewHolderForAdapterPosition(pos));
+		};
+		timeout[0] = () -> {
+			rv.getViewTreeObserver().removeOnGlobalLayoutListener(l[0]);
+			then.accept(rv.findViewHolderForAdapterPosition(pos));
+		};
+		rv.getViewTreeObserver().addOnGlobalLayoutListener(l[0]);
+		handler.postDelayed(timeout[0], 300);
+		rv.requestLayout();
+	}
+
+	private static void select(Sel s, View v) {
+		sel = s;
+		show(s);
+		// Into view: scrolls the list (and a row of chips sideways) as far as needed, with a little
+		// room around it so it doesn't end up under the tool bar's edge.
+		int m = Math.round(24 * v.getResources().getDisplayMetrics().density);
+		v.requestRectangleOnScreen(new Rect(-m, -m, v.getWidth() + m, v.getHeight() + m), false);
+	}
+
+	private static void show(Sel s) {
+		Scope sc = scope;
+		if (sc == null) return;
+		Highlight h = highlight;
+		if ((h == null) || (h.root != sc.root)) {
+			if (h != null) h.detach(true);
+			highlight = h = new Highlight(sc.root);
+		}
+		h.track(s);
+		handler.removeCallbacks(idleHide);
+		handler.postDelayed(idleHide, IDLE_HIDE_MS);
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Finding items
+
+	private static int count(RecyclerView rv) {
+		RecyclerView.Adapter<?> a = rv.getAdapter();
+		return (a == null) ? 0 : a.getItemCount();
+	}
+
+	/** The scope's items in order: views to select, and lists (whose rows are selected in turn). */
+	private static void collect(View v, List<Object> out, boolean root) {
+		if (v.getVisibility() != View.VISIBLE) return;
+		if (!root && (v.getTag(R.id.car_nav_skip) != null)) return;
+		if (v instanceof RecyclerView rv) {
+			out.add(rv);
+			return;
+		}
+		if (!root && isUnit(v)) {
+			out.add(v);
+			return;
+		}
+		if (v instanceof ViewGroup g) {
+			for (int i = 0, n = g.getChildCount(); i < n; i++) collect(g.getChildAt(i), out, false);
+		}
+	}
+
+	/** A list row: itself if it reacts to a tap, else the views in it that do. */
+	private static List<View> unitsOf(View row) {
+		if (isUnit(row)) return Collections.singletonList(row);
+		List<View> out = new ArrayList<>();
+		collectUnits(row, out);
+		return out;
+	}
+
+	private static void collectUnits(View v, List<View> out) {
+		if (v.getVisibility() != View.VISIBLE) return;
+		if (v.getTag(R.id.car_nav_skip) != null) return;
+		if (isUnit(v)) {
+			out.add(v);
+			return;
+		}
+		if (v instanceof RecyclerView) return;
+		if (v instanceof ViewGroup g) {
+			for (int i = 0, n = g.getChildCount(); i < n; i++) collectUnits(g.getChildAt(i), out);
+		}
+	}
+
+	private static boolean isUnit(View v) {
+		return v.isEnabled() && v.hasOnClickListeners() && !(v instanceof EditText) &&
+				(v.getWidth() > 0) && (v.getHeight() > 0) && (v.getTag(R.id.car_nav_skip) == null);
+	}
+
+	/** The view {@code s} stands for right now, or null if it's not on screen. */
+	@Nullable
+	private static View resolve(Sel s) {
+		View v;
+		if (s.rv != null) {
+			RecyclerView.ViewHolder vh = s.rv.findViewHolderForAdapterPosition(s.pos);
+			if (vh == null) return null;
+			List<View> units = unitsOf(vh.itemView);
+			if (units.isEmpty()) return null;
+			v = units.get(Math.min(s.sub, units.size() - 1));
+		} else {
+			v = (s.view == null) ? null : s.view.get();
+		}
+		return ((v != null) && v.isAttachedToWindow() && v.isShown()) ? v : null;
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Highlight
+
+	/**
+	 * The outline around the selected item: drawn on the item's own overlay, so it scrolls, slides
+	 * and fades with it whatever it's in. Checked before every frame while it's up, as a list row's
+	 * view is reused for another row once scrolled away (the outline then moves to the right one).
+	 */
+	private static final class Highlight implements ViewTreeObserver.OnPreDrawListener {
+		final View root;
+		@Nullable
+		private Sel sel;
+		@Nullable
+		private View on;
+		@Nullable
+		private Outline outline;
+		private boolean listening;
+		boolean faded;
+
+		Highlight(View root) {
+			this.root = root;
+		}
+
+		void track(Sel s) {
+			sel = s;
+			faded = false;
+			if (!listening && root.getViewTreeObserver().isAlive()) {
+				root.getViewTreeObserver().addOnPreDrawListener(this);
+				listening = true;
+			}
+			View v = resolve(s);
+			if (v != on) moveTo(v, true);
+			else if (outline != null) outline.pop();
+			root.invalidate();
+		}
+
+		@Override
+		public boolean onPreDraw() {
+			if (!root.isAttachedToWindow()) {
+				detach(false);
+				return true;
+			}
+			Sel s = sel;
+			View v = (s == null) ? null : resolve(s);
+			if (v != on) moveTo(v, false);
+			else if ((v != null) && (outline != null)) outline.fit(v);
+			return true;
+		}
+
+		private void moveTo(@Nullable View v, boolean animate) {
+			if ((on != null) && (outline != null)) {
+				View old = on;
+				Outline o = outline;
+				if (animate) o.fadeOut(() -> old.getOverlay().remove(o));
+				else old.getOverlay().remove(o);
+			}
+			on = v;
+			outline = null;
+			if ((v == null) || faded) return;
+			Outline o = new Outline(v);
+			v.getOverlay().add(o);
+			outline = o;
+			if (animate) o.pop();
+			else o.showNow();
+		}
+
+		void flash() {
+			if (outline != null) outline.flash();
+		}
+
+		void fadeOut() {
+			faded = true;
+			if ((on != null) && (outline != null)) {
+				View old = on;
+				Outline o = outline;
+				o.fadeOut(() -> old.getOverlay().remove(o));
+			}
+			on = null;
+			outline = null;
+		}
+
+		void detach(boolean animate) {
+			if (listening) {
+				ViewTreeObserver vto = root.getViewTreeObserver();
+				if (vto.isAlive()) vto.removeOnPreDrawListener(this);
+				listening = false;
+			}
+			sel = null;
+			if ((on != null) && (outline != null)) {
+				View old = on;
+				Outline o = outline;
+				if (animate) o.fadeOut(() -> old.getOverlay().remove(o));
+				else old.getOverlay().remove(o);
+			}
+			on = null;
+			outline = null;
+		}
+	}
+
+	/** A rounded outline with a soft fill, inside its view's bounds; pops in and fades out. */
+	private static final class Outline extends Drawable {
+		private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+		private final Paint glow = new Paint(Paint.ANTI_ALIAS_FLAG);
+		private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+		private final RectF rect = new RectF();
+		private final float strokeW;
+		private final float radius;
+		private final int accent;
+		private float scale = 1f;
+		private float alpha = 1f;
+		private float flash;
+		@Nullable
+		private ValueAnimator anim;
+
+		Outline(View v) {
+			float d = v.getResources().getDisplayMetrics().density;
+			strokeW = 3 * d;
+			accent = EffectsUi.accent(v.getContext());
+			stroke.setStyle(Paint.Style.STROKE);
+			stroke.setStrokeWidth(strokeW);
+			glow.setStyle(Paint.Style.STROKE);
+			glow.setStrokeWidth(strokeW * 3);
+			fill.setStyle(Paint.Style.FILL);
+			radius = Math.min(14 * d, Math.min(v.getWidth(), v.getHeight()) / 2f);
+			setBounds(0, 0, v.getWidth(), v.getHeight());
+		}
+
+		/** Follows its view's size (kept up to date by Highlight, before every frame). */
+		void fit(View v) {
+			Rect b = getBounds();
+			if ((b.width() != v.getWidth()) || (b.height() != v.getHeight())) {
+				setBounds(0, 0, v.getWidth(), v.getHeight());
+			}
+		}
+
+		void pop() {
+			animate(0.92f, 0f, 1f, 1f, 260, new OvershootInterpolator(2f), null);
+		}
+
+		void showNow() {
+			if (anim != null) anim.cancel();
+			scale = 1f;
+			alpha = 1f;
+			invalidateSelf();
+		}
+
+		void flash() {
+			if (anim != null) anim.cancel();
+			ValueAnimator a = ValueAnimator.ofFloat(1f, 0f);
+			a.setDuration(380);
+			a.addUpdateListener(x -> {
+				flash = (float) x.getAnimatedValue();
+				invalidateSelf();
+			});
+			anim = a;
+			a.start();
+		}
+
+		void fadeOut(Runnable done) {
+			animate(scale, alpha, 1.02f, 0f, 180, new DecelerateInterpolator(), done);
+		}
+
+		private void animate(float s0, float a0, float s1, float a1, long ms,
+												 android.animation.TimeInterpolator interp, @Nullable Runnable done) {
+			if (anim != null) anim.cancel();
+			ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
+			a.setDuration(ms);
+			a.setInterpolator(interp);
+			a.addUpdateListener(x -> {
+				float f = (float) x.getAnimatedValue();
+				scale = s0 + (s1 - s0) * f;
+				alpha = a0 + (a1 - a0) * Math.min(1f, Math.max(0f, f));
+				invalidateSelf();
+			});
+			if (done != null) {
+				a.addListener(new android.animation.AnimatorListenerAdapter() {
+					private boolean cancelled;
+
+					@Override
+					public void onAnimationCancel(android.animation.Animator animation) {
+						cancelled = true;
+					}
+
+					@Override
+					public void onAnimationEnd(android.animation.Animator animation) {
+						if (!cancelled) done.run();
+					}
+				});
+			}
+			anim = a;
+			a.start();
+		}
+
+		@Override
+		public void draw(@NonNull Canvas c) {
+			Rect b = getBounds();
+			if (b.isEmpty() || (alpha <= 0f)) return;
+			float inset = strokeW;
+			rect.set(b.left + inset, b.top + inset, b.right - inset, b.bottom - inset);
+			float cx = rect.centerX();
+			float cy = rect.centerY();
+			c.save();
+			c.scale(scale, scale, cx, cy);
+			fill.setColor(withAlpha(accent, (0.16f + 0.30f * flash) * alpha));
+			c.drawRoundRect(rect, radius, radius, fill);
+			glow.setColor(withAlpha(accent, 0.25f * alpha));
+			c.drawRoundRect(rect, radius, radius, glow);
+			stroke.setColor(withAlpha(accent, alpha));
+			c.drawRoundRect(rect, radius, radius, stroke);
+			c.restore();
+		}
+
+		private static int withAlpha(int color, float a) {
+			int al = Math.round(Math.max(0f, Math.min(1f, a)) * 255);
+			return (color & 0x00FFFFFF) | (al << 24);
+		}
+
+		@Override
+		public void setAlpha(int alpha) {
+		}
+
+		@Override
+		public void setColorFilter(@Nullable ColorFilter colorFilter) {
+		}
+
+		@Override
+		public int getOpacity() {
+			return PixelFormat.TRANSLUCENT;
+		}
+	}
+}

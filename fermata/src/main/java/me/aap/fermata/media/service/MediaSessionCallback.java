@@ -587,6 +587,10 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			return false; // A direct call, not from a controller.
 		}
 		if (KeyTester.onTransport(t)) return true;
+		if (((t == KeyTester.Transport.NEXT) || (t == KeyTester.Transport.PREV)) &&
+				me.aap.fermata.action.CarNav.onTransport(t == KeyTester.Transport.NEXT)) {
+			return true;
+		}
 		if (!Key.getPrefs().getBooleanPref(Key.BIND_TRANSPORT)) return false;
 		// This app's own controls mean exactly what they say.
 		if (lib.getContext().getPackageName().equals(pkg)) return false;

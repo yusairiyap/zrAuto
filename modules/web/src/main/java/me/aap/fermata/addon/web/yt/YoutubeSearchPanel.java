@@ -170,6 +170,9 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 		super(ctx);
 		this.fragment = fragment;
 		this.addon = addon;
+		// Car mode: the steering wheel moves through the chips and rows; long previous is Back,
+		// which closes the panel (see YoutubeFragment#onBackPressed).
+		me.aap.fermata.action.CarNav.markScope(this, null);
 		// Mostly opaque: the rows must stay readable over a playing video, but the page underneath
 		// showing through faintly makes it obvious nothing was closed or stopped.
 		int bg = resolveColor(ctx, android.R.attr.colorBackground, Color.BLACK);

@@ -476,6 +476,12 @@ public class SettingsFragment extends MainActivityFragment
 			o.title = R.string.key_bind_transport;
 			o.subtitle = R.string.key_bind_transport_sub;
 		});
+		sub1.addBooleanPref(o -> {
+			o.store = Key.getPrefs();
+			o.pref = Key.CAR_MODE;
+			o.title = R.string.key_car_mode;
+			o.subtitle = R.string.key_car_mode_sub;
+		});
 		keySettingsSets.clear();
 		var actions = Action.getAll();
 		var actionNames = new int[actions.size()];

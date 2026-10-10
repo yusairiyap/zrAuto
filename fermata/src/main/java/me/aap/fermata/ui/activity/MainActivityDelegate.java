@@ -181,6 +181,7 @@ import me.aap.fermata.ui.view.FermataNavBarView;
 import me.aap.fermata.ui.view.LoadingCircleView;
 import me.aap.fermata.ui.view.PlaylistPicker;
 import me.aap.fermata.ui.view.ToolBarPill;
+import me.aap.fermata.ui.view.TopToast;
 import me.aap.fermata.ui.view.QuaternaryFloatingButton;
 import me.aap.fermata.ui.view.QuinaryFloatingButton;
 import me.aap.fermata.ui.view.SenaryFloatingButton;
@@ -2545,7 +2546,7 @@ public class MainActivityDelegate extends ActivityDelegate
 											.onFailure(err -> showAlert(getContext(), err.getMessage())).thenRun(() -> {
 												MediaLibFragment f = getMediaLibFragment(R.id.playlists_fragment);
 												if (f != null) f.getAdapter().reload();
-												UiUtils.showToast(getContext(), R.string.added_to_playlist, name);
+												TopToast.show(R.drawable.playlist_add, R.string.added_to_playlist, name);
 											})));
 				});
 		return true;
@@ -2562,7 +2563,7 @@ public class MainActivityDelegate extends ActivityDelegate
 						pl.addItems(items);
 						MediaLibFragment f = getMediaLibFragment(R.id.playlists_fragment);
 						if (f != null) f.getAdapter().reload();
-						UiUtils.showToast(getContext(), R.string.added_to_playlist, name);
+						TopToast.show(R.drawable.playlist_add, R.string.added_to_playlist, name);
 					});
 					break;
 				}
@@ -2617,7 +2618,7 @@ public class MainActivityDelegate extends ActivityDelegate
 				.onSuccess(v -> {
 					MediaLibFragment f = getMediaLibFragment(R.id.playlists_fragment);
 					if (f != null) f.getAdapter().reload();
-					UiUtils.showToast(ctx, R.string.playlist_moved, items.size(), to.getName());
+					TopToast.show(R.drawable.playlist_move, R.string.playlist_moved, items.size(), to.getName());
 				});
 	}
 

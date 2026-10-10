@@ -88,6 +88,8 @@
     <string name="key_tester_sub">Press keys on a keyboard, remote or steering wheel to see what each one is and does, and change its binding there</string>
     <string name="key_bind_transport">Use bindings for Android Auto controls</string>
     <string name="key_bind_transport_sub">Some cars send their steering wheel play/next/previous buttons as Android Auto commands rather than keys. When on, those run the matching media key\'s click binding (Android Auto\'s on-screen buttons too)</string>
+    <string name="key_car_mode">Car mode</string>
+    <string name="key_car_mode_sub">Previous / Next select items in lists, the YouTube search and Up next, the Music queue, menus and pickers. Hold Next to open or play the selected item, hold Previous to go back. Elsewhere the keys keep their bindings</string>
     <string name="key_tester_idle">Press any key</string>
     <string name="key_tester_idle_sub">Keyboard, TV remote, headset or your car\'s steering wheel buttons</string>
     <string name="key_tester_notice">Bound actions are paused while this page is open, so nothing plays, pauses or skips. Press Back twice to leave. Tap a key to change its binding.</string>
@@ -356,6 +358,10 @@
     <string name="favorites_remove">Remove from favorites</string>
     <string name="favorites_added">Added to favorites: %1$s</string>
     <string name="favorites_removed">Removed from favorites: %1$s</string>
+    <string name="favorites_added_n">Added %1$d items to favorites</string>
+    <string name="favorites_removed_n">Removed %1$d items from favorites</string>
+    <string name="ytdl_finished">Download finished</string>
+    <string name="ytdl_failed_notice">Download failed</string>
     <string name="favorites_already_added">Already in favorites: %1$s</string>
     <string name="favorites_nothing_playing">Nothing is playing to add to favorites</string>
     <string name="playlist_nothing_playing">Nothing is playing to add to a playlist</string>

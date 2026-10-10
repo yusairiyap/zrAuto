@@ -59,6 +59,9 @@ public enum Key {
 	 */
 	public static final PreferenceStore.Pref<BooleanSupplier> BIND_TRANSPORT =
 			PreferenceStore.Pref.b("KEY_BIND_TRANSPORT", false);
+	/** Previous/next move through lists, panels and pickers instead, see {@link CarNav}. */
+	public static final PreferenceStore.Pref<BooleanSupplier> CAR_MODE =
+			PreferenceStore.Pref.b("KEY_CAR_MODE", false);
 
 	private static final Map<Integer, Key> keys = new HashMap<>();
 

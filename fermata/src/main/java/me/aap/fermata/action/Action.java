@@ -184,7 +184,7 @@ public enum Action {
 		Context ctx = a.getContext();
 		PlayableItem pi = getFavoritableItem(a);
 		if (pi == null) {
-			UiUtils.showToast(ctx, R.string.favorites_nothing_playing);
+			me.aap.fermata.ui.view.TopToast.show(R.drawable.favorite, R.string.favorites_nothing_playing);
 			return;
 		}
 		MediaSessionCallback cb = a.getMediaSessionCallback();
@@ -198,8 +198,8 @@ public enum Action {
 			} else {
 				removed = pi.getLib().getFavorites().removeItem(pi);
 			}
+			// The card saying so comes from the favorites themselves, see FavoritesNotice.
 			removed.main().onSuccess(v -> {
-				UiUtils.showToast(ctx, R.string.favorites_removed, pi.getName());
 				a.fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 			});
 			return;
@@ -216,7 +216,6 @@ public enum Action {
 			added = pi.getLib().getFavorites().addItem(pi);
 		}
 		added.main().onSuccess(v -> {
-			UiUtils.showToast(ctx, R.string.favorites_added, pi.getName());
 			// Lets anything showing favorite state (YouTube's toolbar button, the FAB icon) refresh.
 			a.fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 		});
@@ -231,7 +230,7 @@ public enum Action {
 	public static void addCurrentToPlaylist(MainActivityDelegate a) {
 		PlayableItem pi = getFavoritableItem(a);
 		if (pi == null) {
-			UiUtils.showToast(a.getContext(), R.string.playlist_nothing_playing);
+			me.aap.fermata.ui.view.TopToast.show(R.drawable.playlist_add, R.string.playlist_nothing_playing);
 			return;
 		}
 		App.get().getHandler().post(() -> {

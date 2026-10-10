@@ -51,6 +51,9 @@ public class KeyEventHandler {
 			return defaultHandler.apply(event.getKeyCode(), event);
 		}
 
+		// Car mode: previous/next move through what's on screen instead, where there's anything to.
+		if (CarNav.handleKeyEvent(event, activity, cb)) return true;
+
 		if (worker != null) {
 			if (worker.handle(event)) return true;
 			worker = null;
