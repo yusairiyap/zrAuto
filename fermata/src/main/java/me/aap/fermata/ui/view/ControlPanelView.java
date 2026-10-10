@@ -11,12 +11,15 @@ import static me.aap.utils.ui.UiUtils.toIntPx;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.content.res.TypedArray;
+import android.graphics.Bitmap;
+import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.Parcelable;
 import android.os.SystemClock;
 import android.support.v4.media.MediaMetadataCompat;
 import android.util.AttributeSet;
+import android.util.SparseArray;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -25,9 +28,11 @@ import android.widget.TextView;
 
 import androidx.annotation.DimenRes;
 import androidx.annotation.IdRes;
+import androidx.annotation.LayoutRes;
 import androidx.annotation.Nullable;
 import androidx.annotation.StyleRes;
 import androidx.constraintlayout.widget.ConstraintLayout;
+import androidx.constraintlayout.widget.ConstraintSet;
 import androidx.core.view.GestureDetectorCompat;
 
 import com.google.android.material.textview.MaterialTextView;
@@ -52,6 +57,7 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.fermata.ui.fragment.MusicPlayerFragment;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.function.BooleanSupplier;
@@ -83,6 +89,30 @@ public class ControlPanelView extends ConstraintLayout
 	// Set while a panel laid over the screen (the YouTube tab's search/Up next) runs down to the
 	// bottom: the panel fades away and comes back, without forgetting whether it's meant to show.
 	private static final byte MASK_COVERED = 8;
+	/**
+	 * How the panel is laid out (see {@link #applyLayout}): the two-line layout of fullscreen video
+	 * (control_panel_view.xml, or control_panel_view2.xml for something not seekable), or, while
+	 * browsing the tabs, the compact one with the playing item's art and title: a single line
+	 * (control_panel_compact.xml), or on a narrow screen two lines (control_panel_compact2.xml).
+	 */
+	private static final int LAYOUT_CLASSIC = 0;
+	private static final int LAYOUT_ROW = 1;
+	private static final int LAYOUT_STACKED = 2;
+	/** Narrower than this (dp), the compact single line no longer fits: two lines instead. */
+	private static final int COMPACT_ROW_MIN_WIDTH = 720;
+	/**
+	 * The compact layouts' buttons, in dp: a box the size of the tool bar's buttons with the same
+	 * padding around the glyph, so the icons read the same size as the tool bar's and the nav bar's.
+	 * Play/pause gets a little less padding: a slightly bigger glyph, as the main action.
+	 */
+	private static final int COMPACT_BUTTON = 44;
+	private static final int COMPACT_BUTTON_PAD = 11;
+	private static final int COMPACT_PLAY_PAD = 8;
+	/** The compact two-line layout's seek line, in dp. */
+	private static final int COMPACT_SEEK_LINE = 36;
+	@IdRes
+	private static final int[] TRANSPORT_IDS = {R.id.control_prev, R.id.control_rw,
+			R.id.control_play_pause, R.id.control_ff, R.id.control_next};
 	/** The vertical padding control_panel_view.xml gives the transport buttons, in dp. */
 	private static final int LAYOUT_BUTTON_PAD_V = 6;
 	@IdRes
@@ -105,6 +135,21 @@ public class ControlPanelView extends ConstraintLayout
 	private static final int[] LABEL_IDS = {R.id.seek_time, R.id.seek_total};
 	private final GestureDetectorCompat gestureDetector;
 	private final ImageView showHideBars;
+	/** The playing item's art and title, shown by the compact layouts only. */
+	private final ImageView art;
+	private final View info;
+	private final TextView title;
+	private final TextView subtitle;
+	/** What {@link #art} shows now: the item, and its bitmap or uri (null: the placeholder). */
+	@Nullable
+	private PlayableItem artItem;
+	@Nullable
+	private Object artKey;
+	/** The art uri being loaded for {@link #artItem} ("": its icon uri being looked up), or null. */
+	@Nullable
+	private String artLoading;
+	private int layoutMode = -1;
+	private final SparseArray<ConstraintSet> layouts = new SparseArray<>();
 	@DimenRes
 	private final int size;
 	@StyleRes
@@ -195,6 +240,19 @@ public class ControlPanelView extends ConstraintLayout
 		g = findViewById(R.id.control_menu_button);
 		g.setOnClickListener(this::showMenu);
 		setShowHideBarsIcon(a);
+
+		art = findViewById(R.id.control_art);
+		info = findViewById(R.id.control_info);
+		title = findViewById(R.id.control_title);
+		subtitle = findViewById(R.id.control_subtitle);
+		// Rounded corners: the art is clipped to its background's outline.
+		GradientDrawable artBg = new GradientDrawable();
+		artBg.setCornerRadius(toIntPx(context, 8));
+		artBg.setColor((iconColor & 0x00FFFFFF) | 0x26000000);
+		art.setBackground(artBg);
+		art.setClipToOutline(true);
+		setInfoColor(iconColor);
+		applyLayout();
 	}
 
 	/**
@@ -224,6 +282,7 @@ public class ControlPanelView extends ConstraintLayout
 		int c = labelColor();
 		setIconTint(c);
 		setLabelColor(c);
+		setInfoColor(c);
 
 		if (getLayoutParams() instanceof ConstraintLayout.LayoutParams lp) {
 			if (video) {
@@ -249,9 +308,88 @@ public class ControlPanelView extends ConstraintLayout
 		}
 
 		applyLookPadding();
-		applyTransportButtons();
+		applyLayout();
 		applyFabVideoLook(video);
+	}
+
+	/**
+	 * Arranges the panel for what it shows now: fullscreen video keeps its two-line layout as it
+	 * was, the tabs get the compact one (see {@link #LAYOUT_CLASSIC}). Only the constraints are
+	 * swapped: which views show stays up to the panel and FermataServiceUiBinder, so the layouts
+	 * are told to leave visibility alone.
+	 */
+	void applyLayout() {
+		boolean seek = findViewById(R.id.seek_bar).isEnabled();
+		int mode = wantedLayout(seek, getWidth());
+		layoutMode = mode;
+		int res;
+		if (mode == LAYOUT_CLASSIC) res = seek ? R.layout.control_panel_view : R.layout.control_panel_view2;
+		else if (mode == LAYOUT_STACKED) res = R.layout.control_panel_compact2;
+		else res = R.layout.control_panel_compact;
+		getConstraints(res).applyTo(this);
+
+		boolean compact = mode != LAYOUT_CLASSIC;
+		art.setVisibility(compact ? VISIBLE : GONE);
+		info.setVisibility(compact ? VISIBLE : GONE);
+		applyFocusOrder(mode, seek);
+		applyTransportButtons();
+		if (compact) syncNowPlaying();
 		computeSize();
+	}
+
+	private int wantedLayout(boolean seek, int width) {
+		if (videoLook) return LAYOUT_CLASSIC;
+		// Nothing to seek leaves no seek bar to put on a line of its own: a single line fits.
+		if (!seek) return LAYOUT_ROW;
+		if (width <= 0) width = getResources().getDisplayMetrics().widthPixels;
+		return (width < toIntPx(getContext(), COMPACT_ROW_MIN_WIDTH)) ? LAYOUT_STACKED : LAYOUT_ROW;
+	}
+
+	@Override
+	protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+		super.onSizeChanged(w, h, oldw, oldh);
+		if ((w == oldw) || (layoutMode == LAYOUT_CLASSIC)) return;
+		boolean seek = findViewById(R.id.seek_bar).isEnabled();
+		// Not from inside the layout pass: posted, see CLAUDE.md on layout callbacks.
+		if (wantedLayout(seek, w) != layoutMode) post(this::applyLayout);
+	}
+
+	private ConstraintSet getConstraints(@LayoutRes int layout) {
+		ConstraintSet cs = layouts.get(layout);
+		if (cs != null) return cs;
+		Context ctx = getContext();
+		ConstraintLayout l = new ConstraintLayout(ctx);
+		inflate(ctx, layout, l);
+		cs = new ConstraintSet();
+		cs.clone(l);
+		for (int id : cs.getKnownIds()) cs.setVisibilityMode(id, ConstraintSet.VISIBILITY_MODE_IGNORE);
+		layouts.put(layout, cs);
+		return cs;
+	}
+
+	/** D-pad left/right wrap around within each line. */
+	private void applyFocusOrder(int mode, boolean seek) {
+		View showHide = findViewById(R.id.show_hide_bars);
+		View menu = findViewById(R.id.control_menu_button);
+		View prev = findViewById(R.id.control_prev);
+		View next = findViewById(R.id.control_next);
+
+		if (mode == LAYOUT_ROW) {
+			prev.setNextFocusLeftId(R.id.control_menu_button);
+			menu.setNextFocusRightId(R.id.control_prev);
+			showHide.setNextFocusLeftId(R.id.control_next);
+			next.setNextFocusRightId(R.id.show_hide_bars);
+		} else if ((mode == LAYOUT_STACKED) || seek) {
+			prev.setNextFocusLeftId(R.id.control_next);
+			showHide.setNextFocusLeftId(R.id.control_menu_button);
+			next.setNextFocusRightId(R.id.control_prev);
+			menu.setNextFocusRightId(R.id.show_hide_bars);
+		} else {
+			prev.setNextFocusLeftId(R.id.show_hide_bars);
+			showHide.setNextFocusLeftId(R.id.control_menu_button);
+			next.setNextFocusRightId(R.id.control_menu_button);
+			menu.setNextFocusRightId(R.id.show_hide_bars);
+		}
 	}
 
 	/**
@@ -285,7 +423,7 @@ public class ControlPanelView extends ConstraintLayout
 
 	private void applyLookPadding() {
 		if (videoLook) setPadding(0, basePadTop, 0, basePadBottom);
-		else setPadding(pillPadH, basePadTop + pillPadTop, pillPadH, basePadBottom);
+		else setPadding(pillPadH, pillPadTop, pillPadH, pillPadTop);
 	}
 
 	private int labelColor() {
@@ -299,6 +437,12 @@ public class ControlPanelView extends ConstraintLayout
 			ImageView icon = findViewById(id);
 			if (icon != null) icon.setImageTintList(tint);
 		}
+	}
+
+	/** The compact layouts' title (and a dimmer subtitle) in the icons' color. */
+	private void setInfoColor(int color) {
+		title.setTextColor(color);
+		subtitle.setTextColor((color & 0x00FFFFFF) | 0xB3000000);
 	}
 
 	/** Recolors the position/duration labels, overriding the theme's textColorPrimary. */
@@ -349,6 +493,11 @@ public class ControlPanelView extends ConstraintLayout
 	}
 
 	private void setSize(float scale) {
+		if (getLayoutParams() == null) return; // Not attached yet: bind() sizes it.
+		if (layoutMode != LAYOUT_CLASSIC) {
+			setCompactSize(scale);
+			return;
+		}
 		Context ctx = getContext();
 		TextView seekTime = findViewById(R.id.seek_time);
 		TextView seekTotal = findViewById(R.id.seek_total);
@@ -405,6 +554,44 @@ public class ControlPanelView extends ConstraintLayout
 		// slider stays clear of the system's gesture area at the bottom edge.
 		if (videoLook) panelSize = (seek.isEnabled() ? iconSize : buttonSize) + videoBottomGap();
 		getLayoutParams().height = panelSize + (videoLook ? 0 : pillPadTop);
+	}
+
+	/**
+	 * The compact layouts: square buttons the size of the tool bar's (see {@link #COMPACT_BUTTON}),
+	 * the art as tall as them, and the seek bar on their line or, stacked, on a slimmer line under it.
+	 */
+	private void setCompactSize(float scale) {
+		Context ctx = getContext();
+		boolean stacked = layoutMode == LAYOUT_STACKED;
+		float textSize = getTextAppearanceSize(ctx, textAppearance) * scale;
+		int box = toIntPx(ctx, Math.round(COMPACT_BUTTON * scale));
+		int pad = toIntPx(ctx, Math.round(COMPACT_BUTTON_PAD * scale));
+		int seekLine = stacked ? toIntPx(ctx, Math.round(COMPACT_SEEK_LINE * scale)) : box;
+		int cornerPad = stacked ? toIntPx(ctx, Math.round(8 * scale)) : pad;
+
+		for (int id : TRANSPORT_IDS) {
+			setSize(id, box);
+			setPadding(id, pad, pad);
+		}
+		int playPad = toIntPx(ctx, Math.round(COMPACT_PLAY_PAD * scale));
+		setPadding(R.id.control_play_pause, playPad, playPad);
+
+		setSize(R.id.show_hide_bars_icon, seekLine);
+		setSize(R.id.control_menu_button_icon, seekLine);
+		setPadding(R.id.show_hide_bars_icon, cornerPad, cornerPad);
+		setPadding(R.id.control_menu_button_icon, cornerPad, cornerPad);
+		setHeight(R.id.seek_bar, seekLine);
+		seTextAppearance(findViewById(R.id.seek_time), textSize * 0.85f);
+		seTextAppearance(findViewById(R.id.seek_total), textSize * 0.85f);
+
+		setSize(R.id.control_art, box - toIntPx(ctx, 4));
+		title.setTextSize(COMPLEX_UNIT_PX, textSize * 0.9f);
+		subtitle.setTextSize(COMPLEX_UNIT_PX, textSize * 0.75f);
+		updateArtPadding();
+
+		int content = stacked ? box + seekLine : box;
+		getLayoutParams().height = content + getPaddingTop() + getPaddingBottom();
+		requestLayout();
 	}
 
 	/** The room under the fullscreen seek bar: the gesture area's height, and never under 28dp. */
@@ -983,9 +1170,13 @@ public class ControlPanelView extends ConstraintLayout
 		View pp = findViewById(R.id.control_play_pause);
 		c.setPlayPauseState(pp.isSelected(), pp.isActivated());
 
-		MainActivityDelegate a = getActivity();
-		FermataServiceUiBinder b = a.getMediaServiceBinder();
-		MediaMetadataCompat md = b.getMetadata();
+		FermataServiceUiBinder b = getActivity().getMediaServiceBinder();
+		CharSequence[] t = titleOf(b.getMetadata(), b.getCurrentItem());
+		c.setTitle(t[0], t[1]);
+	}
+
+	/** The title and artist to show for the playing item: {title, artist}, either can be null. */
+	private static CharSequence[] titleOf(@Nullable MediaMetadataCompat md, @Nullable PlayableItem i) {
 		CharSequence t = null;
 		CharSequence sub = null;
 		if (md != null) {
@@ -993,12 +1184,105 @@ public class ControlPanelView extends ConstraintLayout
 			// MediaSessionCallback#accept).
 			t = md.getText(MediaMetadataCompat.METADATA_KEY_TITLE);
 			sub = md.getText(MediaMetadataCompat.METADATA_KEY_ARTIST);
+			if ((sub == null) || (sub.length() == 0))
+				sub = md.getText(MediaMetadataCompat.METADATA_KEY_ALBUM_ARTIST);
 		}
-		if ((t == null) || (t.length() == 0)) {
-			PlayableItem i = b.getCurrentItem();
-			if (i != null) t = i.getName();
+		if (((t == null) || (t.length() == 0)) && (i != null)) t = i.getName();
+		return new CharSequence[]{t, sub};
+	}
+
+	/**
+	 * Shows the playing item's art and title on the compact layouts: called by
+	 * {@code FermataServiceUiBinder} whenever the item, its metadata or the play state changes.
+	 */
+	public void syncNowPlaying() {
+		if (layoutMode == LAYOUT_CLASSIC) return;
+		FermataServiceUiBinder b = getActivity().getMediaServiceBinder();
+		if (b == null) return;
+		PlayableItem i = b.getMediaSessionCallback().getCurrentItem();
+		MediaMetadataCompat md = b.getMetadata();
+		CharSequence[] t = titleOf(md, i);
+		setText(title, t[0]);
+		setText(subtitle, t[1]);
+		loadArt(i, md);
+	}
+
+	private static void setText(TextView v, @Nullable CharSequence text) {
+		boolean empty = (text == null) || (text.length() == 0);
+		if (!empty && !text.toString().contentEquals(v.getText())) v.setText(text);
+		v.setVisibility(empty ? GONE : VISIBLE);
+	}
+
+	/** As the Music tab does (see MusicPlayerFragment#loadArt), the first art found wins. */
+	private void loadArt(@Nullable PlayableItem i, @Nullable MediaMetadataCompat md) {
+		if (i == null) {
+			showArt(null, null, null);
+			return;
 		}
-		c.setTitle(t, sub);
+
+		String uri = (i instanceof MusicTrackItem t) ? t.getArtUri() : null;
+		if ((uri == null) && (md != null)) {
+			Bitmap bm = md.getBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART);
+			if (bm == null) bm = md.getBitmap(MediaMetadataCompat.METADATA_KEY_ART);
+			if (bm != null) {
+				if ((artItem != i) || (artKey != bm)) showArt(i, bm, bm);
+				return;
+			}
+			uri = md.getString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI);
+			if (uri == null) uri = md.getString(MediaMetadataCompat.METADATA_KEY_ART_URI);
+			if (uri == null) uri = md.getString(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON_URI);
+		}
+
+		if (uri != null) {
+			loadArt(i, uri);
+			return;
+		}
+		// Nothing in the metadata: the item's own icon uri, looked up once per item (this runs on
+		// every play/pause too).
+		if ((artItem == i) && ((artKey != null) || (artLoading != null))) return;
+		if (artItem != i) showArt(i, null, null);
+		artLoading = "";
+		i.getIconUri().main().onSuccess(u -> {
+			if (artItem != i) return;
+			if (u != null) loadArt(i, u.toString());
+		});
+	}
+
+	private void loadArt(PlayableItem i, String uri) {
+		if ((artItem == i) && (uri.equals(artKey) || uri.equals(artLoading))) return;
+		// Keeps the item's current picture (if any) while the new one loads.
+		if (artItem != i) showArt(i, null, null);
+		artLoading = uri;
+		getActivity().getLib().getBitmap(uri).main().onCompletion((bm, err) -> {
+			// On failure artLoading stays: the same uri isn't tried again on every play/pause.
+			if ((artItem != i) || (bm == null) || !uri.equals(artLoading)) return;
+			artLoading = null;
+			showArt(i, MusicPlayerFragment.cropLetterbox(bm), uri);
+		});
+	}
+
+	/** Shows {@code bm}, or the item's own icon (video, audio track) for null. */
+	private void showArt(@Nullable PlayableItem i, @Nullable Bitmap bm, @Nullable Object key) {
+		if (artItem != i) artLoading = null;
+		artItem = i;
+		artKey = (bm == null) ? null : key;
+
+		if (bm == null) {
+			art.setImageResource((i == null) ? R.drawable.music : i.getIcon());
+			art.setImageTintList(ColorStateList.valueOf(labelColor()));
+			art.setScaleType(ImageView.ScaleType.FIT_CENTER);
+		} else {
+			art.setImageDrawable(new BitmapDrawable(getResources(), bm));
+			art.setImageTintList(null);
+			art.setScaleType(ImageView.ScaleType.CENTER_CROP);
+		}
+		updateArtPadding();
+	}
+
+	/** The placeholder icon sits in the middle of the art's box, a picture fills it. */
+	private void updateArtPadding() {
+		int pad = (artKey == null) ? art.getLayoutParams().width / 5 : 0;
+		art.setPadding(pad, pad, pad, pad);
 	}
 
 	public void onVideoSeek() {
@@ -1064,7 +1348,7 @@ public class ControlPanelView extends ConstraintLayout
 		if (focused == null) return super.focusSearch(null, direction);
 
 		if (direction == FOCUS_UP) {
-			if (isLine1(focused)) {
+			if (isTopLine(focused)) {
 				MainActivityDelegate a = getActivity();
 				if (a.isVideoMode()) {
 					// Up to the play/pause in the middle of the picture, when it's there.
@@ -1075,17 +1359,28 @@ public class ControlPanelView extends ConstraintLayout
 				}
 				View v = MediaItemListView.focusSearchLast(getContext(), focused);
 				if (v != null) return v;
-			} else {
+			} else if (layoutMode == LAYOUT_CLASSIC) {
 				if (!isVisible(findViewById(R.id.seek_bar))) return findViewById(R.id.control_menu_button);
 			}
 		} else if (direction == FOCUS_DOWN) {
-			if (!isLine1(focused)) {
+			if (isBottomLine(focused)) {
 				NavBarView n = getActivity().getNavBar();
 				if (isVisible(n) && n.isBottom()) return n.focusSearch();
 			}
 		}
 
 		return super.focusSearch(focused, direction);
+	}
+
+	/** The classic layout has the seek bar's line on top, the compact two-line one under the buttons. */
+	private boolean isTopLine(View v) {
+		if (layoutMode == LAYOUT_ROW) return true;
+		return (layoutMode == LAYOUT_STACKED) != isLine1(v);
+	}
+
+	private boolean isBottomLine(View v) {
+		if (layoutMode == LAYOUT_ROW) return true;
+		return (layoutMode == LAYOUT_STACKED) == isLine1(v);
 	}
 
 	private boolean isLine1(View v) {

@@ -753,10 +753,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	/**
 	 * YouTube's fallback thumbnail (hqdefault.jpg, used when a video has no maxresdefault.jpg) is a
 	 * 4:3 canvas with the 16:9 frame letterboxed inside it: cut the black bars off, so the cover
-	 * card doesn't show them.
+	 * card doesn't show them. The control panel's art does the same (ControlPanelView).
 	 */
 	@Nullable
-	private static Bitmap cropLetterbox(@Nullable Bitmap bm) {
+	public static Bitmap cropLetterbox(@Nullable Bitmap bm) {
 		if (bm == null) return null;
 		int w = bm.getWidth();
 		int h = bm.getHeight();
