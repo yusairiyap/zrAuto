@@ -297,6 +297,22 @@ public class MainActivityDelegate extends ActivityDelegate
 	/** The native Android Auto UI while it's running, see {@link #getPlaybackDelegate()}. */
 	private static WeakReference<MainActivityDelegate> carDelegate = new WeakReference<>(null);
 
+	/** The phone's UI while it exists (in front or not), see {@link #getUiDelegate()}. */
+	private static WeakReference<MainActivityDelegate> phoneDelegate = new WeakReference<>(null);
+
+	/**
+	 * The UI an action that needs one acts on when it was started from outside any UI: a car's
+	 * steering wheel button arrives as a media button through the media session, with no UI of its
+	 * own, and every key binding action that works on a screen (add to favorites, open a tab, the
+	 * YouTube search, ...) would otherwise do nothing. The car's screen while Android Auto runs the
+	 * app's UI, else the phone's.
+	 */
+	@Nullable
+	public static MainActivityDelegate getUiDelegate() {
+		MainActivityDelegate d = getCarDelegate();
+		return (d != null) ? d : phoneDelegate.get();
+	}
+
 	/** The native Android Auto UI, if it's running. */
 	@Nullable
 	public static MainActivityDelegate getCarDelegate() {
@@ -388,6 +404,8 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (getAppActivity().isCarActivity()) {
 			carActivityActive = true;
 			carDelegate = new WeakReference<>(this);
+		} else {
+			phoneDelegate = new WeakReference<>(this);
 		}
 		Intent intent = getIntent();
 		if ((intent != null) && INTENT_ACTION_FINISH.equals(intent.getAction())) {
@@ -708,6 +726,8 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (getAppActivity().isCarActivity()) {
 			carActivityActive = false;
 			if (carDelegate.get() == this) carDelegate = new WeakReference<>(null);
+		} else if (phoneDelegate.get() == this) {
+			phoneDelegate = new WeakReference<>(null);
 		}
 		handler.close();
 		getMediaServiceBinder().getMediaSessionCallback().removeAssistant(this);

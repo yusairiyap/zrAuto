@@ -281,7 +281,10 @@ public enum Action {
 		@Override
 		default void handle(MediaSessionCallback cb, @Nullable MainActivityDelegate a,
 												long timestamp) {
+			// From a media button (a car's steering wheel): no UI came with it, act on the one there is.
+			if (a == null) a = MainActivityDelegate.getUiDelegate();
 			if (a != null) handle(a);
+			else Log.i("No UI for the action ", this);
 		}
 	}
 
