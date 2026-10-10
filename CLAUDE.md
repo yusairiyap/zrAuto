@@ -209,6 +209,15 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   `onLayoutChange` asks for a layout the parent never gets (it still counts as mid-layout), leaving stale
   positions on screen (the Music tab chips row had a hole and a clipped more button for that). Post the
   change and `requestLayout()` the parent (see `MusicPlayerFragment#updateEffectsChip`).
+  The reverse trap: an `onLayoutChange` listener fires on *every* layout of its view, not only when
+  its bounds change, so anything it (or a `post` from it) does that calls `requestLayout()` again,
+  even setting the same compound drawable or text, loops a layout every frame. The Music tab once
+  drew ~240 mA more than other tabs (paused too), very likely because the chips row's listener reset the Favorite chip's
+  icon each time; only touch views there when the value actually changes.
+  Same family: anything animating nonstop (an endless marquee) redraws the whole screen every frame,
+  so the Music tab title scrolls only `marqueeRepeatLimit` times (tap to scroll again), and a text
+  that changes every second (the timer countdown) gets a fixed width so it doesn't relayout the block,
+  which also restarted that marquee each second (`fixCountdownWidth`).
 - **Grid vs list** for media lists comes from the grid preference, never from `isGridView()` (which
   asks the active tab and is wrong while tabs switch).
 - Known open items: media card art can look blocky on One UI (1280x720 art); a YouTube hand-over

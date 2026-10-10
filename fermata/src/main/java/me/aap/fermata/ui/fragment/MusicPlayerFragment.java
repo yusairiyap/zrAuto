@@ -253,6 +253,19 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		loading = view.findViewById(R.id.music_loading);
 
 		title = view.findViewById(R.id.music_track_title);
+		// A long title scrolls a few times (marqueeRepeatLimit), not forever: while it scrolls the
+		// whole screen is drawn again every frame, a steady battery drain. A tap scrolls it again.
+		title.setMarqueeRepeatLimit(TITLE_SCROLLS);
+		title.setOnClickListener(v -> {
+			v.setSelected(false);
+			v.setSelected(true);
+			onTitleScrollStarted();
+		});
+		// While it scrolls, the title alone needs no more than 60 fps: on Android 15+ it tells the
+		// system so, and the screen needn't run at its top rate (120/144 Hz) for it.
+		if (VERSION.SDK_INT >= VERSION_CODES.VANILLA_ICE_CREAM) {
+			title.setRequestedFrameRate(View.REQUESTED_FRAME_RATE_CATEGORY_NORMAL);
+		}
 		artist = view.findViewById(R.id.music_track_artist);
 		position = view.findViewById(R.id.music_position);
 		duration = view.findViewById(R.id.music_duration);
@@ -490,6 +503,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 	@Override
 	public void onDestroyView() {
+		if (title != null) title.removeCallbacks(titleScrollEnded);
+		setLowRefreshRate(false);
 		restoreClipping();
 		setListening(false);
 		stopProgress();
@@ -503,6 +518,14 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private void updateActive() {
 		boolean visible = !isHidden() && (getView() != null);
 		setListening(visible);
+		if (!visible) {
+			if (title != null) title.removeCallbacks(titleScrollEnded);
+			setLowRefreshRate(false);
+		} else {
+			// Back on this tab: TextView starts a long title's scrolling over again (another few
+			// passes), so the 60 Hz request, dropped when the tab hid, has to come back with it.
+			onTitleScrollStarted();
+		}
 		if (visible) {
 			// Also on every resume (e.g. Android Auto giving the screen back), not only when this tab
 			// is switched to: something may have shown them meanwhile.
@@ -1487,7 +1510,67 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	// Setting a TextView's text, even the same text, restarts the title's marquee (its own, or via
 	// the relayout); these only touch it when the text actually changes.
 	private void setTitle(CharSequence text) {
-		setText(title, text);
+		if (android.text.TextUtils.equals(title.getText(), text)) return;
+		title.setText(text);
+		onTitleScrollStarted(); // A new text scrolls again from the start, if it's too long.
+	}
+
+	/** How many times a long title scrolls before it stops (tap it to scroll again). */
+	private static final int TITLE_SCROLLS = 3;
+	// TextView's own marquee timing: a pause before each pass, then this speed.
+	private static final long MARQUEE_PAUSE_MS = 1200;
+	private static final float MARQUEE_DP_PER_SECOND = 30;
+	private final Runnable titleScrollEnded = () -> setLowRefreshRate(false);
+	private boolean lowRefreshRate;
+
+	/**
+	 * The title (maybe) starts scrolling: for as long as it does, the window asks for 60 Hz, so the
+	 * screen doesn't run at its top rate for a line of moving text (any moving thing keeps it there).
+	 * Back to no preference when the scrolling is over, or this tab hides, so the screen can drop
+	 * lower than 60 Hz again once nothing moves.
+	 */
+	private void onTitleScrollStarted() {
+		TextView t = title;
+		if (t == null) return;
+		t.removeCallbacks(titleScrollEnded);
+		// After the layout, which the new text may need, so the widths are right.
+		t.post(() -> {
+			long ms = titleScrollMs();
+			if (ms <= 0) {
+				setLowRefreshRate(false);
+				return;
+			}
+			setLowRefreshRate(true);
+			t.postDelayed(titleScrollEnded, ms);
+		});
+	}
+
+	/** How long the title scrolls, 0 if it fits (no scrolling at all). */
+	private long titleScrollMs() {
+		TextView t = title;
+		if ((t == null) || (getView() == null) || isHidden() || !t.isSelected() || (t.getLayout() == null)) {
+			return 0;
+		}
+		int textWidth = t.getWidth() - t.getCompoundPaddingLeft() - t.getCompoundPaddingRight();
+		float lineWidth = t.getLayout().getLineWidth(0);
+		if ((textWidth <= 0) || (lineWidth <= textWidth)) return 0;
+		// Each pass scrolls the text and the gap after it (a third of the width) out of view.
+		float px = lineWidth + textWidth / 3f;
+		float pxPerSec = MARQUEE_DP_PER_SECOND * getResources().getDisplayMetrics().density;
+		long pass = MARQUEE_PAUSE_MS + (long) (px * 1000 / pxPerSec);
+		return TITLE_SCROLLS * pass + 500;
+	}
+
+	private void setLowRefreshRate(boolean low) {
+		if (low == lowRefreshRate) return;
+		android.app.Activity act = getActivity();
+		if (low && ((act == null) || getActivityDelegate().isCarActivity())) return;
+		lowRefreshRate = low;
+		if (act == null) return;
+		android.view.Window w = act.getWindow();
+		android.view.WindowManager.LayoutParams lp = w.getAttributes();
+		lp.preferredRefreshRate = low ? 60f : 0f;
+		w.setAttributes(lp);
 	}
 
 	private static void setText(TextView v, CharSequence text) {
@@ -1753,6 +1836,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private void refreshFavoriteChip() {
 		if ((favoriteChip == null) || (favoriteChip.getVisibility() != View.VISIBLE)) return;
 		boolean fav = me.aap.fermata.action.Action.isCurrentFavorite(getActivityDelegate());
+		// Only on a change: setting the icon lays the chip out again, and this runs after every layout
+		// of the chips row (see updateEffectsChip()), so setting it every time relaid the row out every
+		// frame, nonstop while this tab showed, playing or not (a big battery drain).
+		Boolean was = (Boolean) favoriteChip.getTag(R.id.music_favorite_button);
+		if ((was != null) && (was == fav)) return;
+		favoriteChip.setTag(R.id.music_favorite_button, fav);
 		favoriteChip.setCompoundDrawablesRelativeWithIntrinsicBounds(
 				fav ? R.drawable.favorite_filled : R.drawable.favorite, 0, 0, 0);
 	}
@@ -1808,18 +1897,51 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		boolean active = !label.isEmpty();
 		int color = active ? EffectsUi.accent(palette) :
 				paletteColor(R.attr.musicIconPrimary);
-		moreButton.setCompoundDrawablePadding(active ? Math.round(6 * getResources().getDisplayMetrics().density) : 0);
+		// Only on a change: it lays the button out again even when it's the same.
+		int pad = active ? Math.round(6 * getResources().getDisplayMetrics().density) : 0;
+		if (moreButton.getCompoundDrawablePadding() != pad) moreButton.setCompoundDrawablePadding(pad);
+		fixCountdownWidth(moreButton, active ? label : null);
 		setText(moreButton, label);
 		moreButton.setTextColor(color);
 		moreButton.setCompoundDrawableTintList(ColorStateList.valueOf(color));
 		// The Timer chip, when it's out on the row, carries the countdown (the more button is gone then).
 		if (timerChip != null) {
 			CharSequence txt = active ? label : getString(R.string.music_timer_short);
+			fixCountdownWidth(timerChip, active ? label : null);
 			if (!txt.toString().contentEquals(timerChip.getText())) timerChip.setText(txt);
 			timerChip.setTextColor(active ? color : paletteColor(R.attr.musicTextPrimary));
 			timerChip.setCompoundDrawableTintList(ColorStateList.valueOf(color));
 		}
 		if (active) moreButton.postDelayed(timerChipTask, 1000);
+	}
+
+	/**
+	 * While a chip counts down, its width stays fixed (sized for the widest digits), so the new text
+	 * every second only redraws it: as wrap_content, each second laid the whole controls block out
+	 * again, which restarted the scrolling title every second. Back to wrap_content with no countdown.
+	 */
+	private static void fixCountdownWidth(TextView t, @Nullable String label) {
+		ViewGroup.LayoutParams lp = t.getLayoutParams();
+		int w = ViewGroup.LayoutParams.WRAP_CONTENT;
+
+		if (label != null) {
+			android.text.TextPaint p = t.getPaint();
+			char widest = '0';
+			float max = 0;
+			for (char c = '0'; c <= '9'; c++) {
+				float cw = p.measureText(String.valueOf(c));
+				if (cw > max) {
+					max = cw;
+					widest = c;
+				}
+			}
+			w = (int) Math.ceil(p.measureText(label.replaceAll("[0-9]", String.valueOf(widest)))) +
+					t.getCompoundPaddingStart() + t.getCompoundPaddingEnd();
+		}
+
+		if (lp.width == w) return;
+		lp.width = w;
+		t.setLayoutParams(lp);
 	}
 
 	@Override
