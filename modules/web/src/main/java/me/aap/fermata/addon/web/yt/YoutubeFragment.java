@@ -879,10 +879,8 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		// Before anything else: the base implementation's next step is WebView#goBack(), which
 		// YoutubeWebView#goBack() turns into a full playback stop -- exactly what the panel exists
 		// to avoid.
-		if (isSearchPanelShown()) {
-			hideSearchPanel();
-			return true;
-		}
+		// The system back closes a search the same way as the toolbar's back and the X.
+		if (closeSearchOrPanel()) return true;
 		return super.onBackPressed();
 	}
 
@@ -994,11 +992,30 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		}
 	}
 
-	/** The toolbar's back button: closes the search/Up next panel first, as the system back does. */
+	/**
+	 * The toolbar's back button: while searching, the same as the X (the text, keyboard and the
+	 * toolbar's search look go too, not only the panel); with just Up next open, closes that; else
+	 * back in the page.
+	 */
 	@Override
 	protected void goBackInBrowser() {
-		if (isSearchPanelShown()) hideSearchPanel();
-		else super.goBackInBrowser();
+		if (closeSearchOrPanel()) return;
+		super.goBackInBrowser();
+	}
+
+	private boolean closeSearchOrPanel() {
+		Context ctx = getContext();
+		YoutubeToolBarMediator m = YoutubeToolBarMediator.getInstance();
+		if ((ctx != null) && m.isSearching(this)) {
+			MainActivityDelegate a = MainActivityDelegate.get(ctx);
+			if (a.getActiveFragment() == this) {
+				m.closeSearch(a.getToolBar(), this);
+				return true;
+			}
+		}
+		if (!isSearchPanelShown()) return false;
+		hideSearchPanel();
+		return true;
 	}
 
 	@Override
