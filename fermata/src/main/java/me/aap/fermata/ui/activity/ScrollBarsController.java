@@ -4,7 +4,6 @@ import static android.view.View.VISIBLE;
 import static me.aap.utils.ui.UiUtils.toPx;
 
 import android.animation.ValueAnimator;
-import android.graphics.RectF;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
@@ -20,26 +19,28 @@ import androidx.recyclerview.widget.RecyclerView;
 import me.aap.fermata.ui.fragment.MainActivityFragment;
 import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.ui.view.ControlPanelView;
-import me.aap.fermata.ui.view.ToolBarPill;
 import me.aap.utils.ui.fragment.ActivityFragment;
+import me.aap.utils.ui.view.FloatingButton;
 import me.aap.utils.ui.view.NavBarView;
 import me.aap.utils.ui.view.ToolBarView;
 
 /**
- * The One UI style bars that make way for the content while it scrolls: scrolling down first
- * shrinks tool_bar and the bottom bars (control_panel, plus nav_bar when it's at the bottom) into
- * compact pills -- the tool bar shows only its icons, the control panel row folds down into the
- * nav bar's pill -- and scrolling on hides them off the screen altogether. Scrolling back up
- * brings them back the same way, compact first, then in full; at the top of the content they are
- * always in full.
+ * The One UI style bars that make way for the content while it scrolls: scrolling down a little
+ * slides the bottom bars (control_panel, plus nav_bar when it's at the bottom) down off the
+ * screen, scrolling on slides tool_bar up off it too. Scrolling back up brings them back the same
+ * way, tool_bar first, then the bottom bars; at the top of the content everything is shown. The
+ * floating buttons follow the bottom bars down to the screen's bottom edge and back up above them.
  * <p>
- * One value drives it all: {@link #progress}, 0 = full, 1 = compact, 2 = hidden, animated from
- * state to state. The bars are only moved and scaled (never resized or relaid out), so nothing
- * under them is resized either -- the YouTube page above all, whose player restarts on every
- * resize of its WebView. The tab content follows through its bottom padding (see
- * MainActivityDelegate#computeContentInsets, which reads the bars' live, transformed position),
- * so its last row still ends right above wherever the bars are; its top padding stays put, so a
- * list scrolled back to its top never starts under the tool bar.
+ * One value drives it all: {@link #progress}, 0 = all shown, 1 = bottom bars hidden, 2 = all
+ * hidden, animated from state to state. The bars are only moved (never resized or relaid out), so
+ * nothing under them is resized either. A web page (the YouTube tab, the browser) slides up into
+ * the room tool_bar leaves, without being resized either: it is laid out as tall as if it started
+ * at the top, its bottom running past the screen's by as much as the tool bar's room, until it
+ * slides up (see MainActivityDelegate#insetWebViewTop) -- the YouTube player restarts on every
+ * resize of its WebView. Lists follow through their bottom padding (see
+ * MainActivityDelegate#computeContentInsets, which reads the bars' live position), so the last row
+ * still ends right above wherever the bars are; their top padding stays put, so a list scrolled
+ * back to its top never starts under the tool bar.
  * <p>
  * Driven by whatever the finger scrolls inside body_layout: the innermost vertically scrollable
  * view under it when it went down (see {@link #onBodyTouch}), followed through every scroll of
@@ -50,31 +51,31 @@ import me.aap.utils.ui.view.ToolBarView;
  * Off over video, the car screen, while the bars are hidden for other reasons (see
  * MainActivityDelegate#setBarsHidden) and on tabs that keep their own layout around the bars
  * (see MainActivityFragment#collapsesBarsOnScroll); every such change, and every tab switch,
- * puts the bars back in full.
+ * puts the bars back.
  */
 public final class ScrollBarsController implements ViewTreeObserver.OnScrollChangedListener,
 		ViewTreeObserver.OnPreDrawListener, ViewTreeObserver.OnGlobalLayoutListener {
 	static final int FULL = 0;
-	static final int COMPACT = 1;
+	static final int BOTTOM_HIDDEN = 1;
 	static final int HIDDEN = 2;
-	/** How small the compact pills are, against their full size. */
-	private static final float COMPACT_SCALE = 0.82f;
 	private static final long ANIM_MS = 280;
 	private final MainActivityDelegate a;
-	private final float toCompact;
+	private final float toBottomHidden;
 	private final float toHidden;
-	private final float toCompactUp;
+	private final float toBottomHiddenUp;
 	private final float toFullUp;
 	private final float touchSlop;
 	private final float shadowPad;
-	private final RectF pill = new RectF();
+	private final float belowToolBar;
+	// The offset each floating button carries from this, on top of its own translation (a dragged
+	// button's place), see moveFab().
+	private final float[] fabDy = new float[6];
 	private int state = FULL;
 	private float progress;
 	// Whether the bars carry any transformation of ours, so a full, settled state leaves them alone
 	// (their own show/hide animations own their translation then).
 	private boolean applied;
 	private float toolBarDy;
-	private float lastTitleAlpha = 1f;
 	@Nullable
 	private ValueAnimator anim;
 	// The scrolled view followed, see onBodyTouch().
@@ -92,12 +93,13 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 
 	ScrollBarsController(MainActivityDelegate a) {
 		this.a = a;
-		toCompact = toPx(a.getContext(), 16);
+		toBottomHidden = toPx(a.getContext(), 16);
 		toHidden = toPx(a.getContext(), 64);
-		toCompactUp = toPx(a.getContext(), 16);
+		toBottomHiddenUp = toPx(a.getContext(), 16);
 		toFullUp = toPx(a.getContext(), 96);
 		touchSlop = ViewConfiguration.get(a.getContext()).getScaledTouchSlop();
 		shadowPad = toPx(a.getContext(), 16);
+		belowToolBar = toPx(a.getContext(), 72);
 	}
 
 	/** Starts following the window's scrolls; once, when the activity's views are set up. */
@@ -108,8 +110,8 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 		o.addOnGlobalLayoutListener(this);
 	}
 
-	/** How far tool_bar is moved up out of the way right now, by this alone. */
-	float getToolBarDy() {
+	/** How far tool_bar is moved up out of the way right now, by this alone (zero or negative). */
+	public float getToolBarDy() {
 		return toolBarDy;
 	}
 
@@ -217,7 +219,7 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 	public boolean onPreDraw() {
 		// Re-applied before every frame while collapsed: a bar shown, laid out or restyled meanwhile
 		// (the control panel coming up when playback starts) takes its compact or hidden look at
-		// once. Setting a view's scale/translation to the value it already has is a no-op.
+		// once. Setting a view's translation to the value it already has is a no-op.
 		if (applied && (anim == null)) apply(false);
 		return true;
 	}
@@ -228,11 +230,11 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 		acc += dy;
 
 		if (acc > 0f) {
-			if ((state == FULL) && (acc >= toCompact)) setState(COMPACT);
-			else if ((state == COMPACT) && (acc >= toHidden)) setState(HIDDEN);
+			if ((state == FULL) && (acc >= toBottomHidden)) setState(BOTTOM_HIDDEN);
+			else if ((state == BOTTOM_HIDDEN) && (acc >= toHidden)) setState(HIDDEN);
 		} else if (acc < 0f) {
-			if ((state == HIDDEN) && (-acc >= toCompactUp)) setState(COMPACT);
-			else if ((state == COMPACT) && (-acc >= toFullUp)) setState(FULL);
+			if ((state == HIDDEN) && (-acc >= toBottomHiddenUp)) setState(BOTTOM_HIDDEN);
+			else if ((state == BOTTOM_HIDDEN) && (-acc >= toFullUp)) setState(FULL);
 		}
 	}
 
@@ -263,8 +265,9 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 	}
 
 	/**
-	 * Moves and scales the bars to {@link #progress}; with {@code moved}, the tab content's insets
-	 * follow (not needed when only re-applied before a frame: nothing moved then).
+	 * Moves the bars, the floating buttons and the web pages to {@link #progress}; with
+	 * {@code moved}, the tab content's insets follow (not needed when only re-applied before a
+	 * frame: nothing moved then).
 	 */
 	private void apply(boolean moved) {
 		ToolBarView tb = a.getToolBar();
@@ -272,33 +275,11 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 		ControlPanelView cp = a.getControlPanel();
 		if ((tb == null) || (cp == null)) return;
 		float p = progress;
-		float c = Math.min(1f, p); // Compact fraction.
-		float h = Math.max(0f, p - 1f); // Hidden fraction.
-		float scale = 1f - (1f - COMPACT_SCALE) * c;
+		float b = Math.min(1f, p); // How far the bottom bars are out of the way.
+		float t = Math.max(0f, p - 1f); // How far the tool bar is.
 
-		// The tool bar: shrinks toward its top, around its pill's middle, with only its icons left,
-		// then slides up off the screen.
-		if (tb.getMediator() != ToolBarView.Mediator.Invisible.instance) {
-			float px = ToolBarPill.getPillRect(tb, pill) ? pill.centerX() : tb.getWidth() / 2f;
-			tb.setPivotX(px);
-			tb.setPivotY(0f);
-			tb.setScaleX(scale);
-			tb.setScaleY(scale);
-			float dy = -h * (tb.getBottom() + shadowPad);
-			tb.setTranslationY(dy);
-			toolBarDy = dy;
-			if (p != 0f) {
-				// A tab's title may be replaced while collapsed: every frame, not only on a change.
-				View title = tb.findViewById(me.aap.utils.R.id.tool_bar_title);
-				lastTitleAlpha = 1f - c;
-				if ((title != null) && (title.getAlpha() != lastTitleAlpha)) title.setAlpha(lastTitleAlpha);
-			}
-		} else {
-			toolBarDy = 0f;
-		}
-
-		// The bottom bars. With the nav bar at the bottom, the control panel row folds down into its
-		// pill and the nav bar alone shrinks; else the control panel, a pill of its own, shrinks.
+		// The bottom bars slide down off the screen, together: with the nav bar at the bottom, the
+		// control panel sits on it as one pill.
 		boolean bottomNav = (nb != null) && nb.isBottom() && (nb.getVisibility() == VISIBLE);
 		boolean cpShown = (cp.getVisibility() == VISIBLE) && !cp.isSuppressed() && !cp.isVideoLook();
 		View parent = (View) cp.getParent();
@@ -306,56 +287,51 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 		int top = Integer.MAX_VALUE;
 		if (bottomNav) top = nb.getTop();
 		if (cpShown) top = Math.min(top, cp.getTop());
-		float hideDy = (top == Integer.MAX_VALUE) ? 0f : h * (parentH - top + shadowPad);
+		boolean anyBottom = top != Integer.MAX_VALUE;
+		float hideDy = anyBottom ? b * (parentH - top + shadowPad) : 0f;
+		if (bottomNav) nb.setTranslationY(hideDy);
+		// Gone meanwhile (playback stopped): it comes back where it belongs.
+		cp.setTranslationY(cpShown ? hideDy : 0f);
 
-		if (bottomNav) {
-			nb.setPivotX(nb.getWidth() / 2f);
-			nb.setPivotY(nb.getHeight());
-			nb.setScaleX(scale);
-			nb.setScaleY(scale);
-			nb.setTranslationY(hideDy);
-			if (cpShown) {
-				// Sits on the nav bar's shrunk pill, as narrow, folding down into it -- never quite to
-				// nothing, which would leave its transformation without an inverse for touches.
-				float shrink = nb.getHeight() * (1f - scale);
-				cp.setPivotX(cp.getWidth() / 2f);
-				cp.setPivotY(cp.getHeight());
-				cp.setScaleX(scale);
-				cp.setScaleY(Math.max(0.01f, scale * (1f - c)));
-				cp.setTranslationY(shrink + hideDy);
-			}
-		} else if (cpShown) {
-			cp.setPivotX(cp.getWidth() / 2f);
-			cp.setPivotY(cp.getHeight());
-			cp.setScaleX(scale);
-			cp.setScaleY(scale);
-			cp.setTranslationY(hideDy);
+		// The floating buttons sit on the bottom bars: down to the screen's bottom edge with them.
+		float fdy = (anyBottom && (parent != null)) ?
+				b * Math.max(0, parentH - parent.getPaddingBottom() - top) : 0f;
+		boolean fabsLeft = moveFab(0, a.getFloatingButton(), fdy);
+		FloatingButton[] extra = a.getExtraFloatingButtons();
+		for (int i = 0; i < extra.length; i++) fabsLeft |= moveFab(i + 1, extra[i], fdy);
+
+		// The tool bar slides up off the screen, the web pages up into its room.
+		if (tb.getMediator() != ToolBarView.Mediator.Invisible.instance) {
+			// Far enough for whatever a tab hangs below its pill to clear the top as well: the
+			// browser's tab strip follows the tool bar wherever it is (see BrowserTabs#syncPanel).
+			toolBarDy = -t * (tb.getBottom() + belowToolBar);
+			tb.setTranslationY(toolBarDy);
+		} else {
+			// No tool bar to move (a tab whose page draws its own): none of ours left on it either.
+			toolBarDy = 0f;
+			tb.setTranslationY(0f);
 		}
-		// Gone meanwhile (playback stopped): it comes back as it should look, not folded away.
-		if (!cpShown) resetView(cp);
+		a.slideWebViews(t);
 
-		applied = (p != 0f);
-		if (!applied) clear(tb, nb, cp);
+		applied = (p != 0f) || fabsLeft;
 		if (moved) a.refreshContentInsets();
 	}
 
-	/** Puts the bars back exactly as they were before any of this. */
-	private void clear(ToolBarView tb, @Nullable NavBarView nb, ControlPanelView cp) {
-		toolBarDy = 0f;
-		if (tb.getMediator() != ToolBarView.Mediator.Invisible.instance) resetView(tb);
-		if (lastTitleAlpha != 1f) {
-			lastTitleAlpha = 1f;
-			View title = tb.findViewById(me.aap.utils.R.id.tool_bar_title);
-			if (title != null) title.setAlpha(1f);
+	/**
+	 * Moves a floating button by {@code dy} from where it would be without this, keeping whatever
+	 * translation it has of its own. Left alone while one of the delegate's own glides runs on it
+	 * (it restores the translation it started from); caught up once that's done.
+	 *
+	 * @return whether the button still carries an offset of ours
+	 */
+	private boolean moveFab(int i, @Nullable View f, float dy) {
+		if (f == null) return false;
+		float have = fabDy[i];
+		if ((have != dy) && (f.getTag(me.aap.fermata.R.id.floating_bars) == null)) {
+			f.setTranslationY(f.getTranslationY() - have + dy);
+			fabDy[i] = have = dy;
 		}
-		if ((nb != null) && nb.isBottom()) resetView(nb);
-		resetView(cp);
-	}
-
-	private static void resetView(View v) {
-		v.setScaleX(1f);
-		v.setScaleY(1f);
-		v.setTranslationY(0f);
+		return have != 0f;
 	}
 
 	/**

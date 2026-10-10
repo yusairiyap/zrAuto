@@ -201,16 +201,11 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 		return Math.max(0f, Math.min(1f, alpha));
 	}
 
-	/**
-	 * v's live bounds, translation and scale included (the bars shrink into compact pills while the
-	 * content scrolls, see ScrollBarsController), in this view's own coordinates (same parent).
-	 */
+	/** v's live bounds, translation included, in this view's own coordinates (same parent). */
 	private void bounds(View v, RectF out) {
-		float sx = v.getScaleX();
-		float sy = v.getScaleY();
-		float x = v.getX() - getLeft() + v.getPivotX() * (1f - sx);
-		float y = v.getY() - getTop() + v.getPivotY() * (1f - sy);
-		out.set(x, y, x + v.getWidth() * sx, y + v.getHeight() * sy);
+		float x = v.getX() - getLeft();
+		float y = v.getY() - getTop();
+		out.set(x, y, x + v.getWidth(), y + v.getHeight());
 	}
 
 	@Override

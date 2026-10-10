@@ -136,14 +136,16 @@ chasing the wrong theory for, as has happened before. If you add a dialog via
 `MainActivityDelegate` overrides) — no extra step needed there.
 
 **Bars collapse on scroll.** `ScrollBarsController` (owned by `MainActivityDelegate`, fed by
-`BodyLayout#dispatchTouchEvent`) shrinks `tool_bar` and the bottom bars into compact pills as tab
-content scrolls down, hides them on further scrolling, and brings them back on the way up (always
-in full at the top). It only scales/translates the bars, never resizes anything (the YouTube WebView
-restarts its player on a resize); list content follows through its bottom padding, since
-`computeContentInsets` reads the bars' transformed position. It works for any `RecyclerView`,
+`BodyLayout#dispatchTouchEvent`) slides the bottom bars (and the floating buttons with them) away
+as tab content scrolls down a little, `tool_bar` too on further scrolling, and brings them back on
+the way up (all shown at the top). It only translates the bars, never resizes anything (the YouTube
+WebView restarts its player on a resize): a web page is laid out as tall as its parent with a
+negative bottom margin matching its top one (`insetWebViewTop`) and slides up into the tool bar's
+room (`slideWebViews`). List content follows through its bottom padding, since
+`computeContentInsets` reads the bars' live position. It works for any `RecyclerView`,
 `ScrollView`, `ListView` or `WebView` under the finger with no per-tab code; a tab laid out around
 the bars instead (Music, Car mode) opts out with `MainActivityFragment#collapsesBarsOnScroll`. Don't
-animate the bars' scale/translation elsewhere without calling `scrollBars.reset(false)` first, the
+animate the bars' translation elsewhere without calling `scrollBars.reset(false)` first, the
 way `setBarsHidden`/`setVideoMode` do.
 
 ## This app cannot be built in this (cloud) session

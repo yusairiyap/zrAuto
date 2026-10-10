@@ -201,9 +201,9 @@ public class BodyLayout extends SplitLayout
 		float alpha = tb.getAlpha();
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) alpha *= tb.getTransitionAlpha();
 		if (alpha <= 0f) return false;
-		// Both are children of the same parent (main_activity). Its height as drawn: shrunk toward
-		// its top while the content scrolls (see ScrollBarsController).
-		float end = (tb.getY() + tb.getHeight() * tb.getScaleY()) - getTop() + topFadeLen;
+		// Both are children of the same parent (main_activity). Follows it as it slides away while
+		// the content scrolls (see ScrollBarsController).
+		float end = (tb.getY() + tb.getHeight()) - getTop() + topFadeLen;
 		if (end <= 0f) return false;
 		fadeEnd = end;
 		fadeAlpha = Math.min(1f, alpha);

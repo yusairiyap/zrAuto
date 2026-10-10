@@ -2049,10 +2049,15 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * A WebView's page content is composited internally by the browser engine rather than drawn as
 	 * clippable child views, so it doesn't reliably scroll into padding the way a RecyclerView or
 	 * ScrollView does -- observed as page content still rendering flush against/under tool_bar.
-	 * Physically shrinking the WebView's own top bound with a margin instead is a hard guarantee
-	 * regardless of how it renders internally. Deliberately top-only: the page is left full-bleed at
-	 * the bottom, so control_panel is free to overlap the very end of the page the way it always
-	 * has -- unlike the top, that's rarely actually scrolled to.
+	 * Physically moving the WebView's own top down with a margin instead is a hard guarantee
+	 * regardless of how it renders internally.
+	 * <p>
+	 * Moved, not shrunk: an equal negative bottom margin keeps it as tall as its parent, its bottom
+	 * running past the screen's by the same amount. So when the tool bar slides away as the page
+	 * scrolls (see ScrollBarsController and {@link #slideWebViews}), the page slides up into its
+	 * room and still reaches the bottom of the screen, without ever being resized -- YouTube's
+	 * player restarts on every resize of its WebView. That hidden strip at the bottom is under the
+	 * bottom bars while they're showing, and they slide away first.
 	 */
 	public void insetWebViewTop(View content) {
 		View.OnLayoutChangeListener sync = (v, left, top, right, bottom, oldLeft, oldTop, oldRight,
@@ -2101,9 +2106,31 @@ public class MainActivityDelegate extends ActivityDelegate
 		// bottom edge, so more of the page shows.
 		int top = isBarsHidden() ? 0 :
 				Math.max(0, toolBar.getBottom() - toIntPx(getContext(), WEB_UNDER_TOOL_BAR));
-		if (mlp.topMargin == top) return;
+		// As tall as its parent's room whatever the top (see insetWebViewTop()): one more tab padding
+		// it from above (the browser's tab strip) runs it that much further past the bottom too.
+		int pad = (content.getParent() instanceof View p) ? p.getPaddingTop() : 0;
+		int bottom = -(top + pad);
+		if ((mlp.topMargin == top) && (mlp.bottomMargin == bottom)) return;
 		mlp.topMargin = top;
+		mlp.bottomMargin = bottom;
 		content.setLayoutParams(mlp);
+	}
+
+	/**
+	 * Slides every web page up into the room above it, by {@code fraction} of it (0 = in place
+	 * below the tool bar, 1 = at the top): the tool bar sliding away as the page scrolls, see
+	 * ScrollBarsController. The page is laid out tall enough to still reach the bottom of the screen
+	 * from there (see insetWebViewTop()).
+	 */
+	void slideWebViews(float fraction) {
+		for (View v : topInsetContent) {
+			float dy = 0f;
+			if ((fraction != 0f) && (v.getLayoutParams() instanceof ViewGroup.MarginLayoutParams mlp)) {
+				int pad = (v.getParent() instanceof View p) ? p.getPaddingTop() : 0;
+				dy = -fraction * (mlp.topMargin + pad);
+			}
+			if (v.getTranslationY() != dy) v.setTranslationY(dy);
+		}
 	}
 
 	/**

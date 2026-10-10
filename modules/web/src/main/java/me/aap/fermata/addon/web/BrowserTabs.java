@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.activity.ScrollBarsController;
 import me.aap.fermata.ui.fragment.MusicPlayerFragment;
 import me.aap.fermata.ui.view.ToolBarPill;
 import me.aap.utils.function.Supplier;
@@ -572,15 +573,23 @@ final class BrowserTabs implements BrowserHomeView.Host, FermataWebView.PageList
 		bar.setAlpha(expand);
 
 		// The pages begin under the panel: each WebView already keeps a top margin for the tool bar,
-		// this padding is the rest of the way.
-		int wantTop = ib + dp(2);
+		// this padding is the rest of the way. Where the panel is with the tool bar in place: while
+		// the bars slide away as the page scrolls, the pages slide up after them instead of being
+		// resized every frame (see ScrollBarsController).
+		ScrollBarsController sb = activity.getScrollBars();
+		int wantTop = ib - ((sb != null) ? Math.round(sb.getToolBarDy()) : 0) + dp(2);
 		int have = 0;
 		FermataWebView w = getWebView();
 		if ((w != null) && (w.getLayoutParams() instanceof ViewGroup.MarginLayoutParams m)) {
 			have = m.topMargin;
 		}
 		int pad = Math.max(0, wantTop - have);
-		if (tabHost.getPaddingTop() != pad) tabHost.setPadding(0, pad, 0, 0);
+		if (tabHost.getPaddingTop() != pad) {
+			tabHost.setPadding(0, pad, 0, 0);
+			// Each page's bottom margin goes by this padding too, see insetWebViewTop(): in the same
+			// layout pass, so a page is moved, never resized.
+			activity.refreshContentInsets();
+		}
 		homeView.setShift(-(1f - expand) * panelExtra());
 	}
 
