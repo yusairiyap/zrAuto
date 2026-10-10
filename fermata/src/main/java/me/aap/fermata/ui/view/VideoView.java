@@ -102,7 +102,7 @@ public class VideoView extends FrameLayout
 	private boolean infoAtRight;
 	/** The Info Overlay's own place (MainActivityPrefs.CLOCK_POS_*). */
 	private int infoPos = MainActivityPrefs.CLOCK_POS_NONE;
-	private static final long INFO_MOVE_MS = 250L;
+	private static final long INFO_FADE_MS = 150L;
 
 	public VideoView(Context context) {
 		this(context, null);
@@ -426,7 +426,7 @@ public class VideoView extends FrameLayout
 				if (right != infoAtRight) {
 					moveInfoOverlay(right, true);
 				} else {
-					if (infoAtRight) setInfoTranslation(v, infoRightShift(v));
+					if (infoAtRight) setInfoTranslation((InfoOverlayView) v, infoRightShift(v));
 					updateTitleInset();
 				}
 			});
@@ -514,34 +514,32 @@ public class VideoView extends FrameLayout
 		if (!animate || !io.isLaidOut()) {
 			setInfoTranslation(io, to);
 		} else if (changed || (io.getTranslationX() != to)) {
-			cancelInfoMove();
-			infoMove = android.animation.ObjectAnimator.ofFloat(io, View.TRANSLATION_X, to);
-			infoMove.setDuration(INFO_MOVE_MS);
-			infoMove.setInterpolator(new android.view.animation.DecelerateInterpolator());
-			infoMove.start();
+			// No gliding across the screen: it fades out, changes place while unseen, and fades back in.
+			int gen = ++infoMoveGen;
+			io.animate().cancel();
+			io.animate().alpha(0f).setDuration(INFO_FADE_MS).withEndAction(() -> {
+				if (gen != infoMoveGen) return;
+				io.setTranslationX(infoAtRight ? infoRightShift(io) : 0f);
+				io.animate().alpha(1f).setDuration(INFO_FADE_MS).start();
+			}).start();
 		}
 		updateTitleInset();
 	}
 
-	/**
-	 * The Info Overlay's glide (its own animator: the overlay's ViewPropertyAnimator does its fade,
-	 * and cancelling one there would cancel the other).
-	 */
-	@Nullable
-	private android.animation.ObjectAnimator infoMove;
+	/** Identifies the latest fade-move of the Info Overlay: an earlier one's end does nothing. */
+	private int infoMoveGen;
 	/** Set while the Info Overlay waits to be out of sight to go back to its own place. */
 	private boolean infoResetWhenHidden;
 
-	private void cancelInfoMove() {
-		if (infoMove != null) {
-			infoMove.cancel();
-			infoMove = null;
-		}
-	}
-
-	private void setInfoTranslation(View io, float x) {
-		cancelInfoMove();
+	private void setInfoTranslation(InfoOverlayView io, float x) {
+		infoMoveGen++;
 		infoResetWhenHidden = false;
+		// A fade-move cut short leaves no half-faded overlay. Not when it fades with the panel: that
+		// fade (the overlay's own) is left alone.
+		if (!io.isOnlyWhenControlPanelVisible()) {
+			io.animate().cancel();
+			io.setAlpha(1f);
+		}
 		io.setTranslationX(x);
 	}
 
