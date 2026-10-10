@@ -342,6 +342,10 @@ public class ControlPanelView extends ConstraintLayout
 
 	private int wantedLayout(boolean seek, int width) {
 		if (videoLook) return LAYOUT_CLASSIC;
+		// The car's screen (Android Auto, or mirrored to it) always gets the single line: it fits
+		// there, whatever its dp width.
+		if (getActivity().getAppActivity().isCarActivity()
+				|| me.aap.fermata.FermataApplication.get().isMirroringMode()) return LAYOUT_ROW;
 		// Nothing to seek leaves no seek bar to put on a line of its own: a single line fits.
 		if (!seek) return LAYOUT_ROW;
 		if (width <= 0) width = getResources().getDisplayMetrics().widthPixels;

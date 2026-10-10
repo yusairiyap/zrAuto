@@ -81,7 +81,10 @@ public class FabPillView extends View implements ViewTreeObserver.OnPreDrawListe
 		int[] nb = NavBarView.resolveStyleColors(ctx);
 		pillColor = (nb[1] & 0x00FFFFFF) | 0xF2000000;
 		iconColor = nb[0] | 0xFF000000;
-		fabZ = toPx(ctx, FAB_Z);
+		// Exactly what android:elevation="10dp" gives the panel and the menus: toPx() rounds to whole
+		// pixels, which at some densities (the car's screen) put the buttons a fraction of a pixel
+		// below the panel and the bars painter, drawn behind them.
+		fabZ = FAB_Z * ctx.getResources().getDisplayMetrics().density;
 		shadowRadius = toPx(ctx, 12);
 		shadowDy = toPx(ctx, 3);
 
@@ -123,7 +126,7 @@ public class FabPillView extends View implements ViewTreeObserver.OnPreDrawListe
 		int idx = parent.indexOfChild(first);
 		for (FloatingButton f : l) idx = Math.min(idx, parent.indexOfChild(f));
 		parent.addView(v, idx, lp);
-		v.setElevation(v.fabZ - toPx(ctx, 1) / 2f);
+		v.setElevation(v.fabZ - ctx.getResources().getDisplayMetrics().density / 2f);
 		v.pill = pill;
 		v.restyle();
 		return v;
@@ -189,8 +192,15 @@ public class FabPillView extends View implements ViewTreeObserver.OnPreDrawListe
 	private void noShadow(FloatingButton f) {
 		// Raised above the pill (see FAB_Z) and level with the panel and menus; without an outline
 		// it casts nothing. The view's elevation is set too, not only the state animator's target.
+		// Without Material's state animator, too: it re-animates the elevation on every state change
+		// and raises a pressed or focused button (translationZ), which put a tapped one in front of the
+		// menus it opened. Tied with the panel and the menus, the layout order decides: the buttons
+		// over the panel, the menus over the buttons. Restyling to the default look (setCompatElevation
+		// with the button's own value) brings Material's animator back.
 		f.setCompatElevation(fabZ);
+		f.setStateListAnimator(null);
 		f.setElevation(fabZ);
+		f.setTranslationZ(0f);
 		f.setOutlineProvider(null);
 	}
 
