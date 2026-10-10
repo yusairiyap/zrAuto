@@ -72,6 +72,7 @@ import me.aap.utils.text.TextUtils;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.menu.OverlayMenuItem;
+import me.aap.utils.ui.view.FloatingButton;
 import me.aap.utils.ui.view.GestureListener;
 import me.aap.utils.ui.view.NavBarView;
 
@@ -328,12 +329,14 @@ public class ControlPanelView extends ConstraintLayout
 		else res = R.layout.control_panel_compact;
 		getConstraints(res).applyTo(this);
 
-		boolean compact = mode != LAYOUT_CLASSIC;
-		art.setVisibility(compact ? VISIBLE : GONE);
-		info.setVisibility(compact ? VISIBLE : GONE);
+		// The art and title only on the single line: on a phone's two lines they left the buttons
+		// too cramped.
+		boolean nowPlaying = mode == LAYOUT_ROW;
+		art.setVisibility(nowPlaying ? VISIBLE : GONE);
+		info.setVisibility(nowPlaying ? VISIBLE : GONE);
 		applyFocusOrder(mode, seek);
 		applyTransportButtons();
-		if (compact) syncNowPlaying();
+		if (nowPlaying) syncNowPlaying();
 		computeSize();
 	}
 
@@ -804,13 +807,13 @@ public class ControlPanelView extends ConstraintLayout
 		int delay = getStartDelay();
 
 		if (delay == 0) {
-			fb.setVisibility(GONE);
-			for (View f : extra) f.setVisibility(GONE);
+			hideFab(fb);
+			for (View f : extra) hideFab(f);
 			super.setVisibility(GONE);
 			showVideoControls(a.getActiveVideoView(), false, false);
 		} else {
-			fb.setVisibility(VISIBLE);
-			for (View f : extra) f.setVisibility(VISIBLE);
+			showFab(fb);
+			for (View f : extra) showFab(f);
 			super.setVisibility(VISIBLE);
 			// The middle buttons come with the panel; the title only ever with a tap on the video.
 			showVideoControls(a.getActiveVideoView(), true, false);
@@ -847,7 +850,11 @@ public class ControlPanelView extends ConstraintLayout
 		applyPendingSeek();
 		hideVideoControls(false);
 		setVideoLook(false);
-		a.getFloatingButton().setVisibility(VISIBLE);
+		showFab(a.getFloatingButton());
+		// Whatever their visibility, none is left half way through a fade of ours.
+		for (View f : a.getEnabledExtraFabs()) {
+			if (f.getVisibility() == VISIBLE) showFab(f);
+		}
 		findViewById(R.id.show_hide_bars).setVisibility(VISIBLE);
 		findViewById(R.id.show_hide_bars).setClickable(true);
 		findViewById(R.id.show_hide_bars_icon).setVisibility(VISIBLE);
@@ -1055,8 +1062,38 @@ public class ControlPanelView extends ConstraintLayout
 			if (self) {
 				super.setVisibility(GONE);
 				notifyControlPanelVisibility();
-			} else v.setVisibility(GONE);
+			} else {
+				// Back to opaque once hidden: whatever shows it next with a plain setVisibility()
+				// must not get an invisible button (an empty slot in the floating button pill).
+				v.setVisibility(GONE);
+				v.setAlpha(1f);
+			}
 		}).start();
+	}
+
+	/**
+	 * Shows a floating button right away, ending any fade of ours on it first: one cut short (or
+	 * finished) left it see-through or fully transparent, drawn faintly or not at all while the
+	 * pill behind the buttons still showed.
+	 */
+	private static void showFab(View f) {
+		settleFab(f);
+		f.setVisibility(VISIBLE);
+	}
+
+	private static void hideFab(View f) {
+		settleFab(f);
+		f.setVisibility(GONE);
+	}
+
+	private static void settleFab(View f) {
+		f.animate().cancel();
+		f.setAlpha(1f);
+		// Cancelling also ends a press bounce: back to the button's own size.
+		if (f instanceof FloatingButton b) {
+			b.setScaleX(b.getScale());
+			b.setScaleY(b.getScale());
+		}
 	}
 
 	/**
@@ -1196,7 +1233,7 @@ public class ControlPanelView extends ConstraintLayout
 	 * {@code FermataServiceUiBinder} whenever the item, its metadata or the play state changes.
 	 */
 	public void syncNowPlaying() {
-		if (layoutMode == LAYOUT_CLASSIC) return;
+		if (layoutMode != LAYOUT_ROW) return;
 		FermataServiceUiBinder b = getActivity().getMediaServiceBinder();
 		if (b == null) return;
 		PlayableItem i = b.getMediaSessionCallback().getCurrentItem();
@@ -1301,8 +1338,8 @@ public class ControlPanelView extends ConstraintLayout
 		// ever with a single tap, so a seek takes it away.
 		showVideoControls(vv, true, false);
 		super.setVisibility(VISIBLE);
-		fb.setVisibility(VISIBLE);
-		for (View f : extra) f.setVisibility(VISIBLE);
+		showFab(fb);
+		for (View f : extra) showFab(f);
 		clearFocus();
 		hideTimer = new HideTimer(a, delay, true, fabs(fb, extra));
 		a.postDelayed(hideTimer, delay);
@@ -1986,7 +2023,7 @@ public class ControlPanelView extends ConstraintLayout
 			hideVideoControls(true);
 
 			for (View v : views) {
-				if (v != null) v.setVisibility(GONE);
+				if (v != null) hideFab(v);
 			}
 		}
 	}
