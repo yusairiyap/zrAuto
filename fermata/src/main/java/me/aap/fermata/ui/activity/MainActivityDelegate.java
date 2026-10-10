@@ -3011,9 +3011,13 @@ public class MainActivityDelegate extends ActivityDelegate
 		}
 	}
 
-	private static void resetFabPosition(@Nullable FloatingButton fb) {
+	private void resetFabPosition(@Nullable FloatingButton fb) {
 		if (fb == null) return;
-		fb.animate().translationX(0f).translationY(0f).setDuration(200L).start();
+		// Back in place, which is lower while the bottom bars are scrolled away (see
+		// ScrollBarsController): to 0, that offset was lost, and the button ended up that much too
+		// high once the bars came back.
+		float dy = (scrollBars != null) ? scrollBars.getFabDy(fb) : 0f;
+		fb.animate().translationX(0f).translationY(dy).setDuration(200L).start();
 	}
 
 	/**

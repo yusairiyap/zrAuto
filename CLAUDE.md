@@ -136,9 +136,11 @@ chasing the wrong theory for, as has happened before. If you add a dialog via
 `MainActivityDelegate` overrides) — no extra step needed there.
 
 **Bars collapse on scroll.** `ScrollBarsController` (owned by `MainActivityDelegate`, fed by
-`BodyLayout#dispatchTouchEvent`) slides the bottom bars (and the floating buttons with them) away
-as tab content scrolls down a little, `tool_bar` too on further scrolling, and brings them back on
-the way up (all shown at the top). It only translates the bars, never resizes anything (the YouTube
+`BodyLayout#dispatchTouchEvent`) hides the bars one step at a time as tab content scrolls down:
+`control_panel` (tucked behind a bottom nav bar, clipped at its top edge), then a bottom `nav_bar`,
+then `tool_bar`; scrolling up brings them back in reverse (all shown at the top), and the floating
+buttons stay just above whatever still shows. Something else resetting a FAB's translation must
+reset it to `scrollBars.getFabDy(fab)`, not 0 (see `resetFabPosition`). It only translates the bars, never resizes anything (the YouTube
 WebView restarts its player on a resize): a web page is laid out as tall as its parent with a
 negative bottom margin matching its top one (`insetWebViewTop`) and slides up into the tool bar's
 room (`slideWebViews`). List content follows through its bottom padding, since
