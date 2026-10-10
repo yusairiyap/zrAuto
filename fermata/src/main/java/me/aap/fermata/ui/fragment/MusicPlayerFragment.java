@@ -521,6 +521,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if (!visible) {
 			if (title != null) title.removeCallbacks(titleScrollEnded);
 			setLowRefreshRate(false);
+		} else {
+			// Back on this tab: TextView starts a long title's scrolling over again (another few
+			// passes), so the 60 Hz request, dropped when the tab hid, has to come back with it.
+			onTitleScrollStarted();
 		}
 		if (visible) {
 			// Also on every resume (e.g. Android Auto giving the screen back), not only when this tab
