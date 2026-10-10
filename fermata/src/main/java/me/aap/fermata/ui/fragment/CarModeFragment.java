@@ -95,6 +95,8 @@ public class CarModeFragment extends MainActivityFragment {
 		content.addView(keyCard("◀", R.string.car_mode_prev, false));
 		content.addView(keyCard("▶", R.string.car_mode_hold_next, true));
 		content.addView(keyCard("◀", R.string.car_mode_hold_prev, true));
+		content.addView(keyCard("▶", R.string.car_mode_sliders, true));
+		content.addView(keyCard("◀ ▶", R.string.car_mode_youtube_fullscreen, true));
 
 		section(content, R.string.car_mode_where);
 		for (int res : new int[]{R.string.car_mode_where_lists, R.string.car_mode_where_youtube,
@@ -102,9 +104,6 @@ public class CarModeFragment extends MainActivityFragment {
 				R.string.car_mode_where_settings}) {
 			content.addView(bullet(res));
 		}
-		content.addView(keyCard("▶", R.string.car_mode_sliders, true), margins(0, dp(8), 0, 0));
-		content.addView(keyCard("◀ ▶", R.string.car_mode_youtube_fullscreen, true),
-				margins(0, dp(6), 0, 0));
 
 		TextView foot = text(R.string.car_mode_footnote, 13, textSecondary, false);
 		foot.setPadding(dp(4), dp(16), dp(4), 0);
@@ -294,7 +293,7 @@ public class CarModeFragment extends MainActivityFragment {
 		key.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
 		key.setTypeface(Typeface.DEFAULT_BOLD);
 		key.setGravity(Gravity.CENTER);
-		key.setMinWidth(dp(76));
+		key.setSingleLine(true);
 		key.setPadding(dp(10), dp(6), dp(10), dp(6));
 		GradientDrawable kb = new GradientDrawable();
 		kb.setCornerRadius(dp(100));
@@ -307,7 +306,8 @@ public class CarModeFragment extends MainActivityFragment {
 			key.setTextColor(accent);
 		}
 		key.setBackground(kb);
-		row.addView(key);
+		// One width for every key, the longest's ("Hold ◀ ▶"): the descriptions all line up.
+		row.addView(key, new LinearLayout.LayoutParams(dp(116), ViewGroup.LayoutParams.WRAP_CONTENT));
 
 		TextView t = text(what, 15, textPrimary, false);
 		t.setPadding(dp(14), 0, 0, 0);
