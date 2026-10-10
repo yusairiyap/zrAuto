@@ -150,6 +150,8 @@ public class ControlPanelView extends ConstraintLayout
 	@Nullable
 	private String artLoading;
 	private int layoutMode = -1;
+	/** Whether the current layout shows {@link #art} and the title, see {@link #applyLayout}. */
+	private boolean showsNowPlaying;
 	private final SparseArray<ConstraintSet> layouts = new SparseArray<>();
 	@DimenRes
 	private final int size;
@@ -329,9 +331,10 @@ public class ControlPanelView extends ConstraintLayout
 		else res = R.layout.control_panel_compact;
 		getConstraints(res).applyTo(this);
 
-		// The art and title only on the single line: on a phone's two lines they left the buttons
-		// too cramped.
-		boolean nowPlaying = mode == LAYOUT_ROW;
+		// The art and title on the single line, and on the car screen's two lines too; on a phone's
+		// two lines they left the buttons too cramped.
+		boolean nowPlaying = (mode == LAYOUT_ROW) || ((mode == LAYOUT_STACKED) && isOnCar());
+		showsNowPlaying = nowPlaying;
 		art.setVisibility(nowPlaying ? VISIBLE : GONE);
 		info.setVisibility(nowPlaying ? VISIBLE : GONE);
 		applyFocusOrder(mode, seek);
@@ -340,12 +343,14 @@ public class ControlPanelView extends ConstraintLayout
 		computeSize();
 	}
 
+	/** On the car's screen: Android Auto, or the phone mirrored to it. */
+	private boolean isOnCar() {
+		return getActivity().getAppActivity().isCarActivity()
+				|| me.aap.fermata.FermataApplication.get().isMirroringMode();
+	}
+
 	private int wantedLayout(boolean seek, int width) {
 		if (videoLook) return LAYOUT_CLASSIC;
-		// The car's screen (Android Auto, or mirrored to it) always gets the single line: it fits
-		// there, whatever its dp width.
-		if (getActivity().getAppActivity().isCarActivity()
-				|| me.aap.fermata.FermataApplication.get().isMirroringMode()) return LAYOUT_ROW;
 		// Nothing to seek leaves no seek bar to put on a line of its own: a single line fits.
 		if (!seek) return LAYOUT_ROW;
 		if (width <= 0) width = getResources().getDisplayMetrics().widthPixels;
@@ -1237,7 +1242,7 @@ public class ControlPanelView extends ConstraintLayout
 	 * {@code FermataServiceUiBinder} whenever the item, its metadata or the play state changes.
 	 */
 	public void syncNowPlaying() {
-		if (layoutMode != LAYOUT_ROW) return;
+		if (!showsNowPlaying) return;
 		FermataServiceUiBinder b = getActivity().getMediaServiceBinder();
 		if (b == null) return;
 		PlayableItem i = b.getMediaSessionCallback().getCurrentItem();
