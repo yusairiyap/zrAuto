@@ -145,14 +145,15 @@ buttons stay just above whatever still shows. Something else resetting a FAB's t
 reset it to `scrollBars.getFabDy(fab)`, not 0 (see `resetFabPosition`). The bars fade as they slide
 through their *transition* alpha (Android 10+), which nothing else animates on them; the top and
 bottom edge fades (`BodyLayout#computeTopFade`, `FloatingBarsView`) read only the plain alpha, so they
-stay on screen (narrowed to a strip) while the bars are scrolled away. List padding follows the bars
-only once each step has ended *and* the content has stopped moving (`getInsetState`, `settleInsets`):
-a per-frame or mid-fling `setPadding` relays the whole grid and stutters the scroll.
+stay on screen (narrowed to a strip) while the bars are scrolled away. List padding never follows
+the bars (`computeContentInsets` uses their resting place, minus `getPanelDy`/`getNavDy`), like
+Material's hide-on-scroll bars: changing it relays the list and shifts its rows under the finger
+(tried per frame, at the end of each step, and once scrolling stopped; all felt bad). Instead,
+reaching the end of a list brings the bars back over the room left for them.
 When either edge fade goes off, the reason is written to the Diagnostic log ("top fade off: ..."). It only translates the bars, never resizes anything (the YouTube
 WebView restarts its player on a resize): a web page is laid out as tall as its parent with a
 negative bottom margin matching its top one (`insetWebViewTop`) and slides up into the tool bar's
-room (`slideWebViews`). List content follows through its bottom padding, since
-`computeContentInsets` reads the bars' live position. It works for any `RecyclerView`,
+room (`slideWebViews`). It works for any `RecyclerView`,
 `ScrollView`, `ListView` or `WebView` under the finger with no per-tab code; a tab laid out around
 the bars instead (Music, Car mode) opts out with `MainActivityFragment#collapsesBarsOnScroll`. Don't
 animate the bars' translation elsewhere without calling `scrollBars.reset(false)` first, the

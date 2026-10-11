@@ -81,15 +81,10 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 	// The floating buttons, the primary one first (any may be null), see attach().
 	private View[] fabs = new View[0];
 	private int state = FULL;
-	// The step the tab content's insets are laid out for (see MainActivityDelegate
-	// #computeContentInsets): it catches up with state only once the content has stopped moving,
-	// see settleInsets.
-	private int insetState = FULL;
 	// How far the control panel and a bottom nav bar are moved by this right now.
 	private float panelDy;
 	private float navDy;
-	// Whether a finger is down on the content.
-	private boolean touching;
+
 	private float progress;
 	// Whether the bars carry any transformation of ours, so a full, settled state leaves them alone
 	// (their own show/hide animations own their translation then).
@@ -133,11 +128,6 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 		o.addOnGlobalLayoutListener(this);
 	}
 
-	/** The step the tab content's insets should be laid out for: FULL, PANEL_HIDDEN, ... */
-	int getInsetState() {
-		return insetState;
-	}
-
 	/** How far the control panel is moved by this right now (down: positive). */
 	float getPanelDy() {
 		return panelDy;
@@ -146,41 +136,6 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 	/** How far a bottom nav bar is moved by this right now (down: positive). */
 	float getNavDy() {
 		return navDy;
-	}
-
-	/**
-	 * Lays the tab content out for the bars' new place, once it has stopped moving: changing a
-	 * list's padding relays it out, which mid-fling (fast scrolling to the end of a list, where it
-	 * also pulls the rows down into the room left) stuttered the scroll. Checked again a moment
-	 * later for as long as a finger is down or the list still scrolls.
-	 */
-	private final Runnable settleInsets = new Runnable() {
-		@Override
-		public void run() {
-			View b = a.getBody();
-			if (b == null) return;
-			if (isScrolling()) {
-				b.removeCallbacks(this);
-				b.postDelayed(this, 120);
-				return;
-			}
-			if (insetState == state) return;
-			insetState = state;
-			a.refreshContentInsets();
-		}
-	};
-
-	private boolean isScrolling() {
-		if (touching) return true;
-		return (target instanceof RecyclerView rv) &&
-				(rv.getScrollState() != RecyclerView.SCROLL_STATE_IDLE);
-	}
-
-	private void scheduleInsets() {
-		View b = a.getBody();
-		if (b == null) return;
-		b.removeCallbacks(settleInsets);
-		settleInsets.run();
 	}
 
 	/** How far tool_bar is out of the way right now: 0 = in place, 1 = gone. */
@@ -202,10 +157,8 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 			anim = null;
 			setLayers(false);
 			state = FULL;
-			insetState = FULL;
 			progress = 0f;
-			if (applied) apply(false);
-			a.refreshContentInsets();
+			if (applied) apply();
 			return;
 		}
 		setState(FULL);
@@ -231,9 +184,6 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 
 	/** Every touch inside body_layout, before body_layout handles it -- never consumed here. */
 	public void onBodyTouch(ViewGroup body, MotionEvent e) {
-		int act = e.getActionMasked();
-		if (act == MotionEvent.ACTION_DOWN) touching = true;
-		else if ((act == MotionEvent.ACTION_UP) || (act == MotionEvent.ACTION_CANCEL)) touching = false;
 		// Turned off: no work at all on any touch (bars put back once, when it was turned off).
 		if ((target == null) && (state == FULL) && !applied &&
 				(e.getActionMasked() != MotionEvent.ACTION_DOWN)) {
@@ -298,7 +248,11 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 		}
 		int dy = scrollDelta(t);
 		if (dy != 0) onScrolled(dy);
-		if (!t.canScrollVertically(-1)) setState(FULL);
+		// At either end of a list, everything back: at the top, as it started; at the bottom, the
+		// last rows end right above the bars' place (the list's padding never follows the bars, so
+		// it's never relaid out under the finger), and the bars come back over that room rather
+		// than leaving it empty.
+		if (!t.canScrollVertically(-1) || ((dy > 0) && !t.canScrollVertically(1))) setState(FULL);
 	}
 
 	/**
@@ -319,7 +273,7 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 		// Re-applied before every frame while collapsed: a bar shown, laid out or restyled meanwhile
 		// (the control panel coming up when playback starts) takes its compact or hidden look at
 		// once. Setting a view's translation to the value it already has is a no-op.
-		if (applied && (anim == null)) apply(false);
+		if (applied && (anim == null)) apply();
 		return true;
 	}
 
@@ -367,7 +321,7 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 		if ((b == null) || !b.isLaidOut()) {
 			progress = to;
 			setLayers(false);
-			apply(true);
+			apply();
 			return;
 		}
 		setLayers(true);
@@ -379,12 +333,8 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 		va.addUpdateListener(v -> {
 			if (anim != v) return;
 			progress = (float) v.getAnimatedValue();
-			boolean end = v.getAnimatedFraction() >= 1f;
-			// The lists' bottom padding only once the bars have arrived: following them frame by
-			// frame relaid the whole list (a grid of covers) every frame of every step. Seen only at
-			// the very end of a list, where the gap now closes once, at the end of the slide.
-			apply(end);
-			if (end) {
+			apply();
+			if (v.getAnimatedFraction() >= 1f) {
 				anim = null;
 				setLayers(false);
 			}
@@ -394,11 +344,12 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 	}
 
 	/**
-	 * Moves the bars, the floating buttons and the web pages to {@link #progress}; with
-	 * {@code moved}, the tab content's insets follow (not needed when only re-applied before a
-	 * frame: nothing moved then).
+	 * Moves the bars, the floating buttons and the web pages to {@link #progress}. Never the tab
+	 * content's own layout: its padding stays where the bars rest (see
+	 * MainActivityDelegate#computeContentInsets), as Material's hide-on-scroll bars leave it --
+	 * relaying a list out as the bars came and went shifted its rows under the finger.
 	 */
-	private void apply(boolean moved) {
+	private void apply() {
 		ToolBarView tb = a.getToolBar();
 		NavBarView nb = a.getNavBar();
 		ControlPanelView cp = a.getControlPanel();
@@ -481,7 +432,6 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 		a.slideWebViews(t);
 
 		applied = (p != 0f) || fabsLeft;
-		if (moved) scheduleInsets();
 	}
 
 	/**
