@@ -105,6 +105,13 @@ public final class MusicPlayer {
 		 * a YouTube video is what's playing. The number added, or -1 if no YouTube video is playing.
 		 */
 		int addToVideoQueue(MainActivityDelegate a, List<? extends PlayableItem> items);
+
+		/**
+		 * Plays {@code videoId} in the YouTube player that is playing now, in place (the way its search
+		 * panel plays a result): fullscreen stays, the picture changes over. False if no YouTube video
+		 * is playing, so there is nothing to switch.
+		 */
+		boolean playVideoInPlace(MainActivityDelegate a, String videoId, @Nullable String title);
 	}
 
 	public static void setYoutubeHooks(@Nullable YoutubeHooks hooks) {
@@ -120,6 +127,13 @@ public final class MusicPlayer {
 	public static void openYoutubeSearch(MainActivityDelegate a, boolean upNextOnly) {
 		YoutubeHooks h = youtube;
 		if (h != null) h.openSearch(a, upNextOnly);
+	}
+
+	/** See {@link YoutubeHooks#playVideoInPlace}; false without the YouTube addon. */
+	public static boolean playYoutubeInPlace(MainActivityDelegate from, String videoId,
+																					 @Nullable String title) {
+		YoutubeHooks h = youtube;
+		return (h != null) && h.playVideoInPlace(from.getPlaybackDelegate(), videoId, title);
 	}
 
 	/** Shows the YouTube tab with its video fullscreen (a no-op without the YouTube addon). */

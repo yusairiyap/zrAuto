@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- On: a fixed dark neutral, so the thumb is a distinct disc on any accent-coloured track (the
-    black themes' accent is white). Off: the dimmed control colour, so it reads against the dim track
-    and is not the accent. -->
+    black themes' accent is white). Off: the control colour, opaque, against the dimmed track. -->
     <item android:alpha="1" android:color="#1C1B1F" android:state_checked="true" />
-    <item android:alpha="0.7" android:color="?attr/colorControlNormal" android:state_checked="false" />
+    <item android:alpha="1" android:color="?attr/colorControlNormal" android:state_checked="false" />
 </selector>

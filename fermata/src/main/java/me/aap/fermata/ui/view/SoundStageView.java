@@ -53,6 +53,9 @@ public class SoundStageView extends LinearLayout implements SoundStage.Listener 
 		widthSwitch = findViewById(R.id.stage_width_switch);
 		diffSwitch = findViewById(R.id.stage_diff_switch);
 		posSwitch = findViewById(R.id.stage_pos_switch);
+		for (SwitchCompat sw : new SwitchCompat[]{widthSwitch, diffSwitch, posSwitch}) {
+			SwitchStyle.apply(sw, palette);
+		}
 		this.pad = findViewById(R.id.stage_pad);
 
 		LinearLayout widthRows = findViewById(R.id.stage_width_rows);

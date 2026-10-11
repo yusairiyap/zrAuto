@@ -32,22 +32,25 @@ public final class SwitchStyle {
 
 	/**
 	 * @param textSecondary the dim colour the off state is made of
-	 * @param background    what the switch sits on, so the off colours can be made opaque
+	 * @param background    unused now (kept for callers): the off state no longer depends on it
 	 */
 	public static void apply(SwitchCompat s, int accent, int onAccent, int textSecondary, int background) {
 		float d = s.getResources().getDisplayMetrics().density;
-		int bg = ColorUtils.setAlphaComponent(background, 0xFF);
-		int offTrack = ColorUtils.compositeColors(ColorUtils.setAlphaComponent(textSecondary, 0x50), bg);
-		int offThumb = ColorUtils.compositeColors(ColorUtils.setAlphaComponent(textSecondary, 0xC0), offTrack);
+		// Off is made of the dim text colour itself, a translucent track with an outline and an opaque
+		// thumb, so it reads on any card. (Not blended onto a background colour: the chip fills the
+		// switches sit on are translucent, and forcing them opaque turned the whole switch white.)
+		int offTrack = ColorUtils.setAlphaComponent(textSecondary, 0x40);
+		int offStroke = ColorUtils.setAlphaComponent(textSecondary, 0xA0);
+		int offThumb = ColorUtils.setAlphaComponent(textSecondary, 0xFF);
 
 		int w = Math.round(46 * d);
 		int h = Math.round(26 * d);
 		StateListDrawable track = new StateListDrawable();
-		track.addState(new int[]{android.R.attr.state_checked}, pill(accent, w, h));
-		track.addState(new int[]{}, pill(offTrack, w, h));
+		track.addState(new int[]{android.R.attr.state_checked}, pill(accent, 0, 0, w, h, d));
+		track.addState(new int[]{}, pill(offTrack, offStroke, 2, w, h, d));
 
 		// A disc a little smaller than the track is tall, so it sits inside it with an even gap.
-		int gap = Math.round(4 * d);
+		int gap = Math.round(5 * d);
 		int disc = h - 2 * gap;
 		StateListDrawable thumb = new StateListDrawable();
 		thumb.addState(new int[]{android.R.attr.state_checked},
@@ -61,11 +64,12 @@ public final class SwitchStyle {
 		s.setTrackTintList(null);
 	}
 
-	private static GradientDrawable pill(int color, int w, int h) {
+	private static GradientDrawable pill(int color, int stroke, int strokeDp, int w, int h, float d) {
 		GradientDrawable g = new GradientDrawable();
 		g.setColor(color);
 		g.setCornerRadius(h / 2f);
 		g.setSize(w, h);
+		if (strokeDp > 0) g.setStroke(Math.round(strokeDp * d), stroke);
 		return g;
 	}
 

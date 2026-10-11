@@ -458,6 +458,9 @@ public final class YoutubeAlternativesPicker {
 		// A downloaded video that is the current one plays from YouTube, not from its file: its page
 		// has the quality, the comments and the rest, which a tap here is after.
 		if (isCurrent(v) && YtOffline.useLocal(v.videoId)) YtOffline.forceStream(v.videoId);
+		// While YouTube is playing, the video is swapped in its player (like the next item does), so
+		// fullscreen stays and the change is smooth; else its tab opens.
+		if (me.aap.fermata.addon.music.MusicPlayer.playYoutubeInPlace(a, v.videoId, v.title)) return;
 		SpotifyImportFragment.previewVideo(a, v);
 	}
 
