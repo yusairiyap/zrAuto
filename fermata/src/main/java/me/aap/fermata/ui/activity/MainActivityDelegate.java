@@ -2313,6 +2313,8 @@ public class MainActivityDelegate extends ActivityDelegate
 			return new KeyTesterFragment();
 		} else if (id == R.id.car_mode_fragment) {
 			return new CarModeFragment();
+		} else if (id == R.id.all_in_one_fragment) {
+			return new me.aap.fermata.ui.fragment.AllInOneFragment();
 		}
 		ActivityFragment f = FermataApplication.get().getAddonManager().createFragment(id);
 		return (f != null) ? f : super.createFragment(id);
@@ -2738,6 +2740,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Override
 	public void onBackPressed() {
 		if (PlaylistPicker.dismissOpen()) return;
+		if (me.aap.fermata.ui.view.AllInOneMenu.dismissOpen()) return;
 		if (DownloadPicker.dismissOpen()) return;
 		super.onBackPressed();
 	}

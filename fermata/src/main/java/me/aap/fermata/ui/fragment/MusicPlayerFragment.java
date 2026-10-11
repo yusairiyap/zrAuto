@@ -86,7 +86,7 @@ import me.aap.fermata.ui.view.EffectsUi;
 import me.aap.fermata.ui.view.InfoOverlayView;
 import me.aap.fermata.ui.view.ToolBarPill;
 import me.aap.fermata.ui.view.LoadingDimView;
-import me.aap.fermata.ui.view.MusicMoreMenu;
+import me.aap.fermata.ui.view.AllInOneMenu;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.utils.async.FutureSupplier;
@@ -1749,7 +1749,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 	@Override
 	public boolean onBackPressed() {
-		return MusicMoreMenu.dismissOpen() || super.onBackPressed();
+		return AllInOneMenu.dismissOpen() || super.onBackPressed();
 	}
 
 	/**
@@ -1873,18 +1873,19 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		else a.showAddToPlaylistDialog(Collections.singletonList(pi));
 	}
 
-	private interface MenuOpener {
-		void open(Context ctx, ViewGroup host, View insets, View anchor, MediaSessionCallback cb,
-							Runnable onEffects, Runnable onFavorite, java.util.function.BooleanSupplier isFavorite,
-							Runnable onPlaylist);
-	}
-
-	/** The chip's frosted-glass menu: Effects and the sleep timer. */
+	/**
+	 * The chip's card: Effects, the sleep timer, Favorites and Playlist, or the All in One actions
+	 * when it's set to follow them (Settings > Interface > All in One).
+	 */
 	private void onMore(boolean timer) {
-		(timer ? (MenuOpener) MusicMoreMenu::showTimer : (MenuOpener) MusicMoreMenu::show).open(palette, (ViewGroup) requireView(), content, moreButton,
-				getActivityDelegate().getMediaSessionCallback(), this::onEffects, this::onFavoriteTap,
-				() -> me.aap.fermata.action.Action.isCurrentFavorite(getActivityDelegate()),
-				this::onPlaylistTap);
+		AllInOneMenu.showMusic(getActivityDelegate(), palette, (ViewGroup) requireView(), content,
+				moreButton, timer, action -> {
+					if (action == me.aap.fermata.action.Action.AUDIO_EFFECTS) onEffects();
+					else if (action == me.aap.fermata.action.Action.FAVORITE_ADD) onFavoriteTap();
+					else if (action == me.aap.fermata.action.Action.PLAYLIST_ADD) onPlaylistTap();
+					else return false;
+					return true;
+				});
 	}
 
 	/**

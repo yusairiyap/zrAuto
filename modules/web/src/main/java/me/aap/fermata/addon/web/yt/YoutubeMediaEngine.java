@@ -34,6 +34,7 @@ import me.aap.fermata.addon.web.R;
 import me.aap.fermata.addon.web.yt.YoutubeAddon.VideoScale;
 import me.aap.fermata.media.engine.BufferingIndicator;
 import me.aap.fermata.media.engine.MediaEngine;
+import me.aap.fermata.media.engine.VideoQualityOption;
 import me.aap.fermata.media.lib.DefaultMediaLib;
 import me.aap.fermata.media.lib.ExtPlayable;
 import me.aap.fermata.media.lib.ExtRoot;
@@ -67,6 +68,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	private static final int VIDEO_QUALITY_MASK = 1 << 31;
 	/** Marks a quality menu item's data as a player API level name -- see videoQualityMenu(). */
 	private static final String QUALITY_LEVEL_PREFIX = "ytq:";
+	/** A Quality card choice from the page's own settings menu, by its index there. */
+	private static final String DOM_QUALITY_PREFIX = "ytdom:";
 	private static final String ID = "youtube";
 	private static final String CURRENT_ID = ID + ":current";
 	private static final String NEXT_ID = ID + ":next";
@@ -686,6 +689,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		switching = true;
 		YoutubeVideoView v = getFullScreenView();
 		if (v != null) v.showTransitionOverlay(false);
+		// The next video is loading: the play/pause button gives way to the loading circle, as for a
+		// seek, rather than sitting there as "pause" until the new video plays. playing() (via
+		// clearStall()) or contentPlaying() puts it back.
+		BufferingIndicator.setBuffering(true);
 	}
 
 	/**
@@ -697,6 +704,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		switching = false;
 		YoutubeVideoView v = getFullScreenView();
 		if (v != null) v.hideTransitionOverlay();
+		// The new video is up: the button back, unless the page is still waiting for data (see waiting()).
+		if (waitingSince == 0) BufferingIndicator.setBuffering(false);
 	}
 
 	/**
@@ -1353,6 +1362,75 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 					}
 					return domVideoQualityMenu(b);
 				});
+	}
+
+	/**
+	 * For the Quality card: the player API's levels (Auto among them), or, when the player doesn't
+	 * list them, the page's own settings menu's.
+	 */
+	@Override
+	public FutureSupplier<List<VideoQualityOption>> getVideoQualityOptions() {
+		return web.getPlayerQualities().timeout(1100).main()
+				.ifFail(err -> {
+					Log.e(err, "Failed to load player qualities");
+					return null;
+				})
+				.then(levels -> {
+					if ((levels != null) && !levels.isEmpty()) {
+						List<VideoQualityOption> l = new ArrayList<>();
+						VideoQualityOption auto = null;
+						boolean audio = MusicPlayer.isYoutubeAudioMode();
+						for (String q : levels.split(";")) {
+							boolean sel = q.startsWith("*");
+							if (sel) q = q.substring(1);
+							// Playing as music, the lowest quality is the sound alone: says so.
+							String label = (audio && q.equals("tiny")) ?
+									web.getContext().getString(me.aap.fermata.R.string.quality_audio) : qualityLabel(q);
+							VideoQualityOption o = new VideoQualityOption(QUALITY_LEVEL_PREFIX + q,
+									label, sel, q.equals("auto"));
+							if (o.auto) auto = o;
+							else l.add(o);
+						}
+						// Auto first, then the rest from the highest down, as the player lists them.
+						if (auto != null) l.add(0, auto);
+						return completed(l);
+					}
+					return web.getVideoQualities().timeout(1100).main()
+							.ifFail(err -> {
+								Log.e(err, "Failed to load video qualities");
+								return null;
+							})
+							.map(qualities -> {
+								List<VideoQualityOption> l = new ArrayList<>();
+								if ((qualities == null) || qualities.isEmpty()) return l;
+								String[] all = qualities.split(";");
+								boolean audio = MusicPlayer.isYoutubeAudioMode();
+								for (int i = 0; i < all.length; i++) {
+									String q = all[i];
+									boolean sel = q.startsWith("*");
+									if (sel) q = q.substring(1);
+									if (audio && q.startsWith("144")) {
+										q = web.getContext().getString(me.aap.fermata.R.string.quality_audio);
+									}
+									boolean auto = q.toLowerCase().startsWith("auto");
+									l.add(new VideoQualityOption(DOM_QUALITY_PREFIX + i, q, sel, auto));
+								}
+								return l;
+							});
+				});
+	}
+
+	@Override
+	public void setVideoQuality(VideoQualityOption q) {
+		// Same as the quality menu's items, see menuItemSelected().
+		if (q.id.startsWith(QUALITY_LEVEL_PREFIX)) {
+			manualQualityVideoId = currentVideoId;
+			web.setPlayerQuality(q.id.substring(QUALITY_LEVEL_PREFIX.length()));
+		} else if (q.id.startsWith(DOM_QUALITY_PREFIX)) {
+			manualQualityVideoId = currentVideoId;
+			web.stopQualityPolicy();
+			web.setVideoQuality(Integer.parseInt(q.id.substring(DOM_QUALITY_PREFIX.length())));
+		}
 	}
 
 	/** A player API quality level's name as the viewer knows it, e.g. "hd720" -> "720p". */

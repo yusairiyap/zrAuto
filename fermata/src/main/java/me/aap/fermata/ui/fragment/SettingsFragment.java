@@ -107,6 +107,10 @@ public class SettingsFragment extends MainActivityFragment
 	public static final Object SHOW_FAB_SETTINGS = "fab_settings";
 	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Key bindings page. */
 	public static final Object SHOW_KEY_BINDINGS = "key_bindings";
+	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Interface page. */
+	public static final Object SHOW_INTERFACE = "interface";
+	/** Same as {@link #SHOW_DIM_SETTINGS}, but for Interface &gt; Android Auto. */
+	public static final Object SHOW_AA_INTERFACE = "aa_interface";
 	private static final String ADDON_SETTINGS = "addon_settings:";
 	private static final String KEY_SETTINGS = "key_settings:";
 
@@ -118,6 +122,10 @@ public class SettingsFragment extends MainActivityFragment
 	private final java.util.Map<String, PreferenceSet> addonSettingsSets = new java.util.HashMap<>();
 	@Nullable
 	private PreferenceSet keyBindingsSet;
+	@Nullable
+	private PreferenceSet interfaceSet;
+	@Nullable
+	private PreferenceSet aaInterfaceSet;
 	// Each key's own bindings page, by Key name, see keySettings().
 	private final java.util.Map<String, PreferenceSet> keySettingsSets = new java.util.HashMap<>();
 	// The key page opened from the key simulator: Back from it goes back there.
@@ -131,6 +139,7 @@ public class SettingsFragment extends MainActivityFragment
 	 * the addon), by the addon's module name.
 	 */
 	public static Object addonSettings(String moduleName) {
+		// An addon's class name works too (several addons can share one module).
 		return ADDON_SETTINGS + moduleName;
 	}
 
@@ -165,6 +174,10 @@ public class SettingsFragment extends MainActivityFragment
 			if (p != null) adapter.setPreferenceSet(p);
 		} else if ((pendingInput == SHOW_KEY_BINDINGS) && (keyBindingsSet != null)) {
 			adapter.setPreferenceSet(keyBindingsSet);
+		} else if ((pendingInput == SHOW_INTERFACE) && (interfaceSet != null)) {
+			adapter.setPreferenceSet(interfaceSet);
+		} else if ((pendingInput == SHOW_AA_INTERFACE) && (aaInterfaceSet != null)) {
+			adapter.setPreferenceSet(aaInterfaceSet);
 		} else if ((pendingInput instanceof String ks) && ks.startsWith(KEY_SETTINGS)) {
 			PreferenceSet p = keySettingsSets.get(ks.substring(KEY_SETTINGS.length()));
 			if (p != null) {
@@ -368,6 +381,7 @@ public class SettingsFragment extends MainActivityFragment
 
 		var subGenSet = set.subSet(o -> {
 			o.title = R.string.subtitles_auto;
+			o.subtitle = R.string.prefs_sub_subgen;
 			o.visibility = cond;
 			o.icon = R.drawable.subgen;
 		});
@@ -390,18 +404,24 @@ public class SettingsFragment extends MainActivityFragment
 		PreferenceSet sub1;
 		PreferenceSet sub2;
 
-		sub1 = set.subSet(o -> {
+		interfaceSet = sub1 = set.subSet(o -> {
 			o.title = R.string.interface_prefs;
+			o.subtitle = R.string.prefs_sub_interface;
 			o.icon = R.drawable.view_grid;
 		});
+		aaInterfaceSet = null;
 
 		if (BuildConfig.AUTO && a.isCarActivityNotMirror()) {
 			fabSettingsSet = sub1.subSet(o -> {
 				o.title = R.string.secondary_fab_prefs;
+				o.subtitle = R.string.prefs_sub_fab;
 				o.icon = R.drawable.fab;
 			});
 			// The car's own floating buttons, independent of the phone's.
 			addSecondaryFabPrefs(a, fabSettingsSet, true);
+			// The car's own All in One card.
+			addAllInOne(a, sub1, true);
+			aaInterfaceSet = sub1;
 			// Right below the floating buttons: addAAInterface() adds its items straight in here.
 			addInfoOverlayPrefs(a, sub1);
 			addNavTabsPrefs(a, sub1);
@@ -414,21 +434,31 @@ public class SettingsFragment extends MainActivityFragment
 			if (BuildConfig.AUTO) {
 				PreferenceSet aaSet = sub1.subSet(o -> {
 					o.title = R.string.interface_prefs_aa;
+					o.subtitle = R.string.prefs_sub_aa;
 					o.icon = R.drawable.tv;
 				});
 				// Android Auto's floating buttons are set up separately from the phone's.
 				aaFabSet = aaSet.subSet(o -> {
 					o.title = R.string.secondary_fab_prefs;
+					o.subtitle = R.string.prefs_sub_fab;
 					o.icon = R.drawable.fab;
 				});
 				addSecondaryFabPrefs(a, aaFabSet, true);
+				addAllInOne(a, aaSet, true);
+				// Shared with the phone's, here too so they're found from the car's own settings.
+				addInfoOverlayPrefs(a, aaSet);
+				addNavTabsPrefs(a, aaSet);
+				addUpNextPrefs(a, aaSet);
 				addAAInterface(a, aaSet);
+				aaInterfaceSet = aaSet;
 			}
 			fabSettingsSet = sub1.subSet(o -> {
 				o.title = R.string.secondary_fab_prefs;
+				o.subtitle = R.string.prefs_sub_fab;
 				o.icon = R.drawable.fab;
 			});
 			addSecondaryFabPrefs(a, fabSettingsSet, false);
+			addAllInOne(a, sub1, false);
 			// The phone UI mirrored onto the car screen uses the car's buttons: its floating buttons'
 			// "settings" item opens those.
 			if ((aaFabSet != null) && a.isCarActivity()) fabSettingsSet = aaFabSet;
@@ -468,6 +498,7 @@ public class SettingsFragment extends MainActivityFragment
 
 		keyBindingsSet = sub1 = set.subSet(o -> {
 			o.title = R.string.key_bindings;
+			o.subtitle = R.string.prefs_sub_keys;
 			o.icon = R.drawable.keyboard;
 		});
 		sub1.addBooleanPref(o -> {
@@ -479,14 +510,14 @@ public class SettingsFragment extends MainActivityFragment
 		// Its own page: the switch, and what the keys do with it on.
 		sub1.addButton(o -> {
 			o.title = R.string.key_car_mode;
-			o.icon = R.drawable.keyboard;
+			o.icon = R.drawable.car;
 			o.subtitle = R.string.key_car_mode_sub;
 			o.onClick = () -> a.showFragment(R.id.car_mode_fragment);
 		});
 		// Right above the keys themselves.
 		sub1.addButton(o -> {
 			o.title = R.string.key_tester;
-			o.icon = R.drawable.keyboard;
+			o.icon = R.drawable.key_simulator;
 			o.subtitle = R.string.key_tester_sub;
 			o.onClick = () -> a.showFragment(R.id.key_tester_fragment);
 		});
@@ -537,6 +568,7 @@ public class SettingsFragment extends MainActivityFragment
 
 		sub1 = set.subSet(o -> {
 			o.title = R.string.playback_settings;
+			o.subtitle = R.string.prefs_sub_playback;
 			o.icon = R.drawable.playback_settings;
 		});
 		sub1.addBooleanPref(o -> {
@@ -547,11 +579,13 @@ public class SettingsFragment extends MainActivityFragment
 
 		sub1 = set.subSet(o -> {
 			o.title = R.string.playback_control;
+			o.subtitle = R.string.prefs_sub_playback_control;
 			o.icon = R.drawable.speed;
 		});
 
 		sub2 = sub1.subSet(o -> {
 			o.title = R.string.rw_ff_click;
+			o.subtitle = R.string.prefs_sub_rw_ff_click;
 			o.icon = R.drawable.ff;
 		});
 		sub2.addIntPref(o -> {
@@ -571,6 +605,7 @@ public class SettingsFragment extends MainActivityFragment
 
 		sub2 = sub1.subSet(o -> {
 			o.title = R.string.rw_ff_long_click;
+			o.subtitle = R.string.prefs_sub_rw_ff_long_click;
 			o.icon = R.drawable.ff;
 		});
 		sub2.addIntPref(o -> {
@@ -590,6 +625,7 @@ public class SettingsFragment extends MainActivityFragment
 
 		sub2 = sub1.subSet(o -> {
 			o.title = R.string.prev_next_long_click;
+			o.subtitle = R.string.prefs_sub_prev_next_long;
 			o.icon = R.drawable.next;
 		});
 		sub2.addIntPref(o -> {
@@ -615,6 +651,7 @@ public class SettingsFragment extends MainActivityFragment
 
 		sub2 = sub1.subSet(o -> {
 			o.title = R.string.video_control;
+			o.subtitle = R.string.prefs_sub_video_control;
 			o.icon = R.drawable.video;
 		});
 		sub2.addIntPref(o -> {
@@ -647,6 +684,7 @@ public class SettingsFragment extends MainActivityFragment
 		if (!a.isCarActivityNotMirror()) {
 			sub1 = set.subSet(o -> {
 				o.title = R.string.voice_control;
+				o.subtitle = R.string.prefs_sub_voice;
 				o.icon = R.drawable.record_voice;
 			});
 			sub1.addBooleanPref(o -> {
@@ -698,6 +736,7 @@ public class SettingsFragment extends MainActivityFragment
 		};
 		sub1 = set.subSet(o -> {
 			o.title = R.string.engine_prefs;
+			o.subtitle = R.string.prefs_sub_engine;
 			o.icon = R.drawable.media_engine;
 		});
 		sub1.addBooleanPref(o -> {
@@ -745,6 +784,7 @@ public class SettingsFragment extends MainActivityFragment
 
 		sub1 = set.subSet(o -> {
 			o.title = R.string.video_settings;
+			o.subtitle = R.string.prefs_sub_video;
 			o.icon = R.drawable.video;
 		});
 		sub1.addListPref(o -> {
@@ -804,6 +844,7 @@ public class SettingsFragment extends MainActivityFragment
 
 		dimSettingsSet = sub2 = sub1.subSet(o -> {
 			o.title = R.string.dim_prefs;
+			o.subtitle = R.string.prefs_sub_dim;
 			o.icon = R.drawable.dim_screen;
 		});
 		sub2.addBooleanPref(o -> {
@@ -858,6 +899,7 @@ public class SettingsFragment extends MainActivityFragment
 
 		sub2 = sub1.subSet(o -> {
 			o.title = R.string.audio;
+			o.subtitle = R.string.prefs_sub_audio;
 			o.visibility = vlcCond;
 			o.icon = R.drawable.audiotrack;
 		});
@@ -865,12 +907,14 @@ public class SettingsFragment extends MainActivityFragment
 
 		sub1 = set.subSet(o -> {
 			o.title = R.string.subtitles;
+			o.subtitle = R.string.prefs_sub_subtitles;
 			o.icon = R.drawable.subtitles;
 		});
 		addSubtitlePrefs(a.getContext(), sub1, mediaPrefs, isCar);
 
 		privateModeSettingsSet = sub1 = set.subSet(o -> {
 			o.title = R.string.private_mode_prefs;
+			o.subtitle = R.string.prefs_sub_private;
 			o.icon = R.drawable.private_mode;
 		});
 		sub1.addBooleanPref(o -> {
@@ -925,6 +969,7 @@ public class SettingsFragment extends MainActivityFragment
 
 		sub1 = set.subSet(o -> {
 			o.title = R.string.other;
+			o.subtitle = R.string.prefs_sub_other;
 			o.icon = R.drawable.settings;
 		});
 		addSpotifyImport(a, sub1);
@@ -974,6 +1019,7 @@ public class SettingsFragment extends MainActivityFragment
 		PreferenceStore store = FermataApplication.get().getPreferenceStore();
 		PreferenceSet ps = parent.subSet(o -> {
 			o.title = R.string.storage_prefs;
+			o.subtitle = R.string.prefs_sub_storage;
 			o.icon = me.aap.utils.R.drawable.folder;
 		});
 		ps.addListPref(o -> {
@@ -1016,6 +1062,7 @@ public class SettingsFragment extends MainActivityFragment
 		PreferenceStore store = SpotifyPrefs.store();
 		PreferenceSet sub = set.subSet(o -> {
 			o.title = R.string.spotify_import;
+			o.subtitle = R.string.prefs_sub_spotify;
 			o.icon = R.drawable.playlist_import;
 		});
 		sub.addButton(o -> {
@@ -1079,6 +1126,7 @@ public class SettingsFragment extends MainActivityFragment
 	private void addDiagnostics(MainActivityDelegate a, PreferenceSet set) {
 		PreferenceSet sub = set.subSet(o -> {
 			o.title = R.string.diagnostics;
+			o.subtitle = R.string.prefs_sub_diagnostics;
 			o.icon = R.drawable.settings;
 		});
 		sub.addBooleanPref(o -> {
@@ -1122,6 +1170,7 @@ public class SettingsFragment extends MainActivityFragment
 	private static void addNavTabsPrefs(MainActivityDelegate a, PreferenceSet parent) {
 		PreferenceSet ps = parent.subSet(o -> {
 			o.title = R.string.nav_tabs_prefs;
+			o.subtitle = R.string.prefs_sub_nav_tabs;
 			o.icon = R.drawable.view_grid;
 		});
 		ps.configure(s -> buildNavTabsPrefs(a, s));
@@ -1211,6 +1260,7 @@ public class SettingsFragment extends MainActivityFragment
 	private static void addInfoOverlayPrefs(MainActivityDelegate a, PreferenceSet parent) {
 		PreferenceSet ps = parent.subSet(o -> {
 			o.title = R.string.info_overlay_prefs;
+			o.subtitle = R.string.prefs_sub_info_overlay;
 			o.icon = R.drawable.about;
 		});
 		ps.addListPref(o -> {
@@ -1331,6 +1381,7 @@ public class SettingsFragment extends MainActivityFragment
 	private static void addUpNextPrefs(MainActivityDelegate a, PreferenceSet parent) {
 		PreferenceSet ps = parent.subSet(o -> {
 			o.title = R.string.up_next_prefs;
+			o.subtitle = R.string.prefs_sub_up_next;
 			o.icon = R.drawable.up_next;
 		});
 		ps.addBooleanPref(o -> {
@@ -1416,6 +1467,16 @@ public class SettingsFragment extends MainActivityFragment
 			o.scale = 0.05f;
 			o.seekMin = 10;
 			o.seekMax = 40;
+		});
+	}
+
+	/** Interface &gt; All in One: its own page, the car screen's card if {@code aa}. */
+	private static void addAllInOne(MainActivityDelegate a, PreferenceSet ps, boolean aa) {
+		ps.addButton(o -> {
+			o.title = R.string.all_in_one;
+			o.icon = R.drawable.view_grid;
+			o.subtitle = aa ? R.string.all_in_one_aa_sub : R.string.all_in_one_sub;
+			o.onClick = () -> a.showFragment(R.id.all_in_one_fragment, aa);
 		});
 	}
 
@@ -1571,6 +1632,7 @@ public class SettingsFragment extends MainActivityFragment
 		AddonManager amgr = FermataApplication.get().getAddonManager();
 		PreferenceSet sub = set.subSet(o -> {
 			o.title = R.string.addons;
+			o.subtitle = R.string.prefs_sub_addons;
 			o.icon = R.drawable.more;
 		});
 		PreferenceStore store = FermataApplication.get().getPreferenceStore();
@@ -1582,6 +1644,8 @@ public class SettingsFragment extends MainActivityFragment
 			PreferenceSet sub1 = sub.subSet(b);
 			sub1.configure(b::configure);
 			addonSettingsSets.put(addon.moduleName, sub1);
+			// By class too: the YouTube, bubbles and browser addons all share the "web" module.
+			addonSettingsSets.put(addon.className, sub1);
 		}
 	}
 

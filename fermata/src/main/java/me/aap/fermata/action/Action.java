@@ -111,8 +111,9 @@ public enum Action {
 	REFUEL(R.string.action_refuel, a(me.aap.fermata.addon.fuel.FuelRefuelDialog::show)),
 	FAVORITE_ADD(R.string.favorites_add, a(Action::toggleCurrentFavorite)),
 	PLAYLIST_ADD(R.string.playlist_add, a(Action::addCurrentToPlaylist)),
-	PLAY_AS_MUSIC(R.string.play_as_music,
-			a(me.aap.fermata.addon.music.MusicPlayer::playCurrentAsMusic)),
+	// Play as music, or back to the video when it already plays as music.
+	PLAY_AS_MUSIC(R.string.action_music_video,
+			a(me.aap.fermata.addon.music.MusicPlayer::toggleMusicVideo)),
 	// The YouTube tab's search / Up next panel -- see MusicPlayer.YoutubeHooks#openSearch().
 	YOUTUBE_SEARCH(R.string.action_youtube_search,
 			a(a -> me.aap.fermata.addon.music.MusicPlayer.openYoutubeSearch(a, false))),
@@ -135,6 +136,13 @@ public enum Action {
 			a(me.aap.fermata.ytdl.YtDownloadMenu::downloadCurrent)),
 	DOWNLOADS_PAUSE_RESUME(R.string.action_downloads_pause_resume,
 			a(a -> me.aap.fermata.ytdl.YtDownloadMenu.togglePause())),
+	// Persisted by ordinal: new actions only ever go at the end.
+	AUDIO_EFFECTS(R.string.action_audio_effects,
+			a(me.aap.fermata.ui.view.AllInOneMenu::openEffects)),
+	SLEEP_TIMER(R.string.action_sleep_timer, a(me.aap.fermata.ui.view.AllInOneMenu::showTimer)),
+	ALL_IN_ONE(R.string.action_all_in_one, a(me.aap.fermata.ui.view.AllInOneMenu::toggle)),
+	// YouTube's video quality, picked on the All in One card's Quality page.
+	QUALITY(R.string.quality, a(me.aap.fermata.ui.view.AllInOneMenu::showQuality)),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

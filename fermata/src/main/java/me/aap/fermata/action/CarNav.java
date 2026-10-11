@@ -15,7 +15,6 @@ import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.SystemClock;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -24,6 +23,7 @@ import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.widget.AbsSeekBar;
 import android.widget.CompoundButton;
+import android.webkit.WebView;
 import android.widget.EditText;
 
 import androidx.annotation.NonNull;
@@ -63,6 +63,11 @@ import me.aap.utils.ui.menu.OverlayMenuView;
  * overlay menu), else a Favorites / Playlists / Folders / Downloads list. Anywhere else, and with car
  * mode off, the keys do what they're bound to.
  * <p>
+ * A web page (the YouTube tab's, the browser's; not fullscreen, and not under an open panel, which
+ * comes first) is moved through by the page itself, see {@link WebNav}: previous / next move along
+ * its links and buttons, long next presses one, long previous goes back. Nothing for a double press:
+ * pressing quickly many times just moves along.
+ * <p>
  * The items are found, not declared: every visible view with a click listener inside the scope, and
  * the rows of its lists (a list row without a click listener of its own offers the clickable views
  * in it instead, like the YouTube panel's search chips).
@@ -82,11 +87,11 @@ public final class CarNav {
 	@Nullable
 	private static Scope downScope;
 	@Nullable
-	private static MediaSessionCallback downCb;
-	private static long downTime;
-	@Nullable
 	private static MainActivityDelegate downActivity;
 	private static final Runnable longPress = CarNav::onLongPress;
+	// A web page under the keys, see WebNav: the press being held is on it.
+	@Nullable
+	private static WeakReference<WebView> downWeb;
 
 	// What's selected.
 	@Nullable
@@ -156,6 +161,11 @@ public final class CarNav {
 		root.setTag(R.id.car_nav_modal, Boolean.TRUE);
 	}
 
+	/** Next on the last item of {@code root} goes round to the first (and previous the other way). */
+	public static void wrapAround(@NonNull View root) {
+		root.setTag(R.id.car_nav_wrap, Boolean.TRUE);
+	}
+
 	/** Leaves {@code v} (and what's in it) out: a button too risky to land on, like Clear. */
 	public static void skip(@Nullable View v) {
 		if (v != null) v.setTag(R.id.car_nav_skip, Boolean.TRUE);
@@ -187,26 +197,16 @@ public final class CarNav {
 				}
 				if (s == null) {
 					clear();
-					// The YouTube tab, video not fullscreen: a long press (next or previous) goes
-					// fullscreen, a click is still the key's own binding.
-					if ((a != null) && isYoutubeWindowed(a)) {
-						downCode = code;
-						downScope = null;
-						downActivity = a;
-						downCb = cb;
-						downTime = SystemClock.uptimeMillis();
-						longFired = false;
-						handler.postDelayed(longPress, LONG_MS);
-						return true;
-					}
+					// A web page (the YouTube tab's, the browser's): moved through by the page itself.
+					WebView web = (a == null) ? null : findWebPage(a);
+					if (web != null) return webKeyDown(code, a, web);
 					downCode = 0;
 					return false;
 				}
+				downWeb = null;
 				downCode = code;
 				downScope = s;
 				downActivity = a;
-				downCb = cb;
-				downTime = SystemClock.uptimeMillis();
 				longFired = false;
 				handler.postDelayed(longPress, LONG_MS);
 				return true;
@@ -215,11 +215,15 @@ public final class CarNav {
 				if (downCode != code) return false;
 				downCode = 0;
 				handler.removeCallbacks(longPress);
-				if (!longFired) {
-					if (downScope != null) click(downScope, code == KEYCODE_MEDIA_NEXT);
-					else runBinding((code == KEYCODE_MEDIA_NEXT) ? Key.MEDIA_NEXT.getClickAction() :
-							Key.MEDIA_PREVIOUS.getClickAction());
+				if (downWeb != null) {
+					WebView web = downWeb.get();
+					if (!longFired && (web != null) && web.isAttachedToWindow()) {
+						followWeb(downActivity, web);
+						WebNav.move(web, code == KEYCODE_MEDIA_NEXT);
+					}
+					return true;
 				}
+				if (!longFired && (downScope != null)) click(downScope, code == KEYCODE_MEDIA_NEXT);
 				downScope = null;
 				return true;
 			}
@@ -241,7 +245,11 @@ public final class CarNav {
 		Scope s = (a == null) ? null : findScope(a, isFullscreenVideo(a));
 		if (s == null) {
 			clear();
-			return false;
+			WebView web = (a == null) ? null : findWebPage(a);
+			if (web == null) return false;
+			followWeb(a, web);
+			WebNav.move(web, next);
+			return true;
 		}
 		click(s, next);
 		return true;
@@ -249,26 +257,81 @@ public final class CarNav {
 
 	private static void onLongPress() {
 		if (downCode == 0) return;
-		Scope s = downScope;
-		if (s == null) {
-			// See the YouTube tab case in handleKeyEvent().
-			longFired = true;
-			DiagnosticLog.log(TAG, "long press: YouTube fullscreen");
-			runBinding(Action.FULLSCREEN_TOGGLE);
-			return;
-		}
 		longFired = true;
 		boolean next = downCode == KEYCODE_MEDIA_NEXT;
+		WebView web = (downWeb == null) ? null : downWeb.get();
+		if (web != null) {
+			DiagnosticLog.log(TAG, next ? "long next" : "long previous", "web page");
+			if (next) WebNav.activate(web);
+			else webBack();
+			return;
+		}
+		Scope s = downScope;
+		if (s == null) return;
 		DiagnosticLog.log(TAG, next ? "long next" : "long previous", "scope=" + s);
 		if (next) activate(s);
 		else back(s);
 	}
 
-	private static void runBinding(@Nullable Action action) {
+	// ---------------------------------------------------------------------------------------------
+	// Web pages
+
+	/**
+	 * The page under the keys: the YouTube or browser tab's WebView, while its video isn't
+	 * fullscreen (open panels are scopes of their own, found before this).
+	 */
+	@Nullable
+	private static WebView findWebPage(MainActivityDelegate a) {
+		ActivityFragment f = a.getActiveFragment();
+		if ((f == null) || isFullscreenVideo(a)) return null;
+		int id = f.getFragmentId();
+		if ((id != R.id.youtube_fragment) && (id != R.id.web_browser_fragment)) return null;
+		View v = f.getView();
+		return ((v != null) && v.isShown()) ? findWebView(v) : null;
+	}
+
+	@Nullable
+	private static WebView findWebView(View v) {
+		if (v.getVisibility() != View.VISIBLE) return null;
+		if (v instanceof WebView w) return (w.getWidth() > 0) && w.isShown() ? w : null;
+		if (v instanceof ViewGroup g) {
+			for (int i = 0, n = g.getChildCount(); i < n; i++) {
+				WebView w = findWebView(g.getChildAt(i));
+				if (w != null) return w;
+			}
+		}
+		return null;
+	}
+
+	private static boolean webKeyDown(int code, MainActivityDelegate a, WebView web) {
+		handler.removeCallbacks(longPress);
+		downActivity = a;
+		downScope = null;
+		downWeb = new WeakReference<>(web);
+		downCode = code;
+		longFired = false;
+		handler.postDelayed(longPress, LONG_MS);
+		return true;
+	}
+
+	/** The bars give way as the keys scroll the page, as for a finger (see followScroll()). */
+	private static void followWeb(@Nullable MainActivityDelegate a, WebView web) {
+		me.aap.fermata.ui.activity.ScrollBarsController bars = (a == null) ? null : a.getScrollBars();
+		if (bars != null) bars.follow(web);
+	}
+
+	/** Long previous on a page: back, as the back button (never out of the tab from its first page). */
+	private static void webBack() {
 		MainActivityDelegate a = downActivity;
-		if ((action == null) || (a == null)) return;
-		MediaSessionCallback cb = (downCb != null) ? downCb : a.getMediaSessionCallback();
-		action.getHandler().handle(cb, a, downTime);
+		if (a == null) return;
+		ActivityFragment f = a.getActiveFragment();
+		if ((f != null) && f.isRootPage()) {
+			DiagnosticLog.log(TAG, "web back: at the first page");
+			return;
+		}
+		WebView web = (downWeb == null) ? null : downWeb.get();
+		if (web != null) WebNav.clear(web);
+		a.onBackPressed();
 	}
 
 	/** A video is fullscreen: local video mode, or a WebView player's own (YouTube). */
@@ -276,14 +339,6 @@ public final class CarNav {
 		if (a.isVideoMode()) return true;
 		me.aap.fermata.ui.view.VideoView vv = a.getActiveVideoView();
 		return (vv != null) && vv.isInNativeFullscreen();
-	}
-
-	/** The YouTube tab is showing, its video not fullscreen. */
-	private static boolean isYoutubeWindowed(MainActivityDelegate a) {
-		ActivityFragment f = a.getActiveFragment();
-		if ((f == null) || (f.getFragmentId() != R.id.youtube_fragment) || a.isVideoMode()) return false;
-		me.aap.fermata.ui.view.VideoView vv = a.getActiveVideoView();
-		return (vv != null) && !vv.isInNativeFullscreen();
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -408,6 +463,7 @@ public final class CarNav {
 			}
 			setAdjusting(false);
 		}
+		followScroll(s);
 		// After a while without a press the highlight fades: the first press brings it back where it
 		// was, rather than moving it somewhere unseen.
 		Sel cur = sel;
@@ -416,6 +472,42 @@ public final class CarNav {
 			return;
 		}
 		step(s, next ? 1 : -1);
+	}
+
+	/**
+	 * Lets the bars give way as the keys scroll the list (Settings &gt; Interface &gt; Hide bars
+	 * while scrolling), as they do for a finger: the list the selection is in, else the scope's
+	 * first one.
+	 */
+	private static void followScroll(Scope s) {
+		me.aap.fermata.ui.activity.ScrollBarsController bars = s.activity.getScrollBars();
+		if (bars == null) return;
+		Sel cur = sel;
+		View v = null;
+		if (cur != null) v = (cur.rv != null) ? cur.rv : scrollerOf((cur.view == null) ? null : cur.view.get());
+		if (v == null) v = firstScroller(s.root);
+		bars.follow(v);
+	}
+
+	@Nullable
+	private static View scrollerOf(@Nullable View v) {
+		for (View p = v; p != null; p = (p.getParent() instanceof View pv) ? pv : null) {
+			if (p.canScrollVertically(1) || p.canScrollVertically(-1)) return p;
+		}
+		return null;
+	}
+
+	@Nullable
+	private static View firstScroller(View v) {
+		if (v.getVisibility() != View.VISIBLE) return null;
+		if ((v instanceof RecyclerView) || v.canScrollVertically(1) || v.canScrollVertically(-1)) return v;
+		if (v instanceof ViewGroup g) {
+			for (int i = 0, n = g.getChildCount(); i < n; i++) {
+				View t = firstScroller(g.getChildAt(i));
+				if (t != null) return t;
+			}
+		}
+		return null;
 	}
 
 	private static void activate(Scope s) {
@@ -566,9 +658,20 @@ public final class CarNav {
 
 	/** To the segment after (or before) {@code idx}: its first (or last) item. */
 	private static void moveFrom(List<Object> segs, int idx, int dir) {
+		moveFrom(segs, idx, dir, false);
+	}
+
+	/** @param wrapped already gone round once (a scope with nothing to select stops there) */
+	private static void moveFrom(List<Object> segs, int idx, int dir, boolean wrapped) {
 		int j = idx + dir;
 		if ((j < 0) || (j >= segs.size())) {
-			// The end: stay, and show where.
+			// The end: round to the other end where the scope asks for it (the All in One card),
+			// else stay, and show where.
+			Scope sc = scope;
+			if (!wrapped && (sc != null) && (sc.root.getTag(R.id.car_nav_wrap) != null)) {
+				moveFrom(segs, (dir > 0) ? -1 : segs.size(), dir, true);
+				return;
+			}
 			Highlight h = highlight;
 			if (h != null) h.flash();
 			return;
@@ -576,8 +679,8 @@ public final class CarNav {
 		Object o = segs.get(j);
 		if (o instanceof RecyclerView rv) {
 			int n = count(rv);
-			if (n == 0) moveFrom(segs, j, dir);
-			else seek(segs, j, rv, (dir > 0) ? 0 : n - 1, dir, MAX_SKIP);
+			if (n == 0) moveFrom(segs, j, dir, wrapped);
+			else seek(segs, j, rv, (dir > 0) ? 0 : n - 1, dir, MAX_SKIP, wrapped);
 		} else {
 			select(new Sel((View) o), (View) o);
 		}
@@ -586,14 +689,19 @@ public final class CarNav {
 	/** Row {@code pos} of {@code rv}, or the next one in {@code dir} that has anything to select. */
 	private static void seek(List<Object> segs, int segIdx, RecyclerView rv, int pos, int dir,
 													 int budget) {
+		seek(segs, segIdx, rv, pos, dir, budget, false);
+	}
+
+	private static void seek(List<Object> segs, int segIdx, RecyclerView rv, int pos, int dir,
+													 int budget, boolean wrapped) {
 		if ((pos < 0) || (pos >= count(rv)) || (budget <= 0)) {
-			moveFrom(segs, segIdx, dir);
+			moveFrom(segs, segIdx, dir, wrapped);
 			return;
 		}
 		bound(rv, pos, vh -> {
 			List<View> units = (vh == null) ? Collections.emptyList() : unitsOf(vh.itemView);
 			if (units.isEmpty()) {
-				seek(segs, segIdx, rv, pos + dir, dir, budget - 1);
+				seek(segs, segIdx, rv, pos + dir, dir, budget - 1, wrapped);
 				return;
 			}
 			int sub = (dir > 0) ? 0 : units.size() - 1;
@@ -841,10 +949,14 @@ public final class CarNav {
 		private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
 		private final Paint glow = new Paint(Paint.ANTI_ALIAS_FLAG);
 		private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+		private final Paint inner = new Paint(Paint.ANTI_ALIAS_FLAG);
 		private final RectF rect = new RectF();
+		private final RectF innerRect = new RectF();
 		private final float strokeW;
 		private final float radius;
 		private final int accent;
+		/** A thin ring inside the accent one: still seen on an accent-filled button (Start timer). */
+		private final int contrast;
 		private float scale = 1f;
 		private float alpha = 1f;
 		private float flash;
@@ -856,6 +968,9 @@ public final class CarNav {
 			float d = v.getResources().getDisplayMetrics().density;
 			strokeW = 3 * d;
 			accent = EffectsUi.accent(v.getContext());
+			contrast = EffectsUi.onAccent(accent);
+			inner.setStyle(Paint.Style.STROKE);
+			inner.setStrokeWidth(1.5f * d);
 			stroke.setStyle(Paint.Style.STROKE);
 			stroke.setStrokeWidth(strokeW);
 			glow.setStyle(Paint.Style.STROKE);
@@ -948,6 +1063,11 @@ public final class CarNav {
 			c.drawRoundRect(rect, radius, radius, glow);
 			stroke.setColor(withAlpha(accent, alpha));
 			c.drawRoundRect(rect, radius, radius, stroke);
+			float ii = stroke.getStrokeWidth() / 2f + inner.getStrokeWidth() / 2f;
+			innerRect.set(rect.left + ii, rect.top + ii, rect.right - ii, rect.bottom - ii);
+			inner.setColor(withAlpha(contrast, 0.9f * alpha));
+			float ir = Math.max(0f, radius - ii);
+			c.drawRoundRect(innerRect, ir, ir, inner);
 			c.restore();
 		}
 

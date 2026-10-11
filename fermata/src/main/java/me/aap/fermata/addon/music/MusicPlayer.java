@@ -774,6 +774,41 @@ public final class MusicPlayer {
 	}
 
 	/**
+	 * Whether what plays now plays as music: a Music tab track, with YouTube in music mode (or a
+	 * downloaded video's file without its picture). Same as the Music tab's Video button reads it.
+	 */
+	public static boolean isPlayingAsMusic(MediaSessionCallback cb) {
+		MusicTrackItem t = getCurrentTrack(cb);
+		if (t != null) {
+			if (t.getVideoId() == null) return true;
+			return t.isDownloaded() ? !t.isVideo() : isYoutubeAudioMode();
+		}
+		MediaEngine eng = cb.getEngine();
+		return (eng != null) && (eng.getId() == MediaPrefs.MEDIA_ENG_YT) && isYoutubeAudioMode();
+	}
+
+	/** Whether {@link #toggleMusicVideo} would bring the video back (rather than play as music). */
+	public static boolean canSwitchToVideo(MediaSessionCallback cb) {
+		if (!isPlayingAsMusic(cb)) return false;
+		MusicTrackItem t = getCurrentTrack(cb);
+		return (t == null) || t.hasVideo();
+	}
+
+	/**
+	 * The Play as music / video action: what plays as a video goes on as music (the Music tab), and
+	 * a music track with a video goes back to its video, like the Music tab's Video button.
+	 */
+	public static void toggleMusicVideo(MainActivityDelegate a) {
+		if (canSwitchToVideo(a.getMediaSessionCallback())) {
+			// Into the video through black, the same fade as the Music tab's Video button.
+			a.getPlaybackDelegate().fadeToBlackForVideo();
+			switchToVideo(a);
+		} else {
+			playCurrentAsMusic(a);
+		}
+	}
+
+	/**
 	 * Switches the music track that's playing now back to its video: YouTube's page is already
 	 * playing it, so it's just a matter of showing it at its usual quality again; a local file
 	 * gets its picture back on the same engine.

@@ -119,6 +119,12 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> SCROLL_HIDE_BARS = Pref.b("SCROLL_HIDE_BARS", true);
 	// 5% smaller than the original 1.0 out of the box.
 	Pref<DoubleSupplier> FAB_SIZE = Pref.f("FAB_SIZE", 0.95f);
+	// The All in One card (see AllInOneMenu): its actions, by Action name in the order shown (the
+	// Music tab's More out of the box), tiles per row, and whether the Music tab's More follows it.
+	String AIO_DEFAULT_ITEMS = "AUDIO_EFFECTS,SLEEP_TIMER,FAVORITE_ADD,PLAYLIST_ADD";
+	Pref<Supplier<String>> AIO_ITEMS = Pref.s("AIO_ITEMS", AIO_DEFAULT_ITEMS);
+	Pref<IntSupplier> AIO_COLUMNS = Pref.i("AIO_COLUMNS", 2);
+	Pref<BooleanSupplier> AIO_MUSIC_MORE = Pref.b("AIO_MUSIC_MORE", false);
 	// How many upcoming Favorites/Playlist entries the YouTube tab's Up next list previews below the
 	// user's own queue (1..10) -- enough to see what comes after, few enough to leave room for search
 	// results.
@@ -243,6 +249,10 @@ public interface MainActivityPrefs
 			AUTO ? Pref.i("FAB6_ACTION_AA", Action.OPEN_PLAYLISTS.ordinal()) : null;
 	Pref<BooleanSupplier> FAB_DRAGGABLE_AA = AUTO ? Pref.b("FAB_DRAGGABLE_AA", false) : null;
 	Pref<DoubleSupplier> FAB_SIZE_AA = AUTO ? Pref.f("FAB_SIZE_AA", 0.95f) : null;
+	// The car screen's own All in One card.
+	Pref<Supplier<String>> AIO_ITEMS_AA = AUTO ? Pref.s("AIO_ITEMS_AA", AIO_DEFAULT_ITEMS) : null;
+	Pref<IntSupplier> AIO_COLUMNS_AA = AUTO ? Pref.i("AIO_COLUMNS_AA", 2) : null;
+	Pref<BooleanSupplier> AIO_MUSIC_MORE_AA = AUTO ? Pref.b("AIO_MUSIC_MORE_AA", false) : null;
 
 	/**
 	 * A floating button pref as it applies to {@code a}: on the car screen its Android Auto twin
@@ -272,6 +282,10 @@ public interface MainActivityPrefs
 		if (p == FAB6_ACTION) return FAB6_ACTION_AA;
 		if (p == FAB_DRAGGABLE) return FAB_DRAGGABLE_AA;
 		if (p == FAB_SIZE) return FAB_SIZE_AA;
+		// Not a floating button's, but kept apart for the car screen the same way.
+		if (p == AIO_ITEMS) return AIO_ITEMS_AA;
+		if (p == AIO_COLUMNS) return AIO_COLUMNS_AA;
+		if (p == AIO_MUSIC_MORE) return AIO_MUSIC_MORE_AA;
 		return null;
 	}
 

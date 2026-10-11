@@ -102,11 +102,18 @@ public class CarModeFragment extends MainActivityFragment {
 		content.addView(keyCard("▶", R.string.car_mode_hold_next, true));
 		content.addView(keyCard("◀", R.string.car_mode_hold_prev, true));
 		content.addView(keyCard("▶", R.string.car_mode_sliders, true));
-		content.addView(keyCard("◀ ▶", R.string.car_mode_youtube_fullscreen, true));
+
+		// A web page moves along its links and buttons (see CarNav's web pages).
+		section(content, R.string.car_mode_section_web);
+		content.addView(keyCard("▶", R.string.car_mode_web_next, false));
+		content.addView(keyCard("◀", R.string.car_mode_web_prev, false));
+		content.addView(keyCard("▶", R.string.car_mode_web_hold_next, true));
+		content.addView(keyCard("◀", R.string.car_mode_web_hold_prev, true));
 
 		section(content, R.string.car_mode_where);
 		for (int res : new int[]{R.string.car_mode_where_lists, R.string.car_mode_where_youtube,
-				R.string.car_mode_where_queue, R.string.car_mode_where_pickers,
+				R.string.car_mode_where_web, R.string.car_mode_where_queue,
+				R.string.car_mode_where_pickers, R.string.car_mode_where_all_in_one,
 				R.string.car_mode_where_settings}) {
 			content.addView(bullet(res));
 		}
@@ -269,7 +276,11 @@ public class CarModeFragment extends MainActivityFragment {
 		GradientDrawable bg = new GradientDrawable();
 		bg.setColor(tileFill);
 		bg.setCornerRadius(dp(16));
-		row.setBackground(bg);
+		GradientDrawable mask = new GradientDrawable();
+		mask.setColor(0xFF000000);
+		mask.setCornerRadius(dp(16));
+		row.setBackground(new android.graphics.drawable.RippleDrawable(
+				android.content.res.ColorStateList.valueOf(paletteColor(R.attr.musicChipRipple)), bg, mask));
 
 		TextView label = text(R.string.car_mode_enable, 16, textPrimary, true);
 		row.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
@@ -285,6 +296,7 @@ public class CarModeFragment extends MainActivityFragment {
 
 	/** A key glyph in a pill (a "hold" one filled) and what it does. */
 	private View keyCard(String glyph, @StringRes int what, boolean hold) {
+		String label = hold ? getString(R.string.car_mode_hold, glyph) : glyph;
 		LinearLayout row = new LinearLayout(palette);
 		row.setOrientation(LinearLayout.HORIZONTAL);
 		row.setGravity(Gravity.CENTER_VERTICAL);
@@ -295,7 +307,7 @@ public class CarModeFragment extends MainActivityFragment {
 		row.setBackground(bg);
 
 		TextView key = new TextView(palette);
-		key.setText(hold ? getString(R.string.car_mode_hold, glyph) : glyph);
+		key.setText(label);
 		key.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
 		key.setTypeface(Typeface.DEFAULT_BOLD);
 		key.setGravity(Gravity.CENTER);

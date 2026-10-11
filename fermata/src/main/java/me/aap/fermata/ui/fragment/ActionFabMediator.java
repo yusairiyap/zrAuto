@@ -42,7 +42,8 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 			Action.PRIVATE_MODE_TOGGLE, Action.REFUEL, Action.FAVORITE_ADD,
 			Action.PLAYLIST_ADD, Action.PLAY_AS_MUSIC, Action.YOUTUBE_SEARCH, Action.YOUTUBE_UP_NEXT,
 			Action.OPEN_FAVORITES, Action.OPEN_PLAYLISTS, Action.OPEN_DOWNLOADS, Action.DOWNLOAD_CURRENT,
-			Action.DOWNLOADS_PAUSE_RESUME);
+			Action.DOWNLOADS_PAUSE_RESUME, Action.ALL_IN_ONE, Action.AUDIO_EFFECTS, Action.SLEEP_TIMER,
+			Action.QUALITY);
 
 	private final Pref<IntSupplier> actionPref;
 	@Nullable
@@ -91,8 +92,19 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 
 	private void updateIcon(FloatingButton fb) {
 		MainActivityDelegate a = MainActivityDelegate.get(fb.getContext());
-		fb.setImageResource(iconFor(a, Action.get(a.getPrefs().getIntPref(
-				MainActivityPrefs.fab(a, actionPref)))));
+		Action action = Action.get(a.getPrefs().getIntPref(MainActivityPrefs.fab(a, actionPref)));
+		if (action == Action.QUALITY) {
+			// The quality in use as its icon ("720p", "Auto"), like the All in One tile's; asked
+			// afresh now and then, the icon redrawn when it changes.
+			String l = me.aap.fermata.ui.view.QualityIcon.getLabel();
+			if (l != null) fb.setImageDrawable(new me.aap.fermata.ui.view.QualityIcon(fb.getContext(), l));
+			else fb.setImageResource(R.drawable.quality);
+			me.aap.fermata.ui.view.QualityIcon.refresh(a, () -> {
+				if (fab == fb) updateIcon(fb);
+			});
+			return;
+		}
+		fb.setImageResource(iconFor(a, action));
 	}
 
 	@DrawableRes
@@ -106,7 +118,8 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		if (action == Action.PRIVATE_MODE_TOGGLE) return R.drawable.private_mode;
 		if (action == Action.REFUEL) return R.drawable.fuel;
 		if (action == Action.PLAYLIST_ADD) return R.drawable.playlist_add;
-		if (action == Action.PLAY_AS_MUSIC) return R.drawable.music;
+		if (action == Action.PLAY_AS_MUSIC) return MusicPlayer.canSwitchToVideo(
+				a.getMediaSessionCallback()) ? R.drawable.video : R.drawable.music;
 		if (action == Action.YOUTUBE_SEARCH) return R.drawable.search;
 		if (action == Action.YOUTUBE_UP_NEXT) return R.drawable.up_next;
 		if (action == Action.OPEN_FAVORITES) return R.drawable.favorite_filled;
@@ -121,14 +134,35 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 				R.drawable.favorite_filled : R.drawable.favorite;
 		if (action == Action.PLAY_PAUSE)
 			return a.getMediaSessionCallback().isPlaying() ? R.drawable.pause : R.drawable.play;
+		if (action == Action.ALL_IN_ONE) return R.drawable.view_grid;
+		if (action == Action.AUDIO_EFFECTS) return R.drawable.equalizer;
+		if (action == Action.SLEEP_TIMER) return R.drawable.timer;
+		if (action == Action.QUALITY) return R.drawable.quality;
+		// The rest are only ever key bindings, but the All in One card can show any action.
+		if (action == Action.STOP) return R.drawable.stop;
+		if (action == Action.PLAY) return R.drawable.play;
+		if (action == Action.PAUSE) return R.drawable.pause;
+		if ((action == Action.PREV) || (action == Action.PREV_FOLDER)) return R.drawable.prev;
+		if ((action == Action.NEXT) || (action == Action.NEXT_FOLDER)) return R.drawable.next;
+		if (action == Action.RW) return R.drawable.rw;
+		if (action == Action.FF) return R.drawable.ff;
+		if ((action == Action.VOLUME_UP) || (action == Action.VOLUME_DOWN)) return R.drawable.volume_up;
+		if (action == Action.ACTIVATE_VOICE_CTRL) return R.drawable.record_voice;
+		if (action == Action.MENU) return me.aap.utils.R.drawable.menu;
+		if (action == Action.CP_MENU) return R.drawable.more;
+		if (action == Action.BACK_OR_EXIT) return me.aap.utils.R.drawable.back;
+		if (action == Action.EXIT) return R.drawable.exit;
 		return R.drawable.play_pause;
 	}
 
 	/** "Add to favorites" reads "Remove from favorites" when it would remove (it toggles). */
 	@StringRes
-	private static int labelFor(MainActivityDelegate a, Action action) {
+	public static int labelFor(MainActivityDelegate a, Action action) {
 		if ((action == Action.FAVORITE_ADD) && Action.isCurrentFavorite(a))
 			return R.string.favorites_remove;
+		// Says which way it goes now.
+		if (action == Action.PLAY_AS_MUSIC) return MusicPlayer.canSwitchToVideo(
+				a.getMediaSessionCallback()) ? R.string.play_as_video : R.string.play_as_music;
 		return action.getName();
 	}
 
@@ -156,6 +190,8 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 						if (MusicPlayer.isEnabled()) addAction(a, fb, sb, Action.PLAY_AS_MUSIC, 1);
 						addAction(a, fb, sb, Action.VOLUME_MUTE_UNMUTE, 2);
 						addAction(a, fb, sb, Action.FULLSCREEN_TOGGLE, 3);
+						addAction(a, fb, sb, Action.AUDIO_EFFECTS, 4);
+						addAction(a, fb, sb, Action.SLEEP_TIMER, 5);
 					});
 			category(a, fb, b, R.id.fab_cat_screen, R.drawable.dim_screen, R.string.fab_cat_screen,
 					sb -> {
@@ -179,10 +215,14 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 						sb -> {
 							addAction(a, fb, sb, Action.YOUTUBE_SEARCH, 0);
 							addAction(a, fb, sb, Action.YOUTUBE_UP_NEXT, 1);
+							addAction(a, fb, sb, Action.QUALITY, 2);
 						});
 			}
 			category(a, fb, b, R.id.fab_cat_tools, R.drawable.fuel, R.string.fab_cat_tools,
-					sb -> addAction(a, fb, sb, Action.REFUEL, 0));
+					sb -> {
+						addAction(a, fb, sb, Action.ALL_IN_ONE, 0);
+						addAction(a, fb, sb, Action.REFUEL, 1);
+					});
 			// Last item in the menu.
 			addSettings(a, b, R.id.fab_settings, R.drawable.fab, R.string.fab_settings,
 					SettingsFragment.SHOW_FAB_SETTINGS);

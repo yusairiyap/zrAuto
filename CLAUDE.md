@@ -95,6 +95,15 @@ Conventions worth knowing:
   Java; if Java-side resolution is unavoidable, grep this codebase for an existing
   `androidx.appcompat.R.attr.*` / `com.google.android.material.R.attr.*` reference to the exact same
   attr name first rather than assuming which one it lives in.
+- **Confirmations go in the top popup, not a toast.** A short "it's done" message (added to favorites,
+  download started, quality set, sleep timer set) uses `ui/view/TopToast.show(icon, text)`, the card
+  that drops in at the top of the app (it falls back to a plain toast only when no UI is up). Don't use
+  `UiUtils.showToast` / `Toast.makeText` for these in new code; a toast looks out of place, and on the
+  car screen it's easy to miss. Older code still has some toasts (about 40 calls), so convert them when
+  you're already working in that spot.
+- **Asking before something destructive** (reset, clear, delete): `UiUtils.showQuestion(ctx, title,
+  message, icon).onSuccess(v -> ...)`, the app's own dialog view (works on the car screen, where
+  Android Auto allows no real dialog windows).
 
 ## Adding a new nav-bar tab (addon)
 
@@ -158,6 +167,36 @@ room (`slideWebViews`). It works for any `RecyclerView`,
 the bars instead (Music, Car mode) opts out with `MainActivityFragment#collapsesBarsOnScroll`. Don't
 animate the bars' translation elsewhere without calling `scrollBars.reset(false)` first, the
 way `setBarsHidden`/`setVideoMode` do.
+
+## All in One card and car mode on web pages
+
+- **All in One** (`ui/view/AllInOneMenu`, settings page `ui/fragment/AllInOneFragment`, Settings >
+  Interface > All in One, and Interface > Android Auto > All in One for the car screen's own set via
+  the `*_AA` twins in `MainActivityPrefs.fabAA`): one card of tiles for any `Action`, opened by the
+  `ALL_IN_ONE` action (a key binding or a floating button), hosted on `R.id.main_activity` so it shows
+  over tabs and fullscreen video alike. Items are stored by `Action` *name* (`AIO_ITEMS`), not ordinal.
+  The Music tab's More is the same class (`showMusic`) with its own four tiles unless `AIO_MUSIC_MORE`
+  is on. Its timer page is the only sleep timer UI: the fullscreen control panel's Timer and its
+  countdown pill open it too (`showTimer`); there's no Hours/Minutes overlay menu any more. The
+  settings page is the card itself, edited in place: a grid of the card's own tiles
+  (`AllInOneMenu.tileView`, so the two can't drift apart) on the card's fill (drawn by an item
+  decoration), hold to drag, tap to replace, a ✕ badge to remove, and an "Add action" cell last.
+  Its drag fixes (auto-scroll only in the outer half of the list's padding and only along the drag,
+  `onMoved` correcting for the top padding) are what made dragging work at all; keep them. The
+  card has three pages (tiles, sleep timer, Quality); the `QUALITY` action opens it on the Quality
+  page (`showQuality`), whose squares come from `MediaEngine#getVideoQualityOptions` (only the
+  YouTube engine implements it, via the player API's levels, falling back to the page's own menu). The
+  Quality tile and a Quality floating button show the quality in use as their icon (`QualityIcon`,
+  text such as "720p" or "Auto", refreshed from the player at most every 2 s), or the plain icon
+  while it's unknown.
+- **Car mode wrap-around**: `CarNav.wrapAround(root)` makes Next on a scope's last item go to its
+  first; only the All in One card uses it.
+- **Car mode on web pages** (`CarNav.findWebPage`, `action/WebNav`): on the YouTube or browser tab
+  with no panel open and not fullscreen, previous/next move an outline over the page's links and
+  buttons (a script in the page, run on every press; on YouTube the first press picks the first
+  suggested video), long next clicks, long previous is Back. No double-press actions on purpose:
+  drivers press repeatedly to move along. An open YouTube search / Up next panel is a normal CarNav scope
+  and is found first, so the page logic never sees those keys.
 
 ## This app cannot be built in this (cloud) session
 
