@@ -300,6 +300,9 @@ public class YoutubeAddon extends WebBrowserAddon
 			if ((eng == null) || !eng.isActive()) return false;
 			// Like the search panel's result: the page swaps the video itself, so fullscreen stays.
 			f.playVideoNow(videoId, title);
+			// From another tab (the playlist the alternatives were opened from): the YouTube tab comes up
+			// with the video fullscreen, as if it had been tapped there. Already on it: nothing to do.
+			if (a.getActiveFragment() != f) showVideo(a);
 			return true;
 		}
 
