@@ -390,7 +390,7 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 		// The floating buttons stay just above whatever of the bottom bars still shows.
 		if (bottomNav) fabDyNow += n * Math.max(0, floor - nb.getTop());
 		boolean fabsLeft = false;
-		for (int i = 0, n = Math.min(fabs.length, fabDy.length); i < n; i++) {
+		for (int i = 0, count = Math.min(fabs.length, fabDy.length); i < count; i++) {
 			fabsLeft |= moveFab(i, fabs[i], fabDyNow);
 		}
 
