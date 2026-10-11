@@ -689,6 +689,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		switching = true;
 		YoutubeVideoView v = getFullScreenView();
 		if (v != null) v.showTransitionOverlay(false);
+		// The next video is loading: the play/pause button gives way to the loading circle, as for a
+		// seek, rather than sitting there as "pause" until the new video plays. playing() (via
+		// clearStall()) or contentPlaying() puts it back.
+		BufferingIndicator.setBuffering(true);
 	}
 
 	/**
@@ -700,6 +704,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		switching = false;
 		YoutubeVideoView v = getFullScreenView();
 		if (v != null) v.hideTransitionOverlay();
+		// The new video is up: the button back, unless the page is still waiting for data (see waiting()).
+		if (waitingSince == 0) BufferingIndicator.setBuffering(false);
 	}
 
 	/**
