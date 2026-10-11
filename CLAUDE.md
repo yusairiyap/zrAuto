@@ -95,6 +95,15 @@ Conventions worth knowing:
   Java; if Java-side resolution is unavoidable, grep this codebase for an existing
   `androidx.appcompat.R.attr.*` / `com.google.android.material.R.attr.*` reference to the exact same
   attr name first rather than assuming which one it lives in.
+- **Confirmations go in the top popup, not a toast.** A short "it's done" message (added to favorites,
+  download started, quality set, sleep timer set) uses `ui/view/TopToast.show(icon, text)`, the card
+  that drops in at the top of the app (it falls back to a plain toast only when no UI is up). Don't use
+  `UiUtils.showToast` / `Toast.makeText` for these in new code; a toast looks out of place, and on the
+  car screen it's easy to miss. Older code still has some toasts (about 40 calls), so convert them when
+  you're already working in that spot.
+- **Asking before something destructive** (reset, clear, delete): `UiUtils.showQuestion(ctx, title,
+  message, icon).onSuccess(v -> ...)`, the app's own dialog view (works on the car screen, where
+  Android Auto allows no real dialog windows).
 
 ## Adding a new nav-bar tab (addon)
 

@@ -107,7 +107,8 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		if (action == Action.PRIVATE_MODE_TOGGLE) return R.drawable.private_mode;
 		if (action == Action.REFUEL) return R.drawable.fuel;
 		if (action == Action.PLAYLIST_ADD) return R.drawable.playlist_add;
-		if (action == Action.PLAY_AS_MUSIC) return R.drawable.music;
+		if (action == Action.PLAY_AS_MUSIC) return MusicPlayer.canSwitchToVideo(
+				a.getMediaSessionCallback()) ? R.drawable.video : R.drawable.music;
 		if (action == Action.YOUTUBE_SEARCH) return R.drawable.search;
 		if (action == Action.YOUTUBE_UP_NEXT) return R.drawable.up_next;
 		if (action == Action.OPEN_FAVORITES) return R.drawable.favorite_filled;
@@ -145,9 +146,12 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 
 	/** "Add to favorites" reads "Remove from favorites" when it would remove (it toggles). */
 	@StringRes
-	private static int labelFor(MainActivityDelegate a, Action action) {
+	public static int labelFor(MainActivityDelegate a, Action action) {
 		if ((action == Action.FAVORITE_ADD) && Action.isCurrentFavorite(a))
 			return R.string.favorites_remove;
+		// Says which way it goes now.
+		if (action == Action.PLAY_AS_MUSIC) return MusicPlayer.canSwitchToVideo(
+				a.getMediaSessionCallback()) ? R.string.play_as_video : R.string.play_as_music;
 		return action.getName();
 	}
 

@@ -509,14 +509,14 @@ public class SettingsFragment extends MainActivityFragment
 		// Its own page: the switch, and what the keys do with it on.
 		sub1.addButton(o -> {
 			o.title = R.string.key_car_mode;
-			o.icon = R.drawable.keyboard;
+			o.icon = R.drawable.car;
 			o.subtitle = R.string.key_car_mode_sub;
 			o.onClick = () -> a.showFragment(R.id.car_mode_fragment);
 		});
 		// Right above the keys themselves.
 		sub1.addButton(o -> {
 			o.title = R.string.key_tester;
-			o.icon = R.drawable.keyboard;
+			o.icon = R.drawable.key_simulator;
 			o.subtitle = R.string.key_tester_sub;
 			o.onClick = () -> a.showFragment(R.id.key_tester_fragment);
 		});

@@ -34,6 +34,7 @@ import androidx.appcompat.widget.SwitchCompat;
 import androidx.core.graphics.ColorUtils;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.OrientationHelper;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
@@ -49,6 +50,7 @@ import me.aap.fermata.ui.view.AllInOneMenu;
 import me.aap.fermata.ui.view.EffectsUi;
 import me.aap.fermata.ui.view.TopToast;
 import me.aap.utils.pref.PreferenceStore.Pref;
+import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.menu.OverlayMenu;
 
 /**
@@ -445,7 +447,8 @@ public class AllInOneFragment extends MainActivityFragment {
 		TextView add = pill(R.string.all_in_one_add, true);
 		add.setOnClickListener(v -> addAction());
 		TextView reset = pill(R.string.all_in_one_reset, false);
-		reset.setOnClickListener(v -> reset());
+		reset.setOnClickListener(v -> UiUtils.showQuestion(requireContext(), R.string.all_in_one_reset,
+				R.string.all_in_one_reset_question, R.drawable.view_grid).onSuccess(ok -> reset()));
 		LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(0, dp(48), 1.4f);
 		alp.setMarginEnd(dp(6));
 		LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(0, dp(48), 1f);
@@ -626,8 +629,36 @@ public class AllInOneFragment extends MainActivityFragment {
 			// Under the see-through tool bar a row counts as out of bounds already: without this the
 			// list scrolled up while a row was dragged down from near the top.
 			if (Integer.signum(viewSizeOutOfBounds) != dragDir) return 0;
-			return super.interpolateOutOfBoundsScroll(rv, viewSize, viewSizeOutOfBounds, totalSize,
-					msSinceStartScroll);
+			// The list's padding is the room the bars take, a lot of it at the bottom (nav bar, control
+			// panel, the floating buttons): a row counts as out of bounds as soon as it enters it, so
+			// the list scrolled away under a row only just moved. Only the outer half of it scrolls.
+			int slack = ((viewSizeOutOfBounds > 0) ? rv.getPaddingBottom() : rv.getPaddingTop()) / 2;
+			int out = Math.abs(viewSizeOutOfBounds) - slack;
+			if (out <= 0) return 0;
+			return super.interpolateOutOfBoundsScroll(rv, viewSize,
+					Integer.signum(viewSizeOutOfBounds) * out, totalSize, msSinceStartScroll);
+		}
+
+		/**
+		 * Keeps the dragged row where the finger is after a swap: the default asks the layout
+		 * manager to put it at the swapped row's place, measured from the list's top edge, which,
+		 * with the tool bar's room as top padding here, could jump the list by that padding.
+		 */
+		@Override
+		public void onMoved(@NonNull RecyclerView rv, @NonNull RecyclerView.ViewHolder vh, int fromPos,
+												@NonNull RecyclerView.ViewHolder target, int toPos, int x, int y) {
+			if (!(rv.getLayoutManager() instanceof LinearLayoutManager lm)) {
+				super.onMoved(rv, vh, fromPos, target, toPos, x, y);
+				return;
+			}
+			OrientationHelper h = OrientationHelper.createVerticalHelper(lm);
+			int pad = h.getStartAfterPadding();
+			if (fromPos > toPos) {
+				lm.scrollToPositionWithOffset(toPos, h.getDecoratedStart(target.itemView) - pad);
+			} else {
+				lm.scrollToPositionWithOffset(toPos, h.getDecoratedEnd(target.itemView) -
+						h.getDecoratedMeasurement(vh.itemView) - pad);
+			}
 		}
 
 		@Override

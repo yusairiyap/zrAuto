@@ -228,6 +228,20 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 		}
 	}
 
+	/**
+	 * Car mode's keys moving through {@code scrolled} (a list, a page): its scrolls from now on make
+	 * the bars give way just as a finger's would (until the next touch picks what to follow). A
+	 * web page is followed by its own scroll position here: the keys move the page itself.
+	 */
+	public void follow(@Nullable View scrolled) {
+		if ((scrolled == null) || !isEnabled()) return;
+		if (scrolled == target) return;
+		target = scrolled;
+		targetIsWeb = false;
+		acc = 0f;
+		rememberOffset(scrolled);
+	}
+
 	@Override
 	public void onScrollChanged() {
 		View t = target;

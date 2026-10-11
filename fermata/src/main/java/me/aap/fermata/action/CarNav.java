@@ -218,6 +218,7 @@ public final class CarNav {
 				if (downWeb != null) {
 					WebView web = downWeb.get();
 					if (!longFired && (web != null) && web.isAttachedToWindow()) {
+						followWeb(downActivity, web);
 						WebNav.move(web, code == KEYCODE_MEDIA_NEXT);
 					}
 					return true;
@@ -246,6 +247,7 @@ public final class CarNav {
 			clear();
 			WebView web = (a == null) ? null : findWebPage(a);
 			if (web == null) return false;
+			followWeb(a, web);
 			WebNav.move(web, next);
 			return true;
 		}
@@ -310,6 +312,12 @@ public final class CarNav {
 		longFired = false;
 		handler.postDelayed(longPress, LONG_MS);
 		return true;
+	}
+
+	/** The bars give way as the keys scroll the page, as for a finger (see followScroll()). */
+	private static void followWeb(@Nullable MainActivityDelegate a, WebView web) {
+		me.aap.fermata.ui.activity.ScrollBarsController bars = (a == null) ? null : a.getScrollBars();
+		if (bars != null) bars.follow(web);
 	}
 
 	/** Long previous on a page: back, as the back button (never out of the tab from its first page). */
@@ -455,6 +463,7 @@ public final class CarNav {
 			}
 			setAdjusting(false);
 		}
+		followScroll(s);
 		// After a while without a press the highlight fades: the first press brings it back where it
 		// was, rather than moving it somewhere unseen.
 		Sel cur = sel;
@@ -463,6 +472,42 @@ public final class CarNav {
 			return;
 		}
 		step(s, next ? 1 : -1);
+	}
+
+	/**
+	 * Lets the bars give way as the keys scroll the list (Settings &gt; Interface &gt; Hide bars
+	 * while scrolling), as they do for a finger: the list the selection is in, else the scope's
+	 * first one.
+	 */
+	private static void followScroll(Scope s) {
+		me.aap.fermata.ui.activity.ScrollBarsController bars = s.activity.getScrollBars();
+		if (bars == null) return;
+		Sel cur = sel;
+		View v = null;
+		if (cur != null) v = (cur.rv != null) ? cur.rv : scrollerOf((cur.view == null) ? null : cur.view.get());
+		if (v == null) v = firstScroller(s.root);
+		bars.follow(v);
+	}
+
+	@Nullable
+	private static View scrollerOf(@Nullable View v) {
+		for (View p = v; p != null; p = (p.getParent() instanceof View pv) ? pv : null) {
+			if (p.canScrollVertically(1) || p.canScrollVertically(-1)) return p;
+		}
+		return null;
+	}
+
+	@Nullable
+	private static View firstScroller(View v) {
+		if (v.getVisibility() != View.VISIBLE) return null;
+		if ((v instanceof RecyclerView) || v.canScrollVertically(1) || v.canScrollVertically(-1)) return v;
+		if (v instanceof ViewGroup g) {
+			for (int i = 0, n = g.getChildCount(); i < n; i++) {
+				View t = firstScroller(g.getChildAt(i));
+				if (t != null) return t;
+			}
+		}
+		return null;
 	}
 
 	private static void activate(Scope s) {
