@@ -41,12 +41,12 @@ public final class SwitchStyle {
 		// switches sit on are translucent, and forcing them opaque turned the whole switch white.)
 		// On: the accent, a little lighter than the theme's (a dark accent made a dark, heavy switch,
 		// most of all on the dark themes), and never so dark it sinks into the page. The thumb is
-		// white or near-black, whichever reads better on that track.
+		// white where that reads, near-black only on a near-white track.
 		int onTrack = lighten(accent);
 		int white = 0xFFFFFFFF;
 		int dark = 0xFF1C1B1F;
-		int onThumb = (ColorUtils.calculateContrast(white, onTrack) >= ColorUtils.calculateContrast(dark, onTrack)) ?
-				white : dark;
+		// White (a light knob, which is what reads as "on"), unless the track is so light it wouldn't show.
+		int onThumb = (ColorUtils.calculateContrast(white, onTrack) >= 1.8) ? white : dark;
 		// Off, one look for every switch: a dimmed track and a solid gray thumb, both the theme's own dim
 		// text colour (translucent over whatever the switch sits on, so no background is assumed).
 		int offTrack = ColorUtils.setAlphaComponent(textSecondary, 0x50);
@@ -73,13 +73,26 @@ public final class SwitchStyle {
 		s.setTrackTintList(null);
 	}
 
-	/** The accent made lighter: a touch always (unless already light), more while it is still dark. */
+	/**
+	 * The track colour for an accent: a dark accent a little lighter (never so dark it sinks into the
+	 * page); a light one darker until a white thumb reads on it; a near-white one (the black themes)
+	 * left as it is, where the thumb has to be dark instead.
+	 */
 	private static int lighten(int color) {
 		int white = 0xFFFFFFFF;
+		int black = 0xFF000000;
 		int c = color | 0xFF000000;
-		if (ColorUtils.calculateLuminance(c) < 0.7) c = ColorUtils.blendARGB(c, white, 0.18f);
-		for (int i = 0; (i < 4) && (ColorUtils.calculateLuminance(c) < 0.2); i++) {
-			c = ColorUtils.blendARGB(c, white, 0.25f);
+		double lum = ColorUtils.calculateLuminance(c);
+		if (lum >= 0.8) return c;
+		if (lum < 0.3) {
+			c = ColorUtils.blendARGB(c, white, 0.18f);
+			for (int i = 0; (i < 4) && (ColorUtils.calculateLuminance(c) < 0.2); i++) {
+				c = ColorUtils.blendARGB(c, white, 0.25f);
+			}
+		} else {
+			for (int i = 0; (i < 5) && (ColorUtils.calculateLuminance(c) > 0.4); i++) {
+				c = ColorUtils.blendARGB(c, black, 0.12f);
+			}
 		}
 		return c;
 	}
