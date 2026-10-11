@@ -1162,218 +1162,26 @@ public class SettingsFragment extends MainActivityFragment
 						p -> prefs.getIntPref(p) == MainActivityPrefs.DIM_COLOR_CUSTOM_IDX));
 	}
 
-	/**
-	 * Navigation tabs: every nav bar tab in its order, each opening a small menu to move it, hide
-	 * it, or make it the one the app opens on start. Rebuilt after every change, so the list always
-	 * shows the current order.
-	 */
+	/** Interface &gt; Navigation tabs: its own page, rows to drag into order (see {@link NavTabsFragment}). */
 	private static void addNavTabsPrefs(MainActivityDelegate a, PreferenceSet parent) {
-		PreferenceSet ps = parent.subSet(o -> {
+		parent.addButton(o -> {
 			o.title = R.string.nav_tabs_prefs;
 			o.subtitle = R.string.prefs_sub_nav_tabs;
 			o.icon = R.drawable.view_grid;
-		});
-		ps.configure(s -> buildNavTabsPrefs(a, s));
-	}
-
-	private static void buildNavTabsPrefs(MainActivityDelegate a, PreferenceSet ps) {
-		MainActivityPrefs prefs = a.getPrefs();
-		List<String> tabs = NavBarMediator.getTabs(prefs);
-
-		for (int i = 0, n = tabs.size(); i < n; i++) {
-			String name = tabs.get(i);
-			int pos = i;
-			ps.addButton(o -> {
-				Context ctx = a.getContext();
-				boolean hidden = NavBarMediator.getHiddenTabs(prefs).contains(name);
-				boolean start = name.equals(prefs.getShowAddonOnStartPref());
-				String state = ctx.getString(hidden ? R.string.nav_tab_hidden : R.string.nav_tab_shown);
-				if (start) state += " · " + ctx.getString(R.string.nav_tab_opens_on_start);
-				o.icon = NavBarMediator.getTabIcon(name);
-				o.ctitle = (pos + 1) + ". " + NavBarMediator.getTabTitle(ctx, name);
-				o.csubtitle = state;
-				o.onClick = () -> showNavTabMenu(a, ps, tabs, pos);
-			});
-		}
-
-		ps.addButton(o -> {
-			o.title = R.string.nav_tabs_reset;
-			o.subtitle = R.string.nav_tabs_reset_sub;
-			o.icon = R.drawable.view_grid;
-			o.onClick = () -> {
-				NavBarMediator.resetTabs(prefs);
-				ps.configure(s -> buildNavTabsPrefs(a, s));
-			};
-		});
-	}
-
-	private static void showNavTabMenu(MainActivityDelegate a, PreferenceSet ps, List<String> tabs,
-																		 int pos) {
-		MainActivityPrefs prefs = a.getPrefs();
-		String name = tabs.get(pos);
-		boolean hidden = NavBarMediator.getHiddenTabs(prefs).contains(name);
-		boolean start = name.equals(prefs.getShowAddonOnStartPref());
-		Runnable refresh = () -> ps.configure(s -> buildNavTabsPrefs(a, s));
-
-		a.getContextMenu().show(b -> {
-			b.setTitle(NavBarMediator.getTabTitle(a.getContext(), name).toString());
-			if (pos > 0) {
-				b.addItem(R.id.nav_tab_move_up, me.aap.utils.R.drawable.move_up, R.string.move_up)
-						.setHandler(i -> {
-							List<String> order = new ArrayList<>(tabs);
-							Collections.swap(order, pos, pos - 1);
-							NavBarMediator.setTabOrder(prefs, order);
-							refresh.run();
-							return true;
-						});
-			}
-			if (pos < tabs.size() - 1) {
-				b.addItem(R.id.nav_tab_move_down, me.aap.utils.R.drawable.move_down, R.string.move_down)
-						.setHandler(i -> {
-							List<String> order = new ArrayList<>(tabs);
-							Collections.swap(order, pos, pos + 1);
-							NavBarMediator.setTabOrder(prefs, order);
-							refresh.run();
-							return true;
-						});
-			}
-			b.addItem(R.id.nav_tab_visibility,
-					hidden ? me.aap.utils.R.drawable.check_box_blank : me.aap.utils.R.drawable.check_box,
-					hidden ? R.string.nav_tab_show : R.string.nav_tab_hide).setHandler(i -> {
-				NavBarMediator.setTabHidden(prefs, name, !hidden);
-				refresh.run();
-				return true;
-			});
-			b.addItem(R.id.nav_open_on_start, start ? R.drawable.bookmark_filled : R.drawable.bookmark,
-					start ? R.string.remove_open_on_start : R.string.set_open_on_start).setHandler(i -> {
-				prefs.setShowAddonOnStartPref(start ? null : name);
-				refresh.run();
-				return true;
-			});
+			o.onClick = () -> a.showFragment(R.id.nav_tabs_fragment);
 		});
 	}
 
 	/**
-	 * The Info Overlay (clock, battery, temperature, distance) shown over fullscreen video and on the
-	 * Music tab: under Interface, as it's no longer about video alone.
+	 * Interface &gt; Info overlay (clock, battery, temperature, distance, data) shown over fullscreen
+	 * video and on the Music tab: its own page, see {@link InfoOverlayFragment}.
 	 */
 	private static void addInfoOverlayPrefs(MainActivityDelegate a, PreferenceSet parent) {
-		PreferenceSet ps = parent.subSet(o -> {
+		parent.addButton(o -> {
 			o.title = R.string.info_overlay_prefs;
 			o.subtitle = R.string.prefs_sub_info_overlay;
 			o.icon = R.drawable.about;
-		});
-		ps.addListPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.CLOCK_POS;
-			o.title = R.string.clock_pos;
-			o.subtitle = R.string.string_format;
-			o.formatSubtitle = true;
-			o.values =
-					new int[]{R.string.clock_pos_none, R.string.clock_pos_left, R.string.clock_pos_right,
-							R.string.clock_pos_center};
-		});
-		var infoOverlayCond = new PrefCondition<>(a.getPrefs(), MainActivityPrefs.CLOCK_POS,
-				pref -> a.getPrefs().getIntPref(pref) != MainActivityPrefs.CLOCK_POS_NONE);
-		var showClockCond = PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK);
-		var showBatteryPctCond =
-				PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_PCT);
-		var showBatteryTempCond =
-				PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_TEMP);
-		var showDistanceCond =
-				PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE);
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DOWNLOADED;
-			o.title = R.string.info_overlay_show_downloaded;
-			o.subtitle = R.string.info_overlay_show_downloaded_sub;
-			o.visibility = infoOverlayCond.copy();
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK;
-			o.title = R.string.info_overlay_show_clock;
-			o.visibility = infoOverlayCond.copy();
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK_ICON;
-			o.title = R.string.info_overlay_show_clock_icon;
-			o.visibility = infoOverlayCond.copy().and(showClockCond.copy());
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_PCT;
-			o.title = R.string.info_overlay_show_battery_pct;
-			o.visibility = infoOverlayCond.copy();
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_ICON;
-			o.title = R.string.info_overlay_show_battery_icon;
-			o.visibility = infoOverlayCond.copy().and(showBatteryPctCond.copy());
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_TEMP;
-			o.title = R.string.info_overlay_show_battery_temp;
-			o.visibility = infoOverlayCond.copy();
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_TEMP_ICON;
-			o.title = R.string.info_overlay_show_temp_icon;
-			o.visibility = infoOverlayCond.copy().and(showBatteryTempCond.copy());
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE;
-			o.title = R.string.info_overlay_show_distance;
-			o.visibility = infoOverlayCond.copy();
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE_ICON;
-			o.title = R.string.info_overlay_show_distance_icon;
-			o.visibility = infoOverlayCond.copy().and(showDistanceCond.copy());
-		});
-		// The Data Usage addon's items, also offered in its own settings; only while it's enabled.
-		if (FermataApplication.get().getAddonManager()
-				.getAddon(me.aap.fermata.addon.data.DataUsageAddon.class) != null) {
-			ps.addBooleanPref(o -> {
-				o.store = a.getPrefs();
-				o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DATA_USAGE;
-				o.title = R.string.info_overlay_show_data_usage;
-				o.visibility = infoOverlayCond.copy();
-			});
-			ps.addBooleanPref(o -> {
-				o.store = a.getPrefs();
-				o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DATA_REMAINING;
-				o.title = R.string.info_overlay_show_data_remaining;
-				o.subtitle = R.string.data_usage_overlay_remaining_sub;
-				o.visibility = infoOverlayCond.copy();
-			});
-			ps.addBooleanPref(o -> {
-				o.store = a.getPrefs();
-				o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DATA_ICON;
-				o.title = R.string.info_overlay_show_data_icon;
-				o.visibility = infoOverlayCond.copy();
-			});
-		}
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE;
-			o.title = R.string.info_overlay_only_when_control_panel_visible;
-			o.visibility = infoOverlayCond.copy();
-		});
-		ps.addFloatPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SIZE;
-			o.title = R.string.info_overlay_size;
-			o.scale = 0.05f;
-			o.seekMin = 10;
-			o.seekMax = 40;
-			o.visibility = infoOverlayCond.copy();
+			o.onClick = () -> a.showFragment(R.id.info_overlay_fragment);
 		});
 	}
 

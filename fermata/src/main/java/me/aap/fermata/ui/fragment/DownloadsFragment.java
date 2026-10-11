@@ -423,6 +423,11 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 				}
 				a.addPlaylistMenu(b, completed(Collections.singletonList(pi)));
 				YtDownloadMenu.addTo(b, a, Collections.singletonList(pi));
+				b.addItem(R.id.youtube_alternatives, R.drawable.search, R.string.youtube_alternatives)
+						.setHandler(i -> {
+							me.aap.fermata.ui.view.YoutubeAlternativesPicker.show(a, pi, true);
+							return true;
+						});
 			});
 		});
 	}

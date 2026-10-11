@@ -37,6 +37,8 @@
     <item name="car_nav_modal" type="id" />
     <item name="car_nav_wrap" type="id" />
     <item name="all_in_one_fragment" type="id" />
+    <item name="nav_tabs_fragment" type="id" />
+    <item name="info_overlay_fragment" type="id" />
     <item name="audio_effects_fragment" type="id" />
     <item name="subtitles_fragment" type="id" />
     <item name="tv_fragment" type="id" />
@@ -115,7 +117,6 @@
     <item name="youtube_alternatives" type="id" />
     <item name="tool_select" type="id" />
     <item name="youtube_refresh_thumbnail" type="id" />
-    <item name="youtube_alternatives_fragment" type="id" />
 
     <item name="category_audio" type="id" />
     <item name="category_video" type="id" />

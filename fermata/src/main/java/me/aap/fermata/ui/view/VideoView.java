@@ -451,6 +451,7 @@ public class VideoView extends FrameLayout
 		infoOverlay.setLayoutParams(lp);
 		infoOverlay.setSize(size);
 		infoOverlay.setOnlyWhenControlPanelVisible(onlyWhenControlPanelVisible);
+		infoOverlay.setOrder(mp.getInfoOverlayOrderPref());
 		infoOverlay.setItems(showClock, showClockIcon, showBatteryPct, showBatteryIcon, showBatteryTemp,
 				showTempIcon, showDistance, showDistanceIcon);
 		infoOverlay.setDataItems(dataUsage, dataRemaining, mp.getInfoOverlayShowDataIconPref());

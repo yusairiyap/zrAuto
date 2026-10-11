@@ -1477,6 +1477,12 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	public void onVideoSizeChanged(MediaEngine engine, int width, int height) {
 		VideoView v = getVideoView();
 		if (v != null) v.setSurfaceSize(engine);
+		// A local file's quality is its picture size: the Quality button and tile read it again.
+		me.aap.fermata.ui.view.QualityIcon.expire();
+		if (v != null) {
+			me.aap.fermata.ui.activity.MainActivityDelegate.get(v.getContext()).fireBroadcastEvent(
+					me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED);
+		}
 	}
 
 	@Override

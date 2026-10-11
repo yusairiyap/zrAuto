@@ -916,7 +916,7 @@ public final class AllInOneMenu {
 	private static boolean opensSomething(Action action) {
 		return switch (action) {
 			case AUDIO_EFFECTS, PLAYLIST_ADD, OPEN_FAVORITES, OPEN_PLAYLISTS, OPEN_DOWNLOADS, MENU,
-					CP_MENU, YOUTUBE_SEARCH, YOUTUBE_UP_NEXT, REFUEL, DOWNLOAD_CURRENT, PLAY_AS_MUSIC,
+					CP_MENU, YOUTUBE_SEARCH, YOUTUBE_UP_NEXT, YOUTUBE_ALTERNATIVES, REFUEL, DOWNLOAD_CURRENT, PLAY_AS_MUSIC,
 					BACK_OR_EXIT, EXIT -> true;
 			default -> false;
 		};
@@ -1001,7 +1001,10 @@ public final class AllInOneMenu {
 		List<VideoQualityOption> list = qualities;
 		MediaEngine eng = qualityEngine;
 		if ((list == null) || (eng == null)) {
-			TextView t = text(ctx.getString(R.string.quality_unavailable), 14, secondary, false);
+			// A local file has no qualities to pick, but it has the one it plays in.
+			String local = (eng == null) ? null : QualityIcon.localLabel(activity, eng);
+			TextView t = text((local != null) ? ctx.getString(R.string.quality_local, local) :
+					ctx.getString(R.string.quality_unavailable), 14, secondary, false);
 			t.setGravity(Gravity.CENTER);
 			t.setPadding(dp(12), dp(20), dp(12), dp(20));
 			qualityGrid.addView(t, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));

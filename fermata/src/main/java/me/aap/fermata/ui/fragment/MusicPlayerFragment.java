@@ -452,6 +452,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		target.setVisibility(show ? View.VISIBLE : View.GONE);
 		if (!show) return;
 		o.setSize(p.getInfoOverlaySizePref());
+		o.setOrder(p.getInfoOverlayOrderPref());
 		o.setItems(clock, p.getInfoOverlayShowClockIconPref(), battery,
 				p.getInfoOverlayShowBatteryIconPref(), temp, p.getInfoOverlayShowTempIconPref(), distance,
 				p.getInfoOverlayShowDistanceIconPref());

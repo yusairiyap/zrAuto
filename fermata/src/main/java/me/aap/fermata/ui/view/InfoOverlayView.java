@@ -385,44 +385,67 @@ public class InfoOverlayView extends LinearLayout {
 		downloadedIcon.setLayoutParams(new LayoutParams(iconSize, iconSize));
 	}
 
+	/** The overlay's items, in their default order: what {@link #setOrder} and the settings page use. */
+	public static final String[] ITEM_KEYS = {"downloaded", "clock", "battery", "temp", "distance",
+			"data_usage", "data_remaining"};
+	private String[] order = ITEM_KEYS;
+
+	/** The order of the items, as the setting stores it (keys joined by commas; empty: default). */
+	public static String[] parseOrder(@Nullable String s) {
+		java.util.LinkedHashSet<String> keys = new java.util.LinkedHashSet<>();
+		if ((s != null) && !s.isEmpty()) {
+			for (String k : s.split(",")) {
+				if (java.util.Arrays.asList(ITEM_KEYS).contains(k)) keys.add(k);
+			}
+		}
+		// Anything not mentioned (an item added since) follows, in default order.
+		keys.addAll(java.util.Arrays.asList(ITEM_KEYS));
+		return keys.toArray(new String[0]);
+	}
+
+	public void setOrder(@Nullable String s) {
+		String[] o = parseOrder(s);
+		if (java.util.Arrays.equals(o, order)) return;
+		order = o;
+		layoutRows();
+	}
+
+	private boolean isItemShown(String key) {
+		return switch (key) {
+			case "downloaded" -> downloadedShown;
+			case "clock" -> showClock;
+			case "battery" -> showBatteryPct;
+			case "temp" -> showBatteryTemp;
+			case "distance" -> showDistance;
+			case "data_usage" -> showDataUsage;
+			case "data_remaining" -> dataRemainingShown;
+			default -> false;
+		};
+	}
+
+	private View itemView(String key) {
+		return switch (key) {
+			case "downloaded" -> downloadedIcon;
+			case "clock" -> clockRow;
+			case "battery" -> batteryRow;
+			case "temp" -> tempRow;
+			case "distance" -> distanceRow;
+			case "data_usage" -> dataUsageRow;
+			default -> dataRemainingRow;
+		};
+	}
+
 	private void layoutRows() {
-		// removeAllViews() detaches clockRow/batteryRow/tempRow too, so they're always free to
-		// re-add below regardless of which combination was showing before.
+		// removeAllViews() detaches every row too, so they're always free to re-add below
+		// regardless of which combination was showing before.
 		removeAllViews();
 		boolean first = true;
 
-		if (downloadedShown) {
-			addView(downloadedIcon);
-			first = false;
-		}
-		if (showClock) {
+		for (String key : order) {
+			if (!isItemShown(key)) continue;
 			if (!first) addView(newDivider());
-			addView(clockRow);
+			addView(itemView(key));
 			first = false;
-		}
-		if (showBatteryPct) {
-			if (!first) addView(newDivider());
-			addView(batteryRow);
-			first = false;
-		}
-		if (showBatteryTemp) {
-			if (!first) addView(newDivider());
-			addView(tempRow);
-			first = false;
-		}
-		if (showDistance) {
-			if (!first) addView(newDivider());
-			addView(distanceRow);
-			first = false;
-		}
-		if (showDataUsage) {
-			if (!first) addView(newDivider());
-			addView(dataUsageRow);
-			first = false;
-		}
-		if (dataRemainingShown) {
-			if (!first) addView(newDivider());
-			addView(dataRemainingRow);
 		}
 
 		applyVisibility();

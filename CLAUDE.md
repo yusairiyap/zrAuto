@@ -198,6 +198,24 @@ way `setBarsHidden`/`setVideoMode` do.
   drivers press repeatedly to move along. An open YouTube search / Up next panel is a normal CarNav scope
   and is found first, so the page logic never sees those keys.
 
+## Reorderable settings pages, Alternative video picker, menu fade
+
+- **Navigation tabs and Info overlay settings** are pages of draggable rows (`ui/fragment/ReorderListFragment`:
+  handle, icon, name + state, switch, "more" menu; subclasses `NavTabsFragment`, `InfoOverlayFragment`), not
+  PreferenceSet lists. The base class carries the All in One drag fixes (auto-scroll only along the drag and
+  only in the outer half of the list padding; `onMoved` correcting for the top padding): keep them, dragging
+  otherwise scrolls the page. The overlay's item order is `INFO_OVERLAY_ORDER` (keys in
+  `InfoOverlayView.ITEM_KEYS`, applied by `InfoOverlayView#setOrder`).
+- **Search alternative videos** is `ui/view/YoutubeAlternativesPicker`, a modal card like `PlaylistPicker`
+  (the old fragment is gone). The current video is always row 0. From an item's menu a tap replaces, the play
+  button previews; from the `YOUTUBE_ALTERNATIVES` action (FAB / All in One / key) a tap plays and the check
+  button sets. Car mode never replaces (tap = play; long next taps, long previous goes back to now playing).
+- **Menus and dialogs fade out** because `OverlayMenuView#hide` keeps the content on screen until the fade
+  ends (`fadingOut`); it used to remove the content first, which made every close look like a hard cut and
+  killed the dialog closing animation in `DialogStyle`.
+- **Quality icon for local files**: `QualityIcon#localLabel` (the download's chosen height, else the picture
+  size via `labelForSize`) when the engine has no quality options.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

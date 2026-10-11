@@ -724,7 +724,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		previewVideo(getActivityDelegate(), v);
 	}
 
-	static void previewVideo(MainActivityDelegate a, Video v) {
+	public static void previewVideo(MainActivityDelegate a, Video v) {
 		Context ctx = a.getContext();
 
 		AddonManager.get().getOrInstallAddon(VideoTitleCache.YOUTUBE_ADDON_CLASS).main()

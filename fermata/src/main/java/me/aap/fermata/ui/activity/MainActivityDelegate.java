@@ -174,7 +174,6 @@ import me.aap.fermata.ui.fragment.PlaylistsFragment;
 import me.aap.fermata.ui.fragment.SettingsFragment;
 import me.aap.fermata.ui.fragment.SpotifyImportFragment;
 import me.aap.fermata.ui.fragment.SubtitlesFragment;
-import me.aap.fermata.ui.fragment.YoutubeAlternativesFragment;
 import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.ui.view.DownloadPicker;
@@ -2305,8 +2304,6 @@ public class MainActivityDelegate extends ActivityDelegate
 			return new SubtitlesFragment();
 		} else if (id == R.id.spotify_import_fragment) {
 			return new SpotifyImportFragment();
-		} else if (id == R.id.youtube_alternatives_fragment) {
-			return new YoutubeAlternativesFragment();
 		} else if (id == R.id.diagnostic_log_fragment) {
 			return new DiagnosticLogFragment();
 		} else if (id == R.id.key_tester_fragment) {
@@ -2315,6 +2312,10 @@ public class MainActivityDelegate extends ActivityDelegate
 			return new CarModeFragment();
 		} else if (id == R.id.all_in_one_fragment) {
 			return new me.aap.fermata.ui.fragment.AllInOneFragment();
+		} else if (id == R.id.nav_tabs_fragment) {
+			return new me.aap.fermata.ui.fragment.NavTabsFragment();
+		} else if (id == R.id.info_overlay_fragment) {
+			return new me.aap.fermata.ui.fragment.InfoOverlayFragment();
 		}
 		ActivityFragment f = FermataApplication.get().getAddonManager().createFragment(id);
 		return (f != null) ? f : super.createFragment(id);
@@ -2740,6 +2741,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Override
 	public void onBackPressed() {
 		if (PlaylistPicker.dismissOpen()) return;
+		if (me.aap.fermata.ui.view.YoutubeAlternativesPicker.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.AllInOneMenu.dismissOpen()) return;
 		if (DownloadPicker.dismissOpen()) return;
 		super.onBackPressed();

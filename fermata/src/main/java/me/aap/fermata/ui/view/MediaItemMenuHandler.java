@@ -55,7 +55,6 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ytdl.YtDownloadMenu;
 import me.aap.fermata.ytdl.YtOffline;
 import me.aap.fermata.ui.fragment.MediaLibFragment;
-import me.aap.fermata.ui.fragment.YoutubeAlternativesFragment;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.function.IntSupplier;
 import me.aap.utils.function.Supplier;
@@ -196,10 +195,15 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 
 			YtDownloadMenu.addTo(b, a, Collections.singletonList(pi));
 
-			if ((view != null) && YoutubeAlternativesFragment.isSupported(pi)) {
-				b.addItem(R.id.youtube_alternatives, R.drawable.search, R.string.youtube_alternatives);
-				b.addItem(R.id.youtube_refresh_thumbnail, R.drawable.refresh,
-						R.string.youtube_refresh_thumbnail);
+			if (view != null) {
+				// YouTube videos and local files can be searched for other videos by their title.
+				if (YoutubeAlternativesPicker.canSearch(pi)) {
+					b.addItem(R.id.youtube_alternatives, R.drawable.search, R.string.youtube_alternatives);
+				}
+				if (YoutubeAlternativesPicker.isYoutubeInList(pi)) {
+					b.addItem(R.id.youtube_refresh_thumbnail, R.drawable.refresh,
+							R.string.youtube_refresh_thumbnail);
+				}
 			}
 
 			if (!offline && !(item instanceof StreamItem) && !(item instanceof ArchiveItem)) {
@@ -606,7 +610,7 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 		} else if (id == R.id.youtube_refresh_thumbnail) {
 			refreshYoutubeThumbnail((PlayableItem) item);
 		} else if (id == R.id.youtube_alternatives) {
-			YoutubeAlternativesFragment.open(getMainActivity(), (PlayableItem) item);
+			YoutubeAlternativesPicker.show(getMainActivity(), (PlayableItem) item, true);
 		} else if (id == R.id.playlist_rename) {
 			renamePlaylist(i.getData());
 		} else if (id == R.id.bookmark_remove_all_confirm) {
