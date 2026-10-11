@@ -42,7 +42,8 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 			Action.PRIVATE_MODE_TOGGLE, Action.REFUEL, Action.FAVORITE_ADD,
 			Action.PLAYLIST_ADD, Action.PLAY_AS_MUSIC, Action.YOUTUBE_SEARCH, Action.YOUTUBE_UP_NEXT,
 			Action.OPEN_FAVORITES, Action.OPEN_PLAYLISTS, Action.OPEN_DOWNLOADS, Action.DOWNLOAD_CURRENT,
-			Action.DOWNLOADS_PAUSE_RESUME, Action.ALL_IN_ONE, Action.AUDIO_EFFECTS, Action.SLEEP_TIMER);
+			Action.DOWNLOADS_PAUSE_RESUME, Action.ALL_IN_ONE, Action.AUDIO_EFFECTS, Action.SLEEP_TIMER,
+			Action.QUALITY);
 
 	private final Pref<IntSupplier> actionPref;
 	@Nullable
@@ -124,6 +125,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		if (action == Action.ALL_IN_ONE) return R.drawable.view_grid;
 		if (action == Action.AUDIO_EFFECTS) return R.drawable.equalizer;
 		if (action == Action.SLEEP_TIMER) return R.drawable.timer;
+		if (action == Action.QUALITY) return R.drawable.quality;
 		// The rest are only ever key bindings, but the All in One card can show any action.
 		if (action == Action.STOP) return R.drawable.stop;
 		if (action == Action.PLAY) return R.drawable.play;
@@ -198,6 +200,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 						sb -> {
 							addAction(a, fb, sb, Action.YOUTUBE_SEARCH, 0);
 							addAction(a, fb, sb, Action.YOUTUBE_UP_NEXT, 1);
+							addAction(a, fb, sb, Action.QUALITY, 2);
 						});
 			}
 			category(a, fb, b, R.id.fab_cat_tools, R.drawable.fuel, R.string.fab_cat_tools,

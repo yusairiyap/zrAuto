@@ -140,6 +140,8 @@ public enum Action {
 			a(me.aap.fermata.ui.view.AllInOneMenu::openEffects)),
 	SLEEP_TIMER(R.string.action_sleep_timer, a(me.aap.fermata.ui.view.AllInOneMenu::showTimer)),
 	ALL_IN_ONE(R.string.action_all_in_one, a(me.aap.fermata.ui.view.AllInOneMenu::toggle)),
+	// YouTube's video quality, picked on the All in One card's Quality page.
+	QUALITY(R.string.quality, a(me.aap.fermata.ui.view.AllInOneMenu::showQuality)),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

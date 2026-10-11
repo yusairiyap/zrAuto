@@ -148,6 +148,19 @@ public interface MediaEngine extends Closeable {
 		return false;
 	}
 
+	/**
+	 * The video qualities to pick from (Auto among them), for the Quality card; null if this engine
+	 * has no qualities to pick (only the YouTube player has).
+	 */
+	@Nullable
+	default FutureSupplier<List<VideoQualityOption>> getVideoQualityOptions() {
+		return null;
+	}
+
+	/** Switches to {@code q}, one of {@link #getVideoQualityOptions()}'s. */
+	default void setVideoQuality(VideoQualityOption q) {
+	}
+
 	FutureSupplier<Long> getDuration();
 
 	FutureSupplier<Long> getPosition();

@@ -46,6 +46,7 @@ import me.aap.fermata.R;
 import me.aap.fermata.action.Action;
 import me.aap.fermata.action.CarNav;
 import me.aap.fermata.media.engine.MediaEngine;
+import me.aap.fermata.media.engine.VideoQualityOption;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -124,6 +125,10 @@ public final class AllInOneMenu {
 	private LinearLayout root;
 	private View mainPage;
 	private View timerPage;
+	private View qualityPage;
+	/** The Quality page's squares (filled once the player says which qualities it has). */
+	private LinearLayout qualityGrid;
+	private TextView qualityStatus;
 	@Nullable
 	private TextView timerTileSub;
 	/** The Sleep timer tile's title: on the smallest tiles it carries the timer's state too. */
@@ -144,8 +149,11 @@ public final class AllInOneMenu {
 	private int minutes = lastMinutes;
 	private boolean finishSong = lastFinishSong;
 
-	/** Opened on the timer page instead of the tiles. */
-	private boolean startOnTimer;
+	private static final int PAGE_MAIN = 0;
+	private static final int PAGE_TIMER = 1;
+	private static final int PAGE_QUALITY = 2;
+	/** The page it opened on: the tiles, or straight on the timer or the quality page. */
+	private int startPage = PAGE_MAIN;
 
 	private AllInOneMenu(MainActivityDelegate activity, Context ctx, ViewGroup host,
 											 @Nullable View insets, @Nullable View anchor, List<Action> items,
@@ -180,15 +188,20 @@ public final class AllInOneMenu {
 	/** The All in One action: opens the card, or closes it if it's open. */
 	public static void toggle(@NonNull MainActivityDelegate a) {
 		if (dismissOpen()) return;
-		show(a, false);
+		show(a, PAGE_MAIN);
 	}
 
 	/** The Sleep timer action (and the fullscreen video menu's Timer): the card on its timer page. */
 	public static void showTimer(@NonNull MainActivityDelegate a) {
-		show(a, true);
+		show(a, PAGE_TIMER);
 	}
 
-	private static void show(MainActivityDelegate a, boolean timer) {
+	/** The Quality action: the card on its quality page (YouTube's video qualities). */
+	public static void showQuality(@NonNull MainActivityDelegate a) {
+		show(a, PAGE_QUALITY);
+	}
+
+	private static void show(MainActivityDelegate a, int page) {
 		ViewGroup host = a.findViewById(R.id.main_activity);
 		if ((host == null) || (host.getWidth() == 0)) {
 			Log.e("No view to show the All in One card over");
@@ -197,7 +210,7 @@ public final class AllInOneMenu {
 		dismissOpen();
 		AllInOneMenu m = new AllInOneMenu(a, EffectsUi.palette(a.getContext()), host, null, null,
 				getItems(a), getColumns(a), R.string.all_in_one, null, false);
-		m.startOnTimer = timer;
+		m.startPage = page;
 		open = m;
 		m.show();
 	}
@@ -221,7 +234,7 @@ public final class AllInOneMenu {
 		AllInOneMenu m = new AllInOneMenu(a, ctx, host, insets, anchor,
 				own ? getItems(a) : DEFAULT_ITEMS, own ? getColumns(a) : 2, R.string.music_more, hooks,
 				false);
-		m.startOnTimer = timer;
+		m.startPage = timer ? PAGE_TIMER : PAGE_MAIN;
 		open = m;
 		m.show();
 	}
@@ -397,13 +410,14 @@ public final class AllInOneMenu {
 		pages = new FrameLayout(ctx);
 		mainPage = buildMainPage();
 		timerPage = buildTimerPage();
-		timerPage.setVisibility(View.GONE);
-		if (startOnTimer) {
-			mainPage.setVisibility(View.GONE);
-			timerPage.setVisibility(View.VISIBLE);
-		}
+		qualityPage = buildQualityPage();
+		mainPage.setVisibility((startPage == PAGE_MAIN) ? View.VISIBLE : View.GONE);
+		timerPage.setVisibility((startPage == PAGE_TIMER) ? View.VISIBLE : View.GONE);
+		qualityPage.setVisibility((startPage == PAGE_QUALITY) ? View.VISIBLE : View.GONE);
 		pages.addView(mainPage, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 		pages.addView(timerPage, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		pages.addView(qualityPage, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		if ((startPage == PAGE_QUALITY) && !preview) loadQualities();
 		root.addView(pages, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 	}
 
@@ -435,7 +449,7 @@ public final class AllInOneMenu {
 		// Room for the taller of the two pages, so the card grows upwards into free space when the
 		// timer page opens instead of running off the top.
 		int contentW = card.getWidth() - dp(32);
-		View other = startOnTimer ? mainPage : timerPage;
+		View other = (startPage == PAGE_MAIN) ? timerPage : mainPage;
 		other.measure(View.MeasureSpec.makeMeasureSpec(contentW, View.MeasureSpec.EXACTLY),
 				View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
 		int ch = card.getHeight();
@@ -505,9 +519,9 @@ public final class AllInOneMenu {
 		card.setLayoutParams(clp);
 	}
 
-	/** Long previous in car mode: from the timer page back to the tiles, else closes. */
+	/** Long previous in car mode (and a page's back arrow): to the tiles, else closes. */
 	private void back() {
-		if (!startOnTimer && (timerPage.getVisibility() == View.VISIBLE)) showPage(false);
+		if ((startPage == PAGE_MAIN) && (mainPage.getVisibility() != View.VISIBLE)) showPage(mainPage);
 		else dismiss();
 	}
 
@@ -751,6 +765,9 @@ public final class AllInOneMenu {
 		} else if (action == Action.PLAYLIST_ADD) {
 			title = ctx.getString(R.string.playlist_add);
 			hint = ctx.getString(R.string.music_more_playlist_hint);
+		} else if (action == Action.QUALITY) {
+			title = ctx.getString(R.string.quality);
+			hint = ctx.getString(R.string.quality_tile_hint);
 		} else {
 			title = ctx.getString(action.getName());
 			hint = "";
@@ -829,7 +846,12 @@ public final class AllInOneMenu {
 	/** A tile's tap. */
 	private void run(Action action) {
 		if (action == Action.SLEEP_TIMER) {
-			showPage(true);
+			showPage(timerPage);
+			return;
+		}
+		if (action == Action.QUALITY) {
+			loadQualities();
+			showPage(qualityPage);
 			return;
 		}
 		DiagnosticLog.log("AIO", "run", action);
@@ -848,6 +870,180 @@ public final class AllInOneMenu {
 					BACK_OR_EXIT, EXIT -> true;
 			default -> false;
 		};
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Quality page
+	// ---------------------------------------------------------------------------------------------
+
+	private View buildQualityPage() {
+		LinearLayout page = new LinearLayout(ctx);
+		page.setOrientation(LinearLayout.VERTICAL);
+
+		// Header: back, title, and the quality in use.
+		LinearLayout header = new LinearLayout(ctx);
+		header.setOrientation(LinearLayout.HORIZONTAL);
+		header.setGravity(Gravity.CENTER_VERTICAL);
+		ImageView back = new ImageView(ctx);
+		back.setImageResource(me.aap.utils.R.drawable.back);
+		back.setImageTintList(ColorStateList.valueOf(primary));
+		back.setPadding(dp(8), dp(8), dp(8), dp(8));
+		back.setBackground(pressable(Color.TRANSPARENT, 20));
+		back.setFocusable(true);
+		back.setClickable(true);
+		back.setContentDescription(ctx.getString(titleRes));
+		back.setOnClickListener(v -> showPage(mainPage));
+		header.addView(back, new LinearLayout.LayoutParams(dp(40), dp(40)));
+		TextView title = text(ctx.getString(R.string.quality), 18, primary, true);
+		title.setPadding(dp(8), 0, 0, 0);
+		header.addView(title, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		qualityStatus = text("", 14, accent, true);
+		header.addView(qualityStatus, new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
+		page.addView(header, new LinearLayout.LayoutParams(MATCH_PARENT, dp(compact ? 40 : 44)));
+
+		TextView hint = text(ctx.getString(R.string.quality_hint), 13, secondary, false);
+		hint.setPadding(dp(8), dp(2), dp(8), dp(compact ? 4 : 8));
+		page.addView(hint);
+
+		qualityGrid = new LinearLayout(ctx);
+		qualityGrid.setOrientation(LinearLayout.VERTICAL);
+		page.addView(qualityGrid, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		return page;
+	}
+
+	/** Asks the player which qualities it has, and fills the page with them. */
+	private void loadQualities() {
+		qualityStatus.setText("");
+		qualityMessage(R.string.quality_loading);
+		MediaEngine eng = cb.getEngine();
+		me.aap.utils.async.FutureSupplier<List<VideoQualityOption>> f =
+				(eng == null) ? null : eng.getVideoQualityOptions();
+		if (f == null) {
+			qualityMessage(R.string.quality_unavailable);
+			return;
+		}
+		f.main().onCompletion((list, err) -> {
+			if (dismissing || (overlay == null) || (overlay.getParent() == null)) return;
+			if ((err != null) || (list == null) || list.isEmpty()) {
+				if (err != null) Log.e(err, "No video qualities");
+				qualityMessage(R.string.quality_unavailable);
+			} else {
+				fillQualities(eng, list);
+			}
+			refit();
+		});
+	}
+
+	private void qualityMessage(@StringRes int msg) {
+		qualityGrid.removeAllViews();
+		TextView t = text(ctx.getString(msg), 14, secondary, false);
+		t.setGravity(Gravity.CENTER);
+		t.setPadding(dp(12), dp(20), dp(12), dp(20));
+		qualityGrid.addView(t, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+	}
+
+	/** A square per quality, Auto first, the one in use filled with the accent. */
+	private void fillQualities(MediaEngine eng, List<VideoQualityOption> list) {
+		qualityGrid.removeAllViews();
+		int perRow = compact ? 4 : 3;
+		LinearLayout row = null;
+		for (int i = 0; i < list.size(); i++) {
+			VideoQualityOption q = list.get(i);
+			if (q.selected) qualityStatus.setText(q.label);
+			if (i % perRow == 0) {
+				row = new UniformRow(ctx);
+				LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+				if (i > 0) rlp.topMargin = dp(6);
+				qualityGrid.addView(row, rlp);
+			}
+			row.addView(qualitySquare(eng, q), tileParams());
+		}
+		int rest = (perRow - list.size() % perRow) % perRow;
+		for (int i = 0; i < rest; i++) row.addView(new View(ctx), tileParams());
+	}
+
+	private View qualitySquare(MediaEngine eng, VideoQualityOption q) {
+		LinearLayout t = new SquareTile(ctx);
+		t.setOrientation(LinearLayout.VERTICAL);
+		t.setGravity(Gravity.CENTER);
+		t.setPadding(dp(6), dp(6), dp(6), dp(6));
+		t.setBackground(pressable(q.selected ? accent : chipFill, 18));
+		t.setClickable(true);
+		t.setFocusable(true);
+		t.setContentDescription(q.label);
+		t.setOnClickListener(v -> {
+			DiagnosticLog.log("AIO", "quality", q.label);
+			eng.setVideoQuality(q);
+			UiUtils.showToast(ctx, ctx.getString(R.string.quality_set, q.label));
+			dismiss();
+		});
+
+		TextView label = text(q.label, compact ? 17 : 20, q.selected ? onAccent : primary, true);
+		label.setGravity(Gravity.CENTER);
+		label.setSingleLine(true);
+		t.addView(label, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		String what = qualityHint(q);
+		if (!what.isEmpty()) {
+			TextView sub = text(what, 11, q.selected ? onAccent : secondary, false);
+			sub.setGravity(Gravity.CENTER);
+			sub.setMaxLines(2);
+			sub.setEllipsize(android.text.TextUtils.TruncateAt.END);
+			LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+			slp.topMargin = dp(2);
+			t.addView(sub, slp);
+		}
+		if (q.selected) {
+			TextView now = text(ctx.getString(R.string.quality_current), 10, onAccent, true);
+			now.setGravity(Gravity.CENTER);
+			now.setAllCaps(true);
+			LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+			clp.topMargin = dp(4);
+			t.addView(now, clp);
+		}
+		return t;
+	}
+
+	/** "Full HD" under "1080p", and so on; Auto says what it does. */
+	private String qualityHint(VideoQualityOption q) {
+		if (q.auto) return ctx.getString(R.string.quality_auto_hint);
+		int p = 0;
+		for (int i = 0; (i < q.label.length()) && Character.isDigit(q.label.charAt(i)); i++) {
+			p = p * 10 + (q.label.charAt(i) - '0');
+		}
+		if (p >= 2160) return ctx.getString(R.string.quality_uhd);
+		if (p >= 1440) return ctx.getString(R.string.quality_qhd);
+		if (p >= 1080) return ctx.getString(R.string.quality_fhd);
+		if (p >= 720) return ctx.getString(R.string.quality_hd);
+		if (p >= 480) return ctx.getString(R.string.quality_sd);
+		if (p > 0) return ctx.getString(R.string.quality_low);
+		return "";
+	}
+
+	/** After the page showing changed height on its own (the qualities came in): stays centred. */
+	private void refit() {
+		if (!centered || (pages.getWidth() == 0)) return;
+		View cur = qualityPage;
+		if (cur.getVisibility() != View.VISIBLE) return;
+		cur.measure(View.MeasureSpec.makeMeasureSpec(pages.getWidth(), View.MeasureSpec.EXACTLY),
+				View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+		fitCard(cur.getMeasuredHeight());
+	}
+
+	/** As tall as it is wide. */
+	private static final class SquareTile extends LinearLayout {
+		SquareTile(Context c) {
+			super(c);
+		}
+
+		@Override
+		protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+			super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+			int w = getMeasuredWidth();
+			if (getMeasuredHeight() < w) {
+				super.onMeasure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
+						View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY));
+			}
+		}
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -870,7 +1066,7 @@ public final class AllInOneMenu {
 		back.setFocusable(true);
 		back.setClickable(true);
 		back.setContentDescription(ctx.getString(titleRes));
-		back.setOnClickListener(v -> showPage(false));
+		back.setOnClickListener(v -> showPage(mainPage));
 		header.addView(back, new LinearLayout.LayoutParams(dp(40), dp(40)));
 		TextView title = text(ctx.getString(R.string.music_sleep_timer), 18, primary, true);
 		title.setPadding(dp(8), 0, 0, 0);
@@ -1012,13 +1208,14 @@ public final class AllInOneMenu {
 	}
 
 	/**
-	 * Switches between the tiles and the timer page: the card's height glides to the new page's while
+	 * Switches between the tiles and the timer or quality page: the card's height glides to the new page's while
 	 * the old page fades and drifts out and the new one fades and drifts in.
 	 */
-	private void showPage(boolean timer) {
-		View out = timer ? mainPage : timerPage;
-		View in = timer ? timerPage : mainPage;
+	private void showPage(View in) {
 		if (in.getVisibility() == View.VISIBLE) return;
+		View out = (mainPage.getVisibility() == View.VISIBLE) ? mainPage :
+				(timerPage.getVisibility() == View.VISIBLE) ? timerPage : qualityPage;
+		boolean forward = in != mainPage;
 		if (pageAnim != null) pageAnim.cancel();
 		updateStatus();
 
@@ -1026,7 +1223,7 @@ public final class AllInOneMenu {
 		in.measure(View.MeasureSpec.makeMeasureSpec(pages.getWidth(), View.MeasureSpec.EXACTLY),
 				View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
 		int toH = in.getMeasuredHeight();
-		float drift = dp(24) * (timer ? 1 : -1);
+		float drift = dp(24) * (forward ? 1 : -1);
 		ViewGroup.LayoutParams lp = pages.getLayoutParams();
 		lp.height = fromH;
 		pages.setLayoutParams(lp);

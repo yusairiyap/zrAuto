@@ -169,7 +169,10 @@ way `setBarsHidden`/`setVideoMode` do.
   The Music tab's More is the same class (`showMusic`) with its own four tiles unless `AIO_MUSIC_MORE`
   is on. Its timer page is the only sleep timer UI: the fullscreen control panel's Timer and its
   countdown pill open it too (`showTimer`); there's no Hours/Minutes overlay menu any more. The
-  settings page's preview is built by the same class (`preview`), so the two can't drift apart.
+  settings page's preview is built by the same class (`preview`), so the two can't drift apart. The
+  card has three pages (tiles, sleep timer, Quality); the `QUALITY` action opens it on the Quality
+  page (`showQuality`), whose squares come from `MediaEngine#getVideoQualityOptions` (only the
+  YouTube engine implements it, via the player API's levels, falling back to the page's own menu).
 - **Car mode wrap-around**: `CarNav.wrapAround(root)` makes Next on a scope's last item go to its
   first; only the All in One card uses it.
 - **Car mode on web pages** (`CarNav.findWebPage`, `action/WebNav`): on the YouTube or browser tab
