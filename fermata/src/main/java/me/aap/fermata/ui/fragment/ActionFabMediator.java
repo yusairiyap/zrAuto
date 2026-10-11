@@ -92,8 +92,19 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 
 	private void updateIcon(FloatingButton fb) {
 		MainActivityDelegate a = MainActivityDelegate.get(fb.getContext());
-		fb.setImageResource(iconFor(a, Action.get(a.getPrefs().getIntPref(
-				MainActivityPrefs.fab(a, actionPref)))));
+		Action action = Action.get(a.getPrefs().getIntPref(MainActivityPrefs.fab(a, actionPref)));
+		if (action == Action.QUALITY) {
+			// The quality in use as its icon ("720p", "Auto"), like the All in One tile's; asked
+			// afresh now and then, the icon redrawn when it changes.
+			String l = me.aap.fermata.ui.view.QualityIcon.getLabel();
+			if (l != null) fb.setImageDrawable(new me.aap.fermata.ui.view.QualityIcon(fb.getContext(), l));
+			else fb.setImageResource(R.drawable.quality);
+			me.aap.fermata.ui.view.QualityIcon.refresh(a, () -> {
+				if (fab == fb) updateIcon(fb);
+			});
+			return;
+		}
+		fb.setImageResource(iconFor(a, action));
 	}
 
 	@DrawableRes

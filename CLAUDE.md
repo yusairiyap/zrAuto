@@ -178,10 +178,17 @@ way `setBarsHidden`/`setVideoMode` do.
   The Music tab's More is the same class (`showMusic`) with its own four tiles unless `AIO_MUSIC_MORE`
   is on. Its timer page is the only sleep timer UI: the fullscreen control panel's Timer and its
   countdown pill open it too (`showTimer`); there's no Hours/Minutes overlay menu any more. The
-  settings page's preview is built by the same class (`preview`), so the two can't drift apart. The
+  settings page is the card itself, edited in place: a grid of the card's own tiles
+  (`AllInOneMenu.tileView`, so the two can't drift apart) on the card's fill (drawn by an item
+  decoration), hold to drag, tap to replace, a ✕ badge to remove, and an "Add action" cell last.
+  Its drag fixes (auto-scroll only in the outer half of the list's padding and only along the drag,
+  `onMoved` correcting for the top padding) are what made dragging work at all; keep them. The
   card has three pages (tiles, sleep timer, Quality); the `QUALITY` action opens it on the Quality
   page (`showQuality`), whose squares come from `MediaEngine#getVideoQualityOptions` (only the
-  YouTube engine implements it, via the player API's levels, falling back to the page's own menu).
+  YouTube engine implements it, via the player API's levels, falling back to the page's own menu). The
+  Quality tile and a Quality floating button show the quality in use as their icon (`QualityIcon`,
+  text such as "720p" or "Auto", refreshed from the player at most every 2 s), or the plain icon
+  while it's unknown.
 - **Car mode wrap-around**: `CarNav.wrapAround(root)` makes Next on a scope's last item go to its
   first; only the All in One card uses it.
 - **Car mode on web pages** (`CarNav.findWebPage`, `action/WebNav`): on the YouTube or browser tab

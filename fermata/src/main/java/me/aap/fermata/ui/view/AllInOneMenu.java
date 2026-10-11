@@ -261,6 +261,28 @@ public final class AllInOneMenu {
 		return m.buildPreview();
 	}
 
+	/**
+	 * One tile exactly as the card shows it at {@code columns} per row (its state too: the timer's,
+	 * the quality's), nothing in it reacting to a tap, for the settings page's grid.
+	 */
+	@NonNull
+	public static View tileView(@NonNull MainActivityDelegate a, @NonNull Context ctx,
+															@NonNull Action action, int columns) {
+		ViewGroup host = a.findViewById(R.id.main_activity);
+		AllInOneMenu m = new AllInOneMenu(a, ctx, host, null, null,
+				Collections.singletonList(action), columns, R.string.all_in_one, null, true);
+		View t = m.tile(action);
+		m.updateStatus();
+		return t;
+	}
+
+	/** The card's fill colour on this palette, for the settings page's grid. */
+	public static int panelColor(@NonNull Context ctx) {
+		TypedValue tv = new TypedValue();
+		ctx.getTheme().resolveAttribute(R.attr.musicPanelFill, tv, true);
+		return tv.data;
+	}
+
 	/** Closes the card if it's open (for the back button); returns whether it was. */
 	public static boolean dismissOpen() {
 		AllInOneMenu m = open;
@@ -781,7 +803,7 @@ public final class AllInOneMenu {
 			hint = ctx.getString(R.string.music_more_playlist_hint);
 		} else if (action == Action.QUALITY) {
 			title = ctx.getString(R.string.quality);
-			hint = ctx.getString(R.string.quality_tile_hint);
+			hint = "";
 		} else {
 			title = ctx.getString(ActionFabMediator.labelFor(activity, action));
 			hint = "";
@@ -819,6 +841,16 @@ public final class AllInOneMenu {
 		ImageView iv = new ImageView(ctx);
 		iv.setImageResource(ActionFabMediator.iconFor(activity, action));
 		iv.setImageTintList(ColorStateList.valueOf(onAccent));
+		if (action == Action.QUALITY) {
+			// The quality in use as the icon, when the player has said which (the plain icon until then).
+			String ql = QualityIcon.getLabel();
+			if (ql != null) iv.setImageDrawable(new QualityIcon(ctx, ql));
+			QualityIcon.refresh(activity, () -> {
+				String l = QualityIcon.getLabel();
+				if (l != null) iv.setImageDrawable(new QualityIcon(ctx, l));
+				else iv.setImageResource(R.drawable.quality);
+			});
+		}
 		int iconDp = (columns == 2) ? 28 : (columns == 3) ? 24 : 20;
 		disc.addView(iv, new FrameLayout.LayoutParams(dp(iconDp), dp(iconDp), Gravity.CENTER));
 		t.addView(disc, new LinearLayout.LayoutParams(dp(discDp), dp(discDp)));
@@ -997,6 +1029,10 @@ public final class AllInOneMenu {
 		t.setOnClickListener(v -> {
 			DiagnosticLog.log("AIO", "quality", q.label);
 			eng.setVideoQuality(q);
+			// The Quality tiles and buttons say so at once.
+			QualityIcon.setLabel(q.label);
+			activity.fireBroadcastEvent(
+					me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED);
 			TopToast.show(R.drawable.quality, ctx.getString(R.string.quality_set, q.label));
 			dismiss();
 		});
@@ -1233,7 +1269,8 @@ public final class AllInOneMenu {
 
 	/** Refreshes what the timer tile / page say about the running timer, once a second while it counts down. */
 	private void updateStatus() {
-		root.removeCallbacks(tick);
+		// A lone tile for the settings page (see tileView()) has no pages around it.
+		if (root != null) root.removeCallbacks(tick);
 		String s;
 		boolean active = cb.hasPlaybackTimer();
 
@@ -1269,10 +1306,10 @@ public final class AllInOneMenu {
 			timerTileName.setText(ctx.getString(R.string.all_in_one_timer_line,
 					ctx.getString(R.string.music_sleep_timer), state));
 		}
-		timerStatus.setText(active ? s : "");
-		View off = timerPage.findViewWithTag("off");
+		if (timerStatus != null) timerStatus.setText(active ? s : "");
+		View off = (timerPage == null) ? null : timerPage.findViewWithTag("off");
 		if (off != null) off.setVisibility(active ? View.VISIBLE : View.GONE);
-		if (active && !preview) root.postDelayed(tick, 1000);
+		if (active && !preview && (root != null)) root.postDelayed(tick, 1000);
 	}
 
 	// ---------------------------------------------------------------------------------------------

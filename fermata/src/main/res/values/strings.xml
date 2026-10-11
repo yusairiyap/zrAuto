@@ -999,7 +999,6 @@
     <string name="all_in_one_sub">One card with the actions you pick, for a key binding or a floating button</string>
     <string name="all_in_one_aa_sub">The car screen\'s own All in One card</string>
     <string name="all_in_one_tagline">Every action you reach for, one tap (or one steering wheel press) away. Bind it to a key or a floating button</string>
-    <string name="all_in_one_preview">Preview</string>
     <string name="all_in_one_grid">Grid size</string>
     <string name="all_in_one_grid_2">Large</string>
     <string name="all_in_one_grid_3">Medium</string>
@@ -1008,13 +1007,13 @@
     <string name="all_in_one_music_more">Use for the Music tab\'s More</string>
     <string name="all_in_one_music_more_sub">The More button on the Music tab shows these actions and this grid too</string>
     <string name="all_in_one_items">Actions</string>
-    <string name="all_in_one_items_hint">Drag the handle to reorder. Hold a row to drag it too</string>
+    <string name="all_in_one_items_hint">This is your card. Hold a tile to drag it to another place, tap it to swap it for another action, ✕ removes it</string>
+    <string name="all_in_one_replace">Replace %1$s</string>
     <string name="all_in_one_add">Add action</string>
     <string name="all_in_one_reset">Reset to default</string>
     <string name="all_in_one_reset_question">Put back the default actions (Effects, Sleep timer, Favorites, Playlist) and the Large grid? Your own list is lost.</string>
     <string name="all_in_one_remove">Remove %1$s</string>
     <string name="all_in_one_timer_line">%1$s · %2$s</string>
-    <string name="quality_tile_hint">YouTube video quality</string>
     <string name="quality_hint">Choose the quality YouTube plays the video in</string>
     <string name="quality_unavailable">Play a YouTube video to choose its quality</string>
     <string name="quality_set">Quality: %1$s</string>

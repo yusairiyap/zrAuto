@@ -4,22 +4,21 @@ import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
 import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED;
 
+import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
-import android.animation.Animator;
-import android.animation.AnimatorListenerAdapter;
-import android.animation.ValueAnimator;
 import android.content.res.ColorStateList;
 import android.graphics.Canvas;
-import android.graphics.drawable.RippleDrawable;
-import android.view.animation.PathInterpolator;
+import android.graphics.Paint;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.LayoutInflater;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -32,13 +31,13 @@ import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
 import androidx.appcompat.widget.SwitchCompat;
 import androidx.core.graphics.ColorUtils;
+import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.OrientationHelper;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 import me.aap.fermata.BuildConfig;
@@ -54,24 +53,30 @@ import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.menu.OverlayMenu;
 
 /**
- * Settings &gt; Interface &gt; All in One (and its Android Auto twin): which actions the All in One
- * card holds and in what order (add, remove, drag to reorder), how big its tiles are, and whether
- * the Music tab's More follows it. A live preview at the top shows the card exactly as it will
- * look, see {@link AllInOneMenu}.
+ * Settings &gt; Interface &gt; All in One (and its Android Auto twin): the card itself, edited in
+ * place. Its tiles look exactly as on the card (built by {@link AllInOneMenu#tileView}), in a grid
+ * as wide as the chosen grid size: hold a tile to drag it to another place, tap it to swap it for
+ * another action, its ✕ badge removes it, and the last cell adds one. Above it, the grid size and
+ * whether the Music tab's More follows the card.
  * <p>
- * One list: the preview and the options are its first row, the buttons its last, so a dragged
- * action scrolls the whole page along when it reaches an edge.
+ * One list: the options are its first row and Reset its last, the card's tiles in between, so a
+ * dragged tile scrolls the whole page along when it reaches an edge.
  */
 public class AllInOneFragment extends MainActivityFragment {
 	private static final int TYPE_HEADER = 0;
-	private static final int TYPE_ITEM = 1;
-	private static final int TYPE_FOOTER = 2;
+	private static final int TYPE_CARD_TOP = 1;
+	private static final int TYPE_ITEM = 2;
+	private static final int TYPE_ADD = 3;
+	private static final int TYPE_FOOTER = 4;
+	/** The first tile's position: after the options and the card's title. */
+	private static final int FIRST = 2;
 	/** Editing the car screen's own card (Settings &gt; Interface &gt; Android Auto). */
 	private boolean aa;
 	private Context palette;
 	private int textPrimary;
 	private int textSecondary;
 	private int tileFill;
+	private int panelFill;
 	private int ripple;
 	private int accent;
 	private int onAccent;
@@ -80,14 +85,14 @@ public class AllInOneFragment extends MainActivityFragment {
 	@Nullable
 	private RecyclerView list;
 	@Nullable
+	private GridLayoutManager grid;
+	@Nullable
 	private View header;
 	@Nullable
+	private View cardTop;
+	@Nullable
 	private View footer;
-	@Nullable
-	private FrameLayout previewHolder;
 	private final List<TextView> gridChips = new ArrayList<>();
-	@Nullable
-	private ValueAnimator previewAnim;
 	@Nullable
 	private SwitchCompat musicSwitch;
 	@Nullable
@@ -99,7 +104,7 @@ public class AllInOneFragment extends MainActivityFragment {
 		return R.id.all_in_one_fragment;
 	}
 
-	/** Its rows stay put under a drag: the bars never move away under them. */
+	/** Its tiles stay put under a drag: the bars never move away under them. */
 	@Override
 	public boolean collapsesBarsOnScroll() {
 		return false;
@@ -133,20 +138,32 @@ public class AllInOneFragment extends MainActivityFragment {
 		textPrimary = paletteColor(R.attr.musicTextPrimary);
 		textSecondary = paletteColor(R.attr.musicTextSecondary);
 		tileFill = paletteColor(R.attr.musicChipFill);
+		panelFill = AllInOneMenu.panelColor(palette);
 		ripple = paletteColor(R.attr.musicChipRipple);
 		accent = EffectsUi.accent(ctx);
 		onAccent = EffectsUi.onAccent(accent);
 
 		RecyclerView rv = new RecyclerView(palette);
-		rv.setLayoutManager(new LinearLayoutManager(palette));
+		GridLayoutManager glm = new GridLayoutManager(palette, 2);
+		glm.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
+			@Override
+			public int getSpanSize(int position) {
+				int t = adapter.getItemViewType(position);
+				return ((t == TYPE_ITEM) || (t == TYPE_ADD)) ? 1 : glm.getSpanCount();
+			}
+		});
+		grid = glm;
+		rv.setLayoutManager(glm);
 		rv.setClipToPadding(false);
 		int pad = dp(16);
 		rv.setPadding(pad, dp(8), pad, pad);
+		rv.addItemDecoration(new CardDecoration());
 		rv.setAdapter(adapter);
 		dragHelper = new ItemTouchHelper(new DragCallback());
 		dragHelper.attachToRecyclerView(rv);
 		list = rv;
 		header = createHeader();
+		cardTop = createCardTop();
 		footer = createFooter();
 		load();
 		return rv;
@@ -161,16 +178,17 @@ public class AllInOneFragment extends MainActivityFragment {
 	@Override
 	public void onHiddenChanged(boolean hidden) {
 		super.onHiddenChanged(hidden);
-		// Favorite / timer state shown on the tiles may have changed meanwhile.
-		if (!hidden) refreshPreview();
+		// Favorite / timer / quality state shown on the tiles may have changed meanwhile.
+		if (!hidden) adapter.notifyItemRangeChanged(FIRST, items.size());
 	}
 
 	@Override
 	public void onDestroyView() {
 		list = null;
+		grid = null;
 		header = null;
+		cardTop = null;
 		footer = null;
-		previewHolder = null;
 		musicSwitch = null;
 		dragHelper = null;
 		gridChips.clear();
@@ -198,79 +216,37 @@ public class AllInOneFragment extends MainActivityFragment {
 	}
 
 	private int columns() {
-		return prefs().getIntPref(pref(MainActivityPrefs.AIO_COLUMNS));
+		return Math.max(2, Math.min(4, prefs().getIntPref(pref(MainActivityPrefs.AIO_COLUMNS))));
 	}
 
 	@SuppressLint("NotifyDataSetChanged")
 	private void load() {
 		items.clear();
 		items.addAll(AllInOneMenu.parse(prefs().getStringPref(pref(MainActivityPrefs.AIO_ITEMS))));
+		if (grid != null) grid.setSpanCount(columns());
 		adapter.notifyDataSetChanged();
 		if (musicSwitch != null) {
 			musicSwitch.setChecked(prefs().getBooleanPref(pref(MainActivityPrefs.AIO_MUSIC_MORE)));
 		}
 		refreshGridChips(false);
-		refreshPreview(false);
 	}
 
 	private void saveItems() {
 		prefs().applyStringPref(pref(MainActivityPrefs.AIO_ITEMS), AllInOneMenu.format(items));
-		refreshPreview(true);
+		// A tile's column (and so its spacing) follows its place: worked out again for every tile.
+		RecyclerView rv = list;
+		if (rv != null) rv.post(rv::invalidateItemDecorations);
 	}
 
-	private void refreshPreview() {
-		refreshPreview(false);
-	}
-
-	/**
-	 * Builds the preview again; {@code animate}: the old card fades out as the new one fades in, and
-	 * the room for it glides to its new height (a grid size change, an action added or removed).
-	 */
-	private void refreshPreview(boolean animate) {
-		FrameLayout h = previewHolder;
-		if (h == null) return;
-		View next = AllInOneMenu.preview(getActivityDelegate(), palette, items, columns());
-		FrameLayout.LayoutParams lp =
-				new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER_HORIZONTAL);
-		if (previewAnim != null) previewAnim.cancel();
-		// A change while one is still fading: only the newest of the old ones fades out.
-		while (h.getChildCount() > 1) h.removeViewAt(0);
-		View old = (h.getChildCount() > 0) ? h.getChildAt(0) : null;
-		if (!animate || (old == null) || !h.isLaidOut()) {
-			h.removeAllViews();
-			h.addView(next, lp);
-			return;
-		}
-
-		int fromH = h.getHeight();
-		next.setAlpha(0f);
-		h.addView(next, lp);
-		next.measure(View.MeasureSpec.makeMeasureSpec(h.getWidth(), View.MeasureSpec.AT_MOST),
-				View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-		int toH = next.getMeasuredHeight();
-		ViewGroup.LayoutParams hlp = h.getLayoutParams();
-		hlp.height = fromH;
-		h.setLayoutParams(hlp);
-
-		old.animate().cancel();
-		old.animate().alpha(0f).setDuration(140).withEndAction(() -> h.removeView(old)).start();
-		next.animate().alpha(1f).setStartDelay(80).setDuration(220).start();
-		ValueAnimator va = ValueAnimator.ofInt(fromH, toH);
-		va.setDuration(260);
-		va.setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f));
-		va.addUpdateListener(x -> {
-			hlp.height = (int) x.getAnimatedValue();
-			h.setLayoutParams(hlp);
-		});
-		va.addListener(new AnimatorListenerAdapter() {
-			@Override
-			public void onAnimationEnd(Animator animation) {
-				hlp.height = WRAP_CONTENT;
-				h.setLayoutParams(hlp);
-			}
-		});
-		previewAnim = va;
-		va.start();
+	/** Another grid size: the tiles take their new size and places, fading across. */
+	private void setColumns(int cols) {
+		if (columns() == cols) return;
+		prefs().applyIntPref(pref(MainActivityPrefs.AIO_COLUMNS), cols);
+		refreshGridChips(true);
+		if (grid != null) grid.setSpanCount(cols);
+		adapter.notifyItemRangeChanged(FIRST, items.size() + 1);
+		RecyclerView rv = list;
+		if (rv != null) rv.post(rv::invalidateItemDecorations);
 	}
 
 	/** The chosen grid size filled with the accent, the others plain; {@code animate}: cross-faded. */
@@ -305,8 +281,7 @@ public class AllInOneFragment extends MainActivityFragment {
 	private RippleDrawable pressable(GradientDrawable fill) {
 		GradientDrawable mask = new GradientDrawable();
 		mask.setColor(0xFF000000);
-		mask.setCornerRadii(fill.getCornerRadii());
-		if (fill.getCornerRadii() == null) mask.setCornerRadius(fill.getCornerRadius());
+		mask.setCornerRadius(fill.getCornerRadius());
 		return new RippleDrawable(ColorStateList.valueOf(ripple), fill, mask);
 	}
 
@@ -317,28 +292,44 @@ public class AllInOneFragment extends MainActivityFragment {
 		return d;
 	}
 
-	private void addAction() {
-		MainActivityDelegate a = getActivityDelegate();
+	/** The actions not in the card yet, for the add / replace pickers. */
+	private List<Action> notInCard() {
 		List<Action> offered = new ArrayList<>();
 		for (Action act : AllInOneMenu.offeredActions()) {
 			if (!items.contains(act)) offered.add(act);
 		}
+		return offered;
+	}
+
+	/**
+	 * Picks an action for the cell at {@code idx}: a new one at the end ({@code idx} == the number
+	 * of tiles), else in place of the one there.
+	 */
+	private void pickAction(int idx) {
+		MainActivityDelegate a = getActivityDelegate();
+		List<Action> offered = notInCard();
 		if (offered.isEmpty()) {
 			TopToast.show(R.drawable.view_grid, R.string.all_in_one_all_added);
 			return;
 		}
 		OverlayMenu menu = a.findViewById(R.id.control_menu);
 		if (menu == null) return;
+		boolean add = idx >= items.size();
 		menu.show(b -> {
-			b.setTitle(R.string.all_in_one_add);
+			if (add) b.setTitle(R.string.all_in_one_add);
+			else b.setTitle(getString(R.string.all_in_one_replace,
+					getString(ActionFabMediator.labelFor(a, items.get(idx)))));
 			b.setSelectionHandler(item -> {
 				Action act = item.getData();
-				if ((act != null) && !items.contains(act)) {
+				if ((act == null) || items.contains(act)) return true;
+				if (idx >= items.size()) {
 					items.add(act);
-					adapter.notifyItemInserted(items.size());
-					saveItems();
-					if (list != null) list.smoothScrollToPosition(items.size());
+					adapter.notifyItemInserted(FIRST + items.size() - 1);
+				} else {
+					items.set(idx, act);
+					adapter.notifyItemChanged(FIRST + idx);
 				}
+				saveItems();
 				return true;
 			});
 			for (Action act : offered) {
@@ -348,13 +339,20 @@ public class AllInOneFragment extends MainActivityFragment {
 		});
 	}
 
+	private void remove(int idx) {
+		if ((idx < 0) || (idx >= items.size())) return;
+		items.remove(idx);
+		adapter.notifyItemRemoved(FIRST + idx);
+		saveItems();
+	}
+
 	private void reset() {
 		prefs().applyStringPref(pref(MainActivityPrefs.AIO_ITEMS), MainActivityPrefs.AIO_DEFAULT_ITEMS);
 		prefs().applyIntPref(pref(MainActivityPrefs.AIO_COLUMNS), 2);
 		load();
 	}
 
-	// ---- Header: intro, preview, grid size, the Music tab's More ----
+	// ---- Header: intro, grid size, the Music tab's More ----
 
 	private View createHeader() {
 		LinearLayout h = new LinearLayout(palette);
@@ -363,19 +361,6 @@ public class AllInOneFragment extends MainActivityFragment {
 		TextView intro = text(R.string.all_in_one_tagline, 14, textSecondary, false);
 		intro.setPadding(dp(4), dp(4), dp(4), 0);
 		h.addView(intro);
-
-		section(h, R.string.all_in_one_preview);
-		// The card over the app's own dimmed background, as it shows over a tab.
-		FrameLayout stage = new FrameLayout(palette);
-		GradientDrawable sbg = new GradientDrawable();
-		sbg.setCornerRadius(dp(24));
-		sbg.setColor(ColorUtils.setAlphaComponent(accent, 0x14));
-		sbg.setStroke(dp(1), ColorUtils.setAlphaComponent(accent, 0x40));
-		stage.setBackground(sbg);
-		stage.setPadding(dp(12), dp(16), dp(12), dp(16));
-		previewHolder = new FrameLayout(palette);
-		stage.addView(previewHolder, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-		h.addView(stage, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
 		section(h, R.string.all_in_one_grid);
 		LinearLayout chips = new LinearLayout(palette);
@@ -394,12 +379,7 @@ public class AllInOneFragment extends MainActivityFragment {
 			GradientDrawable fill = rounded(tileFill, 16);
 			c.setTag(R.id.all_in_one_fragment, fill);
 			c.setBackground(pressable(fill));
-			c.setOnClickListener(v -> {
-				if (columns() == cols) return;
-				prefs().applyIntPref(pref(MainActivityPrefs.AIO_COLUMNS), cols);
-				refreshGridChips(true);
-				refreshPreview(true);
-			});
+			c.setOnClickListener(v -> setColumns(cols));
 			gridChips.add(c);
 			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f);
 			lp.setMargins((i == 0) ? 0 : dp(4), 0, (i == names.length - 1) ? 0 : dp(4), 0);
@@ -431,70 +411,47 @@ public class AllInOneFragment extends MainActivityFragment {
 
 		section(h, R.string.all_in_one_items);
 		TextView hint = text(R.string.all_in_one_items_hint, 13, textSecondary, false);
-		hint.setPadding(dp(4), 0, dp(4), dp(4));
+		hint.setPadding(dp(4), 0, dp(4), dp(10));
 		h.addView(hint);
 		h.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 		return h;
 	}
 
-	// ---- Footer: add, reset ----
+	/** The card's own title, as on the card: the top of the card drawn behind the tiles. */
+	private View createCardTop() {
+		TextView t = text(R.string.all_in_one, 18, textPrimary, true);
+		t.setPadding(dp(24), dp(18), dp(24), dp(10));
+		t.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		return t;
+	}
+
+	// ---- Footer: reset ----
 
 	private View createFooter() {
-		LinearLayout f = new LinearLayout(palette);
-		f.setOrientation(LinearLayout.HORIZONTAL);
-		f.setPadding(0, dp(14), 0, dp(8));
-
-		TextView add = pill(R.string.all_in_one_add, true);
-		add.setOnClickListener(v -> addAction());
-		TextView reset = pill(R.string.all_in_one_reset, false);
+		FrameLayout f = new FrameLayout(palette);
+		f.setPadding(0, dp(16), 0, dp(8));
+		TextView reset = text(R.string.all_in_one_reset, 15, textPrimary, true);
+		reset.setGravity(Gravity.CENTER);
+		reset.setSingleLine(true);
+		reset.setBackground(pressable(rounded(tileFill, 24)));
+		reset.setClickable(true);
+		reset.setFocusable(true);
 		reset.setOnClickListener(v -> UiUtils.showQuestion(requireContext(), R.string.all_in_one_reset,
 				R.string.all_in_one_reset_question, R.drawable.view_grid).onSuccess(ok -> reset()));
-		LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(0, dp(48), 1.4f);
-		alp.setMarginEnd(dp(6));
-		LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(0, dp(48), 1f);
-		rlp.setMarginStart(dp(6));
-		f.addView(add, alp);
-		f.addView(reset, rlp);
+		f.addView(reset, new FrameLayout.LayoutParams(MATCH_PARENT, dp(48)));
 		f.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 		return f;
 	}
 
-	private TextView pill(@StringRes int label, boolean filled) {
-		TextView t = text(label, 15, filled ? onAccent : textPrimary, true);
-		t.setGravity(Gravity.CENTER);
-		t.setSingleLine(true);
-		t.setBackground(pressable(rounded(filled ? accent : tileFill, 24)));
-		t.setClickable(true);
-		t.setFocusable(true);
-		return t;
-	}
-
-	// ---- The actions list ----
+	// ---- The card's tiles ----
 
 	private static final class Holder extends RecyclerView.ViewHolder {
 		@Nullable
-		final ImageView handle;
-		@Nullable
-		final ImageView icon;
-		@Nullable
-		final TextView name;
-		@Nullable
-		final ImageView remove;
+		final FrameLayout cell;
 
-		Holder(View v) {
+		Holder(View v, @Nullable FrameLayout cell) {
 			super(v);
-			handle = null;
-			icon = null;
-			name = null;
-			remove = null;
-		}
-
-		Holder(View v, ImageView handle, ImageView icon, TextView name, ImageView remove) {
-			super(v);
-			this.handle = handle;
-			this.icon = icon;
-			this.name = name;
-			this.remove = remove;
+			this.cell = cell;
 		}
 	}
 
@@ -503,109 +460,173 @@ public class AllInOneFragment extends MainActivityFragment {
 		@Override
 		public int getItemViewType(int position) {
 			if (position == 0) return TYPE_HEADER;
-			return (position > items.size()) ? TYPE_FOOTER : TYPE_ITEM;
+			if (position == 1) return TYPE_CARD_TOP;
+			int i = position - FIRST;
+			if (i < items.size()) return TYPE_ITEM;
+			return (i == items.size()) ? TYPE_ADD : TYPE_FOOTER;
 		}
 
 		@Override
 		public int getItemCount() {
-			return (header == null) ? 0 : items.size() + 2;
+			return (header == null) ? 0 : items.size() + 4;
 		}
 
 		@NonNull
 		@Override
 		public Holder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-			if ((viewType == TYPE_HEADER) || (viewType == TYPE_FOOTER)) {
-				View v = (viewType == TYPE_HEADER) ? header : footer;
+			if ((viewType == TYPE_HEADER) || (viewType == TYPE_CARD_TOP) || (viewType == TYPE_FOOTER)) {
+				View v = (viewType == TYPE_HEADER) ? header : (viewType == TYPE_CARD_TOP) ? cardTop : footer;
 				// One of each, ever: a recycled one is reused, never a second made.
 				if ((v.getParent() instanceof ViewGroup g)) g.removeView(v);
-				return new Holder(v);
+				return new Holder(v, null);
 			}
-			return createRow();
+			return (viewType == TYPE_ADD) ? createAddCell() : createCell();
 		}
 
 		@Override
 		public void onBindViewHolder(@NonNull Holder h, int position) {
-			if ((h.name == null) || (h.icon == null) || (position < 1) || (position > items.size())) return;
-			Action act = items.get(position - 1);
-			String n = getString(act.getName());
-			h.name.setText(n);
-			h.icon.setImageResource(ActionFabMediator.iconFor(getActivityDelegate(), act));
-			if (h.remove != null) h.remove.setContentDescription(getString(R.string.all_in_one_remove, n));
+			FrameLayout cell = h.cell;
+			if ((cell == null) || (h.getItemViewType() != TYPE_ITEM)) return;
+			int i = position - FIRST;
+			if ((i < 0) || (i >= items.size())) return;
+			Action act = items.get(i);
+			// The tile at the card's size and state; the badge stays on top of it.
+			if (cell.getChildCount() > 1) cell.removeViewAt(0);
+			View tile = AllInOneMenu.tileView(getActivityDelegate(), palette, act, columns());
+			cell.addView(tile, 0, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+			View badge = cell.getChildAt(1);
+			String n = getString(ActionFabMediator.labelFor(getActivityDelegate(), act));
+			badge.setContentDescription(getString(R.string.all_in_one_remove, n));
+			cell.setContentDescription(n);
 		}
 	}
 
-	@SuppressLint("ClickableViewAccessibility")
-	private Holder createRow() {
-		LinearLayout row = new LinearLayout(palette);
-		row.setOrientation(LinearLayout.HORIZONTAL);
-		row.setGravity(Gravity.CENTER_VERTICAL);
-		row.setPadding(dp(4), dp(6), dp(4), dp(6));
-		GradientDrawable bg = new GradientDrawable();
-		bg.setColor(tileFill);
-		bg.setCornerRadius(dp(16));
-		row.setBackground(bg);
-		RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		lp.topMargin = dp(6);
-		row.setLayoutParams(lp);
+	/** A tile's cell: the tile (bound later), a ripple over it, and the ✕ badge in its corner. */
+	private Holder createCell() {
+		FrameLayout cell = new FrameLayout(palette);
+		cell.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		GradientDrawable mask = rounded(0xFF000000, (columns() == 2) ? 22 : 18);
+		cell.setForeground(new RippleDrawable(ColorStateList.valueOf(ripple), null, mask));
+		cell.setClickable(true);
+		cell.setFocusable(true);
 
-		ImageView handle = new ImageView(palette);
-		handle.setImageResource(R.drawable.drag_handle);
-		handle.setImageTintList(ColorStateList.valueOf(textSecondary));
-		handle.setPadding(dp(12), dp(12), dp(12), dp(12));
-		row.addView(handle, new LinearLayout.LayoutParams(dp(48), dp(48)));
+		ImageView badge = new ImageView(palette);
+		badge.setImageResource(me.aap.utils.R.drawable.close);
+		badge.setImageTintList(ColorStateList.valueOf(panelFill));
+		badge.setPadding(dp(4), dp(4), dp(4), dp(4));
+		GradientDrawable disc = new GradientDrawable();
+		disc.setShape(GradientDrawable.OVAL);
+		disc.setColor(ColorUtils.setAlphaComponent(textPrimary, 0xE0));
+		badge.setBackground(new RippleDrawable(ColorStateList.valueOf(ripple), disc, null));
+		badge.setElevation(dp(2));
+		badge.setClickable(true);
+		FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(dp(24), dp(24), Gravity.TOP | Gravity.END);
+		blp.topMargin = dp(4);
+		blp.setMarginEnd(dp(4));
+		cell.addView(badge, blp);
 
-		FrameLayout disc = new FrameLayout(palette);
-		GradientDrawable d = new GradientDrawable();
-		d.setShape(GradientDrawable.OVAL);
-		d.setColor(accent);
-		disc.setBackground(d);
-		ImageView icon = new ImageView(palette);
-		icon.setImageTintList(ColorStateList.valueOf(onAccent));
-		disc.addView(icon, new FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER));
-		LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(dp(36), dp(36));
-		dlp.setMarginStart(dp(2));
-		row.addView(disc, dlp);
-
-		TextView name = text(0, 15, textPrimary, true);
-		name.setPadding(dp(12), 0, dp(8), 0);
-		name.setMaxLines(2);
-		row.addView(name, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
-
-		ImageView remove = new ImageView(palette);
-		remove.setImageResource(me.aap.utils.R.drawable.close);
-		remove.setImageTintList(ColorStateList.valueOf(textSecondary));
-		remove.setPadding(dp(10), dp(10), dp(10), dp(10));
-		remove.setBackground(new RippleDrawable(ColorStateList.valueOf(ripple), null, null));
-		remove.setClickable(true);
-		row.addView(remove, new LinearLayout.LayoutParams(dp(44), dp(44)));
-
-		Holder h = new Holder(row, handle, icon, name, remove);
-		// The handle and the icon pick a row up at once (the rest of the row scrolls the list, or
-		// picks the row up after a hold).
-		View.OnTouchListener grab = (v, e) -> {
-			if ((e.getActionMasked() == MotionEvent.ACTION_DOWN) && (dragHelper != null)) {
-				if (list != null) list.getParent().requestDisallowInterceptTouchEvent(true);
-				dragHelper.startDrag(h);
-				return true;
-			}
-			return false;
-		};
-		handle.setOnTouchListener(grab);
-		disc.setOnTouchListener(grab);
-		remove.setOnClickListener(v -> {
-			int pos = h.getBindingAdapterPosition();
-			if ((pos < 1) || (pos > items.size())) return;
-			items.remove(pos - 1);
-			adapter.notifyItemRemoved(pos);
-			saveItems();
+		Holder h = new Holder(cell, cell);
+		cell.setOnClickListener(v -> {
+			int i = h.getBindingAdapterPosition() - FIRST;
+			if ((i >= 0) && (i < items.size())) pickAction(i);
 		});
+		badge.setOnClickListener(v -> remove(h.getBindingAdapterPosition() - FIRST));
 		return h;
 	}
 
-	/** Drags the action rows (only) up and down; saved once dropped. */
+	/** The last cell: a dashed outline with a plus, adding an action. */
+	private Holder createAddCell() {
+		FrameLayout cell = new FrameLayout(palette);
+		cell.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		GradientDrawable outline = new GradientDrawable();
+		outline.setCornerRadius(dp(20));
+		outline.setColor(ColorUtils.setAlphaComponent(accent, 0x10));
+		outline.setStroke(dp(2), ColorUtils.setAlphaComponent(accent, 0xA0), dp(6), dp(5));
+		GradientDrawable mask = rounded(0xFF000000, 20);
+		cell.setBackground(new RippleDrawable(ColorStateList.valueOf(ripple), outline, mask));
+		cell.setClickable(true);
+		cell.setFocusable(true);
+		cell.setContentDescription(getString(R.string.all_in_one_add));
+
+		LinearLayout content = new LinearLayout(palette);
+		content.setOrientation(LinearLayout.VERTICAL);
+		content.setGravity(Gravity.CENTER);
+		content.setMinimumHeight(dp(88));
+		content.setPadding(dp(6), dp(10), dp(6), dp(10));
+		TextView plus = text(0, 30, accent, false);
+		plus.setText("+");
+		plus.setGravity(Gravity.CENTER);
+		content.addView(plus, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		TextView label = text(R.string.all_in_one_add, 13, accent, true);
+		label.setGravity(Gravity.CENTER);
+		label.setMaxLines(2);
+		content.addView(label, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		cell.addView(content, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+
+		Holder h = new Holder(cell, null);
+		cell.setOnClickListener(v -> pickAction(items.size()));
+		return h;
+	}
+
+	/**
+	 * Spaces the tiles like the card's (an even gap between them and around them) and draws the
+	 * card's fill behind them and its title, so the grid reads as the card itself.
+	 */
+	private final class CardDecoration extends RecyclerView.ItemDecoration {
+		private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+		private final RectF rect = new RectF();
+		private final Rect bounds = new Rect();
+
+		@Override
+		public void getItemOffsets(@NonNull Rect out, @NonNull View v, @NonNull RecyclerView rv,
+															 @NonNull RecyclerView.State state) {
+			int pos = rv.getChildAdapterPosition(v);
+			if (pos == RecyclerView.NO_POSITION) return;
+			int t = adapter.getItemViewType(pos);
+			if ((t != TYPE_ITEM) && (t != TYPE_ADD)) return;
+			int n = columns();
+			int col = (pos - FIRST) % n;
+			int s = dp(12);
+			out.left = s - col * s / n;
+			out.right = (col + 1) * s / n;
+			out.bottom = s;
+		}
+
+		@Override
+		public void onDraw(@NonNull Canvas c, @NonNull RecyclerView rv, @NonNull RecyclerView.State st) {
+			RecyclerView.LayoutManager lm = rv.getLayoutManager();
+			if (lm == null) return;
+			float top = Float.MAX_VALUE;
+			float bottom = -Float.MAX_VALUE;
+			boolean topShown = false;
+			boolean endShown = false;
+			for (int i = 0, n = rv.getChildCount(); i < n; i++) {
+				View v = rv.getChildAt(i);
+				int pos = rv.getChildAdapterPosition(v);
+				if (pos == RecyclerView.NO_POSITION) continue;
+				int t = adapter.getItemViewType(pos);
+				if ((t != TYPE_CARD_TOP) && (t != TYPE_ITEM) && (t != TYPE_ADD)) continue;
+				lm.getDecoratedBoundsWithMargins(v, bounds);
+				top = Math.min(top, bounds.top);
+				bottom = Math.max(bottom, bounds.bottom);
+				if (t == TYPE_CARD_TOP) topShown = true;
+				if (t == TYPE_ADD) endShown = true;
+			}
+			if (top == Float.MAX_VALUE) return;
+			float r = dp(28);
+			// Scrolled partly away: the card runs on past the screen's edge.
+			if (!topShown) top = -r;
+			if (!endShown) bottom = rv.getHeight() + r;
+			rect.set(rv.getPaddingLeft(), top, rv.getWidth() - rv.getPaddingRight(), bottom);
+			fill.setColor(panelFill);
+			c.drawRoundRect(rect, r, r, fill);
+		}
+	}
+
+	/** Drags the tiles (only) around the grid; saved once dropped. */
 	private final class DragCallback extends ItemTouchHelper.Callback {
 		private boolean moved;
-		/** Which way the row is being dragged: the list only scrolls along with it, never against. */
+		/** Which way the tile is being dragged: the list only scrolls along with it, never against. */
 		private float lastDy;
 		private int dragDir;
 
@@ -626,12 +647,12 @@ public class AllInOneFragment extends MainActivityFragment {
 		public int interpolateOutOfBoundsScroll(@NonNull RecyclerView rv, int viewSize,
 																						int viewSizeOutOfBounds, int totalSize,
 																						long msSinceStartScroll) {
-			// Under the see-through tool bar a row counts as out of bounds already: without this the
-			// list scrolled up while a row was dragged down from near the top.
+			// Under the see-through tool bar a tile counts as out of bounds already: without this the
+			// list scrolled up while a tile was dragged down from near the top.
 			if (Integer.signum(viewSizeOutOfBounds) != dragDir) return 0;
 			// The list's padding is the room the bars take, a lot of it at the bottom (nav bar, control
-			// panel, the floating buttons): a row counts as out of bounds as soon as it enters it, so
-			// the list scrolled away under a row only just moved. Only the outer half of it scrolls.
+			// panel, the floating buttons): a tile counts as out of bounds as soon as it enters it, so
+			// the list scrolled away under a tile only just moved. Only the outer half of it scrolls.
 			int slack = ((viewSizeOutOfBounds > 0) ? rv.getPaddingBottom() : rv.getPaddingTop()) / 2;
 			int out = Math.abs(viewSizeOutOfBounds) - slack;
 			if (out <= 0) return 0;
@@ -640,8 +661,8 @@ public class AllInOneFragment extends MainActivityFragment {
 		}
 
 		/**
-		 * Keeps the dragged row where the finger is after a swap: the default asks the layout
-		 * manager to put it at the swapped row's place, measured from the list's top edge, which,
+		 * Keeps the dragged tile where the finger is after a swap: the default asks the layout
+		 * manager to put it at the swapped tile's place, measured from the list's top edge, which,
 		 * with the tool bar's room as top padding here, could jump the list by that padding.
 		 */
 		@Override
@@ -664,18 +685,20 @@ public class AllInOneFragment extends MainActivityFragment {
 		@Override
 		public int getMovementFlags(@NonNull RecyclerView rv, @NonNull RecyclerView.ViewHolder vh) {
 			if (vh.getItemViewType() != TYPE_ITEM) return 0;
-			return makeMovementFlags(ItemTouchHelper.UP | ItemTouchHelper.DOWN, 0);
+			return makeMovementFlags(ItemTouchHelper.UP | ItemTouchHelper.DOWN |
+					ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT, 0);
 		}
 
 		@Override
 		public boolean onMove(@NonNull RecyclerView rv, @NonNull RecyclerView.ViewHolder from,
 													@NonNull RecyclerView.ViewHolder to) {
 			if (to.getItemViewType() != TYPE_ITEM) return false;
-			int f = from.getBindingAdapterPosition();
-			int t = to.getBindingAdapterPosition();
-			if ((f < 1) || (t < 1) || (f > items.size()) || (t > items.size())) return false;
-			Collections.swap(items, f - 1, t - 1);
-			adapter.notifyItemMoved(f, t);
+			int f = from.getBindingAdapterPosition() - FIRST;
+			int t = to.getBindingAdapterPosition() - FIRST;
+			if ((f < 0) || (t < 0) || (f >= items.size()) || (t >= items.size())) return false;
+			// Taken out and put in at the new place: the tiles between shift along by one.
+			items.add(t, items.remove(f));
+			adapter.notifyItemMoved(f + FIRST, t + FIRST);
 			moved = true;
 			return true;
 		}
@@ -695,8 +718,8 @@ public class AllInOneFragment extends MainActivityFragment {
 			if ((state == ItemTouchHelper.ACTION_STATE_DRAG) && (vh != null)) {
 				lastDy = 0;
 				dragDir = 0;
-				vh.itemView.animate().scaleX(1.03f).scaleY(1.03f).setDuration(120).start();
-				vh.itemView.setElevation(dp(6));
+				vh.itemView.animate().scaleX(1.06f).scaleY(1.06f).setDuration(120).start();
+				vh.itemView.setElevation(dp(8));
 			}
 		}
 
