@@ -39,13 +39,23 @@ public final class SwitchStyle {
 		// Off is made of the dim text colour itself, a translucent track and an opaque
 		// thumb, so it reads on any card. (Not blended onto a background colour: the chip fills the
 		// switches sit on are translucent, and forcing them opaque turned the whole switch white.)
+		// On: the accent, a little lighter than the theme's (a dark accent made a dark, heavy switch,
+		// most of all on the dark themes), and never so dark it sinks into the page. The thumb is
+		// white or near-black, whichever reads better on that track.
+		int onTrack = lighten(accent);
+		int white = 0xFFFFFFFF;
+		int dark = 0xFF1C1B1F;
+		int onThumb = (ColorUtils.calculateContrast(white, onTrack) >= ColorUtils.calculateContrast(dark, onTrack)) ?
+				white : dark;
+		// Off, one look for every switch: a dimmed track and a solid gray thumb, both the theme's own dim
+		// text colour (translucent over whatever the switch sits on, so no background is assumed).
 		int offTrack = ColorUtils.setAlphaComponent(textSecondary, 0x50);
 		int offThumb = ColorUtils.setAlphaComponent(textSecondary, 0xFF);
 
 		int w = Math.round(46 * d);
 		int h = Math.round(26 * d);
 		StateListDrawable track = new StateListDrawable();
-		track.addState(new int[]{android.R.attr.state_checked}, pill(accent, 0, 0, w, h, d));
+		track.addState(new int[]{android.R.attr.state_checked}, pill(onTrack, 0, 0, w, h, d));
 		track.addState(new int[]{}, pill(offTrack, 0, 0, w, h, d));
 
 		// A disc a little smaller than the track is tall, so it sits inside it with an even gap.
@@ -53,7 +63,7 @@ public final class SwitchStyle {
 		int disc = h - 2 * gap;
 		StateListDrawable thumb = new StateListDrawable();
 		thumb.addState(new int[]{android.R.attr.state_checked},
-				new InsetDrawable(disc(onAccent, disc), gap));
+				new InsetDrawable(disc(onThumb, disc), gap));
 		thumb.addState(new int[]{}, new InsetDrawable(disc(offThumb, disc), gap));
 
 		s.setTrackDrawable(track);
@@ -61,6 +71,17 @@ public final class SwitchStyle {
 		s.setSwitchMinWidth(w);
 		s.setThumbTintList(null);
 		s.setTrackTintList(null);
+	}
+
+	/** The accent made lighter: a touch always (unless already light), more while it is still dark. */
+	private static int lighten(int color) {
+		int white = 0xFFFFFFFF;
+		int c = color | 0xFF000000;
+		if (ColorUtils.calculateLuminance(c) < 0.7) c = ColorUtils.blendARGB(c, white, 0.18f);
+		for (int i = 0; (i < 4) && (ColorUtils.calculateLuminance(c) < 0.2); i++) {
+			c = ColorUtils.blendARGB(c, white, 0.25f);
+		}
+		return c;
 	}
 
 	private static GradientDrawable pill(int color, int stroke, int strokeDp, int w, int h, float d) {

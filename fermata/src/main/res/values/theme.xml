@@ -25,15 +25,6 @@
         <item name="appStreamProgressStyle">@style/AppTheme.StreamProgressStyle</item>
         <item name="appQualityCardStyle">@style/AppTheme.QualityCardStyle</item>
         <item name="cornerRadius">5dp</item>
-        <item name="materialSwitchStyle">@style/AppTheme.MaterialSwitch</item>
-    </style>
-
-    <!-- The settings lists' switches (MaterialSwitch): on in the accent colour, off dimmed. The default
-    tints left the off thumb and track in colours that ran into each other on several themes. -->
-    <style name="AppTheme.MaterialSwitch" parent="Widget.Material3.CompoundButton.MaterialSwitch">
-        <item name="thumbTint">@color/switch_thumb_tint</item>
-        <item name="trackTint">@color/switch_track_tint</item>
-        <item name="trackDecorationTint">@color/switch_decoration_tint</item>
     </style>
 
     <!-- Explicit, hardcoded palette rather than inheriting the active AppTheme.* variant's own

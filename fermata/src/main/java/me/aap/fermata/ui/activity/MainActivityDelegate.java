@@ -2764,6 +2764,13 @@ public class MainActivityDelegate extends ActivityDelegate
 		a.setContentView(getLayout());
 		matchStatusBarToBackground();
 		me.aap.utils.ui.view.DialogView.setStyler(me.aap.fermata.ui.view.DialogStyle::apply);
+		// One switch look everywhere (see SwitchStyle); the settings rows' switches follow it too.
+		me.aap.utils.pref.PreferenceView.setSwitchStyler(b -> {
+			if (b instanceof androidx.appcompat.widget.SwitchCompat sw) {
+				me.aap.fermata.ui.view.SwitchStyle.apply(sw,
+						me.aap.fermata.ui.view.EffectsUi.palette(b.getContext()));
+			}
+		});
 		toolBar = a.findViewById(R.id.tool_bar);
 		progressBar = a.findViewById(R.id.content_loading_progress);
 		navBar = a.findViewById(R.id.nav_bar);

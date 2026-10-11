@@ -205,9 +205,18 @@ public class PreferenceView extends ConstraintLayout {
 		setOnClickListener(v -> adapter.setPreferenceSet(set));
 	}
 
+	@Nullable
+	private static java.util.function.Consumer<CompoundButton> switchStyler;
+
+	/** Gives every switch a settings row has one look (an app sets it; the default is the platform's). */
+	public static void setSwitchStyler(@Nullable java.util.function.Consumer<CompoundButton> s) {
+		switchStyler = s;
+	}
+
 	private void setBooleanPreference(BooleanOpts o) {
 		setPreference(o.asSwitch ? R.layout.switch_pref_layout : R.layout.boolean_pref_layout, o);
 		CompoundButton b = findViewById(R.id.pref_value);
+		if (o.asSwitch && (switchStyler != null)) switchStyler.accept(b);
 		b.setChecked(o.store.getBooleanPref(o.pref));
 		b.setOnCheckedChangeListener(
 				(v, checked) -> o.store.applyBooleanPref(o.removeDefault, o.pref, checked));
