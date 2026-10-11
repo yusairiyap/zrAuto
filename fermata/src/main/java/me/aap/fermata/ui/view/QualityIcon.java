@@ -35,6 +35,8 @@ public final class QualityIcon extends Drawable {
 	@Nullable
 	private static String label;
 	private static boolean asking;
+	// Waiting for the answer to an ask already on its way.
+	private static final List<Runnable> waiting = new java.util.ArrayList<>();
 	private static long lastAsk;
 
 	private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -68,8 +70,26 @@ public final class QualityIcon extends Drawable {
 	 * {@code onChange} runs if the answer differs from the label shown.
 	 */
 	public static void refresh(@NonNull MainActivityDelegate a, @Nullable Runnable onChange) {
-		long now = SystemClock.uptimeMillis();
-		if (asking || (now - lastAsk < ASK_INTERVAL)) return;
+		refresh(a, onChange, false);
+	}
+
+	/**
+	 * @param now ask right away, however recently it was asked: something the user is looking at
+	 *            just came up (the All in One card with a Quality tile)
+	 */
+	public static void refresh(@NonNull MainActivityDelegate a, @Nullable Runnable onChange,
+														 boolean now) {
+		long t = SystemClock.uptimeMillis();
+		if (asking) {
+			// The answer is on its way: told too when it comes, if it changes the label.
+			if (onChange != null) waiting.add(onChange);
+			return;
+		}
+		if (!now && (t - lastAsk < ASK_INTERVAL)) return;
+		refreshNow(a, onChange, t);
+	}
+
+	private static void refreshNow(MainActivityDelegate a, @Nullable Runnable onChange, long now) {
 		lastAsk = now;
 		MediaEngine eng = a.getMediaSessionCallback().getEngine();
 		FutureSupplier<List<VideoQualityOption>> f = (eng == null) ? null : eng.getVideoQualityOptions();
@@ -80,6 +100,8 @@ public final class QualityIcon extends Drawable {
 		asking = true;
 		f.main().onCompletion((list, err) -> {
 			asking = false;
+			List<Runnable> also = new java.util.ArrayList<>(waiting);
+			waiting.clear();
 			String l = null;
 			if ((err == null) && (list != null)) {
 				for (VideoQualityOption q : list) {
@@ -89,14 +111,17 @@ public final class QualityIcon extends Drawable {
 					}
 				}
 			}
-			update(l, onChange);
+			boolean changed = update(l, onChange);
+			if (changed) for (Runnable r : also) r.run();
 		});
 	}
 
-	private static void update(@Nullable String l, @Nullable Runnable onChange) {
-		if ((l == null) ? (label == null) : l.equals(label)) return;
+	/** @return whether the label changed */
+	private static boolean update(@Nullable String l, @Nullable Runnable onChange) {
+		if ((l == null) ? (label == null) : l.equals(label)) return false;
 		label = l;
 		if (onChange != null) onChange.run();
+		return true;
 	}
 
 	@Override

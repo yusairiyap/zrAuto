@@ -845,11 +845,13 @@ public final class AllInOneMenu {
 			// The quality in use as the icon, when the player has said which (the plain icon until then).
 			String ql = QualityIcon.getLabel();
 			if (ql != null) iv.setImageDrawable(new QualityIcon(ctx, ql));
+			// The card (or the Music tab's More) just came up: asked right away, so the tile shows
+			// what plays now rather than what played a moment ago.
 			QualityIcon.refresh(activity, () -> {
 				String l = QualityIcon.getLabel();
 				if (l != null) iv.setImageDrawable(new QualityIcon(ctx, l));
 				else iv.setImageResource(R.drawable.quality);
-			});
+			}, !preview);
 		}
 		int iconDp = (columns == 2) ? 28 : (columns == 3) ? 24 : 20;
 		disc.addView(iv, new FrameLayout.LayoutParams(dp(iconDp), dp(iconDp), Gravity.CENTER));
