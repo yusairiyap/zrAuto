@@ -269,6 +269,9 @@ public class MainActivityDelegate extends ActivityDelegate
 	private final Set<ViewGroup> paddingInsetContent = Collections.newSetFromMap(new WeakHashMap<>());
 	private final Set<View> topInsetContent = Collections.newSetFromMap(new WeakHashMap<>());
 	private boolean barsHidden;
+	// The bars making way for the content as it scrolls, see ScrollBarsController. Set up in init().
+	@Nullable
+	private ScrollBarsController scrollBars;
 	private boolean videoMode;
 	// Overrides the automatic bar-hiding that videoMode below otherwise forces in isFullScreen() --
 	// set by Action.FULLSCREEN_TOGGLE for local (non-WebView) video, whose VideoView has no
@@ -936,6 +939,12 @@ public class MainActivityDelegate extends ActivityDelegate
 		return body;
 	}
 
+	/** The bars making way for the content as it scrolls; null until the views are set up. */
+	@Nullable
+	public ScrollBarsController getScrollBars() {
+		return scrollBars;
+	}
+
 	public NavBarMediator getNavBarMediator() {
 		return navBarMediator;
 	}
@@ -1037,6 +1046,8 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	public void setBarsHidden(boolean barsHidden) {
 		App.get().getHandler().post(() -> {
+			// Their own show/hide below starts from the bars as they are when not scrolled away.
+			if (scrollBars != null) scrollBars.reset(false);
 			this.barsHidden = barsHidden;
 			ToolBarView tb = getToolBar();
 			if (tb.getMediator() != ToolBarView.Mediator.Invisible.instance) {
@@ -1076,6 +1087,7 @@ public class MainActivityDelegate extends ActivityDelegate
 
 		ControlPanelView cp = getControlPanel();
 		videoBarsShown = false;
+		if (scrollBars != null) scrollBars.reset(false);
 
 		// Set before cp.enableVideoMode() runs, not after -- that method reads getActiveVideoView()
 		// (to tell local playback from a web-embedded source like YouTube), and it would otherwise
@@ -2002,8 +2014,12 @@ public class MainActivityDelegate extends ActivityDelegate
 			top = 0;
 		} else {
 			toolBar.getLocationOnScreen(insetLoc1);
+			// Where the tool bar sits in full, even while it's scrolled away (see ScrollBarsController,
+			// which shrinks it toward its own top, so only its slide moves that): the content is
+			// always back at its top -- and the bars in full -- before this room is needed.
+			int tbTop = insetLoc1[1] - ((scrollBars != null) ? Math.round(scrollBars.getToolBarDy()) : 0);
 			// A little room below the floating tool bar pill, so the first item doesn't sit against it.
-			top = Math.max(0, (insetLoc1[1] + toolBar.getHeight() + toIntPx(getContext(), 6)) -
+			top = Math.max(0, (tbTop + toolBar.getHeight() + toIntPx(getContext(), 6)) -
 					contentTop);
 		}
 
@@ -2012,16 +2028,21 @@ public class MainActivityDelegate extends ActivityDelegate
 		// layout's own constraints), but control_panel is routinely GONE while just browsing (nothing
 		// playing), in which case nav_bar alone still needs clearing if it's the bottom-positioned one.
 		int bottom = 0;
+		// Where the bars rest, whether or not they're scrolled away (ScrollBarsController): the content
+		// is never relaid out as they come and go, which shifted a list's rows under the finger.
+		ScrollBarsController sb = scrollBars;
 		// A suppressed panel (the Music tab) doesn't count even while it's still showing, e.g. until
 		// the video mode it was left in ends: it's about to go, and the content is laid out without it.
 		if ((controlPanel.getVisibility() == VISIBLE) && !controlPanel.isSuppressed()) {
 			controlPanel.getLocationOnScreen(insetLoc2);
-			bottom = Math.max(bottom, Math.max(0, contentBottom - insetLoc2[1]));
+			int cpTop = insetLoc2[1] - ((sb != null) ? Math.round(sb.getPanelDy()) : 0);
+			bottom = Math.max(bottom, Math.max(0, contentBottom - cpTop));
 		}
 		if ((navBar != null) && (navBar.getVisibility() == VISIBLE)
 				&& (getPrefs().getNavBarPosPref(this) == NavBarView.POSITION_BOTTOM)) {
 			navBar.getLocationOnScreen(insetLoc2);
-			bottom = Math.max(bottom, Math.max(0, contentBottom - insetLoc2[1]));
+			int nbTop = insetLoc2[1] - ((sb != null) ? Math.round(sb.getNavDy()) : 0);
+			bottom = Math.max(bottom, Math.max(0, contentBottom - nbTop));
 		}
 
 		out[0] = top;
@@ -2033,10 +2054,15 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * A WebView's page content is composited internally by the browser engine rather than drawn as
 	 * clippable child views, so it doesn't reliably scroll into padding the way a RecyclerView or
 	 * ScrollView does -- observed as page content still rendering flush against/under tool_bar.
-	 * Physically shrinking the WebView's own top bound with a margin instead is a hard guarantee
-	 * regardless of how it renders internally. Deliberately top-only: the page is left full-bleed at
-	 * the bottom, so control_panel is free to overlap the very end of the page the way it always
-	 * has -- unlike the top, that's rarely actually scrolled to.
+	 * Physically moving the WebView's own top down with a margin instead is a hard guarantee
+	 * regardless of how it renders internally.
+	 * <p>
+	 * Moved, not shrunk: an equal negative bottom margin keeps it as tall as its parent, its bottom
+	 * running past the screen's by the same amount. So when the tool bar slides away as the page
+	 * scrolls (see ScrollBarsController and {@link #slideWebViews}), the page slides up into its
+	 * room and still reaches the bottom of the screen, without ever being resized -- YouTube's
+	 * player restarts on every resize of its WebView. That hidden strip at the bottom is under the
+	 * bottom bars while they're showing, and they slide away first.
 	 */
 	public void insetWebViewTop(View content) {
 		View.OnLayoutChangeListener sync = (v, left, top, right, bottom, oldLeft, oldTop, oldRight,
@@ -2067,8 +2093,23 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * right under the tool bar's pill (see insetWebViewTop), so nothing may fade over it there.
 	 */
 	public boolean isTopInsetWebViewShown() {
+		// Only one on the tab in front: another tab's page may still count as shown (left visible
+		// by a tab switch's crossfade cut short), which once took the top fade off every other tab
+		// until the app was restarted.
+		ActivityFragment f = getActiveFragment();
+		View fv = (f != null) ? f.getView() : null;
+		if (fv == null) return false;
 		for (View v : topInsetContent) {
-			if (v.isShown()) return true;
+			if (v.isShown() && isInside(v, fv)) return true;
+		}
+		return false;
+	}
+
+	private static boolean isInside(View v, View parent) {
+		Object p = v;
+		while (p instanceof View pv) {
+			if (pv == parent) return true;
+			p = pv.getParent();
 		}
 		return false;
 	}
@@ -2085,9 +2126,41 @@ public class MainActivityDelegate extends ActivityDelegate
 		// bottom edge, so more of the page shows.
 		int top = isBarsHidden() ? 0 :
 				Math.max(0, toolBar.getBottom() - toIntPx(getContext(), WEB_UNDER_TOOL_BAR));
-		if (mlp.topMargin == top) return;
+		// As tall as its parent's room whatever the top (see insetWebViewTop()): one more tab padding
+		// it from above (the browser's tab strip) runs it that much further past the bottom too.
+		int pad = (content.getParent() instanceof View p) ? p.getPaddingTop() : 0;
+		// Only while the bars may slide away at all: otherwise (the setting off, the car's screen)
+		// the page ends at the bottom of the screen as it always did.
+		int bottom = ((scrollBars != null) && scrollBars.isAllowed()) ? -(top + pad) : 0;
+		if ((mlp.topMargin == top) && (mlp.bottomMargin == bottom)) return;
 		mlp.topMargin = top;
+		mlp.bottomMargin = bottom;
 		content.setLayoutParams(mlp);
+	}
+
+	/**
+	 * Slides every web page up into the room above it, by {@code fraction} of it (0 = in place
+	 * below the tool bar, 1 = at the top): the tool bar sliding away as the page scrolls, see
+	 * ScrollBarsController. The page is laid out tall enough to still reach the bottom of the screen
+	 * from there (see insetWebViewTop()).
+	 */
+	void slideWebViews(float fraction) {
+		for (View v : topInsetContent) {
+			float dy = 0f;
+			if ((fraction != 0f) && (v.getLayoutParams() instanceof ViewGroup.MarginLayoutParams mlp)
+					&& (v.getParent() instanceof View p)) {
+				// Up to the status bar's bottom edge, not behind it: the content runs on under the
+				// status bar (edge to edge), and the page's own top bar would end up under its icons.
+				int under = 0;
+				WindowInsetsCompat wi = ViewCompat.getRootWindowInsets(v);
+				if (wi != null) {
+					p.getLocationInWindow(insetLoc2);
+					under = Math.max(0, wi.getInsets(WindowInsetsCompat.Type.statusBars()).top - insetLoc2[1]);
+				}
+				dy = -fraction * Math.max(0, mlp.topMargin + p.getPaddingTop() - under);
+			}
+			if (v.getTranslationY() != dy) v.setTranslationY(dy);
+		}
 	}
 
 	/**
@@ -2708,6 +2781,20 @@ public class MainActivityDelegate extends ActivityDelegate
 		updateFabDraggable();
 		controlPanel.bind(getMediaServiceBinder());
 		enableBodyOverlayLayout();
+		scrollBars = new ScrollBarsController(this);
+		scrollBars.attach(body);
+		// A floating button tapped while the bars are scrolled away (the YouTube search, the Up next
+		// list): they come back, the tool bar above all, which whatever it opens goes with.
+		View.OnTouchListener showBars = (v, e) -> {
+			if ((e.getActionMasked() == MotionEvent.ACTION_UP) && (scrollBars != null)) {
+				scrollBars.reset(true);
+			}
+			return false;
+		};
+		for (View f : new View[]{floatingButton, floatingButton2, floatingButton3, floatingButton4,
+				floatingButton5, floatingButton6}) {
+			if (f != null) f.setOnTouchListener(showBars);
+		}
 		// Catch-all re-sync -- see refreshContentInsets() -- for content whose own attach/layout
 		// listeners missed the layout change they needed, most notably a tab restored by the
 		// fragment manager across the recreate() that a theme or nav-bar-position change triggers.
@@ -2830,6 +2917,12 @@ public class MainActivityDelegate extends ActivityDelegate
 			fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 		} else if (prefs.contains(MainActivityPrefs.fab(this, FAB_DRAGGABLE))) {
 			updateFabDraggable();
+		} else if (prefs.contains(MainActivityPrefs.SCROLL_HIDE_BARS) ||
+				(AUTO && prefs.contains(MainActivityPrefs.SCROLL_HIDE_BARS_AA))) {
+			// Turned off: everything back in place; the web pages laid out as before (see
+			// insetWebViewTop()).
+			if (scrollBars != null) scrollBars.reset(true);
+			refreshContentInsets();
 		} else if (prefs.contains(MainActivityPrefs.FAB_PILL)) {
 			if (fabPill != null) fabPill.setPill(getPrefs().getBooleanPref(MainActivityPrefs.FAB_PILL));
 			clearDraggableForPill();
@@ -2966,9 +3059,13 @@ public class MainActivityDelegate extends ActivityDelegate
 		}
 	}
 
-	private static void resetFabPosition(@Nullable FloatingButton fb) {
+	private void resetFabPosition(@Nullable FloatingButton fb) {
 		if (fb == null) return;
-		fb.animate().translationX(0f).translationY(0f).setDuration(200L).start();
+		// Back in place, which is lower while the bottom bars are scrolled away (see
+		// ScrollBarsController): to 0, that offset was lost, and the button ended up that much too
+		// high once the bars came back.
+		float dy = (scrollBars != null) ? scrollBars.getFabDy(fb) : 0f;
+		fb.animate().translationX(0f).translationY(dy).setDuration(200L).start();
 	}
 
 	/**

@@ -635,6 +635,8 @@
     <string name="fab4_action">Tap action</string>
     <string name="fab5_enable">Show fifth floating button</string>
     <string name="fab6_enable">Show sixth floating button</string>
+    <string name="scroll_hide_bars">Hide bars while scrolling</string>
+    <string name="scroll_hide_bars_sub">Slide the tool bar, control panel and nav bar away as you scroll down, and back as you scroll up. Off keeps them in place, with less motion</string>
     <string name="fab_pill">Floating buttons as one pill</string>
     <string name="fab_pill_sub">Show the floating buttons together in a single pill instead of separate round buttons (not draggable then)</string>
     <string name="fab_draggable">Draggable</string>

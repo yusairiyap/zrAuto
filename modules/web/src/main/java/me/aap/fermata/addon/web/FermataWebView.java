@@ -62,6 +62,8 @@ public class FermataWebView extends WebView
 	private FermataChromeClient chrome;
 	@Nullable
 	private PageListener pageListener;
+	// See injectScrollWatch(): written from the JavaScript thread, read on the main one.
+	private volatile boolean pageScrolled;
 
 	public FermataWebView(Context context) {
 		this(context, null);
@@ -79,6 +81,47 @@ public class FermataWebView extends WebView
 		MainActivityDelegate a = MainActivityDelegate.get(context);
 		isCar = BuildConfig.AUTO && a.isCarActivityNotMirror();
 		a.insetWebViewTop(this);
+	}
+
+	/**
+	 * Whether whatever the last touch went down on is scrolled away from its top: the page itself,
+	 * or any element under the finger that scrolls inside it (YouTube's comments panel, its
+	 * description sheet), none of which moves the WebView's own scroll position. For pull to
+	 * refresh, which should only start from the true top. See {@link #injectScrollWatch()}.
+	 */
+	public boolean isPageScrolled() {
+		return pageScrolled || (getScrollY() > 0);
+	}
+
+	void setPageScrolled(boolean scrolled) {
+		pageScrolled = scrolled;
+	}
+
+	/**
+	 * Has the page report, on every touch down, whether the element under the finger, or any
+	 * element around it, is scrolled away from its top -- see {@link #isPageScrolled()}. Settled
+	 * once per touch: a pull that starts mid-list keeps scrolling the list back up, and never turns
+	 * into a refresh halfway. The touch reaches the page a moment after the app sees it go down,
+	 * but before the finger has moved far enough for pull to refresh to take it.
+	 */
+	protected void injectScrollWatch() {
+		evaluateJavascript("""
+				(function() {
+				  if (window.__fermataScrollWatch) return;
+				  window.__fermataScrollWatch = true;
+				  var last = null;
+				  document.addEventListener('touchstart', function(e) {
+				    var t = e.touches && e.touches[0];
+				    var el = t ? document.elementFromPoint(t.clientX, t.clientY) : e.target;
+				    var s = (window.scrollY || 0) > 0;
+				    for (; !s && el && (el.nodeType === 1); el = el.parentElement) s = el.scrollTop > 0;
+				    if (s !== last) {
+				      last = s;
+				      if (window.Fermata && window.Fermata.pageScrolled) window.Fermata.pageScrolled(s);
+				    }
+				  }, {capture: true, passive: true});
+				})();
+				""", null);
 	}
 
 	@SuppressLint("SetJavaScriptEnabled")
@@ -273,6 +316,7 @@ public class FermataWebView extends WebView
 
 	protected void pageLoaded(String uri) {
 		addFocusHighlight();
+		injectScrollWatch();
 		getAddon().setLastUrl(uri);
 		getActivity().onSuccess(a -> {
 			// A browser tab that isn't the selected one has no id (see BrowserTabs): whatever it just

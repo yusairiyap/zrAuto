@@ -13,9 +13,9 @@ import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Shader;
-import android.os.Build;
 import android.os.SystemClock;
 import android.util.AttributeSet;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewTreeObserver;
 import android.widget.Toast;
@@ -24,6 +24,8 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.constraintlayout.widget.Guideline;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import me.aap.fermata.R;
@@ -39,6 +41,7 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityListener;
+import me.aap.fermata.ui.activity.ScrollBarsController;
 import me.aap.fermata.ui.fragment.MainActivityFragment;
 import me.aap.fermata.ui.fragment.SubtitlesFragment;
 import me.aap.utils.app.App;
@@ -79,6 +82,8 @@ public class BodyLayout extends SplitLayout
 
 	private final Paint topFadePaint = new Paint();
 	private final float topFadeLen = UiUtils.toPx(getContext(), 20);
+	// How far past the top edge the fade still reaches while the tool bar is scrolled away.
+	private final float topFadeEdge = UiUtils.toPx(getContext(), 12);
 	private int topFadeBg = Color.BLACK;
 	private boolean topFadeBgResolved;
 	// What the fade was last drawn for: the tool bar's bottom edge and how much of it is showing.
@@ -100,6 +105,7 @@ public class BodyLayout extends SplitLayout
 			end = fadeEnd;
 			alpha = fadeAlpha;
 		}
+		logTopFade(end > 0f);
 		if ((end != topFadeEnd) || (alpha != topFadeAlpha)) {
 			topFadeEnd = end;
 			topFadeAlpha = alpha;
@@ -186,6 +192,47 @@ public class BodyLayout extends SplitLayout
 		canvas.drawRect(0, 0, getWidth(), end, topFadePaint);
 	}
 
+	private final int[] statusLoc = new int[2];
+	// The last reason logged for the top fade being off, null while it's on: see logTopFade().
+	@Nullable
+	private String topFadeOffReason = "";
+
+	/**
+	 * Logs (to the Diagnostic log, when it's on) each time the top fade goes off or comes back,
+	 * with why -- it was seen staying off on every tab until the app restarted.
+	 */
+	private void logTopFade(boolean on) {
+		// Before a frame, every frame: nothing at all built unless the log is on.
+		if (!DiagnosticLog.isEnabled()) return;
+		String why = on ? null : whyNoTopFade();
+		if (java.util.Objects.equals(why, topFadeOffReason)) return;
+		topFadeOffReason = why;
+		DiagnosticLog.log("BODY", (why == null) ? "top fade on" : ("top fade off: " + why));
+	}
+
+	private String whyNoTopFade() {
+		if (getMode() != Mode.FRAME) return "mode " + getMode();
+		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
+		if (a == null) return "no activity";
+		if (a.isVideoMode()) return "video mode";
+		if (a.isTopInsetWebViewShown()) return "web page shown";
+		ActivityFragment f = a.getActiveFragment();
+		if (!(f instanceof MainActivityFragment mf) || !mf.drawsTopFade()) return "tab " + f;
+		View tb = a.getToolBar();
+		if (tb == null) return "no tool bar";
+		return "tool bar vis=" + tb.getVisibility() + " h=" + tb.getHeight() + " alpha=" +
+				tb.getAlpha() + " y=" + tb.getY();
+	}
+
+	/** How far the status bar reaches down into this layout, 0 if it ends above it. */
+	private float statusBarInside() {
+		WindowInsetsCompat wi = ViewCompat.getRootWindowInsets(this);
+		if (wi == null) return 0f;
+		int top = wi.getInsets(WindowInsetsCompat.Type.statusBars()).top;
+		getLocationInWindow(statusLoc);
+		return Math.max(0, top - statusLoc[1]);
+	}
+
 	/** Into fadeEnd/fadeAlpha: where the fade ends in this view, and how strong; false for none. */
 	private boolean computeTopFade() {
 		if (getMode() != Mode.FRAME) return false;
@@ -196,11 +243,21 @@ public class BodyLayout extends SplitLayout
 		}
 		View tb = a.getToolBar();
 		if ((tb == null) || (tb.getVisibility() != VISIBLE) || (tb.getHeight() == 0)) return false;
+		// Its plain alpha only: going with the bars when they're hidden (fullscreen), but not with the
+		// fade of their sliding away while the content scrolls (ScrollBarsController, through the
+		// transition alpha), which keeps a fade at the top edge, as One UI does.
 		float alpha = tb.getAlpha();
-		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) alpha *= tb.getTransitionAlpha();
 		if (alpha <= 0f) return false;
-		// Both are children of the same parent (main_activity).
-		float end = (tb.getY() + tb.getHeight()) - getTop() + topFadeLen;
+		// Both are children of the same parent (main_activity). Where the tool bar sits when not
+		// scrolled away; as it goes, the fade narrows down to a strip along the top edge.
+		ScrollBarsController sb = a.getScrollBars();
+		float slid = (sb != null) ? sb.getToolBarDy() : 0f;
+		float hidden = (sb != null) ? sb.getToolBarHidden() : 0f;
+		float rest = (tb.getY() - slid + tb.getHeight()) - getTop() + topFadeLen;
+		// Down past the status bar too, where the content runs on behind it (edge to edge).
+		// (Only worked out while it's away: asking for the window's insets every frame costs.)
+		float end = rest;
+		if (hidden > 0f) end += (statusBarInside() + topFadeLen + topFadeEdge - rest) * hidden;
 		if (end <= 0f) return false;
 		fadeEnd = end;
 		fadeAlpha = Math.min(1f, alpha);
@@ -219,6 +276,15 @@ public class BodyLayout extends SplitLayout
 
 	public Mode getMode() {
 		return mode;
+	}
+
+	@Override
+	public boolean dispatchTouchEvent(MotionEvent e) {
+		// Only watched, never taken: which content the finger scrolls, see ScrollBarsController.
+		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
+		ScrollBarsController sb = (a != null) ? a.getScrollBars() : null;
+		if (sb != null) sb.onBodyTouch(this, e);
+		return super.dispatchTouchEvent(e);
 	}
 
 	public boolean isFrameMode() {
@@ -378,6 +444,9 @@ public class BodyLayout extends SplitLayout
 			b.removeBroadcastListener(this);
 			b.getMediaSessionCallback().removeBroadcastListener(this);
 		} else if (e == FRAGMENT_CHANGED) {
+			// A new tab starts with the bars in full, wherever the last one had scrolled them.
+			ScrollBarsController sb = a.getScrollBars();
+			if (sb != null) sb.reset(false);
 			// Fullscreen video carries on over a tab that plays video itself (the one it was started
 			// from, Downloads); any other tab is in front of a video that plays on behind it.
 			if (isVideoMode() && (a.getActiveFragment() instanceof MainActivityFragment f) &&

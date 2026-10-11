@@ -135,6 +135,30 @@ chasing the wrong theory for, as has happened before. If you add a dialog via
 `ActivityDelegate.insetScrollableContent`, a no-op default in `depends/utils` that
 `MainActivityDelegate` overrides) — no extra step needed there.
 
+**Bars collapse on scroll** (Settings > Interface > "Hide bars while scrolling", `SCROLL_HIDE_BARS`,
+and `SCROLL_HIDE_BARS_AA` for the car screen, both on by default; off leaves the bars and web page
+layout exactly as before). `ScrollBarsController` (owned by `MainActivityDelegate`, fed by
+`BodyLayout#dispatchTouchEvent`) hides the bars one step at a time as tab content scrolls down:
+`control_panel` (tucked behind a bottom nav bar, clipped at its top edge), then a bottom `nav_bar`,
+then `tool_bar`; scrolling up brings them back in reverse (all shown at the top), and the floating
+buttons stay just above whatever still shows. Something else resetting a FAB's translation must
+reset it to `scrollBars.getFabDy(fab)`, not 0 (see `resetFabPosition`). The bars fade as they slide
+through their *transition* alpha (Android 10+), which nothing else animates on them; the top and
+bottom edge fades (`BodyLayout#computeTopFade`, `FloatingBarsView`) read only the plain alpha, so they
+stay on screen (narrowed to a strip) while the bars are scrolled away. List padding never follows
+the bars (`computeContentInsets` uses their resting place, minus `getPanelDy`/`getNavDy`), like
+Material's hide-on-scroll bars: changing it relays the list and shifts its rows under the finger
+(tried per frame, at the end of each step, and once scrolling stopped; all felt bad). Instead,
+reaching the end of a list brings the bars back over the room left for them.
+When either edge fade goes off, the reason is written to the Diagnostic log ("top fade off: ..."). It only translates the bars, never resizes anything (the YouTube
+WebView restarts its player on a resize): a web page is laid out as tall as its parent with a
+negative bottom margin matching its top one (`insetWebViewTop`) and slides up into the tool bar's
+room (`slideWebViews`). It works for any `RecyclerView`,
+`ScrollView`, `ListView` or `WebView` under the finger with no per-tab code; a tab laid out around
+the bars instead (Music, Car mode) opts out with `MainActivityFragment#collapsesBarsOnScroll`. Don't
+animate the bars' translation elsewhere without calling `scrollBars.reset(false)` first, the
+way `setBarsHidden`/`setVideoMode` do.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,
