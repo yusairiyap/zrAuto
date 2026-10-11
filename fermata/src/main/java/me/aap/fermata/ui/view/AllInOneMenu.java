@@ -127,7 +127,6 @@ public final class AllInOneMenu {
 	private View qualityPage;
 	/** The Quality page's squares (filled once the player says which qualities it has). */
 	private LinearLayout qualityGrid;
-	private TextView qualityStatus;
 	// What the player offered when last asked (see fetchQualities()); null: none to pick.
 	@Nullable
 	private List<VideoQualityOption> qualities;
@@ -948,8 +947,24 @@ public final class AllInOneMenu {
 		TextView title = text(ctx.getString(R.string.quality), 18, primary, true);
 		title.setPadding(dp(8), 0, 0, 0);
 		header.addView(title, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
-		qualityStatus = text("", 14, accent, true);
-		header.addView(qualityStatus, new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
+		// To the YouTube settings, where the quality every video starts at is picked.
+		TextView preferred = text(ctx.getString(R.string.quality_preferred_chip), 13, primary, true);
+		preferred.setGravity(Gravity.CENTER);
+		preferred.setSingleLine(true);
+		preferred.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.settings, 0, 0, 0);
+		preferred.setCompoundDrawablePadding(dp(6));
+		preferred.setCompoundDrawableTintList(ColorStateList.valueOf(accent));
+		preferred.setPadding(dp(12), dp(6), dp(14), dp(6));
+		preferred.setBackground(pillBackground(false));
+		preferred.setClickable(true);
+		preferred.setFocusable(true);
+		preferred.setOnClickListener(v -> {
+			dismissNow();
+			activity.exitVideoMode();
+			activity.showFragment(R.id.settings_fragment, me.aap.fermata.ui.fragment.SettingsFragment
+					.addonSettings(me.aap.fermata.addon.VideoTitleCache.YOUTUBE_ADDON_CLASS));
+		});
+		header.addView(preferred, new LinearLayout.LayoutParams(WRAP_CONTENT, dp(compact ? 32 : 36)));
 		page.addView(header, new LinearLayout.LayoutParams(MATCH_PARENT, dp(compact ? 40 : 44)));
 
 		TextView hint = text(ctx.getString(R.string.quality_hint), 13, secondary, false);
@@ -983,7 +998,6 @@ public final class AllInOneMenu {
 	/** A tile per quality, or why there's none. */
 	private void fillQualityPage() {
 		qualityGrid.removeAllViews();
-		qualityStatus.setText("");
 		List<VideoQualityOption> list = qualities;
 		MediaEngine eng = qualityEngine;
 		if ((list == null) || (eng == null)) {
@@ -998,7 +1012,6 @@ public final class AllInOneMenu {
 		LinearLayout row = null;
 		for (int i = 0; i < list.size(); i++) {
 			VideoQualityOption q = list.get(i);
-			if (q.selected) qualityStatus.setText(q.label);
 			if (i % perRow == 0) {
 				row = new UniformRow(ctx);
 				LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);

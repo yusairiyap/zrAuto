@@ -1018,6 +1018,8 @@
     <string name="quality_unavailable">Play a YouTube video to choose its quality</string>
     <string name="quality_set">Quality: %1$s</string>
     <string name="quality_current">Now</string>
+    <string name="quality_audio">Audio</string>
+    <string name="quality_preferred_chip">Preferred</string>
     <string name="all_in_one_empty">No actions yet. Add some in Settings &gt; Interface &gt; All in One</string>
     <string name="all_in_one_all_added">Every action is already in the card</string>
     <string name="car_mode_web_next">On a YouTube or web page: select the next link or button. On YouTube the first press picks the first suggested video</string>

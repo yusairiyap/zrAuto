@@ -1379,11 +1379,15 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 					if ((levels != null) && !levels.isEmpty()) {
 						List<VideoQualityOption> l = new ArrayList<>();
 						VideoQualityOption auto = null;
+						boolean audio = MusicPlayer.isYoutubeAudioMode();
 						for (String q : levels.split(";")) {
 							boolean sel = q.startsWith("*");
 							if (sel) q = q.substring(1);
+							// Playing as music, the lowest quality is the sound alone: says so.
+							String label = (audio && q.equals("tiny")) ?
+									web.getContext().getString(me.aap.fermata.R.string.quality_audio) : qualityLabel(q);
 							VideoQualityOption o = new VideoQualityOption(QUALITY_LEVEL_PREFIX + q,
-									qualityLabel(q), sel, q.equals("auto"));
+									label, sel, q.equals("auto"));
 							if (o.auto) auto = o;
 							else l.add(o);
 						}
@@ -1400,10 +1404,14 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 								List<VideoQualityOption> l = new ArrayList<>();
 								if ((qualities == null) || qualities.isEmpty()) return l;
 								String[] all = qualities.split(";");
+								boolean audio = MusicPlayer.isYoutubeAudioMode();
 								for (int i = 0; i < all.length; i++) {
 									String q = all[i];
 									boolean sel = q.startsWith("*");
 									if (sel) q = q.substring(1);
+									if (audio && q.startsWith("144")) {
+										q = web.getContext().getString(me.aap.fermata.R.string.quality_audio);
+									}
 									boolean auto = q.toLowerCase().startsWith("auto");
 									l.add(new VideoQualityOption(DOM_QUALITY_PREFIX + i, q, sel, auto));
 								}

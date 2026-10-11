@@ -139,6 +139,7 @@ public class SettingsFragment extends MainActivityFragment
 	 * the addon), by the addon's module name.
 	 */
 	public static Object addonSettings(String moduleName) {
+		// An addon's class name works too (several addons can share one module).
 		return ADDON_SETTINGS + moduleName;
 	}
 
@@ -1643,6 +1644,8 @@ public class SettingsFragment extends MainActivityFragment
 			PreferenceSet sub1 = sub.subSet(b);
 			sub1.configure(b::configure);
 			addonSettingsSets.put(addon.moduleName, sub1);
+			// By class too: the YouTube, bubbles and browser addons all share the "web" module.
+			addonSettingsSets.put(addon.className, sub1);
 		}
 	}
 
