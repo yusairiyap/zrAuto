@@ -91,6 +91,8 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 				// MediaItemListView and the Settings list make from their own constructors; this
 				// content is built by the caller instead, so it has to be requested here.
 				a.insetScrollableContent(v);
+				// Car mode: the steering wheel moves through its rows like the app's own effects screen.
+				me.aap.fermata.action.CarNav.markScope(v, null);
 			});
 
 			if (wasPlaying) a.postDelayed(() -> {

@@ -6,7 +6,13 @@ import static me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.content.res.ColorStateList;
+import android.graphics.Canvas;
+import android.graphics.drawable.RippleDrawable;
+import android.view.animation.PathInterpolator;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -64,6 +70,7 @@ public class AllInOneFragment extends MainActivityFragment {
 	private int textPrimary;
 	private int textSecondary;
 	private int tileFill;
+	private int ripple;
 	private int accent;
 	private int onAccent;
 	private float density;
@@ -77,6 +84,8 @@ public class AllInOneFragment extends MainActivityFragment {
 	@Nullable
 	private FrameLayout previewHolder;
 	private final List<TextView> gridChips = new ArrayList<>();
+	@Nullable
+	private ValueAnimator previewAnim;
 	@Nullable
 	private SwitchCompat musicSwitch;
 	@Nullable
@@ -122,6 +131,7 @@ public class AllInOneFragment extends MainActivityFragment {
 		textPrimary = paletteColor(R.attr.musicTextPrimary);
 		textSecondary = paletteColor(R.attr.musicTextSecondary);
 		tileFill = paletteColor(R.attr.musicChipFill);
+		ripple = paletteColor(R.attr.musicChipRipple);
 		accent = EffectsUi.accent(ctx);
 		onAccent = EffectsUi.onAccent(accent);
 
@@ -197,33 +207,112 @@ public class AllInOneFragment extends MainActivityFragment {
 		if (musicSwitch != null) {
 			musicSwitch.setChecked(prefs().getBooleanPref(pref(MainActivityPrefs.AIO_MUSIC_MORE)));
 		}
-		refreshGridChips();
-		refreshPreview();
+		refreshGridChips(false);
+		refreshPreview(false);
 	}
 
 	private void saveItems() {
 		prefs().applyStringPref(pref(MainActivityPrefs.AIO_ITEMS), AllInOneMenu.format(items));
-		refreshPreview();
+		refreshPreview(true);
 	}
 
 	private void refreshPreview() {
-		FrameLayout h = previewHolder;
-		if (h == null) return;
-		h.removeAllViews();
-		h.addView(AllInOneMenu.preview(getActivityDelegate(), palette, items, columns()),
-				new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER_HORIZONTAL));
+		refreshPreview(false);
 	}
 
-	private void refreshGridChips() {
+	/**
+	 * Builds the preview again; {@code animate}: the old card fades out as the new one fades in, and
+	 * the room for it glides to its new height (a grid size change, an action added or removed).
+	 */
+	private void refreshPreview(boolean animate) {
+		FrameLayout h = previewHolder;
+		if (h == null) return;
+		View next = AllInOneMenu.preview(getActivityDelegate(), palette, items, columns());
+		FrameLayout.LayoutParams lp =
+				new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER_HORIZONTAL);
+		if (previewAnim != null) previewAnim.cancel();
+		// A change while one is still fading: only the newest of the old ones fades out.
+		while (h.getChildCount() > 1) h.removeViewAt(0);
+		View old = (h.getChildCount() > 0) ? h.getChildAt(0) : null;
+		if (!animate || (old == null) || !h.isLaidOut()) {
+			h.removeAllViews();
+			h.addView(next, lp);
+			return;
+		}
+
+		int fromH = h.getHeight();
+		next.setAlpha(0f);
+		h.addView(next, lp);
+		next.measure(View.MeasureSpec.makeMeasureSpec(h.getWidth(), View.MeasureSpec.AT_MOST),
+				View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+		int toH = next.getMeasuredHeight();
+		ViewGroup.LayoutParams hlp = h.getLayoutParams();
+		hlp.height = fromH;
+		h.setLayoutParams(hlp);
+
+		old.animate().cancel();
+		old.animate().alpha(0f).setDuration(140).withEndAction(() -> h.removeView(old)).start();
+		next.animate().alpha(1f).setStartDelay(80).setDuration(220).start();
+		ValueAnimator va = ValueAnimator.ofInt(fromH, toH);
+		va.setDuration(260);
+		va.setInterpolator(new PathInterpolator(0.2f, 0f, 0f, 1f));
+		va.addUpdateListener(x -> {
+			hlp.height = (int) x.getAnimatedValue();
+			h.setLayoutParams(hlp);
+		});
+		va.addListener(new AnimatorListenerAdapter() {
+			@Override
+			public void onAnimationEnd(Animator animation) {
+				hlp.height = WRAP_CONTENT;
+				h.setLayoutParams(hlp);
+			}
+		});
+		previewAnim = va;
+		va.start();
+	}
+
+	/** The chosen grid size filled with the accent, the others plain; {@code animate}: cross-faded. */
+	private void refreshGridChips(boolean animate) {
 		int cols = columns();
 		for (TextView c : gridChips) {
 			boolean sel = ((Integer) c.getTag()) == cols;
-			GradientDrawable bg = new GradientDrawable();
-			bg.setCornerRadius(dp(16));
-			bg.setColor(sel ? accent : tileFill);
-			c.setBackground(bg);
-			c.setTextColor(sel ? onAccent : textPrimary);
+			GradientDrawable fill = (GradientDrawable) c.getTag(R.id.all_in_one_fragment);
+			int toFill = sel ? accent : tileFill;
+			int toText = sel ? onAccent : textPrimary;
+			if (!animate) {
+				fill.setColor(toFill);
+				c.setTextColor(toText);
+				continue;
+			}
+			int fromFill = (fill.getColor() != null) ? fill.getColor().getDefaultColor() : tileFill;
+			int fromText = c.getCurrentTextColor();
+			if ((fromFill == toFill) && (fromText == toText)) continue;
+			ValueAnimator va = ValueAnimator.ofFloat(0f, 1f);
+			va.setDuration(220);
+			android.animation.ArgbEvaluator argb = new android.animation.ArgbEvaluator();
+			va.addUpdateListener(x -> {
+				float f = (float) x.getAnimatedValue();
+				fill.setColor((int) argb.evaluate(f, fromFill, toFill));
+				c.setTextColor((int) argb.evaluate(f, fromText, toText));
+			});
+			va.start();
 		}
+	}
+
+	/** A rounded fill with a ripple over it when pressed. */
+	private RippleDrawable pressable(GradientDrawable fill) {
+		GradientDrawable mask = new GradientDrawable();
+		mask.setColor(0xFF000000);
+		mask.setCornerRadii(fill.getCornerRadii());
+		if (fill.getCornerRadii() == null) mask.setCornerRadius(fill.getCornerRadius());
+		return new RippleDrawable(ColorStateList.valueOf(ripple), fill, mask);
+	}
+
+	private GradientDrawable rounded(int color, int radiusDp) {
+		GradientDrawable d = new GradientDrawable();
+		d.setColor(color);
+		d.setCornerRadius(dp(radiusDp));
+		return d;
 	}
 
 	private void addAction() {
@@ -300,10 +389,14 @@ public class AllInOneFragment extends MainActivityFragment {
 			c.setGravity(Gravity.CENTER);
 			c.setPadding(dp(8), dp(10), dp(8), dp(10));
 			c.setTag(cols);
+			GradientDrawable fill = rounded(tileFill, 16);
+			c.setTag(R.id.all_in_one_fragment, fill);
+			c.setBackground(pressable(fill));
 			c.setOnClickListener(v -> {
+				if (columns() == cols) return;
 				prefs().applyIntPref(pref(MainActivityPrefs.AIO_COLUMNS), cols);
-				refreshGridChips();
-				refreshPreview();
+				refreshGridChips(true);
+				refreshPreview(true);
 			});
 			gridChips.add(c);
 			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f);
@@ -317,10 +410,7 @@ public class AllInOneFragment extends MainActivityFragment {
 		row.setOrientation(LinearLayout.HORIZONTAL);
 		row.setGravity(Gravity.CENTER_VERTICAL);
 		row.setPadding(dp(16), dp(12), dp(12), dp(12));
-		GradientDrawable bg = new GradientDrawable();
-		bg.setColor(tileFill);
-		bg.setCornerRadius(dp(16));
-		row.setBackground(bg);
+		row.setBackground(pressable(rounded(tileFill, 16)));
 		LinearLayout labels = new LinearLayout(palette);
 		labels.setOrientation(LinearLayout.VERTICAL);
 		labels.addView(text(R.string.all_in_one_music_more, 16, textPrimary, true));
@@ -370,10 +460,9 @@ public class AllInOneFragment extends MainActivityFragment {
 		TextView t = text(label, 15, filled ? onAccent : textPrimary, true);
 		t.setGravity(Gravity.CENTER);
 		t.setSingleLine(true);
-		GradientDrawable bg = new GradientDrawable();
-		bg.setCornerRadius(dp(24));
-		bg.setColor(filled ? accent : tileFill);
-		t.setBackground(bg);
+		t.setBackground(pressable(rounded(filled ? accent : tileFill, 24)));
+		t.setClickable(true);
+		t.setFocusable(true);
 		return t;
 	}
 
@@ -459,8 +548,8 @@ public class AllInOneFragment extends MainActivityFragment {
 		ImageView handle = new ImageView(palette);
 		handle.setImageResource(R.drawable.drag_handle);
 		handle.setImageTintList(ColorStateList.valueOf(textSecondary));
-		handle.setPadding(dp(8), dp(8), dp(8), dp(8));
-		row.addView(handle, new LinearLayout.LayoutParams(dp(40), dp(40)));
+		handle.setPadding(dp(12), dp(12), dp(12), dp(12));
+		row.addView(handle, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
 		FrameLayout disc = new FrameLayout(palette);
 		GradientDrawable d = new GradientDrawable();
@@ -483,16 +572,23 @@ public class AllInOneFragment extends MainActivityFragment {
 		remove.setImageResource(me.aap.utils.R.drawable.close);
 		remove.setImageTintList(ColorStateList.valueOf(textSecondary));
 		remove.setPadding(dp(10), dp(10), dp(10), dp(10));
-		remove.setBackgroundResource(me.aap.utils.R.drawable.focusable_shape_transparent);
+		remove.setBackground(new RippleDrawable(ColorStateList.valueOf(ripple), null, null));
+		remove.setClickable(true);
 		row.addView(remove, new LinearLayout.LayoutParams(dp(44), dp(44)));
 
 		Holder h = new Holder(row, handle, icon, name, remove);
-		handle.setOnTouchListener((v, e) -> {
+		// The handle and the icon pick a row up at once (the rest of the row scrolls the list, or
+		// picks the row up after a hold).
+		View.OnTouchListener grab = (v, e) -> {
 			if ((e.getActionMasked() == MotionEvent.ACTION_DOWN) && (dragHelper != null)) {
+				if (list != null) list.getParent().requestDisallowInterceptTouchEvent(true);
 				dragHelper.startDrag(h);
+				return true;
 			}
 			return false;
-		});
+		};
+		handle.setOnTouchListener(grab);
+		disc.setOnTouchListener(grab);
 		remove.setOnClickListener(v -> {
 			int pos = h.getBindingAdapterPosition();
 			if ((pos < 1) || (pos > items.size())) return;
@@ -506,6 +602,33 @@ public class AllInOneFragment extends MainActivityFragment {
 	/** Drags the action rows (only) up and down; saved once dropped. */
 	private final class DragCallback extends ItemTouchHelper.Callback {
 		private boolean moved;
+		/** Which way the row is being dragged: the list only scrolls along with it, never against. */
+		private float lastDy;
+		private int dragDir;
+
+		@Override
+		public void onChildDraw(@NonNull Canvas c, @NonNull RecyclerView rv,
+														@NonNull RecyclerView.ViewHolder vh, float dX, float dY, int state,
+														boolean active) {
+			if ((state == ItemTouchHelper.ACTION_STATE_DRAG) && active) {
+				if (Math.abs(dY - lastDy) > dp(2)) {
+					dragDir = (dY > lastDy) ? 1 : -1;
+					lastDy = dY;
+				}
+			}
+			super.onChildDraw(c, rv, vh, dX, dY, state, active);
+		}
+
+		@Override
+		public int interpolateOutOfBoundsScroll(@NonNull RecyclerView rv, int viewSize,
+																						int viewSizeOutOfBounds, int totalSize,
+																						long msSinceStartScroll) {
+			// Under the see-through tool bar a row counts as out of bounds already: without this the
+			// list scrolled up while a row was dragged down from near the top.
+			if (Integer.signum(viewSizeOutOfBounds) != dragDir) return 0;
+			return super.interpolateOutOfBoundsScroll(rv, viewSize, viewSizeOutOfBounds, totalSize,
+					msSinceStartScroll);
+		}
 
 		@Override
 		public int getMovementFlags(@NonNull RecyclerView rv, @NonNull RecyclerView.ViewHolder vh) {
@@ -539,6 +662,8 @@ public class AllInOneFragment extends MainActivityFragment {
 		public void onSelectedChanged(@Nullable RecyclerView.ViewHolder vh, int state) {
 			super.onSelectedChanged(vh, state);
 			if ((state == ItemTouchHelper.ACTION_STATE_DRAG) && (vh != null)) {
+				lastDy = 0;
+				dragDir = 0;
 				vh.itemView.animate().scaleX(1.03f).scaleY(1.03f).setDuration(120).start();
 				vh.itemView.setElevation(dp(6));
 			}

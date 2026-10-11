@@ -126,6 +126,9 @@ public final class AllInOneMenu {
 	private View timerPage;
 	@Nullable
 	private TextView timerTileSub;
+	/** The Sleep timer tile's title: on the smallest tiles it carries the timer's state too. */
+	@Nullable
+	private TextView timerTileName;
 	private TextView timerStatus;
 	private TextView minutesLabel;
 	private FrameLayout pages;
@@ -409,7 +412,6 @@ public final class AllInOneMenu {
 		updateStatus();
 		FrameLayout c = new FrameLayout(ctx);
 		c.setBackground(panel());
-		c.setElevation(dp(6));
 		c.addView(root, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 		// As wide as the real card, at most: the tiles keep their proportions.
 		MaxWidthFrame frame = new MaxWidthFrame(ctx, dp(cardWidthDp()));
@@ -614,6 +616,33 @@ public final class AllInOneMenu {
 		}
 	}
 
+	/**
+	 * A row of tiles all as tall as its tallest: measured as they are, then each again at that
+	 * height (the tiles centre their content in it).
+	 */
+	private static final class UniformRow extends LinearLayout {
+		UniformRow(Context c) {
+			super(c);
+			setOrientation(HORIZONTAL);
+		}
+
+		@Override
+		protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+			super.onMeasure(widthMeasureSpec,
+					View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+			int max = 0;
+			for (int i = 0, n = getChildCount(); i < n; i++) {
+				max = Math.max(max, getChildAt(i).getMeasuredHeight());
+			}
+			for (int i = 0, n = getChildCount(); i < n; i++) {
+				View c = getChildAt(i);
+				c.measure(View.MeasureSpec.makeMeasureSpec(c.getMeasuredWidth(), View.MeasureSpec.EXACTLY),
+						View.MeasureSpec.makeMeasureSpec(max, View.MeasureSpec.EXACTLY));
+			}
+			setMeasuredDimension(getMeasuredWidth(), max + getPaddingTop() + getPaddingBottom());
+		}
+	}
+
 	/** As wide as it may be, never wider than {@code max}: the preview keeps the real card's width. */
 	private static final class MaxWidthFrame extends FrameLayout {
 		private final int max;
@@ -682,8 +711,7 @@ public final class AllInOneMenu {
 		int gap = dp((columns == 2) ? 8 : 6);
 		for (int i = 0; i < items.size(); i++) {
 			if (i % columns == 0) {
-				row = new LinearLayout(ctx);
-				row.setOrientation(LinearLayout.HORIZONTAL);
+				row = new UniformRow(ctx);
 				LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
 				if (i > 0) rlp.topMargin = gap;
 				page.addView(row, rlp);
@@ -697,8 +725,8 @@ public final class AllInOneMenu {
 	}
 
 	private LinearLayout.LayoutParams tileParams() {
-		// As tall as the row's tallest tile (a title on two lines), so a row lines up.
-		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, MATCH_PARENT, 1f);
+		// Made as tall as the row's tallest tile by UniformRow.
+		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f);
 		int m = dp((columns == 2) ? 4 : 3);
 		lp.setMargins(m, 0, m, 0);
 		return lp;
@@ -764,10 +792,25 @@ public final class AllInOneMenu {
 		disc.addView(iv, new FrameLayout.LayoutParams(dp(iconDp), dp(iconDp), Gravity.CENTER));
 		t.addView(disc, new LinearLayout.LayoutParams(dp(discDp), dp(discDp)));
 
-		TextView name = text(title, (columns == 2) ? 15 : (columns == 3) ? 13.5f : 12.5f, primary, true);
+		boolean timerLine = (columns == 4) && (action == Action.SLEEP_TIMER);
+		float nameSp = (columns == 2) ? 15 : (columns == 3) ? 13.5f : 12.5f;
+		TextView name = new androidx.appcompat.widget.AppCompatTextView(ctx);
+		name.setText(title);
+		name.setTextSize(TypedValue.COMPLEX_UNIT_SP, nameSp);
+		name.setTextColor(primary);
+		name.setTypeface(Typeface.DEFAULT_BOLD);
 		name.setGravity(Gravity.CENTER);
-		name.setMaxLines(2);
 		name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+		if (timerLine) {
+			// The smallest tiles: the timer's state on the title's line ("Sleep timer · 12:34"),
+			// shrunk to fit rather than wrapped.
+			name.setMaxLines(1);
+			androidx.core.widget.TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(name, 8,
+					Math.round(nameSp), 1, TypedValue.COMPLEX_UNIT_SP);
+			timerTileName = name;
+		} else {
+			name.setMaxLines(2);
+		}
 		LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
 		nlp.topMargin = dp(big ? 10 : 6);
 		t.addView(name, nlp);
@@ -776,10 +819,10 @@ public final class AllInOneMenu {
 		sub.setGravity(Gravity.CENTER);
 		sub.setMaxLines(big ? 2 : 1);
 		sub.setEllipsize(android.text.TextUtils.TruncateAt.END);
-		// The smallest tiles carry only the timer's state, no hints.
-		if ((columns == 4) && (action != Action.SLEEP_TIMER)) sub.setVisibility(View.GONE);
+		// The smallest tiles have no hints (the timer's state is on its title line).
+		if (columns == 4) sub.setVisibility(View.GONE);
 		t.addView(sub, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-		if (action == Action.SLEEP_TIMER) timerTileSub = sub;
+		if ((action == Action.SLEEP_TIMER) && !timerLine) timerTileSub = sub;
 		return t;
 	}
 
@@ -1043,6 +1086,20 @@ public final class AllInOneMenu {
 		if (timerTileSub != null) {
 			timerTileSub.setText(s);
 			timerTileSub.setTextColor(active ? accent : secondary);
+		}
+		if (timerTileName != null) {
+			String state;
+			if (cb.isPlaybackTimerWaitingForTrackEnd()) {
+				state = ctx.getString(R.string.music_timer_waiting_short);
+			} else if (active) {
+				StringBuilder sb = new StringBuilder(8);
+				TextUtils.timeToString(sb, cb.getPlaybackTimer());
+				state = sb.toString();
+			} else {
+				state = ctx.getString(R.string.music_timer_off);
+			}
+			timerTileName.setText(ctx.getString(R.string.all_in_one_timer_line,
+					ctx.getString(R.string.music_sleep_timer), state));
 		}
 		timerStatus.setText(active ? s : "");
 		View off = timerPage.findViewWithTag("off");

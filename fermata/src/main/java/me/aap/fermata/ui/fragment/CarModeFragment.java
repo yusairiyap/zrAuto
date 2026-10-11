@@ -103,15 +103,12 @@ public class CarModeFragment extends MainActivityFragment {
 		content.addView(keyCard("◀", R.string.car_mode_hold_prev, true));
 		content.addView(keyCard("▶", R.string.car_mode_sliders, true));
 
-		// A web page moves along its links and buttons, with a double press for the search and
-		// fullscreen (see CarNav's web pages).
+		// A web page moves along its links and buttons (see CarNav's web pages).
 		section(content, R.string.car_mode_section_web);
 		content.addView(keyCard("▶", R.string.car_mode_web_next, false));
 		content.addView(keyCard("◀", R.string.car_mode_web_prev, false));
 		content.addView(keyCard("▶", R.string.car_mode_web_hold_next, true));
 		content.addView(keyCard("◀", R.string.car_mode_web_hold_prev, true));
-		content.addView(doubleCard("◀", R.string.car_mode_web_dbl_prev));
-		content.addView(doubleCard("▶", R.string.car_mode_web_dbl_next));
 
 		section(content, R.string.car_mode_where);
 		for (int res : new int[]{R.string.car_mode_where_lists, R.string.car_mode_where_youtube,
@@ -279,7 +276,11 @@ public class CarModeFragment extends MainActivityFragment {
 		GradientDrawable bg = new GradientDrawable();
 		bg.setColor(tileFill);
 		bg.setCornerRadius(dp(16));
-		row.setBackground(bg);
+		GradientDrawable mask = new GradientDrawable();
+		mask.setColor(0xFF000000);
+		mask.setCornerRadius(dp(16));
+		row.setBackground(new android.graphics.drawable.RippleDrawable(
+				android.content.res.ColorStateList.valueOf(paletteColor(R.attr.musicChipRipple)), bg, mask));
 
 		TextView label = text(R.string.car_mode_enable, 16, textPrimary, true);
 		row.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
@@ -293,17 +294,9 @@ public class CarModeFragment extends MainActivityFragment {
 
 	// ---- Cards ----
 
-	/** A double press: the key's pill says "Twice", outlined twice over. */
-	private View doubleCard(String glyph, @StringRes int what) {
-		return keyCard(getString(R.string.car_mode_double, glyph), what, false, true);
-	}
-
 	/** A key glyph in a pill (a "hold" one filled) and what it does. */
 	private View keyCard(String glyph, @StringRes int what, boolean hold) {
-		return keyCard(hold ? getString(R.string.car_mode_hold, glyph) : glyph, what, hold, false);
-	}
-
-	private View keyCard(String label, @StringRes int what, boolean hold, boolean dbl) {
+		String label = hold ? getString(R.string.car_mode_hold, glyph) : glyph;
 		LinearLayout row = new LinearLayout(palette);
 		row.setOrientation(LinearLayout.HORIZONTAL);
 		row.setGravity(Gravity.CENTER_VERTICAL);
@@ -325,17 +318,13 @@ public class CarModeFragment extends MainActivityFragment {
 		if (hold) {
 			kb.setColor(accent);
 			key.setTextColor(onAccent);
-		} else if (dbl) {
-			kb.setColor(ColorUtils.setAlphaComponent(accent, 0x30));
-			kb.setStroke(dp(3), accent);
-			key.setTextColor(accent);
 		} else {
 			kb.setColor(0);
 			kb.setStroke(dp(2), accent);
 			key.setTextColor(accent);
 		}
 		key.setBackground(kb);
-		// One width for every key, the longest's ("Twice ◀"): the descriptions all line up.
+		// One width for every key, the longest's ("Hold ◀ ▶"): the descriptions all line up.
 		row.addView(key, new LinearLayout.LayoutParams(dp(116), ViewGroup.LayoutParams.WRAP_CONTENT));
 
 		TextView t = text(what, 15, textPrimary, false);

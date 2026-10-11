@@ -11,6 +11,7 @@ import me.aap.fermata.ui.view.EffectsUi;
 /**
  * Car mode on a web page (the YouTube tab's, the browser's): previous / next move an outline over
  * the page's links and buttons, in the page's own order, and long next presses the outlined one.
+ * On YouTube the first press lands on a video (the first one suggested under what's playing).
  * All of it runs in the page, as a script: the elements a tap would reach are found afresh on every
  * press (a page changes under it all the time, YouTube's feed above all), the outline is a fixed
  * box over the page that follows the element as the page scrolls, and fades after a while without
@@ -138,9 +139,26 @@ final class WebNav {
 			var i = cur ? l.indexOf(cur) : -1;
 			if ((i >= 0) && !inView(cur)) i = -1;
 			if (i < 0) {
-				if (dir > 0) { for (i = 0; (i < l.length) && !inView(l[i]); i++); }
-				else { for (i = l.length - 1; (i >= 0) && !inView(l[i]); i--); }
-				if ((i < 0) || (i >= l.length)) i = (dir > 0) ? 0 : l.length - 1;
+				var vi = -1;
+				var host = location.hostname;
+				if ((host === 'youtube.com') || host.endsWith('.youtube.com')) {
+					// YouTube: straight to a video (the first suggested one under the playing video),
+					// not the header's logo and buttons.
+					var curV = new URLSearchParams(location.search).get('v');
+					var isVid = function(e) {
+						var h = e.getAttribute('href') || '';
+						return ((h.indexOf('/watch?') >= 0) || (h.indexOf('/shorts/') >= 0)) &&
+							!(curV && (h.indexOf(curV) >= 0));
+					};
+					for (var k = 0; k < l.length; k++) if (isVid(l[k]) && inView(l[k])) { vi = k; break; }
+					if (vi < 0) for (k = 0; k < l.length; k++) if (isVid(l[k])) { vi = k; break; }
+				}
+				if (vi >= 0) i = vi;
+				else {
+					if (dir > 0) { for (i = 0; (i < l.length) && !inView(l[i]); i++); }
+					else { for (i = l.length - 1; (i >= 0) && !inView(l[i]); i--); }
+					if ((i < 0) || (i >= l.length)) i = (dir > 0) ? 0 : l.length - 1;
+				}
 			} else {
 				i += dir;
 				if ((i < 0) || (i >= l.length)) { flash(); return 'end'; }

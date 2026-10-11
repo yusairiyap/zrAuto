@@ -15,7 +15,6 @@ import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.SystemClock;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -24,7 +23,6 @@ import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.widget.AbsSeekBar;
 import android.widget.CompoundButton;
-import android.view.inputmethod.InputMethodManager;
 import android.webkit.WebView;
 import android.widget.EditText;
 
@@ -67,9 +65,8 @@ import me.aap.utils.ui.menu.OverlayMenuView;
  * <p>
  * A web page (the YouTube tab's, the browser's; not fullscreen, and not under an open panel, which
  * comes first) is moved through by the page itself, see {@link WebNav}: previous / next move along
- * its links and buttons, long next presses one, long previous goes back, and a double press
- * previous opens the search (YouTube's search panel, the browser's address bar), next goes
- * fullscreen. A single press there waits a moment for a second one.
+ * its links and buttons, long next presses one, long previous goes back. Nothing for a double press:
+ * pressing quickly many times just moves along.
  * <p>
  * The items are found, not declared: every visible view with a click listener inside the scope, and
  * the rows of its lists (a list row without a click listener of its own offers the clickable views
@@ -78,8 +75,6 @@ import me.aap.utils.ui.menu.OverlayMenuView;
 public final class CarNav {
 	private static final String TAG = "CARNAV";
 	private static final long LONG_MS = 800;
-	/** How long a single press on a web page waits for a second one (a double press). */
-	private static final long DBL_MS = 350;
 	private static final long IDLE_HIDE_MS = 12000;
 	/** Rows without anything to select (section headers) skipped in one go, at most. */
 	private static final int MAX_SKIP = 64;
@@ -92,19 +87,11 @@ public final class CarNav {
 	@Nullable
 	private static Scope downScope;
 	@Nullable
-	private static MediaSessionCallback downCb;
-	private static long downTime;
-	@Nullable
 	private static MainActivityDelegate downActivity;
 	private static final Runnable longPress = CarNav::onLongPress;
 	// A web page under the keys, see WebNav: the press being held is on it.
 	@Nullable
 	private static WeakReference<WebView> downWeb;
-	/** The second press of a double press (on a web page). */
-	private static boolean downDouble;
-	/** A single press on a web page, waiting to see whether a second one follows. */
-	private static int pendingWebCode;
-	private static final Runnable pendingWebClick = CarNav::onWebClick;
 
 	// What's selected.
 	@Nullable
@@ -212,17 +199,14 @@ public final class CarNav {
 					clear();
 					// A web page (the YouTube tab's, the browser's): moved through by the page itself.
 					WebView web = (a == null) ? null : findWebPage(a);
-					if (web != null) return webKeyDown(code, a, cb, web);
+					if (web != null) return webKeyDown(code, a, web);
 					downCode = 0;
 					return false;
 				}
-				flushWebClick();
 				downWeb = null;
 				downCode = code;
 				downScope = s;
 				downActivity = a;
-				downCb = cb;
-				downTime = SystemClock.uptimeMillis();
 				longFired = false;
 				handler.postDelayed(longPress, LONG_MS);
 				return true;
@@ -232,13 +216,9 @@ public final class CarNav {
 				downCode = 0;
 				handler.removeCallbacks(longPress);
 				if (downWeb != null) {
-					if (downDouble) {
-						downDouble = false;
-						onWebDouble(code == KEYCODE_MEDIA_NEXT);
-					} else if (!longFired) {
-						// Moves once it's clear there's no second press.
-						pendingWebCode = code;
-						handler.postDelayed(pendingWebClick, DBL_MS);
+					WebView web = downWeb.get();
+					if (!longFired && (web != null) && web.isAttachedToWindow()) {
+						WebNav.move(web, code == KEYCODE_MEDIA_NEXT);
 					}
 					return true;
 				}
@@ -291,13 +271,6 @@ public final class CarNav {
 		else back(s);
 	}
 
-	private static void runBinding(@Nullable Action action) {
-		MainActivityDelegate a = downActivity;
-		if ((action == null) || (a == null)) return;
-		MediaSessionCallback cb = (downCb != null) ? downCb : a.getMediaSessionCallback();
-		KeyEventHandler.runFromKey(action, cb, a, downTime);
-	}
-
 	// ---------------------------------------------------------------------------------------------
 	// Web pages
 
@@ -328,83 +301,15 @@ public final class CarNav {
 		return null;
 	}
 
-	private static boolean webKeyDown(int code, MainActivityDelegate a, MediaSessionCallback cb,
-																		WebView web) {
+	private static boolean webKeyDown(int code, MainActivityDelegate a, WebView web) {
 		handler.removeCallbacks(longPress);
 		downActivity = a;
-		downCb = cb;
-		downTime = SystemClock.uptimeMillis();
 		downScope = null;
 		downWeb = new WeakReference<>(web);
 		downCode = code;
 		longFired = false;
-		if (pendingWebCode == code) {
-			// The second press of a double press: it acts when let go.
-			handler.removeCallbacks(pendingWebClick);
-			pendingWebCode = 0;
-			downDouble = true;
-			return true;
-		}
-		// The other key: the press waiting for a second one moves first.
-		flushWebClick();
-		downDouble = false;
 		handler.postDelayed(longPress, LONG_MS);
 		return true;
-	}
-
-	/** Runs a single press still waiting for a second one, right away. */
-	private static void flushWebClick() {
-		if (pendingWebCode == 0) return;
-		handler.removeCallbacks(pendingWebClick);
-		onWebClick();
-	}
-
-	private static void onWebClick() {
-		int code = pendingWebCode;
-		pendingWebCode = 0;
-		WebView web = (downWeb == null) ? null : downWeb.get();
-		if ((code == 0) || (web == null) || !web.isAttachedToWindow()) return;
-		WebNav.move(web, code == KEYCODE_MEDIA_NEXT);
-	}
-
-	/** Double next: fullscreen; double previous: the search. */
-	private static void onWebDouble(boolean next) {
-		MainActivityDelegate a = downActivity;
-		WebView web = (downWeb == null) ? null : downWeb.get();
-		if (a == null) return;
-		DiagnosticLog.log(TAG, next ? "double next" : "double previous", "web page");
-		if (web != null) WebNav.clear(web);
-		if (next) {
-			runBinding(Action.FULLSCREEN_TOGGLE);
-			return;
-		}
-		ActivityFragment f = a.getActiveFragment();
-		if ((f != null) && (f.getFragmentId() == R.id.youtube_fragment)) {
-			runBinding(Action.YOUTUBE_SEARCH);
-			return;
-		}
-		// The browser: its address bar, in the tool bar, typed into like a search.
-		View tb = a.findViewById(R.id.tool_bar);
-		EditText addr = (tb == null) ? null : findEditText(tb);
-		if (addr == null) return;
-		addr.requestFocus();
-		addr.selectAll();
-		InputMethodManager imm =
-				(InputMethodManager) addr.getContext().getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
-		if (imm != null) imm.showSoftInput(addr, InputMethodManager.SHOW_IMPLICIT);
-	}
-
-	@Nullable
-	private static EditText findEditText(View v) {
-		if (!v.isShown()) return null;
-		if (v instanceof EditText e) return e;
-		if (v instanceof ViewGroup g) {
-			for (int i = 0, n = g.getChildCount(); i < n; i++) {
-				EditText e = findEditText(g.getChildAt(i));
-				if (e != null) return e;
-			}
-		}
-		return null;
 	}
 
 	/** Long previous on a page: back, as the back button (never out of the tab from its first page). */
@@ -999,10 +904,14 @@ public final class CarNav {
 		private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
 		private final Paint glow = new Paint(Paint.ANTI_ALIAS_FLAG);
 		private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
+		private final Paint inner = new Paint(Paint.ANTI_ALIAS_FLAG);
 		private final RectF rect = new RectF();
+		private final RectF innerRect = new RectF();
 		private final float strokeW;
 		private final float radius;
 		private final int accent;
+		/** A thin ring inside the accent one: still seen on an accent-filled button (Start timer). */
+		private final int contrast;
 		private float scale = 1f;
 		private float alpha = 1f;
 		private float flash;
@@ -1014,6 +923,9 @@ public final class CarNav {
 			float d = v.getResources().getDisplayMetrics().density;
 			strokeW = 3 * d;
 			accent = EffectsUi.accent(v.getContext());
+			contrast = EffectsUi.onAccent(accent);
+			inner.setStyle(Paint.Style.STROKE);
+			inner.setStrokeWidth(1.5f * d);
 			stroke.setStyle(Paint.Style.STROKE);
 			stroke.setStrokeWidth(strokeW);
 			glow.setStyle(Paint.Style.STROKE);
@@ -1106,6 +1018,11 @@ public final class CarNav {
 			c.drawRoundRect(rect, radius, radius, glow);
 			stroke.setColor(withAlpha(accent, alpha));
 			c.drawRoundRect(rect, radius, radius, stroke);
+			float ii = stroke.getStrokeWidth() / 2f + inner.getStrokeWidth() / 2f;
+			innerRect.set(rect.left + ii, rect.top + ii, rect.right - ii, rect.bottom - ii);
+			inner.setColor(withAlpha(contrast, 0.9f * alpha));
+			float ir = Math.max(0f, radius - ii);
+			c.drawRoundRect(innerRect, ir, ir, inner);
 			c.restore();
 		}
 

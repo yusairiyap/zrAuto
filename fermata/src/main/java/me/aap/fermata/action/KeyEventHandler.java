@@ -119,17 +119,6 @@ public class KeyEventHandler {
 		}
 	}
 
-	/** Runs {@code action} as a key's (see {@link #isPerformingKeyAction}), for car mode's own presses. */
-	static void runFromKey(Action action, MediaSessionCallback cb,
-												 @Nullable MainActivityDelegate activity, long timestamp) {
-		performingKeyAction = true;
-		try {
-			action.getHandler().handle(cb, activity, timestamp);
-		} finally {
-			performingKeyAction = false;
-		}
-	}
-
 	/**
 	 * Whether the action running now came from a key (a steering wheel button) rather than a tap:
 	 * in car mode such an action doesn't bring up the keyboard (the YouTube search).

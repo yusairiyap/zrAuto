@@ -174,9 +174,9 @@ way `setBarsHidden`/`setVideoMode` do.
   first; only the All in One card uses it.
 - **Car mode on web pages** (`CarNav.findWebPage`, `action/WebNav`): on the YouTube or browser tab
   with no panel open and not fullscreen, previous/next move an outline over the page's links and
-  buttons (a script in the page, run on every press), long next clicks, long previous is Back, and a
-  double press opens the search (previous) or goes fullscreen (next). Single presses there wait
-  `DBL_MS` for a possible second one. An open YouTube search / Up next panel is a normal CarNav scope
+  buttons (a script in the page, run on every press; on YouTube the first press picks the first
+  suggested video), long next clicks, long previous is Back. No double-press actions on purpose:
+  drivers press repeatedly to move along. An open YouTube search / Up next panel is a normal CarNav scope
   and is found first, so the page logic never sees those keys.
 
 ## This app cannot be built in this (cloud) session
