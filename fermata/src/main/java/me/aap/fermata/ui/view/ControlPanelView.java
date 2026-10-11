@@ -62,7 +62,6 @@ import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.function.BooleanSupplier;
 import me.aap.utils.function.DoubleSupplier;
-import me.aap.utils.function.IntSupplier;
 import me.aap.utils.pref.BasicPreferenceStore;
 import me.aap.utils.pref.PreferenceSet;
 import me.aap.utils.pref.PreferenceStore;
@@ -1594,8 +1593,7 @@ public class ControlPanelView extends ConstraintLayout
 					clp.resolveLayoutDirection(LAYOUT_DIRECTION_LTR);
 				}
 
-				playbackTimer.setOnClickListener(
-						v -> getMenu(a).show(b -> new TimerMenuHandler(a).build(b)));
+				playbackTimer.setOnClickListener(v -> AllInOneMenu.showTimer(a));
 			}
 
 			if (getVisibility() != VISIBLE) {
@@ -1830,8 +1828,11 @@ public class ControlPanelView extends ConstraintLayout
 						.setSubmenu(s -> new SpeedMenuHandler().build(s, getItem()));
 			}
 
-			b.addItem(R.id.timer, R.drawable.timer, R.string.timer)
-					.setSubmenu(s -> new TimerMenuHandler(a).build(s));
+			// The same sleep timer as the Music tab's (presets, any length, let the song finish).
+			b.addItem(R.id.timer, R.drawable.timer, R.string.timer).setHandler(item -> {
+				AllInOneMenu.showTimer(a);
+				return true;
+			});
 
 			// Engine-contributed items that go below Timer (e.g. YouTube's Search/Up next).
 			eng.contributeToPlaybackMenuEnd(b);
@@ -2005,75 +2006,6 @@ public class ControlPanelView extends ConstraintLayout
 				super.applyFloatPref(removeDefault, pref, value);
 				if (cb.isPlaying()) cb.onSetPlaybackSpeed(value);
 			}
-		}
-	}
-
-	private final class TimerMenuHandler extends BasicPreferenceStore
-			implements OverlayMenu.CloseHandler {
-		private final Pref<IntSupplier> H = Pref.i("H", 0);
-		private final Pref<IntSupplier> M = Pref.i("M", 0);
-		private final MainActivityDelegate activity;
-		private boolean changed;
-		private boolean closed;
-
-		TimerMenuHandler(MainActivityDelegate activity) {
-			this.activity = activity;
-		}
-
-		void build(OverlayMenu.Builder b) {
-			PreferenceSet set = new PreferenceSet();
-			int time = activity.getMediaSessionCallback().getPlaybackTimer();
-
-			if (time > 0) {
-				int h = time / 3600;
-				int m = (time - h * 3600) / 60;
-				applyIntPref(H, h);
-				applyIntPref(M, m);
-			}
-
-			set.addIntPref(o -> {
-				o.title = R.string.hours;
-				o.store = this;
-				o.pref = H;
-				o.seekMin = 0;
-				o.seekMax = 12;
-			});
-			set.addIntPref(o -> {
-				o.title = R.string.minutes;
-				o.store = this;
-				o.pref = M;
-				o.seekMin = 0;
-				o.seekMax = 60;
-				o.seekScale = 5;
-			});
-
-			set.addToMenu(b, true);
-			b.setCloseHandlerHandler(this);
-			changed = false;
-			startTimer();
-		}
-
-		@Override
-		public void applyIntPref(boolean removeDefault, Pref<? extends IntSupplier> pref, int value) {
-			super.applyIntPref(removeDefault, pref, value);
-			changed = true;
-			startTimer();
-		}
-
-		@Override
-		public void menuClosed(OverlayMenu menu) {
-			closed = true;
-			if (!changed) return;
-			int h = getIntPref(H);
-			int m = getIntPref(M);
-			activity.getMediaSessionCallback().setPlaybackTimer(h * 3600 + m * 60);
-			checkPlaybackTimer(activity);
-		}
-
-		private void startTimer() {
-			activity.postDelayed(() -> {
-				if (!closed) getMenu(getActivity()).hide();
-			}, 60000);
 		}
 	}
 

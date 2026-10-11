@@ -24,6 +24,8 @@ import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.widget.AbsSeekBar;
 import android.widget.CompoundButton;
+import android.view.inputmethod.InputMethodManager;
+import android.webkit.WebView;
 import android.widget.EditText;
 
 import androidx.annotation.NonNull;
@@ -63,6 +65,12 @@ import me.aap.utils.ui.menu.OverlayMenuView;
  * overlay menu), else a Favorites / Playlists / Folders / Downloads list. Anywhere else, and with car
  * mode off, the keys do what they're bound to.
  * <p>
+ * A web page (the YouTube tab's, the browser's; not fullscreen, and not under an open panel, which
+ * comes first) is moved through by the page itself, see {@link WebNav}: previous / next move along
+ * its links and buttons, long next presses one, long previous goes back, and a double press
+ * previous opens the search (YouTube's search panel, the browser's address bar), next goes
+ * fullscreen. A single press there waits a moment for a second one.
+ * <p>
  * The items are found, not declared: every visible view with a click listener inside the scope, and
  * the rows of its lists (a list row without a click listener of its own offers the clickable views
  * in it instead, like the YouTube panel's search chips).
@@ -70,6 +78,8 @@ import me.aap.utils.ui.menu.OverlayMenuView;
 public final class CarNav {
 	private static final String TAG = "CARNAV";
 	private static final long LONG_MS = 800;
+	/** How long a single press on a web page waits for a second one (a double press). */
+	private static final long DBL_MS = 350;
 	private static final long IDLE_HIDE_MS = 12000;
 	/** Rows without anything to select (section headers) skipped in one go, at most. */
 	private static final int MAX_SKIP = 64;
@@ -87,6 +97,14 @@ public final class CarNav {
 	@Nullable
 	private static MainActivityDelegate downActivity;
 	private static final Runnable longPress = CarNav::onLongPress;
+	// A web page under the keys, see WebNav: the press being held is on it.
+	@Nullable
+	private static WeakReference<WebView> downWeb;
+	/** The second press of a double press (on a web page). */
+	private static boolean downDouble;
+	/** A single press on a web page, waiting to see whether a second one follows. */
+	private static int pendingWebCode;
+	private static final Runnable pendingWebClick = CarNav::onWebClick;
 
 	// What's selected.
 	@Nullable
@@ -156,6 +174,11 @@ public final class CarNav {
 		root.setTag(R.id.car_nav_modal, Boolean.TRUE);
 	}
 
+	/** Next on the last item of {@code root} goes round to the first (and previous the other way). */
+	public static void wrapAround(@NonNull View root) {
+		root.setTag(R.id.car_nav_wrap, Boolean.TRUE);
+	}
+
 	/** Leaves {@code v} (and what's in it) out: a button too risky to land on, like Clear. */
 	public static void skip(@Nullable View v) {
 		if (v != null) v.setTag(R.id.car_nav_skip, Boolean.TRUE);
@@ -187,21 +210,14 @@ public final class CarNav {
 				}
 				if (s == null) {
 					clear();
-					// The YouTube tab, video not fullscreen: a long press (next or previous) goes
-					// fullscreen, a click is still the key's own binding.
-					if ((a != null) && isYoutubeWindowed(a)) {
-						downCode = code;
-						downScope = null;
-						downActivity = a;
-						downCb = cb;
-						downTime = SystemClock.uptimeMillis();
-						longFired = false;
-						handler.postDelayed(longPress, LONG_MS);
-						return true;
-					}
+					// A web page (the YouTube tab's, the browser's): moved through by the page itself.
+					WebView web = (a == null) ? null : findWebPage(a);
+					if (web != null) return webKeyDown(code, a, cb, web);
 					downCode = 0;
 					return false;
 				}
+				flushWebClick();
+				downWeb = null;
 				downCode = code;
 				downScope = s;
 				downActivity = a;
@@ -215,11 +231,18 @@ public final class CarNav {
 				if (downCode != code) return false;
 				downCode = 0;
 				handler.removeCallbacks(longPress);
-				if (!longFired) {
-					if (downScope != null) click(downScope, code == KEYCODE_MEDIA_NEXT);
-					else runBinding((code == KEYCODE_MEDIA_NEXT) ? Key.MEDIA_NEXT.getClickAction() :
-							Key.MEDIA_PREVIOUS.getClickAction());
+				if (downWeb != null) {
+					if (downDouble) {
+						downDouble = false;
+						onWebDouble(code == KEYCODE_MEDIA_NEXT);
+					} else if (!longFired) {
+						// Moves once it's clear there's no second press.
+						pendingWebCode = code;
+						handler.postDelayed(pendingWebClick, DBL_MS);
+					}
+					return true;
 				}
+				if (!longFired && (downScope != null)) click(downScope, code == KEYCODE_MEDIA_NEXT);
 				downScope = null;
 				return true;
 			}
@@ -241,7 +264,10 @@ public final class CarNav {
 		Scope s = (a == null) ? null : findScope(a, isFullscreenVideo(a));
 		if (s == null) {
 			clear();
-			return false;
+			WebView web = (a == null) ? null : findWebPage(a);
+			if (web == null) return false;
+			WebNav.move(web, next);
+			return true;
 		}
 		click(s, next);
 		return true;
@@ -249,16 +275,17 @@ public final class CarNav {
 
 	private static void onLongPress() {
 		if (downCode == 0) return;
-		Scope s = downScope;
-		if (s == null) {
-			// See the YouTube tab case in handleKeyEvent().
-			longFired = true;
-			DiagnosticLog.log(TAG, "long press: YouTube fullscreen");
-			runBinding(Action.FULLSCREEN_TOGGLE);
-			return;
-		}
 		longFired = true;
 		boolean next = downCode == KEYCODE_MEDIA_NEXT;
+		WebView web = (downWeb == null) ? null : downWeb.get();
+		if (web != null) {
+			DiagnosticLog.log(TAG, next ? "long next" : "long previous", "web page");
+			if (next) WebNav.activate(web);
+			else webBack();
+			return;
+		}
+		Scope s = downScope;
+		if (s == null) return;
 		DiagnosticLog.log(TAG, next ? "long next" : "long previous", "scope=" + s);
 		if (next) activate(s);
 		else back(s);
@@ -268,7 +295,130 @@ public final class CarNav {
 		MainActivityDelegate a = downActivity;
 		if ((action == null) || (a == null)) return;
 		MediaSessionCallback cb = (downCb != null) ? downCb : a.getMediaSessionCallback();
-		action.getHandler().handle(cb, a, downTime);
+		KeyEventHandler.runFromKey(action, cb, a, downTime);
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Web pages
+
+	/**
+	 * The page under the keys: the YouTube or browser tab's WebView, while its video isn't
+	 * fullscreen (open panels are scopes of their own, found before this).
+	 */
+	@Nullable
+	private static WebView findWebPage(MainActivityDelegate a) {
+		ActivityFragment f = a.getActiveFragment();
+		if ((f == null) || isFullscreenVideo(a)) return null;
+		int id = f.getFragmentId();
+		if ((id != R.id.youtube_fragment) && (id != R.id.web_browser_fragment)) return null;
+		View v = f.getView();
+		return ((v != null) && v.isShown()) ? findWebView(v) : null;
+	}
+
+	@Nullable
+	private static WebView findWebView(View v) {
+		if (v.getVisibility() != View.VISIBLE) return null;
+		if (v instanceof WebView w) return (w.getWidth() > 0) && w.isShown() ? w : null;
+		if (v instanceof ViewGroup g) {
+			for (int i = 0, n = g.getChildCount(); i < n; i++) {
+				WebView w = findWebView(g.getChildAt(i));
+				if (w != null) return w;
+			}
+		}
+		return null;
+	}
+
+	private static boolean webKeyDown(int code, MainActivityDelegate a, MediaSessionCallback cb,
+																		WebView web) {
+		handler.removeCallbacks(longPress);
+		downActivity = a;
+		downCb = cb;
+		downTime = SystemClock.uptimeMillis();
+		downScope = null;
+		downWeb = new WeakReference<>(web);
+		downCode = code;
+		longFired = false;
+		if (pendingWebCode == code) {
+			// The second press of a double press: it acts when let go.
+			handler.removeCallbacks(pendingWebClick);
+			pendingWebCode = 0;
+			downDouble = true;
+			return true;
+		}
+		// The other key: the press waiting for a second one moves first.
+		flushWebClick();
+		downDouble = false;
+		handler.postDelayed(longPress, LONG_MS);
+		return true;
+	}
+
+	/** Runs a single press still waiting for a second one, right away. */
+	private static void flushWebClick() {
+		if (pendingWebCode == 0) return;
+		handler.removeCallbacks(pendingWebClick);
+		onWebClick();
+	}
+
+	private static void onWebClick() {
+		int code = pendingWebCode;
+		pendingWebCode = 0;
+		WebView web = (downWeb == null) ? null : downWeb.get();
+		if ((code == 0) || (web == null) || !web.isAttachedToWindow()) return;
+		WebNav.move(web, code == KEYCODE_MEDIA_NEXT);
+	}
+
+	/** Double next: fullscreen; double previous: the search. */
+	private static void onWebDouble(boolean next) {
+		MainActivityDelegate a = downActivity;
+		WebView web = (downWeb == null) ? null : downWeb.get();
+		if (a == null) return;
+		DiagnosticLog.log(TAG, next ? "double next" : "double previous", "web page");
+		if (web != null) WebNav.clear(web);
+		if (next) {
+			runBinding(Action.FULLSCREEN_TOGGLE);
+			return;
+		}
+		ActivityFragment f = a.getActiveFragment();
+		if ((f != null) && (f.getFragmentId() == R.id.youtube_fragment)) {
+			runBinding(Action.YOUTUBE_SEARCH);
+			return;
+		}
+		// The browser: its address bar, in the tool bar, typed into like a search.
+		View tb = a.findViewById(R.id.tool_bar);
+		EditText addr = (tb == null) ? null : findEditText(tb);
+		if (addr == null) return;
+		addr.requestFocus();
+		addr.selectAll();
+		InputMethodManager imm =
+				(InputMethodManager) addr.getContext().getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+		if (imm != null) imm.showSoftInput(addr, InputMethodManager.SHOW_IMPLICIT);
+	}
+
+	@Nullable
+	private static EditText findEditText(View v) {
+		if (!v.isShown()) return null;
+		if (v instanceof EditText e) return e;
+		if (v instanceof ViewGroup g) {
+			for (int i = 0, n = g.getChildCount(); i < n; i++) {
+				EditText e = findEditText(g.getChildAt(i));
+				if (e != null) return e;
+			}
+		}
+		return null;
+	}
+
+	/** Long previous on a page: back, as the back button (never out of the tab from its first page). */
+	private static void webBack() {
+		MainActivityDelegate a = downActivity;
+		if (a == null) return;
+		ActivityFragment f = a.getActiveFragment();
+		if ((f != null) && f.isRootPage()) {
+			DiagnosticLog.log(TAG, "web back: at the first page");
+			return;
+		}
+		WebView web = (downWeb == null) ? null : downWeb.get();
+		if (web != null) WebNav.clear(web);
+		a.onBackPressed();
 	}
 
 	/** A video is fullscreen: local video mode, or a WebView player's own (YouTube). */
@@ -276,14 +426,6 @@ public final class CarNav {
 		if (a.isVideoMode()) return true;
 		me.aap.fermata.ui.view.VideoView vv = a.getActiveVideoView();
 		return (vv != null) && vv.isInNativeFullscreen();
-	}
-
-	/** The YouTube tab is showing, its video not fullscreen. */
-	private static boolean isYoutubeWindowed(MainActivityDelegate a) {
-		ActivityFragment f = a.getActiveFragment();
-		if ((f == null) || (f.getFragmentId() != R.id.youtube_fragment) || a.isVideoMode()) return false;
-		me.aap.fermata.ui.view.VideoView vv = a.getActiveVideoView();
-		return (vv != null) && !vv.isInNativeFullscreen();
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -566,9 +708,20 @@ public final class CarNav {
 
 	/** To the segment after (or before) {@code idx}: its first (or last) item. */
 	private static void moveFrom(List<Object> segs, int idx, int dir) {
+		moveFrom(segs, idx, dir, false);
+	}
+
+	/** @param wrapped already gone round once (a scope with nothing to select stops there) */
+	private static void moveFrom(List<Object> segs, int idx, int dir, boolean wrapped) {
 		int j = idx + dir;
 		if ((j < 0) || (j >= segs.size())) {
-			// The end: stay, and show where.
+			// The end: round to the other end where the scope asks for it (the All in One card),
+			// else stay, and show where.
+			Scope sc = scope;
+			if (!wrapped && (sc != null) && (sc.root.getTag(R.id.car_nav_wrap) != null)) {
+				moveFrom(segs, (dir > 0) ? -1 : segs.size(), dir, true);
+				return;
+			}
 			Highlight h = highlight;
 			if (h != null) h.flash();
 			return;
@@ -576,8 +729,8 @@ public final class CarNav {
 		Object o = segs.get(j);
 		if (o instanceof RecyclerView rv) {
 			int n = count(rv);
-			if (n == 0) moveFrom(segs, j, dir);
-			else seek(segs, j, rv, (dir > 0) ? 0 : n - 1, dir, MAX_SKIP);
+			if (n == 0) moveFrom(segs, j, dir, wrapped);
+			else seek(segs, j, rv, (dir > 0) ? 0 : n - 1, dir, MAX_SKIP, wrapped);
 		} else {
 			select(new Sel((View) o), (View) o);
 		}
@@ -586,14 +739,19 @@ public final class CarNav {
 	/** Row {@code pos} of {@code rv}, or the next one in {@code dir} that has anything to select. */
 	private static void seek(List<Object> segs, int segIdx, RecyclerView rv, int pos, int dir,
 													 int budget) {
+		seek(segs, segIdx, rv, pos, dir, budget, false);
+	}
+
+	private static void seek(List<Object> segs, int segIdx, RecyclerView rv, int pos, int dir,
+													 int budget, boolean wrapped) {
 		if ((pos < 0) || (pos >= count(rv)) || (budget <= 0)) {
-			moveFrom(segs, segIdx, dir);
+			moveFrom(segs, segIdx, dir, wrapped);
 			return;
 		}
 		bound(rv, pos, vh -> {
 			List<View> units = (vh == null) ? Collections.emptyList() : unitsOf(vh.itemView);
 			if (units.isEmpty()) {
-				seek(segs, segIdx, rv, pos + dir, dir, budget - 1);
+				seek(segs, segIdx, rv, pos + dir, dir, budget - 1, wrapped);
 				return;
 			}
 			int sub = (dir > 0) ? 0 : units.size() - 1;

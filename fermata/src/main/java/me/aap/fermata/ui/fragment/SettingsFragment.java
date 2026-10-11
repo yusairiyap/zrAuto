@@ -107,6 +107,10 @@ public class SettingsFragment extends MainActivityFragment
 	public static final Object SHOW_FAB_SETTINGS = "fab_settings";
 	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Key bindings page. */
 	public static final Object SHOW_KEY_BINDINGS = "key_bindings";
+	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Interface page. */
+	public static final Object SHOW_INTERFACE = "interface";
+	/** Same as {@link #SHOW_DIM_SETTINGS}, but for Interface &gt; Android Auto. */
+	public static final Object SHOW_AA_INTERFACE = "aa_interface";
 	private static final String ADDON_SETTINGS = "addon_settings:";
 	private static final String KEY_SETTINGS = "key_settings:";
 
@@ -118,6 +122,10 @@ public class SettingsFragment extends MainActivityFragment
 	private final java.util.Map<String, PreferenceSet> addonSettingsSets = new java.util.HashMap<>();
 	@Nullable
 	private PreferenceSet keyBindingsSet;
+	@Nullable
+	private PreferenceSet interfaceSet;
+	@Nullable
+	private PreferenceSet aaInterfaceSet;
 	// Each key's own bindings page, by Key name, see keySettings().
 	private final java.util.Map<String, PreferenceSet> keySettingsSets = new java.util.HashMap<>();
 	// The key page opened from the key simulator: Back from it goes back there.
@@ -165,6 +173,10 @@ public class SettingsFragment extends MainActivityFragment
 			if (p != null) adapter.setPreferenceSet(p);
 		} else if ((pendingInput == SHOW_KEY_BINDINGS) && (keyBindingsSet != null)) {
 			adapter.setPreferenceSet(keyBindingsSet);
+		} else if ((pendingInput == SHOW_INTERFACE) && (interfaceSet != null)) {
+			adapter.setPreferenceSet(interfaceSet);
+		} else if ((pendingInput == SHOW_AA_INTERFACE) && (aaInterfaceSet != null)) {
+			adapter.setPreferenceSet(aaInterfaceSet);
 		} else if ((pendingInput instanceof String ks) && ks.startsWith(KEY_SETTINGS)) {
 			PreferenceSet p = keySettingsSets.get(ks.substring(KEY_SETTINGS.length()));
 			if (p != null) {
@@ -390,10 +402,11 @@ public class SettingsFragment extends MainActivityFragment
 		PreferenceSet sub1;
 		PreferenceSet sub2;
 
-		sub1 = set.subSet(o -> {
+		interfaceSet = sub1 = set.subSet(o -> {
 			o.title = R.string.interface_prefs;
 			o.icon = R.drawable.view_grid;
 		});
+		aaInterfaceSet = null;
 
 		if (BuildConfig.AUTO && a.isCarActivityNotMirror()) {
 			fabSettingsSet = sub1.subSet(o -> {
@@ -402,6 +415,9 @@ public class SettingsFragment extends MainActivityFragment
 			});
 			// The car's own floating buttons, independent of the phone's.
 			addSecondaryFabPrefs(a, fabSettingsSet, true);
+			// The car's own All in One card.
+			addAllInOne(a, sub1, true);
+			aaInterfaceSet = sub1;
 			// Right below the floating buttons: addAAInterface() adds its items straight in here.
 			addInfoOverlayPrefs(a, sub1);
 			addNavTabsPrefs(a, sub1);
@@ -422,13 +438,16 @@ public class SettingsFragment extends MainActivityFragment
 					o.icon = R.drawable.fab;
 				});
 				addSecondaryFabPrefs(a, aaFabSet, true);
+				addAllInOne(a, aaSet, true);
 				addAAInterface(a, aaSet);
+				aaInterfaceSet = aaSet;
 			}
 			fabSettingsSet = sub1.subSet(o -> {
 				o.title = R.string.secondary_fab_prefs;
 				o.icon = R.drawable.fab;
 			});
 			addSecondaryFabPrefs(a, fabSettingsSet, false);
+			addAllInOne(a, sub1, false);
 			// The phone UI mirrored onto the car screen uses the car's buttons: its floating buttons'
 			// "settings" item opens those.
 			if ((aaFabSet != null) && a.isCarActivity()) fabSettingsSet = aaFabSet;
@@ -1416,6 +1435,16 @@ public class SettingsFragment extends MainActivityFragment
 			o.scale = 0.05f;
 			o.seekMin = 10;
 			o.seekMax = 40;
+		});
+	}
+
+	/** Interface &gt; All in One: its own page, the car screen's card if {@code aa}. */
+	private static void addAllInOne(MainActivityDelegate a, PreferenceSet ps, boolean aa) {
+		ps.addButton(o -> {
+			o.title = R.string.all_in_one;
+			o.icon = R.drawable.view_grid;
+			o.subtitle = aa ? R.string.all_in_one_aa_sub : R.string.all_in_one_sub;
+			o.onClick = () -> a.showFragment(R.id.all_in_one_fragment, aa);
 		});
 	}
 

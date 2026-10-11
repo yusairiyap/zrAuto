@@ -1,6 +1,5 @@
 package me.aap.fermata.ui.view;
 
-import static android.os.Build.VERSION.SDK_INT;
 import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
 
@@ -15,11 +14,12 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.graphics.drawable.StateListDrawable;
+import android.os.SystemClock;
 import android.util.TypedValue;
 import android.view.Gravity;
-import android.view.View;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
+import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.animation.AccelerateInterpolator;
@@ -32,50 +32,84 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.annotation.AttrRes;
-import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.annotation.StringRes;
 import androidx.appcompat.widget.SwitchCompat;
 import androidx.core.graphics.ColorUtils;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import me.aap.fermata.R;
+import me.aap.fermata.action.Action;
+import me.aap.fermata.action.CarNav;
+import me.aap.fermata.media.engine.MediaEngine;
+import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.service.MediaSessionCallback;
-import me.aap.fermata.ui.fragment.MusicPlayerFragment;
+import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.fermata.ui.fragment.ActionFabMediator;
+import me.aap.fermata.util.DiagnosticLog;
+import me.aap.utils.log.Log;
 import me.aap.utils.text.TextUtils;
 import me.aap.utils.ui.UiUtils;
 
 /**
- * The Music tab's "more" menu: a frosted-glass card with big, easy-to-press tiles for the audio
- * effects and the sleep timer. The timer tile opens the timer page in the same card: presets, a
- * stepper for any other length, and the option to let the current song finish before stopping.
+ * The All in One card: big, easy-to-press tiles for the actions picked in Settings &gt; Interface
+ * &gt; All in One (any action a key or a floating button can run), opened by a key binding or a
+ * floating button set to "All in One", anywhere: over a tab or over fullscreen video. The Music
+ * tab's "more" button opens the same card, with its own four tiles (Effects, Sleep timer,
+ * Favorites, Playlist) unless it's set to follow the All in One settings.
  * <p>
- * The card is blurred glass where the platform can blur what's behind a window (Android 12+ with
- * window blur enabled), and a nearly opaque panel otherwise. Built in code: it's one small,
- * self-contained popup that only the Music tab uses.
+ * The Sleep timer tile opens the timer page in the same card: presets, a stepper for any other
+ * length, and the option to let the current song finish before stopping. It is also what the
+ * Sleep timer action and the fullscreen video menu's Timer open.
+ * <p>
+ * Built in code, as an overlay view rather than a dialog: Android Auto's window context doesn't
+ * allow adding dialog windows at all. In car mode the steering wheel moves through the tiles (Next
+ * on the last one goes back to the first), hold Next runs one, hold Previous goes back.
  */
-public final class MusicMoreMenu {
+public final class AllInOneMenu {
 	private static final int[] PRESETS = {10, 15, 30, 45, 60, 90};
 	private static final int STEP = 5;
 	private static final int MIN_MINUTES = 5;
 	private static final int MAX_MINUTES = 12 * 60;
-	// Remembered for the next time the menu opens, until the app is closed.
+	/** The tiles per row Settings offers. */
+	public static final int[] COLUMNS = {2, 3, 4};
+	/** The Music tab's More out of the box (and the All in One card's, until changed). */
+	public static final List<Action> DEFAULT_ITEMS =
+			parse(MainActivityPrefs.AIO_DEFAULT_ITEMS);
+	// Remembered for the next time the timer opens, until the app is closed.
 	private static int lastMinutes = 30;
 	private static boolean lastFinishSong = true;
 
-	private static MusicMoreMenu open;
+	@Nullable
+	private static AllInOneMenu open;
 
+	/** What the Music tab does itself for some tiles (it says why over its cover, not in a toast). */
+	public interface Hooks {
+		/** @return true if it took care of {@code action} */
+		boolean onAction(Action action);
+	}
+
+	private final MainActivityDelegate activity;
 	private final Context ctx;
 	private final ViewGroup host;
+	@Nullable
 	private final View insets;
+	@Nullable
 	private final View anchor;
 	private final MediaSessionCallback cb;
-	private final Runnable onEffects;
-	private final Runnable onFavorite;
-	private final Runnable onPlaylist;
-	private final java.util.function.BooleanSupplier isFavorite;
-	private final boolean light;
+	private final List<Action> items;
+	private final int columns;
+	@StringRes
+	private final int titleRes;
+	@Nullable
+	private final Hooks hooks;
+	/** A still picture of the card for the settings page: nothing in it reacts to a tap. */
+	private final boolean preview;
 	private final int primary;
 	private final int secondary;
 	private final int accent;
@@ -90,6 +124,7 @@ public final class MusicMoreMenu {
 	private LinearLayout root;
 	private View mainPage;
 	private View timerPage;
+	@Nullable
 	private TextView timerTileSub;
 	private TextView timerStatus;
 	private TextView minutesLabel;
@@ -100,26 +135,30 @@ public final class MusicMoreMenu {
 	private final boolean compact;
 	private int usableTop;
 	private int usableBottom;
+	private int sideLeft;
+	private int sideRight;
 	private ValueAnimator pageAnim;
 	private int minutes = lastMinutes;
 	private boolean finishSong = lastFinishSong;
 
-	/** Opens on the timer page instead of the tiles. */
+	/** Opened on the timer page instead of the tiles. */
 	private boolean startOnTimer;
 
-	private MusicMoreMenu(Context ctx, ViewGroup host, View insets, View anchor,
-											MediaSessionCallback cb, Runnable onEffects, Runnable onFavorite,
-											java.util.function.BooleanSupplier isFavorite, Runnable onPlaylist) {
+	private AllInOneMenu(MainActivityDelegate activity, Context ctx, ViewGroup host,
+											 @Nullable View insets, @Nullable View anchor, List<Action> items,
+											 int columns, @StringRes int titleRes, @Nullable Hooks hooks,
+											 boolean preview) {
+		this.activity = activity;
 		this.ctx = ctx;
-		this.onFavorite = onFavorite;
-		this.isFavorite = isFavorite;
-		this.onPlaylist = onPlaylist;
 		this.host = host;
 		this.insets = insets;
 		this.anchor = anchor;
-		this.cb = cb;
-		this.onEffects = onEffects;
-		this.light = MusicPlayerFragment.isLightTheme(ctx);
+		this.cb = activity.getMediaSessionCallback();
+		this.items = items;
+		this.columns = Math.max(2, Math.min(4, columns));
+		this.titleRes = titleRes;
+		this.hooks = hooks;
+		this.preview = preview;
 		this.primary = color(R.attr.musicTextPrimary);
 		this.secondary = color(R.attr.musicTextSecondary);
 		this.chipFill = color(R.attr.musicChipFill);
@@ -127,51 +166,79 @@ public final class MusicMoreMenu {
 		this.accent = EffectsUi.accent(ctx);
 		this.onAccent = EffectsUi.onAccent(accent);
 		this.density = ctx.getResources().getDisplayMetrics().density;
-		int room = host.getHeight() - insets.getPaddingTop() - insets.getPaddingBottom();
-		this.compact = (host.getWidth() > host.getHeight()) && (room < dp(400));
+		computeRoom();
+		this.compact = (host.getWidth() > host.getHeight()) && (usableBottom - usableTop < dp(400));
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Opening
+	// ---------------------------------------------------------------------------------------------
+
+	/** The All in One action: opens the card, or closes it if it's open. */
+	public static void toggle(@NonNull MainActivityDelegate a) {
+		if (dismissOpen()) return;
+		show(a, false);
+	}
+
+	/** The Sleep timer action (and the fullscreen video menu's Timer): the card on its timer page. */
+	public static void showTimer(@NonNull MainActivityDelegate a) {
+		show(a, true);
+	}
+
+	private static void show(MainActivityDelegate a, boolean timer) {
+		ViewGroup host = a.findViewById(R.id.main_activity);
+		if ((host == null) || (host.getWidth() == 0)) {
+			Log.e("No view to show the All in One card over");
+			return;
+		}
+		dismissOpen();
+		AllInOneMenu m = new AllInOneMenu(a, EffectsUi.palette(a.getContext()), host, null, null,
+				getItems(a), getColumns(a), R.string.all_in_one, null, false);
+		m.startOnTimer = timer;
+		open = m;
+		m.show();
 	}
 
 	/**
-	 * Shows the menu over {@code host} (the Music tab's root), sliding up from just above
-	 * {@code anchor}. An overlay view rather than a dialog: Android Auto's window context doesn't
-	 * allow adding dialog windows at all.
+	 * The Music tab's "more" menu: slides up from just above {@code anchor}, with the Music tab's
+	 * own tiles, or the All in One ones when it's set to follow them.
 	 *
-	 * @param insets    the view whose padding is the room the tool bar and nav bar take (the menu stays
-	 *                  clear of it, and centres in what's left when it doesn't fit above the anchor)
-	 * @param ctx       a context carrying the Music tab's palette (see {@code MusicPalette} in music.xml)
-	 * @param onEffects what the Effects tile does
-	 * @param onFavorite toggles what's playing in the favorites
-	 * @param onPlaylist opens the playlist picker for what's playing
+	 * @param ctx    a context carrying the Music tab's palette (see {@code MusicPalette} in music.xml)
+	 * @param host   the Music tab's root
+	 * @param insets the view whose padding is the room the tool bar and nav bar take (the menu stays
+	 *               clear of it, and centres in what's left when it doesn't fit above the anchor)
+	 * @param timer  opens straight on the sleep timer page
 	 */
-	public static void show(@NonNull Context ctx, @NonNull ViewGroup host, @NonNull View insets,
-													@NonNull View anchor, @NonNull MediaSessionCallback cb,
-													@NonNull Runnable onEffects, @NonNull Runnable onFavorite,
-													@NonNull java.util.function.BooleanSupplier isFavorite,
-													@NonNull Runnable onPlaylist) {
+	public static void showMusic(@NonNull MainActivityDelegate a, @NonNull Context ctx,
+															 @NonNull ViewGroup host, @NonNull View insets, @NonNull View anchor,
+															 boolean timer, @NonNull Hooks hooks) {
 		dismissOpen();
-		MusicMoreMenu m = new MusicMoreMenu(ctx, host, insets, anchor, cb, onEffects, onFavorite,
-				isFavorite, onPlaylist);
+		boolean own = a.getPrefs().getBooleanPref(MainActivityPrefs.fab(a,
+				MainActivityPrefs.AIO_MUSIC_MORE));
+		AllInOneMenu m = new AllInOneMenu(a, ctx, host, insets, anchor,
+				own ? getItems(a) : DEFAULT_ITEMS, own ? getColumns(a) : 2, R.string.music_more, hooks,
+				false);
+		m.startOnTimer = timer;
 		open = m;
 		m.show();
 	}
 
-	/** Like {@link #show}, opening straight on the sleep timer page. */
-	public static void showTimer(@NonNull Context ctx, @NonNull ViewGroup host, @NonNull View insets,
-															 @NonNull View anchor, @NonNull MediaSessionCallback cb,
-															 @NonNull Runnable onEffects, @NonNull Runnable onFavorite,
-															 @NonNull java.util.function.BooleanSupplier isFavorite,
-															 @NonNull Runnable onPlaylist) {
-		dismissOpen();
-		MusicMoreMenu m = new MusicMoreMenu(ctx, host, insets, anchor, cb, onEffects, onFavorite,
-				isFavorite, onPlaylist);
-		m.startOnTimer = true;
-		open = m;
-		m.show();
+	/**
+	 * The card as it would show on this screen, without the overlay around it, for the settings
+	 * page: the same tiles, sizes and fill, nothing in it reacting to a tap.
+	 */
+	@NonNull
+	public static View preview(@NonNull MainActivityDelegate a, @NonNull Context ctx,
+														 @NonNull List<Action> items, int columns) {
+		ViewGroup host = a.findViewById(R.id.main_activity);
+		AllInOneMenu m = new AllInOneMenu(a, ctx, host, null, null, items, columns,
+				R.string.all_in_one, null, true);
+		return m.buildPreview();
 	}
 
-	/** Closes the menu if it's open (for the back button); returns whether it was. */
+	/** Closes the card if it's open (for the back button); returns whether it was. */
 	public static boolean dismissOpen() {
-		MusicMoreMenu m = open;
+		AllInOneMenu m = open;
 		if ((m == null) || (m.overlay == null) || (m.overlay.getParent() == null)) {
 			open = null;
 			return false;
@@ -180,17 +247,146 @@ public final class MusicMoreMenu {
 		return true;
 	}
 
+	// ---------------------------------------------------------------------------------------------
+	// Settings
+	// ---------------------------------------------------------------------------------------------
+
+	/** The card's actions as set for {@code a}'s screen (the car screen has its own). */
+	public static List<Action> getItems(MainActivityDelegate a) {
+		return parse(a.getPrefs().getStringPref(MainActivityPrefs.fab(a, MainActivityPrefs.AIO_ITEMS)));
+	}
+
+	/** Tiles per row as set for {@code a}'s screen. */
+	public static int getColumns(MainActivityDelegate a) {
+		return a.getPrefs().getIntPref(MainActivityPrefs.fab(a, MainActivityPrefs.AIO_COLUMNS));
+	}
+
+	/** Every action the card can hold, in the order Settings offers them. */
+	public static List<Action> offeredActions() {
+		List<Action> l = new ArrayList<>();
+		for (Action act : Action.getAll()) {
+			if ((act != Action.NONE) && (act != Action.ALL_IN_ONE)) l.add(act);
+		}
+		return l;
+	}
+
+	/** Action names, comma separated, skipping any unknown (an action from a newer version). */
+	public static List<Action> parse(@Nullable String s) {
+		if ((s == null) || s.isEmpty()) return Collections.emptyList();
+		List<Action> l = new ArrayList<>();
+		for (String n : s.split(",")) {
+			try {
+				Action act = Action.valueOf(n.trim());
+				if ((act != Action.NONE) && (act != Action.ALL_IN_ONE) && !l.contains(act)) l.add(act);
+			} catch (IllegalArgumentException ignore) {
+			}
+		}
+		return l;
+	}
+
+	public static String format(List<Action> items) {
+		StringBuilder sb = new StringBuilder();
+		for (Action act : items) {
+			if (sb.length() > 0) sb.append(',');
+			sb.append(act.name());
+		}
+		return sb.toString();
+	}
+
+	/**
+	 * The Audio effects action: the effects screen for what's playing, the YouTube player's own
+	 * equalizer, or a note saying why there's none.
+	 */
+	public static void openEffects(@NonNull MainActivityDelegate a) {
+		MediaEngine eng = a.getMediaSessionCallback().getEngine();
+		PlayableItem src = (eng == null) ? null : eng.getSource();
+
+		if ((src != null) && (eng.supportsAudioEffects() || eng.supportsSoundStage())) {
+			a.showFragment(R.id.audio_effects_fragment);
+		} else if ((src != null) && eng.showOwnAudioEffects()) {
+			DiagnosticLog.log("AIO", "effects: engine's own (in-page equalizer)", "engine=" + eng);
+		} else {
+			TopToast.show(R.drawable.equalizer, (src == null) ? R.string.music_effects_play_first :
+					R.string.music_effects_unavailable);
+		}
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// The overlay
+	// ---------------------------------------------------------------------------------------------
+
+	/** The room the bars leave: the insets view's padding, else around the tab's body. */
+	private void computeRoom() {
+		int hostH = host.getHeight();
+		if (insets != null) {
+			usableTop = insets.getPaddingTop();
+			usableBottom = hostH - insets.getPaddingBottom();
+			sideLeft = insets.getPaddingLeft();
+			sideRight = insets.getPaddingRight();
+			return;
+		}
+		usableTop = 0;
+		usableBottom = hostH;
+		View body = activity.getBody();
+		if ((body == null) || !body.isAttachedToWindow() || activity.isVideoMode()) return;
+		int[] side = new int[2];
+		int[] bl = new int[2];
+		int[] hl = new int[2];
+		activity.computeSideInsets(body, side);
+		body.getLocationInWindow(bl);
+		host.getLocationInWindow(hl);
+		usableTop = Math.max(0, bl[1] - hl[1]);
+		usableBottom = Math.min(hostH, bl[1] - hl[1] + body.getHeight());
+		// The same on both sides, so the card is centred on the screen and clear of a side nav bar.
+		int m = Math.max(side[0] + Math.max(0, bl[0] - hl[0]),
+				side[1] + Math.max(0, (hl[0] + host.getWidth()) - (bl[0] + body.getWidth())));
+		sideLeft = sideRight = m;
+	}
+
 	private void show() {
 		overlay = new FrameLayout(ctx);
 		overlay.setClickable(true);
 		overlay.setFocusable(false);
 		overlay.setElevation(dp(30));
 		overlay.setOnClickListener(v -> dismiss());
-		// Car mode: the steering wheel moves through the rows, long previous closes.
-		me.aap.fermata.action.CarNav.markModalScope(overlay, this::dismiss);
+		// Car mode: the steering wheel moves through the tiles, round from the last to the first, and
+		// long previous goes back (a page, or closes).
+		CarNav.markModalScope(overlay, this::back);
+		CarNav.wrapAround(overlay);
 		overlay.setBackgroundColor(0x33000000);
 		overlay.setAlpha(0f);
+		// Its own id: the activity's root is a ConstraintLayout, and anything that walks it with a
+		// ConstraintSet requires every direct child to have one.
+		overlay.setId(View.generateViewId());
 
+		buildContent();
+
+		// On a short screen (landscape) the card scrolls rather than running off it.
+		ScrollView scroll = new ScrollView(ctx);
+		scroll.setVerticalScrollBarEnabled(false);
+		scroll.addView(root, new ViewGroup.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+
+		card = new DraggableCard(ctx);
+		card.setClickable(true);
+		card.setAlpha(0f);
+		card.setBackground(panel());
+		card.setElevation(dp(12));
+		card.addView(scroll, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+
+		int w = Math.min(dp(cardWidthDp()), host.getWidth() - dp(32) - sideLeft - sideRight);
+		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, WRAP_CONTENT,
+				Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+		lp.bottomMargin = dp(12);
+		overlay.addView(card, lp);
+		host.addView(overlay, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+
+		updateStatus();
+		// Once laid out: sit just above the chip that opened it (or centred), then slide up.
+		card.post(this::placeAndEnter);
+	}
+
+	/** Both pages, in {@link #root}. */
+	private void buildContent() {
 		root = new LinearLayout(ctx);
 		root.setOrientation(LinearLayout.VERTICAL);
 		root.setPadding(dp(16), dp(16), dp(16), dp(16));
@@ -206,29 +402,28 @@ public final class MusicMoreMenu {
 		pages.addView(mainPage, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 		pages.addView(timerPage, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 		root.addView(pages, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+	}
 
-		// On a short screen (landscape) the card scrolls rather than running off it.
-		ScrollView scroll = new ScrollView(ctx);
-		scroll.setVerticalScrollBarEnabled(false);
-		scroll.addView(root, new ViewGroup.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-
-		card = new DraggableCard(ctx);
-		card.setClickable(true);
-		card.setAlpha(0f);
-		card.setBackground(panel());
-		card.setElevation(dp(12));
-		card.addView(scroll, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-
-		int w = Math.min(dp(compact ? 520 : 380), host.getWidth() - dp(32));
-		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(w, WRAP_CONTENT,
-				Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-		lp.bottomMargin = dp(12);
-		overlay.addView(card, lp);
-		host.addView(overlay, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
-
+	private View buildPreview() {
+		buildContent();
 		updateStatus();
-		// Once laid out: sit just above the chip that opened it, then slide up.
-		card.post(this::placeAndEnter);
+		FrameLayout c = new FrameLayout(ctx);
+		c.setBackground(panel());
+		c.setElevation(dp(6));
+		c.addView(root, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		// As wide as the real card, at most: the tiles keep their proportions.
+		MaxWidthFrame frame = new MaxWidthFrame(ctx, dp(cardWidthDp()));
+		frame.addView(c, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT,
+				Gravity.CENTER_HORIZONTAL));
+		return frame;
+	}
+
+	private int cardWidthDp() {
+		return switch (columns) {
+			case 3 -> compact ? 560 : 440;
+			case 4 -> compact ? 600 : 480;
+			default -> compact ? 520 : 380;
+		};
 	}
 
 	private void placeAndEnter() {
@@ -238,35 +433,36 @@ public final class MusicMoreMenu {
 		// Room for the taller of the two pages, so the card grows upwards into free space when the
 		// timer page opens instead of running off the top.
 		int contentW = card.getWidth() - dp(32);
-		timerPage.measure(View.MeasureSpec.makeMeasureSpec(contentW, View.MeasureSpec.EXACTLY),
+		View other = startOnTimer ? mainPage : timerPage;
+		other.measure(View.MeasureSpec.makeMeasureSpec(contentW, View.MeasureSpec.EXACTLY),
 				View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
 		int ch = card.getHeight();
-		int tallest = Math.max(ch, timerPage.getMeasuredHeight() + dp(32));
-		int[] a = new int[2];
-		int[] h = new int[2];
-		anchor.getLocationInWindow(a);
-		host.getLocationInWindow(h);
-		int anchorTop = a[1] - h[1];
+		int tallest = Math.max(ch, other.getMeasuredHeight() + dp(32));
 
-		// The room the tool bar and the nav bar leave.
-		usableTop = insets.getPaddingTop();
-		usableBottom = hostH - insets.getPaddingBottom();
-		int usableH = usableBottom - usableTop - dp(16);
 		FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) card.getLayoutParams();
-		lp.leftMargin = insets.getPaddingLeft();
-		lp.rightMargin = insets.getPaddingRight();
+		lp.leftMargin = sideLeft;
+		lp.rightMargin = sideRight;
+		int usableH = usableBottom - usableTop - dp(16);
 
 		int margin;
 		boolean wide = hostW > hostH;
-		if (!wide && (tallest <= anchorTop - dp(10) - usableTop)) {
+		int anchorTop = -1;
+		if (anchor != null) {
+			int[] a = new int[2];
+			int[] h = new int[2];
+			anchor.getLocationInWindow(a);
+			host.getLocationInWindow(h);
+			anchorTop = a[1] - h[1];
+		}
+		if (!wide && (anchorTop >= 0) && (tallest <= anchorTop - dp(10) - usableTop)) {
 			// A phone held upright: sits right over the chip that opened it.
 			centered = false;
 			margin = hostH - anchorTop + dp(10);
 		} else {
-			// A tablet, Android Auto, any landscape screen: centred, scrolling if it's taller than the room.
-			// Sized to the page showing (the timer page grows it later, see fitCard()), never stretched
-			// to fill the room: a card taller than its content is empty at the bottom and no longer reads
-			// as centred.
+			// A tablet, Android Auto, any landscape screen, a key or a floating button: centred,
+			// scrolling if it's taller than the room. Sized to the page showing (the timer page grows
+			// it later, see fitCard()), never stretched to fill the room: a card taller than its
+			// content is empty at the bottom and no longer reads as centred.
 			centered = true;
 			if (ch > usableH) lp.height = usableH;
 			ch = Math.min(ch, usableH);
@@ -305,6 +501,12 @@ public final class MusicMoreMenu {
 		clp.height = (cardH > room) ? room : WRAP_CONTENT;
 		clp.bottomMargin = centeredMargin(Math.min(cardH, room));
 		card.setLayoutParams(clp);
+	}
+
+	/** Long previous in car mode: from the timer page back to the tiles, else closes. */
+	private void back() {
+		if (!startOnTimer && (timerPage.getVisibility() == View.VISIBLE)) showPage(false);
+		else dismiss();
 	}
 
 	/** Slides the card back down and away. */
@@ -412,105 +614,197 @@ public final class MusicMoreMenu {
 		}
 	}
 
+	/** As wide as it may be, never wider than {@code max}: the preview keeps the real card's width. */
+	private static final class MaxWidthFrame extends FrameLayout {
+		private final int max;
+
+		MaxWidthFrame(Context c, int max) {
+			super(c);
+			this.max = max;
+		}
+
+		@Override
+		protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+			// All the room there is, up to the card's width: the tiles share it out by weight.
+			int w = (View.MeasureSpec.getMode(widthMeasureSpec) == View.MeasureSpec.UNSPECIFIED) ? max :
+					Math.min(max, View.MeasureSpec.getSize(widthMeasureSpec));
+			super.onMeasure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
+					heightMeasureSpec);
+		}
+	}
+
 	// ---------------------------------------------------------------------------------------------
-	// Main page: Effects and Timer tiles
+	// Main page: the tiles
 	// ---------------------------------------------------------------------------------------------
 
 	private View buildMainPage() {
 		LinearLayout page = new LinearLayout(ctx);
 		page.setOrientation(LinearLayout.VERTICAL);
 
-		TextView title = text(ctx.getString(R.string.music_more), 18, primary, true);
-		title.setPadding(dp(8), dp(2), dp(8), dp(compact ? 6 : 12));
-		page.addView(title);
+		// Title, and a way to the settings that pick the tiles.
+		LinearLayout header = new LinearLayout(ctx);
+		header.setOrientation(LinearLayout.HORIZONTAL);
+		header.setGravity(Gravity.CENTER_VERTICAL);
+		TextView title = text(ctx.getString(titleRes), 18, primary, true);
+		title.setPadding(dp(8), dp(2), dp(8), 0);
+		header.addView(title, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		ImageView settings = new ImageView(ctx);
+		settings.setImageResource(R.drawable.settings);
+		settings.setImageTintList(ColorStateList.valueOf(secondary));
+		settings.setPadding(dp(8), dp(8), dp(8), dp(8));
+		settings.setContentDescription(ctx.getString(R.string.all_in_one));
+		if (!preview) {
+			settings.setBackground(pressable(Color.TRANSPARENT, 20));
+			settings.setClickable(true);
+			settings.setFocusable(true);
+			settings.setOnClickListener(v -> {
+				dismissNow();
+				activity.exitVideoMode();
+				activity.showFragment(R.id.all_in_one_fragment, activity.isCarActivity());
+			});
+		}
+		// Not for the steering wheel: the first press lands on the first tile.
+		CarNav.skip(settings);
+		header.addView(settings, new LinearLayout.LayoutParams(dp(36), dp(36)));
+		LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		hlp.bottomMargin = dp(compact ? 4 : 8);
+		page.addView(header, hlp);
 
-		LinearLayout tiles = new LinearLayout(ctx);
-		tiles.setOrientation(LinearLayout.HORIZONTAL);
-		page.addView(tiles, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		if (items.isEmpty()) {
+			TextView empty = text(ctx.getString(R.string.all_in_one_empty), 14, secondary, false);
+			empty.setGravity(Gravity.CENTER);
+			empty.setPadding(dp(12), dp(16), dp(12), dp(16));
+			page.addView(empty, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+			return page;
+		}
 
-		TextView[] sub = new TextView[1];
-		View effects = tile(R.drawable.equalizer, ctx.getString(R.string.effects),
-				ctx.getString(R.string.music_more_effects_hint), sub, () -> {
-					dismissNow();
-					onEffects.run();
-				});
-		View timer = tile(R.drawable.timer, ctx.getString(R.string.music_sleep_timer), "", sub,
-				() -> showPage(true));
-		timerTileSub = sub[0];
-
-		tiles.addView(effects, tileParams());
-		tiles.addView(timer, tileParams());
-
-		// The second row: what's playing, into the favorites or a playlist.
-		LinearLayout tiles2 = new LinearLayout(ctx);
-		tiles2.setOrientation(LinearLayout.HORIZONTAL);
-		LinearLayout.LayoutParams t2lp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		t2lp.topMargin = dp(8);
-		page.addView(tiles2, t2lp);
-		boolean fav = isFavorite.getAsBoolean();
-		TextView[] sub2 = new TextView[1];
-		View favorite = tile(fav ? R.drawable.favorite_filled : R.drawable.favorite,
-				// Short enough for one line, like "Add to favorites": a two-line title made this tile
-				// taller than the others in the grid.
-				ctx.getString(fav ? R.string.music_more_favorite_remove : R.string.favorites_add),
-				ctx.getString(R.string.music_more_favorite_hint), sub2, () -> {
-					dismiss();
-					onFavorite.run();
-				});
-		View playlist = tile(R.drawable.playlist_add, ctx.getString(R.string.playlist_add),
-				ctx.getString(R.string.music_more_playlist_hint), sub2, () -> {
-					dismissNow();
-					onPlaylist.run();
-				});
-		tiles2.addView(favorite, tileParams());
-		tiles2.addView(playlist, tileParams());
+		LinearLayout row = null;
+		int gap = dp((columns == 2) ? 8 : 6);
+		for (int i = 0; i < items.size(); i++) {
+			if (i % columns == 0) {
+				row = new LinearLayout(ctx);
+				row.setOrientation(LinearLayout.HORIZONTAL);
+				LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+				if (i > 0) rlp.topMargin = gap;
+				page.addView(row, rlp);
+			}
+			row.addView(tile(items.get(i)), tileParams());
+		}
+		// The last row's tiles keep the others' width.
+		int rest = (columns - items.size() % columns) % columns;
+		for (int i = 0; i < rest; i++) row.addView(new View(ctx), tileParams());
 		return page;
 	}
 
 	private LinearLayout.LayoutParams tileParams() {
-		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f);
-		lp.setMargins(dp(4), 0, dp(4), 0);
+		// As tall as the row's tallest tile (a title on two lines), so a row lines up.
+		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, MATCH_PARENT, 1f);
+		int m = dp((columns == 2) ? 4 : 3);
+		lp.setMargins(m, 0, m, 0);
 		return lp;
 	}
 
-	/** A big tile: an accent icon disc over a title and a one-line hint; {@code subOut[0]} gets the hint view. */
-	private View tile(@DrawableRes int icon, String title, String hint, TextView[] subOut,
-										Runnable onClick) {
+	/** A big tile: an accent icon disc over a title and a one-line hint. */
+	private View tile(Action action) {
+		boolean fav = (action == Action.FAVORITE_ADD) && Action.isCurrentFavorite(activity);
+		String title;
+		String hint;
+		if (action == Action.AUDIO_EFFECTS) {
+			title = ctx.getString(R.string.effects);
+			hint = ctx.getString(R.string.music_more_effects_hint);
+		} else if (action == Action.SLEEP_TIMER) {
+			title = ctx.getString(R.string.music_sleep_timer);
+			hint = "";
+		} else if (action == Action.FAVORITE_ADD) {
+			// Short enough for one line, like "Add to favorites": a two-line title made this tile
+			// taller than the others in the grid.
+			title = ctx.getString(fav ? R.string.music_more_favorite_remove : R.string.favorites_add);
+			hint = ctx.getString(R.string.music_more_favorite_hint);
+		} else if (action == Action.PLAYLIST_ADD) {
+			title = ctx.getString(R.string.playlist_add);
+			hint = ctx.getString(R.string.music_more_playlist_hint);
+		} else {
+			title = ctx.getString(action.getName());
+			hint = "";
+		}
+
+		boolean big = columns == 2;
 		LinearLayout t = new LinearLayout(ctx);
 		t.setOrientation(LinearLayout.VERTICAL);
 		t.setGravity(Gravity.CENTER);
-		t.setMinimumHeight(dp(compact ? 104 : 132));
-		t.setPadding(dp(10), dp(compact ? 8 : 14), dp(10), dp(compact ? 8 : 14));
-		t.setBackground(pressable(chipFill, 22));
-		t.setClickable(true);
-		t.setFocusable(true);
+		t.setMinimumHeight(dp(switch (columns) {
+			case 3 -> compact ? 84 : 104;
+			case 4 -> compact ? 72 : 88;
+			default -> compact ? 104 : 132;
+		}));
+		int padV = big ? (compact ? 8 : 14) : (compact ? 6 : 10);
+		t.setPadding(dp(big ? 10 : 6), dp(padV), dp(big ? 10 : 6), dp(padV));
+		t.setBackground(pressable(chipFill, big ? 22 : 18));
 		t.setContentDescription(title);
-		t.setOnClickListener(v -> onClick.run());
+		if (!preview) {
+			t.setClickable(true);
+			t.setFocusable(true);
+			t.setOnClickListener(v -> run(action));
+		}
 
+		int discDp = switch (columns) {
+			case 3 -> compact ? 38 : 44;
+			case 4 -> compact ? 32 : 38;
+			default -> compact ? 44 : 52;
+		};
 		FrameLayout disc = new FrameLayout(ctx);
 		GradientDrawable d = new GradientDrawable();
 		d.setShape(GradientDrawable.OVAL);
 		d.setColor(accent);
 		disc.setBackground(d);
 		ImageView iv = new ImageView(ctx);
-		iv.setImageResource(icon);
+		iv.setImageResource(ActionFabMediator.iconFor(activity, action));
 		iv.setImageTintList(ColorStateList.valueOf(onAccent));
-		disc.addView(iv, new FrameLayout.LayoutParams(dp(28), dp(28), Gravity.CENTER));
-		t.addView(disc, new LinearLayout.LayoutParams(dp(compact ? 44 : 52), dp(compact ? 44 : 52)));
+		int iconDp = (columns == 2) ? 28 : (columns == 3) ? 24 : 20;
+		disc.addView(iv, new FrameLayout.LayoutParams(dp(iconDp), dp(iconDp), Gravity.CENTER));
+		t.addView(disc, new LinearLayout.LayoutParams(dp(discDp), dp(discDp)));
 
-		TextView name = text(title, 15, primary, true);
+		TextView name = text(title, (columns == 2) ? 15 : (columns == 3) ? 13.5f : 12.5f, primary, true);
 		name.setGravity(Gravity.CENTER);
+		name.setMaxLines(2);
+		name.setEllipsize(android.text.TextUtils.TruncateAt.END);
 		LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		nlp.topMargin = dp(10);
+		nlp.topMargin = dp(big ? 10 : 6);
 		t.addView(name, nlp);
 
-		TextView sub = text(hint, 12, secondary, false);
+		TextView sub = text(hint, big ? 12 : 11, secondary, false);
 		sub.setGravity(Gravity.CENTER);
-		sub.setMaxLines(2);
+		sub.setMaxLines(big ? 2 : 1);
 		sub.setEllipsize(android.text.TextUtils.TruncateAt.END);
+		// The smallest tiles carry only the timer's state, no hints.
+		if ((columns == 4) && (action != Action.SLEEP_TIMER)) sub.setVisibility(View.GONE);
 		t.addView(sub, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-		subOut[0] = sub;
+		if (action == Action.SLEEP_TIMER) timerTileSub = sub;
 		return t;
+	}
+
+	/** A tile's tap. */
+	private void run(Action action) {
+		if (action == Action.SLEEP_TIMER) {
+			showPage(true);
+			return;
+		}
+		DiagnosticLog.log("AIO", "run", action);
+		// What opens another screen or a picker leaves at once (the picker comes up on its own); the
+		// rest slide away.
+		if (opensSomething(action)) dismissNow();
+		else dismiss();
+		if ((hooks != null) && hooks.onAction(action)) return;
+		action.getHandler().handle(cb, activity, SystemClock.uptimeMillis());
+	}
+
+	private static boolean opensSomething(Action action) {
+		return switch (action) {
+			case AUDIO_EFFECTS, PLAYLIST_ADD, OPEN_FAVORITES, OPEN_PLAYLISTS, OPEN_DOWNLOADS, MENU,
+					CP_MENU, YOUTUBE_SEARCH, YOUTUBE_UP_NEXT, REFUEL, DOWNLOAD_CURRENT, PLAY_AS_MUSIC,
+					BACK_OR_EXIT, EXIT -> true;
+			default -> false;
+		};
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -532,7 +826,7 @@ public final class MusicMoreMenu {
 		back.setBackground(pressable(Color.TRANSPARENT, 20));
 		back.setFocusable(true);
 		back.setClickable(true);
-		back.setContentDescription(ctx.getString(R.string.music_more));
+		back.setContentDescription(ctx.getString(titleRes));
 		back.setOnClickListener(v -> showPage(false));
 		header.addView(back, new LinearLayout.LayoutParams(dp(40), dp(40)));
 		TextView title = text(ctx.getString(R.string.music_sleep_timer), 18, primary, true);
@@ -746,12 +1040,14 @@ public final class MusicMoreMenu {
 			}
 		}
 
-		timerTileSub.setText(s);
-		timerTileSub.setTextColor(active ? accent : secondary);
+		if (timerTileSub != null) {
+			timerTileSub.setText(s);
+			timerTileSub.setTextColor(active ? accent : secondary);
+		}
 		timerStatus.setText(active ? s : "");
 		View off = timerPage.findViewWithTag("off");
 		if (off != null) off.setVisibility(active ? View.VISIBLE : View.GONE);
-		if (active) root.postDelayed(tick, 1000);
+		if (active && !preview) root.postDelayed(tick, 1000);
 	}
 
 	// ---------------------------------------------------------------------------------------------

@@ -102,11 +102,21 @@ public class CarModeFragment extends MainActivityFragment {
 		content.addView(keyCard("▶", R.string.car_mode_hold_next, true));
 		content.addView(keyCard("◀", R.string.car_mode_hold_prev, true));
 		content.addView(keyCard("▶", R.string.car_mode_sliders, true));
-		content.addView(keyCard("◀ ▶", R.string.car_mode_youtube_fullscreen, true));
+
+		// A web page moves along its links and buttons, with a double press for the search and
+		// fullscreen (see CarNav's web pages).
+		section(content, R.string.car_mode_section_web);
+		content.addView(keyCard("▶", R.string.car_mode_web_next, false));
+		content.addView(keyCard("◀", R.string.car_mode_web_prev, false));
+		content.addView(keyCard("▶", R.string.car_mode_web_hold_next, true));
+		content.addView(keyCard("◀", R.string.car_mode_web_hold_prev, true));
+		content.addView(doubleCard("◀", R.string.car_mode_web_dbl_prev));
+		content.addView(doubleCard("▶", R.string.car_mode_web_dbl_next));
 
 		section(content, R.string.car_mode_where);
 		for (int res : new int[]{R.string.car_mode_where_lists, R.string.car_mode_where_youtube,
-				R.string.car_mode_where_queue, R.string.car_mode_where_pickers,
+				R.string.car_mode_where_web, R.string.car_mode_where_queue,
+				R.string.car_mode_where_pickers, R.string.car_mode_where_all_in_one,
 				R.string.car_mode_where_settings}) {
 			content.addView(bullet(res));
 		}
@@ -283,8 +293,17 @@ public class CarModeFragment extends MainActivityFragment {
 
 	// ---- Cards ----
 
+	/** A double press: the key's pill says "Twice", outlined twice over. */
+	private View doubleCard(String glyph, @StringRes int what) {
+		return keyCard(getString(R.string.car_mode_double, glyph), what, false, true);
+	}
+
 	/** A key glyph in a pill (a "hold" one filled) and what it does. */
 	private View keyCard(String glyph, @StringRes int what, boolean hold) {
+		return keyCard(hold ? getString(R.string.car_mode_hold, glyph) : glyph, what, hold, false);
+	}
+
+	private View keyCard(String label, @StringRes int what, boolean hold, boolean dbl) {
 		LinearLayout row = new LinearLayout(palette);
 		row.setOrientation(LinearLayout.HORIZONTAL);
 		row.setGravity(Gravity.CENTER_VERTICAL);
@@ -295,7 +314,7 @@ public class CarModeFragment extends MainActivityFragment {
 		row.setBackground(bg);
 
 		TextView key = new TextView(palette);
-		key.setText(hold ? getString(R.string.car_mode_hold, glyph) : glyph);
+		key.setText(label);
 		key.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
 		key.setTypeface(Typeface.DEFAULT_BOLD);
 		key.setGravity(Gravity.CENTER);
@@ -306,13 +325,17 @@ public class CarModeFragment extends MainActivityFragment {
 		if (hold) {
 			kb.setColor(accent);
 			key.setTextColor(onAccent);
+		} else if (dbl) {
+			kb.setColor(ColorUtils.setAlphaComponent(accent, 0x30));
+			kb.setStroke(dp(3), accent);
+			key.setTextColor(accent);
 		} else {
 			kb.setColor(0);
 			kb.setStroke(dp(2), accent);
 			key.setTextColor(accent);
 		}
 		key.setBackground(kb);
-		// One width for every key, the longest's ("Hold ◀ ▶"): the descriptions all line up.
+		// One width for every key, the longest's ("Twice ◀"): the descriptions all line up.
 		row.addView(key, new LinearLayout.LayoutParams(dp(116), ViewGroup.LayoutParams.WRAP_CONTENT));
 
 		TextView t = text(what, 15, textPrimary, false);

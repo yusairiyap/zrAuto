@@ -42,7 +42,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 			Action.PRIVATE_MODE_TOGGLE, Action.REFUEL, Action.FAVORITE_ADD,
 			Action.PLAYLIST_ADD, Action.PLAY_AS_MUSIC, Action.YOUTUBE_SEARCH, Action.YOUTUBE_UP_NEXT,
 			Action.OPEN_FAVORITES, Action.OPEN_PLAYLISTS, Action.OPEN_DOWNLOADS, Action.DOWNLOAD_CURRENT,
-			Action.DOWNLOADS_PAUSE_RESUME);
+			Action.DOWNLOADS_PAUSE_RESUME, Action.ALL_IN_ONE, Action.AUDIO_EFFECTS, Action.SLEEP_TIMER);
 
 	private final Pref<IntSupplier> actionPref;
 	@Nullable
@@ -121,6 +121,23 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 				R.drawable.favorite_filled : R.drawable.favorite;
 		if (action == Action.PLAY_PAUSE)
 			return a.getMediaSessionCallback().isPlaying() ? R.drawable.pause : R.drawable.play;
+		if (action == Action.ALL_IN_ONE) return R.drawable.view_grid;
+		if (action == Action.AUDIO_EFFECTS) return R.drawable.equalizer;
+		if (action == Action.SLEEP_TIMER) return R.drawable.timer;
+		// The rest are only ever key bindings, but the All in One card can show any action.
+		if (action == Action.STOP) return R.drawable.stop;
+		if (action == Action.PLAY) return R.drawable.play;
+		if (action == Action.PAUSE) return R.drawable.pause;
+		if ((action == Action.PREV) || (action == Action.PREV_FOLDER)) return R.drawable.prev;
+		if ((action == Action.NEXT) || (action == Action.NEXT_FOLDER)) return R.drawable.next;
+		if (action == Action.RW) return R.drawable.rw;
+		if (action == Action.FF) return R.drawable.ff;
+		if ((action == Action.VOLUME_UP) || (action == Action.VOLUME_DOWN)) return R.drawable.volume_up;
+		if (action == Action.ACTIVATE_VOICE_CTRL) return R.drawable.record_voice;
+		if (action == Action.MENU) return me.aap.utils.R.drawable.menu;
+		if (action == Action.CP_MENU) return R.drawable.more;
+		if (action == Action.BACK_OR_EXIT) return me.aap.utils.R.drawable.back;
+		if (action == Action.EXIT) return R.drawable.exit;
 		return R.drawable.play_pause;
 	}
 
@@ -156,6 +173,8 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 						if (MusicPlayer.isEnabled()) addAction(a, fb, sb, Action.PLAY_AS_MUSIC, 1);
 						addAction(a, fb, sb, Action.VOLUME_MUTE_UNMUTE, 2);
 						addAction(a, fb, sb, Action.FULLSCREEN_TOGGLE, 3);
+						addAction(a, fb, sb, Action.AUDIO_EFFECTS, 4);
+						addAction(a, fb, sb, Action.SLEEP_TIMER, 5);
 					});
 			category(a, fb, b, R.id.fab_cat_screen, R.drawable.dim_screen, R.string.fab_cat_screen,
 					sb -> {
@@ -182,7 +201,10 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 						});
 			}
 			category(a, fb, b, R.id.fab_cat_tools, R.drawable.fuel, R.string.fab_cat_tools,
-					sb -> addAction(a, fb, sb, Action.REFUEL, 0));
+					sb -> {
+						addAction(a, fb, sb, Action.ALL_IN_ONE, 0);
+						addAction(a, fb, sb, Action.REFUEL, 1);
+					});
 			// Last item in the menu.
 			addSettings(a, b, R.id.fab_settings, R.drawable.fab, R.string.fab_settings,
 					SettingsFragment.SHOW_FAB_SETTINGS);

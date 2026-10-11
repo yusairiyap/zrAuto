@@ -135,6 +135,11 @@ public enum Action {
 			a(me.aap.fermata.ytdl.YtDownloadMenu::downloadCurrent)),
 	DOWNLOADS_PAUSE_RESUME(R.string.action_downloads_pause_resume,
 			a(a -> me.aap.fermata.ytdl.YtDownloadMenu.togglePause())),
+	// Persisted by ordinal: new actions only ever go at the end.
+	AUDIO_EFFECTS(R.string.action_audio_effects,
+			a(me.aap.fermata.ui.view.AllInOneMenu::openEffects)),
+	SLEEP_TIMER(R.string.action_sleep_timer, a(me.aap.fermata.ui.view.AllInOneMenu::showTimer)),
+	ALL_IN_ONE(R.string.action_all_in_one, a(me.aap.fermata.ui.view.AllInOneMenu::toggle)),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

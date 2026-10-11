@@ -159,6 +159,26 @@ the bars instead (Music, Car mode) opts out with `MainActivityFragment#collapses
 animate the bars' translation elsewhere without calling `scrollBars.reset(false)` first, the
 way `setBarsHidden`/`setVideoMode` do.
 
+## All in One card and car mode on web pages
+
+- **All in One** (`ui/view/AllInOneMenu`, settings page `ui/fragment/AllInOneFragment`, Settings >
+  Interface > All in One, and Interface > Android Auto > All in One for the car screen's own set via
+  the `*_AA` twins in `MainActivityPrefs.fabAA`): one card of tiles for any `Action`, opened by the
+  `ALL_IN_ONE` action (a key binding or a floating button), hosted on `R.id.main_activity` so it shows
+  over tabs and fullscreen video alike. Items are stored by `Action` *name* (`AIO_ITEMS`), not ordinal.
+  The Music tab's More is the same class (`showMusic`) with its own four tiles unless `AIO_MUSIC_MORE`
+  is on. Its timer page is the only sleep timer UI: the fullscreen control panel's Timer and its
+  countdown pill open it too (`showTimer`); there's no Hours/Minutes overlay menu any more. The
+  settings page's preview is built by the same class (`preview`), so the two can't drift apart.
+- **Car mode wrap-around**: `CarNav.wrapAround(root)` makes Next on a scope's last item go to its
+  first; only the All in One card uses it.
+- **Car mode on web pages** (`CarNav.findWebPage`, `action/WebNav`): on the YouTube or browser tab
+  with no panel open and not fullscreen, previous/next move an outline over the page's links and
+  buttons (a script in the page, run on every press), long next clicks, long previous is Back, and a
+  double press opens the search (previous) or goes fullscreen (next). Single presses there wait
+  `DBL_MS` for a possible second one. An open YouTube search / Up next panel is a normal CarNav scope
+  and is found first, so the page logic never sees those keys.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,
