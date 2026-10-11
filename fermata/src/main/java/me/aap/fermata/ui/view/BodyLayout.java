@@ -105,6 +105,7 @@ public class BodyLayout extends SplitLayout
 			end = fadeEnd;
 			alpha = fadeAlpha;
 		}
+		logTopFade(end > 0f);
 		if ((end != topFadeEnd) || (alpha != topFadeAlpha)) {
 			topFadeEnd = end;
 			topFadeAlpha = alpha;
@@ -192,6 +193,36 @@ public class BodyLayout extends SplitLayout
 	}
 
 	private final int[] statusLoc = new int[2];
+	// The last reason logged for the top fade being off, null while it's on: see logTopFade().
+	@Nullable
+	private String topFadeOffReason = "";
+
+	/**
+	 * Logs (to the Diagnostic log, when it's on) each time the top fade goes off or comes back,
+	 * with why -- it was seen staying off on every tab until the app restarted.
+	 */
+	private void logTopFade(boolean on) {
+		// Before a frame, every frame: nothing at all built unless the log is on.
+		if (!DiagnosticLog.isEnabled()) return;
+		String why = on ? null : whyNoTopFade();
+		if (java.util.Objects.equals(why, topFadeOffReason)) return;
+		topFadeOffReason = why;
+		DiagnosticLog.log("BODY", (why == null) ? "top fade on" : ("top fade off: " + why));
+	}
+
+	private String whyNoTopFade() {
+		if (getMode() != Mode.FRAME) return "mode " + getMode();
+		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
+		if (a == null) return "no activity";
+		if (a.isVideoMode()) return "video mode";
+		if (a.isTopInsetWebViewShown()) return "web page shown";
+		ActivityFragment f = a.getActiveFragment();
+		if (!(f instanceof MainActivityFragment mf) || !mf.drawsTopFade()) return "tab " + f;
+		View tb = a.getToolBar();
+		if (tb == null) return "no tool bar";
+		return "tool bar vis=" + tb.getVisibility() + " h=" + tb.getHeight() + " alpha=" +
+				tb.getAlpha() + " y=" + tb.getY();
+	}
 
 	/** How far the status bar reaches down into this layout, 0 if it ends above it. */
 	private float statusBarInside() {
@@ -224,8 +255,9 @@ public class BodyLayout extends SplitLayout
 		float hidden = (sb != null) ? sb.getToolBarHidden() : 0f;
 		float rest = (tb.getY() - slid + tb.getHeight()) - getTop() + topFadeLen;
 		// Down past the status bar too, where the content runs on behind it (edge to edge).
-		float edge = statusBarInside() + topFadeLen + topFadeEdge;
-		float end = rest + (edge - rest) * hidden;
+		// (Only worked out while it's away: asking for the window's insets every frame costs.)
+		float end = rest;
+		if (hidden > 0f) end += (statusBarInside() + topFadeLen + topFadeEdge - rest) * hidden;
 		if (end <= 0f) return false;
 		fadeEnd = end;
 		fadeAlpha = Math.min(1f, alpha);

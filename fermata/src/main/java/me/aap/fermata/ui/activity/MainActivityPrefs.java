@@ -115,6 +115,8 @@ public interface MainActivityPrefs
 	// The floating buttons shown together as one pill (see FabPillView) rather than as separate
 	// round buttons; on by default.
 	Pref<BooleanSupplier> FAB_PILL = Pref.b("FAB_PILL", true);
+	// The bars slide away as tab content scrolls down (see ScrollBarsController); on by default.
+	Pref<BooleanSupplier> SCROLL_HIDE_BARS = Pref.b("SCROLL_HIDE_BARS", true);
 	// 5% smaller than the original 1.0 out of the box.
 	Pref<DoubleSupplier> FAB_SIZE = Pref.f("FAB_SIZE", 0.95f);
 	// How many upcoming Favorites/Playlist entries the YouTube tab's Up next list previews below the

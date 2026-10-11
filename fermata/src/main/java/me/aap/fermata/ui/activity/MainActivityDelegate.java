@@ -2088,8 +2088,23 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * right under the tool bar's pill (see insetWebViewTop), so nothing may fade over it there.
 	 */
 	public boolean isTopInsetWebViewShown() {
+		// Only one on the tab in front: another tab's page may still count as shown (left visible
+		// by a tab switch's crossfade cut short), which once took the top fade off every other tab
+		// until the app was restarted.
+		ActivityFragment f = getActiveFragment();
+		View fv = (f != null) ? f.getView() : null;
+		if (fv == null) return false;
 		for (View v : topInsetContent) {
-			if (v.isShown()) return true;
+			if (v.isShown() && isInside(v, fv)) return true;
+		}
+		return false;
+	}
+
+	private static boolean isInside(View v, View parent) {
+		Object p = v;
+		while (p instanceof View pv) {
+			if (pv == parent) return true;
+			p = pv.getParent();
 		}
 		return false;
 	}
@@ -2109,7 +2124,9 @@ public class MainActivityDelegate extends ActivityDelegate
 		// As tall as its parent's room whatever the top (see insetWebViewTop()): one more tab padding
 		// it from above (the browser's tab strip) runs it that much further past the bottom too.
 		int pad = (content.getParent() instanceof View p) ? p.getPaddingTop() : 0;
-		int bottom = -(top + pad);
+		// Only while the bars may slide away at all: otherwise (the setting off, the car's screen)
+		// the page ends at the bottom of the screen as it always did.
+		int bottom = ((scrollBars != null) && scrollBars.isAllowed()) ? -(top + pad) : 0;
 		if ((mlp.topMargin == top) && (mlp.bottomMargin == bottom)) return;
 		mlp.topMargin = top;
 		mlp.bottomMargin = bottom;
@@ -2125,9 +2142,17 @@ public class MainActivityDelegate extends ActivityDelegate
 	void slideWebViews(float fraction) {
 		for (View v : topInsetContent) {
 			float dy = 0f;
-			if ((fraction != 0f) && (v.getLayoutParams() instanceof ViewGroup.MarginLayoutParams mlp)) {
-				int pad = (v.getParent() instanceof View p) ? p.getPaddingTop() : 0;
-				dy = -fraction * (mlp.topMargin + pad);
+			if ((fraction != 0f) && (v.getLayoutParams() instanceof ViewGroup.MarginLayoutParams mlp)
+					&& (v.getParent() instanceof View p)) {
+				// Up to the status bar's bottom edge, not behind it: the content runs on under the
+				// status bar (edge to edge), and the page's own top bar would end up under its icons.
+				int under = 0;
+				WindowInsetsCompat wi = ViewCompat.getRootWindowInsets(v);
+				if (wi != null) {
+					p.getLocationInWindow(insetLoc2);
+					under = Math.max(0, wi.getInsets(WindowInsetsCompat.Type.statusBars()).top - insetLoc2[1]);
+				}
+				dy = -fraction * Math.max(0, mlp.topMargin + p.getPaddingTop() - under);
 			}
 			if (v.getTranslationY() != dy) v.setTranslationY(dy);
 		}
@@ -2753,6 +2778,18 @@ public class MainActivityDelegate extends ActivityDelegate
 		enableBodyOverlayLayout();
 		scrollBars = new ScrollBarsController(this);
 		scrollBars.attach(body);
+		// A floating button tapped while the bars are scrolled away (the YouTube search, the Up next
+		// list): they come back, the tool bar above all, which whatever it opens goes with.
+		View.OnTouchListener showBars = (v, e) -> {
+			if ((e.getActionMasked() == MotionEvent.ACTION_UP) && (scrollBars != null)) {
+				scrollBars.reset(true);
+			}
+			return false;
+		};
+		for (View f : new View[]{floatingButton, floatingButton2, floatingButton3, floatingButton4,
+				floatingButton5, floatingButton6}) {
+			if (f != null) f.setOnTouchListener(showBars);
+		}
 		// Catch-all re-sync -- see refreshContentInsets() -- for content whose own attach/layout
 		// listeners missed the layout change they needed, most notably a tab restored by the
 		// fragment manager across the recreate() that a theme or nav-bar-position change triggers.
@@ -2875,6 +2912,11 @@ public class MainActivityDelegate extends ActivityDelegate
 			fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 		} else if (prefs.contains(MainActivityPrefs.fab(this, FAB_DRAGGABLE))) {
 			updateFabDraggable();
+		} else if (prefs.contains(MainActivityPrefs.SCROLL_HIDE_BARS)) {
+			// Turned off: everything back in place; the web pages laid out as before (see
+			// insetWebViewTop()).
+			if (scrollBars != null) scrollBars.reset(true);
+			refreshContentInsets();
 		} else if (prefs.contains(MainActivityPrefs.FAB_PILL)) {
 			if (fabPill != null) fabPill.setPill(getPrefs().getBooleanPref(MainActivityPrefs.FAB_PILL));
 			clearDraggableForPill();

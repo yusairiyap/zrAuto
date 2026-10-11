@@ -441,6 +441,12 @@ public class SettingsFragment extends MainActivityFragment
 					MainActivityPrefs.NAV_BAR_POS, MainActivityPrefs.NAV_BAR_SIZE,
 					MainActivityPrefs.TOOL_BAR_SIZE, MainActivityPrefs.CONTROL_PANEL_SIZE,
 					MainActivityPrefs.TEXT_ICON_SIZE, MainActivityPrefs.ICON_SIZE);
+			sub1.addBooleanPref(o -> {
+				o.store = a.getPrefs();
+				o.pref = MainActivityPrefs.SCROLL_HIDE_BARS;
+				o.title = R.string.scroll_hide_bars;
+				o.subtitle = R.string.scroll_hide_bars_sub;
+			});
 		}
 
 		sub1.addBooleanPref(o -> {

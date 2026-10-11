@@ -186,6 +186,7 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 		float navPlainA = ((nb.getVisibility() == VISIBLE) && (nb.getHeight() > 0)) ?
 				Math.max(0f, Math.min(1f, nb.getAlpha())) : 0f;
 		float newFadeA = a.isVideoMode() ? 0f : navPlainA * (1f - newGlass);
+		logFade(newFadeA > 0f, a, nb, newGlass);
 		float newFadeTop = 0f;
 		if ((pos == NavBarView.POSITION_BOTTOM) && (newFadeA > 0f)) {
 			float base = tmp.top;
@@ -213,6 +214,27 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 		}
 
 		return true;
+	}
+
+	// The last reason logged for the bottom fade being off, null while it's on: see logFade().
+	@Nullable
+	private String fadeOffReason = "";
+
+	/** Logs (Diagnostic log) each time the bottom fade goes off or comes back, with why. */
+	private void logFade(boolean on, MainActivityDelegate a, NavBarView nb, float glass) {
+		// Before a frame, every frame: nothing at all built unless the log is on.
+		if (!me.aap.fermata.util.DiagnosticLog.isEnabled()) return;
+		String why = null;
+		if (!on) {
+			if (a.isVideoMode()) why = "video mode";
+			else if (glass >= 1f) why = "glass (" + a.getActiveFragment() + ")";
+			else why = "nav bar vis=" + nb.getVisibility() + " h=" + nb.getHeight() + " alpha=" +
+						nb.getAlpha();
+		}
+		if (java.util.Objects.equals(why, fadeOffReason)) return;
+		fadeOffReason = why;
+		me.aap.fermata.util.DiagnosticLog.log("BODY",
+				(why == null) ? "bottom fade on" : ("bottom fade off: " + why));
 	}
 
 	/** How much of a bar is showing: 0 when it's gone, else its (transition) alpha. */

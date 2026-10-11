@@ -78,6 +78,8 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 	// The offset each floating button carries from this, on top of its own translation (a dragged
 	// button's place), see moveFab().
 	private final float[] fabDy = new float[6];
+	// The floating buttons, the primary one first (any may be null), see attach().
+	private View[] fabs = new View[0];
 	private int state = FULL;
 	private float progress;
 	// Whether the bars carry any transformation of ours, so a full, settled state leaves them alone
@@ -112,6 +114,10 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 
 	/** Starts following the window's scrolls; once, when the activity's views are set up. */
 	void attach(View root) {
+		FloatingButton[] extra = a.getExtraFloatingButtons();
+		fabs = new View[extra.length + 1];
+		fabs[0] = a.getFloatingButton();
+		System.arraycopy(extra, 0, fabs, 1, extra.length);
 		ViewTreeObserver o = root.getViewTreeObserver();
 		o.addOnScrollChangedListener(this);
 		o.addOnPreDrawListener(this);
@@ -135,6 +141,7 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 		if (!animate) {
 			if (anim != null) anim.cancel();
 			anim = null;
+			setLayers(false);
 			state = FULL;
 			progress = 0f;
 			if (applied) apply(true);
@@ -143,8 +150,17 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 		setState(FULL);
 	}
 
+	/**
+	 * Whether the bars make way for the content at all: the "Hide bars while scrolling" setting
+	 * (off, everything stays as it was before this existed), and never on the car's screen. Web
+	 * pages are only laid out to slide up when this is on, see MainActivityDelegate#insetWebViewTop.
+	 */
+	public boolean isAllowed() {
+		return !a.isCarActivity() && a.getPrefs().getBooleanPref(MainActivityPrefs.SCROLL_HIDE_BARS);
+	}
+
 	private boolean isEnabled() {
-		if (a.isCarActivity() || a.isVideoMode() || a.isBarsHidden()) return false;
+		if (!isAllowed() || a.isVideoMode() || a.isBarsHidden()) return false;
 		BodyLayout b = a.getBody();
 		if ((b == null) || !b.isFrameMode()) return false;
 		ActivityFragment f = a.getActiveFragment();
@@ -153,6 +169,11 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 
 	/** Every touch inside body_layout, before body_layout handles it -- never consumed here. */
 	public void onBodyTouch(ViewGroup body, MotionEvent e) {
+		// Turned off: no work at all on any touch (bars put back once, when it was turned off).
+		if ((target == null) && (state == FULL) && !applied &&
+				(e.getActionMasked() != MotionEvent.ACTION_DOWN)) {
+			return;
+		}
 		switch (e.getActionMasked()) {
 			case MotionEvent.ACTION_DOWN -> {
 				if (!isEnabled()) {
@@ -280,9 +301,11 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 		BodyLayout b = a.getBody();
 		if ((b == null) || !b.isLaidOut()) {
 			progress = to;
+			setLayers(false);
 			apply(true);
 			return;
 		}
+		setLayers(true);
 		ValueAnimator va = ValueAnimator.ofFloat(from, to);
 		va.setDuration(ANIM_MS);
 		// Eases in and out (Material's standard curve): starting gently reads smoother than the
@@ -291,8 +314,15 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 		va.addUpdateListener(v -> {
 			if (anim != v) return;
 			progress = (float) v.getAnimatedValue();
-			apply(true);
-			if (v.getAnimatedFraction() >= 1f) anim = null;
+			boolean end = v.getAnimatedFraction() >= 1f;
+			// The lists' bottom padding only once the bars have arrived: following them frame by
+			// frame relaid the whole list (a grid of covers) every frame of every step. Seen only at
+			// the very end of a list, where the gap now closes once, at the end of the slide.
+			apply(end);
+			if (end) {
+				anim = null;
+				setLayers(false);
+			}
 		});
 		anim = va;
 		va.start();
@@ -359,9 +389,10 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 
 		// The floating buttons stay just above whatever of the bottom bars still shows.
 		if (bottomNav) fabDyNow += n * Math.max(0, floor - nb.getTop());
-		boolean fabsLeft = moveFab(0, a.getFloatingButton(), fabDyNow);
-		FloatingButton[] extra = a.getExtraFloatingButtons();
-		for (int i = 0; i < extra.length; i++) fabsLeft |= moveFab(i + 1, extra[i], fabDyNow);
+		boolean fabsLeft = false;
+		for (int i = 0, n = Math.min(fabs.length, fabDy.length); i < n; i++) {
+			fabsLeft |= moveFab(i, fabs[i], fabDyNow);
+		}
 
 		// The tool bar slides up off the screen, the web pages up into its room.
 		if (tb.getMediator() != ToolBarView.Mediator.Invisible.instance) {
@@ -397,6 +428,29 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 		if (v.getTransitionAlpha() != alpha) v.setTransitionAlpha(alpha);
 	}
 
+	// Whether the bars are drawn through hardware layers for the length of a step, see setLayers().
+	private boolean layered;
+
+	/**
+	 * Hardware layers on the bars while a step animates: they fade (transition alpha), and a
+	 * fading view group without a layer of its own is drawn off screen and blended again on
+	 * every frame. Only on bars not already given a layer by someone else; off again after.
+	 */
+	private void setLayers(boolean on) {
+		if (layered == on) return;
+		layered = on;
+		for (View v : new View[]{a.getToolBar(), a.getNavBar(), a.getControlPanel()}) {
+			if (v == null) continue;
+			if (on && (v.getLayerType() == View.LAYER_TYPE_NONE)) {
+				v.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+				v.setTag(me.aap.fermata.R.id.scroll_bars_layer, Boolean.TRUE);
+			} else if (!on && (v.getTag(me.aap.fermata.R.id.scroll_bars_layer) == Boolean.TRUE)) {
+				v.setTag(me.aap.fermata.R.id.scroll_bars_layer, null);
+				v.setLayerType(View.LAYER_TYPE_NONE, null);
+			}
+		}
+	}
+
 	private static float clamp(float v) {
 		return Math.max(0f, Math.min(1f, v));
 	}
@@ -407,10 +461,8 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 	 */
 	public float getFabDy(@Nullable View fab) {
 		if (fab == null) return 0f;
-		if (fab == a.getFloatingButton()) return fabDy[0];
-		FloatingButton[] extra = a.getExtraFloatingButtons();
-		for (int i = 0; i < extra.length; i++) {
-			if (extra[i] == fab) return fabDy[i + 1];
+		for (int i = 0, n = Math.min(fabs.length, fabDy.length); i < n; i++) {
+			if (fabs[i] == fab) return fabDy[i];
 		}
 		return 0f;
 	}
