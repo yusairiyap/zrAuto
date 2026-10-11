@@ -213,6 +213,8 @@ public interface MainActivityPrefs
 	Pref<IntSupplier> THEME_AA = Pref.i("THEME_AA", THEME_DARK);
 	Pref<BooleanSupplier> HIDE_BARS_AA = AUTO ? Pref.b("HIDE_BARS_AA", false) : null;
 	Pref<BooleanSupplier> FULLSCREEN_AA = AUTO ? Pref.b("FULLSCREEN_AA", false) : null;
+	// The car screen's own "Hide bars while scrolling", see SCROLL_HIDE_BARS.
+	Pref<BooleanSupplier> SCROLL_HIDE_BARS_AA = AUTO ? Pref.b("SCROLL_HIDE_BARS_AA", true) : null;
 	Pref<BooleanSupplier> SHOW_PG_UP_DOWN_AA = AUTO ? Pref.b("SHOW_PG_UP_DOWN_AA", true) : null;
 	Pref<IntSupplier> TAP_ACTION_AA = AUTO ? Pref.i("TAP_ACTION_AA", 0) : null;
 	Pref<IntSupplier> NAV_BAR_POS_AA =
@@ -307,6 +309,11 @@ public interface MainActivityPrefs
 	static boolean hasFullscreenPref(MainActivityDelegate a, List<Pref<?>> prefs) {
 		if (AUTO && a.isCarActivity()) return prefs.contains(FULLSCREEN_AA);
 		return prefs.contains(FULLSCREEN);
+	}
+
+	/** "Hide bars while scrolling" for this screen: the car's own setting on the car's screen. */
+	default Pref<BooleanSupplier> getScrollHideBarsPref(MainActivityDelegate a) {
+		return (AUTO && a.isCarActivity()) ? SCROLL_HIDE_BARS_AA : SCROLL_HIDE_BARS;
 	}
 
 	default boolean getFullscreenPref(MainActivityDelegate a) {

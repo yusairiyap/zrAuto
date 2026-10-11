@@ -2028,16 +2028,24 @@ public class MainActivityDelegate extends ActivityDelegate
 		// layout's own constraints), but control_panel is routinely GONE while just browsing (nothing
 		// playing), in which case nav_bar alone still needs clearing if it's the bottom-positioned one.
 		int bottom = 0;
+		// While the bars are scrolled away (ScrollBarsController): laid out for the step it says, from
+		// where the bars rest, not frame by frame as they slide (that relaid the list every frame).
+		ScrollBarsController sb = scrollBars;
+		int step = (sb != null) ? sb.getInsetState() : ScrollBarsController.FULL;
 		// A suppressed panel (the Music tab) doesn't count even while it's still showing, e.g. until
 		// the video mode it was left in ends: it's about to go, and the content is laid out without it.
-		if ((controlPanel.getVisibility() == VISIBLE) && !controlPanel.isSuppressed()) {
+		if ((controlPanel.getVisibility() == VISIBLE) && !controlPanel.isSuppressed()
+				&& (step < ScrollBarsController.PANEL_HIDDEN)) {
 			controlPanel.getLocationOnScreen(insetLoc2);
-			bottom = Math.max(bottom, Math.max(0, contentBottom - insetLoc2[1]));
+			int cpTop = insetLoc2[1] - ((sb != null) ? Math.round(sb.getPanelDy()) : 0);
+			bottom = Math.max(bottom, Math.max(0, contentBottom - cpTop));
 		}
 		if ((navBar != null) && (navBar.getVisibility() == VISIBLE)
-				&& (getPrefs().getNavBarPosPref(this) == NavBarView.POSITION_BOTTOM)) {
+				&& (getPrefs().getNavBarPosPref(this) == NavBarView.POSITION_BOTTOM)
+				&& (step < ScrollBarsController.NAV_HIDDEN)) {
 			navBar.getLocationOnScreen(insetLoc2);
-			bottom = Math.max(bottom, Math.max(0, contentBottom - insetLoc2[1]));
+			int nbTop = insetLoc2[1] - ((sb != null) ? Math.round(sb.getNavDy()) : 0);
+			bottom = Math.max(bottom, Math.max(0, contentBottom - nbTop));
 		}
 
 		out[0] = top;
@@ -2912,7 +2920,8 @@ public class MainActivityDelegate extends ActivityDelegate
 			fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 		} else if (prefs.contains(MainActivityPrefs.fab(this, FAB_DRAGGABLE))) {
 			updateFabDraggable();
-		} else if (prefs.contains(MainActivityPrefs.SCROLL_HIDE_BARS)) {
+		} else if (prefs.contains(MainActivityPrefs.SCROLL_HIDE_BARS) ||
+				(AUTO && prefs.contains(MainActivityPrefs.SCROLL_HIDE_BARS_AA))) {
 			// Turned off: everything back in place; the web pages laid out as before (see
 			// insetWebViewTop()).
 			if (scrollBars != null) scrollBars.reset(true);

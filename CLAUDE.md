@@ -136,7 +136,8 @@ chasing the wrong theory for, as has happened before. If you add a dialog via
 `MainActivityDelegate` overrides) — no extra step needed there.
 
 **Bars collapse on scroll** (Settings > Interface > "Hide bars while scrolling", `SCROLL_HIDE_BARS`,
-on by default; off leaves the bars and web page layout exactly as before). `ScrollBarsController` (owned by `MainActivityDelegate`, fed by
+and `SCROLL_HIDE_BARS_AA` for the car screen, both on by default; off leaves the bars and web page
+layout exactly as before). `ScrollBarsController` (owned by `MainActivityDelegate`, fed by
 `BodyLayout#dispatchTouchEvent`) hides the bars one step at a time as tab content scrolls down:
 `control_panel` (tucked behind a bottom nav bar, clipped at its top edge), then a bottom `nav_bar`,
 then `tool_bar`; scrolling up brings them back in reverse (all shown at the top), and the floating
@@ -145,7 +146,8 @@ reset it to `scrollBars.getFabDy(fab)`, not 0 (see `resetFabPosition`). The bars
 through their *transition* alpha (Android 10+), which nothing else animates on them; the top and
 bottom edge fades (`BodyLayout#computeTopFade`, `FloatingBarsView`) read only the plain alpha, so they
 stay on screen (narrowed to a strip) while the bars are scrolled away. List padding follows the bars
-only at the end of each step, not per frame (a per-frame `setPadding` relaid the whole grid every frame).
+only once each step has ended *and* the content has stopped moving (`getInsetState`, `settleInsets`):
+a per-frame or mid-fling `setPadding` relays the whole grid and stutters the scroll.
 When either edge fade goes off, the reason is written to the Diagnostic log ("top fade off: ..."). It only translates the bars, never resizes anything (the YouTube
 WebView restarts its player on a resize): a web page is laid out as tall as its parent with a
 negative bottom margin matching its top one (`insetWebViewTop`) and slides up into the tool bar's
