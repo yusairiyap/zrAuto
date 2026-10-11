@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- The outline of a Material switch's track: none when on, a faint one when off. -->
+    <!-- The outline of a Material switch's track: none when on, none when off either. -->
     <item android:alpha="0" android:color="?attr/colorControlActivated" android:state_checked="true" />
-    <item android:alpha="0.45" android:color="?attr/colorControlNormal" android:state_checked="false" />
+    <item android:alpha="0" android:color="?attr/colorControlNormal" android:state_checked="false" />
 </selector>

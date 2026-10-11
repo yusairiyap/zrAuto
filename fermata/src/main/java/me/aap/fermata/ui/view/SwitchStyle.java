@@ -36,18 +36,17 @@ public final class SwitchStyle {
 	 */
 	public static void apply(SwitchCompat s, int accent, int onAccent, int textSecondary, int background) {
 		float d = s.getResources().getDisplayMetrics().density;
-		// Off is made of the dim text colour itself, a translucent track with an outline and an opaque
+		// Off is made of the dim text colour itself, a translucent track and an opaque
 		// thumb, so it reads on any card. (Not blended onto a background colour: the chip fills the
 		// switches sit on are translucent, and forcing them opaque turned the whole switch white.)
-		int offTrack = ColorUtils.setAlphaComponent(textSecondary, 0x40);
-		int offStroke = ColorUtils.setAlphaComponent(textSecondary, 0xA0);
+		int offTrack = ColorUtils.setAlphaComponent(textSecondary, 0x50);
 		int offThumb = ColorUtils.setAlphaComponent(textSecondary, 0xFF);
 
 		int w = Math.round(46 * d);
 		int h = Math.round(26 * d);
 		StateListDrawable track = new StateListDrawable();
 		track.addState(new int[]{android.R.attr.state_checked}, pill(accent, 0, 0, w, h, d));
-		track.addState(new int[]{}, pill(offTrack, offStroke, 2, w, h, d));
+		track.addState(new int[]{}, pill(offTrack, 0, 0, w, h, d));
 
 		// A disc a little smaller than the track is tall, so it sits inside it with an even gap.
 		int gap = Math.round(5 * d);
