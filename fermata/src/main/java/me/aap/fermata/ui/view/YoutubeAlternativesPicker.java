@@ -63,6 +63,7 @@ import me.aap.fermata.spotify.YoutubeSearch;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.fragment.MediaLibFragment;
 import me.aap.fermata.ui.fragment.SpotifyImportFragment;
+import me.aap.fermata.ytdl.YtOffline;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.ui.UiUtils;
@@ -123,6 +124,20 @@ public final class YoutubeAlternativesPicker {
 	private boolean failed;
 	private boolean replacing;
 	private int generation;
+	// The one line of controls the card shrinks to at the top while a video is previewed.
+	private View fullContent;
+	private LinearLayout miniContent;
+	private TextView miniTitle;
+	private View miniPrev;
+	private View miniNext;
+	private View miniSet;
+	private FrameLayout.LayoutParams cardLp;
+	private int fullH;
+	private int centerTop;
+	private int topTarget;
+	private boolean mini;
+	private int previewIndex = -1;
+	private android.animation.ValueAnimator morph;
 
 	private YoutubeAlternativesPicker(MainActivityDelegate a, Context ctx, ViewGroup host,
 																		PlayableItem item, boolean fromMenu) {
@@ -295,11 +310,24 @@ public final class YoutubeAlternativesPicker {
 		bg.setCornerRadius(dp(28));
 		card.setBackground(bg);
 		card.setElevation(dp(12));
+		fullContent = root;
 		card.addView(root, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		miniContent = buildMini();
+		miniContent.setVisibility(View.GONE);
+		card.addView(miniContent, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 
-		// As tall as there is room for: the card keeps its size while the results come in.
-		FrameLayout.LayoutParams lp = OverlayCard.params(a, host, Integer.MAX_VALUE);
-		overlay.addView(card, lp);
+		// As tall as there is room for: the card keeps its size while the results come in. It is
+		// placed from the top by margin (not centered by gravity), so it can slide up to the top.
+		FrameLayout.LayoutParams base = OverlayCard.params(a, host, Integer.MAX_VALUE);
+		int room = host.getHeight() - base.topMargin - base.bottomMargin;
+		fullH = base.height;
+		centerTop = base.topMargin + Math.max(0, (room - fullH) / 2);
+		topTarget = base.topMargin + dp(8);
+		cardLp = new FrameLayout.LayoutParams(base.width, fullH, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+		cardLp.leftMargin = base.leftMargin;
+		cardLp.rightMargin = base.rightMargin;
+		cardLp.topMargin = centerTop;
+		overlay.addView(card, cardLp);
 		host.addView(overlay, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 
 		card.setTranslationY(dp(120));
@@ -427,19 +455,163 @@ public final class YoutubeAlternativesPicker {
 	// What the rows do
 
 	private void play(Video v) {
+		// A downloaded video that is the current one plays from YouTube, not from its file: its page
+		// has the quality, the comments and the rest, which a tap here is after.
+		if (isCurrent(v) && YtOffline.useLocal(v.videoId)) YtOffline.forceStream(v.videoId);
 		SpotifyImportFragment.previewVideo(a, v);
 	}
 
 	/** A tap on a row. */
 	private void onRowTap(Video v) {
 		if (replacing) return;
-		if (car || !canReplace || !fromMenu) {
+		if (!fromMenu) {
+			// For what plays: the row plays and the panel is done.
 			play(v);
-		} else if (isCurrent(v)) {
 			dismiss();
+		} else if (!canReplace || car || isCurrent(v)) {
+			startPreview(rows.indexOf(v));
 		} else {
 			replaceWith(v);
 		}
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Preview: the card shrinks to one line of controls at the top, to step through the list
+
+	private void startPreview(int i) {
+		if ((i < 0) || (i >= rows.size())) return;
+		previewIndex = i;
+		play(rows.get(i));
+		updateMini();
+		if (!mini) morphTo(true);
+	}
+
+	private void updateMini() {
+		if ((previewIndex < 0) || (previewIndex >= rows.size())) return;
+		Video v = rows.get(previewIndex);
+		miniTitle.setText((previewIndex + 1) + "/" + rows.size() + "  " +
+				MusicTrackItem.titleWithoutArtist(v.title, v.channel));
+		miniPrev.setAlpha((previewIndex > 0) ? 1f : 0.35f);
+		miniNext.setAlpha((previewIndex < rows.size() - 1) ? 1f : 0.35f);
+		miniSet.setVisibility((canReplace && !isCurrent(v)) ? View.VISIBLE : View.GONE);
+	}
+
+	/** Animates the card between the full list (centered) and the one-line controls (at the top). */
+	private void morphTo(boolean toMini) {
+		if (mini == toMini) return;
+		mini = toMini;
+		if (morph != null) morph.cancel();
+		View hide = toMini ? fullContent : miniContent;
+		View show = toMini ? miniContent : fullContent;
+		show.setVisibility(View.VISIBLE);
+		show.setAlpha(0f);
+		hide.animate().alpha(0f).setDuration(120).start();
+		show.animate().alpha(1f).setStartDelay(120).setDuration(180).start();
+
+		// Out of the way of the page it plays on: nothing dims, and touches go through to it.
+		if (toMini) {
+			overlay.setOnClickListener(null);
+			overlay.setClickable(false);
+		} else {
+			overlay.setOnClickListener(v -> dismiss());
+		}
+
+		int fromH = cardLp.height;
+		int toH = toMini ? dp(MINI_DP) : fullH;
+		int fromT = cardLp.topMargin;
+		int toT = toMini ? topTarget : centerTop;
+		android.animation.ValueAnimator va = android.animation.ValueAnimator.ofFloat(0f, 1f);
+		va.setDuration(320);
+		va.setInterpolator(new DecelerateInterpolator(1.5f));
+		va.addUpdateListener(x -> {
+			float f = (float) x.getAnimatedValue();
+			cardLp.height = Math.round(fromH + (toH - fromH) * f);
+			cardLp.topMargin = Math.round(fromT + (toT - fromT) * f);
+			card.setLayoutParams(cardLp);
+			float dim = toMini ? 1f - f : f;
+			overlay.setBackgroundColor(Math.round(0x55 * dim) << 24);
+		});
+		va.addListener(new android.animation.AnimatorListenerAdapter() {
+			private boolean cancelled;
+
+			@Override
+			public void onAnimationCancel(android.animation.Animator animation) {
+				cancelled = true;
+			}
+
+			@Override
+			public void onAnimationEnd(android.animation.Animator animation) {
+				if (cancelled) return;
+				hide.setVisibility(View.GONE);
+				hide.setAlpha(1f);
+				if (!toMini) {
+					// Back to the list where the preview is.
+					list.scrollToPosition(Math.max(0, previewIndex));
+				}
+			}
+		});
+		morph = va;
+		va.start();
+	}
+
+	private static final int MINI_DP = 64;
+
+	private LinearLayout buildMini() {
+		LinearLayout m = new LinearLayout(ctx);
+		m.setOrientation(LinearLayout.HORIZONTAL);
+		m.setGravity(Gravity.CENTER_VERTICAL);
+		m.setPadding(dp(10), dp(6), dp(10), dp(6));
+
+		miniPrev = roundButton(R.drawable.prev, chipFill, primary, R.string.youtube_alt_prev);
+		miniPrev.setOnClickListener(v -> startPreview(previewIndex - 1));
+		miniNext = roundButton(R.drawable.next, chipFill, primary, R.string.youtube_alt_next);
+		miniNext.setOnClickListener(v -> startPreview(previewIndex + 1));
+		m.addView(miniPrev, new LinearLayout.LayoutParams(dp(42), dp(42)));
+		LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(dp(42), dp(42));
+		nlp.setMarginStart(dp(6));
+		m.addView(miniNext, nlp);
+
+		miniTitle = text("", 13, primary, true);
+		miniTitle.setSingleLine(true);
+		miniTitle.setEllipsize(TextUtils.TruncateAt.END);
+		miniTitle.setPadding(dp(10), 0, dp(6), 0);
+		m.addView(miniTitle, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+
+		miniSet = roundButton(me.aap.utils.R.drawable.check, accent, onAccent, R.string.youtube_alt_set);
+		miniSet.setOnClickListener(v -> {
+			if ((previewIndex >= 0) && (previewIndex < rows.size()) && !replacing) {
+				replaceWith(rows.get(previewIndex));
+			}
+		});
+		m.addView(miniSet, new LinearLayout.LayoutParams(dp(42), dp(42)));
+
+		TextView more = pill(ctx.getString(R.string.youtube_alt_search_more));
+		more.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+		more.setPadding(dp(12), 0, dp(12), 0);
+		more.setOnClickListener(v -> morphTo(false));
+		LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(WRAP_CONTENT, dp(42));
+		mlp.setMarginStart(dp(6));
+		m.addView(more, mlp);
+
+		View close = roundButton(me.aap.utils.R.drawable.close, chipFill, primary, R.string.close);
+		close.setOnClickListener(v -> dismiss());
+		LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(dp(42), dp(42));
+		clp.setMarginStart(dp(6));
+		m.addView(close, clp);
+		return m;
+	}
+
+	private View roundButton(int icon, int fill, int tint, int description) {
+		FrameLayout b = new FrameLayout(ctx);
+		b.setBackground(pressable(fill, 21));
+		b.setClickable(true);
+		b.setFocusable(true);
+		b.setContentDescription(ctx.getString(description));
+		ImageView iv = new ImageView(ctx);
+		iv.setImageResource(icon);
+		iv.setImageTintList(ColorStateList.valueOf(tint));
+		b.addView(iv, new FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER));
+		return b;
 	}
 
 	/**
@@ -637,9 +809,9 @@ public final class YoutubeAlternativesPicker {
 				actionIcon.setImageResource(R.drawable.play);
 				actionIcon.setImageTintList(ColorStateList.valueOf(primary));
 				action.setContentDescription(ctx.getString(R.string.youtube_alt_play));
-				action.setOnClickListener(x -> play(v));
+				action.setOnClickListener(x -> startPreview(rows.indexOf(v)));
 				row.setOnLongClickListener(x -> {
-					play(v);
+					startPreview(rows.indexOf(v));
 					return true;
 				});
 			} else {
@@ -685,8 +857,10 @@ public final class YoutubeAlternativesPicker {
 		if (dismissing) return;
 		dismissing = true;
 		cleanUp();
+		if (morph != null) morph.cancel();
 		overlay.animate().alpha(0f).setDuration(180).start();
-		card.animate().translationY(dp(120)).alpha(0f).setDuration(200)
+		// From the top, it goes back up.
+		card.animate().translationY(mini ? -dp(80) : dp(120)).alpha(0f).setDuration(200)
 				.setInterpolator(new AccelerateInterpolator(1.4f)).withEndAction(this::remove).start();
 	}
 

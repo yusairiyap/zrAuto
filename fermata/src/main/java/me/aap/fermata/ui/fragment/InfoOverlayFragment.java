@@ -10,13 +10,11 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
-import android.widget.SeekBar;
 import android.widget.TextView;
 
 import androidx.annotation.DrawableRes;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
-import androidx.appcompat.widget.SwitchCompat;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,12 +36,6 @@ import me.aap.utils.pref.PreferenceStore.Pref;
  */
 public class InfoOverlayFragment extends ReorderListFragment {
 	private final List<TextView> posChips = new ArrayList<>();
-	@Nullable
-	private SwitchCompat onlyWithPanel;
-	@Nullable
-	private SeekBar sizeBar;
-	@Nullable
-	private TextView sizeValue;
 
 	@Override
 	public int getFragmentId() {
@@ -273,60 +265,13 @@ public class InfoOverlayFragment extends ReorderListFragment {
 		}
 		h.addView(chips, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
-		// Only while the control panel is up.
-		LinearLayout row = new LinearLayout(palette);
-		row.setOrientation(LinearLayout.HORIZONTAL);
-		row.setGravity(Gravity.CENTER_VERTICAL);
-		row.setPadding(dp(16), dp(12), dp(12), dp(12));
-		row.setBackground(pressable(rounded(tileFill, 16)));
-		TextView label = text(R.string.info_overlay_only_when_control_panel_visible, 15, textPrimary, true);
-		row.addView(label, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
-		SwitchCompat sw = new SwitchCompat(palette);
-		sw.setOnCheckedChangeListener((b, on) ->
-				prefs().applyBooleanPref(MainActivityPrefs.INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE, on));
-		onlyWithPanel = sw;
-		row.addView(sw);
-		row.setOnClickListener(v -> sw.toggle());
-		LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		rlp.topMargin = dp(12);
-		h.addView(row, rlp);
-
-		// Size.
-		LinearLayout sizeRow = new LinearLayout(palette);
-		sizeRow.setOrientation(LinearLayout.VERTICAL);
-		sizeRow.setPadding(dp(16), dp(12), dp(16), dp(8));
-		sizeRow.setBackground(rounded(tileFill, 16));
-		LinearLayout top = new LinearLayout(palette);
-		top.setOrientation(LinearLayout.HORIZONTAL);
-		top.addView(text(R.string.info_overlay_size, 15, textPrimary, true),
-				new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
-		TextView value = text(0, 14, textSecondary, true);
-		sizeValue = value;
-		top.addView(value);
-		sizeRow.addView(top);
-		SeekBar bar = new SeekBar(palette);
-		bar.setMax(30);
-		bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-			@Override
-			public void onProgressChanged(SeekBar s, int progress, boolean fromUser) {
-				float size = (10 + progress) * 0.05f;
-				value.setText(String.format(Locale.getDefault(), "%.2f×", size));
-				if (fromUser) prefs().applyFloatPref(MainActivityPrefs.INFO_OVERLAY_SIZE, size);
-			}
-
-			@Override
-			public void onStartTrackingTouch(SeekBar s) {
-			}
-
-			@Override
-			public void onStopTrackingTouch(SeekBar s) {
-			}
-		});
-		sizeBar = bar;
-		sizeRow.addView(bar, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-		LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		slp.topMargin = dp(8);
-		h.addView(sizeRow, slp);
+		addSwitchRow(h, R.string.info_overlay_only_when_control_panel_visible, 0,
+				() -> prefs().getBooleanPref(MainActivityPrefs.INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE),
+				on -> prefs().applyBooleanPref(MainActivityPrefs.INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE, on),
+				null);
+		addSliderRow(h, R.string.info_overlay_size, 10, 40, 0.05f,
+				() -> prefs().getFloatPref(MainActivityPrefs.INFO_OVERLAY_SIZE),
+				v -> prefs().applyFloatPref(MainActivityPrefs.INFO_OVERLAY_SIZE, (float) v));
 
 		section(h, R.string.info_overlay_items);
 		TextView hint = text(R.string.info_overlay_items_hint, 13, textSecondary, false);
@@ -345,28 +290,11 @@ public class InfoOverlayFragment extends ReorderListFragment {
 			fill.setColor(sel ? accent : tileFill);
 			c.setTextColor(sel ? onAccent : textPrimary);
 		}
-		SwitchCompat sw = onlyWithPanel;
-		if (sw != null) {
-			boolean on = p.getBooleanPref(MainActivityPrefs.INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE);
-			if (sw.isChecked() != on) sw.setChecked(on);
-		}
-		SeekBar bar = sizeBar;
-		if (bar != null) {
-			int progress = Math.max(0, Math.min(30,
-					Math.round(p.getFloatPref(MainActivityPrefs.INFO_OVERLAY_SIZE) / 0.05f) - 10));
-			if (bar.getProgress() != progress) bar.setProgress(progress);
-			else if (sizeValue != null) {
-				sizeValue.setText(String.format(Locale.getDefault(), "%.2f×", (10 + progress) * 0.05f));
-			}
-		}
 	}
 
 	@Override
 	public void onDestroyView() {
 		posChips.clear();
-		onlyWithPanel = null;
-		sizeBar = null;
-		sizeValue = null;
 		super.onDestroyView();
 	}
 }

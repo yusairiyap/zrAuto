@@ -20,6 +20,7 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.SeekBar;
 import android.widget.TextView;
 
 import androidx.annotation.DrawableRes;
@@ -39,6 +40,7 @@ import java.util.List;
 import me.aap.fermata.R;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.EffectsUi;
+import me.aap.fermata.ui.view.SwitchStyle;
 import me.aap.utils.ui.UiUtils;
 
 /**
@@ -95,6 +97,8 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 	@Nullable
 	private ItemTouchHelper dragHelper;
 	private final Adapter adapter = new Adapter();
+	/** Bring the option rows above the list in line with their settings (after a reload or Reset). */
+	private final List<Runnable> syncers = new ArrayList<>();
 
 	// ---- What a page says ----
 
@@ -192,6 +196,7 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 		header = null;
 		footer = null;
 		dragHelper = null;
+		syncers.clear();
 		super.onDestroyView();
 	}
 
@@ -207,6 +212,7 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 		rows.clear();
 		rows.addAll(loadRows());
 		adapter.notifyDataSetChanged();
+		for (Runnable r : syncers) r.run();
 		onReloaded();
 	}
 
@@ -373,6 +379,7 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 		row.addView(texts, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
 
 		SwitchCompat toggle = new SwitchCompat(palette);
+		SwitchStyle.apply(toggle, palette);
 		row.addView(toggle, new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
 
 		ImageView more = new ImageView(palette);
@@ -517,6 +524,108 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 				saveOrder(keys);
 			}
 		}
+	}
+
+	/**
+	 * A row of options above the list: a title, a line under it and a switch on the right. The
+	 * switch follows {@code get} (also after a Reset), and {@code enabled}, if given, greys the row
+	 * out (and shows it off) while it is false.
+	 */
+	protected final void addSwitchRow(LinearLayout parent, @StringRes int title, @StringRes int sub,
+																		java.util.function.BooleanSupplier get,
+																		java.util.function.Consumer<Boolean> set,
+																		@Nullable java.util.function.BooleanSupplier enabled) {
+		LinearLayout row = new LinearLayout(palette);
+		row.setOrientation(LinearLayout.HORIZONTAL);
+		row.setGravity(Gravity.CENTER_VERTICAL);
+		row.setPadding(dp(16), dp(12), dp(12), dp(12));
+		row.setBackground(pressable(rounded(tileFill, 16)));
+		row.setClickable(true);
+		row.setFocusable(true);
+		LinearLayout labels = new LinearLayout(palette);
+		labels.setOrientation(LinearLayout.VERTICAL);
+		labels.addView(text(title, 15, textPrimary, true));
+		if (sub != 0) labels.addView(text(sub, 12.5f, textSecondary, false));
+		row.addView(labels, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		SwitchCompat sw = new SwitchCompat(palette);
+		SwitchStyle.apply(sw, palette);
+		row.addView(sw);
+		boolean[] syncing = {false};
+		sw.setOnCheckedChangeListener((b, on) -> {
+			if (!syncing[0]) set.accept(on);
+			for (Runnable r : syncers) r.run();
+		});
+		row.setOnClickListener(v -> {
+			if ((enabled == null) || enabled.getAsBoolean()) sw.toggle();
+		});
+		syncers.add(() -> {
+			boolean on = get.getAsBoolean();
+			boolean usable = (enabled == null) || enabled.getAsBoolean();
+			syncing[0] = true;
+			sw.setChecked(on && usable);
+			syncing[0] = false;
+			sw.setEnabled(usable);
+			labels.setAlpha(usable ? 1f : 0.45f);
+		});
+		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		lp.topMargin = dp(10);
+		parent.addView(row, lp);
+	}
+
+	/**
+	 * A slider row above the list: the title and the value ("1.00×") over a seek bar in the control
+	 * panel's own style, from {@code min} to {@code max} in steps of {@code step}.
+	 */
+	protected final void addSliderRow(LinearLayout parent, @StringRes int title, int min, int max,
+																		float step, java.util.function.DoubleSupplier get,
+																		java.util.function.DoubleConsumer set) {
+		LinearLayout row = new LinearLayout(palette);
+		row.setOrientation(LinearLayout.VERTICAL);
+		row.setPadding(dp(16), dp(12), dp(16), dp(6));
+		row.setBackground(rounded(tileFill, 16));
+		LinearLayout top = new LinearLayout(palette);
+		top.setOrientation(LinearLayout.HORIZONTAL);
+		top.addView(text(title, 15, textPrimary, true), new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		TextView value = text(0, 14, textSecondary, true);
+		top.addView(value);
+		row.addView(top);
+		SeekBar bar = newSeekBar();
+		bar.setMax(max - min);
+		bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+			@Override
+			public void onProgressChanged(SeekBar s, int progress, boolean fromUser) {
+				float v = (min + progress) * step;
+				value.setText(String.format(java.util.Locale.getDefault(), "%.2f×", v));
+				if (fromUser) set.accept(v);
+			}
+
+			@Override
+			public void onStartTrackingTouch(SeekBar s) {
+			}
+
+			@Override
+			public void onStopTrackingTouch(SeekBar s) {
+			}
+		});
+		row.addView(bar, new LinearLayout.LayoutParams(MATCH_PARENT, dp(36)));
+		syncers.add(() -> {
+			int progress = Math.max(0, Math.min(max - min, Math.round((float) get.getAsDouble() / step) - min));
+			if (bar.getProgress() != progress) bar.setProgress(progress);
+			else value.setText(String.format(java.util.Locale.getDefault(), "%.2f×", (min + progress) * step));
+		});
+		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		lp.topMargin = dp(10);
+		parent.addView(row, lp);
+	}
+
+	/** A seek bar in the style of the control panel's (same track thickness, thumb and colours). */
+	protected final SeekBar newSeekBar() {
+		Context ctx = requireContext();
+		TypedValue tv = new TypedValue();
+		if (ctx.getTheme().resolveAttribute(R.attr.appSeekBarStyle, tv, true) && (tv.resourceId != 0)) {
+			return new SeekBar(ctx, null, 0, tv.resourceId);
+		}
+		return new SeekBar(ctx);
 	}
 
 	// ---- Helpers for the pages ----

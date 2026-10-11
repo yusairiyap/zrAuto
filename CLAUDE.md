@@ -210,6 +210,15 @@ way `setBarsHidden`/`setVideoMode` do.
   (the old fragment is gone). The current video is always row 0. From an item's menu a tap replaces, the play
   button previews; from the `YOUTUBE_ALTERNATIVES` action (FAB / All in One / key) a tap plays and the check
   button sets. Car mode never replaces (tap = play; long next taps, long previous goes back to now playing).
+- **Floating button settings** are `FabSettingsFragment` (rows for FAB2 to FAB6; dragging swaps each slot's
+  shown/action prefs; the pill, draggable and size options sit above, via `ReorderListFragment#addSwitchRow` /
+  `addSliderRow`). Sliders there use the control panel's own `appSeekBarStyle` (`newSeekBar`); switches built in
+  code use `SwitchStyle` (opaque pill + disc, accent when on, dimmed when off), XML ones the `switch_*_tint`
+  colors and `AppTheme.MaterialSwitch`.
+- **Alternative video, from an item's menu**: a preview (▶, or a tap where nothing can be replaced) morphs the
+  card into one line of controls at the top (`morphTo`: previous / next / Use / Search more / close) and plays
+  it; Search more morphs back. From the action, a tap plays and closes. Tapping the current video when it is
+  downloaded plays it from YouTube (`YtOffline.forceStream`, cleared by a tap in Downloads).
 - **Menus and dialogs fade out** because `OverlayMenuView#hide` keeps the content on screen until the fade
   ends (`fadingOut`); it used to remove the content first, which made every close look like a hard cut and
   killed the dialog closing animation in `DialogStyle`.

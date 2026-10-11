@@ -30,11 +30,34 @@ public final class YtOffline {
 	private YtOffline() {
 	}
 
+	private static final long FORCED_STREAM_MS = 15 * 60 * 1000L;
+	@Nullable
+	private static volatile String forcedStreamId;
+	private static volatile long forcedStreamUntil;
+
+	/**
+	 * Plays {@code videoId} streamed from YouTube for a while although it is downloaded (so its page
+	 * is there: quality, comments, ...). Ends when the time is up or {@link #clearForcedStream} says so,
+	 * e.g. when the downloaded copy is played from the Downloads tab.
+	 */
+	public static void forceStream(@Nullable String videoId) {
+		forcedStreamId = videoId;
+		forcedStreamUntil = android.os.SystemClock.uptimeMillis() + FORCED_STREAM_MS;
+	}
+
+	public static void clearForcedStream() {
+		forcedStreamId = null;
+	}
+
 	/**
 	 * Whether {@code videoId} plays from its downloaded copy: always when there is one, so a video
 	 * that was downloaded never uses the internet again -- the point of downloading it.
 	 */
 	public static boolean useLocal(@Nullable String videoId) {
+		if ((videoId != null) && videoId.equals(forcedStreamId) &&
+				(android.os.SystemClock.uptimeMillis() < forcedStreamUntil)) {
+			return false;
+		}
 		// A file that has gone (deleted by hand, being fetched again) is no copy: the video is
 		// streamed rather than handed to a player as the address of its watch page.
 		return YtDownloads.get().isDownloaded(videoId) && (YtDownloads.get().getFile(videoId) != null);

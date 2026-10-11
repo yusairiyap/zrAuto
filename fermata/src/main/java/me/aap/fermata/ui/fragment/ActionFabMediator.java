@@ -261,6 +261,11 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 																	@DrawableRes int icon, @StringRes int title, Object show) {
 		b.addItem(id, icon, title).setHandler(item -> {
 			a.exitVideoMode();
+			// The floating buttons have their own page (the car's own set on the car screen).
+			if (show == SettingsFragment.SHOW_FAB_SETTINGS) {
+				a.showFragment(R.id.fab_settings_fragment, a.isCarActivity());
+				return true;
+			}
 			a.showFragment(R.id.settings_fragment, show);
 			return true;
 		});
