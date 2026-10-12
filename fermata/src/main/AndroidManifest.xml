@@ -876,6 +876,11 @@
             android:foregroundServiceType="dataSync" />
 
         <service
+            android:name="me.aap.fermata.share.ShareService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <service
             android:name="me.aap.fermata.ytdl.YtDownloadService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />

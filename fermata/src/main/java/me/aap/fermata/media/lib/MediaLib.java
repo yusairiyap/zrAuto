@@ -816,6 +816,9 @@ public interface MediaLib {
 
 		FutureSupplier<Void> addItems(List<PlayableItem> items);
 
+		/** As {@link #addItems(List)}; with {@code allowDuplicates} also the items already here. */
+		FutureSupplier<Void> addItems(List<PlayableItem> items, boolean allowDuplicates);
+
 		/**
 		 * Renames this playlist. Fails with an {@link IllegalArgumentException} (carrying a
 		 * user-readable message) if the name is empty, contains '/' or is already used by another

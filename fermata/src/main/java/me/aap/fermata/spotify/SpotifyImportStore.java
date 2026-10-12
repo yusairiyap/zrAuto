@@ -67,6 +67,8 @@ public final class SpotifyImportStore {
 				p.putOpt("owner", pl.owner);
 				p.putOpt("cover", pl.coverUrl);
 				p.put("full", pl.fullList);
+				p.put("limit", pl.limit);
+				p.put("total", pl.totalCount);
 				p.put("loaded", pl.state == Playlist.STATE_LOADED);
 				JSONArray tracks = new JSONArray();
 
@@ -151,6 +153,8 @@ public final class SpotifyImportStore {
 				pl.owner = str(p, "owner");
 				pl.coverUrl = str(p, "cover");
 				pl.fullList = p.optBoolean("full");
+				pl.limit = p.optInt("limit", Playlist.LIMIT_DEFAULT);
+				pl.totalCount = p.optInt("total", -1);
 				JSONArray tracks = p.optJSONArray("tracks");
 
 				if (tracks != null) {

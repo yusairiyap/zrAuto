@@ -28,6 +28,11 @@ import me.aap.fermata.spotify.SpotifyImportModel.Track;
 public final class SpotifyApi {
 	/** The pseudo-ref of the user's Liked Songs. */
 	public static final String LIKED_SONGS = "liked";
+	/**
+	 * The name of the local playlist Liked Songs are imported into. It is also how a sync knows to
+	 * read Liked Songs, and what keeps that playlist from being renamed.
+	 */
+	public static final String LIKED_PLAYLIST_NAME = "Liked from Spotify";
 	private static final String API = "https://api.spotify.com/v1";
 	/** A safety net against endless paging. */
 	private static final int MAX_TRACKS = 5000;
@@ -104,8 +109,12 @@ public final class SpotifyApi {
 			pl.tracks.clear();
 
 			if (LIKED_SONGS.equals(pl.ref)) {
-				if (pl.name.isEmpty()) pl.name = "Liked Songs";
-				readTracks(pl, API + "/me/tracks?limit=50");
+				pl.name = LIKED_PLAYLIST_NAME;
+				int limit = (pl.limit == Playlist.LIMIT_DEFAULT) ? SpotifyPrefs.getLikesLimit() : pl.limit;
+				pl.totalCount = get(API + "/me/tracks?limit=1").optInt("total", -1);
+				// The newest come first: the first pages are the ones wanted.
+				readTracks(pl, API + "/me/tracks?limit=" + ((limit > 0) ? Math.min(limit, 50) : 50),
+						(limit > 0) ? limit : MAX_TRACKS);
 			} else if (pl.ref.startsWith("playlist/")) {
 				String id = pl.ref.substring("playlist/".length());
 				JSONObject p = get(API + "/playlists/" + id + "?fields=name,owner(display_name),images");
@@ -129,8 +138,22 @@ public final class SpotifyApi {
 		}
 	}
 
+	/** How many songs the signed-in user has liked, -1 if Spotify doesn't say. */
+	public static int getLikedTotal() throws IOException {
+		try {
+			return get(API + "/me/tracks?limit=1").optInt("total", -1);
+		} catch (JSONException ex) {
+			throw new IOException("Unexpected Spotify response", ex);
+		}
+	}
+
 	private static void readTracks(Playlist pl, String firstPage) throws IOException, JSONException {
-		for (String url = firstPage; (url != null) && (pl.tracks.size() < MAX_TRACKS); ) {
+		readTracks(pl, firstPage, MAX_TRACKS);
+	}
+
+	private static void readTracks(Playlist pl, String firstPage, int max)
+			throws IOException, JSONException {
+		for (String url = firstPage; (url != null) && (pl.tracks.size() < max); ) {
 			JSONObject page = get(url);
 			JSONArray items = page.optJSONArray("items");
 			if (items == null) break;
@@ -156,6 +179,7 @@ public final class SpotifyApi {
 				track.album = (album != null) ? str(album, "name") :
 						(pl.ref.startsWith("album/") ? pl.name : null);
 				pl.tracks.add(track);
+				if (pl.tracks.size() >= max) break;
 			}
 
 			url = next(page);

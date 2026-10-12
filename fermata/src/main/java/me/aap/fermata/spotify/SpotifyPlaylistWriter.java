@@ -140,7 +140,18 @@ public final class SpotifyPlaylistWriter {
 					return completed((Playlist) i);
 				}
 			}
-			return playlists.addItem(name);
+			FutureSupplier<Playlist> created = playlists.addItem(name);
+			if (!SpotifyApi.LIKED_PLAYLIST_NAME.equals(name)) return created;
+
+			// The Liked Songs playlist starts out as the first one (the user may reorder it later).
+			return created.main().then(pl -> playlists.getUnsortedChildren().main().then(all -> {
+				for (int idx = 1; idx < all.size(); idx++) {
+					if (all.get(idx).getId().equals(pl.getId())) {
+						return playlists.moveItem(idx, 0).map(v -> pl);
+					}
+				}
+				return completed(pl);
+			}));
 		});
 	}
 

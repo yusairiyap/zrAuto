@@ -26,6 +26,7 @@
     <item name="menu" type="id" />
 
     <item name="folders_fragment" type="id" />
+    <item name="share_item" type="id" />
     <item name="favorites_fragment" type="id" />
     <item name="playlists_fragment" type="id" />
     <item name="settings_fragment" type="id" />

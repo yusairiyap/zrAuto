@@ -464,6 +464,62 @@ public final class YtDownloads {
 		changed(true);
 	}
 
+	/**
+	 * Takes in a finished download that arrived from another phone (Share): moves {@code file}
+	 * into the downloads folder as the video's download, unless this phone already has it (then
+	 * the file is deleted). Safe from any thread.
+	 *
+	 * @param height the picture's height in lines; 0 for sound only
+	 * @return whether the video is now downloaded here
+	 */
+	public boolean importFile(String videoId, @Nullable String title, @Nullable String artist,
+														long durationMs, int height, File file) {
+		synchronized (lock) {
+			ensureLoadedLocked();
+			Entry old = entries.get(videoId);
+
+			if ((old != null) && (old.state == State.DONE)) {
+				//noinspection ResultOfMethodCallIgnored
+				file.delete();
+				return true;
+			}
+			if ((old != null) && (old == current)) {
+				//noinspection ResultOfMethodCallIgnored
+				file.delete();
+				return false;
+			}
+			if (old != null) removeLocked(old);
+
+			Entry e = new Entry(videoId, height);
+			e.title = title;
+			e.artist = artist;
+			e.durationMs = durationMs;
+			e.gotHeight = height;
+			String outName = videoId + (e.video ? ".mp4" : ".m4a");
+
+			try {
+				Files.move(file.toPath(), new File(dir(), outName).toPath(),
+						java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+			} catch (IOException ex) {
+				Log.e(ex, "Failed to store a shared download");
+				//noinspection ResultOfMethodCallIgnored
+				file.delete();
+				return false;
+			}
+
+			e.fileName = outName;
+			e.state = State.DONE;
+			e.bytes = new File(dir(), outName).length();
+			e.total = e.bytes;
+			entries.put(videoId, e);
+			done.add(videoId);
+			if (e.video) doneVideo.add(videoId);
+			saveLocked();
+		}
+		changed(true);
+		return true;
+	}
+
 	// ---------------------------------------------------------------------------------------------
 	// Listeners
 

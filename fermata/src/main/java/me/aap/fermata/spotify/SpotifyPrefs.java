@@ -24,6 +24,11 @@ public final class SpotifyPrefs {
 	 */
 	public static final Pref<BooleanSupplier> LOGGED_IN = Pref.b("SPOTIFY_LOGGED_IN", false);
 
+	/** How many of the most recent Liked Songs an import or a sync looks at. */
+	public static final int DEFAULT_LIKES_LIMIT = 50;
+	public static final Pref<IntSupplier> LIKES_LIMIT =
+			Pref.i("SPOTIFY_LIKES_LIMIT", DEFAULT_LIKES_LIMIT);
+
 	private SpotifyPrefs() {
 	}
 
@@ -38,5 +43,10 @@ public final class SpotifyPrefs {
 	public static String getClientId() {
 		String id = store().getStringPref(CLIENT_ID);
 		return (id == null) ? "" : id.trim();
+	}
+
+	public static int getLikesLimit() {
+		int n = store().getIntPref(LIKES_LIMIT);
+		return (n > 0) ? n : DEFAULT_LIKES_LIMIT;
 	}
 }

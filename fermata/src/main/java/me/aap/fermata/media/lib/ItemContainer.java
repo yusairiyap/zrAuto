@@ -104,6 +104,14 @@ public abstract class ItemContainer<C extends Item> extends BrowsableItemBase {
 	}
 
 	public FutureSupplier<Void> addItems(List<C> items) {
+		return addItems(items, false);
+	}
+
+	/**
+	 * @param allowDuplicates add items this container already has once more (the same item twice
+	 *                        in one list of {@code items} is still added once)
+	 */
+	public FutureSupplier<Void> addItems(List<C> items, boolean allowDuplicates) {
 		return list().map(list -> {
 			List<C> newChildren = new ArrayList<>(list.size() + items.size());
 			List<C> added = new ArrayList<>(items.size());
@@ -111,7 +119,7 @@ public abstract class ItemContainer<C extends Item> extends BrowsableItemBase {
 			for (C i : items) {
 				beforeItemAdded(i);
 				i = toChildItem(i);
-				if (list.contains(i) || added.contains(i)) continue;
+				if ((!allowDuplicates && list.contains(i)) || added.contains(i)) continue;
 				added.add(i);
 				itemAdded(i);
 			}

@@ -194,6 +194,9 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 			}
 
 			YtDownloadMenu.addTo(b, a, Collections.singletonList(pi));
+			if (!(pi instanceof StreamItem) && !(pi instanceof ArchiveItem)) {
+				b.addItem(R.id.share_item, R.drawable.share, R.string.share);
+			}
 
 			if (view != null) {
 				// YouTube videos and local files can be searched for other videos by their title.
@@ -320,11 +323,15 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 				}
 			}
 
+			b.addItem(R.id.share_item, R.drawable.share, R.string.share);
+
 			if (!(parent instanceof Favorites)) {
 				b.addItem(R.id.favorites_add, R.drawable.favorite, R.string.favorites_add);
 
 				if ((bi instanceof Playlist)) {
-					b.addItem(R.id.playlist_rename, R.drawable.edit, R.string.playlist_rename).setData(bi);
+					if (!me.aap.fermata.spotify.SpotifyApi.LIKED_PLAYLIST_NAME.equals(((Playlist) bi).getName())) {
+						b.addItem(R.id.playlist_rename, R.drawable.edit, R.string.playlist_rename).setData(bi);
+					}
 					b.addItem(R.id.playlist_remove, R.drawable.playlist_remove, R.string.playlist_remove)
 							.setData(bi);
 				}
@@ -574,6 +581,8 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 				if (f != null) f.getAdapter().playTapped(pi, id == R.id.item_play);
 				else getMainActivity().getMediaServiceBinder().playItem(pi);
 			}
+		} else if (id == R.id.share_item) {
+			ShareSheet.share(getMainActivity(), item);
 		} else if (id == R.id.music_play) {
 			MusicPlayer.play(getMainActivity(), item);
 		} else if (id == R.id.music_queue_add) {

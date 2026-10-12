@@ -18,7 +18,9 @@ import me.aap.fermata.media.pref.FavoritesPrefs;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.MediaItemMenuHandler;
+import me.aap.fermata.share.ShareOffer;
 import me.aap.fermata.ui.view.MediaItemWrapper;
+import me.aap.fermata.ui.view.ShareSheet;
 import me.aap.fermata.ytdl.YtDownloadMenu;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.pref.PreferenceStore;
@@ -64,6 +66,11 @@ public class FavoritesFragment extends MediaLibFragment {
 			b.addItem(R.id.favorites_remove, R.drawable.favorite_filled, R.string.favorites_remove);
 			getMainActivity().addPlaylistMenu(b, completed(a.getSelectedItems()));
 			YtDownloadMenu.addTo(b, getMainActivity(), a.getSelectedItems());
+			b.addItem(R.id.share_item, R.drawable.share, R.string.share).setHandler(i -> {
+				ShareSheet.shareItems(getMainActivity(), ShareOffer.KIND_FAVORITES,
+						getString(R.string.favorites), a.getSelectedItems());
+				return true;
+			});
 		} else {
 			// Not selecting: the whole list.
 			List<PlayableItem> all = new ArrayList<>();
@@ -71,6 +78,13 @@ public class FavoritesFragment extends MediaLibFragment {
 				if (w.getItem() instanceof PlayableItem pi) all.add(pi);
 			}
 			YtDownloadMenu.addTo(builder, getMainActivity(), all);
+			if (!all.isEmpty()) {
+				builder.addItem(R.id.share_item, R.drawable.share, R.string.share).setHandler(i -> {
+					ShareSheet.shareItems(getMainActivity(), ShareOffer.KIND_FAVORITES,
+							getString(R.string.favorites), all);
+					return true;
+				});
+			}
 		}
 	}
 

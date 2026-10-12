@@ -164,7 +164,45 @@ public final class ModalProgressPopup {
 
 	/** Swaps the progress for the outcome and a Close button; dismisses itself shortly after. */
 	public void showResult(CharSequence msg, boolean ok) {
+		showResult(msg, ok, null);
+	}
+
+	/**
+	 * As {@link #showResult(CharSequence, boolean)}, also listing {@code items} (e.g. the songs a
+	 * sync added) in a scrolling area. With a list the card stays until it is closed, since it
+	 * takes longer than a few seconds to read.
+	 */
+	public void showResult(CharSequence msg, boolean ok, @Nullable java.util.List<String> items) {
 		if (dismissed) return;
+		boolean list = (items != null) && !items.isEmpty();
+		if (list) {
+			Context ctx = card.getContext();
+			LinearLayout col = new LinearLayout(ctx);
+			col.setOrientation(LinearLayout.VERTICAL);
+			int gap = UiUtils.toIntPx(ctx, 3);
+			for (String it : items) {
+				TextView row = new TextView(ctx);
+				row.setText("♪  " + it);
+				row.setTextColor(0xFFFFFFFF);
+				row.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+				row.setSingleLine(true);
+				row.setEllipsize(android.text.TextUtils.TruncateAt.END);
+				row.setPadding(0, gap, 0, gap);
+				col.addView(row, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+			}
+			android.widget.ScrollView sv = new android.widget.ScrollView(ctx);
+			sv.setVerticalScrollBarEnabled(false);
+			sv.addView(col, new ViewGroup.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+			int maxH = UiUtils.toIntPx(ctx, 220);
+			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+			lp.topMargin = UiUtils.toIntPx(ctx, 10);
+			// Tall lists scroll within a fixed window.
+			sv.setLayoutParams(lp);
+			col.measure(View.MeasureSpec.makeMeasureSpec(UiUtils.toIntPx(ctx, 420), View.MeasureSpec.AT_MOST),
+					View.MeasureSpec.UNSPECIFIED);
+			if (col.getMeasuredHeight() > maxH) lp.height = maxH;
+			card.addView(sv, card.indexOfChild(bar) + 1);
+		}
 		text.setText(msg);
 		text.setTextColor(0xFFFFFFFF);
 		bar.setVisibility(View.GONE);
@@ -172,7 +210,7 @@ public final class ModalProgressPopup {
 		chips.removeAllViews();
 		NetworkIssuePopup.addChip(chips, R.drawable.close_small, R.string.close, 0xFFFFFFFF, true,
 				v -> dismiss()).requestFocus();
-		scrim.postDelayed(this::dismiss, RESULT_MS);
+		if (!list) scrim.postDelayed(this::dismiss, RESULT_MS);
 	}
 
 	public void dismiss() {

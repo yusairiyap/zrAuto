@@ -67,6 +67,8 @@ import me.aap.fermata.media.pref.BrowsableItemPrefs;
 import me.aap.fermata.media.pref.MediaLibPrefs;
 import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.media.pref.PlaybackControlPrefs;
+import me.aap.fermata.share.ShareManager;
+import me.aap.fermata.share.SharePrefs;
 import me.aap.fermata.spotify.SpotifyAuth;
 import me.aap.fermata.spotify.SpotifyPrefs;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -955,6 +957,7 @@ public class SettingsFragment extends MainActivityFragment
 			o.icon = R.drawable.settings;
 		});
 		addSpotifyImport(a, sub1);
+		addShareSettings(sub1);
 		addStoragePrefs(a, sub1);
 		if (BuildConfig.AUTO) {
 			sub1.addBooleanPref(o -> {
@@ -1055,6 +1058,17 @@ public class SettingsFragment extends MainActivityFragment
 			o.visibility = spotifyAccountCond(store);
 			o.onClick = () -> SpotifyImportFragment.showSetupHelp(a);
 		});
+		sub.addIntPref(o -> {
+			o.store = store;
+			o.pref = SpotifyPrefs.LIKES_LIMIT;
+			o.title = R.string.spotify_likes_limit;
+			o.subtitle = R.string.spotify_likes_limit_sub;
+			o.seekMin = 10;
+			o.seekMax = 500;
+			o.seekScale = 10;
+			o.ems = 3;
+			o.visibility = spotifyAccountCond(store);
+		});
 		sub.addStringPref(o -> {
 			o.store = store;
 			o.pref = SpotifyPrefs.CLIENT_ID;
@@ -1078,6 +1092,30 @@ public class SettingsFragment extends MainActivityFragment
 				SpotifyAuth.logout();
 				UiUtils.showToast(a.getContext(), R.string.spotify_logged_out);
 			};
+		});
+	}
+
+	/** Sharing with phones on the same Wi-Fi, see {@link ShareManager}. */
+	private void addShareSettings(PreferenceSet set) {
+		PreferenceStore store = SharePrefs.store();
+		PreferenceSet sub = set.subSet(o -> {
+			o.title = R.string.share;
+			o.subtitle = R.string.prefs_sub_share;
+			o.icon = R.drawable.share;
+		});
+		sub.addBooleanPref(o -> {
+			o.store = store;
+			o.pref = SharePrefs.RECEIVE;
+			o.title = R.string.share_receive;
+			o.subtitle = R.string.share_receive_sub;
+			o.asSwitch = true;
+		});
+		sub.addStringPref(o -> {
+			o.store = store;
+			o.pref = SharePrefs.DEVICE_NAME;
+			o.title = R.string.share_device_name;
+			o.stringHint = SharePrefs.getDeviceName();
+			o.trim = true;
 		});
 	}
 

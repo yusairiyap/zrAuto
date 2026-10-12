@@ -97,6 +97,10 @@ class DefaultPlaylist extends ItemContainer<PlayableItem> implements Playlist, P
 
 		if (n.equals(getName())) return completedVoid();
 
+		if (me.aap.fermata.spotify.SpotifyApi.LIKED_PLAYLIST_NAME.equals(getName())) {
+			return failed(new IllegalArgumentException(ctx.getString(R.string.err_playlist_locked, getName())));
+		}
+
 		return getParent().getUnsortedChildren().main().then(list -> {
 			for (Item i : list) {
 				if ((i != this) && (i instanceof Playlist) && n.equals(((Playlist) i).getName())) {
