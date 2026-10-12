@@ -40,6 +40,7 @@ import java.util.concurrent.TimeoutException;
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.view.ShareReceiveCard;
 import me.aap.fermata.ui.view.TopConfirm;
 import me.aap.fermata.ui.view.TopPopup;
 import me.aap.fermata.util.DiagnosticLog;
@@ -154,6 +155,8 @@ public final class ShareManager {
 	private final List<Transfer> transfers = new ArrayList<>();
 	private final ShareDiscovery discovery = new ShareDiscovery(ctx);
 	private int uiCount;
+	/** Screens (the phone's, the car's) currently in front of the user. */
+	private int visibleCount;
 	private int discoverers;
 	@Nullable
 	private ServerSocket server;
@@ -219,6 +222,16 @@ public final class ShareManager {
 	public void onUiCreated() {
 		uiCount++;
 		updateReceiving();
+	}
+
+	public void onUiVisible(boolean visible) {
+		if (visible) visibleCount++;
+		else if (visibleCount > 0) visibleCount--;
+	}
+
+	/** Whether the app is in front: what it says in its own cards needs no notification too. */
+	public boolean isUiVisible() {
+		return visibleCount > 0;
 	}
 
 	public void onUiDestroyed() {
@@ -439,6 +452,8 @@ public final class ShareManager {
 			main.post(() -> {
 				ShareService.update(ctx);
 				changed(true);
+				MainActivityDelegate a = MainActivityDelegate.getUiDelegate();
+				if (a != null) ShareReceiveCard.show(a, tr);
 			});
 
 			dir = ShareImporter.folderFor(ctx, offer.title);

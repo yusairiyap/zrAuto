@@ -37,6 +37,7 @@ import me.aap.fermata.spotify.SpotifyPlaylistSync;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.MediaItemMenuHandler;
 import me.aap.fermata.ytdl.YtDownloadMenu;
+import me.aap.fermata.ytdl.YtThumbnails;
 import me.aap.fermata.ui.view.MediaItemListView;
 import me.aap.fermata.ui.view.MediaItemView;
 import me.aap.fermata.ui.view.MediaItemViewHolder;
@@ -99,6 +100,7 @@ public class PlaylistsFragment extends MediaLibFragment {
 				if (w.getItem() instanceof PlayableItem pi) all.add(pi);
 			}
 			YtDownloadMenu.addTo(b, getMainActivity(), all);
+			YtThumbnails.addTo(b, getMainActivity(), all);
 			if (!all.isEmpty()) {
 				b.addItem(R.id.share_item, R.drawable.share, R.string.share).setHandler(i -> {
 					ShareSheet.shareItems(getMainActivity(), ShareOffer.KIND_PLAYLIST,
@@ -129,6 +131,7 @@ public class PlaylistsFragment extends MediaLibFragment {
 		});
 		getMainActivity().addPlaylistMenu(b, completed(a.getSelectedItems()));
 		YtDownloadMenu.addTo(b, getMainActivity(), a.getSelectedItems());
+		YtThumbnails.addTo(b, getMainActivity(), a.getSelectedItems());
 		b.addItem(R.id.share_item, R.drawable.share, R.string.share).setHandler(i -> {
 			ShareSheet.shareItems(getMainActivity(), ShareOffer.KIND_PLAYLIST, pl.getName(),
 					a.getSelectedItems());

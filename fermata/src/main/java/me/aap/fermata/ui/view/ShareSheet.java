@@ -449,7 +449,8 @@ public final class ShareSheet implements ShareManager.Listener {
 				r.cancel.setVisibility(View.GONE);
 			}
 			case DONE -> {
-				r.status.setText(R.string.share_done);
+				r.status.setText(ctx.getResources().getQuantityString(R.plurals.share_sent_files,
+						t.offer.entries.size(), t.offer.entries.size()));
 				r.bar.setVisibility(View.GONE);
 				r.cancel.setVisibility(View.GONE);
 			}

@@ -107,7 +107,26 @@ public class BitmapCache {
 	private final Map<String, Ref> cache = new HashMap<>();
 	private final ReferenceQueue<Bitmap> refQueue = new ReferenceQueue<>();
 	private final PromiseQueue queue = new PromiseQueue(App.get().getExecutor());
-	private final Map<String, String> invalidBitmapUris = new ConcurrentHashMap<>();
+	/**
+	 * Images that failed to download or decode, with when. Only remembered for a while: a failure
+	 * is often just a timeout or a refusal while a long list (an imported playlist) asks for dozens
+	 * of thumbnails at once, and remembering that for good left those cards without a picture
+	 * until "Refresh thumbnail".
+	 */
+	private final Map<String, Long> invalidBitmapUris = new ConcurrentHashMap<>();
+	private static final long INVALID_MS = 60_000;
+
+	private void markInvalid(String uri) {
+		invalidBitmapUris.put(uri, System.currentTimeMillis());
+	}
+
+	private boolean isInvalid(String uri) {
+		Long t = invalidBitmapUris.get(uri);
+		if (t == null) return false;
+		if (System.currentTimeMillis() - t < INVALID_MS) return true;
+		invalidBitmapUris.remove(uri);
+		return false;
+	}
 	/**
 	 * Strong references to the most recently used bitmaps, on top of the soft {@link #cache}: soft
 	 * references go at the first bit of memory pressure, and then scrolling back up a long list
@@ -331,7 +350,10 @@ public class BitmapCache {
 	@SuppressWarnings("ResultOfMethodCallIgnored")
 	private FutureSupplier<Bitmap> loadHttpBitmap(String uri, String cacheUri, int size) {
 		String ytFallback = youtubeFallback(uri);
-		return downloadImage(uri).then(s -> {
+		FutureSupplier<Status> download = downloadImage(uri);
+		// A failed maxresdefault.jpg is no reason to go without a thumbnail: hqdefault.jpg is tried.
+		if (ytFallback != null) download = download.ifFail(ex -> null);
+		return download.then(s -> {
 			if (s == null) {
 				return (ytFallback != null) ? loadHttpBitmap(ytFallback, cacheUri, size) : completedNull();
 			}
@@ -344,14 +366,14 @@ public class BitmapCache {
 				if ((bm != null) && (ytFallback != null) && (bm.getWidth() <= 120)) {
 					File f = s.getLocalFile();
 					if (f != null) f.delete();
-					invalidBitmapUris.put(uri, uri);
+					markInvalid(uri);
 					return loadHttpBitmap(ytFallback, cacheUri, size);
 				}
 
 				if (bm == null) {
 					File f = s.getLocalFile();
 					if (f != null) f.delete();
-					invalidBitmapUris.put(uri, uri);
+					markInvalid(uri);
 					return failed(new IOException("Failed to decode image: " + uri));
 				} else {
 					if (isLetterboxedYoutube(uri)) bm = cropLetterbox(bm);
@@ -364,7 +386,7 @@ public class BitmapCache {
 					return completed(bm);
 				}
 			} catch (Exception ex) {
-				invalidBitmapUris.put(uri, uri);
+				markInvalid(uri);
 				return failed(ex);
 			}
 		});
@@ -466,7 +488,7 @@ public class BitmapCache {
 	}
 
 	public FutureSupplier<Status> downloadImage(String uri) {
-		if (invalidBitmapUris.containsKey(uri)) {
+		if (isInvalid(uri)) {
 			Log.d("Invalid bitmap uri: ", uri);
 			return completedNull();
 		}
@@ -487,7 +509,7 @@ public class BitmapCache {
 		d.setReturnExistingOnFail(true);
 		return d.download(uri, dst, ip).onFailure(ex -> {
 			Log.d(ex, "Failed to download image: ", uri);
-			invalidBitmapUris.put(uri, uri);
+			markInvalid(uri);
 		});
 	}
 

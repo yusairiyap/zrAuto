@@ -696,6 +696,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Override
 	public void onActivityResume() {
 		super.onActivityResume();
+		me.aap.fermata.share.ShareManager.get().onUiVisible(true);
 		refreshContentInsets();
 		checkMirroringMode(true);
 		for (FermataAddon addon : AddonManager.get().getAddons()) {
@@ -707,6 +708,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Override
 	public void onActivityPause() {
 		super.onActivityPause();
+		me.aap.fermata.share.ShareManager.get().onUiVisible(false);
 		for (FermataAddon addon : AddonManager.get().getAddons()) {
 			if (addon instanceof FermataActivityAddon)
 				((FermataActivityAddon) addon).onActivityPause(this);

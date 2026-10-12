@@ -26,6 +26,12 @@ public interface VideoTitleCache {
 	 */
 	void cacheVideoInfo(Map<String, VideoInfo> info);
 
+	/** What's stored about {@code videoId} (channel as the artist, album, duration), or null. */
+	@Nullable
+	default VideoInfo getCachedVideoInfo(String videoId) {
+		return null;
+	}
+
 	/**
 	 * A {@code youtube:<videoId>} item is about to be added to Favorites or a Playlist: keeps the
 	 * channel/duration the player reported while playing it, if it did.

@@ -265,6 +265,15 @@ provider doesn't offer a folder to pick, so Drive is manual only.
   "Share as link" hands the youtu.be links to Android's share sheet. The sockets must never be used on the main
   thread. None of this has been run on a device yet, check the Diagnostic log (SHARE) and Log output first.
 
+- **Refresh thumbnail** (`ytdl/YtThumbnails`, one item, a selection, a whole list or a playlist's own menu): drops every
+  cached thumbnail size and then looks up channel/duration (`YoutubeSearch`, by video id, then by title) for videos
+  whose cached `VideoInfo` lacks them. `BitmapCache` only remembers a failed image for a minute (`markInvalid`): remembering
+  it for good left half of an imported playlist without pictures after one burst of timeouts, and a failed
+  maxresdefault now falls back to hqdefault.
+- `SelectionPanel` lives in `R.id.main_activity` (below the 10dp menus), not the window's content frame, so the nav/FAB
+  menus open in front of it. Share notifications are skipped while the app is in front (`ShareManager#isUiVisible`);
+  an incoming transfer shows `ShareReceiveCard` (progress + Cancel) at the top.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

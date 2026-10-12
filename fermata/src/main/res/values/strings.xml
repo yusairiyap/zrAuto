@@ -504,6 +504,8 @@
     <string name="spotify_matching_bg">Matching YouTube videos: %1$d of %2$d</string>
     <string name="youtube_alternatives">Search alternative videos</string>
     <string name="youtube_refresh_thumbnail">Refresh thumbnail</string>
+    <string name="youtube_refreshing_n">Refreshing %d thumbnails…</string>
+    <string name="youtube_refreshed">Refreshed. Found details for %d videos.</string>
     <string name="youtube_refreshing_thumbnail">Reloading the thumbnail…</string>
     <string name="youtube_alternatives_in">In: %1$s</string>
     <string name="youtube_alternatives_hint">Tap a video to replace this one in the same position. Tap ▶ (or long-press) to preview it first.</string>
@@ -731,7 +733,6 @@
     <string name="share_waiting">Waiting for the other phone…</string>
     <string name="share_working">Sending…</string>
     <string name="share_saving">Finishing…</string>
-    <string name="share_done">Sent</string>
     <string name="share_declined_short">Declined</string>
     <string name="share_cancelled_short">Cancelled</string>
     <string name="share_failed_short">Failed: %s</string>
@@ -740,7 +741,6 @@
     <string name="share_incoming_notif">%1$s wants to send you “%2$s”. Open zrAuto to answer.</string>
     <string name="share_accept">Accept</string>
     <string name="share_decline">Decline</string>
-    <string name="share_sent">Sent “%1$s” to %2$s.</string>
     <string name="share_received">Received “%1$s”. %2$s</string>
     <string name="share_failed">Sharing “%1$s” failed: %2$s</string>
     <string name="share_declined">%s declined.</string>
@@ -753,6 +753,14 @@
     <string name="share_saved_folder">Saved %1$d files in the Folders tab, “%2$s”.</string>
     <string name="share_saved_playlist">%1$d added to the playlist “%2$s”.</string>
     <string name="share_saved_nothing">Nothing new to add.</string>
+    <plurals name="share_sent_n">
+        <item quantity="one">Successfully sent %1$d file to %2$s.</item>
+        <item quantity="other">Successfully sent %1$d files to %2$s.</item>
+    </plurals>
+    <plurals name="share_sent_files">
+        <item quantity="one">Successfully sent %d file</item>
+        <item quantity="other">Successfully sent %d files</item>
+    </plurals>
     <plurals name="share_items">
         <item quantity="one">%d item</item>
         <item quantity="other">%d items</item>
