@@ -108,20 +108,18 @@
 
 <!--
   Back to the newest entries (the log is newest first), shown only once scrolled away from the top.
-  Lifted above the bottom bars and the app's own floating button in DiagnosticLogFragment.
+  A plain Material floating button, which the app's theme gives the same look as the back button
+  (not the app's own FloatingButton class, which takes its icon from the active tab). Lifted above
+  the back button in DiagnosticLogFragment.
 -->
-<ImageButton
+<com.google.android.material.floatingactionbutton.FloatingActionButton
     android:id="@+id/diagnostic_log_top"
-    android:layout_width="48dp"
-    android:layout_height="48dp"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
     android:layout_gravity="bottom|end"
-    android:layout_marginEnd="16dp"
-    android:background="@drawable/diagnostic_fab_bg"
+    android:layout_marginEnd="15dp"
     android:contentDescription="@string/diagnostic_log_top"
-    android:elevation="6dp"
-    android:padding="12dp"
-    android:scaleType="fitCenter"
+    android:elevation="10dp"
     android:src="@drawable/move_to_top"
-    android:tint="?attr/colorControlActivated"
     android:visibility="gone" />
 </FrameLayout>
