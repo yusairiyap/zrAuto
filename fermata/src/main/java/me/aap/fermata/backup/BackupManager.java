@@ -54,6 +54,9 @@ public final class BackupManager {
 	public static final Pref<LongSupplier> AUTO_BACKUP_LAST = Pref.l("AUTO_BACKUP_LAST", 0);
 	/** Tree Uri of the folder picked by the user, empty for the app's own folder. */
 	public static final Pref<Supplier<String>> AUTO_BACKUP_DIR = Pref.s("AUTO_BACKUP_DIR", "");
+	/** What to show for {@link #AUTO_BACKUP_DIR}, worked out once when it's picked. */
+	public static final Pref<Supplier<String>> AUTO_BACKUP_DIR_LABEL =
+			Pref.s("AUTO_BACKUP_DIR_LABEL", "");
 	public static final int[] INTERVAL_DAYS = {1, 3, 7, 30};
 	public static final int[] KEEP_COUNT = {3, 5, 10, 20};
 	static final String ACTION_RUN = "me.aap.fermata.backup.RUN";
@@ -76,11 +79,20 @@ public final class BackupManager {
 		schedule(ctx);
 	}
 
+	/**
+	 * Whether a preferences file goes into a backup: all of them, except the thumbnail cache index
+	 * and the Spotify login (a refresh token has no business sitting in a zip in the cloud; signing
+	 * in again after a restore is the price).
+	 */
+	public static boolean includeFile(File f) {
+		String n = f.getName();
+		return !n.equals("image-cache.xml") && !n.equals("spotify_auth.xml");
+	}
+
 	/** Writes every preferences file into {@code os} as a zip. False if there's nothing to write. */
 	public static boolean writeBackup(Context ctx, OutputStream os) throws IOException {
 		File prefsDir = PrefUtils.getSharedPrefsFile(ctx, "fermata").getParentFile();
-		File[] files = (prefsDir == null) ? null :
-				prefsDir.listFiles(n -> !n.getName().equals("image-cache.xml"));
+		File[] files = (prefsDir == null) ? null : prefsDir.listFiles(BackupManager::includeFile);
 		if ((files == null) || (files.length == 0)) return false;
 
 		List<String> names = new ArrayList<>(files.length);
@@ -102,16 +114,33 @@ public final class BackupManager {
 		return "zrAuto_prefs_" + new SimpleDateFormat("ddMMyy", Locale.getDefault()).format(new Date());
 	}
 
-	/** The folder automatic backups go to, for display: the picked one's name, else the app's. */
+	/** The folder automatic backups go to, for display: the picked one, else the app's own. */
 	@NonNull
 	public static String getDestinationName(Context ctx) {
-		String dir = FermataApplication.get().getPreferenceStore().getStringPref(AUTO_BACKUP_DIR);
-		if (!dir.isEmpty()) {
-			DocumentFile d = DocumentFile.fromTreeUri(ctx, Uri.parse(dir));
-			if ((d != null) && (d.getName() != null)) return d.getName();
+		PreferenceStore ps = FermataApplication.get().getPreferenceStore();
+		if (!ps.getStringPref(AUTO_BACKUP_DIR).isEmpty()) {
+			String label = ps.getStringPref(AUTO_BACKUP_DIR_LABEL);
+			if (!label.isEmpty()) return label;
 		}
 		File f = localDir(ctx);
 		return (f != null) ? f.getAbsolutePath() : "";
+	}
+
+	/** Remembers the folder picked for automatic backups, with a name to show for it. */
+	public static void setDestination(Context ctx, Uri tree) {
+		PreferenceStore ps = FermataApplication.get().getPreferenceStore();
+		String label = null;
+		try {
+			DocumentFile d = DocumentFile.fromTreeUri(ctx, tree);
+			if (d != null) label = d.getName();
+		} catch (Exception ex) {
+			Log.e(ex, "Failed to read the backup folder's name");
+		}
+		if ((label == null) || label.isEmpty()) label = Uri.decode(String.valueOf(tree.getLastPathSegment()));
+		String auth = String.valueOf(tree.getAuthority());
+		if (auth.contains("com.google.android.apps.docs")) label = "Google Drive / " + label;
+		ps.applyStringPref(AUTO_BACKUP_DIR_LABEL, label);
+		ps.applyStringPref(AUTO_BACKUP_DIR, tree.toString());
 	}
 
 	/**

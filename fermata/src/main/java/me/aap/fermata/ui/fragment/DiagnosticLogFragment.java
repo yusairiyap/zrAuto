@@ -59,13 +59,26 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 	public void onViewCreated(@NonNull View view, @Nullable Bundle state) {
 		super.onViewCreated(view, state);
 		text = view.findViewById(R.id.diagnostic_log_text);
-		// The root is the ScrollView itself: its padding keeps the first and last line clear of the
+		// The ScrollView gets the padding that keeps the first and last line clear of the
 		// translucent bars while the log scrolls under them (and lets the bars collapse on scroll).
 		// See the layout's own comment.
-		if (view instanceof ViewGroup vg) {
-			MainActivityDelegate.getActivityDelegate(view.getContext())
-					.onSuccess(a -> a.insetScrollableContent(vg));
-		}
+		ScrollView sv = view.findViewById(R.id.diagnostic_log_scroll);
+		View top = view.findViewById(R.id.diagnostic_log_top);
+		MainActivityDelegate.getActivityDelegate(view.getContext()).onSuccess(a -> {
+			a.insetScrollableContent(sv);
+			// The button sits above the bottom bars and the app's own floating button wherever they
+			// rest, by translation so nothing is relaid out; only touched when the value changes.
+			sv.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, orr, ob) -> {
+				float dy = -(sv.getPaddingBottom() + UiUtils.toPx(a.getContext(), 72));
+				if (top.getTranslationY() != dy) top.setTranslationY(dy);
+			});
+		});
+		top.setOnClickListener(v -> sv.smoothScrollTo(0, 0));
+		// Shown only once scrolled away from the newest entries at the top.
+		sv.setOnScrollChangeListener((v, x, y, ox, oy) -> {
+			int vis = (y > UiUtils.toPx(v.getContext(), 24)) ? View.VISIBLE : View.GONE;
+			if (top.getVisibility() != vis) top.setVisibility(vis);
+		});
 		view.findViewById(R.id.diagnostic_log_copy).setOnClickListener(v -> copy());
 		view.findViewById(R.id.diagnostic_log_share).setOnClickListener(v -> share());
 		view.findViewById(R.id.diagnostic_log_refresh).setOnClickListener(v -> refresh(true));
@@ -88,7 +101,7 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		super.onDestroyView();
 	}
 
-	private void refresh(boolean scrollToEnd) {
+	private void refresh(boolean scrollToTop) {
 		TextView t = text;
 		if (t == null) return;
 		String dump = DiagnosticLog.dump();
@@ -97,13 +110,21 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 					R.string.diagnostic_log_disabled);
 			return;
 		}
-		t.setText(dump);
-		if (!scrollToEnd) return;
+		t.setText(newestFirst(dump));
+		if (!scrollToTop) return;
 		View v = getView();
 		if (v == null) return;
 		ScrollView sv = v.findViewById(R.id.diagnostic_log_scroll);
-		// Newest entries are what anyone opening this wants first, and they're at the bottom.
-		if (sv != null) sv.post(() -> sv.fullScroll(View.FOCUS_DOWN));
+		// Newest entries are what anyone opening this wants first, and they're at the top.
+		if (sv != null) sv.post(() -> sv.fullScroll(View.FOCUS_UP));
+	}
+
+	/** {@link DiagnosticLog#dump()} is oldest first; this screen shows the newest on top. */
+	private static String newestFirst(String dump) {
+		String[] lines = dump.split("\n");
+		StringBuilder sb = new StringBuilder(dump.length());
+		for (int i = lines.length - 1; i >= 0; i--) sb.append(lines[i]).append('\n');
+		return sb.toString();
 	}
 
 	private void copy() {

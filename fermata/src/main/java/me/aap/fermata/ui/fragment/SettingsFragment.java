@@ -1365,7 +1365,7 @@ public class SettingsFragment extends MainActivityFragment
 		}
 	}
 
-	/** Export and import by hand, to or from a cloud app, and the automatic backup. */
+	/** Export and import by hand, and the automatic backup. */
 	private void addBackupRestore(MainActivityDelegate a, PreferenceSet parent) {
 		PreferenceStore store = FermataApplication.get().getPreferenceStore();
 		Context ctx = a.getContext();
@@ -1384,18 +1384,6 @@ public class SettingsFragment extends MainActivityFragment
 			o.subtitle = R.string.import_prefs_sub;
 			o.onClick = () -> importPrefs(a);
 		});
-		if (Utils.isSafSupported(a)) {
-			ps.addButton(o -> {
-				o.title = R.string.backup_cloud_save;
-				o.subtitle = R.string.backup_cloud_save_sub;
-				o.onClick = () -> saveBackupToCloud(a);
-			});
-			ps.addButton(o -> {
-				o.title = R.string.backup_cloud_restore;
-				o.subtitle = R.string.backup_cloud_restore_sub;
-				o.onClick = () -> importPrefs(a);
-			});
-		}
 
 		ps.addBooleanPref(o -> {
 			o.store = store;
@@ -1439,18 +1427,38 @@ public class SettingsFragment extends MainActivityFragment
 		});
 		ps.addButton(o -> {
 			o.title = R.string.auto_backup_folder;
-			o.csubtitle = ctx.getString(R.string.auto_backup_folder_sub, BackupManager.getDestinationName(ctx));
 			o.visibility = autoOn.copy();
 			o.onClick = () -> chooseBackupFolder(a, store);
+			backupFolderOpts = o;
 		});
-		long last = store.getLongPref(BackupManager.AUTO_BACKUP_LAST);
 		ps.addButton(o -> {
 			o.title = R.string.auto_backup_now;
-			o.csubtitle = ctx.getString(R.string.auto_backup_now_sub, (last == 0) ?
-					ctx.getString(R.string.auto_backup_never) :
-					java.text.DateFormat.getDateTimeInstance().format(new Date(last)));
 			o.onClick = () -> backupNow(a);
+			backupNowOpts = o;
 		});
+		backupSet = ps;
+		updateBackupInfo(ctx, store);
+	}
+
+	// The two backup rows whose subtitles change while the page is open, see updateBackupInfo().
+	private PreferenceView.ButtonOpts backupFolderOpts;
+	private PreferenceView.ButtonOpts backupNowOpts;
+	private PreferenceSet backupSet;
+
+	/**
+	 * Sets the backup folder's and last backup's subtitles, and redraws the page if it's the one
+	 * showing: the rows are built once, so a backup made, or a folder picked, from here must say so.
+	 */
+	private void updateBackupInfo(Context ctx, PreferenceStore store) {
+		if ((backupFolderOpts == null) || (backupNowOpts == null)) return;
+		long last = store.getLongPref(BackupManager.AUTO_BACKUP_LAST);
+		backupFolderOpts.csubtitle = ctx.getString(R.string.auto_backup_folder_sub,
+				BackupManager.getDestinationName(ctx));
+		backupNowOpts.csubtitle = ctx.getString(R.string.auto_backup_now_sub, (last == 0) ?
+				ctx.getString(R.string.auto_backup_never) :
+				java.text.DateFormat.getDateTimeInstance().format(new Date(last)));
+		PreferenceViewAdapter ad = adapter;
+		if ((ad != null) && (ad.getPreferenceSet() == backupSet)) ad.setPreferenceSet(backupSet);
 	}
 
 	private void backupNow(MainActivityDelegate a) {
@@ -1461,6 +1469,7 @@ public class SettingsFragment extends MainActivityFragment
 			App.get().getHandler().post(() -> {
 				if (name != null) TopToast.show(R.drawable.save, R.string.auto_backup_done, name);
 				else UiUtils.showAlert(ctx, R.string.auto_backup_failed);
+				updateBackupInfo(ctx, FermataApplication.get().getPreferenceStore());
 			});
 			BackupManager.schedule(ctx);
 		}, "backup-now").start();
@@ -1480,42 +1489,13 @@ public class SettingsFragment extends MainActivityFragment
 			if (uri == null) return;
 			try {
 				ctx.getContentResolver().takePersistableUriPermission(uri, d.getFlags() & rw);
-				store.applyStringPref(BackupManager.AUTO_BACKUP_DIR, uri.toString());
+				BackupManager.setDestination(ctx, uri);
+				updateBackupInfo(ctx, store);
 				TopToast.show(R.drawable.save, R.string.auto_backup_folder_set);
 			} catch (Exception ex) {
 				Log.e(ex, "Failed to use the backup folder");
 				UiUtils.showAlert(ctx, ctx.getString(R.string.export_prefs_failed, ex));
 			}
-		});
-	}
-
-	private void saveBackupToCloud(MainActivityDelegate a) {
-		String name = BackupManager.manualName() + ".zip";
-		a.startActivityForResult(() -> new Intent(Intent.ACTION_CREATE_DOCUMENT)
-				.addCategory(Intent.CATEGORY_OPENABLE).setType("application/zip")
-				.putExtra(Intent.EXTRA_TITLE, name)).onCompletion((d, err) -> {
-			Context ctx = a.getContext();
-			if (err != null) {
-				UiUtils.showAlert(ctx, ctx.getString(R.string.export_prefs_failed, err));
-				return;
-			}
-			if (d == null) return;
-			Uri uri = d.getData();
-			if (uri == null) return;
-			new Thread(() -> {
-				String error = null;
-				try (OutputStream os = ctx.getContentResolver().openOutputStream(uri)) {
-					if ((os == null) || !BackupManager.writeBackup(ctx, os)) error = "No preferences found";
-				} catch (Exception ex) {
-					Log.e(ex, "Failed to save the backup");
-					error = String.valueOf(ex);
-				}
-				String e = error;
-				App.get().getHandler().post(() -> {
-					if (e == null) TopToast.show(R.drawable.save, R.string.cloud_backup_saved);
-					else UiUtils.showAlert(ctx, ctx.getString(R.string.export_prefs_failed, e));
-				});
-			}, "cloud-backup").start();
 		});
 	}
 
@@ -1543,7 +1523,7 @@ public class SettingsFragment extends MainActivityFragment
 
 							File prefsDir = PrefUtils.getSharedPrefsFile(ctx, "fermata").getParentFile();
 							File[] files = (prefsDir == null) ? null :
-									prefsDir.listFiles(n -> !n.getName().equals("image-cache.xml"));
+									prefsDir.listFiles(BackupManager::includeFile);
 
 							if ((files == null) || (files.length == 0)) {
 								UiUtils.showAlert(ctx, R.string.prefs_not_found);
@@ -1601,7 +1581,7 @@ public class SettingsFragment extends MainActivityFragment
 		Context ctx = a.getContext();
 		File prefsDir = PrefUtils.getSharedPrefsFile(ctx, "fermata").getParentFile();
 		File[] files = (prefsDir == null) ? null :
-				prefsDir.listFiles(n -> !n.getName().equals("image-cache" + ".xml"));
+				prefsDir.listFiles(BackupManager::includeFile);
 
 		if ((files == null) || (files.length == 0)) {
 			UiUtils.showAlert(ctx, R.string.prefs_not_found);

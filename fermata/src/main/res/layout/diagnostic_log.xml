@@ -9,7 +9,11 @@
   bars. The action row is the first thing inside the scrolled content for the same reason: the
   bars give way to it (ScrollBarsController) like to any list.
 -->
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+<ScrollView
     android:id="@+id/diagnostic_log_scroll"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -101,3 +105,23 @@
         android:typeface="monospace" />
 </LinearLayout>
 </ScrollView>
+
+<!--
+  Back to the newest entries (the log is newest first), shown only once scrolled away from the top.
+  Lifted above the bottom bars and the app's own floating button in DiagnosticLogFragment.
+-->
+<ImageButton
+    android:id="@+id/diagnostic_log_top"
+    android:layout_width="48dp"
+    android:layout_height="48dp"
+    android:layout_gravity="bottom|end"
+    android:layout_marginEnd="16dp"
+    android:background="@drawable/diagnostic_fab_bg"
+    android:contentDescription="@string/diagnostic_log_top"
+    android:elevation="6dp"
+    android:padding="12dp"
+    android:scaleType="fitCenter"
+    android:src="@drawable/move_to_top"
+    android:tint="?attr/colorControlActivated"
+    android:visibility="gone" />
+</FrameLayout>
