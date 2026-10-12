@@ -1,14 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Root is the ViewGroup handed to MainActivityDelegate#insetScrollableContent() (see
-  DiagnosticLogFragment), not the ScrollView below it: tool_bar/control_panel/nav_bar are drawn as
-  translucent overlays on top of fragment content, so the action row has to be pushed clear of them
-  too, not just the log text.
+  The root is the ScrollView, and it is what gets MainActivityDelegate#insetScrollableContent()
+  (see DiagnosticLogFragment): tool_bar/control_panel/nav_bar are drawn as translucent overlays on
+  top of fragment content, so the padding that keeps the first and last line clear of them has to
+  sit on the scrolling view itself, with the content scrolling under the bars. With the padding on
+  a parent of the ScrollView, the action row stayed pinned at the padded top (a blank gap when the
+  tool bar scrolled away) and the log was cut off at the padding instead of passing under the
+  bars. The action row is the first thing inside the scrolled content for the same reason: the
+  bars give way to it (ScrollBarsController) like to any list.
 -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/diagnostic_log_root"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+<ScrollView
+    android:id="@+id/diagnostic_log_scroll"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:scrollbars="vertical">
+
+<LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
     android:orientation="vertical">
 
     <LinearLayout
@@ -69,33 +83,43 @@
             android:text="@string/diagnostic_log_clear" />
     </LinearLayout>
 
-    <ScrollView
-        android:id="@+id/diagnostic_log_scroll"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:fillViewport="true"
-        android:scrollbars="vertical">
-
         <!--
-          No style set, so this fell back to whatever this app's theme chain resolves as a plain
-          TextView's default color, white in every theme tried, including Light, where the main
-          content background (android:colorBackground, what this ScrollView actually sits on) is
-          white too. android:textColorSecondary is the attr media_item_text_color.xml (every media
-          list item's title/subtitle, i.e. exactly this same "plain content text on the app's main
-          background" job elsewhere in the app) already uses instead, and every one of this app's
-          themes gives it an explicit, sane value for that surface (e.g. near-black in Light,
-          near-white in the dark ones), unlike textColorPrimary/colorPrimary, which this app
-          repurposes for the control panel's own surface (see the button styling comment above).
-        -->
-        <TextView
-            android:id="@+id/diagnostic_log_text"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:padding="8dp"
-            android:textColor="?android:attr/textColorSecondary"
-            android:textIsSelectable="true"
-            android:textSize="12sp"
-            android:typeface="monospace" />
-    </ScrollView>
+      No style set, so this fell back to whatever this app's theme chain resolves as a plain
+      TextView's default color, white in every theme tried, including Light, where the main
+      content background (android:colorBackground, what this ScrollView actually sits on) is
+      white too. android:textColorSecondary is the attr media_item_text_color.xml (every media
+      list item's title/subtitle, i.e. exactly this same "plain content text on the app's main
+      background" job elsewhere in the app) already uses instead, and every one of this app's
+      themes gives it an explicit, sane value for that surface (e.g. near-black in Light,
+      near-white in the dark ones), unlike textColorPrimary/colorPrimary, which this app
+      repurposes for the control panel's own surface (see the button styling comment above).
+    -->
+    <TextView
+        android:id="@+id/diagnostic_log_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="8dp"
+        android:textColor="?android:attr/textColorSecondary"
+        android:textIsSelectable="true"
+        android:textSize="12sp"
+        android:typeface="monospace" />
 </LinearLayout>
+</ScrollView>
+
+<!--
+  Back to the newest entries (the log is newest first), shown only once scrolled away from the top.
+  A plain Material floating button, which the app's theme gives the same look as the back button
+  (not the app's own FloatingButton class, which takes its icon from the active tab). Lifted above
+  the back button in DiagnosticLogFragment.
+-->
+<com.google.android.material.floatingactionbutton.FloatingActionButton
+    android:id="@+id/diagnostic_log_top"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_gravity="bottom|end"
+    android:layout_marginEnd="15dp"
+    android:contentDescription="@string/diagnostic_log_top"
+    android:elevation="10dp"
+    android:src="@drawable/move_to_top"
+    android:visibility="gone" />
+</FrameLayout>

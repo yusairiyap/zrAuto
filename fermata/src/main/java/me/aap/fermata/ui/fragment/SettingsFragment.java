@@ -82,6 +82,8 @@ import me.aap.utils.function.DoubleSupplier;
 import me.aap.utils.function.IntSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.misc.ChangeableCondition;
+import me.aap.fermata.backup.BackupManager;
+import me.aap.fermata.ui.view.TopToast;
 import me.aap.utils.pref.PrefCondition;
 import me.aap.utils.pref.PrefUtils;
 import me.aap.utils.pref.PreferenceSet;
@@ -945,6 +947,8 @@ public class SettingsFragment extends MainActivityFragment
 
 		addAddons(set);
 
+		if (!a.isCarActivityNotMirror()) addBackupRestore(a, set);
+
 		sub1 = set.subSet(o -> {
 			o.title = R.string.other;
 			o.subtitle = R.string.prefs_sub_other;
@@ -952,18 +956,6 @@ public class SettingsFragment extends MainActivityFragment
 		});
 		addSpotifyImport(a, sub1);
 		addStoragePrefs(a, sub1);
-		if (!a.isCarActivityNotMirror()) {
-			sub1.addButton(o -> {
-				o.title = R.string.export_prefs;
-				o.subtitle = R.string.export_prefs_sub;
-				o.onClick = () -> exportPrefs(a);
-			});
-			sub1.addButton(o -> {
-				o.title = R.string.import_prefs;
-				o.subtitle = R.string.import_prefs_sub;
-				o.onClick = () -> importPrefs(a);
-			});
-		}
 		if (BuildConfig.AUTO) {
 			sub1.addBooleanPref(o -> {
 				o.store = a.getPrefs();
@@ -1373,107 +1365,125 @@ public class SettingsFragment extends MainActivityFragment
 		}
 	}
 
-	private void exportPrefs(MainActivityDelegate a) {
-		SimpleDateFormat fmt = new SimpleDateFormat("ddMMyy", Locale.getDefault());
-		String pattern = "zrAuto_prefs_" + fmt.format(new Date());
+	/** Backup folder, back up now, restore, and the automatic backup. */
+	private void addBackupRestore(MainActivityDelegate a, PreferenceSet parent) {
+		PreferenceStore store = FermataApplication.get().getPreferenceStore();
+		Context ctx = a.getContext();
+		PreferenceSet ps = parent.subSet(o -> {
+			o.title = R.string.backup_restore;
+			o.subtitle = R.string.prefs_sub_backup;
+			o.icon = R.drawable.save;
+		});
+		// Rows are built again on every draw of the page, so the subtitles are worked out here,
+		// each time, not once when the settings were set up.
+		ps.addButton(o -> {
+			o.title = R.string.auto_backup_folder;
+			o.csubtitle = ctx.getString(R.string.auto_backup_folder_sub,
+					BackupManager.getDestinationName(ctx));
+			o.onClick = () -> chooseBackupFolder(a, store);
+		});
+		ps.addButton(o -> {
+			long last = store.getLongPref(BackupManager.AUTO_BACKUP_LAST);
+			o.title = R.string.auto_backup_now;
+			o.csubtitle = ctx.getString(R.string.auto_backup_now_sub, (last == 0) ?
+					ctx.getString(R.string.auto_backup_never) :
+					java.text.DateFormat.getDateTimeInstance().format(new Date(last)));
+			o.onClick = () -> backupNow(a);
+		});
+		ps.addButton(o -> {
+			o.title = R.string.import_prefs;
+			o.subtitle = R.string.import_prefs_sub;
+			o.onClick = () -> importPrefs(a);
+		});
 
-		if (Utils.isSafSupported(a)) {
-			a.startActivityForResult(() -> new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE))
-					.onCompletion((d, err) -> {
-						Context ctx = a.getContext();
-
-						if (err != null) {
-							UiUtils.showAlert(ctx, ctx.getString(R.string.export_prefs_failed, err));
-							return;
-						}
-
-						if (d == null) return;
-						Uri uri = d.getData();
-						if (uri == null) return;
-
-						try {
-							DocumentFile dir = DocumentFile.fromTreeUri(ctx, uri);
-							if (dir == null) return;
-
-							File prefsDir = PrefUtils.getSharedPrefsFile(ctx, "fermata").getParentFile();
-							File[] files = (prefsDir == null) ? null :
-									prefsDir.listFiles(n -> !n.getName().equals("image-cache.xml"));
-
-							if ((files == null) || (files.length == 0)) {
-								UiUtils.showAlert(ctx, R.string.prefs_not_found);
-								return;
-							}
-
-							String name = pattern + ".zip";
-							for (int i = 1; dir.findFile(name) != null; i++) name = pattern + '_' + i + ".zip";
-							DocumentFile f = dir.createFile("application/zip", name);
-
-							if (f == null) {
-								UiUtils.showAlert(ctx,
-										ctx.getString(R.string.export_prefs_failed, "Failed to create file"));
-							} else {
-								try (OutputStream os = ctx.getContentResolver().openOutputStream(f.getUri())) {
-									exportPrefs(a, os, name);
-								}
-							}
-						} catch (Exception ex) {
-							Log.e(ex, "Failed to export preferences");
-							UiUtils.showAlert(ctx, ctx.getString(R.string.export_prefs_failed, ex));
-						}
-					});
-		} else {
-			if (!(a.showFragment(me.aap.utils.R.id.file_picker) instanceof FilePickerFragment pick))
-				return;
-			pick.setMode((byte) (FilePickerFragment.FOLDER | FilePickerFragment.WRITABLE));
-			pick.setFileSystem(LocalFileSystem.getInstance());
-			pick.setFileConsumer(res -> {
-				a.showFragment(R.id.settings_fragment);
-				if (res == null) return;
-				File dir = res.getLocalFile();
-				if (dir == null) return;
-				try {
-					String name = pattern + ".zip";
-					File f = new File(dir, name);
-					for (int i = 1; f.exists(); i++) {
-						name = pattern + '_' + i + ".zip";
-						f = new File(dir, name);
-					}
-					try (OutputStream os = new FileOutputStream(f)) {
-						exportPrefs(a, os, name);
-					}
-				} catch (Exception ex) {
-					Context ctx = a.getContext();
-					Log.e(ex, "Failed to export preferences");
-					UiUtils.showAlert(ctx, ctx.getString(R.string.export_prefs_failed, ex));
-				}
-			});
-		}
+		ps.addBooleanPref(o -> {
+			o.store = store;
+			o.pref = BackupManager.AUTO_BACKUP;
+			o.title = R.string.auto_backup;
+			o.subtitle = R.string.auto_backup_sub;
+			o.asSwitch = true;
+		});
+		var autoOn = PrefCondition.create(store, BackupManager.AUTO_BACKUP);
+		ps.addListPref(o -> {
+			o.store = store;
+			o.pref = BackupManager.AUTO_BACKUP_INTERVAL;
+			o.title = R.string.auto_backup_interval;
+			o.subtitle = R.string.string_format;
+			o.formatSubtitle = true;
+			o.values = new int[]{R.string.auto_backup_interval_1, R.string.auto_backup_interval_3,
+					R.string.auto_backup_interval_7, R.string.auto_backup_interval_30};
+			o.visibility = autoOn.copy();
+		});
+		ps.addListPref(o -> {
+			o.store = store;
+			o.pref = BackupManager.AUTO_BACKUP_HOUR;
+			o.title = R.string.auto_backup_time;
+			o.subtitle = R.string.string_format;
+			o.formatSubtitle = true;
+			String[] hours = new String[24];
+			for (int i = 0; i < hours.length; i++) hours[i] = String.format(Locale.getDefault(), "%02d:00", i);
+			o.stringValues = hours;
+			o.visibility = autoOn.copy();
+		});
+		ps.addListPref(o -> {
+			o.store = store;
+			o.pref = BackupManager.AUTO_BACKUP_KEEP;
+			o.title = R.string.auto_backup_keep;
+			o.subtitle = R.string.string_format;
+			o.formatSubtitle = true;
+			String[] counts = new String[BackupManager.KEEP_COUNT.length];
+			for (int i = 0; i < counts.length; i++) counts[i] = String.valueOf(BackupManager.KEEP_COUNT[i]);
+			o.stringValues = counts;
+			o.visibility = autoOn.copy();
+		});
+		backupSet = ps;
 	}
 
-	private void exportPrefs(MainActivityDelegate a, OutputStream os, String fileName)
-			throws IOException {
+	private PreferenceSet backupSet;
+
+	/** Draws the backup page again, if it's the one showing: its last backup and folder changed. */
+	private void refreshBackupPage() {
+		PreferenceViewAdapter ad = adapter;
+		PreferenceSet set = backupSet;
+		if ((ad != null) && (set != null) && (ad.getPreferenceSet() == set)) ad.setPreferenceSet(set);
+	}
+
+	private void backupNow(MainActivityDelegate a) {
 		Context ctx = a.getContext();
-		File prefsDir = PrefUtils.getSharedPrefsFile(ctx, "fermata").getParentFile();
-		File[] files = (prefsDir == null) ? null :
-				prefsDir.listFiles(n -> !n.getName().equals("image-cache" + ".xml"));
+		// Off the main thread: the folder may be a cloud provider's.
+		new Thread(() -> {
+			String name = BackupManager.runBackup(ctx);
+			App.get().getHandler().post(() -> {
+				if (name != null) TopToast.show(R.drawable.save, R.string.auto_backup_done, name);
+				else UiUtils.showAlert(ctx, R.string.auto_backup_failed);
+				refreshBackupPage();
+			});
+			BackupManager.schedule(ctx);
+		}, "backup-now").start();
+	}
 
-		if ((files == null) || (files.length == 0)) {
-			UiUtils.showAlert(ctx, R.string.prefs_not_found);
-			return;
-		}
-
-		List<String> names = new ArrayList<>(files.length);
-
-		for (File pf : files) {
-			String n = pf.getName();
-			if (n.endsWith(".xml")) names.add(n.substring(0, n.length() - 4));
-		}
-
-		try (ZipOutputStream zos = (SDK_INT >= N) ? new ZipOutputStream(os, UTF_8) :
-				new ZipOutputStream(os)) {
-			PrefUtils.exportSharedPrefs(ctx, names, zos);
-			UiUtils.showInfo(ctx, ctx.getString(R.string.export_prefs_ok, fileName));
-		}
+	private void chooseBackupFolder(MainActivityDelegate a, PreferenceStore store) {
+		int rw = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+		a.startActivityForResult(() -> new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+				.addFlags(rw | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)).onCompletion((d, err) -> {
+			Context ctx = a.getContext();
+			if (err != null) {
+				UiUtils.showAlert(ctx, ctx.getString(R.string.export_prefs_failed, err));
+				return;
+			}
+			if (d == null) return;
+			Uri uri = d.getData();
+			if (uri == null) return;
+			try {
+				ctx.getContentResolver().takePersistableUriPermission(uri, d.getFlags() & rw);
+				BackupManager.setDestination(ctx, uri);
+				refreshBackupPage();
+				TopToast.show(R.drawable.save, R.string.auto_backup_folder_set);
+			} catch (Exception ex) {
+				Log.e(ex, "Failed to use the backup folder");
+				UiUtils.showAlert(ctx, ctx.getString(R.string.export_prefs_failed, ex));
+			}
+		});
 	}
 
 	private void importPrefs(MainActivityDelegate a) {
