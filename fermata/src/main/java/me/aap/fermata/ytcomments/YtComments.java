@@ -482,16 +482,32 @@ public final class YtComments {
 		String replyCount = (toolbar == null) ? "" : toolbar.optString("replyCount");
 		if (repliesToken == null) replyCount = "";
 
-		String replyParams = findString(holder, "createReplyParams");
+		String replyParams = findStringLike(holder, "replyparams");
 		if (replyParams == null) {
 			for (String k : new String[]{"toolbarSurfaceKey", "toolbarStateKey", "commentSurfaceKey"}) {
 				JSONObject extra = entities.get(vm.optString(k));
-				String p = (extra == null) ? null : findString(extra, "createReplyParams");
+				String p = (extra == null) ? null : findStringLike(extra, "replyparams");
 				if (p != null) {
 					replyParams = p;
 					break;
 				}
 			}
+		}
+
+		if (replyParams == null) {
+			// Any payload that mentions this comment may carry how to reply to it.
+			for (JSONObject pl : entities.values()) {
+				if ((pl == payload) || !pl.toString().contains(id)) continue;
+				String p = findStringLike(pl, "replyparams");
+				if (p != null) {
+					replyParams = p;
+					break;
+				}
+			}
+		}
+		if (replyParams == null) {
+			me.aap.fermata.util.DiagnosticLog.log("YTCOMMENTS", "no reply params", id,
+					"vm=" + vm.names(), "holder=" + holder.names());
 		}
 
 		return new Comment(id, (author == null) ? "" : author.optString("displayName"), avatar, text,
@@ -517,7 +533,7 @@ public final class YtComments {
 				cr.has("pinnedCommentBadge"), cr.optJSONObject("actionButtons") != null &&
 				findObject(cr.optJSONObject("actionButtons"), "creatorHeart") != null, reply,
 				(repliesToken != null && rc > 0) ? String.valueOf(rc) : "", repliesToken,
-				findString(holder, "createReplyParams"));
+				findStringLike(holder, "replyparams"));
 	}
 
 	/** {@code {"simpleText": ...}} or {@code {"runs": [{"text": ...}]}} as one string. */
@@ -548,6 +564,30 @@ public final class YtComments {
 		} else if (node instanceof JSONArray a) {
 			for (int i = 0; i < a.length(); i++) {
 				String r = findString(a.opt(i), key);
+				if (r != null) return r;
+			}
+		}
+		return null;
+	}
+
+	/** The first string under a key that ends with {@code suffix} (lower case), anywhere below. */
+	@Nullable
+	private static String findStringLike(@Nullable Object node, String suffix) {
+		if (node instanceof JSONObject o) {
+			for (java.util.Iterator<String> it = o.keys(); it.hasNext(); ) {
+				String k = it.next();
+				Object v = o.opt(k);
+				if ((v instanceof String str) && !str.isEmpty() && k.toLowerCase().endsWith(suffix)) {
+					return str;
+				}
+			}
+			for (java.util.Iterator<String> it = o.keys(); it.hasNext(); ) {
+				String r = findStringLike(o.opt(it.next()), suffix);
+				if (r != null) return r;
+			}
+		} else if (node instanceof JSONArray a) {
+			for (int i = 0; i < a.length(); i++) {
+				String r = findStringLike(a.opt(i), suffix);
 				if (r != null) return r;
 			}
 		}

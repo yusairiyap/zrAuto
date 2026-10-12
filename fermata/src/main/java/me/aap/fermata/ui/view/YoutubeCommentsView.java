@@ -101,6 +101,7 @@ public final class YoutubeCommentsView {
 	private RecyclerView list;
 	private Adapter adapter;
 	private TextView titleView;
+	private TextView videoLine;
 	private LinearLayout sortRow;
 	private TextView sortTop;
 	private TextView sortNew;
@@ -284,6 +285,7 @@ public final class YoutubeCommentsView {
 
 		// What it is for.
 		TextView name = text(videoTitle, 13, secondary, false);
+		videoLine = name;
 		name.setSingleLine(true);
 		name.setEllipsize(TextUtils.TruncateAt.END);
 		name.setPadding(dp(8), dp(2), dp(8), dp(6));
@@ -697,6 +699,7 @@ public final class YoutubeCommentsView {
 		Row target = replyTo;
 		String params = (target != null) ? target.c.replyParams : createParams;
 		if (params == null) {
+			me.aap.fermata.util.DiagnosticLog.log("YTCOMMENTS", "no params to post with", (target == null) ? "comment" : target.c.id);
 			TopToast.show(R.drawable.comments, R.string.yt_comments_no_reply);
 			return;
 		}
@@ -766,18 +769,25 @@ public final class YoutubeCommentsView {
 		int kb = Math.max(0, overlayBottom - r.bottom);
 		// Anything small is just the system navigation bar.
 		if (kb < overlay.getHeight() * 0.15f) kb = 0;
-		int h = (kb == 0) ? fullH : Math.max(dp(160), fullH - kb);
+		// Some windows are resized for the keyboard instead (kb stays 0): the insets know it's there.
+		androidx.core.view.WindowInsetsCompat wi = androidx.core.view.ViewCompat.getRootWindowInsets(overlay);
+		boolean typing = (kb > 0) || ((wi != null) &&
+				wi.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()));
 		int bottom = baseBottom + kb;
-		if (kb > 0) {
-			// Sits right over the keyboard, as tall as that leaves room for.
-			int room = overlay.getHeight() - cardLp.topMargin - bottom;
-			h = Math.min(h, Math.max(dp(160), room));
-		}
+		// As tall as there is room for between the bars and the keyboard, never taller than at rest:
+		// a height worked out once overflowed (top cut off) when the window shrank under it.
+		int room = overlay.getHeight() - cardLp.topMargin - bottom;
+		int h = Math.min(fullH, Math.max(dp(160), room));
 		if ((cardLp.height != h) || (cardLp.bottomMargin != bottom)) {
 			cardLp.height = h;
 			cardLp.bottomMargin = bottom;
 			card.setLayoutParams(cardLp);
 		}
+		// While writing, only the comments and the box matter: the rest gives its room up.
+		int v = typing ? View.GONE : View.VISIBLE;
+		if (videoLine != null) videoLine.setVisibility(v);
+		if (sortRow != null) sortRow.setVisibility(typing ? View.GONE :
+				((sortTopToken != null) && (sortNewToken != null)) ? View.VISIBLE : View.GONE);
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -982,7 +992,7 @@ public final class YoutubeCommentsView {
 
 		// Replying to a reply replies to the comment it's under.
 		Row target = reply ? row.parent : row;
-		boolean canReply = canWrite() && (target.c.replyParams != null);
+		boolean canReply = canWrite();
 		h.reply.setVisibility(canReply ? View.VISIBLE : View.GONE);
 		h.reply.setOnClickListener(v -> setReplyTo(target));
 
