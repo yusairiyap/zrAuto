@@ -285,6 +285,7 @@ public class CarModeFragment extends MainActivityFragment {
 		TextView label = text(R.string.car_mode_enable, 16, textPrimary, true);
 		row.addView(label, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 		SwitchCompat sw = new SwitchCompat(palette);
+		me.aap.fermata.ui.view.SwitchStyle.apply(sw, palette);
 		sw.setChecked(Key.getPrefs().getBooleanPref(Key.CAR_MODE));
 		sw.setOnCheckedChangeListener((b, on) -> Key.getPrefs().applyBooleanPref(Key.CAR_MODE, on));
 		row.addView(sw);

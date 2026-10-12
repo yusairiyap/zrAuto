@@ -52,6 +52,9 @@ public class OverlayMenuView extends ScrollView implements OverlayMenu {
 
 	@Nullable
 	MenuBuilder builder;
+	/** The content of a menu that was just closed, kept on screen while the menu fades out. */
+	@Nullable
+	private View fadingOut;
 
 	public OverlayMenuView(Context ctx, AttributeSet attrs) {
 		super(ctx, attrs, androidx.appcompat.R.attr.popupMenuStyle);
@@ -84,6 +87,7 @@ public class OverlayMenuView extends ScrollView implements OverlayMenu {
 	@Override
 	public void showFuture(Function<? super Builder, FutureSupplier<Void>> consumer) {
 		hide();
+		finishFade();
 		MenuBuilder b = new MenuBuilder(consumer, null);
 		b.focus = ActivityDelegate.get(getContext()).getCurrentFocus();
 		showMenu(b);
@@ -146,13 +150,35 @@ public class OverlayMenuView extends ScrollView implements OverlayMenu {
 		ActivityDelegate a = ActivityDelegate.get(getContext());
 		CloseHandler ch = builder.closeHandler;
 		View f = builder.focus;
-		builder.cleanUp();
+		// The content stays until the fade is over: removing it at once left the menu fading out as an
+		// empty box, which read as a hard cut.
+		finishFade();
+		View content = builder.release();
+		fadingOut = content;
 		builder = null;
 		animate().cancel();
-		animate().alpha(0f).setDuration(FADE_DURATION).withEndAction(() -> setVisibility(GONE)).start();
+		animate().alpha(0f).setDuration(FADE_DURATION).withEndAction(() -> {
+			if ((content == null) || (fadingOut != content)) return;
+			finishFade();
+			setVisibility(GONE);
+		}).start();
 		a.setActiveMenu(null);
 		if (ch != null) ch.menuClosed(this);
 		if (f != null) f.requestFocus();
+	}
+
+	/** Removes the content kept for the closing fade, if any. */
+	private void finishFade() {
+		View v = fadingOut;
+		if (v == null) return;
+		fadingOut = null;
+		removeView(v);
+	}
+
+	@Override
+	public boolean onInterceptTouchEvent(android.view.MotionEvent ev) {
+		// Nothing can be tapped while it fades away.
+		return (fadingOut != null) || super.onInterceptTouchEvent(ev);
 	}
 
 	@Override
@@ -224,6 +250,7 @@ public class OverlayMenuView extends ScrollView implements OverlayMenu {
 	}
 
 	void menuItemSelected(OverlayMenuItemView item) {
+		if (builder == null) return;
 		if (item.submenuBuilder == null) {
 			SelectionHandler handler = item.handler;
 			if (handler == null) handler = requireNonNull(builder).selectionHandler;
@@ -273,6 +300,17 @@ public class OverlayMenuView extends ScrollView implements OverlayMenu {
 			selectionHandler = null;
 			closeHandler = null;
 			selectedItem = null;
+		}
+
+		/** Detaches the content from this builder without removing it from the menu. */
+		@Nullable
+		View release() {
+			View v = view;
+			view = null;
+			selectionHandler = null;
+			closeHandler = null;
+			selectedItem = null;
+			return v;
 		}
 
 		void setParentItem(OverlayMenuItemView item) {

@@ -52,6 +52,7 @@ public final class DialogStyle {
 			private View menu;
 			private Drawable was;
 			private float lift;
+			private android.animation.ObjectAnimator closing;
 			private android.view.ViewTreeObserver.OnPreDrawListener keyboardSync;
 
 			@Override
@@ -79,8 +80,15 @@ public final class DialogStyle {
 					View m = menu;
 					if (m == null) return;
 					m.animate().cancel();
-					m.animate().scaleX(0.94f).scaleY(0.94f).translationY(16 * density).setDuration(200)
-							.setInterpolator(new android.view.animation.AccelerateInterpolator(1.3f)).start();
+					// Not through animate(): the menu's own fade-out cancels that, and would leave this
+					// half way.
+					closing = android.animation.ObjectAnimator.ofPropertyValuesHolder(m,
+							android.animation.PropertyValuesHolder.ofFloat(View.SCALE_X, 0.94f),
+							android.animation.PropertyValuesHolder.ofFloat(View.SCALE_Y, 0.94f),
+							android.animation.PropertyValuesHolder.ofFloat(View.TRANSLATION_Y, 16 * density));
+					closing.setDuration(200);
+					closing.setInterpolator(new android.view.animation.AccelerateInterpolator(1.3f));
+					closing.start();
 				});
 
 				// Out of the keyboard's way: lifted when it would cover the card.
@@ -137,6 +145,8 @@ public final class DialogStyle {
 			public void onViewDetachedFromWindow(View v) {
 				v.removeOnAttachStateChangeListener(this);
 				if (keyboardSync != null) v.getViewTreeObserver().removeOnPreDrawListener(keyboardSync);
+				if (closing != null) closing.cancel();
+				closing = null;
 				if (menu != null) {
 					menu.animate().cancel();
 					menu.setBackground(was);

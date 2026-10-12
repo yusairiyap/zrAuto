@@ -4,7 +4,7 @@
 
     <include layout="@layout/pref_layout" />
 
-    <com.google.android.material.materialswitch.MaterialSwitch
+    <androidx.appcompat.widget.SwitchCompat
         android:id="@+id/pref_value"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

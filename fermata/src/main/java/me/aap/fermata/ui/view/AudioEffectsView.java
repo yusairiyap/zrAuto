@@ -430,6 +430,7 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 		parent.addView(ch);
 
 		CompoundButton sw = ch.findViewById(R.id.eq_channel_switch);
+		styleSwitch(sw);
 		TextView value = ch.findViewById(R.id.eq_channel_value);
 		TextView label = ch.findViewById(R.id.eq_channel_label);
 		StepSeekBar sb = ch.findViewById(R.id.eq_channel_seek);
@@ -458,6 +459,7 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 		parent.addView(ch);
 
 		CompoundButton sw = ch.findViewById(R.id.eq_channel_switch);
+		styleSwitch(sw);
 		TextView value = ch.findViewById(R.id.eq_channel_value);
 		TextView label = ch.findViewById(R.id.eq_channel_label);
 		StepSeekBar sb = ch.findViewById(R.id.eq_channel_seek);
@@ -542,8 +544,16 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 	}
 
 	private void configureSwitch(CompoundButton sw, Supplier<AudioEffect> effect) {
+		styleSwitch(sw);
 		sw.setChecked(effect.get().getEnabled());
 		sw.setOnCheckedChangeListener((b, checked) -> runWithRetry(() -> effect.get().setEnabled(checked)));
+	}
+
+	/** The switches of the effects screens look like the settings pages' (see {@link SwitchStyle}). */
+	private void styleSwitch(CompoundButton sw) {
+		if (sw instanceof androidx.appcompat.widget.SwitchCompat s) {
+			SwitchStyle.apply(s, EffectsUi.palette(getContext()));
+		}
 	}
 
 	private void eqBandChanged(Equalizer eq, short band, int progress, boolean fromUser) {

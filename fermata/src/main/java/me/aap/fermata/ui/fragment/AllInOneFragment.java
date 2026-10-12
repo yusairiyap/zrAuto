@@ -399,6 +399,7 @@ public class AllInOneFragment extends MainActivityFragment {
 		labels.addView(text(R.string.all_in_one_music_more_sub, 13, textSecondary, false));
 		row.addView(labels, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
 		SwitchCompat sw = new SwitchCompat(palette);
+		me.aap.fermata.ui.view.SwitchStyle.apply(sw, palette);
 		sw.setChecked(prefs().getBooleanPref(pref(MainActivityPrefs.AIO_MUSIC_MORE)));
 		sw.setOnCheckedChangeListener((b, on) ->
 				prefs().applyBooleanPref(pref(MainActivityPrefs.AIO_MUSIC_MORE), on));

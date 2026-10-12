@@ -143,6 +143,9 @@ public enum Action {
 	ALL_IN_ONE(R.string.action_all_in_one, a(me.aap.fermata.ui.view.AllInOneMenu::toggle)),
 	// YouTube's video quality, picked on the All in One card's Quality page.
 	QUALITY(R.string.quality, a(me.aap.fermata.ui.view.AllInOneMenu::showQuality)),
+	// Other YouTube videos for what plays, searched by its title.
+	YOUTUBE_ALTERNATIVES(R.string.action_youtube_alternatives,
+			a(me.aap.fermata.ui.view.YoutubeAlternativesPicker::showForCurrent)),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

@@ -366,6 +366,8 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 	 * or if it is only the sound), the next ones following on.
 	 */
 	private void play(String videoId) {
+		// An explicit tap on a downloaded video plays the copy, whatever "play on YouTube" said before.
+		YtOffline.clearForcedStream();
 		MainActivityDelegate a = getActivityDelegate();
 		List<String> ids = new ArrayList<>();
 		for (Row r : rows) {
@@ -423,6 +425,11 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 				}
 				a.addPlaylistMenu(b, completed(Collections.singletonList(pi)));
 				YtDownloadMenu.addTo(b, a, Collections.singletonList(pi));
+				b.addItem(R.id.youtube_alternatives, R.drawable.search, R.string.youtube_alternatives)
+						.setHandler(i -> {
+							me.aap.fermata.ui.view.YoutubeAlternativesPicker.show(a, pi, true);
+							return true;
+						});
 			});
 		});
 	}

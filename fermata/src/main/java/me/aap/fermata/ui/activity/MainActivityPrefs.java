@@ -207,7 +207,10 @@ public interface MainActivityPrefs
 	// An icon (first, no text) while what's playing has a downloaded copy (see YtDownloads).
 	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DOWNLOADED = Pref.b("INFO_OVERLAY_SHOW_DOWNLOADED", false);
 	// Every Info Overlay pref, for the views showing it (fullscreen video, the Music tab) to follow.
-	Set<Pref<?>> INFO_OVERLAY_PREFS = Set.of(CLOCK_POS, INFO_OVERLAY_SHOW_CLOCK,
+	// The overlay's items in the order they're laid out, as keys joined by commas (see
+	// InfoOverlayView#ITEM_KEYS); empty: the default order. Items missing from it follow in default order.
+	Pref<Supplier<String>> INFO_OVERLAY_ORDER = Pref.s("INFO_OVERLAY_ORDER", "");
+	Set<Pref<?>> INFO_OVERLAY_PREFS = Set.of(CLOCK_POS, INFO_OVERLAY_ORDER, INFO_OVERLAY_SHOW_CLOCK,
 			INFO_OVERLAY_SHOW_CLOCK_ICON, INFO_OVERLAY_SHOW_BATTERY_PCT, INFO_OVERLAY_SHOW_BATTERY_ICON,
 			INFO_OVERLAY_SHOW_BATTERY_TEMP, INFO_OVERLAY_SHOW_TEMP_ICON, INFO_OVERLAY_SHOW_DISTANCE,
 			INFO_OVERLAY_SHOW_DISTANCE_ICON, INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE,
@@ -593,6 +596,10 @@ public interface MainActivityPrefs
 
 	default boolean getInfoOverlayShowDataIconPref() {
 		return getBooleanPref(INFO_OVERLAY_SHOW_DATA_ICON);
+	}
+
+	default String getInfoOverlayOrderPref() {
+		return getStringPref(INFO_OVERLAY_ORDER);
 	}
 
 	default float getInfoOverlaySizePref() {

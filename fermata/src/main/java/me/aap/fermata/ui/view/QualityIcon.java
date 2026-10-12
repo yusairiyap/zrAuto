@@ -16,9 +16,12 @@ import androidx.annotation.Nullable;
 
 import java.util.List;
 
+import me.aap.fermata.R;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.engine.VideoQualityOption;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ytdl.YtDownloads;
+import me.aap.fermata.ytdl.YtOffline;
 import me.aap.utils.async.FutureSupplier;
 
 /**
@@ -65,6 +68,11 @@ public final class QualityIcon extends Drawable {
 		lastAsk = SystemClock.uptimeMillis();
 	}
 
+	/** What plays changed (a new picture size): the next {@link #refresh} asks at once. */
+	public static void expire() {
+		lastAsk = 0;
+	}
+
 	/**
 	 * Asks the player which quality it plays (no more often than every couple of seconds);
 	 * {@code onChange} runs if the answer differs from the label shown.
@@ -94,7 +102,8 @@ public final class QualityIcon extends Drawable {
 		MediaEngine eng = a.getMediaSessionCallback().getEngine();
 		FutureSupplier<List<VideoQualityOption>> f = (eng == null) ? null : eng.getVideoQualityOptions();
 		if (f == null) {
-			update(null, onChange);
+			// Not the YouTube player: a local file, which has no qualities to pick but does have one.
+			update((eng == null) ? null : localLabel(a, eng), onChange);
 			return;
 		}
 		asking = true;
@@ -114,6 +123,46 @@ public final class QualityIcon extends Drawable {
 			boolean changed = update(l, onChange);
 			if (changed) for (Runnable r : also) r.run();
 		});
+	}
+
+	/**
+	 * The quality of what a local engine plays: the one a downloaded video was downloaded in, else
+	 * worked out from the size of its picture; null for sound alone or while the size isn't known.
+	 */
+	@Nullable
+	static String localLabel(MainActivityDelegate a, MediaEngine eng) {
+		try {
+			String id = YtDownloads.videoIdOf(eng.getSource());
+			if (YtOffline.useLocal(id)) {
+				YtDownloads.Entry e = YtDownloads.get().getEntry(id);
+				if (e != null) {
+					if (!e.video) return a.getContext().getString(R.string.quality_audio);
+					int h = (e.gotHeight > 0) ? e.gotHeight : e.height;
+					if (h > 0) return h + "p";
+				}
+			}
+			return labelForSize(eng.getVideoWidth(), eng.getVideoHeight());
+		} catch (RuntimeException ex) {
+			// A player that isn't ready to say: no label yet.
+			return null;
+		}
+	}
+
+	private static final int[] STANDARD = {144, 240, 360, 480, 720, 1080, 1440, 2160, 4320};
+
+	/**
+	 * "1080p" for a picture of {@code w} x {@code h}: the standard height it is, by the taller of its
+	 * short side (4:3, portrait) and what its long side makes at 16:9 (wide films, cropped 1080p);
+	 * its own height when it's none of them.
+	 */
+	@Nullable
+	static String labelForSize(float w, float h) {
+		if ((w < 1) || (h < 1)) return null;
+		float v = Math.max(Math.min(w, h), Math.max(w, h) * 9f / 16f);
+		for (int s : STANDARD) {
+			if (Math.abs(v - s) <= s * 0.05f) return s + "p";
+		}
+		return Math.round(v) + "p";
 	}
 
 	/** @return whether the label changed */

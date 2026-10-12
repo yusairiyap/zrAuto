@@ -117,7 +117,6 @@ public class SettingsFragment extends MainActivityFragment
 	private PreferenceViewAdapter adapter;
 	private PreferenceSet dimSettingsSet;
 	private PreferenceSet privateModeSettingsSet;
-	private PreferenceSet fabSettingsSet;
 	// Each addon's own settings page, by module name, see addonSettings().
 	private final java.util.Map<String, PreferenceSet> addonSettingsSets = new java.util.HashMap<>();
 	@Nullable
@@ -167,8 +166,6 @@ public class SettingsFragment extends MainActivityFragment
 			adapter.setPreferenceSet(dimSettingsSet);
 		} else if ((pendingInput == SHOW_PRIVATE_MODE_SETTINGS) && (privateModeSettingsSet != null)) {
 			adapter.setPreferenceSet(privateModeSettingsSet);
-		} else if ((pendingInput == SHOW_FAB_SETTINGS) && (fabSettingsSet != null)) {
-			adapter.setPreferenceSet(fabSettingsSet);
 		} else if ((pendingInput instanceof String s) && s.startsWith(ADDON_SETTINGS)) {
 			PreferenceSet p = addonSettingsSets.get(s.substring(ADDON_SETTINGS.length()));
 			if (p != null) adapter.setPreferenceSet(p);
@@ -412,13 +409,8 @@ public class SettingsFragment extends MainActivityFragment
 		aaInterfaceSet = null;
 
 		if (BuildConfig.AUTO && a.isCarActivityNotMirror()) {
-			fabSettingsSet = sub1.subSet(o -> {
-				o.title = R.string.secondary_fab_prefs;
-				o.subtitle = R.string.prefs_sub_fab;
-				o.icon = R.drawable.fab;
-			});
 			// The car's own floating buttons, independent of the phone's.
-			addSecondaryFabPrefs(a, fabSettingsSet, true);
+			addFabSettings(a, sub1, true);
 			// The car's own All in One card.
 			addAllInOne(a, sub1, true);
 			aaInterfaceSet = sub1;
@@ -430,7 +422,6 @@ public class SettingsFragment extends MainActivityFragment
 		} else {
 			// Android Auto's own interface settings first: on a phone they're the ones most easily
 			// missed further down.
-			PreferenceSet aaFabSet = null;
 			if (BuildConfig.AUTO) {
 				PreferenceSet aaSet = sub1.subSet(o -> {
 					o.title = R.string.interface_prefs_aa;
@@ -438,12 +429,7 @@ public class SettingsFragment extends MainActivityFragment
 					o.icon = R.drawable.tv;
 				});
 				// Android Auto's floating buttons are set up separately from the phone's.
-				aaFabSet = aaSet.subSet(o -> {
-					o.title = R.string.secondary_fab_prefs;
-					o.subtitle = R.string.prefs_sub_fab;
-					o.icon = R.drawable.fab;
-				});
-				addSecondaryFabPrefs(a, aaFabSet, true);
+				addFabSettings(a, aaSet, true);
 				addAllInOne(a, aaSet, true);
 				// Shared with the phone's, here too so they're found from the car's own settings.
 				addInfoOverlayPrefs(a, aaSet);
@@ -452,16 +438,8 @@ public class SettingsFragment extends MainActivityFragment
 				addAAInterface(a, aaSet);
 				aaInterfaceSet = aaSet;
 			}
-			fabSettingsSet = sub1.subSet(o -> {
-				o.title = R.string.secondary_fab_prefs;
-				o.subtitle = R.string.prefs_sub_fab;
-				o.icon = R.drawable.fab;
-			});
-			addSecondaryFabPrefs(a, fabSettingsSet, false);
+			addFabSettings(a, sub1, false);
 			addAllInOne(a, sub1, false);
-			// The phone UI mirrored onto the car screen uses the car's buttons: its floating buttons'
-			// "settings" item opens those.
-			if ((aaFabSet != null) && a.isCarActivity()) fabSettingsSet = aaFabSet;
 			addInfoOverlayPrefs(a, sub1);
 			addNavTabsPrefs(a, sub1);
 			addUpNextPrefs(a, sub1);
@@ -1162,218 +1140,26 @@ public class SettingsFragment extends MainActivityFragment
 						p -> prefs.getIntPref(p) == MainActivityPrefs.DIM_COLOR_CUSTOM_IDX));
 	}
 
-	/**
-	 * Navigation tabs: every nav bar tab in its order, each opening a small menu to move it, hide
-	 * it, or make it the one the app opens on start. Rebuilt after every change, so the list always
-	 * shows the current order.
-	 */
+	/** Interface &gt; Navigation tabs: its own page, rows to drag into order (see {@link NavTabsFragment}). */
 	private static void addNavTabsPrefs(MainActivityDelegate a, PreferenceSet parent) {
-		PreferenceSet ps = parent.subSet(o -> {
+		parent.addButton(o -> {
 			o.title = R.string.nav_tabs_prefs;
 			o.subtitle = R.string.prefs_sub_nav_tabs;
 			o.icon = R.drawable.view_grid;
-		});
-		ps.configure(s -> buildNavTabsPrefs(a, s));
-	}
-
-	private static void buildNavTabsPrefs(MainActivityDelegate a, PreferenceSet ps) {
-		MainActivityPrefs prefs = a.getPrefs();
-		List<String> tabs = NavBarMediator.getTabs(prefs);
-
-		for (int i = 0, n = tabs.size(); i < n; i++) {
-			String name = tabs.get(i);
-			int pos = i;
-			ps.addButton(o -> {
-				Context ctx = a.getContext();
-				boolean hidden = NavBarMediator.getHiddenTabs(prefs).contains(name);
-				boolean start = name.equals(prefs.getShowAddonOnStartPref());
-				String state = ctx.getString(hidden ? R.string.nav_tab_hidden : R.string.nav_tab_shown);
-				if (start) state += " · " + ctx.getString(R.string.nav_tab_opens_on_start);
-				o.icon = NavBarMediator.getTabIcon(name);
-				o.ctitle = (pos + 1) + ". " + NavBarMediator.getTabTitle(ctx, name);
-				o.csubtitle = state;
-				o.onClick = () -> showNavTabMenu(a, ps, tabs, pos);
-			});
-		}
-
-		ps.addButton(o -> {
-			o.title = R.string.nav_tabs_reset;
-			o.subtitle = R.string.nav_tabs_reset_sub;
-			o.icon = R.drawable.view_grid;
-			o.onClick = () -> {
-				NavBarMediator.resetTabs(prefs);
-				ps.configure(s -> buildNavTabsPrefs(a, s));
-			};
-		});
-	}
-
-	private static void showNavTabMenu(MainActivityDelegate a, PreferenceSet ps, List<String> tabs,
-																		 int pos) {
-		MainActivityPrefs prefs = a.getPrefs();
-		String name = tabs.get(pos);
-		boolean hidden = NavBarMediator.getHiddenTabs(prefs).contains(name);
-		boolean start = name.equals(prefs.getShowAddonOnStartPref());
-		Runnable refresh = () -> ps.configure(s -> buildNavTabsPrefs(a, s));
-
-		a.getContextMenu().show(b -> {
-			b.setTitle(NavBarMediator.getTabTitle(a.getContext(), name).toString());
-			if (pos > 0) {
-				b.addItem(R.id.nav_tab_move_up, me.aap.utils.R.drawable.move_up, R.string.move_up)
-						.setHandler(i -> {
-							List<String> order = new ArrayList<>(tabs);
-							Collections.swap(order, pos, pos - 1);
-							NavBarMediator.setTabOrder(prefs, order);
-							refresh.run();
-							return true;
-						});
-			}
-			if (pos < tabs.size() - 1) {
-				b.addItem(R.id.nav_tab_move_down, me.aap.utils.R.drawable.move_down, R.string.move_down)
-						.setHandler(i -> {
-							List<String> order = new ArrayList<>(tabs);
-							Collections.swap(order, pos, pos + 1);
-							NavBarMediator.setTabOrder(prefs, order);
-							refresh.run();
-							return true;
-						});
-			}
-			b.addItem(R.id.nav_tab_visibility,
-					hidden ? me.aap.utils.R.drawable.check_box_blank : me.aap.utils.R.drawable.check_box,
-					hidden ? R.string.nav_tab_show : R.string.nav_tab_hide).setHandler(i -> {
-				NavBarMediator.setTabHidden(prefs, name, !hidden);
-				refresh.run();
-				return true;
-			});
-			b.addItem(R.id.nav_open_on_start, start ? R.drawable.bookmark_filled : R.drawable.bookmark,
-					start ? R.string.remove_open_on_start : R.string.set_open_on_start).setHandler(i -> {
-				prefs.setShowAddonOnStartPref(start ? null : name);
-				refresh.run();
-				return true;
-			});
+			o.onClick = () -> a.showFragment(R.id.nav_tabs_fragment);
 		});
 	}
 
 	/**
-	 * The Info Overlay (clock, battery, temperature, distance) shown over fullscreen video and on the
-	 * Music tab: under Interface, as it's no longer about video alone.
+	 * Interface &gt; Info overlay (clock, battery, temperature, distance, data) shown over fullscreen
+	 * video and on the Music tab: its own page, see {@link InfoOverlayFragment}.
 	 */
 	private static void addInfoOverlayPrefs(MainActivityDelegate a, PreferenceSet parent) {
-		PreferenceSet ps = parent.subSet(o -> {
+		parent.addButton(o -> {
 			o.title = R.string.info_overlay_prefs;
 			o.subtitle = R.string.prefs_sub_info_overlay;
 			o.icon = R.drawable.about;
-		});
-		ps.addListPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.CLOCK_POS;
-			o.title = R.string.clock_pos;
-			o.subtitle = R.string.string_format;
-			o.formatSubtitle = true;
-			o.values =
-					new int[]{R.string.clock_pos_none, R.string.clock_pos_left, R.string.clock_pos_right,
-							R.string.clock_pos_center};
-		});
-		var infoOverlayCond = new PrefCondition<>(a.getPrefs(), MainActivityPrefs.CLOCK_POS,
-				pref -> a.getPrefs().getIntPref(pref) != MainActivityPrefs.CLOCK_POS_NONE);
-		var showClockCond = PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK);
-		var showBatteryPctCond =
-				PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_PCT);
-		var showBatteryTempCond =
-				PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_TEMP);
-		var showDistanceCond =
-				PrefCondition.create(a.getPrefs(), MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE);
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DOWNLOADED;
-			o.title = R.string.info_overlay_show_downloaded;
-			o.subtitle = R.string.info_overlay_show_downloaded_sub;
-			o.visibility = infoOverlayCond.copy();
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK;
-			o.title = R.string.info_overlay_show_clock;
-			o.visibility = infoOverlayCond.copy();
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_CLOCK_ICON;
-			o.title = R.string.info_overlay_show_clock_icon;
-			o.visibility = infoOverlayCond.copy().and(showClockCond.copy());
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_PCT;
-			o.title = R.string.info_overlay_show_battery_pct;
-			o.visibility = infoOverlayCond.copy();
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_ICON;
-			o.title = R.string.info_overlay_show_battery_icon;
-			o.visibility = infoOverlayCond.copy().and(showBatteryPctCond.copy());
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_TEMP;
-			o.title = R.string.info_overlay_show_battery_temp;
-			o.visibility = infoOverlayCond.copy();
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_TEMP_ICON;
-			o.title = R.string.info_overlay_show_temp_icon;
-			o.visibility = infoOverlayCond.copy().and(showBatteryTempCond.copy());
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE;
-			o.title = R.string.info_overlay_show_distance;
-			o.visibility = infoOverlayCond.copy();
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE_ICON;
-			o.title = R.string.info_overlay_show_distance_icon;
-			o.visibility = infoOverlayCond.copy().and(showDistanceCond.copy());
-		});
-		// The Data Usage addon's items, also offered in its own settings; only while it's enabled.
-		if (FermataApplication.get().getAddonManager()
-				.getAddon(me.aap.fermata.addon.data.DataUsageAddon.class) != null) {
-			ps.addBooleanPref(o -> {
-				o.store = a.getPrefs();
-				o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DATA_USAGE;
-				o.title = R.string.info_overlay_show_data_usage;
-				o.visibility = infoOverlayCond.copy();
-			});
-			ps.addBooleanPref(o -> {
-				o.store = a.getPrefs();
-				o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DATA_REMAINING;
-				o.title = R.string.info_overlay_show_data_remaining;
-				o.subtitle = R.string.data_usage_overlay_remaining_sub;
-				o.visibility = infoOverlayCond.copy();
-			});
-			ps.addBooleanPref(o -> {
-				o.store = a.getPrefs();
-				o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DATA_ICON;
-				o.title = R.string.info_overlay_show_data_icon;
-				o.visibility = infoOverlayCond.copy();
-			});
-		}
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE;
-			o.title = R.string.info_overlay_only_when_control_panel_visible;
-			o.visibility = infoOverlayCond.copy();
-		});
-		ps.addFloatPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SIZE;
-			o.title = R.string.info_overlay_size;
-			o.scale = 0.05f;
-			o.seekMin = 10;
-			o.seekMax = 40;
-			o.visibility = infoOverlayCond.copy();
+			o.onClick = () -> a.showFragment(R.id.info_overlay_fragment);
 		});
 	}
 
@@ -1420,53 +1206,13 @@ public class SettingsFragment extends MainActivityFragment
 		});
 	}
 
-	/** The floating buttons' settings: the car screen's own set if {@code aa}, else the phone's. */
-	private void addSecondaryFabPrefs(MainActivityDelegate a, PreferenceSet ps, boolean aa) {
-		var fabActions = ActionFabMediator.OFFERED_ACTIONS;
-		var fabActionNames = new int[fabActions.size()];
-		var fabActionOrdinals = new int[fabActions.size()];
-		for (int i = 0; i < fabActions.size(); i++) {
-			fabActionNames[i] = fabActions.get(i).getName();
-			fabActionOrdinals[i] = fabActions.get(i).ordinal();
-		}
-
-		addFabPrefs(a, ps, fabPref(aa, MainActivityPrefs.FAB2_ENABLED), R.string.fab2_enable,
-				fabPref(aa, MainActivityPrefs.FAB2_ACTION), R.string.fab2_action,
-				fabActionNames, fabActionOrdinals);
-		addFabPrefs(a, ps, fabPref(aa, MainActivityPrefs.FAB3_ENABLED), R.string.fab3_enable,
-				fabPref(aa, MainActivityPrefs.FAB3_ACTION), R.string.fab3_action,
-				fabActionNames, fabActionOrdinals);
-		addFabPrefs(a, ps, fabPref(aa, MainActivityPrefs.FAB4_ENABLED), R.string.fab4_enable,
-				fabPref(aa, MainActivityPrefs.FAB4_ACTION), R.string.fab4_action,
-				fabActionNames, fabActionOrdinals);
-		addFabPrefs(a, ps, fabPref(aa, MainActivityPrefs.FAB5_ENABLED), R.string.fab5_enable,
-				fabPref(aa, MainActivityPrefs.FAB5_ACTION), R.string.fab4_action,
-				fabActionNames, fabActionOrdinals);
-		addFabPrefs(a, ps, fabPref(aa, MainActivityPrefs.FAB6_ENABLED), R.string.fab6_enable,
-				fabPref(aa, MainActivityPrefs.FAB6_ACTION), R.string.fab4_action,
-				fabActionNames, fabActionOrdinals);
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.FAB_PILL;
-			o.title = R.string.fab_pill;
-			o.subtitle = R.string.fab_pill_sub;
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = fabPref(aa, MainActivityPrefs.FAB_DRAGGABLE);
-			o.title = R.string.fab_draggable;
-			o.subtitle = R.string.fab_draggable_sub;
-			// Ruled out as one pill (a dragged button would stretch it): greyed out, and turned off.
-			o.enabled = new PrefCondition<>(a.getPrefs(), MainActivityPrefs.FAB_PILL,
-					p -> !a.getPrefs().getBooleanPref(p));
-		});
-		ps.addFloatPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = fabPref(aa, MainActivityPrefs.FAB_SIZE);
-			o.title = R.string.fab_size;
-			o.scale = 0.05f;
-			o.seekMin = 10;
-			o.seekMax = 40;
+	/** Interface &gt; Floating Action Button: its own page, the car screen's buttons if {@code aa}. */
+	private static void addFabSettings(MainActivityDelegate a, PreferenceSet ps, boolean aa) {
+		ps.addButton(o -> {
+			o.title = R.string.secondary_fab_prefs;
+			o.subtitle = R.string.prefs_sub_fab;
+			o.icon = R.drawable.fab;
+			o.onClick = () -> a.showFragment(R.id.fab_settings_fragment, aa);
 		});
 	}
 
@@ -1489,28 +1235,6 @@ public class SettingsFragment extends MainActivityFragment
 	}
 
 	/** One extra floating button's switch, and its tap action (shown while it's on). */
-	private static void addFabPrefs(MainActivityDelegate a, PreferenceSet ps,
-																	Pref<BooleanSupplier> enabled, int enabledTitle,
-																	Pref<IntSupplier> action, int actionTitle, int[] names,
-																	int[] ordinals) {
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = enabled;
-			o.title = enabledTitle;
-		});
-		var cond = PrefCondition.create(a.getPrefs(), enabled);
-		ps.addListPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = action;
-			o.title = actionTitle;
-			o.subtitle = R.string.string_format;
-			o.formatSubtitle = true;
-			o.values = names;
-			o.valuesMap = ordinals;
-			o.visibility = cond;
-		});
-	}
-
 	private void addAAInterface(MainActivityDelegate a, PreferenceSet ps) {
 		if (BuildConfig.AUTO) {
 			addInterface(a, ps, MainActivityPrefs.THEME_AA, MainActivityPrefs.HIDE_BARS_AA,
