@@ -53,6 +53,7 @@ import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.media.pref.PlayableItemPrefs;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ytdl.YtDownloadMenu;
+import me.aap.fermata.ytdl.YtThumbnails;
 import me.aap.fermata.ytdl.YtOffline;
 import me.aap.fermata.ui.fragment.MediaLibFragment;
 import me.aap.utils.async.FutureSupplier;
@@ -194,6 +195,9 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 			}
 
 			YtDownloadMenu.addTo(b, a, Collections.singletonList(pi));
+			if (!(pi instanceof StreamItem) && !(pi instanceof ArchiveItem)) {
+				b.addItem(R.id.share_item, R.drawable.share, R.string.share);
+			}
 
 			if (view != null) {
 				// YouTube videos and local files can be searched for other videos by their title.
@@ -320,11 +324,17 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 				}
 			}
 
+			b.addItem(R.id.share_item, R.drawable.share, R.string.share);
+
 			if (!(parent instanceof Favorites)) {
 				b.addItem(R.id.favorites_add, R.drawable.favorite, R.string.favorites_add);
 
 				if ((bi instanceof Playlist)) {
-					b.addItem(R.id.playlist_rename, R.drawable.edit, R.string.playlist_rename).setData(bi);
+					b.addItem(R.id.youtube_refresh_thumbnail, R.drawable.refresh,
+							R.string.youtube_refresh_thumbnail);
+					if (!me.aap.fermata.spotify.SpotifyApi.LIKED_PLAYLIST_NAME.equals(((Playlist) bi).getName())) {
+						b.addItem(R.id.playlist_rename, R.drawable.edit, R.string.playlist_rename).setData(bi);
+					}
 					b.addItem(R.id.playlist_remove, R.drawable.playlist_remove, R.string.playlist_remove)
 							.setData(bi);
 				}
@@ -574,6 +584,8 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 				if (f != null) f.getAdapter().playTapped(pi, id == R.id.item_play);
 				else getMainActivity().getMediaServiceBinder().playItem(pi);
 			}
+		} else if (id == R.id.share_item) {
+			ShareSheet.share(getMainActivity(), item);
 		} else if (id == R.id.music_play) {
 			MusicPlayer.play(getMainActivity(), item);
 		} else if (id == R.id.music_queue_add) {
@@ -608,7 +620,12 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 			Playlist p = i.getData();
 			p.getParent().removeItems(Collections.singletonList(p));
 		} else if (id == R.id.youtube_refresh_thumbnail) {
-			refreshYoutubeThumbnail((PlayableItem) item);
+			if (item instanceof PlayableItem pi) {
+				YtThumbnails.refresh(getMainActivity(), Collections.singletonList(pi));
+			} else if (item instanceof BrowsableItem bi) {
+				bi.getPlayableChildren(false, false).main()
+						.onSuccess(list -> YtThumbnails.refresh(getMainActivity(), list));
+			}
 		} else if (id == R.id.youtube_alternatives) {
 			YoutubeAlternativesPicker.show(getMainActivity(), (PlayableItem) item, true);
 		} else if (id == R.id.playlist_rename) {
@@ -708,23 +725,6 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 
 	private Context getContext() {
 		return getMenu().getContext();
-	}
-
-	/**
-	 * Drops every cached copy of a YouTube video's thumbnail (both sizes) and reloads it -- e.g.
-	 * after a failed or placeholder download was cached. See BitmapCache#invalidate.
-	 */
-	private void refreshYoutubeThumbnail(PlayableItem pi) {
-		String origId = pi.getOrigId();
-		if ((origId == null) || !origId.startsWith("youtube:")) return;
-		String base = "https://img.youtube.com/vi/" + origId.substring("youtube:".length()) + '/';
-		Context ctx = getContext();
-		BitmapCache bc = FermataApplication.get().getBitmapCache();
-		bc.invalidate(ctx, base + "maxresdefault.jpg");
-		bc.invalidate(ctx, base + "hqdefault.jpg");
-		pi.updateTitles(); // Drops the cached description, so the icon is looked up again.
-		if (view != null) view.refresh();
-		UiUtils.showToast(ctx, R.string.youtube_refreshing_thumbnail);
 	}
 
 	private void renamePlaylist(Playlist pl) {

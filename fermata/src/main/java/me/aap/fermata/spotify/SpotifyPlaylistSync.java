@@ -8,6 +8,7 @@ import androidx.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -74,12 +75,19 @@ public final class SpotifyPlaylistSync {
 		public final int missing;
 		@Nullable
 		public final String error;
+		/** The songs that were added, as "title — artists", newest Spotify song first. */
+		public final List<String> songs;
 
 		Result(int status, int added, int missing, @Nullable String error) {
+			this(status, added, missing, error, Collections.emptyList());
+		}
+
+		Result(int status, int added, int missing, @Nullable String error, List<String> songs) {
 			this.status = status;
 			this.added = added;
 			this.missing = missing;
 			this.error = error;
+			this.songs = songs;
 		}
 
 		public String getMessage(Context ctx, String name) {
@@ -132,7 +140,10 @@ public final class SpotifyPlaylistSync {
 			}
 			List<String> localNames = new ArrayList<>(children.size());
 			for (Item i : children) localNames.add(i.getName().toLowerCase(Locale.ROOT));
-			String storedRef = getRef(name);
+			String found = getRef(name);
+			// The Liked Songs playlist always syncs from Liked Songs.
+			String storedRef = ((found == null) && SpotifyApi.LIKED_PLAYLIST_NAME.equals(name)) ?
+					SpotifyApi.LIKED_SONGS : found;
 			Set<String> storedKeys = (storedRef == null) ? new LinkedHashSet<>() :
 					new LinkedHashSet<>(Arrays.asList(SpotifyPrefs.store().getStringArrayPref(keysPref(storedRef))));
 			executor.execute(() -> sync(ctx, lib, local, name, localNames, storedRef, storedKeys));
@@ -247,7 +258,12 @@ public final class SpotifyPlaylistSync {
 				String msg = (err.getMessage() != null) ? err.getMessage() : err.toString();
 				finish(new Result(Result.FAILED, 0, 0, msg));
 			} else {
-				finish(new Result(Result.DONE, (n != null) ? n : 0, missing, null));
+				List<String> songs = new ArrayList<>(videos.size());
+				for (Video v : videos) {
+					Track t = byVideo.get(v.videoId);
+					songs.add((t != null) ? t.displayName() : v.title);
+				}
+				finish(new Result(Result.DONE, (n != null) ? n : 0, missing, null, songs));
 			}
 		});
 	}

@@ -10,7 +10,10 @@ Your car deserves a better media player. zrAuto is a free, open source player bu
 * 🚗 **Car mode**: drive the app with your steering wheel's Previous and Next buttons, no touching the screen.
   * Previous / Next move a glowing outline; hold Next to open or play, hold Previous to go back.
   * Works in your lists, YouTube search, the Music queue, menus and Settings, only while Android Auto is connected.
-* 🔔 **Messages you can actually see**: added to Favorites, a playlist or the queue, download finished: it all pops up on the car's screen, not just the phone.
+* 📲 **Share with a friend's phone**: pick a song, playlist, favorites or a whole folder, tap a nearby phone on the same Wi-Fi and it's there, downloaded videos and files included.
+  * The other person always gets to accept or decline, and you both see the progress with a Cancel button.
+  * Or send just the YouTube links through any app you like.
+* 🧩 **All in One**: one card of big tiles for the things you reach for most while driving: sleep timer, video quality and more, opened from a floating button or a steering wheel key. You choose the tiles and their order.
 * 🎵 **A real Music tab**: a full-screen, sound-only player with a blurred album-art backdrop, big thumb-friendly controls and a queue you can drag, swipe and shuffle. Your own songs and YouTube tracks play side by side.
 * ▶️ **YouTube, made for the road**: it plays right inside the app with its own Favorites, Playlists and queue. Music mode drops the picture to the lowest quality, so you only pay data for what you hear, and switching between video and music never stops the song.
 * 🔍 **Search without stopping the music**: a panel slides over whatever's playing, with YouTube results, your saved tracks and an "Up next" queue. Play next is one tap away.

@@ -121,6 +121,15 @@ public final class SpotifyImportModel {
 		 * Read through the official API (complete), rather than the embed page (first ~100 only).
 		 */
 		public boolean fullList;
+		/**
+		 * Liked Songs only: how many of the most recent songs to read. {@link #LIMIT_DEFAULT}
+		 * follows Settings, 0 reads them all.
+		 */
+		public int limit = LIMIT_DEFAULT;
+		/** Liked Songs only: how many songs the account has in all, -1 if not known. */
+		public int totalCount = -1;
+
+		public static final int LIMIT_DEFAULT = -1;
 
 		public Playlist(String ref) {
 			this.ref = ref;

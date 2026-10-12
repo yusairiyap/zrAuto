@@ -33,6 +33,7 @@ import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.recyclerview.widget.SimpleItemAnimator;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -63,6 +64,9 @@ import me.aap.fermata.spotify.SpotifyPlaylistWriter;
 import me.aap.fermata.spotify.SpotifyPrefs;
 import me.aap.fermata.spotify.YoutubeSearch;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.view.ChipFlowLayout;
+import me.aap.fermata.ui.view.EffectsUi;
+import me.aap.fermata.ui.view.TopToast;
 import me.aap.fermata.util.Utils;
 import me.aap.utils.log.Log;
 import me.aap.utils.ui.UiUtils;
@@ -144,6 +148,8 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	@Nullable
 	private List<SpotifyApi.PlaylistInfo> picker;
 	private final Set<String> pickerSelected = new HashSet<>();
+	/** How many songs the account has liked, as of the last time the picker was opened; -1 if unknown. */
+	private int likedTotal = -1;
 	private Adapter adapter;
 	@Nullable
 	private RecyclerView list;
@@ -509,6 +515,16 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		Playlist pl = current;
 		if ((pl == null) || pl.included) return;
 		pickerSelected.remove(pl.ref);
+
+		if (SpotifyApi.LIKED_SONGS.equals(pl.ref) && (pl.limit == Playlist.LIMIT_DEFAULT)) {
+			askLikedLimit(pl.totalCount, limit -> {
+				engine.setLimit(pl, limit);
+				engine.setPriority(pl);
+				engine.include(pl);
+			});
+			return;
+		}
+
 		engine.setPriority(pl);
 		engine.include(pl);
 	}
@@ -556,14 +572,21 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		pickerExecutor.execute(() -> {
 			List<SpotifyApi.PlaylistInfo> list = null;
 			Exception err = null;
+			int likes = -1;
 			try {
 				list = SpotifyApi.listMyPlaylists();
+				try {
+					likes = SpotifyApi.getLikedTotal();
+				} catch (IOException ex) {
+					Log.e(ex, "Failed to count Spotify liked songs");
+				}
 			} catch (Exception ex) {
 				Log.e(ex, "Failed to list Spotify playlists");
 				err = ex;
 			}
 			List<SpotifyApi.PlaylistInfo> result = list;
 			Exception fail = err;
+			int likedCount = likes;
 			post(() -> {
 				if (fail instanceof SpotifyAuth.AuthException) {
 					addPlaylists(); // Logged out meanwhile: offers to log in again.
@@ -571,16 +594,17 @@ public class SpotifyImportFragment extends MainActivityFragment {
 					String msg = (fail.getMessage() != null) ? fail.getMessage() : fail.toString();
 					UiUtils.showAlert(requireContext(), getString(R.string.spotify_list_failed, msg));
 				} else {
-					openPicker(result);
+					openPicker(result, likedCount);
 				}
 			});
 		});
 	}
 
-	private void openPicker(List<SpotifyApi.PlaylistInfo> list) {
+	private void openPicker(List<SpotifyApi.PlaylistInfo> list, int likedCount) {
+		likedTotal = likedCount;
 		List<SpotifyApi.PlaylistInfo> items = new ArrayList<>(list.size() + 1);
 		items.add(new SpotifyApi.PlaylistInfo(SpotifyApi.LIKED_SONGS,
-				getString(R.string.spotify_liked_songs), null, null, -1, true));
+				getString(R.string.spotify_liked_songs), null, null, likedCount, true));
 		items.addAll(list);
 		picker = items;
 		pickerSelected.clear();
@@ -601,12 +625,83 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	}
 
 	private void addPicked() {
+		if (picker == null) return;
+
+		if (pickerSelected.contains(SpotifyApi.LIKED_SONGS) && (findPlaylist(SpotifyApi.LIKED_SONGS) == null)) {
+			askLikedLimit(likedTotal, this::addPicked);
+		} else {
+			addPicked(Playlist.LIMIT_DEFAULT);
+		}
+	}
+
+	private void addPicked(int likedLimit) {
 		List<SpotifyApi.PlaylistInfo> items = picker;
 		if (items == null) return;
 		for (SpotifyApi.PlaylistInfo p : items) {
-			if (pickerSelected.contains(p.ref)) addPlaylist(p.ref, p.name, p.coverUrl);
+			if (!pickerSelected.contains(p.ref)) continue;
+			if (SpotifyApi.LIKED_SONGS.equals(p.ref)) {
+				engine.addPlaylist(p.ref, p.name, p.coverUrl, true, likedLimit);
+			} else {
+				addPlaylist(p.ref, p.name, p.coverUrl);
+			}
 		}
 		closePicker();
+	}
+
+	/**
+	 * Liked Songs can be thousands of songs, each matched against YouTube one at a time. When there
+	 * are more than the limit set in Settings, asks whether to read just the latest ones or all of
+	 * them; {@code onChoice} gets the limit to use (0 for all).
+	 */
+	private void askLikedLimit(int total, java.util.function.IntConsumer onChoice) {
+		int limit = SpotifyPrefs.getLikesLimit();
+		if ((total <= limit) || (total < 0)) {
+			onChoice.accept(Playlist.LIMIT_DEFAULT);
+			return;
+		}
+
+		Context ctx = requireContext();
+		getActivityDelegate().createDialogBuilder(ctx)
+				.setTitle(R.drawable.favorite_filled, R.string.spotify_liked_songs)
+				.setMessage(getString(R.string.spotify_liked_ask, total, limit))
+				.setNegativeButton(android.R.string.cancel, (d, i) -> d.dismiss())
+				.setNeutralButton(getString(R.string.spotify_liked_all, total), (d, i) -> onChoice.accept(0))
+				.setPositiveButton(getString(R.string.spotify_liked_latest, limit),
+						(d, i) -> onChoice.accept(limit))
+				.show();
+	}
+
+	/** The "Liked Songs" chip: straight to the import list, no trip through the picker. */
+	private void addLiked() {
+		if (destroyed || !isAdded() || engine.isImporting()) return;
+
+		if (!SpotifyPrefs.isAccountSource() || !SpotifyAuth.isLoggedIn()) {
+			addPlaylists(); // Offers to set up and log in.
+			return;
+		}
+
+		Playlist existing = findPlaylist(SpotifyApi.LIKED_SONGS);
+		if ((existing != null) && existing.included) {
+			TopToast.show(R.drawable.favorite_filled, R.string.spotify_liked_already);
+			return;
+		}
+
+		pickerExecutor.execute(() -> {
+			int n = -1;
+			try {
+				n = SpotifyApi.getLikedTotal();
+			} catch (SpotifyAuth.AuthException ex) {
+				post(this::addPlaylists);
+				return;
+			} catch (Exception ex) {
+				Log.e(ex, "Failed to count Spotify liked songs");
+			}
+			int total = n;
+			post(() -> askLikedLimit(total, limit -> {
+				engine.addPlaylist(SpotifyApi.LIKED_SONGS, SpotifyApi.LIKED_PLAYLIST_NAME, null, true, limit);
+				rebuild();
+			}));
+		});
 	}
 
 	private void togglePicked(SpotifyApi.PlaylistInfo p) {
@@ -664,10 +759,13 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		if (engine.isImporting()) return;
 		getActivityDelegate().getContextMenu().show(b -> {
 			b.setTitle(pl.name.isEmpty() ? pl.ref : pl.name);
-			b.addItem(R.id.playlist_rename, R.drawable.edit, R.string.spotify_rename).setHandler(i -> {
-				renamePlaylist(pl);
-				return true;
-			});
+			// Liked Songs keeps its name: that is how a sync knows what to read.
+			if (!SpotifyApi.LIKED_SONGS.equals(pl.ref)) {
+				b.addItem(R.id.playlist_rename, R.drawable.edit, R.string.spotify_rename).setHandler(i -> {
+					renamePlaylist(pl);
+					return true;
+				});
+			}
 			b.addItem(R.id.spotify_remove, R.drawable.delete, R.string.spotify_remove_from_list)
 					.setHandler(i -> {
 						if (current == pl) current = null;
@@ -963,6 +1061,22 @@ public class SpotifyImportFragment extends MainActivityFragment {
 		return c;
 	}
 
+	private static final class ChipSpec {
+		final int icon;
+		final String text;
+		final boolean primary;
+		final boolean enabled;
+		final Runnable onClick;
+
+		ChipSpec(int icon, String text, boolean primary, boolean enabled, Runnable onClick) {
+			this.icon = icon;
+			this.text = text;
+			this.primary = primary;
+			this.enabled = enabled;
+			this.onClick = onClick;
+		}
+	}
+
 	private static final class Row {
 		final int type;
 		@Nullable
@@ -1062,8 +1176,9 @@ public class SpotifyImportFragment extends MainActivityFragment {
 
 			switch (viewType) {
 				case TYPE_HEADER:
-					layout = R.layout.spotify_import_header;
-					break;
+					// In the Music tab's palette, like the chips the Data Usage tab has.
+					return new Holder(LayoutInflater.from(EffectsUi.palette(parent.getContext()))
+							.inflate(R.layout.spotify_import_header, parent, false));
 				case TYPE_PLAYLIST + GRID:
 				case TYPE_TRACK + GRID:
 				case TYPE_PICK + GRID:
@@ -1116,6 +1231,7 @@ public class SpotifyImportFragment extends MainActivityFragment {
 
 		private void bindHeader(Holder h) {
 			View v = h.itemView;
+			Context pc = v.getContext();
 			TextView title = v.findViewById(R.id.si_header_title);
 			TextView summary = v.findViewById(R.id.si_header_summary);
 			TextView note = v.findViewById(R.id.si_header_note);
@@ -1124,37 +1240,30 @@ public class SpotifyImportFragment extends MainActivityFragment {
 			TextView progressLabel = v.findViewById(R.id.si_progress_text);
 			TextView progressAction = v.findViewById(R.id.si_progress_action);
 			progressAction.setVisibility(View.GONE);
-			TextView selectAll = v.findViewById(R.id.si_select_all);
-			TextView addLink = v.findViewById(R.id.si_add_link);
-			View myPlaylists = v.findViewById(R.id.si_my_playlists);
-			TextView importBtn = v.findViewById(R.id.si_import);
+			ViewGroup chipHost = v.findViewById(R.id.si_chips);
 			boolean account = SpotifyPrefs.isAccountSource();
+			boolean busy = engine.isImporting();
 			int total = getTotalSelected();
+			List<ChipSpec> chips = new ArrayList<>(5);
 
 			if ((picker != null) && (current == null)) {
 				int pickable = getPickable();
 				title.setText(R.string.spotify_my_playlists);
-				summary.setText(getString(R.string.spotify_picker_summary, pickerSelected.size(),
-						pickable));
-				note.setVisibility(View.VISIBLE);
-				note.setText(R.string.spotify_picker_hint);
-				selectAll.setText(((pickable > 0) && (pickerSelected.size() == pickable)) ?
-						R.string.unselect_all : R.string.select_all);
-				selectAll.setEnabled(true);
-				selectAll.setOnClickListener(b -> toggleAll());
-				addLink.setVisibility(View.VISIBLE);
-				addLink.setText(android.R.string.cancel);
-				addLink.setEnabled(true);
-				addLink.setOnClickListener(b -> closePicker());
-				myPlaylists.setVisibility(View.GONE);
+				summary.setText(getString(R.string.spotify_picker_summary, pickerSelected.size(), pickable));
+				note.setVisibility(View.GONE);
 				progressGroup.setVisibility(View.GONE);
-				importBtn.setText(getString(R.string.spotify_picker_add, pickerSelected.size()));
-				importBtn.setEnabled(!pickerSelected.isEmpty());
-				importBtn.setOnClickListener(b -> addPicked());
+				chips.add(new ChipSpec(R.drawable.close_small, getString(android.R.string.cancel), false,
+						true, SpotifyImportFragment.this::closePicker));
+				chips.add(new ChipSpec(R.drawable.select_multiple,
+						getString(((pickable > 0) && (pickerSelected.size() == pickable)) ?
+								R.string.unselect_all : R.string.select_all), false, pickable > 0,
+						SpotifyImportFragment.this::toggleAll));
+				chips.add(new ChipSpec(R.drawable.playlist_add,
+						getString(R.string.spotify_picker_add, pickerSelected.size()), true,
+						!pickerSelected.isEmpty(), SpotifyImportFragment.this::addPicked));
+				bindChips(chipHost, pc, chips);
 				return;
 			}
-
-			addLink.setText(R.string.spotify_import_add_link);
 
 			if (current != null) {
 				title.setText(current.name.isEmpty() ? current.ref : current.name);
@@ -1167,53 +1276,87 @@ public class SpotifyImportFragment extends MainActivityFragment {
 							current.getSelectedCount(), current.tracks.size()));
 				}
 				note.setVisibility(View.GONE);
-				selectAll.setText(current.isAllSelected() ? R.string.unselect_all : R.string.select_all);
-				addLink.setVisibility(View.GONE);
-				myPlaylists.setVisibility(View.GONE);
+				chips.add(new ChipSpec(R.drawable.select_multiple,
+						getString(current.isAllSelected() ? R.string.unselect_all : R.string.select_all),
+						false, !busy, SpotifyImportFragment.this::toggleAll));
 			} else {
 				int loaded = 0;
 				for (Playlist pl : playlists) if (pl.included && (pl.state == Playlist.STATE_LOADED)) loaded++;
 				title.setText(R.string.spotify_import);
 				summary.setText(getString(R.string.spotify_import_summary, loaded, total));
-				note.setVisibility(View.VISIBLE);
-				note.setText(account ? R.string.spotify_import_intro_account :
-						R.string.spotify_import_intro);
-				selectAll.setText(isEverythingSelected() ? R.string.unselect_all : R.string.select_all);
-				addLink.setVisibility(View.VISIBLE);
-				myPlaylists.setVisibility(account ? View.VISIBLE : View.GONE);
+				// Only the first-time hint: with playlists in, the chips say it all.
+				note.setVisibility(playlists.isEmpty() ? View.VISIBLE : View.GONE);
+				note.setText(account ? R.string.spotify_import_intro_account : R.string.spotify_import_intro);
+				if (account) {
+					chips.add(new ChipSpec(R.drawable.favorite_filled, getString(R.string.spotify_liked_chip),
+							false, !busy, SpotifyImportFragment.this::addLiked));
+					chips.add(new ChipSpec(R.drawable.playlist, getString(R.string.spotify_playlists_chip),
+							false, !busy, SpotifyImportFragment.this::addPlaylists));
+				}
+				chips.add(new ChipSpec(R.drawable.link, getString(R.string.spotify_link_chip), false, !busy,
+						SpotifyImportFragment.this::promptForLinks));
+				if (loaded > 0) {
+					chips.add(new ChipSpec(R.drawable.select_multiple,
+							getString(isEverythingSelected() ? R.string.unselect_all : R.string.select_all),
+							false, !busy, SpotifyImportFragment.this::toggleAll));
+				}
 			}
-
-			selectAll.setEnabled(!engine.isImporting());
-			addLink.setEnabled(!engine.isImporting());
-			myPlaylists.setEnabled(!engine.isImporting());
-			selectAll.setOnClickListener(b -> toggleAll());
-			addLink.setOnClickListener(b -> promptForLinks());
-			myPlaylists.setOnClickListener(b -> addPlaylists());
 
 			if ((current != null) && !current.included) {
 				progressGroup.setVisibility(View.GONE);
-				note.setVisibility(View.VISIBLE);
-				note.setText(R.string.spotify_browse_note);
-				importBtn.setText(R.string.spotify_add_this_playlist);
-				importBtn.setEnabled(!engine.isImporting() && (current.state == Playlist.STATE_LOADED));
-				importBtn.setOnClickListener(b -> includeCurrent());
-			} else if (engine.isImporting()) {
+				chips.add(new ChipSpec(R.drawable.playlist_add, getString(R.string.spotify_add_this_playlist),
+						true, !busy && (current.state == Playlist.STATE_LOADED),
+						SpotifyImportFragment.this::includeCurrent));
+			} else if (busy) {
 				progressGroup.setVisibility(View.VISIBLE);
 				progress.setIndeterminate(engine.isSaving() || (engine.getProgressTotal() == 0));
 				progress.setMax(Math.max(1, engine.getProgressTotal()));
 				progress.setProgress(engine.getProgressDone());
 				progressLabel.setText((engine.getProgressText() != null) ? engine.getProgressText() :
 						getString(R.string.spotify_import_preparing));
-				importBtn.setText(android.R.string.cancel);
-				importBtn.setEnabled(!engine.isSaving() && !engine.isCancelling());
-				importBtn.setOnClickListener(b -> cancelImport());
+				chips.add(new ChipSpec(R.drawable.close_small, getString(android.R.string.cancel), true,
+						!engine.isSaving() && !engine.isCancelling(), SpotifyImportFragment.this::cancelImport));
 			} else {
 				bindMatchingProgress(progressGroup, progress, progressLabel, progressAction);
 				int count = getImportCount();
-				importBtn.setText(getString(R.string.spotify_import_import, count));
-				importBtn.setEnabled(count > 0);
-				importBtn.setOnClickListener(b -> startImport());
+				chips.add(new ChipSpec(R.drawable.playlist_import,
+						getString(R.string.spotify_import_import, count), true, count > 0,
+						SpotifyImportFragment.this::startImport));
 			}
+
+			bindChips(chipHost, pc, chips);
+		}
+
+		/**
+		 * Rebuilds the chip row only when it would look different: the header is rebound whenever
+		 * a track is matched, and rebuilding the chips under a finger would drop its tap.
+		 */
+		private void bindChips(ViewGroup host, Context pc, List<ChipSpec> chips) {
+			StringBuilder sig = new StringBuilder();
+			for (ChipSpec c : chips) sig.append(c.icon).append('|').append(c.text).append('|')
+					.append(c.primary).append('|').append(c.enabled).append(';');
+			String key = sig.toString();
+			ChipFlowLayout flow = (host.getChildCount() == 1) ? (ChipFlowLayout) host.getChildAt(0) : null;
+
+			if ((flow != null) && key.equals(flow.getTag())) {
+				for (int i = 0; i < chips.size(); i++) {
+					Runnable r = chips.get(i).onClick;
+					flow.getChildAt(i).setOnClickListener(x -> r.run());
+				}
+				return;
+			}
+
+			host.removeAllViews();
+			flow = new ChipFlowLayout(pc);
+			flow.setTag(key);
+			for (ChipSpec c : chips) {
+				TextView t = ChipFlowLayout.chip(pc, c.icon, c.text, c.primary, c.onClick);
+				t.setEnabled(c.enabled);
+				t.setAlpha(c.enabled ? 1f : 0.4f);
+				flow.addView(t);
+			}
+			host.addView(flow, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+					ViewGroup.LayoutParams.WRAP_CONTENT));
 		}
 
 		/** While not engine.isImporting(), the header shows the background matching's progress, if any. */

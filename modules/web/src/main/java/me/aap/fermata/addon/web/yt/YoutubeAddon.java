@@ -506,6 +506,12 @@ public class YoutubeAddon extends WebBrowserAddon
 		getPreferenceStore().applyStringArrayPref(YT_VIDEO_TITLES, a);
 	}
 
+	@Nullable
+	@Override
+	public VideoInfo getCachedVideoInfo(String videoId) {
+		return getVideoInfo(videoId);
+	}
+
 	/** What's stored about {@code videoId}, or null if nothing is. */
 	@Nullable
 	VideoInfo getVideoInfo(String videoId) {

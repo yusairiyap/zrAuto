@@ -1,0 +1,16 @@
+-proc:none
+-d
+/tmp/claude-0/jc
+me/aap/fermata/ytdl/YtThumbnails.java
+me/aap/fermata/ui/view/ShareReceiveCard.java
+me/aap/fermata/ui/fragment/SelectionPanel.java
+me/aap/fermata/media/engine/BitmapCache.java
+me/aap/fermata/share/ShareDiscovery.java
+me/aap/fermata/share/ShareEntry.java
+me/aap/fermata/share/ShareImporter.java
+me/aap/fermata/share/ShareManager.java
+me/aap/fermata/share/ShareOffer.java
+me/aap/fermata/share/SharePrefs.java
+me/aap/fermata/share/ShareService.java
+me/aap/fermata/share/ShareSource.java
+me/aap/fermata/ui/view/MediaItemMenuHandler.java

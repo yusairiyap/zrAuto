@@ -37,11 +37,15 @@ import me.aap.fermata.spotify.SpotifyPlaylistSync;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.MediaItemMenuHandler;
 import me.aap.fermata.ytdl.YtDownloadMenu;
+import me.aap.fermata.ytdl.YtThumbnails;
 import me.aap.fermata.ui.view.MediaItemListView;
 import me.aap.fermata.ui.view.MediaItemView;
 import me.aap.fermata.ui.view.MediaItemViewHolder;
 import me.aap.fermata.ui.view.MediaItemWrapper;
+import me.aap.fermata.share.ShareOffer;
 import me.aap.fermata.ui.view.ModalProgressPopup;
+import me.aap.fermata.ui.view.ShareSheet;
+import me.aap.fermata.ui.view.TopToast;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.ui.UiUtils;
@@ -96,6 +100,14 @@ public class PlaylistsFragment extends MediaLibFragment {
 				if (w.getItem() instanceof PlayableItem pi) all.add(pi);
 			}
 			YtDownloadMenu.addTo(b, getMainActivity(), all);
+			YtThumbnails.addTo(b, getMainActivity(), all);
+			if (!all.isEmpty()) {
+				b.addItem(R.id.share_item, R.drawable.share, R.string.share).setHandler(i -> {
+					ShareSheet.shareItems(getMainActivity(), ShareOffer.KIND_PLAYLIST,
+							((Playlist) a.getParent()).getName(), all);
+					return true;
+				});
+			}
 		}
 
 		b.addItem(R.id.spotify_import, R.drawable.playlist_import, R.string.spotify_import);
@@ -119,6 +131,12 @@ public class PlaylistsFragment extends MediaLibFragment {
 		});
 		getMainActivity().addPlaylistMenu(b, completed(a.getSelectedItems()));
 		YtDownloadMenu.addTo(b, getMainActivity(), a.getSelectedItems());
+		YtThumbnails.addTo(b, getMainActivity(), a.getSelectedItems());
+		b.addItem(R.id.share_item, R.drawable.share, R.string.share).setHandler(i -> {
+			ShareSheet.shareItems(getMainActivity(), ShareOffer.KIND_PLAYLIST, pl.getName(),
+					a.getSelectedItems());
+			return true;
+		});
 		b.addItem(R.id.playlist_move, R.drawable.playlist_move, R.string.playlist_move_selected)
 				.setHandler(i -> {
 					getMainActivity().showMoveToPlaylistDialog(i.getMenu(), pl, a.getSelectedItems());
@@ -199,13 +217,15 @@ public class PlaylistsFragment extends MediaLibFragment {
 
 			@Override
 			public void onFinished(SpotifyPlaylistSync.Result r) {
-				finished[0] = true;
 				a.getHandler().removeCallbacks(showPopup);
+				// Songs were added: list them, however quick it was.
+				if (!r.songs.isEmpty()) showPopup.run();
+				finished[0] = true;
 				String msg = r.getMessage(ctx, name);
 				boolean ok = (r.status == SpotifyPlaylistSync.Result.DONE) ||
 						(r.status == SpotifyPlaylistSync.Result.UP_TO_DATE);
-				if (popup[0] != null) popup[0].showResult(msg, ok);
-				else UiUtils.showToast(ctx, msg);
+				if (popup[0] != null) popup[0].showResult(msg, ok, r.songs);
+				else TopToast.show(R.drawable.playlist_import, msg);
 				if (r.added > 0) {
 					MediaLibFragment f = a.getMediaLibFragment(R.id.playlists_fragment);
 					if (f != null) f.reload();

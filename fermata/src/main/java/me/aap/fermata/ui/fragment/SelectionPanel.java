@@ -13,6 +13,7 @@ import android.widget.TextView;
 
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
+import androidx.constraintlayout.widget.ConstraintLayout;
 
 import com.google.android.material.card.MaterialCardView;
 
@@ -100,7 +101,7 @@ final class SelectionPanel {
 
 	@Nullable
 	private View create() {
-		FrameLayout content = findHost();
+		ViewGroup content = findHost();
 		if (content == null) return null;
 		Context ctx = fragment.requireContext();
 
@@ -117,9 +118,18 @@ final class SelectionPanel {
 			if ((nbc[1] >>> 24) != 0) card.setCardBackgroundColor(nbc[1] | 0xFF000000);
 		}
 
-		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-				ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-				Gravity.BOTTOM);
+		ViewGroup.LayoutParams lp;
+		if (content instanceof ConstraintLayout) {
+			ConstraintLayout.LayoutParams c = new ConstraintLayout.LayoutParams(0,
+					ViewGroup.LayoutParams.WRAP_CONTENT);
+			c.startToStart = ConstraintLayout.LayoutParams.PARENT_ID;
+			c.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID;
+			c.bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID;
+			lp = c;
+		} else {
+			lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+					ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
+		}
 		content.addView(p, lp);
 		panel = p;
 
@@ -137,7 +147,11 @@ final class SelectionPanel {
 	 * FrameLayout above the list.
 	 */
 	@Nullable
-	private FrameLayout findHost() {
+	private ViewGroup findHost() {
+		// The app's own root, where the menus are too: with a lower elevation than them, the panel
+		// stays behind a menu opened over it (in the window's content frame it was always on top).
+		View main = fragment.getMainActivity().findViewById(R.id.main_activity);
+		if (main instanceof ConstraintLayout cl) return cl;
 		View view = fragment.requireView();
 		View root = view.getRootView();
 		View c = root.findViewById(android.R.id.content);
@@ -205,7 +219,7 @@ final class SelectionPanel {
 			}
 		}
 
-		FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) p.getLayoutParams();
+		ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) p.getLayoutParams();
 
 		if ((lp.bottomMargin != bottom) || (lp.leftMargin != left) || (lp.rightMargin != right)) {
 			lp.setMargins(left, 0, right, bottom);

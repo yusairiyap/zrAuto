@@ -241,6 +241,39 @@ folder picked with `ACTION_OPEN_DOCUMENT_TREE` (persistable permission), else th
 `getExternalFilesDir/backups`; `zrAuto_auto_*.zip` beyond the "keep" count are pruned. Google Drive's
 provider doesn't offer a folder to pick, so Drive is manual only.
 
+## Spotify Liked Songs, duplicate popup, Share (Wi-Fi)
+
+- **Liked Songs** import/sync only reads the latest N songs (`SpotifyPrefs.LIKES_LIMIT`, default 50, Settings >
+  Import from Spotify). `Playlist.limit` overrides it per import (`LIMIT_DEFAULT` follows Settings, 0 = all); the
+  picker/"Liked Songs" chip counts the account's likes first (`SpotifyApi.getLikedTotal`) and asks "Latest N or
+  All?" when there are more. They land in the local playlist named `SpotifyApi.LIKED_PLAYLIST_NAME` ("Liked from
+  Spotify"): created as the first playlist (the user may reorder), can't be renamed (`DefaultPlaylist#rename`, menu
+  hides Rename), and a sync of a playlist with that name reads Liked Songs (`SpotifyPlaylistSync`). A sync that
+  adds songs shows them in the progress card (`ModalProgressPopup#showResult(msg, ok, songs)`).
+- The Spotify import header uses chips (`ChipFlowLayout#chip`, Music-tab palette, the accent-filled one is the main
+  action); `bindChips` rebuilds the row only when it would look different, since the header is rebound on every
+  matched track and a rebuild under a finger drops the tap.
+- **Adding a duplicate to a playlist**: `MainActivityDelegate#addCheckingDuplicates` compares `getOrigId()`s and asks
+  with `TopConfirm` (Yes adds everything via `Playlist#addItems(items, true)`, No adds only the new ones). Only the
+  plain "Add to playlist" path asks; Spotify/Share imports still skip duplicates silently.
+- **Share** (`share/` package, `ui/view/ShareSheet`): phones on the same Wi-Fi find each other with NSD
+  (`ShareDiscovery`, `_zrauto-share._tcp`), announced while the app's activity exists and Settings > Share allows
+  it. `ShareManager` serves/starts the TCP transfers (header JSON, receiver accepts via `TopConfirm`, raw bytes,
+  final ack); `ShareService` is the dataSync foreground service with the progress notification and Cancel;
+  `ShareImporter` stores what arrives: downloaded YouTube files via `YtDownloads#importFile`, other files in
+  `<external files>/Shared/<name>` (added to Folders), and a playlist with the shared name (unless a folder was sent).
+  "Share as link" hands the youtu.be links to Android's share sheet. The sockets must never be used on the main
+  thread. None of this has been run on a device yet, check the Diagnostic log (SHARE) and Log output first.
+
+- **Refresh thumbnail** (`ytdl/YtThumbnails`, one item, a selection, a whole list or a playlist's own menu): drops every
+  cached thumbnail size and then looks up channel/duration (`YoutubeSearch`, by video id, then by title) for videos
+  whose cached `VideoInfo` lacks them. `BitmapCache` only remembers a failed image for a minute (`markInvalid`): remembering
+  it for good left half of an imported playlist without pictures after one burst of timeouts, and a failed
+  maxresdefault now falls back to hqdefault.
+- `SelectionPanel` lives in `R.id.main_activity` (below the 10dp menus), not the window's content frame, so the nav/FAB
+  menus open in front of it. Share notifications are skipped while the app is in front (`ShareManager#isUiVisible`);
+  an incoming transfer shows `ShareReceiveCard` (progress + Cancel) at the top.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

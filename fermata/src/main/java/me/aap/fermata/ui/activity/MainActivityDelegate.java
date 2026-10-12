@@ -181,6 +181,7 @@ import me.aap.fermata.ui.view.FermataNavBarView;
 import me.aap.fermata.ui.view.LoadingCircleView;
 import me.aap.fermata.ui.view.PlaylistPicker;
 import me.aap.fermata.ui.view.ToolBarPill;
+import me.aap.fermata.ui.view.TopConfirm;
 import me.aap.fermata.ui.view.TopToast;
 import me.aap.fermata.ui.view.QuaternaryFloatingButton;
 import me.aap.fermata.ui.view.QuinaryFloatingButton;
@@ -435,6 +436,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		} else {
 			phoneDelegate = new WeakReference<>(this);
 		}
+		me.aap.fermata.share.ShareManager.get().onUiCreated();
 		Intent intent = getIntent();
 		if ((intent != null) && INTENT_ACTION_FINISH.equals(intent.getAction())) {
 			finish();
@@ -694,6 +696,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Override
 	public void onActivityResume() {
 		super.onActivityResume();
+		me.aap.fermata.share.ShareManager.get().onUiVisible(true);
 		refreshContentInsets();
 		checkMirroringMode(true);
 		for (FermataAddon addon : AddonManager.get().getAddons()) {
@@ -705,6 +708,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Override
 	public void onActivityPause() {
 		super.onActivityPause();
+		me.aap.fermata.share.ShareManager.get().onUiVisible(false);
 		for (FermataAddon addon : AddonManager.get().getAddons()) {
 			if (addon instanceof FermataActivityAddon)
 				((FermataActivityAddon) addon).onActivityPause(this);
@@ -757,6 +761,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		} else if (phoneDelegate.get() == this) {
 			phoneDelegate = new WeakReference<>(null);
 		}
+		me.aap.fermata.share.ShareManager.get().onUiDestroyed();
 		handler.close();
 		getMediaServiceBinder().getMediaSessionCallback().removeAssistant(this);
 		getPrefs().removeBroadcastListener(this);
@@ -2668,17 +2673,57 @@ public class MainActivityDelegate extends ActivityDelegate
 				Playlist pl = (Playlist) i;
 
 				if (name.equals(pl.getName())) {
-					selection.main().onSuccess(items -> {
-						pl.addItems(items);
-						MediaLibFragment f = getMediaLibFragment(R.id.playlists_fragment);
-						if (f != null) f.getAdapter().reload();
-						TopToast.show(R.drawable.playlist_add, R.string.added_to_playlist, name);
-					});
+					selection.main().onSuccess(items -> addCheckingDuplicates(pl, items));
 					break;
 				}
 			}
 		});
 		return true;
+	}
+
+	/**
+	 * Adds {@code items} to {@code pl}. If some are already in it, a card at the top asks whether
+	 * to add them again: Yes adds everything, No adds only what is new (nothing, if all are there).
+	 */
+	private void addCheckingDuplicates(Playlist pl, List<PlayableItem> items) {
+		pl.getUnsortedChildren().main().onSuccess(children -> {
+			Set<String> have = new java.util.HashSet<>();
+			for (Item c : children) {
+				if (c instanceof PlayableItem p) have.add(p.getOrigId());
+			}
+			List<PlayableItem> fresh = new ArrayList<>(items.size());
+			List<PlayableItem> dups = new ArrayList<>();
+			for (PlayableItem i : items) (have.contains(i.getOrigId()) ? dups : fresh).add(i);
+
+			if (dups.isEmpty()) {
+				finishAdd(pl, items, false);
+				return;
+			}
+
+			Context ctx = getContext();
+			String text = (dups.size() == 1) ?
+					ctx.getString(R.string.playlist_duplicate_one, dups.get(0).getName()) :
+					ctx.getString(R.string.playlist_duplicate_many, dups.size(), items.size());
+			TopConfirm.show(this, R.drawable.playlist_add,
+					ctx.getString(R.string.playlist_duplicate_title, pl.getName()), text,
+					ctx.getString(R.string.yes), ctx.getString(R.string.no),
+					() -> finishAdd(pl, items, true), () -> {
+						if (fresh.isEmpty()) return;
+						finishAdd(pl, fresh, false);
+					});
+		});
+	}
+
+	private void finishAdd(Playlist pl, List<PlayableItem> items, boolean allowDuplicates) {
+		pl.addItems(items, allowDuplicates).main().onCompletion((v, err) -> {
+			if (err != null) {
+				showAlert(getContext(), err.getMessage());
+				return;
+			}
+			MediaLibFragment f = getMediaLibFragment(R.id.playlists_fragment);
+			if (f != null) f.getAdapter().reload();
+			TopToast.show(R.drawable.playlist_add, R.string.added_to_playlist, pl.getName());
+		});
 	}
 
 	/**
@@ -2742,6 +2787,7 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	@Override
 	public void onBackPressed() {
+		if (me.aap.fermata.ui.view.ShareSheet.dismissOpen()) return;
 		if (PlaylistPicker.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.YoutubeAlternativesPicker.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.AllInOneMenu.dismissOpen()) return;

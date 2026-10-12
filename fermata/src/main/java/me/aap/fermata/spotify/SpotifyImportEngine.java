@@ -216,6 +216,12 @@ public final class SpotifyImportEngine {
 
 	/** Adds a playlist and loads it; if it's already there but only browsed, includes it. */
 	public void addPlaylist(String ref, String name, @Nullable String coverUrl, boolean included) {
+		addPlaylist(ref, name, coverUrl, included, Playlist.LIMIT_DEFAULT);
+	}
+
+	/** @param limit Liked Songs only, see {@link Playlist#limit} */
+	public void addPlaylist(String ref, String name, @Nullable String coverUrl, boolean included,
+													int limit) {
 		Playlist existing = findPlaylist(ref);
 
 		if (existing != null) {
@@ -228,12 +234,21 @@ public final class SpotifyImportEngine {
 		}
 
 		Playlist pl = new Playlist(ref);
-		pl.name = name;
+		pl.name = SpotifyApi.LIKED_SONGS.equals(ref) ? SpotifyApi.LIKED_PLAYLIST_NAME : name;
+		pl.limit = limit;
 		pl.coverUrl = coverUrl;
 		pl.included = included;
 		playlists.add(pl);
 		fetch(pl);
 		changed();
+	}
+
+	/** Liked Songs: changes how many are read, loading them again if that makes a difference. */
+	public void setLimit(Playlist pl, int limit) {
+		if (pl.limit == limit) return;
+		pl.limit = limit;
+		if (pl.state != Playlist.STATE_LOADING) fetch(pl);
+		else changed();
 	}
 
 	public void include(Playlist pl) {
@@ -261,6 +276,7 @@ public final class SpotifyImportEngine {
 		fetchExecutor.execute(() -> {
 			Playlist tmp = new Playlist(pl.ref);
 			tmp.name = pl.name;
+			tmp.limit = pl.limit;
 			Exception err = null;
 
 			try {
@@ -289,6 +305,7 @@ public final class SpotifyImportEngine {
 					pl.owner = tmp.owner;
 					if (tmp.coverUrl != null) pl.coverUrl = tmp.coverUrl;
 					pl.fullList = tmp.fullList;
+					pl.totalCount = tmp.totalCount;
 					pl.tracks.clear();
 					pl.tracks.addAll(tmp.tracks);
 					pl.state = Playlist.STATE_LOADED;
