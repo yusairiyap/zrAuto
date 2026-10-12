@@ -53,6 +53,7 @@ public class FermataApplication extends NetSplitCompatApp {
 		// Wired up here rather than from an Activity: the events worth tracing (media service
 		// lifecycle, an Android Auto display takeover) happen outside, or before, any one Activity.
 		DiagnosticLog.init();
+		me.aap.fermata.backup.BackupManager.init(this);
 	}
 
 	@Override

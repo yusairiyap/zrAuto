@@ -225,6 +225,18 @@ way `setBarsHidden`/`setVideoMode` do.
 - **Quality icon for local files**: `QualityIcon#localLabel` (the download's chosen height, else the picture
   size via `labelForSize`) when the engine has no quality options.
 
+## Backup and restore, scheduled backups
+
+Settings > Backup and restore (above Other) holds export/import to a file, save/restore through the
+system file picker (so Google Drive works with no Drive API, OAuth or extra dependency; the user picks
+Drive in the picker), and the automatic backup. `backup/BackupManager` writes the zip of every
+shared-prefs file (not `image-cache`) and keeps ONE inexact alarm set for the chosen interval and hour,
+fired into `backup/BackupReceiver` (which backs up, then sets the next alarm; a boot receiver re-sets it,
+and `FermataApplication` does at start and on any change of the `AUTO_BACKUP*` prefs). The destination is a
+folder picked with `ACTION_OPEN_DOCUMENT_TREE` (persistable permission), else the app's own
+`getExternalFilesDir/backups`; `zrAuto_auto_*.zip` beyond the "keep" count are pruned. Google Drive's
+provider doesn't offer a folder to pick, so Drive is manual only.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

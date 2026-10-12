@@ -82,6 +82,7 @@ import me.aap.utils.function.DoubleSupplier;
 import me.aap.utils.function.IntSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.misc.ChangeableCondition;
+import me.aap.fermata.backup.BackupManager;
 import me.aap.utils.pref.PrefCondition;
 import me.aap.utils.pref.PrefUtils;
 import me.aap.utils.pref.PreferenceSet;
@@ -945,6 +946,8 @@ public class SettingsFragment extends MainActivityFragment
 
 		addAddons(set);
 
+		if (!a.isCarActivityNotMirror()) addBackupRestore(a, set);
+
 		sub1 = set.subSet(o -> {
 			o.title = R.string.other;
 			o.subtitle = R.string.prefs_sub_other;
@@ -952,18 +955,6 @@ public class SettingsFragment extends MainActivityFragment
 		});
 		addSpotifyImport(a, sub1);
 		addStoragePrefs(a, sub1);
-		if (!a.isCarActivityNotMirror()) {
-			sub1.addButton(o -> {
-				o.title = R.string.export_prefs;
-				o.subtitle = R.string.export_prefs_sub;
-				o.onClick = () -> exportPrefs(a);
-			});
-			sub1.addButton(o -> {
-				o.title = R.string.import_prefs;
-				o.subtitle = R.string.import_prefs_sub;
-				o.onClick = () -> importPrefs(a);
-			});
-		}
 		if (BuildConfig.AUTO) {
 			sub1.addBooleanPref(o -> {
 				o.store = a.getPrefs();
@@ -1371,6 +1362,160 @@ public class SettingsFragment extends MainActivityFragment
 			// By class too: the YouTube, bubbles and browser addons all share the "web" module.
 			addonSettingsSets.put(addon.className, sub1);
 		}
+	}
+
+	/** Export and import by hand, to or from a cloud app, and the automatic backup. */
+	private void addBackupRestore(MainActivityDelegate a, PreferenceSet parent) {
+		PreferenceStore store = FermataApplication.get().getPreferenceStore();
+		Context ctx = a.getContext();
+		PreferenceSet ps = parent.subSet(o -> {
+			o.title = R.string.backup_restore;
+			o.subtitle = R.string.prefs_sub_backup;
+			o.icon = R.drawable.save;
+		});
+		ps.addButton(o -> {
+			o.title = R.string.export_prefs;
+			o.subtitle = R.string.export_prefs_sub;
+			o.onClick = () -> exportPrefs(a);
+		});
+		ps.addButton(o -> {
+			o.title = R.string.import_prefs;
+			o.subtitle = R.string.import_prefs_sub;
+			o.onClick = () -> importPrefs(a);
+		});
+		if (Utils.isSafSupported(a)) {
+			ps.addButton(o -> {
+				o.title = R.string.backup_cloud_save;
+				o.subtitle = R.string.backup_cloud_save_sub;
+				o.onClick = () -> saveBackupToCloud(a);
+			});
+			ps.addButton(o -> {
+				o.title = R.string.backup_cloud_restore;
+				o.subtitle = R.string.backup_cloud_restore_sub;
+				o.onClick = () -> importPrefs(a);
+			});
+		}
+
+		ps.addBooleanPref(o -> {
+			o.store = store;
+			o.pref = BackupManager.AUTO_BACKUP;
+			o.title = R.string.auto_backup;
+			o.subtitle = R.string.auto_backup_sub;
+			o.asSwitch = true;
+		});
+		var autoOn = PrefCondition.create(store, BackupManager.AUTO_BACKUP);
+		ps.addListPref(o -> {
+			o.store = store;
+			o.pref = BackupManager.AUTO_BACKUP_INTERVAL;
+			o.title = R.string.auto_backup_interval;
+			o.subtitle = R.string.string_format;
+			o.formatSubtitle = true;
+			o.values = new int[]{R.string.auto_backup_interval_1, R.string.auto_backup_interval_3,
+					R.string.auto_backup_interval_7, R.string.auto_backup_interval_30};
+			o.visibility = autoOn.copy();
+		});
+		ps.addListPref(o -> {
+			o.store = store;
+			o.pref = BackupManager.AUTO_BACKUP_HOUR;
+			o.title = R.string.auto_backup_time;
+			o.subtitle = R.string.string_format;
+			o.formatSubtitle = true;
+			String[] hours = new String[24];
+			for (int i = 0; i < hours.length; i++) hours[i] = String.format(Locale.getDefault(), "%02d:00", i);
+			o.stringValues = hours;
+			o.visibility = autoOn.copy();
+		});
+		ps.addListPref(o -> {
+			o.store = store;
+			o.pref = BackupManager.AUTO_BACKUP_KEEP;
+			o.title = R.string.auto_backup_keep;
+			o.subtitle = R.string.string_format;
+			o.formatSubtitle = true;
+			String[] counts = new String[BackupManager.KEEP_COUNT.length];
+			for (int i = 0; i < counts.length; i++) counts[i] = String.valueOf(BackupManager.KEEP_COUNT[i]);
+			o.stringValues = counts;
+			o.visibility = autoOn.copy();
+		});
+		ps.addButton(o -> {
+			o.title = R.string.auto_backup_folder;
+			o.csubtitle = ctx.getString(R.string.auto_backup_folder_sub, BackupManager.getDestinationName(ctx));
+			o.visibility = autoOn.copy();
+			o.onClick = () -> chooseBackupFolder(a, store);
+		});
+		long last = store.getLongPref(BackupManager.AUTO_BACKUP_LAST);
+		ps.addButton(o -> {
+			o.title = R.string.auto_backup_now;
+			o.csubtitle = ctx.getString(R.string.auto_backup_now_sub, (last == 0) ?
+					ctx.getString(R.string.auto_backup_never) :
+					java.text.DateFormat.getDateTimeInstance().format(new Date(last)));
+			o.onClick = () -> backupNow(a);
+		});
+	}
+
+	private void backupNow(MainActivityDelegate a) {
+		Context ctx = a.getContext();
+		// Off the main thread: the folder may be a cloud provider's.
+		new Thread(() -> {
+			String name = BackupManager.runBackup(ctx);
+			App.get().getHandler().post(() -> {
+				if (name != null) TopToast.show(R.drawable.save, R.string.auto_backup_done, name);
+				else UiUtils.showAlert(ctx, R.string.auto_backup_failed);
+			});
+			BackupManager.schedule(ctx);
+		}, "backup-now").start();
+	}
+
+	private void chooseBackupFolder(MainActivityDelegate a, PreferenceStore store) {
+		int rw = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+		a.startActivityForResult(() -> new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+				.addFlags(rw | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)).onCompletion((d, err) -> {
+			Context ctx = a.getContext();
+			if (err != null) {
+				UiUtils.showAlert(ctx, ctx.getString(R.string.export_prefs_failed, err));
+				return;
+			}
+			if (d == null) return;
+			Uri uri = d.getData();
+			if (uri == null) return;
+			try {
+				ctx.getContentResolver().takePersistableUriPermission(uri, d.getFlags() & rw);
+				store.applyStringPref(BackupManager.AUTO_BACKUP_DIR, uri.toString());
+				TopToast.show(R.drawable.save, R.string.auto_backup_folder_set);
+			} catch (Exception ex) {
+				Log.e(ex, "Failed to use the backup folder");
+				UiUtils.showAlert(ctx, ctx.getString(R.string.export_prefs_failed, ex));
+			}
+		});
+	}
+
+	private void saveBackupToCloud(MainActivityDelegate a) {
+		String name = BackupManager.manualName() + ".zip";
+		a.startActivityForResult(() -> new Intent(Intent.ACTION_CREATE_DOCUMENT)
+				.addCategory(Intent.CATEGORY_OPENABLE).setType("application/zip")
+				.putExtra(Intent.EXTRA_TITLE, name)).onCompletion((d, err) -> {
+			Context ctx = a.getContext();
+			if (err != null) {
+				UiUtils.showAlert(ctx, ctx.getString(R.string.export_prefs_failed, err));
+				return;
+			}
+			if (d == null) return;
+			Uri uri = d.getData();
+			if (uri == null) return;
+			new Thread(() -> {
+				String error = null;
+				try (OutputStream os = ctx.getContentResolver().openOutputStream(uri)) {
+					if ((os == null) || !BackupManager.writeBackup(ctx, os)) error = "No preferences found";
+				} catch (Exception ex) {
+					Log.e(ex, "Failed to save the backup");
+					error = String.valueOf(ex);
+				}
+				String e = error;
+				App.get().getHandler().post(() -> {
+					if (e == null) TopToast.show(R.drawable.save, R.string.cloud_backup_saved);
+					else UiUtils.showAlert(ctx, ctx.getString(R.string.export_prefs_failed, e));
+				});
+			}, "cloud-backup").start();
+		});
 	}
 
 	private void exportPrefs(MainActivityDelegate a) {

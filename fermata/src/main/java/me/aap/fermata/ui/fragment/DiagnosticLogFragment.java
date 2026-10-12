@@ -59,8 +59,9 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 	public void onViewCreated(@NonNull View view, @Nullable Bundle state) {
 		super.onViewCreated(view, state);
 		text = view.findViewById(R.id.diagnostic_log_text);
-		// The whole root, not just the ScrollView: the action row above it would otherwise sit
-		// under the translucent toolbar. See the layout's own comment.
+		// The root is the ScrollView itself: its padding keeps the first and last line clear of the
+		// translucent bars while the log scrolls under them (and lets the bars collapse on scroll).
+		// See the layout's own comment.
 		if (view instanceof ViewGroup vg) {
 			MainActivityDelegate.getActivityDelegate(view.getContext())
 					.onSuccess(a -> a.insetScrollableContent(vg));
