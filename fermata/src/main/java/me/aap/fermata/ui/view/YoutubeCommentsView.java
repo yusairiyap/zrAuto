@@ -436,7 +436,7 @@ public final class YoutubeCommentsView {
 		disc.setColor(accent);
 		send.setBackground(new RippleDrawable(ColorStateList.valueOf(ripple), disc, null));
 		ImageView si = new ImageView(ctx);
-		si.setImageResource(R.drawable.send);
+		si.setImageResource(R.drawable.comment_send);
 		si.setImageTintList(ColorStateList.valueOf(onAccent));
 		send.addView(si, new FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER));
 		send.setClickable(true);
