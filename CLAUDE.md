@@ -227,10 +227,13 @@ way `setBarsHidden`/`setVideoMode` do.
 
 ## Backup and restore, scheduled backups
 
-Settings > Backup and restore (above Other) holds export/import (through the system file picker, so
-Google Drive works with no Drive API, OAuth or extra dependency; the user picks Drive there) and the
-automatic backup. The rows whose subtitles change while the page is open (folder, last backup) are
-refreshed by `SettingsFragment#updateBackupInfo`. The zip has every shared-prefs file except
+Settings > Backup and restore (above Other) holds the backup folder, Back up now, Restore from backup
+(system file picker, so Google Drive works with no Drive API, OAuth or extra dependency) and the automatic
+backup switch, interval, hour and count. A PreferenceSet row's Opts is built again on every bind (the
+supplier runs each time), so a dynamic subtitle must be set inside the row's builder, never on a captured
+Opts; `SettingsFragment#refreshBackupPage` just redraws the page. A missed alarm is caught up: the
+planned time is kept in `AUTO_BACKUP_DUE` and `BackupManager.init` backs up at app start when it has
+passed; everything is traced in the Diagnostic log under BACKUP. The zip has every shared-prefs file except
 `image-cache` and `spotify_auth` (`BackupManager#includeFile`; no login tokens in a cloud zip). `backup/BackupManager` writes the zip and keeps ONE inexact alarm set for the chosen interval and hour,
 fired into `backup/BackupReceiver` (which backs up, then sets the next alarm; a boot receiver re-sets it,
 and `FermataApplication` does at start and on any change of the `AUTO_BACKUP*` prefs). The destination is a

@@ -4,8 +4,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 
-import me.aap.fermata.FermataApplication;
-import me.aap.utils.log.Log;
+import me.aap.fermata.util.DiagnosticLog;
 
 /**
  * The scheduled backup's alarm, and the device boot (which drops every alarm), see
@@ -20,26 +19,9 @@ public class BackupReceiver extends BroadcastReceiver {
 
 		if (BackupManager.ACTION_RUN.equals(action)) {
 			PendingResult res = goAsync();
-			// Off the main thread: writing the zip, possibly into a cloud provider's folder.
-			new Thread(() -> {
-				try {
-					if (FermataApplication.get().getPreferenceStore()
-							.getBooleanPref(BackupManager.AUTO_BACKUP)) {
-						String name = BackupManager.runBackup(app);
-						Log.i("Automatic backup: ", (name != null) ? name : "failed");
-						// A failure waits for the next interval too, rather than retrying every minute.
-						if (name == null) {
-							FermataApplication.get().getPreferenceStore().applyLongPref(
-									BackupManager.AUTO_BACKUP_LAST, System.currentTimeMillis());
-						}
-					}
-				} finally {
-					// Even after a failure, so it tries again at the next interval.
-					BackupManager.schedule(app);
-					res.finish();
-				}
-			}, "auto-backup").start();
+			BackupManager.runScheduled(app, "alarm", res::finish);
 		} else if (Intent.ACTION_BOOT_COMPLETED.equals(action)) {
+			DiagnosticLog.log("BACKUP", "device booted");
 			BackupManager.schedule(app);
 		}
 	}

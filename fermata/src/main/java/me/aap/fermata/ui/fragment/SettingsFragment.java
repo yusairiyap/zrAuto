@@ -1365,7 +1365,7 @@ public class SettingsFragment extends MainActivityFragment
 		}
 	}
 
-	/** Export and import by hand, and the automatic backup. */
+	/** Backup folder, back up now, restore, and the automatic backup. */
 	private void addBackupRestore(MainActivityDelegate a, PreferenceSet parent) {
 		PreferenceStore store = FermataApplication.get().getPreferenceStore();
 		Context ctx = a.getContext();
@@ -1374,10 +1374,21 @@ public class SettingsFragment extends MainActivityFragment
 			o.subtitle = R.string.prefs_sub_backup;
 			o.icon = R.drawable.save;
 		});
+		// Rows are built again on every draw of the page, so the subtitles are worked out here,
+		// each time, not once when the settings were set up.
 		ps.addButton(o -> {
-			o.title = R.string.export_prefs;
-			o.subtitle = R.string.export_prefs_sub;
-			o.onClick = () -> exportPrefs(a);
+			o.title = R.string.auto_backup_folder;
+			o.csubtitle = ctx.getString(R.string.auto_backup_folder_sub,
+					BackupManager.getDestinationName(ctx));
+			o.onClick = () -> chooseBackupFolder(a, store);
+		});
+		ps.addButton(o -> {
+			long last = store.getLongPref(BackupManager.AUTO_BACKUP_LAST);
+			o.title = R.string.auto_backup_now;
+			o.csubtitle = ctx.getString(R.string.auto_backup_now_sub, (last == 0) ?
+					ctx.getString(R.string.auto_backup_never) :
+					java.text.DateFormat.getDateTimeInstance().format(new Date(last)));
+			o.onClick = () -> backupNow(a);
 		});
 		ps.addButton(o -> {
 			o.title = R.string.import_prefs;
@@ -1425,40 +1436,16 @@ public class SettingsFragment extends MainActivityFragment
 			o.stringValues = counts;
 			o.visibility = autoOn.copy();
 		});
-		ps.addButton(o -> {
-			o.title = R.string.auto_backup_folder;
-			o.visibility = autoOn.copy();
-			o.onClick = () -> chooseBackupFolder(a, store);
-			backupFolderOpts = o;
-		});
-		ps.addButton(o -> {
-			o.title = R.string.auto_backup_now;
-			o.onClick = () -> backupNow(a);
-			backupNowOpts = o;
-		});
 		backupSet = ps;
-		updateBackupInfo(ctx, store);
 	}
 
-	// The two backup rows whose subtitles change while the page is open, see updateBackupInfo().
-	private PreferenceView.ButtonOpts backupFolderOpts;
-	private PreferenceView.ButtonOpts backupNowOpts;
 	private PreferenceSet backupSet;
 
-	/**
-	 * Sets the backup folder's and last backup's subtitles, and redraws the page if it's the one
-	 * showing: the rows are built once, so a backup made, or a folder picked, from here must say so.
-	 */
-	private void updateBackupInfo(Context ctx, PreferenceStore store) {
-		if ((backupFolderOpts == null) || (backupNowOpts == null)) return;
-		long last = store.getLongPref(BackupManager.AUTO_BACKUP_LAST);
-		backupFolderOpts.csubtitle = ctx.getString(R.string.auto_backup_folder_sub,
-				BackupManager.getDestinationName(ctx));
-		backupNowOpts.csubtitle = ctx.getString(R.string.auto_backup_now_sub, (last == 0) ?
-				ctx.getString(R.string.auto_backup_never) :
-				java.text.DateFormat.getDateTimeInstance().format(new Date(last)));
+	/** Draws the backup page again, if it's the one showing: its last backup and folder changed. */
+	private void refreshBackupPage() {
 		PreferenceViewAdapter ad = adapter;
-		if ((ad != null) && (ad.getPreferenceSet() == backupSet)) ad.setPreferenceSet(backupSet);
+		PreferenceSet set = backupSet;
+		if ((ad != null) && (set != null) && (ad.getPreferenceSet() == set)) ad.setPreferenceSet(set);
 	}
 
 	private void backupNow(MainActivityDelegate a) {
@@ -1469,7 +1456,7 @@ public class SettingsFragment extends MainActivityFragment
 			App.get().getHandler().post(() -> {
 				if (name != null) TopToast.show(R.drawable.save, R.string.auto_backup_done, name);
 				else UiUtils.showAlert(ctx, R.string.auto_backup_failed);
-				updateBackupInfo(ctx, FermataApplication.get().getPreferenceStore());
+				refreshBackupPage();
 			});
 			BackupManager.schedule(ctx);
 		}, "backup-now").start();
@@ -1490,116 +1477,13 @@ public class SettingsFragment extends MainActivityFragment
 			try {
 				ctx.getContentResolver().takePersistableUriPermission(uri, d.getFlags() & rw);
 				BackupManager.setDestination(ctx, uri);
-				updateBackupInfo(ctx, store);
+				refreshBackupPage();
 				TopToast.show(R.drawable.save, R.string.auto_backup_folder_set);
 			} catch (Exception ex) {
 				Log.e(ex, "Failed to use the backup folder");
 				UiUtils.showAlert(ctx, ctx.getString(R.string.export_prefs_failed, ex));
 			}
 		});
-	}
-
-	private void exportPrefs(MainActivityDelegate a) {
-		SimpleDateFormat fmt = new SimpleDateFormat("ddMMyy", Locale.getDefault());
-		String pattern = "zrAuto_prefs_" + fmt.format(new Date());
-
-		if (Utils.isSafSupported(a)) {
-			a.startActivityForResult(() -> new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE))
-					.onCompletion((d, err) -> {
-						Context ctx = a.getContext();
-
-						if (err != null) {
-							UiUtils.showAlert(ctx, ctx.getString(R.string.export_prefs_failed, err));
-							return;
-						}
-
-						if (d == null) return;
-						Uri uri = d.getData();
-						if (uri == null) return;
-
-						try {
-							DocumentFile dir = DocumentFile.fromTreeUri(ctx, uri);
-							if (dir == null) return;
-
-							File prefsDir = PrefUtils.getSharedPrefsFile(ctx, "fermata").getParentFile();
-							File[] files = (prefsDir == null) ? null :
-									prefsDir.listFiles(BackupManager::includeFile);
-
-							if ((files == null) || (files.length == 0)) {
-								UiUtils.showAlert(ctx, R.string.prefs_not_found);
-								return;
-							}
-
-							String name = pattern + ".zip";
-							for (int i = 1; dir.findFile(name) != null; i++) name = pattern + '_' + i + ".zip";
-							DocumentFile f = dir.createFile("application/zip", name);
-
-							if (f == null) {
-								UiUtils.showAlert(ctx,
-										ctx.getString(R.string.export_prefs_failed, "Failed to create file"));
-							} else {
-								try (OutputStream os = ctx.getContentResolver().openOutputStream(f.getUri())) {
-									exportPrefs(a, os, name);
-								}
-							}
-						} catch (Exception ex) {
-							Log.e(ex, "Failed to export preferences");
-							UiUtils.showAlert(ctx, ctx.getString(R.string.export_prefs_failed, ex));
-						}
-					});
-		} else {
-			if (!(a.showFragment(me.aap.utils.R.id.file_picker) instanceof FilePickerFragment pick))
-				return;
-			pick.setMode((byte) (FilePickerFragment.FOLDER | FilePickerFragment.WRITABLE));
-			pick.setFileSystem(LocalFileSystem.getInstance());
-			pick.setFileConsumer(res -> {
-				a.showFragment(R.id.settings_fragment);
-				if (res == null) return;
-				File dir = res.getLocalFile();
-				if (dir == null) return;
-				try {
-					String name = pattern + ".zip";
-					File f = new File(dir, name);
-					for (int i = 1; f.exists(); i++) {
-						name = pattern + '_' + i + ".zip";
-						f = new File(dir, name);
-					}
-					try (OutputStream os = new FileOutputStream(f)) {
-						exportPrefs(a, os, name);
-					}
-				} catch (Exception ex) {
-					Context ctx = a.getContext();
-					Log.e(ex, "Failed to export preferences");
-					UiUtils.showAlert(ctx, ctx.getString(R.string.export_prefs_failed, ex));
-				}
-			});
-		}
-	}
-
-	private void exportPrefs(MainActivityDelegate a, OutputStream os, String fileName)
-			throws IOException {
-		Context ctx = a.getContext();
-		File prefsDir = PrefUtils.getSharedPrefsFile(ctx, "fermata").getParentFile();
-		File[] files = (prefsDir == null) ? null :
-				prefsDir.listFiles(BackupManager::includeFile);
-
-		if ((files == null) || (files.length == 0)) {
-			UiUtils.showAlert(ctx, R.string.prefs_not_found);
-			return;
-		}
-
-		List<String> names = new ArrayList<>(files.length);
-
-		for (File pf : files) {
-			String n = pf.getName();
-			if (n.endsWith(".xml")) names.add(n.substring(0, n.length() - 4));
-		}
-
-		try (ZipOutputStream zos = (SDK_INT >= N) ? new ZipOutputStream(os, UTF_8) :
-				new ZipOutputStream(os)) {
-			PrefUtils.exportSharedPrefs(ctx, names, zos);
-			UiUtils.showInfo(ctx, ctx.getString(R.string.export_prefs_ok, fileName));
-		}
 	}
 
 	private void importPrefs(MainActivityDelegate a) {

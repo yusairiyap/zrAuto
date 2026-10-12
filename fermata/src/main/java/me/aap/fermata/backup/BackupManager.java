@@ -24,9 +24,11 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.ZipOutputStream;
 
 import me.aap.fermata.FermataApplication;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.log.Log;
 import me.aap.utils.pref.PrefUtils;
 import me.aap.utils.pref.PreferenceStore;
@@ -52,6 +54,8 @@ public final class BackupManager {
 	/** Index into {@link #KEEP_COUNT}. */
 	public static final Pref<IntSupplier> AUTO_BACKUP_KEEP = Pref.i("AUTO_BACKUP_KEEP", 1);
 	public static final Pref<LongSupplier> AUTO_BACKUP_LAST = Pref.l("AUTO_BACKUP_LAST", 0);
+	/** When the pending alarm is set for, so a start of the app can tell it was missed. */
+	public static final Pref<LongSupplier> AUTO_BACKUP_DUE = Pref.l("AUTO_BACKUP_DUE", 0);
 	/** Tree Uri of the folder picked by the user, empty for the app's own folder. */
 	public static final Pref<Supplier<String>> AUTO_BACKUP_DIR = Pref.s("AUTO_BACKUP_DIR", "");
 	/** What to show for {@link #AUTO_BACKUP_DIR}, worked out once when it's picked. */
@@ -63,6 +67,8 @@ public final class BackupManager {
 	private static final String PREFIX = "zrAuto_auto_";
 	private static final String SUFFIX = ".zip";
 	private static final int REQ_CODE = 7301;
+	private static final String TAG = "BACKUP";
+	private static final AtomicBoolean running = new AtomicBoolean();
 
 	private BackupManager() {
 	}
@@ -76,7 +82,56 @@ public final class BackupManager {
 				schedule(ctx);
 			}
 		});
-		schedule(ctx);
+
+		// The alarm may never have come (the app was stopped, the phone off or the system holding
+		// alarms back): the app starting past the time it was due makes the backup now.
+		long due = ps.getLongPref(AUTO_BACKUP_DUE);
+		long now = System.currentTimeMillis();
+		if (ps.getBooleanPref(AUTO_BACKUP) && (due != 0) && (now >= due)) {
+			DiagnosticLog.log(TAG, "app started past the backup time, backing up now",
+					"due=" + stamp(due), "now=" + stamp(now));
+			runScheduled(ctx, "catch-up at start", null);
+		} else {
+			schedule(ctx);
+		}
+	}
+
+	/**
+	 * The automatic backup: to the destination, then the next alarm. At most one at a time (the
+	 * alarm and a start of the app can come together). Off the main thread.
+	 *
+	 * @param done run when finished, from that thread
+	 */
+	static void runScheduled(Context ctx, String why, @Nullable Runnable done) {
+		PreferenceStore ps = FermataApplication.get().getPreferenceStore();
+		if (!ps.getBooleanPref(AUTO_BACKUP)) {
+			DiagnosticLog.log(TAG, "skipped (" + why + "), automatic backup is off");
+			if (done != null) done.run();
+			return;
+		}
+		if (!running.compareAndSet(false, true)) {
+			DiagnosticLog.log(TAG, "skipped (" + why + "), another backup is running");
+			if (done != null) done.run();
+			return;
+		}
+		Context app = ctx.getApplicationContext();
+		new Thread(() -> {
+			try {
+				DiagnosticLog.log(TAG, "starting (" + why + ")");
+				String name = runBackup(app);
+				// A failure waits for the next interval too, rather than retrying every minute.
+				if (name == null) ps.applyLongPref(AUTO_BACKUP_LAST, System.currentTimeMillis());
+				Log.i("Automatic backup: ", (name != null) ? name : "failed");
+			} finally {
+				running.set(false);
+				schedule(app);
+				if (done != null) done.run();
+			}
+		}, "auto-backup").start();
+	}
+
+	private static String stamp(long t) {
+		return new SimpleDateFormat("MM-dd HH:mm:ss", Locale.ROOT).format(new Date(t));
 	}
 
 	/**
@@ -170,6 +225,10 @@ public final class BackupManager {
 				}
 				prune(tree, keep);
 			} else {
+				if (!dir.isEmpty()) {
+					DiagnosticLog.log(TAG, "picked folder not writable, using the app's own folder",
+							"dir=" + dir);
+				}
 				File d = localDir(ctx);
 				if (d == null) return null;
 				File f = new File(d, name);
@@ -184,9 +243,11 @@ public final class BackupManager {
 			}
 
 			ps.applyLongPref(AUTO_BACKUP_LAST, System.currentTimeMillis());
+			DiagnosticLog.log(TAG, "saved", name, "keep=" + keep);
 			return name;
 		} catch (Exception ex) {
 			Log.e(ex, "Automatic backup failed");
+			DiagnosticLog.log(TAG, "failed", String.valueOf(ex));
 			return null;
 		}
 	}
@@ -233,10 +294,16 @@ public final class BackupManager {
 
 		if (!ps.getBooleanPref(AUTO_BACKUP)) {
 			am.cancel(pi);
+			ps.applyLongPref(AUTO_BACKUP_DUE, 0);
+			DiagnosticLog.log(TAG, "automatic backup off, alarm cancelled");
 			return;
 		}
 
 		long at = nextRun(ps, System.currentTimeMillis());
+		ps.applyLongPref(AUTO_BACKUP_DUE, at);
+		DiagnosticLog.log(TAG, "alarm set for " + stamp(at),
+				"last=" + ((ps.getLongPref(AUTO_BACKUP_LAST) == 0) ? "never" :
+						stamp(ps.getLongPref(AUTO_BACKUP_LAST))));
 		try {
 			// Inexact: it may run a little late, which a backup doesn't mind, and needs no special
 			// permission. Not a repeating alarm: the next one is set from each run, so a change of
@@ -245,6 +312,7 @@ public final class BackupManager {
 			else am.set(AlarmManager.RTC, at, pi);
 		} catch (Exception ex) {
 			Log.e(ex, "Failed to schedule the automatic backup");
+			DiagnosticLog.log(TAG, "failed to set the alarm", String.valueOf(ex));
 		}
 	}
 
