@@ -116,6 +116,8 @@ public final class YoutubeCommentsView {
 	private ViewTreeObserver.OnGlobalLayoutListener keyboardListener;
 	private int fullH;
 	private int baseBottom;
+	/** The overlay's height when it was first laid out: a smaller one later is a resized window. */
+	private int openHeight;
 
 	private boolean dismissing;
 	private boolean destroyed;
@@ -761,31 +763,44 @@ public final class YoutubeCommentsView {
 	 */
 	private void onLayoutChanged() {
 		if (destroyed || (overlay == null) || (cardLp == null)) return;
+		int ovH = overlay.getHeight();
+		if (ovH <= 0) return;
+		if (openHeight == 0) openHeight = ovH;
+		// The keyboard's height, from the visible frame and from the insets: windows differ in which
+		// of the two tells (a resized window shows it in neither, only in its own smaller height).
 		Rect r = new Rect();
 		overlay.getWindowVisibleDisplayFrame(r);
 		int[] loc = new int[2];
 		overlay.getLocationOnScreen(loc);
-		int overlayBottom = loc[1] + overlay.getHeight();
-		int kb = Math.max(0, overlayBottom - r.bottom);
-		// Anything small is just the system navigation bar.
-		if (kb < overlay.getHeight() * 0.15f) kb = 0;
-		// Some windows are resized for the keyboard instead (kb stays 0): the insets know it's there.
+		int kb = Math.max(0, (loc[1] + ovH) - r.bottom);
 		androidx.core.view.WindowInsetsCompat wi = androidx.core.view.ViewCompat.getRootWindowInsets(overlay);
-		boolean typing = (kb > 0) || ((wi != null) &&
-				wi.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()));
-		int bottom = baseBottom + kb;
-		// As tall as there is room for between the bars and the keyboard, never taller than at rest:
-		// a height worked out once overflowed (top cut off) when the window shrank under it.
-		int room = overlay.getHeight() - cardLp.topMargin - bottom;
+		boolean ime = (wi != null) && wi.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime());
+		if (ime) kb = Math.max(kb, wi.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime()).bottom);
+		// Anything small is just the system navigation bar.
+		if (!ime && (kb < ovH * 0.15f)) kb = 0;
+		boolean typing = (kb > 0) || ime;
+		// A window already shrunk for the keyboard has made room for it: only the rest is ours.
+		int lift = Math.max(0, kb - Math.max(0, openHeight - ovH));
+		int gravity;
+		int bottom;
+		if (typing) {
+			// Right on top of the keyboard.
+			gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+			bottom = lift + dp(8);
+		} else {
+			gravity = Gravity.CENTER;
+			bottom = baseBottom;
+		}
+		int room = ovH - cardLp.topMargin - bottom;
 		int h = Math.min(fullH, Math.max(dp(160), room));
-		if ((cardLp.height != h) || (cardLp.bottomMargin != bottom)) {
+		if ((cardLp.height != h) || (cardLp.bottomMargin != bottom) || (cardLp.gravity != gravity)) {
 			cardLp.height = h;
 			cardLp.bottomMargin = bottom;
+			cardLp.gravity = gravity;
 			card.setLayoutParams(cardLp);
 		}
 		// While writing, only the comments and the box matter: the rest gives its room up.
-		int v = typing ? View.GONE : View.VISIBLE;
-		if (videoLine != null) videoLine.setVisibility(v);
+		if (videoLine != null) videoLine.setVisibility(typing ? View.GONE : View.VISIBLE);
 		if (sortRow != null) sortRow.setVisibility(typing ? View.GONE :
 				((sortTopToken != null) && (sortNewToken != null)) ? View.VISIBLE : View.GONE);
 	}
