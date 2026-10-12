@@ -132,6 +132,50 @@
         app:layout_constraintBottom_toTopOf="@id/control_panel"
         app:layout_constraintEnd_toStartOf="@id/floating_button5" />
 
+    <me.aap.fermata.ui.view.SeptenaryFloatingButton
+        android:id="@+id/floating_button7"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="15dp"
+        android:elevation="10dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/control_panel"
+        app:layout_constraintEnd_toStartOf="@id/floating_button6" />
+
+    <me.aap.fermata.ui.view.OctonaryFloatingButton
+        android:id="@+id/floating_button8"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="15dp"
+        android:elevation="10dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/control_panel"
+        app:layout_constraintEnd_toStartOf="@id/floating_button7" />
+
+    <me.aap.fermata.ui.view.NonaryFloatingButton
+        android:id="@+id/floating_button9"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="15dp"
+        android:elevation="10dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/control_panel"
+        app:layout_constraintEnd_toStartOf="@id/floating_button8" />
+
+    <me.aap.fermata.ui.view.DenaryFloatingButton
+        android:id="@+id/floating_button10"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="15dp"
+        android:elevation="10dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/control_panel"
+        app:layout_constraintEnd_toStartOf="@id/floating_button9" />
+
     <me.aap.fermata.ui.view.LoadingCircleView
         android:id="@+id/content_loading_progress"
         android:layout_width="wrap_content"

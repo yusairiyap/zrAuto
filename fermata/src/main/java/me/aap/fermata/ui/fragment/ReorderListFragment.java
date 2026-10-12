@@ -234,9 +234,22 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 		return h;
 	}
 
+	/** The page's own button(s) above Reset, if any. */
+	@Nullable
+	protected View createFooterExtra() {
+		return null;
+	}
+
 	private View createFooter() {
-		FrameLayout f = new FrameLayout(palette);
+		LinearLayout f = new LinearLayout(palette);
+		f.setOrientation(LinearLayout.VERTICAL);
 		f.setPadding(0, dp(16), 0, dp(8));
+		View extra = createFooterExtra();
+		if (extra != null) {
+			LinearLayout.LayoutParams elp = new LinearLayout.LayoutParams(MATCH_PARENT, dp(48));
+			elp.bottomMargin = dp(10);
+			f.addView(extra, elp);
+		}
 		TextView reset = text(resetTitle(), 15, textPrimary, true);
 		reset.setGravity(Gravity.CENTER);
 		reset.setSingleLine(true);
@@ -248,7 +261,7 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 			onReset();
 			reload();
 		}));
-		f.addView(reset, new FrameLayout.LayoutParams(MATCH_PARENT, dp(48)));
+		f.addView(reset, new LinearLayout.LayoutParams(MATCH_PARENT, dp(48)));
 		f.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 		return f;
 	}

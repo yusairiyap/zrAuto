@@ -110,6 +110,11 @@ public class PlayableItemWrapper implements PlayableItem {
 	}
 
 	@Override
+	public void refreshMetadata() {
+		getItem().refreshMetadata();
+	}
+
+	@Override
 	public boolean addChangeListener(ChangeListener l) {
 		return getItem().addChangeListener(l);
 	}

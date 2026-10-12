@@ -41,6 +41,7 @@
     <item name="nav_tabs_fragment" type="id" />
     <item name="fab_settings_fragment" type="id" />
     <item name="fab_change_action" type="id" />
+    <item name="fab_remove_button" type="id" />
     <item name="info_overlay_fragment" type="id" />
     <item name="audio_effects_fragment" type="id" />
     <item name="subtitles_fragment" type="id" />
@@ -66,6 +67,10 @@
     <item name="fab_cat_tools" type="id" />
     <item name="floating_button5" type="id" />
     <item name="floating_button6" type="id" />
+    <item name="floating_button7" type="id" />
+    <item name="floating_button8" type="id" />
+    <item name="floating_button9" type="id" />
+    <item name="floating_button10" type="id" />
     <item name="play_as_video" type="id" />
     <item name="music_queue_add" type="id" />
     <item name="subgen_addon" type="id" />

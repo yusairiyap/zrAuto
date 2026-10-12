@@ -64,6 +64,26 @@ public final class YoutubeSearch {
 	}
 
 	/**
+	 * The title and channel of video {@code id} from YouTube's public oEmbed endpoint: no key, and it
+	 * answers for exactly that video, unlike a search. No duration. Null if it can't be had.
+	 */
+	@Nullable
+	public static Video lookUpById(String id) {
+		try {
+			Http.Response r = Http.get("https://www.youtube.com/oembed?format=json&url=" +
+					URLEncoder.encode("https://www.youtube.com/watch?v=" + id, "UTF-8"), null);
+			if (!r.isOk()) return null;
+			JSONObject j = new JSONObject(r.body);
+			String title = j.optString("title");
+			String channel = j.optString("author_name");
+			if (channel.isEmpty()) return null;
+			return new Video(id, title.isEmpty() ? id : title, channel, null, -1);
+		} catch (IOException | JSONException ex) {
+			return null;
+		}
+	}
+
+	/**
 	 * YouTube's own search predictions for what's typed so far -- the list its search box drops
 	 * down. Key-less like {@link #search}; the "firefox" client answers plain JSON
 	 * ({@code ["query", ["prediction", ...]]}) rather than the JSONP the "youtube" one wraps it in.

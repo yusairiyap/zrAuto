@@ -140,6 +140,9 @@ public final class AllInOneMenu {
 	private TextView timerStatus;
 	private TextView minutesLabel;
 	private FrameLayout pages;
+	/** The card's scrolling content: a downward drag only pulls the card away from its top. */
+	@Nullable
+	private ScrollView cardScroll;
 	private boolean dismissing;
 	private boolean centered;
 	// A short screen (Android Auto, a phone on its side): tighter pages so the timer fits without scrolling.
@@ -411,6 +414,7 @@ public final class AllInOneMenu {
 		ScrollView scroll = new ScrollView(ctx);
 		scroll.setVerticalScrollBarEnabled(false);
 		scroll.addView(root, new ViewGroup.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		cardScroll = scroll;
 
 		card = new DraggableCard(ctx);
 		card.setClickable(true);
@@ -602,10 +606,17 @@ public final class AllInOneMenu {
 		private final int slop = ViewConfiguration.get(getContext()).getScaledTouchSlop();
 		private float downY;
 		private boolean dragging;
+		/** This touch began on, or scrolled, content that wasn't at its top: it never dismisses. */
+		private boolean scrolled;
 		private VelocityTracker velocity;
 
 		DraggableCard(Context c) {
 			super(c);
+		}
+
+		private boolean contentScrolled() {
+			ScrollView s = cardScroll;
+			return (s != null) && (s.getScrollY() > 0);
 		}
 
 		@Override
@@ -614,9 +625,13 @@ public final class AllInOneMenu {
 				case MotionEvent.ACTION_DOWN:
 					downY = e.getRawY();
 					dragging = false;
+					scrolled = contentScrolled();
 					break;
 				case MotionEvent.ACTION_MOVE:
-					if (!dragging && (e.getRawY() - downY > slop)) {
+					// Scrolling the list back up to its top is not a swipe to close: only a drag that
+					// begins with the list already at the top is.
+					if (contentScrolled()) scrolled = true;
+					if (!scrolled && !dragging && (e.getRawY() - downY > slop)) {
 						dragging = true;
 						begin();
 						return true;
@@ -916,7 +931,7 @@ public final class AllInOneMenu {
 	private static boolean opensSomething(Action action) {
 		return switch (action) {
 			case AUDIO_EFFECTS, PLAYLIST_ADD, OPEN_FAVORITES, OPEN_PLAYLISTS, OPEN_DOWNLOADS, MENU,
-					CP_MENU, YOUTUBE_SEARCH, YOUTUBE_UP_NEXT, YOUTUBE_ALTERNATIVES, REFUEL, DOWNLOAD_CURRENT, PLAY_AS_MUSIC,
+					CP_MENU, YOUTUBE_SEARCH, YOUTUBE_UP_NEXT, YOUTUBE_ALTERNATIVES, YOUTUBE_COMMENTS, REFUEL, DOWNLOAD_CURRENT, PLAY_AS_MUSIC,
 					BACK_OR_EXIT, EXIT -> true;
 			default -> false;
 		};

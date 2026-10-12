@@ -274,6 +274,28 @@ provider doesn't offer a folder to pick, so Drive is manual only.
   menus open in front of it. Share notifications are skipped while the app is in front (`ShareManager#isUiVisible`);
   an incoming transfer shows `ShareReceiveCard` (progress + Cancel) at the top.
 
+## YouTube comments, dynamic floating buttons
+
+- **YouTube comments** (`ui/view/YoutubeCommentsView`, data in `ytcomments/YtComments`, action `YOUTUBE_COMMENTS`, so All
+  in One, a floating button or a key): a modal card like `PlaylistPicker`. `YtComments` talks to InnerTube (`next` for the
+  comments section token, then continuation tokens for pages, sorting and replies; `comment/create_comment` and
+  `create_comment_reply` to post). It finds what it needs by key anywhere in the response (`findString`/`findObject`),
+  since the layout of those responses changes (the newer `commentViewModel` points by key into
+  `frameworkUpdates.entityBatchUpdate.mutations`, the older `commentRenderer` holds it all). Writing needs the browser's
+  cookies (`CookieManager`, so Private Mode and signed out read only) and YouTube only includes `createCommentParams` /
+  `createReplyParams` when signed in: the box and Reply buttons show only when those are there, never in car mode. **None of
+  this has run against live YouTube from the cloud session (no route to it); check the Diagnostic log / Log output first.**
+- **Floating buttons are slots FAB2 to FAB10**; `FAB_COUNT` (and `FAB_COUNT_AA`) is how many are in use (default 5, the old
+  five). FAB settings adds the next slot / removes one (later slots shift up), capped by how many fit the screen width at the
+  chosen size. Slots 7 to 10 have their own view classes and mediators (`Septenary` to `Denary`, in the three `main_activity*`
+  layouts); `MainActivityDelegate#getExtraFloatingButtons` lists all nine. Use `MainActivityPrefs.fabEnabled/fabAction(slot)`.
+- **All in One card**: a drag down only closes it when the list was at its top when the touch began; scrolling the list
+  back up to the top never closes it in the same gesture (`DraggableCard#scrolled`).
+- **Refresh thumbnail** drops the item's cached *metadata* too (`PlayableItem#refreshMetadata`), not only its description;
+  without that the artist/duration it found was cached but never shown. It falls back to YouTube's oEmbed
+  (`YoutubeSearch.lookUpById`) for the channel when searching misses; adding a never-played video to Favorites looks the
+  channel up in the background (`YoutubeAddon#recordAddedVideo`).
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

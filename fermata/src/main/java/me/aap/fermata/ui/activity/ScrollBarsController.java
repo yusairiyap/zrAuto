@@ -77,7 +77,7 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 	private final Rect cpClip = new Rect();
 	// The offset each floating button carries from this, on top of its own translation (a dragged
 	// button's place), see moveFab().
-	private final float[] fabDy = new float[6];
+	private final float[] fabDy = new float[10];
 	// The floating buttons, the primary one first (any may be null), see attach().
 	private View[] fabs = new View[0];
 	private int state = FULL;

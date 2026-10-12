@@ -76,7 +76,7 @@ public final class YtThumbnails {
 			bc.invalidate(ctx, base + "hqdefault.jpg");
 			bc.invalidate(ctx, "https://i.ytimg.com/vi/" + e.getKey() + "/mqdefault.jpg");
 		}
-		for (PlayableItem pi : items) pi.updateTitles(); // Drops the cached description.
+		refreshMeta(items); // Drops the cached description and metadata (artist, duration).
 		reloadList(a);
 		TopToast.show(R.drawable.refresh, ctx.getString(R.string.youtube_refreshing_n, videos.size()));
 
@@ -114,6 +114,9 @@ public final class YtThumbnails {
 			first = false;
 			Video v = find(e.getKey(), e.getKey());
 			if (v == null) v = find(e.getKey(), e.getValue());
+			// Searching can miss (an id is a poor query); the channel is also known from the
+			// video's own page data, the way it is when a video is played before it's favorited.
+			if (v == null) v = YoutubeSearch.lookUpById(e.getKey());
 			if (v == null) continue;
 			found.put(e.getKey(), new VideoInfo(v.title, v.channel, null, v.durationMs));
 		}
@@ -121,7 +124,7 @@ public final class YtThumbnails {
 		a.getHandler().post(() -> {
 			if (!found.isEmpty()) {
 				cache.cacheVideoInfo(found);
-				for (PlayableItem pi : items) pi.updateTitles();
+				refreshMeta(items);
 				reloadList(a);
 			}
 			TopToast.show(R.drawable.refresh, a.getContext().getString(R.string.youtube_refreshed, found.size()));
@@ -142,6 +145,14 @@ public final class YtThumbnails {
 		}
 
 		return null;
+	}
+
+	/** Metadata is read once per item and kept: it has to be dropped to show what was just found. */
+	private static void refreshMeta(List<? extends PlayableItem> items) {
+		for (PlayableItem pi : items) {
+			pi.refreshMetadata();
+			pi.updateTitles();
+		}
 	}
 
 	private static void reloadList(MainActivityDelegate a) {

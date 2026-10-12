@@ -293,6 +293,14 @@ public interface MediaLib {
 			return completedVoid();
 		}
 
+		/**
+		 * Forgets the metadata read so far (artist, album, duration), so the next read builds it
+		 * afresh, e.g. once more is known about the item than when it was first read.
+		 */
+		default void refreshMetadata() {
+			updateTitles();
+		}
+
 		default boolean addChangeListener(ChangeListener l) {
 			return false;
 		}

@@ -146,6 +146,10 @@ public enum Action {
 	// Other YouTube videos for what plays, searched by its title.
 	YOUTUBE_ALTERNATIVES(R.string.action_youtube_alternatives,
 			a(me.aap.fermata.ui.view.YoutubeAlternativesPicker::showForCurrent)),
+	// The comments of the YouTube video that plays, in a card of their own. Kept last: actions are
+	// saved by their position.
+	YOUTUBE_COMMENTS(R.string.action_youtube_comments,
+			a(me.aap.fermata.ui.view.YoutubeCommentsView::showForCurrent)),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

@@ -110,6 +110,20 @@ public interface MainActivityPrefs
 	Pref<IntSupplier> FAB5_ACTION = Pref.i("FAB5_ACTION", Action.YOUTUBE_SEARCH.ordinal());
 	Pref<BooleanSupplier> FAB6_ENABLED = Pref.b("FAB6_ENABLED", false);
 	Pref<IntSupplier> FAB6_ACTION = Pref.i("FAB6_ACTION", Action.OPEN_PLAYLISTS.ordinal());
+	// FAB7 to FAB10 are there to be added from Settings (how many extra buttons are in use is
+	// FAB_COUNT); the rest of the slots stay unused until then.
+	Pref<BooleanSupplier> FAB7_ENABLED = Pref.b("FAB7_ENABLED", true);
+	Pref<IntSupplier> FAB7_ACTION = Pref.i("FAB7_ACTION", Action.PLAY_PAUSE.ordinal());
+	Pref<BooleanSupplier> FAB8_ENABLED = Pref.b("FAB8_ENABLED", true);
+	Pref<IntSupplier> FAB8_ACTION = Pref.i("FAB8_ACTION", Action.PLAY_PAUSE.ordinal());
+	Pref<BooleanSupplier> FAB9_ENABLED = Pref.b("FAB9_ENABLED", true);
+	Pref<IntSupplier> FAB9_ACTION = Pref.i("FAB9_ACTION", Action.PLAY_PAUSE.ordinal());
+	Pref<BooleanSupplier> FAB10_ENABLED = Pref.b("FAB10_ENABLED", true);
+	Pref<IntSupplier> FAB10_ACTION = Pref.i("FAB10_ACTION", Action.PLAY_PAUSE.ordinal());
+	/** The extra buttons (FAB2, FAB3, ...) in use: the first this many slots; the rest are unused. */
+	int FAB_COUNT_DEFAULT = 5;
+	int FAB_COUNT_MAX = 9;
+	Pref<IntSupplier> FAB_COUNT = Pref.i("FAB_COUNT", FAB_COUNT_DEFAULT);
 	// Fixed in place by default: dragging is easy to trigger by accident while driving.
 	Pref<BooleanSupplier> FAB_DRAGGABLE = Pref.b("FAB_DRAGGABLE", false);
 	// The floating buttons shown together as one pill (see FabPillView) rather than as separate
@@ -250,6 +264,15 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> FAB6_ENABLED_AA = AUTO ? Pref.b("FAB6_ENABLED_AA", false) : null;
 	Pref<IntSupplier> FAB6_ACTION_AA =
 			AUTO ? Pref.i("FAB6_ACTION_AA", Action.OPEN_PLAYLISTS.ordinal()) : null;
+	Pref<BooleanSupplier> FAB7_ENABLED_AA = AUTO ? Pref.b("FAB7_ENABLED_AA", true) : null;
+	Pref<IntSupplier> FAB7_ACTION_AA = AUTO ? Pref.i("FAB7_ACTION_AA", Action.PLAY_PAUSE.ordinal()) : null;
+	Pref<BooleanSupplier> FAB8_ENABLED_AA = AUTO ? Pref.b("FAB8_ENABLED_AA", true) : null;
+	Pref<IntSupplier> FAB8_ACTION_AA = AUTO ? Pref.i("FAB8_ACTION_AA", Action.PLAY_PAUSE.ordinal()) : null;
+	Pref<BooleanSupplier> FAB9_ENABLED_AA = AUTO ? Pref.b("FAB9_ENABLED_AA", true) : null;
+	Pref<IntSupplier> FAB9_ACTION_AA = AUTO ? Pref.i("FAB9_ACTION_AA", Action.PLAY_PAUSE.ordinal()) : null;
+	Pref<BooleanSupplier> FAB10_ENABLED_AA = AUTO ? Pref.b("FAB10_ENABLED_AA", true) : null;
+	Pref<IntSupplier> FAB10_ACTION_AA = AUTO ? Pref.i("FAB10_ACTION_AA", Action.PLAY_PAUSE.ordinal()) : null;
+	Pref<IntSupplier> FAB_COUNT_AA = AUTO ? Pref.i("FAB_COUNT_AA", FAB_COUNT_DEFAULT) : null;
 	Pref<BooleanSupplier> FAB_DRAGGABLE_AA = AUTO ? Pref.b("FAB_DRAGGABLE_AA", false) : null;
 	Pref<DoubleSupplier> FAB_SIZE_AA = AUTO ? Pref.f("FAB_SIZE_AA", 0.95f) : null;
 	// The car screen's own All in One card.
@@ -283,6 +306,15 @@ public interface MainActivityPrefs
 		if (p == FAB5_ACTION) return FAB5_ACTION_AA;
 		if (p == FAB6_ENABLED) return FAB6_ENABLED_AA;
 		if (p == FAB6_ACTION) return FAB6_ACTION_AA;
+		if (p == FAB7_ENABLED) return FAB7_ENABLED_AA;
+		if (p == FAB7_ACTION) return FAB7_ACTION_AA;
+		if (p == FAB8_ENABLED) return FAB8_ENABLED_AA;
+		if (p == FAB8_ACTION) return FAB8_ACTION_AA;
+		if (p == FAB9_ENABLED) return FAB9_ENABLED_AA;
+		if (p == FAB9_ACTION) return FAB9_ACTION_AA;
+		if (p == FAB10_ENABLED) return FAB10_ENABLED_AA;
+		if (p == FAB10_ACTION) return FAB10_ACTION_AA;
+		if (p == FAB_COUNT) return FAB_COUNT_AA;
 		if (p == FAB_DRAGGABLE) return FAB_DRAGGABLE_AA;
 		if (p == FAB_SIZE) return FAB_SIZE_AA;
 		// Not a floating button's, but kept apart for the car screen the same way.
@@ -290,6 +322,36 @@ public interface MainActivityPrefs
 		if (p == AIO_COLUMNS) return AIO_COLUMNS_AA;
 		if (p == AIO_MUSIC_MORE) return AIO_MUSIC_MORE_AA;
 		return null;
+	}
+
+	/** The "shown" setting of floating button {@code slot} (2 to 10). */
+	static Pref<BooleanSupplier> fabEnabled(int slot) {
+		return switch (slot) {
+			case 2 -> FAB2_ENABLED;
+			case 3 -> FAB3_ENABLED;
+			case 4 -> FAB4_ENABLED;
+			case 5 -> FAB5_ENABLED;
+			case 6 -> FAB6_ENABLED;
+			case 7 -> FAB7_ENABLED;
+			case 8 -> FAB8_ENABLED;
+			case 9 -> FAB9_ENABLED;
+			default -> FAB10_ENABLED;
+		};
+	}
+
+	/** The "action" setting of floating button {@code slot} (2 to 10). */
+	static Pref<IntSupplier> fabAction(int slot) {
+		return switch (slot) {
+			case 2 -> FAB2_ACTION;
+			case 3 -> FAB3_ACTION;
+			case 4 -> FAB4_ACTION;
+			case 5 -> FAB5_ACTION;
+			case 6 -> FAB6_ACTION;
+			case 7 -> FAB7_ACTION;
+			case 8 -> FAB8_ACTION;
+			case 9 -> FAB9_ACTION;
+			default -> FAB10_ACTION;
+		};
 	}
 
 	static MainActivityPrefs get() {
