@@ -50,10 +50,7 @@ public final class DataUsageAlerts implements DataUsageTracker.AlertListener, Ac
 	private final MainActivityDelegate activity;
 	private final Runnable usageListener = this::update;
 	// Having shown for its few seconds over video counts as seen: it is not shown again.
-	private final Runnable autoHide = () -> {
-		dismissedLevel = shownLevel;
-		hideBanner(true);
-	};
+	private final Runnable autoHide = this::autoHideBanner;
 	private final ViewTreeObserver.OnGlobalLayoutListener layoutListener = this::updateGate;
 	@Nullable
 	private View banner;
@@ -121,6 +118,11 @@ public final class DataUsageAlerts implements DataUsageTracker.AlertListener, Ac
 		if (paused) dismissedLevel = LEVEL_OK;
 		updateBanner();
 		updateGate();
+	}
+
+	private void autoHideBanner() {
+		dismissedLevel = shownLevel;
+		hideBanner(true);
 	}
 
 	private void update() {

@@ -3395,7 +3395,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			if (AUTO && !getBooleanPref(INFO_OVERLAY_AA_MIGRATED)) {
 				try (PreferenceStore.Edit e = editPreferenceStore()) {
 					for (Pref<?> p : INFO_OVERLAY_PREFS) {
-						Pref<?> aa = infoAA(p);
+						Pref<?> aa = MainActivityPrefs.infoAA(p);
 						if ((aa == null) || !hasPref(p)) continue;
 						if (p == CLOCK_POS) e.setIntPref(CLOCK_POS_AA, getIntPref(CLOCK_POS));
 						else if (p == INFO_OVERLAY_ORDER)
