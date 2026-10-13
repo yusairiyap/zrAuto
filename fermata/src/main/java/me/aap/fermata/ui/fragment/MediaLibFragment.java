@@ -89,6 +89,9 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 	private Parcelable savedListState;
 	@Nullable
 	private String savedListParentId;
+	/** Set by {@link #reloadKeepScroll()} for the next set of children to land where the list was. */
+	@Nullable
+	private Parcelable keepScrollState;
 	private Item clicked;
 
 	protected abstract ListAdapter createAdapter(FermataServiceUiBinder b);
@@ -340,6 +343,18 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 	public FutureSupplier<?> reload() {
 		discardSelection();
 		return getAdapter().reload();
+	}
+
+	/**
+	 * As {@link #reload()}, but the list stays scrolled where it is instead of jumping to the
+	 * playing (or last played) item, for changes that only redraw what is shown, such as refreshed
+	 * thumbnails.
+	 */
+	public FutureSupplier<?> reloadKeepScroll() {
+		View v = getView();
+		RecyclerView.LayoutManager lm = (v instanceof MediaItemListView lv) ? lv.getLayoutManager() : null;
+		keepScrollState = (lm == null) ? null : lm.onSaveInstanceState();
+		return reload();
 	}
 
 	public FutureSupplier<?> refresh() {
@@ -954,7 +969,7 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 			// too, from its list, and the Music tab comes up -- instead of dropping out of music mode
 			// into the video player.
 			if (allowMusic && playsAsMusicInMusicMode() && !(i instanceof StreamItem) &&
-					MusicPlayer.isMusicModeActive(a)) {
+					MusicPlayer.tapPlaysAsMusic(a)) {
 				MusicPlayer.play(a, i, true);
 				return;
 			}
@@ -981,6 +996,17 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 		@Override
 		protected void setChildren(List<? extends Item> children) {
 			super.setChildren(children);
+			Parcelable keep = keepScrollState;
+			keepScrollState = null;
+			if (keep != null) {
+				// Put the list back exactly where it was, once the new rows are laid out.
+				MediaItemListView lv = getListView();
+				lv.post(() -> {
+					RecyclerView.LayoutManager lm = lv.getLayoutManager();
+					if (lm != null) lm.onRestoreInstanceState(keep);
+				});
+				return;
+			}
 			if (noScroll) return;
 			// The view was recreated while away: back to where the user had scrolled to.
 			if (!isHidden() && (savedListState != null)) {

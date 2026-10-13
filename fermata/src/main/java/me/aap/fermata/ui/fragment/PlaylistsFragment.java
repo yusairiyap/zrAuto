@@ -202,6 +202,8 @@ public class PlaylistsFragment extends MediaLibFragment {
 			popup[0] = ModalProgressPopup.show(a, R.drawable.playlist_import,
 					ctx.getString(R.string.spotify_sync_title, name), () -> {
 						if (sync[0] != null) sync[0].cancel();
+					}, R.string.spotify_sync_until_now, () -> {
+						if (sync[0] != null) sync[0].syncUntilNow();
 					});
 			if (popup[0] != null) popup[0].setProgress(last[0], prog[0], prog[1]);
 		};

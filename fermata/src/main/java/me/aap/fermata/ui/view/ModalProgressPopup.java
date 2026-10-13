@@ -56,6 +56,18 @@ public final class ModalProgressPopup {
 	@Nullable
 	public static ModalProgressPopup show(MainActivityDelegate a, @DrawableRes int iconRes,
 																				CharSequence title, @Nullable Runnable cancel) {
+		return show(a, iconRes, title, cancel, 0, null);
+	}
+
+	/**
+	 * As {@link #show(MainActivityDelegate, int, CharSequence, Runnable)}, with one more button
+	 * before Cancel ({@code extraText} and {@code extra}) that takes itself away once tapped.
+	 */
+	@Nullable
+	public static ModalProgressPopup show(MainActivityDelegate a, @DrawableRes int iconRes,
+																				CharSequence title, @Nullable Runnable cancel,
+																				@androidx.annotation.StringRes int extraText,
+																				@Nullable Runnable extra) {
 		View body = a.getBody();
 		if (body == null) return null;
 		View root = body.getRootView();
@@ -129,6 +141,12 @@ public final class ModalProgressPopup {
 		card.addView(chips, clp);
 
 		ModalProgressPopup p = new ModalProgressPopup(scrim, card, icon, msg, bar, chips);
+		if ((extra != null) && (extraText != 0)) {
+			NetworkIssuePopup.addChip(chips, R.drawable.done, extraText, fg, false, v -> {
+				v.setVisibility(View.GONE);
+				extra.run();
+			});
+		}
 		if (cancel != null) {
 			NetworkIssuePopup.addChip(chips, R.drawable.close_small, R.string.cancel, fg, false,
 					v -> cancel.run()).requestFocus();

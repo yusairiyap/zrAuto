@@ -168,8 +168,9 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 
 			if ((view != null) && MusicPlayer.isEnabled() && !(pi instanceof StreamItem) &&
 					!(pi instanceof ArchiveItem)) {
-				// Already listening as music: the other way round is what's worth offering.
-				if (MusicPlayer.isMusicModeActive(a)) {
+				// What a tap does here (music: listening already, or by default in Settings > Playback,
+				// for Favorites and playlists): the other way round is what's worth offering.
+				if (inList ? MusicPlayer.tapPlaysAsMusic(a) : MusicPlayer.isMusicModeActive(a)) {
 					b.addItem(R.id.play_as_video, R.drawable.video, R.string.play_as_video);
 				} else {
 					b.addItem(R.id.music_play, R.drawable.music, R.string.play_as_music);

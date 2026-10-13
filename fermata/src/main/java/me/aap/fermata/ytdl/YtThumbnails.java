@@ -157,6 +157,6 @@ public final class YtThumbnails {
 
 	private static void reloadList(MainActivityDelegate a) {
 		MediaLibFragment f = a.getActiveMediaLibFragment();
-		if (f != null) f.reload();
+		if (f != null) f.reloadKeepScroll();
 	}
 }

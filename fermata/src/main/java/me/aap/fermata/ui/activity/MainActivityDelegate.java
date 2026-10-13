@@ -3179,6 +3179,10 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * Picture-in-picture (a video playing in a small window): the control panel and the floating
 	 * buttons would only cover it, so they are away until it is back to a full screen.
 	 */
+	public boolean isInPictureInPicture() {
+		return pipSuppressed;
+	}
+
 	public void onPictureInPictureChanged(boolean pip) {
 		if (pip) {
 			pipSuppressed = true;
@@ -3384,6 +3388,27 @@ public class MainActivityDelegate extends ActivityDelegate
 				try (PreferenceStore.Edit e = editPreferenceStore()) {
 					e.removePref(showClock);
 					e.setIntPref(CLOCK_POS, CLOCK_POS_RIGHT);
+				}
+			}
+
+			// The car screen's Info Overlay got its own settings: start them as a copy of the phone's.
+			if (AUTO && !getBooleanPref(INFO_OVERLAY_AA_MIGRATED)) {
+				try (PreferenceStore.Edit e = editPreferenceStore()) {
+					for (Pref<?> p : INFO_OVERLAY_PREFS) {
+						Pref<?> aa = infoAA(p);
+						if ((aa == null) || !hasPref(p)) continue;
+						if (p == CLOCK_POS) e.setIntPref(CLOCK_POS_AA, getIntPref(CLOCK_POS));
+						else if (p == INFO_OVERLAY_ORDER)
+							e.setStringPref(INFO_OVERLAY_ORDER_AA, getStringPref(INFO_OVERLAY_ORDER));
+						else if (p == INFO_OVERLAY_SIZE)
+							e.setFloatPref(INFO_OVERLAY_SIZE_AA, getFloatPref(INFO_OVERLAY_SIZE));
+						else {
+							@SuppressWarnings("unchecked") Pref<BooleanSupplier> bp = (Pref<BooleanSupplier>) p;
+							@SuppressWarnings("unchecked") Pref<BooleanSupplier> bpa = (Pref<BooleanSupplier>) aa;
+							e.setBooleanPref(bpa, getBooleanPref(bp));
+						}
+					}
+					e.setBooleanPref(INFO_OVERLAY_AA_MIGRATED, true);
 				}
 			}
 

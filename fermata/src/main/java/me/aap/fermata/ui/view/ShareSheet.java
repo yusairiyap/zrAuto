@@ -449,8 +449,11 @@ public final class ShareSheet implements ShareManager.Listener {
 				r.cancel.setVisibility(View.GONE);
 			}
 			case DONE -> {
-				r.status.setText(ctx.getResources().getQuantityString(R.plurals.share_sent_files,
-						t.offer.entries.size(), t.offer.entries.size()));
+				r.status.setText((t.duplicates > 0) ?
+						ctx.getString(R.string.share_sent_dups, t.offer.entries.size() - t.duplicates,
+								t.duplicates) :
+						ctx.getResources().getQuantityString(R.plurals.share_sent_files,
+								t.offer.entries.size(), t.offer.entries.size()));
 				r.bar.setVisibility(View.GONE);
 				r.cancel.setVisibility(View.GONE);
 			}

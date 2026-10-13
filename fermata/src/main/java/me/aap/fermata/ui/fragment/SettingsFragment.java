@@ -64,6 +64,7 @@ import me.aap.fermata.addon.SubGenAddon;
 import me.aap.fermata.media.engine.BitmapCache;
 import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.pref.BrowsableItemPrefs;
+import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.media.pref.MediaLibPrefs;
 import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.media.pref.PlaybackControlPrefs;
@@ -419,7 +420,7 @@ public class SettingsFragment extends MainActivityFragment
 			addAllInOne(a, sub1, true);
 			aaInterfaceSet = sub1;
 			// Right below the floating buttons: addAAInterface() adds its items straight in here.
-			addInfoOverlayPrefs(a, sub1);
+			addInfoOverlayPrefs(a, sub1, true);
 			addNavTabsPrefs(a, sub1);
 			addUpNextPrefs(a, sub1);
 			addAAInterface(a, sub1);
@@ -436,7 +437,7 @@ public class SettingsFragment extends MainActivityFragment
 				addFabSettings(a, aaSet, true);
 				addAllInOne(a, aaSet, true);
 				// Shared with the phone's, here too so they're found from the car's own settings.
-				addInfoOverlayPrefs(a, aaSet);
+				addInfoOverlayPrefs(a, aaSet, true);
 				addNavTabsPrefs(a, aaSet);
 				addUpNextPrefs(a, aaSet);
 				addAAInterface(a, aaSet);
@@ -444,7 +445,7 @@ public class SettingsFragment extends MainActivityFragment
 			}
 			addFabSettings(a, sub1, false);
 			addAllInOne(a, sub1, false);
-			addInfoOverlayPrefs(a, sub1);
+			addInfoOverlayPrefs(a, sub1, false);
 			addNavTabsPrefs(a, sub1);
 			addUpNextPrefs(a, sub1);
 			addInterface(a, sub1, MainActivityPrefs.THEME_MAIN, MainActivityPrefs.HIDE_BARS,
@@ -558,6 +559,17 @@ public class SettingsFragment extends MainActivityFragment
 			o.pref = BrowsableItemPrefs.PLAY_NEXT;
 			o.title = R.string.play_next_on_completion;
 		});
+		if (MusicPlayer.isEnabled()) {
+			sub1.addListPref(o -> {
+				o.store = mediaPrefs;
+				o.removeDefault = false;
+				o.pref = MediaLibPrefs.DEFAULT_PLAY_MODE;
+				o.title = R.string.default_play_mode;
+				o.subtitle = R.string.string_format;
+				o.formatSubtitle = true;
+				o.values = new int[]{R.string.play_mode_video, R.string.play_mode_music};
+			});
+		}
 
 		sub1 = set.subSet(o -> {
 			o.title = R.string.playback_control;
@@ -1184,12 +1196,13 @@ public class SettingsFragment extends MainActivityFragment
 	 * Interface &gt; Info overlay (clock, battery, temperature, distance, data) shown over fullscreen
 	 * video and on the Music tab: its own page, see {@link InfoOverlayFragment}.
 	 */
-	private static void addInfoOverlayPrefs(MainActivityDelegate a, PreferenceSet parent) {
+	private static void addInfoOverlayPrefs(MainActivityDelegate a, PreferenceSet parent,
+																				boolean aa) {
 		parent.addButton(o -> {
 			o.title = R.string.info_overlay_prefs;
 			o.subtitle = R.string.prefs_sub_info_overlay;
 			o.icon = R.drawable.about;
-			o.onClick = () -> a.showFragment(R.id.info_overlay_fragment);
+			o.onClick = () -> a.showFragment(R.id.info_overlay_fragment, aa);
 		});
 	}
 

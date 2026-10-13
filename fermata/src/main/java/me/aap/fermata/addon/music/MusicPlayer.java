@@ -552,6 +552,15 @@ public final class MusicPlayer {
 	}
 
 	/**
+	 * Whether tapping a Favorites/Playlist entry plays it as music: the Music tab is what's playing,
+	 * or Settings &gt; Playback asks for music by default. The item menu offers the other way round.
+	 */
+	public static boolean tapPlaysAsMusic(MainActivityDelegate a) {
+		if (!isEnabled()) return false;
+		return isMusicModeActive(a) || a.getLib().getPrefs().getPlayAsMusicByDefaultPref();
+	}
+
+	/**
 	 * Whether the Music tab is what's playing (or was, paused): a queue track is the session's item,
 	 * or YouTube is playing as music. Tapping a Favorites/Playlist entry then plays it as music too.
 	 */

@@ -739,6 +739,10 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	@Override
 	public void onPause() {
 		if (interceptTransport(KeyTester.Transport.PAUSE)) return;
+		doPause();
+	}
+
+	private void doPause() {
 		DiagnosticLog.log("TRANSPORT", "onPause",
 				"state=" + stateName(getPlaybackState().getState()), "from=" + pauseSource());
 		PlayableItem i;
@@ -2204,6 +2208,28 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		}
 	}
 
+	private static final long TIMER_FADE_MS = 6000;
+	// The engine whose sound the sleep timer is fading out before pausing it.
+	private MediaEngine timerFadeEngine;
+
+	/**
+	 * The sleep timer ran out: the sound fades out over a few seconds, then playback is paused (not
+	 * stopped), so Play carries on from where it was instead of starting over.
+	 */
+	private void fadeOutAndPause() {
+		MediaEngine eng = getEngine();
+		if ((eng == null) || !isPlaying()) {
+			onStop(true);
+			return;
+		}
+		timerFadeEngine = eng;
+		eng.fadeOut(TIMER_FADE_MS, () -> {
+			if (timerFadeEngine != eng) return;
+			timerFadeEngine = null;
+			if (getEngine() == eng) doPause();
+		});
+	}
+
 	private PlaybackTimer playbackTimer;
 	// "Let the current song finish": once the timer runs out, playback carries on to the end of the
 	// track that is playing and only then stops, instead of cutting it off mid-song.
@@ -2242,6 +2268,12 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	public void setPlaybackTimer(int time, boolean finishTrack) {
 		playbackTimerWaitingForTrackEnd = false;
 		playbackTimerFinishTrack = finishTrack && (time != 0);
+		// A new or cancelled timer while the sound was going out: it comes back.
+		MediaEngine fading = timerFadeEngine;
+		if (fading != null) {
+			timerFadeEngine = null;
+			fading.abortFadeOut();
+		}
 
 		if (time == 0) {
 			playbackTimer = null;
@@ -2275,7 +2307,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 				playbackTimerWaitingForTrackEnd = true;
 			} else {
 				playbackTimerFinishTrack = false;
-				onStop(true);
+				fadeOutAndPause();
 			}
 
 			fireBroadcastEvent(l -> l.onPlaybackTimerChanged(MediaSessionCallback.this));

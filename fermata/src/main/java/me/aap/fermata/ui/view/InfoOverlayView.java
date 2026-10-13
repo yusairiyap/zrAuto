@@ -14,6 +14,7 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextClock;
@@ -458,20 +459,27 @@ public class InfoOverlayView extends LinearLayout {
 		// Coming and going with the control panel, it fades in and out with it.
 		if (!onlyWhenControlPanelVisible || !isAttachedToWindow()) {
 			setAlpha(1f);
+			setTranslationY(0f);
 			setVisibility(visible ? VISIBLE : GONE);
 			if (!visible) notifyHidden();
 		} else if (visible) {
+			// Same motion as the title bar: fades in while sliding down into place.
 			if (getVisibility() != VISIBLE) {
 				setAlpha(0f);
+				setTranslationY(-toIntPx(getContext(), 8));
 				setVisibility(VISIBLE);
 			}
-			animate().alpha(1f).setDuration(FADE_MS).start();
+			animate().alpha(1f).translationY(0f).setDuration(FADE_MS)
+					.setInterpolator(new DecelerateInterpolator()).start();
 		} else if (getVisibility() == VISIBLE) {
-			animate().alpha(0f).setDuration(FADE_MS).withEndAction(() -> {
-				setVisibility(GONE);
-				setAlpha(1f);
-				notifyHidden();
-			}).start();
+			// ... and fades out while sliding up, like the title bar going.
+			animate().alpha(0f).translationY(-toIntPx(getContext(), 8)).setDuration(FADE_MS)
+					.setInterpolator(new DecelerateInterpolator()).withEndAction(() -> {
+						setVisibility(GONE);
+						setAlpha(1f);
+						setTranslationY(0f);
+						notifyHidden();
+					}).start();
 		}
 	}
 

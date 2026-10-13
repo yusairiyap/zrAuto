@@ -299,9 +299,15 @@ public class MainActivity extends SplitCompatActivityBase
 			float r = ((w > 0) && (h > 0)) ? Math.max(0.42f, Math.min(2.39f, w / h)) : (16f / 9f);
 			PictureInPictureParams.Builder pb = new PictureInPictureParams.Builder()
 					.setAspectRatio(new Rational(Math.round(r * 1000), 1000));
+			// The hint is where the picture is now (the surface, fitted to the video), not the whole
+			// view: on a portrait phone that view is tall, and animating from it to the landscape
+			// window made the video look like it was shown in portrait.
 			VideoView vv = a.getActiveVideoView();
 			Rect rect = new Rect();
-			if ((vv != null) && vv.getGlobalVisibleRect(rect)) pb.setSourceRectHint(rect);
+			var surface = (vv != null) ? vv.getVideoSurface() : null;
+			if ((surface != null) && surface.getGlobalVisibleRect(rect) && !rect.isEmpty()) {
+				pb.setSourceRectHint(rect);
+			}
 			enterPictureInPictureMode(pb.build());
 		} catch (Throwable ex) {
 			Log.w(ex, "Failed to enter picture-in-picture");
