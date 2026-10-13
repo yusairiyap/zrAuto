@@ -433,6 +433,8 @@ public final class AllInOneMenu {
 		updateStatus();
 		// Once laid out: sit just above the chip that opened it (or centred), then slide up.
 		card.post(this::placeAndEnter);
+		// Car mode: the first tile is selected once the card is in place.
+		overlay.postDelayed(this::selectFirstTile, 400);
 	}
 
 	/** Both pages, in {@link #root}. */
@@ -1251,6 +1253,11 @@ public final class AllInOneMenu {
 	 * Switches between the tiles and the timer or quality page: the card's height glides to the new page's while
 	 * the old page fades and drifts out and the new one fades and drifts in.
 	 */
+	/** Car mode: the first item of the card (of the page showing) is selected and outlined. */
+	private void selectFirstTile() {
+		if (overlay != null) CarNav.selectFirst(activity, overlay);
+	}
+
 	private void showPage(View in) {
 		if (in.getVisibility() == View.VISIBLE) return;
 		View out = (mainPage.getVisibility() == View.VISIBLE) ? mainPage :
@@ -1295,6 +1302,7 @@ public final class AllInOneMenu {
 				lp.height = WRAP_CONTENT;
 				pages.setLayoutParams(lp);
 				if (centered) fitCard(toH);
+				selectFirstTile();
 			}
 		});
 		pageAnim.start();
