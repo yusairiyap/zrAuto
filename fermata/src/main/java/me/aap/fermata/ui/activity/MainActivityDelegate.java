@@ -254,6 +254,8 @@ public class MainActivityDelegate extends ActivityDelegate
 	private QuaternaryFloatingButton floatingButton4;
 	private QuinaryFloatingButton floatingButton5;
 	private SenaryFloatingButton floatingButton6;
+	/** FAB7 to FAB10: added from Settings, null where the layout has none. */
+	private final FloatingButton[] moreFabs = new FloatingButton[4];
 	private LoadingCircleView progressBar;
 	// See setOverlaysSuppressed().
 	private boolean loadingSuppressed;
@@ -986,10 +988,33 @@ public class MainActivityDelegate extends ActivityDelegate
 		return floatingButton6;
 	}
 
-	/** FAB2 to FAB6, in order -- any may be null (not in this layout). */
+	/** FAB2 to FAB10, in order -- any may be null (not in this layout). */
 	public FloatingButton[] getExtraFloatingButtons() {
 		return new FloatingButton[]{floatingButton2, floatingButton3, floatingButton4, floatingButton5,
-				floatingButton6};
+				floatingButton6, moreFabs[0], moreFabs[1], moreFabs[2], moreFabs[3]};
+	}
+
+	/** The primary floating button followed by FAB2 to FAB10; any may be null. */
+	private View[] allFabViews() {
+		FloatingButton[] extra = getExtraFloatingButtons();
+		View[] all = new View[extra.length + 1];
+		all[0] = floatingButton;
+		System.arraycopy(extra, 0, all, 1, extra.length);
+		return all;
+	}
+
+	/** The views followed by every floating button, for the calls that move them all. */
+	private View[] withAllFabs(View... lead) {
+		View[] fabs = allFabViews();
+		View[] all = new View[lead.length + fabs.length];
+		System.arraycopy(lead, 0, all, 0, lead.length);
+		System.arraycopy(fabs, 0, all, lead.length, fabs.length);
+		return all;
+	}
+
+	/** Whether extra button {@code index} (0 for FAB2) is one of the {@code FAB_COUNT} in use. */
+	private boolean isExtraFabInUse(int index) {
+		return index < getPrefs().getIntPref(MainActivityPrefs.fab(this, MainActivityPrefs.FAB_COUNT));
 	}
 
 	/**
@@ -1001,7 +1026,8 @@ public class MainActivityDelegate extends ActivityDelegate
 		Pref<BooleanSupplier>[] on = extraFabEnabledPrefs();
 		List<View> l = new ArrayList<>(fabs.length);
 		for (int i = 0; i < fabs.length; i++) {
-			if ((fabs[i] != null) && getPrefs().getBooleanPref(MainActivityPrefs.fab(this, on[i]))) {
+			if ((fabs[i] != null) && isExtraFabInUse(i) &&
+					getPrefs().getBooleanPref(MainActivityPrefs.fab(this, on[i]))) {
 				l.add(fabs[i]);
 			}
 		}
@@ -1010,7 +1036,9 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	@SuppressWarnings("unchecked")
 	private static Pref<BooleanSupplier>[] extraFabEnabledPrefs() {
-		return new Pref[]{FAB2_ENABLED, FAB3_ENABLED, FAB4_ENABLED, FAB5_ENABLED, FAB6_ENABLED};
+		Pref<BooleanSupplier>[] l = new Pref[MainActivityPrefs.FAB_COUNT_MAX];
+		for (int i = 0; i < l.length; i++) l[i] = MainActivityPrefs.fabEnabled(i + 2);
+		return l;
 	}
 
 	@Nullable
@@ -1730,8 +1758,7 @@ public class MainActivityDelegate extends ActivityDelegate
 
 		if (show) {
 			// Also brings back anything a hide cut short had already moved down part of the way.
-			glideAfterLayout(controlPanel, floatingButton, floatingButton2, floatingButton3,
-					floatingButton4, floatingButton5, floatingButton6);
+			glideAfterLayout(withAllFabs(controlPanel));
 			animateBar(nb, true, outX, 0);
 			return;
 		}
@@ -1740,8 +1767,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		ControlPanelView cp = controlPanel;
 		boolean moveDown = nb.isBottom() && (cp != null) && (cp.getVisibility() == VISIBLE)
 				&& nb.isLaidOut();
-		View[] followers = {cp, floatingButton, floatingButton2, floatingButton3, floatingButton4,
-				floatingButton5, floatingButton6};
+		View[] followers = withAllFabs(cp);
 
 		if (moveDown && (cp.getParent() instanceof View parent)
 				&& (cp.getLayoutParams() instanceof ConstraintLayout.LayoutParams clp)) {
@@ -1856,8 +1882,7 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	/** {@link #glideAfterLayout} for the floating buttons, e.g. around the control panel. */
 	public void glideFabsAfterLayout() {
-		glideAfterLayout(floatingButton, floatingButton2, floatingButton3, floatingButton4,
-				floatingButton5, floatingButton6);
+		glideAfterLayout(allFabViews());
 	}
 
 	/** Slides {@code v} by (dx, dy) away from its resting translation, animated. */
@@ -2790,6 +2815,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (me.aap.fermata.ui.view.ShareSheet.dismissOpen()) return;
 		if (PlaylistPicker.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.YoutubeAlternativesPicker.dismissOpen()) return;
+		if (me.aap.fermata.ui.view.YoutubeCommentsView.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.AllInOneMenu.dismissOpen()) return;
 		if (DownloadPicker.dismissOpen()) return;
 		super.onBackPressed();
@@ -2834,9 +2860,16 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (floatingButton5 != null) floatingButton5.setScale(getPrefs().getFabSizePref(this));
 		floatingButton6 = a.findViewById(R.id.floating_button6);
 		if (floatingButton6 != null) floatingButton6.setScale(getPrefs().getFabSizePref(this));
+		int[] moreIds = {R.id.floating_button7, R.id.floating_button8, R.id.floating_button9,
+				R.id.floating_button10};
+		for (int i = 0; i < moreIds.length; i++) {
+			moreFabs[i] = a.findViewById(moreIds[i]);
+			if (moreFabs[i] != null) moreFabs[i].setScale(getPrefs().getFabSizePref(this));
+		}
 		fabPill = me.aap.fermata.ui.view.FabPillView.install(getContext(),
-				getPrefs().getBooleanPref(MainActivityPrefs.FAB_PILL), floatingButton, floatingButton2,
-				floatingButton3, floatingButton4, floatingButton5, floatingButton6);
+				getPrefs().getBooleanPref(MainActivityPrefs.FAB_PILL),
+				java.util.Arrays.stream(allFabViews()).map(fv -> (FloatingButton) fv)
+						.toArray(FloatingButton[]::new));
 		clearDraggableForPill();
 		updateFabDraggable();
 		controlPanel.bind(getMediaServiceBinder());
@@ -2851,8 +2884,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			}
 			return false;
 		};
-		for (View f : new View[]{floatingButton, floatingButton2, floatingButton3, floatingButton4,
-				floatingButton5, floatingButton6}) {
+		for (View f : allFabViews()) {
 			if (f != null) f.setOnTouchListener(showBars);
 		}
 		// Catch-all re-sync -- see refreshContentInsets() -- for content whose own attach/layout
@@ -2919,6 +2951,9 @@ public class MainActivityDelegate extends ActivityDelegate
 			if (floatingButton4 != null) floatingButton4.setScale(getPrefs().getFabSizePref(this));
 			if (floatingButton5 != null) floatingButton5.setScale(getPrefs().getFabSizePref(this));
 			if (floatingButton6 != null) floatingButton6.setScale(getPrefs().getFabSizePref(this));
+			for (FloatingButton mf : moreFabs) {
+				if (mf != null) mf.setScale(getPrefs().getFabSizePref(this));
+			}
 		} else if (MainActivityPrefs.hasNavBarSizePref(this, prefs)) {
 			if (navBar != null) navBar.setSize(getPrefs().getNavBarSizePref(this));
 		} else if (MainActivityPrefs.hasToolBarSizePref(this, prefs)) {
@@ -2971,7 +3006,8 @@ public class MainActivityDelegate extends ActivityDelegate
 			// toolbar's private-mode button in sync with changes made from Settings, the nav-bar menu,
 			// or another FAB, not just whichever surface was actually tapped.
 			fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
-		} else if (containsFabPref(prefs, extraFabEnabledPrefs())) {
+		} else if (containsFabPref(prefs, extraFabEnabledPrefs()) ||
+				prefs.contains(MainActivityPrefs.fab(this, MainActivityPrefs.FAB_COUNT))) {
 			updateExtraFabsVisibility();
 		} else if (containsFabPref(prefs, extraFabActionPrefs())) {
 			fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
@@ -3058,8 +3094,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	private void shiftFabs(int delta) {
 		if (delta == 0) return;
 		fabLiftShown += delta;
-		for (View b : new View[]{floatingButton, floatingButton2, floatingButton3, floatingButton4,
-				floatingButton5, floatingButton6}) {
+		for (View b : allFabViews()) {
 			if ((b == null) || !(b.getLayoutParams() instanceof ViewGroup.MarginLayoutParams lp)) {
 				continue;
 			}
@@ -3105,6 +3140,9 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (floatingButton4 != null) floatingButton4.setDraggable(draggable);
 		if (floatingButton5 != null) floatingButton5.setDraggable(draggable);
 		if (floatingButton6 != null) floatingButton6.setDraggable(draggable);
+		for (FloatingButton mf : moreFabs) {
+			if (mf != null) mf.setDraggable(draggable);
+		}
 
 		// Previously a dragged FAB only snapped back to its default layout position on the next app
 		// restart (a fresh Activity/View never picked up the leftover drag translation to begin
@@ -3116,6 +3154,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			resetFabPosition(floatingButton4);
 			resetFabPosition(floatingButton5);
 			resetFabPosition(floatingButton6);
+			for (FloatingButton mf : moreFabs) resetFabPosition(mf);
 		}
 	}
 
@@ -3179,6 +3218,9 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (floatingButton4 != null) floatingButton4.setSuppressed(suppressed);
 		if (floatingButton5 != null) floatingButton5.setSuppressed(suppressed);
 		if (floatingButton6 != null) floatingButton6.setSuppressed(suppressed);
+		for (FloatingButton mf : moreFabs) {
+			if (mf != null) mf.setSuppressed(suppressed);
+		}
 		if (suppressed) return;
 		// Whatever the others mirrored while suppressed is stale.
 		updateExtraFabsVisibility();
@@ -3199,7 +3241,9 @@ public class MainActivityDelegate extends ActivityDelegate
 		for (int i = 0; i < fabs.length; i++) {
 			FloatingButton fb = fabs[i];
 			if (fb == null) continue;
-			if (!getPrefs().getBooleanPref(MainActivityPrefs.fab(this, on[i]))) fb.setVisibility(GONE);
+			if (!isExtraFabInUse(i) || !getPrefs().getBooleanPref(MainActivityPrefs.fab(this, on[i]))) {
+				fb.setVisibility(GONE);
+			}
 			else if (isVideoMode()) fb.setVisibility(floatingButton.getVisibility());
 			else if (isWebBrowserActive()) fb.setVisibility(VISIBLE);
 			// A video playing while browsing a tab that plays video (Favorites, Playlists, Folders,
@@ -3216,7 +3260,9 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	@SuppressWarnings("unchecked")
 	private static Pref<IntSupplier>[] extraFabActionPrefs() {
-		return new Pref[]{FAB2_ACTION, FAB3_ACTION, FAB4_ACTION, FAB5_ACTION, FAB6_ACTION};
+		Pref<IntSupplier>[] l = new Pref[MainActivityPrefs.FAB_COUNT_MAX];
+		for (int i = 0; i < l.length; i++) l[i] = MainActivityPrefs.fabAction(i + 2);
+		return l;
 	}
 
 	/** Whether the tab showing is one a video is played from (and so came back to from fullscreen). */

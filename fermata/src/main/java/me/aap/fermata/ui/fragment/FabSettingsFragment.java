@@ -3,6 +3,7 @@ package me.aap.fermata.ui.fragment;
 import android.content.Context;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -18,19 +19,24 @@ import me.aap.utils.pref.PreferenceStore.Pref;
 
 import android.view.View;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 
 /**
  * Settings &gt; Interface &gt; Floating Action Button (and its Android Auto twin): the floating
  * buttons as rows to drag into the order they sit in. Each row has a switch (shown or not) and a menu
- * to change what the button does; above them, the options all the buttons share (one pill,
- * draggable, size).
+ * to change what the button does or remove it; above them, the options all the buttons share (one
+ * pill, draggable, size), and below them an Add button for as many more as fit the screen.
  * <p>
- * The buttons are fixed slots (FAB2 to FAB6), each with its own "shown" and "action" settings, so
- * dragging a row swaps those two settings between the slots.
+ * The buttons are slots (FAB2 to FAB10), each with its own "shown" and "action" settings; the first
+ * {@code FAB_COUNT} of them are in use. Dragging a row swaps those two settings between the slots,
+ * adding takes the next slot into use, and removing shifts the later slots up.
  */
 public class FabSettingsFragment extends ReorderListFragment {
 	private static final int FIRST_SLOT = 2;
-	private static final int LAST_SLOT = 6;
+	/** One button's width in dp at size 1.0 (a Material FAB), see {@link #maxExtra()}. */
+	private static final float FAB_DP = 56f;
+	@Nullable
+	private TextView addButton;
 	/** Editing the car screen's own buttons (Settings &gt; Interface &gt; Android Auto). */
 	private boolean aa;
 
@@ -66,23 +72,34 @@ public class FabSettingsFragment extends ReorderListFragment {
 	}
 
 	private Pref<BooleanSupplier> enabledPref(int slot) {
-		return pref(switch (slot) {
-			case 2 -> MainActivityPrefs.FAB2_ENABLED;
-			case 3 -> MainActivityPrefs.FAB3_ENABLED;
-			case 4 -> MainActivityPrefs.FAB4_ENABLED;
-			case 5 -> MainActivityPrefs.FAB5_ENABLED;
-			default -> MainActivityPrefs.FAB6_ENABLED;
-		});
+		return pref(MainActivityPrefs.fabEnabled(slot));
 	}
 
 	private Pref<IntSupplier> actionPref(int slot) {
-		return pref(switch (slot) {
-			case 2 -> MainActivityPrefs.FAB2_ACTION;
-			case 3 -> MainActivityPrefs.FAB3_ACTION;
-			case 4 -> MainActivityPrefs.FAB4_ACTION;
-			case 5 -> MainActivityPrefs.FAB5_ACTION;
-			default -> MainActivityPrefs.FAB6_ACTION;
-		});
+		return pref(MainActivityPrefs.fabAction(slot));
+	}
+
+	/** The extra buttons in use: slots FIRST_SLOT to {@link #lastSlot()}. */
+	private int count() {
+		int n = prefs().getIntPref(pref(MainActivityPrefs.FAB_COUNT));
+		return Math.max(0, Math.min(MainActivityPrefs.FAB_COUNT_MAX, n));
+	}
+
+	private int lastSlot() {
+		return FIRST_SLOT + count() - 1;
+	}
+
+	/**
+	 * How many extra buttons fit this screen's width side by side at the chosen size (one more
+	 * than that would run off its edge), but never fewer than the buttons already in use.
+	 */
+	private int maxExtra() {
+		android.util.DisplayMetrics dm = delegate().getContext().getResources().getDisplayMetrics();
+		float widthDp = dm.widthPixels / dm.density;
+		float size = Math.max(0.5f, prefs().getFloatPref(pref(MainActivityPrefs.FAB_SIZE)));
+		// The primary button counts, and so do the screen-edge margin and the nav bar's side room.
+		int fit = (int) ((widthDp - 48f) / (FAB_DP * size)) - 1;
+		return Math.max(count(), Math.min(MainActivityPrefs.FAB_COUNT_MAX, fit));
 	}
 
 	@NonNull
@@ -97,7 +114,7 @@ public class FabSettingsFragment extends ReorderListFragment {
 	protected List<Row> loadRows() {
 		Context ctx = delegate().getContext();
 		List<Row> rows = new ArrayList<>();
-		for (int slot = FIRST_SLOT; slot <= LAST_SLOT; slot++) {
+		for (int slot = FIRST_SLOT; slot <= lastSlot(); slot++) {
 			Action act = actionOf(slot);
 			boolean shown = prefs().getBooleanPref(enabledPref(slot));
 			String state = ctx.getString(shown ? R.string.nav_tab_shown : R.string.nav_tab_hidden);
@@ -111,7 +128,7 @@ public class FabSettingsFragment extends ReorderListFragment {
 	@Override
 	protected void saveOrder(List<String> keys) {
 		MainActivityPrefs p = prefs();
-		int n = LAST_SLOT - FIRST_SLOT + 1;
+		int n = count();
 		boolean[] shown = new boolean[n];
 		int[] action = new int[n];
 		for (int i = 0; i < n; i++) {
@@ -162,6 +179,11 @@ public class FabSettingsFragment extends ReorderListFragment {
 				reload();
 				return true;
 			});
+			b.addItem(R.id.fab_remove_button, me.aap.utils.R.drawable.close, R.string.fab_remove)
+					.setHandler(i -> {
+						removeSlot(slot);
+						return true;
+					});
 		});
 	}
 
@@ -169,11 +191,73 @@ public class FabSettingsFragment extends ReorderListFragment {
 	protected void onReset() {
 		MainActivityPrefs p = prefs();
 		try (var e = p.editPreferenceStore()) {
-			for (int slot = FIRST_SLOT; slot <= LAST_SLOT; slot++) {
+			for (int slot = FIRST_SLOT; slot < FIRST_SLOT + MainActivityPrefs.FAB_COUNT_MAX; slot++) {
 				e.removePref(enabledPref(slot));
 				e.removePref(actionPref(slot));
 			}
+			e.removePref(pref(MainActivityPrefs.FAB_COUNT));
 		}
+	}
+
+	/** Takes the next slot into use, set to an action none of the buttons does yet. */
+	private void addSlot() {
+		int n = count();
+		if (n >= maxExtra()) return;
+		int slot = FIRST_SLOT + n;
+		Action pick = Action.PLAY_PAUSE;
+		for (Action act : ActionFabMediator.OFFERED_ACTIONS) {
+			boolean used = false;
+			for (int s = FIRST_SLOT; s < slot; s++) used |= (actionOf(s) == act);
+			if (!used) {
+				pick = act;
+				break;
+			}
+		}
+		try (var e = prefs().editPreferenceStore()) {
+			e.setBooleanPref(enabledPref(slot), true);
+			e.setIntPref(actionPref(slot), pick.ordinal());
+			e.setIntPref(pref(MainActivityPrefs.FAB_COUNT), n + 1);
+		}
+		reload();
+	}
+
+	/** Drops {@code slot}'s button: the later ones move up a place and the last slot goes unused. */
+	private void removeSlot(int slot) {
+		int last = lastSlot();
+		int n = count();
+		try (var e = prefs().editPreferenceStore()) {
+			for (int s = slot; s < last; s++) {
+				e.setBooleanPref(enabledPref(s), prefs().getBooleanPref(enabledPref(s + 1)));
+				e.setIntPref(actionPref(s), prefs().getIntPref(actionPref(s + 1)));
+			}
+			e.removePref(enabledPref(last));
+			e.removePref(actionPref(last));
+			e.setIntPref(pref(MainActivityPrefs.FAB_COUNT), Math.max(0, n - 1));
+		}
+		reload();
+	}
+
+	@Override
+	protected View createFooterExtra() {
+		TextView t = text(R.string.fab_add, 15, accent, true);
+		t.setGravity(android.view.Gravity.CENTER);
+		t.setSingleLine(true);
+		t.setBackground(pressable(rounded(tileFill, 24)));
+		t.setClickable(true);
+		t.setFocusable(true);
+		t.setOnClickListener(v -> addSlot());
+		addButton = t;
+		return t;
+	}
+
+	@Override
+	protected void onReloaded() {
+		TextView t = addButton;
+		if (t == null) return;
+		int room = maxExtra() - count();
+		t.setEnabled(room > 0);
+		t.setAlpha(room > 0 ? 1f : 0.45f);
+		t.setText((room > 0) ? getString(R.string.fab_add_room, room) : getString(R.string.fab_add_full));
 	}
 
 	@Override

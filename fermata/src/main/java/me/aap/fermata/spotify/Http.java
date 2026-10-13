@@ -19,7 +19,7 @@ import java.util.Map;
  * POST bodies, redirects (Spotify short links) and gzip, all of which HttpURLConnection handles
  * out of the box. Every call must run on a background thread.
  */
-final class Http {
+public final class Http {
 	static final String USER_AGENT =
 			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
 					"Chrome/128.0.0.0 Safari/537.36";
@@ -29,11 +29,11 @@ final class Http {
 	private Http() {
 	}
 
-	static Response get(String url, @Nullable Map<String, String> headers) throws IOException {
+	public static Response get(String url, @Nullable Map<String, String> headers) throws IOException {
 		return request(url, null, null, headers);
 	}
 
-	static Response post(String url, String jsonBody, @Nullable Map<String, String> headers)
+	public static Response post(String url, String jsonBody, @Nullable Map<String, String> headers)
 			throws IOException {
 		return request(url, jsonBody, "application/json", headers);
 	}
@@ -96,10 +96,10 @@ final class Http {
 		}
 	}
 
-	static final class Response {
-		final int code;
-		final String finalUrl;
-		final String body;
+	public static final class Response {
+		public final int code;
+		public final String finalUrl;
+		public final String body;
 		/** Seconds, from a 429 response's Retry-After header; 0 if absent. */
 		final int retryAfter;
 
@@ -110,7 +110,7 @@ final class Http {
 			this.retryAfter = retryAfter;
 		}
 
-		boolean isOk() {
+		public boolean isOk() {
 			return (code >= 200) && (code < 300);
 		}
 	}

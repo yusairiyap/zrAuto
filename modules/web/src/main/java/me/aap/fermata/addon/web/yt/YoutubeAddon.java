@@ -578,7 +578,23 @@ public class YoutubeAddon extends WebBrowserAddon
 	@Override
 	public void recordAddedVideo(String videoId) {
 		VideoInfo live = liveInfo.get(videoId);
-		if (live != null) cacheVideoInfo(Collections.singletonMap(videoId, live));
+		if (live != null) {
+			cacheVideoInfo(Collections.singletonMap(videoId, live));
+			return;
+		}
+		// Never played here: the channel isn't known yet, so look it up (its list row shows it once
+		// the list is next loaded; "Refresh thumbnail" brings it in at once).
+		VideoInfo known = getVideoInfo(videoId);
+		if ((known != null) && (known.artist != null)) return;
+		Thread t = new Thread(() -> {
+			me.aap.fermata.spotify.SpotifyImportModel.Video v =
+					me.aap.fermata.spotify.YoutubeSearch.lookUpById(videoId);
+			if ((v != null) && (v.channel != null)) {
+				cacheVideoInfo(Collections.singletonMap(videoId, new VideoInfo(v.title, v.channel, null, -1)));
+			}
+		}, "yt-channel-lookup");
+		t.setDaemon(true);
+		t.start();
 	}
 
 	@Nullable

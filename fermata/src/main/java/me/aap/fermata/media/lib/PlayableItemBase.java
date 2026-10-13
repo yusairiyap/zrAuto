@@ -72,6 +72,12 @@ public abstract class PlayableItemBase extends ItemBase implements PlayableItem,
 		return d != null;
 	}
 
+	@Override
+	public void refreshMetadata() {
+		reset();
+		META.set(this, null);
+	}
+
 	@NonNull
 	@Override
 	public FutureSupplier<Void> setDuration(long duration) {

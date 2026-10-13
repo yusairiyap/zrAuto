@@ -101,6 +101,12 @@ public class ExportedItem extends PlayableItemBase {
 	}
 
 	@Override
+	public void refreshMetadata() {
+		orig.refreshMetadata();
+		super.refreshMetadata();
+	}
+
+	@Override
 	protected FutureSupplier<String> buildTitle(int seqNum, BrowsableItemPrefs parentPrefs) {
 		return orig.buildTitle(seqNum, parentPrefs);
 	}
