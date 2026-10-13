@@ -1143,6 +1143,10 @@ public class ControlPanelView extends ConstraintLayout
 	 */
 	private void hideVideoUi(MainActivityDelegate a) {
 		hideTimer = null;
+		// The Info Overlay shown only with the panel leaves together with it (the title's motion), not
+		// after the panel's own fade has ended.
+		VideoView vv = a.getActiveVideoView();
+		if (vv != null) vv.setControlPanelVisible(false);
 		fadeOut(this, true);
 		fadeOut(a.getFloatingButton(), false);
 		for (View f : a.getEnabledExtraFabs()) fadeOut(f, false);

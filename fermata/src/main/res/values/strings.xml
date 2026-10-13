@@ -952,7 +952,7 @@
     <string name="music_queue">Music queue</string>
     <string name="play_as_music">Play as music</string>
     <string name="music_queue_add">Add into queue</string>
-    <string name="default_play_mode">Play Favorites and playlists as</string>
+    <string name="default_play_mode">First play after the app starts, as</string>
     <string name="play_mode_video">Video</string>
     <string name="play_mode_music">Music</string>
     <string name="play_as_video">Play as video</string>
@@ -1145,7 +1145,7 @@
     <string name="prefs_sub_fab">Extra floating buttons and what each one does</string>
     <string name="prefs_sub_aa">The car screen\'s own look, buttons and cards</string>
     <string name="prefs_sub_keys">What the steering wheel and media keys do, car mode</string>
-    <string name="prefs_sub_playback">What plays when a track ends</string>
+    <string name="prefs_sub_playback">What a tap does, what plays next, and how playlists start</string>
     <string name="prefs_sub_playback_control">Rewind, fast forward and video controls timing</string>
     <string name="prefs_sub_rw_ff_click">How far one press jumps</string>
     <string name="prefs_sub_rw_ff_long_click">How far holding the key jumps</string>

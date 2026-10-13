@@ -964,12 +964,15 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 		 */
 		public void playTapped(PlayableItem i, boolean allowMusic) {
 			var a = getMainActivity();
+			boolean asMusic = allowMusic && playsAsMusicInMusicMode() && !(i instanceof StreamItem) &&
+					MusicPlayer.tapPlaysAsMusic(a);
+			// From now on the mode in use carries on; the default only decides the first start.
+			MusicPlayer.markStarted();
 
 			// The Music tab is what's playing: a Favorites/Playlist entry tapped now plays as music
 			// too, from its list, and the Music tab comes up -- instead of dropping out of music mode
 			// into the video player.
-			if (allowMusic && playsAsMusicInMusicMode() && !(i instanceof StreamItem) &&
-					MusicPlayer.tapPlaysAsMusic(a)) {
+			if (asMusic) {
 				MusicPlayer.play(a, i, true);
 				return;
 			}

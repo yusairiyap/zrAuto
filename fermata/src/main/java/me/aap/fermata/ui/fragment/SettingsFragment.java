@@ -450,7 +450,7 @@ public class SettingsFragment extends MainActivityFragment
 			addUpNextPrefs(a, sub1);
 			addInterface(a, sub1, MainActivityPrefs.THEME_MAIN, MainActivityPrefs.HIDE_BARS,
 					MainActivityPrefs.FULLSCREEN, MainActivityPrefs.SHOW_PG_UP_DOWN,
-					MainActivityPrefs.TAP_ACTION, null,
+					null, null,
 					MainActivityPrefs.NAV_BAR_POS, MainActivityPrefs.NAV_BAR_SIZE,
 					MainActivityPrefs.TOOL_BAR_SIZE, MainActivityPrefs.CONTROL_PANEL_SIZE,
 					MainActivityPrefs.TEXT_ICON_SIZE, MainActivityPrefs.ICON_SIZE);
@@ -559,6 +559,10 @@ public class SettingsFragment extends MainActivityFragment
 			o.pref = BrowsableItemPrefs.PLAY_NEXT;
 			o.title = R.string.play_next_on_completion;
 		});
+		// The car's own tap action stays with its Android Auto settings.
+		if (!(BuildConfig.AUTO && a.isCarActivityNotMirror())) {
+			addTapAction(a, sub1, MainActivityPrefs.TAP_ACTION);
+		}
 		if (MusicPlayer.isEnabled()) {
 			sub1.addListPref(o -> {
 				o.store = mediaPrefs;
@@ -1249,6 +1253,19 @@ public class SettingsFragment extends MainActivityFragment
 		});
 	}
 
+	/** What tapping a track does: plays it, or opens its menu. */
+	private static void addTapAction(MainActivityDelegate a, PreferenceSet ps,
+																	 me.aap.utils.pref.PreferenceStore.Pref<me.aap.utils.function.IntSupplier> tapAction) {
+		ps.addListPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = tapAction;
+			o.title = R.string.tap_action;
+			o.subtitle = R.string.tap_action_sub;
+			o.formatSubtitle = true;
+			o.values = new int[]{R.string.tap_action_play, R.string.tap_action_menu};
+		});
+	}
+
 	/** Interface &gt; Floating Action Button: its own page, the car screen's buttons if {@code aa}. */
 	private static void addFabSettings(MainActivityDelegate a, PreferenceSet ps, boolean aa) {
 		ps.addButton(o -> {
@@ -1328,14 +1345,7 @@ public class SettingsFragment extends MainActivityFragment
 			o.pref = pgUpDown;
 			o.title = R.string.show_pg_up_down;
 		});
-		ps.addListPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = tapAction;
-			o.title = R.string.tap_action;
-			o.subtitle = R.string.tap_action_sub;
-			o.formatSubtitle = true;
-			o.values = new int[]{R.string.tap_action_play, R.string.tap_action_menu};
-		});
+		if (tapAction != null) addTapAction(a, ps, tapAction);
 		if (dpadCursor != null) {
 			ps.addBooleanPref(o -> {
 				o.store = a.getPrefs();
