@@ -806,6 +806,7 @@ public final class AllInOneMenu {
 		boolean fav = (action == Action.FAVORITE_ADD) && Action.isCurrentFavorite(activity);
 		String title;
 		String hint;
+		boolean unavailable = false;
 		if (action == Action.AUDIO_EFFECTS) {
 			title = ctx.getString(R.string.effects);
 			hint = ctx.getString(R.string.music_more_effects_hint);
@@ -828,7 +829,9 @@ public final class AllInOneMenu {
 			title = ctx.getString(ActionFabMediator.labelFor(activity, action));
 			boolean on = activity.getPrefs().getBooleanPref(activity.isVideoMode() ?
 					MainActivityPrefs.CAPTIONS_ON : MainActivityPrefs.LYRICS_ON);
-			hint = ctx.getString(on ? R.string.state_on : R.string.state_off);
+			unavailable = !preview && me.aap.fermata.ytcaptions.CaptionsHub.get().isUnavailable(activity);
+			hint = ctx.getString(unavailable ? R.string.state_unavailable :
+					on ? R.string.state_on : R.string.state_off);
 		} else {
 			title = ctx.getString(ActionFabMediator.labelFor(activity, action));
 			hint = "";
@@ -847,6 +850,7 @@ public final class AllInOneMenu {
 		t.setPadding(dp(big ? 10 : 6), dp(padV), dp(big ? 10 : 6), dp(padV));
 		t.setBackground(pressable(chipFill, big ? 22 : 18));
 		t.setContentDescription(title);
+		if (unavailable) t.setAlpha(0.45f);
 		if (!preview) {
 			t.setClickable(true);
 			t.setFocusable(true);

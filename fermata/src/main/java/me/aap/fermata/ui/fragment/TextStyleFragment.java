@@ -68,6 +68,12 @@ public abstract class TextStyleFragment extends MainActivityFragment {
 	private PreferenceStore.Listener prefListener;
 	@Nullable
 	private View veil;
+	@Nullable
+	private ScrollView scrollView;
+	@Nullable
+	private View previewView;
+	@Nullable
+	private android.view.ViewTreeObserver.OnPreDrawListener previewSync;
 
 	/** Captions over fullscreen video when true, else the lyrics. */
 	protected abstract boolean forCaptions();
@@ -75,11 +81,6 @@ public abstract class TextStyleFragment extends MainActivityFragment {
 	@Override
 	public CharSequence getTitle() {
 		return getString(forCaptions() ? R.string.captions : R.string.lyrics);
-	}
-
-	@Override
-	public boolean collapsesBarsOnScroll() {
-		return false;
 	}
 
 	@Override
@@ -109,27 +110,41 @@ public abstract class TextStyleFragment extends MainActivityFragment {
 		syncers.clear();
 		resetters.clear();
 
-		LinearLayout root = new LinearLayout(palette);
-		root.setOrientation(LinearLayout.VERTICAL);
+		FrameLayout root = new FrameLayout(palette);
 
-		// The preview does not scroll away: the options below do.
-		View preview = forCaptions() ? captionsPreview() : lyricsPreview();
-		LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(MATCH_PARENT, dp(forCaptions() ? 170 : 210));
-		plp.setMargins(dp(16), dp(8), dp(16), dp(4));
-		root.addView(preview, plp);
-
+		// Like every scrollable page: the scroll view itself reserves the room the bars take (it is
+		// what insetScrollableContent pads, so it ends above the control panel and the bars hide as
+		// it scrolls). The preview does not scroll away: it floats over it, at the top of that room,
+		// with a gap of its own height left at the head of the content.
 		ScrollView scroll = new ScrollView(palette);
 		scroll.setVerticalScrollBarEnabled(false);
-		scroll.setClipToPadding(false);
+		scrollView = scroll;
 		LinearLayout col = new LinearLayout(palette);
 		col.setOrientation(LinearLayout.VERTICAL);
 		col.setPadding(dp(16), dp(4), dp(16), dp(16));
+		int previewH = dp(forCaptions() ? 170 : 210);
+		col.addView(new View(palette), new LinearLayout.LayoutParams(MATCH_PARENT, previewH + dp(12)));
 		scroll.addView(col, new ViewGroup.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-		root.addView(scroll, new LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f));
+		root.addView(scroll, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 
 		if (forCaptions()) buildCaptionRows(col);
 		else buildLyricsRows(col);
 		addReset(col);
+
+		View preview = forCaptions() ? captionsPreview() : lyricsPreview();
+		preview.setElevation(dp(4));
+		FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(MATCH_PARENT, previewH, Gravity.TOP);
+		plp.setMargins(dp(16), 0, dp(16), 0);
+		root.addView(preview, plp);
+		previewView = preview;
+		// Where the scroll view's top padding ends, checked before every frame (it changes as the
+		// bars move), moved with a translation so nothing is laid out again.
+		previewSync = () -> {
+			float ty = scroll.getPaddingTop() + dp(8);
+			if (preview.getTranslationY() != ty) preview.setTranslationY(ty);
+			return true;
+		};
+		root.getViewTreeObserver().addOnPreDrawListener(previewSync);
 
 		prefListener = (store, changed) -> {
 			for (Runnable r : syncers) r.run();
@@ -143,13 +158,19 @@ public abstract class TextStyleFragment extends MainActivityFragment {
 	@Override
 	public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
 		super.onViewCreated(view, savedInstanceState);
-		getActivityDelegate().insetScrollableContent((ViewGroup) view);
+		if (scrollView != null) getActivityDelegate().insetScrollableContent(scrollView);
 	}
 
 	@Override
 	public void onDestroyView() {
 		if (prefListener != null) prefs().removeBroadcastListener(prefListener);
 		prefListener = null;
+		if ((previewSync != null) && (getView() != null) && getView().getViewTreeObserver().isAlive()) {
+			getView().getViewTreeObserver().removeOnPreDrawListener(previewSync);
+		}
+		previewSync = null;
+		previewView = null;
+		scrollView = null;
 		veil = null;
 		syncers.clear();
 		resetters.clear();

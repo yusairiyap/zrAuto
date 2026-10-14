@@ -1388,4 +1388,7 @@
     <string name="captions_lang_phone">Phone</string>
     <string name="captions_reset">Reset to defaults</string>
     <string name="captions_reset_question">Put every option on this page back to how it was?</string>
+    <string name="lyrics_unavailable">No lyrics: what plays has no YouTube captions</string>
+    <string name="captions_unavailable">No captions for this video</string>
+    <string name="state_unavailable">Not available</string>
 </resources>

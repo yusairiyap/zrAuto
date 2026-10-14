@@ -157,6 +157,14 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private FrameLayout lyricsOverlay;
 	@Nullable
 	private LyricsView lyricsView;
+	/** Follows whether what plays has captions, while this tab is showing: the chip and the veil. */
+	private final me.aap.fermata.ytcaptions.CaptionsHub.Listener captionsListener =
+			new me.aap.fermata.ytcaptions.CaptionsHub.Listener() {
+				@Override
+				public void onCaptionsState(me.aap.fermata.ytcaptions.CaptionsHub hub) {
+					updateLyrics(true);
+				}
+			};
 	private final PreferenceStore.Listener lyricsPrefs = (store, prefs) -> {
 		if (prefs.contains(MainActivityPrefs.LYRICS_ON)) updateLyrics(true);
 		if (prefs.contains(MainActivityPrefs.LYRICS_VEIL)) applyLyricsVeil();
@@ -304,6 +312,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		lyricsChip = view.findViewById(R.id.music_lyrics_button);
 		lyricsChip.setOnClickListener(v -> {
 			boolean on = !a.getPrefs().getBooleanPref(MainActivityPrefs.LYRICS_ON);
+			// Nothing to show: said so, and the switch stays as it was (the chip looks disabled).
+			if (on && lyricsUnavailable()) {
+				showMessage(getString(R.string.lyrics_unavailable));
+				return;
+			}
 			a.getPrefs().applyBooleanPref(MainActivityPrefs.LYRICS_ON, on);
 		});
 		// Held: the lyrics in their own card.
@@ -595,7 +608,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			a.getPrefs().addBroadcastListener(this);
 			// The Info Overlay settings may have changed while this tab was away.
 			applyInfoOverlayPrefs();
+			me.aap.fermata.ytcaptions.CaptionsHub.get().acquire(a, captionsListener);
 		} else {
+			me.aap.fermata.ytcaptions.CaptionsHub.get().release(captionsListener);
 			BufferingIndicator.removeListener(bufferingListener);
 			a.getMediaSessionCallback().removeBroadcastListener(this);
 			a.getMediaServiceBinder().removeBroadcastListener(this);
@@ -1969,7 +1984,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private void updateLyrics(boolean animate) {
 		FrameLayout o = lyricsOverlay;
 		if ((o == null) || (lyricsChip == null)) return;
-		boolean on = getActivityDelegate().getPrefs().getBooleanPref(MainActivityPrefs.LYRICS_ON);
+		// No captions for what plays (or not a YouTube video): no veil and no text over the cover, and
+		// the chip looks disabled, as the All in One tile and the floating button do.
+		boolean unavailable = lyricsUnavailable();
+		boolean want = getActivityDelegate().getPrefs().getBooleanPref(MainActivityPrefs.LYRICS_ON);
+		boolean on = want && !unavailable;
+		lyricsChip.setAlpha(unavailable ? 0.4f : 1f);
 		int color = on ? EffectsUi.accent(palette) : paletteColor(R.attr.musicTextPrimary);
 		lyricsChip.setTextColor(color);
 		lyricsChip.setCompoundDrawableTintList(ColorStateList.valueOf(
@@ -1985,6 +2005,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			o.setAlpha(0f);
 			o.setVisibility(View.GONE);
 		}
+	}
+
+	private boolean lyricsUnavailable() {
+		var st = me.aap.fermata.ytcaptions.CaptionsHub.get().getState();
+		return (st == me.aap.fermata.ytcaptions.CaptionsHub.State.IDLE) ||
+				(st == me.aap.fermata.ytcaptions.CaptionsHub.State.NONE);
 	}
 
 	private boolean lyricsShowing() {

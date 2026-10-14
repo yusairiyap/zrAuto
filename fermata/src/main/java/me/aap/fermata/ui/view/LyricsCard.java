@@ -80,8 +80,16 @@ public final class LyricsCard implements CaptionsHub.Listener {
 		var f = a.getActiveFragment();
 		if ((f != null) && (f.getFragmentId() == R.id.music_addon)) {
 			boolean on = !a.getPrefs().getBooleanPref(MainActivityPrefs.LYRICS_ON);
+			if (on && CaptionsHub.get().isUnavailable(a)) {
+				TopToast.show(R.drawable.lyrics, R.string.lyrics_unavailable);
+				return;
+			}
 			a.getPrefs().applyBooleanPref(MainActivityPrefs.LYRICS_ON, on);
 			TopToast.show(R.drawable.lyrics, on ? R.string.lyrics_on : R.string.lyrics_off);
+			return;
+		}
+		if (CaptionsHub.get().isUnavailable(a)) {
+			TopToast.show(R.drawable.lyrics, R.string.lyrics_unavailable);
 			return;
 		}
 		toggle(a);

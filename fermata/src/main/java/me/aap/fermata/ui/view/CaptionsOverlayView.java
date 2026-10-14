@@ -17,12 +17,10 @@ import androidx.annotation.Nullable;
 import java.util.List;
 
 import me.aap.fermata.R;
-import me.aap.fermata.action.Action;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ytcaptions.CaptionsHub;
 import me.aap.fermata.ytcaptions.YtCaptions.Cue;
-import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.utils.pref.PreferenceStore;
 
 /**
@@ -203,7 +201,10 @@ public final class CaptionsOverlayView extends View
 		CaptionStyle s = style;
 		String t = text;
 		if ((s == null) || (t == null)) return;
-		float px = Math.max(12 * density, h * BASE_TEXT * s.size);
+		// The preview is a small window onto a picture several times its size: scaled up to read, and
+		// with no minimum, or the size setting would show no change there.
+		float px = (previewText != null) ? h * BASE_TEXT * s.size * 1.5f :
+				Math.max(12 * density, h * BASE_TEXT * s.size);
 		int tw = Math.max(1, Math.round(w * 0.84f));
 		fill.setTypeface(s.typeface);
 		fill.setTextSize(px);
@@ -278,11 +279,12 @@ public final class CaptionsOverlayView extends View
 	public static void toggleAction(@NonNull MainActivityDelegate a) {
 		MainActivityPrefs p = a.getPrefs();
 		boolean on = !p.getBooleanPref(MainActivityPrefs.CAPTIONS_ON);
-		p.applyBooleanPref(MainActivityPrefs.CAPTIONS_ON, on);
-		if (on && (YtDownloads.videoIdOf(Action.getFavoritableItem(a)) == null)) {
-			TopToast.show(R.drawable.captions, R.string.captions_no_video);
+		// Nothing to show: said so, and the switch stays off.
+		if (on && CaptionsHub.get().isUnavailable(a)) {
+			TopToast.show(R.drawable.captions, R.string.captions_unavailable);
 			return;
 		}
+		p.applyBooleanPref(MainActivityPrefs.CAPTIONS_ON, on);
 		TopToast.show(R.drawable.captions, on ? R.string.captions_on : R.string.captions_off);
 	}
 }

@@ -60,6 +60,7 @@ public final class CaptionsHub {
 	private final LruCache<String, YtCaptions.Result> cache = new LruCache<>(8);
 	private final List<Listener> listeners = new ArrayList<>();
 	private final Runnable tick = this::tick;
+	private final java.util.Set<String> prefetching = new java.util.HashSet<>();
 	@Nullable
 	private MainActivityDelegate activity;
 	@Nullable
@@ -159,6 +160,38 @@ public final class CaptionsHub {
 		seekGuardUntil = android.os.SystemClock.uptimeMillis() + 1500;
 		position = t;
 		update(t);
+	}
+
+	/**
+	 * Whether what plays has no captions to show: it isn't a YouTube video, or its captions are known
+	 * to be none. Unknown yet counts as available, and starts finding out (so the next ask knows),
+	 * even while nothing has {@link #acquire}d the hub.
+	 */
+	public boolean isUnavailable(MainActivityDelegate a) {
+		String id = YtDownloads.videoIdOf(Action.getFavoritableItem(a));
+		if (id == null) return true;
+		YtCaptions.Result r = cache.get(id);
+		if (r != null) return r.isEmpty();
+		if (!prefetching.contains(id) && !id.equals(videoId)) {
+			prefetching.add(id);
+			MainActivityPrefs p = a.getPrefs();
+			String lang = p.getStringPref(MainActivityPrefs.CAPTIONS_LANG);
+			boolean auto = p.getBooleanPref(MainActivityPrefs.CAPTIONS_AUTO);
+			executor.execute(() -> {
+				YtCaptions.Result res = null;
+				try {
+					res = YtCaptions.load(id, lang, auto);
+				} catch (Exception ex) {
+					Log.e(ex, "Failed to load the captions of ", id);
+				}
+				YtCaptions.Result done = res;
+				handler.post(() -> {
+					prefetching.remove(id);
+					if (done != null) cache.put(id, done);
+				});
+			});
+		}
+		return false;
 	}
 
 	/** Forgets what was fetched and loads again, e.g. after the language was changed. */
