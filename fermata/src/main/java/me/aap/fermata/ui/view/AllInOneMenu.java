@@ -808,6 +808,7 @@ public final class AllInOneMenu {
 		String hint;
 		boolean unavailable = false;
 		boolean lyricsTile = false;
+		boolean lyricsOff = false;
 		if (action == Action.AUDIO_EFFECTS) {
 			title = ctx.getString(R.string.effects);
 			hint = ctx.getString(R.string.music_more_effects_hint);
@@ -834,6 +835,8 @@ public final class AllInOneMenu {
 			unavailable = !preview && me.aap.fermata.ytcaptions.CaptionsHub.get().isDimmed(activity);
 			hint = ctx.getString(unavailable ? R.string.state_unavailable :
 					on ? R.string.state_on : R.string.state_off);
+			// Off looks like unavailable: the same icon, dimmed.
+			lyricsOff = !on;
 			lyricsTile = true;
 		} else {
 			title = ctx.getString(ActionFabMediator.labelFor(activity, action));
@@ -853,7 +856,7 @@ public final class AllInOneMenu {
 		t.setPadding(dp(big ? 10 : 6), dp(padV), dp(big ? 10 : 6), dp(padV));
 		t.setBackground(pressable(chipFill, big ? 22 : 18));
 		t.setContentDescription(title);
-		if (unavailable) t.setAlpha(0.45f);
+		if (unavailable || lyricsOff) t.setAlpha(0.45f);
 		if (!preview) {
 			t.setClickable(true);
 			t.setFocusable(true);
@@ -925,7 +928,7 @@ public final class AllInOneMenu {
 			me.aap.fermata.ytcaptions.CaptionsHub.get().whenKnown(activity, () -> {
 				var hub = me.aap.fermata.ytcaptions.CaptionsHub.get();
 				boolean dim = hub.isDimmed(activity);
-				t.setAlpha(dim ? 0.45f : 1f);
+				t.setAlpha((dim || !fOn) ? 0.45f : 1f);
 				sub.setText(ctx.getString(dim ? R.string.state_unavailable :
 						fOn ? R.string.state_on : R.string.state_off));
 			});

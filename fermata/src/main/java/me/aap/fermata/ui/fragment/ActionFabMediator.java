@@ -127,6 +127,12 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 				}
 			};
 
+	/** The switch the lyrics / captions action flips: captions over fullscreen video, else the lyrics. */
+	public static boolean lyricsSwitchOn(MainActivityDelegate a) {
+		return a.getPrefs().getBooleanPref(a.isVideoMode() ? MainActivityPrefs.CAPTIONS_ON :
+				MainActivityPrefs.LYRICS_ON);
+	}
+
 	private void updateIcon(FloatingButton fb) {
 		MainActivityDelegate a = MainActivityDelegate.get(fb.getContext());
 		Action action = Action.get(a.getPrefs().getIntPref(MainActivityPrefs.fab(a, actionPref)));
@@ -145,9 +151,9 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 			return;
 		}
 		fb.setImageResource(iconFor(a, action));
-		// Lyrics / captions: dimmed while what plays has none.
-		fb.setImageAlpha(((action == Action.LYRICS) &&
-				me.aap.fermata.ytcaptions.CaptionsHub.get().isDimmed(a)) ? 100 : 255);
+		// Lyrics / captions: dimmed while they are off, and while what plays has none (or not known yet).
+		fb.setImageAlpha(((action == Action.LYRICS) && (!lyricsSwitchOn(a) ||
+				me.aap.fermata.ytcaptions.CaptionsHub.get().isDimmed(a))) ? 100 : 255);
 	}
 
 	@DrawableRes
@@ -169,14 +175,8 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		if (action == Action.YOUTUBE_UP_NEXT) return R.drawable.up_next;
 		if (action == Action.YOUTUBE_COMMENTS) return R.drawable.comments;
 		// Captions over fullscreen video, lyrics anywhere else.
-		// Captions over fullscreen video, lyrics elsewhere; struck through while they are off.
-		if (action == Action.LYRICS) {
-			boolean video = a.isVideoMode();
-			boolean on = a.getPrefs().getBooleanPref(video ? MainActivityPrefs.CAPTIONS_ON :
-					MainActivityPrefs.LYRICS_ON);
-			return video ? (on ? R.drawable.captions : R.drawable.captions_off) :
-					(on ? R.drawable.lyrics : R.drawable.lyrics_off);
-		}
+		// Captions over fullscreen video, lyrics elsewhere.
+		if (action == Action.LYRICS) return a.isVideoMode() ? R.drawable.captions : R.drawable.lyrics;
 		if (action == Action.SETTINGS) return R.drawable.settings;
 		if (action == Action.OPEN_FAVORITES) return R.drawable.favorite_filled;
 		if (action == Action.OPEN_PLAYLISTS) return R.drawable.playlist;
