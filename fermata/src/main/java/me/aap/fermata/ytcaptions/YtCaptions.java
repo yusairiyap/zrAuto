@@ -79,7 +79,7 @@ public final class YtCaptions {
 		public final long end;
 		public final String text;
 
-		Cue(long start, long end, String text) {
+		public Cue(long start, long end, String text) {
 			this.start = start;
 			this.end = end;
 			this.text = text;

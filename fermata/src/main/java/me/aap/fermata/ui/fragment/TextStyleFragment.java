@@ -285,7 +285,7 @@ public abstract class TextStyleFragment extends MainActivityFragment {
 		reset.setClickable(true);
 		reset.setFocusable(true);
 		reset.setOnClickListener(v -> UiUtils.showQuestion(requireContext(), getString(R.string.captions_reset),
-				getString(R.string.captions_reset_question), forCaptions() ? R.drawable.captions : R.drawable.lyrics)
+				getString(R.string.captions_reset_question), requireContext().getDrawable(forCaptions() ? R.drawable.captions : R.drawable.lyrics))
 				.onSuccess(ok -> {
 					for (Runnable r : resetters) r.run();
 				}));
