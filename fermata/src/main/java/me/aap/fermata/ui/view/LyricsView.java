@@ -4,12 +4,15 @@ import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.util.TypedValue;
 import android.view.MotionEvent;
+import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.animation.DecelerateInterpolator;
@@ -20,12 +23,14 @@ import androidx.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import me.aap.fermata.R;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ytcaptions.CaptionsHub;
 import me.aap.fermata.ytcaptions.YtCaptions.Cue;
+import me.aap.utils.pref.PreferenceStore;
 
 /**
  * The captions of the playing YouTube video as lyrics: the line being sung is big and bright, the
@@ -34,27 +39,38 @@ import me.aap.fermata.ytcaptions.YtCaptions.Cue;
  * jump. Drawn in one pass instead of as list rows so that the fade, the glide and the highlight are
  * all the same smooth number ({@link #pos}) moving, with no row recycling in the way.
  * <p>
- * It feeds itself from {@link CaptionsHub} while it is on screen, and says what's up instead of
- * lines while they load, when the video has none, or when nothing from YouTube plays.
+ * A vertical drag scrubs: the lines follow the finger (a time shows what is under the highlight), a
+ * fling carries on and settles on a line, and the video plays from there. It feeds itself from
+ * {@link CaptionsHub} while it is on screen, and says what's up instead of lines while they load,
+ * when the video has none, or when nothing from YouTube plays. The look (font, size, alignment, the
+ * highlight's colour) is Settings > Lyrics and changes under the eye. In preview mode it shows
+ * given sample lines instead and follows nothing.
  */
-public final class LyricsView extends View implements CaptionsHub.Listener {
+public final class LyricsView extends View implements CaptionsHub.Listener, PreferenceStore.Listener {
+	private static final float ACTIVE_ZOOM = 0.14f;
 	private final MainActivityDelegate activity;
 	private final float density;
-	private final float sizeScale;
 	private final int textColor;
-	private final int highlightColor;
+	private final int baseHighlight;
 	private final boolean shadow;
 	private final TextPaint paint = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+	private final Paint pill = new Paint(Paint.ANTI_ALIAS_FLAG);
+	private final TextPaint pillText = new TextPaint(TextPaint.ANTI_ALIAS_FLAG);
+	private final RectF rect = new RectF();
 	private final int slop;
 	private final List<Cue> cues = new ArrayList<>();
 	private StaticLayout[] layouts = new StaticLayout[0];
 	private float[] centers = new float[0];
 	private float[] heights = new float[0];
 	private int laidOutWidth = -1;
+	private float sizeScale = 1f;
+	private int align;
+	private int highlightColor;
 	/** The line at the highlight, as a fractional index while it glides (-1: before the first). */
 	private float pos = -1f;
 	private int index = -1;
 	private ValueAnimator glide;
+	private ValueAnimator settle;
 	private ValueAnimator pulse;
 	private float pulseAlpha = 1f;
 	@Nullable
@@ -63,10 +79,19 @@ public final class LyricsView extends View implements CaptionsHub.Listener {
 	private boolean statusBusy;
 	@Nullable
 	private LineListener lineListener;
+	private boolean interactive = true;
+	private boolean previewMode;
+	private boolean listening;
+	// Scrubbing.
+	private boolean browsing;
+	private float browseStartCenter;
 	private float downX;
 	private float downY;
+	private float dragBaseY;
 	private boolean tracking;
-	private boolean interactive = true;
+	private boolean dragging;
+	@Nullable
+	private VelocityTracker velocity;
 
 	public interface LineListener {
 		void onLine(int index);
@@ -74,7 +99,7 @@ public final class LyricsView extends View implements CaptionsHub.Listener {
 
 	/**
 	 * @param textColor      the lines other than the playing one
-	 * @param highlightColor the playing line
+	 * @param highlightColor the playing line (unless Settings pick another colour)
 	 * @param shadow         a soft shadow under the letters, for lyrics over a picture
 	 */
 	public LyricsView(@NonNull Context ctx, @NonNull MainActivityDelegate a, int textColor,
@@ -83,14 +108,16 @@ public final class LyricsView extends View implements CaptionsHub.Listener {
 		this.activity = a;
 		this.density = ctx.getResources().getDisplayMetrics().density;
 		this.textColor = textColor;
+		this.baseHighlight = highlightColor;
 		this.highlightColor = highlightColor;
 		this.shadow = shadow;
 		this.slop = ViewConfiguration.get(ctx).getScaledTouchSlop();
-		this.sizeScale = Math.max(50, Math.min(250,
-				a.getPrefs().getIntPref(MainActivityPrefs.LYRICS_SIZE))) / 100f;
-		paint.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-		paint.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 19 * sizeScale,
-				ctx.getResources().getDisplayMetrics()));
+		pill.setColor(0xCC000000);
+		pillText.setColor(Color.WHITE);
+		pillText.setTextAlign(Paint.Align.CENTER);
+		pillText.setTypeface(Typeface.DEFAULT_BOLD);
+		pillText.setTextSize(13 * density);
+		applyStyle();
 		setClickable(true);
 	}
 
@@ -105,22 +132,84 @@ public final class LyricsView extends View implements CaptionsHub.Listener {
 		lineListener = l;
 	}
 
+	/** Sample lines instead of a video's, the {@code active} one highlighted: Settings' preview. */
+	public void setPreview(List<String> lines, int active) {
+		previewMode = true;
+		cues.clear();
+		long t = 0;
+		for (String s : lines) {
+			cues.add(new Cue(t, t + 3000, s));
+			t += 3000;
+		}
+		laidOutWidth = -1;
+		setStatus(null, false);
+		index = active;
+		pos = active;
+		invalidate();
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Look
+
+	/** Reads the look from Settings; the lines are laid out again at the next draw. */
+	private void applyStyle() {
+		MainActivityPrefs p = activity.getPrefs();
+		sizeScale = Math.max(50, Math.min(250, p.getIntPref(MainActivityPrefs.LYRICS_SIZE))) / 100f;
+		int font = p.getIntPref(MainActivityPrefs.LYRICS_FONT);
+		boolean bold = p.getBooleanPref(MainActivityPrefs.LYRICS_BOLD);
+		boolean italic = p.getBooleanPref(MainActivityPrefs.LYRICS_ITALIC);
+		// The default font is the medium weight sans-serif; bold goes heavier.
+		Typeface tf = ((font == 0) && !bold) ?
+				Typeface.create("sans-serif-medium", italic ? Typeface.ITALIC : Typeface.NORMAL) :
+				CaptionStyle.typeface(font, bold, italic);
+		paint.setTypeface(tf);
+		paint.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 19 * sizeScale,
+				getResources().getDisplayMetrics()));
+		align = p.getIntPref(MainActivityPrefs.LYRICS_ALIGN);
+		int c = p.getIntPref(MainActivityPrefs.LYRICS_COLOR);
+		highlightColor = ((c > 0) && (c <= CaptionStyle.COLORS.length)) ?
+				(CaptionStyle.COLORS[c - 1] | 0xFF000000) : baseHighlight;
+		laidOutWidth = -1;
+		statusLayout = null;
+	}
+
+	@Override
+	public void onPreferenceChanged(PreferenceStore store, List<PreferenceStore.Pref<?>> prefs) {
+		for (PreferenceStore.Pref<?> p : prefs) {
+			if (p.getName().startsWith("LYRICS_")) {
+				applyStyle();
+				invalidate();
+				return;
+			}
+		}
+	}
+
 	// ---------------------------------------------------------------------------------------------
 	// Hub
 
 	/**
-	 * Following the hub only while the view is on screen: over the Music tab's cover it sits in the
-	 * layout all the time, and must cost nothing while the lyrics are off.
+	 * Following the hub (and the settings) only while the view is on screen: over the Music tab's
+	 * cover it sits in the layout all the time, and must cost nothing while the lyrics are off.
 	 */
 	@Override
 	public void onVisibilityAggregated(boolean visible) {
 		super.onVisibilityAggregated(visible);
-		if (visible) {
-			CaptionsHub.get().acquire(activity, this);
-			sync(false);
-		} else {
-			CaptionsHub.get().release(this);
+		if (visible && !listening) {
+			listening = true;
+			activity.getPrefs().addBroadcastListener(this);
+			// What it missed while it was away.
+			applyStyle();
+			if (!previewMode) {
+				CaptionsHub.get().acquire(activity, this);
+				sync(false);
+			}
+		} else if (!visible && listening) {
+			listening = false;
+			activity.getPrefs().removeBroadcastListener(this);
+			if (!previewMode) CaptionsHub.get().release(this);
 			if (glide != null) glide.cancel();
+			if (settle != null) settle.cancel();
+			browsing = false;
 			stopPulse();
 		}
 	}
@@ -132,7 +221,7 @@ public final class LyricsView extends View implements CaptionsHub.Listener {
 
 	@Override
 	public void onCaptionsTick(CaptionsHub hub) {
-		if (hub.getState() != CaptionsHub.State.READY) return;
+		if (browsing || (hub.getState() != CaptionsHub.State.READY)) return;
 		moveTo(hub.getIndex(), true);
 	}
 
@@ -149,7 +238,7 @@ public final class LyricsView extends View implements CaptionsHub.Listener {
 				pos = index = -1;
 			}
 			setStatus(null, false);
-			moveTo(hub.getIndex(), animate);
+			if (!browsing) moveTo(hub.getIndex(), animate);
 		} else {
 			cues.clear();
 			laidOutWidth = -1;
@@ -229,10 +318,97 @@ public final class LyricsView extends View implements CaptionsHub.Listener {
 	}
 
 	// ---------------------------------------------------------------------------------------------
+	// Scrubbing (also driven from outside, over the cover, by the cover's own touch handling)
+
+	/** Whether there are lines to scrub through. */
+	public boolean canBrowse() {
+		return !cues.isEmpty();
+	}
+
+	public boolean isBrowsing() {
+		return browsing;
+	}
+
+	/** A drag begins: the lines stop following the video and follow the finger. */
+	public void beginBrowse() {
+		if (cues.isEmpty() || (laidOutWidth < 0)) return;
+		if (glide != null) glide.cancel();
+		if (settle != null) settle.cancel();
+		browsing = true;
+		browseStartCenter = centerAt(pos);
+		invalidate();
+	}
+
+	/** The finger is {@code dy} pixels (down positive) from where the drag began. */
+	public void browseBy(float dy) {
+		if (!browsing) return;
+		pos = posForCenter(browseStartCenter - dy);
+		invalidate();
+	}
+
+	/** The finger is up (moving at {@code vy} px/s): carries on a little, settles on a line, plays it. */
+	public void endBrowse(float vy) {
+		if (!browsing) return;
+		float travel = centerAt(pos) - vy * 0.12f;
+		int target = Math.round(posForCenter(travel));
+		target = Math.max(0, Math.min(cues.size() - 1, target));
+		int to = target;
+		float dist = Math.abs(to - pos);
+		if (settle != null) settle.cancel();
+		settle = ValueAnimator.ofFloat(pos, to);
+		settle.setDuration(Math.min(520, 200 + Math.round(dist * 40)));
+		settle.setInterpolator(new DecelerateInterpolator(1.6f));
+		settle.addUpdateListener(a -> {
+			pos = (float) a.getAnimatedValue();
+			invalidate();
+		});
+		settle.addListener(new android.animation.AnimatorListenerAdapter() {
+			private boolean cancelled;
+
+			@Override
+			public void onAnimationCancel(android.animation.Animator animation) {
+				cancelled = true;
+			}
+
+			@Override
+			public void onAnimationEnd(android.animation.Animator animation) {
+				if (cancelled) return;
+				pos = to;
+				index = to;
+				browsing = false;
+				if (!previewMode) CaptionsHub.get().seekTo(to);
+				invalidate();
+			}
+		});
+		settle.start();
+	}
+
+	/** The position at which the highlight sits on the point {@code c} of the lines' own axis. */
+	private float posForCenter(float c) {
+		int n = centers.length;
+		if (n == 0) return 0;
+		if (c <= centers[0]) return 0;
+		if (c >= centers[n - 1]) return n - 1;
+		int i = 0;
+		while ((i < n - 2) && (centers[i + 1] <= c)) i++;
+		float span = centers[i + 1] - centers[i];
+		return (span <= 0) ? i : i + (c - centers[i]) / span;
+	}
+
+	private static String time(long ms) {
+		long s = Math.max(0, ms / 1000);
+		return String.format(Locale.US, "%d:%02d", s / 60, s % 60);
+	}
+
+	// ---------------------------------------------------------------------------------------------
 	// Layout
 
 	private float pad() {
 		return 20 * density;
+	}
+
+	private float gap() {
+		return 16 * density * sizeScale;
 	}
 
 	private void layoutLines(int w) {
@@ -241,17 +417,17 @@ public final class LyricsView extends View implements CaptionsHub.Listener {
 		centers = new float[n];
 		heights = new float[n];
 		// Room for the highlighted line growing.
-		int lw = Math.max(1, Math.round((w - 2 * pad()) / 1.14f));
-		float gap = 16 * density * sizeScale;
+		int lw = Math.max(1, Math.round((w - 2 * pad()) / (1f + ACTIVE_ZOOM)));
+		Layout.Alignment al = (align == 1) ? Layout.Alignment.ALIGN_NORMAL : Layout.Alignment.ALIGN_CENTER;
 		float y = 0;
 		for (int i = 0; i < n; i++) {
 			String t = cues.get(i).text;
 			StaticLayout l = StaticLayout.Builder.obtain(t, 0, t.length(), paint, lw)
-					.setAlignment(Layout.Alignment.ALIGN_CENTER).setLineSpacing(0f, 1.05f).build();
+					.setAlignment(al).setLineSpacing(0f, 1.05f).build();
 			layouts[i] = l;
 			heights[i] = l.getHeight();
 			centers[i] = y + heights[i] / 2f;
-			y += heights[i] + gap;
+			y += heights[i] + gap();
 		}
 		laidOutWidth = w;
 	}
@@ -267,8 +443,7 @@ public final class LyricsView extends View implements CaptionsHub.Listener {
 	private float centerAt(float p) {
 		int n = centers.length;
 		if (n == 0) return 0;
-		float gap = 16 * density * sizeScale;
-		if (p <= 0) return centers[0] + p * (heights[0] + gap);
+		if (p <= 0) return centers[0] + p * (heights[0] + gap());
 		if (p >= n - 1) return centers[n - 1];
 		int i = (int) Math.floor(p);
 		float f = p - i;
@@ -308,7 +483,7 @@ public final class LyricsView extends View implements CaptionsHub.Listener {
 			float a = alphaFor(d);
 			if (a <= 0.01f) continue;
 			float act = Math.max(0f, 1f - Math.abs(d));
-			float s = 1f + 0.14f * act;
+			float s = 1f + ACTIVE_ZOOM * act;
 			float y = centers[i] - scroll + anchor;
 			// Softly out at the view's own top and bottom edges rather than cut.
 			float top = y - heights[i] * s / 2f;
@@ -321,13 +496,35 @@ public final class LyricsView extends View implements CaptionsHub.Listener {
 			if (shadow) paint.setShadowLayer(5 * density, 0, 1.5f * density, Color.argb(Math.round(150 * a), 0, 0, 0));
 			StaticLayout l = layouts[i];
 			c.save();
-			c.translate(w / 2f, y);
-			c.scale(s, s);
-			c.translate(-l.getWidth() / 2f, -heights[i] / 2f);
+			// Centred lines grow around their middle, left aligned ones around their left edge.
+			if (align == 1) {
+				c.translate(pad(), y);
+				c.scale(s, s, 0f, 0f);
+				c.translate(0f, -heights[i] / 2f);
+			} else {
+				c.translate(w / 2f, y);
+				c.scale(s, s);
+				c.translate(-l.getWidth() / 2f, -heights[i] / 2f);
+			}
 			l.draw(c);
 			c.restore();
 		}
 		paint.clearShadowLayer();
+		if (browsing) drawBrowseTime(c, w, h);
+	}
+
+	/** While scrubbing: the time of the line at the highlight, in a pill at the bottom. */
+	private void drawBrowseTime(Canvas c, int w, int h) {
+		int i = Math.max(0, Math.min(cues.size() - 1, Math.round(pos)));
+		String t = time(cues.get(i).start);
+		float tw = pillText.measureText(t) + 28 * density;
+		float th = 30 * density;
+		float cx = w / 2f;
+		float cy = h - th / 2f - 10 * density;
+		rect.set(cx - tw / 2f, cy - th / 2f, cx + tw / 2f, cy + th / 2f);
+		c.drawRoundRect(rect, th / 2f, th / 2f, pill);
+		Paint.FontMetrics fm = pillText.getFontMetrics();
+		c.drawText(t, cx, cy - (fm.ascent + fm.descent) / 2f, pillText);
 	}
 
 	private void drawStatus(Canvas c, int w, int h) {
@@ -386,30 +583,64 @@ public final class LyricsView extends View implements CaptionsHub.Listener {
 				downX = e.getX();
 				downY = e.getY();
 				tracking = true;
+				dragging = false;
+				if (velocity != null) velocity.recycle();
+				velocity = VelocityTracker.obtain();
+				velocity.addMovement(e);
 				return true;
 			}
 			case MotionEvent.ACTION_MOVE -> {
-				if (tracking && (Math.abs(e.getX() - downX) > slop || Math.abs(e.getY() - downY) > slop)) {
-					tracking = false;
+				if (!tracking) return true;
+				if (velocity != null) velocity.addMovement(e);
+				if (!dragging) {
+					float dx = e.getX() - downX;
+					float dy = e.getY() - downY;
+					// Only a mostly vertical drag scrubs; the card around may have its own gestures.
+					if ((Math.abs(dy) > slop) && (Math.abs(dy) > Math.abs(dx)) && canBrowse()) {
+						dragging = true;
+						dragBaseY = e.getY();
+						if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
+						beginBrowse();
+					} else if (Math.abs(dx) > slop) {
+						tracking = false;
+					}
 				}
+				if (dragging) browseBy(e.getY() - dragBaseY);
 				return true;
 			}
 			case MotionEvent.ACTION_UP -> {
-				if (!tracking) return true;
-				tracking = false;
-				int i = (lineListener == null) ? -1 : lineAt(e.getY());
-				if (i >= 0) lineListener.onLine(i);
-				else performClick();
+				if (dragging) {
+					float vy = 0;
+					if (velocity != null) {
+						velocity.addMovement(e);
+						velocity.computeCurrentVelocity(1000);
+						vy = velocity.getYVelocity();
+					}
+					endBrowse(vy);
+				} else if (tracking) {
+					int i = (lineListener == null) ? -1 : lineAt(e.getY());
+					if (i >= 0) lineListener.onLine(i);
+					else performClick();
+				}
+				finishTouch();
 				return true;
 			}
 			case MotionEvent.ACTION_CANCEL -> {
-				tracking = false;
+				if (dragging) endBrowse(0f);
+				finishTouch();
 				return true;
 			}
 			default -> {
 				return super.onTouchEvent(e);
 			}
 		}
+	}
+
+	private void finishTouch() {
+		tracking = false;
+		dragging = false;
+		if (velocity != null) velocity.recycle();
+		velocity = null;
 	}
 
 	@Override

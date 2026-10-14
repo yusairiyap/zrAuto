@@ -73,6 +73,9 @@ public final class CaptionsHub {
 	private long position;
 	private int generation;
 	private boolean polling;
+	/** After a seek the player may still report the old position for a moment: those are ignored. */
+	private long seekGuardUntil;
+	private long seekGuardPos;
 	private boolean ticking;
 
 	private CaptionsHub() {
@@ -150,8 +153,10 @@ public final class CaptionsHub {
 		if ((a == null) || (i < 0) || (i >= cues.size())) return;
 		MediaEngine eng = a.getMediaSessionCallback().getEngine();
 		if (eng == null) return;
-		long t = Math.max(0, cues.get(i).start - 150);
+		long t = Math.max(0, cues.get(i).start);
 		eng.setPosition(t);
+		seekGuardPos = t;
+		seekGuardUntil = android.os.SystemClock.uptimeMillis() + 1500;
 		position = t;
 		update(t);
 	}
@@ -198,6 +203,7 @@ public final class CaptionsHub {
 		eng.getPosition().main().onCompletion((pos, err) -> {
 			polling = false;
 			if ((err != null) || (pos == null) || (gen != generation)) return;
+			if ((android.os.SystemClock.uptimeMillis() < seekGuardUntil) && (pos < seekGuardPos - 400)) return;
 			update(pos);
 		});
 	}

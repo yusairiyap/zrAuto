@@ -72,6 +72,11 @@ public final class LyricsCard implements CaptionsHub.Listener {
 	 * the lyrics over the cover, like the tab's own Lyrics chip; anywhere else it opens the card.
 	 */
 	public static void action(@NonNull MainActivityDelegate a) {
+		// Over fullscreen video the same button is the captions switch.
+		if (a.isVideoMode()) {
+			CaptionsOverlayView.toggleAction(a);
+			return;
+		}
 		var f = a.getActiveFragment();
 		if ((f != null) && (f.getFragmentId() == R.id.music_addon)) {
 			boolean on = !a.getPrefs().getBooleanPref(MainActivityPrefs.LYRICS_ON);

@@ -155,8 +155,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	/** The lyrics over the cover (a dark veil and the lines), null before the view exists. */
 	@Nullable
 	private FrameLayout lyricsOverlay;
+	@Nullable
+	private LyricsView lyricsView;
 	private final PreferenceStore.Listener lyricsPrefs = (store, prefs) -> {
 		if (prefs.contains(MainActivityPrefs.LYRICS_ON)) updateLyrics(true);
+		if (prefs.contains(MainActivityPrefs.LYRICS_VEIL)) applyLyricsVeil();
 	};
 	private final Runnable timerChipTask = this::updateTimerChip;
 	private View queuePanel;
@@ -537,6 +540,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if (content != null) content.getViewTreeObserver().removeOnPreDrawListener(insetSync);
 		getActivityDelegate().getPrefs().removeBroadcastListener(lyricsPrefs);
 		lyricsOverlay = null;
+		lyricsView = null;
 		if (insetAnim != null) insetAnim.cancel();
 		insetAnim = null;
 		insetsSet = false;
@@ -1406,6 +1410,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			private float startX;
 			private float startY;
 			private boolean dragging;
+			// A vertical drag over the lyrics scrubs through them, see LyricsView#beginBrowse.
+			private boolean scrubbing;
+			private float scrubBaseY;
 			@Nullable
 			private VelocityTracker velocity;
 
@@ -1425,6 +1432,19 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 						if (velocity != null) velocity.addMovement(e);
 						float dx = e.getRawX() - startX;
 						float dy = e.getRawY() - startY;
+						LyricsView lv = lyricsView;
+						if (!dragging && !scrubbing && (lv != null) && lyricsShowing() && lv.canBrowse() &&
+								(Math.abs(dy) > slop) && (Math.abs(dy) > Math.abs(dx))) {
+							scrubbing = true;
+							scrubBaseY = e.getRawY();
+							ViewGroup p = (ViewGroup) v.getParent();
+							if (p != null) p.requestDisallowInterceptTouchEvent(true);
+							lv.beginBrowse();
+						}
+						if (scrubbing) {
+							if (lv != null) lv.browseBy(e.getRawY() - scrubBaseY);
+							return true;
+						}
 						if (!dragging) {
 							if ((Math.abs(dx) < slop) || (Math.abs(dx) < Math.abs(dy))) return true;
 							dragging = true;
@@ -1436,6 +1456,20 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 						return true;
 					}
 					case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+						if (scrubbing) {
+							scrubbing = false;
+							float vy = 0;
+							if (velocity != null) {
+								velocity.addMovement(e);
+								velocity.computeCurrentVelocity(1000);
+								vy = velocity.getYVelocity();
+								velocity.recycle();
+								velocity = null;
+							}
+							boolean cancelled = e.getActionMasked() == MotionEvent.ACTION_CANCEL;
+							if (lyricsView != null) lyricsView.endBrowse(cancelled ? 0f : vy);
+							return true;
+						}
 						float speed = 0;
 						if (velocity != null) {
 							velocity.addMovement(e);
@@ -1907,9 +1941,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	 */
 	private void addLyricsOverlay(MainActivityDelegate a, ViewGroup artCard) {
 		FrameLayout overlay = new FrameLayout(requireContext());
-		overlay.setBackgroundColor(0xA6000000);
 		LyricsView lv = new LyricsView(requireContext(), a, 0xFFFFFFFF, 0xFFFFFFFF, true);
 		lv.setInteractive(false);
+		lyricsView = lv;
 		overlay.addView(lv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));
 		overlay.setVisibility(View.GONE);
@@ -1918,7 +1952,17 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				ViewGroup.LayoutParams.MATCH_PARENT));
 		lyricsOverlay = overlay;
 		a.getPrefs().addBroadcastListener(lyricsPrefs);
+		applyLyricsVeil();
 		updateLyrics(false);
+	}
+
+	/** How dark the veil under the lyrics is (Settings > Lyrics). */
+	private void applyLyricsVeil() {
+		FrameLayout o = lyricsOverlay;
+		if (o == null) return;
+		int pct = Math.max(0, Math.min(90,
+				getActivityDelegate().getPrefs().getIntPref(MainActivityPrefs.LYRICS_VEIL)));
+		o.setBackgroundColor(Math.round(255 * pct / 100f) << 24);
 	}
 
 	/** Shows or hides the lyrics over the cover as the chip says, and the chip with it. */
@@ -1943,11 +1987,13 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		}
 	}
 
+	private boolean lyricsShowing() {
+		return (lyricsOverlay != null) && (lyricsOverlay.getVisibility() == View.VISIBLE);
+	}
+
 	/** A tap on the cover (not a swipe): with lyrics on it, they open in their own card. */
 	private void onArtTap() {
-		if ((lyricsOverlay != null) && (lyricsOverlay.getVisibility() == View.VISIBLE)) {
-			LyricsCard.show(getActivityDelegate());
-		}
+		if (lyricsShowing()) LyricsCard.show(getActivityDelegate());
 	}
 
 	private void onPlaylistTap() {

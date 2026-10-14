@@ -514,7 +514,7 @@
     <string name="youtube_alternatives_hint">Tap a video to replace this one in the same position. Tap ▶ (or long-press) to preview it first.</string>
     <string name="youtube_alternatives_no_title">This video\'s title isn\'t known yet. Play it once so its title is saved, then search again.</string>
     <string name="action_youtube_alternatives">Alternative video</string>
-    <string name="action_youtube_comments">YouTube comments</string>
+    <string name="action_youtube_comments">Comments</string>
     <string name="yt_comments">Comments</string>
     <string name="yt_comments_count">%1$s comments</string>
     <string name="yt_comments_nothing">Comments need a YouTube video to be playing</string>
@@ -1038,8 +1038,8 @@
     <string name="youtube_playing_from">Playing from %1$s</string>
     <string name="youtube_playing_shuffled">Playing shuffled from %1$s</string>
     <string name="youtube_clear_search">Clear search</string>
-    <string name="action_youtube_search">YouTube search</string>
-    <string name="action_youtube_up_next">YouTube Up next</string>
+    <string name="action_youtube_search">Search</string>
+    <string name="action_youtube_up_next">Up next</string>
     <string name="up_next_prefs">YouTube search &amp; Up next</string>
     <string name="search_history">Remember searches</string>
     <string name="search_history_sub">Show recent searches as chips in the search panel. Not kept in Private Mode, and cleared along with browsing data. Long-press a chip to remove it.</string>
@@ -1293,8 +1293,10 @@
     <!-- Lyrics (YouTube captions on the Music tab) and captions over fullscreen video -->
     <string name="lyrics">Lyrics</string>
     <string name="music_lyrics_short">Lyrics</string>
-    <string name="action_lyrics">Lyrics</string>
+    <string name="action_lyrics">Lyrics / Captions</string>
+    <string name="action_lyrics_label">Lyrics</string>
     <string name="action_captions">Captions</string>
+    <string name="action_settings">Settings</string>
     <string name="captions">Captions</string>
     <string name="lyrics_loading">Loading lyrics…</string>
     <string name="lyrics_none">This video has no captions, so there are no lyrics to show</string>
@@ -1310,7 +1312,8 @@
     <string name="captions_auto_generated">auto-generated</string>
     <string name="state_on">On</string>
     <string name="state_off">Off</string>
-    <string name="prefs_sub_captions">YouTube captions over fullscreen video: font, size, colors, shadow and background</string>
+    <string name="prefs_sub_captions">YouTube captions over fullscreen video: font, size, colors, edge and background, with a preview</string>
+    <string name="prefs_sub_lyrics">Lyrics on the Music tab and in their card: font, size, alignment and highlight, with a preview</string>
     <string name="captions_show">Show captions</string>
     <string name="captions_show_sub">YouTube\'s captions over fullscreen video. Also on the Captions button, key or All in One tile</string>
     <string name="captions_lang">Preferred language</string>
@@ -1362,4 +1365,27 @@
     <string name="comments_split_sub">On a big screen or the car screen, comments open next to fullscreen video instead of over it</string>
     <string name="yt_comments_resize">Drag to resize the comments</string>
     <string name="comments_split_width">Comments width (%)</string>
+
+    <string name="captions_preview">The quick brown fox jumps over the lazy dog</string>
+    <string name="lyrics_preview_1">Every little thing she does</string>
+    <string name="lyrics_preview_2">Is a song that I could sing all night</string>
+    <string name="lyrics_preview_3">And the words fall into place</string>
+    <string name="lyrics_preview_4">Like the stars across the sky</string>
+    <string name="lyrics_preview_5">Hold on, don\'t let the moment go</string>
+    <string name="captions_section_source">Source</string>
+    <string name="captions_section_text">Text</string>
+    <string name="captions_section_edge">Edge</string>
+    <string name="captions_section_box">Background</string>
+    <string name="lyrics_section_cover">Over the cover</string>
+    <string name="lyrics_show">Show lyrics over the cover</string>
+    <string name="lyrics_show_sub">On the Music tab. Also the Lyrics chip, key or All in One tile</string>
+    <string name="lyrics_align">Alignment</string>
+    <string name="lyrics_align_center">Center</string>
+    <string name="lyrics_align_left">Left</string>
+    <string name="lyrics_highlight">Playing line color</string>
+    <string name="lyrics_color_auto">Auto</string>
+    <string name="lyrics_veil">Darkness behind the lyrics (%)</string>
+    <string name="captions_lang_phone">Phone</string>
+    <string name="captions_reset">Reset to defaults</string>
+    <string name="captions_reset_question">Put every option on this page back to how it was?</string>
 </resources>

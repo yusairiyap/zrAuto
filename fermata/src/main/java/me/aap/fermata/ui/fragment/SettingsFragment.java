@@ -926,12 +926,19 @@ public class SettingsFragment extends MainActivityFragment
 		});
 		addSubtitlePrefs(a.getContext(), sub1, mediaPrefs, isCar);
 
-		sub1 = set.subSet(o -> {
+		// Their own pages, with a live preview each (see TextStyleFragment).
+		set.addButton(o -> {
 			o.title = R.string.captions;
 			o.subtitle = R.string.prefs_sub_captions;
 			o.icon = R.drawable.captions;
+			o.onClick = () -> a.showFragment(R.id.captions_fragment);
 		});
-		addCaptionPrefs(a, sub1);
+		set.addButton(o -> {
+			o.title = R.string.lyrics;
+			o.subtitle = R.string.prefs_sub_lyrics;
+			o.icon = R.drawable.lyrics;
+			o.onClick = () -> a.showFragment(R.id.lyrics_fragment);
+		});
 
 		privateModeSettingsSet = sub1 = set.subSet(o -> {
 			o.title = R.string.private_mode_prefs;
@@ -1287,152 +1294,6 @@ public class SettingsFragment extends MainActivityFragment
 			o.formatSubtitle = true;
 			o.values = new int[]{R.string.tap_action_play, R.string.tap_action_menu};
 		});
-	}
-
-	/**
-	 * Settings &gt; Captions: whether YouTube's captions show over fullscreen video, which language,
-	 * and how they look (font, size, colours, edge, box, place); the lyrics' size comes last. Each
-	 * change shows at once on a video that is playing.
-	 */
-	private static void addCaptionPrefs(MainActivityDelegate a, PreferenceSet ps) {
-		var prefs = a.getPrefs();
-		ps.addBooleanPref(o -> {
-			o.store = prefs;
-			o.pref = MainActivityPrefs.CAPTIONS_ON;
-			o.title = R.string.captions_show;
-			o.subtitle = R.string.captions_show_sub;
-		});
-		ps.addStringPref(o -> {
-			o.store = prefs;
-			o.pref = MainActivityPrefs.CAPTIONS_LANG;
-			o.title = R.string.captions_lang;
-			o.subtitle = R.string.captions_lang_sub;
-			o.stringHint = Locale.getDefault().getLanguage();
-		});
-		ps.addBooleanPref(o -> {
-			o.store = prefs;
-			o.pref = MainActivityPrefs.CAPTIONS_AUTO;
-			o.title = R.string.captions_auto;
-			o.subtitle = R.string.captions_auto_sub;
-		});
-		ps.addListPref(o -> {
-			o.store = prefs;
-			o.pref = MainActivityPrefs.CAPTION_FONT;
-			o.title = R.string.caption_font;
-			o.subtitle = R.string.string_format;
-			o.formatSubtitle = true;
-			o.values = me.aap.fermata.ui.view.CaptionStyle.FONT_NAMES;
-		});
-		ps.addIntPref(o -> {
-			o.store = prefs;
-			o.pref = MainActivityPrefs.CAPTION_SIZE;
-			o.title = R.string.caption_size;
-			o.seekMin = 50;
-			o.seekMax = 300;
-			o.seekScale = 10;
-		});
-		ps.addBooleanPref(o -> {
-			o.store = prefs;
-			o.pref = MainActivityPrefs.CAPTION_BOLD;
-			o.title = R.string.caption_bold;
-		});
-		ps.addBooleanPref(o -> {
-			o.store = prefs;
-			o.pref = MainActivityPrefs.CAPTION_ITALIC;
-			o.title = R.string.caption_italic;
-		});
-		ps.addListPref(o -> {
-			o.store = prefs;
-			o.pref = MainActivityPrefs.CAPTION_COLOR;
-			o.title = R.string.caption_color;
-			o.subtitle = R.string.string_format;
-			o.formatSubtitle = true;
-			o.values = me.aap.fermata.ui.view.CaptionStyle.COLOR_NAMES;
-		});
-		ps.addIntPref(o -> {
-			o.store = prefs;
-			o.pref = MainActivityPrefs.CAPTION_OPACITY;
-			o.title = R.string.caption_opacity;
-			o.seekMin = 10;
-			o.seekMax = 100;
-			o.seekScale = 5;
-		});
-		ps.addListPref(o -> {
-			o.store = prefs;
-			o.pref = MainActivityPrefs.CAPTION_EDGE;
-			o.title = R.string.caption_edge;
-			o.subtitle = R.string.string_format;
-			o.formatSubtitle = true;
-			o.values = me.aap.fermata.ui.view.CaptionStyle.EDGE_NAMES;
-		});
-		// Per row, not shared: each condition listens to its own prefs (see dimCustomColorCond).
-		ps.addListPref(o -> {
-			o.store = prefs;
-			o.pref = MainActivityPrefs.CAPTION_EDGE_COLOR;
-			o.title = R.string.caption_edge_color;
-			o.subtitle = R.string.string_format;
-			o.formatSubtitle = true;
-			o.values = me.aap.fermata.ui.view.CaptionStyle.COLOR_NAMES;
-			o.visibility = captionEdgeCond(prefs);
-		});
-		ps.addIntPref(o -> {
-			o.store = prefs;
-			o.pref = MainActivityPrefs.CAPTION_EDGE_STRENGTH;
-			o.title = R.string.caption_edge_strength;
-			o.seekMin = 0;
-			o.seekMax = 100;
-			o.seekScale = 5;
-			o.visibility = captionEdgeCond(prefs);
-		});
-		ps.addListPref(o -> {
-			o.store = prefs;
-			o.pref = MainActivityPrefs.CAPTION_BG_COLOR;
-			o.title = R.string.caption_bg_color;
-			o.subtitle = R.string.string_format;
-			o.formatSubtitle = true;
-			o.values = me.aap.fermata.ui.view.CaptionStyle.COLOR_NAMES;
-		});
-		ps.addIntPref(o -> {
-			o.store = prefs;
-			o.pref = MainActivityPrefs.CAPTION_BG_OPACITY;
-			o.title = R.string.caption_bg_opacity;
-			o.subtitle = R.string.caption_bg_opacity_sub;
-			o.seekMin = 0;
-			o.seekMax = 100;
-			o.seekScale = 5;
-		});
-		ps.addListPref(o -> {
-			o.store = prefs;
-			o.pref = MainActivityPrefs.CAPTION_POSITION;
-			o.title = R.string.caption_position;
-			o.subtitle = R.string.string_format;
-			o.formatSubtitle = true;
-			o.values = me.aap.fermata.ui.view.CaptionStyle.POSITION_NAMES;
-		});
-		ps.addIntPref(o -> {
-			o.store = prefs;
-			o.pref = MainActivityPrefs.CAPTION_MARGIN;
-			o.title = R.string.caption_margin;
-			o.subtitle = R.string.caption_margin_sub;
-			o.seekMin = 0;
-			o.seekMax = 40;
-			o.seekScale = 1;
-		});
-		ps.addIntPref(o -> {
-			o.store = prefs;
-			o.pref = MainActivityPrefs.LYRICS_SIZE;
-			o.title = R.string.lyrics_size;
-			o.subtitle = R.string.lyrics_size_sub;
-			o.seekMin = 60;
-			o.seekMax = 200;
-			o.seekScale = 10;
-		});
-	}
-
-	/** Visible while the captions have an edge at all. */
-	private static ChangeableCondition captionEdgeCond(MainActivityPrefs prefs) {
-		return new PrefCondition<>(prefs, MainActivityPrefs.CAPTION_EDGE,
-				p -> prefs.getIntPref(p) != me.aap.fermata.ui.view.CaptionStyle.EDGE_NONE);
 	}
 
 	/** Interface &gt; Floating Action Button: its own page, the car screen's buttons if {@code aa}. */

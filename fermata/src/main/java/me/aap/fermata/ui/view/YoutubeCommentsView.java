@@ -249,6 +249,22 @@ public final class YoutubeCommentsView {
 		return (w > h) && (Math.min(w, h) >= Math.round(480 * density));
 	}
 
+	/**
+	 * Fullscreen video is being left (a tab change, Back, the page leaving fullscreen): the column
+	 * goes with it at once, fading out as the video does, rather than sliding away on its own clock
+	 * over whatever comes next.
+	 */
+	public static void onVideoLeft() {
+		YoutubeCommentsView v = open;
+		if ((v != null) && v.docked) v.dismissFast();
+	}
+
+	/** Picture-in-picture: no comments, docked or over everything, in the small window. */
+	public static void onPictureInPicture() {
+		YoutubeCommentsView v = open;
+		if (v != null) v.dismissFast();
+	}
+
 	/** Closes the card if it's open (for the back button); returns whether it was. */
 	public static boolean dismissOpen() {
 		YoutubeCommentsView v = open;
@@ -1405,6 +1421,28 @@ public final class YoutubeCommentsView {
 		overlay.animate().alpha(0f).setDuration(180).start();
 		card.animate().translationY(dp(120)).alpha(0f).setDuration(200)
 				.setInterpolator(new AccelerateInterpolator(1.4f)).withEndAction(this::remove).start();
+	}
+
+	/**
+	 * Gone now: the video is no longer shrunk (it is leaving anyway) and the column fades out in
+	 * the time the video's own fade takes, with no slide.
+	 */
+	private void dismissFast() {
+		if (dismissing && (overlay != null) && (overlay.getParent() == null)) return;
+		dismissing = true;
+		cleanUp();
+		if (dockAnim != null) dockAnim.cancel();
+		if (splitView != null) splitView.setSplitShare(0f);
+		splitView = null;
+		View o = overlay;
+		if ((o == null) || (o.getParent() == null)) {
+			remove();
+			return;
+		}
+		o.animate().cancel();
+		card.animate().cancel();
+		card.setTranslationX(0f);
+		o.animate().alpha(0f).setDuration(140).withEndAction(this::remove).start();
 	}
 
 	private void cleanUp() {

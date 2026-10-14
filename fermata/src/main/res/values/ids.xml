@@ -40,6 +40,9 @@
     <item name="all_in_one_fragment" type="id" />
     <item name="nav_tabs_fragment" type="id" />
     <item name="fab_settings_fragment" type="id" />
+    <item name="fab_app_settings" type="id" />
+    <item name="captions_fragment" type="id" />
+    <item name="lyrics_fragment" type="id" />
     <item name="fab_change_action" type="id" />
     <item name="fab_remove_button" type="id" />
     <item name="info_overlay_fragment" type="id" />

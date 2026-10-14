@@ -312,6 +312,16 @@ provider doesn't offer a folder to pick, so Drive is manual only.
   = fifth optional chip of `updateEffectsChip`) and takes no touches: a tap on the cover opens `LyricsCard` (modal,
   in the look of the timer/playlist picker; tap a line to seek). `Action.LYRICS`: Music tab = show/hide over the
   cover, elsewhere = the card.
+- **One action for lyrics and captions**: `Action.LYRICS` ("Lyrics / Captions") is the only one (`CAPTIONS` is gone);
+  `LyricsCard#action` decides: fullscreen video = captions on/off, Music tab = lyrics over the cover on/off, anywhere
+  else = the card. `ActionFabMediator.labelFor/iconFor` and the All in One tile follow `isVideoMode()`. A vertical drag
+  on `LyricsView` (or on the Music tab's cover, forwarded by `enableArtSwipe` via `beginBrowse/browseBy/endBrowse`)
+  scrubs; release seeks (`CaptionsHub#seekTo`, with a guard against the player still reporting the old position).
+  `LyricsView` listens to the `LYRICS_*` prefs while on screen, so the cover follows Settings. Settings > Captions and
+  > Lyrics are `TextStyleFragment` pages (live preview from the real views: `CaptionsOverlayView#preview`,
+  `LyricsView#setPreview`). `Action.SETTINGS` is also an action; the FAB long-press menu ends with it as its own item.
+- **Leaving fullscreen / PiP closes the docked comments at once** (`YoutubeCommentsView#onVideoLeft`, called from
+  `setVideoMode(false)`; `onPictureInPicture` from `onPictureInPictureChanged`): no slide, a short fade with the video.
 - **Captions over fullscreen video**: every `VideoView` carries a `CaptionsOverlayView` under its controls
   (`CAPTIONS_ON`, `Action.CAPTIONS`); the look is `CaptionStyle` (the `CAPTION_*` prefs, Settings > Captions). The
   YouTube page's own captions are left alone by `hideFullscreenControlsJs`, so with the page's CC on they double up.

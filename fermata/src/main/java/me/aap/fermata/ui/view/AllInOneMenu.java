@@ -823,10 +823,11 @@ public final class AllInOneMenu {
 		} else if (action == Action.QUALITY) {
 			title = ctx.getString(R.string.quality);
 			hint = "";
-		} else if ((action == Action.LYRICS) || (action == Action.CAPTIONS)) {
+		} else if (action == Action.LYRICS) {
+			// Captions over fullscreen video, lyrics elsewhere: its name, icon and state follow.
 			title = ctx.getString(ActionFabMediator.labelFor(activity, action));
-			boolean on = activity.getPrefs().getBooleanPref((action == Action.LYRICS) ?
-					MainActivityPrefs.LYRICS_ON : MainActivityPrefs.CAPTIONS_ON);
+			boolean on = activity.getPrefs().getBooleanPref(activity.isVideoMode() ?
+					MainActivityPrefs.CAPTIONS_ON : MainActivityPrefs.LYRICS_ON);
 			hint = ctx.getString(on ? R.string.state_on : R.string.state_off);
 		} else {
 			title = ctx.getString(ActionFabMediator.labelFor(activity, action));
@@ -941,7 +942,7 @@ public final class AllInOneMenu {
 	private static boolean opensSomething(Action action) {
 		return switch (action) {
 			case AUDIO_EFFECTS, PLAYLIST_ADD, OPEN_FAVORITES, OPEN_PLAYLISTS, OPEN_DOWNLOADS, MENU,
-					CP_MENU, YOUTUBE_SEARCH, YOUTUBE_UP_NEXT, YOUTUBE_ALTERNATIVES, YOUTUBE_COMMENTS, LYRICS, REFUEL, DOWNLOAD_CURRENT, PLAY_AS_MUSIC,
+					CP_MENU, YOUTUBE_SEARCH, YOUTUBE_UP_NEXT, YOUTUBE_ALTERNATIVES, YOUTUBE_COMMENTS, LYRICS, SETTINGS, REFUEL, DOWNLOAD_CURRENT, PLAY_AS_MUSIC,
 					BACK_OR_EXIT, EXIT -> true;
 			default -> false;
 		};

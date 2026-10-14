@@ -147,8 +147,17 @@ public interface MainActivityPrefs
 	// when a video has no written ones.
 	Pref<Supplier<String>> CAPTIONS_LANG = Pref.s("CAPTIONS_LANG", "");
 	Pref<BooleanSupplier> CAPTIONS_AUTO = Pref.b("CAPTIONS_AUTO", true);
-	// Lyrics text size, percent.
+	// How the lyrics look, on the Music tab's cover and in their card (see ui/view/LyricsView):
+	// text size (percent), font (CaptionStyle.FONT_NAMES), bold, italic, alignment (0 centre, 1 left),
+	// the playing line's colour (0 follows the theme, else CaptionStyle.COLORS index + 1) and how
+	// dark the veil over the cover is (percent).
 	Pref<IntSupplier> LYRICS_SIZE = Pref.i("LYRICS_SIZE", 100);
+	Pref<IntSupplier> LYRICS_FONT = Pref.i("LYRICS_FONT", 0);
+	Pref<BooleanSupplier> LYRICS_BOLD = Pref.b("LYRICS_BOLD", false);
+	Pref<BooleanSupplier> LYRICS_ITALIC = Pref.b("LYRICS_ITALIC", false);
+	Pref<IntSupplier> LYRICS_ALIGN = Pref.i("LYRICS_ALIGN", 0);
+	Pref<IntSupplier> LYRICS_COLOR = Pref.i("LYRICS_COLOR", 0);
+	Pref<IntSupplier> LYRICS_VEIL = Pref.i("LYRICS_VEIL", 65);
 	// How the captions over fullscreen video look (see ui/view/CaptionStyle).
 	Pref<IntSupplier> CAPTION_FONT = Pref.i("CAPTION_FONT", 0);
 	Pref<IntSupplier> CAPTION_SIZE = Pref.i("CAPTION_SIZE", 100);

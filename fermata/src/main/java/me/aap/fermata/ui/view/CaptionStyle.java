@@ -77,6 +77,12 @@ public final class CaptionStyle {
 		this.margin = margin;
 	}
 
+	/** The typeface of a font index of {@link #FONT_NAMES} with the given emphasis. */
+	public static Typeface typeface(int font, boolean bold, boolean italic) {
+		int style = (bold ? Typeface.BOLD : 0) | (italic ? Typeface.ITALIC : 0);
+		return Typeface.create(FONT_FAMILIES[clamp(font, 0, FONT_FAMILIES.length - 1)], style);
+	}
+
 	public static CaptionStyle read(MainActivityPrefs p) {
 		int font = clamp(p.getIntPref(MainActivityPrefs.CAPTION_FONT), 0, FONT_FAMILIES.length - 1);
 		boolean bold = p.getBooleanPref(MainActivityPrefs.CAPTION_BOLD);

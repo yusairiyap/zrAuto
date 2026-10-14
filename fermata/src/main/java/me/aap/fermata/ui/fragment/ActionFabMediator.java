@@ -44,7 +44,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 			Action.OPEN_FAVORITES, Action.OPEN_PLAYLISTS, Action.OPEN_DOWNLOADS, Action.DOWNLOAD_CURRENT,
 			Action.DOWNLOADS_PAUSE_RESUME, Action.ALL_IN_ONE, Action.AUDIO_EFFECTS, Action.SLEEP_TIMER,
 			Action.QUALITY, Action.YOUTUBE_ALTERNATIVES, Action.YOUTUBE_COMMENTS, Action.LYRICS,
-			Action.CAPTIONS);
+			Action.SETTINGS);
 
 	private final Pref<IntSupplier> actionPref;
 	@Nullable
@@ -119,6 +119,9 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		if (action == Action.PRIVATE_MODE_TOGGLE) return R.drawable.private_mode;
 		if (action == Action.REFUEL) return R.drawable.fuel;
 		if (action == Action.PLAYLIST_ADD) return R.drawable.playlist_add;
+		if (action == Action.LYRICS) {
+			return a.isVideoMode() ? R.string.action_captions : R.string.action_lyrics_label;
+		}
 		if (action == Action.PLAY_AS_MUSIC) return MusicPlayer.canSwitchToVideo(
 				a.getMediaSessionCallback()) ? R.drawable.video : R.drawable.music;
 		if ((action == Action.YOUTUBE_SEARCH) || (action == Action.YOUTUBE_ALTERNATIVES)) {
@@ -126,8 +129,9 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		}
 		if (action == Action.YOUTUBE_UP_NEXT) return R.drawable.up_next;
 		if (action == Action.YOUTUBE_COMMENTS) return R.drawable.comments;
-		if (action == Action.LYRICS) return R.drawable.lyrics;
-		if (action == Action.CAPTIONS) return R.drawable.captions;
+		// Captions over fullscreen video, lyrics anywhere else.
+		if (action == Action.LYRICS) return a.isVideoMode() ? R.drawable.captions : R.drawable.lyrics;
+		if (action == Action.SETTINGS) return R.drawable.settings;
 		if (action == Action.OPEN_FAVORITES) return R.drawable.favorite_filled;
 		if (action == Action.OPEN_PLAYLISTS) return R.drawable.playlist;
 		if ((action == Action.OPEN_DOWNLOADS) || (action == Action.DOWNLOAD_CURRENT)) {
@@ -225,7 +229,6 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 							addAction(a, fb, sb, Action.QUALITY, 2);
 							addAction(a, fb, sb, Action.YOUTUBE_COMMENTS, 3);
 							addAction(a, fb, sb, Action.LYRICS, 4);
-							addAction(a, fb, sb, Action.CAPTIONS, 5);
 						});
 			}
 			category(a, fb, b, R.id.fab_cat_tools, R.drawable.fuel, R.string.fab_cat_tools,
@@ -233,9 +236,13 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 						addAction(a, fb, sb, Action.ALL_IN_ONE, 0);
 						addAction(a, fb, sb, Action.REFUEL, 1);
 					});
-			// Last item in the menu.
 			addSettings(a, b, R.id.fab_settings, R.drawable.fab, R.string.fab_settings,
 					SettingsFragment.SHOW_FAB_SETTINGS);
+			// Last item in the menu: the app's settings, as an item of its own.
+			b.addItem(R.id.fab_app_settings, R.drawable.settings, R.string.settings).setHandler(item -> {
+				Action.SETTINGS.getHandler().handle(a.getMediaSessionCallback(), a, uptimeMillis());
+				return true;
+			});
 		});
 		return true;
 	}

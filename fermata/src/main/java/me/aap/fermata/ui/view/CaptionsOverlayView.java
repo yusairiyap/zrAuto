@@ -55,6 +55,19 @@ public final class CaptionsOverlayView extends View
 	private float alphaNow;
 	private ValueAnimator fade;
 
+	/** Settings' preview: always showing this text, following no video. */
+	@Nullable
+	private String previewText;
+
+	/** A captions view that only shows {@code sample} in the user's style, for the settings page. */
+	public static CaptionsOverlayView preview(@NonNull Context ctx, @NonNull String sample) {
+		CaptionsOverlayView v = new CaptionsOverlayView(ctx);
+		v.previewText = sample;
+		v.text = sample;
+		v.alphaNow = 1f;
+		return v;
+	}
+
 	public CaptionsOverlayView(@NonNull Context ctx) {
 		super(ctx);
 		density = ctx.getResources().getDisplayMetrics().density;
@@ -123,6 +136,7 @@ public final class CaptionsOverlayView extends View
 
 	/** Following the hub only while the switch is on and the picture is on screen. */
 	private void update() {
+		if (previewText != null) return;
 		MainActivityDelegate a = activity;
 		boolean want = (a != null) && isShown() &&
 				a.getPrefs().getBooleanPref(MainActivityPrefs.CAPTIONS_ON);
