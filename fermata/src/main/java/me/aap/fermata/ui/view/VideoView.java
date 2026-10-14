@@ -111,6 +111,8 @@ public class VideoView extends FrameLayout
 	public VideoView(Context context, AttributeSet attrs) {
 		super(context, attrs);
 		init(context);
+		// YouTube's captions in the user's style, over the picture and under the controls.
+		addView(new CaptionsOverlayView(context), new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 		// Over everything init() put in (the picture, the black fades, the dim, YouTube's cover).
 		controls = new VideoControlsOverlay(context, !hasBufferingSpinner());
 		addView(controls, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
@@ -477,6 +479,78 @@ public class VideoView extends FrameLayout
 
 	public VideoControlsOverlay getControls() {
 		return controls;
+	}
+
+	/** How much of the width is given to the side panel (the comments), 0 .. 0.8; 0 for none. */
+	private float splitShare;
+	/** The black behind the shrunk picture, under this view in its parent (only while split). */
+	@Nullable
+	private View splitBackdrop;
+
+	/**
+	 * Fits the picture, with everything drawn on it (captions, controls), into the left
+	 * {@code 1 - share} of the screen, the rest being left to a panel docked on the right (the
+	 * comments beside the video). It is a transform, not a resize: the view keeps its size, so a
+	 * YouTube player in it isn't restarted by it (a resize does that), and the surfaces of local video
+	 * keep theirs. The picture stays centred vertically, with black above and below it.
+	 */
+	public void setSplitShare(float share) {
+		share = Math.max(0f, Math.min(0.8f, share));
+		if (share == splitShare) return;
+		splitShare = share;
+		if (share > 0f) {
+			ensureSplitBackdrop();
+			float s = 1f - share;
+			setPivotX(0f);
+			setPivotY(getHeight() / 2f);
+			setScaleX(s);
+			setScaleY(s);
+		} else {
+			setScaleX(1f);
+			setScaleY(1f);
+			// Back to the default pivot, the centre.
+			setPivotX(getWidth() / 2f);
+			setPivotY(getHeight() / 2f);
+			removeSplitBackdrop();
+		}
+	}
+
+	public float getSplitShare() {
+		return splitShare;
+	}
+
+	@Override
+	protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+		super.onSizeChanged(w, h, oldw, oldh);
+		setPivotY(h / 2f);
+		setPivotX((splitShare > 0f) ? 0f : (w / 2f));
+	}
+
+	private void ensureSplitBackdrop() {
+		if ((splitBackdrop != null) || !(getParent() instanceof ViewGroup p)) return;
+		View b = new View(getContext());
+		b.setBackgroundColor(Color.BLACK);
+		b.setClickable(false);
+		b.setFocusable(false);
+		b.setElevation(getElevation());
+		ViewGroup.LayoutParams lp;
+		if (p instanceof androidx.constraintlayout.widget.ConstraintLayout) {
+			var c = new androidx.constraintlayout.widget.ConstraintLayout.LayoutParams(0, 0);
+			c.topToTop = c.bottomToBottom = c.startToStart = c.endToEnd =
+					androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.PARENT_ID;
+			lp = c;
+		} else {
+			lp = new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT);
+		}
+		// Right under this view: whatever else is behind the picture stays hidden.
+		p.addView(b, Math.max(0, p.indexOfChild(this)), lp);
+		splitBackdrop = b;
+	}
+
+	private void removeSplitBackdrop() {
+		View b = splitBackdrop;
+		splitBackdrop = null;
+		if ((b != null) && (b.getParent() instanceof ViewGroup p)) p.removeView(b);
 	}
 
 	/**

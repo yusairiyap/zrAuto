@@ -2816,6 +2816,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (PlaylistPicker.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.YoutubeAlternativesPicker.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.YoutubeCommentsView.dismissOpen()) return;
+		if (me.aap.fermata.ui.view.LyricsCard.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.AllInOneMenu.dismissOpen()) return;
 		if (DownloadPicker.dismissOpen()) return;
 		super.onBackPressed();

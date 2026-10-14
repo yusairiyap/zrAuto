@@ -150,6 +150,11 @@ public enum Action {
 	// saved by their position.
 	YOUTUBE_COMMENTS(R.string.action_youtube_comments,
 			a(me.aap.fermata.ui.view.YoutubeCommentsView::showForCurrent)),
+	// The playing video's YouTube captions as lyrics: over the Music tab's cover (shown/hidden), or in
+	// a card from anywhere else.
+	LYRICS(R.string.action_lyrics, a(me.aap.fermata.ui.view.LyricsCard::action)),
+	// The same captions drawn over fullscreen video, in the style from Settings > Captions.
+	CAPTIONS(R.string.action_captions, a(me.aap.fermata.ui.view.CaptionsOverlayView::toggleAction)),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

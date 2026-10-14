@@ -296,6 +296,34 @@ provider doesn't offer a folder to pick, so Drive is manual only.
   (`YoutubeSearch.lookUpById`) for the channel when searching misses; adding a never-played video to Favorites looks the
   channel up in the background (`YoutubeAddon#recordAddedVideo`).
 
+## Lyrics, Captions, comments beside the video
+
+- **YouTube captions** (`ytcaptions/YtCaptions`): the InnerTube `player` endpoint, asked as several of YouTube's
+  apps in turn (`CLIENTS`; the first that gives readable `json3` captions wins), then the track's `baseUrl` with
+  `fmt=json3`. Manual captions in the preferred language, then English, then any; auto-generated ones only when
+  `CAPTIONS_AUTO` allows. **None of it has run against live YouTube from the cloud session**; the Diagnostic log
+  (CAPTIONS) says which app answered what. `CaptionsHub` is the one place that follows the playing video's id
+  (`Action.getFavoritableItem` + `YtDownloads.videoIdOf`) and position (`MediaEngine#getPosition`, 4x/s); it only
+  runs while something has `acquire`d it, and the views do that only while they are on screen
+  (`onVisibilityAggregated`), so lyrics/captions off cost nothing.
+- **Lyrics**: `ui/view/LyricsView` draws the lines in one pass (a fractional scroll position glides to the playing
+  line; alpha by distance: the line before dim, gone after the third after). Over the Music tab's cover it sits in
+  the art card under the loading dim (`MusicPlayerFragment#addLyricsOverlay`, shown by `LYRICS_ON`, the Lyrics chip
+  = fifth optional chip of `updateEffectsChip`) and takes no touches: a tap on the cover opens `LyricsCard` (modal,
+  in the look of the timer/playlist picker; tap a line to seek). `Action.LYRICS`: Music tab = show/hide over the
+  cover, elsewhere = the card.
+- **Captions over fullscreen video**: every `VideoView` carries a `CaptionsOverlayView` under its controls
+  (`CAPTIONS_ON`, `Action.CAPTIONS`); the look is `CaptionStyle` (the `CAPTION_*` prefs, Settings > Captions). The
+  YouTube page's own captions are left alone by `hideFullscreenControlsJs`, so with the page's CC on they double up.
+- **Comments beside the video**: `YoutubeCommentsView` docks (`shouldDock`: fullscreen video, `COMMENTS_SPLIT`, car
+  screen or a landscape tablet with min side >= 480dp) as a column on the right with no scrim; the video is shrunk
+  with `VideoView#setSplitShare`, a *transform* (pivot top-left/centre, black backdrop view under it), never a
+  resize, because resizing restarts the YouTube player. The strip on the column's left edge drags the width
+  (`COMMENTS_SPLIT_PERCENT`). While docked, `watchDock` follows the video: the next video's comments load in the
+  same column, leaving fullscreen closes it (two misses, a page can drop out of fullscreen for a moment).
+  `CommentsSkeletonView` is the shimmering placeholder while a batch loads. The column's elevation (7dp) is below
+  the control panel/FABs (10dp) on purpose.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

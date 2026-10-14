@@ -3,6 +3,7 @@ package me.aap.fermata.ui.view;
 import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
 
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
@@ -53,7 +54,9 @@ import me.aap.fermata.R;
 import me.aap.fermata.action.Action;
 import me.aap.fermata.action.CarNav;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
+import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ytcomments.YtComments;
 import me.aap.fermata.ytcomments.YtComments.Comment;
 import me.aap.fermata.ytcomments.YtComments.Page;
@@ -81,8 +84,10 @@ public final class YoutubeCommentsView {
 	private final MainActivityDelegate a;
 	private final Context ctx;
 	private final ViewGroup host;
-	private final String videoId;
-	private final String videoTitle;
+	private String videoId;
+	private String videoTitle;
+	/** Beside fullscreen video (a big screen, the car screen) rather than over everything. */
+	private final boolean docked;
 	private final boolean car;
 	private final float density;
 	private final int primary;
@@ -99,6 +104,7 @@ public final class YoutubeCommentsView {
 	private FrameLayout card;
 	private FrameLayout.LayoutParams cardLp;
 	private RecyclerView list;
+	private CommentsSkeletonView skeleton;
 	private Adapter adapter;
 	private TextView titleView;
 	private TextView videoLine;
@@ -179,12 +185,13 @@ public final class YoutubeCommentsView {
 	}
 
 	private YoutubeCommentsView(MainActivityDelegate a, Context ctx, ViewGroup host, String videoId,
-															String videoTitle) {
+															String videoTitle, boolean docked) {
 		this.a = a;
 		this.ctx = ctx;
 		this.host = host;
 		this.videoId = videoId;
 		this.videoTitle = videoTitle;
+		this.docked = docked;
 		this.car = a.isCarActivity();
 		this.density = ctx.getResources().getDisplayMetrics().density;
 		this.primary = color(R.attr.musicTextPrimary);
@@ -200,6 +207,9 @@ public final class YoutubeCommentsView {
 
 	/** The YouTube comments action: the comments of what plays. */
 	public static void showForCurrent(@NonNull MainActivityDelegate a) {
+		// Beside the video the floating button is still there to press: again closes the column.
+		YoutubeCommentsView o = open;
+		if ((o != null) && o.docked && dismissOpen()) return;
 		PlayableItem pi = Action.getFavoritableItem(a);
 		String id = YtDownloads.videoIdOf(pi);
 		if (id == null) {
@@ -219,9 +229,24 @@ public final class YoutubeCommentsView {
 			return;
 		}
 		YoutubeCommentsView v = new YoutubeCommentsView(a, EffectsUi.palette(a.getContext()), host,
-				videoId, title);
+				videoId, title, shouldDock(a, host));
 		open = v;
 		v.build();
+	}
+
+	/**
+	 * Whether the comments go beside the video: only over fullscreen video, only when Settings allow
+	 * it, and only where there's room for a video and a column of comments next to each other (the
+	 * car screen, or a landscape tablet); a phone gets the card over the video as before.
+	 */
+	private static boolean shouldDock(MainActivityDelegate a, ViewGroup host) {
+		if (!a.isVideoMode() || (a.getActiveVideoView() == null)) return false;
+		if (!a.getPrefs().getBooleanPref(MainActivityPrefs.COMMENTS_SPLIT)) return false;
+		if (a.isCarActivity()) return true;
+		float density = host.getResources().getDisplayMetrics().density;
+		int w = host.getWidth();
+		int h = host.getHeight();
+		return (w > h) && (Math.min(w, h) >= Math.round(480 * density));
 	}
 
 	/** Closes the card if it's open (for the back button); returns whether it was. */
@@ -241,14 +266,22 @@ public final class YoutubeCommentsView {
 	private void build() {
 		loggedIn = YtComments.isLoggedIn();
 		overlay = new FrameLayout(ctx);
-		overlay.setClickable(true);
 		overlay.setFocusable(false);
-		overlay.setElevation(dp(30));
-		overlay.setBackgroundColor(0x55000000);
-		overlay.setOnClickListener(v -> {
-			if (input != null) hideKeyboard();
-			dismiss();
-		});
+		if (docked) {
+			// No scrim and no click of its own: whatever isn't the column is the video, which keeps
+			// its taps. Below the control panel and the floating buttons (10dp) so those stay usable
+			// over the column, above the video (5dp).
+			overlay.setClickable(false);
+			overlay.setElevation(dp(7));
+		} else {
+			overlay.setClickable(true);
+			overlay.setElevation(dp(30));
+			overlay.setBackgroundColor(0x55000000);
+			overlay.setOnClickListener(v -> {
+				if (input != null) hideKeyboard();
+				dismiss();
+			});
+		}
 		// Car mode: the steering wheel moves through the comments; long previous closes.
 		CarNav.markModalScope(overlay, this::dismiss);
 		overlay.setAlpha(0f);
@@ -338,7 +371,14 @@ public final class YoutubeCommentsView {
 				if (dy > 0) maybeLoadMore();
 			}
 		});
-		root.addView(list, new LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f));
+		// The first batch's placeholder sits in the list's place: rows the shape of comments,
+		// shimmering until the real ones arrive.
+		FrameLayout listHolder = new FrameLayout(ctx);
+		listHolder.addView(list, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		skeleton = new CommentsSkeletonView(ctx, secondary);
+		skeleton.setVisibility(View.GONE);
+		listHolder.addView(skeleton, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		root.addView(listHolder, new LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f));
 
 		// The box for writing, only where it can be used (see updateCompose()).
 		if (!car) {
@@ -351,15 +391,21 @@ public final class YoutubeCommentsView {
 		card.setClickable(true);
 		GradientDrawable bg = new GradientDrawable();
 		bg.setColor(color(R.attr.musicPanelFill));
-		bg.setCornerRadius(dp(28));
+		bg.setCornerRadius(dp(docked ? 22 : 28));
 		card.setBackground(bg);
-		card.setElevation(dp(12));
+		card.setElevation(dp(docked ? 4 : 12));
 		card.addView(root, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 
-		// As tall as there is room for: the card keeps its size while the comments come in.
-		cardLp = OverlayCard.params(a, host, Integer.MAX_VALUE);
-		fullH = cardLp.height;
-		baseBottom = cardLp.bottomMargin;
+		if (docked) {
+			buildDock();
+			card.addView(buildDockHandle(), new FrameLayout.LayoutParams(dp(26), MATCH_PARENT,
+					Gravity.START));
+		} else {
+			// As tall as there is room for: the card keeps its size while the comments come in.
+			cardLp = OverlayCard.params(a, host, Integer.MAX_VALUE);
+			fullH = cardLp.height;
+			baseBottom = cardLp.bottomMargin;
+		}
 		overlay.addView(card, cardLp);
 		host.addView(overlay, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 
@@ -368,11 +414,15 @@ public final class YoutubeCommentsView {
 			overlay.getViewTreeObserver().addOnGlobalLayoutListener(keyboardListener);
 		}
 
-		card.setTranslationY(dp(120));
-		card.setAlpha(0f);
-		card.animate().translationY(0f).alpha(1f).setDuration(260)
-				.setInterpolator(new DecelerateInterpolator(1.6f)).start();
-		overlay.animate().alpha(1f).setDuration(220).start();
+		if (docked) {
+			openDock();
+		} else {
+			card.setTranslationY(dp(120));
+			card.setAlpha(0f);
+			card.animate().translationY(0f).alpha(1f).setDuration(260)
+					.setInterpolator(new DecelerateInterpolator(1.6f)).start();
+			overlay.animate().alpha(1f).setDuration(220).start();
+		}
 		loadFirst(null);
 	}
 
@@ -461,6 +511,13 @@ public final class YoutubeCommentsView {
 	// Loading
 
 	private void setStatus(boolean busy, @Nullable CharSequence text) {
+		// Loading the first batch: the placeholder rows instead of a spinner above an empty card.
+		boolean placeholder = busy && rows.isEmpty() && (skeleton != null);
+		showSkeleton(placeholder);
+		if (placeholder) {
+			statusRow.setVisibility(View.GONE);
+			return;
+		}
 		if (text == null) {
 			statusRow.setVisibility(View.GONE);
 			return;
@@ -785,10 +842,10 @@ public final class YoutubeCommentsView {
 		int bottom;
 		if (typing) {
 			// Right on top of the keyboard.
-			gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+			gravity = Gravity.BOTTOM | (docked ? Gravity.END : Gravity.CENTER_HORIZONTAL);
 			bottom = lift + dp(8);
 		} else {
-			gravity = Gravity.CENTER;
+			gravity = docked ? (Gravity.END | Gravity.TOP) : Gravity.CENTER;
 			bottom = baseBottom;
 		}
 		int room = ovH - cardLp.topMargin - bottom;
@@ -1077,12 +1134,274 @@ public final class YoutubeCommentsView {
 	}
 
 	// ---------------------------------------------------------------------------------------------
+	// Beside the video
+
+	/** The column's width and its margins to the screen's edges, pixels. */
+	private int dockW;
+	private int dockEnd;
+	private int dockTop;
+	private int dockBottom;
+	/** 0 (closed) to 1 (open): drives the column sliding in and the video making room for it. */
+	private float dockProgress;
+	/** The video view that has been shrunk to make room (the one that was fullscreen at the time). */
+	@Nullable
+	private VideoView splitView;
+	@Nullable
+	private ValueAnimator dockAnim;
+	private final Runnable dockWatch = this::watchDock;
+	@Nullable
+	private FermataServiceUiBinder.Listener binderListener;
+	private int notInVideo;
+
+	private int[] systemInsets() {
+		int[] r = new int[4];
+		androidx.core.view.WindowInsetsCompat wi = androidx.core.view.ViewCompat.getRootWindowInsets(host);
+		if (wi == null) return r;
+		androidx.core.graphics.Insets in = wi.getInsets(
+				androidx.core.view.WindowInsetsCompat.Type.systemBars() |
+						androidx.core.view.WindowInsetsCompat.Type.displayCutout());
+		r[0] = in.left;
+		r[1] = in.top;
+		r[2] = in.right;
+		r[3] = in.bottom;
+		return r;
+	}
+
+	private int clampDock(int w) {
+		int max = Math.round(host.getWidth() * 0.6f);
+		return Math.max(Math.min(dp(260), max), Math.min(w, max));
+	}
+
+	/** The column's size and place, from Settings' width: full height on the right, a gap around it. */
+	private void buildDock() {
+		int[] in = systemInsets();
+		dockEnd = in[2] + dp(10);
+		dockTop = in[1] + dp(10);
+		dockBottom = in[3] + dp(10);
+		int pct = Math.max(20, Math.min(60,
+				a.getPrefs().getIntPref(MainActivityPrefs.COMMENTS_SPLIT_PERCENT)));
+		dockW = clampDock(Math.round(host.getWidth() * pct / 100f));
+		int h = Math.max(dp(160), host.getHeight() - dockTop - dockBottom);
+		cardLp = new FrameLayout.LayoutParams(dockW, h, Gravity.END | Gravity.TOP);
+		cardLp.topMargin = dockTop;
+		cardLp.bottomMargin = dockBottom;
+		cardLp.setMarginEnd(dockEnd);
+		fullH = Integer.MAX_VALUE;
+		baseBottom = dockBottom;
+	}
+
+	/**
+	 * The strip along the column's left edge that drags it wider or narrower: the video follows the
+	 * finger (it is only a transform, see {@link VideoView#setSplitShare}) and the width is kept for
+	 * the next time (Settings' "Comments width").
+	 */
+	private View buildDockHandle() {
+		FrameLayout strip = new FrameLayout(ctx);
+		View pill = new View(ctx);
+		GradientDrawable pd = new GradientDrawable();
+		pd.setColor((secondary & 0x00FFFFFF) | 0x77000000);
+		pd.setCornerRadius(dp(2));
+		pill.setBackground(pd);
+		FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(dp(4), dp(48),
+				Gravity.START | Gravity.CENTER_VERTICAL);
+		plp.setMarginStart(dp(6));
+		strip.addView(pill, plp);
+		strip.setContentDescription(ctx.getString(R.string.yt_comments_resize));
+		strip.setOnTouchListener(new View.OnTouchListener() {
+			private float startX;
+			private int startW;
+
+			@Override
+			public boolean onTouch(View v, android.view.MotionEvent e) {
+				switch (e.getActionMasked()) {
+					case android.view.MotionEvent.ACTION_DOWN -> {
+						startX = e.getRawX();
+						startW = dockW;
+						v.getParent().requestDisallowInterceptTouchEvent(true);
+						pd.setColor(accent);
+						return true;
+					}
+					case android.view.MotionEvent.ACTION_MOVE -> {
+						setDockWidth(clampDock(startW - Math.round(e.getRawX() - startX)));
+						return true;
+					}
+					case android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+						pd.setColor((secondary & 0x00FFFFFF) | 0x77000000);
+						int pct = Math.round(dockW * 100f / Math.max(1, host.getWidth()));
+						a.getPrefs().applyIntPref(MainActivityPrefs.COMMENTS_SPLIT_PERCENT,
+								Math.max(20, Math.min(60, pct)));
+						return true;
+					}
+					default -> {
+						return false;
+					}
+				}
+			}
+		});
+		return strip;
+	}
+
+	private void setDockWidth(int w) {
+		if ((w == dockW) || (cardLp == null) || destroyed) return;
+		dockW = w;
+		cardLp.width = w;
+		card.setLayoutParams(cardLp);
+		applyVideoSplit();
+	}
+
+	/** Makes the video as wide as the room the column leaves it, as far as it has come in. */
+	private void applyVideoSplit() {
+		VideoView vv = splitView;
+		int hostW = host.getWidth();
+		if ((vv == null) || (hostW <= 0)) return;
+		float taken = dockW + dockEnd + dp(10);
+		vv.setSplitShare((taken / hostW) * dockProgress);
+	}
+
+	private void openDock() {
+		splitView = a.getActiveVideoView();
+		// The column itself fades in as it slides; the (transparent) layer around it is just there.
+		overlay.setAlpha(1f);
+		card.setAlpha(0f);
+		card.setTranslationX(dockW + dockEnd);
+		animateDock(0f, 1f, 360, new DecelerateInterpolator(1.8f), null);
+		notInVideo = 0;
+		startDockWatch();
+	}
+
+	private void closeDock() {
+		animateDock(dockProgress, 0f, 280, new AccelerateInterpolator(1.4f), this::remove);
+	}
+
+	private void animateDock(float from, float to, long ms, android.animation.TimeInterpolator ip,
+													 @Nullable Runnable end) {
+		if (dockAnim != null) dockAnim.cancel();
+		ValueAnimator anim = ValueAnimator.ofFloat(from, to);
+		anim.setDuration(ms);
+		anim.setInterpolator(ip);
+		anim.addUpdateListener(an -> {
+			dockProgress = (float) an.getAnimatedValue();
+			card.setTranslationX((1f - dockProgress) * (dockW + dockEnd));
+			card.setAlpha(Math.min(1f, dockProgress * 1.6f));
+			applyVideoSplit();
+		});
+		if (end != null) {
+			anim.addListener(new android.animation.AnimatorListenerAdapter() {
+				private boolean cancelled;
+
+				@Override
+				public void onAnimationCancel(android.animation.Animator animation) {
+					cancelled = true;
+				}
+
+				@Override
+				public void onAnimationEnd(android.animation.Animator animation) {
+					if (!cancelled) end.run();
+				}
+			});
+		}
+		dockAnim = anim;
+		anim.start();
+	}
+
+	/**
+	 * While beside the video: follows it. Another video (the next one, a playlist moving on) gets its
+	 * comments in the same column, which stays; leaving fullscreen closes the column; a different
+	 * video view taking over (a downloaded video's file after the YouTube page) takes the shrunk
+	 * picture's place.
+	 */
+	private void startDockWatch() {
+		binderListener = new FermataServiceUiBinder.Listener() {
+			@Override
+			public void onPlayableChanged(PlayableItem oldItem, PlayableItem newItem) {
+				// Posted and delayed: the page reports the new video's identity a moment later.
+				handler.removeCallbacks(dockWatch);
+				handler.postDelayed(dockWatch, 400);
+			}
+		};
+		a.getMediaServiceBinder().addBroadcastListener(binderListener);
+		handler.postDelayed(dockWatch, 1000);
+	}
+
+	private void stopDockWatch() {
+		handler.removeCallbacks(dockWatch);
+		if (binderListener != null) {
+			a.getMediaServiceBinder().removeBroadcastListener(binderListener);
+			binderListener = null;
+		}
+	}
+
+	private void watchDock() {
+		if (destroyed || dismissing) return;
+		handler.removeCallbacks(dockWatch);
+		if (!a.isVideoMode()) {
+			// A page switching videos can drop out of fullscreen for a moment: only a second miss counts.
+			if (++notInVideo >= 2) {
+				dismiss();
+				return;
+			}
+		} else {
+			notInVideo = 0;
+			VideoView now = a.getActiveVideoView();
+			if ((now != null) && (now != splitView)) {
+				if (splitView != null) splitView.setSplitShare(0f);
+				splitView = now;
+				applyVideoSplit();
+			}
+			PlayableItem pi = Action.getFavoritableItem(a);
+			String id = YtDownloads.videoIdOf(pi);
+			if ((id != null) && !id.equals(videoId)) switchVideo(id, pi.getName());
+		}
+		handler.postDelayed(dockWatch, 1000);
+	}
+
+	/** The column stays and loads the comments of the video that came on. */
+	private void switchVideo(String id, String title) {
+		videoId = id;
+		videoTitle = title;
+		videoLine.setText(title);
+		titleView.setText(R.string.yt_comments);
+		count = null;
+		createParams = null;
+		sortTopToken = null;
+		sortNewToken = null;
+		sortingNew = false;
+		updateSortRow();
+		if (input != null) {
+			hideKeyboard();
+			input.setText("");
+		}
+		loadFirst(null);
+	}
+
+	/** Shows or hides the placeholder rows, the real list fading in as they go. */
+	private void showSkeleton(boolean show) {
+		CommentsSkeletonView sk = skeleton;
+		if (sk == null) return;
+		if (show) {
+			sk.animate().cancel();
+			list.animate().cancel();
+			sk.setAlpha(1f);
+			sk.setVisibility(View.VISIBLE);
+			list.setAlpha(1f);
+		} else if (sk.getVisibility() == View.VISIBLE) {
+			sk.animate().alpha(0f).setDuration(160).withEndAction(() -> sk.setVisibility(View.GONE)).start();
+			list.setAlpha(0f);
+			list.animate().alpha(1f).setDuration(240).start();
+		}
+	}
+
+	// ---------------------------------------------------------------------------------------------
 	// Closing
 
 	private void dismiss() {
 		if (dismissing) return;
 		dismissing = true;
 		cleanUp();
+		if (docked) {
+			closeDock();
+			return;
+		}
 		overlay.animate().alpha(0f).setDuration(180).start();
 		card.animate().translationY(dp(120)).alpha(0f).setDuration(200)
 				.setInterpolator(new AccelerateInterpolator(1.4f)).withEndAction(this::remove).start();
@@ -1090,6 +1409,7 @@ public final class YoutubeCommentsView {
 
 	private void cleanUp() {
 		destroyed = true;
+		stopDockWatch();
 		executor.shutdownNow();
 		handler.removeCallbacksAndMessages(null);
 		if ((keyboardListener != null) && overlay.getViewTreeObserver().isAlive()) {
@@ -1098,6 +1418,8 @@ public final class YoutubeCommentsView {
 	}
 
 	private void remove() {
+		if (splitView != null) splitView.setSplitShare(0f);
+		splitView = null;
 		host.removeView(overlay);
 		images.evictAll();
 		if (open == this) open = null;

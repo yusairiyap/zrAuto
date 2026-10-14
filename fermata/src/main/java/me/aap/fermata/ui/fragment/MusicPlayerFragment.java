@@ -83,6 +83,8 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.view.EffectsUi;
+import me.aap.fermata.ui.view.LyricsCard;
+import me.aap.fermata.ui.view.LyricsView;
 import me.aap.fermata.ui.view.InfoOverlayView;
 import me.aap.fermata.ui.view.ToolBarPill;
 import me.aap.fermata.ui.view.LoadingDimView;
@@ -149,6 +151,13 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private TextView favoriteChip;
 	private TextView playlistChip;
 	private TextView timerChip;
+	private TextView lyricsChip;
+	/** The lyrics over the cover (a dark veil and the lines), null before the view exists. */
+	@Nullable
+	private FrameLayout lyricsOverlay;
+	private final PreferenceStore.Listener lyricsPrefs = (store, prefs) -> {
+		if (prefs.contains(MainActivityPrefs.LYRICS_ON)) updateLyrics(true);
+	};
 	private final Runnable timerChipTask = this::updateTimerChip;
 	private View queuePanel;
 	private View queueDismiss;
@@ -289,6 +298,17 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		playlistChip.setOnClickListener(v -> onPlaylistTap());
 		timerChip = view.findViewById(R.id.music_timer_button);
 		timerChip.setOnClickListener(v -> onMore(true));
+		lyricsChip = view.findViewById(R.id.music_lyrics_button);
+		lyricsChip.setOnClickListener(v -> {
+			boolean on = !a.getPrefs().getBooleanPref(MainActivityPrefs.LYRICS_ON);
+			a.getPrefs().applyBooleanPref(MainActivityPrefs.LYRICS_ON, on);
+		});
+		// Held: the lyrics in their own card.
+		lyricsChip.setOnLongClickListener(v -> {
+			LyricsCard.show(a);
+			return true;
+		});
+		addLyricsOverlay(a, view.findViewById(R.id.music_art_card));
 		// Effects sits on the row itself when there's room for it, else only behind the more button.
 		// Decided after the row's layout, not inside it: a chip shown or hidden from within the row's
 		// own layout pass asked for a layout the row never got (it still counted as being laid out),
@@ -515,6 +535,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		setListening(false);
 		stopProgress();
 		if (content != null) content.getViewTreeObserver().removeOnPreDrawListener(insetSync);
+		getActivityDelegate().getPrefs().removeBroadcastListener(lyricsPrefs);
+		lyricsOverlay = null;
 		if (insetAnim != null) insetAnim.cancel();
 		insetAnim = null;
 		insetsSet = false;
@@ -1422,10 +1444,16 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 							velocity.recycle();
 							velocity = null;
 						}
-						if (!dragging) return true;
+						boolean cancel = e.getActionMasked() == MotionEvent.ACTION_CANCEL;
+						if (!dragging) {
+							// A tap on the cover while lyrics are on it opens them in their own card.
+							if (!cancel && (Math.hypot(e.getRawX() - startX, e.getRawY() - startY) < slop)) {
+								onArtTap();
+							}
+							return true;
+						}
 						dragging = false;
 						float dx = v.getTranslationX();
-						boolean cancel = e.getActionMasked() == MotionEvent.ACTION_CANCEL;
 						boolean flung = (Math.abs(speed) > fling) && (Math.signum(speed) == Math.signum(dx));
 						if (!cancel && ((Math.abs(dx) > v.getWidth() / 3f) || flung) && canSwipeTrack()) {
 							swipeTrack(v, dx < 0);
@@ -1762,8 +1790,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	 * long timer countdown or the Video chip appearing makes room again.
 	 */
 	private void updateEffectsChip(ViewGroup row, boolean animate) {
-		TextView[] optional = {effectsButton, favoriteChip, playlistChip, timerChip};
-		if ((effectsButton == null) || (timerChip == null) || (row.getWidth() <= 0)) return;
+		TextView[] optional = {effectsButton, favoriteChip, playlistChip, timerChip, lyricsChip};
+		if ((effectsButton == null) || (timerChip == null) || (lyricsChip == null) ||
+				(row.getWidth() <= 0)) return;
 		float density = getResources().getDisplayMetrics().density;
 		int avail = row.getWidth() - row.getPaddingLeft() - row.getPaddingRight() -
 				Math.round(24 * density);
@@ -1865,6 +1894,59 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			showMessage(getString(R.string.favorites_nothing_playing));
 		} else {
 			me.aap.fermata.action.Action.toggleCurrentFavorite(a);
+		}
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Lyrics
+
+	/**
+	 * The lyrics over the cover: a dark veil so the lines read on any picture, and the lines on it.
+	 * It takes no touches itself (the cover's swipe and tap see them), and is only there while the
+	 * Lyrics chip is on. Under the cover's loading dim and message.
+	 */
+	private void addLyricsOverlay(MainActivityDelegate a, ViewGroup artCard) {
+		FrameLayout overlay = new FrameLayout(requireContext());
+		overlay.setBackgroundColor(0xA6000000);
+		LyricsView lv = new LyricsView(requireContext(), a, 0xFFFFFFFF, 0xFFFFFFFF, true);
+		lv.setInteractive(false);
+		overlay.addView(lv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.MATCH_PARENT));
+		overlay.setVisibility(View.GONE);
+		overlay.setAlpha(0f);
+		artCard.addView(overlay, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.MATCH_PARENT));
+		lyricsOverlay = overlay;
+		a.getPrefs().addBroadcastListener(lyricsPrefs);
+		updateLyrics(false);
+	}
+
+	/** Shows or hides the lyrics over the cover as the chip says, and the chip with it. */
+	private void updateLyrics(boolean animate) {
+		FrameLayout o = lyricsOverlay;
+		if ((o == null) || (lyricsChip == null)) return;
+		boolean on = getActivityDelegate().getPrefs().getBooleanPref(MainActivityPrefs.LYRICS_ON);
+		int color = on ? EffectsUi.accent(palette) : paletteColor(R.attr.musicTextPrimary);
+		lyricsChip.setTextColor(color);
+		lyricsChip.setCompoundDrawableTintList(ColorStateList.valueOf(
+				on ? color : paletteColor(R.attr.musicIconPrimary)));
+		o.animate().cancel();
+		if (on) {
+			o.setVisibility(View.VISIBLE);
+			if (animate) o.animate().alpha(1f).setDuration(260).start();
+			else o.setAlpha(1f);
+		} else if (animate && (o.getVisibility() == View.VISIBLE)) {
+			o.animate().alpha(0f).setDuration(200).withEndAction(() -> o.setVisibility(View.GONE)).start();
+		} else {
+			o.setAlpha(0f);
+			o.setVisibility(View.GONE);
+		}
+	}
+
+	/** A tap on the cover (not a swipe): with lyrics on it, they open in their own card. */
+	private void onArtTap() {
+		if ((lyricsOverlay != null) && (lyricsOverlay.getVisibility() == View.VISIBLE)) {
+			LyricsCard.show(getActivityDelegate());
 		}
 	}
 
