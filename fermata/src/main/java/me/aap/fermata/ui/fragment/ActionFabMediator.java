@@ -64,6 +64,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		a.getMediaSessionCallback().addBroadcastListener(this);
 		// A new track: the lyrics / captions icon follows at once (see updateIcon).
 		a.getMediaServiceBinder().addBroadcastListener(trackListener);
+		a.getPrefs().addBroadcastListener(switchListener);
 	}
 
 	@Override
@@ -72,6 +73,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		MainActivityDelegate a = MainActivityDelegate.get(fb.getContext());
 		a.getMediaSessionCallback().removeBroadcastListener(this);
 		a.getMediaServiceBinder().removeBroadcastListener(trackListener);
+		a.getPrefs().removeBroadcastListener(switchListener);
 		me.aap.fermata.ytcaptions.CaptionsHub.get().release(captionsListener);
 		if (fab == fb) fab = null;
 	}
@@ -107,6 +109,14 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 					if (fb != null) updateIcon(fb);
 				}
 			};
+	/** The lyrics / captions switch was flipped from anywhere (a key, the tile, the chip): the icon follows. */
+	private final me.aap.utils.pref.PreferenceStore.Listener switchListener = (store, prefs) -> {
+		FloatingButton fb = fab;
+		if ((fb != null) && (prefs.contains(MainActivityPrefs.LYRICS_ON) ||
+				prefs.contains(MainActivityPrefs.CAPTIONS_ON))) {
+			updateIcon(fb);
+		}
+	};
 	/** Whether the captions of what plays are there (or not) changed: the icon's dimming follows. */
 	private final me.aap.fermata.ytcaptions.CaptionsHub.Listener captionsListener =
 			new me.aap.fermata.ytcaptions.CaptionsHub.Listener() {
@@ -159,7 +169,14 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		if (action == Action.YOUTUBE_UP_NEXT) return R.drawable.up_next;
 		if (action == Action.YOUTUBE_COMMENTS) return R.drawable.comments;
 		// Captions over fullscreen video, lyrics anywhere else.
-		if (action == Action.LYRICS) return a.isVideoMode() ? R.drawable.captions : R.drawable.lyrics;
+		// Captions over fullscreen video, lyrics elsewhere; struck through while they are off.
+		if (action == Action.LYRICS) {
+			boolean video = a.isVideoMode();
+			boolean on = a.getPrefs().getBooleanPref(video ? MainActivityPrefs.CAPTIONS_ON :
+					MainActivityPrefs.LYRICS_ON);
+			return video ? (on ? R.drawable.captions : R.drawable.captions_off) :
+					(on ? R.drawable.lyrics : R.drawable.lyrics_off);
+		}
 		if (action == Action.SETTINGS) return R.drawable.settings;
 		if (action == Action.OPEN_FAVORITES) return R.drawable.favorite_filled;
 		if (action == Action.OPEN_PLAYLISTS) return R.drawable.playlist;
