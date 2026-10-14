@@ -12,9 +12,11 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import me.aap.fermata.R;
 import me.aap.fermata.addon.AddonManager;
@@ -114,7 +116,7 @@ final class ShareImporter {
 				return;
 			}
 
-			addToLibrary(con.getMediaSessionCallback().getMediaLib(), offer, dir, files)
+			addToLibrary(con.getMediaSessionCallback().getMediaLib(), offer, dir, files, t)
 					.main().onCompletion((summary, err) -> {
 						con.disconnect();
 
@@ -137,7 +139,8 @@ final class ShareImporter {
 	}
 
 	private static FutureSupplier<String> addToLibrary(MediaLib lib, ShareOffer offer, File dir,
-																										 Map<ShareEntry, File> files) {
+																										 Map<ShareEntry, File> files,
+																										 ShareManager.Transfer t) {
 		Context ctx = lib.getContext();
 		List<ShareEntry> videos = new ArrayList<>();
 		for (ShareEntry e : offer.entries) {
@@ -155,7 +158,7 @@ final class ShareImporter {
 
 		// 2. The YouTube videos, as the items "Add to playlist" makes.
 		return fileItems.main().then(local -> {
-			if (videos.isEmpty()) return addToPlaylist(lib, name, local);
+			if (videos.isEmpty()) return addToPlaylist(lib, name, local, t);
 			return AddonManager.get().getOrInstallAddon(VideoTitleCache.YOUTUBE_ADDON_CLASS).main()
 					.then(addon -> {
 						if (addon instanceof VideoTitleCache c) {
@@ -172,7 +175,7 @@ final class ShareImporter {
 						List<PlayableItem> all = new ArrayList<>(local);
 						return Async.forEach(e -> lib.getItem("youtube:" + e.videoId).main().onSuccess(i -> {
 							if (i instanceof PlayableItem pi) all.add(pi);
-						}), videos).then(v -> addToPlaylist(lib, name, all));
+						}), videos).then(v -> addToPlaylist(lib, name, all, t));
 					});
 		});
 	}
@@ -210,7 +213,8 @@ final class ShareImporter {
 	}
 
 	private static FutureSupplier<String> addToPlaylist(MediaLib lib, String name,
-																											List<PlayableItem> items) {
+																											List<PlayableItem> items,
+																											ShareManager.Transfer t) {
 		Context ctx = lib.getContext();
 		if (items.isEmpty()) return completed(ctx.getString(R.string.share_saved_nothing));
 
@@ -219,8 +223,24 @@ final class ShareImporter {
 				if ((i instanceof Playlist pl) && name.equals(pl.getName())) return completed(pl);
 			}
 			return lib.getPlaylists().addItem(name);
-		}).main().then(pl -> pl.addItems(items).map(v ->
-				ctx.getString(R.string.share_saved_playlist, items.size(), name)));
+		}).main().then(pl -> pl.getUnsortedChildren().main().then(children -> {
+			// What is in the playlist already is not added again (see Playlist#addItems): counted, so
+			// the sender can be told.
+			Set<String> have = new HashSet<>();
+			for (Item c : children) {
+				if (c instanceof PlayableItem p) have.add(p.getOrigId());
+			}
+			int n = 0;
+			for (PlayableItem i : items) {
+				if (have.contains(i.getOrigId())) n++;
+			}
+			int dups = n;
+			int fresh = items.size() - dups;
+			t.duplicates = dups;
+			return pl.addItems(items).map(v -> (dups == 0) ?
+					ctx.getString(R.string.share_saved_playlist, items.size(), name) :
+					ctx.getString(R.string.share_saved_playlist_dups, fresh, name, dups));
+		}));
 	}
 
 	private static FutureSupplier<BrowsableItem> findFolder(MediaLib lib, File dir) {

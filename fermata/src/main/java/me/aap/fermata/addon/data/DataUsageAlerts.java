@@ -49,7 +49,8 @@ public final class DataUsageAlerts implements DataUsageTracker.AlertListener, Ac
 	private static final long VIDEO_BANNER_MS = 6000;
 	private final MainActivityDelegate activity;
 	private final Runnable usageListener = this::update;
-	private final Runnable autoHide = () -> hideBanner(true);
+	// Having shown for its few seconds over video counts as seen: it is not shown again.
+	private final Runnable autoHide = this::autoHideBanner;
 	private final ViewTreeObserver.OnGlobalLayoutListener layoutListener = this::updateGate;
 	@Nullable
 	private View banner;
@@ -57,8 +58,10 @@ public final class DataUsageAlerts implements DataUsageTracker.AlertListener, Ac
 	private View gate;
 	@Nullable
 	private ViewGroup root;
-	// The level the banner was closed at; it stays closed until another tab or a higher level.
-	private int dismissedLevel = LEVEL_OK;
+	// The level the banner was closed at; it stays closed for as long as the app runs (any tab, either
+	// screen), coming back only for a higher level, a playback pause at the limit, or once usage
+	// has dropped back under the warning (a new cycle) -- and so on the next start of the app.
+	private static int dismissedLevel = LEVEL_OK;
 	private int shownLevel = LEVEL_OK;
 	private boolean bannerShown;
 
@@ -94,8 +97,6 @@ public final class DataUsageAlerts implements DataUsageTracker.AlertListener, Ac
 	@Override
 	public void onActivityEvent(ActivityDelegate a, long e) {
 		if (e == FRAGMENT_CHANGED) {
-			// "Every tab": a banner closed on one tab shows again on the next.
-			dismissedLevel = LEVEL_OK;
 			update();
 		} else if (e == ACTIVITY_DESTROY) {
 			detach();
@@ -114,9 +115,14 @@ public final class DataUsageAlerts implements DataUsageTracker.AlertListener, Ac
 
 	@Override
 	public void onDataAlert(int level, boolean crossed, boolean paused) {
-		if (crossed || paused) dismissedLevel = LEVEL_OK;
+		if (paused) dismissedLevel = LEVEL_OK;
 		updateBanner();
 		updateGate();
+	}
+
+	private void autoHideBanner() {
+		dismissedLevel = shownLevel;
+		hideBanner(true);
 	}
 
 	private void update() {
@@ -131,6 +137,7 @@ public final class DataUsageAlerts implements DataUsageTracker.AlertListener, Ac
 	private void updateBanner() {
 		DataUsageTracker t = DataUsageTracker.get();
 		int level = t.getLevel();
+		if (level == LEVEL_OK) dismissedLevel = LEVEL_OK;
 
 		// Not on the Data Usage tab (it shows all of this itself) nor in Settings (where it would
 		// only cover the very options it's about): on every other tab.

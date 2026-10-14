@@ -510,6 +510,7 @@ public final class MusicPlayer {
 
 	private static void play(MainActivityDelegate a, List<? extends PlayableItem> items,
 													 int startIdx, boolean show) {
+		markStarted();
 		MusicQueue q = getQueue(a);
 		if ((q == null) || items.isEmpty()) return;
 		int first = Math.max(0, Math.min(startIdx, items.size() - 1));
@@ -549,6 +550,26 @@ public final class MusicPlayer {
 		if (next) q.addAfter(cur, l);
 		else q.add(l);
 		return true;
+	}
+
+	// Something has played since the app started: from then on the mode in use carries on, and
+	// Settings > Playback's default no longer applies.
+	private static boolean startedThisRun;
+
+	/** Called whenever playback is started by the user, see {@link #tapPlaysAsMusic}. */
+	public static void markStarted() {
+		startedThisRun = true;
+	}
+
+	/**
+	 * Whether tapping a Favorites/Playlist entry plays it as music: the Music tab is what's playing
+	 * (so the mode in use carries on), or nothing has played yet since the app started and
+	 * Settings &gt; Playback asks for music by default. The item menu offers the other way round.
+	 */
+	public static boolean tapPlaysAsMusic(MainActivityDelegate a) {
+		if (!isEnabled()) return false;
+		if (isMusicModeActive(a)) return true;
+		return !startedThisRun && a.getLib().getPrefs().getPlayAsMusicByDefaultPref();
 	}
 
 	/**

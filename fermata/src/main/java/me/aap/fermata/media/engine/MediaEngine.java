@@ -126,6 +126,20 @@ public interface MediaEngine extends Closeable {
 		then.run();
 	}
 
+	/**
+	 * Fades the sound out over {@code ms}, then runs {@code then} -- the sleep timer's slow fade
+	 * before it pauses. An engine that can't fade (or isn't playing) runs it at once. The sound is
+	 * left down; {@link #abortFadeOut()} brings it back if {@code then} is not going to pause.
+	 */
+	default void fadeOut(long ms, Runnable then) {
+		then.run();
+	}
+
+	/** Ends a {@link #fadeOut(long, Runnable)} still going, without running its follow-up, and restores the volume. */
+	default void abortFadeOut() {
+		restoreVolume();
+	}
+
 	/** Back to the normal volume after a {@link #fadeOut} whose follow-up did not replace this engine. */
 	default void restoreVolume() {
 	}

@@ -384,12 +384,12 @@ public class VideoView extends FrameLayout
 	public void refreshInfoOverlay() {
 		getActivity().onSuccess(a -> {
 			MainActivityPrefs p = a.getPrefs();
-			setInfoOverlay(p.getClockPosPref(), p.getInfoOverlayShowClockPref(),
-					p.getInfoOverlayShowClockIconPref(), p.getInfoOverlayShowBatteryPctPref(),
-					p.getInfoOverlayShowBatteryIconPref(), p.getInfoOverlayShowBatteryTempPref(),
-					p.getInfoOverlayShowTempIconPref(), p.getInfoOverlayShowDistancePref(),
-					p.getInfoOverlayShowDistanceIconPref(),
-					p.getInfoOverlayOnlyWhenControlPanelVisiblePref(), p.getInfoOverlaySizePref());
+			setInfoOverlay(p.getClockPosPref(a), p.getInfoOverlayShowClockPref(a),
+					p.getInfoOverlayShowClockIconPref(a), p.getInfoOverlayShowBatteryPctPref(a),
+					p.getInfoOverlayShowBatteryIconPref(a), p.getInfoOverlayShowBatteryTempPref(a),
+					p.getInfoOverlayShowTempIconPref(a), p.getInfoOverlayShowDistancePref(a),
+					p.getInfoOverlayShowDistanceIconPref(a),
+					p.getInfoOverlayOnlyWhenControlPanelVisiblePref(a), p.getInfoOverlaySizePref(a));
 		});
 	}
 
@@ -398,9 +398,10 @@ public class VideoView extends FrameLayout
 														 boolean showTempIcon, boolean showDistance, boolean showDistanceIcon,
 														 boolean onlyWhenControlPanelVisible, float size) {
 		MainActivityPrefs mp = MainActivityPrefs.get();
-		boolean dataUsage = mp.getInfoOverlayShowDataUsagePref();
-		boolean dataRemaining = mp.getInfoOverlayShowDataRemainingPref();
-		boolean downloaded = mp.getInfoOverlayShowDownloadedPref();
+		MainActivityDelegate ad = getActivity().peek();
+		boolean dataUsage = mp.getInfoOverlayShowDataUsagePref(ad);
+		boolean dataRemaining = mp.getInfoOverlayShowDataRemainingPref(ad);
+		boolean downloaded = mp.getInfoOverlayShowDownloadedPref(ad);
 		boolean show = (pos != MainActivityPrefs.CLOCK_POS_NONE) &&
 				(showClock || showBatteryPct || showBatteryTemp || showDistance || dataUsage ||
 						dataRemaining || downloaded);
@@ -451,10 +452,10 @@ public class VideoView extends FrameLayout
 		infoOverlay.setLayoutParams(lp);
 		infoOverlay.setSize(size);
 		infoOverlay.setOnlyWhenControlPanelVisible(onlyWhenControlPanelVisible);
-		infoOverlay.setOrder(mp.getInfoOverlayOrderPref());
+		infoOverlay.setOrder(mp.getInfoOverlayOrderPref(ad));
 		infoOverlay.setItems(showClock, showClockIcon, showBatteryPct, showBatteryIcon, showBatteryTemp,
 				showTempIcon, showDistance, showDistanceIcon);
-		infoOverlay.setDataItems(dataUsage, dataRemaining, mp.getInfoOverlayShowDataIconPref());
+		infoOverlay.setDataItems(dataUsage, dataRemaining, mp.getInfoOverlayShowDataIconPref(ad));
 		infoOverlay.setDownloadedItem(downloaded);
 	}
 
@@ -681,6 +682,10 @@ public class VideoView extends FrameLayout
 		int width;
 		int height;
 		int scale = item.getPrefs().getVideoScalePref();
+		// In a picture-in-picture window the picture just fits it (its ratio is the video's), whatever
+		// scale the item uses on a full screen.
+		MainActivityDelegate ad = getActivity().peek();
+		if ((ad != null) && ad.isInPictureInPicture()) scale = SCALE_BEST;
 
 		switch (scale) {
 			case SCALE_4_3:
@@ -846,7 +851,7 @@ public class VideoView extends FrameLayout
 
 	@Override
 	public void onPreferenceChanged(PreferenceStore store, List<PreferenceStore.Pref<?>> prefs) {
-		if (!Collections.disjoint(MainActivityPrefs.INFO_OVERLAY_PREFS, prefs)) refreshInfoOverlay();
+		if (!Collections.disjoint(MainActivityPrefs.infoOverlayPrefs(), prefs)) refreshInfoOverlay();
 
 		if (createSurface.isDone() && !Collections.disjoint(prefChange, prefs)) {
 			MainActivityDelegate a = getActivity().peek();

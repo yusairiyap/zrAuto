@@ -706,7 +706,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 				overlayElevation = overlay.getElevation();
 				overlay.setElevation(elevation);
 				// Still constrained to all four parent edges, so it stays centred when the window
-				// shrinks under it -- scaling around its own centre keeps it filling the window.
+				// shrinks under it -- scaling around its own centre keeps the picture filling the window.
 				overlay.setPivotX(width / 2f);
 				overlay.setPivotY(height / 2f);
 			}
@@ -730,7 +730,13 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 			int h = root.getHeight();
 			if ((w == 0) || (h == 0)) return;
 			if (overlay != null) {
-				float s = Math.min(1f, Math.min(w / (float) width, h / (float) height));
+				// The picture is a 16:9 band in the middle of the frozen overlay (a short strip of it on
+				// a portrait phone, with black above and below): scale that band to fill the window,
+				// the window clips the rest. Scaling the whole overlay to fit instead left the
+				// portrait picture tiny in the middle of the landscape window.
+				float bandW = Math.min(width, height * 16f / 9f);
+				float bandH = bandW * 9f / 16f;
+				float s = Math.min(w / bandW, h / bandH);
 				overlay.setScaleX(s);
 				overlay.setScaleY(s);
 			}

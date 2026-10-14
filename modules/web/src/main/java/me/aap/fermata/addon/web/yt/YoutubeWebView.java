@@ -1155,7 +1155,20 @@ public class YoutubeWebView extends FermataWebView {
 		pendingSwitch = null;
 	}
 
+	/** Brings the sound back up after a fade-out that was not followed by a pause or a switch. */
+	void fadeBackIn() {
+		loadUrl("javascript:(function() {\n" +
+				"  " + JS_FIND_VIDEO +
+				"  if (v != null && window.FermataFade) window.FermataFade.fadeIn(v);\n" +
+				"})();");
+	}
+
 	void afterAudioFadeOut(Runnable switchVideo) {
+		afterAudioFadeOut(SWITCH_FADE_OUT_MS, switchVideo);
+	}
+
+	/** As {@link #afterAudioFadeOut(Runnable)}, with the fade taking {@code ms}. */
+	void afterAudioFadeOut(int ms, Runnable switchVideo) {
 		// A newer switch (rapid repeated skips) supersedes one still waiting on its fade -- only the
 		// last requested video should actually be navigated to.
 		int gen = ++switchGeneration;
@@ -1164,7 +1177,7 @@ public class YoutubeWebView extends FermataWebView {
 		evaluateJavascript("(function() {\n" +
 				"  " + JS_FIND_VIDEO +
 				"  return !!(window.FermataFade && v && window.FermataFade.fadeOut(v, " +
-				SWITCH_FADE_OUT_MS + "));\n" +
+				ms + "));\n" +
 				"})();", result -> {
 			if (gen != switchGeneration) return;
 			if ("true".equals(result)) {
@@ -1172,7 +1185,7 @@ public class YoutubeWebView extends FermataWebView {
 					pendingSwitch = null;
 					switchVideo.run();
 				};
-				postDelayed(pendingSwitch, SWITCH_FADE_OUT_MS);
+				postDelayed(pendingSwitch, ms);
 			} else {
 				switchVideo.run();
 			}

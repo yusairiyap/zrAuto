@@ -256,6 +256,22 @@ public abstract class MediaEngineBase implements MediaEngine {
 		fadeTo(0f, FADE_OUT_MS, then, false);
 	}
 
+	@Override
+	public void fadeOut(long ms, Runnable then) {
+		cancelFade();
+		if (!isPlaying() || !supportsFade() || (volumeTarget <= 0f)) {
+			then.run();
+			return;
+		}
+		fadeTo(0f, ms, then, false);
+	}
+
+	@Override
+	public void abortFadeOut() {
+		cancelFade();
+		applyVolume(volumeTarget);
+	}
+
 	/** Ramps the volume to {@code to} over {@code ms}, then runs {@code done}. */
 	private void fadeTo(float to, long ms, @Nullable Runnable done, boolean isPause) {
 		float from = volumeNow;

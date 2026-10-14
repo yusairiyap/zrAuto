@@ -109,6 +109,18 @@ public final class BackupManager {
 			if (done != null) done.run();
 			return;
 		}
+		// Never twice in one interval: a start of the app or a stray alarm soon after the last backup
+		// (however it came about) just waits for the next planned time.
+		long last = ps.getLongPref(AUTO_BACKUP_LAST);
+		long gap = INTERVAL_DAYS[clampIdx(ps.getIntPref(AUTO_BACKUP_INTERVAL), INTERVAL_DAYS.length)] *
+				24L * 3600_000L - 6L * 3600_000L;
+		if ((last != 0) && (System.currentTimeMillis() - last < gap)) {
+			DiagnosticLog.log(TAG, "skipped (" + why + "), the last backup was only " +
+					((System.currentTimeMillis() - last) / 60_000L) + " min ago");
+			schedule(ctx.getApplicationContext());
+			if (done != null) done.run();
+			return;
+		}
 		if (!running.compareAndSet(false, true)) {
 			DiagnosticLog.log(TAG, "skipped (" + why + "), another backup is running");
 			if (done != null) done.run();

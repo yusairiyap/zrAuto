@@ -1055,6 +1055,18 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	@Override
+	public void fadeOut(long ms, Runnable then) {
+		// The page's own fade; pausing afterwards is the caller's.
+		web.afterAudioFadeOut((int) ms, then);
+	}
+
+	@Override
+	public void abortFadeOut() {
+		web.cancelPendingSwitch();
+		web.fadeBackIn();
+	}
+
+	@Override
 	public PlayableItem getSource() {
 		return current;
 	}

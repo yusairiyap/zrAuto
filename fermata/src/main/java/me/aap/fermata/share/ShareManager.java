@@ -105,6 +105,8 @@ public final class ShareManager {
 		/** What the receiver made of it, once saved; for the done message. */
 		@Nullable
 		public volatile String result;
+		/** How many of the items were already in the receiver's playlist, so not added again. */
+		public volatile int duplicates;
 		volatile boolean cancelled;
 		@Nullable
 		volatile Socket socket;
@@ -386,8 +388,16 @@ public final class ShareManager {
 			t.state = State.SAVING;
 			changed(true);
 			s.setSoTimeout(ANSWER_TIMEOUT);
-			finish(t, (in.readByte() == 1) ? State.DONE : State.FAILED,
-					null);
+			boolean ok = in.readByte() == 1;
+			if (ok) {
+				// Newer receivers add how many were duplicates; an older one just closes.
+				try {
+					t.duplicates = Math.max(0, in.readInt());
+				} catch (IOException ex) {
+					t.duplicates = 0;
+				}
+			}
+			finish(t, ok ? State.DONE : State.FAILED, null);
 		} catch (Exception ex) {
 			if (t.cancelled) {
 				finish(t, State.CANCELLED, null);
@@ -494,6 +504,7 @@ public final class ShareManager {
 				executor.execute(() -> {
 					try {
 						out.writeByte(ok ? 1 : 0);
+						if (ok) out.writeInt(tr.duplicates);
 						out.flush();
 					} catch (IOException ex) {
 						Log.w("Share: could not confirm: ", ex);

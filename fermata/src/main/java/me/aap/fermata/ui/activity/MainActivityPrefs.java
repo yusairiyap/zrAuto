@@ -230,6 +230,64 @@ public interface MainActivityPrefs
 			INFO_OVERLAY_SHOW_DISTANCE_ICON, INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE,
 			INFO_OVERLAY_SIZE, INFO_OVERLAY_SHOW_DATA_USAGE, INFO_OVERLAY_SHOW_DATA_REMAINING,
 			INFO_OVERLAY_SHOW_DATA_ICON, INFO_OVERLAY_SHOW_DOWNLOADED);
+	// The car screen's own Info Overlay settings (the phone's are the plain ones above), so the two
+	// screens can show different items; copied from the phone's once, see INFO_OVERLAY_AA_MIGRATED.
+	Pref<IntSupplier> CLOCK_POS_AA = AUTO ? Pref.i("CLOCK_POS_AA", CLOCK_POS_NONE) : null;
+	Pref<Supplier<String>> INFO_OVERLAY_ORDER_AA = AUTO ? Pref.s("INFO_OVERLAY_ORDER_AA", "") : null;
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_CLOCK_AA = AUTO ? Pref.b("INFO_OVERLAY_SHOW_CLOCK_AA", true) : null;
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_CLOCK_ICON_AA = AUTO ? Pref.b("INFO_OVERLAY_SHOW_CLOCK_ICON_AA", true) : null;
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_BATTERY_PCT_AA = AUTO ? Pref.b("INFO_OVERLAY_SHOW_BATTERY_PCT_AA", false) : null;
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_BATTERY_ICON_AA = AUTO ? Pref.b("INFO_OVERLAY_SHOW_BATTERY_ICON_AA", true) : null;
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_BATTERY_TEMP_AA = AUTO ? Pref.b("INFO_OVERLAY_SHOW_BATTERY_TEMP_AA", false) : null;
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_TEMP_ICON_AA = AUTO ? Pref.b("INFO_OVERLAY_SHOW_TEMP_ICON_AA", true) : null;
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DISTANCE_AA = AUTO ? Pref.b("INFO_OVERLAY_SHOW_DISTANCE_AA", false) : null;
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DISTANCE_ICON_AA = AUTO ? Pref.b("INFO_OVERLAY_SHOW_DISTANCE_ICON_AA", true) : null;
+	Pref<BooleanSupplier> INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE_AA = AUTO ? Pref.b("INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE_AA", false) : null;
+	Pref<DoubleSupplier> INFO_OVERLAY_SIZE_AA = AUTO ? Pref.f("INFO_OVERLAY_SIZE_AA", 1f) : null;
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DATA_USAGE_AA = AUTO ? Pref.b("INFO_OVERLAY_SHOW_DATA_USAGE_AA", false) : null;
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DATA_REMAINING_AA = AUTO ? Pref.b("INFO_OVERLAY_SHOW_DATA_REMAINING_AA", false) : null;
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DATA_ICON_AA = AUTO ? Pref.b("INFO_OVERLAY_SHOW_DATA_ICON_AA", true) : null;
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DOWNLOADED_AA = AUTO ? Pref.b("INFO_OVERLAY_SHOW_DOWNLOADED_AA", false) : null;
+	Pref<BooleanSupplier> INFO_OVERLAY_AA_MIGRATED =
+			AUTO ? Pref.b("INFO_OVERLAY_AA_MIGRATED", false) : null;
+
+	/** The Android Auto twin of an Info Overlay pref, or null if it has none. */
+	@Nullable
+	static Pref<?> infoAA(Pref<?> p) {
+		if (!AUTO) return null;
+		if (p == CLOCK_POS) return CLOCK_POS_AA;
+		if (p == INFO_OVERLAY_ORDER) return INFO_OVERLAY_ORDER_AA;
+		if (p == INFO_OVERLAY_SHOW_CLOCK) return INFO_OVERLAY_SHOW_CLOCK_AA;
+		if (p == INFO_OVERLAY_SHOW_CLOCK_ICON) return INFO_OVERLAY_SHOW_CLOCK_ICON_AA;
+		if (p == INFO_OVERLAY_SHOW_BATTERY_PCT) return INFO_OVERLAY_SHOW_BATTERY_PCT_AA;
+		if (p == INFO_OVERLAY_SHOW_BATTERY_ICON) return INFO_OVERLAY_SHOW_BATTERY_ICON_AA;
+		if (p == INFO_OVERLAY_SHOW_BATTERY_TEMP) return INFO_OVERLAY_SHOW_BATTERY_TEMP_AA;
+		if (p == INFO_OVERLAY_SHOW_TEMP_ICON) return INFO_OVERLAY_SHOW_TEMP_ICON_AA;
+		if (p == INFO_OVERLAY_SHOW_DISTANCE) return INFO_OVERLAY_SHOW_DISTANCE_AA;
+		if (p == INFO_OVERLAY_SHOW_DISTANCE_ICON) return INFO_OVERLAY_SHOW_DISTANCE_ICON_AA;
+		if (p == INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE) return INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE_AA;
+		if (p == INFO_OVERLAY_SIZE) return INFO_OVERLAY_SIZE_AA;
+		if (p == INFO_OVERLAY_SHOW_DATA_USAGE) return INFO_OVERLAY_SHOW_DATA_USAGE_AA;
+		if (p == INFO_OVERLAY_SHOW_DATA_REMAINING) return INFO_OVERLAY_SHOW_DATA_REMAINING_AA;
+		if (p == INFO_OVERLAY_SHOW_DATA_ICON) return INFO_OVERLAY_SHOW_DATA_ICON_AA;
+		if (p == INFO_OVERLAY_SHOW_DOWNLOADED) return INFO_OVERLAY_SHOW_DOWNLOADED_AA;
+		return null;
+	}
+
+	/** An Info Overlay pref as it applies to {@code a}: its Android Auto twin on the car screen. */
+	@SuppressWarnings("unchecked")
+	static <S> Pref<S> info(@Nullable MainActivityDelegate a, Pref<S> p) {
+		if (!AUTO || (a == null) || !a.isCarActivity()) return p;
+		Pref<?> aa = infoAA(p);
+		return (aa == null) ? p : (Pref<S>) aa;
+	}
+
+	/** Every Info Overlay pref, phone and car, for the views showing it to follow. */
+	static Set<Pref<?>> infoOverlayPrefs() {
+		java.util.HashSet<Pref<?>> all = new java.util.HashSet<>(INFO_OVERLAY_PREFS);
+		if (AUTO) for (Pref<?> p : INFO_OVERLAY_PREFS) all.add(infoAA(p));
+		return all;
+	}
 	Pref<IntSupplier> LOCALE =
 			Pref.i("LOCALE", () -> Lang.get(Locale.getDefault().getLanguage()).ordinal());
 
@@ -598,44 +656,44 @@ public interface MainActivityPrefs
 		return a.getPrefs().getStringPref(VOICE_CONTROL_LANG);
 	}
 
-	default int getClockPosPref() {
-		return getIntPref(CLOCK_POS);
+	default int getClockPosPref(MainActivityDelegate a) {
+		return getIntPref(info(a, CLOCK_POS));
 	}
 
-	default boolean getInfoOverlayShowClockPref() {
-		return getBooleanPref(INFO_OVERLAY_SHOW_CLOCK);
+	default boolean getInfoOverlayShowClockPref(MainActivityDelegate a) {
+		return getBooleanPref(info(a, INFO_OVERLAY_SHOW_CLOCK));
 	}
 
-	default boolean getInfoOverlayShowBatteryPctPref() {
-		return getBooleanPref(INFO_OVERLAY_SHOW_BATTERY_PCT);
+	default boolean getInfoOverlayShowBatteryPctPref(MainActivityDelegate a) {
+		return getBooleanPref(info(a, INFO_OVERLAY_SHOW_BATTERY_PCT));
 	}
 
-	default boolean getInfoOverlayShowBatteryTempPref() {
-		return getBooleanPref(INFO_OVERLAY_SHOW_BATTERY_TEMP);
+	default boolean getInfoOverlayShowBatteryTempPref(MainActivityDelegate a) {
+		return getBooleanPref(info(a, INFO_OVERLAY_SHOW_BATTERY_TEMP));
 	}
 
-	default boolean getInfoOverlayShowClockIconPref() {
-		return getBooleanPref(INFO_OVERLAY_SHOW_CLOCK_ICON);
+	default boolean getInfoOverlayShowClockIconPref(MainActivityDelegate a) {
+		return getBooleanPref(info(a, INFO_OVERLAY_SHOW_CLOCK_ICON));
 	}
 
-	default boolean getInfoOverlayShowBatteryIconPref() {
-		return getBooleanPref(INFO_OVERLAY_SHOW_BATTERY_ICON);
+	default boolean getInfoOverlayShowBatteryIconPref(MainActivityDelegate a) {
+		return getBooleanPref(info(a, INFO_OVERLAY_SHOW_BATTERY_ICON));
 	}
 
-	default boolean getInfoOverlayShowTempIconPref() {
-		return getBooleanPref(INFO_OVERLAY_SHOW_TEMP_ICON);
+	default boolean getInfoOverlayShowTempIconPref(MainActivityDelegate a) {
+		return getBooleanPref(info(a, INFO_OVERLAY_SHOW_TEMP_ICON));
 	}
 
-	default boolean getInfoOverlayOnlyWhenControlPanelVisiblePref() {
-		return getBooleanPref(INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE);
+	default boolean getInfoOverlayOnlyWhenControlPanelVisiblePref(MainActivityDelegate a) {
+		return getBooleanPref(info(a, INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE));
 	}
 
-	default boolean getInfoOverlayShowDistancePref() {
-		return getBooleanPref(INFO_OVERLAY_SHOW_DISTANCE);
+	default boolean getInfoOverlayShowDistancePref(MainActivityDelegate a) {
+		return getBooleanPref(info(a, INFO_OVERLAY_SHOW_DISTANCE));
 	}
 
-	default boolean getInfoOverlayShowDistanceIconPref() {
-		return getBooleanPref(INFO_OVERLAY_SHOW_DISTANCE_ICON);
+	default boolean getInfoOverlayShowDistanceIconPref(MainActivityDelegate a) {
+		return getBooleanPref(info(a, INFO_OVERLAY_SHOW_DISTANCE_ICON));
 	}
 
 	/** Whether the Data Usage addon is on: its overlay items only show while it is. */
@@ -644,28 +702,28 @@ public interface MainActivityPrefs
 		return (m != null) && (m.getAddon(me.aap.fermata.addon.data.DataUsageAddon.class) != null);
 	}
 
-	default boolean getInfoOverlayShowDataUsagePref() {
-		return getBooleanPref(INFO_OVERLAY_SHOW_DATA_USAGE) && dataUsageEnabled();
+	default boolean getInfoOverlayShowDataUsagePref(MainActivityDelegate a) {
+		return getBooleanPref(info(a, INFO_OVERLAY_SHOW_DATA_USAGE)) && dataUsageEnabled();
 	}
 
-	default boolean getInfoOverlayShowDataRemainingPref() {
-		return getBooleanPref(INFO_OVERLAY_SHOW_DATA_REMAINING) && dataUsageEnabled();
+	default boolean getInfoOverlayShowDataRemainingPref(MainActivityDelegate a) {
+		return getBooleanPref(info(a, INFO_OVERLAY_SHOW_DATA_REMAINING)) && dataUsageEnabled();
 	}
 
-	default boolean getInfoOverlayShowDownloadedPref() {
-		return getBooleanPref(INFO_OVERLAY_SHOW_DOWNLOADED);
+	default boolean getInfoOverlayShowDownloadedPref(MainActivityDelegate a) {
+		return getBooleanPref(info(a, INFO_OVERLAY_SHOW_DOWNLOADED));
 	}
 
-	default boolean getInfoOverlayShowDataIconPref() {
-		return getBooleanPref(INFO_OVERLAY_SHOW_DATA_ICON);
+	default boolean getInfoOverlayShowDataIconPref(MainActivityDelegate a) {
+		return getBooleanPref(info(a, INFO_OVERLAY_SHOW_DATA_ICON));
 	}
 
-	default String getInfoOverlayOrderPref() {
-		return getStringPref(INFO_OVERLAY_ORDER);
+	default String getInfoOverlayOrderPref(MainActivityDelegate a) {
+		return getStringPref(info(a, INFO_OVERLAY_ORDER));
 	}
 
-	default float getInfoOverlaySizePref() {
-		return getFloatPref(INFO_OVERLAY_SIZE);
+	default float getInfoOverlaySizePref(MainActivityDelegate a) {
+		return getFloatPref(info(a, INFO_OVERLAY_SIZE));
 	}
 
 	default Locale getLocalePref() {

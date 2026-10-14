@@ -166,6 +166,19 @@ public final class CarNav {
 		root.setTag(R.id.car_nav_wrap, Boolean.TRUE);
 	}
 
+	/**
+	 * Car mode only: selects and outlines the first item of the open scope {@code root} (a picker
+	 * just shown, or a page of it just changed), whatever was selected before.
+	 */
+	public static void selectFirst(@NonNull MainActivityDelegate a, @NonNull View root) {
+		if (!isEnabled() || !root.isAttachedToWindow()) return;
+		Scope s = findScope(a, true);
+		if ((s == null) || (s.root != root)) return;
+		clear();
+		enterScope(s);
+		step(s, 1);
+	}
+
 	/** Leaves {@code v} (and what's in it) out: a button too risky to land on, like Clear. */
 	public static void skip(@Nullable View v) {
 		if (v != null) v.setTag(R.id.car_nav_skip, Boolean.TRUE);

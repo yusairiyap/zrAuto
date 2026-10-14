@@ -96,8 +96,11 @@ public class ShareService extends Service implements ShareManager.Listener {
 	private static String endMessage(Context ctx, ShareManager.Transfer t) {
 		String title = t.offer.title;
 		return switch (t.state) {
-			case DONE -> t.sending ? ctx.getResources().getQuantityString(R.plurals.share_sent_n,
-					t.offer.entries.size(), t.offer.entries.size(), t.peerName) :
+			case DONE -> t.sending ? ((t.duplicates > 0) ?
+					ctx.getString(R.string.share_sent_dups_to, t.offer.entries.size() - t.duplicates,
+							t.duplicates, t.peerName) :
+					ctx.getResources().getQuantityString(R.plurals.share_sent_n,
+							t.offer.entries.size(), t.offer.entries.size(), t.peerName)) :
 					ctx.getString(R.string.share_received, title, (t.result != null) ? t.result : "");
 			case FAILED -> ctx.getString(R.string.share_failed, title, String.valueOf(t.error));
 			case DECLINED -> t.sending ? ctx.getString(R.string.share_declined, t.peerName) : null;

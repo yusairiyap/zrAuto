@@ -51,6 +51,8 @@ public final class SpotifyPlaylistSync {
 
 	private final Handler handler = new Handler(Looper.getMainLooper());
 	private final AtomicBoolean cancelled = new AtomicBoolean();
+	/** "Sync until current": stop matching, keep what is matched so far. */
+	private final AtomicBoolean untilNow = new AtomicBoolean();
 	private final Callback callback;
 	private boolean writing;
 
@@ -73,6 +75,8 @@ public final class SpotifyPlaylistSync {
 		public final int added;
 		/** New Spotify tracks no YouTube video was found for; tried again on the next sync. */
 		public final int missing;
+		/** New Spotify tracks left unmatched because the sync was stopped early; the next sync does them. */
+		public int remaining;
 		@Nullable
 		public final String error;
 		/** The songs that were added, as "title — artists", newest Spotify song first. */
@@ -94,9 +98,13 @@ public final class SpotifyPlaylistSync {
 			return switch (status) {
 				case DONE -> {
 					String s = ctx.getResources().getQuantityString(R.plurals.spotify_sync_added, added, added);
+					if (remaining > 0) s += " " + ctx.getString(R.string.spotify_sync_remaining, remaining);
 					yield (missing > 0) ? s + " " + ctx.getString(R.string.spotify_sync_missing, missing) : s;
 				}
-				case UP_TO_DATE -> (missing > 0) ?
+				case UP_TO_DATE -> (remaining > 0) ?
+						ctx.getString(R.string.spotify_sync_nothing_added) + " " +
+								ctx.getString(R.string.spotify_sync_remaining, remaining) :
+						(missing > 0) ?
 						ctx.getString(R.string.spotify_sync_up_to_date) + " " +
 								ctx.getString(R.string.spotify_sync_missing, missing) :
 						ctx.getString(R.string.spotify_sync_up_to_date);
@@ -122,6 +130,14 @@ public final class SpotifyPlaylistSync {
 	/** Stops as soon as possible; no effect once the matches are being written. */
 	public void cancel() {
 		if (!writing) cancelled.set(true);
+	}
+
+	/**
+	 * Stops matching new tracks on YouTube and adds the ones matched so far; the rest are left for
+	 * the next sync. No effect once the matches are being written.
+	 */
+	public void syncUntilNow() {
+		if (!writing) untilNow.set(true);
 	}
 
 	public boolean isCancellable() {
@@ -194,10 +210,15 @@ public final class SpotifyPlaylistSync {
 			Map<String, Track> byVideo = new HashMap<>();
 			int missing = 0;
 
+			int left = 0;
 			for (int i = 0; i < added.size(); i++) {
 				if (cancelled.get()) {
 					post(new Result(Result.CANCELLED, 0, 0, null));
 					return;
+				}
+				if (untilNow.get()) {
+					left = added.size() - i;
+					break;
 				}
 				Track t = added.get(i);
 				progress(ctx.getString(R.string.spotify_sync_finding, i + 1, added.size(),
@@ -219,7 +240,8 @@ public final class SpotifyPlaylistSync {
 			}
 
 			int nMissing = missing;
-			handler.post(() -> write(ctx, lib, local, name, ref, known, videos, byVideo, nMissing));
+			int nLeft = left;
+			handler.post(() -> write(ctx, lib, local, name, ref, known, videos, byVideo, nMissing, nLeft));
 		} catch (InterruptedException ex) {
 			Thread.currentThread().interrupt();
 			post(new Result(Result.CANCELLED, 0, 0, null));
@@ -235,7 +257,7 @@ public final class SpotifyPlaylistSync {
 	/** On the main thread. */
 	private void write(Context ctx, MediaLib lib, Playlist local, String name, String ref,
 										 Set<String> known, List<Video> videos, Map<String, Track> byVideo,
-										 int missing) {
+										 int missing, int remaining) {
 		if (cancelled.get()) {
 			finish(new Result(Result.CANCELLED, 0, 0, null));
 			return;
@@ -245,7 +267,9 @@ public final class SpotifyPlaylistSync {
 		saveRef(name, ref);
 
 		if (videos.isEmpty()) {
-			finish(new Result(Result.UP_TO_DATE, 0, missing, null));
+			Result r = new Result(Result.UP_TO_DATE, 0, missing, null);
+			r.remaining = remaining;
+			finish(r);
 			return;
 		}
 
@@ -263,7 +287,9 @@ public final class SpotifyPlaylistSync {
 					Track t = byVideo.get(v.videoId);
 					songs.add((t != null) ? t.displayName() : v.title);
 				}
-				finish(new Result(Result.DONE, (n != null) ? n : 0, missing, null, songs));
+				Result r = new Result(Result.DONE, (n != null) ? n : 0, missing, null, songs);
+				r.remaining = remaining;
+				finish(r);
 			}
 		});
 	}

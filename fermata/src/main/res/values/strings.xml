@@ -441,6 +441,9 @@
     <string name="spotify_sync_saving">Adding the new songs…</string>
     <string name="spotify_sync_up_to_date">Already up to date with Spotify.</string>
     <string name="spotify_sync_missing">%d not found on YouTube, will try again next sync.</string>
+    <string name="spotify_sync_remaining">%d more left for the next sync.</string>
+    <string name="spotify_sync_nothing_added">Stopped before any new song was matched.</string>
+    <string name="spotify_sync_until_now">Sync until current</string>
     <string name="spotify_sync_cancelled">Sync cancelled. The playlist is unchanged.</string>
     <string name="spotify_sync_not_found">No Spotify playlist named “%s” in your account.</string>
     <string name="spotify_sync_login">Log in to Spotify (Settings &gt; Other &gt; Import from Spotify) to sync this playlist.</string>
@@ -784,6 +787,9 @@
     <string name="share_notif_many">Sharing, %d transfers</string>
     <string name="share_saved_folder">Saved %1$d files in the Folders tab, “%2$s”.</string>
     <string name="share_saved_playlist">%1$d added to the playlist “%2$s”.</string>
+    <string name="share_saved_playlist_dups">%1$d added to the playlist “%2$s”, %3$d already in it.</string>
+    <string name="share_sent_dups">%1$d sent, %2$d duplicated (already in the playlist).</string>
+    <string name="share_sent_dups_to">%1$d sent to %3$s, %2$d duplicated (already in the playlist).</string>
     <string name="share_saved_nothing">Nothing new to add.</string>
     <plurals name="share_sent_n">
         <item quantity="one">Successfully sent %1$d file to %2$s.</item>
@@ -946,6 +952,9 @@
     <string name="music_queue">Music queue</string>
     <string name="play_as_music">Play as music</string>
     <string name="music_queue_add">Add into queue</string>
+    <string name="default_play_mode">First play after the app starts, as</string>
+    <string name="play_mode_video">Video</string>
+    <string name="play_mode_music">Music</string>
     <string name="play_as_video">Play as video</string>
     <string name="video_queue_nothing_added">Nothing added: only YouTube videos can go into Up next, and it may be full</string>
     <string name="music_up_next">Up next</string>
@@ -1136,7 +1145,7 @@
     <string name="prefs_sub_fab">Extra floating buttons and what each one does</string>
     <string name="prefs_sub_aa">The car screen\'s own look, buttons and cards</string>
     <string name="prefs_sub_keys">What the steering wheel and media keys do, car mode</string>
-    <string name="prefs_sub_playback">What plays when a track ends</string>
+    <string name="prefs_sub_playback">What a tap does, what plays next, and how playlists start</string>
     <string name="prefs_sub_playback_control">Rewind, fast forward and video controls timing</string>
     <string name="prefs_sub_rw_ff_click">How far one press jumps</string>
     <string name="prefs_sub_rw_ff_long_click">How far holding the key jumps</string>

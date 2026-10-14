@@ -436,27 +436,28 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private void applyInfoOverlayPrefs() {
 		InfoOverlayView o = infoOverlay;
 		if (o == null) return;
-		MainActivityPrefs p = getActivityDelegate().getPrefs();
-		boolean clock = p.getInfoOverlayShowClockPref();
-		boolean battery = p.getInfoOverlayShowBatteryPctPref();
-		boolean temp = p.getInfoOverlayShowBatteryTempPref();
-		boolean distance = p.getInfoOverlayShowDistancePref();
-		boolean dataUsage = p.getInfoOverlayShowDataUsagePref();
-		boolean dataRemaining = p.getInfoOverlayShowDataRemainingPref();
-		boolean downloaded = p.getInfoOverlayShowDownloadedPref();
-		boolean show = (p.getClockPosPref() != MainActivityPrefs.CLOCK_POS_NONE) &&
+		MainActivityDelegate ad = getActivityDelegate();
+		MainActivityPrefs p = ad.getPrefs();
+		boolean clock = p.getInfoOverlayShowClockPref(ad);
+		boolean battery = p.getInfoOverlayShowBatteryPctPref(ad);
+		boolean temp = p.getInfoOverlayShowBatteryTempPref(ad);
+		boolean distance = p.getInfoOverlayShowDistancePref(ad);
+		boolean dataUsage = p.getInfoOverlayShowDataUsagePref(ad);
+		boolean dataRemaining = p.getInfoOverlayShowDataRemainingPref(ad);
+		boolean downloaded = p.getInfoOverlayShowDownloadedPref(ad);
+		boolean show = (p.getClockPosPref(ad) != MainActivityPrefs.CLOCK_POS_NONE) &&
 				(clock || battery || temp || distance || dataUsage || dataRemaining || downloaded);
 		// Its holder in portrait (so its padding goes too), the overlay itself in the title bar.
 		View parent = (View) o.getParent();
 		View target = ((parent != null) && (parent.getId() == R.id.music_info_holder)) ? parent : o;
 		target.setVisibility(show ? View.VISIBLE : View.GONE);
 		if (!show) return;
-		o.setSize(p.getInfoOverlaySizePref());
-		o.setOrder(p.getInfoOverlayOrderPref());
-		o.setItems(clock, p.getInfoOverlayShowClockIconPref(), battery,
-				p.getInfoOverlayShowBatteryIconPref(), temp, p.getInfoOverlayShowTempIconPref(), distance,
-				p.getInfoOverlayShowDistanceIconPref());
-		o.setDataItems(dataUsage, dataRemaining, p.getInfoOverlayShowDataIconPref());
+		o.setSize(p.getInfoOverlaySizePref(ad));
+		o.setOrder(p.getInfoOverlayOrderPref(ad));
+		o.setItems(clock, p.getInfoOverlayShowClockIconPref(ad), battery,
+				p.getInfoOverlayShowBatteryIconPref(ad), temp, p.getInfoOverlayShowTempIconPref(ad), distance,
+				p.getInfoOverlayShowDistanceIconPref(ad));
+		o.setDataItems(dataUsage, dataRemaining, p.getInfoOverlayShowDataIconPref(ad));
 		o.setDownloadedItem(downloaded);
 	}
 
@@ -763,7 +764,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	@Override
 	public void onPreferenceChanged(PreferenceStore store, List<PreferenceStore.Pref<?>> prefs) {
 		if (getView() == null) return;
-		if (!Collections.disjoint(MainActivityPrefs.INFO_OVERLAY_PREFS, prefs)) {
+		if (!Collections.disjoint(MainActivityPrefs.infoOverlayPrefs(), prefs)) {
 			applyInfoOverlayPrefs();
 			return;
 		}

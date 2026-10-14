@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Locale;
 import me.aap.utils.function.BooleanSupplier;
 
+import me.aap.fermata.BuildConfig;
 import me.aap.fermata.R;
 import me.aap.fermata.addon.AddonManager;
 import me.aap.fermata.addon.data.DataUsageAddon;
@@ -44,11 +45,32 @@ public class InfoOverlayFragment extends ReorderListFragment {
 
 	@Override
 	public CharSequence getTitle() {
-		return getString(R.string.info_overlay_prefs);
+		String t = getString(R.string.info_overlay_prefs);
+		return aa ? t + " · " + getString(R.string.interface_prefs_aa) : t;
+	}
+
+	/** Editing the car screen's own overlay (Settings &gt; Interface &gt; Android Auto). */
+	private boolean aa;
+
+	/** @param input {@code true} for the car screen's own overlay settings */
+	@Override
+	public void setInput(Object input) {
+		boolean car = BuildConfig.AUTO && Boolean.TRUE.equals(input);
+		if (car == aa) return;
+		aa = car;
+		if (getView() != null) reload();
 	}
 
 	private MainActivityPrefs prefs() {
 		return delegate().getPrefs();
+	}
+
+	/** The pref as this page edits it: the car's twin when editing the car screen's overlay. */
+	@SuppressWarnings("unchecked")
+	private <S> Pref<S> pref(Pref<S> p) {
+		if (!BuildConfig.AUTO || !(aa || delegate().isCarActivity())) return p;
+		Pref<?> twin = MainActivityPrefs.infoAA(p);
+		return (twin == null) ? p : (Pref<S>) twin;
 	}
 
 	// ---- Which pref belongs to which item ----
@@ -127,13 +149,13 @@ public class InfoOverlayFragment extends ReorderListFragment {
 		MainActivityPrefs p = prefs();
 		List<String> offered = available();
 		List<Row> rows = new ArrayList<>();
-		for (String key : InfoOverlayView.parseOrder(p.getInfoOverlayOrderPref())) {
+		for (String key : InfoOverlayView.parseOrder(p.getStringPref(pref(MainActivityPrefs.INFO_OVERLAY_ORDER)))) {
 			if (!offered.contains(key)) continue;
-			boolean shown = p.getBooleanPref(shownPref(key));
+			boolean shown = p.getBooleanPref(pref(shownPref(key)));
 			Pref<? extends BooleanSupplier> ip = iconPref(key);
 			String state = ctx.getString(shown ? R.string.nav_tab_shown : R.string.nav_tab_hidden);
 			if (ip != null) {
-				state += " · " + ctx.getString(p.getBooleanPref(ip) ? R.string.info_row_icon_on :
+				state += " · " + ctx.getString(p.getBooleanPref(pref(ip)) ? R.string.info_row_icon_on :
 						R.string.info_row_icon_off);
 			} else {
 				state += " · " + ctx.getString(R.string.info_row_icon_only);
@@ -147,15 +169,15 @@ public class InfoOverlayFragment extends ReorderListFragment {
 	protected void saveOrder(List<String> keys) {
 		// The items not offered right now (the data ones, with the addon off) keep their place after.
 		List<String> all = new ArrayList<>(keys);
-		for (String k : InfoOverlayView.parseOrder(prefs().getInfoOverlayOrderPref())) {
+		for (String k : InfoOverlayView.parseOrder(prefs().getStringPref(pref(MainActivityPrefs.INFO_OVERLAY_ORDER)))) {
 			if (!all.contains(k)) all.add(k);
 		}
-		prefs().applyStringPref(MainActivityPrefs.INFO_OVERLAY_ORDER, String.join(",", all));
+		prefs().applyStringPref(pref(MainActivityPrefs.INFO_OVERLAY_ORDER), String.join(",", all));
 	}
 
 	@Override
 	protected void setChecked(String key, boolean checked) {
-		prefs().applyBooleanPref(shownPref(key), checked);
+		prefs().applyBooleanPref(pref(shownPref(key)), checked);
 	}
 
 	@Override
@@ -170,16 +192,16 @@ public class InfoOverlayFragment extends ReorderListFragment {
 			b.addItem(View.generateViewId(),
 					shown ? me.aap.utils.R.drawable.check_box : me.aap.utils.R.drawable.check_box_blank,
 					shown ? R.string.info_item_hide : R.string.info_item_show).setHandler(i -> {
-				p.applyBooleanPref(shownPref(key), !shown);
+				p.applyBooleanPref(pref(shownPref(key)), !shown);
 				reload();
 				return true;
 			});
 			if (ip != null) {
-				boolean icon = p.getBooleanPref(ip);
+				boolean icon = p.getBooleanPref(pref(ip));
 				b.addItem(View.generateViewId(),
 						icon ? me.aap.utils.R.drawable.check_box : me.aap.utils.R.drawable.check_box_blank,
 						icon ? R.string.info_icon_hide : R.string.info_icon_show).setHandler(i -> {
-					p.applyBooleanPref(ip, !icon);
+					p.applyBooleanPref(pref(ip), !icon);
 					reload();
 					return true;
 				});
@@ -191,7 +213,7 @@ public class InfoOverlayFragment extends ReorderListFragment {
 	protected void onReset() {
 		MainActivityPrefs p = prefs();
 		try (var e = p.editPreferenceStore()) {
-			for (Pref<?> pref : MainActivityPrefs.INFO_OVERLAY_PREFS) e.removePref(pref);
+			for (Pref<?> pr : MainActivityPrefs.INFO_OVERLAY_PREFS) e.removePref(pref(pr));
 		}
 		syncOptions();
 	}
@@ -214,8 +236,8 @@ public class InfoOverlayFragment extends ReorderListFragment {
 	@Override
 	protected void goBack() {
 		MainActivityDelegate a = delegate();
-		a.showFragment(R.id.settings_fragment, a.isCarActivity() ? SettingsFragment.SHOW_AA_INTERFACE :
-				SettingsFragment.SHOW_INTERFACE);
+		a.showFragment(R.id.settings_fragment, (a.isCarActivity() || aa) ?
+				SettingsFragment.SHOW_AA_INTERFACE : SettingsFragment.SHOW_INTERFACE);
 	}
 
 	@Override
@@ -255,7 +277,7 @@ public class InfoOverlayFragment extends ReorderListFragment {
 			c.setClickable(true);
 			c.setFocusable(true);
 			c.setOnClickListener(v -> {
-				prefs().applyIntPref(MainActivityPrefs.CLOCK_POS, pos);
+				prefs().applyIntPref(pref(MainActivityPrefs.CLOCK_POS), pos);
 				syncOptions();
 			});
 			posChips.add(c);
@@ -266,12 +288,12 @@ public class InfoOverlayFragment extends ReorderListFragment {
 		h.addView(chips, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
 		addSwitchRow(h, R.string.info_overlay_only_when_control_panel_visible, 0,
-				() -> prefs().getBooleanPref(MainActivityPrefs.INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE),
-				on -> prefs().applyBooleanPref(MainActivityPrefs.INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE, on),
+				() -> prefs().getBooleanPref(pref(MainActivityPrefs.INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE)),
+				on -> prefs().applyBooleanPref(pref(MainActivityPrefs.INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE), on),
 				null);
 		addSliderRow(h, R.string.info_overlay_size, 10, 40, 0.05f,
-				() -> prefs().getFloatPref(MainActivityPrefs.INFO_OVERLAY_SIZE),
-				v -> prefs().applyFloatPref(MainActivityPrefs.INFO_OVERLAY_SIZE, (float) v));
+				() -> prefs().getFloatPref(pref(MainActivityPrefs.INFO_OVERLAY_SIZE)),
+				v -> prefs().applyFloatPref(pref(MainActivityPrefs.INFO_OVERLAY_SIZE), (float) v));
 
 		section(h, R.string.info_overlay_items);
 		TextView hint = text(R.string.info_overlay_items_hint, 13, textSecondary, false);
@@ -283,7 +305,7 @@ public class InfoOverlayFragment extends ReorderListFragment {
 	/** The options above the rows show what is set (also after a Reset). */
 	private void syncOptions() {
 		MainActivityPrefs p = prefs();
-		int pos = p.getIntPref(MainActivityPrefs.CLOCK_POS);
+		int pos = p.getIntPref(pref(MainActivityPrefs.CLOCK_POS));
 		for (TextView c : posChips) {
 			boolean sel = ((Integer) c.getTag()) == pos;
 			GradientDrawable fill = (GradientDrawable) c.getTag(R.id.info_overlay_fragment);
