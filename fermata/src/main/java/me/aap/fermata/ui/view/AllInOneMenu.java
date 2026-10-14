@@ -807,6 +807,7 @@ public final class AllInOneMenu {
 		String title;
 		String hint;
 		boolean unavailable = false;
+		boolean lyricsTile = false;
 		if (action == Action.AUDIO_EFFECTS) {
 			title = ctx.getString(R.string.effects);
 			hint = ctx.getString(R.string.music_more_effects_hint);
@@ -829,9 +830,11 @@ public final class AllInOneMenu {
 			title = ctx.getString(ActionFabMediator.labelFor(activity, action));
 			boolean on = activity.getPrefs().getBooleanPref(activity.isVideoMode() ?
 					MainActivityPrefs.CAPTIONS_ON : MainActivityPrefs.LYRICS_ON);
-			unavailable = !preview && me.aap.fermata.ytcaptions.CaptionsHub.get().isUnavailable(activity);
+			// Dimmed until the captions are known to be there; looked at again when they are.
+			unavailable = !preview && me.aap.fermata.ytcaptions.CaptionsHub.get().isDimmed(activity);
 			hint = ctx.getString(unavailable ? R.string.state_unavailable :
 					on ? R.string.state_on : R.string.state_off);
+			lyricsTile = true;
 		} else {
 			title = ctx.getString(ActionFabMediator.labelFor(activity, action));
 			hint = "";
@@ -916,6 +919,17 @@ public final class AllInOneMenu {
 		// The smallest tiles have no hints (the timer's state is on its title line).
 		if (columns == 4) sub.setVisibility(View.GONE);
 		t.addView(sub, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		if (lyricsTile && unavailable) {
+			boolean fOn = activity.getPrefs().getBooleanPref(activity.isVideoMode() ?
+					MainActivityPrefs.CAPTIONS_ON : MainActivityPrefs.LYRICS_ON);
+			me.aap.fermata.ytcaptions.CaptionsHub.get().whenKnown(activity, () -> {
+				var hub = me.aap.fermata.ytcaptions.CaptionsHub.get();
+				boolean dim = hub.isDimmed(activity);
+				t.setAlpha(dim ? 0.45f : 1f);
+				sub.setText(ctx.getString(dim ? R.string.state_unavailable :
+						fOn ? R.string.state_on : R.string.state_off));
+			});
+		}
 		if ((action == Action.SLEEP_TIMER) && !timerLine) timerTileSub = sub;
 		return t;
 	}

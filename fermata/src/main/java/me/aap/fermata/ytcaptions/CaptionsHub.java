@@ -61,6 +61,7 @@ public final class CaptionsHub {
 	private final List<Listener> listeners = new ArrayList<>();
 	private final Runnable tick = this::tick;
 	private final java.util.Set<String> prefetching = new java.util.HashSet<>();
+	private final java.util.Map<String, List<Runnable>> waiting = new java.util.HashMap<>();
 	@Nullable
 	private MainActivityDelegate activity;
 	@Nullable
@@ -168,35 +169,73 @@ public final class CaptionsHub {
 	}
 
 	/**
-	 * Whether what plays has no captions to show: it isn't a YouTube video, or its captions are known
-	 * to be none. Unknown yet counts as available, and starts finding out (so the next ask knows),
-	 * even while nothing has {@link #acquire}d the hub.
+	 * Whether what plays is known to have no captions to show: it isn't a YouTube video, or its
+	 * captions are known to be none. Unknown yet is not "unavailable": a tap then still goes through
+	 * (the lines are on their way). See {@link #isDimmed} for what the buttons show meanwhile.
 	 */
 	public boolean isUnavailable(MainActivityDelegate a) {
 		String id = YtDownloads.videoIdOf(Action.getFavoritableItem(a));
 		if (id == null) return true;
 		YtCaptions.Result r = cache.get(id);
+		return (r != null) && r.isEmpty();
+	}
+
+	/**
+	 * What the lyrics / captions buttons (chip, tile, floating button) look like: dimmed unless the
+	 * playing video is known to have captions. Not knowing yet counts as dimmed, so a button never
+	 * lights up for a moment and then goes dim; it starts finding out, and {@link #whenKnown} says
+	 * when to look again.
+	 */
+	public boolean isDimmed(MainActivityDelegate a) {
+		String id = YtDownloads.videoIdOf(Action.getFavoritableItem(a));
+		if (id == null) return true;
+		YtCaptions.Result r = cache.get(id);
 		if (r != null) return r.isEmpty();
-		if (!prefetching.contains(id) && !id.equals(videoId)) {
-			prefetching.add(id);
-			MainActivityPrefs p = a.getPrefs();
-			String lang = p.getStringPref(MainActivityPrefs.CAPTIONS_LANG);
-			boolean auto = p.getBooleanPref(MainActivityPrefs.CAPTIONS_AUTO);
-			executor.execute(() -> {
-				YtCaptions.Result res = null;
-				try {
-					res = YtCaptions.load(id, lang, auto);
-				} catch (Exception ex) {
-					Log.e(ex, "Failed to load the captions of ", id);
-				}
-				YtCaptions.Result done = res;
-				handler.post(() -> {
-					prefetching.remove(id);
-					if (done != null) cache.put(id, done);
-				});
-			});
+		prefetch(a, id);
+		return true;
+	}
+
+	/** Runs {@code r} on the main thread once the playing video's captions are known (at once if they are). */
+	public void whenKnown(MainActivityDelegate a, Runnable r) {
+		String id = YtDownloads.videoIdOf(Action.getFavoritableItem(a));
+		if ((id == null) || (cache.get(id) != null)) {
+			handler.post(r);
+			return;
 		}
-		return false;
+		waiting.computeIfAbsent(id, k -> new ArrayList<>()).add(r);
+		prefetch(a, id);
+	}
+
+	private void prefetch(MainActivityDelegate a, String id) {
+		// The tick's own load of this video counts: its result lands in the cache too.
+		if (prefetching.contains(id) || (id.equals(videoId) && (state == State.LOADING))) {
+			return;
+		}
+		prefetching.add(id);
+		MainActivityPrefs p = a.getPrefs();
+		String lang = p.getStringPref(MainActivityPrefs.CAPTIONS_LANG);
+		boolean auto = p.getBooleanPref(MainActivityPrefs.CAPTIONS_AUTO);
+		executor.execute(() -> {
+			YtCaptions.Result res = null;
+			try {
+				res = YtCaptions.load(id, lang, auto);
+			} catch (Exception ex) {
+				Log.e(ex, "Failed to load the captions of ", id);
+			}
+			YtCaptions.Result done = res;
+			handler.post(() -> {
+				prefetching.remove(id);
+				if (done != null) cache.put(id, done);
+				knew(id);
+			});
+		});
+	}
+
+	/** The captions of {@code id} are in the cache (or could not be had): whoever waits is told. */
+	private void knew(String id) {
+		List<Runnable> w = waiting.remove(id);
+		if (w != null) for (Runnable r : w) r.run();
+		for (Listener l : new ArrayList<>(listeners)) l.onCaptionsState(this);
 	}
 
 	/** Forgets what was fetched and loads again, e.g. after the language was changed. */
@@ -305,6 +344,8 @@ public final class CaptionsHub {
 					if (gen != generation) return;
 					cache.put(id, r);
 					apply(r);
+					List<Runnable> w = waiting.remove(id);
+					if (w != null) for (Runnable run : w) run.run();
 				});
 			} catch (Exception ex) {
 				Log.e(ex, "Failed to load the captions of ", id);

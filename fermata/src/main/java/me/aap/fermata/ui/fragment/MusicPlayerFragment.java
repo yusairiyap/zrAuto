@@ -1992,9 +1992,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		boolean on = want && !unavailable;
 		// The cover shows the lyrics only once there are lines: not while they load, and not for a
 		// track without (no message, no veil), so a track change never flashes either.
-		boolean ready = me.aap.fermata.ytcaptions.CaptionsHub.get().getState() ==
-				me.aap.fermata.ytcaptions.CaptionsHub.State.READY;
-		lyricsChip.setAlpha(unavailable ? 0.4f : 1f);
+		var hubState = me.aap.fermata.ytcaptions.CaptionsHub.get().getState();
+		boolean ready = hubState == me.aap.fermata.ytcaptions.CaptionsHub.State.READY;
+		// Dimmed until the captions are there: the chip never lights up and then dims.
+		lyricsChip.setAlpha(((hubState == me.aap.fermata.ytcaptions.CaptionsHub.State.READY) ||
+				(hubState == me.aap.fermata.ytcaptions.CaptionsHub.State.FAILED)) ? 1f : 0.4f);
 		int color = on ? EffectsUi.accent(palette) : paletteColor(R.attr.musicTextPrimary);
 		lyricsChip.setTextColor(color);
 		lyricsChip.setCompoundDrawableTintList(ColorStateList.valueOf(

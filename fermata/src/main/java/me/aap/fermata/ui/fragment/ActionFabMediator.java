@@ -137,7 +137,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		fb.setImageResource(iconFor(a, action));
 		// Lyrics / captions: dimmed while what plays has none.
 		fb.setImageAlpha(((action == Action.LYRICS) &&
-				me.aap.fermata.ytcaptions.CaptionsHub.get().isUnavailable(a)) ? 100 : 255);
+				me.aap.fermata.ytcaptions.CaptionsHub.get().isDimmed(a)) ? 100 : 255);
 	}
 
 	@DrawableRes
