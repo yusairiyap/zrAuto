@@ -80,6 +80,7 @@ public final class LyricsView extends View implements CaptionsHub.Listener, Pref
 	@Nullable
 	private LineListener lineListener;
 	private boolean interactive = true;
+	private boolean showStatus = true;
 	private boolean previewMode;
 	private boolean listening;
 	// Scrubbing.
@@ -125,6 +126,16 @@ public final class LyricsView extends View implements CaptionsHub.Listener, Pref
 	public void setInteractive(boolean interactive) {
 		this.interactive = interactive;
 		setClickable(interactive);
+	}
+
+	/**
+	 * Whether it says what's up (loading, no captions, failed) when it has no lines. Over the cover
+	 * it doesn't: a track without lyrics just has no lyrics there, and a message that shows for a
+	 * moment on every track change is noise.
+	 */
+	public void setShowStatus(boolean show) {
+		showStatus = show;
+		invalidate();
 	}
 
 	/** Tapping a line (rather than the view) calls this with the line's index. */
@@ -528,7 +539,7 @@ public final class LyricsView extends View implements CaptionsHub.Listener, Pref
 	}
 
 	private void drawStatus(Canvas c, int w, int h) {
-		if (status.isEmpty()) return;
+		if (status.isEmpty() || !showStatus) return;
 		if (statusLayout == null) {
 			int lw = Math.max(1, Math.round(w - 2 * pad()));
 			statusLayout = StaticLayout.Builder.obtain(status, 0, status.length(), paint, lw)

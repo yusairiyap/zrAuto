@@ -1958,6 +1958,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		FrameLayout overlay = new FrameLayout(requireContext());
 		LyricsView lv = new LyricsView(requireContext(), a, 0xFFFFFFFF, 0xFFFFFFFF, true);
 		lv.setInteractive(false);
+		lv.setShowStatus(false);
 		lyricsView = lv;
 		overlay.addView(lv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));
@@ -1989,17 +1990,26 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		boolean unavailable = lyricsUnavailable();
 		boolean want = getActivityDelegate().getPrefs().getBooleanPref(MainActivityPrefs.LYRICS_ON);
 		boolean on = want && !unavailable;
+		// The cover shows the lyrics only once there are lines: not while they load, and not for a
+		// track without (no message, no veil), so a track change never flashes either.
+		boolean ready = me.aap.fermata.ytcaptions.CaptionsHub.get().getState() ==
+				me.aap.fermata.ytcaptions.CaptionsHub.State.READY;
 		lyricsChip.setAlpha(unavailable ? 0.4f : 1f);
 		int color = on ? EffectsUi.accent(palette) : paletteColor(R.attr.musicTextPrimary);
 		lyricsChip.setTextColor(color);
 		lyricsChip.setCompoundDrawableTintList(ColorStateList.valueOf(
 				on ? color : paletteColor(R.attr.musicIconPrimary)));
 		o.animate().cancel();
-		if (on) {
+		if (want && ready) {
+			if (o.getVisibility() != View.VISIBLE) o.setAlpha(0f);
 			o.setVisibility(View.VISIBLE);
 			if (animate) o.animate().alpha(1f).setDuration(260).start();
 			else o.setAlpha(1f);
-		} else if (animate && (o.getVisibility() == View.VISIBLE)) {
+		} else if (want && animate && (o.getVisibility() == View.VISIBLE) && !unavailable) {
+			// Waiting for the next track's lines: gone at once, the old ones aren't its.
+			o.setAlpha(0f);
+			o.setVisibility(View.GONE);
+		} else if (!want && animate && (o.getVisibility() == View.VISIBLE)) {
 			o.animate().alpha(0f).setDuration(200).withEndAction(() -> o.setVisibility(View.GONE)).start();
 		} else {
 			o.setAlpha(0f);
@@ -2350,6 +2360,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	@Override
 	public void onPlayableChanged(PlayableItem oldItem, PlayableItem newItem) {
 		if (getView() == null) return;
+		// The lyrics (and the chip) follow the new track at once.
+		me.aap.fermata.ytcaptions.CaptionsHub.get().poke();
 		displayItem(getDisplayItem(), false);
 		adapter.notifyDataSetChanged();
 		updateModes();

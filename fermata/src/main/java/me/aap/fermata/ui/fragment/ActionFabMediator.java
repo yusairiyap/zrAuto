@@ -60,14 +60,19 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		updateIcon(fb);
 		fb.setOnClickListener(this);
 		fb.setOnLongClickListener(this);
-		MainActivityDelegate.get(fb.getContext()).getMediaSessionCallback().addBroadcastListener(this);
+		MainActivityDelegate a = MainActivityDelegate.get(fb.getContext());
+		a.getMediaSessionCallback().addBroadcastListener(this);
+		// A new track: the lyrics / captions icon follows at once (see updateIcon).
+		a.getMediaServiceBinder().addBroadcastListener(trackListener);
 	}
 
 	@Override
 	public void disable(FloatingButton fb) {
 		FloatingButton.Mediator.super.disable(fb);
-		MainActivityDelegate.get(fb.getContext()).getMediaSessionCallback()
-				.removeBroadcastListener(this);
+		MainActivityDelegate a = MainActivityDelegate.get(fb.getContext());
+		a.getMediaSessionCallback().removeBroadcastListener(this);
+		a.getMediaServiceBinder().removeBroadcastListener(trackListener);
+		me.aap.fermata.ytcaptions.CaptionsHub.get().release(captionsListener);
 		if (fab == fb) fab = null;
 	}
 
@@ -91,9 +96,33 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 				});
 	}
 
+	/** Another track: asks the captions where they stand right now, then the icon is redrawn. */
+	private final me.aap.fermata.media.service.FermataServiceUiBinder.Listener trackListener =
+			new me.aap.fermata.media.service.FermataServiceUiBinder.Listener() {
+				@Override
+				public void onPlayableChanged(me.aap.fermata.media.lib.MediaLib.PlayableItem oldItem,
+																			me.aap.fermata.media.lib.MediaLib.PlayableItem newItem) {
+					me.aap.fermata.ytcaptions.CaptionsHub.get().poke();
+					FloatingButton fb = fab;
+					if (fb != null) updateIcon(fb);
+				}
+			};
+	/** Whether the captions of what plays are there (or not) changed: the icon's dimming follows. */
+	private final me.aap.fermata.ytcaptions.CaptionsHub.Listener captionsListener =
+			new me.aap.fermata.ytcaptions.CaptionsHub.Listener() {
+				@Override
+				public void onCaptionsState(me.aap.fermata.ytcaptions.CaptionsHub hub) {
+					FloatingButton fb = fab;
+					if (fb != null) updateIcon(fb);
+				}
+			};
+
 	private void updateIcon(FloatingButton fb) {
 		MainActivityDelegate a = MainActivityDelegate.get(fb.getContext());
 		Action action = Action.get(a.getPrefs().getIntPref(MainActivityPrefs.fab(a, actionPref)));
+		// Only a lyrics / captions button keeps the captions hub running.
+		if (action == Action.LYRICS) me.aap.fermata.ytcaptions.CaptionsHub.get().acquire(a, captionsListener);
+		else me.aap.fermata.ytcaptions.CaptionsHub.get().release(captionsListener);
 		if (action == Action.QUALITY) {
 			// The quality in use as its icon ("720p", "Auto"), like the All in One tile's; asked
 			// afresh now and then, the icon redrawn when it changes.

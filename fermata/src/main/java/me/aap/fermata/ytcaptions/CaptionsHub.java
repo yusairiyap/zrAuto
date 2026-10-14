@@ -96,6 +96,11 @@ public final class CaptionsHub {
 		}
 	}
 
+	/** Something that may have changed what plays (a track change): looks right now, not at the next tick. */
+	public void poke() {
+		if (ticking) handler.post(tick);
+	}
+
 	public void release(Listener l) {
 		listeners.remove(l);
 		if (listeners.isEmpty()) {
