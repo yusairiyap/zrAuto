@@ -457,6 +457,11 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	}
 
 	public void close() {
+		// Timers still posted would otherwise fire into a closed session (the service is gone).
+		if (playbackTimer != null) handler.removeCallbacks(playbackTimer);
+		playbackTimer = null;
+		if (timer != null) handler.removeCallbacks(timer);
+		timer = null;
 		onStop(true);
 		session.setActive(false);
 		lib.getContext().unregisterReceiver(onNoisy);
@@ -2148,6 +2153,8 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	private void startTimer(PlayableItem i, long pos, float speed) {
 		i.getDuration().main().onSuccess(dur -> {
+			// Called on every PLAYING state (metadata updates too): one pending timer, not one per call.
+			if (timer != null) handler.removeCallbacks(timer);
 			timer = new Runnable() {
 				@Override
 				public void run() {
@@ -2161,6 +2168,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	}
 
 	private void stopTimer() {
+		if (timer != null) handler.removeCallbacks(timer);
 		timer = null;
 	}
 
