@@ -43,7 +43,8 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 			Action.PLAYLIST_ADD, Action.PLAY_AS_MUSIC, Action.YOUTUBE_SEARCH, Action.YOUTUBE_UP_NEXT,
 			Action.OPEN_FAVORITES, Action.OPEN_PLAYLISTS, Action.OPEN_DOWNLOADS, Action.DOWNLOAD_CURRENT,
 			Action.DOWNLOADS_PAUSE_RESUME, Action.ALL_IN_ONE, Action.AUDIO_EFFECTS, Action.SLEEP_TIMER,
-			Action.QUALITY, Action.YOUTUBE_ALTERNATIVES, Action.YOUTUBE_COMMENTS);
+			Action.QUALITY, Action.YOUTUBE_ALTERNATIVES, Action.YOUTUBE_COMMENTS, Action.LYRICS,
+			Action.SETTINGS);
 
 	private final Pref<IntSupplier> actionPref;
 	@Nullable
@@ -59,14 +60,21 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		updateIcon(fb);
 		fb.setOnClickListener(this);
 		fb.setOnLongClickListener(this);
-		MainActivityDelegate.get(fb.getContext()).getMediaSessionCallback().addBroadcastListener(this);
+		MainActivityDelegate a = MainActivityDelegate.get(fb.getContext());
+		a.getMediaSessionCallback().addBroadcastListener(this);
+		// A new track: the lyrics / captions icon follows at once (see updateIcon).
+		a.getMediaServiceBinder().addBroadcastListener(trackListener);
+		a.getPrefs().addBroadcastListener(switchListener);
 	}
 
 	@Override
 	public void disable(FloatingButton fb) {
 		FloatingButton.Mediator.super.disable(fb);
-		MainActivityDelegate.get(fb.getContext()).getMediaSessionCallback()
-				.removeBroadcastListener(this);
+		MainActivityDelegate a = MainActivityDelegate.get(fb.getContext());
+		a.getMediaSessionCallback().removeBroadcastListener(this);
+		a.getMediaServiceBinder().removeBroadcastListener(trackListener);
+		a.getPrefs().removeBroadcastListener(switchListener);
+		me.aap.fermata.ytcaptions.CaptionsHub.get().release(captionsListener);
 		if (fab == fb) fab = null;
 	}
 
@@ -90,9 +98,47 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 				});
 	}
 
+	/** Another track: asks the captions where they stand right now, then the icon is redrawn. */
+	private final me.aap.fermata.media.service.FermataServiceUiBinder.Listener trackListener =
+			new me.aap.fermata.media.service.FermataServiceUiBinder.Listener() {
+				@Override
+				public void onPlayableChanged(me.aap.fermata.media.lib.MediaLib.PlayableItem oldItem,
+																			me.aap.fermata.media.lib.MediaLib.PlayableItem newItem) {
+					me.aap.fermata.ytcaptions.CaptionsHub.get().poke();
+					FloatingButton fb = fab;
+					if (fb != null) updateIcon(fb);
+				}
+			};
+	/** The lyrics / captions switch was flipped from anywhere (a key, the tile, the chip): the icon follows. */
+	private final me.aap.utils.pref.PreferenceStore.Listener switchListener = (store, prefs) -> {
+		FloatingButton fb = fab;
+		if ((fb != null) && (prefs.contains(MainActivityPrefs.LYRICS_ON) ||
+				prefs.contains(MainActivityPrefs.CAPTIONS_ON))) {
+			updateIcon(fb);
+		}
+	};
+	/** Whether the captions of what plays are there (or not) changed: the icon's dimming follows. */
+	private final me.aap.fermata.ytcaptions.CaptionsHub.Listener captionsListener =
+			new me.aap.fermata.ytcaptions.CaptionsHub.Listener() {
+				@Override
+				public void onCaptionsState(me.aap.fermata.ytcaptions.CaptionsHub hub) {
+					FloatingButton fb = fab;
+					if (fb != null) updateIcon(fb);
+				}
+			};
+
+	/** The switch the lyrics / captions action flips: captions over fullscreen video, else the lyrics. */
+	public static boolean lyricsSwitchOn(MainActivityDelegate a) {
+		return a.getPrefs().getBooleanPref(a.isVideoMode() ? MainActivityPrefs.CAPTIONS_ON :
+				MainActivityPrefs.LYRICS_ON);
+	}
+
 	private void updateIcon(FloatingButton fb) {
 		MainActivityDelegate a = MainActivityDelegate.get(fb.getContext());
 		Action action = Action.get(a.getPrefs().getIntPref(MainActivityPrefs.fab(a, actionPref)));
+		// Only a lyrics / captions button keeps the captions hub running.
+		if (action == Action.LYRICS) me.aap.fermata.ytcaptions.CaptionsHub.get().acquire(a, captionsListener);
+		else me.aap.fermata.ytcaptions.CaptionsHub.get().release(captionsListener);
 		if (action == Action.QUALITY) {
 			// The quality in use as its icon ("720p", "Auto"), like the All in One tile's; asked
 			// afresh now and then, the icon redrawn when it changes.
@@ -105,6 +151,9 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 			return;
 		}
 		fb.setImageResource(iconFor(a, action));
+		// Lyrics / captions: dimmed while they are off, and while what plays has none (or not known yet).
+		fb.setImageAlpha(((action == Action.LYRICS) && (!lyricsSwitchOn(a) ||
+				me.aap.fermata.ytcaptions.CaptionsHub.get().isDimmed(a))) ? 100 : 255);
 	}
 
 	@DrawableRes
@@ -125,6 +174,10 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		}
 		if (action == Action.YOUTUBE_UP_NEXT) return R.drawable.up_next;
 		if (action == Action.YOUTUBE_COMMENTS) return R.drawable.comments;
+		// Captions over fullscreen video, lyrics anywhere else.
+		// Captions over fullscreen video, lyrics elsewhere.
+		if (action == Action.LYRICS) return a.isVideoMode() ? R.drawable.captions : R.drawable.lyrics;
+		if (action == Action.SETTINGS) return R.drawable.settings;
 		if (action == Action.OPEN_FAVORITES) return R.drawable.favorite_filled;
 		if (action == Action.OPEN_PLAYLISTS) return R.drawable.playlist;
 		if ((action == Action.OPEN_DOWNLOADS) || (action == Action.DOWNLOAD_CURRENT)) {
@@ -163,6 +216,10 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 	public static int labelFor(MainActivityDelegate a, Action action) {
 		if ((action == Action.FAVORITE_ADD) && Action.isCurrentFavorite(a))
 			return R.string.favorites_remove;
+		// Captions over fullscreen video, lyrics anywhere else.
+		if (action == Action.LYRICS) {
+			return a.isVideoMode() ? R.string.action_captions : R.string.action_lyrics_label;
+		}
 		// Says which way it goes now.
 		if (action == Action.PLAY_AS_MUSIC) return MusicPlayer.canSwitchToVideo(
 				a.getMediaSessionCallback()) ? R.string.play_as_video : R.string.play_as_music;
@@ -221,6 +278,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 							addAction(a, fb, sb, Action.YOUTUBE_UP_NEXT, 1);
 							addAction(a, fb, sb, Action.QUALITY, 2);
 							addAction(a, fb, sb, Action.YOUTUBE_COMMENTS, 3);
+							addAction(a, fb, sb, Action.LYRICS, 4);
 						});
 			}
 			category(a, fb, b, R.id.fab_cat_tools, R.drawable.fuel, R.string.fab_cat_tools,
@@ -228,9 +286,13 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 						addAction(a, fb, sb, Action.ALL_IN_ONE, 0);
 						addAction(a, fb, sb, Action.REFUEL, 1);
 					});
-			// Last item in the menu.
 			addSettings(a, b, R.id.fab_settings, R.drawable.fab, R.string.fab_settings,
 					SettingsFragment.SHOW_FAB_SETTINGS);
+			// Last item in the menu: the app's settings, as an item of its own.
+			b.addItem(R.id.fab_app_settings, R.drawable.settings, R.string.settings).setHandler(item -> {
+				Action.SETTINGS.getHandler().handle(a.getMediaSessionCallback(), a, uptimeMillis());
+				return true;
+			});
 		});
 		return true;
 	}

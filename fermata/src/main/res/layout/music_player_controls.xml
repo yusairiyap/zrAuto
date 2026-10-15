@@ -211,6 +211,14 @@
             android:visibility="gone" />
 
         <TextView
+            android:id="@+id/music_lyrics_button"
+            style="@style/MusicChip"
+            android:layout_marginStart="8dp"
+            android:drawableStart="@drawable/lyrics"
+            android:text="@string/music_lyrics_short"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/music_video_button"
             style="@style/MusicChip"
             android:layout_marginStart="8dp"

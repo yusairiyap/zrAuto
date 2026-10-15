@@ -1,0 +1,303 @@
+package me.aap.fermata.ytcaptions;
+
+import androidx.annotation.Nullable;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+import me.aap.fermata.spotify.Http;
+import me.aap.fermata.util.DiagnosticLog;
+
+/**
+ * The captions (subtitles) of a YouTube video, as a list of timed lines: what the Music tab shows
+ * as lyrics and the fullscreen video shows as captions. Read from the same public "InnerTube"
+ * {@code player} endpoint the YouTube apps use (no API key, no quota; see {@code YtComments} for the
+ * comments): it names the video's caption tracks, and each track's address returns the lines as
+ * {@code json3}.
+ * <p>
+ * YouTube hands out the addresses of tracks only to some of its apps and changes which, so the
+ * apps in {@link #CLIENTS} are tried one after another until one of them gives captions that read.
+ * When captions suddenly stop loading everywhere, that list is the first thing to look at (the
+ * Diagnostic log says which app answered what, under CAPTIONS).
+ * <p>
+ * All methods block -- call them on a background thread.
+ */
+public final class YtCaptions {
+	private static final String PLAYER_URL =
+			"https://www.youtube.com/youtubei/v1/player?prettyPrint=false";
+
+	private YtCaptions() {
+	}
+
+	/** The way one of YouTube's apps introduces itself. */
+	private static final class Client {
+		final String name;
+		final String version;
+		final String headerId;
+		final String userAgent;
+		final String extra;
+
+		Client(String name, String version, String headerId, String userAgent, String extra) {
+			this.name = name;
+			this.version = version;
+			this.headerId = headerId;
+			this.userAgent = userAgent;
+			this.extra = extra;
+		}
+	}
+
+	private static final Client[] CLIENTS = {
+			new Client("ANDROID", "20.10.38", "3",
+					"com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip",
+					"\"osName\":\"Android\",\"osVersion\":\"14\",\"androidSdkVersion\":34"),
+			new Client("WEB_EMBEDDED_PLAYER", "2.20260708.00.00", "56",
+					"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", "\"clientScreen\":\"EMBED\""),
+			new Client("IOS", "20.10.4", "5",
+					"com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
+					"\"deviceMake\":\"Apple\",\"deviceModel\":\"iPhone16,2\",\"osName\":\"iPhone\"," +
+							"\"osVersion\":\"18.3.2.22D82\""),
+			new Client("TVHTML5_SIMPLY_EMBEDDED_PLAYER", "2.0", "85",
+					"Mozilla/5.0 (PlayStation; PlayStation 4/12.00) AppleWebKit/605.1.15 (KHTML, like Gecko) " +
+							"Version/15.4 Safari/605.1.15",
+					"\"clientScreen\":\"EMBED\""),
+	};
+
+	/** One timed line. */
+	public static final class Cue {
+		/** Milliseconds from the start of the video. */
+		public final long start;
+		/** When the line goes away again (never later than the next line's start). */
+		public final long end;
+		public final String text;
+
+		public Cue(long start, long end, String text) {
+			this.start = start;
+			this.end = end;
+			this.text = text;
+		}
+	}
+
+	/** A caption track the video offers. */
+	public static final class Track {
+		public final String language;
+		public final String name;
+		/** Written by YouTube's speech recognition rather than by a person. */
+		public final boolean generated;
+		final String url;
+
+		Track(String language, String name, boolean generated, String url) {
+			this.language = language;
+			this.name = name;
+			this.generated = generated;
+			this.url = url;
+		}
+	}
+
+	/** What a video's captions came to. */
+	public static final class Result {
+		/** The track the lines are from, null when the video has none. */
+		@Nullable
+		public final Track track;
+		public final List<Cue> cues;
+
+		Result(@Nullable Track track, List<Cue> cues) {
+			this.track = track;
+			this.cues = cues;
+		}
+
+		public boolean isEmpty() {
+			return cues.isEmpty();
+		}
+	}
+
+	static final Result NONE = new Result(null, Collections.emptyList());
+
+	/**
+	 * @param lang         the language to prefer, a code like "en" (empty: the phone's)
+	 * @param allowGenerated whether captions written by speech recognition may be used when there are
+	 *                     no others
+	 * @return the video's captions; {@link Result#isEmpty()} when it has none
+	 */
+	public static Result load(String videoId, @Nullable String lang, boolean allowGenerated)
+			throws IOException {
+		String want = ((lang == null) || lang.trim().isEmpty()) ?
+				Locale.getDefault().getLanguage() : lang.trim().toLowerCase(Locale.ROOT);
+		IOException last = null;
+		boolean answered = false;
+		for (Client c : CLIENTS) {
+			try {
+				List<Track> tracks = tracks(c, videoId);
+				if (tracks.isEmpty()) {
+					DiagnosticLog.log("CAPTIONS", c.name, videoId, "no tracks");
+					continue;
+				}
+				answered = true;
+				Track t = choose(tracks, want, allowGenerated);
+				if (t == null) {
+					DiagnosticLog.log("CAPTIONS", c.name, videoId, "no usable track of", tracks.size());
+					continue;
+				}
+				List<Cue> cues = fetch(c, t);
+				if (cues.isEmpty()) {
+					DiagnosticLog.log("CAPTIONS", c.name, videoId, "empty track", t.language);
+					continue;
+				}
+				DiagnosticLog.log("CAPTIONS", c.name, videoId, t.language, t.generated ? "auto" : "manual",
+						cues.size(), "lines");
+				return new Result(t, cues);
+			} catch (IOException ex) {
+				DiagnosticLog.log("CAPTIONS", c.name, videoId, "failed", ex);
+				last = ex;
+			}
+		}
+		// Every app failed to talk to YouTube: that is an error, not a video without captions.
+		if (!answered && (last != null)) throw last;
+		return NONE;
+	}
+
+	/** A manual track in the wanted language, else in English, else any; then the same of generated. */
+	@Nullable
+	private static Track choose(List<Track> tracks, String want, boolean allowGenerated) {
+		Track t = pick(tracks, want, false);
+		if (t == null) t = pick(tracks, "en", false);
+		if (t == null) t = pick(tracks, null, false);
+		if (!allowGenerated) return t;
+		if (t == null) t = pick(tracks, want, true);
+		if (t == null) t = pick(tracks, "en", true);
+		if (t == null) t = pick(tracks, null, true);
+		return t;
+	}
+
+	@Nullable
+	private static Track pick(List<Track> tracks, @Nullable String lang, boolean generated) {
+		Track any = null;
+		for (Track t : tracks) {
+			if (t.generated != generated) continue;
+			if (lang == null) return t;
+			String tl = t.language.toLowerCase(Locale.ROOT);
+			// "en" also takes "en-GB"; a generated "a.en" style code never reaches here (see tracks()).
+			if (tl.equals(lang)) return t;
+			if (tl.startsWith(lang + "-") && (any == null)) any = t;
+		}
+		return any;
+	}
+
+	private static List<Track> tracks(Client c, String videoId) throws IOException {
+		JSONObject json = player(c, videoId);
+		List<Track> l = new ArrayList<>();
+		try {
+			JSONObject status = json.optJSONObject("playabilityStatus");
+			if ((status != null) && "LOGIN_REQUIRED".equals(status.optString("status"))) {
+				throw new IOException("YouTube asked for a sign in");
+			}
+			JSONObject caps = json.optJSONObject("captions");
+			JSONObject r = (caps == null) ? null : caps.optJSONObject("playerCaptionsTracklistRenderer");
+			JSONArray arr = (r == null) ? null : r.optJSONArray("captionTracks");
+			if (arr == null) return l;
+			for (int i = 0; i < arr.length(); i++) {
+				JSONObject o = arr.getJSONObject(i);
+				String url = o.optString("baseUrl");
+				if (url.isEmpty()) continue;
+				String code = o.optString("languageCode");
+				boolean asr = "asr".equals(o.optString("kind"));
+				JSONObject n = o.optJSONObject("name");
+				String name = (n == null) ? code : n.optString("simpleText", code);
+				l.add(new Track(code, name, asr, url));
+			}
+		} catch (JSONException ex) {
+			throw new IOException("Unexpected YouTube response", ex);
+		}
+		return l;
+	}
+
+	private static JSONObject player(Client c, String videoId) throws IOException {
+		try {
+			JSONObject client = new JSONObject("{" + c.extra + "}")
+					.put("clientName", c.name)
+					.put("clientVersion", c.version)
+					.put("hl", "en");
+			JSONObject context = new JSONObject().put("client", client);
+			if ("TVHTML5_SIMPLY_EMBEDDED_PLAYER".equals(c.name)) {
+				context.put("thirdParty", new JSONObject()
+						.put("embedUrl", "https://www.youtube.com/watch?v=" + videoId));
+			}
+			JSONObject body = new JSONObject()
+					.put("context", context)
+					.put("videoId", videoId)
+					.put("contentCheckOk", true)
+					.put("racyCheckOk", true);
+			Map<String, String> h = new HashMap<>();
+			h.put("User-Agent", c.userAgent);
+			h.put("X-YouTube-Client-Name", c.headerId);
+			h.put("X-YouTube-Client-Version", c.version);
+			h.put("Origin", "https://www.youtube.com");
+			h.put("Cookie", "SOCS=CAI");
+			Http.Response r = Http.post(PLAYER_URL, body.toString(), h);
+			if (!r.isOk()) throw new IOException("YouTube returned HTTP " + r.code);
+			return new JSONObject(r.body);
+		} catch (JSONException ex) {
+			throw new IOException("Unexpected YouTube response", ex);
+		}
+	}
+
+	private static List<Cue> fetch(Client c, Track t) throws IOException {
+		String url = t.url.replaceAll("[&?]fmt=[^&]*", "") + "&fmt=json3";
+		Map<String, String> h = new HashMap<>();
+		h.put("User-Agent", c.userAgent);
+		h.put("Origin", "https://www.youtube.com");
+		h.put("Cookie", "SOCS=CAI");
+		Http.Response r = Http.get(url, h);
+		if (!r.isOk()) throw new IOException("Captions returned HTTP " + r.code);
+		// An empty body (what a refused request looks like) simply has no lines: the next app is tried.
+		if (r.body.trim().isEmpty()) return Collections.emptyList();
+		return parse(r.body);
+	}
+
+	/** The lines of a {@code json3} track. */
+	static List<Cue> parse(String json3) throws IOException {
+		List<long[]> times = new ArrayList<>();
+		List<String> texts = new ArrayList<>();
+		try {
+			JSONArray events = new JSONObject(json3).optJSONArray("events");
+			if (events == null) return Collections.emptyList();
+			for (int i = 0; i < events.length(); i++) {
+				JSONObject e = events.getJSONObject(i);
+				JSONArray segs = e.optJSONArray("segs");
+				if (segs == null) continue;
+				StringBuilder sb = new StringBuilder();
+				for (int j = 0; j < segs.length(); j++) sb.append(segs.getJSONObject(j).optString("utf8"));
+				String text = sb.toString().replace('\n', ' ').replaceAll("\\s+", " ").trim();
+				if (text.isEmpty()) continue;
+				long start = e.optLong("tStartMs");
+				long dur = e.optLong("dDurationMs", 3000);
+				times.add(new long[]{start, start + Math.max(dur, 500)});
+				texts.add(text);
+			}
+		} catch (JSONException ex) {
+			throw new IOException("Unexpected captions format", ex);
+		}
+
+		// In order of appearance; a line goes away when the next one comes (rolling captions overlap).
+		Integer[] order = new Integer[times.size()];
+		for (int i = 0; i < order.length; i++) order[i] = i;
+		java.util.Arrays.sort(order, (a, b) -> Long.compare(times.get(a)[0], times.get(b)[0]));
+		List<Cue> cues = new ArrayList<>(order.length);
+		for (int k = 0; k < order.length; k++) {
+			long[] t = times.get(order[k]);
+			long end = t[1];
+			if (k + 1 < order.length) end = Math.min(end, times.get(order[k + 1])[0]);
+			if (end <= t[0]) continue;
+			cues.add(new Cue(t[0], end, texts.get(order[k])));
+		}
+		return cues;
+	}
+}

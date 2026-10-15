@@ -840,6 +840,22 @@ public class SettingsFragment extends MainActivityFragment
 			o.seekScale = 5;
 		});
 
+		sub1.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.COMMENTS_SPLIT;
+			o.title = R.string.comments_split;
+			o.subtitle = R.string.comments_split_sub;
+		});
+		sub1.addIntPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.COMMENTS_SPLIT_PERCENT;
+			o.title = R.string.comments_split_width;
+			o.seekMin = 20;
+			o.seekMax = 60;
+			o.seekScale = 2;
+			o.visibility = PrefCondition.create(a.getPrefs(), MainActivityPrefs.COMMENTS_SPLIT);
+		});
+
 		dimSettingsSet = sub2 = sub1.subSet(o -> {
 			o.title = R.string.dim_prefs;
 			o.subtitle = R.string.prefs_sub_dim;
@@ -909,6 +925,20 @@ public class SettingsFragment extends MainActivityFragment
 			o.icon = R.drawable.subtitles;
 		});
 		addSubtitlePrefs(a.getContext(), sub1, mediaPrefs, isCar);
+
+		// Their own pages, with a live preview each (see TextStyleFragment).
+		set.addButton(o -> {
+			o.title = R.string.captions;
+			o.subtitle = R.string.prefs_sub_captions;
+			o.icon = R.drawable.captions;
+			o.onClick = () -> a.showFragment(R.id.captions_fragment);
+		});
+		set.addButton(o -> {
+			o.title = R.string.lyrics;
+			o.subtitle = R.string.prefs_sub_lyrics;
+			o.icon = R.drawable.lyrics;
+			o.onClick = () -> a.showFragment(R.id.lyrics_fragment);
+		});
 
 		privateModeSettingsSet = sub1 = set.subSet(o -> {
 			o.title = R.string.private_mode_prefs;

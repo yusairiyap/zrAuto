@@ -83,6 +83,8 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.view.EffectsUi;
+import me.aap.fermata.ui.view.LyricsCard;
+import me.aap.fermata.ui.view.LyricsView;
 import me.aap.fermata.ui.view.InfoOverlayView;
 import me.aap.fermata.ui.view.ToolBarPill;
 import me.aap.fermata.ui.view.LoadingDimView;
@@ -149,6 +151,24 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private TextView favoriteChip;
 	private TextView playlistChip;
 	private TextView timerChip;
+	private TextView lyricsChip;
+	/** The lyrics over the cover (a dark veil and the lines), null before the view exists. */
+	@Nullable
+	private FrameLayout lyricsOverlay;
+	@Nullable
+	private LyricsView lyricsView;
+	/** Follows whether what plays has captions, while this tab is showing: the chip and the veil. */
+	private final me.aap.fermata.ytcaptions.CaptionsHub.Listener captionsListener =
+			new me.aap.fermata.ytcaptions.CaptionsHub.Listener() {
+				@Override
+				public void onCaptionsState(me.aap.fermata.ytcaptions.CaptionsHub hub) {
+					updateLyrics(true);
+				}
+			};
+	private final PreferenceStore.Listener lyricsPrefs = (store, prefs) -> {
+		if (prefs.contains(MainActivityPrefs.LYRICS_ON)) updateLyrics(true);
+		if (prefs.contains(MainActivityPrefs.LYRICS_VEIL)) applyLyricsVeil();
+	};
 	private final Runnable timerChipTask = this::updateTimerChip;
 	private View queuePanel;
 	private View queueDismiss;
@@ -289,6 +309,22 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		playlistChip.setOnClickListener(v -> onPlaylistTap());
 		timerChip = view.findViewById(R.id.music_timer_button);
 		timerChip.setOnClickListener(v -> onMore(true));
+		lyricsChip = view.findViewById(R.id.music_lyrics_button);
+		lyricsChip.setOnClickListener(v -> {
+			boolean on = !a.getPrefs().getBooleanPref(MainActivityPrefs.LYRICS_ON);
+			// Nothing to show: said so, and the switch stays as it was (the chip looks disabled).
+			if (on && lyricsUnavailable()) {
+				showMessage(getString(R.string.lyrics_unavailable));
+				return;
+			}
+			a.getPrefs().applyBooleanPref(MainActivityPrefs.LYRICS_ON, on);
+		});
+		// Held: the lyrics in their own card.
+		lyricsChip.setOnLongClickListener(v -> {
+			LyricsCard.show(a);
+			return true;
+		});
+		addLyricsOverlay(a, view.findViewById(R.id.music_art_card));
 		// Effects sits on the row itself when there's room for it, else only behind the more button.
 		// Decided after the row's layout, not inside it: a chip shown or hidden from within the row's
 		// own layout pass asked for a layout the row never got (it still counted as being laid out),
@@ -515,6 +551,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		setListening(false);
 		stopProgress();
 		if (content != null) content.getViewTreeObserver().removeOnPreDrawListener(insetSync);
+		getActivityDelegate().getPrefs().removeBroadcastListener(lyricsPrefs);
+		lyricsOverlay = null;
+		lyricsView = null;
 		if (insetAnim != null) insetAnim.cancel();
 		insetAnim = null;
 		insetsSet = false;
@@ -569,7 +608,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			a.getPrefs().addBroadcastListener(this);
 			// The Info Overlay settings may have changed while this tab was away.
 			applyInfoOverlayPrefs();
+			me.aap.fermata.ytcaptions.CaptionsHub.get().acquire(a, captionsListener);
 		} else {
+			me.aap.fermata.ytcaptions.CaptionsHub.get().release(captionsListener);
 			BufferingIndicator.removeListener(bufferingListener);
 			a.getMediaSessionCallback().removeBroadcastListener(this);
 			a.getMediaServiceBinder().removeBroadcastListener(this);
@@ -1384,6 +1425,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			private float startX;
 			private float startY;
 			private boolean dragging;
+			// A vertical drag over the lyrics scrubs through them, see LyricsView#beginBrowse.
+			private boolean scrubbing;
+			private float scrubBaseY;
 			@Nullable
 			private VelocityTracker velocity;
 
@@ -1403,6 +1447,19 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 						if (velocity != null) velocity.addMovement(e);
 						float dx = e.getRawX() - startX;
 						float dy = e.getRawY() - startY;
+						LyricsView lv = lyricsView;
+						if (!dragging && !scrubbing && (lv != null) && lyricsShowing() && lv.canBrowse() &&
+								(Math.abs(dy) > slop) && (Math.abs(dy) > Math.abs(dx))) {
+							scrubbing = true;
+							scrubBaseY = e.getRawY();
+							ViewGroup p = (ViewGroup) v.getParent();
+							if (p != null) p.requestDisallowInterceptTouchEvent(true);
+							lv.beginBrowse();
+						}
+						if (scrubbing) {
+							if (lv != null) lv.browseBy(e.getRawY() - scrubBaseY);
+							return true;
+						}
 						if (!dragging) {
 							if ((Math.abs(dx) < slop) || (Math.abs(dx) < Math.abs(dy))) return true;
 							dragging = true;
@@ -1414,6 +1471,20 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 						return true;
 					}
 					case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+						if (scrubbing) {
+							scrubbing = false;
+							float vy = 0;
+							if (velocity != null) {
+								velocity.addMovement(e);
+								velocity.computeCurrentVelocity(1000);
+								vy = velocity.getYVelocity();
+								velocity.recycle();
+								velocity = null;
+							}
+							boolean cancelled = e.getActionMasked() == MotionEvent.ACTION_CANCEL;
+							if (lyricsView != null) lyricsView.endBrowse(cancelled ? 0f : vy);
+							return true;
+						}
 						float speed = 0;
 						if (velocity != null) {
 							velocity.addMovement(e);
@@ -1422,10 +1493,16 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 							velocity.recycle();
 							velocity = null;
 						}
-						if (!dragging) return true;
+						boolean cancel = e.getActionMasked() == MotionEvent.ACTION_CANCEL;
+						if (!dragging) {
+							// A tap on the cover while lyrics are on it opens them in their own card.
+							if (!cancel && (Math.hypot(e.getRawX() - startX, e.getRawY() - startY) < slop)) {
+								onArtTap();
+							}
+							return true;
+						}
 						dragging = false;
 						float dx = v.getTranslationX();
-						boolean cancel = e.getActionMasked() == MotionEvent.ACTION_CANCEL;
 						boolean flung = (Math.abs(speed) > fling) && (Math.signum(speed) == Math.signum(dx));
 						if (!cancel && ((Math.abs(dx) > v.getWidth() / 3f) || flung) && canSwipeTrack()) {
 							swipeTrack(v, dx < 0);
@@ -1762,8 +1839,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	 * long timer countdown or the Video chip appearing makes room again.
 	 */
 	private void updateEffectsChip(ViewGroup row, boolean animate) {
-		TextView[] optional = {effectsButton, favoriteChip, playlistChip, timerChip};
-		if ((effectsButton == null) || (timerChip == null) || (row.getWidth() <= 0)) return;
+		TextView[] optional = {effectsButton, favoriteChip, playlistChip, timerChip, lyricsChip};
+		if ((effectsButton == null) || (timerChip == null) || (lyricsChip == null) ||
+				(row.getWidth() <= 0)) return;
 		float density = getResources().getDisplayMetrics().density;
 		int avail = row.getWidth() - row.getPaddingLeft() - row.getPaddingRight() -
 				Math.round(24 * density);
@@ -1866,6 +1944,94 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		} else {
 			me.aap.fermata.action.Action.toggleCurrentFavorite(a);
 		}
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Lyrics
+
+	/**
+	 * The lyrics over the cover: a dark veil so the lines read on any picture, and the lines on it.
+	 * It takes no touches itself (the cover's swipe and tap see them), and is only there while the
+	 * Lyrics chip is on. Under the cover's loading dim and message.
+	 */
+	private void addLyricsOverlay(MainActivityDelegate a, ViewGroup artCard) {
+		FrameLayout overlay = new FrameLayout(requireContext());
+		LyricsView lv = new LyricsView(requireContext(), a, 0xFFFFFFFF, 0xFFFFFFFF, true);
+		lv.setInteractive(false);
+		lv.setShowStatus(false);
+		lyricsView = lv;
+		overlay.addView(lv, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.MATCH_PARENT));
+		overlay.setVisibility(View.GONE);
+		overlay.setAlpha(0f);
+		artCard.addView(overlay, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.MATCH_PARENT));
+		lyricsOverlay = overlay;
+		a.getPrefs().addBroadcastListener(lyricsPrefs);
+		applyLyricsVeil();
+		updateLyrics(false);
+	}
+
+	/** How dark the veil under the lyrics is (Settings > Lyrics). */
+	private void applyLyricsVeil() {
+		FrameLayout o = lyricsOverlay;
+		if (o == null) return;
+		int pct = Math.max(0, Math.min(90,
+				getActivityDelegate().getPrefs().getIntPref(MainActivityPrefs.LYRICS_VEIL)));
+		o.setBackgroundColor(Math.round(255 * pct / 100f) << 24);
+	}
+
+	/** Shows or hides the lyrics over the cover as the chip says, and the chip with it. */
+	private void updateLyrics(boolean animate) {
+		FrameLayout o = lyricsOverlay;
+		if ((o == null) || (lyricsChip == null)) return;
+		// No captions for what plays (or not a YouTube video): no veil and no text over the cover, and
+		// the chip looks disabled, as the All in One tile and the floating button do.
+		boolean unavailable = lyricsUnavailable();
+		boolean want = getActivityDelegate().getPrefs().getBooleanPref(MainActivityPrefs.LYRICS_ON);
+		boolean on = want && !unavailable;
+		// The cover shows the lyrics only once there are lines: not while they load, and not for a
+		// track without (no message, no veil), so a track change never flashes either.
+		var hubState = me.aap.fermata.ytcaptions.CaptionsHub.get().getState();
+		boolean ready = hubState == me.aap.fermata.ytcaptions.CaptionsHub.State.READY;
+		// Dimmed until the captions are there: the chip never lights up and then dims.
+		lyricsChip.setAlpha(((hubState == me.aap.fermata.ytcaptions.CaptionsHub.State.READY) ||
+				(hubState == me.aap.fermata.ytcaptions.CaptionsHub.State.FAILED)) ? 1f : 0.4f);
+		int color = on ? EffectsUi.accent(palette) : paletteColor(R.attr.musicTextPrimary);
+		lyricsChip.setTextColor(color);
+		lyricsChip.setCompoundDrawableTintList(ColorStateList.valueOf(
+				on ? color : paletteColor(R.attr.musicIconPrimary)));
+		o.animate().cancel();
+		if (want && ready) {
+			if (o.getVisibility() != View.VISIBLE) o.setAlpha(0f);
+			o.setVisibility(View.VISIBLE);
+			if (animate) o.animate().alpha(1f).setDuration(260).start();
+			else o.setAlpha(1f);
+		} else if (want && animate && (o.getVisibility() == View.VISIBLE) && !unavailable) {
+			// Waiting for the next track's lines: gone at once, the old ones aren't its.
+			o.setAlpha(0f);
+			o.setVisibility(View.GONE);
+		} else if (!want && animate && (o.getVisibility() == View.VISIBLE)) {
+			o.animate().alpha(0f).setDuration(200).withEndAction(() -> o.setVisibility(View.GONE)).start();
+		} else {
+			o.setAlpha(0f);
+			o.setVisibility(View.GONE);
+		}
+	}
+
+	private boolean lyricsUnavailable() {
+		var st = me.aap.fermata.ytcaptions.CaptionsHub.get().getState();
+		return (st == me.aap.fermata.ytcaptions.CaptionsHub.State.IDLE) ||
+				(st == me.aap.fermata.ytcaptions.CaptionsHub.State.NONE);
+	}
+
+	private boolean lyricsShowing() {
+		return (lyricsOverlay != null) && (lyricsOverlay.getVisibility() == View.VISIBLE);
+	}
+
+	/** A tap on the cover (not a swipe): with lyrics on it, they open in their own card. */
+	private void onArtTap() {
+		if (lyricsShowing()) LyricsCard.show(getActivityDelegate());
 	}
 
 	private void onPlaylistTap() {
@@ -2196,6 +2362,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	@Override
 	public void onPlayableChanged(PlayableItem oldItem, PlayableItem newItem) {
 		if (getView() == null) return;
+		// The lyrics (and the chip) follow the new track at once.
+		me.aap.fermata.ytcaptions.CaptionsHub.get().poke();
 		displayItem(getDisplayItem(), false);
 		adapter.notifyDataSetChanged();
 		updateModes();

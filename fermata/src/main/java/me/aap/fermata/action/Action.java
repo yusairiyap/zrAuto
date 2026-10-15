@@ -150,6 +150,14 @@ public enum Action {
 	// saved by their position.
 	YOUTUBE_COMMENTS(R.string.action_youtube_comments,
 			a(me.aap.fermata.ui.view.YoutubeCommentsView::showForCurrent)),
+	// The playing video's YouTube captions: over fullscreen video they show or hide as captions, on
+	// the Music tab as lyrics over the cover, anywhere else in a lyrics card (see LyricsCard#action).
+	LYRICS(R.string.action_lyrics, a(me.aap.fermata.ui.view.LyricsCard::action)),
+	// The app's settings (out of fullscreen video first: the page sits behind it).
+	SETTINGS(R.string.action_settings, a(a -> {
+		a.exitVideoMode();
+		a.showFragment(R.id.settings_fragment);
+	})),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

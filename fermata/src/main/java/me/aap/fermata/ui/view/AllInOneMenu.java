@@ -81,6 +81,9 @@ public final class AllInOneMenu {
 	/** The Music tab's More out of the box (and the All in One card's, until changed). */
 	public static final List<Action> DEFAULT_ITEMS =
 			parse(MainActivityPrefs.AIO_DEFAULT_ITEMS);
+	/** The Music tab's own More: those, and Lyrics for when the chip row has no room for its chip. */
+	private static final List<Action> MUSIC_ITEMS =
+			parse(MainActivityPrefs.AIO_DEFAULT_ITEMS + ",LYRICS");
 	// Remembered for the next time the timer opens, until the app is closed.
 	private static int lastMinutes = 30;
 	private static boolean lastFinishSong = true;
@@ -243,7 +246,7 @@ public final class AllInOneMenu {
 		boolean own = a.getPrefs().getBooleanPref(MainActivityPrefs.fab(a,
 				MainActivityPrefs.AIO_MUSIC_MORE));
 		AllInOneMenu m = new AllInOneMenu(a, ctx, host, insets, anchor,
-				own ? getItems(a) : DEFAULT_ITEMS, own ? getColumns(a) : 2, R.string.music_more, hooks,
+				own ? getItems(a) : MUSIC_ITEMS, own ? getColumns(a) : 2, R.string.music_more, hooks,
 				false);
 		m.startPage = timer ? PAGE_TIMER : PAGE_MAIN;
 		open = m;
@@ -803,6 +806,9 @@ public final class AllInOneMenu {
 		boolean fav = (action == Action.FAVORITE_ADD) && Action.isCurrentFavorite(activity);
 		String title;
 		String hint;
+		boolean unavailable = false;
+		boolean lyricsTile = false;
+		boolean lyricsOff = false;
 		if (action == Action.AUDIO_EFFECTS) {
 			title = ctx.getString(R.string.effects);
 			hint = ctx.getString(R.string.music_more_effects_hint);
@@ -820,6 +826,18 @@ public final class AllInOneMenu {
 		} else if (action == Action.QUALITY) {
 			title = ctx.getString(R.string.quality);
 			hint = "";
+		} else if (action == Action.LYRICS) {
+			// Captions over fullscreen video, lyrics elsewhere: its name, icon and state follow.
+			title = ctx.getString(ActionFabMediator.labelFor(activity, action));
+			boolean on = activity.getPrefs().getBooleanPref(activity.isVideoMode() ?
+					MainActivityPrefs.CAPTIONS_ON : MainActivityPrefs.LYRICS_ON);
+			// Dimmed until the captions are known to be there; looked at again when they are.
+			unavailable = !preview && me.aap.fermata.ytcaptions.CaptionsHub.get().isDimmed(activity);
+			hint = ctx.getString(unavailable ? R.string.state_unavailable :
+					on ? R.string.state_on : R.string.state_off);
+			// Off looks like unavailable: the same icon, dimmed.
+			lyricsOff = !on;
+			lyricsTile = true;
 		} else {
 			title = ctx.getString(ActionFabMediator.labelFor(activity, action));
 			hint = "";
@@ -838,6 +856,7 @@ public final class AllInOneMenu {
 		t.setPadding(dp(big ? 10 : 6), dp(padV), dp(big ? 10 : 6), dp(padV));
 		t.setBackground(pressable(chipFill, big ? 22 : 18));
 		t.setContentDescription(title);
+		if (unavailable || lyricsOff) t.setAlpha(0.45f);
 		if (!preview) {
 			t.setClickable(true);
 			t.setFocusable(true);
@@ -903,6 +922,17 @@ public final class AllInOneMenu {
 		// The smallest tiles have no hints (the timer's state is on its title line).
 		if (columns == 4) sub.setVisibility(View.GONE);
 		t.addView(sub, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		if (lyricsTile && unavailable) {
+			boolean fOn = activity.getPrefs().getBooleanPref(activity.isVideoMode() ?
+					MainActivityPrefs.CAPTIONS_ON : MainActivityPrefs.LYRICS_ON);
+			me.aap.fermata.ytcaptions.CaptionsHub.get().whenKnown(activity, () -> {
+				var hub = me.aap.fermata.ytcaptions.CaptionsHub.get();
+				boolean dim = hub.isDimmed(activity);
+				t.setAlpha((dim || !fOn) ? 0.45f : 1f);
+				sub.setText(ctx.getString(dim ? R.string.state_unavailable :
+						fOn ? R.string.state_on : R.string.state_off));
+			});
+		}
 		if ((action == Action.SLEEP_TIMER) && !timerLine) timerTileSub = sub;
 		return t;
 	}
@@ -933,7 +963,7 @@ public final class AllInOneMenu {
 	private static boolean opensSomething(Action action) {
 		return switch (action) {
 			case AUDIO_EFFECTS, PLAYLIST_ADD, OPEN_FAVORITES, OPEN_PLAYLISTS, OPEN_DOWNLOADS, MENU,
-					CP_MENU, YOUTUBE_SEARCH, YOUTUBE_UP_NEXT, YOUTUBE_ALTERNATIVES, YOUTUBE_COMMENTS, REFUEL, DOWNLOAD_CURRENT, PLAY_AS_MUSIC,
+					CP_MENU, YOUTUBE_SEARCH, YOUTUBE_UP_NEXT, YOUTUBE_ALTERNATIVES, YOUTUBE_COMMENTS, LYRICS, SETTINGS, REFUEL, DOWNLOAD_CURRENT, PLAY_AS_MUSIC,
 					BACK_OR_EXIT, EXIT -> true;
 			default -> false;
 		};

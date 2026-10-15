@@ -1142,6 +1142,8 @@ public class MainActivityDelegate extends ActivityDelegate
 			cp.enableVideoMode();
 		} else {
 			this.videoMode = false;
+			// The comments beside the video leave with it, not on a timer of their own.
+			me.aap.fermata.ui.view.YoutubeCommentsView.onVideoLeft();
 			fadeInFromVideo();
 			// Out of fullscreen before the video came up: the black held for it is only in the way now.
 			// Only the black held for a file that has not started: YouTube's own is lifted by its video.
@@ -2348,6 +2350,10 @@ public class MainActivityDelegate extends ActivityDelegate
 			return new me.aap.fermata.ui.fragment.NavTabsFragment();
 		} else if (id == R.id.info_overlay_fragment) {
 			return new me.aap.fermata.ui.fragment.InfoOverlayFragment();
+		} else if (id == R.id.captions_fragment) {
+			return new me.aap.fermata.ui.fragment.CaptionsStyleFragment();
+		} else if (id == R.id.lyrics_fragment) {
+			return new me.aap.fermata.ui.fragment.LyricsStyleFragment();
 		}
 		ActivityFragment f = FermataApplication.get().getAddonManager().createFragment(id);
 		return (f != null) ? f : super.createFragment(id);
@@ -2816,6 +2822,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (PlaylistPicker.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.YoutubeAlternativesPicker.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.YoutubeCommentsView.dismissOpen()) return;
+		if (me.aap.fermata.ui.view.LyricsCard.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.AllInOneMenu.dismissOpen()) return;
 		if (DownloadPicker.dismissOpen()) return;
 		super.onBackPressed();
@@ -3185,6 +3192,8 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	public void onPictureInPictureChanged(boolean pip) {
 		if (pip) {
+			me.aap.fermata.ui.view.YoutubeCommentsView.onPictureInPicture();
+			me.aap.fermata.ui.view.LyricsCard.dismissOpen();
 			pipSuppressed = true;
 			setOverlaysSuppressed(true);
 		} else if (pipSuppressed) {

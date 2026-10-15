@@ -139,6 +139,44 @@ public interface MainActivityPrefs
 	Pref<Supplier<String>> AIO_ITEMS = Pref.s("AIO_ITEMS", AIO_DEFAULT_ITEMS);
 	Pref<IntSupplier> AIO_COLUMNS = Pref.i("AIO_COLUMNS", 2);
 	Pref<BooleanSupplier> AIO_MUSIC_MORE = Pref.b("AIO_MUSIC_MORE", false);
+	// YouTube's captions (see ytcaptions/CaptionsHub): shown as lyrics over the Music tab's cover
+	// (the Lyrics chip), and as captions over fullscreen video (the Captions action). Off until asked.
+	Pref<BooleanSupplier> LYRICS_ON = Pref.b("LYRICS_ON", false);
+	Pref<BooleanSupplier> CAPTIONS_ON = Pref.b("CAPTIONS_ON", false);
+	// Language code to prefer ("" = the phone's), and whether speech-recognition captions may be used
+	// when a video has no written ones.
+	Pref<Supplier<String>> CAPTIONS_LANG = Pref.s("CAPTIONS_LANG", "");
+	Pref<BooleanSupplier> CAPTIONS_AUTO = Pref.b("CAPTIONS_AUTO", true);
+	// How the lyrics look, on the Music tab's cover and in their card (see ui/view/LyricsView):
+	// text size (percent), font (CaptionStyle.FONT_NAMES), bold, italic, alignment (0 centre, 1 left),
+	// the playing line's colour (0 follows the theme, else CaptionStyle.COLORS index + 1) and how
+	// dark the veil over the cover is (percent).
+	Pref<IntSupplier> LYRICS_SIZE = Pref.i("LYRICS_SIZE", 100);
+	Pref<IntSupplier> LYRICS_FONT = Pref.i("LYRICS_FONT", 0);
+	Pref<BooleanSupplier> LYRICS_BOLD = Pref.b("LYRICS_BOLD", false);
+	Pref<BooleanSupplier> LYRICS_ITALIC = Pref.b("LYRICS_ITALIC", false);
+	Pref<IntSupplier> LYRICS_ALIGN = Pref.i("LYRICS_ALIGN", 0);
+	Pref<IntSupplier> LYRICS_COLOR = Pref.i("LYRICS_COLOR", 0);
+	Pref<IntSupplier> LYRICS_VEIL = Pref.i("LYRICS_VEIL", 65);
+	// How the captions over fullscreen video look (see ui/view/CaptionStyle).
+	Pref<IntSupplier> CAPTION_FONT = Pref.i("CAPTION_FONT", 0);
+	Pref<IntSupplier> CAPTION_SIZE = Pref.i("CAPTION_SIZE", 100);
+	Pref<BooleanSupplier> CAPTION_BOLD = Pref.b("CAPTION_BOLD", false);
+	Pref<BooleanSupplier> CAPTION_ITALIC = Pref.b("CAPTION_ITALIC", false);
+	Pref<IntSupplier> CAPTION_COLOR = Pref.i("CAPTION_COLOR", 0);
+	Pref<IntSupplier> CAPTION_OPACITY = Pref.i("CAPTION_OPACITY", 100);
+	Pref<IntSupplier> CAPTION_EDGE = Pref.i("CAPTION_EDGE", 1);
+	Pref<IntSupplier> CAPTION_EDGE_COLOR = Pref.i("CAPTION_EDGE_COLOR", 7);
+	Pref<IntSupplier> CAPTION_EDGE_STRENGTH = Pref.i("CAPTION_EDGE_STRENGTH", 60);
+	Pref<IntSupplier> CAPTION_BG_COLOR = Pref.i("CAPTION_BG_COLOR", 7);
+	Pref<IntSupplier> CAPTION_BG_OPACITY = Pref.i("CAPTION_BG_OPACITY", 50);
+	// 0 bottom, 1 middle, 2 top; and how far from that edge, percent of the picture's height.
+	Pref<IntSupplier> CAPTION_POSITION = Pref.i("CAPTION_POSITION", 0);
+	Pref<IntSupplier> CAPTION_MARGIN = Pref.i("CAPTION_MARGIN", 10);
+	// The comments dock beside fullscreen video on a big screen / the car screen (see
+	// YoutubeCommentsView): whether to, and how much of the width they take (percent).
+	Pref<BooleanSupplier> COMMENTS_SPLIT = Pref.b("COMMENTS_SPLIT", true);
+	Pref<IntSupplier> COMMENTS_SPLIT_PERCENT = Pref.i("COMMENTS_SPLIT_PERCENT", 38);
 	// How many upcoming Favorites/Playlist entries the YouTube tab's Up next list previews below the
 	// user's own queue (1..10) -- enough to see what comes after, few enough to leave room for search
 	// results.
