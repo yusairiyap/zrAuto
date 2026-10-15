@@ -1887,10 +1887,7 @@ public class ControlPanelView extends ConstraintLayout
 				a.showFragment(R.id.settings_fragment);
 				return true;
 			} else if (id == R.id.nav_exit) {
-				MainActivityDelegate a = getActivity();
-				a.getMediaSessionCallback().onStop();
-				a.finish();
-				if (a.isCarActivityNotMirror()) a.getHandler().postDelayed(() -> System.exit(0), 500);
+				getActivity().exitApp();
 				return true;
 			}
 

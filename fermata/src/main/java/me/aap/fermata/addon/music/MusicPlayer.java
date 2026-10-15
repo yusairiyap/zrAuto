@@ -202,10 +202,22 @@ public final class MusicPlayer {
 		if (watchRequested) return true;
 		if (isShowingDownloadedVideo(current)) return true;
 		if (youtubeAudioMode) return false;
-		MainActivityDelegate a = activity.get();
+		MainActivityDelegate a = playbackActivity();
 		if (a == null) return false;
 		ActivityFragment f = a.getActiveFragment();
 		return (f != null) && (f.getFragmentId() == R.id.youtube_fragment);
+	}
+
+	/**
+	 * The UI playback happens on: the car's while Android Auto runs the app (see
+	 * {@link MainActivityDelegate#getPlaybackDelegate()}), whichever activity was created last. The
+	 * phone's YouTube page silences anything it plays while the car's is the player, so a track
+	 * started there never played: the loading circle stayed until the start timed out.
+	 */
+	@Nullable
+	private static MainActivityDelegate playbackActivity() {
+		MainActivityDelegate a = activity.get();
+		return (a == null) ? null : a.getPlaybackDelegate();
 	}
 
 	static void activityCreated(MainActivityDelegate a) {
@@ -237,10 +249,12 @@ public final class MusicPlayer {
 			setYoutubeAudioMode(false);
 		}
 		watchingLocal = false;
+		// Not a start still waiting for its video (a YoutubeStartEngine): reusing it only asked the
+		// same page again, which is what left next/previous unable to get out of a start that stalled.
 		if ((current != null) && (current.getId() == MediaPrefs.MEDIA_ENG_YT) &&
-				!t.hasStartPosition()) {
+				!(current instanceof YoutubeStartEngine) && !t.hasStartPosition()) {
 			DiagnosticLog.log(TAG, "YouTube track on the playing YouTube player", "id=" + t.getVideoId());
-			MainActivityDelegate a = activity.get();
+			MainActivityDelegate a = playbackActivity();
 			if (watchRequested && (a != null)) a.post(() -> a.showFragment(R.id.youtube_fragment));
 			watchRequested = false;
 			return current;
@@ -264,7 +278,7 @@ public final class MusicPlayer {
 		applyStartRequest(t);
 		boolean requested = watchRequested;
 		boolean watching = isWatchingVideo(current);
-		MainActivityDelegate act = activity.get();
+		MainActivityDelegate act = playbackActivity();
 		ActivityFragment shown = (act == null) ? null : act.getActiveFragment();
 		// Started from the Music tab (a track tapped there, or from a list while music mode is on): music,
 		// whatever was watched before -- the fullscreen picture would come up over the tab itself.
@@ -280,19 +294,19 @@ public final class MusicPlayer {
 			DiagnosticLog.log(TAG, "sound-only track after a watched video: to the Music tab",
 					"item=" + t);
 			setYoutubeAudioMode(true);
-			MainActivityDelegate a = activity.get();
+			MainActivityDelegate a = act;
 			if (a != null) a.post(() -> open(a));
 			return;
 		}
 		if (!watching) {
 			setYoutubeAudioMode(true);
 			// Started as music: the fullscreen of a video before it is over.
-			MainActivityDelegate a = activity.get();
+			MainActivityDelegate a = act;
 			BodyLayout b = (a == null) ? null : a.getBody();
 			if ((b != null) && b.isVideoMode()) b.setMode(BodyLayout.Mode.FRAME);
 			return;
 		}
-		MainActivityDelegate a = activity.get();
+		MainActivityDelegate a = act;
 		boolean showsVideo = (shown instanceof MainActivityFragment f) && f.isVideoModeSupported();
 		BodyLayout b = (a == null) ? null : a.getBody();
 		if (hasPicture && (b != null) && !b.isVideoMode()) {
@@ -328,7 +342,7 @@ public final class MusicPlayer {
 	/** Called by {@link YoutubeStartEngine#prepare}. */
 	static boolean startYoutube(MusicTrackItem t, long pos) {
 		YoutubeHooks h = youtube;
-		MainActivityDelegate a = activity.get();
+		MainActivityDelegate a = playbackActivity();
 		if ((h == null) || (a == null)) return false;
 		pendingVideoId = t.getVideoId();
 		pendingVideoPos = pos;

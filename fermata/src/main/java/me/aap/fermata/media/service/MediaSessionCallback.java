@@ -860,6 +860,9 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		clearRepeatOneOnSkip();
 		playerTask.cancel();
 		MediaEngine eng = getEngine();
+		// YouTube's next video takes a moment to come: the loading circle shows from the press on,
+		// not only once the page is asked to move (playing, an error or a pause takes it down).
+		if ((eng != null) && (eng.getId() == MediaPrefs.MEDIA_ENG_YT)) BufferingIndicator.setBuffering(true);
 
 		if ((eng == null) || !isPlaying()) {
 			playerTask = skipTo(next, false);
@@ -970,6 +973,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 				item -> (next ? getNextPlayable(item) : getPrevPlayable(item)).then(this::prepareItem)
 						.then(pi -> {
 							if (pi != null) skipTo(next, pi);
+							else BufferingIndicator.setBuffering(false); // Nothing to skip to.
 							return completedVoid();
 						}));
 	}
@@ -1731,7 +1735,16 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	private void playPreparedItem(MediaEngine eng, PlayableItem i, long pos, PlayableItem current,
 																long currentPos) {
+		MediaEngine prev = eng;
 		engine = eng = getEngineManager().createEngine(eng, i, this);
+		// The YouTube page's player keeps playing when it is closed (on purpose, its page is shared):
+		// another engine taking over has to silence it, whatever it plays (a library file, a Music
+		// tab song), not only a downloaded video. Left playing, the two were heard together until the
+		// page's next 'playing' event took the session back.
+		if ((prev != null) && (prev != eng) && (prev.getId() == MediaPrefs.MEDIA_ENG_YT) &&
+				((eng == null) || (eng.getId() != MediaPrefs.MEDIA_ENG_YT))) {
+			prev.yieldToLocal();
+		}
 
 		if (eng == null) {
 			if (current != null) setLastPlayed(current, currentPos);
@@ -1818,8 +1831,13 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		}
 		currentState = state;
 		int st = state.getState();
-		// Paused, stopped, skipping...: whatever was stalled isn't anymore.
-		if ((st != STATE_PLAYING) && (st != STATE_BUFFERING)) BufferingIndicator.setBuffering(false);
+		// Paused, stopped, an error...: whatever was stalled isn't anymore. Not on the way to the next
+		// item (skipping, connecting): its loading circle stays until it plays.
+		if ((st != STATE_PLAYING) && (st != STATE_BUFFERING) && (st != STATE_SKIPPING_TO_NEXT) &&
+				(st != STATE_SKIPPING_TO_PREVIOUS) && (st != STATE_CONNECTING) &&
+				(st != PlaybackStateCompat.STATE_SKIPPING_TO_QUEUE_ITEM)) {
+			BufferingIndicator.setBuffering(false);
+		}
 		// stopped() deactivates the session; anything to play or pause makes it the one the media
 		// buttons (and Android Auto's steering wheel controls) go to again.
 		if ((st != STATE_NONE) && (st != STATE_STOPPED) && (st != STATE_ERROR) && !session.isActive())

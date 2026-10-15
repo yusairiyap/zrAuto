@@ -1687,6 +1687,13 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			return;
 		}
 
+		// The app in the background: nothing to draw, the position isn't asked for (a script run in
+		// YouTube's page every time). Looked at again shortly, so it's right as soon as it's back.
+		if (seek.getWindowVisibility() != View.VISIBLE) {
+			seek.postDelayed(progressTask, 1000);
+			return;
+		}
+
 		FutureSupplier<Long> pos = eng.getPosition();
 		eng.getDuration().and(pos).main().onSuccess(h -> {
 			if (getView() == null) return;

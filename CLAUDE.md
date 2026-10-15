@@ -420,8 +420,19 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
 - **Grid vs list** for media lists comes from the grid preference, never from `isGridView()` (which
   asks the active tab and is wrong while tabs switch).
 - Known open items: media card art can look blocky on One UI (1280x720 art); a YouTube hand-over
-  whose page never starts leaves the local engine muted with no error; the 150 ms end-of-track poll
-  and 1 s UI timer keep running in the background.
+  whose page never starts leaves the local engine muted with no error.
+- **Background polls.** The end-of-track fade watcher (`MediaEngineBase#endWatch`) sleeps until the
+  last seconds (at most 1 s between looks, 150 ms near the end); the control panel's and the Music
+  tab's progress polls skip their work while their window isn't visible (for YouTube each tick is a
+  script run in the page). Keep new periodic work off when nothing is on screen.
+- **A local engine replacing YouTube** must silence the page (`MediaSessionCallback#playPreparedItem`
+  calls `yieldToLocal()`; the page's `close()` is inert on purpose). After that the page may not take
+  the session back on its own (`YoutubeMediaEngine#yielded`, checked in `playing()`): only a video the
+  app asked for (pending id), a tap on the page, or play pressed with the YouTube tab in front.
+- **YouTube queue skips in music mode, or with the page hidden** swap the video inside the player
+  (`loadVideoById`), not through YouTube's router: a hidden page's router navigation is partly
+  deferred until shown, which restarted songs on return to the app and left Android Auto's Music tab
+  stuck on the loading circle. `YoutubeMediaEngine#watchSwitch` retries a switch that never plays.
 
 ## Long/exhausting bug investigations: ask for adb logs
 

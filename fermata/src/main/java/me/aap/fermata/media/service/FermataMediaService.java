@@ -288,6 +288,9 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 		switch (st) {
 			case STATE_NONE, STATE_STOPPED, STATE_ERROR -> {
 				stopForeground(true);
+				// Posted while paused (stopForeground(false) leaves it detached from the service), the
+				// notification is not removed by the above: it stayed after Exit or a stop.
+				NotificationManagerCompat.from(this).cancel(NOTIF_ID);
 				// Started while playing (below): no longer needed once it has stayed stopped.
 				stopHandler.removeCallbacks(stopStarted);
 				if (started) stopHandler.postDelayed(stopStarted, 5000);

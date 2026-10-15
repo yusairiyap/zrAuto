@@ -1236,7 +1236,10 @@ public class YoutubeWebView extends FermataWebView {
 	 *                  YouTube's own resume behaviour.
 	 */
 	void loadVideo(String videoId, boolean fromStart) {
-		evaluateJavascript(navigateToVideoJs(videoId, fromStart), result -> {
+		// Playing as music (the page isn't looked at): the player swaps the video itself, see
+		// navigateToVideoJs().
+		boolean inPlayer = MusicPlayer.isYoutubeAudioMode();
+		evaluateJavascript(navigateToVideoJs(videoId, fromStart, inPlayer), result -> {
 			// Only reached if the script itself couldn't run at all (no document body yet, an
 			// exception) -- a plain page load is the last resort either way.
 			if (!"true".equals(result))
@@ -1253,17 +1256,25 @@ public class YoutubeWebView extends FermataWebView {
 	 * navigation instead would turn a race the app is already losing into a series of page loads.
 	 */
 	void switchVideoInPlayer(String videoId) {
+		switchVideoInPlayer(videoId, false);
+	}
+
+	/** As {@link #switchVideoInPlayer(String)}; {@code fromStart}: at 0:00, see {@link #loadVideo}. */
+	void switchVideoInPlayer(String videoId, boolean fromStart) {
 		evaluateJavascript("""
 				(function() {
 				  var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
 				  var fn = p ? p.loadVideoById : null;
 				  if (typeof fn !== 'function') return false;
-				  fn.call(p, '%1$s');
+				  if (%2$b) fn.call(p, '%1$s', 0);
+				  else fn.call(p, '%1$s');
 				  try { history.replaceState(history.state, '', '/watch?v=%1$s'); } catch (e) {}
 				  return true;
 				})();
-				""".formatted(videoId), result -> {
-			if (!"true".equals(result)) loadUrl(YoutubeVideoItem.watchUrl(videoId));
+				""".formatted(videoId, fromStart), result -> {
+			if (!"true".equals(result)) {
+				loadUrl(YoutubeVideoItem.watchUrl(videoId) + (fromStart ? "&t=0s" : ""));
+			}
 		});
 	}
 
@@ -1287,7 +1298,7 @@ public class YoutubeWebView extends FermataWebView {
 	 * plain document load. A full browser navigation replaces this document outright, taking the
 	 * pending timer with it, so it can never double-navigate on the path that did work.
 	 */
-	private static String navigateToVideoJs(String videoId, boolean fromStart) {
+	private static String navigateToVideoJs(String videoId, boolean fromStart, boolean inPlayer) {
 		return """
 				(function() {
 				  var id = '%1$s';
@@ -1299,6 +1310,25 @@ public class YoutubeWebView extends FermataWebView {
 				    catch (e) { return location.search.indexOf('v=' + id) >= 0; }
 				  }
 				  if (onTarget()) return true;
+				  // Playing as music, or the page hidden behind another tab or the app in the background:
+				  // the player swaps the video itself, at once. The router's navigation is left out: with
+				  // the page hidden YouTube defers part of it (its rendering waits for the page to be
+				  // shown), and that late part loaded the video again, from 0:00 (the &t=0s) or wherever,
+				  // heard as the song restarting when the app came back to the front, or as the start of a
+				  // song repeating a moment after it began. Nobody is looking at the page in these cases;
+				  // its address is still put right, so the favorites button, a refresh and the like act on
+				  // what plays.
+				  var hidden = false;
+				  try { hidden = !!(window.__fermataPageHidden && window.__fermataPageHidden()); } catch (e) {}
+				  if (%6$b || hidden) {
+				    var sp = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+				    if (sp && (typeof sp.loadVideoById === 'function')) {
+				      if (fromStart) sp.loadVideoById(id, 0);
+				      else sp.loadVideoById(id);
+				      try { history.replaceState(history.state, '', url); } catch (e) {}
+				      return true;
+				    }
+				  }
 				  // Whether YouTube's router took the click: on a slow connection it can take well
 				  // over a second to get to the new URL. Forcing loadVideoById() meanwhile started the
 				  // video, then the router's own navigation landed and loaded it again from the start --
@@ -1353,7 +1383,7 @@ public class YoutubeWebView extends FermataWebView {
 				  return true;
 				})();
 				""".formatted(videoId, NAVIGATION_FALLBACK_MS, fromStart, NAVIGATION_STARTED_WAIT_MS,
-				NAVIGATION_RECHECK_MS);
+				NAVIGATION_RECHECK_MS, inPlayer);
 	}
 
 	private void prevNext(boolean next) {
@@ -1561,8 +1591,11 @@ public class YoutubeWebView extends FermataWebView {
 				"      return;\n" +
 				"    }\n" +
 				"    state.player = p;\n" +
+				// Also as a new video is set up (-1 unstarted, 5 cued), before its first segment is
+				// fetched: switched only once it was buffering or playing, the next song's opening was
+				// fetched again at the new quality, heard as its first moment playing twice.
 				"    state.handler = function(s) {\n" +
-				"      if ((s === 1) || (s === 3)) applyTarget(getPlayer() || p);\n" +
+				"      if ((s === 1) || (s === 3) || (s === -1) || (s === 5)) applyTarget(getPlayer() || p);\n" +
 				"    };\n" +
 				"    p.addEventListener('onStateChange', state.handler);\n" +
 				"    applyTarget(p);\n" +

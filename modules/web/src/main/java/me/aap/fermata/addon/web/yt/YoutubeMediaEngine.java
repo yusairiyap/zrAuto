@@ -276,10 +276,17 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 */
 	@Override
 	public void yieldToLocal() {
+		// Already silenced for the same take-over (the item's engine choice and the session both ask).
+		if (yielded) return;
 		leavePageForLocal();
 	}
 
+	// The page was silenced for another engine (a local file) and nothing has asked it to play since:
+	// see playing(), which keeps it from taking the session back on its own.
+	private boolean yielded;
+
 	private void leavePageForLocal() {
+		yielded = true;
 		// As the engine's own pause() records it: a pause the page reports next is the app's doing.
 		lastActivePlayTime = 0;
 		appRequestedPause = true;
@@ -373,6 +380,25 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			switchPageToDownload(actualId);
 			return;
 		}
+
+		// Silenced for a local file that plays now, and nobody asked this page for anything since: it
+		// resumed by itself (YouTube's player picking up again after a fullscreen exit, a quality change
+		// or a buffer refill). Taking the session over here is what made a downloaded song start and
+		// then give way to the YouTube video again. A tap on a video on the page, a video the app
+		// asked for, or a play pressed on the page while it's on screen still take over.
+		if (yielded && (cb.getEngine() != this) && (addon.getPendingVideoId() == null) &&
+				!expectingPageNav && !recentLinkClick && !isUserPickPending() && !isPageInFront()) {
+			MediaEngine owner = cb.getEngine();
+			if ((owner == null) || (owner.getId() != MEDIA_ENG_YT)) {
+				DiagnosticLog.log("YT", "page played by itself after giving way: silenced", "id=" + actualId,
+						"owner=" + ((owner == null) ? null : owner.getClass().getSimpleName()));
+				lastActivePlayTime = 0;
+				appRequestedPause = true;
+				web.pause();
+				return;
+			}
+		}
+		yielded = false;
 
 		// The phone's own YouTube page while Android Auto is connected: the car's player is the one
 		// that plays (see MainActivityDelegate#getPlaybackDelegate()). A video tapped here is handed
@@ -568,6 +594,13 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			DiagnosticLog.log("YT", "resumed paused", "id=" + actualId);
 			web.post(cb::onPause);
 		}
+	}
+
+	/** Whether this page is what the user is looking at: the YouTube tab in front, page shown. */
+	private boolean isPageInFront() {
+		if (!web.isShown()) return false;
+		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(web.getContext()).peek();
+		return (a != null) && (a.getActiveFragment() instanceof YoutubeFragment);
 	}
 
 	/** See {@link #userPickedVideoId}. */
@@ -799,6 +832,21 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		web.resumeAt(restorePositionMs);
 	}
 
+	/**
+	 * The page is about to be resized by the app (fullscreen entered or left, e.g. on a switch to
+	 * another tab while the video plays on). YouTube's player answers a resize by pausing for a beat;
+	 * with the last 'playing' minutes back, paused() took that for a real pause and the session went
+	 * PAUSED until the player picked up again by itself: a gap in the sound on every tab change.
+	 * Arms paused()'s retry as start() does, so that pause is answered with a play straight away.
+	 */
+	void layoutChanging() {
+		// Not while a pause asked for (the user's, or giving way to a local file) is on its way.
+		if ((cb.getEngine() != this) || !cb.isPlaying() || yielded || appRequestedPause) return;
+		lastActivePlayTime = System.currentTimeMillis();
+		lastPausedTime = 0;
+		playRetries = 0;
+	}
+
 	void paused() {
 		// Silenced because another engine took over (see acceptQueueResolved() and the Music tab's
 		// MusicPlayer#playTrack()): that pause must not pause the engine that's playing now.
@@ -893,6 +941,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// prepare() re-taking control of navigation, one way or another, is what queueTransitionPending
 		// waits for -- see its declaration and playing()'s "unexpected transition" handling above.
 		queueTransitionPending = false;
+		// Asked to play here again: whatever this page plays next is wanted.
+		yielded = false;
 
 		if ((source == next) || (source == prev) || (queueVideoId != null)) {
 			// The app is choosing what plays next now; an earlier tap on the page no longer applies.
@@ -933,7 +983,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			web.getAddon().setPendingVideoId(queueVideoId);
 			pendingCorrections = 0;
 			// From 0:00, not wherever YouTube would resume it -- see YoutubeWebView#loadVideo.
-			web.afterAudioFadeOut(() -> web.loadVideo(queueVideoId, true));
+			loadQueueVideo(queueVideoId);
 		} else if ((queueVideoId != null) && queueVideoId.equals(currentVideoId) &&
 				!web.getAddon().isRepeatOneEnabled()) {
 			// The queue resolved to the video that's on the page already -- the Music tab's Repeat One
@@ -969,10 +1019,59 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			web.getAddon().setPendingVideoId(queueVideoId);
 			pendingCorrections = 0;
 			// From 0:00, not wherever YouTube would resume it -- see YoutubeWebView#loadVideo.
-			web.afterAudioFadeOut(() -> web.loadVideo(queueVideoId, true));
+			loadQueueVideo(queueVideoId);
 		} else {
 			cb.onEnginePrepared(this);
 		}
+	}
+
+	// Identifies the latest queue switch watched by watchSwitch().
+	private int switchWatchGen;
+	private static final long SWITCH_WATCH_MS = 8000L;
+
+	/** The queue's next video, from 0:00, once the sound has faded; watched until it plays. */
+	private void loadQueueVideo(String videoId) {
+		int gen = ++switchWatchGen;
+		web.afterAudioFadeOut(() -> {
+			if (gen != switchWatchGen) return;
+			web.loadVideo(videoId, true);
+			watchSwitch(videoId, gen, 0);
+		});
+	}
+
+	/**
+	 * A queue switch that never got its video playing: the page's navigation was swallowed or held
+	 * back (its router waits for a hidden page to be shown, e.g. under Android Auto with the Music tab
+	 * up), which left the loading circle on for good -- and next/previous only asked for the same kind
+	 * of navigation again. The player is told to swap the video itself, then, as a last resort, the
+	 * watch page is loaded. Nothing is done once the video plays (playing() clears the pending id),
+	 * another switch was asked for, or the user paused.
+	 */
+	private void watchSwitch(String videoId, int gen, int attempt) {
+		me.aap.utils.app.App.get().getHandler().postDelayed(() -> {
+			if ((gen != switchWatchGen) || (cb.getEngine() != this)) return;
+			if (!videoId.equals(web.getAddon().getPendingVideoId())) return;
+			int st = cb.getPlaybackState().getState();
+			if ((st == android.support.v4.media.session.PlaybackStateCompat.STATE_PAUSED) ||
+					(st == android.support.v4.media.session.PlaybackStateCompat.STATE_STOPPED) ||
+					(st == android.support.v4.media.session.PlaybackStateCompat.STATE_NONE)) {
+				return;
+			}
+			if (adActive || (waitingSince != 0)) {
+				// An ad first, or the video loading on a slow connection: under way, not stuck (the
+				// stall check speaks up if it drags on).
+				watchSwitch(videoId, gen, attempt);
+				return;
+			}
+			if (attempt == 0) {
+				DiagnosticLog.log("YT", "switch not started: swapping in the player", "id=" + videoId);
+				web.switchVideoInPlayer(videoId, true);
+				watchSwitch(videoId, gen, 1);
+			} else if (attempt == 1) {
+				DiagnosticLog.log("YT", "switch not started: loading the watch page", "id=" + videoId);
+				web.loadUrl(YoutubeVideoItem.watchUrl(videoId) + "&t=0s");
+			}
+		}, SWITCH_WATCH_MS);
 	}
 
 	/**
@@ -1016,6 +1115,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	@Override
 	public void start() {
 		DiagnosticLog.log("YT", "engine start()", "id=" + currentVideoId);
+		yielded = false;
 		lastActivePlayTime = System.currentTimeMillis();
 		lastPausedTime = 0;
 		playRetries = 0;
@@ -1587,6 +1687,20 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		protected String buildSubtitle(MediaMetadataCompat md, SharedTextBuilder tb) {
 			return null;
 		}
+
+		/**
+		 * Nothing to look up for the next/prev/end placeholders: their resource is a made-up address
+		 * (http://youtube.com/next). The default asked the metadata retriever to open it, and the
+		 * session waits for an item's duration before it plays it (up to 5 s, see
+		 * MediaSessionCallback#prepareResolvedItem): a next/previous outside a Favorites/Playlist queue
+		 * sat there with no loading circle before the page was even asked to move on. A failed lookup
+		 * isn't kept, so every skip paid it again. Current has its own.
+		 */
+		@NonNull
+		@Override
+		protected FutureSupplier<MediaMetadataCompat> loadMeta() {
+			return completed(new MediaMetadataCompat.Builder().build());
+		}
 	}
 
 	private final class Current extends YoutubeItem {
@@ -1760,6 +1874,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 */
 	void playNow(String videoId) {
 		DiagnosticLog.log("YT", "play now", "id=" + videoId);
+		yielded = false;
 		YoutubeAddon addon = web.getAddon();
 		MusicPlayer.setYoutubeAudioMode(false);
 		addon.setQueueItem(null);
