@@ -860,6 +860,33 @@
       return !!state.chains.get(video) && cfg.reverbEnabled && (cfg.reverbStrength > 0);
     },
 
+    // For the Diagnostic log (YoutubeWebView#traceMediaJs): the audio output's buffer sizes and
+    // which effect stages this element's audio runs through (spine key, plus R and the engine).
+    audioInfo(video) {
+      const chain = state.chains.get(video);
+      const ctx = chain ? chain.ctx : state.ctx;
+      if (!ctx) return 'ctx=none';
+      const ms = (x) => (typeof x === 'number') ? Math.round(x * 1000) + 'ms' : '?';
+      let s = 'ctx=' + ctx.state + ' rate=' + ctx.sampleRate + ' base=' + ms(ctx.baseLatency) +
+          ' out=' + ms(ctx.outputLatency);
+      if (chain) {
+        s += ' fx=' + (chain.spineKey || '-') +
+            (chain.reverbConnected ? ('R' + chain.reverbEngineName.charAt(0)) : '');
+      }
+      return s;
+    },
+
+    // The output's underrun counters (newer WebViews only, else null): n events, d seconds of
+    // output the graph couldn't fill, t seconds played. Older builds used the "fallbackFrames" names.
+    playoutStats() {
+      const st = state.ctx && state.ctx.playoutStats;
+      if (!st) return null;
+      const pick = (a, b) => (typeof st[a] === 'number') ? st[a] : ((typeof st[b] === 'number') ? st[b] : 0);
+      return {n: pick('underrunEvents', 'fallbackFramesEvents'),
+              d: pick('underrunDuration', 'fallbackFramesDuration'),
+              t: pick('totalDuration', 'totalFramesDuration')};
+    },
+
     configure(config) {
       state.config = Object.assign({}, state.config, config);
       if (Array.isArray(config.bands)) state.config.bands = config.bands;

@@ -525,7 +525,7 @@ public class YoutubeWebView extends FermataWebView {
 	private static String traceMediaJs() {
 		return "if (!window.__fermataTracer) {\n" +
 				"  window.__fermataTracer = true;\n" +
-				"  var trLastT = -1, trLastWall = 0, trPlayT = -1, trPlayWall = 0;\n" +
+				"  var trLastT = -1, trLastWall = 0, trPlayT = -1, trPlayWall = 0, trStatsGen = 0;\n" +
 				"  var trace = function(msg) {\n" +
 				"    if (Date.now() < (window.__fermataTraceUntil || 0)) " + JS_EVENT + "(" + JS_AUDIO_TRACE +
 				", msg);\n" +
@@ -539,7 +539,22 @@ public class YoutubeWebView extends FermataWebView {
 				"      var fade = '';\n" +
 				"      if (n === 'playing') {\n" +
 				"        trPlayT = v.currentTime; trPlayWall = Date.now();\n" +
-				"        try { var eq = window.FermataEqualizer; fade = ' fade=' + ((eq && eq.fadeParam && eq.fadeParam(v)) ? 'gain' : 'element'); } catch (x) {}\n" +
+				"        try {\n" +
+				"          var eq = window.FermataEqualizer, g = eq && eq.fadeParam && eq.fadeParam(v);\n" +
+				"          fade = ' fade=' + (g ? 'gain' : 'element');\n" +
+				// The effects path: its output buffers, and whether the output ran dry (an underrun is
+				// heard as a crackle or a gap) in the first 2.5 s, which the times above can't show.
+				"          if (g && eq.audioInfo) {\n" +
+				"            fade += ' ' + eq.audioInfo(v);\n" +
+				"            var s0 = eq.playoutStats ? eq.playoutStats() : null, gen = ++trStatsGen;\n" +
+				"            if (!s0) fade += ' underruns=n/a';\n" +
+				"            else setTimeout(function() {\n" +
+				"              var s1 = eq.playoutStats();\n" +
+				"              if (s1 && (gen === trStatsGen)) trace('output in the first 2.5 s: underruns=' + " +
+				"(s1.n - s0.n) + ' missing=' + (s1.d - s0.d).toFixed(3) + ' played=' + (s1.t - s0.t).toFixed(3));\n" +
+				"            }, 2500);\n" +
+				"          }\n" +
+				"        } catch (x) {}\n" +
 				"      }\n" +
 				"      trace(n + ' t=' + v.currentTime.toFixed(2) + ' vol=' + v.volume.toFixed(2) + " +
 				"' ready=' + v.readyState + fade);\n" +
