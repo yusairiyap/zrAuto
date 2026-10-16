@@ -434,9 +434,11 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   deferred until shown, which restarted songs on return to the app and left Android Auto's Music tab
   stuck on the loading circle. `YoutubeMediaEngine#watchSwitch` retries a switch that never plays.
 - **YouTube quality is never switched on a video that is playing** (`applyQualityPolicy(target, now)`):
-  the player reloads it for that (heard as the song starting twice). Music mode's lowest applies as a
-  video is set up or buffers (and YouTube's stored `yt-player-quality` is set to 144p meanwhile); only
-  going back to video switches at once. `youtube_fade.js` takes a volume YouTube sets while a fade
+  by itself (a new song in music mode): the player reloads it for that (heard as the song starting
+  twice). The lowest applies as each video is set up or buffers (and YouTube's stored
+  `yt-player-quality` is set to 144p); the user switching into music or back to video switches the
+  playing song at once, as they expect. A page pause during a switch is ignored
+  (`YoutubeMediaEngine#isSwitchPause`): rapid skips used to pause the session. `youtube_fade.js` takes a volume YouTube sets while a fade
   holds the level down (it does per video, on load) as the target and puts the held level back.
 - **The Music queue running out on a file** (Repeat off) goes on with YouTube's suggestions
   (`MediaSessionCallbackAssistant#continueAfterQueueEnd` -> `YoutubeMediaEngine#playPageSuggestion`),

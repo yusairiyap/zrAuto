@@ -731,6 +731,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 */
 	private void transitioning() {
 		switching = true;
+		switchStartedAt = SystemClock.elapsedRealtime();
 		YoutubeVideoView v = getFullScreenView();
 		if (v != null) v.showTransitionOverlay(false);
 		// The next video is loading: the play/pause button gives way to the loading circle, as for a
@@ -858,10 +859,30 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		playRetries = 0;
 	}
 
+	// When the switch to another video (see transitioning()) began.
+	private long switchStartedAt;
+	private static final long SWITCH_PAUSE_IGNORE_MS = 15_000L;
+
+	/**
+	 * The page paused its video on its own while the app is switching to another one (a skip,
+	 * especially several in a row: the old video is stopped as the next one is loaded). Not a pause
+	 * anyone asked for: mirrored into the session it paused playback, and the next video started
+	 * anyway -- play, pause, play. The user's own pause always goes through (appRequestedPause).
+	 */
+	private boolean isSwitchPause() {
+		if (appRequestedPause) return false;
+		boolean underWay = switching || expectingPageNav || (web.getAddon().getPendingVideoId() != null);
+		return underWay && (SystemClock.elapsedRealtime() - switchStartedAt < SWITCH_PAUSE_IGNORE_MS);
+	}
+
 	void paused() {
 		// Silenced because another engine took over (see acceptQueueResolved() and the Music tab's
 		// MusicPlayer#playTrack()): that pause must not pause the engine that's playing now.
 		if (cb.getEngine() != this) return;
+		if (isSwitchPause()) {
+			DiagnosticLog.log("YT", "page paused during a switch: ignored", "id=" + currentVideoId);
+			return;
+		}
 
 		// Confirmed on-device (window-resize repro): YouTube's own player can auto-pause the
 		// <video> element for a beat right after it (or we) told it to play -- its internal layout
@@ -1152,9 +1173,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		qualityUrl = null;
 		manualQualityVideoId = null;
 		String preferred = web.getAddon().preferredQuality();
-		// Into music: the song playing keeps its quality (switching it reloads it, a gap in the sound);
-		// the lowest applies from its next buffering and to every next song. Into video: at once.
-		if (MusicPlayer.isYoutubeAudioMode()) web.applyQualityPolicy("lowest", false);
+		// Switched by the user (into music or back to video): at once, the song playing too.
+		if (MusicPlayer.isYoutubeAudioMode()) web.applyQualityPolicy("lowest");
 		else if (preferred != null) web.applyQualityPolicy(preferred);
 		else web.clearQualityPolicy();
 	}
