@@ -443,7 +443,7 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
 - **YouTube Effects route the page's sound through Web Audio** (`createMediaElementSource`, irreversible per
   element), which can make a new video's first second choppy on a phone. `youtube_equalizer.js` only takes an
   element over when an effect really changes the sound (`anyEffectEnabled` checks values, not just switches), and
-  with effects turned off afterwards the next in-player queue switch loads a page instead (`routedButIdle`, the
+  with effects turned off afterwards the next queue switch (not in fullscreen) loads a page instead (`routedButIdle`, the
   'reload' result of `navigateToVideoJs`) to get the plain path back. `fade=gain` vs `element` in the YT media log.
 - **The Music queue running out on a file** (Repeat off) goes on with YouTube's suggestions
   (`MediaSessionCallbackAssistant#continueAfterQueueEnd` -> `YoutubeMediaEngine#playPageSuggestion`),

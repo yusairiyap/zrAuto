@@ -1409,14 +1409,14 @@ public class YoutubeWebView extends FermataWebView {
 				  // what plays.
 				  var hidden = false;
 				  try { hidden = !!(window.__fermataPageHidden && window.__fermataPageHidden()); } catch (e) {}
+				  // Effects were on earlier and are all off now: the video element's sound still goes
+				  // through Web Audio (choppy at a new video's start) until the document is new, so this
+				  // video is loaded as a page, once. Not in fullscreen, which a page load would leave.
+				  try {
+				    var eq = window.FermataEqualizer, ev = document.querySelector('video');
+				    if (eq && eq.routedButIdle && eq.routedButIdle(ev) && !document.fullscreenElement) return 'reload';
+				  } catch (e) {}
 				  if (%6$b || hidden) {
-				    // Effects were on earlier and are all off now: the video element's sound still goes
-				    // through Web Audio (choppy at a new video's start) until the document is new, so
-				    // load this one as a page, once.
-				    try {
-				      var eq = window.FermataEqualizer, ev = document.querySelector('video');
-				      if (eq && eq.routedButIdle && eq.routedButIdle(ev)) return 'reload';
-				    } catch (e) {}
 				    var sp = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
 				    if (sp && (typeof sp.loadVideoById === 'function')) {
 				      if (fromStart) sp.loadVideoById(id, 0);
