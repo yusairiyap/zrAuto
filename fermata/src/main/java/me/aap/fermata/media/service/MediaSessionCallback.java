@@ -992,8 +992,19 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		return getItem.then(
 				item -> (next ? getNextPlayable(item) : getPrevPlayable(item)).then(this::prepareItem)
 						.then(pi -> {
-							if (pi != null) skipTo(next, pi);
-							else BufferingIndicator.setBuffering(false); // Nothing to skip to.
+							if (pi != null) {
+								skipTo(next, pi);
+							} else if (next && !folder && getAssistant().continueAfterQueueEnd(i)) {
+								// YouTube's suggestions go on from here; it takes over once one plays. The song's
+								// sound stays down meanwhile (see skipWithFade()).
+								handedOverAt = SystemClock.uptimeMillis();
+								BufferingIndicator.setBuffering(true);
+							} else {
+								// Nothing to skip to: the song goes on as it was, not faded out and back in.
+								BufferingIndicator.setBuffering(false);
+								MediaEngine e = getEngine();
+								if (e != null) e.restoreVolume();
+							}
 							return completedVoid();
 						}));
 	}
@@ -1488,6 +1499,11 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 				DiagnosticLog.log("TRANSPORT", "engine ended: next", "next=" + next);
 				if (next != null) {
 					skipTo(true, next);
+				} else if (getAssistant().continueAfterQueueEnd(i)) {
+					// The queue is over and YouTube's suggestions go on: on the way to the next song.
+					PlaybackStateCompat st = getPlaybackState();
+					setPlaybackState(new PlaybackStateCompat.Builder(st)
+							.setState(STATE_SKIPPING_TO_NEXT, 0, st.getPlaybackSpeed()).build());
 				} else {
 					onStop(false);
 					setLastPlayed(i, 0);

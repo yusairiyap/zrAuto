@@ -1609,6 +1609,16 @@ public class YoutubeWebView extends FermataWebView {
 	 * level name such as "hd720" -- the closest available level at or below it, else the lowest.
 	 */
 	void applyQualityPolicy(String target) {
+		applyQualityPolicy(target, true);
+	}
+
+	/**
+	 * @param now switch a video that is playing right away (the user switching between music and
+	 *            video). Otherwise a playing video keeps its quality and only a video being set up or
+	 *            buffering is switched: a playing one is loaded again by the player for it (heard as
+	 *            the next song starting, stopping and fading in a second time).
+	 */
+	void applyQualityPolicy(String target, boolean now) {
 		boolean lowest = "lowest".equals(target);
 		loadUrl("javascript:\n" +
 				"(function() {\n" +
@@ -1665,10 +1675,12 @@ public class YoutubeWebView extends FermataWebView {
 				// fetched: switched only once it was buffering or playing, the next song's opening was
 				// fetched again at the new quality, heard as its first moment playing twice.
 				"    state.handler = function(s) {\n" +
-				"      if ((s === 1) || (s === 3) || (s === -1) || (s === 5)) applyTarget(getPlayer() || p);\n" +
+				"      if ((s === 3) || (s === -1) || (s === 5)) applyTarget(getPlayer() || p);\n" +
 				"    };\n" +
 				"    p.addEventListener('onStateChange', state.handler);\n" +
-				"    applyTarget(p);\n" +
+				"    var playing = false;\n" +
+				"    try { playing = (typeof p.getPlayerState === 'function') && (p.getPlayerState() === 1); } catch (e) {}\n" +
+				"    if (" + now + " || !playing) applyTarget(p);\n" +
 				"  }\n" +
 				"  install();\n" +
 				"})();");

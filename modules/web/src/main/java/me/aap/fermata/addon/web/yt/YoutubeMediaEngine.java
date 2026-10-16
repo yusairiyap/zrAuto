@@ -202,9 +202,9 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		this.web = web;
 		cb = a.getMediaSessionCallback();
 		mediaRoot = new ExtRoot("youtube", a.getLib());
-		next = new YoutubeItem(NEXT_ID, mediaRoot, GenericFileSystem.getInstance().create("http://youtube.com/next"));
-		prev = new YoutubeItem(PREV_ID, mediaRoot, GenericFileSystem.getInstance().create("http://youtube.com/prev"));
-		end = new YoutubeItem(END_ID, mediaRoot, GenericFileSystem.getInstance().create("http://youtube.com/end")) {
+		next = new Placeholder(NEXT_ID, "http://youtube.com/next");
+		prev = new Placeholder(PREV_ID, "http://youtube.com/prev");
+		end = new Placeholder(END_ID, "http://youtube.com/end") {
 			@NonNull
 			@Override
 			public FutureSupplier<PlayableItem> getNextPlayable() {
@@ -217,6 +217,16 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				return queueAwarePrevPlayable();
 			}
 		};
+	}
+
+	// The last video that played (what the "end" placeholder stands for between two videos).
+	@Nullable
+	private Current lastCurrent;
+
+	/** The engine's current item becomes the "between videos" placeholder, showing the video just over. */
+	private void toEnd() {
+		current = end;
+		end.refreshMetadata();
 	}
 
 	/**
@@ -521,7 +531,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				// this transition was itself detected from.
 				currentVideoId = actualId;
 				queueTransitionPending = true;
-				current = end;
+				toEnd();
 				qualityUrl = null;
 				// Cover the handoff: resolving the queue's own next item and navigating to it takes a
 				// beat, and if the page leaves fullscreen on the way (a real navigation does), the
@@ -557,7 +567,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		currentVideoId = actualId;
 
 		if (url.startsWith("blob:")) url = url.substring(5);
-		current = new Current(url, currentVideoTitle, currentVideoAuthor, actualId);
+		current = lastCurrent = new Current(url, currentVideoTitle, currentVideoAuthor, actualId);
 		// A Music tab track learns its real title and channel from the page as it plays.
 		if ((addon.getQueueItem() instanceof MusicTrackItem t) &&
 				Objects.equals(t.getVideoId(), actualId)) {
@@ -579,7 +589,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			qualityUrl = url;
 		} else if (!url.isEmpty() && !url.equals(qualityUrl)) {
 			qualityUrl = url;
-			web.applyQualityPolicy(music ? "lowest" : preferred);
+			web.applyQualityPolicy(music ? "lowest" : preferred, false);
 		}
 		DiagnosticLog.log("YT", wasBuffering ? "playing (after buffering)" : "playing",
 				"id=" + actualId, "title=" + currentVideoTitle);
@@ -677,7 +687,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		}
 
 		DiagnosticLog.log("YT", "video ended", "id=" + currentVideoId);
-		current = end;
+		toEnd();
 		qualityUrl = null;
 		// Same reasoning as the unexpected-transition handoff in playing() above: whatever comes next
 		// is resolved asynchronously, and the page must not be visible while it is.
@@ -1142,7 +1152,9 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		qualityUrl = null;
 		manualQualityVideoId = null;
 		String preferred = web.getAddon().preferredQuality();
-		if (MusicPlayer.isYoutubeAudioMode()) web.applyQualityPolicy("lowest");
+		// Into music: the song playing keeps its quality (switching it reloads it, a gap in the sound);
+		// the lowest applies from its next buffering and to every next song. Into video: at once.
+		if (MusicPlayer.isYoutubeAudioMode()) web.applyQualityPolicy("lowest", false);
 		else if (preferred != null) web.applyQualityPolicy(preferred);
 		else web.clearQualityPolicy();
 	}
@@ -1762,6 +1774,39 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		}
 	}
 
+	/**
+	 * The next/prev/end stand-ins. Between two videos the "end" one is what plays as far as the
+	 * session knows, so it is what the Music tab, the notification and the car show for a moment:
+	 * its made-up address ("http://youtube.com/end") used to be the title there. It shows the video
+	 * that just ended instead -- its title, channel and picture -- until the next one plays.
+	 */
+	private class Placeholder extends YoutubeItem {
+		Placeholder(String id, String url) {
+			super(id, mediaRoot, GenericFileSystem.getInstance().create(url));
+		}
+
+		@NonNull
+		@Override
+		public String getName() {
+			Current c = lastCurrent;
+			return (c != null) ? c.getName() : web.getContext().getString(me.aap.fermata.R.string.youtube);
+		}
+
+		@NonNull
+		@Override
+		protected FutureSupplier<MediaMetadataCompat> loadMeta() {
+			// Only what is known already: the session waits for this before a skip goes on.
+			Current c = lastCurrent;
+			if (c != null) {
+				FutureSupplier<MediaMetadataCompat> m = c.getMediaData();
+				if (m.isDone() && !m.isFailed()) return m;
+			}
+			MediaMetadataCompat.Builder b = new MediaMetadataCompat.Builder();
+			b.putString(MediaMetadataCompat.METADATA_KEY_TITLE, getName());
+			return completed(b.build());
+		}
+	}
+
 	private final class Current extends YoutubeItem {
 		@Nullable
 		private final String title;
@@ -1925,6 +1970,49 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 */
 	boolean isActive() {
 		return (cb.getEngine() == this) && (current != null);
+	}
+
+	/**
+	 * After another engine's song, the last of the Music queue: what this page would play next by
+	 * itself -- the Up next queue first, else YouTube's suggestion after the video it last played --
+	 * which takes the session over once it plays (see playing()). False if no video was ever played
+	 * on this page, so it has nothing to suggest.
+	 */
+	boolean playPageSuggestion() {
+		if (currentVideoId == null) return false;
+		YoutubeAddon addon = web.getAddon();
+		DiagnosticLog.log("YT", "after the queue: the page's next", "after=" + currentVideoId);
+		yielded = false;
+		// The queue is over: what follows is YouTube's own, not a queue track's next.
+		addon.setQueueItem(null);
+		addon.setRepeatOneEnabled(false);
+		clearUserPick();
+		queueTransitionPending = false;
+		transitioning();
+		String up = addon.peekUpNext();
+		int gen = ++switchWatchGen;
+		if (up != null) {
+			addon.removeUpNext(up);
+			addon.setPendingVideoId(up);
+			pendingCorrections = 0;
+			web.loadVideo(up, true);
+		} else {
+			expectingPageNav = true;
+			web.next();
+		}
+		me.aap.utils.app.App.get().getHandler().postDelayed(() -> {
+			if ((gen != switchWatchGen) || (cb.getEngine() == this)) return;
+			// Nothing came: the queue is simply over.
+			DiagnosticLog.log("YT", "after the queue: nothing played");
+			expectingPageNav = false;
+			if (up != null) addon.setPendingVideoId(null);
+			BufferingIndicator.setBuffering(false);
+			int st = cb.getPlaybackState().getState();
+			MediaEngine e = cb.getEngine();
+			if (st == PlaybackStateCompat.STATE_SKIPPING_TO_NEXT) cb.onStop();
+			else if (e != null) e.restoreVolume(); // Next pressed on the last song: it goes on.
+		}, 10_000);
+		return true;
 	}
 
 	/**
