@@ -2021,10 +2021,13 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			web.next();
 		}
 		me.aap.utils.app.App.get().getHandler().postDelayed(() -> {
-			if ((gen != switchWatchGen) || (cb.getEngine() == this)) return;
+			// Something came: this engine took the session and plays (it is already the engine when
+			// the queue ended on a YouTube song, so that alone doesn't tell).
+			if ((gen != switchWatchGen) || ((cb.getEngine() == this) && cb.isPlaying())) return;
 			// Nothing came: the queue is simply over.
 			DiagnosticLog.log("YT", "after the queue: nothing played");
 			expectingPageNav = false;
+			switching = false;
 			if (up != null) addon.setPendingVideoId(null);
 			BufferingIndicator.setBuffering(false);
 			int st = cb.getPlaybackState().getState();

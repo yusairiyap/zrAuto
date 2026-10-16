@@ -219,13 +219,26 @@
     const s = state(v);
     clearTimers(s);
     s.pausing = false;
-    if (pageHidden() && !gainParam(v)) {
+    if (pageHidden()) {
       ramp(v, 1, 0); // throttled timers: a few coarse jumps would be worse than none
       return;
     }
     ramp(v, START_LEVEL, 0);
     let t0 = -1;
+    let pausedSince = 0;
     s.timer = setInterval(() => {
+      // Loaded but left paused (a cued video, a reload while paused): stop and put the volume back
+      // rather than tick on, holding it at START_LEVEL; 'playing' starts the fade again if it comes.
+      if (v.paused && (v.readyState >= 2)) {
+        if (!pausedSince) pausedSince = Date.now();
+        else if (Date.now() - pausedSince > 1000) {
+          clearTimers(s);
+          ramp(v, 1, 0);
+          return;
+        }
+      } else {
+        pausedSince = 0;
+      }
       if (gainParam(v)) {
         // The equalizer took over: once the sound flows, one sample-accurate curve on its gain.
         if (v.paused || (v.readyState < 3)) return;
@@ -443,6 +456,12 @@
       if (s.pausing && !v.paused) {
         clearTimers(s);
         s.pausing = false;
+        fadeIn(v);
+        return;
+      }
+      // Already playing but held down (faded out for a switch that then replayed this video
+      // instead, see YoutubeWebView#replay): play() fires no event here, so bring it back now.
+      if (!v.paused && (s.level < 1) && !s.timer && !s.ending) {
         fadeIn(v);
         return;
       }

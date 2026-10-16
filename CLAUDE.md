@@ -306,7 +306,7 @@ provider doesn't offer a folder to pick, so Drive is manual only.
   (`Action.getFavoritableItem` + `YtDownloads.videoIdOf`) and position (`MediaEngine#getPosition`, 4x/s); it only
   runs while something has `acquire`d it, and the views do that only while they are on screen
   (`onVisibilityAggregated`), so lyrics/captions off cost nothing. A new song's captions are fetched 1 s in, and the next
-  song's 8 s into the current one (`prefetchNext`, from `PlayableItem#getNextPlayable`), so lyrics show at once on Next.
+  song's 8 s into the current one (`prefetchNext`, Music queue only, from `MusicQueue#getPlayOrder`; never an item's `getNextPlayable`, which walks its folder/favorites and steps a shared shuffle), so lyrics show at once on Next.
 - **Lyrics**: `ui/view/LyricsView` draws the lines in one pass (a fractional scroll position glides to the playing
   line; alpha by distance: the line before dim, gone after the third after). Over the Music tab's cover it sits in
   the art card under the loading dim (`MusicPlayerFragment#addLyricsOverlay`, shown by `LYRICS_ON`, the Lyrics chip

@@ -12,6 +12,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import me.aap.fermata.action.Action;
+import me.aap.fermata.addon.music.MusicPlayer;
+import me.aap.fermata.addon.music.MusicQueue;
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -222,18 +225,23 @@ public final class CaptionsHub {
 		prefetch(a, id);
 	}
 
-	/** The next song in the list (the queue's own next, without moving it): its captions, ahead of time. */
+	/**
+	 * The Music queue's next song, read from its play order (nothing is moved: an item's own
+	 * getNextPlayable() walks its folder or YouTube's favorites, and takes a step of a shared shuffle):
+	 * its captions, ahead of time. Only for the Music queue; elsewhere a song's own come 1 s in.
+	 */
 	private void prefetchNext() {
 		MainActivityDelegate a = activity;
-		if (!ticking || (a == null)) return;
-		PlayableItem pi = Action.getFavoritableItem(a);
-		if ((pi == null) || !java.util.Objects.equals(YtDownloads.videoIdOf(pi), videoId)) return;
-		String cur = videoId;
-		pi.getNextPlayable().main().onSuccess(next -> {
-			String nid = YtDownloads.videoIdOf(next);
-			if ((nid == null) || nid.equals(cur) || (cache.get(nid) != null)) return;
-			prefetch(a, nid, false);
-		});
+		if (!ticking || (a == null) || (videoId == null)) return;
+		MusicTrackItem cur = MusicPlayer.getCurrentTrack(a.getMediaSessionCallback());
+		MusicQueue q = MusicPlayer.getQueue(a);
+		if ((cur == null) || (q == null) || !videoId.equals(YtDownloads.videoIdOf(cur))) return;
+		List<MusicTrackItem> order = q.getPlayOrder();
+		int i = order.indexOf(cur);
+		if ((i < 0) || (i + 1 >= order.size())) return;
+		String nid = YtDownloads.videoIdOf(order.get(i + 1));
+		if ((nid == null) || nid.equals(videoId) || (cache.get(nid) != null)) return;
+		prefetch(a, nid, false);
 	}
 
 	private void prefetch(MainActivityDelegate a, String id) {
@@ -252,7 +260,8 @@ public final class CaptionsHub {
 		boolean auto = p.getBooleanPref(MainActivityPrefs.CAPTIONS_AUTO);
 		handler.postDelayed(() -> {
 			// Skipped on in the meantime: not worth asking YouTube for any more.
-			if (current && !id.equals(YtDownloads.videoIdOf(Action.getFavoritableItem(a)))) {
+			if (current && !id.equals(YtDownloads.videoIdOf(Action.getFavoritableItem(a))) &&
+					!waiting.containsKey(id)) {
 				prefetching.remove(id);
 				knew(id);
 				return;
@@ -396,6 +405,12 @@ public final class CaptionsHub {
 		boolean auto = p.getBooleanPref(MainActivityPrefs.CAPTIONS_AUTO);
 		handler.postDelayed(() -> {
 			if (gen != generation) {
+				// A newer load of the same video is waiting on this one: fetch it after all, or that
+				// load would end as FAILED with nothing ever asked.
+				if (waiting.containsKey(id)) {
+					executor.execute(() -> loadNow(gen, id, lang, auto));
+					return;
+				}
 				prefetching.remove(id);
 				knew(id);
 				return;
