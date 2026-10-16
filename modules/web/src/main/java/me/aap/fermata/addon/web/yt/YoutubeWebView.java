@@ -1416,6 +1416,12 @@ public class YoutubeWebView extends FermataWebView {
 				  if (%6$b || hidden) {
 				    var sp = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
 				    if (sp && (typeof sp.loadVideoById === 'function')) {
+				      // Music: the lowest quality set before the song loads, so it is fetched at that
+				      // quality from the start; switched once it played, the player loaded it again
+				      // (play, pause, play at the start of a song, never seen in fullscreen video).
+				      if (%6$b) {
+				        try { if (typeof sp.setPlaybackQualityRange === 'function') sp.setPlaybackQualityRange('tiny', 'tiny'); } catch (e) {}
+				      }
 				      if (fromStart) sp.loadVideoById(id, 0);
 				      else sp.loadVideoById(id);
 				      try { history.replaceState(history.state, '', url); } catch (e) {}
@@ -1683,13 +1689,23 @@ public class YoutubeWebView extends FermataWebView {
 				"    }\n" +
 				"    return real[real.length - 1];\n" +
 				"  }\n" +
-				"  function applyTarget(p) {\n" +
+				"  function qlog(m) { try { " + JS_EVENT + "(" + JS_AUDIO_TRACE + ", 'quality ' + m); } catch (e) {} }\n" +
+				"  function applyTarget(p, s) {\n" +
 				"    if (!p || typeof p.getAvailableQualityLevels !== 'function') return false;\n" +
 				"    var levels = p.getAvailableQualityLevels();\n" +
 				"    if (!levels || levels.length === 0) return false;\n" +
 				"    var best = pick(levels);\n" +
 				"    if (!best) return false;\n" +
-				"    if (p.getPlaybackQuality && p.getPlaybackQuality() === best) return true;\n" +
+				"    var cur = p.getPlaybackQuality ? p.getPlaybackQuality() : '?';\n" +
+				"    if (cur === best) return true;\n" +
+				// A song already under way (buffering its start): a switch now makes the player load it
+				// again, heard as play, pause, play. Music mode only; it is kept as it is.
+				"    var v = document.querySelector('video');\n" +
+				"    if ((target === 'lowest') && (s === 3) && v && (v.currentTime < 5)) {\n" +
+				"      qlog('kept ' + cur + ' at the start (not ' + best + ')');\n" +
+				"      return true;\n" +
+				"    }\n" +
+				"    qlog(cur + ' -> ' + best + ' state=' + s + ' t=' + (v ? v.currentTime.toFixed(1) : '?'));\n" +
 				"    if (typeof p.setPlaybackQualityRange === 'function') p.setPlaybackQualityRange(best, best);\n" +
 				"    else if (typeof p.setPlaybackQuality === 'function') p.setPlaybackQuality(best);\n" +
 				"    else return false;\n" +
@@ -1706,12 +1722,13 @@ public class YoutubeWebView extends FermataWebView {
 				// fetched: switched only once it was buffering or playing, the next song's opening was
 				// fetched again at the new quality, heard as its first moment playing twice.
 				"    state.handler = function(s) {\n" +
-				"      if ((s === 3) || (s === -1) || (s === 5)) applyTarget(getPlayer() || p);\n" +
+				"      if ((s === 3) || (s === -1) || (s === 5)) applyTarget(getPlayer() || p, s);\n" +
 				"    };\n" +
 				"    p.addEventListener('onStateChange', state.handler);\n" +
 				"    var playing = false;\n" +
 				"    try { playing = (typeof p.getPlayerState === 'function') && (p.getPlayerState() === 1); } catch (e) {}\n" +
-				"    if (" + now + " || !playing) applyTarget(p);\n" +
+				"    if (" + now + ") applyTarget(p);\n" +
+				"    else if (!playing) applyTarget(p, 3);\n" +
 				"  }\n" +
 				"  install();\n" +
 				"})();");

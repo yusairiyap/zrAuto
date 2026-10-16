@@ -438,7 +438,7 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   by itself (a new song in music mode): the player reloads it for that (heard as the song starting
   twice). The lowest applies as each video is set up or buffers (and YouTube's stored
   `yt-player-quality` is set to 144p); the user switching into music or back to video switches the
-  playing song at once, as they expect. A page pause during a switch is ignored
+  playing song at once, as they expect. In music mode the swap sets the lowest range *before* `loadVideoById`, and a switch is never made while a song is starting (`kept ... at the start` in the YT media log): one then made the player load the song again, heard as play, pause, play, only on the Music tab. A page pause during a switch is ignored
   (`YoutubeMediaEngine#isSwitchPause`): rapid skips used to pause the session. `youtube_fade.js` takes a volume YouTube sets while a fade
   holds the level down (it does per video, on load) as the target and puts the held level back. A new video fades
   in from `loadstart` (`startFade`: from 25% over 0.5 s of its playback time, even in dB (`rise`); the switch's fade out stays 300 ms, 150 felt abrupt, never from silence): holding it at zero until
