@@ -422,6 +422,14 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   asks the active tab and is wrong while tabs switch).
 - Known open items: media card art can look blocky on One UI (1280x720 art); a YouTube hand-over
   whose page never starts leaves the local engine muted with no error.
+  **Open: an occasional micro stutter at the start of a YouTube song on the Music tab** (play, tiny
+  pause, play; never seen in fullscreen video, seeking is fine). Already ruled out or fixed: router
+  navigation (Music swaps in the player), quality switched while the song starts (now set before the
+  swap; `YT media quality` lines log any switch), the fade holding the start silent, Web Audio when no
+  effect is on. Still possible: YouTube's own player or the WebView's audio start (the log once showed
+  the playback position jumping ~50-80 ms ahead in the first 1.5 s on the plain path), and the effects
+  path (Web Audio) on Bluetooth (`out=` ~400 ms). Untried ideas: compare against m.youtube.com in
+  Chrome, and skipping with the screen off (to rule the Music tab's own UI work in or out).
 - **Background polls.** The end-of-track fade watcher (`MediaEngineBase#endWatch`) sleeps until the
   last seconds (at most 1 s between looks, 150 ms near the end); the control panel's and the Music
   tab's progress polls skip their work while their window isn't visible (for YouTube each tick is a
