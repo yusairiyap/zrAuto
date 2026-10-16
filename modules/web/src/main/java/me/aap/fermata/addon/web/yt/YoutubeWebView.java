@@ -1,6 +1,7 @@
 package me.aap.fermata.addon.web.yt;
 
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_AD_ENDED;
+import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_AUDIO_TRACE;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_AD_SHOWING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_CONTENT_PLAYING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_ERR;
@@ -489,6 +490,7 @@ public class YoutubeWebView extends FermataWebView {
 				"   setTimeout(findVideo, 1000);\n" +
 				"}\n" +
 				"findVideo();\n" +
+				traceMediaJs() +
 				interceptEndedJs() +
 				interceptNativeSkipButtonsJs() +
 				interceptLinkClicksJs() +
@@ -514,6 +516,43 @@ public class YoutubeWebView extends FermataWebView {
 	 * (idempotent guard) rather than per-video, since {@code document} itself doesn't get recreated
 	 * between videos the way the player/video element does.
 	 */
+	/**
+	 * For the Diagnostic log: what the page's video element does in the 8 seconds after the app
+	 * switches the video (see {@link #loadVideo}), when a stutter would be heard: its events with the
+	 * time and volume, the playback time jumping back (a start heard twice) and gaps in its progress
+	 * with no 'waiting' (a stall). Silent the rest of the time.
+	 */
+	private static String traceMediaJs() {
+		return "if (!window.__fermataTracer) {\n" +
+				"  window.__fermataTracer = true;\n" +
+				"  var trLastT = -1, trLastWall = 0;\n" +
+				"  var trace = function(msg) {\n" +
+				"    if (Date.now() < (window.__fermataTraceUntil || 0)) " + JS_EVENT + "(" + JS_AUDIO_TRACE +
+				", msg);\n" +
+				"  };\n" +
+				"  ['loadstart', 'play', 'playing', 'waiting', 'stalled', 'pause', 'seeking', 'seeked', " +
+				"'emptied', 'ended'].forEach(function(n) {\n" +
+				"    document.addEventListener(n, function(e) {\n" +
+				"      var v = e.target;\n" +
+				"      if (!v || (v.tagName !== 'VIDEO')) return;\n" +
+				"      if ((n === 'seeking') || (n === 'loadstart') || (n === 'emptied')) trLastT = -1;\n" +
+				"      trace(n + ' t=' + v.currentTime.toFixed(2) + ' vol=' + v.volume.toFixed(2) + " +
+				"' ready=' + v.readyState);\n" +
+				"    }, true);\n" +
+				"  });\n" +
+				"  document.addEventListener('timeupdate', function(e) {\n" +
+				"    var v = e.target;\n" +
+				"    if (!v || (v.tagName !== 'VIDEO') || v.paused) return;\n" +
+				"    var now = Date.now(), t = v.currentTime;\n" +
+				"    if ((trLastT >= 0) && (t < trLastT - 0.25)) trace('time back ' + trLastT.toFixed(2) + ' -> ' + t.toFixed(2));\n" +
+				"    if ((trLastT >= 0) && trLastWall && (now - trLastWall > 700)) trace('no progress for ' + " +
+				"(now - trLastWall) + 'ms at t=' + t.toFixed(2));\n" +
+				"    trLastT = t;\n" +
+				"    trLastWall = now;\n" +
+				"  }, true);\n" +
+				"}\n";
+	}
+
 	private String interceptEndedJs() {
 		return "if (!window.__fermataEndedInterceptor) {\n" +
 				"  window.__fermataEndedInterceptor = true;\n" +
@@ -1196,6 +1235,23 @@ public class YoutubeWebView extends FermataWebView {
 		prevNext(false);
 	}
 
+	/**
+	 * The player's own previous video, through its API only: {@code done} gets whether it was asked.
+	 * No fallback to clicking the page's button, which takes the page out of fullscreen first and,
+	 * on a video opened on its own (no previous one), clicked nothing and left the skip hanging.
+	 */
+	void previousInPlayer(java.util.function.Consumer<Boolean> done) {
+		evaluateJavascript("""
+				(function() {
+				  var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+				  var fn = p ? p.previousVideo : null;
+				  if (typeof fn !== 'function') return false;
+				  fn.call(p);
+				  return true;
+				})();
+				""", result -> done.accept("true".equals(result)));
+	}
+
 	void next() {
 		prevNext(true);
 	}
@@ -1267,6 +1323,7 @@ public class YoutubeWebView extends FermataWebView {
 	void switchVideoInPlayer(String videoId, boolean fromStart) {
 		evaluateJavascript("""
 				(function() {
+				  window.__fermataTraceUntil = Date.now() + 8000;
 				  var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
 				  var fn = p ? p.loadVideoById : null;
 				  if (typeof fn !== 'function') return false;
@@ -1305,6 +1362,7 @@ public class YoutubeWebView extends FermataWebView {
 	private static String navigateToVideoJs(String videoId, boolean fromStart, boolean inPlayer) {
 		return """
 				(function() {
+				  window.__fermataTraceUntil = Date.now() + 8000;
 				  var id = '%1$s';
 				  var url = '/watch?v=' + id;
 				  var fromStart = %3$b;

@@ -12,6 +12,7 @@ import android.media.MediaMetadata;
 import android.net.Uri;
 import android.os.SystemClock;
 import android.support.v4.media.MediaMetadataCompat;
+import android.support.v4.media.session.PlaybackStateCompat;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -970,7 +971,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			Log.d("prepare(): no queue item -- asking the page for its own previous video");
 			transitioning();
 			expectingPageNav = true;
-			web.afterAudioFadeOut(web::prev);
+			previousOrRestart();
 		} else if (source instanceof UpNextItem) {
 			// The user's Up next queue (see queueAwareNextPlayable()). Taken off the queue only now
 			// that it's really about to play -- getNextPlayable() is also called speculatively (e.g.
@@ -1023,6 +1024,61 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		} else {
 			cb.onEnginePrepared(this);
 		}
+	}
+
+	/** Further in than this, Previous starts the video again rather than going to the one before. */
+	private static final long PREV_RESTART_MS = 3000L;
+	/** How long the page has to move to its previous video before Previous restarts this one. */
+	private static final long PREV_WAIT_MS = 3500L;
+
+	/**
+	 * Previous with no queue behind the video: from the start of this one when it has played a few
+	 * seconds (as any player does), else the player's previous video -- or, when it has none (a video
+	 * opened on its own), this one from the start. It used to only ask the page, which on a first video
+	 * did nothing at all: the loading circle turned for good and the session stayed "skipping".
+	 */
+	private void previousOrRestart() {
+		String before = currentVideoId;
+		int gen = ++switchWatchGen;
+		web.getPosition().main().onCompletion((pos, err) -> {
+			if ((gen != switchWatchGen) || (cb.getEngine() != this)) return;
+			if ((pos != null) && (pos > PREV_RESTART_MS)) {
+				restartForPrevious("played " + (pos / 1000) + "s");
+				return;
+			}
+			web.afterAudioFadeOut(() -> {
+				if (gen != switchWatchGen) return;
+				web.previousInPlayer(asked -> {
+					if (gen != switchWatchGen) return;
+					if (!asked) {
+						restartForPrevious("no previous in the player");
+						return;
+					}
+					me.aap.utils.app.App.get().getHandler().postDelayed(() -> {
+						if ((gen != switchWatchGen) || (cb.getEngine() != this) || !expectingPageNav) return;
+						if (!java.util.Objects.equals(before, currentVideoId)) return;
+						restartForPrevious("the player stayed on this video");
+					}, PREV_WAIT_MS);
+				});
+			});
+		});
+	}
+
+	private void restartForPrevious(String why) {
+		DiagnosticLog.log("YT", "previous: this video from the start", "id=" + currentVideoId, why);
+		expectingPageNav = false;
+		replayCurrent();
+		int gen = switchWatchGen;
+		// The replay may not bring a new 'playing' (the video was playing already): the session and
+		// the screen are put back as playing all the same, never left on the loading circle.
+		me.aap.utils.app.App.get().getHandler().postDelayed(() -> {
+			if ((gen != switchWatchGen) || (cb.getEngine() != this) || cb.isPlaying()) return;
+			if (cb.getPlaybackState().getState() == PlaybackStateCompat.STATE_PAUSED) return;
+			contentPlaying();
+			clearStall();
+			web.getAddon().setPendingVideoId(null);
+			cb.onEngineStarted(this);
+		}, 1500);
 	}
 
 	// Identifies the latest queue switch watched by watchSwitch().
