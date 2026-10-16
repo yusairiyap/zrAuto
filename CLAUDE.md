@@ -439,7 +439,8 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   `yt-player-quality` is set to 144p); the user switching into music or back to video switches the
   playing song at once, as they expect. A page pause during a switch is ignored
   (`YoutubeMediaEngine#isSwitchPause`): rapid skips used to pause the session. `youtube_fade.js` takes a volume YouTube sets while a fade
-  holds the level down (it does per video, on load) as the target and puts the held level back.
+  holds the level down (it does per video, on load) as the target and puts the held level back. A new video starts
+  at full level from `loadstart` (no fade in): holding it down until `playing` cut off each song's first moment.
 - **YouTube Effects route the page's sound through Web Audio** (`createMediaElementSource`, irreversible per
   element), which can make a new video's first second choppy on a phone. `youtube_equalizer.js` only takes an
   element over when an effect really changes the sound (`anyEffectEnabled` checks values, not just switches), and

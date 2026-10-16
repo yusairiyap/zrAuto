@@ -9,16 +9,11 @@
   // overlapping crossfade between two videos isn't possible; fade-out -> switch -> fade-in is the
   // closest equivalent and is what this gives.
   const FADE_IN_MS = 700;
-  // The start of a new video (from its beginning): only a short fade in. The page is at its busiest
-  // just then, and the fade's 10 ms steps, run late, went up in a few uneven jumps over 0.7 s -- heard
-  // as the next song's first second stuttering, as if buffering. A song starts from its own silence
-  // anyway; the long fade stays for resuming mid-song.
-  const START_FADE_MS = 120;
-  // With the equalizer on, the element's sound goes through Web Audio, which pulls it straight from
-  // the decoder: the browser's own output buffer, which otherwise fills before a video is heard, is
-  // left out, and for a moment after a new video starts there is too little decoded yet -- gaps,
-  // heard as its first second being choppy. The sound is held silent that long first.
-  const START_HOLD_GAIN_MS = 300;
+  // A new video starts at full level, with no fade in: its source is new at 'loadstart', so there is
+  // nothing of the previous video left to hide, and a song starts from its own silence. Holding the
+  // level down until 'playing' and fading in from there cut off the song's first moment: the sound
+  // is already flowing when that event reaches the page (busiest just then, loading the video), and
+  // the log showed the playback time some 100 ms ahead of it. The long fade stays for resuming.
   const FADE_OUT_MS = 350;
   // Silence held after a fade-out before the element is actually paused, so whatever audio the
   // pipeline already had buffered drains out at zero level instead of being cut mid-waveform.
@@ -263,6 +258,8 @@
     s.pausing = false;
     // Hold the level down from the moment play is requested, so the first samples the pipeline
     // produces are already quiet; 'playing' (below) ramps it back up once audio is really flowing.
+    // Not for a new video (onLoadStart): that starts at full level.
+    if (s.fresh) return;
     if (!isAd()) silence(v);
     else ramp(v, 1, 0);
   }
@@ -275,19 +272,10 @@
     // fresh 'play' -- don't let the previous video's end fade keep it silent.
     if (s.ending && (remaining(v) > END_FADE_S)) s.ending = false;
     if (s.ending || s.pausing) return;
-    const fresh = s.fresh && (v.currentTime < 0.5);
+    const fresh = s.fresh;
     s.fresh = false;
-    if (fresh && !isAd() && gainParam(v)) {
-      // Held at zero (it is already) while the decoder gets ahead; a pause or another fade in the
-      // meantime clears this timer (ramp() -> clearTimers()).
-      clearTimers(s);
-      s.doneTimer = setTimeout(() => {
-        s.doneTimer = 0;
-        if (!v.paused && !s.pausing && !s.ending) fadeIn(v, START_FADE_MS);
-      }, START_HOLD_GAIN_MS);
-      return;
-    }
-    fadeIn(v, isAd() ? 0 : (fresh ? START_FADE_MS : FADE_IN_MS));
+    // A new video is at full level already (see onLoadStart); this only makes sure of it.
+    fadeIn(v, (isAd() || fresh) ? 0 : FADE_IN_MS);
   }
 
   function onLoadStart(e) {
@@ -296,6 +284,9 @@
     const s = state(v);
     s.ending = false;
     s.fresh = true;
+    // The new source has played nothing yet: full level now, so its first sound is heard (see
+    // START comment above). Not while the app is fading out to pause.
+    if (!s.pausing) ramp(v, 1, 0);
   }
 
   function onPause(e) {
