@@ -9,16 +9,18 @@
   // overlapping crossfade between two videos isn't possible; fade-out -> switch -> fade-in is the
   // closest equivalent and is what this gives.
   const FADE_IN_MS = 700;
-  // A new video fades in from START_LEVEL (half the volume, never silence: from 20% the first notes
-  // were too quiet and the song sounded as if it started late) over START_FADE_S of its own playback
+  // A new video fades in from START_LEVEL (never silence, which cut the start off) over START_FADE_S of
+  // its own playback time, evenly in loudness (the same dB per moment, `rise`): a smoothstep from 20%
+  // stayed near silence at first and sounded late, and one from 50% jumped in, then swelled; neither
+  // sounded smooth.
   // time, set up at 'loadstart' when its source has played nothing yet. Holding it at zero until
   // 'playing' and fading in from there cut off the song's first moment: the sound is already flowing
   // when that event reaches the page (busiest just then, loading the video), the log showed the
   // playback time some 100 ms ahead of it. Following the playback time rather than the clock, the
   // fade can't run ahead of the sound while the video is still starting, and a late step of a busy
   // page lands where the song really is. With effects on, it runs on the audio clock (gain stage).
-  const START_LEVEL = 0.5;
-  const START_FADE_S = 0.3;
+  const START_LEVEL = 0.25;
+  const START_FADE_S = 0.5;
   const FADE_OUT_MS = 350;
   // Silence held after a fade-out before the element is actually paused, so whatever audio the
   // pipeline already had buffered drains out at zero level instead of being cut mid-waveform.
@@ -90,6 +92,12 @@
     return from + (to - from) * e;
   }
 
+  // Even in loudness: equal steps in dB from `from` to `to` (both above zero).
+  function rise(from, to, t) {
+    if ((from < 0.01) || (to < 0.01)) return ease(from, to, t);
+    return from * Math.pow(to / from, t);
+  }
+
   function applyElementLevel(v, s, level) {
     s.level = level;
     s.usedElement = level < 1;
@@ -120,7 +128,8 @@
   }
 
   // Ramps this element's fade level to `to` (0..1) over `ms`, then calls `done` (if any).
-  function ramp(v, to, ms, done) {
+  function ramp(v, to, ms, done, shape) {
+    const curveOf = shape || ease;
     const s = state(v);
     clearTimers(s);
     // A hidden page has its timers throttled to about once a second -- a stepped fade there would
@@ -152,7 +161,7 @@
         if ((ms > 0) && (Math.abs(from - to) > 0.001)) {
           const n = 64;
           const curve = new Float32Array(n);
-          for (let i = 0; i < n; i++) curve[i] = ease(from, to, i / (n - 1));
+          for (let i = 0; i < n; i++) curve[i] = curveOf(from, to, i / (n - 1));
           g.setValueCurveAtTime(curve, now + CURVE_START_DELAY_S, ms / 1000);
         } else {
           g.setValueAtTime(to, now + CURVE_START_DELAY_S);
@@ -191,7 +200,7 @@
     const t0 = performance.now();
     s.timer = setInterval(() => {
       const t = Math.min(1, (performance.now() - t0) / ms);
-      applyElementLevel(v, s, ease(from, to, t));
+      applyElementLevel(v, s, curveOf(from, to, t));
       if (t >= 1) {
         clearTimers(s);
         if (done) done();
@@ -221,7 +230,7 @@
         // The equalizer took over: once the sound flows, one sample-accurate curve on its gain.
         if (v.paused || (v.readyState < 3)) return;
         clearTimers(s);
-        ramp(v, 1, START_FADE_S * 1000);
+        ramp(v, 1, START_FADE_S * 1000, null, rise);
         return;
       }
       if (v.paused) return;
@@ -231,7 +240,7 @@
         t0 = Math.max(0, t - 0.05);
       }
       const k = Math.min(1, Math.max(0, (t - t0) / START_FADE_S));
-      applyElementLevel(v, s, ease(START_LEVEL, 1, k));
+      applyElementLevel(v, s, rise(START_LEVEL, 1, k));
       if (k >= 1) clearTimers(s);
     }, STEP_MS);
   }
