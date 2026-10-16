@@ -9,15 +9,16 @@
   // overlapping crossfade between two videos isn't possible; fade-out -> switch -> fade-in is the
   // closest equivalent and is what this gives.
   const FADE_IN_MS = 700;
-  // A new video fades in from START_LEVEL (never from silence) over START_FADE_S of its own playback
+  // A new video fades in from START_LEVEL (half the volume, never silence: from 20% the first notes
+  // were too quiet and the song sounded as if it started late) over START_FADE_S of its own playback
   // time, set up at 'loadstart' when its source has played nothing yet. Holding it at zero until
   // 'playing' and fading in from there cut off the song's first moment: the sound is already flowing
   // when that event reaches the page (busiest just then, loading the video), the log showed the
   // playback time some 100 ms ahead of it. Following the playback time rather than the clock, the
   // fade can't run ahead of the sound while the video is still starting, and a late step of a busy
   // page lands where the song really is. With effects on, it runs on the audio clock (gain stage).
-  const START_LEVEL = 0.2;
-  const START_FADE_S = 0.6;
+  const START_LEVEL = 0.5;
+  const START_FADE_S = 0.3;
   const FADE_OUT_MS = 350;
   // Silence held after a fade-out before the element is actually paused, so whatever audio the
   // pipeline already had buffered drains out at zero level instead of being cut mid-waveform.

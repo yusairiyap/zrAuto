@@ -105,9 +105,10 @@ public class YoutubeWebView extends FermataWebView {
 	private static final int NAVIGATION_RECHECK_MS = 2000;
 	/**
 	 * How long an explicit next/prev/queue switch lets the current video's audio fade out (see
-	 * {@code youtube_fade.js}) before actually navigating -- see {@link #afterAudioFadeOut}.
+	 * {@code youtube_fade.js}) before actually navigating -- see {@link #afterAudioFadeOut}. Short:
+	 * the whole of it is added to the time before the next song is heard (300 ms felt late).
 	 */
-	static final int SWITCH_FADE_OUT_MS = 300;
+	static final int SWITCH_FADE_OUT_MS = 150;
 	/** Shared lookup of the element every playback helper below acts on. */
 	private static final String JS_FIND_VIDEO = "var v = document.querySelector('video');\n";
 	private YoutubeJsInterface js;
