@@ -9,6 +9,11 @@
   // overlapping crossfade between two videos isn't possible; fade-out -> switch -> fade-in is the
   // closest equivalent and is what this gives.
   const FADE_IN_MS = 700;
+  // The start of a new video (from its beginning): only a short fade in. The page is at its busiest
+  // just then, and the fade's 10 ms steps, run late, went up in a few uneven jumps over 0.7 s -- heard
+  // as the next song's first second stuttering, as if buffering. A song starts from its own silence
+  // anyway; the long fade stays for resuming mid-song.
+  const START_FADE_MS = 120;
   const FADE_OUT_MS = 350;
   // Silence held after a fade-out before the element is actually paused, so whatever audio the
   // pipeline already had buffered drains out at zero level instead of being cut mid-waveform.
@@ -40,7 +45,7 @@
     let s = v.__fermataFade;
     if (!s) {
       s = {timer: 0, doneTimer: 0, restoreTimer: 0, level: 1, base: 1, ending: false,
-        pausing: false, usedElement: false, applied: null};
+        pausing: false, usedElement: false, applied: null, fresh: false};
       v.__fermataFade = s;
     }
     return s;
@@ -265,13 +270,17 @@
     // fresh 'play' -- don't let the previous video's end fade keep it silent.
     if (s.ending && (remaining(v) > END_FADE_S)) s.ending = false;
     if (s.ending || s.pausing) return;
-    fadeIn(v, isAd() ? 0 : FADE_IN_MS);
+    const fresh = s.fresh && (v.currentTime < 0.5);
+    s.fresh = false;
+    fadeIn(v, isAd() ? 0 : (fresh ? START_FADE_MS : FADE_IN_MS));
   }
 
   function onLoadStart(e) {
     const v = e.target;
     if (!v || (v.tagName !== 'VIDEO')) return;
-    state(v).ending = false;
+    const s = state(v);
+    s.ending = false;
+    s.fresh = true;
   }
 
   function onPause(e) {

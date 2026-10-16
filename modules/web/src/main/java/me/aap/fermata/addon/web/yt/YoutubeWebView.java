@@ -525,7 +525,7 @@ public class YoutubeWebView extends FermataWebView {
 	private static String traceMediaJs() {
 		return "if (!window.__fermataTracer) {\n" +
 				"  window.__fermataTracer = true;\n" +
-				"  var trLastT = -1, trLastWall = 0;\n" +
+				"  var trLastT = -1, trLastWall = 0, trPlayT = -1, trPlayWall = 0;\n" +
 				"  var trace = function(msg) {\n" +
 				"    if (Date.now() < (window.__fermataTraceUntil || 0)) " + JS_EVENT + "(" + JS_AUDIO_TRACE +
 				", msg);\n" +
@@ -535,9 +535,14 @@ public class YoutubeWebView extends FermataWebView {
 				"    document.addEventListener(n, function(e) {\n" +
 				"      var v = e.target;\n" +
 				"      if (!v || (v.tagName !== 'VIDEO')) return;\n" +
-				"      if ((n === 'seeking') || (n === 'loadstart') || (n === 'emptied')) trLastT = -1;\n" +
+				"      if ((n === 'seeking') || (n === 'loadstart') || (n === 'emptied')) { trLastT = -1; trPlayT = -1; }\n" +
+				"      var fade = '';\n" +
+				"      if (n === 'playing') {\n" +
+				"        trPlayT = v.currentTime; trPlayWall = Date.now();\n" +
+				"        try { var eq = window.FermataEqualizer; fade = ' fade=' + ((eq && eq.fadeParam && eq.fadeParam(v)) ? 'gain' : 'element'); } catch (x) {}\n" +
+				"      }\n" +
 				"      trace(n + ' t=' + v.currentTime.toFixed(2) + ' vol=' + v.volume.toFixed(2) + " +
-				"' ready=' + v.readyState);\n" +
+				"' ready=' + v.readyState + fade);\n" +
 				"    }, true);\n" +
 				"  });\n" +
 				"  document.addEventListener('timeupdate', function(e) {\n" +
@@ -547,6 +552,12 @@ public class YoutubeWebView extends FermataWebView {
 				"    if ((trLastT >= 0) && (t < trLastT - 0.25)) trace('time back ' + trLastT.toFixed(2) + ' -> ' + t.toFixed(2));\n" +
 				"    if ((trLastT >= 0) && trLastWall && (now - trLastWall > 700)) trace('no progress for ' + " +
 				"(now - trLastWall) + 'ms at t=' + t.toFixed(2));\n" +
+				// The first 2 s of a video: the volume (how the fade in goes) and whether the playback
+				// keeps up with the clock (a stall too short for a 'waiting').
+				"    if ((trPlayT >= 0) && (now - trPlayWall < 2000)) {\n" +
+				"      var lag = (now - trPlayWall) / 1000 - (t - trPlayT);\n" +
+				"      trace('start t=' + t.toFixed(2) + ' vol=' + v.volume.toFixed(2) + ' lag=' + Math.round(lag * 1000) + 'ms');\n" +
+				"    }\n" +
 				"    trLastT = t;\n" +
 				"    trLastWall = now;\n" +
 				"  }, true);\n" +
