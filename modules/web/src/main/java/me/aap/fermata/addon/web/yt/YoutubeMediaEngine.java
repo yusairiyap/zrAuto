@@ -1032,8 +1032,11 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	/** The queue's next video, from 0:00, once the sound has faded; watched until it plays. */
 	private void loadQueueVideo(String videoId) {
 		int gen = ++switchWatchGen;
+		long asked = SystemClock.elapsedRealtime();
 		web.afterAudioFadeOut(() -> {
 			if (gen != switchWatchGen) return;
+			DiagnosticLog.log("YT", "queue switch after the fade", "id=" + videoId,
+					"waited=" + (SystemClock.elapsedRealtime() - asked) + "ms");
 			web.loadVideo(videoId, true);
 			watchSwitch(videoId, gen, 0);
 		});

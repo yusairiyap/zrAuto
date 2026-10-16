@@ -1240,6 +1240,10 @@ public class YoutubeWebView extends FermataWebView {
 		// navigateToVideoJs().
 		boolean inPlayer = MusicPlayer.isYoutubeAudioMode();
 		evaluateJavascript(navigateToVideoJs(videoId, fromStart, inPlayer), result -> {
+			me.aap.fermata.util.DiagnosticLog.log("YT", "switch", "id=" + videoId,
+					"\"swap\"".equals(result) ? "in the player" : "true".equals(result) ? "page navigation" :
+							"page load");
+			if ("\"swap\"".equals(result)) return;
 			// Only reached if the script itself couldn't run at all (no document body yet, an
 			// exception) -- a plain page load is the last resort either way.
 			if (!"true".equals(result))
@@ -1326,7 +1330,7 @@ public class YoutubeWebView extends FermataWebView {
 				      if (fromStart) sp.loadVideoById(id, 0);
 				      else sp.loadVideoById(id);
 				      try { history.replaceState(history.state, '', url); } catch (e) {}
-				      return true;
+				      return 'swap';
 				    }
 				  }
 				  // Whether YouTube's router took the click: on a slow connection it can take well
@@ -1553,7 +1557,15 @@ public class YoutubeWebView extends FermataWebView {
 				CLEAR_HIGHEST_VIDEO_QUALITY_JS + USER_QUALITY_JS +
 				"  clearFermataQ();\n" +
 				"  window.__fermataUserQ = null;\n" +
-				(lowest ? "  fermataSaveUserQ();\n" : "  fermataRestoreUserQ();\n") +
+				// Music mode: YouTube's own stored preference says 144p too (the viewer's was saved just
+				// before, and comes back with fermataRestoreUserQ()), so each next song is fetched at
+				// that quality from its first segment instead of switching down once it has started.
+				(lowest ? "  fermataSaveUserQ();\n" +
+						"  try {\n" +
+						"    var qNow = Date.now();\n" +
+						"    localStorage.setItem('yt-player-quality', JSON.stringify({data: JSON.stringify(" +
+						"{quality: 144, previousQuality: 144}), expiration: qNow + 2592000000, creation: qNow}));\n" +
+						"  } catch (e) {}\n" : "  fermataRestoreUserQ();\n") +
 				"  var state = window.__fermataQ = { player: null, handler: null, timeout: null, attempts: 0 };\n" +
 				"  function getPlayer() {\n" +
 				"    return document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +

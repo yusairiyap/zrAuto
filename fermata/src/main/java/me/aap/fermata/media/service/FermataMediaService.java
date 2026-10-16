@@ -284,7 +284,13 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 
 	@SuppressLint("SwitchIntDef")
 	void updateNotification(int st, PlayableItem currentItem) {
-		holdPlayWakeLock(st == STATE_PLAYING);
+		// Also on the way to the next item (skipping, connecting, buffering): with the screen off the
+		// CPU could otherwise sleep right while the next song is being loaded.
+		holdPlayWakeLock((st == STATE_PLAYING) ||
+				(st == PlaybackStateCompat.STATE_BUFFERING) || (st == PlaybackStateCompat.STATE_CONNECTING) ||
+				(st == PlaybackStateCompat.STATE_SKIPPING_TO_NEXT) ||
+				(st == PlaybackStateCompat.STATE_SKIPPING_TO_PREVIOUS) ||
+				(st == PlaybackStateCompat.STATE_SKIPPING_TO_QUEUE_ITEM));
 		switch (st) {
 			case STATE_NONE, STATE_STOPPED, STATE_ERROR -> {
 				stopForeground(true);

@@ -300,11 +300,26 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		return engine;
 	}
 
+	/**
+	 * Another engine takes over and goes on playing at once (the YouTube player once its video plays):
+	 * the one before is stopped and closed, but the session is not taken through STOPPED on the way.
+	 * It used to be (a full onStop()), which for a moment deactivated the session and dropped the
+	 * notification and the playback wake lock, only to put them back a few milliseconds later.
+	 */
 	public void setEngine(MediaEngine engine) {
 		if (this.engine == engine) return;
 		playerTask.cancel();
-		onStop(true);
+		MediaEngine old = this.engine;
 		this.engine = engine;
+		if (old == null) return;
+		PlayableItem i = old.getSource();
+		if ((i != null) && !i.isExternal()) {
+			Long pos = old.getPosition().peek();
+			if (pos != null) setLastPlayed(i, pos);
+		}
+		old.stop();
+		old.releaseAudioFocus(audioManager, audioFocusReq);
+		old.close();
 	}
 
 	@Nullable

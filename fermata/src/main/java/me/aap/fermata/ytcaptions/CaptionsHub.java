@@ -32,6 +32,12 @@ import me.aap.utils.log.Log;
  */
 public final class CaptionsHub {
 	private static final long TICK_MS = 250;
+	/**
+	 * How long a new video plays before its captions are asked for. Asked at once, the 4 to 8 requests
+	 * to YouTube went out exactly while the new song was buffering its start, on the same connection
+	 * (a stutter on a slow mobile link), and on a quick run of skips for songs nobody stayed on.
+	 */
+	private static final long FETCH_DELAY_MS = 2500;
 	private static final CaptionsHub instance = new CaptionsHub();
 
 	public enum State {
@@ -93,6 +99,9 @@ public final class CaptionsHub {
 		if (!listeners.contains(l)) listeners.add(l);
 		if (!ticking) {
 			ticking = true;
+			// A load dropped when the last user went away (release() moves the generation on) never
+			// finished: the next tick starts it again rather than staying LOADING.
+			if (state == State.LOADING) videoId = null;
 			handler.post(tick);
 		}
 	}
@@ -215,20 +224,28 @@ public final class CaptionsHub {
 		MainActivityPrefs p = a.getPrefs();
 		String lang = p.getStringPref(MainActivityPrefs.CAPTIONS_LANG);
 		boolean auto = p.getBooleanPref(MainActivityPrefs.CAPTIONS_AUTO);
-		executor.execute(() -> {
-			YtCaptions.Result res = null;
-			try {
-				res = YtCaptions.load(id, lang, auto);
-			} catch (Exception ex) {
-				Log.e(ex, "Failed to load the captions of ", id);
-			}
-			YtCaptions.Result done = res;
-			handler.post(() -> {
+		handler.postDelayed(() -> {
+			// Skipped on in the meantime: not worth asking YouTube for any more.
+			if (!id.equals(YtDownloads.videoIdOf(Action.getFavoritableItem(a)))) {
 				prefetching.remove(id);
-				if (done != null) cache.put(id, done);
 				knew(id);
+				return;
+			}
+			executor.execute(() -> {
+				YtCaptions.Result res = null;
+				try {
+					res = YtCaptions.load(id, lang, auto);
+				} catch (Exception ex) {
+					Log.e(ex, "Failed to load the captions of ", id);
+				}
+				YtCaptions.Result done = res;
+				handler.post(() -> {
+					prefetching.remove(id);
+					if (done != null) cache.put(id, done);
+					knew(id);
+				});
 			});
-		});
+		}, FETCH_DELAY_MS);
 	}
 
 	/** The captions of {@code id} are in the cache (or could not be had): whoever waits is told. */
@@ -334,28 +351,51 @@ public final class CaptionsHub {
 			return;
 		}
 		setState(State.LOADING);
+		if (prefetching.contains(id)) {
+			// Already on its way (the dimmed buttons asked first): its answer is this load's too. Two
+			// loads of the same video used to go out side by side, every request twice.
+			waiting.computeIfAbsent(id, k -> new ArrayList<>()).add(() -> {
+				if ((gen != generation) || !id.equals(videoId)) return;
+				YtCaptions.Result r = cache.get(id);
+				if (r != null) apply(r);
+				else setState(State.FAILED);
+			});
+			return;
+		}
+		prefetching.add(id);
 		MainActivityPrefs p = activity.getPrefs();
 		String lang = p.getStringPref(MainActivityPrefs.CAPTIONS_LANG);
 		boolean auto = p.getBooleanPref(MainActivityPrefs.CAPTIONS_AUTO);
-		executor.execute(() -> {
-			try {
-				YtCaptions.Result r = YtCaptions.load(id, lang, auto);
-				handler.post(() -> {
-					if (gen != generation) return;
-					cache.put(id, r);
-					apply(r);
-					List<Runnable> w = waiting.remove(id);
-					if (w != null) for (Runnable run : w) run.run();
-				});
-			} catch (Exception ex) {
-				Log.e(ex, "Failed to load the captions of ", id);
-				DiagnosticLog.log("CAPTIONS", id, "load failed", ex);
-				handler.post(() -> {
-					if (gen != generation) return;
-					setState(State.FAILED);
-				});
+		handler.postDelayed(() -> {
+			if (gen != generation) {
+				prefetching.remove(id);
+				knew(id);
+				return;
 			}
-		});
+			executor.execute(() -> loadNow(gen, id, lang, auto));
+		}, FETCH_DELAY_MS);
+	}
+
+	private void loadNow(int gen, String id, String lang, boolean auto) {
+		try {
+			YtCaptions.Result r = YtCaptions.load(id, lang, auto);
+			handler.post(() -> {
+				prefetching.remove(id);
+				cache.put(id, r);
+				if (gen == generation) apply(r);
+				List<Runnable> w = waiting.remove(id);
+				if (w != null) for (Runnable run : w) run.run();
+			});
+		} catch (Exception ex) {
+			Log.e(ex, "Failed to load the captions of ", id);
+			DiagnosticLog.log("CAPTIONS", id, "load failed", ex);
+			handler.post(() -> {
+				prefetching.remove(id);
+				if (gen == generation) setState(State.FAILED);
+				List<Runnable> w = waiting.remove(id);
+				if (w != null) for (Runnable run : w) run.run();
+			});
+		}
 	}
 
 	private void apply(YtCaptions.Result r) {
