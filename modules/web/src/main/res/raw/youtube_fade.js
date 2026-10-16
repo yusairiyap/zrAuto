@@ -14,6 +14,11 @@
   // as the next song's first second stuttering, as if buffering. A song starts from its own silence
   // anyway; the long fade stays for resuming mid-song.
   const START_FADE_MS = 120;
+  // With the equalizer on, the element's sound goes through Web Audio, which pulls it straight from
+  // the decoder: the browser's own output buffer, which otherwise fills before a video is heard, is
+  // left out, and for a moment after a new video starts there is too little decoded yet -- gaps,
+  // heard as its first second being choppy. The sound is held silent that long first.
+  const START_HOLD_GAIN_MS = 300;
   const FADE_OUT_MS = 350;
   // Silence held after a fade-out before the element is actually paused, so whatever audio the
   // pipeline already had buffered drains out at zero level instead of being cut mid-waveform.
@@ -272,6 +277,16 @@
     if (s.ending || s.pausing) return;
     const fresh = s.fresh && (v.currentTime < 0.5);
     s.fresh = false;
+    if (fresh && !isAd() && gainParam(v)) {
+      // Held at zero (it is already) while the decoder gets ahead; a pause or another fade in the
+      // meantime clears this timer (ramp() -> clearTimers()).
+      clearTimers(s);
+      s.doneTimer = setTimeout(() => {
+        s.doneTimer = 0;
+        if (!v.paused && !s.pausing && !s.ending) fadeIn(v, START_FADE_MS);
+      }, START_HOLD_GAIN_MS);
+      return;
+    }
     fadeIn(v, isAd() ? 0 : (fresh ? START_FADE_MS : FADE_IN_MS));
   }
 
