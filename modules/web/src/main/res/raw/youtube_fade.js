@@ -40,7 +40,7 @@
     let s = v.__fermataFade;
     if (!s) {
       s = {timer: 0, doneTimer: 0, restoreTimer: 0, level: 1, base: 1, ending: false,
-        pausing: false, usedElement: false};
+        pausing: false, usedElement: false, applied: null};
       v.__fermataFade = s;
     }
     return s;
@@ -87,6 +87,26 @@
     try {
       if (Math.abs(v.volume - vol) > 0.0005) v.volume = vol;
     } catch (err) { /* out of range, ignore */ }
+    s.applied = v.volume;
+  }
+
+  // The player itself set the element's volume while this script holds it down (YouTube does as
+  // each new video loads: its own volume, levelled per video). Taken as the volume to come back to,
+  // and the level held is put back at once -- left alone, the next song's first moment played at
+  // full volume, then dropped to silence for the fade-in: a blip and a dip, the stutter heard on
+  // every Music tab skip.
+  function playerSetVolume(v, s) {
+    return (s.applied != null) && (v.volume > MIN_ELEMENT_VOLUME * 2) &&
+      (Math.abs(v.volume - s.applied) > 0.002);
+  }
+
+  function onVolumeChange(e) {
+    const v = e.target;
+    if (!v || (v.tagName !== 'VIDEO')) return;
+    const s = state(v);
+    if ((s.level >= 1) || gainParam(v) || !playerSetVolume(v, s)) return;
+    s.base = v.volume;
+    applyElementLevel(v, s, s.level);
   }
 
   // Ramps this element's fade level to `to` (0..1) over `ms`, then calls `done` (if any).
@@ -146,6 +166,7 @@
     // Capture the "real" volume (whatever the player/user set) only while we aren't holding it
     // down ourselves, so a fade never mistakes its own lowered value for the target to restore.
     if (s.level >= 1) s.base = v.volume || s.base || 1;
+    else if (playerSetVolume(v, s)) s.base = v.volume; // See onVolumeChange().
     const from = s.level;
 
     if ((ms <= 0) || (Math.abs(from - to) < 0.001)) {
@@ -154,6 +175,9 @@
       return;
     }
 
+    // From the level held right now, not whatever the element happens to be at (the player may have
+    // put its own volume back since): the first step would otherwise be a jump down.
+    applyElementLevel(v, s, from);
     const t0 = performance.now();
     s.timer = setInterval(() => {
       const t = Math.min(1, (performance.now() - t0) / ms);
@@ -300,6 +324,7 @@
   document.addEventListener('timeupdate', onTimeUpdate, true);
   document.addEventListener('seeking', onSeeking, true);
   document.addEventListener('loadstart', onLoadStart, true);
+  document.addEventListener('volumechange', onVolumeChange, true);
 
   window.FermataFade = {
     configure(c) {
