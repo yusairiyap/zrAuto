@@ -102,6 +102,8 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 	private BroadcastReceiver intentReceiver;
 	private int notifColor;
 	private PendingIntent notifContentIntent;
+	/** The last NOTIF line written to the Diagnostic log: state and title. */
+	private String lastNotifLog;
 	private MediaStyle notifStyle;
 	private Action actionPrev;
 	private Action actionRw;
@@ -368,10 +370,15 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 			Bitmap largeIcon = description.getIconBitmap();
 			builder.setContentTitle(description.getTitle()).setContentText(description.getSubtitle())
 					.setSubText(description.getDescription());
-			me.aap.fermata.util.DiagnosticLog.log("NOTIF", "built", "state=" + st,
-					"title=" + description.getTitle(), "subtitle=" + description.getSubtitle(),
-					"icon=" + ((description.getIconBitmap() == null) ? null :
-							description.getIconBitmap().getWidth() + "x" + description.getIconBitmap().getHeight()));
+			// Once per state and title, not for every rebuild (three or four per song: subtitle, art).
+			String notifKey = st + "|" + description.getTitle();
+			if (!notifKey.equals(lastNotifLog)) {
+				lastNotifLog = notifKey;
+				me.aap.fermata.util.DiagnosticLog.log("NOTIF", "built", "state=" + st,
+						"title=" + description.getTitle(), "subtitle=" + description.getSubtitle(),
+						"icon=" + ((description.getIconBitmap() == null) ? null :
+								description.getIconBitmap().getWidth() + "x" + description.getIconBitmap().getHeight()));
+			}
 
 			if (callback.isDefaultImage(largeIcon)) {
 				if ((i != null) && i.isVideo()) {

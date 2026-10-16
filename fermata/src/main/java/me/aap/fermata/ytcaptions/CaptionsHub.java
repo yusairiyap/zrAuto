@@ -37,7 +37,12 @@ public final class CaptionsHub {
 	 * to YouTube went out exactly while the new song was buffering its start, on the same connection
 	 * (a stutter on a slow mobile link), and on a quick run of skips for songs nobody stayed on.
 	 */
-	private static final long FETCH_DELAY_MS = 2500;
+	private static final long FETCH_DELAY_MS = 1000;
+	/**
+	 * How long a song plays before the captions of the one after it are fetched, so its lyrics are
+	 * there the moment it starts: well clear of this song's own start and of a quick run of skips.
+	 */
+	private static final long NEXT_PREFETCH_DELAY_MS = 8000;
 	private static final CaptionsHub instance = new CaptionsHub();
 
 	public enum State {
@@ -67,6 +72,7 @@ public final class CaptionsHub {
 	private final List<Listener> listeners = new ArrayList<>();
 	private final Runnable tick = this::tick;
 	private final java.util.Set<String> prefetching = new java.util.HashSet<>();
+	private final Runnable nextPrefetch = this::prefetchNext;
 	private final java.util.Map<String, List<Runnable>> waiting = new java.util.HashMap<>();
 	@Nullable
 	private MainActivityDelegate activity;
@@ -116,6 +122,7 @@ public final class CaptionsHub {
 		if (listeners.isEmpty()) {
 			ticking = false;
 			handler.removeCallbacks(tick);
+			handler.removeCallbacks(nextPrefetch);
 			generation++;
 		}
 	}
@@ -215,7 +222,26 @@ public final class CaptionsHub {
 		prefetch(a, id);
 	}
 
+	/** The next song in the list (the queue's own next, without moving it): its captions, ahead of time. */
+	private void prefetchNext() {
+		MainActivityDelegate a = activity;
+		if (!ticking || (a == null)) return;
+		PlayableItem pi = Action.getFavoritableItem(a);
+		if ((pi == null) || !java.util.Objects.equals(YtDownloads.videoIdOf(pi), videoId)) return;
+		String cur = videoId;
+		pi.getNextPlayable().main().onSuccess(next -> {
+			String nid = YtDownloads.videoIdOf(next);
+			if ((nid == null) || nid.equals(cur) || (cache.get(nid) != null)) return;
+			prefetch(a, nid, false);
+		});
+	}
+
 	private void prefetch(MainActivityDelegate a, String id) {
+		prefetch(a, id, true);
+	}
+
+	/** {@code current}: for the playing video, dropped if it is skipped before the fetch goes out. */
+	private void prefetch(MainActivityDelegate a, String id, boolean current) {
 		// The tick's own load of this video counts: its result lands in the cache too.
 		if (prefetching.contains(id) || (id.equals(videoId) && (state == State.LOADING))) {
 			return;
@@ -226,7 +252,7 @@ public final class CaptionsHub {
 		boolean auto = p.getBooleanPref(MainActivityPrefs.CAPTIONS_AUTO);
 		handler.postDelayed(() -> {
 			// Skipped on in the meantime: not worth asking YouTube for any more.
-			if (!id.equals(YtDownloads.videoIdOf(Action.getFavoritableItem(a)))) {
+			if (current && !id.equals(YtDownloads.videoIdOf(Action.getFavoritableItem(a)))) {
 				prefetching.remove(id);
 				knew(id);
 				return;
@@ -245,7 +271,7 @@ public final class CaptionsHub {
 					knew(id);
 				});
 			});
-		}, FETCH_DELAY_MS);
+		}, current ? FETCH_DELAY_MS : 0);
 	}
 
 	/** The captions of {@code id} are in the cache (or could not be had): whoever waits is told. */
@@ -286,6 +312,8 @@ public final class CaptionsHub {
 			videoId = id;
 			title = (pi == null) ? "" : String.valueOf(pi.getName());
 			load();
+			handler.removeCallbacks(nextPrefetch);
+			if (id != null) handler.postDelayed(nextPrefetch, NEXT_PREFETCH_DELAY_MS);
 		} else if ((pi != null) && (title.isEmpty())) {
 			title = String.valueOf(pi.getName());
 		}

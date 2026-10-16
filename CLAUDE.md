@@ -305,7 +305,8 @@ provider doesn't offer a folder to pick, so Drive is manual only.
   (CAPTIONS) says which app answered what. `CaptionsHub` is the one place that follows the playing video's id
   (`Action.getFavoritableItem` + `YtDownloads.videoIdOf`) and position (`MediaEngine#getPosition`, 4x/s); it only
   runs while something has `acquire`d it, and the views do that only while they are on screen
-  (`onVisibilityAggregated`), so lyrics/captions off cost nothing.
+  (`onVisibilityAggregated`), so lyrics/captions off cost nothing. A new song's captions are fetched 1 s in, and the next
+  song's 8 s into the current one (`prefetchNext`, from `PlayableItem#getNextPlayable`), so lyrics show at once on Next.
 - **Lyrics**: `ui/view/LyricsView` draws the lines in one pass (a fractional scroll position glides to the playing
   line; alpha by distance: the line before dim, gone after the third after). Over the Music tab's cover it sits in
   the art card under the loading dim (`MusicPlayerFragment#addLyricsOverlay`, shown by `LYRICS_ON`, the Lyrics chip
@@ -440,7 +441,7 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   playing song at once, as they expect. A page pause during a switch is ignored
   (`YoutubeMediaEngine#isSwitchPause`): rapid skips used to pause the session. `youtube_fade.js` takes a volume YouTube sets while a fade
   holds the level down (it does per video, on load) as the target and puts the held level back. A new video fades
-  in from `loadstart` (`startFade`: from 50% over 0.3 s of its playback time; the switch's fade out is 150 ms, never from silence): holding it at zero until
+  in from `loadstart` (`startFade`: from 50% over 0.3 s of its playback time; the switch's fade out stays 300 ms, 150 felt abrupt, never from silence): holding it at zero until
   `playing` cut off each song's first moment.
 - **YouTube Effects route the page's sound through Web Audio** (`createMediaElementSource`, irreversible per
   element), which can make a new video's first second choppy on a phone. `youtube_equalizer.js` only takes an
