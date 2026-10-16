@@ -710,9 +710,17 @@
     }
   }
 
+  // Whether any effect actually changes the sound: a switch left on at its neutral value (EQ with
+  // every band at 0 dB, Bass or Virtualizer at 0%, width at 100%, ...) doesn't count. Taking an
+  // element over with createMediaElementSource() is irreversible and moves its sound off the
+  // browser's own buffered output onto Web Audio, where a new video's first second can come out
+  // choppy on a busy phone; that is only worth it for a real effect.
   function anyEffectEnabled(cfg) {
-    return cfg.eqEnabled || cfg.bassEnabled || cfg.virtEnabled || cfg.reverbEnabled ||
-        cfg.widthOn || cfg.diffOn || cfg.posOn;
+    const on = (x) => (typeof x === 'number') && (Math.abs(x) > 0.001);
+    return (cfg.eqEnabled && Array.isArray(cfg.bands) && cfg.bands.some(on)) ||
+        (cfg.bassEnabled && on(cfg.bassGain)) || (cfg.virtEnabled && on(cfg.virtStrength)) ||
+        (cfg.reverbEnabled && on(cfg.reverbStrength)) || (cfg.widthOn && on(cfg.width - 1)) ||
+        (cfg.diffOn && on(cfg.diffK)) || cfg.posOn;
   }
 
   function attach(video) {
@@ -885,6 +893,13 @@
       return {n: pick('underrunEvents', 'fallbackFramesEvents'),
               d: pick('underrunDuration', 'fallbackFramesDuration'),
               t: pick('totalDuration', 'totalFramesDuration')};
+    },
+
+    // An element taken over earlier (effects on then) while nothing is active any more: its sound
+    // still goes through Web Audio, and only a new document gives it the plain path back. The app
+    // loads the next queue video as a page instead of swapping it in the player (navigateToVideoJs).
+    routedButIdle(video) {
+      return !!video && state.chains.has(video) && !anyEffectEnabled(state.config);
     },
 
     configure(config) {
