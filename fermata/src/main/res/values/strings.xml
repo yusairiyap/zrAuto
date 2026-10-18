@@ -816,9 +816,9 @@
     <string name="share_app">Share zrAuto app</string>
     <string name="share_app_sub">Send this app\'s install file to a phone nearby on the same Wi-Fi, to install or update it there</string>
     <string name="share_app_split">This install is split into several files and can\'t be shared.</string>
-    <string name="share_app_received">App install file received.</string>
+    <string name="share_app_received">App install file saved in %s</string>
     <string name="share_app_install_title">Install zrAuto?</string>
-    <string name="share_app_install_text">Install or update from “%s”, just received.</string>
+    <string name="share_app_install_text">Install or update from “%1$s”, just received. Saved in %2$s</string>
     <string name="share_app_install">Install</string>
     <string name="share_app_later">Later</string>
     <string name="share_app_saved_at">Saved at %s</string>

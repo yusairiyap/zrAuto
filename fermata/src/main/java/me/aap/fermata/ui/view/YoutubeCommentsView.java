@@ -107,7 +107,8 @@ public final class YoutubeCommentsView {
 	private CommentsSkeletonView skeleton;
 	private Adapter adapter;
 	private TextView titleView;
-	private TextView videoLine;
+	private View videoLine;
+	private TextView videoTitleView;
 	// The video's views and likes, right under its title.
 	private TextView statsLine;
 	private LinearLayout sortRow;
@@ -338,16 +339,22 @@ public final class YoutubeCommentsView {
 
 		// What it is for.
 		TextView name = text(videoTitle, 13, secondary, false);
-		videoLine = name;
+		videoTitleView = name;
 		name.setSingleLine(true);
 		name.setEllipsize(TextUtils.TruncateAt.END);
-		name.setPadding(dp(8), dp(2), dp(8), dp(6));
-		root.addView(name, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		// The title, and its views and likes on the right of the same line.
+		LinearLayout titleRow = new LinearLayout(ctx);
+		titleRow.setOrientation(LinearLayout.HORIZONTAL);
+		titleRow.setGravity(Gravity.CENTER_VERTICAL);
+		titleRow.setPadding(dp(8), dp(2), dp(8), dp(6));
+		titleRow.addView(name, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
 		statsLine = text("", 13, secondary, false);
 		statsLine.setSingleLine(true);
-		statsLine.setPadding(dp(8), 0, dp(8), dp(6));
+		statsLine.setPadding(dp(10), 0, 0, 0);
 		statsLine.setVisibility(View.GONE);
-		root.addView(statsLine, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		titleRow.addView(statsLine, new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
+		videoLine = titleRow;
+		root.addView(titleRow, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
 		// Top / Newest, once the first batch has said how to get them.
 		sortRow = new LinearLayout(ctx);
@@ -882,9 +889,6 @@ public final class YoutubeCommentsView {
 		}
 		// While writing, only the comments and the box matter: the rest gives its room up.
 		if (videoLine != null) videoLine.setVisibility(typing ? View.GONE : View.VISIBLE);
-		if (statsLine != null) {
-			statsLine.setVisibility((typing || (statsLine.length() == 0)) ? View.GONE : View.VISIBLE);
-		}
 		if (sortRow != null) sortRow.setVisibility(typing ? View.GONE :
 				((sortTopToken != null) && (sortNewToken != null)) ? View.VISIBLE : View.GONE);
 	}
@@ -1386,7 +1390,7 @@ public final class YoutubeCommentsView {
 	private void switchVideo(String id, String title) {
 		videoId = id;
 		videoTitle = title;
-		videoLine.setText(title);
+		videoTitleView.setText(title);
 		setStats(-1, -1);
 		titleView.setText(R.string.yt_comments);
 		count = null;

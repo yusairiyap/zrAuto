@@ -315,6 +315,7 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 		currentItem = null;
 		callback.stopProgressUpdate();
 		if (progressBar != null) progressBar.setOnSeekBarChangeListener(null);
+		draggingProgress = false;
 		unbindButtons(playPauseButton, prevButton, nextButton, rwButton, ffButton);
 		playPauseButton = prevButton = nextButton = rwButton = ffButton = null;
 		progressTime = progressTotal = null;
@@ -331,25 +332,34 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 		}
 	}
 
+	// Dragging the bar: only the time and the preview follow the finger; the seek is made once, on
+	// release (a seek per move kept restarting the video under the preview).
+	private boolean draggingProgress;
+
 	@Override
 	public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
 		if (fromUser) {
-			me.aap.fermata.ui.view.SeekPreview.move(seekBar, progress);
 			callback.setProgressTime(progress);
-			mediaController.getTransportControls().seekTo(progress * 1000L);
+			if (draggingProgress) me.aap.fermata.ui.view.SeekPreview.move(seekBar, progress);
+			else mediaController.getTransportControls().seekTo(progress * 1000L);
 		}
 	}
 
 	@Override
 	public void onStartTrackingTouch(SeekBar seekBar) {
+		draggingProgress = true;
 		callback.pauseProgressUpdate(true);
 		me.aap.fermata.ui.view.SeekPreview.start(seekBar);
 	}
 
 	@Override
 	public void onStopTrackingTouch(SeekBar seekBar) {
-		callback.pauseProgressUpdate(false);
 		me.aap.fermata.ui.view.SeekPreview.stop();
+		if (draggingProgress) {
+			draggingProgress = false;
+			mediaController.getTransportControls().seekTo(seekBar.getProgress() * 1000L);
+		}
+		callback.pauseProgressUpdate(false);
 	}
 
 	private final class MediaControllerCallback extends MediaControllerCompat.Callback {

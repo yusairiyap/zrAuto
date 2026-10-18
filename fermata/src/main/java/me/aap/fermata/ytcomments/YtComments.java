@@ -186,18 +186,53 @@ public final class YtComments {
 		}
 		p.views = views(watch);
 		p.likes = likes(watch);
+		me.aap.fermata.util.DiagnosticLog.log("COMMENTS", videoId, "views=" + p.views, "likes=" + p.likes);
 		return p;
 	}
 
-	/** The view count of the watch page: its raw number, else the digits of "1,234 views". */
+	/**
+	 * The view count of the watch page: its raw number, else the digits of "1,234,567 views" (the
+	 * full text, never the shortened "1.2M views"). -1 when it can't be told: a 0 there (some
+	 * responses carry an empty raw count) isn't believed.
+	 */
 	private static long views(JSONObject watch) {
 		JSONObject o = findObject(watch, "videoViewCountRenderer");
 		JSONObject r = (o == null) ? null : o.optJSONObject("videoViewCountRenderer");
-		if (r == null) return -1;
-		long n = number(findString(r, "originalViewCount"));
-		if (n >= 0) return n;
-		JSONObject vc = r.optJSONObject("viewCount");
-		return number((vc == null) ? null : findString(vc, "simpleText"));
+		if (r != null) {
+			long n = number(r.optString("originalViewCount", null));
+			if (n > 0) return n;
+			n = number(text(r.optJSONObject("viewCount")));
+			if (n > 0) return n;
+		}
+		// The newer description panel: a factoid about views.
+		JSONObject f = findViewsFactoid(watch);
+		if (f != null) {
+			String acc = findString(f, "accessibilityText");
+			long n = number(((acc != null) && acc.contains("view")) ? acc : null);
+			if (n > 0) return n;
+		}
+		return -1;
+	}
+
+	@Nullable
+	private static JSONObject findViewsFactoid(@Nullable Object node) {
+		if (node instanceof JSONObject o) {
+			JSONObject fr = o.optJSONObject("viewCountFactoidRenderer");
+			if (fr == null) fr = o.optJSONObject("factoidRenderer");
+			if ((fr != null) && String.valueOf(findString(fr, "accessibilityText")).contains("view")) {
+				return fr;
+			}
+			for (java.util.Iterator<String> it = o.keys(); it.hasNext(); ) {
+				JSONObject r = findViewsFactoid(o.opt(it.next()));
+				if (r != null) return r;
+			}
+		} else if (node instanceof JSONArray a) {
+			for (int i = 0; i < a.length(); i++) {
+				JSONObject r = findViewsFactoid(a.opt(i));
+				if (r != null) return r;
+			}
+		}
+		return null;
 	}
 
 	/**

@@ -117,8 +117,11 @@ final class ShareImporter {
 					done.done(false, me.aap.fermata.FermataApplication.get().getString(R.string.share_saved_nothing));
 					return;
 				}
-				done.done(true, me.aap.fermata.FermataApplication.get().getString(R.string.share_app_received));
-				offerInstall(apk);
+				// The install card itself comes once the transfer has ended (ShareService#onTransferEnded):
+				// one popup shows at a time, and the "received" one would replace it.
+				t.appFile = apk;
+				done.done(true, me.aap.fermata.FermataApplication.get().getString(R.string.share_app_received,
+						apk.getAbsolutePath()));
 			});
 			return;
 		}
@@ -198,13 +201,13 @@ final class ShareImporter {
 	 * Asks whether to install the app file just received, and hands it to the system installer.
 	 * Android itself checks that an update is signed like the installed app.
 	 */
-	private static void offerInstall(File apk) {
+	static void offerInstall(File apk) {
 		MainActivityDelegate a = MainActivityDelegate.getUiDelegate();
 		Context c = me.aap.fermata.FermataApplication.get();
 		me.aap.fermata.util.DiagnosticLog.log("SHARE", "app received:", apk, apk.length());
 		if ((a == null) || a.isCarActivityNotMirror()) return;
 		me.aap.fermata.ui.view.TopConfirm.show(a, R.drawable.share, c.getString(R.string.share_app_install_title),
-				c.getString(R.string.share_app_install_text, apk.getName()),
+				c.getString(R.string.share_app_install_text, apk.getName(), apk.getParent()),
 				c.getString(R.string.share_app_install), c.getString(R.string.share_app_later),
 				() -> install(a, apk), null);
 	}

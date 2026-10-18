@@ -70,6 +70,8 @@ public final class SeekPreview {
 	private final LinearLayout card;
 	private final ImageView image;
 	private final TextView time;
+	// Turns while no picture has come yet.
+	private final android.widget.ProgressBar spinner;
 	private final int imgW;
 	private final int imgH;
 	@Nullable
@@ -100,15 +102,15 @@ public final class SeekPreview {
 		card = new LinearLayout(ctx);
 		card.setOrientation(LinearLayout.VERTICAL);
 		card.setGravity(Gravity.CENTER_HORIZONTAL);
+		// No border, just a soft shadow: an opaque rounded fill (a see-through one casts almost none).
 		GradientDrawable bg = new GradientDrawable();
-		bg.setColor(0xE6000000);
-		bg.setCornerRadius(10 * d);
-		bg.setStroke(Math.max(1, Math.round(d)), 0x66FFFFFF);
+		bg.setColor(0xFF161616);
+		bg.setCornerRadius(12 * d);
 		card.setBackground(bg);
 		int pad = Math.round(3 * d);
 		card.setPadding(pad, pad, pad, pad);
-		card.setElevation(30 * d);
-		card.setClipToOutline(true);
+		card.setElevation(16 * d);
+		card.setTranslationZ(8 * d);
 		image = new ImageView(ctx);
 		image.setScaleType(ImageView.ScaleType.CENTER_CROP);
 		GradientDrawable ib = new GradientDrawable();
@@ -116,7 +118,16 @@ public final class SeekPreview {
 		ib.setCornerRadius(8 * d);
 		image.setBackground(ib);
 		image.setClipToOutline(true);
-		if (picture) card.addView(image, new LinearLayout.LayoutParams(imgW, imgH));
+		spinner = new android.widget.ProgressBar(ctx);
+		spinner.setIndeterminate(true);
+		spinner.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(0xCCFFFFFF));
+		if (picture) {
+			FrameLayout frame = new FrameLayout(ctx);
+			frame.addView(image, new FrameLayout.LayoutParams(imgW, imgH));
+			int s = Math.round(28 * d);
+			frame.addView(spinner, new FrameLayout.LayoutParams(s, s, Gravity.CENTER));
+			card.addView(frame, new LinearLayout.LayoutParams(imgW, imgH));
+		}
 		time = new TextView(ctx);
 		time.setTextColor(0xFFFFFFFF);
 		time.setTypeface(Typeface.DEFAULT_BOLD);
@@ -242,7 +253,10 @@ public final class SeekPreview {
 		String vid = videoId;
 		if (vid == null) return;
 		Object b = boards.get(vid);
-		if (b == NONE) return;
+		if (b == NONE) {
+			spinner.setVisibility(View.GONE);
+			return;
+		}
 		if (b == null) {
 			if (reading) return;
 			reading = true;
@@ -269,8 +283,17 @@ public final class SeekPreview {
 		a.getLib().getBitmap(f.url, true, false).main().onCompletion((sheet, err) -> {
 			if (closed || (g != gen)) return;
 			Bitmap bm = f.crop(sheet);
-			if (bm != null) image.setImageBitmap(bm);
+			setPicture(bm);
 		});
+	}
+
+	/** The picture came (or, null, won't): the spinner goes. */
+	private void setPicture(@Nullable Bitmap bm) {
+		if (bm != null) image.setImageBitmap(bm);
+		if ((bm != null) || (image.getDrawable() == null)) {
+			spinner.animate().alpha(0f).setDuration(150).withEndAction(() -> spinner.setVisibility(View.GONE))
+					.start();
+		}
 	}
 
 	private boolean isMetered() {
@@ -320,7 +343,7 @@ public final class SeekPreview {
 			main.post(() -> {
 				reading = false;
 				if (closed) return;
-				if (frame != null) image.setImageBitmap(frame);
+				setPicture(frame);
 				if (pendingMs >= 0) readLocal(pendingMs);
 			});
 		});
