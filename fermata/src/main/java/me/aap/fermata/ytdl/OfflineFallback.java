@@ -4,6 +4,8 @@ import androidx.annotation.Nullable;
 
 import java.util.List;
 
+import me.aap.fermata.FermataApplication;
+import me.aap.fermata.R;
 import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.engine.MediaEngine;
@@ -13,7 +15,11 @@ import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.lib.MediaLib.Playlist;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.view.TopToast;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.utils.function.BooleanSupplier;
+import me.aap.utils.pref.PreferenceStore;
+import me.aap.utils.pref.PreferenceStore.Pref;
 
 /**
  * Switches playback to something stored on the phone, to save data or when the connection gives
@@ -21,7 +27,27 @@ import me.aap.fermata.util.DiagnosticLog;
  * from there), else the Music queue's next offline track, else everything downloaded.
  */
 public final class OfflineFallback {
+	/** Settings > Playback: on a stalled connection, go on with what's downloaded by itself. */
+	public static final Pref<BooleanSupplier> ON_STALL = Pref.b("OFFLINE_ON_STALL", false);
+
 	private OfflineFallback() {
+	}
+
+	public static PreferenceStore prefs() {
+		return FermataApplication.get().getPreferenceStore();
+	}
+
+	/**
+	 * Streaming stalled: with {@link #ON_STALL} on and something stored to play, plays that (the
+	 * next downloaded song of the playlist / Favorites, else the queue's or all downloads) and says
+	 * the connection is unstable, instead of the popup asking. False when it didn't.
+	 */
+	public static boolean onStall(MainActivityDelegate a) {
+		if (!prefs().getBooleanPref(ON_STALL) || !hasOffline(a)) return false;
+		DiagnosticLog.log("NETWORK", "stalled: playing downloaded by itself");
+		TopToast.show(R.drawable.network_weak, R.string.offline_on_stall_toast);
+		playDownloaded(a, null);
+		return true;
 	}
 
 	/** Whether {@code i} plays without the internet: a downloaded YouTube video or a local file. */

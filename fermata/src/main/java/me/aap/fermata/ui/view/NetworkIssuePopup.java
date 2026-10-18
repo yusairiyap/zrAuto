@@ -86,6 +86,7 @@ public final class NetworkIssuePopup {
 	 */
 	public static void show(MainActivityDelegate a, @Nullable Runnable retry) {
 		dismiss();
+		if (me.aap.fermata.ytdl.OfflineFallback.onStall(a)) return;
 		Context ctx = a.getContext();
 		boolean online = isOnline(ctx);
 		boolean offlineTracks = MusicPlayer.hasOfflineTrack(a);

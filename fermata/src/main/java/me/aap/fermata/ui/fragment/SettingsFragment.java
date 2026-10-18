@@ -559,6 +559,12 @@ public class SettingsFragment extends MainActivityFragment
 			o.pref = BrowsableItemPrefs.PLAY_NEXT;
 			o.title = R.string.play_next_on_completion;
 		});
+		sub1.addBooleanPref(o -> {
+			o.store = me.aap.fermata.ytdl.OfflineFallback.prefs();
+			o.pref = me.aap.fermata.ytdl.OfflineFallback.ON_STALL;
+			o.title = R.string.offline_on_stall;
+			o.subtitle = R.string.offline_on_stall_sub;
+		});
 		// The car's own tap action stays with its Android Auto settings.
 		if (!(BuildConfig.AUTO && a.isCarActivityNotMirror())) {
 			addTapAction(a, sub1, MainActivityPrefs.TAP_ACTION);

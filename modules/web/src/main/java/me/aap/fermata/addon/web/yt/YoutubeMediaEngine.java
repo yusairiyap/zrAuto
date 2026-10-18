@@ -273,6 +273,9 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			return;
 		}
 
+		// Settings > Playback asks to go on with what's downloaded by itself.
+		if (me.aap.fermata.ytdl.OfflineFallback.onStall(a)) return;
+
 		boolean fullscreen = getFullScreenView() != null;
 		if (NetworkIssuePopup.isPlaybackScreen(a, fullscreen) ||
 				(a.getActiveFragment() instanceof YoutubeFragment)) {
