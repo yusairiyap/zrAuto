@@ -651,8 +651,16 @@ public final class MusicPlayer {
 		MusicTrackItem t = nextOfflineTrack(a);
 		// Nothing offline in the queue: everything that was downloaded becomes the queue.
 		if (t == null) return YtOffline.playAllDownloaded(a);
-		DiagnosticLog.log(TAG, "network lost: playing an offline track", "track=" + t);
-		playTrack(a, t, 0);
+		MusicQueue q = getQueue(a);
+		// The queue keeps only what plays offline, so Next never goes back to streaming YouTube.
+		List<MusicTrackItem> offline = new ArrayList<>();
+		for (MusicTrackItem i : q.getTracks()) {
+			if ((i.getVideoId() == null) || YtDownloads.get().isDownloaded(i.getVideoId())) offline.add(i);
+		}
+		int start = Math.max(0, offline.indexOf(t));
+		DiagnosticLog.log(TAG, "playing offline: queue cut to offline tracks", "track=" + t,
+				"kept=" + offline.size(), "of=" + q.size());
+		play(a, offline, start);
 		return true;
 	}
 

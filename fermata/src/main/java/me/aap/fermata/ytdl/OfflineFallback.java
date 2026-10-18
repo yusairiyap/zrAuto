@@ -85,7 +85,14 @@ public final class OfflineFallback {
 				PlayableItem from = cur;
 				p.getPlayableChildren(false).main().onCompletion((list, err) -> {
 					PlayableItem next = (list == null) ? null : nextOffline(list, from);
-					if (next != null) {
+					if ((next != null) && MusicPlayer.isEnabled()) {
+						// Only the list's offline songs, from that one on, become the Music queue: Next
+						// never goes back to streaming.
+						List<PlayableItem> offline = offlineFrom(list, next);
+						DiagnosticLog.log("YTDL", "offline fallback: the list's downloaded songs", "first=" + next,
+								"count=" + offline.size());
+						MusicPlayer.play(a, offline, 0);
+					} else if (next != null) {
 						DiagnosticLog.log("YTDL", "offline fallback: next downloaded in the list", "item=" + next);
 						if (!YtOffline.tryPlayLocal(a, next, 0)) a.getMediaServiceBinder().playItem(next);
 					} else {
@@ -100,6 +107,18 @@ public final class OfflineFallback {
 
 	private static void playQueueOrAll(MainActivityDelegate a, @Nullable Runnable none) {
 		if (!MusicPlayer.playOfflineTrack(a) && (none != null)) none.run();
+	}
+
+	/** The offline items of {@code list}, starting with {@code first} and wrapping around. */
+	private static List<PlayableItem> offlineFrom(List<PlayableItem> list, PlayableItem first) {
+		int n = list.size();
+		int start = Math.max(0, list.indexOf(first));
+		List<PlayableItem> out = new java.util.ArrayList<>();
+		for (int i = 0; i < n; i++) {
+			PlayableItem c = list.get((start + i) % n);
+			if (isOffline(c)) out.add(c);
+		}
+		return out;
 	}
 
 	/** The first item after {@code from} in {@code list} (wrapping around) that plays offline. */
