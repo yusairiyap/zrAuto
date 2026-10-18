@@ -256,6 +256,11 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DATA_REMAINING =
 			Pref.b("INFO_OVERLAY_SHOW_DATA_REMAINING", false);
 	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DATA_ICON = Pref.b("INFO_OVERLAY_SHOW_DATA_ICON", true);
+	// The Android Auto session's data (DataSessionLimit): shown during a session only, with a mini
+	// progress bar unless turned off, as used or as what's left.
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DATA_SESSION = Pref.b("INFO_OVERLAY_SHOW_DATA_SESSION", false);
+	Pref<BooleanSupplier> INFO_OVERLAY_DATA_SESSION_BAR = Pref.b("INFO_OVERLAY_DATA_SESSION_BAR", true);
+	Pref<BooleanSupplier> INFO_OVERLAY_DATA_SESSION_LEFT = Pref.b("INFO_OVERLAY_DATA_SESSION_LEFT", false);
 	// An icon (first, no text) while what's playing has a downloaded copy (see YtDownloads).
 	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DOWNLOADED = Pref.b("INFO_OVERLAY_SHOW_DOWNLOADED", false);
 	// Every Info Overlay pref, for the views showing it (fullscreen video, the Music tab) to follow.
@@ -267,7 +272,8 @@ public interface MainActivityPrefs
 			INFO_OVERLAY_SHOW_BATTERY_TEMP, INFO_OVERLAY_SHOW_TEMP_ICON, INFO_OVERLAY_SHOW_DISTANCE,
 			INFO_OVERLAY_SHOW_DISTANCE_ICON, INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE,
 			INFO_OVERLAY_SIZE, INFO_OVERLAY_SHOW_DATA_USAGE, INFO_OVERLAY_SHOW_DATA_REMAINING,
-			INFO_OVERLAY_SHOW_DATA_ICON, INFO_OVERLAY_SHOW_DOWNLOADED);
+			INFO_OVERLAY_SHOW_DATA_ICON, INFO_OVERLAY_SHOW_DOWNLOADED, INFO_OVERLAY_SHOW_DATA_SESSION,
+			INFO_OVERLAY_DATA_SESSION_BAR, INFO_OVERLAY_DATA_SESSION_LEFT);
 	// The car screen's own Info Overlay settings (the phone's are the plain ones above), so the two
 	// screens can show different items; copied from the phone's once, see INFO_OVERLAY_AA_MIGRATED.
 	Pref<IntSupplier> CLOCK_POS_AA = AUTO ? Pref.i("CLOCK_POS_AA", CLOCK_POS_NONE) : null;
@@ -286,6 +292,9 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DATA_REMAINING_AA = AUTO ? Pref.b("INFO_OVERLAY_SHOW_DATA_REMAINING_AA", false) : null;
 	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DATA_ICON_AA = AUTO ? Pref.b("INFO_OVERLAY_SHOW_DATA_ICON_AA", true) : null;
 	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DOWNLOADED_AA = AUTO ? Pref.b("INFO_OVERLAY_SHOW_DOWNLOADED_AA", false) : null;
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DATA_SESSION_AA = AUTO ? Pref.b("INFO_OVERLAY_SHOW_DATA_SESSION_AA", false) : null;
+	Pref<BooleanSupplier> INFO_OVERLAY_DATA_SESSION_BAR_AA = AUTO ? Pref.b("INFO_OVERLAY_DATA_SESSION_BAR_AA", true) : null;
+	Pref<BooleanSupplier> INFO_OVERLAY_DATA_SESSION_LEFT_AA = AUTO ? Pref.b("INFO_OVERLAY_DATA_SESSION_LEFT_AA", false) : null;
 	Pref<BooleanSupplier> INFO_OVERLAY_AA_MIGRATED =
 			AUTO ? Pref.b("INFO_OVERLAY_AA_MIGRATED", false) : null;
 
@@ -309,6 +318,9 @@ public interface MainActivityPrefs
 		if (p == INFO_OVERLAY_SHOW_DATA_REMAINING) return INFO_OVERLAY_SHOW_DATA_REMAINING_AA;
 		if (p == INFO_OVERLAY_SHOW_DATA_ICON) return INFO_OVERLAY_SHOW_DATA_ICON_AA;
 		if (p == INFO_OVERLAY_SHOW_DOWNLOADED) return INFO_OVERLAY_SHOW_DOWNLOADED_AA;
+		if (p == INFO_OVERLAY_SHOW_DATA_SESSION) return INFO_OVERLAY_SHOW_DATA_SESSION_AA;
+		if (p == INFO_OVERLAY_DATA_SESSION_BAR) return INFO_OVERLAY_DATA_SESSION_BAR_AA;
+		if (p == INFO_OVERLAY_DATA_SESSION_LEFT) return INFO_OVERLAY_DATA_SESSION_LEFT_AA;
 		return null;
 	}
 
@@ -750,6 +762,18 @@ public interface MainActivityPrefs
 
 	default boolean getInfoOverlayShowDownloadedPref(MainActivityDelegate a) {
 		return getBooleanPref(info(a, INFO_OVERLAY_SHOW_DOWNLOADED));
+	}
+
+	default boolean getInfoOverlayShowDataSessionPref(MainActivityDelegate a) {
+		return getBooleanPref(info(a, INFO_OVERLAY_SHOW_DATA_SESSION)) && dataUsageEnabled();
+	}
+
+	default boolean getInfoOverlayDataSessionBarPref(MainActivityDelegate a) {
+		return getBooleanPref(info(a, INFO_OVERLAY_DATA_SESSION_BAR));
+	}
+
+	default boolean getInfoOverlayDataSessionLeftPref(MainActivityDelegate a) {
+		return getBooleanPref(info(a, INFO_OVERLAY_DATA_SESSION_LEFT));
 	}
 
 	default boolean getInfoOverlayShowDataIconPref(MainActivityDelegate a) {

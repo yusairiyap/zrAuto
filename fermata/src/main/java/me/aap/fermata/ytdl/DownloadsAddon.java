@@ -37,6 +37,40 @@ public class DownloadsAddon implements FermataFragmentAddon {
 	public static final int SORT_SIZE = 2;
 	private static final Pref<IntSupplier> SORT = Pref.i("DOWNLOADS_SORT", SORT_DATE);
 
+	/** The most videos whose sizes the Download picker adds up before showing it. */
+	private static final int MAX_ESTIMATE = 10;
+
+	/**
+	 * What downloading {@code videoIds} would take, as the Download picker shows it: the sound alone,
+	 * then each of {@link #QUALITIES}; null (to {@code done}, on the main thread) when it can't be told
+	 * or there are too many videos to ask about. Asks YouTube once per video, no media is fetched.
+	 */
+	public static void estimateSizes(java.util.List<String> videoIds,
+																	 java.util.function.Consumer<long[]> done) {
+		if (videoIds.isEmpty() || (videoIds.size() > MAX_ESTIMATE)) {
+			done.accept(null);
+			return;
+		}
+		java.util.List<String> ids = new java.util.ArrayList<>(videoIds);
+		me.aap.utils.app.App.get().getExecutor().submitTask(() -> {
+			long[] total = new long[QUALITIES.length + 1];
+			for (String id : ids) {
+				long[] s;
+				try {
+					s = YtStreamResolver.estimate(id, QUALITIES);
+				} catch (Exception ex) {
+					me.aap.fermata.util.DiagnosticLog.log("YTDL", "size estimate failed", id, ex);
+					return null;
+				}
+				for (int i = 0; i < total.length; i++) {
+					if ((s[i] <= 0) || (total[i] < 0)) total[i] = -1;
+					else total[i] += s[i];
+				}
+			}
+			return total;
+		}).main().onCompletion((r, err) -> done.accept((err == null) ? r : null));
+	}
+
 	@Override
 	public int getAddonId() {
 		return R.id.downloads_addon;

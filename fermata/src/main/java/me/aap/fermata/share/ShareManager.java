@@ -105,6 +105,9 @@ public final class ShareManager {
 		/** What the receiver made of it, once saved; for the done message. */
 		@Nullable
 		public volatile String result;
+		/** The app's install file, when this was zrAuto itself being received (see ShareImporter). */
+		@Nullable
+		public volatile File appFile;
 		/** How many of the items were already in the receiver's playlist, so not added again. */
 		public volatile int duplicates;
 		volatile boolean cancelled;

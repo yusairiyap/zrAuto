@@ -15,6 +15,8 @@ public final class ShareOffer {
 	public static final String KIND_PLAYLIST = "playlist";
 	public static final String KIND_FAVORITES = "favorites";
 	public static final String KIND_FOLDER = "folder";
+	/** zrAuto's own install file, so the other phone can install or update the app. */
+	public static final String KIND_APP = "app";
 
 	/** The sender's name for itself (the receiver's prompt shows it). */
 	public final String sender;

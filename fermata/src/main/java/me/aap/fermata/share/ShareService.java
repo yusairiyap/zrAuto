@@ -65,7 +65,11 @@ public class ShareService extends Service implements ShareManager.Listener {
 		boolean ok = t.state == ShareManager.State.DONE;
 		MainActivityDelegate a = MainActivityDelegate.getUiDelegate();
 
-		if (a != null) {
+		java.io.File apk = t.appFile;
+		if (ok && !t.sending && (apk != null)) {
+			// zrAuto itself: the card asking to install it says it all (and says where the file is).
+			ShareImporter.offerInstall(apk);
+		} else if (a != null) {
 			TopToast.show(ok ? R.drawable.share : R.drawable.close_small, msg);
 		}
 

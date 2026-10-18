@@ -61,6 +61,8 @@ public class DataUsageAddon implements FermataFragmentAddon, FermataActivityAddo
 	public void onActivityCreate(MainActivityDelegate a) {
 		DataUsageTracker.get().start(a.getMediaSessionCallback());
 		DataUsageAlerts old = alerts.put(a, DataUsageAlerts.attach(a));
+		// After the screen settles, so the card isn't lost in the start-up's layout.
+		a.postDelayed(() -> DataSessionLimit.get().onAppOpened(a), 2500);
 		if (old != null) old.detach();
 	}
 

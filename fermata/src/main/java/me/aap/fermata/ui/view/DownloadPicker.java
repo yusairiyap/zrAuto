@@ -26,6 +26,7 @@ import android.widget.TextView;
 import androidx.annotation.AttrRes;
 import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import me.aap.fermata.R;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -58,6 +59,8 @@ public final class DownloadPicker {
 	private FrameLayout overlay;
 	private FrameLayout card;
 	private boolean dismissing;
+	// The rows' detail lines, audio first then QUALITIES, for the sizes.
+	private final java.util.List<TextView> details = new java.util.ArrayList<>();
 
 	private DownloadPicker(Context ctx, ViewGroup host) {
 		this.ctx = ctx;
@@ -78,6 +81,15 @@ public final class DownloadPicker {
 	 */
 	public static void show(@NonNull MainActivityDelegate a, @NonNull CharSequence name,
 													@NonNull Callback cb) {
+		show(a, name, java.util.Collections.emptyList(), cb);
+	}
+
+	/**
+	 * Same, with the size each choice would take shown on its row once YouTube has said (see
+	 * {@link DownloadsAddon#estimateSizes}).
+	 */
+	public static void show(@NonNull MainActivityDelegate a, @NonNull CharSequence name,
+													@NonNull java.util.List<String> videoIds, @NonNull Callback cb) {
 		dismissOpen();
 		ViewGroup host = a.findViewById(R.id.main_activity);
 		if (host == null) {
@@ -87,6 +99,24 @@ public final class DownloadPicker {
 		DownloadPicker p = new DownloadPicker(EffectsUi.palette(a.getContext()), host);
 		open = p;
 		p.build(a, name, cb);
+		if (videoIds.isEmpty()) return;
+		p.showSizes(null, true);
+		DownloadsAddon.estimateSizes(videoIds, sizes -> {
+			if (open == p) p.showSizes(sizes, false);
+		});
+	}
+
+	/** Each row's detail, then "≈ 45 MB" (or "Size…" while asking, nothing if unknown). */
+	private void showSizes(@Nullable long[] sizes, boolean loading) {
+		for (int i = 0; i < details.size(); i++) {
+			TextView t = details.get(i);
+			String base = (String) t.getTag();
+			long n = ((sizes != null) && (i < sizes.length)) ? sizes[i] : -1;
+			String extra = loading ? ctx.getString(R.string.ytdl_size_loading) :
+					(n > 0) ? ctx.getString(R.string.ytdl_size_estimate,
+							android.text.format.Formatter.formatShortFileSize(ctx, n)) : null;
+			t.setText((extra == null) ? base : base + "  ·  " + extra);
+		}
 	}
 
 	/** Closes the picker if it's open (for the back button); returns whether it was. */
@@ -217,6 +247,8 @@ public final class DownloadPicker {
 		TextView n = text(name, 16, primary, true);
 		n.setSingleLine(true);
 		TextView s = text(detail, 12, secondary, false);
+		s.setTag(detail);
+		details.add(s);
 		s.setSingleLine(true);
 		s.setEllipsize(TextUtils.TruncateAt.END);
 		texts.addView(n);

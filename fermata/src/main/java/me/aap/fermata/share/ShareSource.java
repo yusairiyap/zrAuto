@@ -55,6 +55,34 @@ public final class ShareSource {
 				.map(list -> build(ctx, kind, title, list));
 	}
 
+	/**
+	 * The app itself: its installed APK, sent as a file the other phone offers to install. Only the
+	 * base APK is sent, so an install split into several APKs (from an app bundle) can't be shared;
+	 * the releases of this app are single APKs.
+	 */
+	@NonNull
+	public static ShareOffer createApp(Context ctx) {
+		List<ShareEntry> entries = new ArrayList<>(1);
+		String version = "";
+		try {
+			android.content.pm.ApplicationInfo ai = ctx.getApplicationInfo();
+			String[] splits = ai.splitSourceDirs;
+			File f = new File(ai.sourceDir);
+			version = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0).versionName;
+			if (((splits == null) || (splits.length == 0)) && f.isFile()) {
+				String name = ctx.getString(R.string.app_name).replaceAll("\\s+", "") + "-" + version + ".apk";
+				ShareEntry e = new ShareEntry(ShareEntry.FILE, null, name, null, -1, false, 0, f.length());
+				e.file = f;
+				entries.add(e);
+			}
+		} catch (Exception ex) {
+			me.aap.utils.log.Log.e(ex, "Cannot share the app");
+		}
+		String title = ctx.getString(R.string.app_name) + ((version == null) || version.isEmpty() ?
+				"" : " " + version);
+		return new ShareOffer(SharePrefs.getDeviceName(), title, ShareOffer.KIND_APP, entries);
+	}
+
 	/** Several items picked from a list (a playlist or the favorites), named {@code title}. */
 	@NonNull
 	public static ShareOffer create(Context ctx, String kind, String title, List<PlayableItem> items) {

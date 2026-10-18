@@ -193,6 +193,7 @@ public final class DataUsageTracker implements MediaSessionCallback.Listener {
 		if (!started) return;
 		sample();
 		save();
+		DataSessionLimit.get().flush();
 	}
 
 	/** Forgets all usage recorded so far, and starts counting again from now. */
@@ -313,6 +314,7 @@ public final class DataUsageTracker implements MediaSessionCallback.Listener {
 
 	private void tick() {
 		if (!started) return;
+		DataSessionLimit.get().poll();
 		sample();
 		if (SystemClock.elapsedRealtime() - lastSave >= SAVE_INTERVAL) save();
 		App.get().getHandler().postDelayed(tick, INTERVAL);
@@ -371,6 +373,7 @@ public final class DataUsageTracker implements MediaSessionCallback.Listener {
 			downloadPending = Math.min(dl - toDownloads, MAX_DOWNLOAD_PENDING);
 			store.add(time, CAT_DOWNLOAD, lastNet, toDownloads);
 			store.add(time, lastCat, lastNet, used - toDownloads);
+			DataSessionLimit.get().onUsage(used, lastNet);
 		}
 		lastCat = currentCategory();
 		lastNet = currentNetwork();

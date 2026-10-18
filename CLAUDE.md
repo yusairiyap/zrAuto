@@ -505,3 +505,25 @@ This is someone's personal Android project (not a work codebase) with real users
 channel. If a task is ambiguous, touches release signing/keystore config (`res/fermata.jks`,
 `res/build_jks.gradle`, CI secrets), changes what ships in `master`/tagged releases, or could affect
 translated strings across many locales, **ask the user before proceeding** rather than guessing.
+
+## App sharing, session data limit, offline fallback, seek preview
+
+- **Share zrAuto app** (Settings > Other): `ShareSource#createApp` offers the installed base APK as a
+  `ShareOffer.KIND_APP`; the receiver keeps it in `Shared/<title>` and `ShareImporter#offerInstall` asks via
+  `TopConfirm`, then opens the installer through the Auto flavor's FileProvider (the mobile flavor has none, it
+  just says where the file is). Split installs (app bundles) can't be shared.
+- **Android Auto session limit** (`addon/data/DataSessionLimit`): a session runs from Android Auto connecting
+  to disconnecting (car activity, mirroring, or the phone's car UI mode), polled with each
+  `DataUsageTracker` reading, counting what it books (mobile only when the tracker counts mobile only). Set on
+  the Data usage tab's card; past the limit a `TopConfirm` offers `OfflineFallback#playDownloaded`. Info
+  overlay item `data_session` (mini bar and used/left in its row menu, `INFO_OVERLAY_DATA_SESSION_*`).
+- **OfflineFallback** (`ytdl/`): next downloaded item of the playing playlist/Favorites, else the Music
+  queue's offline track, else all downloads. `ON_STALL` (Settings > Playback) makes YouTube stalls use it
+  with a toast instead of `NetworkIssuePopup`.
+- **Seek preview** (`ui/view/SeekPreview`, hooked into `FermataServiceUiBinder`'s seek bar): YouTube via
+  storyboard sheets (`ytcaptions/YtStoryboard`, spec from the player request, 80 px pictures on metered
+  networks), local/downloaded video via `MediaMetadataRetriever`. Never run against live YouTube from the
+  cloud session; check the Diagnostic log (SEEK).
+- **Comments panel** shows views/likes from the `next` response (`YtComments#views/likes`, best effort).
+- **Download picker** shows sizes per quality (`DownloadsAddon#estimateSizes`, one player request per video,
+  up to 10 videos).
