@@ -456,6 +456,11 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   element over when an effect really changes the sound (`anyEffectEnabled` checks values, not just switches), and
   with effects turned off afterwards the next queue switch (not in fullscreen) loads a page instead (`routedButIdle`, the
   'reload' result of `navigateToVideoJs`) to get the plain path back. `fade=gain` vs `element` in the YT media log.
+- **Previous is dimmed (and takes no taps) on the first song** of the Music queue (its play order), a playlist
+  or Favorites with Repeat off (`MediaSessionCallback#isAtListStart`; for YouTube, the engine's queue item; a
+  playlist/Favorites with Shuffle on never counts). The control panel (`FermataServiceUiBinder#updatePrevButton`),
+  the fullscreen overlay (`VideoControlsOverlay#setPrevAvailable`, via `ControlPanelView#syncVideoControls`) and
+  the Music tab (`updatePrevButton`, from `updateModes`) follow it; media keys and the car are left as they were.
 - **The Music queue running out on a file** (Repeat off) goes on with YouTube's suggestions
   (`MediaSessionCallbackAssistant#continueAfterQueueEnd` -> `YoutubeMediaEngine#playPageSuggestion`),
   as a YouTube song at the end already did. The "end" placeholder between videos shows the video just

@@ -1549,7 +1549,17 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				}).start();
 	}
 
+	/** Previous dimmed on the queue's first song with Repeat off (see MediaSessionCallback#isAtListStart). */
+	private void updatePrevButton() {
+		View v = getView();
+		View prev = (v == null) ? null : v.findViewById(R.id.music_prev);
+		if (prev == null) return;
+		FermataServiceUiBinder.setPrevAvailable(prev,
+				!getActivityDelegate().getMediaSessionCallback().isAtListStart());
+	}
+
 	private void updateModes() {
+		updatePrevButton();
 		BrowsableItemPrefs p = getModePrefs();
 		PlayableItem i = modeItem();
 		int accent = ContextCompat.getColor(requireContext(), R.color.music_accent);
@@ -1755,6 +1765,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 	private void onPrev() {
 		MediaSessionCallback cb = getActivityDelegate().getMediaSessionCallback();
+		if (cb.isAtListStart()) return; // dimmed, see updatePrevButton()
 		MediaEngine eng = cb.getEngine();
 		if ((eng == null) || (eng.getSource() == null)) {
 			skipFromSavedQueue(false);
@@ -2392,6 +2403,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	public void onQueueChanged(MusicQueue q) {
 		if (getView() == null) return;
 		adapter.reload();
+		updatePrevButton();
 		if (getActivityDelegate().getMediaSessionCallback().getCurrentItem() == null)
 			displayItem(getDisplayItem(), true);
 	}

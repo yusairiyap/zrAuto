@@ -57,6 +57,7 @@ public class VideoControlsOverlay extends FrameLayout {
 	private final TextView subtitle;
 	private final LinearLayout center;
 	private final ImageView prev;
+	private boolean prevAvailable = true;
 	private final ImageView playPause;
 	private final ImageView next;
 	private final DoubleTapSeekView seekView;
@@ -305,7 +306,7 @@ public class VideoControlsOverlay extends FrameLayout {
 		titleShown = showTitle;
 		// Fading out, they no longer take taps: a quick tap meant for the video (a double tap seek
 		// right after them) must not land on one.
-		prev.setEnabled(showCenter);
+		prev.setEnabled(showCenter && prevAvailable);
 		playPause.setEnabled(showCenter && !buffering);
 		next.setEnabled(showCenter);
 		if (!showCenter && center.hasFocus()) center.clearFocus();
@@ -375,6 +376,14 @@ public class VideoControlsOverlay extends FrameLayout {
 	}
 
 	/** Mirrors the panel's play/pause button: activated while playing, selected while paused. */
+	/** Dimmed, taking no taps, when there is nothing before the playing song (see FermataServiceUiBinder). */
+	public void setPrevAvailable(boolean available) {
+		if (prevAvailable == available) return;
+		prevAvailable = available;
+		prev.setImageAlpha(available ? 255 : 90);
+		prev.setEnabled(centerShown && available);
+	}
+
 	public void setPlayPauseState(boolean selected, boolean activated) {
 		playPause.setSelected(selected);
 		playPause.setActivated(activated);

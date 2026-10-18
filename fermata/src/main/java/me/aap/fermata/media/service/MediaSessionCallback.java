@@ -328,6 +328,28 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		return (eng == null) ? null : eng.getSource();
 	}
 
+	/**
+	 * Whether Previous has nowhere to go: what plays is the first song of the Music queue (in its play
+	 * order), a playlist or Favorites, with Repeat off (and, for a playlist or Favorites, Shuffle off,
+	 * where there is no fixed order). The UI dims Previous then. Reads only, never moves a shuffle.
+	 * For YouTube it is the queue item the page plays; a video on its own has YouTube's previous.
+	 */
+	public boolean isAtListStart() {
+		MediaEngine eng = getEngine();
+		if (eng == null) return false;
+		PlayableItem cur = (eng.getId() == MediaPrefs.MEDIA_ENG_YT) ? eng.getQueueItem() : eng.getSource();
+		if (cur == null) return false;
+		BrowsableItem parent = cur.getParent();
+		if (parent == null) return false;
+		BrowsableItemPrefs p = parent.getPrefs();
+		if (p.getRepeatPref()) return false;
+		if (parent instanceof me.aap.fermata.addon.music.MusicQueue q) return q.indexInPlayOrder(cur) == 0;
+		if (!(parent instanceof Favorites) && !(parent instanceof MediaLib.Playlist)) return false;
+		if (p.getShufflePref()) return false;
+		List<Item> children = parent.<Item>getChildren().peek();
+		return (children != null) && !children.isEmpty() && children.get(0).equals(cur);
+	}
+
 	/** What was restored paused at the start (the last played item), not played yet; else null. */
 	@Nullable
 	public PlayableItem getResumeItem() {

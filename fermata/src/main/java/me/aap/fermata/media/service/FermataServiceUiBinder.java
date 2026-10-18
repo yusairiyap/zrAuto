@@ -177,6 +177,7 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 	}
 
 	public void onPrevNextButtonClick(boolean next) {
+		if (!next && sessionCallback.isAtListStart()) return; // dimmed, see updatePrevButton()
 		if (next) mediaController.getTransportControls().skipToNext();
 		else mediaController.getTransportControls().skipToPrevious();
 	}
@@ -245,6 +246,23 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 	@Nullable
 	public MediaMetadataCompat getMetadata() {
 		return mediaController.getMetadata();
+	}
+
+	/**
+	 * Previous is dimmed and takes no taps on the first song of the Music queue, a playlist or
+	 * Favorites with Repeat off: there is nothing before it (see MediaSessionCallback#isAtListStart).
+	 */
+	private void updatePrevButton() {
+		if (prevButton != null) setPrevAvailable(prevButton, !sessionCallback.isAtListStart());
+	}
+
+	/** Dims {@code v} (its image only, so the panel's own fades of the view are left alone). */
+	public static void setPrevAvailable(View v, boolean available) {
+		if (v.isEnabled() == available) return;
+		v.setEnabled(available);
+		int a = available ? 255 : 90;
+		if (v instanceof android.widget.ImageView iv) iv.setImageAlpha(a);
+		else v.setAlpha(a / 255f);
 	}
 
 	/** See {@link ControlPanelView#syncVideoControls()}. */
@@ -343,7 +361,9 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 
 		@Override
 		public void onMetadataChanged(MediaMetadataCompat metadata) {
-			if (bound) syncVideoControls();
+			if (!bound) return;
+			syncVideoControls();
+			updatePrevButton();
 		}
 
 		@Override
@@ -375,6 +395,7 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 					break;
 			}
 
+			updatePrevButton();
 			PlayableItem i = sessionCallback.getCurrentItem();
 			if (!Objects.equals(currentItem, i)) {
 				PlayableItem old = currentItem;

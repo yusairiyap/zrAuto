@@ -1310,6 +1310,7 @@ public class ControlPanelView extends ConstraintLayout
 		FermataServiceUiBinder b = getActivity().getMediaServiceBinder();
 		CharSequence[] t = titleOf(b.getMetadata(), b.getCurrentItem());
 		c.setTitle(t[0], t[1]);
+		c.setPrevAvailable(!b.getMediaSessionCallback().isAtListStart());
 	}
 
 	/** The title and artist to show for the playing item: {title, artist}, either can be null. */
