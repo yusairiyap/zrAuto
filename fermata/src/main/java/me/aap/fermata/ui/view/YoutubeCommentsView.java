@@ -108,6 +108,8 @@ public final class YoutubeCommentsView {
 	private Adapter adapter;
 	private TextView titleView;
 	private TextView videoLine;
+	// The video's views and likes, right under its title.
+	private TextView statsLine;
 	private LinearLayout sortRow;
 	private TextView sortTop;
 	private TextView sortNew;
@@ -341,6 +343,11 @@ public final class YoutubeCommentsView {
 		name.setEllipsize(TextUtils.TruncateAt.END);
 		name.setPadding(dp(8), dp(2), dp(8), dp(6));
 		root.addView(name, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		statsLine = text("", 13, secondary, false);
+		statsLine.setSingleLine(true);
+		statsLine.setPadding(dp(8), 0, dp(8), dp(6));
+		statsLine.setVisibility(View.GONE);
+		root.addView(statsLine, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
 		// Top / Newest, once the first batch has said how to get them.
 		sortRow = new LinearLayout(ctx);
@@ -592,6 +599,7 @@ public final class YoutubeCommentsView {
 		statusRow.setOnClickListener(null);
 		statusRow.setClickable(false);
 		statusRow.setBackground(null);
+		setStats(p.views, p.likes);
 		if (p.disabled) {
 			setStatus(false, ctx.getString(R.string.yt_comments_off));
 			return;
@@ -874,6 +882,9 @@ public final class YoutubeCommentsView {
 		}
 		// While writing, only the comments and the box matter: the rest gives its room up.
 		if (videoLine != null) videoLine.setVisibility(typing ? View.GONE : View.VISIBLE);
+		if (statsLine != null) {
+			statsLine.setVisibility((typing || (statsLine.length() == 0)) ? View.GONE : View.VISIBLE);
+		}
 		if (sortRow != null) sortRow.setVisibility(typing ? View.GONE :
 				((sortTopToken != null) && (sortNewToken != null)) ? View.VISIBLE : View.GONE);
 	}
@@ -1376,6 +1387,7 @@ public final class YoutubeCommentsView {
 		videoId = id;
 		videoTitle = title;
 		videoLine.setText(title);
+		setStats(-1, -1);
 		titleView.setText(R.string.yt_comments);
 		count = null;
 		createParams = null;
@@ -1465,6 +1477,33 @@ public final class YoutubeCommentsView {
 
 	// ---------------------------------------------------------------------------------------------
 	// Look
+
+	/** "👁 1.2M  👍 34K" under the title; what YouTube doesn't say is left out. */
+	private void setStats(long views, long likes) {
+		if (statsLine == null) return;
+		android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder();
+		if (views >= 0) appendStat(sb, R.drawable.visibility, YtComments.shortCount(views));
+		if (likes >= 0) appendStat(sb, R.drawable.thumb_up, YtComments.shortCount(likes));
+		statsLine.setText(sb);
+		statsLine.setVisibility((sb.length() == 0) ? View.GONE : View.VISIBLE);
+	}
+
+	private void appendStat(android.text.SpannableStringBuilder sb, int icon, String value) {
+		android.graphics.drawable.Drawable d = androidx.core.content.ContextCompat.getDrawable(ctx, icon);
+		if (sb.length() > 0) sb.append("    ");
+		if (d != null) {
+			d = d.mutate();
+			int size = Math.round(statsLine.getTextSize() * 1.1f);
+			d.setBounds(0, 0, size, size);
+			d.setTint(statsLine.getCurrentTextColor());
+			int at = sb.length();
+			sb.append("\u00a0");
+			sb.setSpan(new android.text.style.ImageSpan(d, android.text.style.DynamicDrawableSpan.ALIGN_BOTTOM),
+					at, at + 1, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+			sb.append(' ');
+		}
+		sb.append(value);
+	}
 
 	private TextView text(String s, float sp, int color, boolean bold) {
 		TextView t = new TextView(ctx);

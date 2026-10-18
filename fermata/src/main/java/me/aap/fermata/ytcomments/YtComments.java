@@ -99,6 +99,9 @@ public final class YtComments {
 		public String sortNew;
 		/** The video has no comments section at all. */
 		public boolean disabled;
+		/** The video's views and likes, -1 when the watch page doesn't say (first batch only). */
+		public long views = -1;
+		public long likes = -1;
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -178,9 +181,80 @@ public final class YtComments {
 		if (token == null) {
 			p = new Page();
 			p.disabled = true;
-			return p;
+		} else {
+			p = more(token);
 		}
-		return more(token);
+		p.views = views(watch);
+		p.likes = likes(watch);
+		return p;
+	}
+
+	/** The view count of the watch page: its raw number, else the digits of "1,234 views". */
+	private static long views(JSONObject watch) {
+		JSONObject o = findObject(watch, "videoViewCountRenderer");
+		JSONObject r = (o == null) ? null : o.optJSONObject("videoViewCountRenderer");
+		if (r == null) return -1;
+		long n = number(findString(r, "originalViewCount"));
+		if (n >= 0) return n;
+		JSONObject vc = r.optJSONObject("viewCount");
+		return number((vc == null) ? null : findString(vc, "simpleText"));
+	}
+
+	/**
+	 * The like count: the exact number of the newer like button's entity, else the "along with
+	 * 1,234 other people" of its accessibility text. -1 when likes are hidden.
+	 */
+	private static long likes(JSONObject watch) {
+		long n = number(findString(watch, "likeCountIfIndifferentNumber"));
+		if (n >= 0) return n;
+		String a = findStringContaining(watch, "other people");
+		if (a == null) return -1;
+		java.util.regex.Matcher m = java.util.regex.Pattern.compile("([0-9][0-9,.\\u00a0 ]*) other").matcher(a);
+		return m.find() ? number(m.group(1)) : -1;
+	}
+
+	private static long number(@Nullable String s) {
+		if (s == null) return -1;
+		String d = s.replaceAll("[^0-9]", "");
+		if (d.isEmpty() || (d.length() > 15)) return -1;
+		return Long.parseLong(d);
+	}
+
+	/** The first string value anywhere below {@code node} that contains {@code part}. */
+	@Nullable
+	private static String findStringContaining(@Nullable Object node, String part) {
+		if (node instanceof JSONObject o) {
+			for (java.util.Iterator<String> it = o.keys(); it.hasNext(); ) {
+				Object v = o.opt(it.next());
+				if ((v instanceof String str) && str.contains(part)) return str;
+				String r = findStringContaining(v, part);
+				if (r != null) return r;
+			}
+		} else if (node instanceof JSONArray a) {
+			for (int i = 0; i < a.length(); i++) {
+				Object v = a.opt(i);
+				if ((v instanceof String str) && str.contains(part)) return str;
+				String r = findStringContaining(v, part);
+				if (r != null) return r;
+			}
+		}
+		return null;
+	}
+
+	/** 999, 1.2K, 34K, 1.5M, 2.1B: a count shortened the way YouTube does. */
+	public static String shortCount(long n) {
+		if (n < 1000) return String.valueOf(n);
+		String[] units = {"K", "M", "B", "T"};
+		double v = n;
+		int u = -1;
+		while ((v >= 1000) && (u < units.length - 1)) {
+			v /= 1000;
+			u++;
+		}
+		String num = (v < 10) ? String.format(java.util.Locale.ROOT, "%.1f", Math.floor(v * 10) / 10) :
+				String.valueOf((long) Math.floor(v));
+		if (num.endsWith(".0")) num = num.substring(0, num.length() - 2);
+		return num + units[u];
 	}
 
 	/**
