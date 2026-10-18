@@ -196,6 +196,20 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	// blur setting changes, without reloading it.
 	@Nullable
 	private Bitmap artBitmap;
+	/** The card behind the cover showing the next / previous song's cover while it is swiped. */
+	@Nullable
+	private View peekCard;
+	@Nullable
+	private ImageView peekImg;
+	/** The neighbours' covers, loaded for {@link #peekFor}; null while not (yet) known. */
+	@Nullable
+	private Bitmap peekPrev;
+	@Nullable
+	private Bitmap peekNext;
+	@Nullable
+	private PlayableItem peekFor;
+	/** Which side the peek card shows now: 1 next, -1 previous, 0 none. */
+	private int peekSide;
 	private boolean listening;
 	private boolean progressRunning;
 	private boolean seeking;
@@ -270,6 +284,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		behind = new View[]{view.findViewById(R.id.music_backdrop), bg,
 				view.findViewById(R.id.music_scrim)};
 		art = view.findViewById(R.id.music_art);
+		peekCard = view.findViewById(R.id.music_art_peek);
+		peekImg = view.findViewById(R.id.music_art_peek_img);
 		loading = view.findViewById(R.id.music_loading);
 
 		title = view.findViewById(R.id.music_track_title);
@@ -707,6 +723,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			long dur = md.getLong(METADATA_KEY_DURATION);
 			if (dur > 0) setDuration(dur);
 			loadArt(i, md);
+			loadPeeks(i);
 		});
 	}
 
@@ -1469,7 +1486,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 						}
 						// Toward a song that isn't there (first / last of the list, Repeat off): the cover
 						// only gives a little, like the end of a list, and springs back on release.
-						dragArt(v, canSwipeTrack(dx < 0) ? dx : dx * 0.2f);
+						boolean can = canSwipeTrack(dx < 0);
+						dragArt(v, can ? dx : dx * 0.2f);
+						showPeek(v, can ? ((dx < 0) ? 1 : -1) : 0);
 						return true;
 					}
 					case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -1510,7 +1529,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 							swipeTrack(v, dx < 0);
 						} else {
 							v.animate().translationX(0f).rotation(0f).alpha(1f).setDuration(220)
-									.setInterpolator(new OvershootInterpolator(1.2f)).start();
+									.setInterpolator(new OvershootInterpolator(1.2f))
+									.setUpdateListener(a -> updatePeek(v)).withEndAction(() -> showPeek(v, 0))
+									.start();
 						}
 						return true;
 					}
@@ -1520,12 +1541,89 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		});
 	}
 
-	private static void dragArt(View v, float dx) {
+	private void dragArt(View v, float dx) {
 		float w = Math.max(1, v.getWidth());
 		float f = Math.min(1f, Math.abs(dx) / w);
 		v.setTranslationX(dx);
 		v.setRotation(8f * dx / w);
 		v.setAlpha(1f - 0.35f * f);
+		updatePeek(v);
+	}
+
+	/**
+	 * Card stack: while the cover is dragged, the next (dragging left) or previous song's cover waits
+	 * behind it, a little smaller and dimmer, and comes forward as the cover moves away. {@code side}
+	 * 1 for next, -1 for previous, 0 hides it. Only the Music queue's neighbours are known; for
+	 * anything else the card behind shows the placeholder.
+	 */
+	private void showPeek(View v, int side) {
+		View card = peekCard;
+		ImageView img = peekImg;
+		if ((card == null) || (img == null)) return;
+		if (side == 0) {
+			peekSide = 0;
+			card.animate().cancel();
+			card.setVisibility(View.INVISIBLE);
+			card.setAlpha(0f);
+			return;
+		}
+		if (side != peekSide) {
+			peekSide = side;
+			if (peekFor != shownItem) loadPeeks(shownItem);
+			Bitmap bm = (side > 0) ? peekNext : peekPrev;
+			if (bm != null) img.setImageBitmap(bm);
+			else img.setImageDrawable(ContextCompat.getDrawable(palette, R.drawable.music_art_placeholder));
+			card.setVisibility(View.VISIBLE);
+		}
+		updatePeek(v);
+	}
+
+	/** Follows the cover's offset: 92% and half see-through at rest, full size once it is off. */
+	private void updatePeek(View v) {
+		View card = peekCard;
+		if ((card == null) || (peekSide == 0)) return;
+		float w = Math.max(1, v.getWidth());
+		float f = Math.min(1f, Math.abs(v.getTranslationX()) / w);
+		float scale = 0.92f + 0.08f * f;
+		card.setScaleX(scale);
+		card.setScaleY(scale);
+		card.setAlpha(0.55f + 0.45f * f);
+	}
+
+	/**
+	 * Loads the covers of the songs before and after {@code i} in the Music queue's play order, so a
+	 * swipe shows them at once. Covers come from the same cache as the queue list (YouTube thumbnails
+	 * the list has shown already), so this rarely costs any data.
+	 */
+	private void loadPeeks(@Nullable PlayableItem i) {
+		peekFor = i;
+		peekPrev = peekNext = null;
+		if (!(i instanceof MusicTrackItem t) || (queue == null)) return;
+		List<MusicTrackItem> order = queue.getPlayOrder();
+		int n = order.size();
+		int idx = order.indexOf(t);
+		if ((idx < 0) || (n < 2)) return;
+		MusicTrackItem prev = order.get(Math.floorMod(idx - 1, n));
+		MusicTrackItem next = order.get(Math.floorMod(idx + 1, n));
+		peekArt(prev).main().onSuccess(bm -> {
+			if (peekFor != i) return;
+			peekPrev = bm;
+			if ((peekSide < 0) && (bm != null) && (peekImg != null)) peekImg.setImageBitmap(bm);
+		});
+		peekArt(next).main().onSuccess(bm -> {
+			if (peekFor != i) return;
+			peekNext = bm;
+			if ((peekSide > 0) && (bm != null) && (peekImg != null)) peekImg.setImageBitmap(bm);
+		});
+	}
+
+	private FutureSupplier<Bitmap> peekArt(MusicTrackItem t) {
+		MediaLib lib = getActivityDelegate().getLib();
+		boolean yt = isYoutube(t);
+		String u = t.getArtUri();
+		FutureSupplier<Bitmap> f = (u != null) ? lib.getBitmap(u) : t.getIconUri().main()
+				.then(uri -> (uri == null) ? me.aap.utils.async.Completed.<Bitmap>completedNull() : lib.getBitmap(uri.toString()));
+		return f.map(bm -> yt ? cropLetterbox(bm) : bm);
 	}
 
 	/**
@@ -1542,17 +1640,32 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		float w = Math.max(v.getWidth(), 1);
 		float out = next ? -w * 1.2f : w * 1.2f;
 		v.animate().translationX(out).rotation(next ? -12f : 12f).alpha(0f).setDuration(170)
-				.setInterpolator(new DecelerateInterpolator()).withEndAction(() -> {
+				.setInterpolator(new DecelerateInterpolator())
+				.setUpdateListener(a -> updatePeek(v)).withEndAction(() -> {
 					if (getView() == null) return;
 					MediaSessionCallback cb = getActivityDelegate().getMediaSessionCallback();
+					Bitmap peek = next ? peekNext : peekPrev;
 					// Straight to the other track: unlike the Previous button, a swipe back never just
 					// restarts the current one.
 					if (next) cb.onSkipToNext();
 					else cb.onSkipToPrevious();
+					if (peekSide != 0) {
+						// The card behind becomes the cover: the cover takes its picture and place at
+						// once, the real one crossfades in when loaded (setArt).
+						if (peek != null) {
+							art.setImageDrawable(new BitmapDrawable(getResources(), peek));
+							shownArt = null;
+						}
+						v.setTranslationX(0f);
+						v.setRotation(0f);
+						v.setAlpha(1f);
+						showPeek(v, 0);
+						return;
+					}
 					v.setTranslationX(-out * 0.6f);
 					v.setRotation(next ? 6f : -6f);
 					v.animate().translationX(0f).rotation(0f).alpha(1f).setDuration(320)
-							.setInterpolator(new OvershootInterpolator(0.9f)).start();
+							.setInterpolator(new OvershootInterpolator(0.9f)).setUpdateListener(null).start();
 				}).start();
 	}
 
