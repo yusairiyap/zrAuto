@@ -334,6 +334,7 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 	@Override
 	public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
 		if (fromUser) {
+			me.aap.fermata.ui.view.SeekPreview.move(seekBar, progress);
 			callback.setProgressTime(progress);
 			mediaController.getTransportControls().seekTo(progress * 1000L);
 		}
@@ -342,11 +343,13 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 	@Override
 	public void onStartTrackingTouch(SeekBar seekBar) {
 		callback.pauseProgressUpdate(true);
+		me.aap.fermata.ui.view.SeekPreview.start(seekBar);
 	}
 
 	@Override
 	public void onStopTrackingTouch(SeekBar seekBar) {
 		callback.pauseProgressUpdate(false);
+		me.aap.fermata.ui.view.SeekPreview.stop();
 	}
 
 	private final class MediaControllerCallback extends MediaControllerCompat.Callback {

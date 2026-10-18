@@ -167,6 +167,31 @@ public final class YtCaptions {
 		return NONE;
 	}
 
+	/**
+	 * The video's storyboard spec (the sheets of small pictures YouTube's own seek bar shows), from
+	 * the same player request as the captions; null when no app gives one. See YtStoryboard.
+	 */
+	@Nullable
+	static String storyboardSpec(String videoId) {
+		for (Client c : CLIENTS) {
+			try {
+				JSONObject json = player(c, videoId);
+				JSONObject sb = json.optJSONObject("storyboards");
+				JSONObject r = (sb == null) ? null : sb.optJSONObject("playerStoryboardSpecRenderer");
+				String spec = (r == null) ? null : r.optString("spec", "");
+				if ((spec != null) && !spec.isEmpty()) {
+					DiagnosticLog.log("SEEK", c.name, videoId, "storyboard found");
+					return spec;
+				}
+				DiagnosticLog.log("SEEK", c.name, videoId, "no storyboard");
+			} catch (IOException ex) {
+				DiagnosticLog.log("SEEK", c.name, videoId, "storyboard failed", ex);
+				if (String.valueOf(ex.getMessage()).contains("HTTP 429")) break;
+			}
+		}
+		return null;
+	}
+
 	/** A manual track in the wanted language, else in English, else any; then the same of generated. */
 	@Nullable
 	private static Track choose(List<Track> tracks, String want, boolean allowGenerated) {
