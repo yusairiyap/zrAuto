@@ -1467,7 +1467,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 							ViewGroup p = (ViewGroup) v.getParent();
 							if (p != null) p.requestDisallowInterceptTouchEvent(true);
 						}
-						dragArt(v, dx);
+						// Toward a song that isn't there (first / last of the list, Repeat off): the cover
+						// only gives a little, like the end of a list, and springs back on release.
+						dragArt(v, canSwipeTrack(dx < 0) ? dx : dx * 0.2f);
 						return true;
 					}
 					case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -1504,7 +1506,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 						dragging = false;
 						float dx = v.getTranslationX();
 						boolean flung = (Math.abs(speed) > fling) && (Math.signum(speed) == Math.signum(dx));
-						if (!cancel && ((Math.abs(dx) > v.getWidth() / 3f) || flung) && canSwipeTrack()) {
+						if (!cancel && ((Math.abs(dx) > v.getWidth() / 3f) || flung) && canSwipeTrack(dx < 0)) {
 							swipeTrack(v, dx < 0);
 						} else {
 							v.animate().translationX(0f).rotation(0f).alpha(1f).setDuration(220)
@@ -1526,9 +1528,14 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		v.setAlpha(1f - 0.35f * f);
 	}
 
-	/** Whether there's something playing to skip from. */
-	private boolean canSwipeTrack() {
-		return getActivityDelegate().getMediaSessionCallback().getCurrentItem() != null;
+	/**
+	 * Whether a swipe can skip to the next ({@code next}) or previous song: something plays, and it isn't
+	 * the last / first of its list with Repeat off (see MediaSessionCallback#isAtListEdge).
+	 */
+	private boolean canSwipeTrack(boolean next) {
+		MediaSessionCallback cb = getActivityDelegate().getMediaSessionCallback();
+		if (cb.getCurrentItem() == null) return false;
+		return next ? !cb.isAtListEnd() : !cb.isAtListStart();
 	}
 
 	private void swipeTrack(View v, boolean next) {
@@ -1549,7 +1556,19 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				}).start();
 	}
 
+	/** Previous / Next dimmed on the queue's first / last song with Repeat off (see MediaSessionCallback#isAtListEdge). */
+	private void updateSkipButtons() {
+		View v = getView();
+		if (v == null) return;
+		MediaSessionCallback cb = getActivityDelegate().getMediaSessionCallback();
+		View prev = v.findViewById(R.id.music_prev);
+		View next = v.findViewById(R.id.music_next);
+		if (prev != null) FermataServiceUiBinder.setSkipAvailable(prev, !cb.isAtListStart());
+		if (next != null) FermataServiceUiBinder.setSkipAvailable(next, !cb.isAtListEnd());
+	}
+
 	private void updateModes() {
+		updateSkipButtons();
 		BrowsableItemPrefs p = getModePrefs();
 		PlayableItem i = modeItem();
 		int accent = ContextCompat.getColor(requireContext(), R.color.music_accent);
@@ -1684,6 +1703,13 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 		if ((eng == null) || (eng.getSource() == null) || !cb.isPlaying()) {
 			progressRunning = false;
+			return;
+		}
+
+		// The app in the background: nothing to draw, the position isn't asked for (a script run in
+		// YouTube's page every time). Looked at again shortly, so it's right as soon as it's back.
+		if (seek.getWindowVisibility() != View.VISIBLE) {
+			seek.postDelayed(progressTask, 1000);
 			return;
 		}
 
@@ -2385,6 +2411,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	public void onQueueChanged(MusicQueue q) {
 		if (getView() == null) return;
 		adapter.reload();
+		updateSkipButtons();
 		if (getActivityDelegate().getMediaSessionCallback().getCurrentItem() == null)
 			displayItem(getDisplayItem(), true);
 	}

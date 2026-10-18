@@ -305,7 +305,8 @@ provider doesn't offer a folder to pick, so Drive is manual only.
   (CAPTIONS) says which app answered what. `CaptionsHub` is the one place that follows the playing video's id
   (`Action.getFavoritableItem` + `YtDownloads.videoIdOf`) and position (`MediaEngine#getPosition`, 4x/s); it only
   runs while something has `acquire`d it, and the views do that only while they are on screen
-  (`onVisibilityAggregated`), so lyrics/captions off cost nothing.
+  (`onVisibilityAggregated`), so lyrics/captions off cost nothing. A new song's captions are fetched 1 s in, and the next
+  song's 8 s into the current one (`prefetchNext`, Music queue only, from `MusicQueue#getPlayOrder`; never an item's `getNextPlayable`, which walks its folder/favorites and steps a shared shuffle), so lyrics show at once on Next.
 - **Lyrics**: `ui/view/LyricsView` draws the lines in one pass (a fractional scroll position glides to the playing
   line; alpha by distance: the line before dim, gone after the third after). Over the Music tab's cover it sits in
   the art card under the loading dim (`MusicPlayerFragment#addLyricsOverlay`, shown by `LYRICS_ON`, the Lyrics chip
@@ -420,8 +421,50 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
 - **Grid vs list** for media lists comes from the grid preference, never from `isGridView()` (which
   asks the active tab and is wrong while tabs switch).
 - Known open items: media card art can look blocky on One UI (1280x720 art); a YouTube hand-over
-  whose page never starts leaves the local engine muted with no error; the 150 ms end-of-track poll
-  and 1 s UI timer keep running in the background.
+  whose page never starts leaves the local engine muted with no error.
+  **Open: an occasional micro stutter at the start of a YouTube song on the Music tab** (play, tiny
+  pause, play; never seen in fullscreen video, seeking is fine). Already ruled out or fixed: router
+  navigation (Music swaps in the player), quality switched while the song starts (now set before the
+  swap; `YT media quality` lines log any switch), the fade holding the start silent, Web Audio when no
+  effect is on. Still possible: YouTube's own player or the WebView's audio start (the log once showed
+  the playback position jumping ~50-80 ms ahead in the first 1.5 s on the plain path), and the effects
+  path (Web Audio) on Bluetooth (`out=` ~400 ms). Untried ideas: compare against m.youtube.com in
+  Chrome, and skipping with the screen off (to rule the Music tab's own UI work in or out).
+- **Background polls.** The end-of-track fade watcher (`MediaEngineBase#endWatch`) sleeps until the
+  last seconds (at most 1 s between looks, 150 ms near the end); the control panel's and the Music
+  tab's progress polls skip their work while their window isn't visible (for YouTube each tick is a
+  script run in the page). Keep new periodic work off when nothing is on screen.
+- **A local engine replacing YouTube** must silence the page (`MediaSessionCallback#playPreparedItem`
+  calls `yieldToLocal()`; the page's `close()` is inert on purpose). After that the page may not take
+  the session back on its own (`YoutubeMediaEngine#yielded`, checked in `playing()`): only a video the
+  app asked for (pending id), a tap on the page, or play pressed with the YouTube tab in front.
+- **YouTube queue skips in music mode, or with the page hidden** swap the video inside the player
+  (`loadVideoById`), not through YouTube's router: a hidden page's router navigation is partly
+  deferred until shown, which restarted songs on return to the app and left Android Auto's Music tab
+  stuck on the loading circle. `YoutubeMediaEngine#watchSwitch` retries a switch that never plays.
+- **YouTube quality is never switched on a video that is playing** (`applyQualityPolicy(target, now)`):
+  by itself (a new song in music mode): the player reloads it for that (heard as the song starting
+  twice). The lowest applies as each video is set up or buffers (and YouTube's stored
+  `yt-player-quality` is set to 144p); the user switching into music or back to video switches the
+  playing song at once, as they expect. In music mode the swap sets the lowest range *before* `loadVideoById`, and a switch is never made while a song is starting (`kept ... at the start` in the YT media log): one then made the player load the song again, heard as play, pause, play, only on the Music tab. A page pause during a switch is ignored
+  (`YoutubeMediaEngine#isSwitchPause`): rapid skips used to pause the session. `youtube_fade.js` takes a volume YouTube sets while a fade
+  holds the level down (it does per video, on load) as the target and puts the held level back. A new video fades
+  in from `loadstart` (`startFade`: from 25% over 0.5 s of its playback time, even in dB (`rise`); the switch's fade out stays 300 ms, 150 felt abrupt, never from silence): holding it at zero until
+  `playing` cut off each song's first moment.
+- **YouTube Effects route the page's sound through Web Audio** (`createMediaElementSource`, irreversible per
+  element), which can make a new video's first second choppy on a phone. `youtube_equalizer.js` only takes an
+  element over when an effect really changes the sound (`anyEffectEnabled` checks values, not just switches), and
+  with effects turned off afterwards the next queue switch (not in fullscreen) loads a page instead (`routedButIdle`, the
+  'reload' result of `navigateToVideoJs`) to get the plain path back. `fade=gain` vs `element` in the YT media log.
+- **Previous / Next go nowhere past the ends of a list**: on the first / last song of the Music queue (its
+  play order), a playlist or Favorites with Repeat off (`MediaSessionCallback#isAtListEdge`; for YouTube, the
+  engine's queue item; a playlist/Favorites with Shuffle on never counts) they are dimmed and take no taps in the
+  control panel (`FermataServiceUiBinder#updateSkipButtons`), the fullscreen overlay
+  (`VideoControlsOverlay#setSkipAvailable`, via `ControlPanelView#syncVideoControls`) and the Music tab
+  (`updateSkipButtons`, from `updateModes`); the cover swipe there only gives a little and springs back (`canSwipeTrack(next)`); the session leaves them out of its actions (`withSkipActions`,
+  so Android Auto and the system media controls follow) and `onSkipToNext/Previous` ignore them from media
+  buttons, instead of fading the song out and back in. The queue does not go on with YouTube's suggestions.
+  The "end" placeholder between videos shows the video just over (`Placeholder`), never its made-up address.
 
 ## Long/exhausting bug investigations: ask for adb logs
 

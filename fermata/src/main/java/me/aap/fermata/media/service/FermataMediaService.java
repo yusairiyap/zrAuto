@@ -102,6 +102,8 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 	private BroadcastReceiver intentReceiver;
 	private int notifColor;
 	private PendingIntent notifContentIntent;
+	/** The last NOTIF line written to the Diagnostic log: state and title. */
+	private String lastNotifLog;
 	private MediaStyle notifStyle;
 	private Action actionPrev;
 	private Action actionRw;
@@ -284,10 +286,19 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 
 	@SuppressLint("SwitchIntDef")
 	void updateNotification(int st, PlayableItem currentItem) {
-		holdPlayWakeLock(st == STATE_PLAYING);
+		// Also on the way to the next item (skipping, connecting, buffering): with the screen off the
+		// CPU could otherwise sleep right while the next song is being loaded.
+		holdPlayWakeLock((st == STATE_PLAYING) ||
+				(st == PlaybackStateCompat.STATE_BUFFERING) || (st == PlaybackStateCompat.STATE_CONNECTING) ||
+				(st == PlaybackStateCompat.STATE_SKIPPING_TO_NEXT) ||
+				(st == PlaybackStateCompat.STATE_SKIPPING_TO_PREVIOUS) ||
+				(st == PlaybackStateCompat.STATE_SKIPPING_TO_QUEUE_ITEM));
 		switch (st) {
 			case STATE_NONE, STATE_STOPPED, STATE_ERROR -> {
 				stopForeground(true);
+				// Posted while paused (stopForeground(false) leaves it detached from the service), the
+				// notification is not removed by the above: it stayed after Exit or a stop.
+				NotificationManagerCompat.from(this).cancel(NOTIF_ID);
 				// Started while playing (below): no longer needed once it has stayed stopped.
 				stopHandler.removeCallbacks(stopStarted);
 				if (started) stopHandler.postDelayed(stopStarted, 5000);
@@ -359,10 +370,15 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 			Bitmap largeIcon = description.getIconBitmap();
 			builder.setContentTitle(description.getTitle()).setContentText(description.getSubtitle())
 					.setSubText(description.getDescription());
-			me.aap.fermata.util.DiagnosticLog.log("NOTIF", "built", "state=" + st,
-					"title=" + description.getTitle(), "subtitle=" + description.getSubtitle(),
-					"icon=" + ((description.getIconBitmap() == null) ? null :
-							description.getIconBitmap().getWidth() + "x" + description.getIconBitmap().getHeight()));
+			// Once per state and title, not for every rebuild (three or four per song: subtitle, art).
+			String notifKey = st + "|" + description.getTitle();
+			if (!notifKey.equals(lastNotifLog)) {
+				lastNotifLog = notifKey;
+				me.aap.fermata.util.DiagnosticLog.log("NOTIF", "built", "state=" + st,
+						"title=" + description.getTitle(), "subtitle=" + description.getSubtitle(),
+						"icon=" + ((description.getIconBitmap() == null) ? null :
+								description.getIconBitmap().getWidth() + "x" + description.getIconBitmap().getHeight()));
+			}
 
 			if (callback.isDefaultImage(largeIcon)) {
 				if ((i != null) && i.isVideo()) {

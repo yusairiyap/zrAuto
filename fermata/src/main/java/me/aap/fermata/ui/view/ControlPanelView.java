@@ -1310,6 +1310,8 @@ public class ControlPanelView extends ConstraintLayout
 		FermataServiceUiBinder b = getActivity().getMediaServiceBinder();
 		CharSequence[] t = titleOf(b.getMetadata(), b.getCurrentItem());
 		c.setTitle(t[0], t[1]);
+		MediaSessionCallback cb = b.getMediaSessionCallback();
+		c.setSkipAvailable(!cb.isAtListStart(), !cb.isAtListEnd());
 	}
 
 	/** The title and artist to show for the playing item: {title, artist}, either can be null. */
@@ -1887,10 +1889,7 @@ public class ControlPanelView extends ConstraintLayout
 				a.showFragment(R.id.settings_fragment);
 				return true;
 			} else if (id == R.id.nav_exit) {
-				MainActivityDelegate a = getActivity();
-				a.getMediaSessionCallback().onStop();
-				a.finish();
-				if (a.isCarActivityNotMirror()) a.getHandler().postDelayed(() -> System.exit(0), 500);
+				getActivity().exitApp();
 				return true;
 			}
 

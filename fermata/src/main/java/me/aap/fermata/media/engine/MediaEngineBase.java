@@ -142,12 +142,19 @@ public abstract class MediaEngineBase implements MediaEngine {
 				return;
 			}
 
+			long next = END_WATCH_MS;
 			try {
 				var dur = getDuration();
 				var pos = getPosition();
 				if (dur.isDoneNotFailed() && pos.isDoneNotFailed() && (fade == null) && isPlaying()) {
 					long d = dur.getOrThrow();
 					long left = (d > 0) ? (d - pos.getOrThrow()) : -1;
+					// Far from the end: no need to look again 7 times a second for the whole track (a wake
+					// up each time, screen off too). Asleep until a little before the fade is due, a third
+					// of the way there at most (fast playback speeds), never more than a second.
+					if (!endFaded && (left > END_FADE_MS + 600)) {
+						next = Math.max(END_WATCH_MS, Math.min(1000, (left - END_FADE_MS - 600) / 3));
+					}
 					if ((left > 0) && (left <= END_FADE_MS + END_WATCH_MS) && !endFaded &&
 							(d >= END_FADE_MIN_DURATION_MS)) {
 						endFaded = true;
@@ -167,7 +174,7 @@ public abstract class MediaEngineBase implements MediaEngine {
 			} catch (RuntimeException ex) {
 				Log.d(ex, "Failed to check the end of the track");
 			}
-			fadeHandler().postDelayed(this, END_WATCH_MS);
+			fadeHandler().postDelayed(this, next);
 		}
 	};
 

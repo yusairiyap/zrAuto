@@ -33,6 +33,8 @@ public class YoutubeJsInterface extends FermataJsInterface {
 	 * "next|id|encoded title" or "end|id|encoded title") -- see YoutubeWebView#interceptQueueMenu().
 	 */
 	public static final int JS_VIDEO_QUEUE = JS_LAST + 14;
+	/** What the video element did in the seconds after a switch (data = a short line), for the log. */
+	public static final int JS_AUDIO_TRACE = JS_LAST + 15;
 	private final YoutubeMediaEngine engine;
 	private Promise<String> result;
 
@@ -101,6 +103,9 @@ public class YoutubeJsInterface extends FermataJsInterface {
 				break;
 			case JS_VIDEO_WAITING:
 				engine.waiting(data);
+				break;
+			case JS_AUDIO_TRACE:
+				me.aap.fermata.util.DiagnosticLog.log("YT", "media", data);
 				break;
 			case JS_VIDEO_QUEUE:
 				Log.d("Video queued from the page's menu: ", data);

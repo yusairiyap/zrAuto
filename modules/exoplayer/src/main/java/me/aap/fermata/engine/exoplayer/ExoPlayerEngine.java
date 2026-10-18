@@ -285,7 +285,8 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 			Format a = player.getAudioFormat();
 			Format v = player.getVideoFormat();
 			DiagnosticLog.log("ENGINE", midPlay ? "no progress while playing" : "no progress after start",
-					"item=" + src, "pos=" + now, "videoOff=" + off, "screen=" + (shown != null),
+					"item=" + src, "pos=" + now, "videoOff=" + off, "screen=" + (shown != null) +
+							(((shown != null) && !hasScreen()) ? "(gone)" : ""),
 					"hiddenSurface=" + (dummySurface != null), "retried=" + stallRetried,
 					"nudged=" + stallNudged, "subGen=" + (!audioProc.isBypassed() && audioProc.isTranscribing()),
 					"audio=" + ((a == null) ? null : a.sampleMimeType + "/" + a.sampleRate + "Hz/" + a.channelCount + "ch"),
@@ -319,7 +320,17 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 				checkStall(gen, src, now, midPlay, 3000);
 				return;
 			}
-			if (!off && (shown == null) && (dummySurface == null) && useDummySurface()) {
+			String sid = src.getOrigId();
+			if (!off && (shown != null) && !hasScreen() && ((sid == null) || !keepPicture.contains(sid))) {
+				// Stuck with the picture on and a screen that is gone (sent to the background): the
+				// picture goes off, the seek's flush gets the sound going again without it.
+				DiagnosticLog.log("ENGINE", "stall: screen gone, picture off", "item=" + src);
+				setVideoTrackDisabled(true);
+				player.seekTo(now);
+				checkStall(gen, src, now, midPlay, 3000);
+				return;
+			}
+			if (!off && !hasScreen() && (dummySurface == null) && useDummySurface()) {
 				// Stuck with the picture on but nowhere to show it: given a surface of its own, which
 				// is what a file that plays on screen but not off it needs.
 				DiagnosticLog.log("ENGINE", "stall: given a hidden surface", "item=" + src);
@@ -438,6 +449,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	@Override
 	public void setVideoView(VideoView view) {
 		super.setVideoView(view);
+		watchScreen(view);
 		player.setVideoSurfaceHolder((view == null) ? null : view.getVideoSurface().getHolder());
 		// With nowhere to show it (the app in the background) the picture is not decoded at all: the
 		// sound plays on without a video decoder that can stall or be taken away.
@@ -447,6 +459,62 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		if (s != null) setVideoTrackDisabled(videoOff(s, view));
 		firstFrame = false;
 		if (view != null) watchBlackPicture();
+	}
+
+	// The holder the picture's surface lives in, watched so the picture goes off the moment it is gone.
+	@Nullable
+	private android.view.SurfaceHolder screenHolder;
+	private final android.view.SurfaceHolder.Callback screenCallback =
+			new android.view.SurfaceHolder.Callback() {
+				@Override
+				public void surfaceCreated(@NonNull android.view.SurfaceHolder holder) {
+				}
+
+				@Override
+				public void surfaceChanged(@NonNull android.view.SurfaceHolder holder, int format, int w,
+																	 int h) {
+				}
+
+				@Override
+				public void surfaceDestroyed(@NonNull android.view.SurfaceHolder holder) {
+					screenLost(holder);
+				}
+			};
+
+	private void watchScreen(@Nullable VideoView view) {
+		android.view.SurfaceHolder h = (view == null) ? null : view.getVideoSurface().getHolder();
+		if (h == screenHolder) return;
+		if (screenHolder != null) screenHolder.removeCallback(screenCallback);
+		screenHolder = h;
+		if (h != null) h.addCallback(screenCallback);
+	}
+
+	/**
+	 * The screen's surface went away (the app sent to the background, the screen turned off) while
+	 * this player still had it. The session lets go of the view a moment later, if at all (another
+	 * view of the same activity, a car screen), and meanwhile the video decoder, left with no surface,
+	 * froze the whole file on some devices: the sound stopped, the stall watchdog found it ~10 s later
+	 * and restarted the track. The picture is switched off right away, so the sound plays on.
+	 */
+	private void screenLost(android.view.SurfaceHolder holder) {
+		if ((holder != screenHolder) || (accessor.player == null)) return;
+		PlayableItem s = source;
+		if (s == null) return;
+		String id = s.getOrigId();
+		if ((id != null) && keepPicture.contains(id)) {
+			if (dummySurface == null) useDummySurface();
+			else player.setVideoSurface(dummySurface);
+			DiagnosticLog.log("ENGINE", "screen gone: hidden surface for the picture", "item=" + s);
+			return;
+		}
+		DiagnosticLog.log("ENGINE", "screen gone: picture off, the sound plays on", "item=" + s);
+		setVideoTrackDisabled(true);
+	}
+
+	/** Whether the picture has a screen to go to: a view whose surface is still there. */
+	private boolean hasScreen() {
+		VideoView v = shown;
+		return (v != null) && v.getVideoSurface().getHolder().getSurface().isValid();
 	}
 
 	// Files whose picture has to stay switched on even for the sound alone: some stall from their
@@ -699,6 +767,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		player.removeListener(this);
 		player.release();
 		releaseDummySurface();
+		watchScreen(null);
 		source = null;
 		if (audioEffects != null) audioEffects.release();
 	}

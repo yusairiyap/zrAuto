@@ -247,6 +247,25 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 		return mediaController.getMetadata();
 	}
 
+	/**
+	 * Previous / Next are dimmed and take no taps on the first / last song of the Music queue, a
+	 * playlist or Favorites with Repeat off: there is nothing before / after it (see
+	 * MediaSessionCallback#isAtListEdge).
+	 */
+	private void updateSkipButtons() {
+		if (prevButton != null) setSkipAvailable(prevButton, !sessionCallback.isAtListStart());
+		if (nextButton != null) setSkipAvailable(nextButton, !sessionCallback.isAtListEnd());
+	}
+
+	/** Dims {@code v} (its image only, so the panel's own fades of the view are left alone). */
+	public static void setSkipAvailable(View v, boolean available) {
+		if (v.isEnabled() == available) return;
+		v.setEnabled(available);
+		int a = available ? 255 : 90;
+		if (v instanceof android.widget.ImageView iv) iv.setImageAlpha(a);
+		else v.setAlpha(a / 255f);
+	}
+
 	/** See {@link ControlPanelView#syncVideoControls()}. */
 	private void syncVideoControls() {
 		if (controlPanel instanceof ControlPanelView cp) {
@@ -343,7 +362,9 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 
 		@Override
 		public void onMetadataChanged(MediaMetadataCompat metadata) {
-			if (bound) syncVideoControls();
+			if (!bound) return;
+			syncVideoControls();
+			updateSkipButtons();
 		}
 
 		@Override
@@ -375,6 +396,7 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 					break;
 			}
 
+			updateSkipButtons();
 			PlayableItem i = sessionCallback.getCurrentItem();
 			if (!Objects.equals(currentItem, i)) {
 				PlayableItem old = currentItem;
@@ -405,8 +427,13 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 
 		private void updateProgress(Object stamp) {
 			if (progressUpdateStamp != stamp) return;
+			// Nothing to show while the app is in the background (its window hidden): the position isn't
+			// asked for -- for YouTube that is a script run in the page every second, waking it for
+			// nothing with the screen off. Looked at again a little later, and at once on return.
+			View shownBy = (progressBar != null) ? progressBar : progressTime;
+			boolean visible = (shownBy == null) || (shownBy.getWindowVisibility() == VISIBLE);
 
-			if (!pauseProgressUpdate) {
+			if (!pauseProgressUpdate && visible) {
 				MediaEngine eng = sessionCallback.getEngine();
 				PlayableItem src = (eng != null) ? eng.getSource() : null;
 
@@ -423,9 +450,17 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 									if (dur > 0) {
 										updateDuration = false;
 										int max = (int) (dur / 1000);
-										long last = getLib().getLastPlayedPosition(src);
 										src.setDuration(dur);
-										if (last > 0) eng.setPosition(last);
+										// The resume position a file couldn't be sent to before its length was known --
+										// only for a library file still at its very start. Not for an item played in its
+										// own player (YouTube, a Music tab track: they start where they were asked to),
+										// and never once it plays on: this runs when the UI first reads the duration,
+										// which after a track change in the background is when the app comes back to the
+										// front -- and a seek then took the playing song elsewhere (to its start).
+										if (!src.isExternal() && (position < 3000)) {
+											long last = getLib().getLastPlayedPosition(src);
+											if (last > position + 3000) eng.setPosition(last);
+										}
 										progressBar.setMax(max);
 										if (progressTotal != null) progressTotal.setText(timeToString(max));
 										fireBroadcastEvent(l -> l.onDurationChanged(src));
@@ -468,7 +503,7 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 				}
 			}
 
-			handler.postDelayed(() -> updateProgress(stamp), 1000);
+			handler.postDelayed(() -> updateProgress(stamp), visible ? 1000 : 2000);
 		}
 
 		private StringBuilder timeToString(int seconds) {

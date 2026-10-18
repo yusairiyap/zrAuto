@@ -28,8 +28,22 @@ public class YoutubeChromeClient extends FermataChromeClient {
 	/** Going fullscreen puts the video over everything: the search/Up next panel goes away. */
 	@Override
 	public void onShowCustomView(View view, CustomViewCallback callback) {
+		layoutChanging();
 		super.onShowCustomView(view, callback);
 		YoutubeFragment.closeSearchPanel(getWebView());
+	}
+
+	@Override
+	public void onHideCustomView() {
+		layoutChanging();
+		super.onHideCustomView();
+	}
+
+	/** The player is about to be resized: a pause it makes while settling is not the user's. */
+	private void layoutChanging() {
+		if ((getWebView() instanceof YoutubeWebView w) && (w.getEngine() != null)) {
+			w.getEngine().layoutChanging();
+		}
 	}
 
 	/**

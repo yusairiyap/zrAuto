@@ -9,6 +9,18 @@
   // overlapping crossfade between two videos isn't possible; fade-out -> switch -> fade-in is the
   // closest equivalent and is what this gives.
   const FADE_IN_MS = 700;
+  // A new video fades in from START_LEVEL (never silence, which cut the start off) over START_FADE_S of
+  // its own playback time, evenly in loudness (the same dB per moment, `rise`): a smoothstep from 20%
+  // stayed near silence at first and sounded late, and one from 50% jumped in, then swelled; neither
+  // sounded smooth.
+  // time, set up at 'loadstart' when its source has played nothing yet. Holding it at zero until
+  // 'playing' and fading in from there cut off the song's first moment: the sound is already flowing
+  // when that event reaches the page (busiest just then, loading the video), the log showed the
+  // playback time some 100 ms ahead of it. Following the playback time rather than the clock, the
+  // fade can't run ahead of the sound while the video is still starting, and a late step of a busy
+  // page lands where the song really is. With effects on, it runs on the audio clock (gain stage).
+  const START_LEVEL = 0.25;
+  const START_FADE_S = 0.5;
   const FADE_OUT_MS = 350;
   // Silence held after a fade-out before the element is actually paused, so whatever audio the
   // pipeline already had buffered drains out at zero level instead of being cut mid-waveform.
@@ -40,7 +52,7 @@
     let s = v.__fermataFade;
     if (!s) {
       s = {timer: 0, doneTimer: 0, restoreTimer: 0, level: 1, base: 1, ending: false,
-        pausing: false, usedElement: false};
+        pausing: false, usedElement: false, applied: null, fresh: false};
       v.__fermataFade = s;
     }
     return s;
@@ -80,6 +92,12 @@
     return from + (to - from) * e;
   }
 
+  // Even in loudness: equal steps in dB from `from` to `to` (both above zero).
+  function rise(from, to, t) {
+    if ((from < 0.01) || (to < 0.01)) return ease(from, to, t);
+    return from * Math.pow(to / from, t);
+  }
+
   function applyElementLevel(v, s, level) {
     s.level = level;
     s.usedElement = level < 1;
@@ -87,10 +105,31 @@
     try {
       if (Math.abs(v.volume - vol) > 0.0005) v.volume = vol;
     } catch (err) { /* out of range, ignore */ }
+    s.applied = v.volume;
+  }
+
+  // The player itself set the element's volume while this script holds it down (YouTube does as
+  // each new video loads: its own volume, levelled per video). Taken as the volume to come back to,
+  // and the level held is put back at once -- left alone, the next song's first moment played at
+  // full volume, then dropped to silence for the fade-in: a blip and a dip, the stutter heard on
+  // every Music tab skip.
+  function playerSetVolume(v, s) {
+    return (s.applied != null) && (v.volume > MIN_ELEMENT_VOLUME * 2) &&
+      (Math.abs(v.volume - s.applied) > 0.002);
+  }
+
+  function onVolumeChange(e) {
+    const v = e.target;
+    if (!v || (v.tagName !== 'VIDEO')) return;
+    const s = state(v);
+    if ((s.level >= 1) || gainParam(v) || !playerSetVolume(v, s)) return;
+    s.base = v.volume;
+    applyElementLevel(v, s, s.level);
   }
 
   // Ramps this element's fade level to `to` (0..1) over `ms`, then calls `done` (if any).
-  function ramp(v, to, ms, done) {
+  function ramp(v, to, ms, done, shape) {
+    const curveOf = shape || ease;
     const s = state(v);
     clearTimers(s);
     // A hidden page has its timers throttled to about once a second -- a stepped fade there would
@@ -122,7 +161,7 @@
         if ((ms > 0) && (Math.abs(from - to) > 0.001)) {
           const n = 64;
           const curve = new Float32Array(n);
-          for (let i = 0; i < n; i++) curve[i] = ease(from, to, i / (n - 1));
+          for (let i = 0; i < n; i++) curve[i] = curveOf(from, to, i / (n - 1));
           g.setValueCurveAtTime(curve, now + CURVE_START_DELAY_S, ms / 1000);
         } else {
           g.setValueAtTime(to, now + CURVE_START_DELAY_S);
@@ -146,6 +185,7 @@
     // Capture the "real" volume (whatever the player/user set) only while we aren't holding it
     // down ourselves, so a fade never mistakes its own lowered value for the target to restore.
     if (s.level >= 1) s.base = v.volume || s.base || 1;
+    else if (playerSetVolume(v, s)) s.base = v.volume; // See onVolumeChange().
     const from = s.level;
 
     if ((ms <= 0) || (Math.abs(from - to) < 0.001)) {
@@ -154,10 +194,13 @@
       return;
     }
 
+    // From the level held right now, not whatever the element happens to be at (the player may have
+    // put its own volume back since): the first step would otherwise be a jump down.
+    applyElementLevel(v, s, from);
     const t0 = performance.now();
     s.timer = setInterval(() => {
       const t = Math.min(1, (performance.now() - t0) / ms);
-      applyElementLevel(v, s, ease(from, to, t));
+      applyElementLevel(v, s, curveOf(from, to, t));
       if (t >= 1) {
         clearTimers(s);
         if (done) done();
@@ -169,6 +212,50 @@
     const s = state(v);
     s.pausing = false;
     ramp(v, 1, (ms == null) ? FADE_IN_MS : ms);
+  }
+
+  // The start of a new video: from START_LEVEL to full over START_FADE_S of playback (see there).
+  function startFade(v) {
+    const s = state(v);
+    clearTimers(s);
+    s.pausing = false;
+    if (pageHidden()) {
+      ramp(v, 1, 0); // throttled timers: a few coarse jumps would be worse than none
+      return;
+    }
+    ramp(v, START_LEVEL, 0);
+    let t0 = -1;
+    let pausedSince = 0;
+    s.timer = setInterval(() => {
+      // Loaded but left paused (a cued video, a reload while paused): stop and put the volume back
+      // rather than tick on, holding it at START_LEVEL; 'playing' starts the fade again if it comes.
+      if (v.paused && (v.readyState >= 2)) {
+        if (!pausedSince) pausedSince = Date.now();
+        else if (Date.now() - pausedSince > 1000) {
+          clearTimers(s);
+          ramp(v, 1, 0);
+          return;
+        }
+      } else {
+        pausedSince = 0;
+      }
+      if (gainParam(v)) {
+        // The equalizer took over: once the sound flows, one sample-accurate curve on its gain.
+        if (v.paused || (v.readyState < 3)) return;
+        clearTimers(s);
+        ramp(v, 1, START_FADE_S * 1000, null, rise);
+        return;
+      }
+      if (v.paused) return;
+      const t = v.currentTime;
+      if (t0 < 0) {
+        if (!(t > 0) && (v.readyState < 3)) return; // nothing playing yet
+        t0 = Math.max(0, t - 0.05);
+      }
+      const k = Math.min(1, Math.max(0, (t - t0) / START_FADE_S));
+      applyElementLevel(v, s, rise(START_LEVEL, 1, k));
+      if (k >= 1) clearTimers(s);
+    }, STEP_MS);
   }
 
   function silence(v) {
@@ -229,6 +316,8 @@
     s.pausing = false;
     // Hold the level down from the moment play is requested, so the first samples the pipeline
     // produces are already quiet; 'playing' (below) ramps it back up once audio is really flowing.
+    // Not for a new video (onLoadStart): that has its own fade under way.
+    if (s.fresh) return;
     if (!isAd()) silence(v);
     else ramp(v, 1, 0);
   }
@@ -241,13 +330,27 @@
     // fresh 'play' -- don't let the previous video's end fade keep it silent.
     if (s.ending && (remaining(v) > END_FADE_S)) s.ending = false;
     if (s.ending || s.pausing) return;
+    const fresh = s.fresh;
+    s.fresh = false;
+    if (fresh && !isAd()) {
+      // Its fade is already under way (onLoadStart); started again only if something stopped it.
+      if (!s.timer && !s.doneTimer && (s.level < 1)) startFade(v);
+      return;
+    }
     fadeIn(v, isAd() ? 0 : FADE_IN_MS);
   }
 
   function onLoadStart(e) {
     const v = e.target;
     if (!v || (v.tagName !== 'VIDEO')) return;
-    state(v).ending = false;
+    const s = state(v);
+    s.ending = false;
+    s.fresh = true;
+    // The new source has played nothing yet: its fade in starts now, so its first sound is heard
+    // (see START_LEVEL). Not while the app is fading out to pause.
+    if (s.pausing) return;
+    if (isAd()) ramp(v, 1, 0);
+    else startFade(v);
   }
 
   function onPause(e) {
@@ -300,6 +403,7 @@
   document.addEventListener('timeupdate', onTimeUpdate, true);
   document.addEventListener('seeking', onSeeking, true);
   document.addEventListener('loadstart', onLoadStart, true);
+  document.addEventListener('volumechange', onVolumeChange, true);
 
   window.FermataFade = {
     configure(c) {
@@ -352,6 +456,12 @@
       if (s.pausing && !v.paused) {
         clearTimers(s);
         s.pausing = false;
+        fadeIn(v);
+        return;
+      }
+      // Already playing but held down (faded out for a switch that then replayed this video
+      // instead, see YoutubeWebView#replay): play() fires no event here, so bring it back now.
+      if (!v.paused && (s.level < 1) && !s.timer && !s.ending) {
         fadeIn(v);
         return;
       }

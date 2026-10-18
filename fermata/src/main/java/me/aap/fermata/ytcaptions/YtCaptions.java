@@ -157,6 +157,9 @@ public final class YtCaptions {
 			} catch (IOException ex) {
 				DiagnosticLog.log("CAPTIONS", c.name, videoId, "failed", ex);
 				last = ex;
+				// Too many requests: the next app would only be refused too, and every further request
+				// keeps the limit on for longer (and takes from the bandwidth the song plays on).
+				if (String.valueOf(ex.getMessage()).contains("HTTP 429")) break;
 			}
 		}
 		// Every app failed to talk to YouTube: that is an error, not a video without captions.

@@ -12,6 +12,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import me.aap.fermata.action.Action;
+import me.aap.fermata.addon.music.MusicPlayer;
+import me.aap.fermata.addon.music.MusicQueue;
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.engine.MediaEngine;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -32,6 +35,17 @@ import me.aap.utils.log.Log;
  */
 public final class CaptionsHub {
 	private static final long TICK_MS = 250;
+	/**
+	 * How long a new video plays before its captions are asked for. Asked at once, the 4 to 8 requests
+	 * to YouTube went out exactly while the new song was buffering its start, on the same connection
+	 * (a stutter on a slow mobile link), and on a quick run of skips for songs nobody stayed on.
+	 */
+	private static final long FETCH_DELAY_MS = 1000;
+	/**
+	 * How long a song plays before the captions of the one after it are fetched, so its lyrics are
+	 * there the moment it starts: well clear of this song's own start and of a quick run of skips.
+	 */
+	private static final long NEXT_PREFETCH_DELAY_MS = 8000;
 	private static final CaptionsHub instance = new CaptionsHub();
 
 	public enum State {
@@ -61,6 +75,7 @@ public final class CaptionsHub {
 	private final List<Listener> listeners = new ArrayList<>();
 	private final Runnable tick = this::tick;
 	private final java.util.Set<String> prefetching = new java.util.HashSet<>();
+	private final Runnable nextPrefetch = this::prefetchNext;
 	private final java.util.Map<String, List<Runnable>> waiting = new java.util.HashMap<>();
 	@Nullable
 	private MainActivityDelegate activity;
@@ -93,6 +108,9 @@ public final class CaptionsHub {
 		if (!listeners.contains(l)) listeners.add(l);
 		if (!ticking) {
 			ticking = true;
+			// A load dropped when the last user went away (release() moves the generation on) never
+			// finished: the next tick starts it again rather than staying LOADING.
+			if (state == State.LOADING) videoId = null;
 			handler.post(tick);
 		}
 	}
@@ -107,6 +125,7 @@ public final class CaptionsHub {
 		if (listeners.isEmpty()) {
 			ticking = false;
 			handler.removeCallbacks(tick);
+			handler.removeCallbacks(nextPrefetch);
 			generation++;
 		}
 	}
@@ -206,7 +225,31 @@ public final class CaptionsHub {
 		prefetch(a, id);
 	}
 
+	/**
+	 * The Music queue's next song, read from its play order (nothing is moved: an item's own
+	 * getNextPlayable() walks its folder or YouTube's favorites, and takes a step of a shared shuffle):
+	 * its captions, ahead of time. Only for the Music queue; elsewhere a song's own come 1 s in.
+	 */
+	private void prefetchNext() {
+		MainActivityDelegate a = activity;
+		if (!ticking || (a == null) || (videoId == null)) return;
+		MusicTrackItem cur = MusicPlayer.getCurrentTrack(a.getMediaSessionCallback());
+		MusicQueue q = MusicPlayer.getQueue(a);
+		if ((cur == null) || (q == null) || !videoId.equals(YtDownloads.videoIdOf(cur))) return;
+		List<MusicTrackItem> order = q.getPlayOrder();
+		int i = order.indexOf(cur);
+		if ((i < 0) || (i + 1 >= order.size())) return;
+		String nid = YtDownloads.videoIdOf(order.get(i + 1));
+		if ((nid == null) || nid.equals(videoId) || (cache.get(nid) != null)) return;
+		prefetch(a, nid, false);
+	}
+
 	private void prefetch(MainActivityDelegate a, String id) {
+		prefetch(a, id, true);
+	}
+
+	/** {@code current}: for the playing video, dropped if it is skipped before the fetch goes out. */
+	private void prefetch(MainActivityDelegate a, String id, boolean current) {
 		// The tick's own load of this video counts: its result lands in the cache too.
 		if (prefetching.contains(id) || (id.equals(videoId) && (state == State.LOADING))) {
 			return;
@@ -215,20 +258,29 @@ public final class CaptionsHub {
 		MainActivityPrefs p = a.getPrefs();
 		String lang = p.getStringPref(MainActivityPrefs.CAPTIONS_LANG);
 		boolean auto = p.getBooleanPref(MainActivityPrefs.CAPTIONS_AUTO);
-		executor.execute(() -> {
-			YtCaptions.Result res = null;
-			try {
-				res = YtCaptions.load(id, lang, auto);
-			} catch (Exception ex) {
-				Log.e(ex, "Failed to load the captions of ", id);
-			}
-			YtCaptions.Result done = res;
-			handler.post(() -> {
+		handler.postDelayed(() -> {
+			// Skipped on in the meantime: not worth asking YouTube for any more.
+			if (current && !id.equals(YtDownloads.videoIdOf(Action.getFavoritableItem(a))) &&
+					!waiting.containsKey(id)) {
 				prefetching.remove(id);
-				if (done != null) cache.put(id, done);
 				knew(id);
+				return;
+			}
+			executor.execute(() -> {
+				YtCaptions.Result res = null;
+				try {
+					res = YtCaptions.load(id, lang, auto);
+				} catch (Exception ex) {
+					Log.e(ex, "Failed to load the captions of ", id);
+				}
+				YtCaptions.Result done = res;
+				handler.post(() -> {
+					prefetching.remove(id);
+					if (done != null) cache.put(id, done);
+					knew(id);
+				});
 			});
-		});
+		}, current ? FETCH_DELAY_MS : 0);
 	}
 
 	/** The captions of {@code id} are in the cache (or could not be had): whoever waits is told. */
@@ -269,6 +321,8 @@ public final class CaptionsHub {
 			videoId = id;
 			title = (pi == null) ? "" : String.valueOf(pi.getName());
 			load();
+			handler.removeCallbacks(nextPrefetch);
+			if (id != null) handler.postDelayed(nextPrefetch, NEXT_PREFETCH_DELAY_MS);
 		} else if ((pi != null) && (title.isEmpty())) {
 			title = String.valueOf(pi.getName());
 		}
@@ -334,28 +388,57 @@ public final class CaptionsHub {
 			return;
 		}
 		setState(State.LOADING);
+		if (prefetching.contains(id)) {
+			// Already on its way (the dimmed buttons asked first): its answer is this load's too. Two
+			// loads of the same video used to go out side by side, every request twice.
+			waiting.computeIfAbsent(id, k -> new ArrayList<>()).add(() -> {
+				if ((gen != generation) || !id.equals(videoId)) return;
+				YtCaptions.Result r = cache.get(id);
+				if (r != null) apply(r);
+				else setState(State.FAILED);
+			});
+			return;
+		}
+		prefetching.add(id);
 		MainActivityPrefs p = activity.getPrefs();
 		String lang = p.getStringPref(MainActivityPrefs.CAPTIONS_LANG);
 		boolean auto = p.getBooleanPref(MainActivityPrefs.CAPTIONS_AUTO);
-		executor.execute(() -> {
-			try {
-				YtCaptions.Result r = YtCaptions.load(id, lang, auto);
-				handler.post(() -> {
-					if (gen != generation) return;
-					cache.put(id, r);
-					apply(r);
-					List<Runnable> w = waiting.remove(id);
-					if (w != null) for (Runnable run : w) run.run();
-				});
-			} catch (Exception ex) {
-				Log.e(ex, "Failed to load the captions of ", id);
-				DiagnosticLog.log("CAPTIONS", id, "load failed", ex);
-				handler.post(() -> {
-					if (gen != generation) return;
-					setState(State.FAILED);
-				});
+		handler.postDelayed(() -> {
+			if (gen != generation) {
+				// A newer load of the same video is waiting on this one: fetch it after all, or that
+				// load would end as FAILED with nothing ever asked.
+				if (waiting.containsKey(id)) {
+					executor.execute(() -> loadNow(gen, id, lang, auto));
+					return;
+				}
+				prefetching.remove(id);
+				knew(id);
+				return;
 			}
-		});
+			executor.execute(() -> loadNow(gen, id, lang, auto));
+		}, FETCH_DELAY_MS);
+	}
+
+	private void loadNow(int gen, String id, String lang, boolean auto) {
+		try {
+			YtCaptions.Result r = YtCaptions.load(id, lang, auto);
+			handler.post(() -> {
+				prefetching.remove(id);
+				cache.put(id, r);
+				if (gen == generation) apply(r);
+				List<Runnable> w = waiting.remove(id);
+				if (w != null) for (Runnable run : w) run.run();
+			});
+		} catch (Exception ex) {
+			Log.e(ex, "Failed to load the captions of ", id);
+			DiagnosticLog.log("CAPTIONS", id, "load failed", ex);
+			handler.post(() -> {
+				prefetching.remove(id);
+				if (gen == generation) setState(State.FAILED);
+				List<Runnable> w = waiting.remove(id);
+				if (w != null) for (Runnable run : w) run.run();
+			});
+		}
 	}
 
 	private void apply(YtCaptions.Result r) {

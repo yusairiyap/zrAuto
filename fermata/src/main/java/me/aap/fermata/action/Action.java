@@ -65,7 +65,12 @@ public enum Action {
 		if (cp.isActive()) cp.showMenu();
 	})),
 	BACK_OR_EXIT(R.string.action_back_or_exit, a(ActivityDelegate::onBackPressed)),
-	EXIT(R.string.action_exit, a(ActivityDelegate::finish)),
+	// On the phone as the menus' Exit: what plays stops too (a bare finish() left it playing,
+	// notification and all). The car's screen keeps closing only itself, as it always has.
+	EXIT(R.string.action_exit, a(a -> {
+		if (a.isCarActivityNotMirror()) a.finish();
+		else a.exitApp();
+	})),
 	NONE(R.string.action_none, m(cb -> {})),
 	// Key bindings and the secondary FAB's action are persisted as ordinals, so new entries go at
 	// the end: inserting one mid-enum silently remaps every existing user's saved bindings.

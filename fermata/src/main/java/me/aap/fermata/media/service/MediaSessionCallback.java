@@ -300,17 +300,84 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		return engine;
 	}
 
+	/**
+	 * Another engine takes over and goes on playing at once (the YouTube player once its video plays):
+	 * the one before is stopped and closed, but the session is not taken through STOPPED on the way.
+	 * It used to be (a full onStop()), which for a moment deactivated the session and dropped the
+	 * notification and the playback wake lock, only to put them back a few milliseconds later.
+	 */
 	public void setEngine(MediaEngine engine) {
 		if (this.engine == engine) return;
 		playerTask.cancel();
-		onStop(true);
+		MediaEngine old = this.engine;
 		this.engine = engine;
+		if (old == null) return;
+		PlayableItem i = old.getSource();
+		if ((i != null) && !i.isExternal()) {
+			Long pos = old.getPosition().peek();
+			if (pos != null) setLastPlayed(i, pos);
+		}
+		old.stop();
+		old.releaseAudioFocus(audioManager, audioFocusReq);
+		old.close();
 	}
 
 	@Nullable
 	public PlayableItem getCurrentItem() {
 		MediaEngine eng = getEngine();
 		return (eng == null) ? null : eng.getSource();
+	}
+
+	/**
+	 * {@code state} with Next / Previous among its actions only where they lead somewhere (see
+	 * {@link #isAtListEdge}): Android Auto and the system media controls dim or hide them then. States
+	 * are often built from the one before, so both are put back first and only then left out.
+	 */
+	private PlaybackStateCompat withSkipActions(PlaybackStateCompat state) {
+		long actions = state.getActions();
+		if (actions == 0) return state;
+		long want = actions | ACTION_SKIP_TO_PREVIOUS | ACTION_SKIP_TO_NEXT;
+		if (isAtListStart()) want &= ~ACTION_SKIP_TO_PREVIOUS;
+		if (isAtListEnd()) want &= ~ACTION_SKIP_TO_NEXT;
+		return (want == actions) ? state : new PlaybackStateCompat.Builder(state).setActions(want).build();
+	}
+
+	/** Whether Previous has nowhere to go, see {@link #isAtListEdge}. */
+	public boolean isAtListStart() {
+		return isAtListEdge(false);
+	}
+
+	/** Whether Next has nowhere to go, see {@link #isAtListEdge}. */
+	public boolean isAtListEnd() {
+		return isAtListEdge(true);
+	}
+
+	/**
+	 * Whether what plays is the last ({@code last}) or first song of the Music queue (in its play
+	 * order), a playlist or Favorites, with Repeat off (and, for a playlist or Favorites, Shuffle off,
+	 * where there is no fixed order): Next / Previous have nowhere to go. They are then dimmed in the
+	 * UI, left out of the session's actions (Android Auto, the system media controls) and ignored
+	 * from media buttons, rather than fading the song out and back in. Reads only, never moves a
+	 * shuffle. For YouTube it is the queue item the page plays; a video on its own has YouTube's own.
+	 */
+	private boolean isAtListEdge(boolean last) {
+		MediaEngine eng = getEngine();
+		if (eng == null) return false;
+		PlayableItem cur = (eng.getId() == MediaPrefs.MEDIA_ENG_YT) ? eng.getQueueItem() : eng.getSource();
+		if (cur == null) return false;
+		BrowsableItem parent = cur.getParent();
+		if (parent == null) return false;
+		BrowsableItemPrefs p = parent.getPrefs();
+		if (p.getRepeatPref()) return false;
+		if (parent instanceof me.aap.fermata.addon.music.MusicQueue q) {
+			int idx = q.indexInPlayOrder(cur);
+			return (idx != -1) && (idx == (last ? q.size() - 1 : 0));
+		}
+		if (!(parent instanceof Favorites) && !(parent instanceof MediaLib.Playlist)) return false;
+		if (p.getShufflePref()) return false;
+		List<Item> children = parent.<Item>getChildren().peek();
+		if ((children == null) || children.isEmpty()) return false;
+		return children.get(last ? children.size() - 1 : 0).equals(cur);
 	}
 
 	/** What was restored paused at the start (the last played item), not played yet; else null. */
@@ -457,6 +524,11 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	}
 
 	public void close() {
+		// Timers still posted would otherwise fire into a closed session (the service is gone).
+		if (playbackTimer != null) handler.removeCallbacks(playbackTimer);
+		playbackTimer = null;
+		if (timer != null) handler.removeCallbacks(timer);
+		timer = null;
 		onStop(true);
 		session.setActive(false);
 		lib.getContext().unregisterReceiver(onNoisy);
@@ -844,6 +916,10 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	@Override
 	public void onSkipToPrevious() {
 		if (interceptTransport(KeyTester.Transport.PREV)) return;
+		if (isAtListStart()) {
+			DiagnosticLog.log("TRANSPORT", "previous ignored: first in the list");
+			return;
+		}
 		skipWithFade(false);
 	}
 
@@ -860,6 +936,9 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		clearRepeatOneOnSkip();
 		playerTask.cancel();
 		MediaEngine eng = getEngine();
+		// YouTube's next video takes a moment to come: the loading circle shows from the press on,
+		// not only once the page is asked to move (playing, an error or a pause takes it down).
+		if ((eng != null) && (eng.getId() == MediaPrefs.MEDIA_ENG_YT)) BufferingIndicator.setBuffering(true);
 
 		if ((eng == null) || !isPlaying()) {
 			playerTask = skipTo(next, false);
@@ -935,6 +1014,10 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	@Override
 	public void onSkipToNext() {
 		if (interceptTransport(KeyTester.Transport.NEXT)) return;
+		if (isAtListEnd()) {
+			DiagnosticLog.log("TRANSPORT", "next ignored: last in the list");
+			return;
+		}
 		skipWithFade(true);
 	}
 
@@ -969,7 +1052,14 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		return getItem.then(
 				item -> (next ? getNextPlayable(item) : getPrevPlayable(item)).then(this::prepareItem)
 						.then(pi -> {
-							if (pi != null) skipTo(next, pi);
+							if (pi != null) {
+								skipTo(next, pi);
+							} else {
+								// Nothing to skip to: the song goes on as it was, not faded out and back in.
+								BufferingIndicator.setBuffering(false);
+								MediaEngine e = getEngine();
+								if (e != null) e.restoreVolume();
+							}
 							return completedVoid();
 						}));
 	}
@@ -1731,7 +1821,16 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	private void playPreparedItem(MediaEngine eng, PlayableItem i, long pos, PlayableItem current,
 																long currentPos) {
+		MediaEngine prev = eng;
 		engine = eng = getEngineManager().createEngine(eng, i, this);
+		// The YouTube page's player keeps playing when it is closed (on purpose, its page is shared):
+		// another engine taking over has to silence it, whatever it plays (a library file, a Music
+		// tab song), not only a downloaded video. Left playing, the two were heard together until the
+		// page's next 'playing' event took the session back.
+		if ((prev != null) && (prev != eng) && (prev.getId() == MediaPrefs.MEDIA_ENG_YT) &&
+				((eng == null) || (eng.getId() != MediaPrefs.MEDIA_ENG_YT))) {
+			prev.yieldToLocal();
+		}
 
 		if (eng == null) {
 			if (current != null) setLastPlayed(current, currentPos);
@@ -1810,7 +1909,8 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		return Math.max(pos, 0);
 	}
 
-	private void setPlaybackState(PlaybackStateCompat state) {
+	private void setPlaybackState(PlaybackStateCompat newState) {
+		PlaybackStateCompat state = withSkipActions(newState);
 		PlaybackStateCompat prev = currentState;
 		if ((prev == null) || (prev.getState() != state.getState())) {
 			DiagnosticLog.log("STATE", stateName(state.getState()), "pos=" + state.getPosition(),
@@ -1818,8 +1918,13 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		}
 		currentState = state;
 		int st = state.getState();
-		// Paused, stopped, skipping...: whatever was stalled isn't anymore.
-		if ((st != STATE_PLAYING) && (st != STATE_BUFFERING)) BufferingIndicator.setBuffering(false);
+		// Paused, stopped, an error...: whatever was stalled isn't anymore. Not on the way to the next
+		// item (skipping, connecting): its loading circle stays until it plays.
+		if ((st != STATE_PLAYING) && (st != STATE_BUFFERING) && (st != STATE_SKIPPING_TO_NEXT) &&
+				(st != STATE_SKIPPING_TO_PREVIOUS) && (st != STATE_CONNECTING) &&
+				(st != PlaybackStateCompat.STATE_SKIPPING_TO_QUEUE_ITEM)) {
+			BufferingIndicator.setBuffering(false);
+		}
 		// stopped() deactivates the session; anything to play or pause makes it the one the media
 		// buttons (and Android Auto's steering wheel controls) go to again.
 		if ((st != STATE_NONE) && (st != STATE_STOPPED) && (st != STATE_ERROR) && !session.isActive())
@@ -2130,6 +2235,8 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	private void startTimer(PlayableItem i, long pos, float speed) {
 		i.getDuration().main().onSuccess(dur -> {
+			// Called on every PLAYING state (metadata updates too): one pending timer, not one per call.
+			if (timer != null) handler.removeCallbacks(timer);
 			timer = new Runnable() {
 				@Override
 				public void run() {
@@ -2143,6 +2250,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	}
 
 	private void stopTimer() {
+		if (timer != null) handler.removeCallbacks(timer);
 		timer = null;
 	}
 

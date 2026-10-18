@@ -2428,6 +2428,16 @@ public class MainActivityDelegate extends ActivityDelegate
 		return null;
 	}
 
+	/**
+	 * Exit (the menus, the EXIT action): what plays ends with the app, its notification goes, and the
+	 * activity closes. The car's own activity is restarted by the system, so its process is ended.
+	 */
+	public void exitApp() {
+		getMediaSessionCallback().onStop();
+		finish();
+		if (isCarActivityNotMirror()) getHandler().postDelayed(() -> System.exit(0), 500);
+	}
+
 	public boolean hasCurrent() {
 		PlayableItem pi = getMediaServiceBinder().getCurrentItem();
 		return (pi != null) || (getLib().getPrefs().getLastPlayedItemPref() != null);

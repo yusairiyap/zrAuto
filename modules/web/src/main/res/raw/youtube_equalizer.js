@@ -710,9 +710,17 @@
     }
   }
 
+  // Whether any effect actually changes the sound: a switch left on at its neutral value (EQ with
+  // every band at 0 dB, Bass or Virtualizer at 0%, width at 100%, ...) doesn't count. Taking an
+  // element over with createMediaElementSource() is irreversible and moves its sound off the
+  // browser's own buffered output onto Web Audio, where a new video's first second can come out
+  // choppy on a busy phone; that is only worth it for a real effect.
   function anyEffectEnabled(cfg) {
-    return cfg.eqEnabled || cfg.bassEnabled || cfg.virtEnabled || cfg.reverbEnabled ||
-        cfg.widthOn || cfg.diffOn || cfg.posOn;
+    const on = (x) => (typeof x === 'number') && (Math.abs(x) > 0.001);
+    return (cfg.eqEnabled && Array.isArray(cfg.bands) && cfg.bands.some(on)) ||
+        (cfg.bassEnabled && on(cfg.bassGain)) || (cfg.virtEnabled && on(cfg.virtStrength)) ||
+        (cfg.reverbEnabled && on(cfg.reverbStrength)) || (cfg.widthOn && on(cfg.width - 1)) ||
+        (cfg.diffOn && on(cfg.diffK)) || cfg.posOn;
   }
 
   function attach(video) {
@@ -858,6 +866,40 @@
     hasReverbTail(video) {
       const cfg = state.config;
       return !!state.chains.get(video) && cfg.reverbEnabled && (cfg.reverbStrength > 0);
+    },
+
+    // For the Diagnostic log (YoutubeWebView#traceMediaJs): the audio output's buffer sizes and
+    // which effect stages this element's audio runs through (spine key, plus R and the engine).
+    audioInfo(video) {
+      const chain = state.chains.get(video);
+      const ctx = chain ? chain.ctx : state.ctx;
+      if (!ctx) return 'ctx=none';
+      const ms = (x) => (typeof x === 'number') ? Math.round(x * 1000) + 'ms' : '?';
+      let s = 'ctx=' + ctx.state + ' rate=' + ctx.sampleRate + ' base=' + ms(ctx.baseLatency) +
+          ' out=' + ms(ctx.outputLatency);
+      if (chain) {
+        s += ' fx=' + (chain.spineKey || '-') +
+            (chain.reverbConnected ? ('R' + chain.reverbEngineName.charAt(0)) : '');
+      }
+      return s;
+    },
+
+    // The output's underrun counters (newer WebViews only, else null): n events, d seconds of
+    // output the graph couldn't fill, t seconds played. Older builds used the "fallbackFrames" names.
+    playoutStats() {
+      const st = state.ctx && state.ctx.playoutStats;
+      if (!st) return null;
+      const pick = (a, b) => (typeof st[a] === 'number') ? st[a] : ((typeof st[b] === 'number') ? st[b] : 0);
+      return {n: pick('underrunEvents', 'fallbackFramesEvents'),
+              d: pick('underrunDuration', 'fallbackFramesDuration'),
+              t: pick('totalDuration', 'totalFramesDuration')};
+    },
+
+    // An element taken over earlier (effects on then) while nothing is active any more: its sound
+    // still goes through Web Audio, and only a new document gives it the plain path back. The app
+    // loads the next queue video as a page instead of swapping it in the player (navigateToVideoJs).
+    routedButIdle(video) {
+      return !!video && state.chains.has(video) && !anyEffectEnabled(state.config);
     },
 
     configure(config) {

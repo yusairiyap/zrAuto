@@ -1,6 +1,7 @@
 package me.aap.fermata.addon.web.yt;
 
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_AD_ENDED;
+import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_AUDIO_TRACE;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_AD_SHOWING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_CONTENT_PLAYING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_ERR;
@@ -104,7 +105,8 @@ public class YoutubeWebView extends FermataWebView {
 	private static final int NAVIGATION_RECHECK_MS = 2000;
 	/**
 	 * How long an explicit next/prev/queue switch lets the current video's audio fade out (see
-	 * {@code youtube_fade.js}) before actually navigating -- see {@link #afterAudioFadeOut}.
+	 * {@code youtube_fade.js}) before actually navigating -- see {@link #afterAudioFadeOut}. 150 ms
+	 * was tried and felt too abrupt.
 	 */
 	static final int SWITCH_FADE_OUT_MS = 300;
 	/** Shared lookup of the element every playback helper below acts on. */
@@ -489,6 +491,7 @@ public class YoutubeWebView extends FermataWebView {
 				"   setTimeout(findVideo, 1000);\n" +
 				"}\n" +
 				"findVideo();\n" +
+				traceMediaJs() +
 				interceptEndedJs() +
 				interceptNativeSkipButtonsJs() +
 				interceptLinkClicksJs() +
@@ -514,6 +517,65 @@ public class YoutubeWebView extends FermataWebView {
 	 * (idempotent guard) rather than per-video, since {@code document} itself doesn't get recreated
 	 * between videos the way the player/video element does.
 	 */
+	/**
+	 * For the Diagnostic log: what the page's video element does in the 8 seconds after the app
+	 * switches the video (see {@link #loadVideo}), when a stutter would be heard: its events with the
+	 * time and volume, the playback time jumping back (a start heard twice) and gaps in its progress
+	 * with no 'waiting' (a stall). Silent the rest of the time.
+	 */
+	private static String traceMediaJs() {
+		return "if (!window.__fermataTracer) {\n" +
+				"  window.__fermataTracer = true;\n" +
+				"  var trLastT = -1, trLastWall = 0, trPlayT = -1, trPlayWall = 0, trStatsGen = 0;\n" +
+				"  var trace = function(msg) {\n" +
+				"    if (Date.now() < (window.__fermataTraceUntil || 0)) " + JS_EVENT + "(" + JS_AUDIO_TRACE +
+				", msg);\n" +
+				"  };\n" +
+				"  ['playing', 'waiting', 'stalled', 'loadstart', 'emptied', 'seeking'].forEach(function(n) {\n" +
+				"    document.addEventListener(n, function(e) {\n" +
+				"      var v = e.target;\n" +
+				"      if (!v || (v.tagName !== 'VIDEO')) return;\n" +
+				"      if ((n === 'seeking') || (n === 'loadstart') || (n === 'emptied')) { trLastT = -1; trPlayT = -1; }\n" +
+				"      var fade = '';\n" +
+				"      if (n === 'playing') {\n" +
+				"        trPlayT = v.currentTime; trPlayWall = Date.now();\n" +
+				"        try {\n" +
+				"          var eq = window.FermataEqualizer, g = eq && eq.fadeParam && eq.fadeParam(v);\n" +
+				"          fade = ' fade=' + (g ? 'gain' : 'element');\n" +
+				// The effects path: its output buffers, and whether the output ran dry (an underrun is
+				// heard as a crackle or a gap) in the first 2.5 s, which the times above can't show.
+				"          if (g && eq.audioInfo) {\n" +
+				"            fade += ' ' + eq.audioInfo(v);\n" +
+				"            var s0 = eq.playoutStats ? eq.playoutStats() : null, gen = ++trStatsGen;\n" +
+				"            if (!s0) fade += ' underruns=n/a';\n" +
+				"            else setTimeout(function() {\n" +
+				"              var s1 = eq.playoutStats();\n" +
+				"              if (s1 && (gen === trStatsGen)) trace('output in the first 2.5 s: underruns=' + " +
+				"(s1.n - s0.n) + ' missing=' + (s1.d - s0.d).toFixed(3) + ' played=' + (s1.t - s0.t).toFixed(3));\n" +
+				"            }, 2500);\n" +
+				"          }\n" +
+				"        } catch (x) {}\n" +
+				"      }\n" +
+				// Only what tells of a hitch is written; the others just reset the progress watch.
+				"      if ((n === 'playing') || (n === 'waiting') || (n === 'stalled'))\n" +
+				"        trace(n + ' t=' + v.currentTime.toFixed(2) + ' vol=' + v.volume.toFixed(2) + " +
+				"' ready=' + v.readyState + fade);\n" +
+				"    }, true);\n" +
+				"  });\n" +
+				"  document.addEventListener('timeupdate', function(e) {\n" +
+				"    var v = e.target;\n" +
+				"    if (!v || (v.tagName !== 'VIDEO') || v.paused) return;\n" +
+				"    var now = Date.now(), t = v.currentTime;\n" +
+				"    if ((trLastT >= 0) && (t < trLastT - 0.25)) trace('time back ' + trLastT.toFixed(2) + ' -> ' + t.toFixed(2));\n" +
+				"    if ((trLastT >= 0) && trLastWall && (now - trLastWall > 700)) trace('no progress for ' + " +
+				"(now - trLastWall) + 'ms at t=' + t.toFixed(2));\n" +
+
+				"    trLastT = t;\n" +
+				"    trLastWall = now;\n" +
+				"  }, true);\n" +
+				"}\n";
+	}
+
 	private String interceptEndedJs() {
 		return "if (!window.__fermataEndedInterceptor) {\n" +
 				"  window.__fermataEndedInterceptor = true;\n" +
@@ -1196,6 +1258,23 @@ public class YoutubeWebView extends FermataWebView {
 		prevNext(false);
 	}
 
+	/**
+	 * The player's own previous video, through its API only: {@code done} gets whether it was asked.
+	 * No fallback to clicking the page's button, which takes the page out of fullscreen first and,
+	 * on a video opened on its own (no previous one), clicked nothing and left the skip hanging.
+	 */
+	void previousInPlayer(java.util.function.Consumer<Boolean> done) {
+		evaluateJavascript("""
+				(function() {
+				  var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+				  var fn = p ? p.previousVideo : null;
+				  if (typeof fn !== 'function') return false;
+				  fn.call(p);
+				  return true;
+				})();
+				""", result -> done.accept("true".equals(result)));
+	}
+
 	void next() {
 		prevNext(true);
 	}
@@ -1236,7 +1315,15 @@ public class YoutubeWebView extends FermataWebView {
 	 *                  YouTube's own resume behaviour.
 	 */
 	void loadVideo(String videoId, boolean fromStart) {
-		evaluateJavascript(navigateToVideoJs(videoId, fromStart), result -> {
+		// Playing as music (the page isn't looked at): the player swaps the video itself, see
+		// navigateToVideoJs().
+		boolean inPlayer = MusicPlayer.isYoutubeAudioMode();
+		evaluateJavascript(navigateToVideoJs(videoId, fromStart, inPlayer), result -> {
+			me.aap.fermata.util.DiagnosticLog.log("YT", "switch", "id=" + videoId,
+					"\"swap\"".equals(result) ? "in the player" : "true".equals(result) ? "page navigation" :
+							"\"reload\"".equals(result) ? "page load (effects off, leaving Web Audio)" :
+									"page load");
+			if ("\"swap\"".equals(result)) return;
 			// Only reached if the script itself couldn't run at all (no document body yet, an
 			// exception) -- a plain page load is the last resort either way.
 			if (!"true".equals(result))
@@ -1253,17 +1340,26 @@ public class YoutubeWebView extends FermataWebView {
 	 * navigation instead would turn a race the app is already losing into a series of page loads.
 	 */
 	void switchVideoInPlayer(String videoId) {
+		switchVideoInPlayer(videoId, false);
+	}
+
+	/** As {@link #switchVideoInPlayer(String)}; {@code fromStart}: at 0:00, see {@link #loadVideo}. */
+	void switchVideoInPlayer(String videoId, boolean fromStart) {
 		evaluateJavascript("""
 				(function() {
+				  window.__fermataTraceUntil = Date.now() + 8000;
 				  var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
 				  var fn = p ? p.loadVideoById : null;
 				  if (typeof fn !== 'function') return false;
-				  fn.call(p, '%1$s');
+				  if (%2$b) fn.call(p, '%1$s', 0);
+				  else fn.call(p, '%1$s');
 				  try { history.replaceState(history.state, '', '/watch?v=%1$s'); } catch (e) {}
 				  return true;
 				})();
-				""".formatted(videoId), result -> {
-			if (!"true".equals(result)) loadUrl(YoutubeVideoItem.watchUrl(videoId));
+				""".formatted(videoId, fromStart), result -> {
+			if (!"true".equals(result)) {
+				loadUrl(YoutubeVideoItem.watchUrl(videoId) + (fromStart ? "&t=0s" : ""));
+			}
 		});
 	}
 
@@ -1287,9 +1383,10 @@ public class YoutubeWebView extends FermataWebView {
 	 * plain document load. A full browser navigation replaces this document outright, taking the
 	 * pending timer with it, so it can never double-navigate on the path that did work.
 	 */
-	private static String navigateToVideoJs(String videoId, boolean fromStart) {
+	private static String navigateToVideoJs(String videoId, boolean fromStart, boolean inPlayer) {
 		return """
 				(function() {
+				  window.__fermataTraceUntil = Date.now() + 8000;
 				  var id = '%1$s';
 				  var url = '/watch?v=' + id;
 				  var fromStart = %3$b;
@@ -1299,6 +1396,38 @@ public class YoutubeWebView extends FermataWebView {
 				    catch (e) { return location.search.indexOf('v=' + id) >= 0; }
 				  }
 				  if (onTarget()) return true;
+				  // Playing as music, or the page hidden behind another tab or the app in the background:
+				  // the player swaps the video itself, at once. The router's navigation is left out: with
+				  // the page hidden YouTube defers part of it (its rendering waits for the page to be
+				  // shown), and that late part loaded the video again, from 0:00 (the &t=0s) or wherever,
+				  // heard as the song restarting when the app came back to the front, or as the start of a
+				  // song repeating a moment after it began. Nobody is looking at the page in these cases;
+				  // its address is still put right, so the favorites button, a refresh and the like act on
+				  // what plays.
+				  var hidden = false;
+				  try { hidden = !!(window.__fermataPageHidden && window.__fermataPageHidden()); } catch (e) {}
+				  // Effects were on earlier and are all off now: the video element's sound still goes
+				  // through Web Audio (choppy at a new video's start) until the document is new, so this
+				  // video is loaded as a page, once. Not in fullscreen, which a page load would leave.
+				  try {
+				    var eq = window.FermataEqualizer, ev = document.querySelector('video');
+				    if (eq && eq.routedButIdle && eq.routedButIdle(ev) && !document.fullscreenElement) return 'reload';
+				  } catch (e) {}
+				  if (%6$b || hidden) {
+				    var sp = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+				    if (sp && (typeof sp.loadVideoById === 'function')) {
+				      // Music: the lowest quality set before the song loads, so it is fetched at that
+				      // quality from the start; switched once it played, the player loaded it again
+				      // (play, pause, play at the start of a song, never seen in fullscreen video).
+				      if (%6$b) {
+				        try { if (typeof sp.setPlaybackQualityRange === 'function') sp.setPlaybackQualityRange('tiny', 'tiny'); } catch (e) {}
+				      }
+				      if (fromStart) sp.loadVideoById(id, 0);
+				      else sp.loadVideoById(id);
+				      try { history.replaceState(history.state, '', url); } catch (e) {}
+				      return 'swap';
+				    }
+				  }
 				  // Whether YouTube's router took the click: on a slow connection it can take well
 				  // over a second to get to the new URL. Forcing loadVideoById() meanwhile started the
 				  // video, then the router's own navigation landed and loaded it again from the start --
@@ -1353,7 +1482,7 @@ public class YoutubeWebView extends FermataWebView {
 				  return true;
 				})();
 				""".formatted(videoId, NAVIGATION_FALLBACK_MS, fromStart, NAVIGATION_STARTED_WAIT_MS,
-				NAVIGATION_RECHECK_MS);
+				NAVIGATION_RECHECK_MS, inPlayer);
 	}
 
 	private void prevNext(boolean next) {
@@ -1517,13 +1646,31 @@ public class YoutubeWebView extends FermataWebView {
 	 * level name such as "hd720" -- the closest available level at or below it, else the lowest.
 	 */
 	void applyQualityPolicy(String target) {
+		applyQualityPolicy(target, true);
+	}
+
+	/**
+	 * @param now switch a video that is playing right away (the user switching between music and
+	 *            video). Otherwise a playing video keeps its quality and only a video being set up or
+	 *            buffering is switched: a playing one is loaded again by the player for it (heard as
+	 *            the next song starting, stopping and fading in a second time).
+	 */
+	void applyQualityPolicy(String target, boolean now) {
 		boolean lowest = "lowest".equals(target);
 		loadUrl("javascript:\n" +
 				"(function() {\n" +
 				CLEAR_HIGHEST_VIDEO_QUALITY_JS + USER_QUALITY_JS +
 				"  clearFermataQ();\n" +
 				"  window.__fermataUserQ = null;\n" +
-				(lowest ? "  fermataSaveUserQ();\n" : "  fermataRestoreUserQ();\n") +
+				// Music mode: YouTube's own stored preference says 144p too (the viewer's was saved just
+				// before, and comes back with fermataRestoreUserQ()), so each next song is fetched at
+				// that quality from its first segment instead of switching down once it has started.
+				(lowest ? "  fermataSaveUserQ();\n" +
+						"  try {\n" +
+						"    var qNow = Date.now();\n" +
+						"    localStorage.setItem('yt-player-quality', JSON.stringify({data: JSON.stringify(" +
+						"{quality: 144, previousQuality: 144}), expiration: qNow + 2592000000, creation: qNow}));\n" +
+						"  } catch (e) {}\n" : "  fermataRestoreUserQ();\n") +
 				"  var state = window.__fermataQ = { player: null, handler: null, timeout: null, attempts: 0 };\n" +
 				"  function getPlayer() {\n" +
 				"    return document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
@@ -1542,13 +1689,23 @@ public class YoutubeWebView extends FermataWebView {
 				"    }\n" +
 				"    return real[real.length - 1];\n" +
 				"  }\n" +
-				"  function applyTarget(p) {\n" +
+				"  function qlog(m) { try { " + JS_EVENT + "(" + JS_AUDIO_TRACE + ", 'quality ' + m); } catch (e) {} }\n" +
+				"  function applyTarget(p, s) {\n" +
 				"    if (!p || typeof p.getAvailableQualityLevels !== 'function') return false;\n" +
 				"    var levels = p.getAvailableQualityLevels();\n" +
 				"    if (!levels || levels.length === 0) return false;\n" +
 				"    var best = pick(levels);\n" +
 				"    if (!best) return false;\n" +
-				"    if (p.getPlaybackQuality && p.getPlaybackQuality() === best) return true;\n" +
+				"    var cur = p.getPlaybackQuality ? p.getPlaybackQuality() : '?';\n" +
+				"    if (cur === best) return true;\n" +
+				// A song already under way (buffering its start): a switch now makes the player load it
+				// again, heard as play, pause, play. Music mode only; it is kept as it is.
+				"    var v = document.querySelector('video');\n" +
+				"    if ((target === 'lowest') && (s === 3) && v && (v.currentTime < 5)) {\n" +
+				"      qlog('kept ' + cur + ' at the start (not ' + best + ')');\n" +
+				"      return true;\n" +
+				"    }\n" +
+				"    qlog(cur + ' -> ' + best + ' state=' + s + ' t=' + (v ? v.currentTime.toFixed(1) : '?'));\n" +
 				"    if (typeof p.setPlaybackQualityRange === 'function') p.setPlaybackQualityRange(best, best);\n" +
 				"    else if (typeof p.setPlaybackQuality === 'function') p.setPlaybackQuality(best);\n" +
 				"    else return false;\n" +
@@ -1561,11 +1718,17 @@ public class YoutubeWebView extends FermataWebView {
 				"      return;\n" +
 				"    }\n" +
 				"    state.player = p;\n" +
+				// Also as a new video is set up (-1 unstarted, 5 cued), before its first segment is
+				// fetched: switched only once it was buffering or playing, the next song's opening was
+				// fetched again at the new quality, heard as its first moment playing twice.
 				"    state.handler = function(s) {\n" +
-				"      if ((s === 1) || (s === 3)) applyTarget(getPlayer() || p);\n" +
+				"      if ((s === 3) || (s === -1) || (s === 5)) applyTarget(getPlayer() || p, s);\n" +
 				"    };\n" +
 				"    p.addEventListener('onStateChange', state.handler);\n" +
-				"    applyTarget(p);\n" +
+				"    var playing = false;\n" +
+				"    try { playing = (typeof p.getPlayerState === 'function') && (p.getPlayerState() === 1); } catch (e) {}\n" +
+				"    if (" + now + ") applyTarget(p);\n" +
+				"    else if (!playing) applyTarget(p, 3);\n" +
 				"  }\n" +
 				"  install();\n" +
 				"})();");

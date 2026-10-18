@@ -42,6 +42,9 @@ final class YoutubeStartEngine implements MediaEngine {
 	public void prepare(PlayableItem source) {
 		handler.removeCallbacksAndMessages(null);
 		if (source instanceof MusicTrackItem t) track = t;
+		// The page has a video to load first: the loading circle until it plays (the YouTube player
+		// takes it down, see YoutubeMediaEngine#playing()).
+		me.aap.fermata.media.engine.BufferingIndicator.setBuffering(true);
 		if (!MusicPlayer.startYoutube(track, source.getPrefs().getPositionPref())) {
 			fail("the YouTube addon is disabled");
 			return;
