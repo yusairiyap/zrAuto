@@ -1909,8 +1909,8 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		return Math.max(pos, 0);
 	}
 
-	private void setPlaybackState(PlaybackStateCompat state) {
-		state = withSkipActions(state);
+	private void setPlaybackState(PlaybackStateCompat newState) {
+		PlaybackStateCompat state = withSkipActions(newState);
 		PlaybackStateCompat prev = currentState;
 		if ((prev == null) || (prev.getState() != state.getState())) {
 			DiagnosticLog.log("STATE", stateName(state.getState()), "pos=" + state.getPosition(),
