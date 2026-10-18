@@ -497,8 +497,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		boolean dataUsage = p.getInfoOverlayShowDataUsagePref(ad);
 		boolean dataRemaining = p.getInfoOverlayShowDataRemainingPref(ad);
 		boolean downloaded = p.getInfoOverlayShowDownloadedPref(ad);
+		boolean dataSession = p.getInfoOverlayShowDataSessionPref(ad);
 		boolean show = (p.getClockPosPref(ad) != MainActivityPrefs.CLOCK_POS_NONE) &&
-				(clock || battery || temp || distance || dataUsage || dataRemaining || downloaded);
+				(clock || battery || temp || distance || dataUsage || dataRemaining || downloaded ||
+						dataSession);
 		// Its holder in portrait (so its padding goes too), the overlay itself in the title bar.
 		View parent = (View) o.getParent();
 		View target = ((parent != null) && (parent.getId() == R.id.music_info_holder)) ? parent : o;
@@ -510,6 +512,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				p.getInfoOverlayShowBatteryIconPref(ad), temp, p.getInfoOverlayShowTempIconPref(ad), distance,
 				p.getInfoOverlayShowDistanceIconPref(ad));
 		o.setDataItems(dataUsage, dataRemaining, p.getInfoOverlayShowDataIconPref(ad));
+		o.setSessionItem(dataSession, p.getInfoOverlayDataSessionBarPref(ad),
+				p.getInfoOverlayDataSessionLeftPref(ad));
 		o.setDownloadedItem(downloaded);
 	}
 

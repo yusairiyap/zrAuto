@@ -187,6 +187,76 @@
                 android:drawableStart="@drawable/settings"
                 android:text="@string/data_usage_settings" />
         </LinearLayout>
+
+        <!-- The Android Auto session limit: on/off, the limit slider and this session's usage.
+             See DataSessionLimit and DataUsageFragment#refreshSession. -->
+        <LinearLayout
+            android:id="@+id/data_session_card"
+            style="@style/DataUsageCard"
+            android:layout_marginTop="14dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/car"
+                    android:tint="?attr/musicIconSecondary" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:layout_weight="1"
+                    android:text="@string/data_session_title"
+                    android:textColor="?attr/musicTextPrimary"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/data_session_switch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:contentDescription="@string/data_session_title" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/data_session_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textColor="?attr/musicTextSecondary"
+                android:textSize="13sp" />
+
+            <com.google.android.material.progressindicator.LinearProgressIndicator
+                android:id="@+id/data_session_bar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:max="1000"
+                app:trackCornerRadius="3dp"
+                app:trackThickness="6dp" />
+
+            <TextView
+                android:id="@+id/data_session_limit_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:textColor="?attr/musicTextPrimary"
+                android:textSize="14sp" />
+
+            <SeekBar
+                android:id="@+id/data_session_seek"
+                style="?attr/appSeekBarStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp" />
+        </LinearLayout>
     </LinearLayout>
 
     <LinearLayout

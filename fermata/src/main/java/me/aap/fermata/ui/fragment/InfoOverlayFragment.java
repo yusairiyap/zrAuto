@@ -83,6 +83,7 @@ public class InfoOverlayFragment extends ReorderListFragment {
 			case "temp" -> MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_TEMP;
 			case "distance" -> MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE;
 			case "data_usage" -> MainActivityPrefs.INFO_OVERLAY_SHOW_DATA_USAGE;
+			case "data_session" -> MainActivityPrefs.INFO_OVERLAY_SHOW_DATA_SESSION;
 			default -> MainActivityPrefs.INFO_OVERLAY_SHOW_DATA_REMAINING;
 		};
 	}
@@ -95,7 +96,7 @@ public class InfoOverlayFragment extends ReorderListFragment {
 			case "battery" -> MainActivityPrefs.INFO_OVERLAY_SHOW_BATTERY_ICON;
 			case "temp" -> MainActivityPrefs.INFO_OVERLAY_SHOW_TEMP_ICON;
 			case "distance" -> MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE_ICON;
-			case "data_usage", "data_remaining" -> MainActivityPrefs.INFO_OVERLAY_SHOW_DATA_ICON;
+			case "data_usage", "data_remaining", "data_session" -> MainActivityPrefs.INFO_OVERLAY_SHOW_DATA_ICON;
 			default -> null;
 		};
 	}
@@ -109,6 +110,7 @@ public class InfoOverlayFragment extends ReorderListFragment {
 			case "temp" -> R.drawable.thermometer;
 			case "distance" -> R.drawable.distance;
 			case "data_usage" -> R.drawable.data_usage;
+			case "data_session" -> R.drawable.car;
 			default -> R.drawable.data_remaining;
 		};
 	}
@@ -122,6 +124,7 @@ public class InfoOverlayFragment extends ReorderListFragment {
 			case "temp" -> R.string.info_item_temp;
 			case "distance" -> R.string.info_item_distance;
 			case "data_usage" -> R.string.info_item_data_usage;
+			case "data_session" -> R.string.info_item_data_session;
 			default -> R.string.info_item_data_remaining;
 		};
 	}
@@ -202,6 +205,23 @@ public class InfoOverlayFragment extends ReorderListFragment {
 						icon ? me.aap.utils.R.drawable.check_box : me.aap.utils.R.drawable.check_box_blank,
 						icon ? R.string.info_icon_hide : R.string.info_icon_show).setHandler(i -> {
 					p.applyBooleanPref(pref(ip), !icon);
+					reload();
+					return true;
+				});
+			}
+			if ("data_session".equals(key)) {
+				boolean bar = p.getBooleanPref(pref(MainActivityPrefs.INFO_OVERLAY_DATA_SESSION_BAR));
+				b.addItem(View.generateViewId(),
+						bar ? me.aap.utils.R.drawable.check_box : me.aap.utils.R.drawable.check_box_blank,
+						bar ? R.string.info_session_bar_hide : R.string.info_session_bar_show).setHandler(i -> {
+					p.applyBooleanPref(pref(MainActivityPrefs.INFO_OVERLAY_DATA_SESSION_BAR), !bar);
+					reload();
+					return true;
+				});
+				boolean left = p.getBooleanPref(pref(MainActivityPrefs.INFO_OVERLAY_DATA_SESSION_LEFT));
+				b.addItem(View.generateViewId(), R.drawable.data_remaining,
+						left ? R.string.info_session_show_used : R.string.info_session_show_left).setHandler(i -> {
+					p.applyBooleanPref(pref(MainActivityPrefs.INFO_OVERLAY_DATA_SESSION_LEFT), !left);
 					reload();
 					return true;
 				});

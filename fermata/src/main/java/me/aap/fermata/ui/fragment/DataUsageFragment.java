@@ -44,6 +44,7 @@ import java.util.List;
 import java.util.Locale;
 
 import me.aap.fermata.R;
+import me.aap.fermata.addon.data.DataSessionLimit;
 import me.aap.fermata.addon.data.DataUsageStore;
 import me.aap.fermata.addon.data.DataUsageTracker;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -85,6 +86,12 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 			R.string.data_usage_cat_downloads};
 
 	private final Runnable trackerListener = this::refresh;
+	private final Runnable sessionListener = this::refreshSession;
+	private androidx.appcompat.widget.SwitchCompat sessionSwitch;
+	private TextView sessionStatus;
+	private LinearProgressIndicator sessionBar;
+	private TextView sessionLimitLabel;
+	private android.widget.SeekBar sessionSeek;
 	private Context palette;
 	private int[] catColors;
 	private DataUsageRingView ring;
@@ -196,6 +203,8 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 			bar.setTrackColor(track);
 		}
 
+		initSessionCard(view, track);
+
 		filter = Math.max(0, Math.min(3, DataUsageTracker.prefs().getIntPref(FILTER)));
 		for (int i = 0; i < filters.length; i++) {
 			int f = i;
@@ -303,10 +312,12 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 		listening = on;
 		if (on) {
 			DataUsageTracker.get().addListener(trackerListener);
+			DataSessionLimit.get().addListener(sessionListener);
 			DataUsageTracker.get().addAlertListener(this);
 			DataUsageTracker.prefs().addBroadcastListener(this);
 		} else {
 			DataUsageTracker.get().removeListener(trackerListener);
+			DataSessionLimit.get().removeListener(sessionListener);
 			DataUsageTracker.get().removeAlertListener(this);
 			DataUsageTracker.prefs().removeBroadcastListener(this);
 		}
@@ -409,6 +420,78 @@ public class DataUsageFragment extends MainActivityFragment implements Preferenc
 		if ((getView() == null) || (ring == null)) return;
 		refreshCycle();
 		refreshPeriod();
+		refreshSession();
+	}
+
+	/** The Android Auto session limit card: on/off and the limit, set right here. */
+	private void initSessionCard(View view, int track) {
+		sessionSwitch = view.findViewById(R.id.data_session_switch);
+		sessionStatus = view.findViewById(R.id.data_session_status);
+		sessionBar = view.findViewById(R.id.data_session_bar);
+		sessionLimitLabel = view.findViewById(R.id.data_session_limit_label);
+		sessionSeek = view.findViewById(R.id.data_session_seek);
+		me.aap.fermata.ui.view.SwitchStyle.apply(sessionSwitch, palette);
+		sessionBar.setTrackColor(track);
+		int accent = me.aap.fermata.ui.view.EffectsUi.accent(palette);
+		sessionSeek.setProgressTintList(ColorStateList.valueOf(accent));
+		sessionSeek.setThumbTintList(ColorStateList.valueOf(accent));
+		sessionSeek.setMax((DataSessionLimit.MAX_MB - DataSessionLimit.MIN_MB) / DataSessionLimit.STEP_MB);
+		PreferenceStore ps = DataUsageTracker.prefs();
+		sessionSwitch.setChecked(DataSessionLimit.isEnabled());
+		sessionSwitch.setOnCheckedChangeListener((b, on) -> {
+			if (on == DataSessionLimit.isEnabled()) return;
+			ps.applyBooleanPref(DataSessionLimit.ENABLED, on);
+			DataSessionLimit.get().poll();
+			refreshSession();
+		});
+		sessionSeek.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+			@Override
+			public void onProgressChanged(android.widget.SeekBar sb, int p, boolean fromUser) {
+				if (!fromUser) return;
+				sessionLimitLabel.setText(getString(R.string.data_session_limit,
+						size((DataSessionLimit.MIN_MB + (long) p * DataSessionLimit.STEP_MB) * 1000_000L)));
+			}
+
+			@Override
+			public void onStartTrackingTouch(android.widget.SeekBar sb) {
+			}
+
+			@Override
+			public void onStopTrackingTouch(android.widget.SeekBar sb) {
+				ps.applyIntPref(DataSessionLimit.LIMIT_MB,
+						DataSessionLimit.MIN_MB + sb.getProgress() * DataSessionLimit.STEP_MB);
+				refreshSession();
+			}
+		});
+	}
+
+	private void refreshSession() {
+		if ((getView() == null) || (sessionSwitch == null)) return;
+		Context ctx = requireContext();
+		DataSessionLimit l = DataSessionLimit.get();
+		boolean on = DataSessionLimit.isEnabled();
+		long lim = DataSessionLimit.getLimit();
+		if (sessionSwitch.isChecked() != on) sessionSwitch.setChecked(on);
+		if (!sessionSeek.isPressed()) {
+			sessionSeek.setProgress((int) ((lim / 1000_000L - DataSessionLimit.MIN_MB) / DataSessionLimit.STEP_MB));
+			sessionLimitLabel.setText(getString(R.string.data_session_limit, size(lim)));
+		}
+		sessionSeek.setEnabled(on);
+		sessionSeek.setAlpha(on ? 1f : 0.45f);
+		sessionLimitLabel.setAlpha(on ? 1f : 0.45f);
+
+		boolean active = l.isActive();
+		long used = active ? l.getUsed() : 0;
+		boolean over = active && (used >= lim);
+		int color = ContextCompat.getColor(ctx, over ? R.color.data_usage_limit :
+				(active && (l.getFraction() >= 0.8f)) ? R.color.data_usage_warning : R.color.data_usage_ok);
+		sessionBar.setIndicatorColor(color);
+		sessionBar.setProgressCompat(Math.round(1000 * (active ? l.getFraction() : 0f)), true);
+		sessionBar.setVisibility(on ? View.VISIBLE : View.GONE);
+		sessionStatus.setText(!on ? getString(R.string.data_session_off) :
+				!active ? getString(R.string.data_session_waiting) :
+						getString(R.string.data_session_status, size(used), size(lim),
+								size(Math.max(0, lim - used))));
 	}
 
 	/** The ring and the figures for the current limit cycle. */

@@ -92,6 +92,18 @@ public class InfoOverlayView extends LinearLayout {
 	private final TextView dataRemaining;
 	private final ImageView dataRemainingIcon;
 	private final LinearLayout dataRemainingRow;
+	// The Android Auto session's data (DataSessionLimit): text over a mini progress bar.
+	private final TextView dataSession;
+	private final ImageView dataSessionIcon;
+	private final android.widget.ProgressBar dataSessionBar;
+	private final LinearLayout dataSessionRow;
+	private final Runnable sessionListener = this::updateSessionText;
+	private boolean sessionListenerRegistered;
+	private boolean showDataSession;
+	private boolean showSessionBar = true;
+	private boolean showSessionLeft;
+	// Laid out only during a session.
+	private boolean dataSessionShown;
 	private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
 		@Override
 		public void onReceive(Context context, Intent intent) {
@@ -154,6 +166,10 @@ public class InfoOverlayView extends LinearLayout {
 			}
 		}
 		downloadedIcon.setImageTintList(ColorStateList.valueOf(color));
+		dataSession.setTextColor(color);
+		dataSessionIcon.setImageTintList(ColorStateList.valueOf(color));
+		dataSessionBar.setProgressBackgroundTintList(ColorStateList.valueOf((color & 0x00FFFFFF) | 0x4D000000));
+		updateSessionBarColor();
 		for (int i = 0, n = getChildCount(); i < n; i++) {
 			View v = getChildAt(i);
 			if (!(v instanceof LinearLayout) && (v != downloadedIcon)) v.setBackgroundColor(dividerColor());
@@ -197,6 +213,17 @@ public class InfoOverlayView extends LinearLayout {
 		dataRemainingIcon = newIconView(context);
 		dataRemainingIcon.setImageResource(R.drawable.data_remaining);
 		dataRemainingRow = newRow(context, dataRemainingIcon, dataRemaining);
+		dataSession = newTextView(context);
+		dataSessionIcon = newIconView(context);
+		dataSessionIcon.setImageResource(R.drawable.car);
+		dataSessionBar = new android.widget.ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal);
+		dataSessionBar.setIndeterminate(false);
+		dataSessionBar.setMax(1000);
+		LinearLayout sessionCol = new LinearLayout(context);
+		sessionCol.setOrientation(VERTICAL);
+		sessionCol.addView(dataSession);
+		sessionCol.addView(dataSessionBar, new LayoutParams(LayoutParams.MATCH_PARENT, toIntPx(context, 3)));
+		dataSessionRow = newRow(context, dataSessionIcon, sessionCol);
 		applyPadding();
 		applyIconSize();
 	}
@@ -273,10 +300,67 @@ public class InfoOverlayView extends LinearLayout {
 		if (changed) {
 			dataUsageIcon.setVisibility(showIcon ? VISIBLE : GONE);
 			dataRemainingIcon.setVisibility(showIcon ? VISIBLE : GONE);
+			dataSessionIcon.setVisibility(showIcon ? VISIBLE : GONE);
 			dataRemainingShown = showRemaining && (DataUsageTracker.getLimit() > 0);
 			layoutRows();
 		}
 		updateDataListenerState();
+	}
+
+	/**
+	 * The Android Auto session's data item (see {@link me.aap.fermata.addon.data.DataSessionLimit}):
+	 * only laid out while a session goes on, used or what's left, over a mini progress bar unless
+	 * {@code bar} is off.
+	 */
+	public void setSessionItem(boolean show, boolean bar, boolean left) {
+		boolean changed = (showDataSession != show) || (showSessionBar != bar) || (showSessionLeft != left);
+		showDataSession = show;
+		showSessionBar = bar;
+		showSessionLeft = left;
+		if (changed) {
+			dataSessionIcon.setVisibility(showDataIcon ? VISIBLE : GONE);
+			dataSessionBar.setVisibility(bar ? VISIBLE : GONE);
+			updateSessionText();
+		}
+		updateSessionListenerState();
+	}
+
+	private void updateSessionListenerState() {
+		me.aap.fermata.addon.data.DataSessionLimit l = me.aap.fermata.addon.data.DataSessionLimit.get();
+		if (isAttachedToWindow() && showDataSession) {
+			if (!sessionListenerRegistered) {
+				l.addListener(sessionListener);
+				sessionListenerRegistered = true;
+			}
+			updateSessionText();
+		} else if (sessionListenerRegistered) {
+			sessionListenerRegistered = false;
+			l.removeListener(sessionListener);
+		}
+	}
+
+	private void updateSessionText() {
+		me.aap.fermata.addon.data.DataSessionLimit l = me.aap.fermata.addon.data.DataSessionLimit.get();
+		boolean shown = showDataSession && l.isActive();
+		if (shown) {
+			Context ctx = getContext();
+			dataSession.setText(showSessionLeft ? ctx.getString(R.string.data_usage_left,
+					Formatter.formatShortFileSize(ctx, l.getRemaining())) :
+					Formatter.formatShortFileSize(ctx, l.getUsed()));
+			dataSessionBar.setProgress(Math.round(1000 * l.getFraction()));
+			updateSessionBarColor();
+		}
+		if (shown != dataSessionShown) {
+			dataSessionShown = shown;
+			layoutRows();
+		}
+	}
+
+	/** The overlay's own colour, amber from 80% of the limit and red past it. */
+	private void updateSessionBarColor() {
+		float f = me.aap.fermata.addon.data.DataSessionLimit.get().getFraction();
+		int c = (f >= 1f) ? 0xFFFF5252 : (f >= 0.8f) ? 0xFFFFB300 : fgColor;
+		dataSessionBar.setProgressTintList(ColorStateList.valueOf(c));
 	}
 
 	/**
@@ -329,7 +413,7 @@ public class InfoOverlayView extends LinearLayout {
 
 	public boolean hasVisibleItems() {
 		return downloadedShown || showClock || showBatteryPct || showBatteryTemp || showDistance || showDataUsage ||
-				dataRemainingShown;
+				dataRemainingShown || dataSessionShown;
 	}
 
 	/**
@@ -360,6 +444,10 @@ public class InfoOverlayView extends LinearLayout {
 		distance.setTextSize(TypedValue.COMPLEX_UNIT_SP, BASE_TEXT_SIZE_SP * size);
 		dataUsage.setTextSize(TypedValue.COMPLEX_UNIT_SP, BASE_TEXT_SIZE_SP * size);
 		dataRemaining.setTextSize(TypedValue.COMPLEX_UNIT_SP, BASE_TEXT_SIZE_SP * size);
+		dataSession.setTextSize(TypedValue.COMPLEX_UNIT_SP, BASE_TEXT_SIZE_SP * size);
+		LayoutParams blp = (LayoutParams) dataSessionBar.getLayoutParams();
+		blp.height = Math.max(2, toIntPx(getContext(), Math.round(3 * size)));
+		dataSessionBar.setLayoutParams(blp);
 		applyPadding();
 		applyIconSize();
 		layoutRows();
@@ -377,7 +465,7 @@ public class InfoOverlayView extends LinearLayout {
 						getResources().getDisplayMetrics()));
 		int margin = toIntPx(getContext(), Math.round(BASE_ICON_MARGIN_DP * size));
 		for (ImageView icon : new ImageView[]{clockIcon, batteryIcon, tempIcon, distanceIcon,
-				dataUsageIcon, dataRemainingIcon}) {
+				dataUsageIcon, dataRemainingIcon, dataSessionIcon}) {
 			LayoutParams lp = new LayoutParams(iconSize, iconSize);
 			lp.setMarginEnd(margin);
 			icon.setLayoutParams(lp);
@@ -388,7 +476,7 @@ public class InfoOverlayView extends LinearLayout {
 
 	/** The overlay's items, in their default order: what {@link #setOrder} and the settings page use. */
 	public static final String[] ITEM_KEYS = {"downloaded", "clock", "battery", "temp", "distance",
-			"data_usage", "data_remaining"};
+			"data_usage", "data_remaining", "data_session"};
 	private String[] order = ITEM_KEYS;
 
 	/** The order of the items, as the setting stores it (keys joined by commas; empty: default). */
@@ -420,6 +508,7 @@ public class InfoOverlayView extends LinearLayout {
 			case "distance" -> showDistance;
 			case "data_usage" -> showDataUsage;
 			case "data_remaining" -> dataRemainingShown;
+			case "data_session" -> dataSessionShown;
 			default -> false;
 		};
 	}
@@ -432,6 +521,7 @@ public class InfoOverlayView extends LinearLayout {
 			case "temp" -> tempRow;
 			case "distance" -> distanceRow;
 			case "data_usage" -> dataUsageRow;
+			case "data_session" -> dataSessionRow;
 			default -> dataRemainingRow;
 		};
 	}
@@ -508,6 +598,7 @@ public class InfoOverlayView extends LinearLayout {
 		updateBatteryReceiverState();
 		updateDistanceListenerState();
 		updateDataListenerState();
+		updateSessionListenerState();
 	}
 
 	@Override
@@ -518,6 +609,10 @@ public class InfoOverlayView extends LinearLayout {
 		unregisterBatteryReceiver();
 		unregisterDistanceListener();
 		unregisterDataListener();
+		if (sessionListenerRegistered) {
+			sessionListenerRegistered = false;
+			me.aap.fermata.addon.data.DataSessionLimit.get().removeListener(sessionListener);
+		}
 	}
 
 	private void updateDataListenerState() {
