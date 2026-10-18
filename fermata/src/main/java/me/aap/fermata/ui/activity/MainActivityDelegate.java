@@ -634,12 +634,6 @@ public class MainActivityDelegate extends ActivityDelegate
 		});
 	}
 
-	/** See {@link MediaSessionCallbackAssistant#continueAfterQueueEnd}. */
-	@Override
-	public boolean continueAfterQueueEnd(PlayableItem last) {
-		return MusicPlayer.continueWithYoutube(this, last);
-	}
-
 	/** See {@link MediaSessionCallbackAssistant#playExternal}. */
 	@Override
 	public boolean playExternal(PlayableItem i, long pos) {

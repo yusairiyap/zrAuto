@@ -307,14 +307,6 @@ public class YoutubeAddon extends WebBrowserAddon
 		}
 
 		@Override
-		public boolean playNextSuggestion(MainActivityDelegate a) {
-			if (!(a.getFragment(getFragmentId()) instanceof YoutubeFragment f)) return false;
-			YoutubeWebView web = f.getWebView();
-			YoutubeMediaEngine eng = (web == null) ? null : web.getEngine();
-			return (eng != null) && eng.playPageSuggestion();
-		}
-
-		@Override
 		public int addToVideoQueue(MainActivityDelegate a, List<? extends PlayableItem> items) {
 			if (!(a.getFragment(getFragmentId()) instanceof YoutubeFragment f)) return -1;
 			YoutubeWebView web = f.getWebView();

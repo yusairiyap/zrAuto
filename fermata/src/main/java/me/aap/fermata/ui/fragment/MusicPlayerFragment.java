@@ -1549,17 +1549,19 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				}).start();
 	}
 
-	/** Previous dimmed on the queue's first song with Repeat off (see MediaSessionCallback#isAtListStart). */
-	private void updatePrevButton() {
+	/** Previous / Next dimmed on the queue's first / last song with Repeat off (see MediaSessionCallback#isAtListEdge). */
+	private void updateSkipButtons() {
 		View v = getView();
-		View prev = (v == null) ? null : v.findViewById(R.id.music_prev);
-		if (prev == null) return;
-		FermataServiceUiBinder.setPrevAvailable(prev,
-				!getActivityDelegate().getMediaSessionCallback().isAtListStart());
+		if (v == null) return;
+		MediaSessionCallback cb = getActivityDelegate().getMediaSessionCallback();
+		View prev = v.findViewById(R.id.music_prev);
+		View next = v.findViewById(R.id.music_next);
+		if (prev != null) FermataServiceUiBinder.setSkipAvailable(prev, !cb.isAtListStart());
+		if (next != null) FermataServiceUiBinder.setSkipAvailable(next, !cb.isAtListEnd());
 	}
 
 	private void updateModes() {
-		updatePrevButton();
+		updateSkipButtons();
 		BrowsableItemPrefs p = getModePrefs();
 		PlayableItem i = modeItem();
 		int accent = ContextCompat.getColor(requireContext(), R.color.music_accent);
@@ -1765,7 +1767,6 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 	private void onPrev() {
 		MediaSessionCallback cb = getActivityDelegate().getMediaSessionCallback();
-		if (cb.isAtListStart()) return; // dimmed, see updatePrevButton()
 		MediaEngine eng = cb.getEngine();
 		if ((eng == null) || (eng.getSource() == null)) {
 			skipFromSavedQueue(false);
@@ -2403,7 +2404,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	public void onQueueChanged(MusicQueue q) {
 		if (getView() == null) return;
 		adapter.reload();
-		updatePrevButton();
+		updateSkipButtons();
 		if (getActivityDelegate().getMediaSessionCallback().getCurrentItem() == null)
 			displayItem(getDisplayItem(), true);
 	}

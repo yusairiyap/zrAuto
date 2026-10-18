@@ -1993,52 +1993,6 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	/**
-	 * After another engine's song, the last of the Music queue: what this page would play next by
-	 * itself -- the Up next queue first, else YouTube's suggestion after the video it last played --
-	 * which takes the session over once it plays (see playing()). False if no video was ever played
-	 * on this page, so it has nothing to suggest.
-	 */
-	boolean playPageSuggestion() {
-		if (currentVideoId == null) return false;
-		YoutubeAddon addon = web.getAddon();
-		DiagnosticLog.log("YT", "after the queue: the page's next", "after=" + currentVideoId);
-		yielded = false;
-		// The queue is over: what follows is YouTube's own, not a queue track's next.
-		addon.setQueueItem(null);
-		addon.setRepeatOneEnabled(false);
-		clearUserPick();
-		queueTransitionPending = false;
-		transitioning();
-		String up = addon.peekUpNext();
-		int gen = ++switchWatchGen;
-		if (up != null) {
-			addon.removeUpNext(up);
-			addon.setPendingVideoId(up);
-			pendingCorrections = 0;
-			web.loadVideo(up, true);
-		} else {
-			expectingPageNav = true;
-			web.next();
-		}
-		me.aap.utils.app.App.get().getHandler().postDelayed(() -> {
-			// Something came: this engine took the session and plays (it is already the engine when
-			// the queue ended on a YouTube song, so that alone doesn't tell).
-			if ((gen != switchWatchGen) || ((cb.getEngine() == this) && cb.isPlaying())) return;
-			// Nothing came: the queue is simply over.
-			DiagnosticLog.log("YT", "after the queue: nothing played");
-			expectingPageNav = false;
-			switching = false;
-			if (up != null) addon.setPendingVideoId(null);
-			BufferingIndicator.setBuffering(false);
-			int st = cb.getPlaybackState().getState();
-			MediaEngine e = cb.getEngine();
-			if (st == PlaybackStateCompat.STATE_SKIPPING_TO_NEXT) cb.onStop();
-			else if (e != null) e.restoreVolume(); // Next pressed on the last song: it goes on.
-		}, 10_000);
-		return true;
-	}
-
-	/**
 	 * Plays {@code videoId} right away, as if the user had tapped it on the page: it leaves any
 	 * Favorites/Playlist queue (the Up next queue stays). Used by the search panel.
 	 */

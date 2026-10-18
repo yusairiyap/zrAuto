@@ -29,14 +29,6 @@ public interface MediaSessionCallbackAssistant {
 	default void skipFadeStarted(me.aap.fermata.media.engine.MediaEngine eng) {
 	}
 
-	/**
-	 * The queue ran out after {@code last} (Repeat off): something else may carry on -- YouTube's
-	 * suggestions after a Music tab song. True if it does (it takes the session over once it plays).
-	 */
-	default boolean continueAfterQueueEnd(MediaLib.PlayableItem last) {
-		return false;
-	}
-
 	@NonNull
 	default FutureSupplier<MediaLib.PlayableItem> getPrevPlayable(Item i) {
 		return i.getPrevPlayable();

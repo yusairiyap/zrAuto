@@ -177,7 +177,6 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 	}
 
 	public void onPrevNextButtonClick(boolean next) {
-		if (!next && sessionCallback.isAtListStart()) return; // dimmed, see updatePrevButton()
 		if (next) mediaController.getTransportControls().skipToNext();
 		else mediaController.getTransportControls().skipToPrevious();
 	}
@@ -249,15 +248,17 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 	}
 
 	/**
-	 * Previous is dimmed and takes no taps on the first song of the Music queue, a playlist or
-	 * Favorites with Repeat off: there is nothing before it (see MediaSessionCallback#isAtListStart).
+	 * Previous / Next are dimmed and take no taps on the first / last song of the Music queue, a
+	 * playlist or Favorites with Repeat off: there is nothing before / after it (see
+	 * MediaSessionCallback#isAtListEdge).
 	 */
-	private void updatePrevButton() {
-		if (prevButton != null) setPrevAvailable(prevButton, !sessionCallback.isAtListStart());
+	private void updateSkipButtons() {
+		if (prevButton != null) setSkipAvailable(prevButton, !sessionCallback.isAtListStart());
+		if (nextButton != null) setSkipAvailable(nextButton, !sessionCallback.isAtListEnd());
 	}
 
 	/** Dims {@code v} (its image only, so the panel's own fades of the view are left alone). */
-	public static void setPrevAvailable(View v, boolean available) {
+	public static void setSkipAvailable(View v, boolean available) {
 		if (v.isEnabled() == available) return;
 		v.setEnabled(available);
 		int a = available ? 255 : 90;
@@ -363,7 +364,7 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 		public void onMetadataChanged(MediaMetadataCompat metadata) {
 			if (!bound) return;
 			syncVideoControls();
-			updatePrevButton();
+			updateSkipButtons();
 		}
 
 		@Override
@@ -395,7 +396,7 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 					break;
 			}
 
-			updatePrevButton();
+			updateSkipButtons();
 			PlayableItem i = sessionCallback.getCurrentItem();
 			if (!Objects.equals(currentItem, i)) {
 				PlayableItem old = currentItem;

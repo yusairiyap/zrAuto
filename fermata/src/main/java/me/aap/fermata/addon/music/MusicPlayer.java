@@ -112,13 +112,6 @@ public final class MusicPlayer {
 		 * is playing, so there is nothing to switch.
 		 */
 		boolean playVideoInPlace(MainActivityDelegate a, String videoId, @Nullable String title);
-
-		/**
-		 * Plays what the YouTube player would play next on its own (the user's Up next, else YouTube's
-		 * suggestion after the last video it played), taking the session over once it plays. False if
-		 * it has nothing to go on (no video was played on its page).
-		 */
-		boolean playNextSuggestion(MainActivityDelegate a);
 	}
 
 	public static void setYoutubeHooks(@Nullable YoutubeHooks hooks) {
@@ -141,25 +134,6 @@ public final class MusicPlayer {
 																					 @Nullable String title) {
 		YoutubeHooks h = youtube;
 		return (h != null) && h.playVideoInPlace(from.getPlaybackDelegate(), videoId, title);
-	}
-
-	/**
-	 * The Music queue ran out (Repeat off) on {@code last}, a song played from a file: the music goes on
-	 * with YouTube's suggestions, as it does after a YouTube song at the end of the queue. False when
-	 * there is no YouTube player to go on with.
-	 */
-	public static boolean continueWithYoutube(MainActivityDelegate from, PlayableItem last) {
-		YoutubeHooks h = youtube;
-		if ((h == null) || !(last instanceof MusicTrackItem)) return false;
-		MainActivityDelegate a = from.getPlaybackDelegate();
-		boolean wasMusic = youtubeAudioMode;
-		setYoutubeAudioMode(true);
-		if (h.playNextSuggestion(a)) {
-			DiagnosticLog.log(TAG, "queue over: YouTube's suggestions carry on", "after=" + last);
-			return true;
-		}
-		setYoutubeAudioMode(wasMusic);
-		return false;
 	}
 
 	/** Shows the YouTube tab with its video fullscreen (a no-op without the YouTube addon). */
