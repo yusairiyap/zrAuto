@@ -461,7 +461,7 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   engine's queue item; a playlist/Favorites with Shuffle on never counts) they are dimmed and take no taps in the
   control panel (`FermataServiceUiBinder#updateSkipButtons`), the fullscreen overlay
   (`VideoControlsOverlay#setSkipAvailable`, via `ControlPanelView#syncVideoControls`) and the Music tab
-  (`updateSkipButtons`, from `updateModes`); the session leaves them out of its actions (`withSkipActions`,
+  (`updateSkipButtons`, from `updateModes`); the cover swipe there only gives a little and springs back (`canSwipeTrack(next)`); the session leaves them out of its actions (`withSkipActions`,
   so Android Auto and the system media controls follow) and `onSkipToNext/Previous` ignore them from media
   buttons, instead of fading the song out and back in. The queue does not go on with YouTube's suggestions.
   The "end" placeholder between videos shows the video just over (`Placeholder`), never its made-up address.

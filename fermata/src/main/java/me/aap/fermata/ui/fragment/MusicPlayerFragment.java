@@ -1467,7 +1467,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 							ViewGroup p = (ViewGroup) v.getParent();
 							if (p != null) p.requestDisallowInterceptTouchEvent(true);
 						}
-						dragArt(v, dx);
+						// Toward a song that isn't there (first / last of the list, Repeat off): the cover
+						// only gives a little, like the end of a list, and springs back on release.
+						dragArt(v, canSwipeTrack(dx < 0) ? dx : dx * 0.2f);
 						return true;
 					}
 					case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -1504,7 +1506,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 						dragging = false;
 						float dx = v.getTranslationX();
 						boolean flung = (Math.abs(speed) > fling) && (Math.signum(speed) == Math.signum(dx));
-						if (!cancel && ((Math.abs(dx) > v.getWidth() / 3f) || flung) && canSwipeTrack()) {
+						if (!cancel && ((Math.abs(dx) > v.getWidth() / 3f) || flung) && canSwipeTrack(dx < 0)) {
 							swipeTrack(v, dx < 0);
 						} else {
 							v.animate().translationX(0f).rotation(0f).alpha(1f).setDuration(220)
@@ -1526,9 +1528,14 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		v.setAlpha(1f - 0.35f * f);
 	}
 
-	/** Whether there's something playing to skip from. */
-	private boolean canSwipeTrack() {
-		return getActivityDelegate().getMediaSessionCallback().getCurrentItem() != null;
+	/**
+	 * Whether a swipe can skip to the next ({@code next}) or previous song: something plays, and it isn't
+	 * the last / first of its list with Repeat off (see MediaSessionCallback#isAtListEdge).
+	 */
+	private boolean canSwipeTrack(boolean next) {
+		MediaSessionCallback cb = getActivityDelegate().getMediaSessionCallback();
+		if (cb.getCurrentItem() == null) return false;
+		return next ? !cb.isAtListEnd() : !cb.isAtListStart();
 	}
 
 	private void swipeTrack(View v, boolean next) {
