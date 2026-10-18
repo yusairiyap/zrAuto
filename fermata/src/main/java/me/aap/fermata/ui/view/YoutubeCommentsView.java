@@ -355,6 +355,8 @@ public final class YoutubeCommentsView {
 		titleRow.addView(statsLine, new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
 		videoLine = titleRow;
 		root.addView(titleRow, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		// Kept out of sight (its room kept, so nothing jumps) until the comments have loaded.
+		titleRow.setAlpha(0f);
 
 		// Top / Newest, once the first batch has said how to get them.
 		sortRow = new LinearLayout(ctx);
@@ -588,6 +590,7 @@ public final class YoutubeCommentsView {
 	}
 
 	private void showFailed() {
+		revealTitle();
 		setStatus(false, ctx.getString(R.string.yt_comments_failed));
 		statusRow.setClickable(true);
 		statusRow.setFocusable(true);
@@ -607,6 +610,7 @@ public final class YoutubeCommentsView {
 		statusRow.setClickable(false);
 		statusRow.setBackground(null);
 		setStats(p.views, p.likes);
+		revealTitle();
 		if (p.disabled) {
 			setStatus(false, ctx.getString(R.string.yt_comments_off));
 			return;
@@ -1390,6 +1394,8 @@ public final class YoutubeCommentsView {
 	private void switchVideo(String id, String title) {
 		videoId = id;
 		videoTitle = title;
+		videoLine.animate().cancel();
+		videoLine.animate().alpha(0f).setDuration(120).start();
 		videoTitleView.setText(title);
 		setStats(-1, -1);
 		titleView.setText(R.string.yt_comments);
@@ -1481,6 +1487,19 @@ public final class YoutubeCommentsView {
 
 	// ---------------------------------------------------------------------------------------------
 	// Look
+
+	/**
+	 * The title line with its views and likes comes in once the comments have loaded (they come
+	 * with them): a short fade and slide down, instead of the counts popping in after the title.
+	 */
+	private void revealTitle() {
+		View v = videoLine;
+		if ((v == null) || (v.getAlpha() >= 1f)) return;
+		v.animate().cancel();
+		v.setTranslationY(-dp(6));
+		v.animate().alpha(1f).translationY(0f).setDuration(280)
+				.setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f)).start();
+	}
 
 	/** "👁 1.2M  👍 34K" under the title; what YouTube doesn't say is left out. */
 	private void setStats(long views, long likes) {
