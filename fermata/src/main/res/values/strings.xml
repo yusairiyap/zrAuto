@@ -791,6 +791,15 @@
     <string name="share_sent_dups">%1$d sent, %2$d duplicated (already in the playlist).</string>
     <string name="share_sent_dups_to">%1$d sent to %3$s, %2$d duplicated (already in the playlist).</string>
     <string name="share_saved_nothing">Nothing new to add.</string>
+    <string name="share_app">Share zrAuto app</string>
+    <string name="share_app_sub">Send this app\'s install file to a phone nearby on the same Wi-Fi, to install or update it there</string>
+    <string name="share_app_split">This install is split into several files and can\'t be shared.</string>
+    <string name="share_app_received">App install file received.</string>
+    <string name="share_app_install_title">Install zrAuto?</string>
+    <string name="share_app_install_text">Install or update from “%s”, just received.</string>
+    <string name="share_app_install">Install</string>
+    <string name="share_app_later">Later</string>
+    <string name="share_app_saved_at">Saved at %s</string>
     <plurals name="share_sent_n">
         <item quantity="one">Successfully sent %1$d file to %2$s.</item>
         <item quantity="other">Successfully sent %1$d files to %2$s.</item>

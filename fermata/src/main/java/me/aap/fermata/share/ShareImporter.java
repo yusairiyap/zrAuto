@@ -109,6 +109,20 @@ final class ShareImporter {
 			return;
 		}
 
+		if (ShareOffer.KIND_APP.equals(offer.kind)) {
+			// Not media: kept in its folder and offered for install, nothing goes to the library.
+			File apk = files.isEmpty() ? null : files.values().iterator().next();
+			main.post(() -> {
+				if (apk == null) {
+					done.done(false, me.aap.fermata.FermataApplication.get().getString(R.string.share_saved_nothing));
+					return;
+				}
+				done.done(true, me.aap.fermata.FermataApplication.get().getString(R.string.share_app_received));
+				offerInstall(apk);
+			});
+			return;
+		}
+
 		main.post(() -> FermataMediaServiceConnection.connect(null).main().onCompletion((con, cerr) -> {
 			if ((cerr != null) || (con == null) || (con.getMediaSessionCallback() == null)) {
 				if (cerr != null) Log.e(cerr, "Share: no media service");
@@ -178,6 +192,39 @@ final class ShareImporter {
 						}), videos).then(v -> addToPlaylist(lib, name, all, t));
 					});
 		});
+	}
+
+	/**
+	 * Asks whether to install the app file just received, and hands it to the system installer.
+	 * Android itself checks that an update is signed like the installed app.
+	 */
+	private static void offerInstall(File apk) {
+		MainActivityDelegate a = MainActivityDelegate.getUiDelegate();
+		Context c = me.aap.fermata.FermataApplication.get();
+		me.aap.fermata.util.DiagnosticLog.log("SHARE", "app received:", apk, apk.length());
+		if ((a == null) || a.isCarActivityNotMirror()) return;
+		me.aap.fermata.ui.view.TopConfirm.show(a, R.drawable.share, c.getString(R.string.share_app_install_title),
+				c.getString(R.string.share_app_install_text, apk.getName()),
+				c.getString(R.string.share_app_install), c.getString(R.string.share_app_later),
+				() -> install(a, apk), null);
+	}
+
+	private static void install(MainActivityDelegate a, File apk) {
+		Context c = a.getContext();
+		try {
+			Uri u = androidx.core.content.FileProvider.getUriForFile(c, c.getPackageName() + ".FileProvider",
+					apk);
+			android.content.Intent i = new android.content.Intent(android.content.Intent.ACTION_VIEW);
+			i.setDataAndType(u, "application/vnd.android.package-archive");
+			i.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION |
+					android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+			a.startActivity(i);
+		} catch (Exception ex) {
+			// The phone-only build has no file provider: the file stays where it was saved.
+			Log.e(ex, "Share: cannot open the installer");
+			me.aap.fermata.ui.view.TopToast.show(R.drawable.share,
+					c.getString(R.string.share_app_saved_at, apk.getAbsolutePath()));
+		}
 	}
 
 	/** The library items for the files just saved into {@code dir}. */

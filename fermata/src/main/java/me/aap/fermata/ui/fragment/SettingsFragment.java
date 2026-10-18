@@ -1004,6 +1004,7 @@ public class SettingsFragment extends MainActivityFragment
 		});
 		addSpotifyImport(a, sub1);
 		addShareSettings(sub1);
+		addShareAppButton(a, sub1);
 		addStoragePrefs(a, sub1);
 		if (BuildConfig.AUTO) {
 			sub1.addBooleanPref(o -> {
@@ -1162,6 +1163,22 @@ public class SettingsFragment extends MainActivityFragment
 			o.title = R.string.share_device_name;
 			o.stringHint = SharePrefs.getDeviceName();
 			o.trim = true;
+		});
+	}
+
+	/** Sends zrAuto itself to a phone nearby, which then offers to install or update it. */
+	private void addShareAppButton(MainActivityDelegate a, PreferenceSet set) {
+		if (a.isCarActivityNotMirror()) return;
+		set.addButton(o -> {
+			o.title = R.string.share_app;
+			o.subtitle = R.string.share_app_sub;
+			o.icon = R.drawable.share;
+			o.onClick = () -> {
+				me.aap.fermata.share.ShareOffer offer =
+						me.aap.fermata.share.ShareSource.createApp(a.getContext());
+				if (offer.entries.isEmpty()) TopToast.show(R.drawable.share, R.string.share_app_split);
+				else me.aap.fermata.ui.view.ShareSheet.show(a, offer);
+			};
 		});
 	}
 
