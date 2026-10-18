@@ -231,6 +231,74 @@ final class YtStreamResolver {
 		}
 	}
 
+	/**
+	 * What downloading {@code videoId} would take, without downloading anything: the sound alone
+	 * (index 0), then sound and picture for each of {@code heights}, picked the way {@link #resolve}
+	 * picks them. 0 where it can't be told. One player request (the formats' lengths are in it).
+	 */
+	static long[] estimate(String videoId, int[] heights) throws IOException {
+		IOException first = null;
+		for (Client c : CLIENTS) {
+			try {
+				JSONObject resp = new JSONObject(post(c, videoId));
+				JSONObject ps = resp.optJSONObject("playabilityStatus");
+				if ((ps == null) || !"OK".equals(ps.optString("status"))) continue;
+				JSONObject sd = resp.optJSONObject("streamingData");
+				JSONArray formats = (sd != null) ? sd.optJSONArray("adaptiveFormats") : null;
+				if (formats == null) continue;
+				long audio = 0;
+				int audioBr = -1;
+				for (int i = 0; i < formats.length(); i++) {
+					JSONObject f = formats.optJSONObject(i);
+					if ((f == null) || !f.optString("mimeType").startsWith("audio/mp4")) continue;
+					long len = f.optLong("contentLength", 0);
+					int br = f.optInt("bitrate", 0);
+					if ((len > 0) && (br > audioBr)) {
+						audio = len;
+						audioBr = br;
+					}
+				}
+				long combined = 0;
+				JSONArray progressive = sd.optJSONArray("formats");
+				for (int i = 0; (progressive != null) && (i < progressive.length()); i++) {
+					JSONObject f = progressive.optJSONObject(i);
+					if (f != null) combined = Math.max(combined, f.optLong("contentLength", 0));
+				}
+				long[] out = new long[heights.length + 1];
+				out[0] = audio;
+				for (int j = 0; j < heights.length; j++) {
+					int bestH = -1;
+					int bestBr = -1;
+					long bestLen = 0;
+					for (int i = 0; i < formats.length(); i++) {
+						JSONObject f = formats.optJSONObject(i);
+						if (f == null) continue;
+						String mime = f.optString("mimeType");
+						int h = f.optInt("height", 0);
+						long len = f.optLong("contentLength", 0);
+						int br = f.optInt("bitrate", 0);
+						if (!mime.startsWith("video/mp4") || !mime.contains("avc1") || (h <= 0) ||
+								(h > heights[j]) || (len <= 0)) {
+							continue;
+						}
+						if ((h > bestH) || ((h == bestH) && (br > bestBr))) {
+							bestH = h;
+							bestBr = br;
+							bestLen = len;
+						}
+					}
+					out[j + 1] = ((audio > 0) && (bestLen > 0)) ? audio + bestLen : combined;
+				}
+				if (audio > 0) return out;
+			} catch (JSONException ex) {
+				if (first == null) first = new IOException("Unexpected YouTube response", ex);
+			} catch (IOException ex) {
+				if (first == null) first = ex;
+			}
+		}
+		throw (first != null) ? first : new IOException("No downloadable stream");
+	}
+
 	private static String post(Client c, String videoId) throws IOException, JSONException {
 		JSONObject client = new JSONObject("{" + c.extra + "}")
 				.put("clientName", c.name)

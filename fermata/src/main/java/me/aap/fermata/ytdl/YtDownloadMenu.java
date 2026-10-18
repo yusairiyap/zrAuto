@@ -114,7 +114,7 @@ public final class YtDownloadMenu {
 		Context ctx = a.getContext();
 		String name = (videos.size() == 1) ? videos.values().iterator().next() :
 				ctx.getResources().getQuantityString(R.plurals.ytdl_videos, videos.size(), videos.size());
-		DownloadPicker.show(a, name, height -> {
+		DownloadPicker.show(a, name, new ArrayList<>(videos.keySet()), height -> {
 			List<YtDownloads.Request> list = new ArrayList<>(videos.size());
 			for (Map.Entry<String, String> e : videos.entrySet()) {
 				list.add(new YtDownloads.Request(e.getKey(), e.getValue(), height));
