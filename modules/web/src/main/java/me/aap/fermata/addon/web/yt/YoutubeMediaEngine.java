@@ -693,17 +693,20 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	/**
 	 * The page's video stopped at its very end with no 'ended' (paused there, or waiting for data that
-	 * never comes; see endCheck in YoutubeWebView#attachListeners()): the end, as far as anyone
+	 * never comes, or put back to 0:00 by YouTube's player under its replay button; see endCheck in
+	 * YoutubeWebView#attachListeners()): the end, as far as anyone
 	 * listening is concerned. Before the stall check takes it for a lost connection and plays a
 	 * download instead. Not when the pause was the app's or the user's own (a pause tapped in the last
 	 * seconds), or the video is already over.
 	 */
-	void stuckAtEnd() {
+	void stuckAtEnd(String how) {
 		if ((cb.getEngine() != this) || (current == null) || (current == end)) return;
+		// Already moving on to another video (the old one can still read as ended for a moment).
+		if (switching || expectingPageNav) return;
 		boolean stalled = waitingSince != 0;
 		if (!stalled && lastPauseAsked) return;
 		DiagnosticLog.log("YT", "stopped at the end with no 'ended': treated as ended",
-				"id=" + currentVideoId, stalled ? "waiting" : "paused");
+				"id=" + currentVideoId, how, stalled ? "waiting" : "paused");
 		clearStall();
 		ended();
 	}

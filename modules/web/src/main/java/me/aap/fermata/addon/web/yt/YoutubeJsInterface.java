@@ -67,7 +67,7 @@ public class YoutubeJsInterface extends FermataJsInterface {
 				break;
 			case JS_VIDEO_ENDED:
 				Log.d("Video ended");
-				if ("stuck".equals(data)) engine.stuckAtEnd();
+				if ((data != null) && data.startsWith("stuck")) engine.stuckAtEnd(data);
 				else engine.ended();
 				break;
 			case JS_VIDEO_QUALITIES:

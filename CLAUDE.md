@@ -461,7 +461,9 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   a download): `endCheck` in `YoutubeWebView#attachListeners` (on `pause` and `waiting` in the last 5 s) reports it
   as `JS_VIDEO_ENDED` with `'stuck'` when no real `ended` or progress follows within 2 s
   (`YoutubeMediaEngine#stuckAtEnd`, skipped for a pause the app asked for), well before the 10 s stall, and `play()`
-  rewinds a video stopped within 1.5 s of its end. Before, Repeat One stopped there and play only buffered until the stall fallback.
+  rewinds a video stopped within 1.5 s of its end. A third form: YouTube's player ends it itself, back to 0:00 under its
+  replay button (player state 0) with no `ended`; `endCheck` reports that state at any position (`stuck:state`), and
+  `play()` restarts it through the player API (`seekTo(0)` + `playVideo()`), since the element's `play()` just waits there. Before, Repeat One stopped there and play only buffered until the stall fallback.
 - **A page restored after the app was killed** (the fragment's saved `url`, with YouTube not playing then) is kept
   quiet until asked (`YoutubeMediaEngine#quietRestoredPage`): its autoplay used to start the old song on app open.
 - **Previous / Next go nowhere past the ends of a list**: on the first / last song of the Music queue (its

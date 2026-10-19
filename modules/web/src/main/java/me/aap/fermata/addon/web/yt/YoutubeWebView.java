@@ -483,21 +483,26 @@ public class YoutubeWebView extends FermataWebView {
 				// and the queue never hear of the end) and play only buffers on forever. So when a pause
 				// or a wait for data comes in the last seconds and no 'ended' (or progress) follows within
 				// 2 s, the app is told the video ended after all -- see YoutubeMediaEngine#stuckAtEnd().
+				// YouTube's player can also end the video by itself: it puts it back to 0:00 under its
+				// replay button (player state 0, ENDED) with no 'ended' at all, so a song in the
+				// background just stopped there and play then only buffered. Whatever the position, that
+				// state with the element not playing is the end too.
 				"  var endCheck = function() {\n" +
 				"    var t = v.currentTime, src = v.currentSrc, left = v.duration - t;\n" +
-				"    if (v.ended || !isFinite(left) || (left > 5) || window.__fermataAdShowing) return;\n" +
+				"    if (v.ended || window.__fermataAdShowing) return;\n" +
+				"    var nearEnd = isFinite(left) && (left <= 5);\n" +
 				"    var gen = v.__fermataEndGen = (v.__fermataEndGen || 0) + 1;\n" +
 				"    setTimeout(function() {\n" +
-				"      if ((gen !== v.__fermataEndGen) || v.ended || (v.currentSrc !== src) ||\n" +
-				"          (!v.paused && (v.readyState >= 3)) ||\n" +
-				"          (Math.abs(v.currentTime - t) > 0.5) || window.__fermataAdShowing) return;\n" +
+				"      if ((gen !== v.__fermataEndGen) || v.ended || (!v.paused && (v.readyState >= 3)) ||\n" +
+				"          window.__fermataAdShowing) return;\n" +
 				"      var ps = -1;\n" +
 				"      try {\n" +
 				"        var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
 				"        if (p && (typeof p.getPlayerState === 'function')) ps = p.getPlayerState();\n" +
 				"      } catch (x) {}\n" +
-				"      if ((v.duration - v.currentTime <= 1.5) || (ps === 0)) " + JS_EVENT + "(" + JS_VIDEO_ENDED +
-				", 'stuck');\n" +
+				"      if (ps === 0) { " + JS_EVENT + "(" + JS_VIDEO_ENDED + ", 'stuck:state'); return; }\n" +
+				"      if (!nearEnd || (v.currentSrc !== src) || (Math.abs(v.currentTime - t) > 0.5)) return;\n" +
+				"      if (v.duration - v.currentTime <= 1.5) " + JS_EVENT + "(" + JS_VIDEO_ENDED + ", 'stuck:time');\n" +
 				"    }, 2000);\n" +
 				"  };\n" +
 				"  v.addEventListener('pause', function(e) {\n" +
@@ -1178,6 +1183,18 @@ public class YoutubeWebView extends FermataWebView {
 				// Stopped at the very end (see endCheck in attachListeners()): playing on from
 				// there only waits for data that never comes, until the stall gives up. Start it again.
 				"  if (!v.ended && isFinite(v.duration) && (v.duration - v.currentTime <= 1.5)) v.currentTime = 0;\n" +
+				// Or ended by YouTube's player itself (its replay button showing): only its own API starts
+				// it again; the element's play() there just waits.
+				"  try {\n" +
+				"    var yp = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
+				"    if (yp && (typeof yp.getPlayerState === 'function') && (yp.getPlayerState() === 0) &&\n" +
+				"        (typeof yp.playVideo === 'function')) {\n" +
+				"      if (typeof yp.seekTo === 'function') yp.seekTo(0, true);\n" +
+				"      if (window.FermataFade) window.FermataFade.prepareToPlay(v);\n" +
+				"      yp.playVideo();\n" +
+				"      return;\n" +
+				"    }\n" +
+				"  } catch (x) {}\n" +
 				"  if (window.FermataFade) window.FermataFade.prepareToPlay(v);\n" +
 				"  var p = v.play();\n" +
 				"  if (p && p.catch) p.catch(function(e) { console.error('Fermata play() rejected: ' + e); });\n" +
