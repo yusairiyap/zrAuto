@@ -183,6 +183,70 @@
           "url": "https://freesound.org/people/paisagemsonoraunila/sounds/334641/"
         }
       ]
+    },
+    "street": {
+      "file": "street.ogg",
+      "seconds": 32,
+      "frames": 1543461,
+      "margin": 12000,
+      "title": "Rainy street",
+      "credits": [
+        {
+          "id": 399822,
+          "title": "Cars passing in a rainy street",
+          "author": "BonnyOrbit",
+          "license": "CC0",
+          "url": "https://freesound.org/people/BonnyOrbit/sounds/399822/"
+        }
+      ]
+    },
+    "waterfall": {
+      "file": "waterfall.ogg",
+      "seconds": 69,
+      "frames": 3352608,
+      "margin": 12000,
+      "title": "Waterfall",
+      "credits": [
+        {
+          "id": 274259,
+          "title": "Waterfall Loop",
+          "author": "kwahmah_02",
+          "license": "CC0",
+          "url": "https://freesound.org/people/kwahmah_02/sounds/274259/"
+        }
+      ]
+    },
+    "train": {
+      "file": "train.ogg",
+      "seconds": 60,
+      "frames": 2880000,
+      "margin": 12000,
+      "title": "Train ride",
+      "credits": [
+        {
+          "id": 143205,
+          "title": "inside a train.wav",
+          "author": "bisanu6",
+          "license": "CC0",
+          "url": "https://freesound.org/people/bisanu6/sounds/143205/"
+        }
+      ]
+    },
+    "umbrella": {
+      "file": "umbrella.ogg",
+      "seconds": 18,
+      "frames": 884480,
+      "margin": 12000,
+      "title": "Umbrella rain",
+      "credits": [
+        {
+          "id": 788719,
+          "title": "Umbrella rain",
+          "author": "T.I.B",
+          "license": "CC0",
+          "url": "https://freesound.org/people/T.I.B/sounds/788719/"
+        }
+      ]
     }
   }
 }
