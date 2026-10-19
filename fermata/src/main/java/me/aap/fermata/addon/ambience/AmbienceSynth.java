@@ -492,76 +492,113 @@ final class AmbienceSynth {
 	}
 
 	// ---------------------------------------------------------------------------------------------
-	// Droplets: single drops into still water in a cave. A drop is a short "plip": a sine that
-	// glides up in pitch as it dies away (the bubble the drop makes), a faint octave over it and a
-	// tick of noise at the start; the tail is the cave, a real reverb that grows with the Echo slider.
+	// Droplets: drops falling from wet leaves after rain in a forest. A drop lands on a leaf (a soft
+	// pat: a tick of noise and a short damped "tok" of the leaf, no pitch) or in a puddle (a plip: a
+	// sine that glides up like the bubble the drop makes); the Landing slider sets the mix. Most
+	// are small, a few big. Now and then a gust shakes the canopy and a shower of drops follows. Under
+	// them a faint hush of the forest, around them a small, damped room.
 	// ---------------------------------------------------------------------------------------------
 
 	static final class Drips extends Voice {
-		private static final int SLOTS = 4;
+		private static final int SLOTS = 6;
+		private static final float C_HUSH_HI = coef(3000), C_HUSH_LO = coef(300), C_PAT_HI = coef(3000),
+				C_PAT_LO = coef(600);
 		private final Rng rng = new Rng(0xD21B5);
 		private final float[] ph = new float[SLOTS], f0 = new float[SLOTS], ce = new float[SLOTS],
 				env = new float[SLOTS], amp = new float[SLOTS], att = new float[SLOTS],
 				clk = new float[SLOTS], panL = new float[SLOTS], panR = new float[SLOTS];
-		private final Reverb verb = new Reverb(2.6f);
-		private float lastRt = -1f;
-		private float hpL;
+		private final boolean[] plip = new boolean[SLOTS];
+		private final Reverb verb = new Reverb(0.9f);
+		private float hpL, patHi, patHi2, patLo, aL, bL, aR, bR;
+		private int showerLeft;
 
-		private void spawn(float loud) {
+		Drips() {
+			verb.setDecay(0.7f, 0.6f);
+		}
+
+		private void spawn(float loud, float opt) {
 			for (int k = 0; k < SLOTS; k++) {
 				if (env[k] > 0.0008f) continue;
 				float u = rng.unit();
+				float size = rng.unit();
+				size *= size;
+				plip[k] = rng.unit() < opt;
 				ph[k] = 0f;
-				// 280 to 660 Hz (it glides up from there), and now and then a bigger, lower plop.
-				f0[k] = (280f + 380f * u) * ((rng.unit() < 0.15f) ? 0.65f : 1f);
 				ce[k] = 1f;
-				amp[k] = (0.28f + 0.3f * rng.unit()) * loud;
-				env[k] = amp[k];
 				att[k] = 0f;
 				clk[k] = 1f;
+				if (plip[k]) {
+					// Into water: 300 to 700 Hz, lower for a big drop.
+					f0[k] = (300f + 400f * u) * (1f - 0.3f * size);
+					amp[k] = (0.22f + 0.5f * size) * loud;
+				} else {
+					// Onto a leaf: the leaf rings briefly at 500 to 1400 Hz.
+					f0[k] = 500f + 900f * u;
+					amp[k] = (0.25f + 0.6f * size) * loud;
+				}
+				env[k] = amp[k];
 				float pan = rng.unit();
-				panL[k] = 1f - 0.6f * pan;
-				panR[k] = 0.4f + 0.6f * pan;
+				panL[k] = 1f - 0.7f * pan;
+				panR[k] = 0.3f + 0.7f * pan;
 				return;
 			}
 		}
 
 		@Override
 		void render(float[] l, float[] r, int n, float lv, float opt) {
-			float rate = (0.25f + 0.9f * lv) / SR;
+			float base = (0.8f + 4f * lv) / SR;
 			float loud = 0.55f + 0.45f * lv;
-			// Echo: a dry drip over a few small walls, to a cavern with a long tail.
-			float wet = 0.35f + 2.2f * opt;
-			float dry = 0.85f - 0.35f * opt;
-			float rt = 0.5f + 3.5f * opt;
-			if (rt != lastRt) {
-				verb.setDecay(rt, 0.55f - 0.3f * opt);
-				lastRt = rt;
-			}
+			float hush = 0.035f * (0.4f + 0.6f * lv);
 			for (int i = 0; i < n; i++) {
-				if (rng.unit() < rate) spawn(loud);
+				float rate = base;
+				if (showerLeft > 0) {
+					showerLeft--;
+					rate *= 4f;
+				} else if (rng.unit() < 0.07f / SR) {
+					showerLeft = (int) (SR * (1f + 1.5f * rng.unit()));
+				}
+				if (rng.unit() < rate) spawn(loud, opt);
 				float dl = 0f, dr = 0f, mono = 0f;
 				for (int k = 0; k < SLOTS; k++) {
 					if (env[k] <= 0.0008f) continue;
-					float f = f0[k] * (1f + 0.7f * (1f - ce[k]));
-					ph[k] += TWO_PI * f / SR;
-					if (ph[k] > TWO_PI) ph[k] -= TWO_PI;
-					ce[k] *= 0.9988f;
-					float a = Math.min(1f, att[k]);
-					att[k] += 1f / 60f;
 					float nz = rng.next();
 					hpL += 0.3f * (nz - hpL);
-					float tick = (nz - hpL) * amp[k] * clk[k] * 0.15f;
-					clk[k] *= 0.985f;
-					float s = ((float) Math.sin(ph[k]) + 0.25f * (float) Math.sin(2f * ph[k])) * env[k] * a + tick;
-					env[k] *= 0.9993f;
+					patHi += C_PAT_HI * (nz - patHi);
+					patHi2 += C_PAT_HI * (patHi - patHi2);
+					patLo += C_PAT_LO * (nz - patLo);
+					float s;
+					if (plip[k]) {
+						float f = f0[k] * (1f + 0.7f * (1f - ce[k]));
+						ph[k] += TWO_PI * f / SR;
+						if (ph[k] > TWO_PI) ph[k] -= TWO_PI;
+						ce[k] *= 0.9988f;
+						float a = Math.min(1f, att[k]);
+						att[k] += 1f / 60f;
+						s = ((float) Math.sin(ph[k]) + 0.25f * (float) Math.sin(2f * ph[k])) * env[k] * a;
+						s += (nz - hpL) * amp[k] * clk[k] * 0.15f;
+						clk[k] *= 0.985f;
+						env[k] *= 0.9992f;
+					} else {
+						ph[k] += TWO_PI * f0[k] / SR;
+						if (ph[k] > TWO_PI) ph[k] -= TWO_PI;
+						// The pat of the drop is a mid band of noise (a leaf is soft, not a click).
+						s = (float) Math.sin(ph[k]) * env[k] * 0.6f + (patHi2 - patLo) * amp[k] * clk[k] * 3.5f;
+						clk[k] *= 0.994f;
+						env[k] *= 0.9977f;
+					}
 					dl += s * panL[k];
 					dr += s * panR[k];
 					mono += s;
 				}
-				verb.process(mono);
-				l[i] = dl * dry + verb.outL * wet;
-				r[i] = dr * dry + verb.outR * wet;
+				float nl = rng.next();
+				float nr = rng.next();
+				aL += C_HUSH_HI * (nl - aL);
+				bL += C_HUSH_LO * (nl - bL);
+				aR += C_HUSH_HI * (nr - aR);
+				bR += C_HUSH_LO * (nr - bR);
+				verb.process(mono * 0.5f);
+				l[i] = dl + verb.outL * 0.8f + (aL - bL) * hush;
+				r[i] = dr + verb.outR * 0.8f + (aR - bR) * hush;
 			}
 		}
 	}

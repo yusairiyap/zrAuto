@@ -408,8 +408,9 @@ provider doesn't offer a folder to pick, so Drive is manual only.
   a loop that saw nothing audible stopped itself and only woke when another sound changed (`isPlaying`/`isAnyPlaying`). The
   picture also leads the sound (`visualCurve`, full at half the fade). The settings chip is `ToolBarChip` like Data usage's.
 - **Twelve sounds** (a full row of four on the tablet grid): rain, rainy window (`Window`: indoor hush and drops ringing the
-  pane), thunder, fireplace, wind, ocean, stream, droplets (`Drips`: a plip = sine gliding up + tick, through `Reverb`, a
-  Freeverb-style 4 combs + 2 allpasses whose RT60 follows the Echo slider), underwater (`Bubbles`: low gliding bubbles, rushes,
+  pane), thunder, fireplace, wind, ocean, stream, leaf droplets (`Drips`: drops from wet leaves, each landing on a leaf (soft pat, a mid band of
+  noise + a short "tok") or in a puddle (a plip, a sine gliding up), mixed by the Landing slider, with showers when a gust shakes
+  the canopy, a faint hush and a small `Reverb`, a Freeverb-style 4 combs + 2 allpasses), underwater (`Bubbles`: low gliding bubbles, rushes,
   a swirling hum, muffled, small room), night, birds, and cozy café (`Cafe`, **no voices on purpose**: synthesized murmur never
   sounded human; it is room hum, china clinks, a spoon, dishes, a cup put down, the espresso machine and the shop bell in a small
   reverb). A new sound needs an `AmbienceEffect` (with its option strings), a `Voice` in `AmbienceSynth#create`, a scene branch

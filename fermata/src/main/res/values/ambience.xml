@@ -21,8 +21,8 @@
     <string name="ambience_ocean_sub">Waves rolling onto the shore</string>
     <string name="ambience_stream">Stream</string>
     <string name="ambience_stream_sub">A brook running over stones</string>
-    <string name="ambience_drops">Droplets</string>
-    <string name="ambience_drops_sub">Drips echoing in a cave</string>
+    <string name="ambience_drops">Leaf droplets</string>
+    <string name="ambience_drops_sub">Drops falling from wet leaves</string>
     <string name="ambience_bubbles">Underwater</string>
     <string name="ambience_bubbles_sub">Bubbles rising through the deep</string>
     <string name="ambience_night">Night</string>
@@ -81,9 +81,9 @@
     <string name="ambience_opt_stream">Flow</string>
     <string name="ambience_opt_stream_lo">Gentle</string>
     <string name="ambience_opt_stream_hi">Rapids</string>
-    <string name="ambience_opt_drops">Echo</string>
-    <string name="ambience_opt_drops_lo">Dry</string>
-    <string name="ambience_opt_drops_hi">Cavern</string>
+    <string name="ambience_opt_drops">Landing</string>
+    <string name="ambience_opt_drops_lo">Leaves</string>
+    <string name="ambience_opt_drops_hi">Puddle</string>
     <string name="ambience_opt_bubbles">Depth</string>
     <string name="ambience_opt_bubbles_lo">Shallow</string>
     <string name="ambience_opt_bubbles_hi">Deep</string>

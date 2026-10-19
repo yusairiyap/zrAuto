@@ -38,7 +38,12 @@ public final class AmbienceScene {
 	private static final int WDROPS = 14;
 	private static final int WDOTS = 28;
 	private static final int BOKEH = 12;
-	private static final float FALL = 0.35f;
+	private static final float FALL = 0.45f;
+	// A drop swells at a leaf's tip this long before it falls.
+	private static final float SWELL = 0.5f;
+	// Where the leaves hang (fractions of the width) and how high their tips are (of the height).
+	private static final float[] LEAF_X = {0.18f, 0.5f, 0.82f};
+	private static final float LEAF_Y = 0.16f;
 	private static final int E_RAIN = AmbienceEffect.RAIN.ordinal();
 	private static final int E_THUNDER = AmbienceEffect.THUNDER.ordinal();
 	private static final int E_FIRE = AmbienceEffect.FIRE.ordinal();
@@ -80,7 +85,8 @@ public final class AmbienceScene {
 	// Stream
 	private final float[] sparkX = new float[SPARKS], sparkY = new float[SPARKS],
 			sparkV = new float[SPARKS], sparkP = new float[SPARKS];
-	// Droplets: a drop falls for FALL seconds (age below zero), then rings spread from where it landed.
+	// Droplets: a drop swells at a leaf's tip, falls for FALL seconds (age below zero), then rings spread from
+	// where it landed.
 	private final float[] ripX = new float[RIPPLES], ripY = new float[RIPPLES], ripAge = new float[RIPPLES];
 	// Underwater
 	private final float[] bubX = new float[BUBBLES], bubY = new float[BUBBLES], bubR = new float[BUBBLES],
@@ -302,9 +308,10 @@ public final class AmbienceScene {
 			for (int i = 0; i < RIPPLES; i++) {
 				ripAge[i] += dt;
 				if ((ripAge[i] > 2f) && (rnd.nextFloat() < chance)) {
-					ripX[i] = 0.1f + 0.8f * rnd.nextFloat();
+					// From one of the leaves, straight down.
+					ripX[i] = LEAF_X[rnd.nextInt(LEAF_X.length)] + (rnd.nextFloat() - 0.5f) * 0.03f;
 					ripY[i] = 0.55f + 0.4f * rnd.nextFloat();
-					ripAge[i] = -FALL;
+					ripAge[i] = -FALL - SWELL;
 				}
 			}
 		}
@@ -591,17 +598,50 @@ public final class AmbienceScene {
 
 	private void drawDrops(Canvas c, int w, int h, float a) {
 		AmbienceEffect fx = AmbienceEffect.DROPS;
+		// Three leaves hanging from above, their tips pointing down.
+		paint.setStyle(Paint.Style.FILL);
+		for (int k = 0; k < LEAF_X.length; k++) {
+			float x = LEAF_X[k] * w;
+			float tipY = LEAF_Y * h;
+			float len = h * 0.2f;
+			float wid = dp * 15f;
+			float sway = (float) Math.sin(t * 0.6f + k * 2.1f) * 2.5f;
+			c.save();
+			c.rotate(sway, x, 0f);
+			path.rewind();
+			path.moveTo(x, tipY);
+			path.quadTo(x - wid, tipY - len * 0.5f, x, tipY - len);
+			path.quadTo(x + wid, tipY - len * 0.5f, x, tipY);
+			paint.setColor(withAlpha(0xFF7FB069, 0.3f * a));
+			c.drawPath(path, paint);
+			paint.setStyle(Paint.Style.STROKE);
+			paint.setStrokeWidth(dp * 1f);
+			paint.setColor(withAlpha(0xFFB7E08F, 0.3f * a));
+			c.drawLine(x, tipY, x, tipY - len, paint);
+			paint.setStyle(Paint.Style.FILL);
+			c.restore();
+		}
 		for (int i = 0; i < RIPPLES; i++) {
 			float age = ripAge[i];
 			if (age > 2f) continue;
 			float x = ripX[i] * w;
 			float y = ripY[i] * h;
-			if (age < 0f) {
-				// Still falling from the top, stretched by its speed.
-				float f = (age + FALL) / FALL;
+			float tipY = LEAF_Y * h;
+			if (age < -FALL) {
+				// Swelling at the tip.
+				float f = (age + FALL + SWELL) / SWELL;
 				paint.setStyle(Paint.Style.FILL);
 				paint.setColor(withAlpha(fx.tint, 0.85f * a));
-				c.drawOval(x - dp * 1.6f, y * f - dp * 5f, x + dp * 1.6f, y * f + dp * 2f, paint);
+				c.drawCircle(x, tipY + dp * 2f, dp * (1f + 2.2f * f), paint);
+				continue;
+			}
+			if (age < 0f) {
+				// Falling, faster and faster, stretched by its speed.
+				float f = (age + FALL) / FALL;
+				float yy = tipY + (y - tipY) * f * f;
+				paint.setStyle(Paint.Style.FILL);
+				paint.setColor(withAlpha(fx.tint, 0.85f * a));
+				c.drawOval(x - dp * 1.6f, yy - dp * 5f, x + dp * 1.6f, yy + dp * 2f, paint);
 				continue;
 			}
 			paint.setStyle(Paint.Style.STROKE);
@@ -612,7 +652,7 @@ public final class AmbienceScene {
 				if (t2 < 0f) continue;
 				float life = t2 / 1.7f;
 				if (life >= 1f) continue;
-				float r = dp * (4f + 52f * life);
+				float r = dp * (4f + 40f * life);
 				paint.setColor(withAlpha(fx.tint, 0.65f * a * (1f - life) * (1f - life)));
 				c.drawOval(x - r, y - r * 0.32f, x + r, y + r * 0.32f, paint);
 			}
