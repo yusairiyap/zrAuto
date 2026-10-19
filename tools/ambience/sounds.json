@@ -194,7 +194,8 @@
           "gain": 1.0,
           "name": "Relaxing river stream running water seamless loop",
           "author": "steaq",
-          "url": "https://freesound.org/people/steaq/sounds/548767/"
+          "url": "https://freesound.org/people/steaq/sounds/548767/",
+          "seamless": true
         }
       ],
       "alternatives": []
@@ -268,6 +269,117 @@
           "name": "Busy Coffee Shop Counter Field Recording",
           "author": "mhtaylor67",
           "url": "https://freesound.org/people/mhtaylor67/sounds/260062/"
+        }
+      ]
+    },
+    "roof": {
+      "title": "Rain on the roof",
+      "sources": [
+        {
+          "id": 577507,
+          "gain": 1.0,
+          "name": "Over 2 hours of rainfall on a tin roof",
+          "author": "Simon Spiers",
+          "url": "https://freesound.org/people/Simon Spiers/sounds/577507/"
+        }
+      ],
+      "alternatives": [
+        {
+          "id": 237941,
+          "name": "Rain from inside car",
+          "author": "jankooiker",
+          "url": "https://freesound.org/people/jankooiker/sounds/237941/"
+        },
+        {
+          "id": 140774,
+          "name": "Rain over a car",
+          "author": "Sam80",
+          "url": "https://freesound.org/people/Sam80/sounds/140774/"
+        },
+        {
+          "id": 404061,
+          "name": "Rain on metal roof with distant thunder",
+          "author": "DBlover",
+          "url": "https://freesound.org/people/DBlover/sounds/404061/"
+        }
+      ]
+    },
+    "street": {
+      "title": "Rainy street",
+      "sources": [
+        {
+          "id": 399822,
+          "gain": 1.0,
+          "name": "Cars passing in a rainy street",
+          "author": "BonnyOrbit",
+          "url": "https://freesound.org/people/BonnyOrbit/sounds/399822/"
+        }
+      ],
+      "alternatives": [
+        {
+          "id": 659620,
+          "name": "Soundscape of traffic.",
+          "author": "Tom_Kaszuba",
+          "url": "https://freesound.org/people/Tom_Kaszuba/sounds/659620/"
+        },
+        {
+          "id": 705049,
+          "name": "Small city ambience with traffic",
+          "author": "felix.blume",
+          "url": "https://freesound.org/people/felix.blume/sounds/705049/"
+        }
+      ]
+    },
+    "waterfall": {
+      "title": "Waterfall",
+      "sources": [
+        {
+          "id": 274259,
+          "gain": 1.0,
+          "name": "Waterfall Loop",
+          "author": "kwahmah_02",
+          "url": "https://freesound.org/people/kwahmah_02/sounds/274259/",
+          "seamless": true
+        }
+      ],
+      "alternatives": [
+        {
+          "id": 511076,
+          "name": "Ambiance_Waterfall_Loop_03",
+          "author": "Nox_Sound",
+          "url": "https://freesound.org/people/Nox_Sound/sounds/511076/"
+        },
+        {
+          "id": 511075,
+          "name": "Ambiance_Waterfall_Loop_04",
+          "author": "Nox_Sound",
+          "url": "https://freesound.org/people/Nox_Sound/sounds/511075/"
+        },
+        {
+          "id": 215712,
+          "name": "Waterfall 01 (loop)",
+          "author": "VKProduktion",
+          "url": "https://freesound.org/people/VKProduktion/sounds/215712/"
+        }
+      ]
+    },
+    "train": {
+      "title": "Train ride",
+      "sources": [
+        {
+          "id": 341208,
+          "gain": 1.0,
+          "name": "train interior ambience 1a",
+          "author": "Yoyodaman234",
+          "url": "https://freesound.org/people/Yoyodaman234/sounds/341208/"
+        }
+      ],
+      "alternatives": [
+        {
+          "id": 143205,
+          "name": "inside a train.wav",
+          "author": "bisanu6",
+          "url": "https://freesound.org/people/bisanu6/sounds/143205/"
         }
       ]
     }

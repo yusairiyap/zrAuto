@@ -392,7 +392,7 @@ public final class AmbienceCardView extends FrameLayout {
 
 	/** The Synthesized / Recorded choice and whether the recording is loaded yet. */
 	private void updateSource() {
-		boolean has = samples.has(fx);
+		boolean has = samples.has(fx) && !fx.realOnly;
 		srcRow.setVisibility(has ? VISIBLE : GONE);
 		if (!has) return;
 		boolean rec = engine.isRecorded(fx);

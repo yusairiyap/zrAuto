@@ -53,6 +53,10 @@ public final class AmbienceScene {
 	private static final int E_DROPS = AmbienceEffect.DROPS.ordinal();
 	private static final int E_BUBBLES = AmbienceEffect.BUBBLES.ordinal();
 	private static final int E_WINDOW = AmbienceEffect.WINDOW.ordinal();
+	private static final int E_ROOF = AmbienceEffect.ROOF.ordinal();
+	private static final int E_STREET = AmbienceEffect.STREET.ordinal();
+	private static final int E_WATERFALL = AmbienceEffect.WATERFALL.ordinal();
+	private static final int E_TRAIN = AmbienceEffect.TRAIN.ordinal();
 	private static final int E_CAFE = AmbienceEffect.CAFE.ordinal();
 	private static final int E_NIGHT = AmbienceEffect.NIGHT.ordinal();
 	private static final int E_BIRDS = AmbienceEffect.BIRDS.ordinal();
@@ -392,6 +396,10 @@ public final class AmbienceScene {
 		if (lv[E_CAFE] > 0.003f) drawCafe(c, w, h, lv[E_CAFE]);
 		if (lv[E_WINDOW] > 0.003f) drawWindow(c, w, h, lv[E_WINDOW]);
 		if (lv[E_FIRE] > 0.003f) drawFire(c, w, h, lv[E_FIRE]);
+		if (lv[E_WATERFALL] > 0.003f) drawWaterfall(c, w, h, lv[E_WATERFALL]);
+		if (lv[E_TRAIN] > 0.003f) drawTrain(c, w, h, lv[E_TRAIN]);
+		if (lv[E_STREET] > 0.003f) drawStreet(c, w, h, lv[E_STREET]);
+		if (lv[E_ROOF] > 0.003f) drawRoof(c, w, h, lv[E_ROOF]);
 		if (lv[E_RAIN] > 0.003f) drawRain(c, w, h, lv[E_RAIN], lv[E_WIND]);
 		if (flashT < 1f) drawLightning(c, w, h, Math.max(lv[E_THUNDER], 0.35f));
 	}
@@ -566,6 +574,82 @@ public final class AmbienceScene {
 				paint.setStrokeWidth(dp * 1.6f);
 				paint.setColor(withAlpha(0xFFFFFFFF, 0.3f * a));
 				c.drawPath(path2, paint);
+			}
+		}
+	}
+
+	/** Falling streaks of water that drift down the card, with mist at the bottom. */
+	private void drawWaterfall(Canvas c, int w, int h, float a) {
+		AmbienceEffect fx = AmbienceEffect.WATERFALL;
+		paint.setStyle(Paint.Style.STROKE);
+		paint.setStrokeWidth(dp * 2f);
+		paint.setStrokeCap(Paint.Cap.ROUND);
+		for (int k = 0; k < 9; k++) {
+			float x = w * (0.18f + 0.08f * k);
+			float ph = (t * (0.5f + 0.07f * (k % 4)) + k * 0.37f) % 1f;
+			float y0 = h * (ph - 0.25f), y1 = h * ph;
+			paint.setColor(withAlpha(fx.tint, 0.35f * a));
+			c.drawLine(x, Math.max(0f, y0), x, Math.min(h * 0.85f, y1), paint);
+		}
+		paint.setStrokeCap(Paint.Cap.BUTT);
+		paint.setStyle(Paint.Style.FILL);
+		for (int i = 0; i < 6; i++) {
+			float tw = 0.5f + 0.5f * (float) Math.sin(t * 1.3f + i * 1.9f);
+			paint.setColor(withAlpha(0xFFFFFFFF, 0.14f * a * tw));
+			c.drawCircle(w * (0.2f + 0.12f * i), h * 0.9f, dp * (14f + 6f * tw), paint);
+		}
+	}
+
+	/** Streaks of passing light moving across the card, over a dark road line. */
+	private void drawTrain(Canvas c, int w, int h, float a) {
+		AmbienceEffect fx = AmbienceEffect.TRAIN;
+		paint.setStyle(Paint.Style.FILL);
+		for (int k = 0; k < 5; k++) {
+			float ph = (t * (0.35f + 0.1f * k) + k * 0.23f) % 1f;
+			float x = w * (1.2f - 1.4f * ph);
+			paint.setColor(withAlpha(fx.tint, 0.3f * a));
+			c.drawRoundRect(x, h * (0.25f + 0.1f * k), x + w * 0.25f, h * (0.25f + 0.1f * k) + dp * 3f, dp * 2f, dp * 2f, paint);
+		}
+		paint.setColor(withAlpha(0xFFFFFFFF, 0.12f * a));
+		float sway = (float) Math.sin(t * 2.4f) * dp * 1.5f;
+		c.drawRect(0, h * 0.82f + sway, w, h * 0.82f + sway + dp * 2f, paint);
+	}
+
+	/** Headlights sweeping past with a wet glow, now and then. */
+	private void drawStreet(Canvas c, int w, int h, float a) {
+		AmbienceEffect fx = AmbienceEffect.STREET;
+		paint.setStyle(Paint.Style.FILL);
+		for (int k = 0; k < 2; k++) {
+			float ph = (t * 0.22f + k * 0.5f) % 1f;
+			float x = k == 0 ? w * (1.1f - 1.3f * ph) : w * (-0.1f + 1.3f * ph);
+			paint.setColor(withAlpha(fx.tint, 0.35f * a));
+			c.drawCircle(x, h * 0.78f, dp * 5f, paint);
+			paint.setColor(withAlpha(fx.tint, 0.12f * a));
+			c.drawCircle(x, h * 0.78f, dp * 16f, paint);
+			paint.setColor(withAlpha(fx.tint, 0.08f * a));
+			c.drawRect(x - dp * 18f, h * 0.84f, x + dp * 18f, h * 0.84f + dp * 2f, paint);
+		}
+	}
+
+	/** Heavy drumming drops bouncing off a roof line. */
+	private void drawRoof(Canvas c, int w, int h, float a) {
+		AmbienceEffect fx = AmbienceEffect.ROOF;
+		paint.setStyle(Paint.Style.STROKE);
+		paint.setStrokeWidth(dp * 1.6f);
+		paint.setColor(withAlpha(fx.tint, 0.25f * a));
+		c.drawLine(0, h * 0.8f, w * 0.5f, h * 0.62f, paint);
+		c.drawLine(w * 0.5f, h * 0.62f, w, h * 0.8f, paint);
+		paint.setStyle(Paint.Style.FILL);
+		for (int i = 0; i < 8; i++) {
+			float ph = (t * (1.1f + 0.15f * (i % 3)) + i * 0.31f) % 1f;
+			float x = w * (0.1f + 0.11f * i);
+			float roofY = h * (0.8f - 0.18f * (1f - Math.abs(x / w - 0.5f) * 2f));
+			paint.setColor(withAlpha(fx.tint, 0.45f * a * (1f - ph * 0.3f)));
+			float y = roofY * ph;
+			c.drawCircle(x, y, dp * 1.6f, paint);
+			if (ph > 0.9f) {
+				paint.setColor(withAlpha(0xFFFFFFFF, 0.35f * a));
+				c.drawCircle(x, roofY - dp * 2f, dp * 3f, paint);
 			}
 		}
 	}

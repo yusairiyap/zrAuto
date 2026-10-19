@@ -30,6 +30,17 @@
     <string name="ambience_birds">Forest birds</string>
     <string name="ambience_birds_sub">Birdsong at dawn</string>
 
+    <string name="ambience_roof">Tin roof rain</string>
+    <string name="ambience_roof_sub">Heavy rain drumming overhead</string>
+    <string name="ambience_street">Rainy street</string>
+    <string name="ambience_street_sub">Cars hissing by in the wet</string>
+    <string name="ambience_waterfall">Waterfall</string>
+    <string name="ambience_waterfall_sub">A steady roar of falling water</string>
+    <string name="ambience_train">Train ride</string>
+    <string name="ambience_train_sub">Rhythm of the rails from inside</string>
+    <string name="ambience_source">Sound source</string>
+    <string name="ambience_source_hint">Applies to every sound; each card can still differ</string>
+    <string name="ambience_source_mixed">Mixed</string>
     <string name="ambience_cafe">Cozy café</string>
     <string name="ambience_cafe_sub">Cups, steam and the hum of the counter</string>
     <string name="ambience_hero_idle">Pick a sound to set the mood</string>
@@ -97,7 +108,7 @@
     <string name="ambience_opt_cafe_lo">Quiet</string>
     <string name="ambience_opt_cafe_hi">Busy</string>
     <string name="ambience_src_synth">Synth</string>
-    <string name="ambience_src_rec">Recorded</string>
+    <string name="ambience_src_rec">Real</string>
     <string name="ambience_src_loading">Loading…</string>
     <string name="ambience_src_retry">Retry</string>
     <string name="ambience_tone">Tone</string>

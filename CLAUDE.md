@@ -439,6 +439,16 @@ provider doesn't offer a folder to pick, so Drive is manual only.
   60 s: a 10 s brook is a 10 s loop), loudness is matched with a soft limiter (`tanh`) that squashes only the peaks. The recording has its own slider pref (`AMBIENCE_TONE_<KEY>`), so Echo/Landing/Depth never change
   meaning. (An earlier design downloaded them from a release, built by a workflow with a Freesound API key; dropped as too
   much machinery for ~1 MB.)
+- **Real, not Recorded** (UI word). Settings: the tab's controls card has a Synth / Real row for every sound at once
+  (`AmbienceEngine#setAllRecorded`, mixed shows as "Mixed"); each card's tune page can still differ. The synth <-> real
+  crossfade is slow (`SOURCE_FADE_SEC` 3 s, equal-power). Loops are encoded as the loop repeated plus 0.25 s each side
+  and the manifest holds `frames`/`margin`; `AmbienceSamples#loopWindow` plays only that middle window, so Opus
+  pre-skip/padding (which Android does not trim) can no longer make a tick at the loop point. A source marked
+  `"seamless": true` in `sounds.json` (already a loop, e.g. the stream, waterfall) is not crossfaded again.
+- **Real-only sounds** (`AmbienceEffect#realOnly`: tin roof rain, rainy street with passing cars, waterfall, train ride)
+  have no synth voice (`AmbienceSynth.Silent`) and are hidden (`AmbienceEngine#isAvailable`) until their `.ogg` is in
+  assets. `sounds.json` lists `alternatives` per sound; `build_sounds.py` falls back to the first one downloaded.
+  Timer lengths now start 5, 10, 15 min.
 - **None of this has run on a device yet** (no emulator in the cloud session). If sound is silent, choppy or the weather
   looks wrong, look for `AMBIENCE` lines in the Diagnostic log first.
 

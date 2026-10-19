@@ -47,6 +47,8 @@ public final class AmbienceSamples {
 
 	private static final class Entry {
 		String file;
+		/** The loop's length and the lead-in before it in the file (at 48 kHz), see build_sounds.py; 0 = use it all. */
+		int frames, margin;
 		volatile State state = State.NONE;
 		final AmbienceSample voice = new AmbienceSample();
 	}
@@ -110,7 +112,11 @@ public final class AmbienceSamples {
 			JSONObject sounds = new JSONObject(bo.toString("UTF-8")).getJSONObject("sounds");
 			for (java.util.Iterator<String> it = sounds.keys(); it.hasNext(); ) {
 				String key = it.next();
-				entry(key).file = sounds.getJSONObject(key).getString("file");
+				JSONObject o = sounds.getJSONObject(key);
+				Entry en = entry(key);
+				en.file = o.getString("file");
+				en.frames = o.optInt("frames", 0);
+				en.margin = o.optInt("margin", 0);
 			}
 		} catch (java.io.FileNotFoundException none) {
 			// No recordings in this build.
@@ -167,7 +173,8 @@ public final class AmbienceSamples {
 					for (int n; (n = in.read(b)) > 0; ) out.write(b, 0, n);
 				}
 				Decoded d = decode(f);
-				entry.voice.set(d.pcm, d.channels, d.rate);
+				short[] pcm = loopWindow(d, entry.frames, entry.margin);
+				entry.voice.set(pcm, d.channels, d.rate);
 				entry.state = State.READY;
 				DiagnosticLog.log("AMBIENCE", "recording ready", e.key, d.pcm.length / d.channels, "frames");
 			} catch (Throwable ex) {
@@ -194,6 +201,22 @@ public final class AmbienceSamples {
 	// ---------------------------------------------------------------------------------------------
 	// Decoding
 	// ---------------------------------------------------------------------------------------------
+
+	/**
+	 * The loop out of the decoded file. The file holds the loop repeated a little more than once with
+	 * a lead-in and a tail (the signal is periodic), because a decoder may skip or add a few
+	 * milliseconds at either end; the window in the middle is a clean loop whatever it did.
+	 */
+	private static short[] loopWindow(Decoded d, int frames, int margin) {
+		if (frames <= 0) return d.pcm;
+		int ch = d.channels;
+		int total = d.pcm.length / ch;
+		int len = (int) Math.round(frames * d.rate / 48000.0);
+		int start = (int) Math.round(margin * d.rate / 48000.0);
+		if (total < len + 2) return d.pcm;
+		if (start + len > total) start = (total - len) / 2;
+		return java.util.Arrays.copyOfRange(d.pcm, start * ch, (start + len) * ch);
+	}
 
 	private static final class Decoded {
 		short[] pcm;

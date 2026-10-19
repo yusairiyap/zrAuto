@@ -35,6 +35,7 @@ final class AmbienceSynth {
 			case BUBBLES -> new Bubbles();
 			case WINDOW -> new Window();
 			case CAFE -> new Cafe();
+			case ROOF, STREET, WATERFALL, TRAIN -> new Silent();
 			case NIGHT -> new Night();
 			case BIRDS -> new Birds();
 		};
@@ -43,6 +44,15 @@ final class AmbienceSynth {
 	/** One-pole low-pass coefficient for a cut-off in Hz. */
 	static float coef(float fc) {
 		return (float) (1.0 - Math.exp(-TWO_PI * fc / SR));
+	}
+
+	/** The voice of a sound that only exists as a recording. */
+	static final class Silent extends Voice {
+		@Override
+		void render(float[] l, float[] r, int n, float lv, float opt) {
+			java.util.Arrays.fill(l, 0, n, 0f);
+			java.util.Arrays.fill(r, 0, n, 0f);
+		}
 	}
 
 	abstract static class Voice {

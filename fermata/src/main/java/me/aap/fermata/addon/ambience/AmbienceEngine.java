@@ -57,7 +57,9 @@ public final class AmbienceEngine {
 	/** The mix that was on last, as effect keys: what the on/off action brings back. */
 	public static final Pref<Supplier<String>> LAST_MIX = Pref.s("AMBIENCE_LAST_MIX", "rain");
 	/** The lengths the tab offers, in minutes (0 = no limit). */
-	public static final int[] LENGTHS = {0, 15, 30, 60, 120, 240, 480};
+	public static final int[] LENGTHS = {0, 5, 10, 15, 30, 60, 120, 240, 480};
+	/** How long the synthesized voice and the recording take to fade into each other. */
+	private static final float SOURCE_FADE_SEC = 3f;
 
 	private static final int SR = AmbienceSynth.SR;
 	private static final int BLOCK = 1024;
@@ -132,7 +134,7 @@ public final class AmbienceEngine {
 			layers[i].opt = layers[i].optTarget;
 			layers[i].toneTarget = toneOf(all[i]) / 100f;
 			layers[i].tone = layers[i].toneTarget;
-			layers[i].recorded = prefs().getBooleanPref(all[i].recorded);
+			layers[i].recorded = all[i].realOnly || prefs().getBooleanPref(all[i].recorded);
 		}
 	}
 
@@ -219,10 +221,47 @@ public final class AmbienceEngine {
 
 	/** Picks the recording (downloading it first when needed) or the synthesized voice. */
 	public void setRecorded(AmbienceEffect e, boolean on) {
+		if (e.realOnly) return;
 		prefs().applyBooleanPref(e.recorded, on);
 		layers[e.ordinal()].recorded = on;
 		if (on) AmbienceSamples.get().ensure(e);
 		else AmbienceSamples.get().release(e);
+		notifyChanged();
+	}
+
+	/** Whether the effect can be played at all: sounds that only exist as a recording need that recording. */
+	public boolean isAvailable(AmbienceEffect e) {
+		return !e.realOnly || AmbienceSamples.get().has(e);
+	}
+
+	/** Whether any sound has both a synthesized voice and a recording to choose between. */
+	public boolean hasSourceChoice() {
+		for (AmbienceEffect e : AmbienceEffect.values()) {
+			if (!e.realOnly && AmbienceSamples.get().has(e)) return true;
+		}
+		return false;
+	}
+
+	/** 0 when every sound with a choice is synthesized, 1 when every one is real, 2 when mixed. */
+	public int getSourceMode() {
+		boolean synth = false, real = false;
+		for (AmbienceEffect e : AmbienceEffect.values()) {
+			if (e.realOnly || !AmbienceSamples.get().has(e)) continue;
+			if (layers[e.ordinal()].recorded) real = true;
+			else synth = true;
+		}
+		return (synth && real) ? 2 : real ? 1 : 0;
+	}
+
+	/** Every sound with a choice to its recording or its synthesized voice at once (each card can be changed again). */
+	public void setAllRecorded(boolean on) {
+		for (AmbienceEffect e : AmbienceEffect.values()) {
+			if (e.realOnly || !AmbienceSamples.get().has(e)) continue;
+			prefs().applyBooleanPref(e.recorded, on);
+			layers[e.ordinal()].recorded = on;
+			if (on) AmbienceSamples.get().ensure(e);
+			else if (!layers[e.ordinal()].wanted) AmbienceSamples.get().release(e);
+		}
 		notifyChanged();
 	}
 
@@ -302,6 +341,7 @@ public final class AmbienceEngine {
 	// ---------------------------------------------------------------------------------------------
 
 	public void setOn(AmbienceEffect e, boolean on) {
+		if (on && !isAvailable(e)) return;
 		Layer ly = layers[e.ordinal()];
 		if (ly.wanted == on) return;
 		boolean wasAny = anyOn();
@@ -371,7 +411,7 @@ public final class AmbienceEngine {
 		if ((mix != null) && !mix.isEmpty()) {
 			for (String k : mix.split(",")) {
 				AmbienceEffect e = AmbienceEffect.byKey(k.trim());
-				if (e != null) {
+				if ((e != null) && isAvailable(e)) {
 					setOn(e, true);
 					any = true;
 				}
@@ -605,7 +645,8 @@ public final class AmbienceEngine {
 					// The synthesized voice, the recording, or a quick crossfade between them.
 					float m0 = ly.mix;
 					float mixT = (ly.recorded && ly.sample.isReady()) ? 1f : 0f;
-					float m1 = m0 + Math.max(-0.09f, Math.min(0.09f, mixT - m0));
+					float step = BLOCK / (SR * SOURCE_FADE_SEC);
+					float m1 = m0 + Math.max(-step, Math.min(step, mixT - m0));
 					ly.mix = m1;
 					float[] srcL = vl, srcR = vr;
 					if ((m0 < 1f) || (m1 < 1f)) ly.voice.render(vl, vr, BLOCK, ly.level, ly.opt);
@@ -616,9 +657,11 @@ public final class AmbienceEngine {
 							srcR = wr;
 						} else {
 							for (int i = 0; i < BLOCK; i++) {
-								float m = m0 + (m1 - m0) * i / BLOCK;
-								vl[i] = vl[i] * (1f - m) + wl[i] * m;
-								vr[i] = vr[i] * (1f - m) + wr[i] * m;
+								// Equal power: the two voices are unrelated, so no dip in the middle.
+								float m = (m0 + (m1 - m0) * i / BLOCK) * 1.5707964f;
+								float gs = (float) Math.cos(m), gr = (float) Math.sin(m);
+								vl[i] = vl[i] * gs + wl[i] * gr;
+								vr[i] = vr[i] * gs + wr[i] * gr;
 							}
 						}
 					}

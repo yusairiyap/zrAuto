@@ -53,6 +53,8 @@ public class AmbienceFragment extends MainActivityFragment implements ToolBarChi
 	private final AmbienceEngine engine = AmbienceEngine.get();
 	private final Runnable changed = this::syncControls;
 	private final List<TextView> chips = new ArrayList<>();
+	private LinearLayout srcRow;
+	private TextView srcSynth, srcReal, srcHint;
 	private final List<AmbienceCardView> cards = new ArrayList<>();
 	private Context palette;
 	private float dp;
@@ -157,7 +159,9 @@ public class AmbienceFragment extends MainActivityFragment implements ToolBarChi
 		grid.setClipChildren(false);
 		content.addView(grid, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.WRAP_CONTENT));
-		for (AmbienceEffect e : AmbienceEffect.values()) cards.add(new AmbienceCardView(ctx, e));
+		for (AmbienceEffect e : AmbienceEffect.values()) {
+			if (engine.isAvailable(e)) cards.add(new AmbienceCardView(ctx, e));
+		}
 		columns = 0;
 		buildGrid(2);
 		return scroll;
@@ -325,6 +329,26 @@ public class AmbienceFragment extends MainActivityFragment implements ToolBarChi
 		tlp.topMargin = px(8);
 		card.addView(hint, tlp);
 
+		// Sound source for every card at once; a card can still be set differently.
+		srcRow = new LinearLayout(palette);
+		srcRow.setGravity(Gravity.CENTER_VERTICAL);
+		LinearLayout st = new LinearLayout(palette);
+		st.setOrientation(LinearLayout.VERTICAL);
+		st.addView(label(R.string.ambience_source, 15, textPrimary, true));
+		srcHint = label(R.string.ambience_source_hint, 12.5f, textSecondary, false);
+		st.addView(srcHint);
+		srcRow.addView(st, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+		srcSynth = sourceChip(R.string.ambience_src_synth, false);
+		srcReal = sourceChip(R.string.ambience_src_rec, true);
+		LinearLayout.LayoutParams scp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(36));
+		scp.setMarginStart(px(8));
+		srcRow.addView(srcSynth, scp);
+		srcRow.addView(srcReal, scp);
+		LinearLayout.LayoutParams srp = new LinearLayout.LayoutParams(
+				ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		srp.topMargin = px(16);
+		card.addView(srcRow, srp);
+
 		// Pause with playback: here, beside the length it belongs with, as well as in the settings.
 		LinearLayout follow = new LinearLayout(palette);
 		follow.setGravity(Gravity.CENTER_VERTICAL);
@@ -346,6 +370,18 @@ public class AmbienceFragment extends MainActivityFragment implements ToolBarChi
 		flp.topMargin = px(16);
 		card.addView(follow, flp);
 		return card;
+	}
+
+	private TextView sourceChip(int text, boolean real) {
+		TextView chip = label(text, 14, textPrimary, true);
+		chip.setGravity(Gravity.CENTER);
+		chip.setPadding(px(16), 0, px(16), 0);
+		chip.setBackground(new GradientDrawable());
+		((GradientDrawable) chip.getBackground()).setCornerRadius(px(18));
+		chip.setClickable(true);
+		chip.setFocusable(true);
+		chip.setOnClickListener(v -> engine.setAllRecorded(real));
+		return chip;
 	}
 
 	private TextView label(int res, float sp, int color, boolean bold) {
@@ -390,6 +426,14 @@ public class AmbienceFragment extends MainActivityFragment implements ToolBarChi
 		masterValue.setText(getString(R.string.ambience_percent, m));
 		int len = engine.getLengthMinutes();
 		for (TextView chip : chips) styleChip(chip, ((Integer) chip.getTag()) == len);
+		if (srcRow != null) {
+			boolean choice = engine.hasSourceChoice();
+			srcRow.setVisibility(choice ? View.VISIBLE : View.GONE);
+			int mode = engine.getSourceMode();
+			styleChip(srcSynth, mode == 0);
+			styleChip(srcReal, mode == 1);
+			srcHint.setText(mode == 2 ? R.string.ambience_source_mixed : R.string.ambience_source_hint);
+		}
 		boolean follow = AmbienceEngine.prefs().getBooleanPref(AmbienceEngine.FOLLOW);
 		if ((followSwitch != null) && (followSwitch.isChecked() != follow)) {
 			settingSwitch = true;

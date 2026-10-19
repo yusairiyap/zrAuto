@@ -22,6 +22,10 @@ public enum AmbienceEffect {
 	WINDOW("window", R.string.ambience_window, R.string.ambience_window_sub, R.drawable.ambience_window,
 			0xFFA9C4E6, 0xFF1B2433, 50,
 			R.string.ambience_opt_window, R.string.ambience_opt_window_lo, R.string.ambience_opt_window_hi),
+	ROOF("roof", R.string.ambience_roof, R.string.ambience_roof_sub, R.drawable.ambience_roof,
+			0xFF9FB4C8, 0xFF1C242E, 60, R.string.ambience_tone, R.string.ambience_tone_lo, R.string.ambience_tone_hi, true),
+	STREET("street", R.string.ambience_street, R.string.ambience_street_sub, R.drawable.ambience_street,
+			0xFFFF6B9D, 0xFF2A1226, 60, R.string.ambience_tone, R.string.ambience_tone_lo, R.string.ambience_tone_hi, true),
 	THUNDER("thunder", R.string.ambience_thunder, R.string.ambience_thunder_sub,
 			R.drawable.ambience_thunder, 0xFFB69CFF, 0xFF1D1636, 55,
 			R.string.ambience_opt_thunder, R.string.ambience_opt_thunder_lo, R.string.ambience_opt_thunder_hi),
@@ -37,6 +41,8 @@ public enum AmbienceEffect {
 	STREAM("stream", R.string.ambience_stream, R.string.ambience_stream_sub,
 			R.drawable.ambience_stream, 0xFF6EE0B0, 0xFF0B2E26, 55,
 			R.string.ambience_opt_stream, R.string.ambience_opt_stream_lo, R.string.ambience_opt_stream_hi),
+	WATERFALL("waterfall", R.string.ambience_waterfall, R.string.ambience_waterfall_sub, R.drawable.ambience_waterfall,
+			0xFFB2E4FF, 0xFF0F2B3F, 60, R.string.ambience_tone, R.string.ambience_tone_lo, R.string.ambience_tone_hi, true),
 	DROPS("drops", R.string.ambience_drops, R.string.ambience_drops_sub, R.drawable.ambience_drops,
 			0xFF9AE0F5, 0xFF0A2431, 50,
 			R.string.ambience_opt_drops, R.string.ambience_opt_drops_lo, R.string.ambience_opt_drops_hi),
@@ -49,6 +55,8 @@ public enum AmbienceEffect {
 	BIRDS("birds", R.string.ambience_birds, R.string.ambience_birds_sub, R.drawable.ambience_birds,
 			0xFFA6E86B, 0xFF1B3314, 50,
 			R.string.ambience_opt_birds, R.string.ambience_opt_birds_lo, R.string.ambience_opt_birds_hi),
+	TRAIN("train", R.string.ambience_train, R.string.ambience_train_sub, R.drawable.ambience_train,
+			0xFFE07A5F, 0xFF2E1A14, 60, R.string.ambience_tone, R.string.ambience_tone_lo, R.string.ambience_tone_hi, true),
 	CAFE("cafe", R.string.ambience_cafe, R.string.ambience_cafe_sub, R.drawable.ambience_cafe,
 			0xFFD9A066, 0xFF2E1D10, 55,
 			R.string.ambience_opt_cafe, R.string.ambience_opt_cafe_lo, R.string.ambience_opt_cafe_hi);
@@ -68,6 +76,8 @@ public enum AmbienceEffect {
 	public final int defLevel;
 	public final Pref<IntSupplier> intensity;
 	/** The sound's own character slider (0 to 100, 50 is how it was designed): its name and its two ends. */
+	/** No synthesized voice at all: only the recording plays (and the card is hidden when there is none). */
+	public final boolean realOnly;
 	public final Pref<IntSupplier> option;
 	/** Whether the recorded loop (see {@link AmbienceSamples}) is wanted instead of the synthesized voice. */
 	public final Pref<BooleanSupplier> recorded;
@@ -82,6 +92,12 @@ public enum AmbienceEffect {
 
 	AmbienceEffect(String key, int name, int subtitle, int icon, int tint, int deep, int defLevel,
 								 int optName, int optLow, int optHigh) {
+		this(key, name, subtitle, icon, tint, deep, defLevel, optName, optLow, optHigh, false);
+	}
+
+	AmbienceEffect(String key, int name, int subtitle, int icon, int tint, int deep, int defLevel,
+								 int optName, int optLow, int optHigh, boolean realOnly) {
+		this.realOnly = realOnly;
 		this.key = key;
 		this.name = name;
 		this.subtitle = subtitle;

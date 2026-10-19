@@ -4,6 +4,8 @@
     "drops": {
       "file": "drops.ogg",
       "seconds": 8,
+      "frames": 427925,
+      "margin": 12000,
       "title": "Leaf droplets",
       "credits": [
         {
@@ -18,6 +20,8 @@
     "bubbles": {
       "file": "bubbles.ogg",
       "seconds": 60,
+      "frames": 2880000,
+      "margin": 12000,
       "title": "Underwater",
       "credits": [
         {
@@ -39,6 +43,8 @@
     "rain": {
       "file": "rain.ogg",
       "seconds": 51,
+      "frames": 2448000,
+      "margin": 12000,
       "title": "Rain",
       "credits": [
         {
@@ -53,6 +59,8 @@
     "window": {
       "file": "window.ogg",
       "seconds": 58,
+      "frames": 2829781,
+      "margin": 12000,
       "title": "Rainy window",
       "credits": [
         {
@@ -67,6 +75,8 @@
     "fire": {
       "file": "fire.ogg",
       "seconds": 57,
+      "frames": 2736000,
+      "margin": 12000,
       "title": "Fireplace",
       "credits": [
         {
@@ -81,6 +91,8 @@
     "wind": {
       "file": "wind.ogg",
       "seconds": 60,
+      "frames": 2880000,
+      "margin": 12000,
       "title": "Wind",
       "credits": [
         {
@@ -95,6 +107,8 @@
     "ocean": {
       "file": "ocean.ogg",
       "seconds": 60,
+      "frames": 2880000,
+      "margin": 12000,
       "title": "Ocean",
       "credits": [
         {
@@ -108,7 +122,9 @@
     },
     "stream": {
       "file": "stream.ogg",
-      "seconds": 7,
+      "seconds": 10,
+      "frames": 480000,
+      "margin": 12000,
       "title": "Stream",
       "credits": [
         {
@@ -123,6 +139,8 @@
     "night": {
       "file": "night.ogg",
       "seconds": 35,
+      "frames": 1682451,
+      "margin": 12000,
       "title": "Night",
       "credits": [
         {
@@ -137,6 +155,8 @@
     "birds": {
       "file": "birds.ogg",
       "seconds": 60,
+      "frames": 2880000,
+      "margin": 12000,
       "title": "Forest birds",
       "credits": [
         {
@@ -151,6 +171,8 @@
     "cafe": {
       "file": "cafe.ogg",
       "seconds": 60,
+      "frames": 2880000,
+      "margin": 12000,
       "title": "Cozy caf\u00e9",
       "credits": [
         {
