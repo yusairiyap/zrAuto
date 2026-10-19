@@ -389,7 +389,9 @@ public class InfoOverlayView extends LinearLayout {
 
 	private void updatePowerListenerState() {
 		me.aap.fermata.addon.power.PowerUsageTracker t = me.aap.fermata.addon.power.PowerUsageTracker.get();
-		if (isAttachedToWindow() && showPower) {
+		// Only while it can be seen: a hidden tab's overlay stays attached, and reading the battery
+		// every second for nobody would be a waste.
+		if (isAttachedToWindow() && showPower && isShown()) {
 			if (!powerListenerRegistered) {
 				t.addListener(powerListener);
 				powerListenerRegistered = true;
@@ -399,6 +401,12 @@ public class InfoOverlayView extends LinearLayout {
 			powerListenerRegistered = false;
 			t.removeListener(powerListener);
 		}
+	}
+
+	@Override
+	public void onVisibilityAggregated(boolean isVisible) {
+		super.onVisibilityAggregated(isVisible);
+		if (showPower) updatePowerListenerState();
 	}
 
 	private void updatePowerText() {

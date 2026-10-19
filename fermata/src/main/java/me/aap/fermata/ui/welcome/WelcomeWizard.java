@@ -162,7 +162,7 @@ public final class WelcomeWizard {
 	 */
 	public static void maybeShow(@NonNull MainActivityDelegate a) {
 		MainActivityPrefs p = a.getPrefs();
-		if (p.getBooleanPref(DONE) || (open != null) || a.isCarActivity()) return;
+		if (p.getBooleanPref(DONE) || isOpen() || a.isCarActivity()) return;
 		if (!isFreshInstall(a.getContext())) {
 			p.applyBooleanPref(DONE, true);
 			return;
@@ -182,7 +182,7 @@ public final class WelcomeWizard {
 
 	/** Shows the wizard from its first page (Settings &gt; Other, or a new install). */
 	public static void show(@NonNull MainActivityDelegate a) {
-		if (open != null) return;
+		if (isOpen()) return;
 		ViewGroup host = a.findViewById(R.id.main_activity);
 		if ((host == null) || (host.getWidth() == 0)) {
 			DiagnosticLog.log("WELCOME", "no view to show the wizard over");
@@ -193,8 +193,19 @@ public final class WelcomeWizard {
 		w.build();
 	}
 
+	/** Whether the wizard is on screen; one left over from a screen that has gone is forgotten. */
+	private static boolean isOpen() {
+		WelcomeWizard w = open;
+		if (w == null) return false;
+		if ((w.overlay != null) && (w.overlay.getParent() != null) && !w.closing) return true;
+		w.stopKeySimulator();
+		open = null;
+		return false;
+	}
+
 	/** Back: the picker if one is up, else the page before, else the wizard closes. */
 	public static boolean onBack() {
+		if (!isOpen()) return false;
 		WelcomeWizard w = open;
 		if (w == null) return false;
 		if (w.picker != null) {
