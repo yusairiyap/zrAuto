@@ -445,7 +445,7 @@ provider doesn't offer a folder to pick, so Drive is manual only.
   and the manifest holds `frames`/`margin`; `AmbienceSamples#loopWindow` plays only that middle window, so Opus
   pre-skip/padding (which Android does not trim) can no longer make a tick at the loop point. A source marked
   `"seamless": true` in `sounds.json` (already a loop, e.g. the stream, waterfall) is not crossfaded again.
-- **Real-only sounds** (`AmbienceEffect#realOnly`: tin roof rain, rainy street with passing cars, waterfall, train ride)
+- **Real-only sounds** (`AmbienceEffect#realOnly`: umbrella rain, rainy street with passing cars, waterfall, train ride)
   have no synth voice (`AmbienceSynth.Silent`) and are hidden (`AmbienceEngine#isAvailable`) until their `.ogg` is in
   assets. `sounds.json` lists `alternatives` per sound; `build_sounds.py` falls back to the first one downloaded.
   Timer lengths now start 5, 10, 15 min.

@@ -53,7 +53,7 @@ public final class AmbienceScene {
 	private static final int E_DROPS = AmbienceEffect.DROPS.ordinal();
 	private static final int E_BUBBLES = AmbienceEffect.BUBBLES.ordinal();
 	private static final int E_WINDOW = AmbienceEffect.WINDOW.ordinal();
-	private static final int E_ROOF = AmbienceEffect.ROOF.ordinal();
+	private static final int E_UMBRELLA = AmbienceEffect.UMBRELLA.ordinal();
 	private static final int E_STREET = AmbienceEffect.STREET.ordinal();
 	private static final int E_WATERFALL = AmbienceEffect.WATERFALL.ordinal();
 	private static final int E_TRAIN = AmbienceEffect.TRAIN.ordinal();
@@ -399,7 +399,7 @@ public final class AmbienceScene {
 		if (lv[E_WATERFALL] > 0.003f) drawWaterfall(c, w, h, lv[E_WATERFALL]);
 		if (lv[E_TRAIN] > 0.003f) drawTrain(c, w, h, lv[E_TRAIN]);
 		if (lv[E_STREET] > 0.003f) drawStreet(c, w, h, lv[E_STREET]);
-		if (lv[E_ROOF] > 0.003f) drawRoof(c, w, h, lv[E_ROOF]);
+		if (lv[E_UMBRELLA] > 0.003f) drawUmbrella(c, w, h, lv[E_UMBRELLA]);
 		if (lv[E_RAIN] > 0.003f) drawRain(c, w, h, lv[E_RAIN], lv[E_WIND]);
 		if (flashT < 1f) drawLightning(c, w, h, Math.max(lv[E_THUNDER], 0.35f));
 	}
@@ -631,9 +631,9 @@ public final class AmbienceScene {
 		}
 	}
 
-	/** Heavy drumming drops bouncing off a roof line. */
-	private void drawRoof(Canvas c, int w, int h, float a) {
-		AmbienceEffect fx = AmbienceEffect.ROOF;
+	/** Drops pattering on an umbrella canopy. */
+	private void drawUmbrella(Canvas c, int w, int h, float a) {
+		AmbienceEffect fx = AmbienceEffect.UMBRELLA;
 		paint.setStyle(Paint.Style.STROKE);
 		paint.setStrokeWidth(dp * 1.6f);
 		paint.setColor(withAlpha(fx.tint, 0.25f * a));

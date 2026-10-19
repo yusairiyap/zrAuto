@@ -30,8 +30,8 @@
     <string name="ambience_birds">Forest birds</string>
     <string name="ambience_birds_sub">Birdsong at dawn</string>
 
-    <string name="ambience_roof">Tin roof rain</string>
-    <string name="ambience_roof_sub">Heavy rain drumming overhead</string>
+    <string name="ambience_umbrella">Umbrella rain</string>
+    <string name="ambience_umbrella_sub">Close patter on the canopy</string>
     <string name="ambience_street">Rainy street</string>
     <string name="ambience_street_sub">Cars hissing by in the wet</string>
     <string name="ambience_waterfall">Waterfall</string>

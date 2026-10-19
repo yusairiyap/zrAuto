@@ -22,7 +22,7 @@ public enum AmbienceEffect {
 	WINDOW("window", R.string.ambience_window, R.string.ambience_window_sub, R.drawable.ambience_window,
 			0xFFA9C4E6, 0xFF1B2433, 50,
 			R.string.ambience_opt_window, R.string.ambience_opt_window_lo, R.string.ambience_opt_window_hi),
-	ROOF("roof", R.string.ambience_roof, R.string.ambience_roof_sub, R.drawable.ambience_roof,
+	UMBRELLA("umbrella", R.string.ambience_umbrella, R.string.ambience_umbrella_sub, R.drawable.ambience_umbrella,
 			0xFF9FB4C8, 0xFF1C242E, 60, R.string.ambience_tone, R.string.ambience_tone_lo, R.string.ambience_tone_hi, true),
 	STREET("street", R.string.ambience_street, R.string.ambience_street_sub, R.drawable.ambience_street,
 			0xFFFF6B9D, 0xFF2A1226, 60, R.string.ambience_tone, R.string.ambience_tone_lo, R.string.ambience_tone_hi, true),

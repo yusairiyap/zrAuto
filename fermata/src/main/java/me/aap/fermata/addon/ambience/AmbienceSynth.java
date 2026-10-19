@@ -35,7 +35,7 @@ final class AmbienceSynth {
 			case BUBBLES -> new Bubbles();
 			case WINDOW -> new Window();
 			case CAFE -> new Cafe();
-			case ROOF, STREET, WATERFALL, TRAIN -> new Silent();
+			case UMBRELLA, STREET, WATERFALL, TRAIN -> new Silent();
 			case NIGHT -> new Night();
 			case BIRDS -> new Birds();
 		};

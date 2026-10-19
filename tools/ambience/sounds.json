@@ -272,38 +272,6 @@
         }
       ]
     },
-    "roof": {
-      "title": "Rain on the roof",
-      "sources": [
-        {
-          "id": 577507,
-          "gain": 1.0,
-          "name": "Over 2 hours of rainfall on a tin roof",
-          "author": "Simon Spiers",
-          "url": "https://freesound.org/people/Simon Spiers/sounds/577507/"
-        }
-      ],
-      "alternatives": [
-        {
-          "id": 237941,
-          "name": "Rain from inside car",
-          "author": "jankooiker",
-          "url": "https://freesound.org/people/jankooiker/sounds/237941/"
-        },
-        {
-          "id": 140774,
-          "name": "Rain over a car",
-          "author": "Sam80",
-          "url": "https://freesound.org/people/Sam80/sounds/140774/"
-        },
-        {
-          "id": 404061,
-          "name": "Rain on metal roof with distant thunder",
-          "author": "DBlover",
-          "url": "https://freesound.org/people/DBlover/sounds/404061/"
-        }
-      ]
-    },
     "street": {
       "title": "Rainy street",
       "sources": [
@@ -382,6 +350,19 @@
           "url": "https://freesound.org/people/bisanu6/sounds/143205/"
         }
       ]
+    },
+    "umbrella": {
+      "title": "Umbrella rain",
+      "sources": [
+        {
+          "id": 0,
+          "gain": 1.0,
+          "name": "TODO: id of the chosen umbrella rain",
+          "author": "",
+          "url": ""
+        }
+      ],
+      "alternatives": []
     }
   }
 }
