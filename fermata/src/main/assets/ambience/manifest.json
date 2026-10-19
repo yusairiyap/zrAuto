@@ -147,6 +147,20 @@
           "url": "https://freesound.org/people/SamsterBirdies/sounds/578523/"
         }
       ]
+    },
+    "cafe": {
+      "file": "cafe.ogg",
+      "seconds": 60,
+      "title": "Cozy caf\u00e9",
+      "credits": [
+        {
+          "id": 334641,
+          "title": "ps3f foz pti cafeteria manha",
+          "author": "paisagemsonoraunila",
+          "license": "CC0",
+          "url": "https://freesound.org/people/paisagemsonoraunila/sounds/334641/"
+        }
+      ]
     }
   }
 }
