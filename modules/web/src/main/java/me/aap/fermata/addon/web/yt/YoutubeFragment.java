@@ -158,19 +158,28 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 
 		String url;
 		boolean pause;
+		boolean quiet;
 
 		if (state != null) {
 			url = state.getString("url", DEFAULT_URL);
 			pause = state.getBoolean("pause", false);
+			quiet = !state.containsKey("pause") || pause;
 		} else {
 			url = DEFAULT_URL;
 			pause = false;
+			quiet = false;
 		}
 
 		MainActivityDelegate.getActivityDelegate(view.getContext()).onSuccess(a -> {
 			YoutubeWebView webView = a.findViewById(R.id.ytWebView);
 			initWebView(webView, addon, view);
 			registerListeners(a);
+			// Restored after the app was killed, with YouTube not playing back then (another engine had
+			// the session, or it was paused): the reloaded video must not start by itself.
+			if (quiet && !DEFAULT_URL.equals(url)) {
+				YoutubeMediaEngine eng = webView.getEngine();
+				if (eng != null) eng.quietRestoredPage();
+			}
 			webView.loadUrl(DEFAULT_URL);
 			if (!DEFAULT_URL.equals(url)) a.post(() -> webView.loadUrl(url));
 			if (pause) {

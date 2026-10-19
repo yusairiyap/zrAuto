@@ -456,6 +456,13 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   element over when an effect really changes the sound (`anyEffectEnabled` checks values, not just switches), and
   with effects turned off afterwards the next queue switch (not in fullscreen) loads a page instead (`routedButIdle`, the
   'reload' result of `navigateToVideoJs`) to get the plain path back. `fade=gain` vs `element` in the YT media log.
+- **A YouTube video can stop at its very end with no `ended`** (the last piece of the stream never arrives, seen
+  with the screen off; YouTube's player then pauses the element itself): the pause listener in
+  `YoutubeWebView#attachListeners` reports it as `JS_VIDEO_ENDED` with `'stuck'` when no real `ended` follows within
+  1.5 s (`YoutubeMediaEngine#stuckAtEnd`, skipped when the app asked for that pause), and `play()` rewinds a video
+  stopped within 1.5 s of its end. Before, Repeat One stopped there and play only buffered until the stall fallback.
+- **A page restored after the app was killed** (the fragment's saved `url`, with YouTube not playing then) is kept
+  quiet until asked (`YoutubeMediaEngine#quietRestoredPage`): its autoplay used to start the old song on app open.
 - **Previous / Next go nowhere past the ends of a list**: on the first / last song of the Music queue (its
   play order), a playlist or Favorites with Repeat off (`MediaSessionCallback#isAtListEdge`; for YouTube, the
   engine's queue item; a playlist/Favorites with Shuffle on never counts) they are dimmed and take no taps in the

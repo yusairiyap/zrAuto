@@ -299,6 +299,24 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	// see playing(), which keeps it from taking the session back on its own.
 	private boolean yielded;
 
+	// Until when (SystemClock#elapsedRealtime()) the page the system restored at the app's start keeps
+	// quiet even on screen; see quietRestoredPage().
+	private long restoredQuietUntil;
+	private static final long RESTORED_QUIET_MS = 15_000L;
+
+	/**
+	 * The app came back after Android killed it, and the page reloads the video it last showed. That
+	 * page plays it by itself as it loads, and with nothing owning the session it took over: the old
+	 * YouTube song started on its own when the app was opened. Treated like a page that gave way to a
+	 * local file (see playing()) until something asks it to play, even while it's on screen for the
+	 * first seconds, when its own autoplay starts.
+	 */
+	void quietRestoredPage() {
+		DiagnosticLog.log("YT", "restored page kept quiet until asked");
+		yielded = true;
+		restoredQuietUntil = SystemClock.elapsedRealtime() + RESTORED_QUIET_MS;
+	}
+
 	private void leavePageForLocal() {
 		yielded = true;
 		// As the engine's own pause() records it: a pause the page reports next is the app's doing.
@@ -401,7 +419,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// then give way to the YouTube video again. A tap on a video on the page, a video the app
 		// asked for, or a play pressed on the page while it's on screen still take over.
 		if (yielded && (cb.getEngine() != this) && (addon.getPendingVideoId() == null) &&
-				!expectingPageNav && !recentLinkClick && !isUserPickPending() && !isPageInFront()) {
+				!expectingPageNav && !recentLinkClick && !isUserPickPending() &&
+				(!isPageInFront() || (SystemClock.elapsedRealtime() < restoredQuietUntil))) {
 			MediaEngine owner = cb.getEngine();
 			if ((owner == null) || (owner.getId() != MEDIA_ENG_YT)) {
 				DiagnosticLog.log("YT", "page played by itself after giving way: silenced", "id=" + actualId,
@@ -671,6 +690,18 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		web.replay();
 	}
 
+	/**
+	 * The page's video stopped at its very end with no 'ended' (see YoutubeWebView's pause listener):
+	 * the end, as far as anyone listening is concerned. Not when the pause was the app's or the user's
+	 * own (a pause tapped in the last second), or the video is already over.
+	 */
+	void stuckAtEnd() {
+		if ((cb.getEngine() != this) || lastPauseAsked || (current == null) || (current == end)) return;
+		DiagnosticLog.log("YT", "stopped at the end with no 'ended': treated as ended",
+				"id=" + currentVideoId);
+		ended();
+	}
+
 	void ended() {
 		// Repeat One loops whatever video is currently playing, regardless of whether it's part of a
 		// Favorites/Playlist queue (see YoutubeAddon#isRepeatOneEnabled()) -- handled here directly,
@@ -878,10 +909,14 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		return underWay && (SystemClock.elapsedRealtime() - switchStartedAt < SWITCH_PAUSE_IGNORE_MS);
 	}
 
+	// Whether the last pause paused() passed on was asked for by the app (see stuckAtEnd()).
+	private boolean lastPauseAsked;
+
 	void paused() {
 		// Silenced because another engine took over (see acceptQueueResolved() and the Music tab's
 		// MusicPlayer#playTrack()): that pause must not pause the engine that's playing now.
 		if (cb.getEngine() != this) return;
+		lastPauseAsked = appRequestedPause;
 		if (isSwitchPause()) {
 			DiagnosticLog.log("YT", "page paused during a switch: ignored", "id=" + currentVideoId);
 			return;
