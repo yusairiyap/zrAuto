@@ -456,6 +456,16 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   element over when an effect really changes the sound (`anyEffectEnabled` checks values, not just switches), and
   with effects turned off afterwards the next queue switch (not in fullscreen) loads a page instead (`routedButIdle`, the
   'reload' result of `navigateToVideoJs`) to get the plain path back. `fade=gain` vs `element` in the YT media log.
+- **A YouTube video can stop at its very end with no `ended`** (the last piece of the stream never arrives, seen
+  with the screen off; YouTube's player then pauses the element itself, or it just waits until the stall check plays
+  a download): `endCheck` in `YoutubeWebView#attachListeners` (on `pause` and `waiting` in the last 5 s) reports it
+  as `JS_VIDEO_ENDED` with `'stuck'` when no real `ended` or progress follows within 2 s
+  (`YoutubeMediaEngine#stuckAtEnd`, skipped for a pause the app asked for), well before the 10 s stall, and `play()`
+  rewinds a video stopped within 1.5 s of its end. A third form: YouTube's player ends it itself, back to 0:00 under its
+  replay button (player state 0) with no `ended`; `endCheck` reports that state at any position (`stuck:state`), and
+  `play()` restarts it through the player API (`seekTo(0)` + `playVideo()`), since the element's `play()` just waits there. Before, Repeat One stopped there and play only buffered until the stall fallback.
+- **A page restored after the app was killed** (the fragment's saved `url`, with YouTube not playing then) is kept
+  quiet until asked (`YoutubeMediaEngine#quietRestoredPage`): its autoplay used to start the old song on app open.
 - **Previous / Next go nowhere past the ends of a list**: on the first / last song of the Music queue (its
   play order), a playlist or Favorites with Repeat off (`MediaSessionCallback#isAtListEdge`; for YouTube, the
   engine's queue item; a playlist/Favorites with Shuffle on never counts) they are dimmed and take no taps in the
@@ -511,7 +521,9 @@ translated strings across many locales, **ask the user before proceeding** rathe
 - **Share zrAuto app** (Settings > Other): `ShareSource#createApp` offers the installed base APK as a
   `ShareOffer.KIND_APP`; the receiver keeps it in `Shared/<title>` and `ShareImporter#offerInstall` asks via
   `TopConfirm`, then opens the installer through the Auto flavor's FileProvider (the mobile flavor has none, it
-  just says where the file is). Split installs (app bundles) can't be shared.
+  just says where the file is). Split installs (app bundles) can't be shared. Once installed, the received file is
+  deleted at the next app start (`share/ReceivedAppCleanup`, from `FermataApplication#onCreate`): an `.apk` under
+  `Shared/*/` that is byte for byte the installed `sourceDir` APK; any other `.apk` is left alone.
 - **Android Auto session limit** (`addon/data/DataSessionLimit`): a session runs from Android Auto connecting
   to disconnecting (car activity, mirroring, or the phone's car UI mode), polled with each
   `DataUsageTracker` reading, counting what it books (mobile only when the tracker counts mobile only). Set on
