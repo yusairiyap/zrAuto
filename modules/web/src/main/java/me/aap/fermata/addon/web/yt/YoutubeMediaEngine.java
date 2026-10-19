@@ -362,6 +362,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	void playing(String data) {
+		lastPauseAsked = false;
 		boolean wasBuffering = waitingSince != 0;
 		clearStall();
 		// Every confirmed-playing moment re-arms the retry guard in paused() below -- not just an
@@ -691,14 +692,19 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	/**
-	 * The page's video stopped at its very end with no 'ended' (see YoutubeWebView's pause listener):
-	 * the end, as far as anyone listening is concerned. Not when the pause was the app's or the user's
-	 * own (a pause tapped in the last second), or the video is already over.
+	 * The page's video stopped at its very end with no 'ended' (paused there, or waiting for data that
+	 * never comes; see endCheck in YoutubeWebView#attachListeners()): the end, as far as anyone
+	 * listening is concerned. Before the stall check takes it for a lost connection and plays a
+	 * download instead. Not when the pause was the app's or the user's own (a pause tapped in the last
+	 * seconds), or the video is already over.
 	 */
 	void stuckAtEnd() {
-		if ((cb.getEngine() != this) || lastPauseAsked || (current == null) || (current == end)) return;
+		if ((cb.getEngine() != this) || (current == null) || (current == end)) return;
+		boolean stalled = waitingSince != 0;
+		if (!stalled && lastPauseAsked) return;
 		DiagnosticLog.log("YT", "stopped at the end with no 'ended': treated as ended",
-				"id=" + currentVideoId);
+				"id=" + currentVideoId, stalled ? "waiting" : "paused");
+		clearStall();
 		ended();
 	}
 

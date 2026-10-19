@@ -457,10 +457,11 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   with effects turned off afterwards the next queue switch (not in fullscreen) loads a page instead (`routedButIdle`, the
   'reload' result of `navigateToVideoJs`) to get the plain path back. `fade=gain` vs `element` in the YT media log.
 - **A YouTube video can stop at its very end with no `ended`** (the last piece of the stream never arrives, seen
-  with the screen off; YouTube's player then pauses the element itself): the pause listener in
-  `YoutubeWebView#attachListeners` reports it as `JS_VIDEO_ENDED` with `'stuck'` when no real `ended` follows within
-  1.5 s (`YoutubeMediaEngine#stuckAtEnd`, skipped when the app asked for that pause), and `play()` rewinds a video
-  stopped within 1.5 s of its end. Before, Repeat One stopped there and play only buffered until the stall fallback.
+  with the screen off; YouTube's player then pauses the element itself, or it just waits until the stall check plays
+  a download): `endCheck` in `YoutubeWebView#attachListeners` (on `pause` and `waiting` in the last 5 s) reports it
+  as `JS_VIDEO_ENDED` with `'stuck'` when no real `ended` or progress follows within 2 s
+  (`YoutubeMediaEngine#stuckAtEnd`, skipped for a pause the app asked for), well before the 10 s stall, and `play()`
+  rewinds a video stopped within 1.5 s of its end. Before, Repeat One stopped there and play only buffered until the stall fallback.
 - **A page restored after the app was killed** (the fragment's saved `url`, with YouTube not playing then) is kept
   quiet until asked (`YoutubeMediaEngine#quietRestoredPage`): its autoplay used to start the old song on app open.
 - **Previous / Next go nowhere past the ends of a list**: on the first / last song of the Music queue (its

@@ -476,18 +476,20 @@ public class YoutubeWebView extends FermataWebView {
 				"(fermataRecentLinkClick() ? '1' : '0') + '|' + fermataCurrentVideoTitle() + '|' + " +
 				"fermataCurrentVideoAuthor() + '|' + v.currentSrc);\n" +
 				"  });\n" +
-				"  v.addEventListener('pause', function(e) {\n" +
-				"    " + JS_EVENT + "(" + JS_VIDEO_PAUSED + ", v.currentSrc);\n" +
-				// Stopped at the very end with no 'ended' to follow: the last piece of the stream never
-				// came (it happens with the screen off), the element waits, and YouTube's player pauses
-				// it once its own clock says the video is over. Left alone the song just stops (Repeat
-				// One and the queue never hear of the end) and play only buffers on forever. So when no
-				// 'ended' comes within 1.5 s of such a pause, the app is told it ended after all.
+				// Stuck at the very end with no 'ended' to follow: the last piece of the stream never
+				// came (seen with the screen off). The element waits for it, and either YouTube's player
+				// pauses it once its own clock says the video is over, or it just keeps waiting until the
+				// stall gives up and plays a download instead. Left alone the song stops there (Repeat One
+				// and the queue never hear of the end) and play only buffers on forever. So when a pause
+				// or a wait for data comes in the last seconds and no 'ended' (or progress) follows within
+				// 2 s, the app is told the video ended after all -- see YoutubeMediaEngine#stuckAtEnd().
+				"  var endCheck = function() {\n" +
 				"    var t = v.currentTime, src = v.currentSrc, left = v.duration - t;\n" +
 				"    if (v.ended || !isFinite(left) || (left > 5) || window.__fermataAdShowing) return;\n" +
 				"    var gen = v.__fermataEndGen = (v.__fermataEndGen || 0) + 1;\n" +
 				"    setTimeout(function() {\n" +
-				"      if ((gen !== v.__fermataEndGen) || !v.paused || v.ended || (v.currentSrc !== src) ||\n" +
+				"      if ((gen !== v.__fermataEndGen) || v.ended || (v.currentSrc !== src) ||\n" +
+				"          (!v.paused && (v.readyState >= 3)) ||\n" +
 				"          (Math.abs(v.currentTime - t) > 0.5) || window.__fermataAdShowing) return;\n" +
 				"      var ps = -1;\n" +
 				"      try {\n" +
@@ -496,12 +498,19 @@ public class YoutubeWebView extends FermataWebView {
 				"      } catch (x) {}\n" +
 				"      if ((v.duration - v.currentTime <= 1.5) || (ps === 0)) " + JS_EVENT + "(" + JS_VIDEO_ENDED +
 				", 'stuck');\n" +
-				"    }, 1500);\n" +
+				"    }, 2000);\n" +
+				"  };\n" +
+				"  v.addEventListener('pause', function(e) {\n" +
+				"    " + JS_EVENT + "(" + JS_VIDEO_PAUSED + ", v.currentSrc);\n" +
+				"    endCheck();\n" +
 				"  });\n" +
 				// Buffering: stalled for data. Resolved by the next 'playing' -- see
 				// YoutubeMediaEngine#waiting(), which tells a long stall (the network) apart.
-				"  v.addEventListener('waiting', function(e) {" + JS_EVENT + "(" + JS_VIDEO_WAITING +
-				", (window.__fermataPageHidden && window.__fermataPageHidden()) ? 'hidden' : 'shown');});\n" +
+				"  v.addEventListener('waiting', function(e) {\n" +
+				"    " + JS_EVENT + "(" + JS_VIDEO_WAITING +
+				", (window.__fermataPageHidden && window.__fermataPageHidden()) ? 'hidden' : 'shown');\n" +
+				"    endCheck();\n" +
+				"  });\n" +
 				// Deliberately NOT a plain v.addEventListener('ended', ...) here -- see the
 				// document-level capture-phase listener below, which replaces it.
 				"}\n" +
@@ -602,7 +611,7 @@ public class YoutubeWebView extends FermataWebView {
 				"  document.addEventListener('ended', function(e) {\n" +
 				"    if (e.target && (e.target.tagName === 'VIDEO')) {\n" +
 				"      e.stopImmediatePropagation();\n" +
-				// A real 'ended': the stuck-at-the-end check of the pause just before it stands down.
+				// A real 'ended': the stuck-at-the-end check (endCheck in attachListeners()) stands down.
 				"      e.target.__fermataEndGen = (e.target.__fermataEndGen || 0) + 1;\n" +
 				"      " + JS_EVENT + "(" + JS_VIDEO_ENDED + ", null);\n" +
 				"    }\n" +
@@ -1166,7 +1175,7 @@ public class YoutubeWebView extends FermataWebView {
 		loadUrl("javascript:(function() {\n" +
 				"  " + JS_FIND_VIDEO +
 				"  if (v == null) { console.error('Fermata play(): no video element found'); return; }\n" +
-				// Stopped at the very end (see the pause listener in attachListeners()): playing on from
+				// Stopped at the very end (see endCheck in attachListeners()): playing on from
 				// there only waits for data that never comes, until the stall gives up. Start it again.
 				"  if (!v.ended && isFinite(v.duration) && (v.duration - v.currentTime <= 1.5)) v.currentTime = 0;\n" +
 				"  if (window.FermataFade) window.FermataFade.prepareToPlay(v);\n" +
