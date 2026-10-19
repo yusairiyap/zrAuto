@@ -31,6 +31,7 @@ final class AmbienceSynth {
 			case WIND -> new Wind();
 			case OCEAN -> new Ocean();
 			case STREAM -> new Stream();
+			case DROPS -> new Drips();
 			case NIGHT -> new Night();
 			case BIRDS -> new Birds();
 		};
@@ -400,6 +401,65 @@ final class AmbienceSynth {
 				}
 				l[i] = (hiL - loL) * ampL * gain + plink * plinkL;
 				r[i] = (hiR - loR) * ampR * gain + plink * plinkR;
+			}
+		}
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Droplets: single drops plinking into water, each a short sine that rises in pitch as it
+	// dies away, then bounced around a cave by two feedback delays (a cheap reverb).
+	// ---------------------------------------------------------------------------------------------
+
+	static final class Drips extends Voice {
+		private static final int SLOTS = 4;
+		private final Rng rng = new Rng(0xD21B5);
+		private final float[] ph = new float[SLOTS], freq = new float[SLOTS], env = new float[SLOTS],
+				panL = new float[SLOTS], panR = new float[SLOTS];
+		private final float[] bufL = new float[(int) (SR * 0.29f)], bufR = new float[(int) (SR * 0.37f)];
+		private int pL, pR;
+		private float lpL, lpR;
+
+		@Override
+		void render(float[] l, float[] r, int n, float lv) {
+			float rate = (0.25f + 1.6f * lv) / SR;
+			float loud = 0.5f + 0.5f * lv;
+			for (int i = 0; i < n; i++) {
+				if (rng.unit() < rate) {
+					for (int k = 0; k < SLOTS; k++) {
+						if (env[k] > 0.001f) continue;
+						ph[k] = 0f;
+						freq[k] = 600f + 1400f * rng.unit();
+						env[k] = (0.25f + 0.3f * rng.unit()) * loud;
+						float pan = rng.unit();
+						panL[k] = 1f - 0.7f * pan;
+						panR[k] = 0.3f + 0.7f * pan;
+						break;
+					}
+				}
+				float xl = 0f, xr = 0f;
+				for (int k = 0; k < SLOTS; k++) {
+					if (env[k] <= 0.001f) continue;
+					ph[k] += TWO_PI * freq[k] / SR;
+					if (ph[k] > TWO_PI) ph[k] -= TWO_PI;
+					freq[k] *= 1.0002f;
+					float s = (float) Math.sin(ph[k]) * env[k];
+					env[k] *= 0.9992f;
+					xl += s * panL[k];
+					xr += s * panR[k];
+				}
+				// Each side's echo feeds itself through a low-pass, so the repeats soften as they go.
+				float dl = bufL[pL];
+				lpL += 0.3f * (dl - lpL);
+				float yl = xl + lpL * 0.5f;
+				bufL[pL] = yl;
+				if (++pL >= bufL.length) pL = 0;
+				float dr = bufR[pR];
+				lpR += 0.3f * (dr - lpR);
+				float yr = xr + lpR * 0.5f;
+				bufR[pR] = yr;
+				if (++pR >= bufR.length) pR = 0;
+				l[i] = yl;
+				r[i] = yr;
 			}
 		}
 	}

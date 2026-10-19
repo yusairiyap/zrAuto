@@ -25,6 +25,8 @@ public enum AmbienceEffect {
 			0xFF3CC3E8, 0xFF08293D, 60),
 	STREAM("stream", R.string.ambience_stream, R.string.ambience_stream_sub,
 			R.drawable.ambience_stream, 0xFF6EE0B0, 0xFF0B2E26, 55),
+	DROPS("drops", R.string.ambience_drops, R.string.ambience_drops_sub, R.drawable.ambience_drops,
+			0xFF9AE0F5, 0xFF0A2431, 50),
 	NIGHT("night", R.string.ambience_night, R.string.ambience_night_sub, R.drawable.ambience_night,
 			0xFFF2D675, 0xFF151A3A, 50),
 	BIRDS("birds", R.string.ambience_birds, R.string.ambience_birds_sub, R.drawable.ambience_birds,

@@ -19,6 +19,8 @@
     <string name="ambience_ocean_sub">Waves rolling onto the shore</string>
     <string name="ambience_stream">Stream</string>
     <string name="ambience_stream_sub">A brook running over stones</string>
+    <string name="ambience_drops">Droplets</string>
+    <string name="ambience_drops_sub">Drips echoing in a cave</string>
     <string name="ambience_night">Night</string>
     <string name="ambience_night_sub">Crickets under the stars</string>
     <string name="ambience_birds">Forest birds</string>
@@ -27,6 +29,8 @@
     <string name="ambience_hero_idle">Pick a sound to set the mood</string>
     <string name="ambience_hero_playing">Now in the air</string>
     <string name="ambience_hero_paused">Paused with playback</string>
+    <string name="ambience_settings">Ambience settings</string>
+    <string name="ambience_notif_paused">Paused with playback</string>
     <string name="ambience_sounds">Sounds</string>
     <string name="ambience_percent">%1$d%%</string>
     <string name="ambience_tap_hint">Tap to play</string>
@@ -54,6 +58,7 @@
     <string name="ambience_set_fade_sub">Seconds a sound takes to rise and to die away</string>
     <string name="ambience_set_follow">Pause with playback</string>
     <string name="ambience_set_follow_sub">Fade the ambience out when the music or video pauses, and back in when it resumes</string>
+    <string name="ambience_follow_hint">Fades out when the music or video pauses, and the timer waits too</string>
     <string name="ambience_set_noisy">Stop when headphones unplug</string>
     <string name="ambience_set_noisy_sub">Fade the ambience out when the audio output changes suddenly</string>
     <string name="ambience_set_anim_music">Animate the Music tab</string>

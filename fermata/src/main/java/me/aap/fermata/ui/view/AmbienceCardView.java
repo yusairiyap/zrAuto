@@ -237,7 +237,9 @@ public final class AmbienceCardView extends LinearLayout {
 		boolean anim = animated();
 		java.util.Arrays.fill(lv, 0f);
 		float shown = engine.getVisual(fx);
-		boolean active = shown > 0.003f;
+		// Also while the sound is on but not yet heard: the audio thread takes a moment to start,
+		// and a loop that stopped in that gap would only wake when another sound changed.
+		boolean active = (shown > 0.003f) || engine.isPlaying(fx);
 		if (anim) {
 			lv[fx.ordinal()] = shown;
 			if (active || scene.isActive(lv)) scene.step(dt, lv);

@@ -22,6 +22,7 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.view.ContextThemeWrapper;
+import androidx.appcompat.widget.SwitchCompat;
 import androidx.core.widget.NestedScrollView;
 
 import java.util.ArrayList;
@@ -34,6 +35,8 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.AmbienceCardView;
 import me.aap.fermata.ui.view.AmbienceHeroView;
 import me.aap.fermata.ui.view.EffectsUi;
+import me.aap.fermata.ui.view.SwitchStyle;
+import me.aap.utils.ui.view.ToolBarView;
 
 /**
  * The Ambience tab (see {@link AmbienceEngine}): a sky at the top that shows the weather of
@@ -42,7 +45,10 @@ import me.aap.fermata.ui.view.EffectsUi;
  * intensity slider. Everything is built in code, in the Music tab's palette like the Power usage
  * tab, and the cards slide in one after the other when the tab opens.
  */
-public class AmbienceFragment extends MainActivityFragment {
+public class AmbienceFragment extends MainActivityFragment implements ToolBarChip.Host {
+	// The settings chip, in the title bar in landscape and on the car screen (like Data usage's).
+	private static final ToolBarChip.Mediator TOOL_BAR = new ToolBarChip.Mediator(
+			R.id.ambience_toolbar_chip, R.drawable.settings, R.string.ambience_settings);
 	private static final ArgbEvaluator ARGB = new ArgbEvaluator();
 	private final AmbienceEngine engine = AmbienceEngine.get();
 	private final Runnable changed = this::syncControls;
@@ -56,6 +62,9 @@ public class AmbienceFragment extends MainActivityFragment {
 	private AmbienceHeroView hero;
 	private LinearLayout controls;
 	private LinearLayout grid;
+	private LinearLayout settingsRow;
+	private SwitchCompat followSwitch;
+	private boolean settingSwitch;
 	private SeekBar masterBar;
 	private TextView masterValue;
 	private int columns;
@@ -70,6 +79,16 @@ public class AmbienceFragment extends MainActivityFragment {
 	@Override
 	public CharSequence getTitle() {
 		return getString(R.string.ambience_title);
+	}
+
+	@Override
+	public ToolBarView.Mediator getToolBarMediator() {
+		return TOOL_BAR;
+	}
+
+	@Override
+	public void onToolBarChipClick() {
+		getActivityDelegate().showFragment(R.id.settings_fragment, SettingsFragment.addonSettings("ambience"));
 	}
 
 	@Nullable
@@ -101,6 +120,20 @@ public class AmbienceFragment extends MainActivityFragment {
 		hero = new AmbienceHeroView(ctx);
 		hero.setOnTimerClick(this::nextLength);
 		content.addView(hero, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(190)));
+
+		// The settings chip: here when the screen is narrow, in the title bar when it is wide.
+		settingsRow = new LinearLayout(palette);
+		settingsRow.setGravity(Gravity.CENTER);
+		TextView chip = new TextView(palette, null, 0, R.style.MusicChip);
+		chip.setText(R.string.ambience_settings);
+		chip.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.settings, 0, 0, 0);
+		chip.setCompoundDrawableTintList(ColorStateList.valueOf(textPrimary));
+		chip.setOnClickListener(v -> onToolBarChipClick());
+		settingsRow.addView(chip);
+		LinearLayout.LayoutParams srlp = new LinearLayout.LayoutParams(
+				ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		srlp.topMargin = px(14);
+		content.addView(settingsRow, srlp);
 
 		controls = buildControls();
 		LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
@@ -140,9 +173,11 @@ public class AmbienceFragment extends MainActivityFragment {
 			if (((r - l) != (or - ol)) || ((b - t) != (ob - ot))) v.post(() -> updateLayout(v));
 		});
 		syncControls();
+		updateSettingsChip();
 		// Everything slides in one after the other, the cards last.
 		List<View> parts = new ArrayList<>();
 		parts.add(hero);
+		parts.add(settingsRow);
 		parts.add(controls);
 		for (int i = 0; i < grid.getChildCount(); i++) {
 			ViewGroup row = (ViewGroup) grid.getChildAt(i);
@@ -288,6 +323,27 @@ public class AmbienceFragment extends MainActivityFragment {
 				ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
 		tlp.topMargin = px(8);
 		card.addView(hint, tlp);
+
+		// Pause with playback: here, beside the length it belongs with, as well as in the settings.
+		LinearLayout follow = new LinearLayout(palette);
+		follow.setGravity(Gravity.CENTER_VERTICAL);
+		LinearLayout ft = new LinearLayout(palette);
+		ft.setOrientation(LinearLayout.VERTICAL);
+		ft.addView(label(R.string.ambience_set_follow, 15, textPrimary, true));
+		TextView fsub = label(R.string.ambience_follow_hint, 12.5f, textSecondary, false);
+		ft.addView(fsub);
+		follow.addView(ft, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+		followSwitch = new SwitchCompat(palette);
+		SwitchStyle.apply(followSwitch, palette);
+		followSwitch.setChecked(AmbienceEngine.prefs().getBooleanPref(AmbienceEngine.FOLLOW));
+		followSwitch.setOnCheckedChangeListener((b, on) -> {
+			if (!settingSwitch) AmbienceEngine.prefs().applyBooleanPref(AmbienceEngine.FOLLOW, on);
+		});
+		follow.addView(followSwitch);
+		LinearLayout.LayoutParams flp = new LinearLayout.LayoutParams(
+				ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		flp.topMargin = px(16);
+		card.addView(follow, flp);
 		return card;
 	}
 
@@ -333,6 +389,12 @@ public class AmbienceFragment extends MainActivityFragment {
 		masterValue.setText(getString(R.string.ambience_percent, m));
 		int len = engine.getLengthMinutes();
 		for (TextView chip : chips) styleChip(chip, ((Integer) chip.getTag()) == len);
+		boolean follow = AmbienceEngine.prefs().getBooleanPref(AmbienceEngine.FOLLOW);
+		if ((followSwitch != null) && (followSwitch.isChecked() != follow)) {
+			settingSwitch = true;
+			followSwitch.setChecked(follow);
+			settingSwitch = false;
+		}
 		View hint = controls.findViewWithTag("hint");
 		if (hint instanceof TextView h) {
 			h.setText(len == 0 ? R.string.ambience_length_hint_forever : R.string.ambience_length_hint);
@@ -377,6 +439,7 @@ public class AmbienceFragment extends MainActivityFragment {
 	private void updateLayout(View root) {
 		int w = root.getWidth();
 		if ((w == 0) || (getContext() == null)) return;
+		updateSettingsChip();
 		float wdp = w / dp;
 		int cols = (wdp >= 900) ? 4 : (wdp >= 600) ? 3 : 2;
 		if (cols != columns) buildGrid(cols);
@@ -388,6 +451,11 @@ public class AmbienceFragment extends MainActivityFragment {
 			lp.height = want;
 			hero.setLayoutParams(lp);
 		}
+	}
+
+	/** The settings chip: in the title bar in landscape and on the car screen, else in here. */
+	private void updateSettingsChip() {
+		if (settingsRow != null) ToolBarChip.update(this, R.id.ambience_toolbar_chip, settingsRow);
 	}
 
 	private void buildGrid(int cols) {

@@ -33,12 +33,15 @@ public final class AmbienceScene {
 	private static final int FLIES = 10;
 	private static final int BIRDS = 4;
 	private static final int MOTES = 16;
+	private static final int RIPPLES = 5;
+	private static final float FALL = 0.35f;
 	private static final int E_RAIN = AmbienceEffect.RAIN.ordinal();
 	private static final int E_THUNDER = AmbienceEffect.THUNDER.ordinal();
 	private static final int E_FIRE = AmbienceEffect.FIRE.ordinal();
 	private static final int E_WIND = AmbienceEffect.WIND.ordinal();
 	private static final int E_OCEAN = AmbienceEffect.OCEAN.ordinal();
 	private static final int E_STREAM = AmbienceEffect.STREAM.ordinal();
+	private static final int E_DROPS = AmbienceEffect.DROPS.ordinal();
 	private static final int E_NIGHT = AmbienceEffect.NIGHT.ordinal();
 	private static final int E_BIRDS = AmbienceEffect.BIRDS.ordinal();
 
@@ -70,6 +73,8 @@ public final class AmbienceScene {
 	// Stream
 	private final float[] sparkX = new float[SPARKS], sparkY = new float[SPARKS],
 			sparkV = new float[SPARKS], sparkP = new float[SPARKS];
+	// Droplets: a drop falls for FALL seconds (age below zero), then rings spread from where it landed.
+	private final float[] ripX = new float[RIPPLES], ripY = new float[RIPPLES], ripAge = new float[RIPPLES];
 	// Night
 	private final float[] starX = new float[STARS], starY = new float[STARS], starS = new float[STARS],
 			starP = new float[STARS];
@@ -131,6 +136,7 @@ public final class AmbienceScene {
 			moteV[i] = 0.01f + 0.03f * rnd.nextFloat();
 			moteP[i] = rnd.nextFloat() * 6.28f;
 		}
+		for (int i = 0; i < RIPPLES; i++) ripAge[i] = 99f;
 		paint.setStrokeCap(Paint.Cap.ROUND);
 		paint.setStrokeJoin(Paint.Join.ROUND);
 	}
@@ -237,6 +243,17 @@ public final class AmbienceScene {
 				if (sparkX[i] > 1.05f) sparkX[i] = -0.05f;
 			}
 		}
+		if (lv[E_DROPS] > 0.003f) {
+			float chance = dt * (0.4f + 2.2f * lv[E_DROPS]);
+			for (int i = 0; i < RIPPLES; i++) {
+				ripAge[i] += dt;
+				if ((ripAge[i] > 2f) && (rnd.nextFloat() < chance)) {
+					ripX[i] = 0.1f + 0.8f * rnd.nextFloat();
+					ripY[i] = 0.55f + 0.4f * rnd.nextFloat();
+					ripAge[i] = -FALL;
+				}
+			}
+		}
 		if (lv[E_NIGHT] > 0.003f) {
 			for (int i = 0; i < FLIES; i++) {
 				flyAng[i] += (rnd.nextFloat() - 0.5f) * dt * 5f;
@@ -291,6 +308,7 @@ public final class AmbienceScene {
 		}
 		if (lv[E_OCEAN] > 0.003f) drawOcean(c, w, h, lv[E_OCEAN]);
 		if (lv[E_STREAM] > 0.003f) drawStream(c, w, h, lv[E_STREAM]);
+		if (lv[E_DROPS] > 0.003f) drawDrops(c, w, h, lv[E_DROPS]);
 		if (lv[E_WIND] > 0.003f) drawWind(c, w, h, lv[E_WIND]);
 		if (lv[E_BIRDS] > 0.003f) drawBirds(c, w, h, lv[E_BIRDS]);
 		if (lv[E_FIRE] > 0.003f) drawFire(c, w, h, lv[E_FIRE]);
@@ -495,6 +513,36 @@ public final class AmbienceScene {
 			float tw = 0.5f + 0.5f * (float) Math.sin(t * 3f + sparkP[i]);
 			paint.setColor(withAlpha(0xFFFFFFFF, 0.8f * a * tw));
 			c.drawCircle(sparkX[i] * w, sparkY[i] * h, dp * (0.8f + 1.2f * tw), paint);
+		}
+	}
+
+	private void drawDrops(Canvas c, int w, int h, float a) {
+		AmbienceEffect fx = AmbienceEffect.DROPS;
+		for (int i = 0; i < RIPPLES; i++) {
+			float age = ripAge[i];
+			if (age > 2f) continue;
+			float x = ripX[i] * w;
+			float y = ripY[i] * h;
+			if (age < 0f) {
+				// Still falling from the top, stretched by its speed.
+				float f = (age + FALL) / FALL;
+				paint.setStyle(Paint.Style.FILL);
+				paint.setColor(withAlpha(fx.tint, 0.85f * a));
+				c.drawOval(x - dp * 1.6f, y * f - dp * 5f, x + dp * 1.6f, y * f + dp * 2f, paint);
+				continue;
+			}
+			paint.setStyle(Paint.Style.STROKE);
+			paint.setStrokeWidth(dp * 1.4f);
+			// Two rings, the second a little behind the first.
+			for (int k = 0; k < 2; k++) {
+				float t2 = age - 0.18f * k;
+				if (t2 < 0f) continue;
+				float life = t2 / 1.7f;
+				if (life >= 1f) continue;
+				float r = dp * (4f + 52f * life);
+				paint.setColor(withAlpha(fx.tint, 0.65f * a * (1f - life) * (1f - life)));
+				c.drawOval(x - r, y - r * 0.32f, x + r, y + r * 0.32f, paint);
+			}
 		}
 	}
 

@@ -79,7 +79,8 @@ public final class AmbienceBackdropView extends View {
 			return false;
 		}
 		for (AmbienceEffect e : AmbienceEffect.values()) lv[e.ordinal()] = engine.getVisual(e);
-		boolean active = scene.isActive(lv);
+		// Also while a sound is on but not yet heard (the audio thread takes a moment to start).
+		boolean active = scene.isActive(lv) || engine.isAnyPlaying();
 		if (active) scene.step(dt, lv);
 		// One more draw when it just went quiet: the last frame drew nothing.
 		invalidate();

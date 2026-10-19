@@ -379,7 +379,7 @@ provider doesn't offer a folder to pick, so Drive is manual only.
   (the last mix on/off, the rain when none; `AmbienceEngine#toggleAll`) are in the FAB list, the All in One card, key bindings
   and the FAB long-press Tools group; both toast `ambience_addon_off` when the addon is off.
 - **Sounds are synthesized, not shipped** (`AmbienceSynth`: rain, thunder, fireplace, wind, ocean, stream, night crickets,
-  forest birds; one `Voice` per `AmbienceEffect`), so there is nothing to download and a loop never repeats. `AmbienceEngine`
+  forest birds, droplets; one `Voice` per `AmbienceEffect`), so there is nothing to download and a loop never repeats. `AmbienceEngine`
   mixes the switched-on voices on one thread into a streaming `AudioTrack` (44.1 kHz stereo, `USAGE_MEDIA`, **no audio
   focus**, so it simply mixes under local files, the Music tab and the YouTube page). The thread only lives while some
   fade is audible. Each effect's gain moves a block at a time towards 1 or 0 over `AMBIENCE_FADE_SEC` (smoothstep), the
@@ -399,9 +399,18 @@ provider doesn't offer a folder to pick, so Drive is manual only.
   stop when not visible (`onVisibilityAggregated`), when the power saver is on, and per surface when "Animate the Music tab"
   (`AMBIENCE_ANIM_MUSIC`) / "Animate this tab" (`AMBIENCE_ANIM_TAB`) is off. Nothing is allocated while drawing, except the
   hero's sky gradient.
+- **Foreground service** `AmbienceService` (media playback, notification with names and Stop all) is started by
+  `AmbienceEngine#kick` and stopped when the audio thread ends, so the sound survives the screen off. Starting it from the
+  background can be refused on Android 12+; that is only logged, the sound carries on while the process lives.
+- **Held = silent and the timer waits too** (`pausedLeft`): with "Pause with playback" the timer is frozen while the playback
+  is paused, not run out in silence. The switch is in the tab (under the length chips) and in the addon settings.
+- **Frame loops must run while a sound is on, not only while it is audible**: the audio thread takes a moment to start, and
+  a loop that saw nothing audible stopped itself and only woke when another sound changed (`isPlaying`/`isAnyPlaying`). The
+  picture also leads the sound (`visualCurve`, full at half the fade). The settings chip is `ToolBarChip` like Data usage's.
+- Droplets (`Drips` voice: pitch-rising sines through two feedback delays) is the ninth sound; new ones need an
+  `AmbienceEffect`, a `Voice` in `AmbienceSynth#create`, a scene branch in `AmbienceScene` and strings/icon.
 - **None of this has run on a device yet** (no emulator in the cloud session). If sound is silent, choppy or the weather
-  looks wrong, look for `AMBIENCE` lines in the Diagnostic log first. The ambience stops with the process (no foreground
-  service of its own), so with the screen off and nothing else playing Android may end it.
+  looks wrong, look for `AMBIENCE` lines in the Diagnostic log first.
 
 ## This app cannot be built in this (cloud) session
 

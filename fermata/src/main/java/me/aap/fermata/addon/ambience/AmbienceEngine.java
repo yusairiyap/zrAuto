@@ -94,6 +94,8 @@ public final class AmbienceEngine {
 	private boolean running;
 	private volatile boolean held;
 	private long endAt;
+	/** The timer's time left while the ambience is held back (it waits too), or -1. */
+	private long pausedLeft = -1;
 	private boolean noisyRegistered;
 	private final Runnable timerEnd = this::onTimerEnd;
 	private final BroadcastReceiver noisy = new BroadcastReceiver() {
@@ -144,6 +146,16 @@ public final class AmbienceEngine {
 		return false;
 	}
 
+	/** The effect is on and not held back: its sound is (or is about to be) heard. */
+	public boolean isPlaying(AmbienceEffect e) {
+		return layers[e.ordinal()].wanted && !held;
+	}
+
+	/** Something is on and not held back. */
+	public boolean isAnyPlaying() {
+		return !held && anyOn();
+	}
+
 	/** Effects are on but waiting for the playback to resume (see {@link #setHeld}). */
 	public boolean isHeld() {
 		return held && anyOn();
@@ -156,7 +168,12 @@ public final class AmbienceEngine {
 
 	/** How far the effect's fade has come, 0 (silent) to 1 (full), shaped like the sound's own. */
 	public float getFade(AmbienceEffect e) {
-		return curve(layers[e.ordinal()].gain);
+		return visualCurve(layers[e.ordinal()].gain);
+	}
+
+	/** The picture leads the sound: it is fully there at half the fade, so a switch looks instant. */
+	private static float visualCurve(float g) {
+		return curve(Math.min(1f, g * 2f));
 	}
 
 	public int getIntensity(AmbienceEffect e) {
@@ -177,6 +194,7 @@ public final class AmbienceEngine {
 
 	/** Milliseconds until the timer fades everything out, or -1 when there is no limit. */
 	public long getRemainingMs() {
+		if (pausedLeft >= 0) return pausedLeft;
 		return (endAt == 0) ? -1 : Math.max(0, endAt - SystemClock.elapsedRealtime());
 	}
 
@@ -240,7 +258,10 @@ public final class AmbienceEngine {
 		ly.wanted = on;
 		if (on) {
 			// Switching a sound on is a clear wish to hear it, whatever the playback does.
-			held = false;
+			if (held) {
+				held = false;
+				resumeTimer();
+			}
 			ly.levelTarget = intensityOf(e) / 100f;
 			kick();
 		}
@@ -317,7 +338,17 @@ public final class AmbienceEngine {
 	public void setHeld(boolean h) {
 		if (held == h) return;
 		held = h;
-		if (!h && anyOn()) kick();
+		if (h) {
+			// Nothing is heard, so the timer waits too instead of running out in silence.
+			if (endAt != 0) {
+				pausedLeft = Math.max(0, endAt - SystemClock.elapsedRealtime());
+				endAt = 0;
+				main.removeCallbacks(timerEnd);
+			}
+		} else {
+			resumeTimer();
+			if (anyOn()) kick();
+		}
 		notifyChanged();
 	}
 
@@ -333,12 +364,18 @@ public final class AmbienceEngine {
 
 	private void scheduleTimer() {
 		main.removeCallbacks(timerEnd);
+		pausedLeft = -1;
 		int min = getLengthMinutes();
 		if ((min <= 0) || !anyOn()) {
 			endAt = 0;
 			return;
 		}
 		long ms = min * 60_000L;
+		if (held) {
+			endAt = 0;
+			pausedLeft = ms;
+			return;
+		}
 		endAt = SystemClock.elapsedRealtime() + ms;
 		main.postDelayed(timerEnd, ms);
 	}
@@ -346,6 +383,16 @@ public final class AmbienceEngine {
 	private void cancelTimer() {
 		main.removeCallbacks(timerEnd);
 		endAt = 0;
+		pausedLeft = -1;
+	}
+
+	/** The playback went on: the timer carries on from where it waited. */
+	private void resumeTimer() {
+		if (pausedLeft < 0) return;
+		long ms = pausedLeft;
+		pausedLeft = -1;
+		endAt = SystemClock.elapsedRealtime() + ms;
+		main.postDelayed(timerEnd, ms);
 	}
 
 	private void onTimerEnd() {
@@ -402,6 +449,7 @@ public final class AmbienceEngine {
 			if (running) return;
 			running = true;
 		}
+		AmbienceService.start(FermataApplication.get());
 		Thread t = new Thread(this::run, "ambience");
 		t.start();
 	}
@@ -470,7 +518,7 @@ public final class AmbienceEngine {
 						ml[i] += vl[i] * a;
 						mr[i] += vr[i] * a;
 					}
-					ly.shown = a1 * lv;
+					ly.shown = visualCurve(g1) * lv;
 					audible = true;
 				}
 				float m0 = master;
@@ -520,7 +568,15 @@ public final class AmbienceEngine {
 				}
 				track.release();
 			}
-			main.post(this::notifyChanged);
+			main.post(() -> {
+				notifyChanged();
+				boolean again;
+				synchronized (lock) {
+					again = running;
+				}
+				// Not when a new thread has started meanwhile: that one needs the service.
+				if (!again) AmbienceService.stop(FermataApplication.get());
+			});
 		}
 	}
 

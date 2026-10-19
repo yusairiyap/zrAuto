@@ -195,6 +195,8 @@ public final class AmbienceHeroView extends FrameLayout {
 			lastOn = on;
 			mark.animate().alpha(on ? 0.12f : 0.3f).setDuration(500).start();
 		}
+		// The timer waits while the sound does.
+		timer.setAlpha(held ? 0.55f : 1f);
 		updateTimer();
 		handler.removeCallbacks(countdown);
 		if (attached && (engine.getRemainingMs() >= 0)) handler.postDelayed(countdown, 1000);
@@ -294,7 +296,8 @@ public final class AmbienceHeroView extends FrameLayout {
 			skyBottom = IDLE_BOTTOM;
 		}
 		sky = null;
-		boolean active = scene.isActive(lv) || (sum > 0.001f);
+		// Also while a sound is on but not yet heard (the audio thread takes a moment to start).
+		boolean active = scene.isActive(lv) || (sum > 0.001f) || engine.isAnyPlaying();
 		if (anim && active) scene.step(dt, lv);
 		invalidate();
 		return active;
