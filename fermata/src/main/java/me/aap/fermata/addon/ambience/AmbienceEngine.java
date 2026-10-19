@@ -645,8 +645,8 @@ public final class AmbienceEngine {
 					// The synthesized voice, the recording, or a quick crossfade between them.
 					float m0 = ly.mix;
 					float mixT = (ly.recorded && ly.sample.isReady()) ? 1f : 0f;
-					float step = BLOCK / (SR * SOURCE_FADE_SEC);
-					float m1 = m0 + Math.max(-step, Math.min(step, mixT - m0));
+					float mixStep = BLOCK / (SR * SOURCE_FADE_SEC);
+					float m1 = m0 + Math.max(-mixStep, Math.min(mixStep, mixT - m0));
 					ly.mix = m1;
 					float[] srcL = vl, srcR = vr;
 					if ((m0 < 1f) || (m1 < 1f)) ly.voice.render(vl, vr, BLOCK, ly.level, ly.opt);
