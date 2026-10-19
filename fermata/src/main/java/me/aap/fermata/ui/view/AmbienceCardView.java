@@ -43,7 +43,7 @@ public final class AmbienceCardView extends LinearLayout {
 	private final Runnable changed = this::sync;
 	private final AmbienceEngine.FlashListener flashListener = s -> {
 		if (animated()) {
-			scene.flash(s);
+			this.scene.flash(s);
 			clock.start();
 		}
 	};

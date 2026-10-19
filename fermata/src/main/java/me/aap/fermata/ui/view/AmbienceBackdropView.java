@@ -23,7 +23,7 @@ public final class AmbienceBackdropView extends View {
 	private final Runnable changed = this::wake;
 	private final AmbienceEngine.FlashListener flashListener = s -> {
 		if (enabled()) {
-			scene.flash(s);
+			this.scene.flash(s);
 			clock.start();
 		}
 	};

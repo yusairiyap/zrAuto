@@ -44,7 +44,7 @@ public final class AmbienceHeroView extends FrameLayout {
 	private final Runnable countdown = this::tickCountdown;
 	private final AmbienceEngine.FlashListener flashListener = s -> {
 		if (animated()) {
-			scene.flash(s);
+			this.scene.flash(s);
 			clock.start();
 		}
 	};
