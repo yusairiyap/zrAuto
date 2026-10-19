@@ -113,7 +113,8 @@ public class AmbienceFragment extends MainActivityFragment implements ToolBarChi
 		content.setOrientation(LinearLayout.VERTICAL);
 		content.setClipChildren(false);
 		content.setClipToPadding(false);
-		content.setPadding(px(16), px(12), px(16), px(28));
+		// Room under the last row, so the floating buttons can be pressed with the tab scrolled to the end.
+		content.setPadding(px(16), px(12), px(16), px(104));
 		scroll.addView(content, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.WRAP_CONTENT));
 

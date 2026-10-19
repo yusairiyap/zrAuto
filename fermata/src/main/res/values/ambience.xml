@@ -8,6 +8,8 @@
     <string name="ambience_addon_off">Switch on Ambience under Settings > Addons first</string>
 
     <string name="ambience_rain">Rain</string>
+    <string name="ambience_window">Rainy window</string>
+    <string name="ambience_window_sub">Raindrops tapping the glass</string>
     <string name="ambience_rain_sub">Steady rainfall on leaves</string>
     <string name="ambience_thunder">Thunder</string>
     <string name="ambience_thunder_sub">Distant storm, with lightning</string>
@@ -28,10 +30,8 @@
     <string name="ambience_birds">Forest birds</string>
     <string name="ambience_birds_sub">Birdsong at dawn</string>
 
-    <string name="ambience_chimes">Wind chimes</string>
-    <string name="ambience_chimes_sub">Soft bells in a gentle breeze</string>
     <string name="ambience_cafe">Cozy café</string>
-    <string name="ambience_cafe_sub">Murmuring voices and clinking cups</string>
+    <string name="ambience_cafe_sub">Cups, steam and the hum of the counter</string>
     <string name="ambience_hero_idle">Pick a sound to set the mood</string>
     <string name="ambience_hero_playing">Now in the air</string>
     <string name="ambience_hero_paused">Paused with playback</string>
@@ -63,6 +63,9 @@
     <string name="ambience_opt_rain">Surface</string>
     <string name="ambience_opt_rain_lo">Leaves</string>
     <string name="ambience_opt_rain_hi">Roof</string>
+    <string name="ambience_opt_window">Rain</string>
+    <string name="ambience_opt_window_lo">Drizzle</string>
+    <string name="ambience_opt_window_hi">Downpour</string>
     <string name="ambience_opt_thunder">Distance</string>
     <string name="ambience_opt_thunder_lo">Close</string>
     <string name="ambience_opt_thunder_hi">Far</string>
@@ -90,10 +93,7 @@
     <string name="ambience_opt_birds">Chorus</string>
     <string name="ambience_opt_birds_lo">Sparse</string>
     <string name="ambience_opt_birds_hi">Busy</string>
-    <string name="ambience_opt_chimes">Bells</string>
-    <string name="ambience_opt_chimes_lo">Deep</string>
-    <string name="ambience_opt_chimes_hi">Bright</string>
-    <string name="ambience_opt_cafe">Crowd</string>
+    <string name="ambience_opt_cafe">Activity</string>
     <string name="ambience_opt_cafe_lo">Quiet</string>
     <string name="ambience_opt_cafe_hi">Busy</string>
     <string name="ambience_tune">Tune</string>

@@ -35,7 +35,8 @@ public final class AmbienceScene {
 	private static final int MOTES = 16;
 	private static final int RIPPLES = 5;
 	private static final int BUBBLES = 24;
-	private static final int TUBES = 5;
+	private static final int WDROPS = 14;
+	private static final int WDOTS = 28;
 	private static final int BOKEH = 12;
 	private static final float FALL = 0.35f;
 	private static final int E_RAIN = AmbienceEffect.RAIN.ordinal();
@@ -46,7 +47,7 @@ public final class AmbienceScene {
 	private static final int E_STREAM = AmbienceEffect.STREAM.ordinal();
 	private static final int E_DROPS = AmbienceEffect.DROPS.ordinal();
 	private static final int E_BUBBLES = AmbienceEffect.BUBBLES.ordinal();
-	private static final int E_CHIMES = AmbienceEffect.CHIMES.ordinal();
+	private static final int E_WINDOW = AmbienceEffect.WINDOW.ordinal();
 	private static final int E_CAFE = AmbienceEffect.CAFE.ordinal();
 	private static final int E_NIGHT = AmbienceEffect.NIGHT.ordinal();
 	private static final int E_BIRDS = AmbienceEffect.BIRDS.ordinal();
@@ -84,9 +85,10 @@ public final class AmbienceScene {
 	// Underwater
 	private final float[] bubX = new float[BUBBLES], bubY = new float[BUBBLES], bubR = new float[BUBBLES],
 			bubV = new float[BUBBLES], bubP = new float[BUBBLES];
-	// Wind chimes: how long each tube is (fraction of the height), and the glow of a tube just struck
-	private static final float[] TUBE_LEN = {0.34f, 0.42f, 0.30f, 0.46f, 0.38f};
-	private final float[] tubeGlow = new float[TUBES], tubePh = new float[TUBES];
+	// Rainy window: drops running down the glass (they stop and start), and the fine drops that stay
+	private final float[] wx = new float[WDROPS], wy = new float[WDROPS], wr = new float[WDROPS],
+			wv = new float[WDROPS], wvT = new float[WDROPS], wl = new float[WDROPS];
+	private final float[] dotX = new float[WDOTS], dotY = new float[WDOTS], dotR = new float[WDOTS];
 	// Café: lights out of focus, and steam
 	private final float[] bokX = new float[BOKEH], bokY = new float[BOKEH], bokR = new float[BOKEH],
 			bokP = new float[BOKEH];
@@ -157,7 +159,15 @@ public final class AmbienceScene {
 			bubY[i] = rnd.nextFloat();
 			resetBubble(i, false);
 		}
-		for (int i = 0; i < TUBES; i++) tubePh[i] = rnd.nextFloat() * 6.28f;
+		for (int i = 0; i < WDROPS; i++) {
+			resetWindowDrop(i);
+			wy[i] = rnd.nextFloat();
+		}
+		for (int i = 0; i < WDOTS; i++) {
+			dotX[i] = rnd.nextFloat();
+			dotY[i] = rnd.nextFloat();
+			dotR[i] = 0.6f + 1.4f * rnd.nextFloat();
+		}
 		for (int i = 0; i < BOKEH; i++) {
 			bokX[i] = rnd.nextFloat();
 			bokY[i] = 0.1f + 0.8f * rnd.nextFloat();
@@ -174,6 +184,15 @@ public final class AmbienceScene {
 		dropV[i] = 0.9f + 0.9f * rnd.nextFloat();
 		dropLen[i] = 0.025f + 0.045f * rnd.nextFloat();
 		dropA[i] = 0.25f + 0.55f * rnd.nextFloat();
+	}
+
+	private void resetWindowDrop(int i) {
+		wx[i] = rnd.nextFloat();
+		wy[i] = -0.05f;
+		wr[i] = rnd.nextFloat();
+		wv[i] = 0f;
+		wvT[i] = 0.03f + 0.15f * rnd.nextFloat();
+		wl[i] = 0f;
 	}
 
 	private void resetBubble(int i, boolean bottom) {
@@ -295,12 +314,14 @@ public final class AmbienceScene {
 				if (bubY[i] < -0.05f) resetBubble(i, true);
 			}
 		}
-		if (lv[E_CHIMES] > 0.003f) {
-			// A tube now and then catches the light, as if struck.
-			float chance = dt * (0.3f + 1.6f * lv[E_CHIMES]);
-			for (int i = 0; i < TUBES; i++) {
-				tubeGlow[i] = Math.max(0f, tubeGlow[i] - dt * 0.8f);
-				if (rnd.nextFloat() < chance * 0.3f) tubeGlow[i] = 1f;
+		if (lv[E_WINDOW] > 0.003f) {
+			for (int i = 0; i < WDROPS; i++) {
+				// A drop runs, hangs, runs again.
+				if (rnd.nextFloat() < dt * 1.3f) wvT[i] = (rnd.nextFloat() < 0.4f) ? 0f : 0.03f + 0.15f * rnd.nextFloat();
+				wv[i] += (wvT[i] - wv[i]) * Math.min(1f, dt * 6f);
+				wy[i] += wv[i] * dt;
+				wl[i] += (wv[i] * 0.9f - wl[i]) * Math.min(1f, dt * 3f);
+				if (wy[i] > 1.05f) resetWindowDrop(i);
 			}
 		}
 		if (lv[E_NIGHT] > 0.003f) {
@@ -362,7 +383,7 @@ public final class AmbienceScene {
 		if (lv[E_WIND] > 0.003f) drawWind(c, w, h, lv[E_WIND]);
 		if (lv[E_BIRDS] > 0.003f) drawBirds(c, w, h, lv[E_BIRDS]);
 		if (lv[E_CAFE] > 0.003f) drawCafe(c, w, h, lv[E_CAFE]);
-		if (lv[E_CHIMES] > 0.003f) drawChimes(c, w, h, lv[E_CHIMES]);
+		if (lv[E_WINDOW] > 0.003f) drawWindow(c, w, h, lv[E_WINDOW]);
 		if (lv[E_FIRE] > 0.003f) drawFire(c, w, h, lv[E_FIRE]);
 		if (lv[E_RAIN] > 0.003f) drawRain(c, w, h, lv[E_RAIN], lv[E_WIND]);
 		if (flashT < 1f) drawLightning(c, w, h, Math.max(lv[E_THUNDER], 0.35f));
@@ -634,36 +655,30 @@ public final class AmbienceScene {
 		}
 	}
 
-	private void drawChimes(Canvas c, int w, int h, float a) {
-		AmbienceEffect fx = AmbienceEffect.CHIMES;
-		float x0 = w * 0.2f;
-		float x1 = w * 0.8f;
-		float y0 = h * 0.1f;
-		paint.setStyle(Paint.Style.STROKE);
-		paint.setStrokeWidth(dp * 3f);
-		paint.setColor(withAlpha(0xFFE9D8C4, 0.55f * a));
-		c.drawLine(x0, y0, x1, y0, paint);
-		for (int k = 0; k < TUBES; k++) {
-			float x = x0 + (x1 - x0) * (k + 0.5f) / TUBES;
-			float sway = (float) Math.sin(t * (1.1f + 0.15f * k) + tubePh[k]) * (0.09f + 0.1f * tubeGlow[k]);
-			float glow = tubeGlow[k];
-			c.save();
-			c.rotate((float) Math.toDegrees(sway), x, y0);
-			// The string, then the tube hanging from it.
-			paint.setStrokeWidth(dp * 1f);
-			paint.setColor(withAlpha(0xFFFFFFFF, 0.4f * a));
-			c.drawLine(x, y0, x, y0 + dp * 14f, paint);
-			float len = TUBE_LEN[k] * h;
-			paint.setStrokeWidth(dp * 6f);
-			paint.setColor(withAlpha(fx.tint, (0.5f + 0.45f * glow) * a));
-			c.drawLine(x, y0 + dp * 14f, x, y0 + dp * 14f + len, paint);
-			if (glow > 0.02f) {
-				paint.setStyle(Paint.Style.FILL);
-				paint.setColor(withAlpha(fx.tint, 0.22f * glow * a));
-				c.drawCircle(x, y0 + dp * 14f + len * 0.5f, dp * 20f, paint);
-				paint.setStyle(Paint.Style.STROKE);
-			}
-			c.restore();
+	private void drawWindow(Canvas c, int w, int h, float a) {
+		AmbienceEffect fx = AmbienceEffect.WINDOW;
+		paint.setStyle(Paint.Style.FILL);
+		// The fine drops that stay put.
+		for (int i = 0; i < WDOTS; i++) {
+			paint.setColor(withAlpha(fx.tint, 0.2f * a));
+			c.drawCircle(dotX[i] * w, dotY[i] * h, dp * dotR[i], paint);
+		}
+		int count = (int) Math.ceil(WDROPS * (0.3f + 0.7f * a));
+		for (int i = 0; i < count; i++) {
+			float x = wx[i] * w;
+			float y = wy[i] * h;
+			float rad = dp * (2.5f + 3.5f * wr[i]);
+			float len = wl[i] * h * 1.2f;
+			// The trail it leaves, then the drop and the light in it.
+			paint.setStyle(Paint.Style.STROKE);
+			paint.setStrokeWidth(rad * 0.9f);
+			paint.setColor(withAlpha(fx.tint, 0.16f * a));
+			c.drawLine(x, y - len, x, y, paint);
+			paint.setStyle(Paint.Style.FILL);
+			paint.setColor(withAlpha(fx.tint, 0.32f * a));
+			c.drawCircle(x, y, rad, paint);
+			paint.setColor(withAlpha(0xFFFFFFFF, 0.55f * a));
+			c.drawCircle(x - rad * 0.3f, y - rad * 0.3f, Math.max(dp * 0.8f, rad * 0.28f), paint);
 		}
 	}
 
