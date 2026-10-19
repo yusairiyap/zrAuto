@@ -328,8 +328,23 @@ public final class AmbienceEngine {
 			cancelTimer();
 			unregisterNoisy();
 		}
+		if (!on) scheduleSampleRelease(e);
 		DiagnosticLog.log("AMBIENCE", e.key, on ? "on" : "off");
 		notifyChanged();
+	}
+
+	/**
+	 * A recording is decoded into memory (about 11 MB a minute): once its sound has faded out and
+	 * stayed off a while, the memory goes back. Switching it on again loads it afresh, with the
+	 * synthesized voice playing meanwhile.
+	 */
+	private void scheduleSampleRelease(AmbienceEffect e) {
+		Layer ly = layers[e.ordinal()];
+		if (!ly.recorded) return;
+		long wait = (Math.max(1, Math.min(10, prefs().getIntPref(FADE))) + 5) * 1000L;
+		main.postDelayed(() -> {
+			if (!ly.wanted && ly.recorded) AmbienceSamples.get().release(e);
+		}, wait);
 	}
 
 	public void toggle(AmbienceEffect e) {
@@ -339,7 +354,11 @@ public final class AmbienceEngine {
 	/** Fades everything out. */
 	public void stopAll() {
 		boolean any = anyOn();
-		for (Layer l : layers) l.wanted = false;
+		for (Layer l : layers) {
+			boolean was = l.wanted;
+			l.wanted = false;
+			if (was) scheduleSampleRelease(l.fx);
+		}
 		cancelTimer();
 		unregisterNoisy();
 		if (any) notifyChanged();

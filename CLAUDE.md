@@ -434,7 +434,9 @@ provider doesn't offer a folder to pick, so Drive is manual only.
   memory (~11 MB a minute of stereo) when it is first wanted, handing it to `AmbienceSample` (a `Voice`: looped playback with
   interpolation, random start, a warm/bright tilt as its slider). The card's tune page shows Synth / Recorded for sounds the
   manifest lists (`AMBIENCE_SRC_<KEY>`, default Synth); the engine plays the synth until the recording is loaded and then
-  crossfades (`Layer#mix`). The recording has its own slider pref (`AMBIENCE_TONE_<KEY>`), so Echo/Landing/Depth never change
+  crossfades (`Layer#mix`); the decoded PCM is released again 5 s + the fade time after the sound is switched off
+  (`scheduleSampleRelease`), so only sounds that are on hold memory. A loop is as long as its longest source allows (up to
+  60 s: a 10 s brook is a 10 s loop), loudness is matched with a soft limiter (`tanh`) that squashes only the peaks. The recording has its own slider pref (`AMBIENCE_TONE_<KEY>`), so Echo/Landing/Depth never change
   meaning. (An earlier design downloaded them from a release, built by a workflow with a Freesound API key; dropped as too
   much machinery for ~1 MB.)
 - **None of this has run on a device yet** (no emulator in the cloud session). If sound is silent, choppy or the weather

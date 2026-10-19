@@ -17,7 +17,7 @@ import sys
 import numpy as np
 
 SR = 48000          # Opus always decodes at 48 kHz
-TARGET_RMS = 0.12   # what the synthesized voices sit at, so a recording is about as loud
+TARGET_RMS = 0.16   # about where the synthesized voices sit, so a recording is as loud as they are
 
 
 def find_source(src_dir, sound_id):
@@ -81,26 +81,34 @@ def main():
         if missing:
             print("%s: skipped, not downloaded yet: %s" % (key, ", ".join(map(str, missing))))
             continue
-        mix = np.zeros((length, 2), dtype=np.float32)
-        credits = []
-        for s, path in found:
+        decoded = []
+        for src, path in found:
             x = decode(path)
             if len(x) < SR * 2:
                 sys.exit("%s: %s is only %.1f s long" % (key, os.path.basename(path), len(x) / SR))
-            x = loopable(x, length, xf)
-            x = x / rms(x) * TARGET_RMS * float(s.get("gain", 1.0))
+            decoded.append(x)
+        # As long as the longest source allows (at most loopSeconds): a 10 s brook is a 10 s loop,
+        # not the same ten seconds six times over in a bigger file.
+        longest = max(len(x) for x in decoded)
+        xf_s = min(xf, longest // 4)
+        length_s = min(length, longest - xf_s)
+        mix = np.zeros((length_s, 2), dtype=np.float32)
+        credits = []
+        for (src, path), x in zip(found, decoded):
+            x = loopable(x, length_s, xf_s)
+            x = x / rms(x) * TARGET_RMS * float(src.get("gain", 1.0))
             mix += x
-            credits.append({"id": s["id"], "title": s.get("name", ""), "author": s.get("author", ""),
-                            "license": "CC0", "url": s.get("url", "")})
+            credits.append({"id": src["id"], "title": src.get("name", ""), "author": src.get("author", ""),
+                            "license": "CC0", "url": src.get("url", "")})
             print("%s: %s" % (key, os.path.basename(path)))
-        peak = float(np.max(np.abs(mix)))
-        if peak > 0.95:
-            mix *= 0.95 / peak
+        # A spiky sound (drops, crackling, cups) would need its whole level turned down to keep its
+        # peaks under full scale, and end up far quieter than the rest: squash only the peaks instead.
+        mix = np.tanh(mix) * 0.8   # headroom: lossy coding overshoots sharp peaks
         name = key + ".ogg"
         path = os.path.join(out_dir, name)
         encode_opus(mix, path)
         size = os.path.getsize(path)
-        manifest["sounds"][key] = {"file": name, "seconds": length // SR, "title": sound.get("title", key),
+        manifest["sounds"][key] = {"file": name, "seconds": length_s // SR, "title": sound.get("title", key),
                                    "credits": credits}
         print("%s: %s, %d KB" % (key, name, size // 1024))
     json.dump(manifest, open(os.path.join(out_dir, "manifest.json"), "w"), indent=2)

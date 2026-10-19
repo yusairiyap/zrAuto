@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "sounds": {
+    "drops": {
+      "file": "drops.ogg",
+      "seconds": 8,
+      "title": "Leaf droplets",
+      "credits": [
+        {
+          "id": 543649,
+          "title": "Water Droplets",
+          "author": "Legnalegna55",
+          "license": "CC0",
+          "url": "https://freesound.org/people/Legnalegna55/sounds/543649/"
+        }
+      ]
+    },
+    "bubbles": {
+      "file": "bubbles.ogg",
+      "seconds": 60,
+      "title": "Underwater",
+      "credits": [
+        {
+          "id": 482167,
+          "title": "Underwater Ambience",
+          "author": "Tim_Verberne",
+          "license": "CC0",
+          "url": "https://freesound.org/people/Tim_Verberne/sounds/482167/"
+        },
+        {
+          "id": 529383,
+          "title": "Bubbles In Water",
+          "author": "calebrankin",
+          "license": "CC0",
+          "url": "https://freesound.org/people/calebrankin/sounds/529383/"
+        }
+      ]
+    },
+    "rain": {
+      "file": "rain.ogg",
+      "seconds": 51,
+      "title": "Rain",
+      "credits": [
+        {
+          "id": 518863,
+          "title": "Rain.wav",
+          "author": "idomusics",
+          "license": "CC0",
+          "url": "https://freesound.org/people/idomusics/sounds/518863/"
+        }
+      ]
+    },
+    "window": {
+      "file": "window.ogg",
+      "seconds": 58,
+      "title": "Rainy window",
+      "credits": [
+        {
+          "id": 75008,
+          "title": "Rain on Window.wav",
+          "author": "CBeeching",
+          "license": "CC0",
+          "url": "https://freesound.org/people/CBeeching/sounds/75008/"
+        }
+      ]
+    },
+    "fire": {
+      "file": "fire.ogg",
+      "seconds": 57,
+      "title": "Fireplace",
+      "credits": [
+        {
+          "id": 414767,
+          "title": "Crackling Fire",
+          "author": "samarobryn",
+          "license": "CC0",
+          "url": "https://freesound.org/people/samarobryn/sounds/414767/"
+        }
+      ]
+    },
+    "wind": {
+      "file": "wind.ogg",
+      "seconds": 60,
+      "title": "Wind",
+      "credits": [
+        {
+          "id": 531016,
+          "title": "Wind Through Trees ambience.wav",
+          "author": "Noted451",
+          "license": "CC0",
+          "url": "https://freesound.org/people/Noted451/sounds/531016/"
+        }
+      ]
+    },
+    "ocean": {
+      "file": "ocean.ogg",
+      "seconds": 60,
+      "title": "Ocean",
+      "credits": [
+        {
+          "id": 795445,
+          "title": "Waves crashing on shore",
+          "author": "jamgypsy",
+          "license": "CC0",
+          "url": "https://freesound.org/people/jamgypsy/sounds/795445/"
+        }
+      ]
+    },
+    "stream": {
+      "file": "stream.ogg",
+      "seconds": 7,
+      "title": "Stream",
+      "credits": [
+        {
+          "id": 548767,
+          "title": "Relaxing river stream running water seamless loop",
+          "author": "steaq",
+          "license": "CC0",
+          "url": "https://freesound.org/people/steaq/sounds/548767/"
+        }
+      ]
+    },
+    "night": {
+      "file": "night.ogg",
+      "seconds": 35,
+      "title": "Night",
+      "credits": [
+        {
+          "id": 210540,
+          "title": "crickets.wav",
+          "author": "Sclolex",
+          "license": "CC0",
+          "url": "https://freesound.org/people/Sclolex/sounds/210540/"
+        }
+      ]
+    },
+    "birds": {
+      "file": "birds.ogg",
+      "seconds": 60,
+      "title": "Forest birds",
+      "credits": [
+        {
+          "id": 578523,
+          "title": "Birds singing, Dawn chorus",
+          "author": "SamsterBirdies",
+          "license": "CC0",
+          "url": "https://freesound.org/people/SamsterBirdies/sounds/578523/"
+        }
+      ]
+    }
+  }
+}
