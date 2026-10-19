@@ -1008,6 +1008,15 @@ public class SettingsFragment extends MainActivityFragment
 			o.subtitle = R.string.prefs_sub_other;
 			o.icon = R.drawable.settings;
 		});
+		// The welcome and setup wizard again, from the start (the phone's screen: it sets the phone up).
+		if (!a.isCarActivityNotMirror()) {
+			sub1.addButton(o -> {
+				o.title = R.string.welcome_settings_title;
+				o.subtitle = R.string.welcome_settings_sub;
+				o.icon = R.drawable.music;
+				o.onClick = () -> me.aap.fermata.ui.welcome.WelcomeWizard.show(a);
+			});
+		}
 		addSpotifyImport(a, sub1);
 		addShareSettings(sub1);
 		addShareAppButton(a, sub1);
@@ -1577,6 +1586,15 @@ public class SettingsFragment extends MainActivityFragment
 	}
 
 	private void chooseBackupFolder(MainActivityDelegate a, PreferenceStore store) {
+		pickBackupFolder(a, this::refreshBackupPage);
+	}
+
+	/**
+	 * Lets the user pick the folder automatic backups go to (the system's folder picker, so Google
+	 * Drive works too), and remembers it; {@code done} runs once it is set. Also used by the
+	 * welcome and setup wizard.
+	 */
+	public static void pickBackupFolder(MainActivityDelegate a, @Nullable Runnable done) {
 		int rw = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
 		a.startActivityForResult(() -> new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
 				.addFlags(rw | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)).onCompletion((d, err) -> {
@@ -1591,7 +1609,7 @@ public class SettingsFragment extends MainActivityFragment
 			try {
 				ctx.getContentResolver().takePersistableUriPermission(uri, d.getFlags() & rw);
 				BackupManager.setDestination(ctx, uri);
-				refreshBackupPage();
+				if (done != null) done.run();
 				TopToast.show(R.drawable.save, R.string.auto_backup_folder_set);
 			} catch (Exception ex) {
 				Log.e(ex, "Failed to use the backup folder");
@@ -1600,7 +1618,11 @@ public class SettingsFragment extends MainActivityFragment
 		});
 	}
 
-	private void importPrefs(MainActivityDelegate a) {
+	/**
+	 * Restores a backup: the zip is picked with the system's file picker (Google Drive works), its
+	 * preferences replace the app's, and the app restarts. Also used by the welcome and setup wizard.
+	 */
+	public static void importPrefs(MainActivityDelegate a) {
 		if (Utils.isSafSupported(a)) {
 			a.startActivityForResult(
 							() -> new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("application/zip"))
@@ -1650,7 +1672,7 @@ public class SettingsFragment extends MainActivityFragment
 		}
 	}
 
-	private void importPrefs(MainActivityDelegate a, InputStream is) throws IOException {
+	private static void importPrefs(MainActivityDelegate a, InputStream is) throws IOException {
 		Context ctx = a.getContext();
 
 		try (ZipInputStream zis = (SDK_INT >= N) ? new ZipInputStream(is, UTF_8) :

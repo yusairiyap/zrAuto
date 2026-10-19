@@ -4,6 +4,7 @@ Your car deserves a better media player. zrAuto is a free, open source player bu
 [Download the latest release](https://github.com/yusairiyap/zrAuto/releases/latest)
 
 ## ✨ Why you'll love it
+* 👋 **A friendly start**: a welcome tour with little animations walks you through the best of the app, then a quick setup brings a backup back (or turns on automatic ones), asks if you'll use it in the car, and lets you press your steering wheel's keys to see exactly what they do and change it on the spot. It's always there again under Settings > Other.
 * 📥 **Take YouTube with you, offline**: download videos, playlists or just the audio, and they play right inside your lists, even with no signal.
   * Downloads carry on in the background and pick up where they stopped.
   * Signal gone mid-song? It switches to the downloaded copy without missing a beat.
@@ -13,20 +14,25 @@ Your car deserves a better media player. zrAuto is a free, open source player bu
 * 📲 **Share with a friend's phone**: pick a song, playlist, favorites or a whole folder, tap a nearby phone on the same Wi-Fi and it's there, downloaded videos and files included.
   * The other person always gets to accept or decline, and you both see the progress with a Cancel button.
   * Or send just the YouTube links through any app you like.
-* 🧩 **All in One**: one card of big tiles for the things you reach for most while driving: sleep timer, video quality and more, opened from a floating button or a steering wheel key. You choose the tiles and their order.
+* 🧩 **All in One**: one card of big tiles for the things you reach for most while driving: sleep timer, video quality, power saver and more, opened from a floating button or a steering wheel key. You choose the tiles and their order.
 * 🎵 **A real Music tab**: a full-screen, sound-only player with a blurred album-art backdrop, big thumb-friendly controls and a queue you can drag, swipe and shuffle. Your own songs and YouTube tracks play side by side.
 * ▶️ **YouTube, made for the road**: it plays right inside the app with its own Favorites, Playlists and queue. Music mode drops the picture to the lowest quality, so you only pay data for what you hear, and switching between video and music never stops the song.
+* 🎤 **Lyrics that follow along**: they scroll in time with the song over the cover, and a tap opens them full size right in the Music tab. Tap a line to jump to it, drag to scrub. Captions over fullscreen video too.
 * 🔍 **Search without stopping the music**: a panel slides over whatever's playing, with YouTube results, your saved tracks and an "Up next" queue. Play next is one tap away.
 * 📊 **Know where your data goes**: see exactly what YouTube videos, music mode, downloads and everything else cost you, and set a warning or a hard limit before your plan runs dry.
+* 🔋 **Know where your battery goes**: the live battery draw like the Ampere app, in a gauge and as a strip over your music or video, with this session's lowest and highest reading and a daily trend split by video, music and Android Auto.
+  * **Power saver** dims the phone's screen, holds it to 60 Hz and pauses downloads when you ask, when the battery runs low, or when Android Auto connects.
 * 🟢 **Bring your Spotify playlists**: import one and zrAuto finds every song on YouTube for you.
 * 🗂️ **Tidy lists in seconds**: Select mode moves, copies, reorders or deletes in bulk, while a normal long press just opens the menu, so nothing moves by accident.
 * ⛽ **Fuel Log**: track refuels, distance and trips on a timeline, right from the car screen.
 * 📶 **Straight with you about bad signal**: when streaming stalls, a clear message offers Try again, Play downloaded, or the music already on your phone.
 * 🎨 **Easy on the eyes**: rounded cards, a floating pill nav bar, soft shadows, and smooth fades between songs and videos.
-* 👆 **Easy to tap while driving**: a bigger toolbar, nav bar and controls, plus up to six floating buttons you set up your way.
+* 👆 **Easy to tap while driving**: a bigger toolbar, nav bar and controls, plus up to nine floating buttons you set up your way, and bars that tuck away while a list scrolls.
+* 💾 **Never lose your setup**: back up to a folder or Google Drive, automatically, and restore in one tap.
 * 🌙 **Night mode for video**: dim the picture with a colour of your choice, including a warm blue-light filter.
 * 🕶️ **Private Mode**: a clean, incognito-style YouTube and Browser session with tracker and cookie blocking.
 * 🎚️ **Better sound**: a mixer-style Equalizer, Bass Boost, Virtualizer and reverb, for YouTube too.
+* 💬 **YouTube comments** beside the video, and other versions of the same song one tap away.
 * 🩺 **A diagnostic log in your pocket**: read, copy and share what happened in the car, no laptop needed.
 * 💚 **Yours to keep**: no donation nagging, and it updates itself.
 

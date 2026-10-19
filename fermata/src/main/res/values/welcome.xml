@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The welcome and setup wizard, see WelcomeWizard. -->
+<resources>
+    <string name="welcome_settings_title">Welcome and setup</string>
+    <string name="welcome_settings_sub">Go through the introduction and the quick setup again</string>
+
+    <string name="wz_skip">Skip</string>
+    <string name="wz_back">Back</string>
+    <string name="wz_next">Next</string>
+    <string name="wz_start">Get started</string>
+    <string name="wz_setup">Set it up</string>
+    <string name="wz_finish">Start listening</string>
+    <string name="wz_more_settings">More settings</string>
+    <string name="wz_phase_welcome">Welcome</string>
+    <string name="wz_phase_setup">Setup</string>
+
+    <!-- Welcome -->
+    <string name="wz_intro_title">Welcome to zrAuto</string>
+    <string name="wz_intro_text">Your car deserves a better media player. Here is a quick look at what it does, then a minute of setup to make it yours.</string>
+    <string name="wz_intro_b1">Plays your music, videos and YouTube, even when the signal doesn\'t</string>
+    <string name="wz_intro_b2">Made for Android Auto, and for your steering wheel\'s buttons</string>
+    <string name="wz_intro_b3">Free, open source, no donation nagging</string>
+
+    <string name="wz_download_title">YouTube, offline</string>
+    <string name="wz_download_text">Download videos, playlists or just the audio. They play right inside your lists, with no signal at all.</string>
+    <string name="wz_download_b1">Downloads carry on in the background and pick up where they stopped</string>
+    <string name="wz_download_b2">Signal gone mid-song? It switches to the downloaded copy without missing a beat</string>
+    <string name="wz_download_b3">Send downloads to a friend\'s phone on the same Wi-Fi</string>
+
+    <string name="wz_spotify_title">Bring your Spotify playlists</string>
+    <string name="wz_spotify_text">Import a playlist or your Liked Songs, and zrAuto finds every song on YouTube for you.</string>
+    <string name="wz_spotify_b1">Your latest liked songs, or all of them</string>
+    <string name="wz_spotify_b2">Sync a playlist again whenever it changes</string>
+    <string name="wz_spotify_b3">They land in playlists of your own, ready to play</string>
+
+    <string name="wz_car_title">Made for the car</string>
+    <string name="wz_car_text">Drive the whole app with your steering wheel\'s Previous and Next buttons, without touching the screen.</string>
+    <string name="wz_car_b1">Previous and Next move a glowing outline; hold Next to open or play, hold Previous to go back</string>
+    <string name="wz_car_b2">Works in your lists, YouTube search, the queue, menus and Settings</string>
+    <string name="wz_car_b3">Only while Android Auto is connected</string>
+
+    <string name="wz_lyrics_title">Lyrics that follow along</string>
+    <string name="wz_lyrics_text">Lyrics scroll in time with the song. Tap them on the Music tab to open them full size, right there.</string>
+    <string name="wz_lyrics_b1">Tap a line to jump to it, drag to scroll through the song</string>
+    <string name="wz_lyrics_b2">Font, size, colour and alignment are yours to change</string>
+    <string name="wz_lyrics_b3">Captions over fullscreen video too</string>
+
+    <string name="wz_effects_title">Sound the way you like it</string>
+    <string name="wz_effects_text">A mixer-style Equalizer, Bass Boost, Virtualizer and reverb, for YouTube too.</string>
+    <string name="wz_effects_b1">Tune it per track or per folder</string>
+    <string name="wz_effects_b2">Playback speed per track or folder</string>
+    <string name="wz_effects_b3">Fades between songs and videos, so nothing ever cuts</string>
+
+    <string name="wz_aio_title">All in One</string>
+    <string name="wz_aio_text">One card of big tiles for what you reach for most while driving: the sleep timer, video quality, effects and more.</string>
+    <string name="wz_aio_b1">Open it from a floating button or a steering wheel key</string>
+    <string name="wz_aio_b2">You choose the tiles and their order</string>
+    <string name="wz_aio_b3">Power saver, power usage and lyrics are tiles too</string>
+
+    <string name="wz_more_title">And there is more</string>
+    <string name="wz_more_text">A few things that make a long drive easier.</string>
+    <string name="wz_more_b1">Data usage: what videos, music and downloads cost, with a limit and a warning</string>
+    <string name="wz_more_b2">Power usage: the battery draw live like Ampere, a daily trend and a power saver</string>
+    <string name="wz_more_b3">Share to a nearby phone, Fuel Log, Private Mode and a night mode for video</string>
+
+    <!-- Setup -->
+    <string name="wz_backup_title">Back up, or bring it all back</string>
+    <string name="wz_backup_text">Already have a backup? Restore it and everything comes back as it was. Otherwise, turn on automatic backups so your settings and playlists are never lost.</string>
+    <string name="wz_restore_title">I already have a backup</string>
+    <string name="wz_restore_text">Pick the backup file with the system\'s file picker. Google Drive works there too. The app restarts once it is restored.</string>
+    <string name="wz_restore_button">Restore from a backup</string>
+    <string name="wz_autobackup">Back up automatically</string>
+    <string name="wz_autobackup_sub">Saves a backup zip on its own</string>
+    <string name="wz_backup_every">How often</string>
+    <string name="wz_backup_where">Saved to</string>
+    <string name="wz_choose_folder">Choose folder</string>
+    <string name="wz_backup_now">Back up now</string>
+    <string name="wz_backing_up">Backing up…</string>
+
+    <string name="wz_ask_title">Will you use it in your car?</string>
+    <string name="wz_ask_text">With Android Auto connected, zrAuto can follow your steering wheel and go easy on your battery and data. Say yes and we set that up next.</string>
+    <string name="wz_ask_yes">Yes, in my car</string>
+    <string name="wz_ask_yes_sub">Android Auto and steering wheel keys</string>
+    <string name="wz_ask_no">Just on my phone</string>
+    <string name="wz_ask_no_sub">Skip the car settings</string>
+    <string name="wz_ask_hint">You can set the car up later under Settings > Key bindings and Settings > Interface > Android Auto.</string>
+
+    <string name="wz_carset_title">Car settings</string>
+    <string name="wz_carset_text">The ones most people turn on first.</string>
+    <string name="wz_car_mode">Car mode</string>
+    <string name="wz_car_mode_sub">Previous and Next move an outline; hold Next to open</string>
+    <string name="wz_bind_transport">Steering wheel buttons as keys</string>
+    <string name="wz_bind_transport_sub">For cars that send Next and Previous as commands</string>
+    <string name="wz_car_bars">Hide bars while scrolling</string>
+    <string name="wz_car_bars_sub">More room on the car screen</string>
+    <string name="wz_car_saver">Power saver in the car</string>
+    <string name="wz_car_saver_sub">Starts when Android Auto connects, and darkens the phone\'s screen</string>
+    <string name="wz_car_data">Data limit for each drive</string>
+    <string name="wz_car_data_sub">A warning when a drive uses more than you set</string>
+    <string name="wz_carset_hint">Open zrAuto from Android Auto\'s launcher on the car screen. Everything here is in Settings too.</string>
+
+    <string name="wz_keys_title">Your steering wheel keys</string>
+    <string name="wz_keys_text">Press a button on your steering wheel, or tap a key below, and see exactly what zrAuto gets and what it does. Tap and hold to try a long press.</string>
+    <string name="wz_keys_idle">Press a key</string>
+    <string name="wz_keys_idle_sub">On your steering wheel, or tap one below</string>
+    <string name="wz_keys_pressing">Pressed</string>
+    <string name="wz_keys_holding">Holding…</string>
+    <string name="wz_keys_nothing">does nothing</string>
+    <string name="wz_keys_type_press">Press</string>
+    <string name="wz_keys_type_double">Double press</string>
+    <string name="wz_keys_type_hold">Long press</string>
+    <string name="wz_keys_result">%1$s → %2$s</string>
+    <string name="wz_keys_bindings">What they do</string>
+    <string name="wz_keys_press">Press: %1$s</string>
+    <string name="wz_keys_hold">Hold: %1$s</string>
+    <string name="wz_pick_press">%1$s, pressed</string>
+    <string name="wz_pick_hold">%1$s, held</string>
+    <string name="wz_keys_note">With car mode on, Previous and Next move the outline on the car screen instead, and hold Next opens. These apply everywhere else.</string>
+    <string name="wz_keys_all">All keys and their settings</string>
+
+    <string name="wz_tune_title">Make it yours</string>
+    <string name="wz_tune_text">A few more things worth switching on. Every one of them is in Settings later.</string>
+    <string name="wz_tune_bars">Hide bars while scrolling</string>
+    <string name="wz_tune_bars_sub">The bars tuck away while a list scrolls</string>
+    <string name="wz_tune_lyrics">Lyrics over the cover</string>
+    <string name="wz_tune_lyrics_sub">On the Music tab, for songs that have them</string>
+    <string name="wz_tune_clock">Clock over video and music</string>
+    <string name="wz_tune_clock_sub">A small info strip at the top right</string>
+    <string name="wz_tune_power">Battery draw in the info strip</string>
+    <string name="wz_tune_power_sub">The live current, like Ampere</string>
+    <string name="wz_tune_saver">Power saver at 20%</string>
+    <string name="wz_tune_saver_sub">Dims the phone, holds 60 Hz and pauses downloads when it runs low</string>
+    <string name="wz_tune_data">Data limit per month</string>
+    <string name="wz_tune_data_sub">You get a warning at 80%, and a stop at the limit</string>
+    <string name="wz_data_off">None</string>
+    <string name="wz_data_5">5 GB</string>
+    <string name="wz_data_20">20 GB</string>
+
+    <string name="wz_done_title">You\'re all set</string>
+    <string name="wz_done_text">Enjoy the drive. There is a lot more to tune in Settings, and this introduction is always under Settings > Other.</string>
+</resources>

@@ -486,6 +486,11 @@ public class MainActivityDelegate extends ActivityDelegate
 				return;
 			}
 
+			// Just installed: the welcome and setup wizard, once the first screen has settled.
+			if (!isCarActivity()) {
+				postDelayed(() -> me.aap.fermata.ui.welcome.WelcomeWizard.maybeShow(this), 1200);
+			}
+
 			if ((intent != null) && !Intent.ACTION_MAIN.equals(intent.getAction())) {
 				handleIntent(intent).onCompletion((r, err) -> {
 					if (err != null) Log.e(err, "Failed to handle intent ", intent);
@@ -2828,6 +2833,7 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	@Override
 	public void onBackPressed() {
+		if (me.aap.fermata.ui.welcome.WelcomeWizard.onBack()) return;
 		if (me.aap.fermata.ui.view.ShareSheet.dismissOpen()) return;
 		if (PlaylistPicker.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.YoutubeAlternativesPicker.dismissOpen()) return;

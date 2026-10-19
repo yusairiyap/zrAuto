@@ -335,6 +335,34 @@ provider doesn't offer a folder to pick, so Drive is manual only.
   `CommentsSkeletonView` is the shimmering placeholder while a batch loads. The column's elevation (7dp) is below
   the control panel/FABs (10dp) on purpose.
 
+## Lyrics page, Power usage and power saver, welcome wizard
+
+- **Lyrics page** (Music tab): a tap on the lyrics over the cover (or the Lyrics chip held) opens `lyricsPage` in
+  `MusicPlayerFragment`, an interactive `LyricsView` on a glass panel that fills `music_art_holder` (`setLyricsExpanded`).
+  It is a view of the tab, not a card over the app: Back (`onBackPressed`), its close button, the chip turning lyrics off
+  or a track without lyrics close it. While it is open the cover's own lyrics step aside (`updateLyrics` hides the
+  overlay), so only one `LyricsView` follows the video. `LyricsCard` is now only for the other tabs. Never run on a device.
+- **Power usage addon** (`addon/power/`, tab `ui/fragment/PowerUsageFragment`, built into `fermata` like Data usage):
+  `PowerUsageTracker` reads `BATTERY_PROPERTY_CURRENT_NOW` (the *whole phone's* current; Android gives an app no per-app
+  figure, so categories are "what the app was doing": video / music / idle, and Android Auto vs phone alone). Unit (µA or
+  mA) and sign (charging positive or negative) are learned from the first readings, with Settings overrides
+  (`UNITS`, `SIGN`); look for `POWER` lines in the Diagnostic log. It reads once a second only while a tab/overlay listens
+  (`addListener`), else every 15-60 s and only while the app is open, playing or in a car; a handler message never wakes a
+  sleeping phone. `PowerUsageStore` keeps µAh and ms per hour (2 months) and day (3 years). The Info Overlay item is the
+  key `power` (`INFO_OVERLAY_SHOW_POWER`, with a car twin); the actions are `POWER_USAGE` and `POWER_SAVER` (end of the enum).
+  `DataUsageChartView` takes a value formatter (`setValueFormatter`) so the Power tab reuses it for mAh.
+- **Power saver** (`PowerSaver`): on by hand, below a battery level while unplugged, with Android Auto, or with Android's
+  Battery Saver. It caps the phone window's brightness (and takes it to the minimum while a car is connected), holds
+  60 Hz (`preferredRefreshRate`, which `MusicPlayerFragment#setLowRefreshRate` also respects) and pauses downloads it then
+  resumes; turning it off while an automatic reason holds keeps it off until the reason passes (`suppressed`).
+- **Welcome and setup wizard** (`ui/welcome/WelcomeWizard`, art in `WelcomeArtView`, drawn in code): an overlay on
+  `R.id.main_activity` (elevation 24dp: above bars and menus, below the 26dp top cards so toasts show). Shown once on a
+  fresh install (`firstInstallTime` ~ `lastUpdateTime`; an update only marks `WELCOME_DONE`), from
+  `MainActivityDelegate#onActivityCreate`, and from Settings > Other. Phone screen only. Its key page uses the existing
+  `KeyTester` hook; Back is routed through `WelcomeWizard.onBack()` in `MainActivityDelegate#onBackPressed`.
+  Restore uses `SettingsFragment.importPrefs` (public static now) and marks the wizard done first, since a restored
+  backup brings its own prefs back and the app restarts.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,
