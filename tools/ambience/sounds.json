@@ -6,23 +6,269 @@
     "drops": {
       "title": "Leaf droplets",
       "sources": [
-        {"id": 457447, "gain": 1.0, "name": "Rain Sound and Rainforest", "author": "INNORECORDS", "url": "https://freesound.org/people/INNORECORDS/sounds/457447/"}
+        {
+          "id": 457447,
+          "gain": 1.0,
+          "name": "Rain Sound and Rainforest",
+          "author": "INNORECORDS",
+          "url": "https://freesound.org/people/INNORECORDS/sounds/457447/"
+        }
       ],
       "alternatives": [
-        {"id": 201811, "name": "raindrops falling on leaves (24 s)", "author": "J_Bond", "url": "https://freesound.org/people/J_Bond/sounds/201811/"},
-        {"id": 125954, "name": "Rain, dripping water (2:15)", "author": "Ryding", "url": "https://freesound.org/people/Ryding/sounds/125954/"},
-        {"id": 543649, "name": "Water Droplets (12 s)", "author": "Legnalegna55", "url": "https://freesound.org/people/Legnalegna55/sounds/543649/"}
+        {
+          "id": 201811,
+          "name": "raindrops falling on leaves (24 s)",
+          "author": "J_Bond",
+          "url": "https://freesound.org/people/J_Bond/sounds/201811/"
+        },
+        {
+          "id": 125954,
+          "name": "Rain, dripping water (2:15)",
+          "author": "Ryding",
+          "url": "https://freesound.org/people/Ryding/sounds/125954/"
+        },
+        {
+          "id": 543649,
+          "name": "Water Droplets (12 s)",
+          "author": "Legnalegna55",
+          "url": "https://freesound.org/people/Legnalegna55/sounds/543649/"
+        }
       ]
     },
     "bubbles": {
       "title": "Underwater",
       "sources": [
-        {"id": 482167, "gain": 1.0, "name": "Underwater Ambience", "author": "Tim_Verberne", "url": "https://freesound.org/people/Tim_Verberne/sounds/482167/"},
-        {"id": 529383, "gain": 0.8, "name": "Bubbles In Water", "author": "calebrankin", "url": "https://freesound.org/people/calebrankin/sounds/529383/"}
+        {
+          "id": 482167,
+          "gain": 1.0,
+          "name": "Underwater Ambience",
+          "author": "Tim_Verberne",
+          "url": "https://freesound.org/people/Tim_Verberne/sounds/482167/"
+        },
+        {
+          "id": 529383,
+          "gain": 0.8,
+          "name": "Bubbles In Water",
+          "author": "calebrankin",
+          "url": "https://freesound.org/people/calebrankin/sounds/529383/"
+        }
       ],
       "alternatives": [
-        {"id": 504641, "name": "Underwater Ambience (46 s, muffled)", "author": "Fission9", "url": "https://freesound.org/people/Fission9/sounds/504641/"},
-        {"id": 395556, "name": "Single Water Bubbles (20 s)", "author": "Kinoton", "url": "https://freesound.org/people/Kinoton/sounds/395556/"}
+        {
+          "id": 504641,
+          "name": "Underwater Ambience (46 s, muffled)",
+          "author": "Fission9",
+          "url": "https://freesound.org/people/Fission9/sounds/504641/"
+        },
+        {
+          "id": 395556,
+          "name": "Single Water Bubbles (20 s)",
+          "author": "Kinoton",
+          "url": "https://freesound.org/people/Kinoton/sounds/395556/"
+        }
+      ]
+    },
+    "rain": {
+      "title": "Rain",
+      "sources": [
+        {
+          "id": 584101,
+          "gain": 1.0,
+          "name": "Seamless Rain Low",
+          "author": "QuietLily",
+          "url": "https://freesound.org/people/QuietLily/sounds/584101/"
+        }
+      ],
+      "alternatives": [
+        {
+          "id": 518863,
+          "name": "Rain.wav (balcony rain)",
+          "author": "idomusics",
+          "url": "https://freesound.org/people/idomusics/sounds/518863/"
+        }
+      ]
+    },
+    "window": {
+      "title": "Rainy window",
+      "sources": [
+        {
+          "id": 648529,
+          "gain": 1.0,
+          "name": "RAIN on glass window",
+          "author": "nicoproson",
+          "url": "https://freesound.org/people/nicoproson/sounds/648529/"
+        }
+      ],
+      "alternatives": [
+        {
+          "id": 75008,
+          "name": "Rain on Window.wav",
+          "author": "CBeeching",
+          "url": "https://freesound.org/people/CBeeching/sounds/75008/"
+        }
+      ]
+    },
+    "fire": {
+      "title": "Fireplace",
+      "sources": [
+        {
+          "id": 414767,
+          "gain": 1.0,
+          "name": "Crackling Fire",
+          "author": "samarobryn",
+          "url": "https://freesound.org/people/samarobryn/sounds/414767/"
+        }
+      ],
+      "alternatives": [
+        {
+          "id": 370938,
+          "name": "fire-crackling.wav (24 s)",
+          "author": "jmehlferber",
+          "url": "https://freesound.org/people/jmehlferber/sounds/370938/"
+        },
+        {
+          "id": 650574,
+          "name": "fire crackling loop.wav (5 s loop)",
+          "author": "soundofsong",
+          "url": "https://freesound.org/people/soundofsong/sounds/650574/"
+        }
+      ]
+    },
+    "wind": {
+      "title": "Wind",
+      "sources": [
+        {
+          "id": 531016,
+          "gain": 1.0,
+          "name": "Wind Through Trees ambience.wav",
+          "author": "Noted451",
+          "url": "https://freesound.org/people/Noted451/sounds/531016/"
+        }
+      ],
+      "alternatives": [
+        {
+          "id": 360568,
+          "name": "Soft Wind Trees Moving Ambience.wav",
+          "author": "jordir",
+          "url": "https://freesound.org/people/jordir/sounds/360568/"
+        },
+        {
+          "id": 335889,
+          "name": "Wind Through Trees (with birds)",
+          "author": "Yoyodaman234",
+          "url": "https://freesound.org/people/Yoyodaman234/sounds/335889/"
+        }
+      ]
+    },
+    "ocean": {
+      "title": "Ocean",
+      "sources": [
+        {
+          "id": 795445,
+          "gain": 1.0,
+          "name": "Waves crashing on shore",
+          "author": "jamgypsy",
+          "url": "https://freesound.org/people/jamgypsy/sounds/795445/"
+        }
+      ],
+      "alternatives": [
+        {
+          "id": 376795,
+          "name": "Gentle Waves - Quiet Beach",
+          "author": "amholma",
+          "url": "https://freesound.org/people/amholma/sounds/376795/"
+        },
+        {
+          "id": 531015,
+          "name": "Ocean Waves.wav",
+          "author": "Noted451",
+          "url": "https://freesound.org/people/Noted451/sounds/531015/"
+        }
+      ]
+    },
+    "stream": {
+      "title": "Stream",
+      "sources": [
+        {
+          "id": 548767,
+          "gain": 1.0,
+          "name": "Relaxing river stream running water seamless loop",
+          "author": "steaq",
+          "url": "https://freesound.org/people/steaq/sounds/548767/"
+        }
+      ],
+      "alternatives": []
+    },
+    "night": {
+      "title": "Night",
+      "sources": [
+        {
+          "id": 210540,
+          "gain": 1.0,
+          "name": "crickets.wav",
+          "author": "Sclolex",
+          "url": "https://freesound.org/people/Sclolex/sounds/210540/"
+        }
+      ],
+      "alternatives": [
+        {
+          "id": 320145,
+          "name": "Night Crickets Ambience on Rural Property",
+          "author": "OwlStorm",
+          "url": "https://freesound.org/people/OwlStorm/sounds/320145/"
+        },
+        {
+          "id": 522298,
+          "name": "Crickets At Night - Clean sound",
+          "author": "Defelozedd94",
+          "url": "https://freesound.org/people/Defelozedd94/sounds/522298/"
+        }
+      ]
+    },
+    "birds": {
+      "title": "Forest birds",
+      "sources": [
+        {
+          "id": 578523,
+          "gain": 1.0,
+          "name": "Birds singing, Dawn chorus",
+          "author": "SamsterBirdies",
+          "url": "https://freesound.org/people/SamsterBirdies/sounds/578523/"
+        }
+      ],
+      "alternatives": [
+        {
+          "id": 573080,
+          "name": "Dawn Chorus Birdsong (9 min)",
+          "author": "squashy555",
+          "url": "https://freesound.org/people/squashy555/sounds/573080/"
+        },
+        {
+          "id": 723913,
+          "name": "Forest birds - ambient seamless loop (27 s)",
+          "author": "Magnesus",
+          "url": "https://freesound.org/people/Magnesus/sounds/723913/"
+        }
+      ]
+    },
+    "cafe": {
+      "title": "Cozy café",
+      "sources": [
+        {
+          "id": 813868,
+          "gain": 1.0,
+          "name": "Coffee Shop Ambience, Northtown Coffee",
+          "author": "CVLTIV8R",
+          "url": "https://freesound.org/people/CVLTIV8R/sounds/813868/"
+        }
+      ],
+      "alternatives": [
+        {
+          "id": 260062,
+          "name": "Busy Coffee Shop Counter Field Recording",
+          "author": "mhtaylor67",
+          "url": "https://freesound.org/people/mhtaylor67/sounds/260062/"
+        }
       ]
     }
   }
