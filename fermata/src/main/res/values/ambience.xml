@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The Ambience tab: looping nature and room sounds that play quietly behind whatever plays. -->
+    <string name="addon_name_ambience">Ambience</string>
+    <string name="ambience_title">Ambience</string>
+    <string name="action_ambience">Ambience</string>
+    <string name="action_ambience_toggle">Ambience on / off</string>
+    <string name="ambience_addon_off">Switch on Ambience under Settings > Addons first</string>
+
+    <string name="ambience_rain">Rain</string>
+    <string name="ambience_rain_sub">Steady rainfall on leaves</string>
+    <string name="ambience_thunder">Thunder</string>
+    <string name="ambience_thunder_sub">Distant storm, with lightning</string>
+    <string name="ambience_fire">Fireplace</string>
+    <string name="ambience_fire_sub">Warm crackling logs</string>
+    <string name="ambience_wind">Wind</string>
+    <string name="ambience_wind_sub">Gusts through the trees</string>
+    <string name="ambience_ocean">Ocean</string>
+    <string name="ambience_ocean_sub">Waves rolling onto the shore</string>
+    <string name="ambience_stream">Stream</string>
+    <string name="ambience_stream_sub">A brook running over stones</string>
+    <string name="ambience_night">Night</string>
+    <string name="ambience_night_sub">Crickets under the stars</string>
+    <string name="ambience_birds">Forest birds</string>
+    <string name="ambience_birds_sub">Birdsong at dawn</string>
+
+    <string name="ambience_hero_idle">Pick a sound to set the mood</string>
+    <string name="ambience_hero_playing">Now in the air</string>
+    <string name="ambience_hero_paused">Paused with playback</string>
+    <string name="ambience_sounds">Sounds</string>
+    <string name="ambience_percent">%1$d%%</string>
+    <string name="ambience_tap_hint">Tap to play</string>
+    <string name="ambience_start">Start</string>
+    <string name="ambience_stop_all">Stop all</string>
+    <string name="ambience_volume">Volume</string>
+    <string name="ambience_length">Length</string>
+    <string name="ambience_length_forever">No limit</string>
+    <string name="ambience_length_hint_forever">Plays until you turn it off</string>
+    <string name="ambience_length_hint">Fades out and stops after this long</string>
+    <string name="ambience_minutes_short">%1$d min</string>
+    <string name="ambience_hours_short">%1$d h</string>
+    <string name="ambience_left">%1$s left</string>
+    <string name="ambience_intensity">Intensity</string>
+    <string name="ambience_state_off">Off</string>
+    <string name="ambience_state_on">On · %1$d%%</string>
+    <string name="ambience_pause_hint">Ambience pauses with the music</string>
+    <string name="ambience_started">Ambience on: %1$s</string>
+    <string name="ambience_stopped">Ambience off</string>
+    <string name="ambience_timer_done">Ambience timer ended</string>
+    <string name="ambience_unsupported">Sound could not start on this device</string>
+
+    <!-- Settings > Addons > Ambience -->
+    <string name="ambience_set_fade">Fade in and out</string>
+    <string name="ambience_set_fade_sub">Seconds a sound takes to rise and to die away</string>
+    <string name="ambience_set_follow">Pause with playback</string>
+    <string name="ambience_set_follow_sub">Fade the ambience out when the music or video pauses, and back in when it resumes</string>
+    <string name="ambience_set_noisy">Stop when headphones unplug</string>
+    <string name="ambience_set_noisy_sub">Fade the ambience out when the audio output changes suddenly</string>
+    <string name="ambience_set_anim_music">Animate the Music tab</string>
+    <string name="ambience_set_anim_music_sub">Rain, lightning, embers and more drift over the cover while a sound plays. Turn off to save battery.</string>
+    <string name="ambience_set_anim_tab">Animate this tab</string>
+    <string name="ambience_set_anim_tab_sub">Moving scenes on the Ambience tab\'s cards. Turn off to save battery.</string>
+</resources>

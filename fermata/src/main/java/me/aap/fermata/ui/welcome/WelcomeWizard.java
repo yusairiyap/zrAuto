@@ -1186,6 +1186,8 @@ public final class WelcomeWizard {
 		for (Action act : Action.getAll()) {
 			// Only what a key can usefully do (a tab that is not there is left out).
 			if ((act == Action.POWER_USAGE || act == Action.POWER_SAVER) && !PowerUsageAddon.isEnabled()) continue;
+			if ((act == Action.AMBIENCE || act == Action.AMBIENCE_TOGGLE) &&
+					!me.aap.fermata.addon.ambience.AmbienceAddon.isEnabled()) continue;
 			LinearLayout item = new LinearLayout(pc);
 			item.setOrientation(LinearLayout.HORIZONTAL);
 			item.setGravity(Gravity.CENTER_VERTICAL);
