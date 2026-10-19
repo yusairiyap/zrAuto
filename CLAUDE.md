@@ -519,7 +519,9 @@ translated strings across many locales, **ask the user before proceeding** rathe
 - **Share zrAuto app** (Settings > Other): `ShareSource#createApp` offers the installed base APK as a
   `ShareOffer.KIND_APP`; the receiver keeps it in `Shared/<title>` and `ShareImporter#offerInstall` asks via
   `TopConfirm`, then opens the installer through the Auto flavor's FileProvider (the mobile flavor has none, it
-  just says where the file is). Split installs (app bundles) can't be shared.
+  just says where the file is). Split installs (app bundles) can't be shared. Once installed, the received file is
+  deleted at the next app start (`share/ReceivedAppCleanup`, from `FermataApplication#onCreate`): an `.apk` under
+  `Shared/*/` that is byte for byte the installed `sourceDir` APK; any other `.apk` is left alone.
 - **Android Auto session limit** (`addon/data/DataSessionLimit`): a session runs from Android Auto connecting
   to disconnecting (car activity, mirroring, or the phone's car UI mode), polled with each
   `DataUsageTracker` reading, counting what it books (mobile only when the tracker counts mobile only). Set on

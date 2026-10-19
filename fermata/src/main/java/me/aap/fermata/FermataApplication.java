@@ -54,6 +54,8 @@ public class FermataApplication extends NetSplitCompatApp {
 		// lifecycle, an Android Auto display takeover) happen outside, or before, any one Activity.
 		DiagnosticLog.init();
 		me.aap.fermata.backup.BackupManager.init(this);
+		// An update received over Wi-Fi and installed since: its file is no longer needed.
+		me.aap.fermata.share.ReceivedAppCleanup.run(this);
 	}
 
 	@Override
