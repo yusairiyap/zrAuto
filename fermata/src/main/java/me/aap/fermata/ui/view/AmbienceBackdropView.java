@@ -17,7 +17,7 @@ import me.aap.fermata.addon.power.PowerSaver;
  */
 public final class AmbienceBackdropView extends View {
 	private final AmbienceEngine engine = AmbienceEngine.get();
-	private final AmbienceScene scene;
+	private AmbienceScene scene;
 	private final float[] lv = new float[AmbienceEffect.values().length];
 	private final AmbienceScene.Clock clock = new AmbienceScene.Clock(this, this::onFrame);
 	private final Runnable changed = this::wake;

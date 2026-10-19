@@ -37,7 +37,7 @@ public final class AmbienceCardView extends LinearLayout {
 	private static final ArgbEvaluator ARGB = new ArgbEvaluator();
 	private final AmbienceEffect fx;
 	private final AmbienceEngine engine = AmbienceEngine.get();
-	private final AmbienceScene scene;
+	private AmbienceScene scene;
 	private final float[] lv = new float[AmbienceEffect.values().length];
 	private final AmbienceScene.Clock clock = new AmbienceScene.Clock(this, this::onFrame);
 	private final Runnable changed = this::sync;

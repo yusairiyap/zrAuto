@@ -36,7 +36,7 @@ public final class AmbienceHeroView extends FrameLayout {
 	private static final int IDLE_TOP = 0xFF23254F;
 	private static final int IDLE_BOTTOM = 0xFF0F1026;
 	private final AmbienceEngine engine = AmbienceEngine.get();
-	private final AmbienceScene scene;
+	private AmbienceScene scene;
 	private final float[] lv = new float[AmbienceEffect.values().length];
 	private final AmbienceScene.Clock clock = new AmbienceScene.Clock(this, this::onFrame);
 	private final Runnable changed = this::sync;
