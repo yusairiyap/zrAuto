@@ -98,10 +98,8 @@
     <string name="ambience_opt_cafe_hi">Busy</string>
     <string name="ambience_src_synth">Synth</string>
     <string name="ambience_src_rec">Recorded</string>
-    <string name="ambience_src_get">Recorded · %1$s</string>
-    <string name="ambience_src_downloading">Downloading %1$d%%</string>
     <string name="ambience_src_loading">Loading…</string>
-    <string name="ambience_src_retry">Retry download</string>
+    <string name="ambience_src_retry">Retry</string>
     <string name="ambience_tone">Tone</string>
     <string name="ambience_tone_lo">Warm</string>
     <string name="ambience_tone_hi">Bright</string>

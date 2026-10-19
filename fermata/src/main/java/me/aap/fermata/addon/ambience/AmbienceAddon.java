@@ -76,8 +76,6 @@ public class AmbienceAddon implements FermataFragmentAddon, FermataActivityAddon
 	@Override
 	public void onActivityCreate(MainActivityDelegate a) {
 		attach(a.getMediaSessionCallback());
-		// Which recordings can be downloaded (cached, and read again every few hours).
-		AmbienceSamples.get().refresh();
 	}
 
 	@Override

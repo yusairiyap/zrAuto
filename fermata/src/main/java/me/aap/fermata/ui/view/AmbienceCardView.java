@@ -390,7 +390,7 @@ public final class AmbienceCardView extends FrameLayout {
 		if (on) sync();
 	}
 
-	/** The Synthesized / Recorded choice and what the download of the recording is doing. */
+	/** The Synthesized / Recorded choice and whether the recording is loaded yet. */
 	private void updateSource() {
 		boolean has = samples.has(fx);
 		srcRow.setVisibility(has ? VISIBLE : GONE);
@@ -402,10 +402,9 @@ public final class AmbienceCardView extends FrameLayout {
 		String text;
 		switch (samples.getState(fx)) {
 			case READY -> text = ctx.getString(R.string.ambience_src_rec);
-			case DOWNLOADING -> text = ctx.getString(R.string.ambience_src_downloading, samples.getProgress(fx));
 			case LOADING -> text = ctx.getString(R.string.ambience_src_loading);
 			case FAILED -> text = ctx.getString(R.string.ambience_src_retry);
-			default -> text = ctx.getString(R.string.ambience_src_get, samples.getSizeText(fx));
+			default -> text = ctx.getString(R.string.ambience_src_rec);
 		}
 		srcRec.setText(text);
 	}

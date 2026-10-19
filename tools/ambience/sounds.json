@@ -1,28 +1,28 @@
 {
-  "comment": "Recorded loops for the Ambience addon, built by .github/workflows/ambience-sounds.yml. Keys are AmbienceEffect keys. Every source must be CC0 on Freesound (the build fails otherwise). Each sound is turned into a seamless loop of loopSeconds with an equal-power crossfade of crossfadeSeconds, then encoded as Opus. A sound with several sources layers them (gain is relative). To try another recording, change the id and run the workflow again; the app picks up the new file from the manifest.",
+  "comment": "Which downloaded Freesound files make which recorded loop of the Ambience addon. Keys are AmbienceEffect keys. A source is found by its Freesound id: the downloaded file's name starts with it (Freesound names downloads like 457447__innorecords__rain-sound-and-rainforest.wav). All of them must be CC0 (checked by hand on the sound's page). Several sources of one sound are layered; gain is relative. Run: python3 tools/ambience/build_sounds.py DOWNLOAD_DIR fermata/src/main/assets/ambience",
   "loopSeconds": 60,
   "crossfadeSeconds": 3,
   "sounds": {
     "drops": {
-      "title": "Droplets on leaves",
+      "title": "Leaf droplets",
       "sources": [
-        {"id": 457447, "gain": 1.0, "note": "INNORECORDS, forest after rain, drops falling on ferns"}
+        {"id": 457447, "gain": 1.0, "name": "Rain Sound and Rainforest", "author": "INNORECORDS", "url": "https://freesound.org/people/INNORECORDS/sounds/457447/"}
       ],
       "alternatives": [
-        {"id": 201811, "note": "J_Bond, raindrops falling on leaves (24 s, garden)"},
-        {"id": 125954, "note": "Ryding, rain and dripping water (2:15)"},
-        {"id": 543649, "note": "Legnalegna55, water droplets (12 s)"}
+        {"id": 201811, "name": "raindrops falling on leaves (24 s)", "author": "J_Bond", "url": "https://freesound.org/people/J_Bond/sounds/201811/"},
+        {"id": 125954, "name": "Rain, dripping water (2:15)", "author": "Ryding", "url": "https://freesound.org/people/Ryding/sounds/125954/"},
+        {"id": 543649, "name": "Water Droplets (12 s)", "author": "Legnalegna55", "url": "https://freesound.org/people/Legnalegna55/sounds/543649/"}
       ]
     },
     "bubbles": {
       "title": "Underwater",
       "sources": [
-        {"id": 482167, "gain": 1.0, "note": "Tim_Verberne, underwater ambience loop (2:00)"},
-        {"id": 529383, "gain": 0.8, "note": "calebrankin, bubbles in water (39 s)"}
+        {"id": 482167, "gain": 1.0, "name": "Underwater Ambience", "author": "Tim_Verberne", "url": "https://freesound.org/people/Tim_Verberne/sounds/482167/"},
+        {"id": 529383, "gain": 0.8, "name": "Bubbles In Water", "author": "calebrankin", "url": "https://freesound.org/people/calebrankin/sounds/529383/"}
       ],
       "alternatives": [
-        {"id": 504641, "note": "Fission9, muffled deep underwater texture (46 s)"},
-        {"id": 395556, "note": "Kinoton, single deep water bubbles (20 s)"}
+        {"id": 504641, "name": "Underwater Ambience (46 s, muffled)", "author": "Fission9", "url": "https://freesound.org/people/Fission9/sounds/504641/"},
+        {"id": 395556, "name": "Single Water Bubbles (20 s)", "author": "Kinoton", "url": "https://freesound.org/people/Kinoton/sounds/395556/"}
       ]
     }
   }

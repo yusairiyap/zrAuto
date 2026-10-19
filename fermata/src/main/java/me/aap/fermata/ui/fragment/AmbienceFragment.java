@@ -201,7 +201,6 @@ public class AmbienceFragment extends MainActivityFragment implements ToolBarChi
 	public void onResume() {
 		super.onResume();
 		engine.addListener(changed);
-		me.aap.fermata.addon.ambience.AmbienceSamples.get().refresh();
 		syncControls();
 	}
 

@@ -1,31 +1,23 @@
 package me.aap.fermata.addon.ambience;
 
+import android.content.res.AssetManager;
 import android.media.MediaCodec;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.SystemClock;
-import android.text.format.Formatter;
-
-import androidx.annotation.Nullable;
 
 import org.json.JSONObject;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.ShortBuffer;
-import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
@@ -36,31 +28,26 @@ import me.aap.fermata.util.DiagnosticLog;
 import me.aap.utils.log.Log;
 
 /**
- * The recorded loops of the Ambience addon: real CC0 recordings (built by the "Ambience sounds"
- * workflow from {@code tools/ambience/sounds.json}) that are downloaded the first time they are
- * wanted, kept in the app's files and played by {@link AmbienceSample} instead of the synthesized
- * voice, when the user picks "Recorded" on a card.
+ * The recorded loops of the Ambience addon: real CC0 recordings that ship inside the app
+ * ({@code assets/ambience/}, a minute of Opus is about half a megabyte) and are played by
+ * {@link AmbienceSample} instead of the synthesized voice when the user picks "Recorded" on a card.
+ * They are made from files downloaded by hand with {@code tools/ambience/build_sounds.py}, which
+ * also writes {@code manifest.json}, the list of what is there and its credits. An effect with no
+ * entry there simply has no choice to make.
  * <p>
- * {@code manifest.json} in the release says which sounds exist, how big they are and their hash;
- * it is cached, so a sound that was downloaded stays usable offline, and asked for again at most
- * every few hours. A file is checked against its hash, decoded once with MediaCodec into PCM kept
- * in memory (a minute of stereo is about 11 MB) and dropped again when the user goes back to the
- * synthesized one. All of it runs on one background thread; listeners are told on the main thread.
+ * A recording is decoded once with MediaCodec into PCM kept in memory (a minute of stereo is about
+ * 11 MB) when it is first wanted, on a background thread, and dropped again when the user goes back
+ * to the synthesized voice. Listeners are told on the main thread.
  */
 public final class AmbienceSamples {
-	/** The release the workflow publishes to. */
-	static final String BASE = "https://github.com/yusairiyap/zrAuto/releases/download/ambience-sounds/";
-	private static final long MANIFEST_EVERY_MS = 6 * 3600_000L;
 	private static final int MAX_SECONDS = 120;
 	private static volatile AmbienceSamples instance;
 
-	public enum State {NONE, DOWNLOADING, LOADING, READY, FAILED}
+	public enum State {NONE, LOADING, READY, FAILED}
 
 	private static final class Entry {
-		String file, sha256;
-		long bytes;
+		String file;
 		volatile State state = State.NONE;
-		volatile int progress;
 		final AmbienceSample voice = new AmbienceSample();
 	}
 
@@ -72,11 +59,9 @@ public final class AmbienceSamples {
 	});
 	private final Map<String, Entry> entries = new HashMap<>();
 	private final List<Runnable> listeners = new CopyOnWriteArrayList<>();
-	private long manifestAt;
-	private boolean fetching;
 
 	private AmbienceSamples() {
-		readManifest(manifestFile());
+		readManifest();
 	}
 
 	public static AmbienceSamples get() {
@@ -88,16 +73,6 @@ public final class AmbienceSamples {
 			}
 		}
 		return s;
-	}
-
-	private static File dir() {
-		File d = new File(FermataApplication.get().getFilesDir(), "ambience");
-		d.mkdirs();
-		return d;
-	}
-
-	private static File manifestFile() {
-		return new File(dir(), "manifest.json");
 	}
 
 	public void addListener(Runnable l) {
@@ -118,7 +93,33 @@ public final class AmbienceSamples {
 	// What there is
 	// ---------------------------------------------------------------------------------------------
 
-	/** Whether a recording exists for the effect (it is in the manifest). */
+	private synchronized Entry entry(String key) {
+		Entry en = entries.get(key);
+		if (en == null) {
+			en = new Entry();
+			entries.put(key, en);
+		}
+		return en;
+	}
+
+	private void readManifest() {
+		try (InputStream in = FermataApplication.get().getAssets().open("ambience/manifest.json")) {
+			java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+			byte[] b = new byte[4096];
+			for (int n; (n = in.read(b)) > 0; ) bo.write(b, 0, n);
+			JSONObject sounds = new JSONObject(bo.toString("UTF-8")).getJSONObject("sounds");
+			for (java.util.Iterator<String> it = sounds.keys(); it.hasNext(); ) {
+				String key = it.next();
+				entry(key).file = sounds.getJSONObject(key).getString("file");
+			}
+		} catch (java.io.FileNotFoundException none) {
+			// No recordings in this build.
+		} catch (Exception ex) {
+			DiagnosticLog.log("AMBIENCE", "manifest unreadable", ex);
+		}
+	}
+
+	/** Whether a recording exists for the effect. */
 	public synchronized boolean has(AmbienceEffect e) {
 		Entry en = entries.get(e.key);
 		return (en != null) && (en.file != null);
@@ -129,116 +130,42 @@ public final class AmbienceSamples {
 		return (en == null) ? State.NONE : en.state;
 	}
 
-	public synchronized int getProgress(AmbienceEffect e) {
-		Entry en = entries.get(e.key);
-		return (en == null) ? 0 : en.progress;
-	}
-
 	public boolean isReady(AmbienceEffect e) {
 		return getState(e) == State.READY;
 	}
 
-	/** "2.1 MB", or an empty string. */
-	public synchronized String getSizeText(AmbienceEffect e) {
-		Entry en = entries.get(e.key);
-		return (en == null) ? "" : Formatter.formatShortFileSize(FermataApplication.get(), en.bytes);
-	}
-
 	/** The voice that plays the recording; silent until it is {@link State#READY}. */
-	synchronized AmbienceSample voice(AmbienceEffect e) {
-		Entry en = entries.get(e.key);
-		if (en == null) {
-			en = new Entry();
-			entries.put(e.key, en);
-		}
-		return en.voice;
-	}
-
-	private synchronized void readManifest(File f) {
-		try {
-			if (!f.isFile()) return;
-			JSONObject sounds = new JSONObject(new String(readAll(f), "UTF-8")).getJSONObject("sounds");
-			for (java.util.Iterator<String> it = sounds.keys(); it.hasNext(); ) {
-				String key = it.next();
-				JSONObject o = sounds.getJSONObject(key);
-				Entry en = entries.get(key);
-				if (en == null) {
-					en = new Entry();
-					entries.put(key, en);
-				}
-				en.file = o.getString("file");
-				en.bytes = o.getLong("bytes");
-				en.sha256 = o.getString("sha256");
-			}
-		} catch (Exception ex) {
-			DiagnosticLog.log("AMBIENCE", "manifest unreadable", ex);
-		}
-	}
-
-	private static byte[] readAll(File f) throws IOException {
-		try (InputStream in = new FileInputStream(f)) {
-			java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
-			byte[] b = new byte[8192];
-			for (int n; (n = in.read(b)) > 0; ) bo.write(b, 0, n);
-			return bo.toByteArray();
-		}
-	}
-
-	/** Reads the manifest again from the release (not more often than every few hours). */
-	public void refresh() {
-		synchronized (this) {
-			if (fetching || (SystemClock.elapsedRealtime() - manifestAt < MANIFEST_EVERY_MS) && manifestAt != 0) return;
-			fetching = true;
-		}
-		io.execute(() -> {
-			try {
-				File tmp = new File(dir(), "manifest.json.part");
-				download(BASE + "manifest.json", tmp, null, 0);
-				File f = manifestFile();
-				if (!tmp.renameTo(f)) throw new IOException("rename");
-				readManifest(f);
-				synchronized (this) {
-					manifestAt = SystemClock.elapsedRealtime();
-				}
-				changed();
-			} catch (Exception ex) {
-				// Offline, or nothing published yet: what is cached stays.
-				DiagnosticLog.log("AMBIENCE", "manifest not fetched", ex.getMessage());
-			} finally {
-				synchronized (this) {
-					fetching = false;
-				}
-			}
-		});
+	AmbienceSample voice(AmbienceEffect e) {
+		return entry(e.key).voice;
 	}
 
 	// ---------------------------------------------------------------------------------------------
-	// Getting one
+	// Loading one
 	// ---------------------------------------------------------------------------------------------
 
-	/** Makes the recording ready: loads it when it is downloaded, downloads it first when not. */
+	/** Decodes the recording in the background (nothing happens when it is loaded or loading). */
 	public void ensure(AmbienceEffect e) {
 		Entry en;
 		synchronized (this) {
 			en = entries.get(e.key);
 			if ((en == null) || (en.file == null)) return;
-			if ((en.state == State.READY) || (en.state == State.DOWNLOADING) || (en.state == State.LOADING)) return;
-			en.state = State.DOWNLOADING;
-			en.progress = 0;
+			if ((en.state == State.READY) || (en.state == State.LOADING)) return;
+			en.state = State.LOADING;
 		}
 		changed();
 		Entry entry = en;
 		io.execute(() -> {
 			try {
-				File f = new File(dir(), entry.file);
-				if (!isValid(f, entry)) {
-					File part = new File(dir(), entry.file + ".part");
-					download(BASE + entry.file, part, entry, entry.bytes);
-					if (!hash(part).equals(entry.sha256)) throw new IOException("hash mismatch");
-					if (!part.renameTo(f)) throw new IOException("rename");
+				// The decoder wants a file: the asset is copied out once (it is small).
+				File dir = new File(FermataApplication.get().getCacheDir(), "ambience");
+				dir.mkdirs();
+				File f = new File(dir, entry.file);
+				AssetManager am = FermataApplication.get().getAssets();
+				try (InputStream in = am.open("ambience/" + entry.file);
+						 FileOutputStream out = new FileOutputStream(f)) {
+					byte[] b = new byte[16384];
+					for (int n; (n = in.read(b)) > 0; ) out.write(b, 0, n);
 				}
-				entry.state = State.LOADING;
-				changed();
 				Decoded d = decode(f);
 				entry.voice.set(d.pcm, d.channels, d.rate);
 				entry.state = State.READY;
@@ -246,13 +173,13 @@ public final class AmbienceSamples {
 			} catch (Throwable ex) {
 				entry.state = State.FAILED;
 				DiagnosticLog.log("AMBIENCE", "recording failed", e.key, ex);
-				Log.e(ex, "Failed to get the ambience recording ", e.key);
+				Log.e(ex, "Failed to load the ambience recording ", e.key);
 			}
 			changed();
 		});
 	}
 
-	/** Frees the decoded sound (the file stays). */
+	/** Frees the decoded sound. */
 	public void release(AmbienceEffect e) {
 		Entry en;
 		synchronized (this) {
@@ -262,51 +189,6 @@ public final class AmbienceSamples {
 		en.voice.clear();
 		en.state = State.NONE;
 		changed();
-	}
-
-	private boolean isValid(File f, Entry en) throws Exception {
-		return f.isFile() && (f.length() == en.bytes) && hash(f).equals(en.sha256);
-	}
-
-	private static String hash(File f) throws Exception {
-		MessageDigest md = MessageDigest.getInstance("SHA-256");
-		try (InputStream in = new FileInputStream(f)) {
-			byte[] b = new byte[16384];
-			for (int n; (n = in.read(b)) > 0; ) md.update(b, 0, n);
-		}
-		StringBuilder sb = new StringBuilder();
-		for (byte x : md.digest()) sb.append(String.format(Locale.US, "%02x", x));
-		return sb.toString();
-	}
-
-	private void download(String url, File to, @Nullable Entry progress, long total) throws IOException {
-		HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-		c.setConnectTimeout(15000);
-		c.setReadTimeout(30000);
-		c.setInstanceFollowRedirects(true);
-		try {
-			int code = c.getResponseCode();
-			if (code != 200) throw new IOException("HTTP " + code);
-			long done = 0;
-			int last = -1;
-			try (InputStream in = c.getInputStream(); FileOutputStream out = new FileOutputStream(to)) {
-				byte[] b = new byte[16384];
-				for (int n; (n = in.read(b)) > 0; ) {
-					out.write(b, 0, n);
-					done += n;
-					if ((progress != null) && (total > 0)) {
-						int p = (int) Math.min(99, done * 100 / total);
-						if (p != last) {
-							last = p;
-							progress.progress = p;
-							changed();
-						}
-					}
-				}
-			}
-		} finally {
-			c.disconnect();
-		}
 	}
 
 	// ---------------------------------------------------------------------------------------------

@@ -1,40 +1,31 @@
 #!/usr/bin/env python3
-"""Builds the Ambience addon's recorded loops from Freesound.
+"""Turns hand-downloaded CC0 sounds into the Ambience addon's recorded loops.
 
-usage: build_sounds.py sounds.json out_dir      (needs FREESOUND_API_KEY, ffmpeg and numpy)
+usage: build_sounds.py DOWNLOAD_DIR OUT_DIR [sounds.json]      (needs ffmpeg with libopus, and numpy)
 
-For every sound in sounds.json: reads each source's metadata from the Freesound API and stops
-if its license is not CC0, downloads the HQ OGG preview (a token is enough, no OAuth), makes a
-seamless loop of the wanted length (equal-power crossfade of the end into the start), matches the
-loudness to the synthesized voices, layers the sources, and encodes Opus. Writes manifest.json
-with the size, hash and credits of every file, which the app reads.
+For every sound in sounds.json it finds each source in DOWNLOAD_DIR (the file whose name starts with
+the Freesound id), makes a seamless loop of loopSeconds (an equal-power crossfade of the end into the
+start; a source that is too short is first made to loop on itself), matches the loudness to the
+synthesized voices, layers the sources, and encodes Opus in an Ogg file (.ogg, so Android keeps it
+uncompressed in the APK). Writes manifest.json (what the app reads) next to the files.
 """
-import hashlib
 import json
 import os
 import subprocess
 import sys
-import urllib.request
 
 import numpy as np
 
-API = "https://freesound.org/apiv2"
-CC0 = "http://creativecommons.org/publicdomain/zero/1.0/"
 SR = 48000          # Opus always decodes at 48 kHz
-TARGET_RMS = 0.12   # what the synthesized voices sit at, so the two sources are about as loud
+TARGET_RMS = 0.12   # what the synthesized voices sit at, so a recording is about as loud
 
 
-def http_get(url, token=None):
-    req = urllib.request.Request(url)
-    if token:
-        req.add_header("Authorization", "Token " + token)
-    with urllib.request.urlopen(req, timeout=120) as r:
-        return r.read()
-
-
-def sound_info(sound_id, token):
-    fields = "id,name,username,license,duration,previews,url"
-    return json.loads(http_get("%s/sounds/%d/?fields=%s" % (API, sound_id, fields), token))
+def find_source(src_dir, sound_id):
+    for name in sorted(os.listdir(src_dir)):
+        stem = os.path.splitext(name)[0]
+        if stem == str(sound_id) or stem.startswith(str(sound_id) + "__") or stem.startswith(str(sound_id) + "_"):
+            return os.path.join(src_dir, name)
+    return None
 
 
 def decode(path):
@@ -71,52 +62,47 @@ def rms(x):
 def encode_opus(x, path):
     subprocess.run(
         ["ffmpeg", "-y", "-v", "error", "-f", "f32le", "-ar", str(SR), "-ac", "2", "-i", "-",
-         "-c:a", "libopus", "-b:a", "64k", "-application", "audio", path],
+         "-c:a", "libopus", "-b:a", "64k", "-application", "audio", "-f", "ogg", path],
         check=True, input=x.astype(np.float32).tobytes())
 
 
 def main():
-    cfg_path, out_dir = sys.argv[1], sys.argv[2]
-    token = os.environ["FREESOUND_API_KEY"]
-    cfg = json.load(open(cfg_path))
+    if len(sys.argv) < 3:
+        sys.exit(__doc__)
+    src_dir, out_dir = sys.argv[1], sys.argv[2]
+    cfg = json.load(open(sys.argv[3] if len(sys.argv) > 3 else os.path.join(os.path.dirname(__file__), "sounds.json")))
     length = int(cfg.get("loopSeconds", 60) * SR)
     xf = int(cfg.get("crossfadeSeconds", 3) * SR)
     os.makedirs(out_dir, exist_ok=True)
     manifest = {"version": 1, "sounds": {}}
     for key, sound in cfg["sounds"].items():
+        found = [(s, find_source(src_dir, s["id"])) for s in sound["sources"]]
+        missing = [s["id"] for s, p in found if p is None]
+        if missing:
+            print("%s: skipped, not downloaded yet: %s" % (key, ", ".join(map(str, missing))))
+            continue
         mix = np.zeros((length, 2), dtype=np.float32)
         credits = []
-        for src in sound["sources"]:
-            info = sound_info(src["id"], token)
-            if info["license"] != CC0:
-                sys.exit("%s: sound %d (%s by %s) is not CC0 but %s" %
-                         (key, info["id"], info["name"], info["username"], info["license"]))
-            preview = info["previews"]["preview-hq-ogg"]
-            tmp = os.path.join(out_dir, "_src_%d.ogg" % info["id"])
-            open(tmp, "wb").write(http_get(preview))
-            x = decode(tmp)
-            os.remove(tmp)
+        for s, path in found:
+            x = decode(path)
             if len(x) < SR * 2:
-                sys.exit("%s: sound %d is only %.1f s long" % (key, info["id"], len(x) / SR))
+                sys.exit("%s: %s is only %.1f s long" % (key, os.path.basename(path), len(x) / SR))
             x = loopable(x, length, xf)
-            x = x / rms(x) * TARGET_RMS * float(src.get("gain", 1.0))
+            x = x / rms(x) * TARGET_RMS * float(s.get("gain", 1.0))
             mix += x
-            credits.append({"id": info["id"], "title": info["name"], "author": info["username"],
-                            "license": "CC0", "url": info["url"]})
-            print("%s: %d %s by %s, %.0f s" % (key, info["id"], info["name"], info["username"],
-                                               info["duration"]))
+            credits.append({"id": s["id"], "title": s.get("name", ""), "author": s.get("author", ""),
+                            "license": "CC0", "url": s.get("url", "")})
+            print("%s: %s" % (key, os.path.basename(path)))
         peak = float(np.max(np.abs(mix)))
         if peak > 0.95:
             mix *= 0.95 / peak
-        name = key + ".opus"
+        name = key + ".ogg"
         path = os.path.join(out_dir, name)
         encode_opus(mix, path)
-        data = open(path, "rb").read()
-        manifest["sounds"][key] = {
-            "file": name, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(),
-            "rate": SR, "channels": 2, "seconds": length // SR,
-            "title": sound.get("title", key), "credits": credits}
-        print("%s: %s, %d KB" % (key, name, len(data) // 1024))
+        size = os.path.getsize(path)
+        manifest["sounds"][key] = {"file": name, "seconds": length // SR, "title": sound.get("title", key),
+                                   "credits": credits}
+        print("%s: %s, %d KB" % (key, name, size // 1024))
     json.dump(manifest, open(os.path.join(out_dir, "manifest.json"), "w"), indent=2)
 
 
