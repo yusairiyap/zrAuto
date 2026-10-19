@@ -26,6 +26,7 @@ import java.util.function.IntSupplier;
 import me.aap.fermata.R;
 import me.aap.fermata.addon.power.PowerSaver;
 import me.aap.fermata.addon.power.PowerUsageTracker;
+import me.aap.fermata.ui.activity.BackDetour;
 import me.aap.fermata.ui.view.TopToast;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.ui.UiUtils;
@@ -246,6 +247,16 @@ public class PowerSettingsFragment extends ReorderListFragment {
 		addSwitchRow(box, R.string.power_set_downloads, R.string.power_set_downloads_sub,
 				() -> p.getBooleanPref(PowerSaver.PAUSE_DOWNLOADS),
 				on -> p.applyBooleanPref(PowerSaver.PAUSE_DOWNLOADS, on), null);
+
+		// More ways to save battery, which the app can't do for you.
+		section(box, R.string.power_saver_tips_title);
+		TextView tips = text(R.string.power_saver_tips, 13.5f, textSecondary, false);
+		tips.setLineSpacing(dp(3), 1f);
+		tips.setPadding(dp(16), dp(14), dp(16), dp(14));
+		tips.setBackground(rounded(tileFill, 16));
+		LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		tp.topMargin = dp(4);
+		box.addView(tips, tp);
 	}
 
 	private void buildUsage(LinearLayout box) {
@@ -269,7 +280,13 @@ public class PowerSettingsFragment extends ReorderListFragment {
 
 		section(box, R.string.power_section_overlay);
 		addActionRow(box, R.string.power_set_overlay, R.string.power_set_overlay_sub, R.drawable.power_usage,
-				() -> delegate().showFragment(R.id.info_overlay_fragment));
+				() -> {
+					// Back from the Info overlay settings comes back here, on the same part.
+					String back = (saverPart ? SAVER : USAGE) + (fromTab ? "@tab" : "");
+					BackDetour.start(R.id.info_overlay_fragment,
+							() -> delegate().showFragment(R.id.power_settings_fragment, back), null);
+					delegate().showFragment(R.id.info_overlay_fragment);
+				});
 
 		section(box, R.string.power_section_history);
 		addActionRow(box, R.string.power_set_reset_session, R.string.power_set_reset_session_sub,

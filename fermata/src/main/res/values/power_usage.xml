@@ -52,6 +52,12 @@
     <string name="power_saver_reason_car">Android Auto is connected</string>
     <string name="power_saver_reason_system">Android Battery Saver is on</string>
     <string name="power_saver_settings">Power saver settings</string>
+    <string name="power_saver_on_title">On · %1$s</string>
+    <string name="power_saver_chip_brightness">%1$d%% brightness</string>
+    <string name="power_saver_chip_refresh">60 Hz</string>
+    <string name="power_saver_chip_downloads">Downloads paused</string>
+    <string name="power_saver_chip_car">Dark screen in the car</string>
+    <string name="power_saver_chip_tracker">Slower readings</string>
     <string name="power_saver_does_brightness">The phone screen is held to %1$d%% brightness.</string>
     <string name="power_saver_does_car_screen">While Android Auto is connected, the phone screen is at its lowest.</string>
     <string name="power_saver_does_refresh">The phone screen is held to 60 Hz.</string>

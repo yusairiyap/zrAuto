@@ -635,10 +635,16 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 	protected final SeekBar newSeekBar() {
 		Context ctx = requireContext();
 		TypedValue tv = new TypedValue();
+		SeekBar bar;
 		if (ctx.getTheme().resolveAttribute(R.attr.appSeekBarStyle, tv, true) && (tv.resourceId != 0)) {
-			return new SeekBar(ctx, null, 0, tv.resourceId);
+			bar = new SeekBar(ctx, null, 0, tv.resourceId);
+		} else {
+			bar = new SeekBar(ctx);
 		}
-		return new SeekBar(ctx);
+		// The thumb is drawn centred on the track's ends: with no padding half of it was cut off at
+		// the lowest and the highest value. A thumb's radius of room on each side keeps it whole.
+		bar.setPadding(dp(12), 0, dp(12), 0);
+		return bar;
 	}
 
 	// ---- Helpers for the pages ----

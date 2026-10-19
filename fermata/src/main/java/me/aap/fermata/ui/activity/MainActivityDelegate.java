@@ -2843,6 +2843,8 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (me.aap.fermata.ui.view.LyricsCard.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.AllInOneMenu.dismissOpen()) return;
 		if (DownloadPicker.dismissOpen()) return;
+		// Back from where a page sent the user goes back to that page.
+		if (BackDetour.onBack(this)) return;
 		super.onBackPressed();
 	}
 

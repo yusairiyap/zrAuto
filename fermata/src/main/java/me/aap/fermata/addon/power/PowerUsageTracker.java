@@ -110,7 +110,11 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 	// The reading in milliamperes, smoothed; positive is charging.
 	private float current;
 	private boolean haveCurrent;
-	private float slowCurrent;
+	// How hard the phone has been drawing from the battery (and how fast it has been charging) over
+	// the last ten minutes or so, in mA (0: not known yet): what the time left is worked out from, so
+	// it doesn't jump about with every reading.
+	private float drawEma;
+	private float chargeEma;
 	private int voltageMv;
 	private int tempTenths = Integer.MIN_VALUE;
 	private int levelPct = -1;
@@ -317,9 +321,11 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 		// about from one reading to the next.
 		float step = Math.max(200, Math.min(10_000, dt));
 		float fast = 1f - (float) Math.exp(-step / 2000f);
-		float slow = 1f - (float) Math.exp(-step / 20_000f);
 		current = (graphSize == 0) ? ma : current + (ma - current) * fast;
-		slowCurrent = (graphSize == 0) ? ma : slowCurrent + (ma - slowCurrent) * slow;
+		// Time-weighted, so a long gap counts for what it was (but never for more than two minutes).
+		float slow = 1f - (float) Math.exp(-Math.min(dt, 120_000) / 600_000f);
+		if (ma < 0) drawEma = (drawEma <= 0) ? -ma : drawEma + (-ma - drawEma) * slow;
+		else if (ma > 0) chargeEma = (chargeEma <= 0) ? ma : chargeEma + (ma - chargeEma) * slow;
 		learnCapacity();
 		charging = current > 0;
 		graph[graphHead] = current;
@@ -540,16 +546,22 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 	}
 
 	/**
-	 * How long the battery lasts at the draw of the last minute or so (negative: until it is full
-	 * while charging), in milliseconds; -1 if it can't be told.
+	 * How long the battery lasts at the draw of the last ten minutes or so, steadied over time rather
+	 * than following each reading (negative: until it is full while charging), in milliseconds; -1 if
+	 * it can't be told.
 	 */
 	public long getEstimateMs() {
 		if (!haveCurrent || (chargeCounter <= 0) || (levelPct <= 0)) return -1;
-		float ma = Math.abs(slowCurrent);
+		boolean draining = current < 0;
+		float ma = draining ? drawEma : chargeEma;
 		if (ma < 20) return -1;
 		long capacity = Math.round(chargeCounter * 100.0 / levelPct);
-		if (slowCurrent < 0) return Math.round(chargeCounter / 1000.0 / ma * 3_600_000.0);
-		return -Math.round(Math.max(0, capacity - chargeCounter) / 1000.0 / ma * 3_600_000.0);
+		long ms = draining ? Math.round(chargeCounter / 1000.0 / ma * 3_600_000.0) :
+				Math.round(Math.max(0, capacity - chargeCounter) / 1000.0 / ma * 3_600_000.0);
+		// To the nearest five minutes once it is over an hour: the digits don't flicker for nothing.
+		long step = (ms >= 3_600_000L) ? 300_000L : 60_000L;
+		ms = Math.max(step, Math.round(ms / (double) step) * step);
+		return draining ? ms : -ms;
 	}
 
 	/** Keeps the battery's size up to date from the gauge's charge counter and level. */

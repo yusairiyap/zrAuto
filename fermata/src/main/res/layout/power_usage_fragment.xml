@@ -386,6 +386,31 @@
                     android:textColor="?attr/musicTextSecondary"
                     android:textSize="13sp" />
 
+                <!-- While power saver is on: what it is doing right now, as a small card of chips. -->
+                <LinearLayout
+                    android:id="@+id/power_saver_active"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="vertical"
+                    android:padding="12dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/power_saver_active_title"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="?attr/musicTextPrimary"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <FrameLayout
+                        android:id="@+id/power_saver_chips"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp" />
+                </LinearLayout>
+
                 <TextView
                     android:id="@+id/power_saver_settings"
                     style="@style/MusicChip"
@@ -394,23 +419,6 @@
                     android:drawableStart="@drawable/settings"
                     android:text="@string/power_saver_settings" />
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="14dp"
-                    android:text="@string/power_saver_tips_title"
-                    android:textColor="?attr/musicTextPrimary"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:lineSpacingExtra="3dp"
-                    android:text="@string/power_saver_tips"
-                    android:textColor="?attr/musicTextSecondary"
-                    android:textSize="13sp" />
             </LinearLayout>
         </LinearLayout>
 

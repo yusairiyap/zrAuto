@@ -58,6 +58,7 @@ import me.aap.fermata.addon.data.DataUsageTracker;
 import me.aap.fermata.addon.power.PowerSaver;
 import me.aap.fermata.addon.power.PowerUsageAddon;
 import me.aap.fermata.backup.BackupManager;
+import me.aap.fermata.ui.activity.BackDetour;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.fragment.ActionFabMediator;
@@ -130,6 +131,8 @@ public final class WelcomeWizard {
 	private boolean carChoice;
 	private boolean animating;
 	private boolean closing;
+	// Stepped aside for a detour, see detour().
+	private boolean hidden;
 	// The key simulator page.
 	private final KeyView[] keyViews = new KeyView[4];
 	private final long[] downAt = new long[4];
@@ -192,7 +195,11 @@ public final class WelcomeWizard {
 
 	/** Shows the wizard from its first page (Settings &gt; Other, or a new install). */
 	public static void show(@NonNull MainActivityDelegate a) {
-		if (isOpen()) return;
+		if (isOpen()) {
+			// Waiting out a detour: asked for again, it comes back.
+			if (open.hidden) open.reveal();
+			return;
+		}
 		ViewGroup host = a.findViewById(R.id.main_activity);
 		if ((host == null) || (host.getWidth() == 0)) {
 			DiagnosticLog.log("WELCOME", "no view to show the wizard over");
@@ -201,6 +208,33 @@ public final class WelcomeWizard {
 		WelcomeWizard w = new WelcomeWizard(a);
 		open = w;
 		w.build();
+	}
+
+	/**
+	 * Steps aside while {@code show} puts another screen up (the key settings): the wizard waits,
+	 * unseen, and is back on the page it left when Back is pressed there.
+	 */
+	private void detour(int targetId, Runnable show) {
+		a.getPrefs().applyBooleanPref(DONE, true);
+		BackDetour.start(targetId, this::reveal, () -> close(true));
+		hidden = true;
+		stopKeySimulator();
+		overlay.animate().cancel();
+		overlay.animate().alpha(0f).setDuration(200).withEndAction(() -> {
+			if (hidden) overlay.setVisibility(View.GONE);
+		}).start();
+		show.run();
+	}
+
+	/** Back from the detour: the wizard fades back in where it was. */
+	private void reveal() {
+		if (!hidden) return;
+		hidden = false;
+		overlay.animate().cancel();
+		overlay.setVisibility(View.VISIBLE);
+		overlay.animate().alpha(1f).setDuration(260).start();
+		List<Page> act = active();
+		if ((index >= 0) && (index < act.size()) && (act.get(index).onEnter != null)) act.get(index).onEnter.run();
 	}
 
 	/** Whether the wizard is on screen; one left over from a screen that has gone is forgotten. */
@@ -217,7 +251,7 @@ public final class WelcomeWizard {
 	public static boolean onBack() {
 		if (!isOpen()) return false;
 		WelcomeWizard w = open;
-		if (w == null) return false;
+		if ((w == null) || w.hidden) return false;
 		if (w.picker != null) {
 			w.closePicker();
 			return true;
@@ -326,7 +360,10 @@ public final class WelcomeWizard {
 
 		Column column = new Column();
 		column.setOrientation(LinearLayout.VERTICAL);
+		// Neither children nor the padding (the system bars' room) may cut the glow, or the pages
+		// while they slide: both clipped at the column's own edge.
 		column.setClipChildren(false);
+		column.setClipToPadding(false);
 		FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT,
 				Gravity.CENTER_HORIZONTAL);
 		overlay.addView(column, clp);
@@ -349,7 +386,7 @@ public final class WelcomeWizard {
 		skip.setBackground(pressable(0, 20));
 		skip.setClickable(true);
 		skip.setFocusable(true);
-		skip.setOnClickListener(v -> close(false));
+		skip.setOnClickListener(v -> skip());
 		top.addView(skip, new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
 		column.addView(top, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
@@ -643,6 +680,23 @@ public final class WelcomeWizard {
 		}
 	}
 
+	/** Skip: out of the introduction on to the setup; out of the setup, the end. */
+	private void skip() {
+		List<Page> act = active();
+		if (index >= 0) {
+			Page cur = act.get(Math.min(index, act.size() - 1));
+			if (!cur.setup) {
+				for (int i = 0; i < act.size(); i++) {
+					if (act.get(i).setup) {
+						go(i);
+						return;
+					}
+				}
+			}
+		}
+		close(false);
+	}
+
 	private void next() {
 		if (index >= active().size() - 1) {
 			close(true);
@@ -656,6 +710,7 @@ public final class WelcomeWizard {
 		progress.setFraction((index + 1f) / count);
 		boolean last = index == count - 1;
 		primary.setText(p.primary != 0 ? p.primary : R.string.wz_next);
+		skip.setText(p.setup ? R.string.wz_skip : R.string.wz_skip_intro);
 		skip.setVisibility(last ? View.INVISIBLE : View.VISIBLE);
 		if (last) {
 			left.setText(R.string.wz_more_settings);
@@ -682,6 +737,13 @@ public final class WelcomeWizard {
 		if (settle != null) settle.cancel();
 		a.getPrefs().applyBooleanPref(DONE, true);
 		DiagnosticLog.log("WELCOME", finished ? "finished" : "closed", "page=" + index);
+		if (hidden) {
+			// Out of sight already (a detour that did not come back): nothing to fade.
+			hidden = false;
+			host.removeView(overlay);
+			if (open == this) open = null;
+			return;
+		}
 		overlay.animate().alpha(0f).setDuration(260).withEndAction(() -> {
 			host.removeView(overlay);
 			if (open == this) open = null;
@@ -1037,11 +1099,10 @@ public final class WelcomeWizard {
 
 		LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(MATCH_PARENT, dp(46));
 		blp.topMargin = dp(12);
-		body.addView(button(R.drawable.settings, R.string.wz_keys_all, () -> {
-			close(true);
+		body.addView(button(R.drawable.settings, R.string.wz_keys_all, () -> detour(R.id.settings_fragment, () -> {
 			a.exitVideoMode();
 			a.showFragment(R.id.settings_fragment, SettingsFragment.SHOW_KEY_BINDINGS);
-		}), blp);
+		})), blp);
 	}
 
 	/** Press or hold chips of one key. */

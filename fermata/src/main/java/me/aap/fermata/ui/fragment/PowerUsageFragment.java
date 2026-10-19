@@ -18,6 +18,7 @@ import android.animation.ArgbEvaluator;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.ColorStateList;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.LayoutInflater;
@@ -47,6 +48,7 @@ import me.aap.fermata.addon.power.PowerUsageStore;
 import me.aap.fermata.addon.power.PowerUsageStore.Usage;
 import me.aap.fermata.addon.power.PowerUsageTracker;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.view.ChipFlowLayout;
 import me.aap.fermata.ui.view.DataUsageChartView;
 import me.aap.fermata.ui.view.EffectsUi;
 import me.aap.fermata.ui.view.PowerGaugeView;
@@ -110,6 +112,9 @@ public class PowerUsageFragment extends MainActivityFragment implements ToolBarC
 	private TextView maxView;
 	private androidx.appcompat.widget.SwitchCompat saverSwitch;
 	private TextView saverText;
+	private View saverActive;
+	private TextView saverActiveTitle;
+	private ViewGroup saverChips;
 	private TextView period;
 	private TextView periodTotal;
 	private TextView carInsight;
@@ -188,6 +193,9 @@ public class PowerUsageFragment extends MainActivityFragment implements ToolBarC
 		maxView = view.findViewById(R.id.power_max);
 		saverSwitch = view.findViewById(R.id.power_saver_switch);
 		saverText = view.findViewById(R.id.power_saver_text);
+		saverActive = view.findViewById(R.id.power_saver_active);
+		saverActiveTitle = view.findViewById(R.id.power_saver_active_title);
+		saverChips = view.findViewById(R.id.power_saver_chips);
 		period = view.findViewById(R.id.power_period);
 		periodTotal = view.findViewById(R.id.power_period_total);
 		carInsight = view.findViewById(R.id.power_car_insight);
@@ -558,28 +566,63 @@ public class PowerUsageFragment extends MainActivityFragment implements ToolBarC
 			saverSwitch.setChecked(on);
 			settingSwitch = false;
 		}
+		saverText.setVisibility(on ? View.GONE : View.VISIBLE);
+		saverActive.setVisibility(on ? View.VISIBLE : View.GONE);
 		if (!on) {
 			saverText.setText(R.string.power_saver_off_text);
 			return;
 		}
+		// What it is doing, as a small card of chips rather than lines of text.
 		var p = PowerUsageTracker.prefs();
-		StringBuilder sb = new StringBuilder(getString(R.string.power_saver_on_text, getString(s.getReason())));
+		int accent = EffectsUi.accent(palette);
+		GradientDrawable bg = new GradientDrawable();
+		bg.setCornerRadius(UiUtils.toPx(requireContext(), 16));
+		bg.setColor(ColorUtils.setAlphaComponent(accent, 0x24));
+		bg.setStroke(UiUtils.toIntPx(requireContext(), 1), ColorUtils.setAlphaComponent(accent, 0x66));
+		saverActive.setBackground(bg);
+		saverActiveTitle.setText(getString(R.string.power_saver_on_title, getString(s.getReason())));
+		saverActiveTitle.setTextColor(accent);
+
+		ChipFlowLayout chips = new ChipFlowLayout(palette);
 		if (p.getBooleanPref(PowerSaver.DIM_SCREEN)) {
-			sb.append('\n').append(getString(R.string.power_saver_does_brightness,
+			chips.addView(savePill(R.drawable.dim_screen, getString(R.string.power_saver_chip_brightness,
 					Math.max(PowerSaver.MIN_BRIGHTNESS, Math.min(PowerSaver.MAX_BRIGHTNESS,
-							p.getIntPref(PowerSaver.BRIGHTNESS)))));
+							p.getIntPref(PowerSaver.BRIGHTNESS))))));
 		}
 		if (p.getBooleanPref(PowerSaver.CAR_SCREEN)) {
-			sb.append('\n').append(getString(R.string.power_saver_does_car_screen));
+			chips.addView(savePill(R.drawable.car, getString(R.string.power_saver_chip_car)));
 		}
 		if (p.getBooleanPref(PowerSaver.CAP_REFRESH)) {
-			sb.append('\n').append(getString(R.string.power_saver_does_refresh));
+			chips.addView(savePill(R.drawable.speed, getString(R.string.power_saver_chip_refresh)));
 		}
 		if (p.getBooleanPref(PowerSaver.PAUSE_DOWNLOADS)) {
-			sb.append('\n').append(getString(R.string.power_saver_does_downloads));
+			chips.addView(savePill(R.drawable.download, getString(R.string.power_saver_chip_downloads)));
 		}
-		sb.append('\n').append(getString(R.string.power_saver_does_tracker));
-		saverText.setText(sb);
+		chips.addView(savePill(R.drawable.timer, getString(R.string.power_saver_chip_tracker)));
+		saverChips.removeAllViews();
+		saverChips.addView(chips, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.WRAP_CONTENT));
+	}
+
+	/** One small chip of what power saver does: an icon and a few words, not tappable. */
+	private TextView savePill(int icon, String label) {
+		TextView t = new TextView(palette);
+		t.setText(label);
+		t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f);
+		t.setTextColor(paletteColor(R.attr.musicTextPrimary));
+		t.setSingleLine(true);
+		t.setGravity(android.view.Gravity.CENTER_VERTICAL);
+		t.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, 0, 0, 0);
+		t.setCompoundDrawablePadding(UiUtils.toIntPx(requireContext(), 6));
+		t.setCompoundDrawableTintList(ColorStateList.valueOf(EffectsUi.accent(palette)));
+		int h = UiUtils.toIntPx(requireContext(), 10);
+		int v = UiUtils.toIntPx(requireContext(), 6);
+		t.setPadding(h, v, h + v / 2, v);
+		GradientDrawable pill = new GradientDrawable();
+		pill.setCornerRadius(UiUtils.toPx(requireContext(), 20));
+		pill.setColor(paletteColor(R.attr.musicChipFill));
+		t.setBackground(pill);
+		return t;
 	}
 
 	// ---------------------------------------------------------------------------------------------

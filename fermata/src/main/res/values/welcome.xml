@@ -5,6 +5,7 @@
     <string name="welcome_settings_sub">Go through the introduction and the quick setup again</string>
 
     <string name="wz_skip">Skip</string>
+    <string name="wz_skip_intro">Skip intro</string>
     <string name="wz_back">Back</string>
     <string name="wz_next">Next</string>
     <string name="wz_start">Get started</string>
