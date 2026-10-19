@@ -98,6 +98,8 @@ def main():
         decoded = []
         for src, path in found:
             x = decode(path)
+            # Cut handling thumps from where the recorder was started, stopped or bumped.
+            x = x[int(float(src.get("trimStart", 0)) * SR):len(x) - int(float(src.get("trimEnd", 0)) * SR)]
             if len(x) < SR * 2:
                 sys.exit("%s: %s is only %.1f s long" % (key, os.path.basename(path), len(x) / SR))
             decoded.append(x)

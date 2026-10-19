@@ -359,7 +359,9 @@
           "gain": 1.0,
           "name": "Umbrella rain",
           "author": "T.I.B",
-          "url": "https://freesound.org/people/T.I.B/sounds/788719/"
+          "url": "https://freesound.org/people/T.I.B/sounds/788719/",
+          "trimStart": 7.9,
+          "trimEnd": 1.0
         }
       ],
       "alternatives": []
