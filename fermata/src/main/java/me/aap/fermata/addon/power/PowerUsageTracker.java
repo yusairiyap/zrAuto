@@ -80,6 +80,8 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 	// which way charging points (1 or -1, 0: not known yet).
 	private static final Pref<IntSupplier> LEARNED_DIV = Pref.i("POWER_LEARNED_DIV", 0);
 	private static final Pref<IntSupplier> LEARNED_SIGN = Pref.i("POWER_LEARNED_SIGN", 0);
+	/** The battery's size in mAh as set by the user (0: work it out from the gauge). */
+	public static final Pref<IntSupplier> CAPACITY = Pref.i("POWER_CAPACITY", 0);
 	// The battery's size in mAh as the gauge showed it over time (0: not known yet); what "heavy" is
 	// judged against, see getLoad().
 	private static final Pref<IntSupplier> LEARNED_CAPACITY = Pref.i("POWER_LEARNED_CAPACITY", 0);
@@ -111,10 +113,11 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 	private float current;
 	private boolean haveCurrent;
 	// How hard the phone has been drawing from the battery (and how fast it has been charging) over
-	// the last ten minutes or so, in mA (0: not known yet): what the time left is worked out from, so
-	// it doesn't jump about with every reading.
+	// the last ten minutes or so (a minute or so while charging), in mA (0: not known yet): what the
+	// time left is worked out from, so it doesn't jump about with every reading.
 	private float drawEma;
 	private float chargeEma;
+	private int emaSign;
 	private int voltageMv;
 	private int tempTenths = Integer.MIN_VALUE;
 	private int levelPct = -1;
@@ -323,9 +326,22 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 		float fast = 1f - (float) Math.exp(-step / 2000f);
 		current = (graphSize == 0) ? ma : current + (ma - current) * fast;
 		// Time-weighted, so a long gap counts for what it was (but never for more than two minutes).
-		float slow = 1f - (float) Math.exp(-Math.min(dt, 120_000) / 600_000f);
+		// Draining averages over ten minutes; charging over one, since a charger ramps up and tapers off
+		// and what it does now says much more about the time to full than what it did a while ago.
+		long span = Math.min(dt, 120_000);
+		float slow = 1f - (float) Math.exp(-span / 600_000f);
+		float quick = 1f - (float) Math.exp(-span / 60_000f);
+		// Plugging in or out starts the other average afresh (a stray reading either way near zero doesn't).
+		if (Math.abs(current) >= 30) {
+			int sgn = (current < 0) ? -1 : 1;
+			if (sgn != emaSign) {
+				emaSign = sgn;
+				if (sgn < 0) drawEma = 0;
+				else chargeEma = 0;
+			}
+		}
 		if (ma < 0) drawEma = (drawEma <= 0) ? -ma : drawEma + (-ma - drawEma) * slow;
-		else if (ma > 0) chargeEma = (chargeEma <= 0) ? ma : chargeEma + (ma - chargeEma) * slow;
+		else if (ma > 0) chargeEma = (chargeEma <= 0) ? ma : chargeEma + (ma - chargeEma) * quick;
 		learnCapacity();
 		charging = current > 0;
 		graph[graphHead] = current;
@@ -551,13 +567,22 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 	 * it can't be told.
 	 */
 	public long getEstimateMs() {
-		if (!haveCurrent || (chargeCounter <= 0) || (levelPct <= 0)) return -1;
+		if (!haveCurrent || (levelPct <= 0)) return -1;
 		boolean draining = current < 0;
 		float ma = draining ? drawEma : chargeEma;
 		if (ma < 20) return -1;
-		long capacity = Math.round(chargeCounter * 100.0 / levelPct);
-		long ms = draining ? Math.round(chargeCounter / 1000.0 / ma * 3_600_000.0) :
-				Math.round(Math.max(0, capacity - chargeCounter) / 1000.0 / ma * 3_600_000.0);
+		// What is left (or still to fill) in mAh: by the size the user gave if they did, else by what
+		// the gauge counts.
+		double capacity = prefs().getIntPref(CAPACITY);
+		double left;
+		if (capacity > 0) {
+			left = draining ? capacity * levelPct / 100.0 : capacity * (100 - levelPct) / 100.0;
+		} else {
+			if (chargeCounter <= 0) return -1;
+			capacity = chargeCounter * 100.0 / levelPct / 1000.0;
+			left = draining ? chargeCounter / 1000.0 : Math.max(0, capacity - chargeCounter / 1000.0);
+		}
+		long ms = Math.round(left / ma * 3_600_000.0);
 		// To the nearest five minutes once it is over an hour: the digits don't flicker for nothing.
 		long step = (ms >= 3_600_000L) ? 300_000L : 60_000L;
 		ms = Math.max(step, Math.round(ms / (double) step) * step);
@@ -575,15 +600,22 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 		if (Math.abs(now - known) * 50 > Math.max(known, 1)) ps.applyIntPref(LEARNED_CAPACITY, now);
 	}
 
-	/** The battery's size in mAh: as learned from the gauge, else a typical phone's. */
+	/** The battery's size in mAh: as set by the user, else as learned from the gauge, else a typical phone's. */
 	public int getCapacityMah() {
+		int set = prefs().getIntPref(CAPACITY);
+		if (set > 0) return set;
 		int known = prefs().getIntPref(LEARNED_CAPACITY);
 		return (known > 0) ? known : TYPICAL_CAPACITY_MAH;
 	}
 
+	/** What the gauge made of the battery's size, in mAh (0: not known yet), whatever was set. */
+	public int getLearnedCapacityMah() {
+		return Math.max(0, prefs().getIntPref(LEARNED_CAPACITY));
+	}
+
 	/** Whether the battery's size is known (else {@link #getCapacityMah} is a guess). */
 	public boolean isCapacityKnown() {
-		return prefs().getIntPref(LEARNED_CAPACITY) > 0;
+		return (prefs().getIntPref(CAPACITY) > 0) || (prefs().getIntPref(LEARNED_CAPACITY) > 0);
 	}
 
 	/**

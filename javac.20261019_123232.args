@@ -1,0 +1,11 @@
+-proc:none
+-d
+/tmp/claude-0/-home-user-zrAuto/89c3ae9a-53b5-5f51-b225-fea1342ab17c/scratchpad/out
+-sourcepath
+fermata/src/main/java:depends/utils/src/main/java
+-Xmaxerrs
+2000
+fermata/src/main/java/me/aap/fermata/addon/power/PowerUsageTracker.java
+fermata/src/main/java/me/aap/fermata/ui/fragment/PowerSettingsFragment.java
+fermata/src/main/java/me/aap/fermata/ui/fragment/PowerUsageFragment.java
+fermata/src/main/java/me/aap/fermata/ui/welcome/WelcomeWizard.java

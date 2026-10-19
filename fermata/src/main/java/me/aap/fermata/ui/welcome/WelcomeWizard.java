@@ -508,14 +508,25 @@ public final class WelcomeWizard {
 
 	/**
 	 * Lays both pages out for a drag of {@code tx} pixels (negative: to the left, towards the next
-	 * page): the leaving one follows the finger, shrinking a little and fading; the arriving one
-	 * comes in from the side the same way, growing to its place.
+	 * page): the leaving one follows the finger, shrinking a little and fading out within the first
+	 * 60% of the drag; the arriving one comes in from the side, fading in from a quarter of the way and
+	 * growing to its place.
 	 */
 	private void morph(float tx, int dir) {
 		int w = Math.max(1, pageHost.getWidth());
 		float p = Math.min(1f, Math.abs(tx) / w);
-		if (current != null) current.morph(tx, 1f - 0.55f * p, 1f - 0.06f * p);
-		if (incoming != null) incoming.morph(tx + dir * w, 0.45f + 0.55f * p, 0.94f + 0.06f * p);
+		// The leaving page is gone well before it has left (no ghost of it over the arriving one), the
+		// arriving one only shows once the other has mostly faded.
+		float out = 1f - smooth(p / 0.6f);
+		float in = smooth((p - 0.25f) / 0.75f);
+		if (current != null) current.morph(tx, out, 1f - 0.06f * p);
+		if (incoming != null) incoming.morph(tx + dir * w, in, 0.94f + 0.06f * p);
+	}
+
+	/** {@code x} held to 0..1 and eased at both ends. */
+	private static float smooth(float x) {
+		x = Math.max(0f, Math.min(1f, x));
+		return x * x * (3f - 2f * x);
 	}
 
 	/**

@@ -113,6 +113,7 @@ public class PowerSettingsFragment extends ReorderListFragment {
 			e.removePref(PowerUsageTracker.LOG_INTERVAL);
 			e.removePref(PowerUsageTracker.UNITS);
 			e.removePref(PowerUsageTracker.SIGN);
+			e.removePref(PowerUsageTracker.CAPACITY);
 		}
 		for (Runnable r : syncers) r.run();
 	}
@@ -261,6 +262,8 @@ public class PowerSettingsFragment extends ReorderListFragment {
 
 	private void buildUsage(LinearLayout box) {
 		PreferenceStore p = ps();
+		section(box, R.string.power_section_battery);
+		addCapacityRow(box, p);
 		section(box, R.string.power_section_readings);
 		addChoiceRow(box, R.string.power_set_live, R.string.power_set_live_sub,
 				new int[]{R.string.power_live_500, R.string.power_live_1000, R.string.power_live_2000,
@@ -398,6 +401,62 @@ public class PowerSettingsFragment extends ReorderListFragment {
 		}
 		row.addView(chips);
 		syncers.add(refresh);
+		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		lp.topMargin = dp(10);
+		parent.addView(row, lp);
+	}
+
+	/**
+	 * The battery's size: a row showing it, which asks for a number when tapped (empty or 0 goes back to
+	 * what the gauge says).
+	 */
+	private void addCapacityRow(LinearLayout parent, PreferenceStore p) {
+		LinearLayout row = new LinearLayout(palette);
+		row.setOrientation(LinearLayout.HORIZONTAL);
+		row.setGravity(Gravity.CENTER_VERTICAL);
+		row.setPadding(dp(16), dp(12), dp(16), dp(12));
+		row.setBackground(pressable(rounded(tileFill, 16)));
+		row.setClickable(true);
+		row.setFocusable(true);
+		ImageView iv = new ImageView(palette);
+		iv.setImageResource(R.drawable.power_usage);
+		iv.setImageTintList(ColorStateList.valueOf(accent));
+		row.addView(iv, new LinearLayout.LayoutParams(dp(22), dp(22)));
+		LinearLayout labels = new LinearLayout(palette);
+		labels.setOrientation(LinearLayout.VERTICAL);
+		labels.setPadding(dp(14), 0, dp(8), 0);
+		labels.addView(text(R.string.power_set_capacity, 15, textPrimary, true));
+		labels.addView(text(R.string.power_set_capacity_sub, 12.5f, textSecondary, false));
+		row.addView(labels, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		TextView value = text(0, 14, accent, true);
+		row.addView(value);
+		Runnable refresh = () -> {
+			int set = p.getIntPref(PowerUsageTracker.CAPACITY);
+			int learned = PowerUsageTracker.get().getLearnedCapacityMah();
+			value.setText((set > 0) ? getString(R.string.power_capacity_value, set) :
+					(learned > 0) ? getString(R.string.power_capacity_auto_about, learned) :
+							getString(R.string.power_capacity_auto));
+		};
+		syncers.add(refresh);
+		row.setOnClickListener(v -> {
+			int set = p.getIntPref(PowerUsageTracker.CAPACITY);
+			UiUtils.queryText(requireContext(), R.string.power_capacity_query, R.drawable.power_usage,
+					(set > 0) ? String.valueOf(set) : "").onSuccess(t -> {
+				if (t == null) return;
+				int mah = 0;
+				try {
+					String digits = t.replaceAll("[^0-9]", "");
+					if (!digits.isEmpty()) mah = Integer.parseInt(digits);
+				} catch (NumberFormatException ignore) {
+				}
+				if ((mah != 0) && ((mah < 500) || (mah > 40_000))) {
+					TopToast.show(R.drawable.power_usage, R.string.power_capacity_bad);
+					return;
+				}
+				p.applyIntPref(PowerUsageTracker.CAPACITY, mah);
+				for (Runnable r : syncers) r.run();
+			});
+		});
 		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
 		lp.topMargin = dp(10);
 		parent.addView(row, lp);

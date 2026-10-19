@@ -20,6 +20,10 @@ import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
+import android.transition.ChangeBounds;
+import android.transition.Fade;
+import android.transition.TransitionManager;
+import android.transition.TransitionSet;
 import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -133,6 +137,9 @@ public class PowerUsageFragment extends MainActivityFragment implements ToolBarC
 	private int offset;
 	private boolean listening;
 	private boolean settingSwitch;
+	// Whether power saver was on at the last look (null: not looked yet), so only a change animates.
+	@Nullable
+	private Boolean saverWasOn;
 	private long lastPeriod;
 
 	@Override
@@ -566,6 +573,16 @@ public class PowerUsageFragment extends MainActivityFragment implements ToolBarC
 			saverSwitch.setChecked(on);
 			settingSwitch = false;
 		}
+		boolean flipped = (saverWasOn != null) && (saverWasOn != on) && (getView() instanceof ViewGroup root)
+				&& root.isLaidOut();
+		saverWasOn = on;
+		if (flipped) {
+			// The card fades in and the text goes while everything below slides to its new place.
+			TransitionSet t = new TransitionSet().setOrdering(TransitionSet.ORDERING_TOGETHER)
+					.addTransition(new Fade()).addTransition(new ChangeBounds());
+			t.setDuration(340).setInterpolator(new DecelerateInterpolator(1.6f));
+			TransitionManager.beginDelayedTransition((ViewGroup) getView(), t);
+		}
 		saverText.setVisibility(on ? View.GONE : View.VISIBLE);
 		saverActive.setVisibility(on ? View.VISIBLE : View.GONE);
 		if (!on) {
@@ -602,6 +619,17 @@ public class PowerUsageFragment extends MainActivityFragment implements ToolBarC
 		saverChips.removeAllViews();
 		saverChips.addView(chips, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.WRAP_CONTENT));
+		if (flipped) {
+			// Each chip pops in after the card, one behind the other.
+			for (int i = 0; i < chips.getChildCount(); i++) {
+				View c = chips.getChildAt(i);
+				c.setAlpha(0f);
+				c.setScaleX(0.6f);
+				c.setScaleY(0.6f);
+				c.animate().alpha(1f).scaleX(1f).scaleY(1f).setStartDelay(180 + 70L * i).setDuration(320)
+						.setInterpolator(new android.view.animation.OvershootInterpolator(2f)).start();
+			}
+		}
 	}
 
 	/** One small chip of what power saver does: an icon and a few words, not tappable. */

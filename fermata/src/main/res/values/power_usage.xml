@@ -136,6 +136,14 @@
     <string name="power_settings_reset_question">Put every power saver and power usage setting back to how it was? The recorded history stays.</string>
     <string name="power_section_starts">Starts by itself</string>
     <string name="power_section_does">What it does</string>
+    <string name="power_section_battery">Battery</string>
+    <string name="power_set_capacity">Battery size</string>
+    <string name="power_set_capacity_sub">The size on the battery\'s label, so the time to full or flat and the light, moderate and heavy colours fit it. Tap to type it.</string>
+    <string name="power_capacity_value">%1$d mAh</string>
+    <string name="power_capacity_auto_about">Auto, about %1$d mAh</string>
+    <string name="power_capacity_auto">Auto</string>
+    <string name="power_capacity_query">Battery size in mAh (empty for automatic)</string>
+    <string name="power_capacity_bad">Enter a size between 500 and 40000 mAh</string>
     <string name="power_section_readings">Readings</string>
     <string name="power_section_overlay">Info overlay</string>
     <string name="power_section_history">History</string>

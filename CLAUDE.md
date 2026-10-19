@@ -351,6 +351,15 @@ provider doesn't offer a folder to pick, so Drive is manual only.
   sleeping phone. `PowerUsageStore` keeps µAh and ms per hour (2 months) and day (3 years). The Info Overlay item is the
   key `power` (`INFO_OVERLAY_SHOW_POWER`, with a car twin); the actions are `POWER_USAGE` and `POWER_SAVER` (end of the enum).
   `DataUsageChartView` takes a value formatter (`setValueFormatter`) so the Power tab reuses it for mAh.
+- **Time left / to full** (`PowerUsageTracker#getEstimateMs`): from time-weighted averages, not the live reading: draining over
+  ~10 min (`drawEma`), charging over ~1 min (`chargeEma`: a charger ramps up and tapers, a long average lagged far behind what
+  the tablet was really doing); each starts afresh when the current's sign flips (|current| >= 30 mA, so noise near zero doesn't).
+  The battery size is `POWER_CAPACITY` (Power settings > Power usage > Battery size, typed in; 0 = learned from
+  `CHARGE_COUNTER`/level, which can be well off, e.g. 10061 for an 8400 mAh tablet); when set it drives both the estimate (by
+  level) and the light/moderate/heavy load.
+- The wizard's swipe fades the leaving page out within the first 60% of the drag and the arriving one in from 25%
+  (`WelcomeWizard#morph`), so no ghost of the old page shows over the new one. Turning power saver on/off on the Power tab
+  animates (`PowerUsageFragment#refreshSaver`: a delayed Fade+ChangeBounds transition on the fragment root, chips popping in).
 - **Power saver** (`PowerSaver`): on by hand, below a battery level while unplugged, with Android Auto, or with Android's
   Battery Saver. It caps the phone window's brightness (and takes it to the minimum while a car is connected), holds
   60 Hz (`preferredRefreshRate`, which `MusicPlayerFragment#setLowRefreshRate` also respects) and pauses downloads it then
