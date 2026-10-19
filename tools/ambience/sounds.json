@@ -1,0 +1,29 @@
+{
+  "comment": "Recorded loops for the Ambience addon, built by .github/workflows/ambience-sounds.yml. Keys are AmbienceEffect keys. Every source must be CC0 on Freesound (the build fails otherwise). Each sound is turned into a seamless loop of loopSeconds with an equal-power crossfade of crossfadeSeconds, then encoded as Opus. A sound with several sources layers them (gain is relative). To try another recording, change the id and run the workflow again; the app picks up the new file from the manifest.",
+  "loopSeconds": 60,
+  "crossfadeSeconds": 3,
+  "sounds": {
+    "drops": {
+      "title": "Droplets on leaves",
+      "sources": [
+        {"id": 457447, "gain": 1.0, "note": "INNORECORDS, forest after rain, drops falling on ferns"}
+      ],
+      "alternatives": [
+        {"id": 201811, "note": "J_Bond, raindrops falling on leaves (24 s, garden)"},
+        {"id": 125954, "note": "Ryding, rain and dripping water (2:15)"},
+        {"id": 543649, "note": "Legnalegna55, water droplets (12 s)"}
+      ]
+    },
+    "bubbles": {
+      "title": "Underwater",
+      "sources": [
+        {"id": 482167, "gain": 1.0, "note": "Tim_Verberne, underwater ambience loop (2:00)"},
+        {"id": 529383, "gain": 0.8, "note": "calebrankin, bubbles in water (39 s)"}
+      ],
+      "alternatives": [
+        {"id": 504641, "note": "Fission9, muffled deep underwater texture (46 s)"},
+        {"id": 395556, "note": "Kinoton, single deep water bubbles (20 s)"}
+      ]
+    }
+  }
+}

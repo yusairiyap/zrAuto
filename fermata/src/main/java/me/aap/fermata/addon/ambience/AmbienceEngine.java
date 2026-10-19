@@ -76,6 +76,14 @@ public final class AmbienceEngine {
 		volatile float levelTarget;
 		/** 0 to 1: the sound's own character slider. */
 		volatile float optTarget;
+		/** The recorded loop's own tone slider, 0 to 1. */
+		volatile float toneTarget;
+		/** Whether the recording is wanted (it plays once it is ready). */
+		volatile boolean recorded;
+		final AmbienceSample sample;
+		/** 0 plays the synthesized voice, 1 the recording; moves between them over a moment. */
+		float mix;
+		float tone;
 		/** The fade, 0 to 1 (before its curve). Written by the audio thread. */
 		volatile float gain;
 		/** What a scene should show: the fade (curved) times the strength. */
@@ -83,9 +91,10 @@ public final class AmbienceEngine {
 		float level;
 		float opt;
 
-		Layer(AmbienceEffect fx, AmbienceSynth.Voice voice) {
+		Layer(AmbienceEffect fx, AmbienceSynth.Voice voice, AmbienceSample sample) {
 			this.fx = fx;
 			this.voice = voice;
+			this.sample = sample;
 		}
 	}
 
@@ -115,11 +124,15 @@ public final class AmbienceEngine {
 		AmbienceEffect[] all = AmbienceEffect.values();
 		layers = new Layer[all.length];
 		for (int i = 0; i < all.length; i++) {
-			layers[i] = new Layer(all[i], AmbienceSynth.create(all[i], this::postFlash));
+			layers[i] = new Layer(all[i], AmbienceSynth.create(all[i], this::postFlash),
+					AmbienceSamples.get().voice(all[i]));
 			layers[i].levelTarget = intensityOf(all[i]) / 100f;
 			layers[i].level = layers[i].levelTarget;
 			layers[i].optTarget = optionOf(all[i]) / 100f;
 			layers[i].opt = layers[i].optTarget;
+			layers[i].toneTarget = toneOf(all[i]) / 100f;
+			layers[i].tone = layers[i].toneTarget;
+			layers[i].recorded = prefs().getBooleanPref(all[i].recorded);
 		}
 	}
 
@@ -188,6 +201,29 @@ public final class AmbienceEngine {
 
 	private static int optionOf(AmbienceEffect e) {
 		return Math.max(0, Math.min(100, prefs().getIntPref(e.option)));
+	}
+
+	/** The recorded loop's tone slider, 0 to 100 (50 leaves the recording as it is). */
+	public int getTone(AmbienceEffect e) {
+		return toneOf(e);
+	}
+
+	private static int toneOf(AmbienceEffect e) {
+		return Math.max(0, Math.min(100, prefs().getIntPref(e.tone)));
+	}
+
+	/** Whether the recorded loop is wanted for the effect (it may still be on its way). */
+	public boolean isRecorded(AmbienceEffect e) {
+		return layers[e.ordinal()].recorded;
+	}
+
+	/** Picks the recording (downloading it first when needed) or the synthesized voice. */
+	public void setRecorded(AmbienceEffect e, boolean on) {
+		prefs().applyBooleanPref(e.recorded, on);
+		layers[e.ordinal()].recorded = on;
+		if (on) AmbienceSamples.get().ensure(e);
+		else AmbienceSamples.get().release(e);
+		notifyChanged();
 	}
 
 	public int getIntensity(AmbienceEffect e) {
@@ -277,6 +313,8 @@ public final class AmbienceEngine {
 				resumeTimer();
 			}
 			ly.levelTarget = intensityOf(e) / 100f;
+			// A recording that is wanted but not loaded yet: the synthesized voice plays meanwhile.
+			if (ly.recorded) AmbienceSamples.get().ensure(e);
 			kick();
 		}
 		boolean any = anyOn();
@@ -341,10 +379,17 @@ public final class AmbienceEngine {
 		layers[e.ordinal()].optTarget = pct / 100f;
 	}
 
-	/** Back to how the sound was designed: its first intensity and the middle of its character slider. */
+	public void setTone(AmbienceEffect e, int pct) {
+		pct = Math.max(0, Math.min(100, pct));
+		prefs().applyIntPref(e.tone, pct);
+		layers[e.ordinal()].toneTarget = pct / 100f;
+	}
+
+	/** Back to how the sound was designed: its first intensity and the middle of its character sliders. */
 	public void resetEffect(AmbienceEffect e) {
 		setIntensity(e, e.defLevel);
 		setOption(e, 50);
+		setTone(e, 50);
 	}
 
 	public void setMaster(int pct) {
@@ -515,6 +560,7 @@ public final class AmbienceEngine {
 
 			float[] ml = new float[BLOCK], mr = new float[BLOCK];
 			float[] vl = new float[BLOCK], vr = new float[BLOCK];
+			float[] wl = new float[BLOCK], wr = new float[BLOCK];
 			short[] out = new short[BLOCK * 2];
 			float master = masterTarget();
 			int silent = 0;
@@ -532,18 +578,38 @@ public final class AmbienceEngine {
 					ly.gain = g1;
 					ly.level += (ly.levelTarget - ly.level) * 0.2f;
 					ly.opt += (ly.optTarget - ly.opt) * 0.2f;
+					ly.tone += (ly.toneTarget - ly.tone) * 0.2f;
 					if ((g0 == 0f) && (g1 == 0f)) {
 						ly.shown = 0f;
 						continue;
 					}
-					ly.voice.render(vl, vr, BLOCK, ly.level, ly.opt);
+					// The synthesized voice, the recording, or a quick crossfade between them.
+					float m0 = ly.mix;
+					float mixT = (ly.recorded && ly.sample.isReady()) ? 1f : 0f;
+					float m1 = m0 + Math.max(-0.09f, Math.min(0.09f, mixT - m0));
+					ly.mix = m1;
+					float[] srcL = vl, srcR = vr;
+					if ((m0 < 1f) || (m1 < 1f)) ly.voice.render(vl, vr, BLOCK, ly.level, ly.opt);
+					if ((m0 > 0f) || (m1 > 0f)) {
+						ly.sample.render(wl, wr, BLOCK, ly.level, ly.tone);
+						if ((m0 >= 1f) && (m1 >= 1f)) {
+							srcL = wl;
+							srcR = wr;
+						} else {
+							for (int i = 0; i < BLOCK; i++) {
+								float m = m0 + (m1 - m0) * i / BLOCK;
+								vl[i] = vl[i] * (1f - m) + wl[i] * m;
+								vr[i] = vr[i] * (1f - m) + wr[i] * m;
+							}
+						}
+					}
 					float a0 = curve(g0);
 					float a1 = curve(g1);
 					float lv = 0.3f + 0.7f * ly.level;
 					for (int i = 0; i < BLOCK; i++) {
 						float a = (a0 + (a1 - a0) * i / BLOCK) * lv;
-						ml[i] += vl[i] * a;
-						mr[i] += vr[i] * a;
+						ml[i] += srcL[i] * a;
+						mr[i] += srcR[i] * a;
 					}
 					ly.shown = visualCurve(g1) * lv;
 					audible = true;

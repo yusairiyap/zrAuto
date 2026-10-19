@@ -4,6 +4,7 @@ import androidx.annotation.DrawableRes;
 import androidx.annotation.StringRes;
 
 import me.aap.fermata.R;
+import me.aap.utils.function.BooleanSupplier;
 import me.aap.utils.function.IntSupplier;
 import me.aap.utils.pref.PreferenceStore.Pref;
 
@@ -68,6 +69,10 @@ public enum AmbienceEffect {
 	public final Pref<IntSupplier> intensity;
 	/** The sound's own character slider (0 to 100, 50 is how it was designed): its name and its two ends. */
 	public final Pref<IntSupplier> option;
+	/** Whether the recorded loop (see {@link AmbienceSamples}) is wanted instead of the synthesized voice. */
+	public final Pref<BooleanSupplier> recorded;
+	/** The tone slider of the recorded loop (0 to 100, 50 leaves the recording as it is). */
+	public final Pref<IntSupplier> tone;
 	@StringRes
 	public final int optName;
 	@StringRes
@@ -86,6 +91,8 @@ public enum AmbienceEffect {
 		this.defLevel = defLevel;
 		this.intensity = Pref.i("AMBIENCE_LEVEL_" + key.toUpperCase(), defLevel);
 		this.option = Pref.i("AMBIENCE_OPT_" + key.toUpperCase(), 50);
+		this.recorded = Pref.b("AMBIENCE_SRC_" + key.toUpperCase(), false);
+		this.tone = Pref.i("AMBIENCE_TONE_" + key.toUpperCase(), 50);
 		this.optName = optName;
 		this.optLow = optLow;
 		this.optHigh = optHigh;

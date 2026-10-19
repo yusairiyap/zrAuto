@@ -421,6 +421,19 @@ provider doesn't offer a folder to pick, so Drive is manual only.
   (`AmbienceCardView`: the tune button flips front/tune with a scale+fade, so the grid never reflows; Reset =
   `AmbienceEngine#resetEffect`). Keep every voice at its old sound when `opt` = 0.5, and re-run the offline render
   (rms, peaks, NaNs at opt 0, 0.5 and 1) after touching one.
+- **Recorded loops (on demand)**: some sounds (so far droplets = leaf drops, and underwater) can be played from real CC0
+  recordings instead of the synthesized voice. `tools/ambience/sounds.json` lists the Freesound ids per effect key;
+  `tools/ambience/build_sounds.py` (run by the manual workflow `.github/workflows/ambience-sounds.yml`, secret
+  `FREESOUND_API_KEY`, the workflow file must be on the default branch to be run) refuses any source that is not CC0, takes the
+  HQ OGG preview (a token is enough, originals need OAuth), bakes a seamless loop (equal-power crossfade of the tail into the head,
+  short sources are looped on themselves first), matches the loudness to the synth voices, layers several sources, and encodes
+  Opus into the assets of the release `ambience-sounds` plus `manifest.json` (size, sha256, credits). The tag does not match
+  `release.yml`'s `X.Y.Z`. In the app `AmbienceSamples` reads the manifest (cached on disk, refetched at most every 6 h),
+  downloads a file when asked (hash checked), decodes it with MediaCodec into PCM in memory (~11 MB a minute of stereo) and
+  hands it to `AmbienceSample` (a `Voice`: looped playback with interpolation, random start, a warm/bright tilt as its slider).
+  The card's tune page shows Synth / Recorded for sounds the manifest lists (`AMBIENCE_SRC_<KEY>`, default Synth); the engine
+  plays the synth until the recording is ready and then crossfades (`Layer#mix`). The recording has its own slider pref
+  (`AMBIENCE_TONE_<KEY>`), so Echo/Depth never changes meaning. Release assets of a public repo are free to download.
 - **None of this has run on a device yet** (no emulator in the cloud session). If sound is silent, choppy or the weather
   looks wrong, look for `AMBIENCE` lines in the Diagnostic log first.
 

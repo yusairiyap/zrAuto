@@ -1,0 +1,40 @@
+name: Ambience sounds
+
+# Builds the recorded loops of the Ambience addon (tools/ambience/sounds.json) from CC0 sounds on
+# Freesound and publishes them as assets of the "ambience-sounds" release, which the app downloads on
+# demand. Run it by hand after changing sounds.json. Needs the repository secret FREESOUND_API_KEY
+# (a free API key from https://freesound.org/apiv2/apply, used only to read sound info and previews).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and publish the Ambience sounds
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install ffmpeg and numpy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pip install numpy
+
+      - name: Build the loops
+        env:
+          FREESOUND_API_KEY: ${{ secrets.FREESOUND_API_KEY }}
+        run: python3 tools/ambience/build_sounds.py tools/ambience/sounds.json dist/ambience
+
+      - name: Publish the release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view ambience-sounds >/dev/null 2>&1 || gh release create ambience-sounds \
+            --title "Ambience sounds" --latest=false \
+            --notes "Recorded loops for the Ambience addon (CC0, from Freesound). Built by the Ambience sounds workflow; the app downloads them on demand. Credits are in manifest.json."
+          gh release upload ambience-sounds dist/ambience/* --clobber

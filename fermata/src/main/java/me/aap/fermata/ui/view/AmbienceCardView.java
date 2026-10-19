@@ -25,6 +25,7 @@ import android.widget.TextView;
 import me.aap.fermata.R;
 import me.aap.fermata.addon.ambience.AmbienceEffect;
 import me.aap.fermata.addon.ambience.AmbienceEngine;
+import me.aap.fermata.addon.ambience.AmbienceSamples;
 import me.aap.fermata.addon.power.PowerSaver;
 
 /**
@@ -43,6 +44,7 @@ public final class AmbienceCardView extends FrameLayout {
 	private AmbienceScene scene;
 	private final float[] lv = new float[AmbienceEffect.values().length];
 	private final AmbienceScene.Clock clock = new AmbienceScene.Clock(this, this::onFrame);
+	private final AmbienceSamples samples = AmbienceSamples.get();
 	private final Runnable changed = this::sync;
 	private final AmbienceEngine.FlashListener flashListener = s -> {
 		if (animated()) {
@@ -67,6 +69,8 @@ public final class AmbienceCardView extends FrameLayout {
 	private final SeekBar tuneOption;
 	private final TextView tuneLevelValue;
 	private final TextView tuneOptionValue;
+	private TextView optLabel, optLo, optHi, srcSynth, srcRec;
+	private LinearLayout srcRow;
 	private Shader offShader, onShader;
 	private float fade;
 	private boolean attached;
@@ -82,7 +86,7 @@ public final class AmbienceCardView extends FrameLayout {
 		setWillNotDraw(false);
 		setClickable(true);
 		setFocusable(true);
-		setMinimumHeight(px(172));
+		setMinimumHeight(px(204));
 		stroke.setStyle(Paint.Style.STROKE);
 		stroke.setStrokeWidth(dp * 1.5f);
 
@@ -201,21 +205,38 @@ public final class AmbienceCardView extends FrameLayout {
 		addParam(ctx, ctx.getString(R.string.ambience_intensity), tuneLevelValue, tuneLevel, 8);
 		tuneOptionValue = text(ctx, 12, false);
 		tuneOption = newBar(ctx);
-		addParam(ctx, ctx.getString(fx.optName), tuneOptionValue, tuneOption, 6);
+		optLabel = addParam(ctx, ctx.getString(fx.optName), tuneOptionValue, tuneOption, 6);
 		// The words for the two ends of the character slider.
 		LinearLayout ends = new LinearLayout(ctx);
-		TextView lo = text(ctx, 11, false);
-		lo.setText(fx.optLow);
-		lo.setTextColor(0x99FFFFFF);
-		TextView hi = text(ctx, 11, false);
-		hi.setText(fx.optHigh);
-		hi.setTextColor(0x99FFFFFF);
-		hi.setGravity(Gravity.END);
+		optLo = text(ctx, 11, false);
+		optLo.setText(fx.optLow);
+		optLo.setTextColor(0x99FFFFFF);
+		optHi = text(ctx, 11, false);
+		optHi.setText(fx.optHigh);
+		optHi.setTextColor(0x99FFFFFF);
+		optHi.setGravity(Gravity.END);
 		ends.setPadding(px(12), 0, px(12), 0);
-		ends.addView(lo, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-		ends.addView(hi, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+		ends.addView(optLo, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+		ends.addView(optHi, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 		tune.addView(ends, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
 				LinearLayout.LayoutParams.WRAP_CONTENT));
+
+		// Synthesized or recorded: only for sounds that have a recording to download.
+		srcRow = new LinearLayout(ctx);
+		srcRow.setVisibility(GONE);
+		srcSynth = pill(ctx);
+		srcSynth.setText(R.string.ambience_src_synth);
+		srcSynth.setOnClickListener(v -> engine.setRecorded(fx, false));
+		srcRec = pill(ctx);
+		srcRec.setOnClickListener(v -> engine.setRecorded(fx, true));
+		LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(0, px(26), 1f);
+		slp.setMarginEnd(px(6));
+		srcRow.addView(srcSynth, slp);
+		srcRow.addView(srcRec, new LinearLayout.LayoutParams(0, px(26), 1f));
+		LinearLayout.LayoutParams srlp = new LinearLayout.LayoutParams(
+				LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+		srlp.topMargin = px(10);
+		tune.addView(srcRow, srlp);
 
 		SeekBar.OnSeekBarChangeListener levelListener = new BarListener() {
 			@Override
@@ -229,7 +250,8 @@ public final class AmbienceCardView extends FrameLayout {
 		tuneOption.setOnSeekBarChangeListener(new BarListener() {
 			@Override
 			void onUser(int progress) {
-				engine.setOption(fx, progress);
+				if (usingTone()) engine.setTone(fx, progress);
+				else engine.setOption(fx, progress);
 				sync();
 			}
 		});
@@ -275,7 +297,7 @@ public final class AmbienceCardView extends FrameLayout {
 	}
 
 	/** A label and its value on one line, the slider under them. */
-	private void addParam(Context ctx, String label, TextView value, SeekBar b, int topMargin) {
+	private TextView addParam(Context ctx, String label, TextView value, SeekBar b, int topMargin) {
 		LinearLayout row = new LinearLayout(ctx);
 		TextView l = text(ctx, 12, false);
 		l.setText(label);
@@ -289,6 +311,30 @@ public final class AmbienceCardView extends FrameLayout {
 		tune.addView(row, rlp);
 		b.setPadding(px(10), 0, px(10), 0);
 		tune.addView(b, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, px(26)));
+		return l;
+	}
+
+	/** A small rounded switch option. */
+	private TextView pill(Context ctx) {
+		TextView t = text(ctx, 11.5f, true);
+		t.setGravity(Gravity.CENTER);
+		t.setSingleLine(true);
+		t.setEllipsize(android.text.TextUtils.TruncateAt.END);
+		t.setPadding(px(6), 0, px(6), 0);
+		t.setBackground(roundFill(0x26FFFFFF, 13));
+		t.setClickable(true);
+		t.setFocusable(true);
+		return t;
+	}
+
+	private void stylePill(TextView t, boolean selected) {
+		((GradientDrawable) t.getBackground()).setColor(selected ? fx.tint : 0x26FFFFFF);
+		t.setTextColor(selected ? fx.deep : 0xFFFFFFFF);
+	}
+
+	/** The tune page's character slider is the recording's tone while the recording is what plays. */
+	private boolean usingTone() {
+		return engine.isRecorded(fx) && samples.isReady(fx);
 	}
 
 	private GradientDrawable roundFill(int color, float radiusDp) {
@@ -344,6 +390,26 @@ public final class AmbienceCardView extends FrameLayout {
 		if (on) sync();
 	}
 
+	/** The Synthesized / Recorded choice and what the download of the recording is doing. */
+	private void updateSource() {
+		boolean has = samples.has(fx);
+		srcRow.setVisibility(has ? VISIBLE : GONE);
+		if (!has) return;
+		boolean rec = engine.isRecorded(fx);
+		stylePill(srcSynth, !rec);
+		stylePill(srcRec, rec);
+		Context ctx = getContext();
+		String text;
+		switch (samples.getState(fx)) {
+			case READY -> text = ctx.getString(R.string.ambience_src_rec);
+			case DOWNLOADING -> text = ctx.getString(R.string.ambience_src_downloading, samples.getProgress(fx));
+			case LOADING -> text = ctx.getString(R.string.ambience_src_loading);
+			case FAILED -> text = ctx.getString(R.string.ambience_src_retry);
+			default -> text = ctx.getString(R.string.ambience_src_get, samples.getSizeText(fx));
+		}
+		srcRec.setText(text);
+	}
+
 	private void updateState() {
 		boolean on = engine.isOn(fx);
 		state.setText(on ? getContext().getString(R.string.ambience_state_on, engine.getIntensity(fx)) :
@@ -364,11 +430,16 @@ public final class AmbienceCardView extends FrameLayout {
 		// Both intensity sliders and the character one show what the engine holds.
 		syncing = true;
 		int level = engine.getIntensity(fx);
-		int option = engine.getOption(fx);
+		boolean tone = usingTone();
+		int option = tone ? engine.getTone(fx) : engine.getOption(fx);
 		if (bar.getProgress() != level) bar.setProgress(level);
 		if (tuneLevel.getProgress() != level) tuneLevel.setProgress(level);
 		if (tuneOption.getProgress() != option) tuneOption.setProgress(option);
 		syncing = false;
+		optLabel.setText(tone ? R.string.ambience_tone : fx.optName);
+		optLo.setText(tone ? R.string.ambience_tone_lo : fx.optLow);
+		optHi.setText(tone ? R.string.ambience_tone_hi : fx.optHigh);
+		updateSource();
 		tuneLevelValue.setText(getContext().getString(R.string.ambience_percent, level));
 		tuneOptionValue.setText(getContext().getString(R.string.ambience_percent, option));
 		updateState();
@@ -381,6 +452,7 @@ public final class AmbienceCardView extends FrameLayout {
 		super.onAttachedToWindow();
 		attached = true;
 		engine.addListener(changed);
+		samples.addListener(changed);
 		if (fx == AmbienceEffect.THUNDER) engine.addFlashListener(flashListener);
 		sync();
 	}
@@ -389,6 +461,7 @@ public final class AmbienceCardView extends FrameLayout {
 	protected void onDetachedFromWindow() {
 		attached = false;
 		engine.removeListener(changed);
+		samples.removeListener(changed);
 		engine.removeFlashListener(flashListener);
 		clock.stop();
 		super.onDetachedFromWindow();
