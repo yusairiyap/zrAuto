@@ -44,7 +44,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 			Action.OPEN_FAVORITES, Action.OPEN_PLAYLISTS, Action.OPEN_DOWNLOADS, Action.DOWNLOAD_CURRENT,
 			Action.DOWNLOADS_PAUSE_RESUME, Action.ALL_IN_ONE, Action.AUDIO_EFFECTS, Action.SLEEP_TIMER,
 			Action.QUALITY, Action.YOUTUBE_ALTERNATIVES, Action.YOUTUBE_COMMENTS, Action.LYRICS,
-			Action.SETTINGS);
+			Action.POWER_USAGE, Action.POWER_SAVER, Action.SETTINGS);
 
 	private final Pref<IntSupplier> actionPref;
 	@Nullable
@@ -178,6 +178,8 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		// Captions over fullscreen video, lyrics elsewhere.
 		if (action == Action.LYRICS) return a.isVideoMode() ? R.drawable.captions : R.drawable.lyrics;
 		if (action == Action.SETTINGS) return R.drawable.settings;
+		if (action == Action.POWER_USAGE) return R.drawable.power_usage;
+		if (action == Action.POWER_SAVER) return R.drawable.power_saver;
 		if (action == Action.OPEN_FAVORITES) return R.drawable.favorite_filled;
 		if (action == Action.OPEN_PLAYLISTS) return R.drawable.playlist;
 		if ((action == Action.OPEN_DOWNLOADS) || (action == Action.DOWNLOAD_CURRENT)) {
@@ -285,6 +287,10 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 					sb -> {
 						addAction(a, fb, sb, Action.ALL_IN_ONE, 0);
 						addAction(a, fb, sb, Action.REFUEL, 1);
+						if (me.aap.fermata.addon.power.PowerUsageAddon.isEnabled()) {
+							addAction(a, fb, sb, Action.POWER_USAGE, 2);
+							addAction(a, fb, sb, Action.POWER_SAVER, 3);
+						}
 					});
 			addSettings(a, b, R.id.fab_settings, R.drawable.fab, R.string.fab_settings,
 					SettingsFragment.SHOW_FAB_SETTINGS);

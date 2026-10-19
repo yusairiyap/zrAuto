@@ -1,0 +1,605 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Power Usage tab, see PowerUsageFragment. Laid out like the Data Usage tab (and inflated with
+     the Music tab's palette, no background of its own): one scrolling column on a phone, two
+     columns side by side where there is room. Left: the live gauge with the battery figures, the
+     settings chip, this session's graph with its lowest, average and highest reading, and the
+     power saver card. Right: the Overall / Day / Week / Month switch, the stacked bar chart of the
+     charge drawn, and where it went (video, music, idle; Android Auto against the phone alone). -->
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/power_scroll"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:id="@+id/power_columns"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:baselineAligned="false"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:orientation="vertical"
+        android:paddingStart="16dp"
+        android:paddingTop="12dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="24dp">
+
+        <LinearLayout
+            android:id="@+id/power_col_start"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:orientation="vertical">
+
+            <!-- Right now: the gauge, with the current in the middle. -->
+            <LinearLayout
+                style="@style/DataUsageCard"
+                android:gravity="center_horizontal">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/power_usage"
+                        android:tint="?attr/musicIconSecondary" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="10dp"
+                        android:layout_weight="1"
+                        android:text="@string/power_now"
+                        android:textColor="?attr/musicTextPrimary"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/power_status"
+                        android:layout_width="wrap_content"
+                        android:layout_height="28dp"
+                        android:background="@drawable/data_usage_status_bg"
+                        android:gravity="center"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:singleLine="true"
+                        android:textColor="#FF000000"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <FrameLayout
+                    android:layout_width="240dp"
+                    android:layout_height="220dp"
+                    android:layout_marginTop="6dp">
+
+                    <me.aap.fermata.ui.view.PowerGaugeView
+                        android:id="@+id/power_gauge"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent" />
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:gravity="center_horizontal"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/power_value"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:singleLine="true"
+                            android:textColor="?attr/musicTextPrimary"
+                            android:textSize="44sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/power_unit"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/power_unit_ma"
+                            android:textColor="?attr/musicTextSecondary"
+                            android:textSize="15sp" />
+
+                        <TextView
+                            android:id="@+id/power_watts"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:singleLine="true"
+                            android:textColor="?attr/musicTextTertiary"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/power_unsupported"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:text="@string/power_unsupported"
+                    android:textColor="?attr/musicTextSecondary"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:baselineAligned="false"
+                    android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/power_level"
+                            style="@style/DataUsageStatValue" />
+
+                        <TextView
+                            style="@style/DataUsageStatCaption"
+                            android:text="@string/power_stat_level" />
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="1dp"
+                        android:layout_height="match_parent"
+                        android:background="?attr/musicSeekTrack" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/power_temp"
+                            style="@style/DataUsageStatValue" />
+
+                        <TextView
+                            style="@style/DataUsageStatCaption"
+                            android:text="@string/power_stat_temp" />
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="1dp"
+                        android:layout_height="match_parent"
+                        android:background="?attr/musicSeekTrack" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/power_estimate"
+                            style="@style/DataUsageStatValue" />
+
+                        <TextView
+                            android:id="@+id/power_estimate_caption"
+                            style="@style/DataUsageStatCaption"
+                            android:text="@string/power_stat_left" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/power_load_note"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:gravity="center"
+                    android:lineSpacingExtra="2dp"
+                    android:textColor="?attr/musicTextTertiary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- The settings chip: in the title bar in landscape and on the car screen. -->
+            <LinearLayout
+                android:id="@+id/power_settings_row"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/power_settings"
+                    style="@style/MusicChip"
+                    android:drawableStart="@drawable/settings"
+                    android:text="@string/power_settings" />
+            </LinearLayout>
+
+            <!-- This session: the last two minutes, and the lowest, average and highest reading. -->
+            <LinearLayout
+                style="@style/DataUsageCard"
+                android:layout_marginTop="14dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/power_session"
+                            android:textColor="?attr/musicTextPrimary"
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/power_session_since"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:singleLine="true"
+                            android:textColor="?attr/musicTextSecondary"
+                            android:textSize="13sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/power_reset_session"
+                        style="@style/MusicChip"
+                        android:drawableStart="@drawable/refresh"
+                        android:text="@string/power_reset_session" />
+                </LinearLayout>
+
+                <me.aap.fermata.ui.view.PowerLiveGraphView
+                    android:id="@+id/power_graph"
+                    android:layout_width="match_parent"
+                    android:layout_height="130dp"
+                    android:layout_marginTop="10dp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:baselineAligned="false"
+                    android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/power_min"
+                            style="@style/DataUsageStatValue" />
+
+                        <TextView
+                            style="@style/DataUsageStatCaption"
+                            android:text="@string/power_min" />
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="1dp"
+                        android:layout_height="match_parent"
+                        android:background="?attr/musicSeekTrack" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/power_avg"
+                            style="@style/DataUsageStatValue" />
+
+                        <TextView
+                            style="@style/DataUsageStatCaption"
+                            android:text="@string/power_avg" />
+                    </LinearLayout>
+
+                    <View
+                        android:layout_width="1dp"
+                        android:layout_height="match_parent"
+                        android:background="?attr/musicSeekTrack" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/power_max"
+                            style="@style/DataUsageStatValue" />
+
+                        <TextView
+                            style="@style/DataUsageStatCaption"
+                            android:text="@string/power_max" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:gravity="center"
+                    android:text="@string/power_session_hint"
+                    android:textColor="?attr/musicTextTertiary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- Power saver: on or off, and what it does right now. -->
+            <LinearLayout
+                style="@style/DataUsageCard"
+                android:layout_marginTop="14dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/power_saver"
+                        android:tint="?attr/musicIconSecondary" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="10dp"
+                        android:layout_weight="1"
+                        android:text="@string/power_saver_title"
+                        android:textColor="?attr/musicTextPrimary"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <androidx.appcompat.widget.SwitchCompat
+                        android:id="@+id/power_saver_switch"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:contentDescription="@string/power_saver_title" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/power_saver_text"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:lineSpacingExtra="2dp"
+                    android:textColor="?attr/musicTextSecondary"
+                    android:textSize="13sp" />
+
+                <!-- While power saver is on: what it is doing right now, as a small card of chips. -->
+                <LinearLayout
+                    android:id="@+id/power_saver_active"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="vertical"
+                    android:padding="12dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/power_saver_active_title"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textColor="?attr/musicTextPrimary"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <FrameLayout
+                        android:id="@+id/power_saver_chips"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/power_saver_settings"
+                    style="@style/MusicChip"
+                    android:layout_gravity="start"
+                    android:layout_marginTop="12dp"
+                    android:drawableStart="@drawable/settings"
+                    android:text="@string/power_saver_settings" />
+
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/power_col_end"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:orientation="vertical">
+
+            <!-- The pill behind the selected option slides over to a newly picked one, see
+                 PowerUsageFragment#moveFilterPill(). -->
+            <FrameLayout
+                android:id="@+id/power_filters"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:background="@drawable/data_usage_segment_bg"
+                android:padding="4dp">
+
+                <View
+                    android:id="@+id/power_filter_pill"
+                    android:layout_width="0dp"
+                    android:layout_height="36dp"
+                    android:background="@drawable/data_usage_segment_pill"
+                    android:visibility="invisible" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/power_filter_overall"
+                        style="@style/DataUsageSegment"
+                        android:text="@string/data_usage_overall" />
+
+                    <TextView
+                        android:id="@+id/power_filter_day"
+                        style="@style/DataUsageSegment"
+                        android:text="@string/data_usage_day" />
+
+                    <TextView
+                        android:id="@+id/power_filter_week"
+                        style="@style/DataUsageSegment"
+                        android:text="@string/data_usage_week" />
+
+                    <TextView
+                        android:id="@+id/power_filter_month"
+                        style="@style/DataUsageSegment"
+                        android:text="@string/data_usage_month" />
+                </LinearLayout>
+            </FrameLayout>
+
+            <LinearLayout
+                style="@style/DataUsageCard"
+                android:layout_marginTop="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageButton
+                        android:id="@+id/power_prev"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="@string/data_usage_previous"
+                        android:src="@drawable/data_usage_chevron_left"
+                        android:tint="?attr/musicIconPrimary" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="center_horizontal"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/power_period"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:ellipsize="end"
+                            android:singleLine="true"
+                            android:textColor="?attr/musicTextPrimary"
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/power_period_total"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:singleLine="true"
+                            android:textColor="?attr/musicTextSecondary"
+                            android:textSize="13sp" />
+                    </LinearLayout>
+
+                    <ImageButton
+                        android:id="@+id/power_next"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="@string/data_usage_next"
+                        android:src="@drawable/data_usage_chevron_right"
+                        android:tint="?attr/musicIconPrimary" />
+                </LinearLayout>
+
+                <me.aap.fermata.ui.view.DataUsageChartView
+                    android:id="@+id/power_chart"
+                    android:layout_width="match_parent"
+                    android:layout_height="220dp"
+                    android:layout_marginTop="12dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center"
+                    android:text="@string/data_usage_chart_hint"
+                    android:textColor="?attr/musicTextTertiary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- Where the charge went, for the period above. -->
+            <LinearLayout
+                style="@style/DataUsageCard"
+                android:layout_marginTop="12dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/power_breakdown"
+                    android:textColor="?attr/musicTextPrimary"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <include
+                    android:id="@+id/power_row_video"
+                    layout="@layout/data_usage_row" />
+
+                <include
+                    android:id="@+id/power_row_music"
+                    layout="@layout/data_usage_row" />
+
+                <include
+                    android:id="@+id/power_row_idle"
+                    layout="@layout/data_usage_row" />
+
+                <TextView
+                    android:id="@+id/power_car_insight"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:lineSpacingExtra="2dp"
+                    android:textColor="?attr/musicTextSecondary"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/power_charged"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textColor="?attr/musicTextSecondary"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/power_footer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:gravity="center"
+                android:lineSpacingExtra="2dp"
+                android:textColor="?attr/musicTextTertiary"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>

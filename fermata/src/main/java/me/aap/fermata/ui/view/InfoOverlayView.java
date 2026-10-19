@@ -97,6 +97,13 @@ public class InfoOverlayView extends LinearLayout {
 	private final ImageView dataSessionIcon;
 	private final android.widget.ProgressBar dataSessionBar;
 	private final LinearLayout dataSessionRow;
+	// The battery current (PowerUsageTracker), live while the overlay is on screen.
+	private final TextView power;
+	private final ImageView powerIcon;
+	private final LinearLayout powerRow;
+	private final Runnable powerListener = this::updatePowerText;
+	private boolean powerListenerRegistered;
+	private boolean showPower;
 	private final Runnable sessionListener = this::updateSessionText;
 	private boolean sessionListenerRegistered;
 	private boolean showDataSession;
@@ -158,7 +165,7 @@ public class InfoOverlayView extends LinearLayout {
 	private void setForegroundColor(int color) {
 		fgColor = color;
 		for (LinearLayout row : new LinearLayout[]{clockRow, batteryRow, tempRow, distanceRow,
-				dataUsageRow, dataRemainingRow}) {
+				dataUsageRow, dataRemainingRow, powerRow}) {
 			for (int i = 0, n = row.getChildCount(); i < n; i++) {
 				View v = row.getChildAt(i);
 				if (v instanceof TextView t) t.setTextColor(color);
@@ -224,6 +231,10 @@ public class InfoOverlayView extends LinearLayout {
 		sessionCol.addView(dataSession);
 		sessionCol.addView(dataSessionBar, new LayoutParams(LayoutParams.MATCH_PARENT, toIntPx(context, 3)));
 		dataSessionRow = newRow(context, dataSessionIcon, sessionCol);
+		power = newTextView(context);
+		powerIcon = newIconView(context);
+		powerIcon.setImageResource(R.drawable.power_usage);
+		powerRow = newRow(context, powerIcon, power);
 		applyPadding();
 		applyIconSize();
 	}
@@ -364,6 +375,48 @@ public class InfoOverlayView extends LinearLayout {
 	}
 
 	/**
+	 * The battery current item (see {@link me.aap.fermata.addon.power.PowerUsageTracker}): "-342 mA"
+	 * while the phone draws from the battery, "+1250 mA" while it charges, live. The tracker reads
+	 * once a second for as long as this is on screen.
+	 */
+	public void setPowerItem(boolean show, boolean icon) {
+		boolean changed = (showPower != show) || (powerIcon.getVisibility() != (icon ? VISIBLE : GONE));
+		showPower = show;
+		powerIcon.setVisibility(icon ? VISIBLE : GONE);
+		if (changed) layoutRows();
+		updatePowerListenerState();
+	}
+
+	private void updatePowerListenerState() {
+		me.aap.fermata.addon.power.PowerUsageTracker t = me.aap.fermata.addon.power.PowerUsageTracker.get();
+		// Only while it can be seen: a hidden tab's overlay stays attached, and reading the battery
+		// every second for nobody would be a waste.
+		if (isAttachedToWindow() && showPower && isShown()) {
+			if (!powerListenerRegistered) {
+				t.addListener(powerListener);
+				powerListenerRegistered = true;
+			}
+			updatePowerText();
+		} else if (powerListenerRegistered) {
+			powerListenerRegistered = false;
+			t.removeListener(powerListener);
+		}
+	}
+
+	@Override
+	public void onVisibilityAggregated(boolean isVisible) {
+		super.onVisibilityAggregated(isVisible);
+		if (showPower) updatePowerListenerState();
+	}
+
+	private void updatePowerText() {
+		me.aap.fermata.addon.power.PowerUsageTracker t = me.aap.fermata.addon.power.PowerUsageTracker.get();
+		long ma = Math.round(t.getCurrent());
+		String v = !t.hasCurrent() ? "--" : (ma == 0) ? "0" : String.format(Locale.getDefault(), "%+d", ma);
+		power.setText(getContext().getString(R.string.power_overlay_text, v));
+	}
+
+	/**
 	 * The downloaded status item: an icon, first and without text, shown only while what's playing
 	 * (a YouTube video or track, streamed or from its file) has a downloaded copy.
 	 */
@@ -413,7 +466,7 @@ public class InfoOverlayView extends LinearLayout {
 
 	public boolean hasVisibleItems() {
 		return downloadedShown || showClock || showBatteryPct || showBatteryTemp || showDistance || showDataUsage ||
-				dataRemainingShown || dataSessionShown;
+				dataRemainingShown || dataSessionShown || showPower;
 	}
 
 	/**
@@ -445,6 +498,7 @@ public class InfoOverlayView extends LinearLayout {
 		dataUsage.setTextSize(TypedValue.COMPLEX_UNIT_SP, BASE_TEXT_SIZE_SP * size);
 		dataRemaining.setTextSize(TypedValue.COMPLEX_UNIT_SP, BASE_TEXT_SIZE_SP * size);
 		dataSession.setTextSize(TypedValue.COMPLEX_UNIT_SP, BASE_TEXT_SIZE_SP * size);
+		power.setTextSize(TypedValue.COMPLEX_UNIT_SP, BASE_TEXT_SIZE_SP * size);
 		LayoutParams blp = (LayoutParams) dataSessionBar.getLayoutParams();
 		blp.height = Math.max(2, toIntPx(getContext(), Math.round(3 * size)));
 		dataSessionBar.setLayoutParams(blp);
@@ -465,7 +519,7 @@ public class InfoOverlayView extends LinearLayout {
 						getResources().getDisplayMetrics()));
 		int margin = toIntPx(getContext(), Math.round(BASE_ICON_MARGIN_DP * size));
 		for (ImageView icon : new ImageView[]{clockIcon, batteryIcon, tempIcon, distanceIcon,
-				dataUsageIcon, dataRemainingIcon, dataSessionIcon}) {
+				dataUsageIcon, dataRemainingIcon, dataSessionIcon, powerIcon}) {
 			LayoutParams lp = new LayoutParams(iconSize, iconSize);
 			lp.setMarginEnd(margin);
 			icon.setLayoutParams(lp);
@@ -476,7 +530,7 @@ public class InfoOverlayView extends LinearLayout {
 
 	/** The overlay's items, in their default order: what {@link #setOrder} and the settings page use. */
 	public static final String[] ITEM_KEYS = {"downloaded", "clock", "battery", "temp", "distance",
-			"data_usage", "data_remaining", "data_session"};
+			"data_usage", "data_remaining", "data_session", "power"};
 	private String[] order = ITEM_KEYS;
 
 	/** The order of the items, as the setting stores it (keys joined by commas; empty: default). */
@@ -509,6 +563,7 @@ public class InfoOverlayView extends LinearLayout {
 			case "data_usage" -> showDataUsage;
 			case "data_remaining" -> dataRemainingShown;
 			case "data_session" -> dataSessionShown;
+			case "power" -> showPower;
 			default -> false;
 		};
 	}
@@ -522,6 +577,7 @@ public class InfoOverlayView extends LinearLayout {
 			case "distance" -> distanceRow;
 			case "data_usage" -> dataUsageRow;
 			case "data_session" -> dataSessionRow;
+			case "power" -> powerRow;
 			default -> dataRemainingRow;
 		};
 	}
@@ -599,6 +655,7 @@ public class InfoOverlayView extends LinearLayout {
 		updateDistanceListenerState();
 		updateDataListenerState();
 		updateSessionListenerState();
+		updatePowerListenerState();
 	}
 
 	@Override
@@ -609,6 +666,10 @@ public class InfoOverlayView extends LinearLayout {
 		unregisterBatteryReceiver();
 		unregisterDistanceListener();
 		unregisterDataListener();
+		if (powerListenerRegistered) {
+			powerListenerRegistered = false;
+			me.aap.fermata.addon.power.PowerUsageTracker.get().removeListener(powerListener);
+		}
 		if (sessionListenerRegistered) {
 			sessionListenerRegistered = false;
 			me.aap.fermata.addon.data.DataSessionLimit.get().removeListener(sessionListener);

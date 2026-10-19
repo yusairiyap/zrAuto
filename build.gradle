@@ -66,6 +66,16 @@ ext {
                     order      : 6,
                     hasSettings: true
             ],
+            [
+                    // How much power the app uses: the live battery current like the Ampere app, its
+                    // lowest and highest this session, a daily trend, and a power saver mode. Right
+                    // after the data usage tab.
+                    name       : 'power_usage',
+                    icon       : 'power_usage',
+                    class      : 'me.aap.fermata.addon.power.PowerUsageAddon',
+                    order      : 8,
+                    hasSettings: true
+            ],
     ]
 }
 

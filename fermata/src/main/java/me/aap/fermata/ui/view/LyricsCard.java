@@ -35,8 +35,9 @@ import me.aap.utils.log.Log;
 /**
  * The lyrics (the playing YouTube video's captions) in a card of their own, in the look of the
  * timer and the playlist picker: the same panel, scrim and slide up, over the whole app. Tapping a
- * line plays from there. Opened by the Lyrics action (All in One, a floating button, a key), by a
- * tap on the lyrics over the Music tab's cover, and by the Music tab's Lyrics chip when held.
+ * line plays from there. Opened by the Lyrics action (All in One, a floating button, a key) on any
+ * tab but the Music tab, which shows its lyrics as a scrolling page of its own instead (a tap on
+ * the lyrics over the cover, or its Lyrics chip held).
  */
 public final class LyricsCard implements CaptionsHub.Listener {
 	private static LyricsCard open;

@@ -84,6 +84,7 @@ public class InfoOverlayFragment extends ReorderListFragment {
 			case "distance" -> MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE;
 			case "data_usage" -> MainActivityPrefs.INFO_OVERLAY_SHOW_DATA_USAGE;
 			case "data_session" -> MainActivityPrefs.INFO_OVERLAY_SHOW_DATA_SESSION;
+			case "power" -> MainActivityPrefs.INFO_OVERLAY_SHOW_POWER;
 			default -> MainActivityPrefs.INFO_OVERLAY_SHOW_DATA_REMAINING;
 		};
 	}
@@ -97,6 +98,7 @@ public class InfoOverlayFragment extends ReorderListFragment {
 			case "temp" -> MainActivityPrefs.INFO_OVERLAY_SHOW_TEMP_ICON;
 			case "distance" -> MainActivityPrefs.INFO_OVERLAY_SHOW_DISTANCE_ICON;
 			case "data_usage", "data_remaining", "data_session" -> MainActivityPrefs.INFO_OVERLAY_SHOW_DATA_ICON;
+			case "power" -> MainActivityPrefs.INFO_OVERLAY_SHOW_POWER_ICON;
 			default -> null;
 		};
 	}
@@ -111,6 +113,7 @@ public class InfoOverlayFragment extends ReorderListFragment {
 			case "distance" -> R.drawable.distance;
 			case "data_usage" -> R.drawable.data_usage;
 			case "data_session" -> R.drawable.car;
+			case "power" -> R.drawable.power_usage;
 			default -> R.drawable.data_remaining;
 		};
 	}
@@ -125,6 +128,7 @@ public class InfoOverlayFragment extends ReorderListFragment {
 			case "distance" -> R.string.info_item_distance;
 			case "data_usage" -> R.string.info_item_data_usage;
 			case "data_session" -> R.string.info_item_data_session;
+			case "power" -> R.string.info_item_power;
 			default -> R.string.info_item_data_remaining;
 		};
 	}
@@ -137,9 +141,10 @@ public class InfoOverlayFragment extends ReorderListFragment {
 	/** The items this phone can show: the data ones only while the Data Usage addon is on. */
 	private static List<String> available() {
 		boolean data = dataAddonOn();
+		boolean power = me.aap.fermata.addon.power.PowerUsageAddon.isEnabled();
 		List<String> keys = new ArrayList<>();
 		for (String k : InfoOverlayView.ITEM_KEYS) {
-			if (!k.startsWith("data_") || data) keys.add(k);
+			if (k.startsWith("data_") ? data : "power".equals(k) ? power : true) keys.add(k);
 		}
 		return keys;
 	}

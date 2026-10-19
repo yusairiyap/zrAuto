@@ -53,6 +53,9 @@ public class DataUsageChartView extends View {
 	private float chartLeft;
 	private float slot;
 	private long scaleMax;
+	// How a value is written (bytes by default), and the scale of a chart with nothing in it.
+	private java.util.function.LongFunction<String> formatter;
+	private long emptyScale = 1_000_000;
 
 	public DataUsageChartView(Context ctx) {
 		this(ctx, null);
@@ -69,6 +72,20 @@ public class DataUsageChartView extends View {
 		bubbleTextPaint.setTextSize(toPx(ctx, 12));
 		bubbleTextPaint.setFakeBoldText(true);
 		bubbleTextPaint.setTextAlign(Paint.Align.CENTER);
+	}
+
+	/**
+	 * Draws other units than bytes (the Power Usage tab's mAh): {@code formatter} writes a value,
+	 * {@code emptyScale} is what the axis reads up to while nothing is recorded.
+	 */
+	public void setValueFormatter(java.util.function.LongFunction<String> formatter, long emptyScale) {
+		this.formatter = formatter;
+		this.emptyScale = Math.max(1, emptyScale);
+		invalidate();
+	}
+
+	private String format(long v) {
+		return (formatter != null) ? formatter.apply(v) : Formatter.formatShortFileSize(getContext(), v);
 	}
 
 	/**
@@ -158,15 +175,15 @@ public class DataUsageChartView extends View {
 
 		long max = 0;
 		for (long[] v : values) max = Math.max(max, sum(v));
-		long target = niceMax(max);
+		long target = niceMax(max, emptyScale);
 		// The scale slides to its new value along with the bars, rather than jumping.
 		float scale = (grow || (fromScale <= 0)) ? target : fromScale + (target - fromScale) * progress;
 		shownScale = scale;
 		scaleMax = Math.max(1, Math.round((double) scale));
 
 		// Value grid: 0, half and the top, labelled on the left.
-		String topLabel = Formatter.formatShortFileSize(ctx, scaleMax);
-		String midLabel = Formatter.formatShortFileSize(ctx, scaleMax / 2);
+		String topLabel = format(scaleMax);
+		String midLabel = format(scaleMax / 2);
 		float labelW = Math.max(textPaint.measureText(topLabel), textPaint.measureText(midLabel));
 		chartLeft = getPaddingLeft() + labelW + axisGap;
 		float chartW = getPaddingLeft() + w - chartLeft;
@@ -249,8 +266,7 @@ public class DataUsageChartView extends View {
 		long total = sum(values[i]);
 		float barTop = (scaleMax > 0) ? bottom - chartH * total / scaleMax : bottom;
 		String name = (i < names.length) ? names[i] : "";
-		String text = name.isEmpty() ? Formatter.formatShortFileSize(getContext(), total) :
-				name + "  ·  " + Formatter.formatShortFileSize(getContext(), total);
+		String text = name.isEmpty() ? format(total) : name + "  ·  " + format(total);
 		float padH = toPx(getContext(), 10);
 		float th = bubbleTextPaint.getTextSize();
 		float bw = bubbleTextPaint.measureText(text) + padH * 2;
@@ -308,8 +324,8 @@ public class DataUsageChartView extends View {
 	}
 
 	/** A round number (1, 2 or 5 times a power of ten) at or above {@code v}. */
-	private static long niceMax(long v) {
-		if (v <= 0) return 1_000_000; // An empty chart still reads as "up to 1 MB".
+	private static long niceMax(long v, long empty) {
+		if (v <= 0) return empty; // An empty chart still reads as "up to 1 MB".
 		long p = 1;
 		while (p * 10 <= v) p *= 10;
 		for (long m : new long[]{1, 2, 5, 10}) {
