@@ -2351,6 +2351,8 @@ public class MainActivityDelegate extends ActivityDelegate
 			return new me.aap.fermata.ui.fragment.AllInOneFragment();
 		} else if (id == R.id.fab_settings_fragment) {
 			return new me.aap.fermata.ui.fragment.FabSettingsFragment();
+		} else if (id == R.id.power_settings_fragment) {
+			return new me.aap.fermata.ui.fragment.PowerSettingsFragment();
 		} else if (id == R.id.nav_tabs_fragment) {
 			return new me.aap.fermata.ui.fragment.NavTabsFragment();
 		} else if (id == R.id.info_overlay_fragment) {

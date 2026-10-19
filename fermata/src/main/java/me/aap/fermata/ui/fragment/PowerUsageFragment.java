@@ -91,6 +91,12 @@ public class PowerUsageFragment extends MainActivityFragment implements ToolBarC
 	private PowerLiveGraphView graph;
 	private DataUsageChartView chart;
 	private TextView status;
+	private TextView loadNote;
+	@Nullable
+	private CharSequence statusLabel;
+	private int statusBg;
+	@Nullable
+	private ValueAnimator statusAnim;
 	private TextView value;
 	private TextView watts;
 	private TextView level;
@@ -142,8 +148,7 @@ public class PowerUsageFragment extends MainActivityFragment implements ToolBarC
 
 	@Override
 	public void onToolBarChipClick() {
-		getActivityDelegate().showFragment(R.id.settings_fragment,
-				SettingsFragment.addonSettings("power_usage"));
+		getActivityDelegate().showFragment(R.id.power_settings_fragment, PowerSettingsFragment.USAGE_FROM_TAB);
 	}
 
 	@Nullable
@@ -169,6 +174,7 @@ public class PowerUsageFragment extends MainActivityFragment implements ToolBarC
 		graph = view.findViewById(R.id.power_graph);
 		chart = view.findViewById(R.id.power_chart);
 		status = view.findViewById(R.id.power_status);
+		loadNote = view.findViewById(R.id.power_load_note);
 		value = view.findViewById(R.id.power_value);
 		watts = view.findViewById(R.id.power_watts);
 		level = view.findViewById(R.id.power_level);
@@ -245,6 +251,8 @@ public class PowerUsageFragment extends MainActivityFragment implements ToolBarC
 		prev.setOnClickListener(v -> step(-1));
 		next.setOnClickListener(v -> step(1));
 		view.findViewById(R.id.power_settings).setOnClickListener(v -> onToolBarChipClick());
+		view.findViewById(R.id.power_saver_settings).setOnClickListener(v ->
+				getActivityDelegate().showFragment(R.id.power_settings_fragment, PowerSettingsFragment.SAVER_FROM_TAB));
 		updateSettingsChip(view);
 
 		// tool_bar/nav_bar are drawn over the fragment: the list has to keep clear of them itself.
@@ -319,6 +327,9 @@ public class PowerUsageFragment extends MainActivityFragment implements ToolBarC
 	public void onDestroyView() {
 		if (pillAnim != null) pillAnim.cancel();
 		pillAnim = null;
+		if (statusAnim != null) statusAnim.cancel();
+		statusAnim = null;
+		statusLabel = null;
 		filterPill = null;
 		setListening(false);
 		super.onDestroyView();
@@ -446,25 +457,31 @@ public class PowerUsageFragment extends MainActivityFragment implements ToolBarC
 		} else {
 			unsupported.setVisibility(View.GONE);
 			float ma = t.getCurrent();
-			gauge.setValue(ma);
+			float load = t.getLoad();
+			gauge.setValue(ma, load);
 			value.setText(signed(ma));
 			float w = t.getWatts();
 			watts.setText((w < 0) ? "" : getString(R.string.power_watts,
 					String.format(Locale.getDefault(), "%.1f", w),
 					String.format(Locale.getDefault(), "%.2f", t.getVoltageMv() / 1000f)));
-			int draw = ContextCompat.getColor(ctx, ma > -300 ? R.color.power_low :
-					ma > -900 ? R.color.power_mid : R.color.power_high);
+			// One judgement for the chip and the ring: how long the battery would last at this draw,
+			// against its own size (a tablet's 700 mA is a light load, a phone's is a heavy one).
 			if (t.isFull() && t.isPlugged() && (Math.abs(ma) < 150)) {
 				setStatus(R.string.power_state_full, ContextCompat.getColor(ctx, R.color.power_charge), 0xFF000000);
 			} else if (ma > 5) {
 				setStatus(R.string.power_state_charging, ContextCompat.getColor(ctx, R.color.power_charge),
 						0xFF000000);
 			} else if (ma < -5) {
-				setStatus(R.string.power_state_discharging, draw, 0xFF000000);
+				setStatus((load < 0.4f) ? R.string.power_state_light :
+						(load < 1f) ? R.string.power_state_moderate : R.string.power_state_heavy,
+						gauge.severityColor(load), 0xFF000000);
 			} else {
 				setStatus(R.string.power_state_steady, paletteColor(R.attr.musicChipFill),
 						paletteColor(R.attr.musicTextPrimary));
 			}
+			loadNote.setText(t.isCapacityKnown() ?
+					getString(R.string.power_load_note, t.getCapacityMah()) :
+					getString(R.string.power_load_note_guess, t.getCapacityMah()));
 		}
 
 		level.setText((t.getLevel() >= 0) ? String.format(Locale.getDefault(), "%d%%", t.getLevel()) :
@@ -495,11 +512,41 @@ public class PowerUsageFragment extends MainActivityFragment implements ToolBarC
 		}
 	}
 
+	/**
+	 * The state chip: a new state pops its text in and its colour melts over from the old one (the
+	 * colour also drifts a little with the load, which then glides rather than jumps).
+	 */
 	private void setStatus(int text, int bg, int fg) {
 		status.setVisibility(View.VISIBLE);
-		status.setBackgroundTintList(ColorStateList.valueOf(bg));
+		CharSequence label = getString(text);
+		boolean first = statusLabel == null;
+		boolean textChanged = !label.equals(statusLabel);
+		int from = statusBg;
+		statusLabel = label;
+		statusBg = bg;
 		status.setTextColor(fg);
-		status.setText(text);
+		if (statusAnim != null) statusAnim.cancel();
+		if (first) {
+			status.setBackgroundTintList(ColorStateList.valueOf(bg));
+			status.setText(label);
+			return;
+		}
+		if (textChanged) {
+			status.setText(label);
+			status.animate().cancel();
+			status.setScaleX(0.8f);
+			status.setScaleY(0.8f);
+			status.setAlpha(0.3f);
+			status.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(360)
+					.setInterpolator(new android.view.animation.OvershootInterpolator(2.2f)).start();
+		}
+		ArgbEvaluator argb = new ArgbEvaluator();
+		ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
+		a.setDuration(textChanged ? 520 : 420);
+		a.addUpdateListener(v -> status.setBackgroundTintList(ColorStateList.valueOf(
+				(int) argb.evaluate((float) v.getAnimatedValue(), from, bg))));
+		statusAnim = a;
+		a.start();
 	}
 
 	private void refreshSaver() {
@@ -517,9 +564,11 @@ public class PowerUsageFragment extends MainActivityFragment implements ToolBarC
 		}
 		var p = PowerUsageTracker.prefs();
 		StringBuilder sb = new StringBuilder(getString(R.string.power_saver_on_text, getString(s.getReason())));
-		sb.append('\n').append(getString(R.string.power_saver_does_brightness,
-				Math.max(PowerSaver.MIN_BRIGHTNESS, Math.min(PowerSaver.MAX_BRIGHTNESS,
-						p.getIntPref(PowerSaver.BRIGHTNESS)))));
+		if (p.getBooleanPref(PowerSaver.DIM_SCREEN)) {
+			sb.append('\n').append(getString(R.string.power_saver_does_brightness,
+					Math.max(PowerSaver.MIN_BRIGHTNESS, Math.min(PowerSaver.MAX_BRIGHTNESS,
+							p.getIntPref(PowerSaver.BRIGHTNESS)))));
+		}
 		if (p.getBooleanPref(PowerSaver.CAR_SCREEN)) {
 			sb.append('\n').append(getString(R.string.power_saver_does_car_screen));
 		}

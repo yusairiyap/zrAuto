@@ -101,6 +101,7 @@ public final class WelcomeWizard {
 	private final int textSecondary;
 	private final int textTertiary;
 	private final int rowFill;
+	private final int cardFill;
 	private final int chipFill;
 	private final int track;
 	private final int accent;
@@ -109,14 +110,20 @@ public final class WelcomeWizard {
 	private final List<Page> pages = new ArrayList<>();
 	private final Handler handler = new Handler(Looper.getMainLooper());
 	private FrameLayout overlay;
-	private FrameLayout pageHost;
+	private PageHost pageHost;
 	private Progress progress;
 	private TextView phase;
 	private TextView skip;
 	private TextView left;
 	private TextView primary;
 	@Nullable
-	private View current;
+	private PageLayout current;
+	// A page being swiped or slid in, and where (index) it is from.
+	@Nullable
+	private PageLayout incoming;
+	private int incomingIndex = -1;
+	@Nullable
+	private ValueAnimator settle;
 	@Nullable
 	private FrameLayout picker;
 	private int index = -1;
@@ -145,6 +152,9 @@ public final class WelcomeWizard {
 		textSecondary = color(R.attr.musicTextSecondary);
 		textTertiary = color(R.attr.musicTextTertiary);
 		rowFill = color(R.attr.musicRowFill);
+		// An opaque surface: the row and chip fills are see-through tints meant to sit on the
+		// background, and made opaque they came out as a light card on dark and a dark one on light.
+		cardFill = color(R.attr.musicCardFill);
 		chipFill = color(R.attr.musicChipFill);
 		track = color(R.attr.musicSeekTrack);
 		background = color(R.attr.musicBackground);
@@ -307,6 +317,8 @@ public final class WelcomeWizard {
 		// Above the bars and the menus (10dp), below the top cards (26dp): a toast still shows.
 		overlay.setElevation(dp(24));
 		overlay.setAlpha(0f);
+		// The pictures' glow reaches past their own edges: nothing along the way may cut it.
+		overlay.setClipChildren(false);
 
 		WelcomeBackdropView backdrop = new WelcomeBackdropView(pc);
 		backdrop.setColors(background, accent, 0xFF5B8DEF);
@@ -314,6 +326,7 @@ public final class WelcomeWizard {
 
 		Column column = new Column();
 		column.setOrientation(LinearLayout.VERTICAL);
+		column.setClipChildren(false);
 		FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT,
 				Gravity.CENTER_HORIZONTAL);
 		overlay.addView(column, clp);
@@ -340,8 +353,8 @@ public final class WelcomeWizard {
 		top.addView(skip, new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
 		column.addView(top, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
-		pageHost = new FrameLayout(pc);
-		pageHost.setClipChildren(true);
+		pageHost = new PageHost();
+		pageHost.setClipChildren(false);
 		column.addView(pageHost, new LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f));
 
 		LinearLayout bottom = new LinearLayout(pc);
@@ -404,41 +417,229 @@ public final class WelcomeWizard {
 		}
 	}
 
+	/**
+	 * Goes to page {@code to}: the pages morph into each other, the one leaving shrinking and fading
+	 * away from the one arriving, the picture and the text sliding at different speeds. The same
+	 * motion follows a finger when the pages are swiped, see {@link PageHost}.
+	 */
 	private void go(int to) {
 		List<Page> act = active();
 		if (animating || (to < 0) || (to >= act.size()) || (to == index)) return;
-		Page from = (index >= 0) ? act.get(Math.min(index, act.size() - 1)) : null;
-		if ((from != null) && (from.onLeave != null)) from.onLeave.run();
-		int dir = (to >= index) ? 1 : -1;
-		index = to;
-		Page p = act.get(to);
-		View view = buildPage(p);
-		pageHost.addView(view, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
-		View old = current;
-		current = view;
-		updateChrome(p, act.size());
-		if (p.onEnter != null) p.onEnter.run();
-
-		float shift = Math.max(pageHost.getWidth() * 0.22f, dp(80));
-		view.setAlpha(0f);
-		view.setTranslationX(dir * shift);
-		animating = true;
-		view.animate().alpha(1f).translationX(0f).setDuration(340)
-				.setInterpolator(new DecelerateInterpolator(1.6f)).withEndAction(() -> animating = false).start();
-		if (old != null) {
-			old.animate().alpha(0f).translationX(-dir * shift * 0.6f).setDuration(240)
-					.withEndAction(() -> pageHost.removeView(old)).start();
+		if (index < 0) {
+			// The first page: it comes up where it is.
+			index = to;
+			Page p = act.get(to);
+			PageLayout view = buildPage(p);
+			pageHost.addView(view, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+			current = view;
+			updateChrome(p, act.size());
+			if (p.onEnter != null) p.onEnter.run();
+			view.setAlpha(0f);
+			view.setScaleX(0.94f);
+			view.setScaleY(0.94f);
+			animating = true;
+			view.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(420)
+					.setInterpolator(new DecelerateInterpolator(1.6f)).withEndAction(() -> animating = false).start();
+			stagger(view);
+			return;
 		}
-		// The page's own elements arrive one after the other.
-		View body = view.findViewWithTag("body");
+		int dir = (to > index) ? 1 : -1;
+		if (!prepareIncoming(to)) return;
+		morph(0f, dir);
+		settleTo(0f, dir, to, true, true);
+	}
+
+	/** Builds the page to arrive and puts it ready, off to the side. */
+	private boolean prepareIncoming(int target) {
+		List<Page> act = active();
+		if ((target < 0) || (target >= act.size())) return false;
+		if ((incoming != null) && (incomingIndex == target)) return true;
+		discardIncoming();
+		PageLayout view = buildPage(act.get(target));
+		pageHost.addView(view, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		view.setAlpha(0f);
+		incoming = view;
+		incomingIndex = target;
+		return true;
+	}
+
+	private void discardIncoming() {
+		if (incoming != null) pageHost.removeView(incoming);
+		incoming = null;
+		incomingIndex = -1;
+	}
+
+	/**
+	 * Lays both pages out for a drag of {@code tx} pixels (negative: to the left, towards the next
+	 * page): the leaving one follows the finger, shrinking a little and fading; the arriving one
+	 * comes in from the side the same way, growing to its place.
+	 */
+	private void morph(float tx, int dir) {
+		int w = Math.max(1, pageHost.getWidth());
+		float p = Math.min(1f, Math.abs(tx) / w);
+		if (current != null) current.morph(tx, 1f - 0.55f * p, 1f - 0.06f * p);
+		if (incoming != null) incoming.morph(tx + dir * w, 0.45f + 0.55f * p, 0.94f + 0.06f * p);
+	}
+
+	/**
+	 * Carries the pages on from {@code from} pixels of drag to {@code end} (the arriving page in
+	 * place when {@code commit}, else back where they were).
+	 */
+	private void settleTo(float from, int dir, int target, boolean commit, boolean animateBody) {
+		if (settle != null) settle.cancel();
+		float end = commit ? ((dir > 0) ? -pageHost.getWidth() : pageHost.getWidth()) : 0f;
+		animating = true;
+		if (commit) {
+			// The page's own state is taken over as soon as it is decided: the bar, the buttons.
+			List<Page> act = active();
+			Page old = act.get(Math.min(index, act.size() - 1));
+			if (old.onLeave != null) old.onLeave.run();
+			index = target;
+			Page p = act.get(target);
+			updateChrome(p, act.size());
+			if (p.onEnter != null) p.onEnter.run();
+		}
+		ValueAnimator a = ValueAnimator.ofFloat(from, end);
+		a.setDuration(Math.max(180, Math.min(420, Math.round(Math.abs(end - from) / Math.max(1, pageHost.getWidth()) * 420))));
+		a.setInterpolator(new DecelerateInterpolator(1.8f));
+		a.addUpdateListener(v -> morph((float) v.getAnimatedValue(), dir));
+		a.addListener(new android.animation.AnimatorListenerAdapter() {
+			private boolean cancelled;
+
+			@Override
+			public void onAnimationCancel(android.animation.Animator animation) {
+				cancelled = true;
+			}
+
+			@Override
+			public void onAnimationEnd(android.animation.Animator animation) {
+				if (cancelled) return;
+				if (commit) {
+					if (current != null) pageHost.removeView(current);
+					current = incoming;
+					incoming = null;
+					incomingIndex = -1;
+					if (current != null) current.morph(0f, 1f, 1f);
+				} else {
+					discardIncoming();
+					if (current != null) current.morph(0f, 1f, 1f);
+				}
+				animating = false;
+				settle = null;
+			}
+		});
+		settle = a;
+		a.start();
+		if (commit && animateBody && (incoming != null)) stagger(incoming);
+	}
+
+	/** The page's own elements arrive one after the other. */
+	private void stagger(View page) {
+		View body = page.findViewWithTag("body");
 		if (body instanceof ViewGroup bg) {
 			for (int i = 0; i < bg.getChildCount(); i++) {
 				View c = bg.getChildAt(i);
 				c.setAlpha(0f);
 				c.setTranslationY(dp(16));
-				c.animate().alpha(1f).translationY(0f).setStartDelay(140 + 70L * i).setDuration(360)
+				c.animate().alpha(1f).translationY(0f).setStartDelay(160 + 70L * i).setDuration(380)
 						.setInterpolator(new DecelerateInterpolator(1.5f)).start();
 			}
+		}
+	}
+
+	/**
+	 * The pages' area: a horizontal drag anywhere on it swipes to the next or the previous page,
+	 * the pages following the finger and morphing as they go, and carried on (or back) when let
+	 * go, by how far they were dragged or how hard they were flung. Past the first and the last
+	 * page the drag gives only a little.
+	 */
+	private final class PageHost extends FrameLayout {
+		private final int slop = android.view.ViewConfiguration.get(pc).getScaledTouchSlop();
+		private float downX;
+		private float downY;
+		private boolean dragging;
+		@Nullable
+		private android.view.VelocityTracker velocity;
+		private int dir;
+
+		PageHost() {
+			super(pc);
+		}
+
+		@Override
+		public boolean onInterceptTouchEvent(MotionEvent e) {
+			if (animating || (picker != null)) return false;
+			switch (e.getActionMasked()) {
+				case MotionEvent.ACTION_DOWN -> {
+					downX = e.getX();
+					downY = e.getY();
+					dragging = false;
+					if (velocity != null) velocity.recycle();
+					velocity = android.view.VelocityTracker.obtain();
+					velocity.addMovement(e);
+				}
+				case MotionEvent.ACTION_MOVE -> {
+					if (velocity != null) velocity.addMovement(e);
+					float dx = e.getX() - downX;
+					float dy = e.getY() - downY;
+					if (!dragging && (Math.abs(dx) > slop) && (Math.abs(dx) > Math.abs(dy) * 1.3f)) {
+						dragging = true;
+						if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
+						return true;
+					}
+				}
+				case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+					dragging = false;
+					if (velocity != null) velocity.recycle();
+					velocity = null;
+				}
+			}
+			return dragging;
+		}
+
+		@Override
+		public boolean onTouchEvent(MotionEvent e) {
+			if (!dragging) return super.onTouchEvent(e);
+			if (velocity != null) velocity.addMovement(e);
+			float dx = e.getX() - downX;
+			switch (e.getActionMasked()) {
+				case MotionEvent.ACTION_MOVE -> drag(dx);
+				case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+					float vx = 0;
+					if (velocity != null) {
+						velocity.computeCurrentVelocity(1000);
+						vx = velocity.getXVelocity();
+						velocity.recycle();
+						velocity = null;
+					}
+					dragging = false;
+					release(dx, (e.getActionMasked() == MotionEvent.ACTION_CANCEL) ? 0 : vx);
+				}
+			}
+			return true;
+		}
+
+		private void drag(float dx) {
+			int w = Math.max(1, getWidth());
+			dir = (dx < 0) ? 1 : -1;
+			int target = index + dir;
+			boolean can = (target >= 0) && (target < active().size());
+			if (can) prepareIncoming(target);
+			else discardIncoming();
+			// Past the ends it only gives a little, and springs back.
+			float tx = can ? dx : dx * 0.22f;
+			morph(Math.max(-w, Math.min(w, tx)), dir);
+		}
+
+		private void release(float dx, float vx) {
+			int w = Math.max(1, getWidth());
+			int d = (dx < 0) ? 1 : -1;
+			int target = index + d;
+			boolean can = (target >= 0) && (target < active().size()) && (incoming != null);
+			float tx = can ? Math.max(-w, Math.min(w, dx)) : dx * 0.22f;
+			boolean flung = (Math.abs(vx) > 900) && (Math.signum(vx) == Math.signum(dx));
+			boolean commit = can && ((Math.abs(tx) > w * 0.28f) || flung);
+			settleTo(tx, d, target, commit, false);
 		}
 	}
 
@@ -478,6 +679,7 @@ public final class WelcomeWizard {
 		closing = true;
 		stopKeySimulator();
 		closePicker();
+		if (settle != null) settle.cancel();
 		a.getPrefs().applyBooleanPref(DONE, true);
 		DiagnosticLog.log("WELCOME", finished ? "finished" : "closed", "page=" + index);
 		overlay.animate().alpha(0f).setDuration(260).withEndAction(() -> {
@@ -499,8 +701,22 @@ public final class WelcomeWizard {
 			this.art = art;
 			this.body = body;
 			setOrientation(VERTICAL);
+			setClipChildren(false);
 			addView(art, new LayoutParams(MATCH_PARENT, 0));
 			addView(body, new LayoutParams(MATCH_PARENT, 0, 1f));
+		}
+
+		/**
+		 * Shows the page {@code tx} pixels along, faded and scaled as given. The text moves with the
+		 * page and the picture a little behind it, so the two seem to be on different layers.
+		 */
+		void morph(float tx, float alpha, float scale) {
+			setTranslationX(tx);
+			setAlpha(alpha);
+			setScaleX(scale);
+			setScaleY(scale);
+			art.setTranslationX(-tx * 0.35f);
+			art.setAlpha(alpha);
 		}
 
 		@Override
@@ -531,9 +747,9 @@ public final class WelcomeWizard {
 		}
 	}
 
-	private View buildPage(Page p) {
+	private PageLayout buildPage(Page p) {
 		WelcomeArtView art = new WelcomeArtView(pc);
-		art.setColors(accent, onAccent, rowFill, textPrimary, textSecondary, track);
+		art.setColors(accent, onAccent, cardFill, textPrimary, textSecondary, track);
 		art.setScene(p.scene);
 
 		ScrollView scroll = new ScrollView(pc);
@@ -663,9 +879,10 @@ public final class WelcomeWizard {
 	private void askBody(LinearLayout body) {
 		LinearLayout row = new LinearLayout(pc);
 		row.setOrientation(LinearLayout.HORIZONTAL);
+		row.setBaselineAligned(false);
 		View[] cards = new View[2];
 		cards[0] = choiceCard(R.drawable.car, R.string.wz_ask_yes, R.string.wz_ask_yes_sub, carChoice);
-		cards[1] = choiceCard(R.drawable.play_pause, R.string.wz_ask_no, R.string.wz_ask_no_sub, !carChoice);
+		cards[1] = choiceCard(R.drawable.phone, R.string.wz_ask_no, R.string.wz_ask_no_sub, !carChoice);
 		for (int i = 0; i < 2; i++) {
 			boolean yes = i == 0;
 			cards[i].setOnClickListener(v -> {
@@ -676,7 +893,8 @@ public final class WelcomeWizard {
 				progress.setFraction((index + 1f) / active().size());
 				DiagnosticLog.log("WELCOME", "android auto", yes);
 			});
-			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f);
+			// Both as tall as the taller one.
+			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, MATCH_PARENT, 1f);
 			lp.setMarginStart(i == 0 ? 0 : dp(6));
 			lp.setMarginEnd(i == 0 ? dp(6) : 0);
 			row.addView(cards[i], lp);
@@ -692,7 +910,7 @@ public final class WelcomeWizard {
 	private View choiceCard(@DrawableRes int icon, @StringRes int title, @StringRes int sub, boolean selected) {
 		LinearLayout c = new LinearLayout(pc);
 		c.setOrientation(LinearLayout.VERTICAL);
-		c.setGravity(Gravity.CENTER_HORIZONTAL);
+		c.setGravity(Gravity.CENTER);
 		c.setPadding(dp(14), dp(18), dp(14), dp(18));
 		c.setClickable(true);
 		c.setFocusable(true);
@@ -719,7 +937,7 @@ public final class WelcomeWizard {
 	private void setChoice(View card, boolean selected) {
 		GradientDrawable bg = new GradientDrawable();
 		bg.setCornerRadius(dp(20));
-		bg.setColor(selected ? alpha(accent, 0.18f) : rowFill);
+		bg.setColor(selected ? alpha(accent, 0.18f) : alpha(cardFill, 0.94f));
 		bg.setStroke(dp(selected ? 2 : 1), selected ? accent : alpha(textSecondary, 0.25f));
 		card.setBackground(new RippleDrawable(ColorStateList.valueOf(alpha(accent, 0.25f)), bg, null));
 		((ImageView) card.findViewWithTag("icon")).setImageTintList(
@@ -959,7 +1177,7 @@ public final class WelcomeWizard {
 			setOrientation(VERTICAL);
 			setGravity(Gravity.CENTER_HORIZONTAL);
 			cap.setCornerRadius(dp(18));
-			cap.setColor(rowFill);
+			cap.setColor(cardFill);
 			cap.setStroke(dp(1), alpha(textSecondary, 0.25f));
 			FrameLayout capView = new FrameLayout(pc);
 			capView.setBackground(cap);
@@ -991,7 +1209,7 @@ public final class WelcomeWizard {
 		}
 
 		void light(boolean on) {
-			cap.setColor(on ? accent : rowFill);
+			cap.setColor(on ? accent : cardFill);
 			icon.setImageTintList(ColorStateList.valueOf(on ? onAccent : textPrimary));
 			animate().cancel();
 			animate().scaleX(on ? 0.92f : 1f).scaleY(on ? 0.92f : 1f).setDuration(on ? 90 : 220)
@@ -1178,7 +1396,7 @@ public final class WelcomeWizard {
 		c.setOrientation(LinearLayout.VERTICAL);
 		GradientDrawable bg = new GradientDrawable();
 		bg.setCornerRadius(dp(22));
-		bg.setColor(alpha(rowFill, 0.92f));
+		bg.setColor(alpha(cardFill, 0.94f));
 		c.setBackground(bg);
 		c.setPadding(dp(16), dp(14), dp(16), dp(14));
 		return c;

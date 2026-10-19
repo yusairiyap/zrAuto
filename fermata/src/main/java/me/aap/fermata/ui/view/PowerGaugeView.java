@@ -44,6 +44,7 @@ public class PowerGaugeView extends View {
 	private int color;
 	private float scale = SCALES[2];
 	private boolean charging;
+	private boolean haveValue;
 	@Nullable
 	private ValueAnimator anim;
 	@Nullable
@@ -84,7 +85,7 @@ public class PowerGaugeView extends View {
 		mid = midDraw;
 		high = highDraw;
 		charge = chargeColor;
-		color = pick(fraction);
+		color = charging ? charge : low;
 		invalidate();
 	}
 
@@ -100,35 +101,56 @@ public class PowerGaugeView extends View {
 		return scale;
 	}
 
-	/** Shows {@code ma} (negative: drawing from the battery, positive: charging). */
-	public void setValue(float ma) {
-		charging = ma > 0;
+	/**
+	 * The ring's colour for a load (see PowerUsageTracker#getLoad): teal while light, amber from a
+	 * load of 0.4 on, red from 1. The status chip uses the same, so the two always agree.
+	 */
+	public int severityColor(float load) {
+		if (load <= 0.25f) return low;
+		if (load < 0.4f) return blend(low, mid, (load - 0.25f) / 0.15f);
+		if (load >= 1f) return high;
+		return blend(mid, high, (load - 0.4f) / 0.6f);
+	}
+
+	/**
+	 * Shows {@code ma} (negative: drawing from the battery, positive: charging) in the colour of
+	 * {@code load}. The ring glides to a new reading and its colour melts into the new one; when
+	 * charging and draining swap, the ring empties and fills again the other way round.
+	 */
+	public void setValue(float ma, float load) {
+		boolean nowCharging = ma > 0;
 		scale = scaleFor(ma);
 		float f = Math.min(1f, Math.abs(ma) / scale);
 		fraction = f;
-		color = pick(f);
-		if (!isShown() || (getWidth() == 0)) {
+		int target = nowCharging ? charge : severityColor(load);
+		boolean flip = haveValue && (nowCharging != charging);
+		charging = nowCharging;
+		if (!haveValue || !isShown() || (getWidth() == 0)) {
+			haveValue = true;
 			shown = f;
+			color = target;
 			invalidate();
 			return;
 		}
 		if (anim != null) anim.cancel();
 		float from = shown;
-		ValueAnimator a = ValueAnimator.ofFloat(from, f);
-		a.setDuration(480);
-		a.setInterpolator(new DecelerateInterpolator(1.6f));
+		int colorFrom = color;
+		ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
+		a.setDuration(flip ? 760 : 480);
+		a.setInterpolator(new DecelerateInterpolator(flip ? 1.2f : 1.6f));
 		a.addUpdateListener(v -> {
-			shown = (float) v.getAnimatedValue();
+			float p = (float) v.getAnimatedValue();
+			if (flip) {
+				// Empties over the first third, then fills the new way.
+				shown = (p < 0.35f) ? from * (1f - p / 0.35f) : f * ((p - 0.35f) / 0.65f);
+			} else {
+				shown = from + (f - from) * p;
+			}
+			color = blend(colorFrom, target, flip ? Math.min(1f, p * 1.4f) : p);
 			invalidate();
 		});
 		anim = a;
 		a.start();
-	}
-
-	private int pick(float f) {
-		if (charging) return charge;
-		if (f < 0.5f) return blend(low, mid, f / 0.5f);
-		return blend(mid, high, (f - 0.5f) / 0.5f);
 	}
 
 	@Override

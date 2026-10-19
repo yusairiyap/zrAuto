@@ -51,6 +51,8 @@ public final class PowerSaver {
 	public static final Pref<BooleanSupplier> ON_CAR = Pref.b("POWER_SAVER_ON_CAR", false);
 	/** Starts by itself while Android's own Battery Saver is on. */
 	public static final Pref<BooleanSupplier> FOLLOW_SYSTEM = Pref.b("POWER_SAVER_FOLLOW_SYSTEM", true);
+	/** Holds the phone screen's brightness down; off leaves the brightness alone (the rest still applies). */
+	public static final Pref<BooleanSupplier> DIM_SCREEN = Pref.b("POWER_SAVER_DIM", true);
 	/** The phone screen's brightness cap while it is on, in percent. */
 	public static final Pref<IntSupplier> BRIGHTNESS = Pref.i("POWER_SAVER_BRIGHTNESS", 30);
 	/** The phone screen at its lowest while Android Auto is connected. */
@@ -212,6 +214,7 @@ public final class PowerSaver {
 		if (!active) return WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
 		PreferenceStore ps = prefs();
 		if (ps.getBooleanPref(CAR_SCREEN) && DataSessionLimit.isCarConnected()) return 0.01f;
+		if (!ps.getBooleanPref(DIM_SCREEN)) return WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
 		int pct = Math.max(MIN_BRIGHTNESS, Math.min(MAX_BRIGHTNESS, ps.getIntPref(BRIGHTNESS)));
 		return pct / 100f;
 	}

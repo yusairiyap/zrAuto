@@ -71,13 +71,24 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 	/** How often the background reading is taken: an index into {@link #LOG_SECONDS}. */
 	public static final Pref<IntSupplier> LOG_INTERVAL = Pref.i("POWER_LOG_INTERVAL", 1);
 	public static final int[] LOG_SECONDS = {15, 30, 60};
+	/** How often the live reading is taken (the tab, the info overlay): an index into {@link #LIVE_MS}. */
+	public static final Pref<IntSupplier> LIVE_INTERVAL = Pref.i("POWER_LIVE_INTERVAL", 1);
+	public static final int[] LIVE_MS = {500, 1000, 2000, 5000};
 	/** When counting started, i.e. the last reset. */
 	public static final Pref<LongSupplier> SINCE = Pref.l("POWER_SINCE", 0);
 	// What the first readings taught about this phone: 1000 for µA, 1 for mA (0: not known yet), and
 	// which way charging points (1 or -1, 0: not known yet).
 	private static final Pref<IntSupplier> LEARNED_DIV = Pref.i("POWER_LEARNED_DIV", 0);
 	private static final Pref<IntSupplier> LEARNED_SIGN = Pref.i("POWER_LEARNED_SIGN", 0);
-	private static final long LIVE_INTERVAL = 1000;
+	// The battery's size in mAh as the gauge showed it over time (0: not known yet); what "heavy" is
+	// judged against, see getLoad().
+	private static final Pref<IntSupplier> LEARNED_CAPACITY = Pref.i("POWER_LEARNED_CAPACITY", 0);
+	/** A phone's battery when this one's size isn't known yet. */
+	private static final int TYPICAL_CAPACITY_MAH = 4500;
+	/** Drawing the whole battery in this many hours or more is light use. */
+	public static final float LIGHT_HOURS = 10f;
+	/** Drawing it in less than this many hours is heavy use. */
+	public static final float HEAVY_HOURS = 4f;
 	private static final long IDLE_INTERVAL = 60_000;
 	private static final long SAVE_INTERVAL = 60_000;
 	private static final int GRAPH_SIZE = 120;
@@ -236,8 +247,19 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 		if (started && !isLive()) reschedule();
 	}
 
+	/** An interval was changed in Settings: the next reading is taken on the new rhythm. */
+	public void intervalChanged() {
+		if (started) reschedule();
+	}
+
 	private boolean isLive() {
 		return !listeners.isEmpty();
+	}
+
+	/** The live reading's interval in ms, from Settings. */
+	private long liveInterval() {
+		int idx = Math.max(0, Math.min(LIVE_MS.length - 1, prefs().getIntPref(LIVE_INTERVAL)));
+		return LIVE_MS[idx];
 	}
 
 	/** Whether there is any reason to read the battery now: someone watching, or the app at work. */
@@ -261,7 +283,7 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 		PowerSaver.get().onBattery(levelPct, plugged != 0);
 		if (SystemClock.elapsedRealtime() - lastSave >= SAVE_INTERVAL) save();
 		App.get().getHandler().postDelayed(tick,
-				isLive() ? LIVE_INTERVAL : active ? backgroundInterval() : IDLE_INTERVAL);
+				isLive() ? liveInterval() : active ? backgroundInterval() : IDLE_INTERVAL);
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -291,9 +313,14 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 
 		float ma = toMilliAmps(raw);
 		haveCurrent = true;
-		// A little smoothing: the raw gauge jumps about from one second to the next.
-		current = (graphSize == 0) ? ma : current * 0.6f + ma * 0.4f;
-		slowCurrent = (graphSize == 0) ? ma : slowCurrent * 0.95f + ma * 0.05f;
+		// A little smoothing (over about two seconds, whatever the interval): the raw gauge jumps
+		// about from one reading to the next.
+		float step = Math.max(200, Math.min(10_000, dt));
+		float fast = 1f - (float) Math.exp(-step / 2000f);
+		float slow = 1f - (float) Math.exp(-step / 20_000f);
+		current = (graphSize == 0) ? ma : current + (ma - current) * fast;
+		slowCurrent = (graphSize == 0) ? ma : slowCurrent + (ma - slowCurrent) * slow;
+		learnCapacity();
 		charging = current > 0;
 		graph[graphHead] = current;
 		graphHead = (graphHead + 1) % GRAPH_SIZE;
@@ -307,7 +334,7 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 		sessionCount++;
 
 		// Book the stretch since the last reading, unless the phone slept through it.
-		long maxGap = Math.max(5000, 3 * (isLive() ? LIVE_INTERVAL : backgroundInterval()));
+		long maxGap = Math.max(5000, 3 * (isLive() ? liveInterval() : backgroundInterval()));
 		if ((dt > 0) && (dt <= maxGap)) {
 			long microAh = Math.round(Math.abs(ma) * dt / 3600.0);
 			boolean drawing = ma < 0;
@@ -504,7 +531,7 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 		return sessionCharged;
 	}
 
-	/** The last readings, oldest first, one per second while live. */
+	/** The last readings, oldest first, one per live reading. */
 	public float[] getGraph() {
 		float[] r = new float[graphSize];
 		int start = (graphHead - graphSize + GRAPH_SIZE) % GRAPH_SIZE;
@@ -523,6 +550,39 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 		long capacity = Math.round(chargeCounter * 100.0 / levelPct);
 		if (slowCurrent < 0) return Math.round(chargeCounter / 1000.0 / ma * 3_600_000.0);
 		return -Math.round(Math.max(0, capacity - chargeCounter) / 1000.0 / ma * 3_600_000.0);
+	}
+
+	/** Keeps the battery's size up to date from the gauge's charge counter and level. */
+	private void learnCapacity() {
+		if ((chargeCounter <= 0) || (levelPct < 15)) return;
+		float mah = chargeCounter * 100f / levelPct / 1000f;
+		if ((mah < 500) || (mah > 40_000)) return;
+		PreferenceStore ps = prefs();
+		int known = ps.getIntPref(LEARNED_CAPACITY);
+		int now = (known <= 0) ? Math.round(mah) : Math.round(known * 0.9f + mah * 0.1f);
+		if (Math.abs(now - known) * 50 > Math.max(known, 1)) ps.applyIntPref(LEARNED_CAPACITY, now);
+	}
+
+	/** The battery's size in mAh: as learned from the gauge, else a typical phone's. */
+	public int getCapacityMah() {
+		int known = prefs().getIntPref(LEARNED_CAPACITY);
+		return (known > 0) ? known : TYPICAL_CAPACITY_MAH;
+	}
+
+	/** Whether the battery's size is known (else {@link #getCapacityMah} is a guess). */
+	public boolean isCapacityKnown() {
+		return prefs().getIntPref(LEARNED_CAPACITY) > 0;
+	}
+
+	/**
+	 * How hard the phone is working the battery right now, 0 and up: 0 for nothing (or charging),
+	 * 1 when it would be flat in {@link #HEAVY_HOURS} hours at this rate. Judged against the battery's
+	 * own size, so a tablet drawing 700 mA is as light as a phone drawing 300.
+	 */
+	public float getLoad() {
+		if (!haveCurrent || (current >= 0)) return 0f;
+		float hours = getCapacityMah() / Math.max(1f, -current);
+		return HEAVY_HOURS / Math.max(0.01f, hours);
 	}
 
 	/** What the app is doing now, {@code CAT_*}. */

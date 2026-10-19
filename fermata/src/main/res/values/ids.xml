@@ -62,6 +62,7 @@
     <item name="data_usage_toolbar_chip" type="id" />
     <item name="power_usage_addon" type="id" />
     <item name="power_usage_toolbar_chip" type="id" />
+    <item name="power_settings_fragment" type="id" />
     <item name="fuel_log_toolbar_chip" type="id" />
     <item name="music_play" type="id" />
     <item name="item_play" type="id" />

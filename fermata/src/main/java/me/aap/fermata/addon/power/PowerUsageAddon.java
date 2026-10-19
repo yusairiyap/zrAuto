@@ -17,6 +17,7 @@ import me.aap.fermata.addon.FermataMediaServiceAddon;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.fermata.ui.fragment.PowerSettingsFragment;
 import me.aap.fermata.ui.fragment.PowerUsageFragment;
 import me.aap.fermata.ui.view.TopToast;
 import me.aap.fermata.util.DiagnosticLog;
@@ -75,7 +76,13 @@ public class PowerUsageAddon implements FermataFragmentAddon, FermataActivityAdd
 	@Override
 	public void onPreferenceChanged(PreferenceStore store, List<PreferenceStore.Pref<?>> prefs) {
 		for (PreferenceStore.Pref<?> p : prefs) {
-			if (p.getName().startsWith("POWER_SAVER_")) {
+			String name = p.getName();
+			if (name.equals(PowerUsageTracker.LIVE_INTERVAL.getName()) ||
+					name.equals(PowerUsageTracker.LOG_INTERVAL.getName())) {
+				PowerUsageTracker.get().intervalChanged();
+				return;
+			}
+			if (name.startsWith("POWER_SAVER_")) {
 				PowerSaver.get().settingsChanged();
 				PowerSaver.get().evaluate(false);
 				return;
@@ -130,141 +137,29 @@ public class PowerUsageAddon implements FermataFragmentAddon, FermataActivityAdd
 		PowerUsageTracker.get().stop();
 	}
 
+	/**
+	 * Under Settings > Addons > Power usage: two doors to the Power settings page (see
+	 * {@link PowerSettingsFragment}), one for each part, instead of one long list. The Info Overlay
+	 * item is set under Interface > Info overlay (and linked from the usage part), not here.
+	 */
 	@Override
 	public void contributeSettings(Context ctx, PreferenceStore store, PreferenceSet set,
 																 ChangeableCondition visibility) {
-		PreferenceStore ps = PowerUsageTracker.prefs();
-
-		// Power saver first: it is what most people come here to set.
-		set.addIntPref(o -> {
-			o.store = ps;
-			o.pref = PowerSaver.AUTO_LEVEL;
-			o.title = R.string.power_pref_saver_auto_level;
-			o.subtitle = R.string.power_pref_saver_auto_level_sub;
-			o.seekMin = 0;
-			o.seekMax = 50;
-			o.seekScale = 1;
-			o.visibility = visibility.copy();
-		});
-		set.addBooleanPref(o -> {
-			o.store = ps;
-			o.pref = PowerSaver.ON_CAR;
-			o.title = R.string.power_pref_saver_car;
-			o.subtitle = R.string.power_pref_saver_car_sub;
-			o.visibility = visibility.copy();
-		});
-		set.addBooleanPref(o -> {
-			o.store = ps;
-			o.pref = PowerSaver.FOLLOW_SYSTEM;
-			o.title = R.string.power_pref_saver_system;
-			o.subtitle = R.string.power_pref_saver_system_sub;
-			o.visibility = visibility.copy();
-		});
-		set.addIntPref(o -> {
-			o.store = ps;
-			o.pref = PowerSaver.BRIGHTNESS;
-			o.title = R.string.power_pref_saver_brightness;
-			o.subtitle = R.string.power_pref_saver_brightness_sub;
-			o.seekMin = PowerSaver.MIN_BRIGHTNESS;
-			o.seekMax = PowerSaver.MAX_BRIGHTNESS;
-			o.seekScale = 1;
-			o.visibility = visibility.copy();
-		});
-		set.addBooleanPref(o -> {
-			o.store = ps;
-			o.pref = PowerSaver.CAR_SCREEN;
-			o.title = R.string.power_pref_saver_car_screen;
-			o.subtitle = R.string.power_pref_saver_car_screen_sub;
-			o.visibility = visibility.copy();
-		});
-		set.addBooleanPref(o -> {
-			o.store = ps;
-			o.pref = PowerSaver.CAP_REFRESH;
-			o.title = R.string.power_pref_saver_refresh;
-			o.subtitle = R.string.power_pref_saver_refresh_sub;
-			o.visibility = visibility.copy();
-		});
-		set.addBooleanPref(o -> {
-			o.store = ps;
-			o.pref = PowerSaver.PAUSE_DOWNLOADS;
-			o.title = R.string.power_pref_saver_downloads;
-			o.subtitle = R.string.power_pref_saver_downloads_sub;
-			o.visibility = visibility.copy();
-		});
-
-		// How the battery is read.
-		set.addListPref(o -> {
-			o.store = ps;
-			o.pref = PowerUsageTracker.LOG_INTERVAL;
-			o.title = R.string.power_pref_log_interval;
-			o.subtitle = R.string.power_pref_log_interval_sub;
-			o.formatSubtitle = true;
-			o.values = new int[]{R.string.power_log_15, R.string.power_log_30, R.string.power_log_60};
-			o.visibility = visibility.copy();
-		});
-		set.addListPref(o -> {
-			o.store = ps;
-			o.pref = PowerUsageTracker.UNITS;
-			o.title = R.string.power_pref_units;
-			o.subtitle = R.string.power_pref_units_sub;
-			o.formatSubtitle = true;
-			o.values = new int[]{R.string.power_units_auto, R.string.power_units_micro,
-					R.string.power_units_milli};
-			o.visibility = visibility.copy();
-		});
-		set.addListPref(o -> {
-			o.store = ps;
-			o.pref = PowerUsageTracker.SIGN;
-			o.title = R.string.power_pref_sign;
-			o.subtitle = R.string.power_pref_sign_sub;
-			o.formatSubtitle = true;
-			o.values = new int[]{R.string.power_sign_auto, R.string.power_sign_normal,
-					R.string.power_sign_inverted};
-			o.visibility = visibility.copy();
-		});
-
-		// The Info Overlay item: the same prefs as under Settings > Interface > Info overlay.
-		MainActivityPrefs mp = MainActivityPrefs.get();
-		set.addBooleanPref(o -> {
-			o.store = mp;
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_POWER;
-			o.title = R.string.info_overlay_show_power;
-			o.subtitle = R.string.power_overlay_sub;
-			o.visibility = visibility.copy();
-		});
-		set.addBooleanPref(o -> {
-			o.store = mp;
-			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_POWER_ICON;
-			o.title = R.string.info_overlay_show_power_icon;
-			o.visibility = visibility.copy();
-		});
-
 		set.addButton(o -> {
-			o.title = R.string.power_pref_reset_session;
-			o.subtitle = R.string.power_pref_reset_session_sub;
+			o.title = R.string.power_settings_tab_saver;
+			o.subtitle = R.string.power_addon_saver_sub;
+			o.icon = R.drawable.power_saver;
 			o.visibility = visibility.copy();
-			o.onClick = () -> {
-				PowerUsageTracker.get().resetSession();
-				TopToast.show(R.drawable.power_usage, R.string.power_reset_session_done);
-			};
+			o.onClick = () -> MainActivityDelegate.get(ctx).showFragment(R.id.power_settings_fragment,
+					PowerSettingsFragment.SAVER);
 		});
 		set.addButton(o -> {
-			o.title = R.string.power_pref_reset_history;
-			o.subtitle = R.string.power_pref_reset_history_sub;
+			o.title = R.string.power_settings_tab_usage;
+			o.subtitle = R.string.power_addon_usage_sub;
+			o.icon = R.drawable.power_usage;
 			o.visibility = visibility.copy();
-			o.onClick = () -> {
-				try {
-					UiUtils.showQuestion(ctx, R.string.power_pref_reset_history,
-							R.string.power_reset_history_question, R.drawable.power_usage).onSuccess(v -> {
-						PowerUsageTracker.get().reset();
-						TopToast.show(R.drawable.power_usage, R.string.power_reset_history_done);
-					});
-				} catch (Exception err) {
-					// A dialog that fails to inflate must not take the whole app down with it.
-					DiagnosticLog.log("DIALOG", "failed to show power reset dialog:", err);
-					Log.e(err, "Failed to show the power usage reset dialog");
-				}
-			};
+			o.onClick = () -> MainActivityDelegate.get(ctx).showFragment(R.id.power_settings_fragment,
+					PowerSettingsFragment.USAGE);
 		});
 	}
 }

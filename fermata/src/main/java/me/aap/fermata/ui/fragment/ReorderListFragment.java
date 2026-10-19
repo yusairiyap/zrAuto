@@ -98,7 +98,7 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 	private ItemTouchHelper dragHelper;
 	private final Adapter adapter = new Adapter();
 	/** Bring the option rows above the list in line with their settings (after a reload or Reset). */
-	private final List<Runnable> syncers = new ArrayList<>();
+	protected final List<Runnable> syncers = new ArrayList<>();
 
 	// ---- What a page says ----
 

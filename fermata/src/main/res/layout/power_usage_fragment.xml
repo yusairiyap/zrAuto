@@ -193,6 +193,16 @@
                             android:text="@string/power_stat_left" />
                     </LinearLayout>
                 </LinearLayout>
+
+                <TextView
+                    android:id="@+id/power_load_note"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:gravity="center"
+                    android:lineSpacingExtra="2dp"
+                    android:textColor="?attr/musicTextTertiary"
+                    android:textSize="12sp" />
             </LinearLayout>
 
             <!-- The settings chip: in the title bar in landscape and on the car screen. -->
@@ -375,6 +385,14 @@
                     android:lineSpacingExtra="2dp"
                     android:textColor="?attr/musicTextSecondary"
                     android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/power_saver_settings"
+                    style="@style/MusicChip"
+                    android:layout_gravity="start"
+                    android:layout_marginTop="12dp"
+                    android:drawableStart="@drawable/settings"
+                    android:text="@string/power_saver_settings" />
 
                 <TextView
                     android:layout_width="match_parent"
