@@ -263,6 +263,9 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> INFO_OVERLAY_DATA_SESSION_LEFT = Pref.b("INFO_OVERLAY_DATA_SESSION_LEFT", false);
 	// An icon (first, no text) while what's playing has a downloaded copy (see YtDownloads).
 	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DOWNLOADED = Pref.b("INFO_OVERLAY_SHOW_DOWNLOADED", false);
+	// The Power Usage addon's item: the battery current in mA, live -- see PowerUsageTracker.
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_POWER = Pref.b("INFO_OVERLAY_SHOW_POWER", false);
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_POWER_ICON = Pref.b("INFO_OVERLAY_SHOW_POWER_ICON", true);
 	// Every Info Overlay pref, for the views showing it (fullscreen video, the Music tab) to follow.
 	// The overlay's items in the order they're laid out, as keys joined by commas (see
 	// InfoOverlayView#ITEM_KEYS); empty: the default order. Items missing from it follow in default order.
@@ -273,7 +276,8 @@ public interface MainActivityPrefs
 			INFO_OVERLAY_SHOW_DISTANCE_ICON, INFO_OVERLAY_ONLY_WHEN_CONTROL_PANEL_VISIBLE,
 			INFO_OVERLAY_SIZE, INFO_OVERLAY_SHOW_DATA_USAGE, INFO_OVERLAY_SHOW_DATA_REMAINING,
 			INFO_OVERLAY_SHOW_DATA_ICON, INFO_OVERLAY_SHOW_DOWNLOADED, INFO_OVERLAY_SHOW_DATA_SESSION,
-			INFO_OVERLAY_DATA_SESSION_BAR, INFO_OVERLAY_DATA_SESSION_LEFT);
+			INFO_OVERLAY_DATA_SESSION_BAR, INFO_OVERLAY_DATA_SESSION_LEFT, INFO_OVERLAY_SHOW_POWER,
+			INFO_OVERLAY_SHOW_POWER_ICON);
 	// The car screen's own Info Overlay settings (the phone's are the plain ones above), so the two
 	// screens can show different items; copied from the phone's once, see INFO_OVERLAY_AA_MIGRATED.
 	Pref<IntSupplier> CLOCK_POS_AA = AUTO ? Pref.i("CLOCK_POS_AA", CLOCK_POS_NONE) : null;
@@ -295,6 +299,8 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_DATA_SESSION_AA = AUTO ? Pref.b("INFO_OVERLAY_SHOW_DATA_SESSION_AA", false) : null;
 	Pref<BooleanSupplier> INFO_OVERLAY_DATA_SESSION_BAR_AA = AUTO ? Pref.b("INFO_OVERLAY_DATA_SESSION_BAR_AA", true) : null;
 	Pref<BooleanSupplier> INFO_OVERLAY_DATA_SESSION_LEFT_AA = AUTO ? Pref.b("INFO_OVERLAY_DATA_SESSION_LEFT_AA", false) : null;
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_POWER_AA = AUTO ? Pref.b("INFO_OVERLAY_SHOW_POWER_AA", false) : null;
+	Pref<BooleanSupplier> INFO_OVERLAY_SHOW_POWER_ICON_AA = AUTO ? Pref.b("INFO_OVERLAY_SHOW_POWER_ICON_AA", true) : null;
 	Pref<BooleanSupplier> INFO_OVERLAY_AA_MIGRATED =
 			AUTO ? Pref.b("INFO_OVERLAY_AA_MIGRATED", false) : null;
 
@@ -321,6 +327,8 @@ public interface MainActivityPrefs
 		if (p == INFO_OVERLAY_SHOW_DATA_SESSION) return INFO_OVERLAY_SHOW_DATA_SESSION_AA;
 		if (p == INFO_OVERLAY_DATA_SESSION_BAR) return INFO_OVERLAY_DATA_SESSION_BAR_AA;
 		if (p == INFO_OVERLAY_DATA_SESSION_LEFT) return INFO_OVERLAY_DATA_SESSION_LEFT_AA;
+		if (p == INFO_OVERLAY_SHOW_POWER) return INFO_OVERLAY_SHOW_POWER_AA;
+		if (p == INFO_OVERLAY_SHOW_POWER_ICON) return INFO_OVERLAY_SHOW_POWER_ICON_AA;
 		return null;
 	}
 
@@ -758,6 +766,19 @@ public interface MainActivityPrefs
 
 	default boolean getInfoOverlayShowDataRemainingPref(MainActivityDelegate a) {
 		return getBooleanPref(info(a, INFO_OVERLAY_SHOW_DATA_REMAINING)) && dataUsageEnabled();
+	}
+
+	/** Whether the Power Usage addon is on: its overlay item only shows while it is. */
+	private static boolean powerUsageEnabled() {
+		return me.aap.fermata.addon.power.PowerUsageAddon.isEnabled();
+	}
+
+	default boolean getInfoOverlayShowPowerPref(MainActivityDelegate a) {
+		return getBooleanPref(info(a, INFO_OVERLAY_SHOW_POWER)) && powerUsageEnabled();
+	}
+
+	default boolean getInfoOverlayShowPowerIconPref(MainActivityDelegate a) {
+		return getBooleanPref(info(a, INFO_OVERLAY_SHOW_POWER_ICON));
 	}
 
 	default boolean getInfoOverlayShowDownloadedPref(MainActivityDelegate a) {

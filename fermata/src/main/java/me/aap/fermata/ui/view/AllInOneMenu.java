@@ -826,6 +826,16 @@ public final class AllInOneMenu {
 		} else if (action == Action.QUALITY) {
 			title = ctx.getString(R.string.quality);
 			hint = "";
+		} else if (action == Action.POWER_SAVER) {
+			title = ctx.getString(R.string.action_power_saver);
+			hint = ctx.getString(me.aap.fermata.addon.power.PowerSaver.get().isActive() ?
+					R.string.state_on : R.string.state_off);
+		} else if (action == Action.POWER_USAGE) {
+			// The current right now, as a hint under the name.
+			title = ctx.getString(R.string.action_power_usage);
+			var pt = me.aap.fermata.addon.power.PowerUsageTracker.get();
+			hint = pt.hasCurrent() ? ctx.getString(R.string.power_overlay_text,
+					String.format(java.util.Locale.getDefault(), "%+d", Math.round(pt.getCurrent()))) : "";
 		} else if (action == Action.LYRICS) {
 			// Captions over fullscreen video, lyrics elsewhere: its name, icon and state follow.
 			title = ctx.getString(ActionFabMediator.labelFor(activity, action));
@@ -964,6 +974,7 @@ public final class AllInOneMenu {
 		return switch (action) {
 			case AUDIO_EFFECTS, PLAYLIST_ADD, OPEN_FAVORITES, OPEN_PLAYLISTS, OPEN_DOWNLOADS, MENU,
 					CP_MENU, YOUTUBE_SEARCH, YOUTUBE_UP_NEXT, YOUTUBE_ALTERNATIVES, YOUTUBE_COMMENTS, LYRICS, SETTINGS, REFUEL, DOWNLOAD_CURRENT, PLAY_AS_MUSIC,
+					POWER_USAGE,
 					BACK_OR_EXIT, EXIT -> true;
 			default -> false;
 		};

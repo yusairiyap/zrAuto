@@ -163,6 +163,23 @@ public enum Action {
 		a.exitVideoMode();
 		a.showFragment(R.id.settings_fragment);
 	})),
+	// The Power Usage tab, and the power saver mode on or off (both need the Power usage addon).
+	// Persisted by ordinal: new actions only ever go at the end.
+	POWER_USAGE(R.string.action_power_usage, a(a -> {
+		if (!me.aap.fermata.addon.power.PowerUsageAddon.isEnabled()) {
+			me.aap.fermata.ui.view.TopToast.show(R.drawable.power_usage, R.string.power_addon_off);
+			return;
+		}
+		a.exitVideoMode();
+		a.showFragment(R.id.power_usage_addon);
+	})),
+	POWER_SAVER(R.string.action_power_saver, a(a -> {
+		if (!me.aap.fermata.addon.power.PowerUsageAddon.isEnabled()) {
+			me.aap.fermata.ui.view.TopToast.show(R.drawable.power_saver, R.string.power_addon_off);
+			return;
+		}
+		me.aap.fermata.addon.power.PowerSaver.get().toggle();
+	})),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

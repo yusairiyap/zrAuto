@@ -1337,6 +1337,8 @@
     <string name="lyrics_cover_hide">Hide lyrics from the cover</string>
     <string name="lyrics_on">Lyrics on</string>
     <string name="lyrics_off">Lyrics off</string>
+    <string name="lyrics_page_hint">Tap a line to jump to it, drag to scroll</string>
+    <string name="lyrics_page_close">Close the lyrics</string>
     <string name="captions_on">Captions on</string>
     <string name="captions_off">Captions off</string>
     <string name="captions_no_video">Captions are on, but what plays isn\'t a YouTube video</string>

@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The Power Usage tab's colours. A small draw is teal, a big one amber to red, charging green;
+         the stacked bars use the Data Usage tab's category colours (video, music, the rest). -->
+    <color name="power_low">#FF4DD0E1</color>
+    <color name="power_mid">#FFFFB020</color>
+    <color name="power_high">#FFFF5252</color>
+    <color name="power_charge">#FF1ED760</color>
+
+    <string name="addon_name_power_usage">Power usage</string>
+    <string name="power_title">Power usage</string>
+    <string name="power_settings">Power settings</string>
+    <string name="power_now">Right now</string>
+    <string name="power_unit_ma">mA</string>
+    <string name="power_state_charging">Charging</string>
+    <string name="power_state_discharging">Draining</string>
+    <string name="power_state_full">Full</string>
+    <string name="power_state_steady">Steady</string>
+    <string name="power_state_waiting">Reading…</string>
+    <string name="power_unsupported">This phone does not report the battery current, so there is nothing to measure here.</string>
+    <string name="power_watts">%1$s W · %2$s V</string>
+    <string name="power_stat_level">Battery</string>
+    <string name="power_stat_temp">Temperature</string>
+    <string name="power_stat_left">Left at this rate</string>
+    <string name="power_stat_full_in">Full in</string>
+    <string name="power_stat_unknown">–</string>
+    <string name="power_hours_minutes">%1$d h %2$d min</string>
+    <string name="power_minutes">%1$d min</string>
+    <string name="power_session">This session</string>
+    <string name="power_session_since">Since %1$s · %2$s drawn</string>
+    <string name="power_session_hint">Below zero the phone is drawing from the battery, above it the battery is charging.</string>
+    <string name="power_reset_session">Reset</string>
+    <string name="power_reset_session_done">Session min and max reset</string>
+    <string name="power_min">Min</string>
+    <string name="power_avg">Average</string>
+    <string name="power_max">Max</string>
+    <string name="power_chip_saver_on">Power saver on</string>
+    <string name="power_chip_saver_off">Power saver</string>
+
+    <string name="power_saver_title">Power saver</string>
+    <string name="power_saver_off_text">Off. Turn it on to dim the phone screen, hold it to 60 Hz and pause downloads.</string>
+    <string name="power_saver_on_text">On, %1$s.</string>
+    <string name="power_saver_on">Power saver on</string>
+    <string name="power_saver_off">Power saver off</string>
+    <string name="power_saver_reason_manual">turned on by you</string>
+    <string name="power_saver_reason_low">the battery is low</string>
+    <string name="power_saver_reason_car">Android Auto is connected</string>
+    <string name="power_saver_reason_system">Android Battery Saver is on</string>
+    <string name="power_saver_does_brightness">The phone screen is held to %1$d%% brightness.</string>
+    <string name="power_saver_does_car_screen">While Android Auto is connected, the phone screen is at its lowest.</string>
+    <string name="power_saver_does_refresh">The phone screen is held to 60 Hz.</string>
+    <string name="power_saver_does_downloads">Downloads are paused until it is off.</string>
+    <string name="power_saver_does_tracker">Power readings are taken half as often.</string>
+    <string name="power_saver_tips_title">More ways to save battery</string>
+    <string name="power_saver_tips">• Connect the phone to the car with a cable. Android Auto then charges it while it projects, instead of draining it.\n• Wireless Android Auto keeps Wi-Fi and Bluetooth busy; it costs noticeably more than a cable.\n• Play as music (sound only): the screen and the video decoder get to rest, and YouTube uses the lowest quality.\n• Download what you will play. Streaming keeps the mobile radio awake; a downloaded song does not.\n• Let the phone screen go dark while driving; Android Auto does not need it.\n• Switch off what you do not use: Share, lyrics and captions, on-device subtitles.</string>
+
+    <string name="power_breakdown">Where it went</string>
+    <string name="power_cat_video">Playing video</string>
+    <string name="power_cat_music">Playing music</string>
+    <string name="power_cat_idle">App open, nothing playing</string>
+    <string name="power_cat_car">Connected to Android Auto</string>
+    <string name="power_cat_phone">On the phone alone</string>
+    <string name="power_row_time">%1$s · about %2$s on average</string>
+    <string name="power_row_none">Nothing recorded in this period</string>
+    <string name="power_charged">Charged: %1$s over %2$s</string>
+    <string name="power_car_insight">With Android Auto connected the phone drew about %1$s on average, against %2$s on its own.</string>
+    <string name="power_footer_since">Counting since %1$s</string>
+    <string name="power_footer_note">These are the whole phone\'s figures while zrAuto was open, playing or connected to a car: Android does not tell an app what other apps use. Compare the rows to see what costs most. Reading the battery gauge takes next to no power: one quick system call every second while this tab or the overlay is on screen, otherwise every 15 to 60 seconds, and only while the app is at work.</string>
+    <string name="power_chart_total">%1$s drawn</string>
+    <string name="power_mah">%1$s mAh</string>
+    <string name="power_ma">%1$s mA</string>
+
+    <!-- Settings -->
+    <string name="power_pref_log_interval">Background reading</string>
+    <string name="power_pref_log_interval_sub">How often the battery is read for the history while this tab is not open: %s</string>
+    <string name="power_log_15">Every 15 seconds</string>
+    <string name="power_log_30">Every 30 seconds</string>
+    <string name="power_log_60">Every minute</string>
+    <string name="power_pref_units">Current unit</string>
+    <string name="power_pref_units_sub">What the phone reports the current in. Automatic is right for nearly every phone: %s</string>
+    <string name="power_units_auto">Automatic</string>
+    <string name="power_units_micro">Microamperes (µA)</string>
+    <string name="power_units_milli">Milliamperes (mA)</string>
+    <string name="power_pref_sign">Charging reads</string>
+    <string name="power_pref_sign_sub">A few phones report charging as negative. Automatic works it out from the battery status: %s</string>
+    <string name="power_sign_auto">Automatic</string>
+    <string name="power_sign_normal">Positive</string>
+    <string name="power_sign_inverted">Negative</string>
+    <string name="power_pref_reset_session">Reset session min and max</string>
+    <string name="power_pref_reset_session_sub">Starts the lowest, highest and average readings of this session over</string>
+    <string name="power_pref_reset_history">Reset power history</string>
+    <string name="power_pref_reset_history_sub">Forgets the hourly and daily record shown on the Power tab</string>
+    <string name="power_reset_history_question">Forget everything the Power tab has recorded?</string>
+    <string name="power_reset_history_done">Power history cleared</string>
+    <string name="power_pref_saver_auto_level">Start power saver at battery level</string>
+    <string name="power_pref_saver_auto_level_sub">When unplugged and at or below this level. 0 never</string>
+    <string name="power_pref_saver_car">Start when Android Auto connects</string>
+    <string name="power_pref_saver_car_sub">The phone usually works harder, and its screen is not looked at</string>
+    <string name="power_pref_saver_system">Follow Android\'s Battery Saver</string>
+    <string name="power_pref_saver_system_sub">Power saver is on whenever the system\'s own is</string>
+    <string name="power_pref_saver_brightness">Phone screen brightness cap (%)</string>
+    <string name="power_pref_saver_brightness_sub">The most the app\'s window is bright while power saver is on</string>
+    <string name="power_pref_saver_car_screen">Phone screen at its lowest in the car</string>
+    <string name="power_pref_saver_car_screen_sub">While Android Auto is connected and power saver is on</string>
+    <string name="power_pref_saver_refresh">Hold the screen to 60 Hz</string>
+    <string name="power_pref_saver_refresh_sub">Instead of 90 or 120 Hz, while power saver is on</string>
+    <string name="power_pref_saver_downloads">Pause downloads</string>
+    <string name="power_pref_saver_downloads_sub">They carry on when power saver ends</string>
+    <string name="info_item_power">Power</string>
+    <string name="info_overlay_show_power">Show power draw</string>
+    <string name="power_overlay_sub">The battery current, live, in the Info Overlay; its position is set under Interface > Info overlay</string>
+    <string name="info_overlay_show_power_icon">Show the power icon</string>
+    <string name="power_overlay_text">%1$s mA</string>
+
+    <string name="action_power_usage">Power usage</string>
+    <string name="action_power_saver">Power saver</string>
+    <string name="power_addon_off">Switch on Power usage under Settings > Addons first</string>
+</resources>

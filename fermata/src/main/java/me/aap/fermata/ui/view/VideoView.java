@@ -405,15 +405,17 @@ public class VideoView extends FrameLayout
 		boolean dataRemaining = mp.getInfoOverlayShowDataRemainingPref(ad);
 		boolean downloaded = mp.getInfoOverlayShowDownloadedPref(ad);
 		boolean dataSession = mp.getInfoOverlayShowDataSessionPref(ad);
+		boolean power = mp.getInfoOverlayShowPowerPref(ad);
 		boolean show = (pos != MainActivityPrefs.CLOCK_POS_NONE) &&
 				(showClock || showBatteryPct || showBatteryTemp || showDistance || dataUsage ||
-						dataRemaining || downloaded || dataSession);
+						dataRemaining || downloaded || dataSession || power);
 
 		if (!show) {
 			if (infoOverlay != null) {
 				infoOverlay.setItems(false, false, false, false, false, false, false, false);
 				infoOverlay.setDataItems(false, false, false);
 				infoOverlay.setSessionItem(false, true, false);
+				infoOverlay.setPowerItem(false, true);
 				infoOverlay.setDownloadedItem(false);
 			}
 			return;
@@ -462,6 +464,7 @@ public class VideoView extends FrameLayout
 		infoOverlay.setDataItems(dataUsage, dataRemaining, mp.getInfoOverlayShowDataIconPref(ad));
 		infoOverlay.setSessionItem(dataSession, mp.getInfoOverlayDataSessionBarPref(ad),
 				mp.getInfoOverlayDataSessionLeftPref(ad));
+		infoOverlay.setPowerItem(power, mp.getInfoOverlayShowPowerIconPref(ad));
 		infoOverlay.setDownloadedItem(downloaded);
 	}
 

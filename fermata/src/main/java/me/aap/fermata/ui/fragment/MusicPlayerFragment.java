@@ -157,16 +157,39 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private FrameLayout lyricsOverlay;
 	@Nullable
 	private LyricsView lyricsView;
+	/**
+	 * The lyrics page: the same lines, big and scrollable, filling the whole cover area of this tab
+	 * (a tap on the lyrics over the cover opens it, its close button or Back closes it). Null before
+	 * the view exists.
+	 */
+	@Nullable
+	private FrameLayout lyricsPage;
+	private boolean lyricsExpanded;
+	// Held Lyrics chip while the lines are still loading: the page opens as soon as they are there.
+	private boolean lyricsExpandWhenReady;
 	/** Follows whether what plays has captions, while this tab is showing: the chip and the veil. */
 	private final me.aap.fermata.ytcaptions.CaptionsHub.Listener captionsListener =
 			new me.aap.fermata.ytcaptions.CaptionsHub.Listener() {
 				@Override
 				public void onCaptionsState(me.aap.fermata.ytcaptions.CaptionsHub hub) {
 					updateLyrics(true);
+					if (lyricsExpandWhenReady &&
+							(hub.getState() == me.aap.fermata.ytcaptions.CaptionsHub.State.READY)) {
+						lyricsExpandWhenReady = false;
+						setLyricsExpanded(true, true);
+					} else if (lyricsExpanded && lyricsUnavailable()) {
+						// The next track has no lyrics to scroll through: back to its cover.
+						setLyricsExpanded(false, true);
+					}
 				}
 			};
 	private final PreferenceStore.Listener lyricsPrefs = (store, prefs) -> {
-		if (prefs.contains(MainActivityPrefs.LYRICS_ON)) updateLyrics(true);
+		if (prefs.contains(MainActivityPrefs.LYRICS_ON)) {
+			if (lyricsExpanded && !store.getBooleanPref(MainActivityPrefs.LYRICS_ON)) {
+				setLyricsExpanded(false, true);
+			}
+			updateLyrics(true);
+		}
 		if (prefs.contains(MainActivityPrefs.LYRICS_VEIL)) applyLyricsVeil();
 	};
 	private final Runnable timerChipTask = this::updateTimerChip;
@@ -335,12 +358,25 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			}
 			a.getPrefs().applyBooleanPref(MainActivityPrefs.LYRICS_ON, on);
 		});
-		// Held: the lyrics in their own card.
+		// Held: the lyrics page, filling the cover area (once the lines are there).
 		lyricsChip.setOnLongClickListener(v -> {
-			LyricsCard.show(a);
+			if (lyricsUnavailable()) {
+				showMessage(getString(R.string.lyrics_unavailable));
+				return true;
+			}
+			if (!a.getPrefs().getBooleanPref(MainActivityPrefs.LYRICS_ON)) {
+				a.getPrefs().applyBooleanPref(MainActivityPrefs.LYRICS_ON, true);
+			}
+			if (me.aap.fermata.ytcaptions.CaptionsHub.get().getState() ==
+					me.aap.fermata.ytcaptions.CaptionsHub.State.READY) {
+				setLyricsExpanded(true, true);
+			} else {
+				lyricsExpandWhenReady = true;
+			}
 			return true;
 		});
 		addLyricsOverlay(a, view.findViewById(R.id.music_art_card));
+		addLyricsPage(a, view.findViewById(R.id.music_art_holder));
 		// Effects sits on the row itself when there's room for it, else only behind the more button.
 		// Decided after the row's layout, not inside it: a chip shown or hidden from within the row's
 		// own layout pass asked for a layout the row never got (it still counted as being laid out),
@@ -498,9 +534,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		boolean dataRemaining = p.getInfoOverlayShowDataRemainingPref(ad);
 		boolean downloaded = p.getInfoOverlayShowDownloadedPref(ad);
 		boolean dataSession = p.getInfoOverlayShowDataSessionPref(ad);
+		boolean power = p.getInfoOverlayShowPowerPref(ad);
 		boolean show = (p.getClockPosPref(ad) != MainActivityPrefs.CLOCK_POS_NONE) &&
 				(clock || battery || temp || distance || dataUsage || dataRemaining || downloaded ||
-						dataSession);
+						dataSession || power);
 		// Its holder in portrait (so its padding goes too), the overlay itself in the title bar.
 		View parent = (View) o.getParent();
 		View target = ((parent != null) && (parent.getId() == R.id.music_info_holder)) ? parent : o;
@@ -514,6 +551,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		o.setDataItems(dataUsage, dataRemaining, p.getInfoOverlayShowDataIconPref(ad));
 		o.setSessionItem(dataSession, p.getInfoOverlayDataSessionBarPref(ad),
 				p.getInfoOverlayDataSessionLeftPref(ad));
+		o.setPowerItem(power, p.getInfoOverlayShowPowerIconPref(ad));
 		o.setDownloadedItem(downloaded);
 	}
 
@@ -574,6 +612,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		getActivityDelegate().getPrefs().removeBroadcastListener(lyricsPrefs);
 		lyricsOverlay = null;
 		lyricsView = null;
+		lyricsPage = null;
+		lyricsExpanded = false;
+		lyricsExpandWhenReady = false;
 		if (insetAnim != null) insetAnim.cancel();
 		insetAnim = null;
 		insetsSet = false;
@@ -1794,7 +1835,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if (act == null) return;
 		android.view.Window w = act.getWindow();
 		android.view.WindowManager.LayoutParams lp = w.getAttributes();
-		lp.preferredRefreshRate = low ? 60f : 0f;
+		// Back to the system's choice, or the 60 Hz that power saver holds the phone's screen to.
+		lp.preferredRefreshRate = low ? 60f : me.aap.fermata.addon.power.PowerSaver.get().preferredRefreshRate();
 		w.setAttributes(lp);
 	}
 
@@ -1971,6 +2013,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 	@Override
 	public boolean onBackPressed() {
+		if (lyricsExpanded) {
+			setLyricsExpanded(false, true);
+			return true;
+		}
 		return AllInOneMenu.dismissOpen() || super.onBackPressed();
 	}
 
@@ -2115,13 +2161,158 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		updateLyrics(false);
 	}
 
+	/**
+	 * The lyrics page: the lines at full size on a dark glass panel over the blurred cover, filling
+	 * the whole cover area. Hidden until a tap on the lyrics over the cover (or the Lyrics chip held)
+	 * opens it, see {@link #setLyricsExpanded}. Lines are tapped to jump to, a vertical drag scrubs.
+	 */
+	private void addLyricsPage(MainActivityDelegate a, ViewGroup holder) {
+		Context ctx = requireContext();
+		float dp = ctx.getResources().getDisplayMetrics().density;
+		FrameLayout page = new FrameLayout(ctx);
+		page.setClickable(true);
+		page.setElevation(24 * dp);
+		page.setVisibility(View.GONE);
+		page.setAlpha(0f);
+
+		LyricsView lv = new LyricsView(ctx, a, 0xFFFFFFFF, 0xFFFFFFFF, true);
+		lv.setLineListener(i -> me.aap.fermata.ytcaptions.CaptionsHub.get().seekTo(i));
+		// A failed load is tried again with a tap.
+		lv.setOnClickListener(v -> {
+			if (me.aap.fermata.ytcaptions.CaptionsHub.get().getState() ==
+					me.aap.fermata.ytcaptions.CaptionsHub.State.FAILED) {
+				me.aap.fermata.ytcaptions.CaptionsHub.get().invalidate();
+			}
+		});
+		FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.MATCH_PARENT);
+		llp.topMargin = Math.round(56 * dp);
+		page.addView(lv, llp);
+
+		android.widget.LinearLayout header = new android.widget.LinearLayout(ctx);
+		header.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+		header.setGravity(Gravity.CENTER_VERTICAL);
+		header.setPadding(Math.round(18 * dp), Math.round(6 * dp), Math.round(8 * dp), 0);
+		ImageView icon = new ImageView(ctx);
+		icon.setImageResource(R.drawable.lyrics);
+		icon.setImageTintList(ColorStateList.valueOf(0xE6FFFFFF));
+		header.addView(icon, new android.widget.LinearLayout.LayoutParams(Math.round(22 * dp),
+				Math.round(22 * dp)));
+		android.widget.LinearLayout names = new android.widget.LinearLayout(ctx);
+		names.setOrientation(android.widget.LinearLayout.VERTICAL);
+		TextView name = new TextView(ctx);
+		name.setText(R.string.lyrics);
+		name.setTextColor(0xFFFFFFFF);
+		name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+		name.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+		names.addView(name);
+		TextView hint = new TextView(ctx);
+		hint.setText(R.string.lyrics_page_hint);
+		hint.setTextColor(0x99FFFFFF);
+		hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+		hint.setSingleLine(true);
+		names.addView(hint);
+		android.widget.LinearLayout.LayoutParams nlp = new android.widget.LinearLayout.LayoutParams(0,
+				ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+		nlp.setMarginStart(Math.round(10 * dp));
+		header.addView(names, nlp);
+		ImageView close = new ImageView(ctx);
+		close.setImageResource(R.drawable.close_small);
+		close.setImageTintList(ColorStateList.valueOf(0xFFFFFFFF));
+		close.setScaleType(ImageView.ScaleType.CENTER);
+		android.graphics.drawable.GradientDrawable closeBg = new android.graphics.drawable.GradientDrawable();
+		closeBg.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+		closeBg.setColor(0x33FFFFFF);
+		close.setBackground(new android.graphics.drawable.RippleDrawable(
+				ColorStateList.valueOf(0x55FFFFFF), closeBg, null));
+		close.setClickable(true);
+		close.setFocusable(true);
+		close.setContentDescription(getString(R.string.lyrics_page_close));
+		close.setOnClickListener(v -> setLyricsExpanded(false, true));
+		header.addView(close, new android.widget.LinearLayout.LayoutParams(Math.round(40 * dp),
+				Math.round(40 * dp)));
+		page.addView(header, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+				Math.round(52 * dp)));
+
+		androidx.constraintlayout.widget.ConstraintLayout.LayoutParams lp =
+				new androidx.constraintlayout.widget.ConstraintLayout.LayoutParams(0, 0);
+		lp.topToTop = lp.bottomToBottom = lp.startToStart = lp.endToEnd =
+				androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.PARENT_ID;
+		holder.addView(page, lp);
+		lyricsPage = page;
+		applyLyricsVeil();
+	}
+
+	/**
+	 * Opens or closes the lyrics page over the cover: it fades and rises in while the cover fades
+	 * out behind it, and the same the other way round. The cover's own lyrics step aside while the
+	 * page is open (see {@link #updateLyrics}).
+	 */
+	private void setLyricsExpanded(boolean expand, boolean animate) {
+		FrameLayout p = lyricsPage;
+		View root = getView();
+		if ((p == null) || (root == null) || (expand == lyricsExpanded)) return;
+		if (expand && (me.aap.fermata.ytcaptions.CaptionsHub.get().getState() !=
+				me.aap.fermata.ytcaptions.CaptionsHub.State.READY)) {
+			return;
+		}
+		lyricsExpanded = expand;
+		lyricsExpandWhenReady = false;
+		View card = root.findViewById(R.id.music_art_card);
+		float dp = getResources().getDisplayMetrics().density;
+		p.animate().cancel();
+		if (card != null) card.animate().cancel();
+
+		if (expand) {
+			p.setVisibility(View.VISIBLE);
+			if (animate) {
+				p.setAlpha(0f);
+				p.setScaleX(0.94f);
+				p.setScaleY(0.94f);
+				p.setTranslationY(16 * dp);
+				p.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f).setDuration(320)
+						.setInterpolator(new DecelerateInterpolator(1.6f)).start();
+				if (card != null) card.animate().alpha(0f).setDuration(220).start();
+			} else {
+				p.setAlpha(1f);
+				p.setScaleX(1f);
+				p.setScaleY(1f);
+				p.setTranslationY(0f);
+				if (card != null) card.setAlpha(0f);
+			}
+			updateLyrics(false);
+			return;
+		}
+
+		updateLyrics(animate);
+		if (animate) {
+			p.animate().alpha(0f).scaleX(0.96f).scaleY(0.96f).translationY(10 * dp).setDuration(220)
+					.setInterpolator(new DecelerateInterpolator()).withEndAction(() -> {
+						if (!lyricsExpanded) p.setVisibility(View.GONE);
+					}).start();
+			if (card != null) card.animate().alpha(1f).setDuration(280).start();
+		} else {
+			p.setAlpha(0f);
+			p.setVisibility(View.GONE);
+			if (card != null) card.setAlpha(1f);
+		}
+	}
+
 	/** How dark the veil under the lyrics is (Settings > Lyrics). */
 	private void applyLyricsVeil() {
-		FrameLayout o = lyricsOverlay;
-		if (o == null) return;
 		int pct = Math.max(0, Math.min(90,
 				getActivityDelegate().getPrefs().getIntPref(MainActivityPrefs.LYRICS_VEIL)));
-		o.setBackgroundColor(Math.round(255 * pct / 100f) << 24);
+		FrameLayout o = lyricsOverlay;
+		if (o != null) o.setBackgroundColor(Math.round(255 * pct / 100f) << 24);
+		FrameLayout p = lyricsPage;
+		if (p != null) {
+			// The page has no cover under it to read against, but the blurred backdrop: never less
+			// than a clear veil, whatever the setting for the cover is.
+			android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+			bg.setColor(Math.round(255 * Math.max(pct, 45) / 100f) << 24);
+			bg.setCornerRadius(20 * getResources().getDisplayMetrics().density);
+			p.setBackground(bg);
+		}
 	}
 
 	/** Shows or hides the lyrics over the cover as the chip says, and the chip with it. */
@@ -2145,7 +2336,11 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		lyricsChip.setCompoundDrawableTintList(ColorStateList.valueOf(
 				on ? color : paletteColor(R.attr.musicIconPrimary)));
 		o.animate().cancel();
-		if (want && ready) {
+		if (lyricsExpanded) {
+			// The page covers the cover: its own lines step aside, so only one view follows the video.
+			o.setAlpha(0f);
+			o.setVisibility(View.GONE);
+		} else if (want && ready) {
 			if (o.getVisibility() != View.VISIBLE) o.setAlpha(0f);
 			o.setVisibility(View.VISIBLE);
 			if (animate) o.animate().alpha(1f).setDuration(260).start();
@@ -2172,9 +2367,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		return (lyricsOverlay != null) && (lyricsOverlay.getVisibility() == View.VISIBLE);
 	}
 
-	/** A tap on the cover (not a swipe): with lyrics on it, they open in their own card. */
+	/**
+	 * A tap on the cover (not a swipe): with lyrics on it, they open as a scrolling page in this tab
+	 * (not in a card over everything, as elsewhere in the app).
+	 */
 	private void onArtTap() {
-		if (lyricsShowing()) LyricsCard.show(getActivityDelegate());
+		if (lyricsShowing()) setLyricsExpanded(true, true);
 	}
 
 	private void onPlaylistTap() {
