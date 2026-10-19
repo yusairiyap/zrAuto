@@ -74,11 +74,14 @@ public final class AmbienceEngine {
 		volatile boolean wanted;
 		/** 0 to 1: how strong, from the effect's slider. */
 		volatile float levelTarget;
+		/** 0 to 1: the sound's own character slider. */
+		volatile float optTarget;
 		/** The fade, 0 to 1 (before its curve). Written by the audio thread. */
 		volatile float gain;
 		/** What a scene should show: the fade (curved) times the strength. */
 		volatile float shown;
 		float level;
+		float opt;
 
 		Layer(AmbienceEffect fx, AmbienceSynth.Voice voice) {
 			this.fx = fx;
@@ -115,6 +118,8 @@ public final class AmbienceEngine {
 			layers[i] = new Layer(all[i], AmbienceSynth.create(all[i], this::postFlash));
 			layers[i].levelTarget = intensityOf(all[i]) / 100f;
 			layers[i].level = layers[i].levelTarget;
+			layers[i].optTarget = optionOf(all[i]) / 100f;
+			layers[i].opt = layers[i].optTarget;
 		}
 	}
 
@@ -174,6 +179,15 @@ public final class AmbienceEngine {
 	/** The picture leads the sound: it is fully there at half the fade, so a switch looks instant. */
 	private static float visualCurve(float g) {
 		return curve(Math.min(1f, g * 2f));
+	}
+
+	/** The sound's character slider, 0 to 100 (50 is how it was designed). */
+	public int getOption(AmbienceEffect e) {
+		return optionOf(e);
+	}
+
+	private static int optionOf(AmbienceEffect e) {
+		return Math.max(0, Math.min(100, prefs().getIntPref(e.option)));
 	}
 
 	public int getIntensity(AmbienceEffect e) {
@@ -319,6 +333,18 @@ public final class AmbienceEngine {
 		pct = Math.max(5, Math.min(100, pct));
 		prefs().applyIntPref(e.intensity, pct);
 		layers[e.ordinal()].levelTarget = pct / 100f;
+	}
+
+	public void setOption(AmbienceEffect e, int pct) {
+		pct = Math.max(0, Math.min(100, pct));
+		prefs().applyIntPref(e.option, pct);
+		layers[e.ordinal()].optTarget = pct / 100f;
+	}
+
+	/** Back to how the sound was designed: its first intensity and the middle of its character slider. */
+	public void resetEffect(AmbienceEffect e) {
+		setIntensity(e, e.defLevel);
+		setOption(e, 50);
 	}
 
 	public void setMaster(int pct) {
@@ -505,11 +531,12 @@ public final class AmbienceEngine {
 					float g1 = want ? Math.min(1f, g0 + step) : Math.max(0f, g0 - step);
 					ly.gain = g1;
 					ly.level += (ly.levelTarget - ly.level) * 0.2f;
+					ly.opt += (ly.optTarget - ly.opt) * 0.2f;
 					if ((g0 == 0f) && (g1 == 0f)) {
 						ly.shown = 0f;
 						continue;
 					}
-					ly.voice.render(vl, vr, BLOCK, ly.level);
+					ly.voice.render(vl, vr, BLOCK, ly.level, ly.opt);
 					float a0 = curve(g0);
 					float a1 = curve(g1);
 					float lv = 0.3f + 0.7f * ly.level;

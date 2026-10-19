@@ -407,8 +407,17 @@ provider doesn't offer a folder to pick, so Drive is manual only.
 - **Frame loops must run while a sound is on, not only while it is audible**: the audio thread takes a moment to start, and
   a loop that saw nothing audible stopped itself and only woke when another sound changed (`isPlaying`/`isAnyPlaying`). The
   picture also leads the sound (`visualCurve`, full at half the fade). The settings chip is `ToolBarChip` like Data usage's.
-- Droplets (`Drips` voice: pitch-rising sines through two feedback delays) is the ninth sound; new ones need an
-  `AmbienceEffect`, a `Voice` in `AmbienceSynth#create`, a scene branch in `AmbienceScene` and strings/icon.
+- **Twelve sounds** (a full row of four on the tablet grid): rain, thunder, fireplace, wind, ocean, stream, droplets (`Drips`:
+  pitch-rising sines through two feedback delays), underwater (`Bubbles`), night, birds, wind chimes (`Chimes`: three bar
+  partials per tube, rotating-point oscillators) and cozy café (`Cafe`: talkers = noise through two moving formant bands in
+  syllables, room hum, clinks). A new one needs an `AmbienceEffect` (with its option strings), a `Voice` in
+  `AmbienceSynth#create`, a scene branch in `AmbienceScene` and strings/icon.
+- **Per-sound character slider** (`AmbienceEffect#option`, pref `AMBIENCE_OPT_<KEY>`, 0 to 100, 50 = as designed, passed to
+  `Voice#render` as `opt` and smoothed like the intensity): rain surface, thunder distance, fire crackle, wind tone, wave pace,
+  stream flow, echo, depth, cricket pitch, bird chorus, chime bells, café crowd. It lives on the card's second page
+  (`AmbienceCardView`: the tune button flips front/tune with a scale+fade, so the grid never reflows; Reset =
+  `AmbienceEngine#resetEffect`). Keep every voice at its old sound when `opt` = 0.5, and re-run the offline render
+  (rms, peaks, NaNs at opt 0, 0.5 and 1) after touching one.
 - **None of this has run on a device yet** (no emulator in the cloud session). If sound is silent, choppy or the weather
   looks wrong, look for `AMBIENCE` lines in the Diagnostic log first.
 

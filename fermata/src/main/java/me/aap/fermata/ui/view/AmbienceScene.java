@@ -34,6 +34,9 @@ public final class AmbienceScene {
 	private static final int BIRDS = 4;
 	private static final int MOTES = 16;
 	private static final int RIPPLES = 5;
+	private static final int BUBBLES = 24;
+	private static final int TUBES = 5;
+	private static final int BOKEH = 12;
 	private static final float FALL = 0.35f;
 	private static final int E_RAIN = AmbienceEffect.RAIN.ordinal();
 	private static final int E_THUNDER = AmbienceEffect.THUNDER.ordinal();
@@ -42,6 +45,9 @@ public final class AmbienceScene {
 	private static final int E_OCEAN = AmbienceEffect.OCEAN.ordinal();
 	private static final int E_STREAM = AmbienceEffect.STREAM.ordinal();
 	private static final int E_DROPS = AmbienceEffect.DROPS.ordinal();
+	private static final int E_BUBBLES = AmbienceEffect.BUBBLES.ordinal();
+	private static final int E_CHIMES = AmbienceEffect.CHIMES.ordinal();
+	private static final int E_CAFE = AmbienceEffect.CAFE.ordinal();
 	private static final int E_NIGHT = AmbienceEffect.NIGHT.ordinal();
 	private static final int E_BIRDS = AmbienceEffect.BIRDS.ordinal();
 
@@ -75,6 +81,15 @@ public final class AmbienceScene {
 			sparkV = new float[SPARKS], sparkP = new float[SPARKS];
 	// Droplets: a drop falls for FALL seconds (age below zero), then rings spread from where it landed.
 	private final float[] ripX = new float[RIPPLES], ripY = new float[RIPPLES], ripAge = new float[RIPPLES];
+	// Underwater
+	private final float[] bubX = new float[BUBBLES], bubY = new float[BUBBLES], bubR = new float[BUBBLES],
+			bubV = new float[BUBBLES], bubP = new float[BUBBLES];
+	// Wind chimes: how long each tube is (fraction of the height), and the glow of a tube just struck
+	private static final float[] TUBE_LEN = {0.34f, 0.42f, 0.30f, 0.46f, 0.38f};
+	private final float[] tubeGlow = new float[TUBES], tubePh = new float[TUBES];
+	// Café: lights out of focus, and steam
+	private final float[] bokX = new float[BOKEH], bokY = new float[BOKEH], bokR = new float[BOKEH],
+			bokP = new float[BOKEH];
 	// Night
 	private final float[] starX = new float[STARS], starY = new float[STARS], starS = new float[STARS],
 			starP = new float[STARS];
@@ -137,6 +152,18 @@ public final class AmbienceScene {
 			moteP[i] = rnd.nextFloat() * 6.28f;
 		}
 		for (int i = 0; i < RIPPLES; i++) ripAge[i] = 99f;
+		for (int i = 0; i < BUBBLES; i++) {
+			bubX[i] = rnd.nextFloat();
+			bubY[i] = rnd.nextFloat();
+			resetBubble(i, false);
+		}
+		for (int i = 0; i < TUBES; i++) tubePh[i] = rnd.nextFloat() * 6.28f;
+		for (int i = 0; i < BOKEH; i++) {
+			bokX[i] = rnd.nextFloat();
+			bokY[i] = 0.1f + 0.8f * rnd.nextFloat();
+			bokR[i] = 10f + 24f * rnd.nextFloat();
+			bokP[i] = rnd.nextFloat() * 6.28f;
+		}
 		paint.setStrokeCap(Paint.Cap.ROUND);
 		paint.setStrokeJoin(Paint.Join.ROUND);
 	}
@@ -147,6 +174,14 @@ public final class AmbienceScene {
 		dropV[i] = 0.9f + 0.9f * rnd.nextFloat();
 		dropLen[i] = 0.025f + 0.045f * rnd.nextFloat();
 		dropA[i] = 0.25f + 0.55f * rnd.nextFloat();
+	}
+
+	private void resetBubble(int i, boolean bottom) {
+		bubX[i] = rnd.nextFloat();
+		if (bottom) bubY[i] = 1.05f;
+		bubR[i] = 0.3f + 0.7f * rnd.nextFloat();
+		bubV[i] = 0.08f + 0.16f * rnd.nextFloat();
+		bubP[i] = rnd.nextFloat() * 6.28f;
 	}
 
 	private void resetEmber(int i, boolean bottom) {
@@ -254,6 +289,20 @@ public final class AmbienceScene {
 				}
 			}
 		}
+		if (lv[E_BUBBLES] > 0.003f) {
+			for (int i = 0; i < BUBBLES; i++) {
+				bubY[i] -= bubV[i] * dt * (0.6f + 0.8f * lv[E_BUBBLES]);
+				if (bubY[i] < -0.05f) resetBubble(i, true);
+			}
+		}
+		if (lv[E_CHIMES] > 0.003f) {
+			// A tube now and then catches the light, as if struck.
+			float chance = dt * (0.3f + 1.6f * lv[E_CHIMES]);
+			for (int i = 0; i < TUBES; i++) {
+				tubeGlow[i] = Math.max(0f, tubeGlow[i] - dt * 0.8f);
+				if (rnd.nextFloat() < chance * 0.3f) tubeGlow[i] = 1f;
+			}
+		}
 		if (lv[E_NIGHT] > 0.003f) {
 			for (int i = 0; i < FLIES; i++) {
 				flyAng[i] += (rnd.nextFloat() - 0.5f) * dt * 5f;
@@ -306,11 +355,14 @@ public final class AmbienceScene {
 		if ((lv[E_THUNDER] > 0.003f) || (lv[E_RAIN] > 0.003f)) {
 			drawClouds(c, w, h, Math.max(lv[E_THUNDER], lv[E_RAIN] * 0.7f), lv[E_THUNDER] > 0.003f);
 		}
+		if (lv[E_BUBBLES] > 0.003f) drawBubbles(c, w, h, lv[E_BUBBLES]);
 		if (lv[E_OCEAN] > 0.003f) drawOcean(c, w, h, lv[E_OCEAN]);
 		if (lv[E_STREAM] > 0.003f) drawStream(c, w, h, lv[E_STREAM]);
 		if (lv[E_DROPS] > 0.003f) drawDrops(c, w, h, lv[E_DROPS]);
 		if (lv[E_WIND] > 0.003f) drawWind(c, w, h, lv[E_WIND]);
 		if (lv[E_BIRDS] > 0.003f) drawBirds(c, w, h, lv[E_BIRDS]);
+		if (lv[E_CAFE] > 0.003f) drawCafe(c, w, h, lv[E_CAFE]);
+		if (lv[E_CHIMES] > 0.003f) drawChimes(c, w, h, lv[E_CHIMES]);
 		if (lv[E_FIRE] > 0.003f) drawFire(c, w, h, lv[E_FIRE]);
 		if (lv[E_RAIN] > 0.003f) drawRain(c, w, h, lv[E_RAIN], lv[E_WIND]);
 		if (flashT < 1f) drawLightning(c, w, h, Math.max(lv[E_THUNDER], 0.35f));
@@ -542,6 +594,103 @@ public final class AmbienceScene {
 				float r = dp * (4f + 52f * life);
 				paint.setColor(withAlpha(fx.tint, 0.65f * a * (1f - life) * (1f - life)));
 				c.drawOval(x - r, y - r * 0.32f, x + r, y + r * 0.32f, paint);
+			}
+		}
+	}
+
+	private void drawBubbles(Canvas c, int w, int h, float a) {
+		AmbienceEffect fx = AmbienceEffect.BUBBLES;
+		// Slanting light from the surface.
+		paint.setStyle(Paint.Style.FILL);
+		for (int k = 0; k < 2; k++) {
+			float x = w * (0.2f + 0.4f * k) + (float) Math.sin(t * 0.3f + k * 2f) * w * 0.05f;
+			path.rewind();
+			path.moveTo(x, 0);
+			path.lineTo(x + w * 0.12f, 0);
+			path.lineTo(x + w * 0.30f, h * 0.85f);
+			path.lineTo(x + w * 0.16f, h * 0.85f);
+			path.close();
+			paint.setColor(withAlpha(0xFFBFFFF5, 0.05f * a));
+			c.drawPath(path, paint);
+		}
+		int count = (int) Math.ceil(BUBBLES * (0.3f + 0.7f * a));
+		for (int i = 0; i < count; i++) {
+			float y = bubY[i];
+			float grow = 0.75f + 0.5f * (1f - y);
+			float rad = dp * (2f + 7f * bubR[i]) * grow;
+			float x = (bubX[i] + 0.02f * (float) Math.sin(t * 1.4f + bubP[i])) * w;
+			float fade = Math.min(1f, Math.min(y * 6f + 0.2f, (1.08f - y) * 8f));
+			paint.setStyle(Paint.Style.FILL);
+			paint.setColor(withAlpha(fx.tint, 0.1f * a * fade));
+			c.drawCircle(x, y * h, rad, paint);
+			paint.setStyle(Paint.Style.STROKE);
+			paint.setStrokeWidth(dp * 1.2f);
+			paint.setColor(withAlpha(fx.tint, 0.6f * a * fade));
+			c.drawCircle(x, y * h, rad, paint);
+			// The glint.
+			paint.setStyle(Paint.Style.FILL);
+			paint.setColor(withAlpha(0xFFFFFFFF, 0.7f * a * fade));
+			c.drawCircle(x - rad * 0.35f, y * h - rad * 0.35f, Math.max(dp * 0.8f, rad * 0.2f), paint);
+		}
+	}
+
+	private void drawChimes(Canvas c, int w, int h, float a) {
+		AmbienceEffect fx = AmbienceEffect.CHIMES;
+		float x0 = w * 0.2f;
+		float x1 = w * 0.8f;
+		float y0 = h * 0.1f;
+		paint.setStyle(Paint.Style.STROKE);
+		paint.setStrokeWidth(dp * 3f);
+		paint.setColor(withAlpha(0xFFE9D8C4, 0.55f * a));
+		c.drawLine(x0, y0, x1, y0, paint);
+		for (int k = 0; k < TUBES; k++) {
+			float x = x0 + (x1 - x0) * (k + 0.5f) / TUBES;
+			float sway = (float) Math.sin(t * (1.1f + 0.15f * k) + tubePh[k]) * (0.09f + 0.1f * tubeGlow[k]);
+			float glow = tubeGlow[k];
+			c.save();
+			c.rotate((float) Math.toDegrees(sway), x, y0);
+			// The string, then the tube hanging from it.
+			paint.setStrokeWidth(dp * 1f);
+			paint.setColor(withAlpha(0xFFFFFFFF, 0.4f * a));
+			c.drawLine(x, y0, x, y0 + dp * 14f, paint);
+			float len = TUBE_LEN[k] * h;
+			paint.setStrokeWidth(dp * 6f);
+			paint.setColor(withAlpha(fx.tint, (0.5f + 0.45f * glow) * a));
+			c.drawLine(x, y0 + dp * 14f, x, y0 + dp * 14f + len, paint);
+			if (glow > 0.02f) {
+				paint.setStyle(Paint.Style.FILL);
+				paint.setColor(withAlpha(fx.tint, 0.22f * glow * a));
+				c.drawCircle(x, y0 + dp * 14f + len * 0.5f, dp * 20f, paint);
+				paint.setStyle(Paint.Style.STROKE);
+			}
+			c.restore();
+		}
+	}
+
+	private void drawCafe(Canvas c, int w, int h, float a) {
+		AmbienceEffect fx = AmbienceEffect.CAFE;
+		paint.setStyle(Paint.Style.FILL);
+		// Warm lights, out of focus.
+		for (int i = 0; i < BOKEH; i++) {
+			float pulse = 0.55f + 0.45f * (float) Math.sin(t * 0.7f + bokP[i]);
+			paint.setColor(withAlpha(i % 3 == 0 ? 0xFFFFE2A8 : fx.tint, 0.16f * a * pulse));
+			c.drawCircle(bokX[i] * w, bokY[i] * h, dp * bokR[i], paint);
+		}
+		// Steam rising from the cups.
+		paint.setStyle(Paint.Style.STROKE);
+		paint.setStrokeWidth(dp * 3f);
+		for (int k = 0; k < 3; k++) {
+			float cx = w * (0.28f + 0.22f * k);
+			float px = cx;
+			float py = h * 0.96f;
+			for (int s = 1; s <= 8; s++) {
+				float f = s / 8f;
+				float nx = cx + (float) Math.sin(f * 6f + t * 1.2f + k * 1.7f) * dp * 9f * f;
+				float ny = h * (0.96f - 0.42f * f);
+				paint.setColor(withAlpha(0xFFFFFFFF, 0.2f * a * (1f - f)));
+				c.drawLine(px, py, nx, ny, paint);
+				px = nx;
+				py = ny;
 			}
 		}
 	}

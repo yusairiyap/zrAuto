@@ -21,11 +21,17 @@
     <string name="ambience_stream_sub">A brook running over stones</string>
     <string name="ambience_drops">Droplets</string>
     <string name="ambience_drops_sub">Drips echoing in a cave</string>
+    <string name="ambience_bubbles">Underwater</string>
+    <string name="ambience_bubbles_sub">Bubbles rising through the deep</string>
     <string name="ambience_night">Night</string>
     <string name="ambience_night_sub">Crickets under the stars</string>
     <string name="ambience_birds">Forest birds</string>
     <string name="ambience_birds_sub">Birdsong at dawn</string>
 
+    <string name="ambience_chimes">Wind chimes</string>
+    <string name="ambience_chimes_sub">Soft bells in a gentle breeze</string>
+    <string name="ambience_cafe">Cozy café</string>
+    <string name="ambience_cafe_sub">Murmuring voices and clinking cups</string>
     <string name="ambience_hero_idle">Pick a sound to set the mood</string>
     <string name="ambience_hero_playing">Now in the air</string>
     <string name="ambience_hero_paused">Paused with playback</string>
@@ -52,6 +58,47 @@
     <string name="ambience_stopped">Ambience off</string>
     <string name="ambience_timer_done">Ambience timer ended</string>
     <string name="ambience_unsupported">Sound could not start on this device</string>
+
+    <!-- The character slider of each sound: its name and the words for its two ends. -->
+    <string name="ambience_opt_rain">Surface</string>
+    <string name="ambience_opt_rain_lo">Leaves</string>
+    <string name="ambience_opt_rain_hi">Roof</string>
+    <string name="ambience_opt_thunder">Distance</string>
+    <string name="ambience_opt_thunder_lo">Close</string>
+    <string name="ambience_opt_thunder_hi">Far</string>
+    <string name="ambience_opt_fire">Crackle</string>
+    <string name="ambience_opt_fire_lo">Calm</string>
+    <string name="ambience_opt_fire_hi">Lively</string>
+    <string name="ambience_opt_wind">Tone</string>
+    <string name="ambience_opt_wind_lo">Deep</string>
+    <string name="ambience_opt_wind_hi">Airy</string>
+    <string name="ambience_opt_ocean">Waves</string>
+    <string name="ambience_opt_ocean_lo">Slow</string>
+    <string name="ambience_opt_ocean_hi">Brisk</string>
+    <string name="ambience_opt_stream">Flow</string>
+    <string name="ambience_opt_stream_lo">Gentle</string>
+    <string name="ambience_opt_stream_hi">Rapids</string>
+    <string name="ambience_opt_drops">Echo</string>
+    <string name="ambience_opt_drops_lo">Dry</string>
+    <string name="ambience_opt_drops_hi">Cavern</string>
+    <string name="ambience_opt_bubbles">Depth</string>
+    <string name="ambience_opt_bubbles_lo">Shallow</string>
+    <string name="ambience_opt_bubbles_hi">Deep</string>
+    <string name="ambience_opt_night">Pitch</string>
+    <string name="ambience_opt_night_lo">Low</string>
+    <string name="ambience_opt_night_hi">High</string>
+    <string name="ambience_opt_birds">Chorus</string>
+    <string name="ambience_opt_birds_lo">Sparse</string>
+    <string name="ambience_opt_birds_hi">Busy</string>
+    <string name="ambience_opt_chimes">Bells</string>
+    <string name="ambience_opt_chimes_lo">Deep</string>
+    <string name="ambience_opt_chimes_hi">Bright</string>
+    <string name="ambience_opt_cafe">Crowd</string>
+    <string name="ambience_opt_cafe_lo">Quiet</string>
+    <string name="ambience_opt_cafe_hi">Busy</string>
+    <string name="ambience_tune">Tune</string>
+    <string name="ambience_tune_for">Tune %1$s</string>
+    <string name="ambience_reset">Reset</string>
 
     <!-- Settings > Addons > Ambience -->
     <string name="ambience_set_fade">Fade in and out</string>

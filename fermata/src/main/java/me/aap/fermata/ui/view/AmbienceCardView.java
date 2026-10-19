@@ -28,12 +28,15 @@ import me.aap.fermata.addon.ambience.AmbienceEngine;
 import me.aap.fermata.addon.power.PowerSaver;
 
 /**
- * One sound of the Ambience tab as a card: dark and quiet while it is off, and when it is on its
- * own little weather (an {@link AmbienceScene} clipped to the card) glowing under an icon disc, a
- * tinted border and an intensity slider that fades in. Everything follows the sound's fade, so
- * the card brightens and dims along with what is heard. A tap switches the sound on or off.
+ * One sound of the Ambience tab as a card, with two pages. The front is dark and quiet while the
+ * sound is off, and when it is on has its own little weather (an {@link AmbienceScene} clipped to
+ * the card) glowing under an icon disc, a tinted border and an intensity slider that fades in; a
+ * tap switches the sound on or off. The tune button flips the card to its second page: the
+ * intensity again, and the sound's own character slider (rain's surface, the fire's crackle, ...)
+ * with the words for its two ends, and Reset. Both pages follow the sound's fade, so the card
+ * brightens and dims along with what is heard.
  */
-public final class AmbienceCardView extends LinearLayout {
+public final class AmbienceCardView extends FrameLayout {
 	private static final ArgbEvaluator ARGB = new ArgbEvaluator();
 	private final AmbienceEffect fx;
 	private final AmbienceEngine engine = AmbienceEngine.get();
@@ -54,28 +57,40 @@ public final class AmbienceCardView extends LinearLayout {
 	private final Path clip = new Path();
 	private final GradientDrawable disc = new GradientDrawable();
 	private final GradientDrawable statePill = new GradientDrawable();
+	private final LinearLayout front;
+	private final LinearLayout tune;
 	private final ImageView icon;
 	private final TextView state;
 	private final TextView hint;
 	private final SeekBar bar;
+	private final SeekBar tuneLevel;
+	private final SeekBar tuneOption;
+	private final TextView tuneLevelValue;
+	private final TextView tuneOptionValue;
 	private Shader offShader, onShader;
 	private float fade;
 	private boolean attached;
 	private boolean lastOn;
+	private boolean tuning;
+	private boolean syncing;
 
 	public AmbienceCardView(Context ctx, AmbienceEffect fx) {
 		super(ctx);
 		this.fx = fx;
 		dp = ctx.getResources().getDisplayMetrics().density;
 		scene = new AmbienceScene(dp, 31L * (fx.ordinal() + 1));
-		setOrientation(VERTICAL);
 		setWillNotDraw(false);
 		setClickable(true);
 		setFocusable(true);
-		setPadding(px(16), px(14), px(16), px(10));
-		setMinimumHeight(px(158));
+		setMinimumHeight(px(172));
 		stroke.setStyle(Paint.Style.STROKE);
 		stroke.setStrokeWidth(dp * 1.5f);
+
+		// ---- Front page ----
+		front = new LinearLayout(ctx);
+		front.setOrientation(LinearLayout.VERTICAL);
+		front.setPadding(px(16), px(14), px(16), px(10));
+		addView(front, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 
 		LinearLayout top = new LinearLayout(ctx);
 		top.setGravity(Gravity.CENTER_VERTICAL);
@@ -84,78 +99,203 @@ public final class AmbienceCardView extends LinearLayout {
 		discHolder.setBackground(disc);
 		icon = new ImageView(ctx);
 		icon.setImageResource(fx.icon);
-		discHolder.addView(icon, new FrameLayout.LayoutParams(px(22), px(22), Gravity.CENTER));
-		top.addView(discHolder, new LayoutParams(px(42), px(42)));
-		View spacer = new View(ctx);
-		top.addView(spacer, new LayoutParams(0, 1, 1f));
+		discHolder.addView(icon, new LayoutParams(px(22), px(22), Gravity.CENTER));
+		top.addView(discHolder, new LinearLayout.LayoutParams(px(42), px(42)));
+		top.addView(new View(ctx), new LinearLayout.LayoutParams(0, 1, 1f));
 		state = text(ctx, 12, true);
 		state.setPadding(px(10), px(4), px(10), px(4));
 		statePill.setCornerRadius(px(12));
 		state.setBackground(statePill);
-		top.addView(state, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
-		addView(top, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+		top.addView(state, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+				LinearLayout.LayoutParams.WRAP_CONTENT));
+		front.addView(top, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+				LinearLayout.LayoutParams.WRAP_CONTENT));
 
 		TextView name = text(ctx, 17, true);
 		name.setText(fx.name);
-		LayoutParams nlp = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+		LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(
+				LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
 		nlp.topMargin = px(12);
-		addView(name, nlp);
+		front.addView(name, nlp);
 		TextView sub = text(ctx, 12.5f, false);
 		sub.setText(fx.subtitle);
 		sub.setTextColor(0xB3FFFFFF);
 		sub.setMaxLines(2);
-		addView(sub, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+		front.addView(sub, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+				LinearLayout.LayoutParams.WRAP_CONTENT));
+		front.addView(new View(ctx), new LinearLayout.LayoutParams(1, 0, 1f));
 
-		View grow = new View(ctx);
-		addView(grow, new LayoutParams(1, 0, 1f));
-		// The bottom line: a hint while off, the intensity slider once on (they cross-fade).
-		FrameLayout bottom = new FrameLayout(ctx);
+		// The bottom line: a hint while off, the intensity slider once on (they cross-fade), and the
+		// tune button at the end.
+		LinearLayout bottom = new LinearLayout(ctx);
+		bottom.setGravity(Gravity.CENTER_VERTICAL);
+		FrameLayout bottomMain = new FrameLayout(ctx);
 		hint = text(ctx, 12.5f, false);
 		hint.setText(R.string.ambience_tap_hint);
 		hint.setTextColor(0x99FFFFFF);
-		bottom.addView(hint, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT,
-				FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
-		bar = new SeekBar(ctx);
-		bar.setMax(100);
+		bottomMain.addView(hint, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT,
+				Gravity.CENTER_VERTICAL));
+		bar = newBar(ctx);
 		bar.setPadding(px(10), 0, px(10), 0);
-		bar.setProgressTintList(ColorStateList.valueOf(fx.tint));
-		bar.setThumbTintList(ColorStateList.valueOf(fx.tint));
-		bar.setProgressBackgroundTintList(ColorStateList.valueOf(0x40FFFFFF));
 		bar.setAlpha(0f);
 		bar.setEnabled(false);
-		bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+		bottomMain.addView(bar, new LayoutParams(LayoutParams.MATCH_PARENT, px(32), Gravity.CENTER_VERTICAL));
+		bottom.addView(bottomMain, new LinearLayout.LayoutParams(0, px(32), 1f));
+		ImageView tuneBtn = new ImageView(ctx);
+		tuneBtn.setImageResource(R.drawable.ambience_tune);
+		tuneBtn.setImageTintList(ColorStateList.valueOf(0xCCFFFFFF));
+		tuneBtn.setPadding(px(6), px(6), px(6), px(6));
+		tuneBtn.setBackground(roundFill(0x1FFFFFFF, 16));
+		tuneBtn.setClickable(true);
+		tuneBtn.setFocusable(true);
+		tuneBtn.setContentDescription(ctx.getString(R.string.ambience_tune_for, ctx.getString(fx.name)));
+		tuneBtn.setOnClickListener(v -> setTuning(true));
+		LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(px(32), px(32));
+		tlp.setMarginStart(px(6));
+		bottom.addView(tuneBtn, tlp);
+		LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
+				LinearLayout.LayoutParams.MATCH_PARENT, px(32));
+		blp.topMargin = px(6);
+		front.addView(bottom, blp);
+
+		// ---- Tune page ----
+		tune = new LinearLayout(ctx);
+		tune.setOrientation(LinearLayout.VERTICAL);
+		tune.setPadding(px(16), px(12), px(16), px(10));
+		tune.setClickable(true);
+		tune.setAlpha(0f);
+		tune.setVisibility(GONE);
+		addView(tune, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+
+		LinearLayout head = new LinearLayout(ctx);
+		head.setGravity(Gravity.CENTER_VERTICAL);
+		TextView title = text(ctx, 16, true);
+		title.setText(fx.name);
+		head.addView(title, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+		TextView reset = text(ctx, 12, true);
+		reset.setText(R.string.ambience_reset);
+		reset.setPadding(px(10), px(5), px(10), px(5));
+		reset.setBackground(roundFill(0x26FFFFFF, 12));
+		reset.setClickable(true);
+		reset.setFocusable(true);
+		reset.setOnClickListener(v -> {
+			engine.resetEffect(fx);
+			sync();
+		});
+		head.addView(reset, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+				LinearLayout.LayoutParams.WRAP_CONTENT));
+		ImageView close = new ImageView(ctx);
+		close.setImageResource(R.drawable.close_small);
+		close.setImageTintList(ColorStateList.valueOf(0xCCFFFFFF));
+		close.setPadding(px(4), px(4), px(4), px(4));
+		close.setClickable(true);
+		close.setFocusable(true);
+		close.setOnClickListener(v -> setTuning(false));
+		LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(px(30), px(30));
+		clp.setMarginStart(px(6));
+		head.addView(close, clp);
+		tune.addView(head, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, px(30)));
+
+		tuneLevelValue = text(ctx, 12, false);
+		tuneLevel = newBar(ctx);
+		addParam(ctx, ctx.getString(R.string.ambience_intensity), tuneLevelValue, tuneLevel, 8);
+		tuneOptionValue = text(ctx, 12, false);
+		tuneOption = newBar(ctx);
+		addParam(ctx, ctx.getString(fx.optName), tuneOptionValue, tuneOption, 6);
+		// The words for the two ends of the character slider.
+		LinearLayout ends = new LinearLayout(ctx);
+		TextView lo = text(ctx, 11, false);
+		lo.setText(fx.optLow);
+		lo.setTextColor(0x99FFFFFF);
+		TextView hi = text(ctx, 11, false);
+		hi.setText(fx.optHigh);
+		hi.setTextColor(0x99FFFFFF);
+		hi.setGravity(Gravity.END);
+		ends.setPadding(px(12), 0, px(12), 0);
+		ends.addView(lo, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+		ends.addView(hi, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+		tune.addView(ends, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+				LinearLayout.LayoutParams.WRAP_CONTENT));
+
+		SeekBar.OnSeekBarChangeListener levelListener = new BarListener() {
 			@Override
-			public void onProgressChanged(SeekBar s, int progress, boolean fromUser) {
-				if (!fromUser) return;
+			void onUser(int progress) {
 				engine.setIntensity(fx, progress);
-				updateState();
+				sync();
 			}
-
+		};
+		bar.setOnSeekBarChangeListener(levelListener);
+		tuneLevel.setOnSeekBarChangeListener(levelListener);
+		tuneOption.setOnSeekBarChangeListener(new BarListener() {
 			@Override
-			public void onStartTrackingTouch(SeekBar s) {
-			}
-
-			@Override
-			public void onStopTrackingTouch(SeekBar s) {
+			void onUser(int progress) {
+				engine.setOption(fx, progress);
+				sync();
 			}
 		});
-		bottom.addView(bar, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
-				px(32), Gravity.CENTER_VERTICAL));
-		LayoutParams blp = new LayoutParams(LayoutParams.MATCH_PARENT, px(32));
-		blp.topMargin = px(6);
-		addView(bottom, blp);
 
 		setOnClickListener(v -> {
+			if (tuning) return;
 			performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
 			engine.toggle(fx);
 			pop();
 		});
-		bar.setProgress(engine.getIntensity(fx));
 		lastOn = engine.isOn(fx);
 		hint.setAlpha(lastOn ? 0f : 1f);
 		bar.setAlpha(lastOn ? 1f : 0f);
 		bar.setEnabled(lastOn);
 		sync();
+	}
+
+	/** A slider that only reports what the user does (not what {@link #sync} sets). */
+	private abstract class BarListener implements SeekBar.OnSeekBarChangeListener {
+		abstract void onUser(int progress);
+
+		@Override
+		public void onProgressChanged(SeekBar s, int progress, boolean fromUser) {
+			if (fromUser && !syncing) onUser(progress);
+		}
+
+		@Override
+		public void onStartTrackingTouch(SeekBar s) {
+		}
+
+		@Override
+		public void onStopTrackingTouch(SeekBar s) {
+		}
+	}
+
+	private SeekBar newBar(Context ctx) {
+		SeekBar b = new SeekBar(ctx);
+		b.setMax(100);
+		b.setProgressTintList(ColorStateList.valueOf(fx.tint));
+		b.setThumbTintList(ColorStateList.valueOf(fx.tint));
+		b.setProgressBackgroundTintList(ColorStateList.valueOf(0x40FFFFFF));
+		return b;
+	}
+
+	/** A label and its value on one line, the slider under them. */
+	private void addParam(Context ctx, String label, TextView value, SeekBar b, int topMargin) {
+		LinearLayout row = new LinearLayout(ctx);
+		TextView l = text(ctx, 12, false);
+		l.setText(label);
+		l.setTextColor(0xCCFFFFFF);
+		row.addView(l, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+		value.setTextColor(0xCCFFFFFF);
+		row.addView(value);
+		LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+				LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+		rlp.topMargin = px(topMargin);
+		tune.addView(row, rlp);
+		b.setPadding(px(10), 0, px(10), 0);
+		tune.addView(b, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, px(26)));
+	}
+
+	private GradientDrawable roundFill(int color, float radiusDp) {
+		GradientDrawable g = new GradientDrawable();
+		g.setColor(color);
+		g.setCornerRadius(px(radiusDp));
+		return g;
 	}
 
 	private int px(float v) {
@@ -184,6 +324,26 @@ public final class AmbienceCardView extends LinearLayout {
 				.start();
 	}
 
+	/** Flips between the two pages: one fades and shrinks away while the other grows into place. */
+	private void setTuning(boolean on) {
+		if (tuning == on) return;
+		tuning = on;
+		View from = on ? front : tune;
+		View to = on ? tune : front;
+		from.animate().cancel();
+		to.animate().cancel();
+		to.setVisibility(VISIBLE);
+		to.setScaleX(on ? 1.04f : 0.96f);
+		to.setScaleY(on ? 1.04f : 0.96f);
+		to.setAlpha(0f);
+		to.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(240).start();
+		from.animate().alpha(0f).scaleX(on ? 0.96f : 1.04f).scaleY(on ? 0.96f : 1.04f).setDuration(200)
+				.withEndAction(() -> {
+					if (tuning == on) from.setVisibility(GONE);
+				}).start();
+		if (on) sync();
+	}
+
 	private void updateState() {
 		boolean on = engine.isOn(fx);
 		state.setText(on ? getContext().getString(R.string.ambience_state_on, engine.getIntensity(fx)) :
@@ -192,7 +352,7 @@ public final class AmbienceCardView extends LinearLayout {
 		setSelected(on);
 	}
 
-	/** The engine's state changed (this sound switched, the fade moved): everything is drawn again. */
+	/** The engine's state changed (this sound switched, a slider moved): everything is drawn again. */
 	private void sync() {
 		boolean on = engine.isOn(fx);
 		if (on != lastOn) {
@@ -200,8 +360,17 @@ public final class AmbienceCardView extends LinearLayout {
 			hint.animate().alpha(on ? 0f : 1f).setDuration(220).start();
 			bar.animate().alpha(on ? 1f : 0f).setDuration(260).start();
 			bar.setEnabled(on);
-			if (on) bar.setProgress(engine.getIntensity(fx));
 		}
+		// Both intensity sliders and the character one show what the engine holds.
+		syncing = true;
+		int level = engine.getIntensity(fx);
+		int option = engine.getOption(fx);
+		if (bar.getProgress() != level) bar.setProgress(level);
+		if (tuneLevel.getProgress() != level) tuneLevel.setProgress(level);
+		if (tuneOption.getProgress() != option) tuneOption.setProgress(option);
+		syncing = false;
+		tuneLevelValue.setText(getContext().getString(R.string.ambience_percent, level));
+		tuneOptionValue.setText(getContext().getString(R.string.ambience_percent, option));
 		updateState();
 		if (attached) clock.start();
 		invalidate();
@@ -287,7 +456,7 @@ public final class AmbienceCardView extends LinearLayout {
 		paint.setAlpha(Math.round(255 * fade));
 		c.drawRect(rect, paint);
 		paint.setShader(null);
-		if (animated() && (lv[fx.ordinal()] > 0.003f || scene.isActive(lv))) {
+		if (animated() && ((lv[fx.ordinal()] > 0.003f) || scene.isActive(lv))) {
 			scene.draw(c, w, h, lv);
 		}
 		c.restore();

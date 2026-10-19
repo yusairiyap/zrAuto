@@ -32,6 +32,9 @@ final class AmbienceSynth {
 			case OCEAN -> new Ocean();
 			case STREAM -> new Stream();
 			case DROPS -> new Drips();
+			case BUBBLES -> new Bubbles();
+			case CHIMES -> new Chimes();
+			case CAFE -> new Cafe();
 			case NIGHT -> new Night();
 			case BIRDS -> new Birds();
 		};
@@ -44,7 +47,8 @@ final class AmbienceSynth {
 
 	abstract static class Voice {
 		/** Writes {@code n} frames to {@code l} and {@code r} (replacing what was there). */
-		abstract void render(float[] l, float[] r, int n, float lv);
+		/** {@code opt}: the sound's own character slider, 0 to 1, 0.5 being how it was designed. */
+		abstract void render(float[] l, float[] r, int n, float lv, float opt);
 	}
 
 	/** xorshift32: white noise in -1..1 without the cost of java.util.Random. */
@@ -73,30 +77,32 @@ final class AmbienceSynth {
 	// ---------------------------------------------------------------------------------------------
 
 	static final class Rain extends Voice {
-		private static final float C_HI = coef(7000), C_LO = coef(700), C_ROAR = coef(250),
-				C_TICK = coef(2500);
+		private static final float C_LO = coef(700), C_ROAR = coef(250);
 		private final Rng rng = new Rng(0x1234567);
 		private float aL, bL, cL, tL, dropL, aR, bR, cR, tR, dropR;
 
 		@Override
-		void render(float[] l, float[] r, int n, float lv) {
+		void render(float[] l, float[] r, int n, float lv, float opt) {
 			float hiss = 0.12f + 0.19f * lv;
+			// Surface: soft leaves (dull hiss, faint ticks) to a hard roof (bright hiss, sharp ticks).
+			float cHi = coef(3500f + 7000f * opt), cTick = coef(1000f + 3000f * opt);
+			float tick = 0.1f + 0.5f * opt;
 			float rate = (40f + 900f * lv * lv) / SR;
 			for (int i = 0; i < n; i++) {
 				float nl = rng.next();
 				float nr = rng.next();
-				aL += C_HI * (nl - aL);
+				aL += cHi * (nl - aL);
 				bL += C_LO * (nl - bL);
 				cL += C_ROAR * (nl - cL);
-				tL += C_TICK * (nl - tL);
-				aR += C_HI * (nr - aR);
+				tL += cTick * (nl - tL);
+				aR += cHi * (nr - aR);
 				bR += C_LO * (nr - bR);
 				cR += C_ROAR * (nr - cR);
-				tR += C_TICK * (nr - tR);
+				tR += cTick * (nr - tR);
 				if (rng.unit() < rate) dropL = 0.4f + 0.6f * rng.unit();
 				if (rng.unit() < rate) dropR = 0.4f + 0.6f * rng.unit();
-				l[i] = (aL - bL) * hiss + cL * 1.0f + dropL * (nl - tL) * 0.35f;
-				r[i] = (aR - bR) * hiss + cR * 1.0f + dropR * (nr - tR) * 0.35f;
+				l[i] = (aL - bL) * hiss + cL * 1.0f + dropL * (nl - tL) * tick;
+				r[i] = (aR - bR) * hiss + cR * 1.0f + dropR * (nr - tR) * tick;
 				dropL *= 0.996f;
 				dropR *= 0.996f;
 			}
@@ -128,8 +134,9 @@ final class AmbienceSynth {
 			return (int) (SR * sec);
 		}
 
-		private void strike(float lv) {
-			float dist = rng.unit();
+		private void strike(float lv, float opt) {
+			// Distance: the slider sets where the storm is, each strike varies around it.
+			float dist = Math.max(0f, Math.min(1f, opt + (rng.unit() - 0.5f) * 0.6f));
 			delay = (int) (SR * (0.12f + 2.3f * dist));
 			peak = (0.4f + 0.6f * rng.unit()) * (1f - 0.5f * dist) * (0.55f + 0.45f * lv);
 			attack = peak / (SR * (0.25f + 0.5f * rng.unit()));
@@ -141,11 +148,11 @@ final class AmbienceSynth {
 		}
 
 		@Override
-		void render(float[] l, float[] r, int n, float lv) {
+		void render(float[] l, float[] r, int n, float lv, float opt) {
 			if (wait < 0) wait = nextWait(lv, true);
 			for (int i = 0; i < n; i++) {
 				if (state == 0) {
-					if (--wait <= 0) strike(lv);
+					if (--wait <= 0) strike(lv, opt);
 				} else if (state == 1) {
 					if (--delay <= 0) {
 						state = 2;
@@ -202,8 +209,8 @@ final class AmbienceSynth {
 		private int slowCnt;
 
 		@Override
-		void render(float[] l, float[] r, int n, float lv) {
-			float rate = (3f + 26f * lv) / SR;
+		void render(float[] l, float[] r, int n, float lv, float opt) {
+			float rate = (3f + 26f * lv) * (0.3f + 1.4f * opt) / SR;
 			float bedGain = 0.35f + 0.65f * lv;
 			for (int i = 0; i < n; i++) {
 				if (--slowCnt <= 0) {
@@ -268,7 +275,7 @@ final class AmbienceSynth {
 		private float cHi = coef(800), cLo = coef(250);
 
 		@Override
-		void render(float[] l, float[] r, int n, float lv) {
+		void render(float[] l, float[] r, int n, float lv, float opt) {
 			float strength = 0.35f + 0.65f * lv;
 			for (int i = 0; i < n; i++) {
 				if (--gustCnt <= 0) {
@@ -277,7 +284,7 @@ final class AmbienceSynth {
 				}
 				gust += 0.00004f * (gustT - gust);
 				if ((i & 63) == 0) {
-					float fc = 220f + 650f * gust + 250f * lv;
+					float fc = (220f + 650f * gust + 250f * lv) * (0.6f + 0.8f * opt);
 					cHi = coef(fc * 1.7f);
 					cLo = coef(fc * 0.55f);
 				}
@@ -308,6 +315,7 @@ final class AmbienceSynth {
 		private float sl, sr, bl, br;
 		private float cl = coef(900), cr = coef(900);
 		private float el, er;
+		private float pace = 1f;
 
 		Ocean() {
 			wl.ph = 0.3f;
@@ -318,7 +326,7 @@ final class AmbienceSynth {
 			w.ph += 1f / (w.per * SR);
 			if (w.ph >= 1f) {
 				w.ph = 0f;
-				w.per = 6.5f + 5f * rng.unit() - 2f * lv;
+				w.per = (6.5f + 5f * rng.unit() - 2f * lv) * pace;
 				w.peak = 0.55f + 0.45f * rng.unit();
 			}
 			float x = w.ph;
@@ -328,7 +336,8 @@ final class AmbienceSynth {
 		}
 
 		@Override
-		void render(float[] l, float[] r, int n, float lv) {
+		void render(float[] l, float[] r, int n, float lv, float opt) {
+			pace = 1.6f - 1.2f * opt;
 			float strength = (0.4f + 0.6f * lv) * 0.75f;
 			for (int i = 0; i < n; i++) {
 				el = envelope(wl, lv);
@@ -362,8 +371,9 @@ final class AmbienceSynth {
 		private float plinkEnv, plinkPhase, plinkFreq, plinkL, plinkR;
 
 		@Override
-		void render(float[] l, float[] r, int n, float lv) {
-			float gain = 1.0f * (0.4f + 0.6f * lv);
+		void render(float[] l, float[] r, int n, float lv, float opt) {
+			float gain = (0.4f + 0.6f * lv) * (0.7f + 0.6f * opt);
+			float flow = 0.6f + 0.8f * opt;
 			float plinkRate = (0.4f + 2.5f * lv * lv) / SR;
 			for (int i = 0; i < n; i++) {
 				p1 += TWO_PI * 3.1f / SR;
@@ -376,7 +386,7 @@ final class AmbienceSynth {
 						0.12f * (float) Math.sin(p3);
 				float ampR = 0.65f + 0.2f * (float) Math.sin(p1 + 2.1f) +
 						0.15f * (float) Math.sin(p2 + 4.2f) + 0.12f * (float) Math.sin(p3 + 1.3f);
-				if ((i & 63) == 0) cHi = coef(2200f + 1800f * ampL);
+				if ((i & 63) == 0) cHi = coef((2200f + 1800f * ampL) * flow);
 				float nl = rng.next();
 				float nr = rng.next();
 				hiL += cHi * (nl - hiL);
@@ -420,9 +430,11 @@ final class AmbienceSynth {
 		private float lpL, lpR;
 
 		@Override
-		void render(float[] l, float[] r, int n, float lv) {
+		void render(float[] l, float[] r, int n, float lv, float opt) {
 			float rate = (0.25f + 1.6f * lv) / SR;
 			float loud = 0.5f + 0.5f * lv;
+			// Echo: from a dry drip to a cavern (the feedback of the two delays).
+			float fb = 0.1f + 0.78f * opt;
 			for (int i = 0; i < n; i++) {
 				if (rng.unit() < rate) {
 					for (int k = 0; k < SLOTS; k++) {
@@ -450,16 +462,288 @@ final class AmbienceSynth {
 				// Each side's echo feeds itself through a low-pass, so the repeats soften as they go.
 				float dl = bufL[pL];
 				lpL += 0.3f * (dl - lpL);
-				float yl = xl + lpL * 0.5f;
+				float yl = xl + lpL * fb;
 				bufL[pL] = yl;
 				if (++pL >= bufL.length) pL = 0;
 				float dr = bufR[pR];
 				lpR += 0.3f * (dr - lpR);
-				float yr = xr + lpR * 0.5f;
+				float yr = xr + lpR * fb;
 				bufR[pR] = yr;
 				if (++pR >= bufR.length) pR = 0;
 				l[i] = yl;
 				r[i] = yr;
+			}
+		}
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Underwater: a deep muffled hum, with single bubbles and now and then a rush of rising ones.
+	// ---------------------------------------------------------------------------------------------
+
+	static final class Bubbles extends Voice {
+		private static final int SLOTS = 8;
+		private final Rng rng = new Rng(0xB0BB1E);
+		private final float[] ph = new float[SLOTS], freq = new float[SLOTS], env = new float[SLOTS],
+				rise = new float[SLOTS], panL = new float[SLOTS], panR = new float[SLOTS];
+		private int burst, burstWait;
+		private float bedL, bedR, lpL, lpR, swellPh;
+
+		private void spawn(float size, float lv) {
+			for (int k = 0; k < SLOTS; k++) {
+				if (env[k] > 0.001f) continue;
+				ph[k] = 0f;
+				freq[k] = (250f + 900f * rng.unit()) * size;
+				rise[k] = 1.00012f + 0.00015f * rng.unit();
+				env[k] = (0.12f + 0.2f * rng.unit()) * (0.5f + 0.5f * lv);
+				float pan = rng.unit();
+				panL[k] = 1f - 0.7f * pan;
+				panR[k] = 0.3f + 0.7f * pan;
+				return;
+			}
+		}
+
+		@Override
+		void render(float[] l, float[] r, int n, float lv, float opt) {
+			// Depth: shallow water is bright and bubbly, deep water low and muffled.
+			float size = 1.6f - 1.2f * opt;
+			float cut = coef(3800f - 2600f * opt);
+			float bed = 0.5f + 1.0f * opt;
+			float rate = (0.5f + 3.0f * lv) / SR;
+			float clusterRate = (0.1f + 0.8f * lv) / SR;
+			swellPh += TWO_PI * 0.09f * n / SR;
+			if (swellPh > TWO_PI) swellPh -= TWO_PI;
+			float swell = 0.7f + 0.3f * (float) Math.sin(swellPh);
+			for (int i = 0; i < n; i++) {
+				if (rng.unit() < rate) spawn(size, lv);
+				if (burst > 0) {
+					if (--burstWait <= 0) {
+						spawn(size, lv);
+						burst--;
+						burstWait = (int) (SR * (0.025f + 0.07f * rng.unit()));
+					}
+				} else if (rng.unit() < clusterRate) {
+					burst = 3 + (int) (rng.unit() * 5f);
+					burstWait = 0;
+				}
+				float xl = 0f, xr = 0f;
+				for (int k = 0; k < SLOTS; k++) {
+					if (env[k] <= 0.001f) continue;
+					ph[k] += TWO_PI * freq[k] / SR;
+					if (ph[k] > TWO_PI) ph[k] -= TWO_PI;
+					freq[k] *= rise[k];
+					float s = (float) Math.sin(ph[k]) * env[k];
+					env[k] *= 0.9993f;
+					xl += s * panL[k];
+					xr += s * panR[k];
+				}
+				bedL = bedL * 0.998f + rng.next() * 0.02f;
+				bedR = bedR * 0.998f + rng.next() * 0.02f;
+				lpL += cut * (xl + bedL * 0.5f * bed * swell - lpL);
+				lpR += cut * (xr + bedR * 0.5f * bed * swell - lpR);
+				l[i] = lpL;
+				r[i] = lpR;
+			}
+		}
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Wind chimes: strikes in small runs on a pentatonic set of tubes. Each tube rings with three
+	// bar-chime partials (1, 2.76 and 5.4 times the pitch) that die away at their own pace, made by
+	// rotating a point round a circle (no sine per sample).
+	// ---------------------------------------------------------------------------------------------
+
+	static final class Chimes extends Voice {
+		private static final int SLOTS = 6, PARTS = 3;
+		private static final float[] NOTES = {587f, 659f, 784f, 880f, 988f, 1175f, 1319f};
+		private static final float[] RATIO = {1f, 2.76f, 5.40f};
+		private static final float[] WEIGHT = {1f, 0.45f, 0.2f};
+		private static final float[] TAU = {3.2f, 1.5f, 0.6f};
+		private final Rng rng = new Rng(0xC41E5);
+		private final float[] px = new float[SLOTS * PARTS], py = new float[SLOTS * PARTS],
+				rc = new float[SLOTS * PARTS], rs = new float[SLOTS * PARTS],
+				amp = new float[SLOTS * PARTS], dec = new float[SLOTS * PARTS];
+		private final float[] panL = new float[SLOTS], panR = new float[SLOTS];
+		private int burst, burstWait;
+
+		private void strike(float pitch, float lv) {
+			int slot = 0;
+			float lowest = Float.MAX_VALUE;
+			for (int k = 0; k < SLOTS; k++) {
+				float a = amp[k * PARTS];
+				if (a < lowest) {
+					lowest = a;
+					slot = k;
+				}
+			}
+			float note = NOTES[(int) (rng.unit() * (NOTES.length - 0.01f))] * pitch;
+			float vel = (0.5f + 0.5f * rng.unit()) * 0.11f * (0.5f + 0.5f * lv);
+			for (int p = 0; p < PARTS; p++) {
+				int idx = slot * PARTS + p;
+				float f = note * RATIO[p];
+				if (f > 9000f) {
+					amp[idx] = 0f;
+					continue;
+				}
+				float w = TWO_PI * f / SR;
+				rc[idx] = (float) Math.cos(w);
+				rs[idx] = (float) Math.sin(w);
+				px[idx] = 1f;
+				py[idx] = 0f;
+				amp[idx] = vel * WEIGHT[p];
+				dec[idx] = (float) Math.exp(-1.0 / (TAU[p] * SR));
+			}
+			float pan = rng.unit();
+			panL[slot] = 1f - 0.7f * pan;
+			panR[slot] = 0.3f + 0.7f * pan;
+		}
+
+		@Override
+		void render(float[] l, float[] r, int n, float lv, float opt) {
+			// Bells: deep and slow to bright and glassy, by shifting every tube's pitch.
+			float pitch = 0.5f + 1.0f * opt;
+			float rate = (0.12f + 0.9f * lv) / SR;
+			for (int i = 0; i < n; i++) {
+				if ((burst == 0) && (rng.unit() < rate)) {
+					burst = 1 + (int) (rng.unit() * 3.99f);
+					burstWait = 0;
+				}
+				if ((burst > 0) && (--burstWait <= 0)) {
+					strike(pitch, lv);
+					burst--;
+					burstWait = (int) (SR * (0.07f + 0.22f * rng.unit()));
+				}
+				float sl = 0f, sr = 0f;
+				for (int k = 0; k < SLOTS; k++) {
+					float t = 0f;
+					for (int p = 0; p < PARTS; p++) {
+						int idx = k * PARTS + p;
+						float a = amp[idx];
+						if (a <= 0.00005f) continue;
+						float nx = px[idx] * rc[idx] - py[idx] * rs[idx];
+						float ny = px[idx] * rs[idx] + py[idx] * rc[idx];
+						px[idx] = nx;
+						py[idx] = ny;
+						t += ny * a;
+						amp[idx] = a * dec[idx];
+					}
+					sl += t * panL[k];
+					sr += t * panR[k];
+				}
+				l[i] = sl;
+				r[i] = sr;
+			}
+		}
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Cozy café: a crowd of talkers (noise through two moving formant bands, switched on and off in
+	// syllables with pauses between), a low room hum, and cups clinking now and then; all of it
+	// softened by a low-pass so it stays in the background.
+	// ---------------------------------------------------------------------------------------------
+
+	static final class Cafe extends Voice {
+		private static final int TALKERS = 7, CLINKS = 3;
+		private static final float C_WARM = coef(4500);
+
+		private static final class Talker {
+			float a1, b1, a2, b2, c1h, c1l, c2h, c2l, env, envT, g, panL, panR;
+			int count;
+		}
+
+		private final Rng rng = new Rng(0xCAFE);
+		private final Talker[] talkers = new Talker[TALKERS];
+		private final float[] cph = new float[CLINKS * 2], cfr = new float[CLINKS * 2],
+				cenv = new float[CLINKS], cpl = new float[CLINKS], cpr = new float[CLINKS];
+		private float roomL, roomR, warmL, warmR;
+
+		Cafe() {
+			for (int k = 0; k < TALKERS; k++) {
+				Talker t = new Talker();
+				t.g = 0.7f + 0.6f * rng.unit();
+				float pan = (k + 0.5f) / TALKERS;
+				t.panL = 1f - 0.8f * pan;
+				t.panR = 0.2f + 0.8f * pan;
+				t.count = (int) (rng.unit() * SR * 0.4f);
+				talkers[k] = t;
+			}
+		}
+
+		private void nextSyllable(Talker t) {
+			if (rng.unit() < 0.22f) {
+				t.envT = 0f;
+				t.count = (int) (SR * (0.25f + 0.9f * rng.unit()));
+				return;
+			}
+			t.envT = 0.35f + 0.65f * rng.unit();
+			t.count = (int) (SR * (0.10f + 0.20f * rng.unit()));
+			float f1 = 350f + 450f * rng.unit();
+			float f2 = 1000f + 1400f * rng.unit();
+			t.c1h = coef(f1 * 1.4f);
+			t.c1l = coef(f1 * 0.7f);
+			t.c2h = coef(f2 * 1.4f);
+			t.c2l = coef(f2 * 0.7f);
+		}
+
+		@Override
+		void render(float[] l, float[] r, int n, float lv, float opt) {
+			// Crowd: a quiet corner (two talkers, rare clinks) to a busy room (all seven).
+			int active = 2 + Math.round(opt * 5f);
+			float clinkRate = (0.15f + 1.2f * opt) * (0.5f + 0.5f * lv) / SR;
+			float chatter = 0.45f + 0.55f * lv;
+			for (int i = 0; i < n; i++) {
+				float sl = 0f, sr = 0f;
+				for (int k = 0; k < TALKERS; k++) {
+					Talker t = talkers[k];
+					if (--t.count <= 0) nextSyllable(t);
+					float target = (k < active) ? t.envT : 0f;
+					t.env += 0.0009f * (target - t.env);
+					if ((t.env < 0.002f) && (target == 0f)) continue;
+					float nz = rng.next();
+					t.a1 += t.c1h * (nz - t.a1);
+					t.b1 += t.c1l * (nz - t.b1);
+					t.a2 += t.c2h * (nz - t.a2);
+					t.b2 += t.c2l * (nz - t.b2);
+					float s = ((t.a1 - t.b1) + 0.6f * (t.a2 - t.b2)) * t.env * t.g * 2.2f * chatter;
+					sl += s * t.panL;
+					sr += s * t.panR;
+				}
+				roomL = roomL * 0.998f + rng.next() * 0.02f;
+				roomR = roomR * 0.998f + rng.next() * 0.02f;
+				sl += roomL * 0.15f;
+				sr += roomR * 0.15f;
+				if (rng.unit() < clinkRate) {
+					for (int c = 0; c < CLINKS; c++) {
+						if (cenv[c] > 0.001f) continue;
+						float base = 2400f + 3200f * rng.unit();
+						cfr[c * 2] = base;
+						cfr[c * 2 + 1] = base * (2.3f + 0.6f * rng.unit());
+						cph[c * 2] = 0f;
+						cph[c * 2 + 1] = 0f;
+						cenv[c] = 0.05f + 0.07f * rng.unit();
+						float pan = rng.unit();
+						cpl[c] = 1f - 0.8f * pan;
+						cpr[c] = 0.2f + 0.8f * pan;
+						break;
+					}
+				}
+				for (int c = 0; c < CLINKS; c++) {
+					if (cenv[c] <= 0.001f) continue;
+					float s = 0f;
+					for (int p = 0; p < 2; p++) {
+						int idx = c * 2 + p;
+						cph[idx] += TWO_PI * cfr[idx] / SR;
+						if (cph[idx] > TWO_PI) cph[idx] -= TWO_PI;
+						s += (float) Math.sin(cph[idx]) * (p == 0 ? 1f : 0.6f);
+					}
+					s *= cenv[c];
+					cenv[c] *= 0.9993f;
+					sl += s * cpl[c];
+					sr += s * cpr[c];
+				}
+				warmL += C_WARM * (sl - warmL);
+				warmR += C_WARM * (sr - warmR);
+				l[i] = warmL;
+				r[i] = warmR;
 			}
 		}
 	}
@@ -496,8 +780,9 @@ final class AmbienceSynth {
 		}
 
 		@Override
-		void render(float[] l, float[] r, int n, float lv) {
+		void render(float[] l, float[] r, int n, float lv, float opt) {
 			int count = 1 + (int) (lv * 3.99f);
+			float pm = 0.85f + 0.3f * opt;
 			float dt = 1f / SR;
 			for (int i = 0; i < n; i++) {
 				float nl = rng.next();
@@ -518,7 +803,7 @@ final class AmbienceSynth {
 					if (!c.on || (c.t >= c.burst)) continue;
 					float p = (float) Math.sin(TWO_PI * c.pulseRate * c.t);
 					if (p <= 0f) continue;
-					c.ph += TWO_PI * c.freq / SR;
+					c.ph += TWO_PI * c.freq * pm / SR;
 					if (c.ph > TWO_PI) c.ph -= TWO_PI;
 					float env = (float) Math.sin(Math.PI * c.t / c.burst) * p;
 					float s = (float) Math.sin(c.ph) * env * c.amp;
@@ -549,6 +834,7 @@ final class AmbienceSynth {
 		private final Rng rng = new Rng(0xB1D5);
 		private final Bird[] birds = new Bird[BIRDS];
 		private float airL, airR;
+		private float busy = 1f;
 
 		Birds() {
 			for (int k = 0; k < BIRDS; k++) {
@@ -558,7 +844,7 @@ final class AmbienceSynth {
 		}
 
 		private int nextWait(float lv) {
-			return (int) (SR * (7f - 5.5f * lv) * (0.5f + rng.unit()));
+			return (int) (SR * (7f - 5.5f * lv) * (0.5f + rng.unit()) * busy);
 		}
 
 		private void startNote(Bird b) {
@@ -570,8 +856,10 @@ final class AmbienceSynth {
 		}
 
 		@Override
-		void render(float[] l, float[] r, int n, float lv) {
+		void render(float[] l, float[] r, int n, float lv, float opt) {
 			float loud = 0.4f + 0.6f * lv;
+			// Chorus: a few lone calls to a busy dawn.
+			busy = 1.5f - 1.0f * opt;
 			for (int i = 0; i < n; i++) {
 				float nl = rng.next();
 				float nr = rng.next();
