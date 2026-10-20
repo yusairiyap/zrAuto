@@ -572,6 +572,13 @@ public class MainActivityDelegate extends ActivityDelegate
 		}
 
 		String showAddon = getPrefs().getShowAddonOnStartPref();
+		// Nothing picked to start on: Home, unless the user turned that off (then the old way, where
+		// the app was left).
+		if ((showAddon == null) && getPrefs().getBooleanPref(MainActivityPrefs.HOME_OPEN_ON_START)) {
+			showFragment(R.id.home_fragment);
+			checkUpdates();
+			return;
+		}
 		if (showAddon != null) {
 			int fragId = NavBarMediator.nameToFragmentId(showAddon);
 
@@ -603,6 +610,15 @@ public class MainActivityDelegate extends ActivityDelegate
 			showFragment(R.id.folders_fragment);
 			setContentLoading(f);
 		}
+	}
+
+	/**
+	 * Goes back to what was last played, the way the app used to start: a YouTube video or a Music tab
+	 * track where it was left off, else the library item's tab. Used by Home's player.
+	 */
+	public FutureSupplier<Boolean> continueLastPlayed() {
+		return resumeLastPlayed().then(resumed ->
+				Boolean.TRUE.equals(resumed) ? completed(true) : goToCurrent());
 	}
 
 	/**
@@ -1375,7 +1391,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * theme's windowLightStatusBar already sets them. Not on the car screen, whose status bar
 	 * belongs to the car.
 	 */
-	private void matchStatusBarToBackground() {
+	public void matchStatusBarToBackground() {
 		if (isCarActivity()) return;
 		TypedArray ta = getContext().obtainStyledAttributes(
 				new int[]{android.R.attr.colorBackground});
@@ -2327,7 +2343,9 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	protected ActivityFragment createFragment(int id) {
-		if (id == R.id.folders_fragment) {
+		if (id == R.id.home_fragment) {
+			return new me.aap.fermata.ui.fragment.HomeFragment();
+		} else if (id == R.id.folders_fragment) {
 			return new FoldersFragment();
 		} else if (id == R.id.favorites_fragment) {
 			return new FavoritesFragment();
@@ -2836,6 +2854,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Override
 	public void onBackPressed() {
 		if (me.aap.fermata.ui.welcome.WelcomeWizard.onBack()) return;
+		if (me.aap.fermata.ui.home.HomeModal.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.ShareSheet.dismissOpen()) return;
 		if (PlaylistPicker.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.YoutubeAlternativesPicker.dismissOpen()) return;

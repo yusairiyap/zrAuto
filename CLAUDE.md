@@ -452,6 +452,63 @@ provider doesn't offer a folder to pick, so Drive is manual only.
 - **None of this has run on a device yet** (no emulator in the cloud session). If sound is silent, choppy or the weather
   looks wrong, look for `AMBIENCE` lines in the Diagnostic log first.
 
+## Home tab and its widgets
+
+`ui/home/` + `ui/fragment/HomeFragment`. Home is **built into the nav bar** (name `"home"` in `NavBarMediator`, like
+folders/favorites/playlists; not an addon) and is the start page: `MainActivityDelegate#defaultIntent` opens it when no
+"open on start" tab is set and `HOME_OPEN_ON_START` is on (Settings > Home). The old "resume what played last" start is now
+the media widget's **Continue** chip (`MainActivityDelegate#continueLastPlayed`). Action `OPEN_HOME` (end of the enum) is in
+the FAB list, All in One and key bindings. Settings > Home (`SettingsFragment#addHomePrefs`) holds the page-wide settings;
+what each widget shows is set on the widget (edit mode > its gear).
+
+- **Pieces.** `HomeFragment` only passes its lifecycle to `HomeScreen`, which builds everything in code in the Music palette
+  (`HomePalette`): `HomeBackgroundView` (picture or gradient), a `ScrollView` or `HorizontalScrollView` holding the
+  `HomeGridLayout`, the greeting, the pinned edit chip bar (top right) and the status bar handling. `HomeScreen` is the
+  `HomeHost` widgets talk to. No XML layouts on purpose.
+- **Model** (`HomeModel`, JSON in `MainActivityPrefs.HOME_LAYOUT`, null = the default set): an *ordered list of cells*, each a
+  stack of widgets of one size (w x h grid units). Only the order is stored; `HomeGridLayout` packs the cells first-fit along
+  the scrolling direction, so one layout fits phone, tablet and car screen. Scrolling down = fixed columns, sideways = fixed
+  rows (`HOME_ARRANGE`; by default sideways only in landscape under 600dp high). Widget type keys are saved: never rename one.
+- **Edit mode** (chip top right, or a long press on any widget, or Settings > Home > Edit widgets): a hold of ~170 ms picks a
+  widget up (a swipe still scrolls); the others glide aside (position FLIP animation in `onLayout`, sizes get a bounce);
+  dropping on the middle of a cell of the *same size* stacks them (`canStack`); handles: remove (top left, with Undo), gear
+  (top right) and resize (bottom right). All of it is in `HomeGridLayout`/`HomeCellView`; touches are caught in
+  `HomeCellView#dispatchTouchEvent` *before* the children (so a button under the finger doesn't matter).
+- **Stacks** (`HomeStackView`): swipe sideways to switch; dots show on swipe and fade after 1.8 s (always in edit/car mode);
+  car mode gets prev/next buttons. Hidden stack members are `INVISIBLE`, which is also what deactivates them.
+- **Options**: `HomeWidgetView#getOptions` (switch / choice / slider / button, `HomeOption`) after the common Look and Title.
+  The panel is shown *inside the card* when it is 3x2 or bigger, else in a `HomeModal` card over the page (same rows,
+  `HomeOptionsPanel`). Values live in the widget's JSON (`optInt/optBool/optString`, written with `setOpt`).
+- **Look**: `STYLE_SOLID` (theme card), `STYLE_GLASS` (dark translucent), `STYLE_COLOUR` (the widget type's accent); "Same as
+  Home" follows `HOME_CARD_STYLE`. Text/icon colours come from `color(ROLE_*)`; views made with `text()/icon()/iconButton()/
+  chip()/header()` re-tint themselves when the look changes. Widgets that paint their whole card (media, ambience) override
+  `ownBackground()` and stay white.
+- **Chrome that hides**: the tool bar fades out (`HomeFragment.HomeToolBarMediator`), the control panel is *covered*
+  (`ControlPanelView#setCovered`, the fade the YouTube search panel already uses, not suppressed, so the floating buttons stay),
+  the background runs under the status bar through `BehindBarsLayers` (Android 15+) and the status bar takes the picture's top
+  colour before that (`HomeScreen#systemBars`, restored with `MainActivityDelegate#matchStatusBarToBackground`).
+- **Background**: `HomeBackground` copies the picked picture (system picker, no permission) to `files/home_bg.jpg`, shrunk to
+  1600 px; `HOME_BG_VERSION` only says it changed. Blur is a small copy drawn large again (no RenderScript). Not in backups.
+- **Car mode**: `CarNav#findScope` treats `HomeFragment` as a scope, which finds every visible view *with a click listener*.
+  So: every control needs a click listener (the helpers add one), and **never put a click listener on a whole card or a row that
+  contains other controls** (it would swallow them: split the row into separate clickable parts, as `LibraryWidget` does).
+
+### Adding a widget (the easy path)
+
+1. Write `ui/home/widget/FooWidget extends HomeWidgetView` (constructor `(HomeHost, HomeWidgetType)`). Build views in
+   `onCreate(FrameLayout content)`, fill them in `onBind()`, listen to data only between `onActive()` and `onInactive()`,
+   adapt to the size in `onResized`/`isCompact()`/`isLarge()`/`getCellsW()`/`getCellsH()` (and the height in
+   `onSizeChanged` for "how many rows fit"), list settings in `getOptions()`, run app actions with `host.run(Action)`,
+   open tabs with `open(id)`. For a grid of round icons extend `TileWidget` (implement `tabId()` and `fill()`); for a list of
+   library rows extend `LibraryWidget` (implement `fetch()`).
+2. Register it in `widget/HomeWidgets` (key, name, description, icon, accent, min/default/max size, optional `available`).
+3. Add `home_w_<key>` and `home_w_<key>_d` (and any texts) to `values/home.xml`. Nothing else: the add list, options panel,
+   look, stacking, resizing, saving and car mode come with the base class. If it needs an addon, show `note(...)` when off.
+
+Never run on a device from the cloud session. The **live video** is *not* drawn inside the media widget: the YouTube WebView
+lives in its own tab and moving or resizing it restarts the player, so the large media widget shows the video's poster
+picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) that go to the real player.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

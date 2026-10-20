@@ -94,6 +94,10 @@ public class NavBarMediator extends PrefNavBarMediator
 		for (String name : names) {
 			if (hidden.contains(name)) continue;
 			switch (name) {
+				case "home":
+					items.add(create(ctx, R.id.home_fragment, R.drawable.home, R.string.home,
+							items.size() < max));
+					continue;
 				case "folders":
 					items.add(
 							create(ctx, R.id.folders_fragment, me.aap.utils.R.drawable.folder, R.string.folders,
@@ -366,8 +370,10 @@ public class NavBarMediator extends PrefNavBarMediator
 
 	private static Collection<String> getLayout(PreferenceStore ps, Pref<Supplier<String[]>> p) {
 		AddonManager amgr = FermataApplication.get().getAddonManager();
-		Set<String> names = newLinkedHashSet(BuildConfig.ADDONS.length + 4);
+		Set<String> names = newLinkedHashSet(BuildConfig.ADDONS.length + 5);
 		String[] pref = ps.getStringArrayPref(p);
+		// Home leads, unless the saved order (from before it existed, or placed by the user) says otherwise.
+		if (!java.util.Arrays.asList(pref).contains("home")) names.add("home");
 		CollectionUtils.addAll(names, pref);
 		names.add("folders");
 		names.add("favorites");
@@ -434,6 +440,8 @@ public class NavBarMediator extends PrefNavBarMediator
 
 	public static CharSequence getTabTitle(Context ctx, String name) {
 		switch (name) {
+			case "home":
+				return ctx.getString(R.string.home);
 			case "folders":
 				return ctx.getString(R.string.folders);
 			case "favorites":
@@ -448,6 +456,8 @@ public class NavBarMediator extends PrefNavBarMediator
 	@DrawableRes
 	public static int getTabIcon(String name) {
 		switch (name) {
+			case "home":
+				return R.drawable.home;
 			case "folders":
 				return me.aap.utils.R.drawable.folder;
 			case "favorites":
@@ -467,6 +477,8 @@ public class NavBarMediator extends PrefNavBarMediator
 	@IdRes
 	public static int nameToFragmentId(String name) {
 		switch (name) {
+			case "home":
+				return R.id.home_fragment;
 			case "folders":
 				return R.id.folders_fragment;
 			case "favorites":
@@ -479,7 +491,8 @@ public class NavBarMediator extends PrefNavBarMediator
 	}
 
 	private static String idToName(@IdRes int id) {
-		if (id == R.id.folders_fragment) return "folders";
+		if (id == R.id.home_fragment) return "home";
+		else if (id == R.id.folders_fragment) return "folders";
 		else if (id == R.id.favorites_fragment) return "favorites";
 		else if (id == R.id.playlists_fragment) return "playlists";
 		else if (id == R.id.menu) return "menu";

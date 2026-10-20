@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The Home tab and its widgets. -->
+    <string name="home">Home</string>
+    <string name="action_open_home">Open Home</string>
+    <string name="home_edit">Edit Home</string>
+    <string name="home_add">Add</string>
+    <string name="home_add_widget">Add a widget</string>
+    <string name="home_done">Done</string>
+    <string name="home_background">Background</string>
+    <string name="home_empty">Nothing here yet. Add a widget to make this page yours.</string>
+    <string name="home_widget_off">Turn on its addon in Settings to add this</string>
+    <string name="home_open">Open</string>
+    <string name="home_remove">Remove</string>
+    <string name="home_removed">%1$s removed</string>
+    <string name="home_undo">Undo</string>
+    <string name="home_options">Options</string>
+    <string name="home_resize">Resize</string>
+    <string name="home_unstack">Take out of the stack</string>
+    <string name="home_stacked">Stacked, %1$d widgets. Swipe it sideways to switch.</string>
+    <string name="home_stack_prev">Previous widget</string>
+    <string name="home_stack_next">Next widget</string>
+    <string name="home_refresh">Refresh</string>
+    <string name="home_tracks">%1$d tracks</string>
+
+    <string name="home_greet_night">Good night</string>
+    <string name="home_greet_morning">Good morning</string>
+    <string name="home_greet_afternoon">Good afternoon</string>
+    <string name="home_greet_evening">Good evening</string>
+
+    <!-- Background -->
+    <string name="home_bg_hint">Pick a picture from your phone. It is copied into the app, so it stays even if the original is deleted.</string>
+    <string name="home_bg_choose">Choose a picture</string>
+    <string name="home_bg_remove">Remove</string>
+    <string name="home_bg_dim">Darken</string>
+    <string name="home_bg_blur">Blur</string>
+    <string name="home_bg_set">Background set</string>
+    <string name="home_bg_failed">Could not use that picture: %1$s</string>
+
+    <!-- Options common to every widget -->
+    <string name="home_opt_style">Look</string>
+    <string name="home_opt_title">Show the title</string>
+    <string name="home_style_auto">Same as Home</string>
+    <string name="home_style_solid">Solid</string>
+    <string name="home_style_glass">Glass</string>
+    <string name="home_style_colour">Colour</string>
+
+    <!-- Widget names and what they do -->
+    <string name="home_w_media">Now playing</string>
+    <string name="home_w_media_d">The player: cover, play, previous, next and a seek bar</string>
+    <string name="home_w_pages">Pages</string>
+    <string name="home_w_pages_d">Round icons for every page of the navigation bar</string>
+    <string name="home_w_favorites">Favorites</string>
+    <string name="home_w_favorites_d">The first few favorites, one tap to play</string>
+    <string name="home_w_playlists">Playlists</string>
+    <string name="home_w_playlists_d">Your playlists with their sizes</string>
+    <string name="home_w_bookmarks">Bookmarks</string>
+    <string name="home_w_bookmarks_d">Places you marked in tracks and videos</string>
+    <string name="home_w_fuel">Fuel</string>
+    <string name="home_w_fuel_d">Distance of this trip and the last refuel</string>
+    <string name="home_w_data">Data usage</string>
+    <string name="home_w_data_d">How much data the app used this cycle</string>
+    <string name="home_w_power">Power usage</string>
+    <string name="home_w_power_d">The battery current, live, with a graph</string>
+    <string name="home_w_lyrics">Lyrics</string>
+    <string name="home_w_lyrics_d">The line being sung, following the song</string>
+    <string name="home_w_youtube">YouTube suggestions</string>
+    <string name="home_w_youtube_d">Videos picked for what you are playing</string>
+    <string name="home_w_aio">All in One</string>
+    <string name="home_w_aio_d">The All in One actions as round icons</string>
+    <string name="home_w_ambience">Ambience</string>
+    <string name="home_w_ambience_d">Rain, fire, waves and more, with the weather drawn live</string>
+
+    <!-- Widget options -->
+    <string name="home_opt_artwork">Show pictures</string>
+    <string name="home_opt_order">Show</string>
+    <string name="home_order_first">The first ones</string>
+    <string name="home_order_latest">The latest added</string>
+    <string name="home_opt_seek">Show the seek bar</string>
+    <string name="home_opt_video_chip">Show the video button</string>
+    <string name="home_opt_labels">Names under the icons</string>
+    <string name="home_labels_auto">By size</string>
+    <string name="home_labels_show">Always</string>
+    <string name="home_labels_hide">Never</string>
+    <string name="home_opt_colourful">Colourful icons</string>
+    <string name="home_opt_settings_tile">Include Settings</string>
+    <string name="home_opt_hidden_tabs">Include pages hidden from the bar</string>
+    <string name="home_opt_text_size">Text size</string>
+    <string name="home_size_auto">By size</string>
+    <string name="home_size_small">Small</string>
+    <string name="home_size_large">Large</string>
+    <string name="home_opt_based_on">Based on</string>
+    <string name="home_yt_playing">What plays now</string>
+    <string name="home_yt_trending">Trending music</string>
+    <string name="home_yt_chill">Chill music</string>
+    <string name="home_yt_hits">Top hits</string>
+    <string name="home_opt_shortcuts">Sound shortcuts</string>
+    <string name="home_opt_pick_sounds">Pick the sounds</string>
+    <string name="home_opt_show_timer">Show the timer</string>
+    <string name="home_pick_sounds_hint">The sounds that get a round shortcut on the card, in this order.</string>
+
+    <!-- Widget texts -->
+    <string name="home_favorites_empty">No favorites yet</string>
+    <string name="home_playlists_empty">No playlists yet</string>
+    <string name="home_bookmarks_empty">No bookmarks yet. Add one from a track or video menu.</string>
+    <string name="home_media_idle">Nothing playing</string>
+    <string name="home_media_idle_sub">Pick something to play</string>
+    <string name="home_media_video">VIDEO</string>
+    <string name="home_media_continue">Continue</string>
+    <string name="home_media_fullscreen">Fullscreen</string>
+    <string name="home_media_watch">Watch</string>
+    <string name="home_media_open_music">Music</string>
+    <string name="home_media_open_library">Library</string>
+    <string name="home_fuel_trip">Current trip</string>
+    <string name="home_fuel_last">Last refuel</string>
+    <string name="home_fuel_none">No refuel yet</string>
+    <string name="home_fuel_off">Turn on the Fuel Log addon to see this</string>
+    <string name="home_data_off">Turn on the Data usage addon to see this</string>
+    <string name="home_data_of_pct">of %1$s · %2$d%%</string>
+    <string name="home_power_off">Turn on the Power usage addon to see this</string>
+    <string name="home_power_unit">mA</string>
+    <string name="home_power_unsupported">This device does not report its battery current</string>
+    <string name="home_power_left">%1$s left</string>
+    <string name="home_power_full_in">full in %1$s</string>
+    <string name="home_lyrics_idle">Play a YouTube song to see its lyrics here</string>
+    <string name="home_lyrics_loading">Finding the lyrics…</string>
+    <string name="home_lyrics_none">This video has no lyrics</string>
+    <string name="home_lyrics_failed">The lyrics could not be loaded</string>
+    <string name="home_yt_off">YouTube is not installed</string>
+    <string name="home_yt_loading">Looking for videos…</string>
+    <string name="home_yt_none">No suggestions found</string>
+    <string name="home_yt_failed">Could not reach YouTube</string>
+    <string name="home_ambience_off">Turn on the Ambience addon to use this</string>
+
+    <!-- Settings > Home -->
+    <string name="home_pref_sub">Widgets, background and the start page</string>
+    <string name="home_pref_open_on_start">Start on Home</string>
+    <string name="home_pref_open_on_start_sub">Open the app on Home, unless a page is set to open on start</string>
+    <string name="home_pref_edit">Edit widgets</string>
+    <string name="home_pref_edit_sub">Add, move, resize and stack widgets, and set up each one</string>
+    <string name="home_pref_bg_sub">From your phone</string>
+    <string name="home_pref_style">Widget look</string>
+    <string name="home_pref_arrange">Arrangement</string>
+    <string name="home_arrange_auto">By the screen\'s shape</string>
+    <string name="home_arrange_down">Scroll down</string>
+    <string name="home_arrange_side">Scroll sideways</string>
+    <string name="home_pref_columns">Widgets across</string>
+    <string name="home_pref_columns_sub">How many units fit across (down, when scrolling sideways); 0 fits the screen</string>
+    <string name="home_pref_gap">Space between widgets</string>
+    <string name="home_pref_greeting">Greeting</string>
+    <string name="home_pref_greeting_sub">The greeting and the date above the widgets</string>
+    <string name="home_pref_animate">Animations</string>
+    <string name="home_pref_animate_sub">Widgets rising in, the stack dots and the bounce on resize</string>
+    <string name="home_pref_reset">Reset the widgets</string>
+    <string name="home_pref_reset_sub">Back to the ones a fresh install has</string>
+    <string name="home_pref_reset_question">All your widgets and their settings are replaced by the default ones.</string>
+    <string name="home_pref_reset_done">Home is back to the default widgets</string>
+</resources>

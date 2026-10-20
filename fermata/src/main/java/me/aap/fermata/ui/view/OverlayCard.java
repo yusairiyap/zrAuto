@@ -13,7 +13,7 @@ import me.aap.utils.ui.UiUtils;
  * horizontally in the very middle of the screen -- the same distance from both edges, however the
  * side navigation bar's pill sits -- and vertically in the room the tab has, between the bars.
  */
-final class OverlayCard {
+public final class OverlayCard {
 	private static final int MAX_WIDTH_DP = 420;
 
 	private OverlayCard() {
@@ -23,7 +23,7 @@ final class OverlayCard {
 	 * @param host    the full-window view the overlay is added to
 	 * @param rowsH   the height the card's rows need, in pixels; capped to most of the room it has
 	 */
-	static FrameLayout.LayoutParams params(MainActivityDelegate a, ViewGroup host, int rowsH) {
+	public static FrameLayout.LayoutParams params(MainActivityDelegate a, ViewGroup host, int rowsH) {
 		int hostW = host.getWidth();
 		int hostH = host.getHeight();
 		int[] side = new int[2];

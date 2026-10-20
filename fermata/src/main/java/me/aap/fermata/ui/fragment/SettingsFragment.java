@@ -406,6 +406,8 @@ public class SettingsFragment extends MainActivityFragment
 		PreferenceSet sub1;
 		PreferenceSet sub2;
 
+		addHomePrefs(a, set);
+
 		interfaceSet = sub1 = set.subSet(o -> {
 			o.title = R.string.interface_prefs;
 			o.subtitle = R.string.prefs_sub_interface;
@@ -1249,6 +1251,120 @@ public class SettingsFragment extends MainActivityFragment
 	}
 
 	/** Interface &gt; Navigation tabs: its own page, rows to drag into order (see {@link NavTabsFragment}). */
+	/**
+	 * Settings > Home: the start page's own settings -- whether the app opens on it, the edit mode,
+	 * the background picture, how the widgets look and are laid out. (What each widget shows is set
+	 * on the widget itself, from Home's edit mode.)
+	 */
+	private static void addHomePrefs(MainActivityDelegate a, PreferenceSet parent) {
+		MainActivityPrefs ps = a.getPrefs();
+		Context ctx = a.getContext();
+		PreferenceSet sub = parent.subSet(o -> {
+			o.title = R.string.home;
+			o.subtitle = R.string.home_pref_sub;
+			o.icon = R.drawable.home;
+		});
+		sub.addBooleanPref(o -> {
+			o.store = ps;
+			o.pref = MainActivityPrefs.HOME_OPEN_ON_START;
+			o.title = R.string.home_pref_open_on_start;
+			o.subtitle = R.string.home_pref_open_on_start_sub;
+		});
+		sub.addButton(o -> {
+			o.title = R.string.home_pref_edit;
+			o.subtitle = R.string.home_pref_edit_sub;
+			o.icon = R.drawable.edit;
+			o.onClick = () -> {
+				me.aap.fermata.ui.home.HomeScreen.editOnNextShow();
+				a.showFragment(R.id.home_fragment);
+			};
+		});
+		sub.addButton(o -> {
+			o.title = R.string.home_bg_choose;
+			o.subtitle = R.string.home_pref_bg_sub;
+			o.icon = R.drawable.home_image;
+			o.onClick = () -> me.aap.fermata.ui.home.HomeScreen.pickBackground(a);
+		});
+		sub.addButton(o -> {
+			o.title = R.string.home_bg_remove;
+			o.icon = R.drawable.delete;
+			o.onClick = () -> me.aap.fermata.ui.home.HomeScreen.clearBackground(a);
+		});
+		sub.addIntPref(o -> {
+			o.store = ps;
+			o.pref = MainActivityPrefs.HOME_BG_DIM;
+			o.title = R.string.home_bg_dim;
+			o.seekMin = 0;
+			o.seekMax = 80;
+			o.seekScale = 1;
+		});
+		sub.addIntPref(o -> {
+			o.store = ps;
+			o.pref = MainActivityPrefs.HOME_BG_BLUR;
+			o.title = R.string.home_bg_blur;
+			o.seekMin = 0;
+			o.seekMax = 100;
+			o.seekScale = 1;
+		});
+		sub.addListPref(o -> {
+			o.store = ps;
+			o.pref = MainActivityPrefs.HOME_CARD_STYLE;
+			o.title = R.string.home_pref_style;
+			o.subtitle = R.string.string_format;
+			o.formatSubtitle = true;
+			o.values = new int[]{R.string.home_style_solid, R.string.home_style_glass,
+					R.string.home_style_colour};
+		});
+		sub.addListPref(o -> {
+			o.store = ps;
+			o.pref = MainActivityPrefs.HOME_ARRANGE;
+			o.title = R.string.home_pref_arrange;
+			o.subtitle = R.string.string_format;
+			o.formatSubtitle = true;
+			o.values = new int[]{R.string.home_arrange_auto, R.string.home_arrange_down,
+					R.string.home_arrange_side};
+		});
+		sub.addIntPref(o -> {
+			o.store = ps;
+			o.pref = MainActivityPrefs.HOME_COLUMNS;
+			o.title = R.string.home_pref_columns;
+			o.subtitle = R.string.home_pref_columns_sub;
+			o.seekMin = 0;
+			o.seekMax = 8;
+			o.seekScale = 1;
+		});
+		sub.addIntPref(o -> {
+			o.store = ps;
+			o.pref = MainActivityPrefs.HOME_GAP;
+			o.title = R.string.home_pref_gap;
+			o.seekMin = 4;
+			o.seekMax = 20;
+			o.seekScale = 1;
+		});
+		sub.addBooleanPref(o -> {
+			o.store = ps;
+			o.pref = MainActivityPrefs.HOME_GREETING;
+			o.title = R.string.home_pref_greeting;
+			o.subtitle = R.string.home_pref_greeting_sub;
+		});
+		sub.addBooleanPref(o -> {
+			o.store = ps;
+			o.pref = MainActivityPrefs.HOME_ANIMATE;
+			o.title = R.string.home_pref_animate;
+			o.subtitle = R.string.home_pref_animate_sub;
+		});
+		sub.addButton(o -> {
+			o.title = R.string.home_pref_reset;
+			o.subtitle = R.string.home_pref_reset_sub;
+			o.icon = R.drawable.refresh;
+			o.onClick = () -> UiUtils.showQuestion(ctx, R.string.home_pref_reset, R.string.home_pref_reset_question,
+					R.drawable.home).onSuccess(v -> {
+				ps.removePref(MainActivityPrefs.HOME_LAYOUT);
+				TopToast.show(R.drawable.home, R.string.home_pref_reset_done);
+			});
+		});
+	}
+
 	private static void addNavTabsPrefs(MainActivityDelegate a, PreferenceSet parent) {
 		parent.addButton(o -> {
 			o.title = R.string.nav_tabs_prefs;

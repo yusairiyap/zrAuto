@@ -60,7 +60,7 @@ import me.aap.utils.ui.menu.OverlayMenuView;
  * </ul>
  * What's "on top", first match wins: an open menu, picker or panel ({@link #markScope} - the
  * YouTube search / Up next panel, the Music tab's queue, the add to playlist / download pickers, every
- * overlay menu), else a Favorites / Playlists / Folders / Downloads list. Anywhere else, and with car
+ * overlay menu), else a Favorites / Playlists / Folders / Downloads list or the Home tab's widgets. Anywhere else, and with car
  * mode off, the keys do what they're bound to.
  * <p>
  * A web page (the YouTube tab's, the browser's; not fullscreen, and not under an open panel, which
@@ -404,7 +404,8 @@ public final class CarNav {
 		if (overlaysOnly) return null;
 		ActivityFragment f = a.getActiveFragment();
 		if ((f instanceof MediaLibFragment) || (f instanceof DownloadsFragment) ||
-				(f instanceof SettingsFragment) || (f instanceof AudioEffectsFragment)) {
+				(f instanceof SettingsFragment) || (f instanceof AudioEffectsFragment) ||
+				(f instanceof me.aap.fermata.ui.fragment.HomeFragment)) {
 			View v = f.getView();
 			if ((v != null) && v.isShown()) return new Scope(a, v, null, f);
 		}
