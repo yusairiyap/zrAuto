@@ -129,7 +129,6 @@ public class SettingsFragment extends MainActivityFragment
 	@Nullable
 	private PreferenceSet keyBindingsSet;
 	@Nullable
-	@Nullable
 	private PreferenceSet interfaceSet;
 	@Nullable
 	private PreferenceSet aaInterfaceSet;
