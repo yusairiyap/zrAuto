@@ -38,6 +38,7 @@
     <string name="home_bg_failed">Could not use that picture: %1$s</string>
 
     <!-- Options common to every widget -->
+    <string name="home_opt_lyrics_scrub">Scrub and tap lines to seek</string>
     <string name="home_opt_auto">Automatic</string>
     <string name="home_opt_power_view">Show</string>
     <string name="home_opt_power_meter">Meter</string>
@@ -187,6 +188,28 @@
     <string name="home_pref_columns">Widgets across</string>
     <string name="home_pref_columns_sub">How many units fit across (down, when scrolling sideways); 0 fits the screen</string>
     <string name="home_pref_gap">Space between widgets</string>
+    <string name="home_settings">Home settings</string>
+    <string name="home_settings_hint">What is the same on every screen comes first. Under the pills are each screen\'s own settings: its widgets, how they are laid out and its header.</string>
+    <string name="home_settings_tab_phone">Phone</string>
+    <string name="home_settings_tab_aa">Android Auto</string>
+    <string name="home_settings_reset">Reset Home settings</string>
+    <string name="home_settings_reset_question">Every Home setting goes back to how a fresh install has it. The widgets are kept; each screen has its own button to reset those.</string>
+    <string name="home_sec_general">General</string>
+    <string name="home_sec_background">Background</string>
+    <string name="home_sec_greeting_words">Greeting words</string>
+    <string name="home_sec_screens">Each screen</string>
+    <string name="home_sec_layout">Layout</string>
+    <string name="home_sec_header">Header</string>
+    <string name="home_sec_widgets">Widgets</string>
+    <string name="home_pref_style_sub">How every widget\'s card looks; none is lit while a widget has a look of its own</string>
+    <string name="home_pref_bg_source_sub">A picture from the phone, or the blurred cover of what plays</string>
+    <string name="home_bg_remove_sub">Back to the plain background</string>
+    <string name="home_bg_dim_sub">How much the picture is darkened</string>
+    <string name="home_bg_blur_sub">How much the picture is blurred</string>
+    <string name="home_pref_arrange_sub">Scrolling down or sideways, or by the screen\'s shape</string>
+    <string name="home_pref_gap_sub">The room between cards</string>
+    <string name="home_set_edit_on_car">The car screen\'s widgets are edited on the car screen, from its edit button.</string>
+    <string name="home_set_edit_on_phone">This screen\'s widgets are edited on the phone, from its edit button.</string>
     <string name="home_pref_greet_morning">Morning greeting</string>
     <string name="home_pref_greet_afternoon">Afternoon greeting</string>
     <string name="home_pref_greet_evening">Evening greeting</string>

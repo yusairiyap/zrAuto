@@ -112,6 +112,11 @@ public interface MainActivityPrefs
 	Pref<IntSupplier> HOME_COLUMNS = Pref.i("HOME_COLUMNS", 0);
 	Pref<IntSupplier> HOME_GAP = Pref.i("HOME_GAP", 10);
 	Pref<BooleanSupplier> HOME_GREETING = Pref.b("HOME_GREETING", true);
+	/** The car screen's own arrangement, spacing and greeting switch (its widgets are HOME_LAYOUT_AA). */
+	Pref<IntSupplier> HOME_ARRANGE_AA = Pref.i("HOME_ARRANGE_AA", 0);
+	Pref<IntSupplier> HOME_COLUMNS_AA = Pref.i("HOME_COLUMNS_AA", 0);
+	Pref<IntSupplier> HOME_GAP_AA = Pref.i("HOME_GAP_AA", 10);
+	Pref<BooleanSupplier> HOME_GREETING_AA = Pref.b("HOME_GREETING_AA", true);
 	/** What the greeting says in the morning, afternoon, evening and night; empty keeps the built-in words. */
 	Pref<Supplier<String>> HOME_GREET_MORNING = Pref.s("HOME_GREET_MORNING", (String) null);
 	Pref<Supplier<String>> HOME_GREET_AFTERNOON = Pref.s("HOME_GREET_AFTERNOON", (String) null);

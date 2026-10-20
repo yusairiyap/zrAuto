@@ -159,7 +159,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 				() -> HomePickers.showBackground(this));
 		editChips[2] = pillChip(R.drawable.settings, R.string.settings, false, () -> {
 			a.exitVideoMode();
-			a.showFragment(R.id.settings_fragment, me.aap.fermata.ui.fragment.SettingsFragment.SHOW_HOME_SETTINGS);
+			a.showFragment(R.id.home_settings_fragment, car() ? me.aap.fermata.ui.fragment.HomeSettingsFragment.AA_FROM_HOME :
+					me.aap.fermata.ui.fragment.HomeSettingsFragment.PHONE_FROM_HOME);
 		});
 		editChips[3] = pillChip(R.drawable.done, R.string.home_done, true, () -> setEditing(false));
 		chipBar.addView(editBtn);
@@ -386,6 +387,11 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		bgShown(1f);
 	}
 
+	/** Whether this is the car screen: it has its own layout, spacing, greeting switch and top overlay switch. */
+	private boolean car() {
+		return a.isCarActivity();
+	}
+
 	/** Fades the picture layer (the plain gradient under it stays). */
 	private void bgShown(float f) {
 		float c = Math.max(0f, Math.min(1f, f));
@@ -479,11 +485,13 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			updateEmpty();
 		}
 		if (changed.contains(MainActivityPrefs.HOME_ARRANGE) || changed.contains(MainActivityPrefs.HOME_COLUMNS) ||
-				changed.contains(MainActivityPrefs.HOME_GAP)) {
+				changed.contains(MainActivityPrefs.HOME_GAP) || changed.contains(MainActivityPrefs.HOME_ARRANGE_AA) ||
+				changed.contains(MainActivityPrefs.HOME_COLUMNS_AA) || changed.contains(MainActivityPrefs.HOME_GAP_AA)) {
 			applyArrangement();
 		}
 		if (changed.contains(MainActivityPrefs.HOME_CARD_STYLE)) grid.restyle();
-		if (changed.contains(MainActivityPrefs.HOME_GREETING) || changed.contains(MainActivityPrefs.HOME_GREET_MORNING) ||
+		if (changed.contains(MainActivityPrefs.HOME_GREETING) || changed.contains(MainActivityPrefs.HOME_GREETING_AA) ||
+				changed.contains(MainActivityPrefs.HOME_GREET_MORNING) ||
 				changed.contains(MainActivityPrefs.HOME_GREET_AFTERNOON) ||
 				changed.contains(MainActivityPrefs.HOME_GREET_EVENING) || changed.contains(MainActivityPrefs.HOME_GREET_NIGHT)) {
 			applyGreeting();
@@ -606,15 +614,16 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		if ((w == 0) || (h == 0)) return;
 		Context ctx = palette.ctx;
 		float d = ctx.getResources().getDisplayMetrics().density;
-		int mode = prefs.getIntPref(MainActivityPrefs.HOME_ARRANGE);
+		int mode = prefs.getIntPref(car() ? MainActivityPrefs.HOME_ARRANGE_AA : MainActivityPrefs.HOME_ARRANGE);
 		boolean landscape = w > h;
 		boolean down = (mode == 1) || ((mode == 0) && !(landscape && ((h / d) < 600)));
-		int count = prefs.getIntPref(MainActivityPrefs.HOME_COLUMNS);
+		int count = prefs.getIntPref(car() ? MainActivityPrefs.HOME_COLUMNS_AA : MainActivityPrefs.HOME_COLUMNS);
 		if (count <= 0) {
 			count = down ? Math.max(4, Math.min(8, (int) (w / d / 90f))) : Math.max(2, Math.min(5, (int) (h / d / 105f)));
 		}
 		count = down ? Math.max(2, Math.min(8, count)) : Math.max(2, Math.min(5, count));
-		int gap = HomeUi.dp(ctx, Math.max(4, Math.min(20, prefs.getIntPref(MainActivityPrefs.HOME_GAP))));
+		int gap = HomeUi.dp(ctx, Math.max(4, Math.min(20,
+				prefs.getIntPref(car() ? MainActivityPrefs.HOME_GAP_AA : MainActivityPrefs.HOME_GAP))));
 		if ((scroller == null) || (down != vertical)) buildScroller(down);
 		int side = HomeUi.dp(ctx, 12);
 		if (vertical) grid.setPadding(side, 0, side, HomeUi.dp(ctx, 16));
@@ -753,7 +762,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	private int insetTarget;
 
 	private void applyGreeting() {
-		boolean show = prefs.getBooleanPref(MainActivityPrefs.HOME_GREETING);
+		boolean show = prefs.getBooleanPref(car() ? MainActivityPrefs.HOME_GREETING_AA : MainActivityPrefs.HOME_GREETING);
 		greeting.setVisibility(show ? View.VISIBLE : View.GONE);
 		if (!show) {
 			applyTopInfo();
@@ -801,7 +810,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	private void applyTopInfo() {
 		boolean want = !editing && prefs.getBooleanPref(a.isCarActivity() ? MainActivityPrefs.HOME_TOP_OVERLAY_AA :
 				MainActivityPrefs.HOME_TOP_OVERLAY);
-		boolean any = want && HomeInfo.apply(a, topInfo);
+		boolean any = want && HomeInfo.apply(a, topInfo, 0.85f);
 		topInfo.setVisibility(any ? View.VISIBLE : View.GONE);
 		if (!any) return;
 		int fg = bg.hasImage() ? 0xFFFFFFFF : palette.textPrimary;

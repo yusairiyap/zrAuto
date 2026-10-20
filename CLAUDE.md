@@ -610,7 +610,7 @@ what each widget shows is set on the widget (edit mode > its gear).
 
 - **The car screen has its own widgets**: `MainActivityPrefs.HOME_LAYOUT_AA`, the same JSON as `HOME_LAYOUT`; `HomeModel(prefs, car)` picks
   the pref (and its default set, `DEFAULT_TYPES_AA`) from `a.isCarActivity()`, and nothing is shared between the two. It is edited on the car
-  screen (edit mode works there too); Settings > Home has "Copy these widgets to Android Auto" and "Reset the Android Auto widgets".
+  screen (edit mode works there too); Settings > Home (its Android Auto pill) has "Copy these widgets to Android Auto" and "Reset the Android Auto widgets".
 - **Now playing**: the play button's spinner (busy, buffering, just skipped) is wanted and stays; the spinners that were *not* wanted
   were the card's corner one (gone) and the page-centre one (below). The seek bar also asks the *engine* for position and duration (`MediaWidget#pollEngine`): the session's state and the item's metadata
   lag or lack both for YouTube, which left the bar frozen and not answering touches (a touch needs a length). `tick()` removes its own
@@ -648,6 +648,19 @@ what each widget shows is set on the widget (edit mode > its gear).
 - **Ambience alone**: with "Pause with playback" the ambience is held only when music that *was playing* pauses or stops
   (`AmbienceAddon#wasPlaying`); the session repeats "paused"/"stopped" while nothing plays, and each repeat used to hold an ambience that had
   just been started on its own into silence. Held/released is in the Diagnostic log (AMBIENCE).
+
+### Eighth round (Home settings page, info overlay fit, lyrics scrub option)
+
+- **Settings > Home is a page of its own** (`ui/fragment/HomeSettingsFragment`, id `home_settings_fragment`, a `ReorderListFragment` with no rows, like
+  `PowerSettingsFragment`): what holds on every screen (open on start, animation, widget look, background, the greeting's words) is
+  listed first with no group around it; under two pills (Phone / Android Auto) are each screen's own settings, with their `*_AA` twins:
+  layout (`HOME_ARRANGE`, `HOME_COLUMNS`, `HOME_GAP`), header (`HOME_GREETING`, `HOME_TOP_OVERLAY`) and widgets (edit, copy, reset). `HomeScreen`
+  picks the twin from `a.isCarActivity()`. The row helpers (`addValueSliderRow`, `addChoiceRow`, `addActionRow`) now live in
+  `ReorderListFragment` for both pages. Settings has only a button for it; its Back goes to Home when it was opened from Home's chips.
+- **Info overlay widget**: chips a little smaller than the Music tab's (`HomeInfo.apply(.., factor)`), smaller still under 130dp of card, and placed
+  by hand (top-left pivot, pushed down to the middle) when scaled, so a two-line set of chips never overflows the card.
+- **Lyrics widget** has a "Scrub and tap lines to seek" switch (`scrub`); off, the view is not interactive and the card claims no
+  gestures, so the page scrolls over it.
 
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 

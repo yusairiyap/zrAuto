@@ -690,4 +690,136 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 	protected final int dp(int v) {
 		return Math.round(v * density);
 	}
+
+	// ---- Rows shared by the option pages (Power, Home) ----
+
+	/** A slider with its title, a line under it and the value on the right, from {@code min} to {@code max}. */
+	protected final void addValueSliderRow(LinearLayout parent, @StringRes int title, @StringRes int sub, int min,
+																 int max, java.util.function.IntSupplier get, java.util.function.IntConsumer set,
+																 java.util.function.IntFunction<String> format,
+																 @Nullable java.util.function.BooleanSupplier enabled) {
+		LinearLayout row = new LinearLayout(palette);
+		row.setOrientation(LinearLayout.VERTICAL);
+		row.setPadding(dp(16), dp(12), dp(16), dp(6));
+		row.setBackground(rounded(tileFill, 16));
+		LinearLayout top = new LinearLayout(palette);
+		top.setOrientation(LinearLayout.HORIZONTAL);
+		top.addView(text(title, 15, textPrimary, true), new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		TextView value = text(0, 14, textSecondary, true);
+		top.addView(value);
+		row.addView(top);
+		row.addView(text(sub, 12.5f, textSecondary, false));
+		SeekBar bar = newSeekBar();
+		bar.setMax(max - min);
+		bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+			@Override
+			public void onProgressChanged(SeekBar s, int progress, boolean fromUser) {
+				value.setText(format.apply(min + progress));
+				if (fromUser) {
+					set.accept(min + progress);
+					for (Runnable r : syncers) r.run();
+				}
+			}
+
+			@Override
+			public void onStartTrackingTouch(SeekBar s) {
+			}
+
+			@Override
+			public void onStopTrackingTouch(SeekBar s) {
+			}
+		});
+		row.addView(bar, new LinearLayout.LayoutParams(MATCH_PARENT, dp(36)));
+		syncers.add(() -> {
+			boolean usable = (enabled == null) || enabled.getAsBoolean();
+			int progress = Math.max(0, Math.min(max - min, get.getAsInt() - min));
+			if (bar.getProgress() != progress) bar.setProgress(progress);
+			else value.setText(format.apply(min + progress));
+			bar.setEnabled(usable);
+			row.setAlpha(usable ? 1f : 0.45f);
+		});
+		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		lp.topMargin = dp(10);
+		parent.addView(row, lp);
+	}
+
+	/** A title and a line under it over a row of options, the picked one filled with the accent. */
+	protected final void addChoiceRow(LinearLayout parent, @StringRes int title, @StringRes int sub, int[] labels,
+														java.util.function.IntSupplier get, java.util.function.IntConsumer set) {
+		LinearLayout row = new LinearLayout(palette);
+		row.setOrientation(LinearLayout.VERTICAL);
+		row.setPadding(dp(16), dp(12), dp(16), dp(14));
+		row.setBackground(rounded(tileFill, 16));
+		row.addView(text(title, 15, textPrimary, true));
+		TextView st = text(sub, 12.5f, textSecondary, false);
+		st.setPadding(0, 0, 0, dp(10));
+		row.addView(st);
+		LinearLayout chips = new LinearLayout(palette);
+		chips.setOrientation(LinearLayout.HORIZONTAL);
+		TextView[] views = new TextView[labels.length];
+		Runnable refresh = () -> {
+			int sel = get.getAsInt();
+			for (int i = 0; i < views.length; i++) {
+				boolean on = i == sel;
+				views[i].setTextColor(on ? onAccent : textPrimary);
+				((GradientDrawable) views[i].getTag(R.id.settings_row_tag))
+						.setColor(on ? accent : 0x1F808080);
+			}
+		};
+		for (int i = 0; i < labels.length; i++) {
+			int fi = i;
+			TextView t = text(labels[i], 13.5f, textPrimary, true);
+			t.setGravity(Gravity.CENTER);
+			t.setSingleLine(true);
+			t.setPadding(dp(6), dp(10), dp(6), dp(10));
+			GradientDrawable fill = rounded(0x1F808080, 14);
+			t.setTag(R.id.settings_row_tag, fill);
+			t.setBackground(pressable(fill));
+			t.setClickable(true);
+			t.setFocusable(true);
+			t.setOnClickListener(v -> {
+				set.accept(fi);
+				for (Runnable r : syncers) r.run();
+			});
+			views[i] = t;
+			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f);
+			lp.setMargins((i == 0) ? 0 : dp(3), 0, (i == labels.length - 1) ? 0 : dp(3), 0);
+			chips.addView(t, lp);
+		}
+		row.addView(chips);
+		syncers.add(refresh);
+		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		lp.topMargin = dp(10);
+		parent.addView(row, lp);
+	}
+
+	/** A row that does something when tapped: an icon, a title with a line under it, and a chevron. */
+	protected final void addActionRow(LinearLayout parent, @StringRes int title, @StringRes int sub, @DrawableRes int icon,
+														Runnable click) {
+		LinearLayout row = new LinearLayout(palette);
+		row.setOrientation(LinearLayout.HORIZONTAL);
+		row.setGravity(Gravity.CENTER_VERTICAL);
+		row.setPadding(dp(16), dp(12), dp(12), dp(12));
+		row.setBackground(pressable(rounded(tileFill, 16)));
+		row.setClickable(true);
+		row.setFocusable(true);
+		ImageView iv = new ImageView(palette);
+		iv.setImageResource(icon);
+		iv.setImageTintList(ColorStateList.valueOf(accent));
+		row.addView(iv, new LinearLayout.LayoutParams(dp(22), dp(22)));
+		LinearLayout labels = new LinearLayout(palette);
+		labels.setOrientation(LinearLayout.VERTICAL);
+		labels.setPadding(dp(14), 0, dp(8), 0);
+		labels.addView(text(title, 15, textPrimary, true));
+		labels.addView(text(sub, 12.5f, textSecondary, false));
+		row.addView(labels, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		ImageView chevron = new ImageView(palette);
+		chevron.setImageResource(me.aap.utils.R.drawable.chevron_right);
+		chevron.setImageTintList(ColorStateList.valueOf(textSecondary));
+		row.addView(chevron, new LinearLayout.LayoutParams(dp(24), dp(24)));
+		row.setOnClickListener(v -> click.run());
+		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		lp.topMargin = dp(10);
+		parent.addView(row, lp);
+	}
 }

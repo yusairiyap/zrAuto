@@ -112,7 +112,6 @@ public class SettingsFragment extends MainActivityFragment
 	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Secondary/Tertiary FAB settings subsection. */
 	public static final Object SHOW_FAB_SETTINGS = "fab_settings";
 	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Home page. */
-	public static final Object SHOW_HOME_SETTINGS = "home_settings";
 	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Key bindings page. */
 	public static final Object SHOW_KEY_BINDINGS = "key_bindings";
 	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Interface page. */
@@ -130,7 +129,6 @@ public class SettingsFragment extends MainActivityFragment
 	@Nullable
 	private PreferenceSet keyBindingsSet;
 	@Nullable
-	private PreferenceSet homeSet;
 	@Nullable
 	private PreferenceSet interfaceSet;
 	@Nullable
@@ -179,8 +177,6 @@ public class SettingsFragment extends MainActivityFragment
 		} else if ((pendingInput instanceof String s) && s.startsWith(ADDON_SETTINGS)) {
 			PreferenceSet p = addonSettingsSets.get(s.substring(ADDON_SETTINGS.length()));
 			if (p != null) adapter.setPreferenceSet(p);
-		} else if ((pendingInput == SHOW_HOME_SETTINGS) && (homeSet != null)) {
-			adapter.setPreferenceSet(homeSet);
 		} else if ((pendingInput == SHOW_KEY_BINDINGS) && (keyBindingsSet != null)) {
 			adapter.setPreferenceSet(keyBindingsSet);
 		} else if ((pendingInput == SHOW_INTERFACE) && (interfaceSet != null)) {
@@ -1258,191 +1254,14 @@ public class SettingsFragment extends MainActivityFragment
 	}
 
 	/** Interface &gt; Navigation tabs: its own page, rows to drag into order (see {@link NavTabsFragment}). */
-	/**
-	 * Settings > Home: the start page's own settings -- whether the app opens on it, the edit mode,
-	 * the background picture, how the widgets look and are laid out. (What each widget shows is set
-	 * on the widget itself, from Home's edit mode.)
-	 */
-	private static final PreferenceStore.Pref<me.aap.utils.function.IntSupplier> HOME_STYLE_VIEW =
-			PreferenceStore.Pref.i("HOME_STYLE_VIEW", 0);
-
 	private void addHomePrefs(MainActivityDelegate a, PreferenceSet parent) {
-		MainActivityPrefs ps = a.getPrefs();
-		Context ctx = a.getContext();
-		PreferenceSet sub = parent.subSet(o -> {
+		// Home has a settings page of its own (HomeSettingsFragment), in the look of the Power settings.
+		parent.addButton(o -> {
 			o.title = R.string.home;
 			o.subtitle = R.string.home_pref_sub;
 			o.icon = R.drawable.home_page;
-		});
-		homeSet = sub;
-		sub.addBooleanPref(o -> {
-			o.store = ps;
-			o.pref = MainActivityPrefs.HOME_OPEN_ON_START;
-			o.title = R.string.home_pref_open_on_start;
-			o.subtitle = R.string.home_pref_open_on_start_sub;
-		});
-		sub.addButton(o -> {
-			o.title = R.string.home_pref_edit;
-			o.subtitle = R.string.home_pref_edit_sub;
-			o.icon = R.drawable.edit;
-			o.onClick = () -> {
-				me.aap.fermata.ui.home.HomeScreen.editOnNextShow();
-				a.showFragment(R.id.home_fragment);
-			};
-		});
-		sub.addListPref(o -> {
-			o.store = ps;
-			o.pref = MainActivityPrefs.HOME_BG_SOURCE;
-			o.title = R.string.home_pref_bg_source;
-			o.subtitle = R.string.string_format;
-			o.formatSubtitle = true;
-			o.values = new int[]{R.string.home_bg_source_picture, R.string.home_bg_source_cover};
-		});
-		sub.addButton(o -> {
-			o.title = R.string.home_bg_choose;
-			o.subtitle = R.string.home_pref_bg_sub;
-			o.icon = R.drawable.home_image;
-			o.onClick = () -> me.aap.fermata.ui.home.HomeScreen.pickBackground(a);
-		});
-		sub.addButton(o -> {
-			o.title = R.string.home_bg_remove;
-			o.icon = R.drawable.delete;
-			o.onClick = () -> me.aap.fermata.ui.home.HomeScreen.clearBackground(a);
-		});
-		sub.addIntPref(o -> {
-			o.store = ps;
-			o.pref = MainActivityPrefs.HOME_BG_DIM;
-			o.title = R.string.home_bg_dim;
-			o.seekMin = 0;
-			o.seekMax = 80;
-			o.seekScale = 1;
-		});
-		sub.addIntPref(o -> {
-			o.store = ps;
-			o.pref = MainActivityPrefs.HOME_BG_BLUR;
-			o.title = R.string.home_bg_blur;
-			o.seekMin = 0;
-			o.seekMax = 100;
-			o.seekScale = 1;
-		});
-		sub.addListPref(o -> {
-			// Shows Custom while some widget has a look of its own; picking a look sets every widget.
-			int shown = me.aap.fermata.ui.home.HomeScreen.styleShown(ps);
-			BasicPreferenceStore vps = new BasicPreferenceStore();
-			vps.applyIntPref(HOME_STYLE_VIEW, shown);
-			vps.addBroadcastListener((s, p) -> {
-				int v = vps.getIntPref(HOME_STYLE_VIEW);
-				if (v <= 2) me.aap.fermata.ui.home.HomeScreen.setAllStyles(ps, v);
-			});
-			o.store = vps;
-			o.pref = HOME_STYLE_VIEW;
-			o.title = R.string.home_pref_style;
-			o.subtitle = R.string.string_format;
-			o.formatSubtitle = true;
-			o.values = new int[]{R.string.home_style_solid, R.string.home_style_glass,
-					R.string.home_style_colour, R.string.home_style_custom};
-			o.valuesFilter = i -> (i < 3) || (shown == 3);
-		});
-		sub.addListPref(o -> {
-			o.store = ps;
-			o.pref = MainActivityPrefs.HOME_ARRANGE;
-			o.title = R.string.home_pref_arrange;
-			o.subtitle = R.string.string_format;
-			o.formatSubtitle = true;
-			o.values = new int[]{R.string.home_arrange_auto, R.string.home_arrange_down,
-					R.string.home_arrange_side};
-		});
-		sub.addIntPref(o -> {
-			o.store = ps;
-			o.pref = MainActivityPrefs.HOME_COLUMNS;
-			o.title = R.string.home_pref_columns;
-			o.subtitle = R.string.home_pref_columns_sub;
-			o.seekMin = 0;
-			o.seekMax = 8;
-			o.seekScale = 1;
-		});
-		sub.addIntPref(o -> {
-			o.store = ps;
-			o.pref = MainActivityPrefs.HOME_GAP;
-			o.title = R.string.home_pref_gap;
-			o.seekMin = 4;
-			o.seekMax = 20;
-			o.seekScale = 1;
-		});
-		sub.addBooleanPref(o -> {
-			o.store = ps;
-			o.pref = MainActivityPrefs.HOME_GREETING;
-			o.title = R.string.home_pref_greeting;
-			o.subtitle = R.string.home_pref_greeting_sub;
-		});
-		// What the greeting says, by the time of day (empty: the built-in words).
-		Pref<?>[] greetPrefs = {MainActivityPrefs.HOME_GREET_MORNING, MainActivityPrefs.HOME_GREET_AFTERNOON,
-				MainActivityPrefs.HOME_GREET_EVENING, MainActivityPrefs.HOME_GREET_NIGHT};
-		int[] greetTitles = {R.string.home_pref_greet_morning, R.string.home_pref_greet_afternoon,
-				R.string.home_pref_greet_evening, R.string.home_pref_greet_night};
-		int[] greetHints = {R.string.home_greet_morning, R.string.home_greet_afternoon,
-				R.string.home_greet_evening, R.string.home_greet_night};
-		for (int i = 0; i < greetPrefs.length; i++) {
-			final int k = i;
-			sub.addStringPref(o -> {
-				o.store = ps;
-				o.pref = (Pref<me.aap.utils.function.Supplier<String>>) greetPrefs[k];
-				o.title = greetTitles[k];
-				o.hint = greetHints[k];
-				o.trim = true;
-			});
-		}
-		sub.addBooleanPref(o -> {
-			o.store = ps;
-			o.pref = MainActivityPrefs.HOME_TOP_OVERLAY;
-			o.title = R.string.home_pref_top_overlay;
-			o.subtitle = R.string.home_pref_top_overlay_sub;
-		});
-		sub.addBooleanPref(o -> {
-			o.store = ps;
-			o.pref = MainActivityPrefs.HOME_TOP_OVERLAY_AA;
-			o.title = R.string.home_pref_top_overlay_aa;
-			o.subtitle = R.string.home_pref_top_overlay_sub;
-		});
-		sub.addBooleanPref(o -> {
-			o.store = ps;
-			o.pref = MainActivityPrefs.HOME_ANIMATE;
-			o.title = R.string.home_pref_animate;
-			o.subtitle = R.string.home_pref_animate_sub;
-		});
-		sub.addButton(o -> {
-			o.title = R.string.home_pref_reset;
-			o.subtitle = R.string.home_pref_reset_sub;
-			o.icon = R.drawable.refresh;
-			o.onClick = () -> UiUtils.showQuestion(ctx, R.string.home_pref_reset, R.string.home_pref_reset_question,
-					R.drawable.home_page).onSuccess(v -> {
-				ps.removePref(MainActivityPrefs.HOME_LAYOUT);
-				TopToast.show(R.drawable.home_page, R.string.home_pref_reset_done);
-			});
-		});
-		// The car screen has a set of widgets of its own: edited on the car screen itself, started from
-		// a copy of this one if that is handier than the defaults.
-		sub.addButton(o -> {
-			o.title = R.string.home_pref_aa_copy;
-			o.subtitle = R.string.home_pref_aa_copy_sub;
-			o.icon = R.drawable.car;
-			o.onClick = () -> UiUtils.showQuestion(ctx, R.string.home_pref_aa_copy, R.string.home_pref_aa_copy_question,
-					R.drawable.car).onSuccess(v -> {
-				String mine = ps.getStringPref(MainActivityPrefs.HOME_LAYOUT);
-				if (mine == null) ps.removePref(MainActivityPrefs.HOME_LAYOUT_AA);
-				else ps.applyStringPref(MainActivityPrefs.HOME_LAYOUT_AA, mine);
-				TopToast.show(R.drawable.car, R.string.home_pref_aa_copy_done);
-			});
-		});
-		sub.addButton(o -> {
-			o.title = R.string.home_pref_aa_reset;
-			o.subtitle = R.string.home_pref_aa_reset_sub;
-			o.icon = R.drawable.refresh;
-			o.onClick = () -> UiUtils.showQuestion(ctx, R.string.home_pref_aa_reset, R.string.home_pref_reset_question,
-					R.drawable.car).onSuccess(v -> {
-				ps.removePref(MainActivityPrefs.HOME_LAYOUT_AA);
-				TopToast.show(R.drawable.car, R.string.home_pref_aa_reset_done);
-			});
+			o.onClick = () -> a.showFragment(R.id.home_settings_fragment, a.isCarActivity() ?
+					HomeSettingsFragment.AA : HomeSettingsFragment.PHONE);
 		});
 	}
 

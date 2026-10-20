@@ -14,6 +14,11 @@ public final class HomeInfo {
 	 * its items is switched on, so there is nothing to show.
 	 */
 	public static boolean apply(MainActivityDelegate ad, InfoOverlayView overlay) {
+		return apply(ad, overlay, 1f);
+	}
+
+	/** As {@link #apply(MainActivityDelegate, InfoOverlayView)}, with the chips {@code factor} of the size setting. */
+	public static boolean apply(MainActivityDelegate ad, InfoOverlayView overlay, float factor) {
 		MainActivityPrefs p = ad.getPrefs();
 		boolean clock = p.getInfoOverlayShowClockPref(ad);
 		boolean battery = p.getInfoOverlayShowBatteryPctPref(ad);
@@ -27,7 +32,7 @@ public final class HomeInfo {
 		boolean any = clock || battery || temp || distance || dataUsage || dataRemaining || downloaded ||
 				dataSession || power;
 		if (!any) return false;
-		overlay.setSize(p.getInfoOverlaySizePref(ad));
+		overlay.setSize(p.getInfoOverlaySizePref(ad) * factor);
 		overlay.setOrder(p.getInfoOverlayOrderPref(ad));
 		overlay.setItems(clock, p.getInfoOverlayShowClockIconPref(ad), battery,
 				p.getInfoOverlayShowBatteryIconPref(ad), temp, p.getInfoOverlayShowTempIconPref(ad), distance,

@@ -46,7 +46,7 @@ final class InfoOverlayWidget extends HomeWidgetView implements PreferenceStore.
 		holder = new FrameLayout(ctx);
 		overlay = new InfoOverlayView(ctx);
 		holder.addView(overlay, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
-				ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL | Gravity.START));
+				ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START));
 		chipLook();
 		LinearLayout empty = new LinearLayout(ctx);
 		empty.setOrientation(LinearLayout.VERTICAL);
@@ -86,7 +86,7 @@ final class InfoOverlayWidget extends HomeWidgetView implements PreferenceStore.
 
 	@Override
 	protected void onSized(int w, int h) {
-		if (column != null) fit();
+		if (column != null) apply();
 	}
 
 	@Override
@@ -105,20 +105,27 @@ final class InfoOverlayWidget extends HomeWidgetView implements PreferenceStore.
 		if (!Collections.disjoint(MainActivityPrefs.infoOverlayPrefs(), changed)) post(this::apply);
 	}
 
-	/** The overlay's settings as the Music tab applies them (the position setting does not matter here). */
+	/**
+	 * The overlay's settings as the Music tab applies them (the position setting does not matter here); the
+	 * chips a little smaller than the Music tab's, and smaller again on a card too short for two lines of them.
+	 */
 	private void apply() {
 		if (overlay == null) return;
-		boolean any = HomeInfo.apply(host.activity(), overlay);
+		boolean small = (heightPx() > 0) && (heightPx() < px(130));
+		boolean any = HomeInfo.apply(host.activity(), overlay, small ? 0.7f : 0.85f);
 		overlay.setVisibility(any ? VISIBLE : GONE);
 		View empty = holder.findViewWithTag("empty");
 		if (empty != null) empty.setVisibility(any ? GONE : VISIBLE);
 		fit();
+		// The chips settle into their final size a moment after the prefs are set: look again once they have.
+		post(this::fit);
 	}
 
 	/**
-	 * Chips wrap onto lines; scaled down only when even that is taller than the room. A card too short
-	 * for its title row (a one-cell strip, the car screen's small cards) drops the title, which gives the
-	 * chips the whole card; a tap on them opens the settings instead.
+	 * Chips wrap onto lines; scaled down only when even that is taller than the room, and then placed by hand
+	 * (top left, pushed down to the middle) so nothing overflows the card. A card too short for its title row
+	 * (a one-cell strip, the car screen's small cards) drops the title, which gives the chips the whole card;
+	 * a tap on them opens the settings instead.
 	 */
 	private void fit() {
 		if ((overlay == null) || (heightPx() == 0) || (widthPx() == 0)) return;
@@ -128,15 +135,22 @@ final class InfoOverlayWidget extends HomeWidgetView implements PreferenceStore.
 		overlay.setClickable(strip);
 		if (overlay.getVisibility() != VISIBLE) return;
 		int availW = widthPx() - px(28);
-		int availH = heightPx() - px(28) - (strip ? 0 : px(34) + px(4));
+		int availH = holderHeight();
 		if ((availW <= 0) || (availH <= 0)) return;
 		overlay.measure(View.MeasureSpec.makeMeasureSpec(availW, View.MeasureSpec.AT_MOST),
 				View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
 		int need = overlay.getMeasuredHeight();
 		float k = ((need > availH) && (need > 0)) ? (availH / (float) need) : 1f;
 		overlay.setPivotX(0f);
-		overlay.setPivotY(overlay.getMeasuredHeight() / 2f);
+		overlay.setPivotY(0f);
 		overlay.setScaleX(k);
 		overlay.setScaleY(k);
+		overlay.setTranslationY(Math.max(0f, (availH - need * k) / 2f));
+	}
+
+	/** The room the chips have: the card less its padding, and its title row when that shows. */
+	private int holderHeight() {
+		boolean strip = heightPx() < px(130);
+		return heightPx() - px(28) - (strip ? 0 : px(34) + px(4));
 	}
 }

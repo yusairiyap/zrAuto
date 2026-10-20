@@ -4,7 +4,12 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 
+import java.util.ArrayList;
+import java.util.List;
+
+import me.aap.fermata.R;
 import me.aap.fermata.action.Action;
+import me.aap.fermata.ui.home.HomeOption;
 import me.aap.fermata.ui.home.HomeHost;
 import me.aap.fermata.ui.home.HomeWidgetType;
 import me.aap.fermata.ui.home.HomeWidgetView;
@@ -46,7 +51,25 @@ final class LyricsWidget extends HomeWidgetView {
 		}
 		lyrics = new LyricsView(ctx, host.activity(), color(ROLE_SECONDARY), color(ROLE_PRIMARY), false);
 		lyrics.setLineListener(i -> CaptionsHub.get().seekTo(i));
+		lyrics.setInteractive(scrubbing());
 		holder.addView(lyrics, new FrameLayout.LayoutParams(-1, -1));
+	}
+
+	/** Whether a drag scrubs through the lines and a tap on one seeks to it (else the page scrolls over the card). */
+	private boolean scrubbing() {
+		return optBool("scrub", true);
+	}
+
+	@Override
+	protected List<HomeOption> getOptions() {
+		List<HomeOption> l = new ArrayList<>();
+		l.add(HomeOption.sw("scrub", ctx.getString(R.string.home_opt_lyrics_scrub), true));
+		return l;
+	}
+
+	@Override
+	protected void onBind() {
+		if (lyrics != null) lyrics.setInteractive(scrubbing());
 	}
 
 	@Override
@@ -56,6 +79,7 @@ final class LyricsWidget extends HomeWidgetView {
 
 	@Override
 	protected int gestures() {
-		return GESTURE_V;
+		// With scrubbing off the card claims nothing: a drag on it scrolls the page like on any other card.
+		return scrubbing() ? GESTURE_V : 0;
 	}
 }
