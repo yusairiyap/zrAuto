@@ -2,6 +2,7 @@ package me.aap.fermata.ui.home.widget;
 
 import android.text.format.DateUtils;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -38,6 +39,7 @@ final class FuelWidget extends HomeWidgetView {
 	private LinearLayout last;
 	private LinearLayout figures;
 	private TextView refuel;
+	private View headerRow;
 	private final Runnable listener = this::refresh;
 
 	FuelWidget(HomeHost host, HomeWidgetType type) {
@@ -53,8 +55,8 @@ final class FuelWidget extends HomeWidgetView {
 	protected void onCreate(FrameLayout content) {
 		column = new LinearLayout(ctx);
 		column.setOrientation(LinearLayout.VERTICAL);
-		column.addView(header(() -> open(R.id.fuel_log_addon)),
-				new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(34)));
+		headerRow = header(() -> open(R.id.fuel_log_addon));
+		column.addView(headerRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(34)));
 
 		figures = new LinearLayout(ctx);
 		figures.setGravity(Gravity.CENTER_VERTICAL);
@@ -112,9 +114,23 @@ final class FuelWidget extends HomeWidgetView {
 		if (column != null) layoutFor();
 	}
 
+	@Override
+	protected void onSized(int w, int h) {
+		if (column != null) layoutFor();
+	}
+
 	/** A strip lays the two figures side by side; a taller card stacks them. */
 	private void layoutFor() {
+		boolean strip = getCellsH() == 1;
 		boolean tall = getCellsH() >= 2 && getCellsW() < 4;
+		// A strip is 90dp high: the title row has no room next to two figures, so the figures are the card
+		// (a tap on them opens the tab, as the title does elsewhere).
+		headerRow.setVisibility(strip ? GONE : VISIBLE);
+		figures.setOnClickListener(strip ? v -> open(R.id.fuel_log_addon) : null);
+		figures.setClickable(strip);
+		int avail = ((heightPx() > 0) ? heightPx() : px(getCellsH() * 90f)) - px(28) - (strip ? 0 : px(34));
+		boolean room = avail >= px(118);
+		boolean wide = getCellsW() >= 4;
 		figures.setOrientation(tall ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
 		for (LinearLayout b : new LinearLayout[]{trip, last}) {
 			LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) b.getLayoutParams();
@@ -123,9 +139,13 @@ final class FuelWidget extends HomeWidgetView {
 			lp.weight = (b == last && !tall) ? 1.3f : 1f;
 			b.setLayoutParams(lp);
 		}
-		tripValue.setTextSize(isCompact() ? 21 : 26);
-		lastDay.setVisibility(isCompact() && !tall ? GONE : VISIBLE);
-		refuel.setVisibility((getCellsH() >= 2) ? VISIBLE : GONE);
+		tripValue.setTextSize(strip ? (wide ? 26 : 20) : tall ? (avail >= px(170) ? 26 : 22) : 26);
+		lastValue.setTextSize(strip ? (wide ? 19 : 16) : tall ? (avail >= px(170) ? 19 : 17) : 19);
+		float cap = (strip && !wide) ? 11 : 12;
+		tripCaption.setTextSize(cap);
+		lastCaption.setTextSize(cap);
+		lastDay.setVisibility((strip && !wide) || (tall && avail < px(170)) ? GONE : VISIBLE);
+		refuel.setVisibility((getCellsH() >= 2) && room ? VISIBLE : GONE);
 	}
 
 	@Override

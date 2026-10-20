@@ -129,7 +129,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 		column.setOrientation(LinearLayout.VERTICAL);
 		LinearLayout head = header(() -> open(tabId()));
 		count = text(ROLE_TERTIARY, 12.5f, false);
-		count.setPadding(0, 0, px(4), 0);
+		count.setPadding(px(8), 0, px(4), 0);
 		head.addView(count, Math.max(0, head.getChildCount() - 1));
 		column.addView(head, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(34)));
 
@@ -501,6 +501,24 @@ abstract class LibraryWidget extends HomeWidgetView {
 
 		void bind(Row r, int position) {
 			row = r;
+			// A card two cells wide (a phone): a smaller picture and button leave the name some room.
+			boolean narrow = widthPx() < px(230);
+			int ts = narrow ? px(34) : px(40);
+			ViewGroup.LayoutParams tl = thumb.getLayoutParams();
+			if (tl.width != ts) {
+				tl.width = ts;
+				tl.height = ts;
+				thumb.setLayoutParams(tl);
+			}
+			int ps = narrow ? px(30) : px(36);
+			ViewGroup.LayoutParams pl = playBtn.getLayoutParams();
+			if (pl.width != ps) {
+				pl.width = ps;
+				pl.height = ps;
+				playBtn.setLayoutParams(pl);
+				int pad = Math.round(ps * 0.26f);
+				playBtn.setPadding(pad, pad, pad, pad);
+			}
 			// A gap between the two columns, from the rows' own padding.
 			int gap = (cols > 1) ? px(5) : 0;
 			itemView.setPadding(((position % cols) == 0) ? 0 : gap, 0, ((position % cols) == cols - 1) ? 0 : gap, 0);

@@ -155,6 +155,7 @@
     <string name="home_fuel_off">Turn on the Fuel Log addon to see this</string>
     <string name="home_data_off">Turn on the Data usage addon to see this</string>
     <string name="home_data_of_pct">of %1$s · %2$d%%</string>
+    <string name="home_data_of">of %1$s</string>
     <string name="home_power_off">Turn on the Power usage addon to see this</string>
     <string name="home_power_unit">mA</string>
     <string name="home_power_unsupported">This device does not report its battery current</string>

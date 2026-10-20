@@ -164,7 +164,10 @@ final class PowerWidget extends HomeWidgetView {
 
 	@Override
 	protected void onSized(int w, int h) {
-		if ((column != null) && (mode == GAUGE)) sizeGauge();
+		if ((column != null) && (mode == GAUGE)) {
+			sizeGauge();
+			refresh();
+		}
 	}
 
 	/** Puts the pieces together for the card's size. */
@@ -190,6 +193,8 @@ final class PowerWidget extends HomeWidgetView {
 		detach(breakdown);
 		switch (m) {
 			case STRIP -> {
+				flatValue(true);
+				stats.setSingleLine(false);
 				body.setOrientation(LinearLayout.HORIZONTAL);
 				body.setGravity(Gravity.CENTER_VERTICAL);
 				valueRow.setGravity(Gravity.BOTTOM);
@@ -201,6 +206,10 @@ final class PowerWidget extends HomeWidgetView {
 				body.addView(stats);
 			}
 			case GAUGE -> {
+				// The number with its unit under it in the ring's middle: side by side they were wider than the ring.
+				flatValue(false);
+				stats.setSingleLine(true);
+				stats.setEllipsize(android.text.TextUtils.TruncateAt.END);
 				body.setOrientation(LinearLayout.VERTICAL);
 				body.setGravity(Gravity.CENTER);
 				// Left as the last mode had them, these put the labels off to one side.
@@ -214,6 +223,8 @@ final class PowerWidget extends HomeWidgetView {
 				sizeGauge();
 			}
 			case BREAKDOWN -> {
+				flatValue(true);
+				stats.setSingleLine(false);
 				body.setOrientation(LinearLayout.VERTICAL);
 				body.setGravity(Gravity.TOP);
 				LinearLayout top = new LinearLayout(ctx);
@@ -235,6 +246,8 @@ final class PowerWidget extends HomeWidgetView {
 				body.addView(breakdown, blp);
 			}
 			default -> {
+				flatValue(true);
+				stats.setSingleLine(false);
 				body.setOrientation(LinearLayout.VERTICAL);
 				body.setGravity(Gravity.TOP);
 				LinearLayout top = new LinearLayout(ctx);
@@ -257,8 +270,16 @@ final class PowerWidget extends HomeWidgetView {
 			}
 		}
 		value.setTextSize((m == STRIP) ? 22 : (m == GAUGE) ? 19 : 28);
+		if (m == GAUGE) sizeGauge();
 		// The strip has room for one line of figures: a small card shows the rest only when asked to.
 		refresh();
+	}
+
+	/** The number and its unit side by side ({@code flat}) or the unit under the number. */
+	private void flatValue(boolean flat) {
+		valueRow.setOrientation(flat ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+		unit.setPadding(flat ? px(4) : 0, 0, 0, flat ? px(3) : 0);
+		unit.setTextSize(flat ? 12.5f : 11f);
 	}
 
 	private static void detach(android.view.View v) {
@@ -271,6 +292,8 @@ final class PowerWidget extends HomeWidgetView {
 		int availH = heightPx() - px(28) - px(34) - px(48);
 		int availW = widthPx() - px(28);
 		int side = Math.max(px(64), Math.min(availH, availW));
+		// The number follows the ring, so it always fits inside it.
+		value.setTextSize(Math.max(14f, Math.min(26f, side / px(1f) * 0.2f)));
 		LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) gaugeBox.getLayoutParams();
 		if ((lp != null) && ((lp.width != side) || (lp.height != side))) {
 			lp.width = side;
@@ -333,24 +356,41 @@ final class PowerWidget extends HomeWidgetView {
 		status.setText(s);
 		status.setTextColor(accent);
 
-		StringBuilder sb = new StringBuilder();
-		if (optBool("battery", true) && (t.getLevel() >= 0)) sb.append(t.getLevel()).append('%');
+		String battery = (optBool("battery", true) && (t.getLevel() >= 0)) ? t.getLevel() + "%" : null;
+		String left = null;
 		long est = t.getEstimateMs();
 		if (optBool("left", true) && (est != -1)) {
-			if (sb.length() > 0) sb.append(" · ");
 			long min = Math.abs(est) / 60_000;
 			String dur = (min >= 60) ? ctx.getString(R.string.power_hours_minutes, min / 60, min % 60) :
 					ctx.getString(R.string.power_minutes, min);
-			sb.append(ctx.getString((est < 0) ? R.string.home_power_full_in : R.string.home_power_left, dur));
+			left = ctx.getString((est < 0) ? R.string.home_power_full_in : R.string.home_power_left, dur);
 		}
-		if (optBool("temp", true) && (t.getTemperatureTenths() != Integer.MIN_VALUE)) {
-			if (sb.length() > 0) sb.append(" · ");
-			sb.append(String.format(Locale.getDefault(), "%.1f°C", t.getTemperatureTenths() / 10f));
+		String temp = (optBool("temp", true) && (t.getTemperatureTenths() != Integer.MIN_VALUE)) ?
+				String.format(Locale.getDefault(), "%.1f°C", t.getTemperatureTenths() / 10f) : null;
+		String sb = join(battery, left, temp);
+		if ((mode == GAUGE) && (widthPx() > 0)) {
+			// One line under the ring: what does not fit in the card's width is left out, the temperature first.
+			float room = widthPx() - px(28);
+			for (String c : new String[]{sb, join(battery, left, null), join(battery, null, null), join(null, left, null)}) {
+				sb = c;
+				if (stats.getPaint().measureText(c) <= room) break;
+			}
 		}
 		stats.setText(sb);
-		stats.setVisibility((sb.length() == 0) ? GONE : VISIBLE);
+		stats.setVisibility(sb.isEmpty() ? GONE : VISIBLE);
 		if (mode == GRAPH) graph.setData(t.getGraph());
 		if (mode == BREAKDOWN) refreshBreakdown(t);
+	}
+
+	private static String join(@androidx.annotation.Nullable String a, @androidx.annotation.Nullable String b,
+														 @androidx.annotation.Nullable String c) {
+		StringBuilder sb = new StringBuilder();
+		for (String x : new String[]{a, b, c}) {
+			if (x == null) continue;
+			if (sb.length() > 0) sb.append(" · ");
+			sb.append(x);
+		}
+		return sb.toString();
 	}
 
 	/** Today's draw per kind of use, and how much of it was in the car. */

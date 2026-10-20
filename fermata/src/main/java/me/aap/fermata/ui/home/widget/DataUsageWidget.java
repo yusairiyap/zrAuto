@@ -49,6 +49,8 @@ final class DataUsageWidget extends HomeWidgetView {
 	private TextView sessionText;
 	private MeterBar sessionBar;
 	private int[] catColors;
+	/** A small ring has no room for "used of 18 GB" in its middle: it says "of 18 GB". */
+	private boolean shortCaption;
 	private final Runnable listener = this::refresh;
 
 	DataUsageWidget(HomeHost host, HomeWidgetType type) {
@@ -172,7 +174,9 @@ final class DataUsageWidget extends HomeWidgetView {
 	private void layoutFor() {
 		boolean strip = getCellsH() == 1;
 		boolean wide = !strip && getCellsW() >= 3 && optBool("breakdown", true);
-		boolean sess = !strip && getCellsH() >= 2 && optBool("session", true) && DataSessionLimit.isEnabled();
+		int tallPx = (heightPx() > 0) ? heightPx() : px(getCellsH() * 90f);
+		// The session line and its bar need a card tall enough to leave the ring its room.
+		boolean sess = !strip && (tallPx >= px(220)) && optBool("session", true) && DataSessionLimit.isEnabled();
 		ringBox.setVisibility(strip ? GONE : VISIBLE);
 		legend.setVisibility(wide ? VISIBLE : GONE);
 		session.setVisibility(sess ? VISIBLE : GONE);
@@ -180,6 +184,11 @@ final class DataUsageWidget extends HomeWidgetView {
 			int availH = heightPx() - px(28) - px(34) - px(4) - (sess ? px(36) : 0);
 			int availW = widthPx() - px(28) - (wide ? px(150) : 0);
 			int side = Math.max(px(64), Math.min(availH, availW));
+			// The words in the ring's middle follow the ring, so they never spill over its edge.
+			float sideDp = side / px(1f);
+			used.setTextSize(Math.max(12f, Math.min(22f, sideDp * 0.16f)));
+			caption.setTextSize(Math.max(8.5f, Math.min(11.5f, sideDp * 0.09f)));
+			shortCaption = sideDp < 105f;
 			LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) ringBox.getLayoutParams();
 			if ((lp.width != side) || (lp.height != side)) {
 				lp.width = side;
@@ -187,7 +196,10 @@ final class DataUsageWidget extends HomeWidgetView {
 				ringBox.setLayoutParams(lp);
 			}
 		}
-		used.setTextSize(strip ? 22 : 17);
+		if (strip) {
+			used.setTextSize(22);
+			caption.setTextSize(11.5f);
+		}
 		body.setGravity(wide ? Gravity.CENTER_VERTICAL : Gravity.CENTER);
 		refresh();
 	}
@@ -228,7 +240,8 @@ final class DataUsageWidget extends HomeWidgetView {
 		if (lim > 0) {
 			int pct = (int) Math.min(999, Math.round(100.0 * total / lim));
 			caption.setText(strip ? ctx.getString(R.string.home_data_of_pct, Formatter.formatShortFileSize(ctx, lim), pct) :
-					ctx.getString(R.string.data_usage_of, Formatter.formatShortFileSize(ctx, lim)));
+					ctx.getString(shortCaption ? R.string.home_data_of : R.string.data_usage_of,
+							Formatter.formatShortFileSize(ctx, lim)));
 		} else {
 			caption.setText(R.string.data_usage_used);
 		}
@@ -241,7 +254,8 @@ final class DataUsageWidget extends HomeWidgetView {
 
 	/** The Android Auto session limit: used so far this session, and what is left. */
 	private void refreshSession() {
-		boolean show = (getCellsH() >= 2) && optBool("session", true) && DataSessionLimit.isEnabled();
+		int tallPx = (heightPx() > 0) ? heightPx() : px(getCellsH() * 90f);
+		boolean show = (tallPx >= px(220)) && optBool("session", true) && DataSessionLimit.isEnabled();
 		if (show != (session.getVisibility() == VISIBLE)) {
 			layoutFor();
 			return;

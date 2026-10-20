@@ -606,6 +606,14 @@ what each widget shows is set on the widget (edit mode > its gear).
   scrub that makes the player hand out another object for the song does not fade the art out and in. If it still does, the
   Diagnostic log has `home media: new item` lines (MUSIC).
 
+### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
+
+- Size what is *inside* a card from its pixels, not from cell counts or fixed dp: the Data ring's words (`used`/`caption`) and the Power
+  gauge's number follow the ring's diameter (a 19sp "12 GB" does not fit a 70dp ring), and what does not fit is left out (Power's
+  one-line stats drop temperature, then time left; Data's caption becomes "of 18 GB" under ~105dp; its session line needs a card
+  at least 220dp tall; Fuel's refuel chip and date need room, and a one-cell-high Fuel drops its title row, its figures opening the tab).
+- A card 2 cells wide gets smaller pictures and play buttons in `LibraryWidget` rows (`widthPx() < 230dp`).
+
 ### Adding a widget (the easy path)
 
 1. Write `ui/home/widget/FooWidget extends HomeWidgetView` (constructor `(HomeHost, HomeWidgetType)`). Build views in
