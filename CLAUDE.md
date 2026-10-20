@@ -729,7 +729,7 @@ what each widget shows is set on the widget (edit mode > its gear).
 ### Thirteenth round (icon-only media chip)
 
 - **The media widget's chip (Watch / Fullscreen / Open Music) is icon only on the car screen and at low density** (`MediaWidget#setChip`: `host.isCar()` or
-  density under 1.5, i.e. under 240 dpi): the words were as big as the card's title there. The name stays as the chip's content description.
+  density under 1.5, i.e. under 240 dpi): the words were as big as the card's title there. The name stays as the chip's content description. The wide card then leaves only ~48dp (not 132dp) beside the title for it (`chipIconOnly()` in `MediaWidget`).
 
 ### Fourteenth round (back to Home, chip fixes, open issue)
 

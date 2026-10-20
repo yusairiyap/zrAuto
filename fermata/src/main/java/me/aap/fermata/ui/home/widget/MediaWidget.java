@@ -375,7 +375,8 @@ final class MediaWidget extends HomeWidgetView {
 				art.setLayoutParams(lp(artSide, -1, Gravity.START, 0, 0, 0, 0));
 				// The name on top (clear of the chip), the controls in the middle of the right half, the
 				// seek bar under them.
-				int chipRoom = showChip ? px(132) : 0;
+				// The words' chip needs about 132dp beside the name, the icon-only one (car screen, low density) about 48dp.
+				int chipRoom = showChip ? px(chipIconOnly() ? 48 : 132) : 0;
 				texts.setLayoutParams(lp(-1, -2, Gravity.TOP, left, pad + px(4), pad + chipRoom, 0));
 				seekBlock.setLayoutParams(lp(-1, -2, Gravity.BOTTOM, left, 0, pad, px(12)));
 				int cw = (extrasAt == 1) ? controlsNeed : (px(sk) * 2 + px(pl));
@@ -732,10 +733,15 @@ final class MediaWidget extends HomeWidgetView {
 		}
 	}
 
+	/** Low density (the car screen's) makes the chip's words as big as the card's title: only its icon shows there. */
+	private boolean chipIconOnly() {
+		return host.isCar() || (ctx.getResources().getDisplayMetrics().density < 1.5f);
+	}
+
 	private void setChip(int icon, int label, Runnable action) {
 		// Low density (the car screen's) makes the words as big as the card's own title: only the icon there,
 		// the name stays as its description.
-		boolean iconOnly = host.isCar() || (ctx.getResources().getDisplayMetrics().density < 1.5f);
+		boolean iconOnly = chipIconOnly();
 		chip.setContentDescription(ctx.getString(label));
 		if (iconOnly) {
 			chip.setText("");
