@@ -697,6 +697,20 @@ what each widget shows is set on the widget (edit mode > its gear).
   the lift so the tool bar mediator hides the bar at once instead of fading it. The Diagnostic log has `STATE start-up veil` lines
   (on / lifted by Home / lifted by the safety delay / no window content yet).
 
+### Eleventh round (title rows that give way, data strip, chip sizes)
+
+- **Power and Data drop their title row (icon, name, arrow) when the card is too short in pixels**, like Fuel does in a strip: `PowerWidget#applyHeader`
+  (a strip always; the meter under 174dp, the graph/breakdown under 160dp) and `DataUsageWidget#layoutFor` (a strip always; a ring card under ~152dp,
+  the breakdown list under ~166dp). The figures then open the tab on a tap (`body.setOnClickListener`), and the ring/meter size and the session-line
+  room are worked out with or without the 34dp row (`headerOn`). Decide such things from the measured height, never from the cell count.
+- **Data usage strip (4x1)** shows the total and its "of 18 GB · 72%" on the left and, beside it, the Android Auto session (`home_data_car_session`:
+  used of the limit, what is left, with the bar; "Starts when Android Auto connects" while no session runs) when the session limit is on and the
+  option "session" is on; otherwise the four kinds as a small 2x2 grid (dot + name + figure).
+- **Info overlay chips are all one height** (`InfoOverlayView#layoutChips`): the icon-only Downloaded chip was only as tall as its icon, shorter than
+  the chips with text; every chip wrapper now has the height of one text line plus its padding and the icon-only one is as wide as it is tall.
+  The cut chip at the row's right end in the earlier build was the row running under the edit button; the row is now fitted to the room the
+  greeting and the button leave (see the ninth round).
+
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 
 - Size what is *inside* a card from its pixels, not from cell counts or fixed dp: the Data ring's words (`used`/`caption`) and the Power

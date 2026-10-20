@@ -40,6 +40,8 @@ final class PowerWidget extends HomeWidgetView {
 			R.color.data_usage_other};
 
 	private LinearLayout column;
+	private android.view.View headerRow;
+	private boolean headerOn = true;
 	private FrameLayout gaugeBox;
 	private PowerGaugeView gauge;
 	private PowerLiveGraphView graph;
@@ -67,8 +69,8 @@ final class PowerWidget extends HomeWidgetView {
 	protected void onCreate(FrameLayout content) {
 		column = new LinearLayout(ctx);
 		column.setOrientation(LinearLayout.VERTICAL);
-		column.addView(header(() -> open(R.id.power_usage_addon)),
-				new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(34)));
+		headerRow = header(() -> open(R.id.power_usage_addon));
+		column.addView(headerRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(34)));
 
 		body = new LinearLayout(ctx);
 		body.setOrientation(LinearLayout.VERTICAL);
@@ -166,10 +168,25 @@ final class PowerWidget extends HomeWidgetView {
 
 	@Override
 	protected void onSized(int w, int h) {
-		if ((column != null) && (mode == GAUGE)) {
-			sizeGauge();
-			refresh();
-		}
+		if (column == null) return;
+		applyHeader();
+		refresh();
+	}
+
+	/**
+	 * The title row (icon, name, arrow) only while the card has the room: a strip, or a card too short in
+	 * pixels for the meter or graph under it, gives the whole card to the figures, and a tap on them
+	 * opens the tab, as the arrow would.
+	 */
+	private void applyHeader() {
+		int h = (heightPx() > 0) ? heightPx() : px(getCellsH() * 90f);
+		int need = (mode == STRIP) ? Integer.MAX_VALUE : (mode == GAUGE) ? px(174) : px(160);
+		boolean show = h >= need;
+		headerOn = show;
+		headerRow.setVisibility(show ? VISIBLE : GONE);
+		body.setClickable(!show);
+		body.setOnClickListener(show ? null : v -> open(R.id.power_usage_addon));
+		if (mode == GAUGE) sizeGauge();
 	}
 
 	/** Puts the pieces together for the card's size. */
@@ -183,11 +200,13 @@ final class PowerWidget extends HomeWidgetView {
 		else m = (getCellsW() >= 3) ? GRAPH : GAUGE;
 		boolean nar = getCellsW() < 3;
 		if ((m == mode) && (nar == narrow)) {
+			applyHeader();
 			refresh();
 			return;
 		}
 		mode = m;
 		narrow = nar;
+		applyHeader();
 		body.removeAllViews();
 		detach(gaugeBox);
 		detach(valueRow);
@@ -296,7 +315,7 @@ final class PowerWidget extends HomeWidgetView {
 	private void sizeGauge() {
 		if (heightPx() == 0) return;
 		// What sits under the meter is the status and one line of figures; the meter gets all the rest.
-		int availH = heightPx() - px(28) - px(34) - px(40);
+		int availH = heightPx() - px(28) - (headerOn ? px(34) : 0) - px(40);
 		int availW = widthPx() - px(20);
 		int side = Math.max(px(72), Math.min(availH, availW));
 		// The number follows the ring, so it always fits inside it.

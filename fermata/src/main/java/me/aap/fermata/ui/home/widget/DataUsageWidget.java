@@ -36,6 +36,8 @@ final class DataUsageWidget extends HomeWidgetView {
 			R.string.data_usage_cat_other, R.string.data_usage_cat_downloads};
 
 	private LinearLayout column;
+	private View headerRow;
+	private boolean headerOn = true;
 	private LinearLayout body;
 	private FrameLayout ringBox;
 	private DataUsageRingView ring;
@@ -49,6 +51,12 @@ final class DataUsageWidget extends HomeWidgetView {
 	private TextView bdTotal;
 	private final MeterBar[] bdBars = new MeterBar[DataUsageStore.CATS];
 	private final TextView[] bdValues = new TextView[DataUsageStore.CATS];
+	/** The strip (one cell high): beside the total, the car session's figures, else the four kinds in a small grid. */
+	private LinearLayout stripBox;
+	private TextView stripText;
+	private MeterBar stripBar;
+	private LinearLayout stripLegend;
+	private final TextView[] stripValues = new TextView[DataUsageStore.CATS];
 	private TextView off;
 	private LinearLayout session;
 	private TextView sessionText;
@@ -75,8 +83,8 @@ final class DataUsageWidget extends HomeWidgetView {
 				ContextCompat.getColor(ctx, R.color.data_usage_downloads)};
 		column = new LinearLayout(ctx);
 		column.setOrientation(LinearLayout.VERTICAL);
-		column.addView(header(() -> open(R.id.data_usage_addon)),
-				new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(34)));
+		headerRow = header(() -> open(R.id.data_usage_addon));
+		column.addView(headerRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(34)));
 
 		body = new LinearLayout(ctx);
 		body.setOrientation(LinearLayout.HORIZONTAL);
@@ -154,6 +162,46 @@ final class DataUsageWidget extends HomeWidgetView {
 		}
 		bdBox.setVisibility(GONE);
 		body.addView(bdBox, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+		stripBox = new LinearLayout(ctx);
+		stripBox.setOrientation(LinearLayout.VERTICAL);
+		stripBox.setGravity(Gravity.CENTER_VERTICAL);
+		stripText = text(ROLE_SECONDARY, 11.5f, false);
+		stripText.setMaxLines(2);
+		stripText.setEllipsize(android.text.TextUtils.TruncateAt.END);
+		stripBox.addView(stripText);
+		stripBar = new MeterBar(ctx);
+		LinearLayout.LayoutParams stb = new LinearLayout.LayoutParams(-1, px(6));
+		stb.topMargin = px(4);
+		stripBox.addView(stripBar, stb);
+		stripLegend = new LinearLayout(ctx);
+		stripLegend.setOrientation(LinearLayout.VERTICAL);
+		for (int r = 0; r < 2; r++) {
+			LinearLayout row = new LinearLayout(ctx);
+			row.setGravity(Gravity.CENTER_VERTICAL);
+			for (int c = 0; c < 2; c++) {
+				int i = r * 2 + c;
+				LinearLayout cell = new LinearLayout(ctx);
+				cell.setGravity(Gravity.CENTER_VERTICAL);
+				View dot = new View(ctx);
+				dot.setBackground(HomeUi.oval(catColors[i]));
+				cell.addView(dot, new LinearLayout.LayoutParams(px(8), px(8)));
+				stripValues[i] = text(ROLE_SECONDARY, 11.5f, false);
+				stripValues[i].setSingleLine(true);
+				LinearLayout.LayoutParams vlp = new LinearLayout.LayoutParams(0, -2, 1f);
+				vlp.setMarginStart(px(6));
+				cell.addView(stripValues[i], vlp);
+				row.addView(cell, new LinearLayout.LayoutParams(0, -2, 1f));
+			}
+			LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(-1, -2);
+			rlp.topMargin = px(r == 0 ? 0 : 3);
+			stripLegend.addView(row, rlp);
+		}
+		stripBox.addView(stripLegend);
+		stripBox.setVisibility(GONE);
+		LinearLayout.LayoutParams sxp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+		sxp.setMarginStart(px(16));
+		body.addView(stripBox, sxp);
 		column.addView(body, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
 		session = new LinearLayout(ctx);
@@ -190,6 +238,7 @@ final class DataUsageWidget extends HomeWidgetView {
 	protected void onStyleChanged() {
 		if (ring == null) return;
 		sessionBar.setColors(softFill(), color(ROLE_PRIMARY));
+		stripBar.setColors(softFill(), color(ROLE_PRIMARY));
 		for (int i = 0; i < bdBars.length; i++) bdBars[i].setColors(softFill(), catColors[i]);
 		ring.setColors(catColors, softFill(), ContextCompat.getColor(ctx, R.color.data_usage_warning),
 				ContextCompat.getColor(ctx, R.color.data_usage_limit));
@@ -218,19 +267,27 @@ final class DataUsageWidget extends HomeWidgetView {
 		boolean list = !strip && (view == 2);
 		boolean wide = !strip && !list && (view == 0) && getCellsW() >= 3 && optBool("breakdown", true);
 		int tallPx = (heightPx() > 0) ? heightPx() : px(getCellsH() * 90f);
+		// The title row only while the card has the room: a strip, or a card too short in pixels for the ring
+		// or the four lines under it, gives the whole card to the figures (a tap on them opens the tab).
+		boolean header = !strip && (tallPx >= px(28 + 34 + 4 + (list ? 100 : 86)));
+		headerOn = header;
+		headerRow.setVisibility(header ? VISIBLE : GONE);
+		body.setClickable(!header);
+		body.setOnClickListener(header ? null : v -> open(R.id.data_usage_addon));
 		// The session line and its bar need a card tall enough to leave the ring its room.
 		boolean sess = !strip && (tallPx >= px(220)) && optBool("session", true) && DataSessionLimit.isEnabled();
+		stripBox.setVisibility(strip ? VISIBLE : GONE);
 		ringBox.setVisibility((strip || list) ? GONE : VISIBLE);
 		bdBox.setVisibility(list ? VISIBLE : GONE);
 		legend.setVisibility(wide ? VISIBLE : GONE);
 		session.setVisibility(sess ? VISIBLE : GONE);
 		if (list) {
 			// The bars under each line only when the card is tall enough for all four lines with them.
-			int room = tallPx - px(28) - px(34) - px(4) - (sess ? px(36) : 0);
+			int room = tallPx - px(28) - (header ? px(34) : 0) - px(4) - (sess ? px(36) : 0);
 			for (MeterBar b : bdBars) b.setVisibility((room >= px(150)) ? VISIBLE : GONE);
 		}
 		if (!strip && !list) {
-			int availH = heightPx() - px(28) - px(34) - px(4) - (sess ? px(36) : 0);
+			int availH = tallPx - px(28) - (header ? px(34) : 0) - px(4) - (sess ? px(36) : 0);
 			int availW = widthPx() - px(28) - (wide ? px(150) : 0);
 			int side = Math.max(px(64), Math.min(availH, availW));
 			// The words in the ring's middle follow the ring, so they never spill over its edge.
@@ -249,7 +306,7 @@ final class DataUsageWidget extends HomeWidgetView {
 			used.setTextSize(22);
 			caption.setTextSize(11.5f);
 		}
-		body.setGravity(wide ? Gravity.CENTER_VERTICAL : Gravity.CENTER);
+		body.setGravity(wide ? Gravity.CENTER_VERTICAL : strip ? (Gravity.START | Gravity.CENTER_VERTICAL) : Gravity.CENTER);
 		refresh();
 	}
 
@@ -307,12 +364,39 @@ final class DataUsageWidget extends HomeWidgetView {
 		}
 		placeCentre(strip);
 		refreshSession();
+		if (strip) refreshStrip(usage);
+	}
+
+	/** Beside the total in a strip: the Android Auto session (used of the limit, what is left), else the four kinds. */
+	private void refreshStrip(long[] usage) {
+		boolean car = optBool("session", true) && DataSessionLimit.isEnabled();
+		stripText.setVisibility(car ? VISIBLE : GONE);
+		stripBar.setVisibility(car ? VISIBLE : GONE);
+		stripLegend.setVisibility(car ? GONE : VISIBLE);
+		if (car) {
+			DataSessionLimit l = DataSessionLimit.get();
+			if (l.isActive()) {
+				stripText.setText(ctx.getString(R.string.home_data_car_session,
+						Formatter.formatShortFileSize(ctx, l.getUsed()),
+						Formatter.formatShortFileSize(ctx, DataSessionLimit.getLimit()),
+						Formatter.formatShortFileSize(ctx, l.getRemaining())));
+				stripBar.setFraction(l.getFraction());
+			} else {
+				stripText.setText(R.string.data_session_waiting);
+				stripBar.setFraction(0f);
+			}
+			return;
+		}
+		for (int i = 0; i < stripValues.length; i++) {
+			stripValues[i].setText(ctx.getString(NAMES[i]) + " " +
+					Formatter.formatShortFileSize(ctx, (i < usage.length) ? usage[i] : 0));
+		}
 	}
 
 	/** The Android Auto session limit: used so far this session, and what is left. */
 	private void refreshSession() {
 		int tallPx = (heightPx() > 0) ? heightPx() : px(getCellsH() * 90f);
-		boolean show = (tallPx >= px(220)) && optBool("session", true) && DataSessionLimit.isEnabled();
+		boolean show = (getCellsH() != 1) && (tallPx >= px(220)) && optBool("session", true) && DataSessionLimit.isEnabled();
 		if (show != (session.getVisibility() == VISIBLE)) {
 			layoutFor();
 			return;

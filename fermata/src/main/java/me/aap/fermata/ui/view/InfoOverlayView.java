@@ -632,6 +632,9 @@ public class InfoOverlayView extends LinearLayout {
 		for (LinearLayout w : chipWrappers.values()) w.removeAllViews();
 		int padH = toIntPx(getContext(), Math.round(10 * size));
 		int padV = toIntPx(getContext(), Math.round(5 * size));
+		// Every chip is as tall as one with text; the icon-only one (downloaded) is as wide as it is tall, so
+		// it is a round chip of the same size rather than a smaller one.
+		int rowH = batteryPct.getLineHeight() + 2 * padV;
 		for (String key : order) {
 			if (!isItemShown(key)) continue;
 			LinearLayout w = chipWrappers.get(key);
@@ -645,6 +648,10 @@ public class InfoOverlayView extends LinearLayout {
 				chipWrappers.put(key, w);
 			}
 			w.setPadding(padH, padV, padH, padV);
+			w.setMinimumHeight(rowH);
+			boolean iconOnly = "downloaded".equals(key);
+			w.setMinimumWidth(iconOnly ? rowH : 0);
+			w.setGravity(iconOnly ? Gravity.CENTER : Gravity.CENTER_VERTICAL);
 			w.addView(itemView(key));
 			chipFlow.addView(w);
 		}
