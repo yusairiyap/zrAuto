@@ -8,14 +8,19 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import androidx.core.content.ContextCompat;
 
 import me.aap.fermata.R;
 import me.aap.fermata.addon.AddonManager;
+import me.aap.fermata.addon.data.DataSessionLimit;
 import me.aap.fermata.addon.data.DataUsageAddon;
 import me.aap.fermata.addon.data.DataUsageStore;
 import me.aap.fermata.addon.data.DataUsageTracker;
 import me.aap.fermata.ui.home.HomeHost;
+import me.aap.fermata.ui.home.HomeOption;
 import me.aap.fermata.ui.home.HomeUi;
 import me.aap.fermata.ui.home.HomeWidgetType;
 import me.aap.fermata.ui.home.HomeWidgetView;
@@ -40,6 +45,9 @@ final class DataUsageWidget extends HomeWidgetView {
 	private LinearLayout legend;
 	private final TextView[] legendValues = new TextView[DataUsageStore.CATS];
 	private TextView off;
+	private LinearLayout session;
+	private TextView sessionText;
+	private MeterBar sessionBar;
 	private int[] catColors;
 	private final Runnable listener = this::refresh;
 
@@ -109,6 +117,19 @@ final class DataUsageWidget extends HomeWidgetView {
 		body.addView(legend, lgp);
 		column.addView(body, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
+		session = new LinearLayout(ctx);
+		session.setOrientation(LinearLayout.VERTICAL);
+		sessionText = text(ROLE_SECONDARY, 11.5f, false);
+		sessionText.setSingleLine(true);
+		session.addView(sessionText);
+		sessionBar = new MeterBar(ctx);
+		LinearLayout.LayoutParams sbp = new LinearLayout.LayoutParams(-1, px(6));
+		sbp.topMargin = px(4);
+		session.addView(sessionBar, sbp);
+		LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(-1, -2);
+		slp.topMargin = px(6);
+		column.addView(session, slp);
+
 		off = note(R.string.home_data_off);
 		off.setVisibility(GONE);
 		column.addView(off, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
@@ -116,8 +137,17 @@ final class DataUsageWidget extends HomeWidgetView {
 	}
 
 	@Override
+	protected List<HomeOption> getOptions() {
+		List<HomeOption> l = new ArrayList<>();
+		l.add(HomeOption.sw("breakdown", ctx.getString(R.string.home_opt_data_breakdown), true));
+		l.add(HomeOption.sw("session", ctx.getString(R.string.home_opt_data_session), true));
+		return l;
+	}
+
+	@Override
 	protected void onStyleChanged() {
 		if (ring == null) return;
+		sessionBar.setColors(softFill(), color(ROLE_PRIMARY));
 		ring.setColors(catColors, softFill(), ContextCompat.getColor(ctx, R.color.data_usage_warning),
 				ContextCompat.getColor(ctx, R.color.data_usage_limit));
 		refresh();
@@ -135,19 +165,20 @@ final class DataUsageWidget extends HomeWidgetView {
 	}
 
 	@Override
-	protected void onSizeChanged(int w, int h, int ow, int oh) {
-		super.onSizeChanged(w, h, ow, oh);
+	protected void onSized(int w, int h) {
 		if (column != null) layoutFor();
 	}
 
 	private void layoutFor() {
 		boolean strip = getCellsH() == 1;
-		boolean wide = !strip && getCellsW() >= 3;
+		boolean wide = !strip && getCellsW() >= 3 && optBool("breakdown", true);
+		boolean sess = !strip && getCellsH() >= 2 && optBool("session", true) && DataSessionLimit.isEnabled();
 		ringBox.setVisibility(strip ? GONE : VISIBLE);
 		legend.setVisibility(wide ? VISIBLE : GONE);
+		session.setVisibility(sess ? VISIBLE : GONE);
 		if (!strip) {
-			int availH = getHeight() - px(28) - px(34) - px(4);
-			int availW = getWidth() - px(28) - (wide ? px(150) : 0);
+			int availH = heightPx() - px(28) - px(34) - px(4) - (sess ? px(36) : 0);
+			int availW = widthPx() - px(28) - (wide ? px(150) : 0);
 			int side = Math.max(px(64), Math.min(availH, availW));
 			LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) ringBox.getLayoutParams();
 			if ((lp.width != side) || (lp.height != side)) {
@@ -165,6 +196,7 @@ final class DataUsageWidget extends HomeWidgetView {
 	protected void onActive() {
 		if (!enabled()) return;
 		DataUsageTracker.get().addListener(listener);
+		DataSessionLimit.get().addListener(listener);
 		refresh();
 	}
 
@@ -172,6 +204,7 @@ final class DataUsageWidget extends HomeWidgetView {
 	protected void onInactive() {
 		if (!enabled()) return;
 		DataUsageTracker.get().removeListener(listener);
+		DataSessionLimit.get().removeListener(listener);
 	}
 
 	private void refresh() {
@@ -179,7 +212,10 @@ final class DataUsageWidget extends HomeWidgetView {
 		boolean on = enabled();
 		off.setVisibility(on ? GONE : VISIBLE);
 		body.setVisibility(on ? VISIBLE : GONE);
-		if (!on) return;
+		if (!on) {
+			session.setVisibility(GONE);
+			return;
+		}
 		DataUsageTracker t = DataUsageTracker.get();
 		long[] usage = t.getCycleUsage();
 		long total = 0;
@@ -200,6 +236,27 @@ final class DataUsageWidget extends HomeWidgetView {
 			legendValues[i].setText(Formatter.formatShortFileSize(ctx, (i < usage.length) ? usage[i] : 0));
 		}
 		placeCentre(strip);
+		refreshSession();
+	}
+
+	/** The Android Auto session limit: used so far this session, and what is left. */
+	private void refreshSession() {
+		boolean show = (getCellsH() >= 2) && optBool("session", true) && DataSessionLimit.isEnabled();
+		if (show != (session.getVisibility() == VISIBLE)) {
+			layoutFor();
+			return;
+		}
+		if (!show) return;
+		DataSessionLimit l = DataSessionLimit.get();
+		if (l.isActive()) {
+			sessionText.setText(ctx.getString(R.string.data_session_status,
+					Formatter.formatShortFileSize(ctx, l.getUsed()), Formatter.formatShortFileSize(ctx, DataSessionLimit.getLimit()),
+					Formatter.formatShortFileSize(ctx, l.getRemaining())));
+			sessionBar.setFraction(l.getFraction());
+		} else {
+			sessionText.setText(R.string.data_session_waiting);
+			sessionBar.setFraction(0f);
+		}
 	}
 
 	/** In the ring's middle, or alone in a strip, which has no ring. */

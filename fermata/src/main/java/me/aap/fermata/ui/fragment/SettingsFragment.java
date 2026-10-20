@@ -110,6 +110,8 @@ public class SettingsFragment extends MainActivityFragment
 	public static final Object SHOW_PRIVATE_MODE_SETTINGS = "private_mode_settings";
 	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Secondary/Tertiary FAB settings subsection. */
 	public static final Object SHOW_FAB_SETTINGS = "fab_settings";
+	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Home page. */
+	public static final Object SHOW_HOME_SETTINGS = "home_settings";
 	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Key bindings page. */
 	public static final Object SHOW_KEY_BINDINGS = "key_bindings";
 	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Interface page. */
@@ -126,6 +128,8 @@ public class SettingsFragment extends MainActivityFragment
 	private final java.util.Map<String, PreferenceSet> addonSettingsSets = new java.util.HashMap<>();
 	@Nullable
 	private PreferenceSet keyBindingsSet;
+	@Nullable
+	private PreferenceSet homeSet;
 	@Nullable
 	private PreferenceSet interfaceSet;
 	@Nullable
@@ -174,6 +178,8 @@ public class SettingsFragment extends MainActivityFragment
 		} else if ((pendingInput instanceof String s) && s.startsWith(ADDON_SETTINGS)) {
 			PreferenceSet p = addonSettingsSets.get(s.substring(ADDON_SETTINGS.length()));
 			if (p != null) adapter.setPreferenceSet(p);
+		} else if ((pendingInput == SHOW_HOME_SETTINGS) && (homeSet != null)) {
+			adapter.setPreferenceSet(homeSet);
 		} else if ((pendingInput == SHOW_KEY_BINDINGS) && (keyBindingsSet != null)) {
 			adapter.setPreferenceSet(keyBindingsSet);
 		} else if ((pendingInput == SHOW_INTERFACE) && (interfaceSet != null)) {
@@ -1256,7 +1262,7 @@ public class SettingsFragment extends MainActivityFragment
 	 * the background picture, how the widgets look and are laid out. (What each widget shows is set
 	 * on the widget itself, from Home's edit mode.)
 	 */
-	private static void addHomePrefs(MainActivityDelegate a, PreferenceSet parent) {
+	private void addHomePrefs(MainActivityDelegate a, PreferenceSet parent) {
 		MainActivityPrefs ps = a.getPrefs();
 		Context ctx = a.getContext();
 		PreferenceSet sub = parent.subSet(o -> {
@@ -1264,6 +1270,7 @@ public class SettingsFragment extends MainActivityFragment
 			o.subtitle = R.string.home_pref_sub;
 			o.icon = R.drawable.home;
 		});
+		homeSet = sub;
 		sub.addBooleanPref(o -> {
 			o.store = ps;
 			o.pref = MainActivityPrefs.HOME_OPEN_ON_START;

@@ -8,12 +8,17 @@ import android.widget.TextView;
 
 import androidx.core.content.ContextCompat;
 
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.List;
 import java.util.Locale;
 
 import me.aap.fermata.R;
 import me.aap.fermata.addon.power.PowerUsageAddon;
+import me.aap.fermata.addon.power.PowerUsageStore;
 import me.aap.fermata.addon.power.PowerUsageTracker;
 import me.aap.fermata.ui.home.HomeHost;
+import me.aap.fermata.ui.home.HomeOption;
 import me.aap.fermata.ui.home.HomeWidgetType;
 import me.aap.fermata.ui.home.HomeWidgetView;
 import me.aap.fermata.ui.view.PowerGaugeView;
@@ -28,6 +33,11 @@ final class PowerWidget extends HomeWidgetView {
 	private static final int STRIP = 0;
 	private static final int GAUGE = 1;
 	private static final int GRAPH = 2;
+	private static final int BREAKDOWN = 3;
+	private static final int[] CAT_NAMES = {R.string.power_cat_video, R.string.power_cat_music,
+			R.string.power_cat_idle};
+	private static final int[] CAT_COLORS = {R.color.data_usage_video, R.color.data_usage_music,
+			R.color.data_usage_other};
 
 	private LinearLayout column;
 	private FrameLayout gaugeBox;
@@ -40,6 +50,10 @@ final class PowerWidget extends HomeWidgetView {
 	private LinearLayout valueRow;
 	private LinearLayout body;
 	private TextView off;
+	private LinearLayout breakdown;
+	private final TextView[] catValues = new TextView[PowerUsageStore.CATS];
+	private final MeterBar[] catBars = new MeterBar[PowerUsageStore.CATS];
+	private TextView carLine;
 	private int mode = -1;
 	private final Runnable listener = this::refresh;
 
@@ -78,11 +92,48 @@ final class PowerWidget extends HomeWidgetView {
 
 		graph = new PowerLiveGraphView(ctx);
 
+		breakdown = new LinearLayout(ctx);
+		breakdown.setOrientation(LinearLayout.VERTICAL);
+		breakdown.setGravity(Gravity.CENTER_VERTICAL);
+		for (int i = 0; i < PowerUsageStore.CATS; i++) {
+			LinearLayout line = new LinearLayout(ctx);
+			line.setGravity(Gravity.CENTER_VERTICAL);
+			TextView name = text(ROLE_SECONDARY, 12.5f, false);
+			name.setText(CAT_NAMES[i]);
+			name.setSingleLine(true);
+			line.addView(name, new LinearLayout.LayoutParams(0, -2, 1f));
+			catValues[i] = text(ROLE_PRIMARY, 12.5f, true);
+			line.addView(catValues[i]);
+			LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(-1, -2);
+			llp.topMargin = (i == 0) ? 0 : px(8);
+			breakdown.addView(line, llp);
+			catBars[i] = new MeterBar(ctx);
+			LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(-1, px(6));
+			blp.topMargin = px(3);
+			breakdown.addView(catBars[i], blp);
+		}
+		carLine = text(ROLE_SECONDARY, 11.5f, false);
+		LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(-1, -2);
+		clp.topMargin = px(10);
+		breakdown.addView(carLine, clp);
+
 		off = note(R.string.home_power_off);
 		off.setVisibility(GONE);
 		column.addView(body, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 		column.addView(off, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 		content.addView(column, new FrameLayout.LayoutParams(-1, -1));
+	}
+
+	@Override
+	protected List<HomeOption> getOptions() {
+		List<HomeOption> l = new ArrayList<>();
+		l.add(HomeOption.choice("view", ctx.getString(R.string.home_opt_power_view), 0,
+				ctx.getString(R.string.home_opt_auto), ctx.getString(R.string.home_opt_power_meter),
+				ctx.getString(R.string.home_opt_power_graph), ctx.getString(R.string.home_opt_power_breakdown)));
+		l.add(HomeOption.sw("battery", ctx.getString(R.string.home_opt_power_battery), true));
+		l.add(HomeOption.sw("left", ctx.getString(R.string.home_opt_power_left), true));
+		l.add(HomeOption.sw("temp", ctx.getString(R.string.home_opt_power_temp), true));
+		return l;
 	}
 
 	@Override
@@ -94,6 +145,9 @@ final class PowerWidget extends HomeWidgetView {
 				ContextCompat.getColor(ctx, R.color.power_charge));
 		graph.setColors(ContextCompat.getColor(ctx, R.color.power_charge),
 				ContextCompat.getColor(ctx, R.color.power_mid), track, color(ROLE_SECONDARY));
+		for (int i = 0; i < catBars.length; i++) {
+			catBars[i].setColors(track, ContextCompat.getColor(ctx, CAT_COLORS[i]));
+		}
 		refresh();
 	}
 
@@ -109,14 +163,19 @@ final class PowerWidget extends HomeWidgetView {
 	}
 
 	@Override
-	protected void onSizeChanged(int w, int h, int ow, int oh) {
-		super.onSizeChanged(w, h, ow, oh);
+	protected void onSized(int w, int h) {
 		if ((column != null) && (mode == GAUGE)) sizeGauge();
 	}
 
 	/** Puts the pieces together for the card's size. */
 	private void rebuild() {
-		int m = (getCellsH() == 1) ? STRIP : (getCellsW() >= 3) ? GRAPH : GAUGE;
+		int view = optInt("view", 0);
+		int m;
+		if (getCellsH() == 1) m = STRIP;
+		else if (view == 1) m = GAUGE;
+		else if (view == 2) m = GRAPH;
+		else if (view == 3) m = BREAKDOWN;
+		else m = (getCellsW() >= 3) ? GRAPH : GAUGE;
 		if (m == mode) {
 			refresh();
 			return;
@@ -128,6 +187,7 @@ final class PowerWidget extends HomeWidgetView {
 		detach(status);
 		detach(stats);
 		detach(graph);
+		detach(breakdown);
 		switch (m) {
 			case STRIP -> {
 				body.setOrientation(LinearLayout.HORIZONTAL);
@@ -146,7 +206,30 @@ final class PowerWidget extends HomeWidgetView {
 				gaugeBox.addView(valueRow, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
 				body.addView(gaugeBox, new LinearLayout.LayoutParams(px(100), px(100)));
 				body.addView(status, new LinearLayout.LayoutParams(-1, -2));
+				stats.setGravity(Gravity.CENTER);
+				body.addView(stats, new LinearLayout.LayoutParams(-1, -2));
 				sizeGauge();
+			}
+			case BREAKDOWN -> {
+				body.setOrientation(LinearLayout.VERTICAL);
+				body.setGravity(Gravity.TOP);
+				LinearLayout top = new LinearLayout(ctx);
+				top.setOrientation(LinearLayout.HORIZONTAL);
+				top.setGravity(Gravity.BOTTOM);
+				valueRow.setGravity(Gravity.BOTTOM);
+				top.addView(valueRow);
+				status.setGravity(Gravity.END);
+				LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(0, -2, 1f);
+				slp.setMarginStart(px(10));
+				top.addView(status, slp);
+				body.addView(top, new LinearLayout.LayoutParams(-1, -2));
+				stats.setGravity(Gravity.START);
+				LinearLayout.LayoutParams stp = new LinearLayout.LayoutParams(-1, -2);
+				stp.topMargin = px(2);
+				body.addView(stats, stp);
+				LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(-1, 0, 1f);
+				blp.topMargin = px(10);
+				body.addView(breakdown, blp);
 			}
 			default -> {
 				body.setOrientation(LinearLayout.VERTICAL);
@@ -171,6 +254,7 @@ final class PowerWidget extends HomeWidgetView {
 			}
 		}
 		value.setTextSize((m == STRIP) ? 22 : (m == GAUGE) ? 19 : 28);
+		// The strip has room for one line of figures: a small card shows the rest only when asked to.
 		refresh();
 	}
 
@@ -178,9 +262,11 @@ final class PowerWidget extends HomeWidgetView {
 		if (v.getParent() instanceof ViewGroup p) p.removeView(v);
 	}
 
+	/** The meter's size from the measured card (the first frame already has it, nothing jumps). */
 	private void sizeGauge() {
-		int availH = getHeight() - px(28) - px(34) - px(34);
-		int availW = getWidth() - px(28);
+		if (heightPx() == 0) return;
+		int availH = heightPx() - px(28) - px(34) - px(48);
+		int availW = widthPx() - px(28);
 		int side = Math.max(px(64), Math.min(availH, availW));
 		LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) gaugeBox.getLayoutParams();
 		if ((lp != null) && ((lp.width != side) || (lp.height != side))) {
@@ -215,6 +301,7 @@ final class PowerWidget extends HomeWidgetView {
 			unit.setVisibility(GONE);
 			status.setText(t.isSupported() ? R.string.power_state_waiting : R.string.home_power_unsupported);
 			stats.setText("");
+			stats.setVisibility(GONE);
 			graph.setData(new float[0]);
 			return;
 		}
@@ -244,20 +331,37 @@ final class PowerWidget extends HomeWidgetView {
 		status.setTextColor(accent);
 
 		StringBuilder sb = new StringBuilder();
-		if (t.getLevel() >= 0) sb.append(t.getLevel()).append('%');
+		if (optBool("battery", true) && (t.getLevel() >= 0)) sb.append(t.getLevel()).append('%');
 		long est = t.getEstimateMs();
-		if (est != -1) {
+		if (optBool("left", true) && (est != -1)) {
 			if (sb.length() > 0) sb.append(" · ");
 			long min = Math.abs(est) / 60_000;
 			String dur = (min >= 60) ? ctx.getString(R.string.power_hours_minutes, min / 60, min % 60) :
 					ctx.getString(R.string.power_minutes, min);
 			sb.append(ctx.getString((est < 0) ? R.string.home_power_full_in : R.string.home_power_left, dur));
 		}
-		if ((mode == GRAPH) && (t.getTemperatureTenths() != Integer.MIN_VALUE)) {
+		if (optBool("temp", true) && (t.getTemperatureTenths() != Integer.MIN_VALUE)) {
 			if (sb.length() > 0) sb.append(" · ");
 			sb.append(String.format(Locale.getDefault(), "%.1f°C", t.getTemperatureTenths() / 10f));
 		}
 		stats.setText(sb);
+		stats.setVisibility((sb.length() == 0) ? GONE : VISIBLE);
 		if (mode == GRAPH) graph.setData(t.getGraph());
+		if (mode == BREAKDOWN) refreshBreakdown(t);
+	}
+
+	/** Today's draw per kind of use, and how much of it was in the car. */
+	private void refreshBreakdown(PowerUsageTracker t) {
+		PowerUsageStore store = t.getStore();
+		long day = PowerUsageStore.dayKey(Calendar.getInstance());
+		PowerUsageStore.Usage u = store.days(day, day);
+		long total = Math.max(1, u.totalUsed());
+		for (int i = 0; i < PowerUsageStore.CATS; i++) {
+			// µAh to mAh
+			catValues[i].setText(String.format(Locale.getDefault(), "%d mAh", Math.round(u.used[i] / 1000.0)));
+			catBars[i].setFraction(u.used[i] / (float) total);
+		}
+		carLine.setText(ctx.getString(R.string.home_power_car_phone,
+				Math.round(u.carUsed / 1000.0), Math.round(u.phoneUsed / 1000.0)));
 	}
 }

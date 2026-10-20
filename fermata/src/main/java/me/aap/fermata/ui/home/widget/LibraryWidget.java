@@ -7,6 +7,7 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import androidx.annotation.Nullable;
@@ -45,6 +46,9 @@ abstract class LibraryWidget extends HomeWidgetView {
 	private LinearLayout list;
 	private TextView emptyText;
 	private TextView firstLine;
+	private ProgressBar busy;
+	/** What the rows on screen were made from, so an unchanged refresh doesn't rebuild (and blink) them. */
+	private String shownSignature = "";
 	private List<Row> rows = new ArrayList<>();
 	private int total;
 	private int capacity = 3;
@@ -111,8 +115,14 @@ abstract class LibraryWidget extends HomeWidgetView {
 		emptyText.setVisibility(GONE);
 		column.addView(emptyText, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
+		busy = spinner(28);
+		busy.setVisibility(GONE);
+		FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(px(28), px(28), Gravity.CENTER);
+		blp.topMargin = px(18);
+
 		content.addView(column, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));
+		content.addView(busy, blp);
 		built = true;
 	}
 
@@ -131,8 +141,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 	}
 
 	@Override
-	protected void onSizeChanged(int w, int h, int ow, int oh) {
-		super.onSizeChanged(w, h, ow, oh);
+	protected void onSized(int w, int h) {
 		if (!built) return;
 		int before = capacity;
 		updateCapacity();
@@ -140,13 +149,16 @@ abstract class LibraryWidget extends HomeWidgetView {
 	}
 
 	private void updateCapacity() {
-		int avail = getHeight() - px(28) - px(34) - px(8);
+		int avail = heightPx() - px(28) - px(34) - px(8);
 		capacity = Math.max(1, avail / px(48));
 	}
 
 	@Override
 	protected void onActive() {
 		act().addBroadcastListener(contentListener, ActivityListener.FRAGMENT_CONTENT_CHANGED);
+		// Drawn again whenever it comes back on screen, whatever happened to it while away.
+		shownSignature = "";
+		render();
 		refresh(false);
 	}
 
@@ -171,6 +183,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 		if (loading) return;
 		if (!force && ((SystemClock.uptimeMillis() - loadedAt) < STALE_MS)) return;
 		loading = true;
+		if (built) updateBusy();
 		fetch(act(), (r, n) -> {
 			loading = false;
 			loadedAt = SystemClock.uptimeMillis();
@@ -180,12 +193,32 @@ abstract class LibraryWidget extends HomeWidgetView {
 		});
 	}
 
+	/** The spinner shows while there is nothing to show yet. */
+	private void updateBusy() {
+		boolean on = loading && rows.isEmpty();
+		if ((busy.getVisibility() == VISIBLE) != on) {
+			busy.setVisibility(on ? VISIBLE : GONE);
+		}
+	}
+
 	private void render() {
 		if (!built) return;
+		updateBusy();
+		boolean none = rows.isEmpty();
+		int cols = (getCellsW() >= 4) ? 2 : 1;
+		// Drawn again only when something it shows changed: the rows blinked on every refresh.
+		StringBuilder sig = new StringBuilder();
+		sig.append(total).append('|').append(isCompact()).append('|').append(cols).append('|').append(capacity)
+				.append('|').append(optBool("art", true)).append('|').append(loading && none);
+		for (Row r : rows) sig.append('|').append(r.title()).append(r.sub());
+		String signature = sig.toString();
+		if (signature.equals(shownSignature)) return;
+		shownSignature = signature;
+
+		forget(list);
 		list.removeAllViews();
 		count.setText(total > 0 ? String.valueOf(total) : "");
-		boolean none = rows.isEmpty();
-		emptyText.setVisibility(none && !isCompact() ? VISIBLE : GONE);
+		emptyText.setVisibility(none && !isCompact() && !loading ? VISIBLE : GONE);
 		list.setVisibility(none || isCompact() ? GONE : VISIBLE);
 		firstLine.setVisibility((!none && isCompact()) ? VISIBLE : GONE);
 		if (none) return;
@@ -193,8 +226,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 			firstLine.setText(rows.get(0).title());
 			return;
 		}
-		int cols = (getCellsW() >= 4) ? 2 : 1;
-		int shown = Math.min(rows.size(), capacity * cols);
+		int shown = Math.min(rows.size(), Math.max(1, capacity) * cols);
 		boolean art = optBool("art", true);
 		LinearLayout line = null;
 		for (int i = 0; i < shown; i++) {
@@ -207,6 +239,11 @@ abstract class LibraryWidget extends HomeWidgetView {
 			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
 			if ((i % cols) > 0) lp.setMarginStart(px(10));
 			line.addView(v, lp);
+			// Rows come in with a short fade, so a refresh doesn't pop.
+			if (host.animate()) {
+				v.setAlpha(0f);
+				v.animate().alpha(1f).setDuration(220).setStartDelay(Math.min(i, 6) * 30L).start();
+			}
 		}
 	}
 

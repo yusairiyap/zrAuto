@@ -38,6 +38,17 @@
     <string name="home_bg_failed">Could not use that picture: %1$s</string>
 
     <!-- Options common to every widget -->
+    <string name="home_opt_auto">Automatic</string>
+    <string name="home_opt_power_view">Show</string>
+    <string name="home_opt_power_meter">Meter</string>
+    <string name="home_opt_power_graph">Graph</string>
+    <string name="home_opt_power_breakdown">Breakdown</string>
+    <string name="home_opt_power_battery">Battery level</string>
+    <string name="home_opt_power_left">Time left</string>
+    <string name="home_opt_power_temp">Temperature</string>
+    <string name="home_power_car_phone">Android Auto %1$d mAh · phone alone %2$d mAh</string>
+    <string name="home_opt_data_breakdown">Breakdown by kind</string>
+    <string name="home_opt_data_session">Android Auto session limit</string>
     <string name="home_opt_style">Look</string>
     <string name="home_opt_title">Show the title</string>
     <string name="home_style_auto">Same as Home</string>

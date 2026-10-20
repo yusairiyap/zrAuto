@@ -7,6 +7,7 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import java.util.ArrayList;
@@ -42,6 +43,7 @@ final class YoutubeWidget extends HomeWidgetView {
 	private LinearLayout column;
 	private LinearLayout list;
 	private TextView message;
+	private ProgressBar busy;
 	private List<Video> videos = new ArrayList<>();
 	private String lastQuery = "";
 	private long loadedAt;
@@ -84,6 +86,11 @@ final class YoutubeWidget extends HomeWidgetView {
 		message.setVisibility(GONE);
 		column.addView(message, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 		content.addView(column, new FrameLayout.LayoutParams(-1, -1));
+		busy = spinner(28);
+		busy.setVisibility(GONE);
+		FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(px(28), px(28), Gravity.CENTER);
+		blp.bottomMargin = px(26);
+		content.addView(busy, blp);
 	}
 
 	@Override
@@ -111,8 +118,7 @@ final class YoutubeWidget extends HomeWidgetView {
 	}
 
 	@Override
-	protected void onSizeChanged(int w, int h, int ow, int oh) {
-		super.onSizeChanged(w, h, ow, oh);
+	protected void onSized(int w, int h) {
 		if (column == null) return;
 		int before = capacity;
 		updateCapacity();
@@ -120,7 +126,7 @@ final class YoutubeWidget extends HomeWidgetView {
 	}
 
 	private void updateCapacity() {
-		int avail = getHeight() - px(28) - px(34) - px(8);
+		int avail = heightPx() - px(28) - px(34) - px(8);
 		capacity = Math.max(1, avail / px(54));
 	}
 
@@ -168,6 +174,7 @@ final class YoutubeWidget extends HomeWidgetView {
 					loading = false;
 					if (gen != generation) return;
 					loadedAt = SystemClock.uptimeMillis();
+					busy.setVisibility(GONE);
 					if ((found == null) || found.isEmpty()) {
 						if (videos.isEmpty()) showMessage((err != null) ? R.string.home_yt_failed : R.string.home_yt_none);
 						return;
@@ -181,6 +188,10 @@ final class YoutubeWidget extends HomeWidgetView {
 		list.setVisibility(GONE);
 		message.setVisibility(VISIBLE);
 		message.setText(res);
+		// The searching text has a spinner above it.
+		busy.setVisibility((res == R.string.home_yt_loading) ? VISIBLE : GONE);
+		message.setGravity((res == R.string.home_yt_loading) ? (Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM) :
+				Gravity.CENTER);
 	}
 
 	private void render() {
@@ -188,6 +199,7 @@ final class YoutubeWidget extends HomeWidgetView {
 		list.removeAllViews();
 		if (videos.isEmpty()) return;
 		message.setVisibility(GONE);
+		busy.setVisibility(GONE);
 		list.setVisibility(VISIBLE);
 		boolean thumbs = optBool("thumbs", true);
 		int cols = (getCellsW() >= 4) ? 2 : 1;

@@ -32,6 +32,7 @@ final class AllInOneWidget extends TileWidget {
 		l.add(HomeOption.choice("labels", ctx.getString(R.string.home_opt_labels), 0,
 				ctx.getString(R.string.home_labels_auto), ctx.getString(R.string.home_labels_show),
 				ctx.getString(R.string.home_labels_hide)));
+		l.add(HomeOption.sw("colour", ctx.getString(R.string.home_opt_colourful), true));
 		return l;
 	}
 
@@ -44,9 +45,10 @@ final class AllInOneWidget extends TileWidget {
 	@Override
 	protected void fill() {
 		MainActivityDelegate a = host.activity();
+		boolean colour = optBool("colour", true);
 		int i = 0;
 		for (Action action : AllInOneMenu.getItems(a)) {
-			int tint = hue(i++);
+			int tint = colour ? hue(i++) : color(ROLE_ICON);
 			flow.addView(tile(ActionFabMediator.iconFor(a, action),
 					ctx.getString(ActionFabMediator.labelFor(a, action)), tint, () -> {
 						host.run(action);

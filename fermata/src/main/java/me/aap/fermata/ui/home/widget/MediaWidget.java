@@ -10,6 +10,7 @@ import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_DURATION
 import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_TITLE;
 
 import android.graphics.Bitmap;
+import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
@@ -17,6 +18,7 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.Shader;
 import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.SystemClock;
 import android.support.v4.media.MediaMetadataCompat;
@@ -30,9 +32,11 @@ import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import androidx.annotation.Nullable;
+import androidx.core.content.ContextCompat;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -46,6 +50,7 @@ import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.fragment.MusicPlayerFragment;
+import me.aap.fermata.ui.home.HomeBlur;
 import me.aap.fermata.ui.home.HomeHost;
 import me.aap.fermata.ui.home.HomeImages;
 import me.aap.fermata.ui.home.HomeOption;
@@ -68,9 +73,10 @@ final class MediaWidget extends HomeWidgetView {
 	private static final int LARGE_TALL = 4;
 	private static final long TICK_MS = 500;
 
-	private ImageView wash;
-	private FadeImageView art;
-	private ImageView thumb;
+	private Fader wash;
+	private Fader art;
+	private Fader thumb;
+	private ProgressBar artBusy;
 	private View scrim;
 	private TextView title;
 	private TextView artist;
@@ -95,6 +101,10 @@ final class MediaWidget extends HomeWidgetView {
 	private boolean playing;
 	private boolean videoNow;
 	private boolean hasArt;
+	/** Where the user last seeked to, until the session reports it (the YouTube player is slow to). */
+	private long seekPos;
+	private long seekAt;
+	private int durationAsks;
 	private Runnable chipAction = () -> {};
 	private final Runnable ticker = this::tick;
 	private final MediaSessionCallback.Listener stateListener = new MediaSessionCallback.Listener() {
@@ -111,7 +121,7 @@ final class MediaWidget extends HomeWidgetView {
 
 		@Override
 		public void onDurationChanged(PlayableItem i) {
-			post(MediaWidget.this::syncItem);
+			post(MediaWidget.this::refreshDuration);
 		}
 	};
 
@@ -131,13 +141,13 @@ final class MediaWidget extends HomeWidgetView {
 	@Override
 	protected void onCreate(FrameLayout content) {
 		content.setPadding(0, 0, 0, 0);
-		wash = new ImageView(ctx);
-		wash.setScaleType(ImageView.ScaleType.CENTER_CROP);
+		wash = new Fader(ctx, false);
 		content.addView(wash, new FrameLayout.LayoutParams(-1, -1));
-		art = new FadeImageView(ctx);
-		art.setScaleType(ImageView.ScaleType.CENTER_CROP);
+		art = new Fader(ctx, true);
 		content.addView(art);
-		thumb = HomeImages.thumb(ctx, 44, 44, 12, 0x33FFFFFF);
+		thumb = new Fader(ctx, false);
+		HomeImages.round(thumb, px(12));
+		thumb.setBackground(HomeUi.round(0x33FFFFFF, px(12)));
 		content.addView(thumb);
 		scrim = new View(ctx);
 		content.addView(scrim, new FrameLayout.LayoutParams(-1, -1));
@@ -167,7 +177,7 @@ final class MediaWidget extends HomeWidgetView {
 		seekBlock.setOrientation(LinearLayout.VERTICAL);
 		seek = new Seek();
 		noGrab(seek);
-		seekBlock.addView(seek, new LinearLayout.LayoutParams(-1, px(22)));
+		seekBlock.addView(seek, new LinearLayout.LayoutParams(-1, px(34)));
 		LinearLayout times = new LinearLayout(ctx);
 		timeNow = text(ROLE_SECONDARY, 11.5f, false);
 		timeAll = text(ROLE_SECONDARY, 11.5f, false);
@@ -202,6 +212,10 @@ final class MediaWidget extends HomeWidgetView {
 		chip = chip(R.drawable.video_fullscreen, "", () -> chipAction.run());
 		chip.setBackground(HomeUi.pressable(0x33FFFFFF, 0x44000000, px(17)));
 		content.addView(chip);
+
+		artBusy = spinner(20);
+		artBusy.setVisibility(GONE);
+		content.addView(artBusy, lp(px(20), px(20), Gravity.TOP | Gravity.END, 0, px(12), px(12), 0));
 	}
 
 	@Override
@@ -233,8 +247,7 @@ final class MediaWidget extends HomeWidgetView {
 	}
 
 	@Override
-	protected void onSizeChanged(int w, int h, int ow, int oh) {
-		super.onSizeChanged(w, h, ow, oh);
+	protected void onSized(int w, int h) {
 		if ((thumb != null) && (w != appliedW)) applyMode();
 	}
 
@@ -246,8 +259,8 @@ final class MediaWidget extends HomeWidgetView {
 
 	private void applyMode() {
 		if (mode < 0) return;
-		int w = Math.max(getWidth(), px(160));
-		appliedW = getWidth();
+		int w = Math.max(widthPx(), px(160));
+		appliedW = widthPx();
 		boolean strip = (mode == STRIP_SMALL) || (mode == STRIP_WIDE);
 		boolean large = (mode == LARGE_WIDE) || (mode == LARGE_TALL);
 		boolean showSeek = large && optBool("seek", true);
@@ -257,6 +270,7 @@ final class MediaWidget extends HomeWidgetView {
 		thumb.setVisibility(strip ? VISIBLE : GONE);
 		art.setVisibility(strip ? GONE : VISIBLE);
 		art.setFade(mode == LARGE_WIDE ? FadeImageView.RIGHT : FadeImageView.BOTTOM);
+		artBusy.setVisibility(strip ? GONE : artBusy.getVisibility());
 		prev.setVisibility((mode == STRIP_SMALL) ? GONE : VISIBLE);
 		next.setVisibility((mode == STRIP_SMALL) ? GONE : VISIBLE);
 		seekBlock.setVisibility(showSeek ? VISIBLE : GONE);
@@ -301,10 +315,8 @@ final class MediaWidget extends HomeWidgetView {
 				badge.setLayoutParams(lp(-2, -2, Gravity.TOP | Gravity.START, pad, pad, 0, 0));
 			}
 		}
-		float a = strip ? 0.92f : 1f;
 		scrim.setBackground(scrimFor(mode));
-		wash.setAlpha(a);
-		art.setBottomScrim(!strip);
+		wash.setAlpha(strip ? 0.92f : 1f);
 		syncState();
 	}
 
@@ -360,8 +372,9 @@ final class MediaWidget extends HomeWidgetView {
 			PlayableItem last = a.getMediaSessionCallback().getResumeItem();
 			shown = null;
 			generation++;
-			title.setText(R.string.home_media_idle);
-			artist.setText((last != null) ? last.getName() : ctx.getString(R.string.home_media_idle_sub));
+			swap(title, ctx.getString(R.string.home_media_idle));
+			swap(artist, (last != null) ? last.getName() : ctx.getString(R.string.home_media_idle_sub));
+			setBusy(false);
 			setArt(null);
 			duration = 0;
 			syncState();
@@ -373,23 +386,64 @@ final class MediaWidget extends HomeWidgetView {
 		}
 		shown = pi;
 		int gen = ++generation;
-		title.setText(pi.getName());
-		artist.setText(pi instanceof MusicTrackItem t && t.getArtistName() != null ? t.getArtistName() : "");
+		duration = 0;
+		swap(title, pi.getName());
+		swap(artist, pi instanceof MusicTrackItem t && t.getArtistName() != null ? t.getArtistName() : "");
 		title.setSelected(true);
-		pi.getMediaData().main().onSuccess(md -> {
-			if ((gen != generation) || (md == null)) return;
+		setBusy(true);
+		pi.getMediaData().main().onCompletion((md, err) -> {
+			if (gen != generation) return;
+			if (md == null) {
+				setBusy(false);
+				return;
+			}
 			String t = md.getString(METADATA_KEY_TITLE);
 			if ((t == null) || t.isEmpty()) t = md.getString(METADATA_KEY_DISPLAY_TITLE);
-			if ((t != null) && !t.isEmpty()) title.setText(t);
+			if ((t != null) && !t.isEmpty()) swap(title, t);
 			String ar = md.getString(METADATA_KEY_ARTIST);
 			if ((ar == null) || ar.isEmpty()) ar = md.getString(METADATA_KEY_ALBUM_ARTIST);
 			if ((ar == null) || ar.isEmpty()) ar = md.getString(METADATA_KEY_ALBUM);
-			if ((ar != null) && !ar.isEmpty()) artist.setText(ar);
+			if ((ar != null) && !ar.isEmpty()) swap(artist, ar);
 			duration = md.getLong(METADATA_KEY_DURATION);
 			loadArt(pi, md, gen);
 			syncState();
 		});
 		syncState();
+	}
+
+	/** The duration may only become known after the item (the YouTube player says it late). */
+	private void refreshDuration() {
+		PlayableItem pi = shown;
+		if (pi == null) return;
+		pi.getMediaData().main().onSuccess(md -> {
+			if ((md != null) && (pi == shown) && (md.getLong(METADATA_KEY_DURATION) > 0)) {
+				duration = md.getLong(METADATA_KEY_DURATION);
+				tick();
+			}
+		});
+	}
+
+	/** Changes a text with a short cross-fade, so a new song's name doesn't pop in. */
+	private void swap(TextView t, CharSequence s) {
+		if (s.toString().contentEquals(t.getText())) {
+			t.animate().cancel();
+			t.setAlpha(1f);
+			return;
+		}
+		if (!t.isAttachedToWindow() || !isShown() || !host.animate()) {
+			t.setText(s);
+			return;
+		}
+		t.animate().cancel();
+		t.animate().alpha(0f).setDuration(130).withEndAction(() -> {
+			t.setText(s);
+			t.animate().alpha(1f).setDuration(260).start();
+		}).start();
+	}
+
+	private void setBusy(boolean on) {
+		boolean strip = (mode == STRIP_SMALL) || (mode == STRIP_WIDE);
+		artBusy.setVisibility(on && !strip ? VISIBLE : GONE);
 	}
 
 	private void loadArt(PlayableItem pi, MediaMetadataCompat md, int gen) {
@@ -433,30 +487,31 @@ final class MediaWidget extends HomeWidgetView {
 		});
 	}
 
-	/** Shows the cover, or the card's own colours when there is none. */
+	/** Shows the cover, or the card's own colours when there is none; the old one fades into it. */
 	private void setArt(@Nullable Bitmap bm) {
 		hasArt = bm != null;
+		setBusy(false);
 		if (bm == null) {
 			GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
 					new int[]{HomeUi.shade(type.accent, 0.7f), HomeUi.shade(type.accent, 0.3f)});
-			wash.setImageDrawable(g);
-			art.setImageDrawable(null);
-			thumb.setImageResource(R.drawable.music_note_large);
-			thumb.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-			thumb.setImageTintList(android.content.res.ColorStateList.valueOf(0x99FFFFFF));
+			wash.set(g);
+			art.set(null);
+			thumb.setIcon(true);
+			thumb.set(ContextCompat.getDrawable(ctx, R.drawable.music_note_large));
+			thumb.tint(0x99FFFFFF);
 			return;
 		}
-		// The blurred wash: a tiny copy stretched over the card.
-		int sw = 24;
+		// The blurred wash: a small copy, really blurred (a plain tiny copy shows as blocks).
+		int sw = 96;
 		int sh = Math.max(8, Math.round(sw * (float) bm.getHeight() / bm.getWidth()));
 		Bitmap small = Bitmap.createScaledBitmap(bm, sw, sh, true);
-		BitmapDrawable d = new BitmapDrawable(getResources(), small);
-		d.setFilterBitmap(true);
-		wash.setImageDrawable(d);
-		art.setImageBitmap(bm);
-		thumb.setImageTintList(null);
-		thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
-		thumb.setImageBitmap(bm);
+		Bitmap soft = HomeBlur.blur(small, 70);
+		Drawable d = new BitmapDrawable(getResources(), (soft != null) ? soft : small);
+		wash.set(d);
+		art.set(new BitmapDrawable(getResources(), bm));
+		thumb.tint(0);
+		thumb.setIcon(false);
+		thumb.set(new BitmapDrawable(getResources(), bm));
 	}
 
 	/** Play state, the video chip and the seek bar follow the session. */
@@ -511,6 +566,12 @@ final class MediaWidget extends HomeWidgetView {
 	/** The position now, extrapolated from the session's last report. */
 	private long position() {
 		PlaybackStateCompat st = act().getMediaSessionCallback().getPlaybackState();
+		// Just seeked: the session may not have heard of it yet, so go on from where the user put it.
+		long since = SystemClock.elapsedRealtime() - seekAt;
+		if ((seekAt > 0) && (since < 3000)) {
+			long reported = st.getPosition();
+			if (Math.abs(reported - seekPos) > 2500) return Math.max(0, seekPos + (playing ? since : 0));
+		}
 		long pos = st.getPosition();
 		if (st.getState() == PlaybackStateCompat.STATE_PLAYING) {
 			pos += (long) ((SystemClock.elapsedRealtime() - st.getLastPositionUpdateTime()) *
@@ -523,6 +584,8 @@ final class MediaWidget extends HomeWidgetView {
 		if (seek == null) return;
 		boolean large = (mode == LARGE_WIDE) || (mode == LARGE_TALL);
 		if (large && (seekBlock.getVisibility() == VISIBLE)) {
+			// A video whose length isn't known yet: asked again now and then.
+			if ((duration <= 0) && (shown != null) && ((durationAsks++ % 4) == 0)) refreshDuration();
 			long pos = position();
 			if (duration > 0) pos = Math.min(pos, duration);
 			if (!seek.isTouching()) seek.setFraction((duration > 0) ? (float) pos / duration : 0f);
@@ -570,6 +633,67 @@ final class MediaWidget extends HomeWidgetView {
 	}
 
 	// ---------------------------------------------------------------------------------------------
+
+	/**
+	 * Two stacked pictures; a new one fades in over the old one, so a song change doesn't cut. With
+	 * {@code fade} the pictures dissolve at one edge ({@link #setFade}).
+	 */
+	private static final class Fader extends FrameLayout {
+		private final ImageView[] v = new ImageView[2];
+		private int front;
+		private boolean icon;
+		private int tint;
+
+		Fader(android.content.Context ctx, boolean fade) {
+			super(ctx);
+			for (int i = 0; i < 2; i++) {
+				v[i] = fade ? new FadeImageView(ctx) : new ImageView(ctx);
+				v[i].setScaleType(ImageView.ScaleType.CENTER_CROP);
+				addView(v[i], new FrameLayout.LayoutParams(-1, -1));
+			}
+			v[1].setAlpha(0f);
+		}
+
+		void setFade(int side) {
+			for (ImageView i : v) if (i instanceof FadeImageView f) f.setFade(side);
+		}
+
+		void setIcon(boolean icon) {
+			if (this.icon == icon) return;
+			this.icon = icon;
+			int pad = icon ? HomeUi.dp(getContext(), 10) : 0;
+			for (ImageView i : v) {
+				i.setScaleType(icon ? ImageView.ScaleType.CENTER_INSIDE : ImageView.ScaleType.CENTER_CROP);
+				i.setPadding(pad, pad, pad, pad);
+			}
+		}
+
+		void tint(int color) {
+			tint = color;
+			for (ImageView i : v) i.setImageTintList((color == 0) ? null : ColorStateList.valueOf(color));
+		}
+
+		void set(@Nullable Drawable d) {
+			ImageView in = v[1 - front];
+			ImageView out = v[front];
+			in.animate().cancel();
+			out.animate().cancel();
+			in.setImageDrawable(d);
+			boolean animate = isAttachedToWindow() && isShown() && (out.getDrawable() != null);
+			front = 1 - front;
+			if (!animate) {
+				in.setAlpha(1f);
+				out.setAlpha(0f);
+				out.setImageDrawable(null);
+				return;
+			}
+			in.setAlpha(0f);
+			in.animate().alpha(1f).setDuration(520).start();
+			out.animate().alpha(0f).setDuration(520).withEndAction(() -> {
+				if (out != v[front]) out.setImageDrawable(null);
+			}).start();
+		}
+	}
 
 	/** The cover, drawn fading to nothing at one edge so it blends into the blurred wash behind. */
 	private static final class FadeImageView extends ImageView {
@@ -662,7 +786,11 @@ final class MediaWidget extends HomeWidgetView {
 				case MotionEvent.ACTION_UP -> {
 					touching = false;
 					setFraction(f);
-					act().getMediaSessionCallback().onSeekTo((long) (f * duration));
+					seekPos = (long) (f * duration);
+					seekAt = SystemClock.elapsedRealtime();
+					act().getMediaSessionCallback().onSeekTo(seekPos);
+					timeNow.setText(DateUtils.formatElapsedTime(seekPos / 1000));
+					post(ticker);
 				}
 				case MotionEvent.ACTION_CANCEL -> {
 					touching = false;

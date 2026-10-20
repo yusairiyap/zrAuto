@@ -85,12 +85,10 @@ final class HomeCellView extends FrameLayout implements HomeStackView.Callback {
 
 		removeBtn = chromeButton(ctx, me.aap.utils.R.drawable.close, R.string.home_remove);
 		removeBtn.setOnClickListener(v -> grid.removeTop(this));
-		addView(removeBtn, new LayoutParams(HomeUi.dp(ctx, 32), HomeUi.dp(ctx, 32),
-				Gravity.TOP | Gravity.START));
+		addView(removeBtn, chromeParams(ctx, 36, Gravity.TOP | Gravity.START, 10));
 		optionsBtn = chromeButton(ctx, R.drawable.settings, R.string.home_options);
 		optionsBtn.setOnClickListener(v -> grid.openOptions(this));
-		addView(optionsBtn, new LayoutParams(HomeUi.dp(ctx, 32), HomeUi.dp(ctx, 32),
-				Gravity.TOP | Gravity.END));
+		addView(optionsBtn, chromeParams(ctx, 36, Gravity.TOP | Gravity.END, 10));
 
 		handle = chromeButton(ctx, R.drawable.home_resize, R.string.home_resize);
 		handle.setOnClickListener(null);
@@ -98,7 +96,8 @@ final class HomeCellView extends FrameLayout implements HomeStackView.Callback {
 		handle.setOnTouchListener((v, e) -> {
 			switch (e.getActionMasked()) {
 				case MotionEvent.ACTION_DOWN -> {
-					if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
+					// This cell (v's parent) must not take the drag over once the finger leaves the handle.
+					if (v.getParent() != null) v.getParent().requestDisallowInterceptTouchEvent(true);
 					grid.startResize(this, e.getRawX(), e.getRawY());
 				}
 				case MotionEvent.ACTION_MOVE -> grid.moveResize(this, e.getRawX(), e.getRawY());
@@ -108,8 +107,7 @@ final class HomeCellView extends FrameLayout implements HomeStackView.Callback {
 			}
 			return true;
 		});
-		addView(handle, new LayoutParams(HomeUi.dp(ctx, 38), HomeUi.dp(ctx, 38),
-				Gravity.BOTTOM | Gravity.END));
+		addView(handle, chromeParams(ctx, 42, Gravity.BOTTOM | Gravity.END, 8));
 
 		badge = new TextView(ctx);
 		badge.setTextColor(0xFFFFFFFF);
@@ -127,13 +125,20 @@ final class HomeCellView extends FrameLayout implements HomeStackView.Callback {
 		setChromeAlpha(0f);
 	}
 
+	private static LayoutParams chromeParams(Context ctx, int sizeDp, int gravity, int marginDp) {
+		LayoutParams lp = new LayoutParams(HomeUi.dp(ctx, sizeDp), HomeUi.dp(ctx, sizeDp), gravity);
+		int m = HomeUi.dp(ctx, marginDp);
+		lp.setMargins(m, m, m, m);
+		return lp;
+	}
+
 	private ImageView chromeButton(Context ctx, int icon, int desc) {
 		ImageView b = new ImageView(ctx);
 		b.setImageResource(icon);
 		b.setImageTintList(android.content.res.ColorStateList.valueOf(0xFFFFFFFF));
-		int pad = HomeUi.dp(ctx, 7);
+		int pad = HomeUi.dp(ctx, 9);
 		b.setPadding(pad, pad, pad, pad);
-		b.setBackground(HomeUi.pressable(0x44FFFFFF, 0xCC000000, HomeUi.dp(ctx, 19)));
+		b.setBackground(HomeUi.pressable(0x44FFFFFF, 0xCC000000, HomeUi.dp(ctx, 21)));
 		b.setContentDescription(ctx.getString(desc));
 		b.setClickable(true);
 		b.setFocusable(true);

@@ -3,6 +3,7 @@ package me.aap.fermata.ui.home;
 import static android.text.format.DateUtils.FORMAT_SHOW_DATE;
 import static android.text.format.DateUtils.FORMAT_SHOW_WEEKDAY;
 
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Typeface;
@@ -14,6 +15,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
@@ -38,6 +40,7 @@ import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.view.BehindBarsLayers;
 import me.aap.utils.app.App;
 import me.aap.utils.pref.PreferenceStore;
+import me.aap.utils.ui.view.NavBarView;
 
 /**
  * Everything the Home tab is made of, so the fragment only has to pass its lifecycle on: the
@@ -59,10 +62,17 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	private final TextView greetDate;
 	private final LinearLayout chipBar;
 	private final TextView editBtn;
-	private final TextView[] editChips = new TextView[3];
+	private final TextView[] editChips = new TextView[4];
 	private final LinearLayout empty;
 	@Nullable
 	private ViewGroup scroller;
+	@Nullable
+	private HomeFadeLayout fade;
+	private final int[] insetLoc = new int[2];
+	private final int[] insetLoc2 = new int[2];
+	@Nullable
+	private ValueAnimator insetAnim;
+	private final View.OnLayoutChangeListener insetSync = (v, l, t, r, b, ol, ot, or, ob) -> syncInsets(true);
 	private boolean vertical = true;
 	private boolean editing;
 	private boolean shown;
@@ -117,7 +127,11 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		editChips[0] = pillChip(R.drawable.home_add, R.string.home_add, false, this::showAdd);
 		editChips[1] = pillChip(R.drawable.home_image, R.string.home_background, false,
 				() -> HomePickers.showBackground(this));
-		editChips[2] = pillChip(R.drawable.done, R.string.home_done, true, () -> setEditing(false));
+		editChips[2] = pillChip(R.drawable.settings, R.string.settings, false, () -> {
+			a.exitVideoMode();
+			a.showFragment(R.id.settings_fragment, me.aap.fermata.ui.fragment.SettingsFragment.SHOW_HOME_SETTINGS);
+		});
+		editChips[3] = pillChip(R.drawable.done, R.string.home_done, true, () -> setEditing(false));
 		chipBar.addView(editBtn);
 		for (TextView c : editChips) chipBar.addView(c);
 		FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -203,8 +217,16 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			grid.sync();
 			updateEmpty();
 		}
+		// Hidden right now, not in the next frame: otherwise the widgets show once, then vanish and fade in.
+		grid.prepareEntrance();
+		if (greeting.getVisibility() == View.VISIBLE) {
+			greeting.animate().cancel();
+			greeting.setAlpha(animate() ? 0f : 1f);
+		}
 		root.post(() -> {
-			if (shown) grid.playEntrance();
+			if (!shown) return;
+			grid.playEntrance();
+			greeting.animate().alpha(1f).setDuration(380).setInterpolator(new DecelerateInterpolator(1.8f)).start();
 		});
 		entered = true;
 		if (editOnShow) {
@@ -427,7 +449,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	private void buildScroller(boolean down) {
 		Context ctx = palette.ctx;
 		if (scroller != null) {
-			root.removeView(scroller);
+			stopInsets();
+			root.removeView(fade);
 			if (grid.getParent() instanceof ViewGroup p) p.removeView(grid);
 			if (greeting.getParent() instanceof ViewGroup p) p.removeView(greeting);
 		}
@@ -456,12 +479,96 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			s = hv;
 		}
 		s.setClipChildren(false);
-		root.addView(s, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+		s.setClipToPadding(false);
+		fade = new HomeFadeLayout(ctx);
+		fade.addView(s, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));
-		a.insetScrollableContent(s);
+		fade.follow(s);
+		root.addView(fade, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.MATCH_PARENT));
 		grid.setScroller(s);
 		scroller = s;
+		startInsets(s);
 	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Insets
+
+	/**
+	 * Home keeps its own room: nothing at the top (the title bar is gone here, so there is nothing to
+	 * clear, and following it fading out made the page jump up once it was gone) and, at the bottom,
+	 * only a bottom navigation pill. The control panel is covered here, so it needs none either.
+	 * The room is right from the first frame and glides when the pill comes or goes.
+	 */
+	private void startInsets(ViewGroup s) {
+		s.setPadding(0, 0, 0, 0);
+		NavBarView nb = a.getNavBar();
+		if (nb != null) nb.addOnLayoutChangeListener(insetSync);
+		s.addOnLayoutChangeListener(insetSync);
+		s.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+			@Override
+			public void onViewAttachedToWindow(View v) {
+				syncInsets(false);
+			}
+
+			@Override
+			public void onViewDetachedFromWindow(View v) {
+			}
+		});
+		if (s.isAttachedToWindow()) syncInsets(false);
+	}
+
+	private void stopInsets() {
+		if (insetAnim != null) insetAnim.cancel();
+		insetAnim = null;
+		NavBarView nb = a.getNavBar();
+		if (nb != null) nb.removeOnLayoutChangeListener(insetSync);
+		if (scroller != null) scroller.removeOnLayoutChangeListener(insetSync);
+	}
+
+	private int navOverlap(View s) {
+		NavBarView nb = a.getNavBar();
+		if ((nb == null) || (nb.getVisibility() != View.VISIBLE) || !nb.isBottom() || a.isBarsHidden() ||
+				(nb.getHeight() == 0)) {
+			return 0;
+		}
+		s.getLocationOnScreen(insetLoc);
+		nb.getLocationOnScreen(insetLoc2);
+		float dy = (a.getScrollBars() != null) ? a.getScrollBars().getNavDy() : 0f;
+		return Math.max(0, insetLoc[1] + s.getHeight() - Math.round(insetLoc2[1] - dy));
+	}
+
+	private void syncInsets(boolean animate) {
+		ViewGroup s = scroller;
+		if ((s == null) || !s.isAttachedToWindow() || (s.getHeight() == 0)) return;
+		int want = navOverlap(s);
+		int now = s.getPaddingBottom();
+		if (insetAnim != null) {
+			if (insetTarget == want) return;
+			insetAnim.cancel();
+			insetAnim = null;
+			now = s.getPaddingBottom();
+		}
+		if (now == want) return;
+		insetTarget = want;
+		if (!animate || !shown || !animate()) {
+			s.setPadding(0, 0, 0, want);
+			return;
+		}
+		ValueAnimator va = ValueAnimator.ofInt(now, want);
+		va.setDuration(240);
+		va.addUpdateListener(an -> s.setPadding(0, 0, 0, (Integer) an.getAnimatedValue()));
+		va.addListener(new android.animation.AnimatorListenerAdapter() {
+			@Override
+			public void onAnimationEnd(android.animation.Animator an) {
+				if (insetAnim == va) insetAnim = null;
+			}
+		});
+		insetAnim = va;
+		va.start();
+	}
+
+	private int insetTarget;
 
 	private void applyGreeting() {
 		boolean show = vertical && prefs.getBooleanPref(MainActivityPrefs.HOME_GREETING);

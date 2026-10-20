@@ -131,13 +131,11 @@ final class HomeBackground {
 			Bitmap bm = BitmapFactory.decodeFile(f.getPath(), o);
 			if (bm == null) return null;
 			if (blur > 0) {
-				// A small copy drawn large again with filtering: the soft wash the blur setting means.
-				float k = (float) Math.pow(1f - Math.min(100, blur) / 100f, 2.2) * 0.9f + 0.02f;
-				int sw = Math.max(16, Math.round(bm.getWidth() * k));
-				int sh = Math.max(16, Math.round(bm.getHeight() * k));
-				Bitmap small = Bitmap.createScaledBitmap(bm, sw, sh, true);
-				if (small != bm) bm.recycle();
-				bm = small;
+				Bitmap soft = HomeBlur.blur(bm, blur);
+				if (soft != null) {
+					if (soft != bm) bm.recycle();
+					bm = soft;
+				}
 			}
 			return new Loaded(bm, topColor(bm));
 		} catch (Throwable ex) {

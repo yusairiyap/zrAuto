@@ -1,5 +1,6 @@
 package me.aap.fermata.ui.home;
 
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Outline;
@@ -8,10 +9,12 @@ import android.graphics.drawable.GradientDrawable;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import androidx.annotation.DrawableRes;
@@ -73,7 +76,18 @@ public abstract class HomeWidgetView extends FrameLayout {
 	@Nullable
 	private View headerTitle;
 
-	private record Tint(View view, int role) {}
+	private static final class Tint {
+		final View view;
+		final int role;
+		int now;
+		int from;
+		int to;
+
+		Tint(View view, int role) {
+			this.view = view;
+			this.role = role;
+		}
+	}
 
 	/** A view whose background is the faint fill: {@code radiusDp} rounds it, below 0 a disc. */
 	private record Soft(View view, float radiusDp) {}
@@ -147,7 +161,7 @@ public abstract class HomeWidgetView extends FrameLayout {
 		this.item = item;
 		onCreate(content);
 		created = true;
-		applyStyle();
+		applyStyle(false);
 		onResized(cw, ch);
 		onBind();
 		if (active) onActive();
@@ -189,6 +203,37 @@ public abstract class HomeWidgetView extends FrameLayout {
 	/** Room for the full version: six units or more, or a block of 3 x 3. */
 	protected final boolean isLarge() {
 		return ((cw * ch) >= 6) || ((cw >= 3) && (ch >= 3));
+	}
+
+	private int measuredWpx;
+	private int measuredHpx;
+
+	/**
+	 * The card's size in pixels, from the measure pass (before it is laid out and drawn), so what
+	 * depends on it is already right in the first frame instead of jumping into place after it.
+	 */
+	protected void onSized(int wPx, int hPx) {
+	}
+
+	protected final int widthPx() {
+		return measuredWpx;
+	}
+
+	protected final int heightPx() {
+		return measuredHpx;
+	}
+
+	@Override
+	protected void onMeasure(int wSpec, int hSpec) {
+		int w = MeasureSpec.getSize(wSpec);
+		int h = MeasureSpec.getSize(hSpec);
+		if (created && (MeasureSpec.getMode(wSpec) == MeasureSpec.EXACTLY) &&
+				(MeasureSpec.getMode(hSpec) == MeasureSpec.EXACTLY) && ((w != measuredWpx) || (h != measuredHpx))) {
+			measuredWpx = w;
+			measuredHpx = h;
+			onSized(w, h);
+		}
+		super.onMeasure(wSpec, hSpec);
 	}
 
 	@Override
@@ -258,7 +303,8 @@ public abstract class HomeWidgetView extends FrameLayout {
 	/** The common settings (look, title), then the widget's own. */
 	final List<HomeOption> allOptions() {
 		List<HomeOption> l = new ArrayList<>();
-		l.add(HomeOption.choice(OPT_STYLE, ctx.getString(R.string.home_opt_style), 0,
+		// A widget that paints its whole card has no look to choose.
+		if (!ownBackground()) l.add(HomeOption.choice(OPT_STYLE, ctx.getString(R.string.home_opt_style), 0,
 				ctx.getString(R.string.home_style_auto), ctx.getString(R.string.home_style_solid),
 				ctx.getString(R.string.home_style_glass), ctx.getString(R.string.home_style_colour)));
 		if (hasHeader) l.add(HomeOption.sw(OPT_TITLE, ctx.getString(R.string.home_opt_title), true));
@@ -314,30 +360,82 @@ public abstract class HomeWidgetView extends FrameLayout {
 		applyStyle();
 	}
 
+	private ValueAnimator styleAnim;
+	private int cardNow1;
+	private int cardNow2;
+	private int strokeNow;
+
 	private void applyStyle() {
+		applyStyle(created && isShown() && host.animate());
+	}
+
+	/** Moves the card and everything tinted to the colours of the look now chosen, gliding when asked. */
+	private void applyStyle(boolean animate) {
 		int s = style();
+		final int c1;
+		final int c2;
+		final int stroke;
 		if (ownBackground()) {
-			card.setColor(0xFF14161F);
-			card.setStroke(0, 0);
+			c1 = c2 = 0xFF14161F;
+			stroke = 0;
 		} else if (s == STYLE_SOLID) {
-			card.setColor(host.palette().cardFill);
-			card.setStroke(0, 0);
+			c1 = c2 = host.palette().cardFill | 0xFF000000;
+			stroke = 0;
 		} else if (s == STYLE_GLASS) {
-			card.setColor(0x66101018);
-			card.setStroke(Math.round(dp), 0x22FFFFFF);
+			c1 = c2 = 0x66101018;
+			stroke = 0x22FFFFFF;
 		} else {
-			card.setOrientation(GradientDrawable.Orientation.TL_BR);
-			card.setColors(new int[]{HomeUi.shade(type.accent, 0.8f), HomeUi.shade(type.accent, 0.42f)});
-			card.setStroke(0, 0);
+			c1 = HomeUi.shade(type.accent, 0.8f) | 0xFF000000;
+			c2 = HomeUi.shade(type.accent, 0.42f) | 0xFF000000;
+			stroke = 0;
 		}
+		if (styleAnim != null) {
+			styleAnim.cancel();
+			styleAnim = null;
+		}
+		final int f1 = cardNow1;
+		final int f2 = cardNow2;
+		final int fs = strokeNow;
+		for (Tint t : tints) {
+			t.from = t.now;
+			t.to = color(t.role);
+		}
+		card.setOrientation(GradientDrawable.Orientation.TL_BR);
 		card.setCornerRadius(CORNER_DP * dp);
-		retint();
+		// What is not a colour glides is set at once: the faint fills, and whatever the widget tints itself.
+		for (Soft so : softs) paintSoft(so);
 		if (created) onStyleChanged();
+		if (!animate || (cardNow1 == 0)) {
+			paintStyle(1f, c1, c2, stroke, c1, c2, stroke);
+			return;
+		}
+		ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
+		a.setDuration(280);
+		a.setInterpolator(new android.view.animation.DecelerateInterpolator());
+		a.addUpdateListener(v -> paintStyle((float) v.getAnimatedValue(), f1, f2, fs, c1, c2, stroke));
+		styleAnim = a;
+		a.start();
+	}
+
+	private void paintStyle(float f, int f1, int f2, int fs, int c1, int c2, int stroke) {
+		cardNow1 = HomeUi.mix(f1, c1, f);
+		cardNow2 = HomeUi.mix(f2, c2, f);
+		strokeNow = HomeUi.mix(fs, stroke, f);
+		card.setColors(new int[]{cardNow1, cardNow2});
+		card.setStroke(Math.max(1, Math.round(dp)), strokeNow);
+		for (Tint t : tints) {
+			t.now = (f >= 1f) ? t.to : HomeUi.mix(t.from, t.to, f);
+			paintTint(t);
+		}
 		invalidate();
 	}
 
 	private void retint() {
-		for (Tint t : tints) tint(t);
+		for (Tint t : tints) {
+			t.now = color(t.role);
+			t.from = t.to = t.now;
+			paintTint(t);
+		}
 		for (Soft s : softs) paintSoft(s);
 	}
 
@@ -353,12 +451,38 @@ public abstract class HomeWidgetView extends FrameLayout {
 		paintSoft(s);
 	}
 
-	private void tint(Tint t) {
-		int c = color(t.role);
+	private void paintTint(Tint t) {
+		int c = t.now;
 		if (t.view instanceof TextView tv) {
 			tv.setTextColor(c);
 			tv.setCompoundDrawableTintList(ColorStateList.valueOf(c));
-		} else if (t.view instanceof ImageView iv) iv.setImageTintList(ColorStateList.valueOf(c));
+		} else if (t.view instanceof ImageView iv) {
+			iv.setImageTintList(ColorStateList.valueOf(c));
+		} else if (t.view instanceof ProgressBar pb) {
+			pb.setIndeterminateTintList(ColorStateList.valueOf(c));
+		}
+	}
+
+	/** Stops following the views under {@code g}, which is about to drop them (a list built again). */
+	protected final void forget(ViewGroup g) {
+		tints.removeIf(t -> isUnder(t.view, g));
+		softs.removeIf(t -> isUnder(t.view, g));
+	}
+
+	private static boolean isUnder(View v, ViewGroup g) {
+		for (android.view.ViewParent p = v.getParent(); p != null; p = p.getParent()) {
+			if (p == g) return true;
+		}
+		return false;
+	}
+
+	/** A small spinner in the card's colour, for what is being loaded. */
+	protected final ProgressBar spinner(int sizeDp) {
+		ProgressBar pb = new ProgressBar(ctx);
+		pb.setIndeterminate(true);
+		pb.setLayoutParams(new LinearLayout.LayoutParams(px(sizeDp), px(sizeDp)));
+		track(pb, ROLE_SECONDARY);
+		return pb;
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -391,8 +515,9 @@ public abstract class HomeWidgetView extends FrameLayout {
 	/** Colours {@code v} (a text or image view) by {@code role} from now on. */
 	protected final void track(View v, int role) {
 		Tint t = new Tint(v, role);
+		t.now = t.from = t.to = color(role);
 		tints.add(t);
-		tint(t);
+		paintTint(t);
 	}
 
 	/** A round icon button; it has a click listener, so car mode can select it. */

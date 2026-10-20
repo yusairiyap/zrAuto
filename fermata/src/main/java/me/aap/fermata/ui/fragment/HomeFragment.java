@@ -121,6 +121,8 @@ public class HomeFragment extends MainActivityFragment {
 		covered = on;
 		ControlPanelView cp = a.getControlPanel();
 		if (cp != null) cp.setCovered(on);
+		// The floating buttons have nothing to do here: the widgets are the controls.
+		a.setFabsHidden(on);
 	}
 
 	@Override

@@ -31,6 +31,7 @@ final class LyricsWidget extends HomeWidgetView implements CaptionsHub.Listener 
 	private LinearLayout column;
 	private LinearLayout lines;
 	private TextView message;
+	private android.widget.ProgressBar busy;
 	private final TextView[] line = new TextView[LINES];
 	private final int[] cueIndex = new int[LINES];
 	private int shownIndex = Integer.MIN_VALUE;
@@ -75,6 +76,11 @@ final class LyricsWidget extends HomeWidgetView implements CaptionsHub.Listener 
 		message.setVisibility(GONE);
 		column.addView(message, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 		content.addView(column, new FrameLayout.LayoutParams(-1, -1));
+		busy = spinner(28);
+		busy.setVisibility(GONE);
+		FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(px(28), px(28), Gravity.CENTER);
+		blp.bottomMargin = px(26);
+		content.addView(busy, blp);
 	}
 
 	@Override
@@ -137,6 +143,9 @@ final class LyricsWidget extends HomeWidgetView implements CaptionsHub.Listener 
 			shownIndex = Integer.MIN_VALUE;
 			lines.setVisibility(GONE);
 			message.setVisibility(VISIBLE);
+			busy.setVisibility((st == CaptionsHub.State.LOADING) ? VISIBLE : GONE);
+			message.setGravity((st == CaptionsHub.State.LOADING) ? (Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM) :
+					Gravity.CENTER);
 			message.setText(switch (st) {
 				case LOADING -> R.string.home_lyrics_loading;
 				case NONE -> R.string.home_lyrics_none;
@@ -156,6 +165,7 @@ final class LyricsWidget extends HomeWidgetView implements CaptionsHub.Listener 
 		shownIndex = idx;
 		shownVideo = video;
 		message.setVisibility(GONE);
+		busy.setVisibility(GONE);
 		lines.setVisibility(VISIBLE);
 		List<YtCaptions.Cue> cues = hub.getCues();
 		int visible = visibleLines();

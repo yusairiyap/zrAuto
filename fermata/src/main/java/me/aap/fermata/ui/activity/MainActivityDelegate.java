@@ -3263,6 +3263,26 @@ public class MainActivityDelegate extends ActivityDelegate
 			if (suppressed) hideContentLoading();
 			else if (contentLoading != null) showContentLoading();
 		}
+		overlaysSuppressed = suppressed;
+		applyFabSuppression();
+	}
+
+	// See setOverlaysSuppressed() and setFabsHidden().
+	private boolean overlaysSuppressed;
+	private boolean fabsHiddenByTab;
+
+	/**
+	 * The floating buttons stay away while the tab showing (Home) has no use for them, on top of
+	 * whatever setOverlaysSuppressed() decides: the control panel is handled apart (it fades).
+	 */
+	public void setFabsHidden(boolean hidden) {
+		if (fabsHiddenByTab == hidden) return;
+		fabsHiddenByTab = hidden;
+		applyFabSuppression();
+	}
+
+	private void applyFabSuppression() {
+		boolean suppressed = overlaysSuppressed || fabsHiddenByTab;
 		// The primary one first: the others may mirror its visibility.
 		if (floatingButton != null) floatingButton.setSuppressed(suppressed);
 		if (floatingButton2 != null) floatingButton2.setSuppressed(suppressed);

@@ -493,6 +493,26 @@ what each widget shows is set on the widget (edit mode > its gear).
   So: every control needs a click listener (the helpers add one), and **never put a click listener on a whole card or a row that
   contains other controls** (it would swallow them: split the row into separate clickable parts, as `LibraryWidget` does).
 
+### Smoothness rules (learned from the first tablet test)
+
+- **Size before the first frame.** A widget that lays itself out by pixels overrides `onSized(wPx, hPx)` and reads
+  `widthPx()/heightPx()`: it runs from the measure pass (EXACTLY specs only), so the first frame is already right. Never size
+  from `onSizeChanged`/`getHeight()` in `onBind`; the Power gauge once drew small and then jumped (fixed that way).
+- **Styles animate.** `HomeWidgetView#applyStyle(true)` cross-fades fill and text/icon tints (280 ms). Text/icon/progress views made with
+  the base helpers re-tint themselves; a custom view recolours itself in `onStyleChanged`. Loading shows `spinner(dp)`.
+- **Real blur** is `HomeBlur.blur(bitmap, strength)` (box blur on a small copy); a tiny copy stretched up shows as blocks. The
+  media widget's wash and the background both use it. Pictures change through `MediaWidget.Fader` (two stacked images,
+  cross-fade), texts through `swap`.
+- **Own insets.** `HomeScreen` does not use `insetScrollableContent`: the title bar is gone here and the control panel is covered, so
+  following them made the page jump when they finished fading. Top room is 0, bottom room is only a bottom nav pill (animated).
+- **Entrance**: `HomeGridLayout#prepareEntrance` hides the widgets in `onShown` itself; `playEntrance` (one post later) brings them in.
+  Doing both in the post showed the widgets for a frame first.
+- **Edge fades** (`HomeFadeLayout`, wraps the scroller): content melts at the edges it can still scroll to (top/bottom, or left/right
+  in sideways mode), clearing the part under a bottom nav pill, because Home opts out of the bars' own edge fade.
+- **FABs are hidden** on Home (`MainActivityDelegate#setFabsHidden`, from `HomeFragment#cover`); the edit chip bar has a Settings chip
+  that opens Settings > Home (`SettingsFragment.SHOW_HOME_SETTINGS`).
+- `MeterBar` is a thin animated bar for widgets (Power breakdown, Data session limit).
+
 ### Adding a widget (the easy path)
 
 1. Write `ui/home/widget/FooWidget extends HomeWidgetView` (constructor `(HomeHost, HomeWidgetType)`). Build views in

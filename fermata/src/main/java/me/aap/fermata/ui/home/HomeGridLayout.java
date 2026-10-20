@@ -39,6 +39,8 @@ final class HomeGridLayout extends ViewGroup {
 
 	private static final long GLIDE_MS = 260;
 	private static final long SWAP_COOLDOWN_MS = 200;
+	/** How long a finger may hover over a cell it could stack on before the cell makes way. */
+	private static final long DWELL_MS = 380;
 
 	private final HomeHost host;
 	private final Listener listener;
@@ -70,6 +72,12 @@ final class HomeGridLayout extends ViewGroup {
 	private HomeCellView lastHit;
 	private long lastSwap;
 	private boolean orderChanged;
+	@Nullable
+	private HomeCellView hoverCell;
+	private long hoverSince;
+	private final Runnable dwellCheck = () -> {
+		if (dragging != null) moveDrag(lastRawX, lastRawY);
+	};
 	private final Runnable autoScroll = this::autoScrollStep;
 	private boolean autoScrolling;
 
@@ -363,8 +371,33 @@ final class HomeGridLayout extends ViewGroup {
 	}
 
 	/** A short rise of the widgets when Home appears. */
+	private boolean prepared;
+
+	/** The widgets are put out of sight at once, to come in with {@link #playEntrance}. */
+	void prepareEntrance() {
+		prepared = host.animate();
+		if (!prepared) return;
+		float dy = HomeUi.dp(getContext(), 28);
+		for (HomeCellView c : order) {
+			c.animate().cancel();
+			c.setAlpha(0f);
+			c.setTranslationX(0f);
+			c.setTranslationY(dy);
+		}
+	}
+
 	void playEntrance() {
-		if (!host.animate()) return;
+		boolean was = prepared;
+		prepared = false;
+		if (!host.animate()) {
+			for (HomeCellView c : order) {
+				c.setAlpha(1f);
+				c.setTranslationY(0f);
+			}
+			return;
+		}
+		if (!was) prepareEntrance();
+		prepared = false;
 		float dy = HomeUi.dp(getContext(), 28);
 		for (int i = 0; i < order.size(); i++) {
 			HomeCellView c = order.get(i);
@@ -418,14 +451,31 @@ final class HomeGridLayout extends ViewGroup {
 		HomeCellView hit = cellAt(gx, gy, d);
 		long now = SystemClock.uptimeMillis();
 		if (hit != null) {
-			if (canStack(d, hit) && inCenter(hit, gx, gy)) {
+			boolean stackable = canStack(d, hit);
+			if (stackable && inCenter(hit, gx, gy)) {
 				setStackTarget(hit);
+				hoverCell = null;
 			} else {
 				setStackTarget(null);
-				if ((hit != lastHit) && ((now - lastSwap) > SWAP_COOLDOWN_MS)) moveTo(d, hit);
+				if ((hit != lastHit) && ((now - lastSwap) > SWAP_COOLDOWN_MS)) {
+					if (!stackable) {
+						moveTo(d, hit);
+					} else {
+						// The same size: this may be meant as a stack. The finger is given time to
+						// reach the middle of the cell before the others make way.
+						if (hoverCell != hit) {
+							hoverCell = hit;
+							hoverSince = now;
+						}
+						removeCallbacks(dwellCheck);
+						if ((now - hoverSince) >= DWELL_MS) moveTo(d, hit);
+						else postDelayed(dwellCheck, DWELL_MS - (now - hoverSince) + 20);
+					}
+				}
 			}
 		} else {
 			setStackTarget(null);
+			hoverCell = null;
 			if (inSlot(d, gx, gy)) {
 				// Back over its own place: the next cell it meets is a new one to swap with.
 				lastHit = null;
@@ -451,6 +501,7 @@ final class HomeGridLayout extends ViewGroup {
 		order.remove(d);
 		order.add(to, d);
 		lastHit = hit;
+		hoverCell = null;
 		lastSwap = SystemClock.uptimeMillis();
 		orderChanged = true;
 		requestLayout();
@@ -495,7 +546,7 @@ final class HomeGridLayout extends ViewGroup {
 	private static boolean inCenter(HomeCellView c, float x, float y) {
 		float cx = (c.getLeft() + c.getRight()) / 2f;
 		float cy = (c.getTop() + c.getBottom()) / 2f;
-		return (Math.abs(x - cx) < c.getWidth() * 0.3f) && (Math.abs(y - cy) < c.getHeight() * 0.3f);
+		return (Math.abs(x - cx) < c.getWidth() * 0.36f) && (Math.abs(y - cy) < c.getHeight() * 0.36f);
 	}
 
 	/** Same size, and every widget being dropped can take the size of the stack it joins. */
@@ -522,6 +573,8 @@ final class HomeGridLayout extends ViewGroup {
 		HomeCellView d = dragging;
 		if (d == null) return;
 		dragging = null;
+		hoverCell = null;
+		removeCallbacks(dwellCheck);
 		stopAutoScroll();
 		HomeCellView target = stackTarget;
 		setStackTarget(null);
