@@ -626,6 +626,25 @@ Tailor the filter/tag to what's actually being investigated (e.g. a specific add
 `*:F` for fatal-only) rather than always using the generic examples above. Ask for the log **before**
 proposing further speculative fixes once a couple of code-reading passes haven't settled the cause.
 
+## Pull request descriptions
+
+The PR template is `.github/pull_request_template.md` (sections: Description, Type of change, Changes made,
+How to test, Checklist, Related issues, Screenshots; modelled on the gitmore.io PR template guide). The
+**Description** is broken down by feature or area with a short heading each, as in the Ambience PR.
+
+- Describe the **branch as a whole, in its end state**: what the reviewer gets compared with `master`.
+  Do **not** list every bug fix made along the way, especially fixes to something this same branch
+  introduced (a compile error in new code, an overflow in a new function, a tweak after the user's feedback
+  on an earlier iteration). To a reviewer those never existed; they only see the finished feature. Mention a
+  fix only when it changes something that already exists on `master`.
+- Keep it current: **whenever you push to a branch that has a PR, rewrite the PR description to match the
+  branch now** (`mcp__github__update_pull_request`), so it is right before anyone asks for a review. When the
+  user has no PR yet, keep the finished description ready (in your reply, or as soon as the PR exists) so it
+  is never written after the fact. Never create a PR unprompted, but once one exists, keep it updated without
+  being asked.
+- Follow the template's headings; delete a section only if it truly does not apply. Say plainly what was not
+  run (this cloud session cannot run the app) rather than ticking "verified on a device".
+
 ## When in doubt, ask
 
 This is someone's personal Android project (not a work codebase) with real users on the release
