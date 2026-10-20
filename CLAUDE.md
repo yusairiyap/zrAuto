@@ -689,8 +689,8 @@ what each widget shows is set on the widget (edit mode > its gear).
 - **Tile cards size from their pixel height** (`TileWidget#applySize`, from `onSized`): the icon shrinks to fit and the names only show
   when they fit under it (Labels "Automatic"); a card two cells high on a wide car screen is short in pixels, which is what clipped the names.
 - **Car screen, scrolling down**: the edit button and the info chips sit on the middle line of the greeting's two lines
-  (`HomeScreen#alignHeader`, a translation, since the pinned bar and the greeting have different heights), and the chips fade and leave
-  with the greeting as the page scrolls (`HomeFadeLayout#follow(s, onScrolled)`).
+  (`HomeScreen#alignHeader`, a translation, since the pinned bar and the greeting have different heights); both stay pinned when the page
+  scrolls (only the greeting scrolls away).
 - **The start-up veil never ran in the ninth round**: `veilStartup()` was called before `init()` inflated the layout, so
   `findViewById(R.id.main_activity)` was null and it returned silently. It now runs right after `init()`; Home lifts it with
   `liftStartupVeil(true)`, which also hides the tool bar before the first visible frame, and `isStartupVeil()` stays true for 1 s after

@@ -691,7 +691,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		fade = new HomeFadeLayout(ctx);
 		fade.addView(s, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));
-		fade.follow(s, this::alignHeader);
+		fade.follow(s, null);
 		root.addView(fade, 2, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));
 		if (!down) {
@@ -842,8 +842,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 
 	/**
 	 * Puts the edit button and the info chips on the middle line of the greeting's two lines (the date
-	 * under the title), and, scrolling down, takes the chips away with the greeting. Without a greeting
-	 * they keep their place at the top.
+	 * under the title). They stay where they are when the page scrolls. Without a greeting they keep
+	 * their place at the top.
 	 */
 	private void alignHeader() {
 		Context ctx = palette.ctx;
@@ -851,19 +851,13 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		if (!greet) {
 			chipBar.setTranslationY(0f);
 			topScroll.setTranslationY(0f);
-			topScroll.setAlpha(1f);
 			return;
 		}
 		float centre = greeting.getPaddingTop()
 				+ (greeting.getHeight() - greeting.getPaddingTop() - greeting.getPaddingBottom()) / 2f;
 		float margin = HomeUi.dp(ctx, 2);
 		chipBar.setTranslationY(Math.max(margin - HomeUi.dp(ctx, 10), centre - chipBar.getHeight() / 2f - HomeUi.dp(ctx, 10)));
-		float scrolled = (vertical && (scroller != null)) ? scroller.getScrollY() : 0f;
-		float base = Math.max(margin - HomeUi.dp(ctx, 15), centre - topScroll.getHeight() / 2f - HomeUi.dp(ctx, 15));
-		topScroll.setTranslationY(base - scrolled);
-		// Fades while the greeting leaves, like the greeting itself.
-		float gone = Math.min(1f, scrolled / Math.max(1f, greeting.getHeight() * 0.8f));
-		topScroll.setAlpha(1f - gone);
+		topScroll.setTranslationY(Math.max(margin - HomeUi.dp(ctx, 15), centre - topScroll.getHeight() / 2f - HomeUi.dp(ctx, 15)));
 	}
 
 	/**
