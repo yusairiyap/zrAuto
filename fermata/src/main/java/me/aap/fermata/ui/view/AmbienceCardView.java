@@ -53,6 +53,8 @@ public final class AmbienceCardView extends FrameLayout {
 		}
 	};
 	private final float dp;
+	/** 0 to 1: how visible the loading ring around the icon is (it fades in and out). */
+	private float loadFade;
 	private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 	private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
 	private final RectF rect = new RectF();
@@ -497,6 +499,10 @@ public final class AmbienceCardView extends FrameLayout {
 		// Also while the sound is on but not yet heard: the audio thread takes a moment to start,
 		// and a loop that stopped in that gap would only wake when another sound changed.
 		boolean active = (shown > 0.003f) || engine.isPlaying(fx);
+		// The recording is still being read: a ring turns around the icon until it is ready.
+		boolean loading = isLoading();
+		loadFade = Math.max(0f, Math.min(1f, loadFade + (loading ? 1f : -1f) * dt * 4f));
+		active |= loading || (loadFade > 0f);
 		if (anim) {
 			lv[fx.ordinal()] = shown;
 			if (active || scene.isActive(lv)) scene.step(dt, lv);
@@ -504,6 +510,30 @@ public final class AmbienceCardView extends FrameLayout {
 		applyColors();
 		invalidate();
 		return active || (anim && scene.isActive(lv));
+	}
+
+	/** The sound is on and wants its recording, which is not decoded yet. */
+	private boolean isLoading() {
+		return engine.isOn(fx) && engine.isRecorded(fx) && (samples.getState(fx) == AmbienceSamples.State.LOADING);
+	}
+
+	/** A ring around the icon disc: a growing and shrinking arc that keeps turning. */
+	private void drawLoading(Canvas c) {
+		float cx = front.getPaddingLeft() + dp * 21f;
+		float cy = front.getPaddingTop() + dp * 21f;
+		float r = dp * 25f;
+		float t = (android.os.SystemClock.uptimeMillis() % 1400L) / 1400f;
+		float head = t * 360f * 2f;
+		float sweep = 40f + 200f * (0.5f - 0.5f * (float) Math.cos(t * 2 * Math.PI));
+		stroke.setColor((fx.tint & 0xFFFFFF) | (Math.round(230 * loadFade) << 24));
+		float w0 = stroke.getStrokeWidth();
+		stroke.setStrokeWidth(dp * 2.5f);
+		stroke.setStrokeCap(Paint.Cap.ROUND);
+		rect.set(cx - r, cy - r, cx + r, cy + r);
+		c.drawArc(rect, head - 90f, sweep, false, stroke);
+		stroke.setStrokeWidth(w0);
+		stroke.setStrokeCap(Paint.Cap.BUTT);
+		rect.set(0, 0, getWidth(), getHeight());
 	}
 
 	private void applyColors() {
@@ -551,5 +581,6 @@ public final class AmbienceCardView extends FrameLayout {
 		stroke.setColor((Integer) ARGB.evaluate(fade, 0x1FFFFFFF, (fx.tint & 0xFFFFFF) | 0xB0000000));
 		float inset = stroke.getStrokeWidth() / 2f;
 		c.drawRoundRect(inset, inset, w - inset, h - inset, dp * 24f, dp * 24f, stroke);
+		if (loadFade > 0f) drawLoading(c);
 	}
 }
