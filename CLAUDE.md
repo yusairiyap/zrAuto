@@ -711,6 +711,21 @@ what each widget shows is set on the widget (edit mode > its gear).
   The cut chip at the row's right end in the earlier build was the row running under the edit button; the row is now fitted to the room the
   greeting and the button leave (see the ninth round).
 
+### Twelfth round (chips that turn opaque, start-up wait, edge fades)
+
+- **The top info chips** (`HomeScreen#updateTopInfoScroll`, fed by the page's scroll through `HomeFadeLayout#follow(s, onScrolled)`): staying
+  pinned, their fill blends from the translucent chip colour to an opaque panel colour over the first 56dp of scrolling
+  (`InfoOverlayView#setChipFill`, which only recolours the chips' drawables), so widgets passing under them don't show through. Settings > Home >
+  Header has "Hide the info chips while scrolling down" (`HOME_TOP_OVERLAY_HIDE`, `_AA` twin): they then leave with the greeting, fading.
+- **No `setHorizontalFadingEdgeEnabled` on the chips' scroller**: on the car screen the built-in fading edge drew hard dark boxes at the row's
+  ends (the "weird cut"). The row sits in a `HomeFadeLayout` (a layer cleared with gradients, as the page's own edge fade, which draws right there).
+- **Start-up veil, more**: it also covers the first screen after the process was killed and restored with Home saved (`restoredHome`), and the lift
+  waits (at most 700 ms) until the tool bar is gone and the control panel has finished fading out (`startupSettled`): Home's `cover()` fades the
+  panel away from the same moment, and an empty bar fading out in the first visible frames is what looked like "the toolbar". The log line
+  `STATE start-up veil ... lifted by Home after N ms, tool bar, control panel, nav bar` says what was still showing at the lift.
+- **An opened playlist's songs have no play button** (a tap on a row plays it); the playlists themselves keep theirs, back at the top they come back
+  with the list's fade.
+
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 
 - Size what is *inside* a card from its pixels, not from cell counts or fixed dp: the Data ring's words (`used`/`caption`) and the Power

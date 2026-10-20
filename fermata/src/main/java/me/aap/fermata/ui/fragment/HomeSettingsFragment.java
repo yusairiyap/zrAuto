@@ -109,11 +109,13 @@ public class HomeSettingsFragment extends ReorderListFragment {
 			e.removePref(MainActivityPrefs.HOME_COLUMNS);
 			e.removePref(MainActivityPrefs.HOME_GAP);
 			e.removePref(MainActivityPrefs.HOME_TOP_OVERLAY);
+			e.removePref(MainActivityPrefs.HOME_TOP_OVERLAY_HIDE);
 			e.removePref(MainActivityPrefs.HOME_GREETING_AA);
 			e.removePref(MainActivityPrefs.HOME_ARRANGE_AA);
 			e.removePref(MainActivityPrefs.HOME_COLUMNS_AA);
 			e.removePref(MainActivityPrefs.HOME_GAP_AA);
 			e.removePref(MainActivityPrefs.HOME_TOP_OVERLAY_AA);
+			e.removePref(MainActivityPrefs.HOME_TOP_OVERLAY_HIDE_AA);
 		}
 		for (Runnable r : syncers) r.run();
 	}
@@ -263,6 +265,8 @@ public class HomeSettingsFragment extends ReorderListFragment {
 		Pref<IntSupplier> columns = aa ? MainActivityPrefs.HOME_COLUMNS_AA : MainActivityPrefs.HOME_COLUMNS;
 		Pref<IntSupplier> gap = aa ? MainActivityPrefs.HOME_GAP_AA : MainActivityPrefs.HOME_GAP;
 		Pref<BooleanSupplier> overlay = aa ? MainActivityPrefs.HOME_TOP_OVERLAY_AA : MainActivityPrefs.HOME_TOP_OVERLAY;
+		Pref<BooleanSupplier> overlayHide = aa ? MainActivityPrefs.HOME_TOP_OVERLAY_HIDE_AA :
+				MainActivityPrefs.HOME_TOP_OVERLAY_HIDE;
 
 		section(box, R.string.home_sec_layout);
 		addChoiceRow(box, R.string.home_pref_arrange, R.string.home_pref_arrange_sub,
@@ -279,6 +283,8 @@ public class HomeSettingsFragment extends ReorderListFragment {
 				() -> p.getBooleanPref(greeting), on -> p.applyBooleanPref(greeting, on), null);
 		addSwitchRow(box, R.string.home_pref_top_overlay, R.string.home_pref_top_overlay_sub,
 				() -> p.getBooleanPref(overlay), on -> p.applyBooleanPref(overlay, on), null);
+		addSwitchRow(box, R.string.home_pref_top_overlay_hide, R.string.home_pref_top_overlay_hide_sub,
+				() -> p.getBooleanPref(overlayHide), on -> p.applyBooleanPref(overlayHide, on), null);
 
 		section(box, R.string.home_sec_widgets);
 		// Each screen's widgets are edited on that screen: its edit mode, with its own chips.

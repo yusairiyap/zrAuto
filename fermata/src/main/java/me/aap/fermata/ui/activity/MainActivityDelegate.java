@@ -468,11 +468,14 @@ public class MainActivityDelegate extends ActivityDelegate
 		init();
 		// A cold start that goes to Home: nothing of the bars shows (empty) before Home is ready, then it all fades in.
 		// Only now: the layout is inflated by init(), before that there is no window content to hide.
-		if ((state == null) && !isCarActivity() && (getPrefs().getShowAddonOnStartPref() == null) &&
+		// Also the first screen after the process was killed and came back through the recent apps (saved state, Home).
+		boolean coldProcess = firstUiCreate;
+		firstUiCreate = false;
+		boolean startsOnHome = (state == null) && (getPrefs().getShowAddonOnStartPref() == null) &&
 				getPrefs().getBooleanPref(MainActivityPrefs.HOME_OPEN_ON_START) &&
-				((intent == null) || Intent.ACTION_MAIN.equals(intent.getAction()))) {
-			veilStartup();
-		}
+				((intent == null) || Intent.ACTION_MAIN.equals(intent.getAction()));
+		boolean restoredHome = (state != null) && coldProcess && (state.getInt("fragmentId", ID_NULL) == R.id.home_fragment);
+		if (!isCarActivity() && (startsOnHome || restoredHome)) veilStartup();
 
 		for (FermataAddon addon : AddonManager.get().getAddons()) {
 			if (addon instanceof FermataActivityAddon)
@@ -575,6 +578,9 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	private boolean startupVeil;
 	private long veilLiftedAt;
+	private long veilAt;
+	/** True until the first activity of this process has been created. */
+	private static boolean firstUiCreate = true;
 
 	/** Hides the whole window content until {@link #liftStartupVeil} (or a safety delay), see onActivityCreate. */
 	private void veilStartup() {
@@ -584,6 +590,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			return;
 		}
 		startupVeil = true;
+		veilAt = SystemClock.uptimeMillis();
 		root.setAlpha(0f);
 		DiagnosticLog.log("STATE", "start-up veil", "on");
 		postDelayed(() -> liftStartupVeil(false), 2500);
@@ -597,18 +604,36 @@ public class MainActivityDelegate extends ActivityDelegate
 	 */
 	public void liftStartupVeil(boolean homeShown) {
 		if (!startupVeil) return;
-		startupVeil = false;
-		veilLiftedAt = SystemClock.uptimeMillis();
-		View root = findViewById(R.id.main_activity);
-		if (root == null) return;
 		if (homeShown && (toolBar != null)) {
 			toolBar.animate().cancel();
 			toolBar.setVisibility(View.GONE);
 			toolBar.setAlpha(1f);
 		}
-		DiagnosticLog.log("STATE", "start-up veil", homeShown ? "lifted by Home" : "lifted by the safety delay");
+		// Home covers the control panel with a fade: the content is not shown while that bar is still on its way out
+		// (an empty panel and nav bar showing for a moment is what the veil is for).
+		long waited = SystemClock.uptimeMillis() - veilAt;
+		if (homeShown && (waited < 700) && !startupSettled()) {
+			postDelayed(() -> liftStartupVeil(true), 40);
+			return;
+		}
+		startupVeil = false;
+		veilLiftedAt = SystemClock.uptimeMillis();
+		View root = findViewById(R.id.main_activity);
+		if (root == null) return;
+		DiagnosticLog.log("STATE", "start-up veil", (homeShown ? "lifted by Home" : "lifted by the safety delay") +
+				" after " + waited + " ms, tool bar " + (toolBar == null ? "none" : toolBar.getVisibility()) +
+				", control panel " + (controlPanel == null ? "none" : controlPanel.getVisibility() + "/" + controlPanel.getAlpha()) +
+				", nav bar " + (navBar == null ? "none" : navBar.getVisibility() + "/" + navBar.getChildCount()));
 		root.animate().cancel();
 		root.animate().alpha(1f).setDuration(280).start();
+	}
+
+	/** Nothing of the bars Home hides is still showing (or fading out). */
+	private boolean startupSettled() {
+		boolean tool = (toolBar == null) || (toolBar.getVisibility() != View.VISIBLE);
+		boolean panel = (controlPanel == null) || (controlPanel.getVisibility() != View.VISIBLE) ||
+				(controlPanel.getAlpha() < 0.02f);
+		return tool && panel;
 	}
 
 	/** Still behind the start-up veil, or only just out of it (the screen is still settling). */

@@ -66,7 +66,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	/** The info overlay's chips on the greeting's row, when Settings > Home asks for them. */
 	private final InfoOverlayView topInfo;
 	/** Holds {@link #topInfo}: when its chips are wider than the room, the row scrolls and fades out at the end. */
-	private final HorizontalScrollView topScroll;
+	private final HomeFadeLayout topScroll;
+	private final HorizontalScrollView topInner;
 	private final TextView editBtn;
 	private final TextView[] editChips = new TextView[4];
 	private final LinearLayout empty;
@@ -174,13 +175,18 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 
 		topInfo = new InfoOverlayView(ctx);
 		topInfo.setOneRow(true);
-		topScroll = new HorizontalScrollView(ctx);
-		topScroll.setHorizontalScrollBarEnabled(false);
-		topScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
-		topScroll.setHorizontalFadingEdgeEnabled(true);
-		topScroll.setFadingEdgeLength(HomeUi.dp(ctx, 28));
-		topScroll.addView(topInfo, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+		// The scroller's own fading edge is not used: it drew hard dark boxes at the row's ends on the car screen.
+		// The page's edge fade (a layer cleared with gradients) does the same job and is known to draw right there.
+		topInner = new HorizontalScrollView(ctx);
+		topInner.setHorizontalScrollBarEnabled(false);
+		topInner.setOverScrollMode(View.OVER_SCROLL_NEVER);
+		topInner.setHorizontalFadingEdgeEnabled(false);
+		topInner.addView(topInfo, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
 				ViewGroup.LayoutParams.WRAP_CONTENT));
+		topScroll = new HomeFadeLayout(ctx);
+		topScroll.addView(topInner, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.WRAP_CONTENT));
+		topScroll.follow(topInner, null);
 		topScroll.setVisibility(View.GONE);
 		FrameLayout.LayoutParams ilp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
 				ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END);
@@ -519,6 +525,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			applyGreeting();
 		}
 		if (changed.contains(MainActivityPrefs.HOME_TOP_OVERLAY) || changed.contains(MainActivityPrefs.HOME_TOP_OVERLAY_AA) ||
+				changed.contains(MainActivityPrefs.HOME_TOP_OVERLAY_HIDE) ||
+				changed.contains(MainActivityPrefs.HOME_TOP_OVERLAY_HIDE_AA) ||
 				!java.util.Collections.disjoint(MainActivityPrefs.infoOverlayPrefs(), changed)) {
 			applyTopInfo();
 		}
@@ -691,7 +699,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		fade = new HomeFadeLayout(ctx);
 		fade.addView(s, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));
-		fade.follow(s, null);
+		fade.follow(s, this::updateTopInfoScroll);
 		root.addView(fade, 2, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));
 		if (!down) {
@@ -836,8 +844,10 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		topScroll.setVisibility(any ? View.VISIBLE : View.GONE);
 		if (!any) return;
 		int fg = bg.hasImage() ? 0xFFFFFFFF : palette.textPrimary;
-		topInfo.setChipStyle(fg, (fg & 0x00FFFFFF) | 0x2E000000);
+		topFillBase = (fg & 0x00FFFFFF) | 0x2E000000;
+		topInfo.setChipStyle(fg, topFillBase);
 		fitTopInfo();
+		updateTopInfoScroll();
 	}
 
 	/**
@@ -850,15 +860,47 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		boolean greet = (greeting.getVisibility() == View.VISIBLE) && (greeting.getHeight() > 0);
 		if (!greet) {
 			chipBar.setTranslationY(0f);
-			topScroll.setTranslationY(0f);
+			topBase = 0f;
+			updateTopInfoScroll();
 			return;
 		}
 		float centre = greeting.getPaddingTop()
 				+ (greeting.getHeight() - greeting.getPaddingTop() - greeting.getPaddingBottom()) / 2f;
 		float margin = HomeUi.dp(ctx, 2);
 		chipBar.setTranslationY(Math.max(margin - HomeUi.dp(ctx, 10), centre - chipBar.getHeight() / 2f - HomeUi.dp(ctx, 10)));
-		topScroll.setTranslationY(Math.max(margin - HomeUi.dp(ctx, 15), centre - topScroll.getHeight() / 2f - HomeUi.dp(ctx, 15)));
+		topBase = Math.max(margin - HomeUi.dp(ctx, 15), centre - topScroll.getHeight() / 2f - HomeUi.dp(ctx, 15));
+		updateTopInfoScroll();
 	}
+
+	/** Where the info chips rest (their translation) when the page is at the top. */
+	private float topBase;
+
+	/**
+	 * The chips as the page scrolls down: by default they stay and their fill turns opaque, smoothly, so the
+	 * widgets passing under them don't show through; with "hide while scrolling" they leave with the greeting
+	 * (fading as it goes) and come back with it.
+	 */
+	private void updateTopInfoScroll() {
+		Context ctx = palette.ctx;
+		float scrolled = (vertical && (scroller != null)) ? scroller.getScrollY() : 0f;
+		boolean hide = prefs.getBooleanPref(a.isCarActivity() ? MainActivityPrefs.HOME_TOP_OVERLAY_HIDE_AA :
+				MainActivityPrefs.HOME_TOP_OVERLAY_HIDE);
+		if (hide) {
+			float gone = Math.min(1f, scrolled / Math.max(1f, Math.max(greeting.getHeight(), HomeUi.dp(ctx, 48)) * 0.8f));
+			topScroll.setTranslationY(topBase - scrolled);
+			topScroll.setAlpha(1f - gone);
+			topInfo.setChipFill(topFillBase);
+			return;
+		}
+		topScroll.setTranslationY(topBase);
+		topScroll.setAlpha(1f);
+		float solid = Math.min(1f, scrolled / HomeUi.dp(ctx, 56));
+		int target = (palette.panelFill & 0x00FFFFFF) | 0xF2000000;
+		topInfo.setChipFill(androidx.core.graphics.ColorUtils.blendARGB(topFillBase, target, solid));
+	}
+
+	/** The chips' fill with the page at the top (see applyTopInfo). */
+	private int topFillBase = 0x2EFFFFFF;
 
 	/**
 	 * One row, as wide as the room the greeting leaves it (or as its chips, if they are narrower); chips that

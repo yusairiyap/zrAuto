@@ -73,7 +73,8 @@ final class PlaylistsWidget extends LibraryWidget {
 				Runnable play = () -> HomePlay.tapped(a, p);
 				boolean now = (at < 0) && playing.contains(p.getOrigId());
 				if (now) at = rows.size();
-				rows.add(new Row(p.getName(), artist, p, play, play, null, now));
+				// A tap on the row plays it already: no play button inside an opened playlist (the list's own rows keep theirs).
+				rows.add(new Row(p.getName(), artist, p, play, null, null, now));
 			}
 			focusRow = at;
 			done.done(rows, items.size());

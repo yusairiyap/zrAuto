@@ -219,6 +219,8 @@
     <string name="home_pref_greet_night">Night greeting</string>
     <string name="home_pref_top_overlay">Info overlay beside the edit button</string>
     <string name="home_pref_top_overlay_aa">Info overlay beside the edit button on Android Auto</string>
+    <string name="home_pref_top_overlay_hide">Hide the info chips while scrolling down</string>
+    <string name="home_pref_top_overlay_hide_sub">They leave with the greeting; off, they stay and their chips turn opaque over the widgets</string>
     <string name="home_pref_top_overlay_sub">The overlay\'s chips in the greeting\'s row, from Settings > Info overlay</string>
     <string name="home_pref_greeting">Greeting</string>
     <string name="home_pref_greeting_sub">The greeting and the date above the widgets</string>

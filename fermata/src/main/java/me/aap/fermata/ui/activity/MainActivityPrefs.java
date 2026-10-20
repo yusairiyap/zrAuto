@@ -125,6 +125,9 @@ public interface MainActivityPrefs
 	/** The info overlay's chips on the greeting's row, before the edit button (the phone's, and the car screen's own). */
 	Pref<BooleanSupplier> HOME_TOP_OVERLAY = Pref.b("HOME_TOP_OVERLAY", false);
 	Pref<BooleanSupplier> HOME_TOP_OVERLAY_AA = Pref.b("HOME_TOP_OVERLAY_AA", false);
+	/** The chips on the greeting's row leave with the greeting when the page scrolls down (else they stay, and turn opaque). */
+	Pref<BooleanSupplier> HOME_TOP_OVERLAY_HIDE = Pref.b("HOME_TOP_OVERLAY_HIDE", false);
+	Pref<BooleanSupplier> HOME_TOP_OVERLAY_HIDE_AA = Pref.b("HOME_TOP_OVERLAY_HIDE_AA", false);
 	Pref<BooleanSupplier> HOME_ANIMATE = Pref.b("HOME_ANIMATE", true);
 	Pref<BooleanSupplier> CHECK_UPDATES = Pref.b("CHECK_UPDATES", true);
 	Pref<LongSupplier> CHECK_UPDATES_STAMP = Pref.l("CHECK_UPDATES_STAMP", 0);

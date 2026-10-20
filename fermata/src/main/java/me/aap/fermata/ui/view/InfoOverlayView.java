@@ -627,6 +627,15 @@ public class InfoOverlayView extends LinearLayout {
 		layoutRows();
 	}
 
+	/** Chip mode: another fill for every chip, without laying anything out again (it follows a scroll). */
+	public void setChipFill(int fill) {
+		if ((chipFill == 0) || (fill == chipFill)) return;
+		chipFill = fill;
+		for (LinearLayout w : chipWrappers.values()) {
+			if (w.getBackground() instanceof android.graphics.drawable.GradientDrawable d) d.setColor(fill);
+		}
+	}
+
 	private void layoutChips() {
 		chipFlow.removeAllViews();
 		for (LinearLayout w : chipWrappers.values()) w.removeAllViews();
