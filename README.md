@@ -24,6 +24,7 @@ YouTube · your own music · lyrics · offline downloads · steering-wheel contr
 | 📥 | **YouTube, offline** | Download videos, playlists or just the audio. They play inside your lists with no signal, downloads resume where they stopped, and a stalled stream flips to the saved copy mid-song without a gap. |
 | 🚗 | **Steering-wheel car mode** | Previous / Next move a glowing outline across any screen; hold Next to open, hold Previous to go back. Lists, search, queue, menus and Settings, with your hands on the wheel. |
 | 🎤 | **Lyrics that scroll with the song** | Synced lyrics glide over the album cover, and a tap opens them full size right in the Music tab. Tap a line to jump, drag to scrub. Captions over fullscreen video too. |
+| 🌧️ | **Ambience** | Rain, thunder, a fireplace, ocean, a rainy street, a train ride and 10 more sounds playing softly behind your music or video, as synthesized sound or real recordings. Mix them, set a timer, and watch the weather drift across the Music tab. |
 | 🔋 | **Live power meter** | An Ampere-style gauge of the phone's real battery draw, a strip over your music or video, session min / max, and a daily trend split by video, music and Android Auto. |
 | 🍃 | **Power saver** | Dims the screen, holds 60 Hz and pauses downloads: by hand, at a battery level, when Android Auto connects, or with Android's own Battery Saver. |
 | 📊 | **Data usage tracker** | See what videos, music mode and downloads cost you, and set a warning or hard limit before the plan runs dry. |

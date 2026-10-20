@@ -7,6 +7,7 @@ import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.pm.PackageInfo;
 import android.content.res.ColorStateList;
+import android.graphics.Canvas;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -314,6 +315,8 @@ public final class WelcomeWizard {
 				R.string.wz_effects_b1, R.string.wz_effects_b2, R.string.wz_effects_b3);
 		add(WelcomeArtView.ALL_IN_ONE, R.string.wz_aio_title, R.string.wz_aio_text, false, false,
 				R.string.wz_aio_b1, R.string.wz_aio_b2, R.string.wz_aio_b3);
+		add(WelcomeArtView.AMBIENCE, R.string.wz_amb_title, R.string.wz_amb_text, false, false,
+				R.string.wz_amb_b1, R.string.wz_amb_b2, R.string.wz_amb_b3);
 		p = add(WelcomeArtView.MORE, R.string.wz_more_title, R.string.wz_more_text, false, false,
 				R.string.wz_more_b1, R.string.wz_more_b2, R.string.wz_more_b3);
 		p.primary = R.string.wz_setup;
@@ -820,14 +823,41 @@ public final class WelcomeWizard {
 		}
 	}
 
+	/**
+	 * A page's text: it scrolls behind the picture and fades out at the top. The page is laid out with
+	 * clipChildren off (so the picture's glow is not cut), which would let the scrolled text draw over
+	 * the picture, so this view clips its own content to its bounds.
+	 */
+	private static final class PageScroll extends ScrollView {
+		PageScroll(Context ctx) {
+			super(ctx);
+		}
+
+		@Override
+		protected void dispatchDraw(Canvas canvas) {
+			canvas.save();
+			canvas.clipRect(getScrollX(), getScrollY(), getScrollX() + getWidth(), getScrollY() + getHeight());
+			super.dispatchDraw(canvas);
+			canvas.restore();
+		}
+
+		@Override
+		protected float getBottomFadingEdgeStrength() {
+			return 0f;
+		}
+	}
+
 	private PageLayout buildPage(Page p) {
 		WelcomeArtView art = new WelcomeArtView(pc);
 		art.setColors(accent, onAccent, cardFill, textPrimary, textSecondary, track);
 		art.setScene(p.scene);
 
-		ScrollView scroll = new ScrollView(pc);
+		ScrollView scroll = new PageScroll(pc);
 		scroll.setFillViewport(true);
 		scroll.setVerticalScrollBarEnabled(false);
+		// The text melts into the picture's background at the top instead of cutting off over it.
+		scroll.setVerticalFadingEdgeEnabled(true);
+		scroll.setFadingEdgeLength(dp(40));
 		LinearLayout body = new LinearLayout(pc);
 		body.setOrientation(LinearLayout.VERTICAL);
 		body.setTag("body");
@@ -1186,6 +1216,8 @@ public final class WelcomeWizard {
 		for (Action act : Action.getAll()) {
 			// Only what a key can usefully do (a tab that is not there is left out).
 			if ((act == Action.POWER_USAGE || act == Action.POWER_SAVER) && !PowerUsageAddon.isEnabled()) continue;
+			if ((act == Action.AMBIENCE || act == Action.AMBIENCE_TOGGLE) &&
+					!me.aap.fermata.addon.ambience.AmbienceAddon.isEnabled()) continue;
 			LinearLayout item = new LinearLayout(pc);
 			item.setOrientation(LinearLayout.HORIZONTAL);
 			item.setGravity(Gravity.CENTER_VERTICAL);

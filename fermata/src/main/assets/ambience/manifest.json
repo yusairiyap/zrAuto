@@ -1,0 +1,252 @@
+{
+  "version": 1,
+  "sounds": {
+    "drops": {
+      "file": "drops.ogg",
+      "seconds": 8,
+      "frames": 427925,
+      "margin": 12000,
+      "title": "Leaf droplets",
+      "credits": [
+        {
+          "id": 543649,
+          "title": "Water Droplets",
+          "author": "Legnalegna55",
+          "license": "CC0",
+          "url": "https://freesound.org/people/Legnalegna55/sounds/543649/"
+        }
+      ]
+    },
+    "bubbles": {
+      "file": "bubbles.ogg",
+      "seconds": 60,
+      "frames": 2880000,
+      "margin": 12000,
+      "title": "Underwater",
+      "credits": [
+        {
+          "id": 482167,
+          "title": "Underwater Ambience",
+          "author": "Tim_Verberne",
+          "license": "CC0",
+          "url": "https://freesound.org/people/Tim_Verberne/sounds/482167/"
+        },
+        {
+          "id": 529383,
+          "title": "Bubbles In Water",
+          "author": "calebrankin",
+          "license": "CC0",
+          "url": "https://freesound.org/people/calebrankin/sounds/529383/"
+        }
+      ]
+    },
+    "rain": {
+      "file": "rain.ogg",
+      "seconds": 51,
+      "frames": 2448000,
+      "margin": 12000,
+      "title": "Rain",
+      "credits": [
+        {
+          "id": 518863,
+          "title": "Rain.wav",
+          "author": "idomusics",
+          "license": "CC0",
+          "url": "https://freesound.org/people/idomusics/sounds/518863/"
+        }
+      ]
+    },
+    "window": {
+      "file": "window.ogg",
+      "seconds": 58,
+      "frames": 2829781,
+      "margin": 12000,
+      "title": "Rainy window",
+      "credits": [
+        {
+          "id": 75008,
+          "title": "Rain on Window.wav",
+          "author": "CBeeching",
+          "license": "CC0",
+          "url": "https://freesound.org/people/CBeeching/sounds/75008/"
+        }
+      ]
+    },
+    "fire": {
+      "file": "fire.ogg",
+      "seconds": 57,
+      "frames": 2736000,
+      "margin": 12000,
+      "title": "Fireplace",
+      "credits": [
+        {
+          "id": 414767,
+          "title": "Crackling Fire",
+          "author": "samarobryn",
+          "license": "CC0",
+          "url": "https://freesound.org/people/samarobryn/sounds/414767/"
+        }
+      ]
+    },
+    "wind": {
+      "file": "wind.ogg",
+      "seconds": 60,
+      "frames": 2880000,
+      "margin": 12000,
+      "title": "Wind",
+      "credits": [
+        {
+          "id": 531016,
+          "title": "Wind Through Trees ambience.wav",
+          "author": "Noted451",
+          "license": "CC0",
+          "url": "https://freesound.org/people/Noted451/sounds/531016/"
+        }
+      ]
+    },
+    "ocean": {
+      "file": "ocean.ogg",
+      "seconds": 60,
+      "frames": 2880000,
+      "margin": 12000,
+      "title": "Ocean",
+      "credits": [
+        {
+          "id": 795445,
+          "title": "Waves crashing on shore",
+          "author": "jamgypsy",
+          "license": "CC0",
+          "url": "https://freesound.org/people/jamgypsy/sounds/795445/"
+        }
+      ]
+    },
+    "stream": {
+      "file": "stream.ogg",
+      "seconds": 10,
+      "frames": 480000,
+      "margin": 12000,
+      "title": "Stream",
+      "credits": [
+        {
+          "id": 548767,
+          "title": "Relaxing river stream running water seamless loop",
+          "author": "steaq",
+          "license": "CC0",
+          "url": "https://freesound.org/people/steaq/sounds/548767/"
+        }
+      ]
+    },
+    "night": {
+      "file": "night.ogg",
+      "seconds": 35,
+      "frames": 1682451,
+      "margin": 12000,
+      "title": "Night",
+      "credits": [
+        {
+          "id": 210540,
+          "title": "crickets.wav",
+          "author": "Sclolex",
+          "license": "CC0",
+          "url": "https://freesound.org/people/Sclolex/sounds/210540/"
+        }
+      ]
+    },
+    "birds": {
+      "file": "birds.ogg",
+      "seconds": 60,
+      "frames": 2880000,
+      "margin": 12000,
+      "title": "Forest birds",
+      "credits": [
+        {
+          "id": 578523,
+          "title": "Birds singing, Dawn chorus",
+          "author": "SamsterBirdies",
+          "license": "CC0",
+          "url": "https://freesound.org/people/SamsterBirdies/sounds/578523/"
+        }
+      ]
+    },
+    "cafe": {
+      "file": "cafe.ogg",
+      "seconds": 60,
+      "frames": 2880000,
+      "margin": 12000,
+      "title": "Cozy caf\u00e9",
+      "credits": [
+        {
+          "id": 334641,
+          "title": "ps3f foz pti cafeteria manha",
+          "author": "paisagemsonoraunila",
+          "license": "CC0",
+          "url": "https://freesound.org/people/paisagemsonoraunila/sounds/334641/"
+        }
+      ]
+    },
+    "street": {
+      "file": "street.ogg",
+      "seconds": 32,
+      "frames": 1543461,
+      "margin": 12000,
+      "title": "Rainy street",
+      "credits": [
+        {
+          "id": 399822,
+          "title": "Cars passing in a rainy street",
+          "author": "BonnyOrbit",
+          "license": "CC0",
+          "url": "https://freesound.org/people/BonnyOrbit/sounds/399822/"
+        }
+      ]
+    },
+    "waterfall": {
+      "file": "waterfall.ogg",
+      "seconds": 69,
+      "frames": 3352608,
+      "margin": 12000,
+      "title": "Waterfall",
+      "credits": [
+        {
+          "id": 274259,
+          "title": "Waterfall Loop",
+          "author": "kwahmah_02",
+          "license": "CC0",
+          "url": "https://freesound.org/people/kwahmah_02/sounds/274259/"
+        }
+      ]
+    },
+    "train": {
+      "file": "train.ogg",
+      "seconds": 60,
+      "frames": 2880000,
+      "margin": 12000,
+      "title": "Train ride",
+      "credits": [
+        {
+          "id": 143205,
+          "title": "inside a train.wav",
+          "author": "bisanu6",
+          "license": "CC0",
+          "url": "https://freesound.org/people/bisanu6/sounds/143205/"
+        }
+      ]
+    },
+    "umbrella": {
+      "file": "umbrella.ogg",
+      "seconds": 9,
+      "frames": 457280,
+      "margin": 12000,
+      "title": "Umbrella rain",
+      "credits": [
+        {
+          "id": 788719,
+          "title": "Umbrella rain",
+          "author": "T.I.B",
+          "license": "CC0",
+          "url": "https://freesound.org/people/T.I.B/sounds/788719/"
+        }
+      ]
+    }
+  }
+}

@@ -76,6 +76,16 @@ ext {
                     order      : 8,
                     hasSettings: true
             ],
+            [
+                    // Looping rain, thunder, fireplace, wind and more that play softly behind the
+                    // current track or YouTube video, with scenes drawn over the Music tab. Right
+                    // after the power usage tab.
+                    name       : 'ambience',
+                    icon       : 'ambience',
+                    class      : 'me.aap.fermata.addon.ambience.AmbienceAddon',
+                    order      : 9,
+                    hasSettings: true
+            ],
     ]
 }
 

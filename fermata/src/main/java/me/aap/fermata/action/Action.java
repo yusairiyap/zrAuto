@@ -180,6 +180,30 @@ public enum Action {
 		}
 		me.aap.fermata.addon.power.PowerSaver.get().toggle();
 	})),
+	// The Ambience tab, and the ambience sounds on or off (the last mix, or the rain); both need
+	// the Ambience addon. Persisted by ordinal: new actions only ever go at the end.
+	AMBIENCE(R.string.action_ambience, a(a -> {
+		if (!me.aap.fermata.addon.ambience.AmbienceAddon.isEnabled()) {
+			me.aap.fermata.ui.view.TopToast.show(R.drawable.ambience, R.string.ambience_addon_off);
+			return;
+		}
+		a.exitVideoMode();
+		a.showFragment(R.id.ambience_addon);
+	})),
+	AMBIENCE_TOGGLE(R.string.action_ambience_toggle, a(a -> {
+		if (!me.aap.fermata.addon.ambience.AmbienceAddon.isEnabled()) {
+			me.aap.fermata.ui.view.TopToast.show(R.drawable.ambience, R.string.ambience_addon_off);
+			return;
+		}
+		var eng = me.aap.fermata.addon.ambience.AmbienceEngine.get();
+		eng.toggleAll();
+		if (eng.anyOn()) {
+			me.aap.fermata.ui.view.TopToast.show(R.drawable.ambience, R.string.ambience_started,
+					eng.describe(a.getContext()));
+		} else {
+			me.aap.fermata.ui.view.TopToast.show(R.drawable.ambience, R.string.ambience_stopped);
+		}
+	})),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

@@ -44,7 +44,8 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 			Action.OPEN_FAVORITES, Action.OPEN_PLAYLISTS, Action.OPEN_DOWNLOADS, Action.DOWNLOAD_CURRENT,
 			Action.DOWNLOADS_PAUSE_RESUME, Action.ALL_IN_ONE, Action.AUDIO_EFFECTS, Action.SLEEP_TIMER,
 			Action.QUALITY, Action.YOUTUBE_ALTERNATIVES, Action.YOUTUBE_COMMENTS, Action.LYRICS,
-			Action.POWER_USAGE, Action.POWER_SAVER, Action.SETTINGS);
+			Action.POWER_USAGE, Action.POWER_SAVER, Action.AMBIENCE, Action.AMBIENCE_TOGGLE,
+			Action.SETTINGS);
 
 	private final Pref<IntSupplier> actionPref;
 	@Nullable
@@ -65,6 +66,9 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		// A new track: the lyrics / captions icon follows at once (see updateIcon).
 		a.getMediaServiceBinder().addBroadcastListener(trackListener);
 		a.getPrefs().addBroadcastListener(switchListener);
+		if (me.aap.fermata.addon.ambience.AmbienceAddon.isEnabled()) {
+			me.aap.fermata.addon.ambience.AmbienceEngine.get().addListener(ambienceListener);
+		}
 	}
 
 	@Override
@@ -74,6 +78,9 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		a.getMediaSessionCallback().removeBroadcastListener(this);
 		a.getMediaServiceBinder().removeBroadcastListener(trackListener);
 		a.getPrefs().removeBroadcastListener(switchListener);
+		if (me.aap.fermata.addon.ambience.AmbienceAddon.isEnabled()) {
+			me.aap.fermata.addon.ambience.AmbienceEngine.get().removeListener(ambienceListener);
+		}
 		me.aap.fermata.ytcaptions.CaptionsHub.get().release(captionsListener);
 		if (fab == fb) fab = null;
 	}
@@ -109,6 +116,11 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 					if (fb != null) updateIcon(fb);
 				}
 			};
+	/** Ambience sounds were switched on or off from anywhere: the on/off button's icon follows. */
+	private final Runnable ambienceListener = () -> {
+		FloatingButton fb = fab;
+		if (fb != null) updateIcon(fb);
+	};
 	/** The lyrics / captions switch was flipped from anywhere (a key, the tile, the chip): the icon follows. */
 	private final me.aap.utils.pref.PreferenceStore.Listener switchListener = (store, prefs) -> {
 		FloatingButton fb = fab;
@@ -152,8 +164,14 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		}
 		fb.setImageResource(iconFor(a, action));
 		// Lyrics / captions: dimmed while they are off, and while what plays has none (or not known yet).
-		fb.setImageAlpha(((action == Action.LYRICS) && (!lyricsSwitchOn(a) ||
-				me.aap.fermata.ytcaptions.CaptionsHub.get().isDimmed(a))) ? 100 : 255);
+		boolean dimmed = (action == Action.LYRICS) && (!lyricsSwitchOn(a) ||
+				me.aap.fermata.ytcaptions.CaptionsHub.get().isDimmed(a));
+		// The ambience on/off button is dimmed while nothing is playing.
+		if (action == Action.AMBIENCE_TOGGLE) {
+			dimmed = !me.aap.fermata.addon.ambience.AmbienceAddon.isEnabled() ||
+					!me.aap.fermata.addon.ambience.AmbienceEngine.get().anyOn();
+		}
+		fb.setImageAlpha(dimmed ? 100 : 255);
 	}
 
 	@DrawableRes
@@ -180,6 +198,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		if (action == Action.SETTINGS) return R.drawable.settings;
 		if (action == Action.POWER_USAGE) return R.drawable.power_usage;
 		if (action == Action.POWER_SAVER) return R.drawable.power_saver;
+		if ((action == Action.AMBIENCE) || (action == Action.AMBIENCE_TOGGLE)) return R.drawable.ambience;
 		if (action == Action.OPEN_FAVORITES) return R.drawable.favorite_filled;
 		if (action == Action.OPEN_PLAYLISTS) return R.drawable.playlist;
 		if ((action == Action.OPEN_DOWNLOADS) || (action == Action.DOWNLOAD_CURRENT)) {
@@ -290,6 +309,10 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 						if (me.aap.fermata.addon.power.PowerUsageAddon.isEnabled()) {
 							addAction(a, fb, sb, Action.POWER_USAGE, 2);
 							addAction(a, fb, sb, Action.POWER_SAVER, 3);
+						}
+						if (me.aap.fermata.addon.ambience.AmbienceAddon.isEnabled()) {
+							addAction(a, fb, sb, Action.AMBIENCE, 4);
+							addAction(a, fb, sb, Action.AMBIENCE_TOGGLE, 5);
 						}
 					});
 			addSettings(a, b, R.id.fab_settings, R.drawable.fab, R.string.fab_settings,

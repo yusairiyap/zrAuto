@@ -876,6 +876,11 @@
             android:foregroundServiceType="dataSync" />
 
         <service
+            android:name="me.aap.fermata.addon.ambience.AmbienceService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <service
             android:name="me.aap.fermata.share.ShareService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />

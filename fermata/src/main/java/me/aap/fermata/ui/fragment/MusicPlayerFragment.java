@@ -303,6 +303,15 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			}, 800);
 		}
 		content = view.findViewById(R.id.music_content);
+		// The ambience weather (rain, lightning, embers...) sits between the cover's backdrop and the
+		// tab's content; it draws only while a sound is on.
+		if (me.aap.fermata.addon.ambience.AmbienceAddon.isEnabled() &&
+				(content.getParent() instanceof android.view.ViewGroup root)) {
+			root.addView(new me.aap.fermata.ui.view.AmbienceBackdropView(requireContext()),
+					root.indexOfChild(content), new android.widget.FrameLayout.LayoutParams(
+							android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+							android.view.ViewGroup.LayoutParams.MATCH_PARENT));
+		}
 		bg = view.findViewById(R.id.music_bg);
 		behind = new View[]{view.findViewById(R.id.music_backdrop), bg,
 				view.findViewById(R.id.music_scrim)};

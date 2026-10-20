@@ -372,6 +372,86 @@ provider doesn't offer a folder to pick, so Drive is manual only.
   Restore uses `SettingsFragment.importPrefs` (public static now) and marks the wizard done first, since a restored
   backup brings its own prefs back and the app restarts.
 
+## Ambience addon (tab, sounds, Music tab weather)
+
+- **Addon** `addon/ambience/AmbienceAddon` (built into `fermata`, order 9, `hasSettings`), tab `ui/fragment/AmbienceFragment`,
+  all of it built in code in the Music palette (no XML layout). Actions `AMBIENCE` (open the tab) and `AMBIENCE_TOGGLE`
+  (the last mix on/off, the rain when none; `AmbienceEngine#toggleAll`) are in the FAB list, the All in One card, key bindings
+  and the FAB long-press Tools group; both toast `ambience_addon_off` when the addon is off.
+- **Sounds are synthesized, not shipped** (`AmbienceSynth`: rain, thunder, fireplace, wind, ocean, stream, night crickets,
+  forest birds, droplets; one `Voice` per `AmbienceEffect`), so there is nothing to download and a loop never repeats. `AmbienceEngine`
+  mixes the switched-on voices on one thread into a streaming `AudioTrack` (44.1 kHz stereo, `USAGE_MEDIA`, **no audio
+  focus**, so it simply mixes under local files, the Music tab and the YouTube page). The thread only lives while some
+  fade is audible. Each effect's gain moves a block at a time towards 1 or 0 over `AMBIENCE_FADE_SEC` (smoothstep), the
+  intensity (`AmbienceEffect#intensity`, 5 to 100) and master volume are smoothed too, and the mix is soft-clipped, so
+  nothing starts or stops abruptly. Which effects are on is deliberately **not saved across app starts**; intensity, volume,
+  length and the last mix are. The synth gains were tuned by rendering each voice offline (rms ~0.1 to 0.2 at full
+  intensity, no NaNs); retune them the same way if a voice is changed.
+- **Length** (`AMBIENCE_LENGTH_MIN`, 0 = no limit) is a timer from the moment the first effect goes on; at the end everything
+  fades out. "Pause with playback" (`AMBIENCE_FOLLOW`, off by default) holds the ambience while the media session is
+  paused/stopped (`setHeld`); switching a sound on clears the hold. Headphones unplugged (`ACTION_AUDIO_BECOMING_NOISY`)
+  fades it out too (`AMBIENCE_NOISY`).
+- **Weather** is `ui/view/AmbienceScene` (rain streaks, lightning with a bolt, clouds, embers and flames, gusts, waves,
+  ripples, stars with fireflies and a moon, birds), driven by `AmbienceEngine#getVisual` so it fades with the sound; thunder
+  calls `flash` on the scene when the strike happens (the rumble follows 0.1 to 2.4 s later, like real thunder). It is shown by
+  `AmbienceBackdropView` (inserted under `music_content` by `MusicPlayerFragment#onViewCreated`), `AmbienceHeroView` and
+  every `AmbienceCardView`. `AmbienceScene.Clock` runs it at 30 fps and stops by itself when nothing is audible; views also
+  stop when not visible (`onVisibilityAggregated`), when the power saver is on, and per surface when "Animate the Music tab"
+  (`AMBIENCE_ANIM_MUSIC`) / "Animate this tab" (`AMBIENCE_ANIM_TAB`) is off. Nothing is allocated while drawing, except the
+  hero's sky gradient.
+- **Foreground service** `AmbienceService` (media playback, notification with names and Stop all) is started by
+  `AmbienceEngine#kick` and stopped when the audio thread ends, so the sound survives the screen off. Starting it from the
+  background can be refused on Android 12+; that is only logged, the sound carries on while the process lives.
+- **Held = silent and the timer waits too** (`pausedLeft`): with "Pause with playback" the timer is frozen while the playback
+  is paused, not run out in silence. The switch is in the tab (under the length chips) and in the addon settings.
+- **Frame loops must run while a sound is on, not only while it is audible**: the audio thread takes a moment to start, and
+  a loop that saw nothing audible stopped itself and only woke when another sound changed (`isPlaying`/`isAnyPlaying`). The
+  picture also leads the sound (`visualCurve`, full at half the fade). The settings chip is `ToolBarChip` like Data usage's.
+- **Twelve sounds** (a full row of four on the tablet grid): rain, rainy window (`Window`: indoor hush and drops ringing the
+  pane), thunder, fireplace, wind, ocean, stream, leaf droplets (`Drips`: drops from wet leaves, each landing on a leaf (soft pat, a mid band of
+  noise + a short "tok") or in a puddle (a plip, a sine gliding up), mixed by the Landing slider, with showers when a gust shakes
+  the canopy, a faint hush and a small `Reverb`, a Freeverb-style 4 combs + 2 allpasses), underwater (`Bubbles`: low gliding bubbles, rushes,
+  a swirling hum, muffled, small room), night, birds, and cozy café (`Cafe`, **no voices on purpose**: synthesized murmur never
+  sounded human; it is room hum, china clinks, a spoon, dishes, a cup put down, the espresso machine and the shop bell in a small
+  reverb). A new sound needs an `AmbienceEffect` (with its option strings), a `Voice` in `AmbienceSynth#create`, a scene branch
+  in `AmbienceScene` and strings/icon. Voices that are meant to sound like a real thing are the weak spot of synthesis (droplets,
+  underwater, café): check pitch (spectral centroid) and tail length in the offline render, not just level.
+- **Per-sound character slider** (`AmbienceEffect#option`, pref `AMBIENCE_OPT_<KEY>`, 0 to 100, 50 = as designed, passed to
+  `Voice#render` as `opt` and smoothed like the intensity): rain surface, thunder distance, fire crackle, wind tone, wave pace,
+  stream flow, echo, depth, cricket pitch, bird chorus, café activity, window drizzle/downpour. It lives on the card's second page
+  (`AmbienceCardView`: the tune button flips front/tune with a scale+fade, so the grid never reflows; Reset =
+  `AmbienceEngine#resetEffect`). Keep every voice at its old sound when `opt` = 0.5, and re-run the offline render
+  (rms, peaks, NaNs at opt 0, 0.5 and 1) after touching one.
+- **Recorded loops (bundled)**: some sounds (so far leaf droplets = `drops`, and underwater = `bubbles`) can be played from real
+  CC0 recordings instead of the synthesized voice. They ship in `fermata/src/main/assets/ambience/` (`<key>.ogg` = Opus in Ogg,
+  ~340 KB for a 60 s stereo loop, plus `manifest.json` with the credits), so there is no download, hosting or network; the
+  `.ogg` name keeps them stored uncompressed. The files are made by hand: download the CC0 sounds listed in
+  `tools/ambience/sounds.json` from Freesound (the download needs a login; check CC0 on each page), put them in a folder and run
+  `python3 tools/ambience/build_sounds.py DOWNLOAD_DIR fermata/src/main/assets/ambience` (needs ffmpeg with libopus, numpy): it
+  finds each by its Freesound id, bakes a seamless loop (equal-power crossfade of the tail into the head; a short source loops on
+  itself first), matches the loudness to the synth voices, layers several sources and writes the manifest. Sources that are not
+  downloaded yet are skipped. In the app `AmbienceSamples` reads the manifest, and decodes a recording with MediaCodec into PCM in
+  memory (~11 MB a minute of stereo) when it is first wanted, handing it to `AmbienceSample` (a `Voice`: looped playback with
+  interpolation, random start, a warm/bright tilt as its slider). The card's tune page shows Synth / Recorded for sounds the
+  manifest lists (`AMBIENCE_SRC_<KEY>`, default Synth); the engine plays the synth until the recording is loaded and then
+  crossfades (`Layer#mix`); the decoded PCM is released again 5 s + the fade time after the sound is switched off
+  (`scheduleSampleRelease`), so only sounds that are on hold memory. A loop is as long as its longest source allows (up to
+  60 s: a 10 s brook is a 10 s loop), loudness is matched with a soft limiter (`tanh`) that squashes only the peaks. The recording has its own slider pref (`AMBIENCE_TONE_<KEY>`), so Echo/Landing/Depth never change
+  meaning. (An earlier design downloaded them from a release, built by a workflow with a Freesound API key; dropped as too
+  much machinery for ~1 MB.)
+- **Real, not Recorded** (UI word). Settings: the tab's controls card has a Synth / Real row for every sound at once
+  (`AmbienceEngine#setAllRecorded`, mixed shows as "Mixed"); each card's tune page can still differ. The synth <-> real
+  crossfade is slow (`SOURCE_FADE_SEC` 3 s, equal-power). Loops are encoded as the loop repeated plus 0.25 s each side
+  and the manifest holds `frames`/`margin`; `AmbienceSamples#loopWindow` plays only that middle window, so Opus
+  pre-skip/padding (which Android does not trim) can no longer make a tick at the loop point. A source marked
+  `"seamless": true` in `sounds.json` (already a loop, e.g. the stream, waterfall) is not crossfaded again.
+- **Real-only sounds** (`AmbienceEffect#realOnly`: umbrella rain, rainy street with passing cars, waterfall, train ride)
+  have no synth voice (`AmbienceSynth.Silent`) and are hidden (`AmbienceEngine#isAvailable`) until their `.ogg` is in
+  assets. `sounds.json` lists `alternatives` per sound; `build_sounds.py` falls back to the first one downloaded.
+  Timer lengths now start 5, 10, 15 min.
+- **None of this has run on a device yet** (no emulator in the cloud session). If sound is silent, choppy or the weather
+  looks wrong, look for `AMBIENCE` lines in the Diagnostic log first.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,
@@ -545,6 +625,25 @@ machine/device**, then continue once they paste back the output. Examples:
 Tailor the filter/tag to what's actually being investigated (e.g. a specific addon's log tag, or
 `*:F` for fatal-only) rather than always using the generic examples above. Ask for the log **before**
 proposing further speculative fixes once a couple of code-reading passes haven't settled the cause.
+
+## Pull request descriptions
+
+The PR template is `.github/pull_request_template.md` (sections: Description, Type of change, Changes made,
+How to test, Checklist, Related issues, Screenshots; modelled on the gitmore.io PR template guide). The
+**Description** is broken down by feature or area with a short heading each, as in the Ambience PR.
+
+- Describe the **branch as a whole, in its end state**: what the reviewer gets compared with `master`.
+  Do **not** list every bug fix made along the way, especially fixes to something this same branch
+  introduced (a compile error in new code, an overflow in a new function, a tweak after the user's feedback
+  on an earlier iteration). To a reviewer those never existed; they only see the finished feature. Mention a
+  fix only when it changes something that already exists on `master`.
+- Keep it current: **whenever you push to a branch that has a PR, rewrite the PR description to match the
+  branch now** (`mcp__github__update_pull_request`), so it is right before anyone asks for a review. When the
+  user has no PR yet, keep the finished description ready (in your reply, or as soon as the PR exists) so it
+  is never written after the fact. Never create a PR unprompted, but once one exists, keep it updated without
+  being asked.
+- Follow the template's headings; delete a section only if it truly does not apply. Say plainly what was not
+  run (this cloud session cannot run the app) rather than ticking "verified on a device".
 
 ## When in doubt, ask
 
