@@ -733,7 +733,23 @@ final class MediaWidget extends HomeWidgetView {
 	}
 
 	private void setChip(int icon, int label, Runnable action) {
-		chip.setText(label);
+		// Low density (the car screen's) makes the words as big as the card's own title: only the icon there,
+		// the name stays as its description.
+		boolean iconOnly = host.isCar() || (ctx.getResources().getDisplayMetrics().density < 1.5f);
+		chip.setContentDescription(ctx.getString(label));
+		if (iconOnly) {
+			chip.setText("");
+			chip.setCompoundDrawablePadding(0);
+			chip.setPadding(px(11), 0, px(11), 0);
+			chip.setMinWidth(px(36));
+			chip.setGravity(Gravity.CENTER);
+		} else {
+			chip.setText(label);
+			chip.setCompoundDrawablePadding(px(6));
+			chip.setPadding(px(12), 0, px(14), 0);
+			chip.setMinWidth(0);
+			chip.setGravity(Gravity.CENTER_VERTICAL);
+		}
 		chip.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, 0, 0, 0);
 		chipAction = action;
 	}

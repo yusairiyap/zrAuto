@@ -726,6 +726,11 @@ what each widget shows is set on the widget (edit mode > its gear).
 - **An opened playlist's songs have no play button** (a tap on a row plays it); the playlists themselves keep theirs, back at the top they come back
   with the list's fade.
 
+### Thirteenth round (icon-only media chip)
+
+- **The media widget's chip (Watch / Fullscreen / Open Music) is icon only on the car screen and at low density** (`MediaWidget#setChip`: `host.isCar()` or
+  density under 1.5, i.e. under 240 dpi): the words were as big as the card's title there. The name stays as the chip's content description.
+
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 
 - Size what is *inside* a card from its pixels, not from cell counts or fixed dp: the Data ring's words (`used`/`caption`) and the Power
