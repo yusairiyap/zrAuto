@@ -314,6 +314,8 @@ public final class WelcomeWizard {
 				R.string.wz_effects_b1, R.string.wz_effects_b2, R.string.wz_effects_b3);
 		add(WelcomeArtView.ALL_IN_ONE, R.string.wz_aio_title, R.string.wz_aio_text, false, false,
 				R.string.wz_aio_b1, R.string.wz_aio_b2, R.string.wz_aio_b3);
+		add(WelcomeArtView.AMBIENCE, R.string.wz_amb_title, R.string.wz_amb_text, false, false,
+				R.string.wz_amb_b1, R.string.wz_amb_b2, R.string.wz_amb_b3);
 		p = add(WelcomeArtView.MORE, R.string.wz_more_title, R.string.wz_more_text, false, false,
 				R.string.wz_more_b1, R.string.wz_more_b2, R.string.wz_more_b3);
 		p.primary = R.string.wz_setup;

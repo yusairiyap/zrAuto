@@ -40,6 +40,7 @@ final class WelcomeArtView extends View {
 	static final int KEYS = 10;
 	static final int TUNE = 11;
 	static final int DONE = 12;
+	static final int AMBIENCE = 13;
 
 	private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
 	private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -224,6 +225,7 @@ final class WelcomeArtView extends View {
 			case LYRICS -> lyrics(c, cx, cy, s);
 			case EFFECTS -> effects(c, cx, cy, s);
 			case ALL_IN_ONE -> allInOne(c, cx, cy, s);
+			case AMBIENCE -> ambience(c, cx, cy, s);
 			case MORE -> more(c, cx, cy, s);
 			case BACKUP -> backup(c, cx, cy, s);
 			case CAR_ASK -> carAsk(c, cx, cy, s);
@@ -474,6 +476,50 @@ final class WelcomeArtView extends View {
 		float fy = cy + ch / 2f + dp(18);
 		disc(c, fx, fy, dp(20), accent);
 		icon(c, R.drawable.view_grid, fx, fy, dp(22), onAccent, 1f);
+	}
+
+	private void ambience(Canvas c, float cx, float cy, float s) {
+		float loop = (t % 6f) / 6f;
+		float cw = s * 0.8f;
+		float ch = s * 0.68f;
+		float pop = overshoot(loop / 0.1f);
+		float l = cx - cw / 2f * pop, rt = cx + cw / 2f * pop;
+		float tp = cy - ch / 2f * pop, bt = cy + ch / 2f * pop;
+		roundRect(c, l, tp, rt, bt, dp(22), alpha(card, clamp(pop)));
+		// Rain falling inside the card, with a cloud over it.
+		c.save();
+		c.clipRect(l, tp, rt, cy + ch * 0.1f);
+		stroke.setShader(null);
+		stroke.setStrokeWidth(dp(1.6f));
+		for (int i = 0; i < 14; i++) {
+			float ph = (t * (0.7f + 0.08f * (i % 5)) + i * 0.37f) % 1f;
+			float x = l + cw * (0.08f + 0.84f * ((i * 0.618f) % 1f));
+			float y = tp + ch * (0.1f + 0.6f * ph);
+			stroke.setColor(alpha(accent, 0.55f * (1f - ph) * clamp(pop)));
+			c.drawLine(x, y, x - dp(2), y + dp(9), stroke);
+		}
+		c.restore();
+		icon(c, R.drawable.ambience, cx, tp + ch * 0.26f, s * 0.2f, accent, clamp(pop));
+		// The sounds, switched on one after the other.
+		int[] ic = {R.drawable.ambience_rain, R.drawable.ambience_fire, R.drawable.ambience_ocean,
+				R.drawable.ambience_night};
+		float tw = cw / 5.2f;
+		for (int i = 0; i < 4; i++) {
+			float start = 0.1f + i * 0.05f;
+			float sc = overshoot((loop - start) / 0.1f);
+			float x = cx + (i - 1.5f) * (tw * 1.2f);
+			float y = cy + ch * 0.28f;
+			boolean on = loop > 0.35f + i * 0.12f;
+			tile(c, x, y, tw, sc, ic[i], on ? accent : track, on ? onAccent : accent, 1f);
+		}
+		// A fading volume line under the tiles.
+		float k = clamp((loop - 0.35f) / 0.5f);
+		float ly = bt - dp(14);
+		stroke.setColor(track);
+		stroke.setStrokeWidth(dp(4));
+		c.drawLine(l + dp(20), ly, rt - dp(20), ly, stroke);
+		stroke.setColor(accent);
+		c.drawLine(l + dp(20), ly, l + dp(20) + (cw - dp(40)) * (0.3f + 0.4f * k), ly, stroke);
 	}
 
 	private void more(Canvas c, float cx, float cy, float s) {

@@ -56,6 +56,11 @@
     <string name="wz_aio_text">One card of big tiles for what you reach for most while driving: the sleep timer, video quality, effects and more.</string>
     <string name="wz_aio_b1">Open it from a floating button or a steering wheel key</string>
     <string name="wz_aio_b2">You choose the tiles and their order</string>
+    <string name="wz_amb_title">Ambience</string>
+    <string name="wz_amb_text">Rain, thunder, a fireplace, the ocean and more, playing softly behind your music or video.</string>
+    <string name="wz_amb_b1">Sixteen sounds, synthesized or from real recordings</string>
+    <string name="wz_amb_b2">Mix them, set the volume and a timer; it fades in and out</string>
+    <string name="wz_amb_b3">The weather is drawn behind the Music tab too</string>
     <string name="wz_aio_b3">Power saver, power usage and lyrics are tiles too</string>
 
     <string name="wz_more_title">And there is more</string>
