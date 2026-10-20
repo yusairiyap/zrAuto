@@ -601,7 +601,7 @@ what each widget shows is set on the widget (edit mode > its gear).
   (the picture). Like the Music tab's layers, both are at full alpha from the first frame (holding `bg` back and fading it in after the
   tab showed was what made a bare gradient appear first and the picture dissolve in 0.5 s later); `bg` is only faded when leaving
   (`bgShown`) and when a *new* picture arrives (`HomeBackgroundView#setImage`). Any index passed to `root.addView(.., index)` counts both.
-- **Now playing**: no corner spinner any more, and no centre spinner while starting from nothing (`startedIdle`). Items are compared by
+- **Now playing**: no corner spinner any more. Items are compared by
   id (`HomeArt#same`), the trimmed cover is memoised, and the card/background skip a cover they already show, so a seek or lyric
   scrub that makes the player hand out another object for the song does not fade the art out and in. If it still does, the
   Diagnostic log has `home media: new item` lines (MUSIC).
@@ -611,8 +611,8 @@ what each widget shows is set on the widget (edit mode > its gear).
 - **The car screen has its own widgets**: `MainActivityPrefs.HOME_LAYOUT_AA`, the same JSON as `HOME_LAYOUT`; `HomeModel(prefs, car)` picks
   the pref (and its default set, `DEFAULT_TYPES_AA`) from `a.isCarActivity()`, and nothing is shared between the two. It is edited on the car
   screen (edit mode works there too); Settings > Home has "Copy these widgets to Android Auto" and "Reset the Android Auto widgets".
-- **Now playing**: the play button never shows a spinner (it showed at the wrong moments: a track from the queue, a start from nothing).
-  The seek bar also asks the *engine* for position and duration (`MediaWidget#pollEngine`): the session's state and the item's metadata
+- **Now playing**: the play button's spinner (busy, buffering, just skipped) is wanted and stays; the spinners that were *not* wanted
+  were the card's corner one (gone) and the page-centre one (below). The seek bar also asks the *engine* for position and duration (`MediaWidget#pollEngine`): the session's state and the item's metadata
   lag or lack both for YouTube, which left the bar frozen and not answering touches (a touch needs a length). `tick()` removes its own
   callback first, so a duration arriving late doesn't double the polling chain.
 - **No page-centre spinner on Home**: `MainActivityDelegate#setContentLoading` (used by `BodyLayout` while a started playback comes up, among others)

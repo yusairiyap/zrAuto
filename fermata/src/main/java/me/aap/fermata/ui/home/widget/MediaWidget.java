@@ -652,9 +652,8 @@ final class MediaWidget extends HomeWidgetView {
 		}
 		boolean skipping = SystemClock.elapsedRealtime() < skipUntil;
 		// Starting from nothing shows no spinner at all: the button turns to pause when the song is up.
-		// No spinner on the play button at all: it only ever showed up at the wrong moments (a track picked
-		// from the queue, a start from nothing); the pause icon already says the player is on its way.
-		setPlayLoading(false);
+		setPlayLoading(isBusy(s) || ((s == PlaybackStateCompat.STATE_PLAYING) && BufferingIndicator.isBuffering())
+				|| skipping);
 		if (skipping) {
 			removeCallbacks(skipEnd);
 			postDelayed(skipEnd, Math.max(50, skipUntil - SystemClock.elapsedRealtime() + 50));
