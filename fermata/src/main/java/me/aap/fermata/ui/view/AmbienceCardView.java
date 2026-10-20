@@ -176,18 +176,34 @@ public final class AmbienceCardView extends FrameLayout {
 		TextView title = text(ctx, 16, true);
 		title.setText(fx.name);
 		head.addView(title, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-		TextView reset = text(ctx, 12, true);
-		reset.setText(R.string.ambience_reset);
-		reset.setPadding(px(10), px(5), px(10), px(5));
-		reset.setBackground(roundFill(0x26FFFFFF, 12));
-		reset.setClickable(true);
-		reset.setFocusable(true);
-		reset.setOnClickListener(v -> {
+		// On a phone the card is too narrow for a word beside the title, so Reset is an icon there.
+		boolean narrow = ctx.getResources().getConfiguration().smallestScreenWidthDp < 600;
+		View.OnClickListener onReset = v -> {
 			engine.resetEffect(fx);
 			sync();
-		});
-		head.addView(reset, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
-				LinearLayout.LayoutParams.WRAP_CONTENT));
+		};
+		if (narrow) {
+			ImageView reset = new ImageView(ctx);
+			reset.setImageResource(R.drawable.refresh);
+			reset.setImageTintList(ColorStateList.valueOf(0xCCFFFFFF));
+			reset.setPadding(px(5), px(5), px(5), px(5));
+			reset.setBackground(roundFill(0x26FFFFFF, 15));
+			reset.setContentDescription(ctx.getString(R.string.ambience_reset));
+			reset.setClickable(true);
+			reset.setFocusable(true);
+			reset.setOnClickListener(onReset);
+			head.addView(reset, new LinearLayout.LayoutParams(px(30), px(30)));
+		} else {
+			TextView reset = text(ctx, 12, true);
+			reset.setText(R.string.ambience_reset);
+			reset.setPadding(px(10), px(5), px(10), px(5));
+			reset.setBackground(roundFill(0x26FFFFFF, 12));
+			reset.setClickable(true);
+			reset.setFocusable(true);
+			reset.setOnClickListener(onReset);
+			head.addView(reset, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+					LinearLayout.LayoutParams.WRAP_CONTENT));
+		}
 		ImageView close = new ImageView(ctx);
 		close.setImageResource(R.drawable.close_small);
 		close.setImageTintList(ColorStateList.valueOf(0xCCFFFFFF));

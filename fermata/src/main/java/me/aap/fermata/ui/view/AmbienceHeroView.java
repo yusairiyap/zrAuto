@@ -52,7 +52,6 @@ public final class AmbienceHeroView extends FrameLayout {
 	private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 	private final RectF rect = new RectF();
 	private final Path clip = new Path();
-	private final ImageView mark;
 	private final TextView title;
 	private final TextView subtitle;
 	private final TextView action;
@@ -72,14 +71,6 @@ public final class AmbienceHeroView extends FrameLayout {
 		scene = new AmbienceScene(dp, 99);
 		setWillNotDraw(false);
 		setPadding(px(20), px(18), px(20), px(16));
-
-		mark = new ImageView(ctx);
-		mark.setImageResource(R.drawable.ambience);
-		mark.setImageTintList(ColorStateList.valueOf(0xFFFFFFFF));
-		mark.setAlpha(0.3f);
-		FrameLayout.LayoutParams mlp = new FrameLayout.LayoutParams(px(64), px(64),
-				Gravity.TOP | Gravity.END);
-		addView(mark, mlp);
 
 		LinearLayout texts = new LinearLayout(ctx);
 		texts.setOrientation(LinearLayout.VERTICAL);
@@ -193,7 +184,6 @@ public final class AmbienceHeroView extends FrameLayout {
 		actionBg.setColor(on ? 0xF2FFFFFF : 0x33FFFFFF);
 		if (on != lastOn) {
 			lastOn = on;
-			mark.animate().alpha(on ? 0.12f : 0.3f).setDuration(500).start();
 		}
 		// The timer waits while the sound does.
 		timer.setAlpha(held ? 0.55f : 1f);

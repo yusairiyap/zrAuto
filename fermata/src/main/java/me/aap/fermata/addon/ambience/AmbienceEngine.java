@@ -224,8 +224,15 @@ public final class AmbienceEngine {
 		if (e.realOnly) return;
 		prefs().applyBooleanPref(e.recorded, on);
 		layers[e.ordinal()].recorded = on;
-		if (on) AmbienceSamples.get().ensure(e);
-		else AmbienceSamples.get().release(e);
+		if (on) {
+			AmbienceSamples.get().ensure(e);
+		} else {
+			// The recording stays in memory until the slow crossfade to the synthesized voice is over.
+			Layer ly = layers[e.ordinal()];
+			main.postDelayed(() -> {
+				if (!ly.recorded) AmbienceSamples.get().release(e);
+			}, (long) ((SOURCE_FADE_SEC + 2f) * 1000));
+		}
 		notifyChanged();
 	}
 
@@ -260,7 +267,12 @@ public final class AmbienceEngine {
 			prefs().applyBooleanPref(e.recorded, on);
 			layers[e.ordinal()].recorded = on;
 			if (on) AmbienceSamples.get().ensure(e);
-			else if (!layers[e.ordinal()].wanted) AmbienceSamples.get().release(e);
+			else {
+				Layer ly = layers[e.ordinal()];
+				main.postDelayed(() -> {
+					if (!ly.recorded) AmbienceSamples.get().release(e);
+				}, (long) ((SOURCE_FADE_SEC + 2f) * 1000));
+			}
 		}
 		notifyChanged();
 	}
@@ -633,6 +645,15 @@ public final class AmbienceEngine {
 				for (Layer ly : layers) {
 					boolean want = ly.wanted && !hold;
 					float g0 = ly.gain;
+					// A recording still loading while the sound starts: wait in silence instead of playing the
+					// synthesized voice first and crossfading, and start straight on the recording.
+					if (want && (g0 == 0f) && ly.recorded && !ly.sample.isReady()
+							&& (AmbienceSamples.get().getState(ly.fx) == AmbienceSamples.State.LOADING)) {
+						ly.mix = 1f;
+						ly.shown = 0f;
+						audible = true;
+						continue;
+					}
 					float g1 = want ? Math.min(1f, g0 + step) : Math.max(0f, g0 - step);
 					ly.gain = g1;
 					ly.level += (ly.levelTarget - ly.level) * 0.2f;
