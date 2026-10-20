@@ -100,6 +100,10 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		root = new FrameLayout(ctx);
 		root.setClipChildren(false);
 		root.setClipToPadding(false);
+		// Opaque from the very first frame: the tab crossfades in over the one before it, and until the
+		// background (which comes in a little later, see fadeBackgroundIn) is there the window's dark
+		// colour showed through as a veil that then lifted.
+		root.setBackgroundColor(palette.background | 0xFF000000);
 		bg = new HomeBackgroundView(ctx, palette);
 		root.addView(bg, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));

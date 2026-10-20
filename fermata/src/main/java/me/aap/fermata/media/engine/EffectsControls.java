@@ -20,6 +20,8 @@ public interface EffectsControls {
 	int BASS = 1;
 	int VIRT = 2;
 	int EXTRA = 3;
+	/** The loudness boost's top gain in millibels (its slider's full scale). */
+	int LOUDNESS_MAX_MB = 1000;
 
 	/** Whether this kind of effect exists here at all. */
 	boolean has(int kind);
@@ -41,6 +43,24 @@ public interface EffectsControls {
 
 	/** Steps to the next equalizer preset. */
 	void nextPreset();
+
+	/** Whether {@code kind} has a strength to set (the equalizer has bands instead, see {@link #setBand}). */
+	default boolean hasLevel(int kind) {
+		return false;
+	}
+
+	/** The strength of {@code kind} from 0 to 1. */
+	default float level(int kind) {
+		return 0f;
+	}
+
+	/** Sets the strength of {@code kind} from 0 to 1. */
+	default void setLevel(int kind, float v) {
+	}
+
+	/** Sets one equalizer band to a height from 0 to 1 (a curve of one's own, no preset any more). */
+	default void setBand(int band, float v) {
+	}
 
 	/** The platform effects of {@code fx}, or null when the player has none. */
 	@Nullable
@@ -128,6 +148,63 @@ public interface EffectsControls {
 				return (cur >= 0) ? eq.getPresetName(cur) : null;
 			} catch (RuntimeException ex) {
 				return null;
+			}
+		}
+
+		@Override
+		public boolean hasLevel(int kind) {
+			return (kind != EQ) && has(kind);
+		}
+
+		@Override
+		public float level(int kind) {
+			try {
+				return switch (kind) {
+					case BASS -> (fx.getBassBoost() == null) ? 0f : fx.getBassBoost().getRoundedStrength() / 1000f;
+					case VIRT -> (fx.getVirtualizer() == null) ? 0f : fx.getVirtualizer().getRoundedStrength() / 1000f;
+					case EXTRA -> (fx.getLoudnessEnhancer() == null) ? 0f :
+							Math.min(1f, fx.getLoudnessEnhancer().getTargetGain() / (float) LOUDNESS_MAX_MB);
+					default -> 0f;
+				};
+			} catch (RuntimeException ex) {
+				return 0f;
+			}
+		}
+
+		@Override
+		public void setLevel(int kind, float v) {
+			v = Math.max(0f, Math.min(1f, v));
+			try {
+				switch (kind) {
+					case BASS -> {
+						if (fx.getBassBoost() != null) fx.getBassBoost().setStrength((short) Math.round(v * 1000));
+					}
+					case VIRT -> {
+						if (fx.getVirtualizer() != null) fx.getVirtualizer().setStrength((short) Math.round(v * 1000));
+					}
+					case EXTRA -> {
+						if (fx.getLoudnessEnhancer() != null) {
+							fx.getLoudnessEnhancer().setTargetGain(Math.round(v * LOUDNESS_MAX_MB));
+						}
+					}
+					default -> {
+					}
+				}
+			} catch (RuntimeException ex) {
+				me.aap.utils.log.Log.w(ex, "Could not set an audio effect strength");
+			}
+		}
+
+		@Override
+		public void setBand(int band, float v) {
+			try {
+				Equalizer eq = fx.getEqualizer();
+				if ((eq == null) || (band < 0) || (band >= eq.getNumberOfBands())) return;
+				short[] range = eq.getBandLevelRange();
+				float c = Math.max(0f, Math.min(1f, v));
+				eq.setBandLevel((short) band, (short) Math.round(range[0] + c * (range[1] - range[0])));
+			} catch (RuntimeException ex) {
+				me.aap.utils.log.Log.w(ex, "Could not set an equalizer band");
 			}
 		}
 

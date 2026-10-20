@@ -1,5 +1,7 @@
 package me.aap.fermata.ui.home.widget;
 
+import androidx.annotation.Nullable;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -25,6 +27,10 @@ final class QueueWidget extends LibraryWidget {
 		}
 	};
 
+	@Nullable
+	private MusicQueue watched;
+	private final MusicQueue.Listener queueListener = q -> post(() -> refresh(true));
+
 	QueueWidget(HomeHost host, HomeWidgetType type) {
 		super(host, type);
 	}
@@ -43,11 +49,16 @@ final class QueueWidget extends LibraryWidget {
 	protected void onActive() {
 		super.onActive();
 		act().getMediaServiceBinder().addBroadcastListener(itemListener);
+		// Songs added, removed, moved or shuffled: the list follows the queue, not only the playing song.
+		watched = MusicPlayer.getQueue(act());
+		if (watched != null) watched.addListener(queueListener);
 	}
 
 	@Override
 	protected void onInactive() {
 		act().getMediaServiceBinder().removeBroadcastListener(itemListener);
+		if (watched != null) watched.removeListener(queueListener);
+		watched = null;
 		super.onInactive();
 	}
 

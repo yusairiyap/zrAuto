@@ -563,6 +563,27 @@ what each widget shows is set on the widget (edit mode > its gear).
 - **Covers lose black bars** (`HomeArt.trimBars`) so a square cover inside a 16:9 picture fills the card.
 - A stack (or any widget) holding the page off needs `claimGestures` to be *called*: it was written but not wired for a round.
 
+### Fourth round (play from widgets, swipe zones, chips, sliders)
+
+- **Tapping a song or playlist in a widget plays it as the tab does** (`ui/home/HomePlay`: `tapped` / `list`): music-tab
+  playback (`MusicPlayer.play`, so the queue is rebuilt) when `tapPlaysAsMusic`, else the session's `playItem`. Favorites,
+  Playlists and their drill-in use it; never call `playItem` straight from a widget.
+- **The whole card swipes a stack** (`HomeStackView#onTouchEvent`): content that consumes nothing never made the stack a
+  touch target (only the title did), so the stack takes DOWN itself and starts the drag on the first horizontal move; with no
+  neighbour to go to it hands the touch back (`requestDisallowInterceptTouchEvent(false)`). Neighbours move 55% of the width and
+  cross-dissolve (smoothstep), so no cut-off ghost of the next card shows.
+- **Queue widget** listens to `MusicQueue.Listener` while active, so it follows the queue as it changes.
+- **Info overlay widget** is the real `InfoOverlayView` in chip mode (`setChipStyle(fg, fill)`: no shaded bar, no dividers, every
+  item its own rounded chip in a `ChipFlowLayout`, same items/order/icons as the settings); it scales down only when the wrapped
+  chips are taller than the card.
+- **Effects widget**: a row per effect (switch + strength slider; the equalizer's row has the preset chip), the bars below when
+  all rows fit and 90dp is left; bars can be dragged to set a band. What is shown is decided from the card's pixel height
+  (`arrange`, from `onSized`), never from cell counts. `EffectsControls` gained `hasLevel/level/setLevel/setBand`
+  (platform: BassBoost/Virtualizer 0..1000, loudness 0..`LOUDNESS_MAX_MB`; YouTube: the strength prefs).
+- **Ambience** follows Home's look like any widget (no own default); it only paints its sky when the look is Colour.
+- **Home's root is opaque** (`palette.background`) from the first frame; the picture/gradient fades in over it. A transparent
+  root let the window's dark colour show through the tab crossfade as a veil.
+
 ### Adding a widget (the easy path)
 
 1. Write `ui/home/widget/FooWidget extends HomeWidgetView` (constructor `(HomeHost, HomeWidgetType)`). Build views in

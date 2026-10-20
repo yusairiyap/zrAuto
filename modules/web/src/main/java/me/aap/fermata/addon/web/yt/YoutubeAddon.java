@@ -408,6 +408,44 @@ public class YoutubeAddon extends WebBrowserAddon
 		}
 
 		@Override
+		public boolean hasLevel(int kind) {
+			return kind != EQ;
+		}
+
+		@Override
+		public float level(int kind) {
+			return switch (kind) {
+				case BASS -> bassStrength() / 1000f;
+				case VIRT -> virtStrength() / 1000f;
+				case EXTRA -> reverbStrength() / 1500f;
+				default -> 0f;
+			};
+		}
+
+		@Override
+		public void setLevel(int kind, float v) {
+			float c = Math.max(0f, Math.min(1f, v));
+			switch (kind) {
+				case BASS -> setBassStrength(Math.round(c * 1000));
+				case VIRT -> setVirtStrength(Math.round(c * 1000));
+				case EXTRA -> setReverbStrength(Math.round(c * 1500));
+				default -> {
+				}
+			}
+		}
+
+		@Override
+		public void setBand(int band, float v) {
+			int[] b = eqBands().clone();
+			if ((band < 0) || (band >= b.length)) return;
+			float c = Math.max(0f, Math.min(1f, v));
+			b[band] = Math.round(YoutubeEqualizerPresets.BAND_MIN +
+					c * (YoutubeEqualizerPresets.BAND_MAX - YoutubeEqualizerPresets.BAND_MIN));
+			setEqBands(b);
+			if (eqPreset() != 0) setEqPreset(0);
+		}
+
+		@Override
 		public void nextPreset() {
 			// 0 is manual, 1.. are the built-in curves; the bands are set first so the page gets both at once.
 			int n = YoutubeEqualizerPresets.PRESETS.length;

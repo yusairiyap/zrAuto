@@ -44,7 +44,9 @@ final class InfoOverlayWidget extends HomeWidgetView implements PreferenceStore.
 		holder = new FrameLayout(ctx);
 		overlay = new InfoOverlayView(ctx);
 		holder.addView(overlay, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
-				ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+				ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL | Gravity.START));
+		holder.setPadding(px(12), 0, px(12), px(8));
+		chipLook();
 		LinearLayout empty = new LinearLayout(ctx);
 		empty.setOrientation(LinearLayout.VERTICAL);
 		empty.setGravity(Gravity.CENTER);
@@ -66,6 +68,19 @@ final class InfoOverlayWidget extends HomeWidgetView implements PreferenceStore.
 	@Override
 	protected void onBind() {
 		apply();
+	}
+
+	@Override
+	protected void onStyleChanged() {
+		chipLook();
+		apply();
+	}
+
+	/** Chips in the card's own text colour: a faint fill of it, so it reads on any look. */
+	private void chipLook() {
+		if (overlay == null) return;
+		int fg = color(ROLE_PRIMARY);
+		overlay.setChipStyle(fg, (fg & 0x00FFFFFF) | 0x24000000);
 	}
 
 	@Override
@@ -122,14 +137,18 @@ final class InfoOverlayWidget extends HomeWidgetView implements PreferenceStore.
 		fit();
 	}
 
-	/** Scales the overlay down when its single line is wider than the card. */
+	/** Chips wrap onto lines; scales them down only when even that is taller than the room. */
 	private void fit() {
-		if ((overlay == null) || (overlay.getVisibility() != VISIBLE) || (widthPx() == 0)) return;
-		overlay.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+		if ((overlay == null) || (overlay.getVisibility() != VISIBLE) || (widthPx() == 0) || (heightPx() == 0)) return;
+		int availW = widthPx() - px(24);
+		int availH = heightPx() - px(34) - px(8);
+		if ((availW <= 0) || (availH <= 0)) return;
+		overlay.measure(View.MeasureSpec.makeMeasureSpec(availW, View.MeasureSpec.AT_MOST),
 				View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
-		int avail = widthPx() - px(28);
-		int need = overlay.getMeasuredWidth();
-		float k = (need > avail) ? (avail / (float) need) : 1f;
+		int need = overlay.getMeasuredHeight();
+		float k = ((need > availH) && (need > 0)) ? (availH / (float) need) : 1f;
+		overlay.setPivotX(0f);
+		overlay.setPivotY(overlay.getMeasuredHeight() / 2f);
 		overlay.setScaleX(k);
 		overlay.setScaleY(k);
 	}

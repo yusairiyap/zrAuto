@@ -9,6 +9,7 @@ import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.lib.MediaLib.Playlist;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.home.HomeHost;
+import me.aap.fermata.ui.home.HomePlay;
 import me.aap.fermata.ui.home.HomeWidgetType;
 import me.aap.utils.async.FutureSupplier;
 
@@ -41,9 +42,7 @@ final class PlaylistsWidget extends LibraryWidget {
 			for (int i = 0; i < n; i++) {
 				Playlist pl = lists.get(i);
 				rows.add(new Row(pl.getName(), null, pl, () -> drill(pl.getName(), (a2, d2) -> songs(pl, a2, d2)),
-						() -> pl.getFirstPlayable().main().onSuccess(first -> {
-					if (first != null) a.getMediaServiceBinder().playItem(first);
-				}), sub -> pl.getUnsortedChildren().main().onSuccess(c -> {
+						() -> HomePlay.list(a, pl), sub -> pl.getUnsortedChildren().main().onSuccess(c -> {
 					if (c != null) sub.setText(ctx.getString(R.string.home_tracks, c.size()));
 				})));
 			}
@@ -63,7 +62,7 @@ final class PlaylistsWidget extends LibraryWidget {
 			for (int i = 0; i < n; i++) {
 				if (!(items.get(i) instanceof PlayableItem p)) continue;
 				String artist = (p instanceof MusicTrackItem t) ? t.getArtistName() : null;
-				Runnable play = () -> a.getMediaServiceBinder().playItem(p);
+				Runnable play = () -> HomePlay.tapped(a, p);
 				rows.add(new Row(p.getName(), artist, p, play, play, null));
 			}
 			done.done(rows, items.size());

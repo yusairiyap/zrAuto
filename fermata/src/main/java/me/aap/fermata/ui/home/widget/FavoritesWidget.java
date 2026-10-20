@@ -8,6 +8,7 @@ import me.aap.fermata.R;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.home.HomeHost;
+import me.aap.fermata.ui.home.HomePlay;
 import me.aap.fermata.ui.home.HomeOption;
 import me.aap.fermata.ui.home.HomeWidgetType;
 
@@ -48,7 +49,7 @@ final class FavoritesWidget extends LibraryWidget {
 			int n = Math.min(l.size(), 60);
 			for (int i = 0; i < n; i++) {
 				PlayableItem pi = l.get(i);
-				rows.add(new Row(pi.getName(), null, pi, () -> a.getMediaServiceBinder().playItem(pi), null, null));
+				rows.add(new Row(pi.getName(), null, pi, () -> HomePlay.tapped(a, pi), null, null));
 			}
 			done.done(rows, items.size());
 		});

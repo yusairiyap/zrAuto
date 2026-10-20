@@ -85,20 +85,10 @@ final class AmbienceWidget extends HomeWidgetView {
 		super(host, type);
 	}
 
-	/** The sky is the card in the Colour look (and what it is by default); Solid and Glass make it a plain card. */
+	/** The sky is the card in the Colour look; Solid and Glass make it a plain card, like every other widget's. */
 	@Override
 	protected boolean ownBackground() {
 		return style() == STYLE_COLOUR;
-	}
-
-	@Override
-	protected int autoStyle() {
-		return STYLE_COLOUR;
-	}
-
-	@Override
-	protected int autoStyleLabel() {
-		return R.string.home_style_sky;
 	}
 
 	@Override

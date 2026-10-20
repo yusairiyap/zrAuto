@@ -239,11 +239,14 @@ final class HomeStackView extends FrameLayout {
 				continue;
 			}
 			if (v.getVisibility() != VISIBLE) v.setVisibility(VISIBLE);
-			v.setTranslationX(d * w);
-			float s = 1f - 0.07f * a;
+			// The one leaving and the one coming dissolve into each other while sliding only part of the
+			// way: no half-cut card left standing beside the other one.
+			v.setTranslationX(d * w * 0.55f);
+			float s = 1f - 0.06f * a;
 			v.setScaleX(s);
 			v.setScaleY(s);
-			v.setAlpha(1f - 0.45f * a);
+			float f = 1f - a;
+			v.setAlpha(f * f * (3f - 2f * f));
 		}
 		dots.setPos(pos);
 	}
@@ -317,9 +320,51 @@ final class HomeStackView extends FrameLayout {
 		showDots();
 	}
 
+	/**
+	 * A touch no widget under the finger took (the text of a card, say) ends up here, because the stack
+	 * says yes to it: so the whole card swipes, not just the parts that have a click of their own.
+	 */
 	@Override
 	public boolean onTouchEvent(MotionEvent e) {
-		if (!dragging) return false;
+		if (!dragging) {
+			if ((widgets.size() < 2) || cb.isEditing()) return false;
+			switch (e.getActionMasked()) {
+				case MotionEvent.ACTION_DOWN -> {
+					downX = e.getX();
+					downY = e.getY();
+					armed = true;
+					if (settle != null) settle.cancel();
+					return true;
+				}
+				case MotionEvent.ACTION_MOVE -> {
+					if (!armed) return true;
+					float dx = e.getX() - downX;
+					float dy = e.getY() - downY;
+					if ((Math.abs(dx) > slop) && (Math.abs(dx) > Math.abs(dy) * 1.3f)) {
+						boolean room = (dx < 0) ? (pos < widgets.size() - 1 - 0.01f) : (pos > 0.01f);
+						if (!room) {
+							armed = false;
+							if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
+							return true;
+						}
+						startDrag(e);
+						// The finger has already moved by the slop: the card follows from where it started.
+						startX = downX;
+					} else if (Math.abs(dy) > slop) {
+						armed = false;
+						return true;
+					}
+					if (!dragging) return true;
+				}
+				case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+					armed = false;
+					return true;
+				}
+				default -> {
+					return true;
+				}
+			}
+		}
 		if (velocity != null) velocity.addMovement(e);
 		int w = Math.max(1, getWidth());
 		switch (e.getActionMasked()) {

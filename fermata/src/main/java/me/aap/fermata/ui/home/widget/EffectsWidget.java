@@ -7,10 +7,12 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.support.v4.media.session.PlaybackStateCompat;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.SeekBar;
 import android.widget.TextView;
 
 import androidx.annotation.Nullable;
@@ -34,9 +36,11 @@ import me.aap.fermata.ui.view.ChipFlowLayout;
 
 /**
  * The sound effects of the player that plays (Android's equalizer, bass boost, virtualizer and
- * loudness; YouTube's own equalizer, bass, virtualizer and reverb) as switches in the card itself,
- * the equalizer's bands as bars above them, and a chip that steps through its presets. With nothing
- * playing, YouTube's are shown: their settings stay. The header opens the full Audio effects screen.
+ * loudness; YouTube's own equalizer, bass, virtualizer and reverb): a row per effect with its
+ * switch and, where it has one, a strength slider; the equalizer's bands as bars you can drag, and
+ * a chip that steps through its presets. What fits the card is shown, rows first, the bars with
+ * whatever room is left. With nothing playing, YouTube's are shown: their settings stay. The header
+ * opens the full Audio effects screen.
  */
 final class EffectsWidget extends HomeWidgetView {
 	private static final long REFRESH_MS = 2500;
@@ -47,12 +51,19 @@ final class EffectsWidget extends HomeWidgetView {
 	private View headerRow;
 	private Bars bars;
 	private TextView status;
+	private LinearLayout rows;
+	/** The one line of switches a one-row card has. */
 	private ChipFlowLayout chips;
 	@Nullable
 	private EffectsControls source;
 	private String shownSignature = "";
 	private final List<TextView> toggles = new ArrayList<>();
-	private TextView presetChip;
+	private final List<TextView> stripToggles = new ArrayList<>();
+	private final List<LinearLayout> rowViews = new ArrayList<>();
+	private final List<SeekBar> sliders = new ArrayList<>();
+	private final List<Integer> sliderKinds = new ArrayList<>();
+	private final List<TextView> presetChips = new ArrayList<>();
+	private boolean sliding;
 	private final Runnable refresh = this::read;
 	private final MediaSessionCallback.Listener listener = new MediaSessionCallback.Listener() {
 		@Override
@@ -72,10 +83,8 @@ final class EffectsWidget extends HomeWidgetView {
 		headerRow = header(() -> host.run(Action.AUDIO_EFFECTS));
 		column.addView(headerRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(34)));
 		bars = new Bars(ctx);
-		bars.setClickable(true);
-		bars.setFocusable(true);
 		bars.setContentDescription(ctx.getString(R.string.action_audio_effects));
-		bars.setOnClickListener(v -> host.run(Action.AUDIO_EFFECTS));
+		bars.setListener(this::dragBand);
 		LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
 		blp.topMargin = px(8);
 		column.addView(bars, blp);
@@ -83,8 +92,12 @@ final class EffectsWidget extends HomeWidgetView {
 		status.setSingleLine(true);
 		status.setGravity(Gravity.CENTER_VERTICAL);
 		LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(22));
-		slp.topMargin = px(6);
+		slp.topMargin = px(4);
 		column.addView(status, slp);
+		rows = new LinearLayout(ctx);
+		rows.setOrientation(LinearLayout.VERTICAL);
+		column.addView(rows, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.WRAP_CONTENT));
 		chips = new ChipFlowLayout(ctx);
 		column.addView(chips, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -108,28 +121,57 @@ final class EffectsWidget extends HomeWidgetView {
 
 	@Override
 	protected void onBind() {
-		layoutFor();
+		arrange();
 		read();
 	}
 
 	@Override
 	protected void onResized(int w, int h) {
 		if (column == null) return;
-		layoutFor();
+		arrange();
 		read();
 	}
 
-	private void layoutFor() {
-		int h = getCellsH();
-		boolean strip = h == 1;
-		boolean wantBars = (h >= 3) && optBool("bars", true);
-		boolean wantSwitches = optBool("switches", true);
+	@Override
+	protected void onSized(int w, int h) {
+		if (column != null) arrange();
+	}
+
+	/**
+	 * Decides what the card's height allows: the rows (switch + slider) first, as many as fit, then
+	 * the bars with the status line when all the rows fit and there is still room for them.
+	 */
+	private void arrange() {
+		if ((column == null) || (heightPx() == 0)) return;
+		boolean strip = getCellsH() == 1;
+		boolean wantBars = optBool("bars", true);
+		boolean wantRows = optBool("switches", true);
 		headerRow.setVisibility(strip ? GONE : VISIBLE);
-		bars.setVisibility(wantBars ? VISIBLE : GONE);
-		status.setVisibility(wantBars ? VISIBLE : GONE);
-		chips.setVisibility(wantSwitches ? VISIBLE : GONE);
-		// With neither bars nor switches the card is the header and the status, so say how it is.
-		if (!wantBars && !wantSwitches) status.setVisibility(VISIBLE);
+		chips.setVisibility(strip && wantRows ? VISIBLE : GONE);
+		rows.setVisibility(!strip && wantRows ? VISIBLE : GONE);
+		int avail = heightPx() - (strip ? 0 : px(34)) - px(10);
+		int rowH = px(40);
+		int n = rowViews.size();
+		int barsMin = px(60) + px(26) + px(8);
+		boolean showBars = false;
+		int shownRows = 0;
+		if (!strip) {
+			if (wantRows && n > 0) {
+				if (wantBars && (avail >= n * rowH + barsMin)) {
+					shownRows = n;
+					showBars = true;
+				} else {
+					shownRows = Math.max(1, Math.min(n, avail / rowH));
+				}
+			} else {
+				showBars = wantBars;
+			}
+		}
+		for (int i = 0; i < n; i++) rowViews.get(i).setVisibility(i < shownRows ? VISIBLE : GONE);
+		bars.setVisibility(showBars ? VISIBLE : GONE);
+		// The status line says how things are when there are no bars to show it, if there is room.
+		status.setVisibility(!strip && (showBars || (!wantRows && !wantBars) ||
+				(n == 0 && avail >= px(40))) ? VISIBLE : GONE);
 	}
 
 	@Override
@@ -165,64 +207,142 @@ final class EffectsWidget extends HomeWidgetView {
 		source = src;
 		MediaEngine eng = host.activity().getMediaSessionCallback().getEngine();
 		if (src == null) {
-			bars.setLevels(null);
+			if (!bars.isDragging()) bars.setLevels(null);
 			status.setText((eng == null) ? R.string.home_effects_idle : R.string.home_effects_none);
-			buildChips(null);
+			buildRows(null);
 		} else {
 			boolean on = src.isOn(EffectsControls.EQ);
-			bars.setLevels(on ? src.bands() : null);
+			if (!bars.isDragging()) bars.setLevels(on ? src.bands() : null);
 			String preset = src.preset(ctx);
 			if (!src.has(EffectsControls.EQ)) status.setText(R.string.home_effects_on);
 			else if (!on) status.setText(R.string.home_effects_off);
 			else if (preset != null) status.setText(ctx.getString(R.string.home_effects_preset, preset));
 			else status.setText(R.string.home_effects_on);
-			buildChips(src);
+			buildRows(src);
 		}
 		if (isActive()) postDelayed(refresh, REFRESH_MS);
 	}
 
-	/** Builds the switches when the set of effects changed, else only paints their state. */
-	private void buildChips(@Nullable EffectsControls src) {
+	/** One band was dragged on the bars: set it (switching the equalizer on first). */
+	private void dragBand(int band, float v) {
+		EffectsControls s = source;
+		if ((s == null) || !s.has(EffectsControls.EQ)) return;
+		if (!s.isOn(EffectsControls.EQ)) {
+			s.setOn(EffectsControls.EQ, true);
+			paintChips();
+		}
+		s.setBand(band, v);
+	}
+
+	/** Builds the rows when the set of effects changed, else only paints their state. */
+	private void buildRows(@Nullable EffectsControls src) {
 		StringBuilder sig = new StringBuilder();
 		if (src != null) {
 			sig.append(System.identityHashCode(src.getClass()));
-			for (int k : KINDS) sig.append(src.has(k) ? '1' : '0').append(src.has(k) ? src.label(k) : 0);
-			sig.append(getCellsH());
+			for (int k : KINDS) {
+				sig.append(src.has(k) ? '1' : '0');
+				if (src.has(k)) sig.append(src.label(k)).append(src.hasLevel(k) ? 's' : 'n');
+			}
 		}
 		String signature = sig.toString();
 		if (!signature.equals(shownSignature)) {
 			shownSignature = signature;
+			rows.removeAllViews();
 			chips.removeAllViews();
 			toggles.clear();
-			presetChip = null;
+			stripToggles.clear();
+			rowViews.clear();
+			sliders.clear();
+			sliderKinds.clear();
+			presetChips.clear();
 			if (src != null) {
 				for (int k : KINDS) {
 					if (!src.has(k)) continue;
 					final int kind = k;
-					TextView t = switchChip(ctx.getString(src.label(k)), () -> {
-						EffectsControls s = source;
-						if (s == null) return;
-						s.setOn(kind, !s.isOn(kind));
-						paintChips();
-						read();
-					});
+					LinearLayout row = new LinearLayout(ctx);
+					row.setGravity(Gravity.CENTER_VERTICAL);
+					TextView t = switchChip(ctx.getString(src.label(k)), () -> toggle(kind));
 					t.setTag(k);
+					t.setMinWidth(px(96));
 					toggles.add(t);
-					chips.addView(t);
-				}
-				if (src.has(EffectsControls.EQ) && (getCellsH() >= 2)) {
-					presetChip = switchChip("", () -> {
-						EffectsControls s = source;
-						if (s == null) return;
-						if (!s.isOn(EffectsControls.EQ)) s.setOn(EffectsControls.EQ, true);
-						s.nextPreset();
-						read();
-					});
-					chips.addView(presetChip);
+					row.addView(t, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(34)));
+					if (src.hasLevel(k)) {
+						SeekBar sb = newSlider(kind);
+						sliders.add(sb);
+						sliderKinds.add(k);
+						LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(0, px(34), 1f);
+						slp.leftMargin = px(4);
+						row.addView(sb, slp);
+					} else if (k == EffectsControls.EQ) {
+						TextView pc = switchChip("", () -> {
+							EffectsControls s = source;
+							if (s == null) return;
+							if (!s.isOn(EffectsControls.EQ)) s.setOn(EffectsControls.EQ, true);
+							s.nextPreset();
+							read();
+						});
+						pc.setEllipsize(android.text.TextUtils.TruncateAt.END);
+						presetChips.add(pc);
+						LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(0, px(34), 1f);
+						plp.leftMargin = px(8);
+						row.addView(pc, plp);
+					}
+					LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(40));
+					rows.addView(row, rlp);
+					rowViews.add(row);
+					// The same switch again for the one-line card.
+					TextView st = switchChip(ctx.getString(src.label(k)), () -> toggle(kind));
+					st.setTag(k);
+					stripToggles.add(st);
+					chips.addView(st);
 				}
 			}
+			arrange();
 		}
 		paintChips();
+	}
+
+	private void toggle(int kind) {
+		EffectsControls s = source;
+		if (s == null) return;
+		s.setOn(kind, !s.isOn(kind));
+		paintChips();
+		read();
+	}
+
+	private SeekBar newSlider(int kind) {
+		SeekBar sb = new SeekBar(ctx);
+		sb.setMax(1000);
+		sb.setPadding(px(10), 0, px(10), 0);
+		sb.setOnTouchListener((v, e) -> {
+			if (e.getActionMasked() == MotionEvent.ACTION_DOWN) v.getParent().requestDisallowInterceptTouchEvent(true);
+			return false;
+		});
+		sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+			@Override
+			public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+				if (!fromUser) return;
+				EffectsControls s = source;
+				if (s == null) return;
+				// Moving a slider of an effect that is off switches it on, as one expects.
+				if (!s.isOn(kind) && (progress > 0)) {
+					s.setOn(kind, true);
+					paintChips();
+				}
+				s.setLevel(kind, progress / 1000f);
+			}
+
+			@Override
+			public void onStartTrackingTouch(SeekBar bar) {
+				sliding = true;
+			}
+
+			@Override
+			public void onStopTrackingTouch(SeekBar bar) {
+				sliding = false;
+			}
+		});
+		return sb;
 	}
 
 	private TextView switchChip(CharSequence label, Runnable click) {
@@ -240,20 +360,32 @@ final class EffectsWidget extends HomeWidgetView {
 		return t;
 	}
 
-	/** Lit when on (the card's accent), faint when off. */
+	/** Lit when on (the card's accent), faint when off; sliders in the accent too, dimmed when off. */
 	private void paintChips() {
 		EffectsControls src = source;
-		for (TextView t : toggles) {
+		List<TextView> all = new ArrayList<>(toggles);
+		all.addAll(stripToggles);
+		for (TextView t : all) {
 			boolean on = (src != null) && src.isOn((Integer) t.getTag());
 			t.setBackground(HomeUi.pressable(ripple(), on ? color(ROLE_ACCENT) : softFill(), px(17)));
 			t.setTextColor(on ? color(ROLE_ON_ACCENT) : color(ROLE_PRIMARY));
 		}
-		if ((presetChip != null) && (src != null)) {
-			String preset = src.preset(ctx);
-			presetChip.setText(ctx.getString(R.string.home_effects_preset_chip,
+		for (int i = 0; i < sliders.size(); i++) {
+			SeekBar sb = sliders.get(i);
+			int kind = sliderKinds.get(i);
+			boolean on = (src != null) && src.isOn(kind);
+			int accent = on ? color(ROLE_ACCENT) : HomeUi.alpha(color(ROLE_SECONDARY), 0.7f);
+			sb.setProgressTintList(android.content.res.ColorStateList.valueOf(accent));
+			sb.setThumbTintList(android.content.res.ColorStateList.valueOf(accent));
+			sb.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(softFill()));
+			if (!sliding && (src != null)) sb.setProgress(Math.round(src.level(kind) * 1000));
+		}
+		String preset = (src == null) ? null : src.preset(ctx);
+		for (TextView pc : presetChips) {
+			pc.setText(ctx.getString(R.string.home_effects_preset_chip,
 					(preset != null) ? preset : ctx.getString(R.string.eq_manual)));
-			presetChip.setBackground(HomeUi.pressable(ripple(), softFill(), px(17)));
-			presetChip.setTextColor(color(ROLE_PRIMARY));
+			pc.setBackground(HomeUi.pressable(ripple(), softFill(), px(17)));
+			pc.setTextColor(color(ROLE_PRIMARY));
 		}
 	}
 
@@ -269,8 +401,56 @@ final class EffectsWidget extends HomeWidgetView {
 		@Nullable
 		private ValueAnimator anim;
 
+		/** Called while a band is dragged: its index and its new height from 0 to 1. */
+		interface Listener {
+			void onBand(int band, float v);
+		}
+
+		@Nullable
+		private Listener listener;
+		private boolean dragging;
+
 		Bars(Context ctx) {
 			super(ctx);
+		}
+
+		void setListener(@Nullable Listener l) {
+			listener = l;
+		}
+
+		boolean isDragging() {
+			return dragging;
+		}
+
+		@Override
+		public boolean onTouchEvent(MotionEvent e) {
+			if ((listener == null) || (shown.length == 0) || (getWidth() == 0) || (getHeight() == 0)) return false;
+			switch (e.getActionMasked()) {
+				case MotionEvent.ACTION_DOWN -> {
+					getParent().requestDisallowInterceptTouchEvent(true);
+					dragging = true;
+					if (anim != null) anim.cancel();
+					target = shown.clone();
+					live = true;
+					drag(e);
+				}
+				case MotionEvent.ACTION_MOVE -> drag(e);
+				case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> dragging = false;
+				default -> {
+				}
+			}
+			return true;
+		}
+
+		private void drag(MotionEvent e) {
+			int n = shown.length;
+			int i = Math.max(0, Math.min(n - 1, (int) (e.getX() / getWidth() * n)));
+			float v = 1f - e.getY() / getHeight();
+			v = Math.max(0.08f, Math.min(1f, v));
+			shown[i] = v;
+			target[i] = v;
+			invalidate();
+			if (listener != null) listener.onBand(i, v);
 		}
 
 		void setColors(int on, int off) {

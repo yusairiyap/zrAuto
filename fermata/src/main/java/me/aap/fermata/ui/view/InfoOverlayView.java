@@ -179,7 +179,7 @@ public class InfoOverlayView extends LinearLayout {
 		updateSessionBarColor();
 		for (int i = 0, n = getChildCount(); i < n; i++) {
 			View v = getChildAt(i);
-			if (!(v instanceof LinearLayout) && (v != downloadedIcon)) v.setBackgroundColor(dividerColor());
+			if (!(v instanceof LinearLayout) && (v != downloadedIcon) && (v != chipFlow)) v.setBackgroundColor(dividerColor());
 		}
 	}
 
@@ -197,6 +197,7 @@ public class InfoOverlayView extends LinearLayout {
 		downloadedIcon = newIconView(context);
 		downloadedIcon.setImageResource(R.drawable.download);
 		clock = (TextClock) LayoutInflater.from(context).inflate(R.layout.clock_view, this, false);
+		clock.setSingleLine(true);
 		clockIcon = newIconView(context);
 		clockIcon.setImageResource(R.drawable.clock);
 		clockRow = newRow(context, clockIcon, clock);
@@ -243,6 +244,7 @@ public class InfoOverlayView extends LinearLayout {
 		TextView t = new TextView(ctx);
 		t.setTextColor(0xFFFFFFFF);
 		t.setTextSize(TypedValue.COMPLEX_UNIT_SP, BASE_TEXT_SIZE_SP);
+		t.setSingleLine(true);
 		return t;
 	}
 
@@ -510,7 +512,8 @@ public class InfoOverlayView extends LinearLayout {
 	private void applyPadding() {
 		int padH = toIntPx(getContext(), Math.round(BASE_PAD_H_DP * size));
 		int padV = toIntPx(getContext(), Math.round(BASE_PAD_V_DP * size));
-		setPadding(padH, padV, padH, padV);
+		if (chipFill != 0) setPadding(0, 0, 0, 0);
+		else setPadding(padH, padV, padH, padV);
 	}
 
 	private void applyIconSize() {
@@ -586,6 +589,11 @@ public class InfoOverlayView extends LinearLayout {
 		// removeAllViews() detaches every row too, so they're always free to re-add below
 		// regardless of which combination was showing before.
 		removeAllViews();
+		if (chipFill != 0) {
+			layoutChips();
+			applyVisibility();
+			return;
+		}
 		boolean first = true;
 
 		for (String key : order) {
@@ -597,6 +605,52 @@ public class InfoOverlayView extends LinearLayout {
 
 		applyVisibility();
 	}
+
+	/**
+	 * Chip mode, for the Home tab's info overlay widget: no shaded bar and no dividers, every item
+	 * in its own rounded chip, wrapping onto more lines when the card is narrow. Order, icons and
+	 * which items show are exactly the overlay's own.
+	 */
+	public void setChipStyle(int fg, int fill) {
+		boolean changed = (chipFill != fill);
+		chipFill = fill;
+		if (chipFlow == null) chipFlow = new ChipFlowLayout(getContext());
+		setBackground(null);
+		applyPadding();
+		setForegroundColor(fg);
+		if (changed) {
+			chipWrappers.clear();
+		}
+		layoutRows();
+	}
+
+	private void layoutChips() {
+		chipFlow.removeAllViews();
+		for (LinearLayout w : chipWrappers.values()) w.removeAllViews();
+		int padH = toIntPx(getContext(), Math.round(10 * size));
+		int padV = toIntPx(getContext(), Math.round(5 * size));
+		for (String key : order) {
+			if (!isItemShown(key)) continue;
+			LinearLayout w = chipWrappers.get(key);
+			if (w == null) {
+				w = new LinearLayout(getContext());
+				w.setGravity(Gravity.CENTER_VERTICAL);
+				android.graphics.drawable.GradientDrawable d = new android.graphics.drawable.GradientDrawable();
+				d.setColor(chipFill);
+				d.setCornerRadius(toIntPx(getContext(), 40));
+				w.setBackground(d);
+				chipWrappers.put(key, w);
+			}
+			w.setPadding(padH, padV, padH, padV);
+			w.addView(itemView(key));
+			chipFlow.addView(w);
+		}
+		addView(chipFlow, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT));
+	}
+
+	private int chipFill;
+	private ChipFlowLayout chipFlow;
+	private final java.util.Map<String, LinearLayout> chipWrappers = new java.util.HashMap<>();
 
 	private void applyVisibility() {
 		boolean visible = hasVisibleItems() && (!onlyWhenControlPanelVisible || controlPanelVisible);
