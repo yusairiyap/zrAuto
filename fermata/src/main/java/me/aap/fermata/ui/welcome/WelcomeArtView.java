@@ -499,7 +499,7 @@ final class WelcomeArtView extends View {
 			c.drawLine(x, y, x - dp(2), y + dp(9), stroke);
 		}
 		c.restore();
-		icon(c, R.drawable.ambience, cx, tp + ch * 0.26f, s * 0.2f, accent, clamp(pop));
+		icon(c, R.drawable.ambience, cx, tp + ch * 0.25f, s * 0.2f, accent, clamp(pop));
 		// The sounds, switched on one after the other.
 		int[] ic = {R.drawable.ambience_rain, R.drawable.ambience_fire, R.drawable.ambience_ocean,
 				R.drawable.ambience_night};
@@ -508,7 +508,7 @@ final class WelcomeArtView extends View {
 			float start = 0.1f + i * 0.05f;
 			float sc = overshoot((loop - start) / 0.1f);
 			float x = cx + (i - 1.5f) * (tw * 1.2f);
-			float y = cy + ch * 0.28f;
+			float y = cy + ch * 0.12f;
 			boolean on = loop > 0.35f + i * 0.12f;
 			tile(c, x, y, tw, sc, ic[i], on ? accent : track, on ? onAccent : accent, 1f);
 		}

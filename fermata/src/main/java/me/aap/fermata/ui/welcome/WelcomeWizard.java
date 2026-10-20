@@ -7,6 +7,7 @@ import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.pm.PackageInfo;
 import android.content.res.ColorStateList;
+import android.graphics.Canvas;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -822,14 +823,41 @@ public final class WelcomeWizard {
 		}
 	}
 
+	/**
+	 * A page's text: it scrolls behind the picture and fades out at the top. The page is laid out with
+	 * clipChildren off (so the picture's glow is not cut), which would let the scrolled text draw over
+	 * the picture, so this view clips its own content to its bounds.
+	 */
+	private static final class PageScroll extends ScrollView {
+		PageScroll(Context ctx) {
+			super(ctx);
+		}
+
+		@Override
+		protected void dispatchDraw(Canvas canvas) {
+			canvas.save();
+			canvas.clipRect(getScrollX(), getScrollY(), getScrollX() + getWidth(), getScrollY() + getHeight());
+			super.dispatchDraw(canvas);
+			canvas.restore();
+		}
+
+		@Override
+		protected float getBottomFadingEdgeStrength() {
+			return 0f;
+		}
+	}
+
 	private PageLayout buildPage(Page p) {
 		WelcomeArtView art = new WelcomeArtView(pc);
 		art.setColors(accent, onAccent, cardFill, textPrimary, textSecondary, track);
 		art.setScene(p.scene);
 
-		ScrollView scroll = new ScrollView(pc);
+		ScrollView scroll = new PageScroll(pc);
 		scroll.setFillViewport(true);
 		scroll.setVerticalScrollBarEnabled(false);
+		// The text melts into the picture's background at the top instead of cutting off over it.
+		scroll.setVerticalFadingEdgeEnabled(true);
+		scroll.setFadingEdgeLength(dp(40));
 		LinearLayout body = new LinearLayout(pc);
 		body.setOrientation(LinearLayout.VERTICAL);
 		body.setTag("body");
