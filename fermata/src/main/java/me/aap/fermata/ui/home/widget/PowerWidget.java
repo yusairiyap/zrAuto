@@ -55,6 +55,8 @@ final class PowerWidget extends HomeWidgetView {
 	private final MeterBar[] catBars = new MeterBar[PowerUsageStore.CATS];
 	private TextView carLine;
 	private int mode = -1;
+	/** Whether the card is narrow (two cells): the status goes under the number there, not beside it. */
+	private boolean narrow;
 	private final Runnable listener = this::refresh;
 
 	PowerWidget(HomeHost host, HomeWidgetType type) {
@@ -179,11 +181,13 @@ final class PowerWidget extends HomeWidgetView {
 		else if (view == 2) m = GRAPH;
 		else if (view == 3) m = BREAKDOWN;
 		else m = (getCellsW() >= 3) ? GRAPH : GAUGE;
-		if (m == mode) {
+		boolean nar = getCellsW() < 3;
+		if ((m == mode) && (nar == narrow)) {
 			refresh();
 			return;
 		}
 		mode = m;
+		narrow = nar;
 		body.removeAllViews();
 		detach(gaugeBox);
 		detach(valueRow);
@@ -228,13 +232,14 @@ final class PowerWidget extends HomeWidgetView {
 				body.setOrientation(LinearLayout.VERTICAL);
 				body.setGravity(Gravity.TOP);
 				LinearLayout top = new LinearLayout(ctx);
-				top.setOrientation(LinearLayout.HORIZONTAL);
-				top.setGravity(Gravity.BOTTOM);
+				top.setOrientation(narrow ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+				top.setGravity(narrow ? Gravity.START : Gravity.BOTTOM);
 				valueRow.setGravity(Gravity.BOTTOM);
 				top.addView(valueRow);
-				status.setGravity(Gravity.END);
-				LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(0, -2, 1f);
-				slp.setMarginStart(px(10));
+				status.setGravity(narrow ? Gravity.START : Gravity.END);
+				LinearLayout.LayoutParams slp = narrow ? new LinearLayout.LayoutParams(-1, -2) :
+						new LinearLayout.LayoutParams(0, -2, 1f);
+				if (!narrow) slp.setMarginStart(px(10));
 				top.addView(status, slp);
 				body.addView(top, new LinearLayout.LayoutParams(-1, -2));
 				stats.setGravity(Gravity.START);
@@ -251,13 +256,14 @@ final class PowerWidget extends HomeWidgetView {
 				body.setOrientation(LinearLayout.VERTICAL);
 				body.setGravity(Gravity.TOP);
 				LinearLayout top = new LinearLayout(ctx);
-				top.setOrientation(LinearLayout.HORIZONTAL);
-				top.setGravity(Gravity.BOTTOM);
+				top.setOrientation(narrow ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+				top.setGravity(narrow ? Gravity.START : Gravity.BOTTOM);
 				valueRow.setGravity(Gravity.BOTTOM);
 				top.addView(valueRow);
-				status.setGravity(Gravity.END);
-				LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(0, -2, 1f);
-				slp.setMarginStart(px(10));
+				status.setGravity(narrow ? Gravity.START : Gravity.END);
+				LinearLayout.LayoutParams slp = narrow ? new LinearLayout.LayoutParams(-1, -2) :
+						new LinearLayout.LayoutParams(0, -2, 1f);
+				if (!narrow) slp.setMarginStart(px(10));
 				top.addView(status, slp);
 				body.addView(top, new LinearLayout.LayoutParams(-1, -2));
 				stats.setGravity(Gravity.START);
@@ -289,9 +295,10 @@ final class PowerWidget extends HomeWidgetView {
 	/** The meter's size from the measured card (the first frame already has it, nothing jumps). */
 	private void sizeGauge() {
 		if (heightPx() == 0) return;
-		int availH = heightPx() - px(28) - px(34) - px(48);
-		int availW = widthPx() - px(28);
-		int side = Math.max(px(64), Math.min(availH, availW));
+		// What sits under the meter is the status and one line of figures; the meter gets all the rest.
+		int availH = heightPx() - px(28) - px(34) - px(40);
+		int availW = widthPx() - px(20);
+		int side = Math.max(px(72), Math.min(availH, availW));
 		// The number follows the ring, so it always fits inside it.
 		value.setTextSize(Math.max(14f, Math.min(26f, side / px(1f) * 0.2f)));
 		LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) gaugeBox.getLayoutParams();

@@ -606,6 +606,30 @@ what each widget shows is set on the widget (edit mode > its gear).
   scrub that makes the player hand out another object for the song does not fade the art out and in. If it still does, the
   Diagnostic log has `home media: new item` lines (MUSIC).
 
+### Sixth round (Android Auto layout, open issue)
+
+- **The car screen has its own widgets**: `MainActivityPrefs.HOME_LAYOUT_AA`, the same JSON as `HOME_LAYOUT`; `HomeModel(prefs, car)` picks
+  the pref (and its default set, `DEFAULT_TYPES_AA`) from `a.isCarActivity()`, and nothing is shared between the two. It is edited on the car
+  screen (edit mode works there too); Settings > Home has "Copy these widgets to Android Auto" and "Reset the Android Auto widgets".
+- **Now playing**: the play button never shows a spinner (it showed at the wrong moments: a track from the queue, a start from nothing).
+  The seek bar also asks the *engine* for position and duration (`MediaWidget#pollEngine`): the session's state and the item's metadata
+  lag or lack both for YouTube, which left the bar frozen and not answering touches (a touch needs a length). `tick()` removes its own
+  callback first, so a duration arriving late doesn't double the polling chain.
+- **Edit chips on a phone**: Background and Settings keep only their icons under 520dp, or the done tick went off the screen's edge.
+- **OPEN ISSUE (not solved, to be taken on in another branch): bare bars when Home is entered.** On entering Home the status bar and
+  navigation bar areas show the app's dark/plain colour for the length of the tab crossfade before the background (picture or the cover's
+  blur) is there; the Music tab, which uses the same mechanism, fills them from the first frame. What was tried, in this order, none of
+  which changed the look: (1) `root.setBackgroundColor(palette.background)` (only fills the tab's own bounds), (2) a never-faded
+  `base` gradient layer under `bg` in `BehindBarsLayers` (also appears late), (3) removing the held-back, delayed fade of `bg`
+  (`fadeBackgroundIn` now just shows it at once). The remaining suspects, to check with the Diagnostic log and screenshots of single frames:
+  the **tool bar** and **nav bar** (Home hides the tool bar with `HomeToolBarMediator`, fading it to GONE, which may change what
+  `BodyLayout`/`MainActivityDelegate#matchStatusBarToBackground` paint behind the status bar, and the nav pill/bar draws its own
+  scrim there), the status bar colour set in `HomeScreen#systemBars`/`glideStatusBar` coming after the tab has shown, and
+  `BehindBarsLayers#update` (margins applied in a pre-draw, and clipping only released while `root.isShown()`), compared line by line
+  with `MusicPlayerFragment#extendBackground`. A good first experiment: make Home's `bg` a child laid out in `music_backdrop` style
+  (a direct layer of the tab, margins already negative before the tab is shown) and see whether the bars fill; then try keeping the
+  tool bar visible (alpha 0, not GONE) while Home shows.
+
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 
 - Size what is *inside* a card from its pixels, not from cell counts or fixed dp: the Data ring's words (`used`/`caption`) and the Power

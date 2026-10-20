@@ -21,6 +21,7 @@ YouTube · your own music · lyrics · offline downloads · steering-wheel contr
 
 |   | Feature | Why it stands out |
 |:-:|---|---|
+| 🏠 | **Home: your own dashboard** | The app now opens on a page of widgets you arrange yourself: now playing with a blurred cover that follows the song, the queue, favorites, playlists, lyrics, YouTube suggestions, ambience, a sleep timer, audio effects with sliders, fuel, data and power. Drag to reorder, drop one on another to stack them, resize from a corner, pick a background picture or let the cover set the mood. Phone, tablet and the car screen each keep their own layout. |
 | 📥 | **YouTube, offline** | Download videos, playlists or just the audio. They play inside your lists with no signal, downloads resume where they stopped, and a stalled stream flips to the saved copy mid-song without a gap. |
 | 🚗 | **Steering-wheel car mode** | Previous / Next move a glowing outline across any screen; hold Next to open, hold Previous to go back. Lists, search, queue, menus and Settings, with your hands on the wheel. |
 | 🎤 | **Lyrics that scroll with the song** | Synced lyrics glide over the album cover, and a tap opens them full size right in the Music tab. Tap a line to jump, drag to scrub. Captions over fullscreen video too. |
@@ -64,6 +65,21 @@ YouTube · your own music · lyrics · offline downloads · steering-wheel contr
 | 🎨 **Easy on the eyes** | Rounded cards, a floating pill nav bar, soft shadows and smooth fades between songs and videos. |
 | 🩺 **A diagnostic log in your pocket** | Read, copy and share what happened in the car, no laptop needed. |
 | 💚 **Free, and it stays that way** | No ads, no donation nagging, and it updates itself. |
+
+<details>
+<summary><b>🏠 More on Home</b></summary>
+
+<br>
+
+* **Cards, your way.** Every widget can look solid, glass or tinted with its own colour, and has its own options (what to show, how, and how big).
+* **Edit mode is one tap.** Drag to reorder, drop on a card of the same size to stack them and swipe between them, resize from the corner, remove with Undo.
+* **Lists that stay light.** Queue, Favorites and Playlists only draw what is on screen, with thumbnails that fade in, so a queue of hundreds scrolls smoothly and Home opens straight away.
+* **Tap to play, stay put.** A song or playlist tapped on Home plays as music and fills the queue, and you stay where you are; the queue card follows along and highlights the song playing.
+* **Made for every screen.** The grid fits a phone (two cards across), a tablet (up to eight) and the car screen, scrolling down or sideways. Text and charts inside a card scale to its size.
+* **Android Auto has its own Home.** Its widgets, sizes and order are kept apart from the phone's; start from the defaults or a copy of your phone's layout.
+* **Background that listens.** Use any picture from your phone, or the blurred cover of what is playing, fading from song to song.
+
+</details>
 
 <details>
 <summary><b>🚗 More on car mode</b></summary>

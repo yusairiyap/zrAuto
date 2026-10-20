@@ -128,6 +128,8 @@ final class MediaWidget extends HomeWidgetView {
 	/** Where the shuffle and repeat buttons are: 0 not shown, 1 around the play button, 2 under the seek bar. */
 	private int extrasAt;
 	/** Where the user last seeked to, until the session reports it (the YouTube player is slow to). */
+	private long enginePos = -1;
+	private long enginePosAt;
 	private long seekPos;
 	private long seekAt;
 	private int durationAsks;
@@ -513,6 +515,7 @@ final class MediaWidget extends HomeWidgetView {
 		if (cbState() == PlaybackStateCompat.STATE_PLAYING) skipUntil = 0;
 		int gen = ++generation;
 		duration = 0;
+		enginePos = -1;
 		swap(title, pi.getName());
 		swap(artist, pi instanceof MusicTrackItem t && t.getArtistName() != null ? t.getArtistName() : "");
 		title.setSelected(true);
@@ -565,7 +568,7 @@ final class MediaWidget extends HomeWidgetView {
 		PlayableItem pi = shown;
 		if (pi == null) return;
 		pi.getMediaData().main().onSuccess(md -> {
-			if ((md != null) && (pi == shown) && (md.getLong(METADATA_KEY_DURATION) > 0)) {
+			if ((md != null) && HomeArt.same(pi, shown) && (md.getLong(METADATA_KEY_DURATION) > 0)) {
 				duration = md.getLong(METADATA_KEY_DURATION);
 				tick();
 			}
@@ -649,8 +652,9 @@ final class MediaWidget extends HomeWidgetView {
 		}
 		boolean skipping = SystemClock.elapsedRealtime() < skipUntil;
 		// Starting from nothing shows no spinner at all: the button turns to pause when the song is up.
-		setPlayLoading(!startedIdle && (isBusy(s) ||
-				((s == PlaybackStateCompat.STATE_PLAYING) && BufferingIndicator.isBuffering()) || skipping));
+		// No spinner on the play button at all: it only ever showed up at the wrong moments (a track picked
+		// from the queue, a start from nothing); the pause icon already says the player is on its way.
+		setPlayLoading(false);
 		if (skipping) {
 			removeCallbacks(skipEnd);
 			postDelayed(skipEnd, Math.max(50, skipUntil - SystemClock.elapsedRealtime() + 50));
@@ -825,20 +829,50 @@ final class MediaWidget extends HomeWidgetView {
 			long reported = st.getPosition();
 			if (Math.abs(reported - seekPos) > 2500) return Math.max(0, seekPos + (playing ? since : 0));
 		}
+		long now = SystemClock.elapsedRealtime();
+		if ((enginePos >= 0) && ((now - enginePosAt) < 1500)) return enginePos + (playing ? (now - enginePosAt) : 0);
 		long pos = st.getPosition();
 		if (st.getState() == PlaybackStateCompat.STATE_PLAYING) {
-			pos += (long) ((SystemClock.elapsedRealtime() - st.getLastPositionUpdateTime()) *
-					st.getPlaybackSpeed());
+			pos += (long) ((now - st.getLastPositionUpdateTime()) * st.getPlaybackSpeed());
 		}
 		return Math.max(0, pos);
 	}
 
+	/**
+	 * The player's own word on where it is and how long the item is: the session's state and the item's
+	 * metadata lag or lack both for YouTube (its player says them late), which left the bar stuck at 0
+	 * and not answering a touch (it needs a length to turn a position into a time).
+	 */
+	private void pollEngine() {
+		MediaEngine eng = act().getMediaSessionCallback().getEngine();
+		PlayableItem pi = shown;
+		if ((eng == null) || (pi == null)) return;
+		if (playing) {
+			eng.getPosition().main().onSuccess(p -> {
+				if ((p != null) && (p >= 0) && HomeArt.same(pi, shown)) {
+					enginePos = p;
+					enginePosAt = SystemClock.elapsedRealtime();
+				}
+			});
+		}
+		if (duration <= 0) {
+			eng.getDuration().main().onSuccess(d -> {
+				if ((d != null) && (d > 0) && (duration <= 0) && HomeArt.same(pi, shown)) {
+					duration = d;
+					tick();
+				}
+			});
+		}
+	}
+
 	private void tick() {
 		if (seek == null) return;
+		removeCallbacks(ticker);
 		boolean large = (mode == LARGE_WIDE) || (mode == LARGE_TALL);
 		if (large && (seekBlock.getVisibility() == VISIBLE)) {
 			// A video whose length isn't known yet: asked again now and then.
 			if ((duration <= 0) && (shown != null) && ((durationAsks++ % 4) == 0)) refreshDuration();
+			pollEngine();
 			long pos = position();
 			if (duration > 0) pos = Math.min(pos, duration);
 			if (!seek.isTouching()) seek.setFraction((duration > 0) ? (float) pos / duration : 0f);

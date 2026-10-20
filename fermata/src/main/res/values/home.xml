@@ -194,5 +194,12 @@
     <string name="home_pref_reset">Reset the widgets</string>
     <string name="home_pref_reset_sub">Back to the ones a fresh install has</string>
     <string name="home_pref_reset_question">All your widgets and their settings are replaced by the default ones.</string>
+    <string name="home_pref_aa_copy">Copy these widgets to Android Auto</string>
+    <string name="home_pref_aa_copy_sub">The car screen has its own widgets, sizes and order; edit them on the car screen</string>
+    <string name="home_pref_aa_copy_question">The car screen\'s widgets are replaced by a copy of the ones on this screen.</string>
+    <string name="home_pref_aa_copy_done">Android Auto now has a copy of these widgets</string>
+    <string name="home_pref_aa_reset">Reset the Android Auto widgets</string>
+    <string name="home_pref_aa_reset_sub">Back to the ones the car screen starts with</string>
+    <string name="home_pref_aa_reset_done">The car screen is back to its default widgets</string>
     <string name="home_pref_reset_done">Home is back to the default widgets</string>
 </resources>

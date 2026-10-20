@@ -95,7 +95,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		this.a = a;
 		this.prefs = a.getPrefs();
 		this.palette = new HomePalette(a.getContext());
-		this.model = new HomeModel(prefs);
+		this.model = new HomeModel(prefs, a.isCarActivity());
 		Context ctx = palette.ctx;
 
 		root = new FrameLayout(ctx);
@@ -199,7 +199,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	 */
 	public static int styleShown(MainActivityPrefs prefs) {
 		HomeScreen h = live;
-		boolean custom = (h != null) ? h.model.anyStyleOverride() : new HomeModel(prefs).anyStyleOverride();
+		boolean custom = (h != null) ? h.model.anyStyleOverride() : new HomeModel(prefs, false).anyStyleOverride();
 		return custom ? 3 : Math.max(0, Math.min(2, prefs.getIntPref(MainActivityPrefs.HOME_CARD_STYLE)));
 	}
 
@@ -212,9 +212,11 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			h.model.saveLater();
 			h.grid.restyle();
 		} else {
-			HomeModel m = new HomeModel(prefs);
-			m.clearStyles();
-			m.save();
+			for (boolean car : new boolean[]{false, true}) {
+				HomeModel m = new HomeModel(prefs, car);
+				m.clearStyles();
+				m.save();
+			}
 		}
 	}
 
@@ -458,7 +460,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 
 	@Override
 	public void onPreferenceChanged(PreferenceStore store, List<PreferenceStore.Pref<?>> changed) {
-		if (changed.contains(MainActivityPrefs.HOME_LAYOUT) && model.reloadIfChanged()) {
+		if ((changed.contains(MainActivityPrefs.HOME_LAYOUT) || changed.contains(MainActivityPrefs.HOME_LAYOUT_AA)) &&
+				model.reloadIfChanged()) {
 			grid.sync();
 			updateEmpty();
 		}
@@ -498,6 +501,20 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		if (animated && animate()) TransitionManager.beginDelayedTransition(chipBar);
 		editBtn.setVisibility(editing ? View.GONE : View.VISIBLE);
 		for (TextView c : editChips) c.setVisibility(editing ? View.VISIBLE : View.GONE);
+		// On a phone the four chips with their words are wider than the screen (the done button went off its
+		// edge): Background and Settings keep only their icons there.
+		Context ctx = palette.ctx;
+		int wPx = (root.getWidth() > 0) ? root.getWidth() : ctx.getResources().getDisplayMetrics().widthPixels;
+		boolean narrow = (wPx / ctx.getResources().getDisplayMetrics().density) < 520f;
+		int[] labels = {R.string.home_add, R.string.home_background, R.string.settings, R.string.home_done};
+		for (int i = 1; i <= 2; i++) {
+			TextView c = editChips[i];
+			c.setText(narrow ? "" : ctx.getString(labels[i]));
+			c.setCompoundDrawablePadding(narrow ? 0 : HomeUi.dp(ctx, 6));
+			int padH = HomeUi.dp(ctx, narrow ? 8 : 14);
+			c.setPadding(padH, 0, padH, 0);
+			c.setContentDescription(ctx.getString(labels[i]));
+		}
 	}
 
 	private TextView pillChip(@DrawableRes int icon, @StringRes int label, boolean primary, Runnable onClick) {

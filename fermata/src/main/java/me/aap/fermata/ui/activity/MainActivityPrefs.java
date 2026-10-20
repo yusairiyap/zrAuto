@@ -96,6 +96,8 @@ public interface MainActivityPrefs
 	// files/home_bg.jpg, the version only says it changed), how it is dimmed and blurred, how the
 	// cards look, which way the widgets are laid out and how many fit across.
 	Pref<Supplier<String>> HOME_LAYOUT = Pref.s("HOME_LAYOUT", (String) null);
+	/** The car screen's own set of widgets (sizes, order, which ones), in the same JSON; null until changed there. */
+	Pref<Supplier<String>> HOME_LAYOUT_AA = Pref.s("HOME_LAYOUT_AA", (String) null);
 	Pref<BooleanSupplier> HOME_OPEN_ON_START = Pref.b("HOME_OPEN_ON_START", true);
 	Pref<IntSupplier> HOME_BG_VERSION = Pref.i("HOME_BG_VERSION", 0);
 	Pref<IntSupplier> HOME_BG_DIM = Pref.i("HOME_BG_DIM", 35);

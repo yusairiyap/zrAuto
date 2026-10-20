@@ -13,6 +13,7 @@ import java.util.List;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.utils.app.App;
 import me.aap.utils.log.Log;
+import me.aap.utils.pref.PreferenceStore;
 
 /**
  * What the Home tab shows: an ordered list of cells, each one a stack of one or more widgets of
@@ -56,9 +57,13 @@ public final class HomeModel {
 	/** The widgets of a layout nobody has changed yet. */
 	private static final String[] DEFAULT_TYPES = {"media", "pages", "favorites", "playlists", "fuel",
 			"data", "power", "ambience"};
+	/** What the car screen starts with: what is useful at a glance and by touch there. */
+	private static final String[] DEFAULT_TYPES_AA = {"media", "queue", "aio", "favorites", "playlists",
+			"fuel", "timer", "ambience"};
 	private static final long SAVE_DELAY_MS = 400;
 
 	private final MainActivityPrefs prefs;
+	private final boolean car;
 	private final List<Cell> cells = new ArrayList<>();
 	private long nextCell = 1;
 	private long nextItem = 1;
@@ -67,9 +72,15 @@ public final class HomeModel {
 	private String saved;
 	private final Runnable saveNow = this::save;
 
-	public HomeModel(MainActivityPrefs prefs) {
+	/** The phone's layout, or the car screen's own ({@code car}); they never share anything. */
+	public HomeModel(MainActivityPrefs prefs, boolean car) {
 		this.prefs = prefs;
+		this.car = car;
 		load();
+	}
+
+	private PreferenceStore.Pref<me.aap.utils.function.Supplier<String>> layoutPref() {
+		return car ? MainActivityPrefs.HOME_LAYOUT_AA : MainActivityPrefs.HOME_LAYOUT;
 	}
 
 	public List<Cell> cells() {
@@ -84,7 +95,7 @@ public final class HomeModel {
 
 	/** Reads the layout again; true if it was not what this model last wrote (a reset, a restore). */
 	public boolean reloadIfChanged() {
-		String now = prefs.getStringPref(MainActivityPrefs.HOME_LAYOUT);
+		String now = prefs.getStringPref(layoutPref());
 		if ((now == null) ? (saved == null) : now.equals(saved)) return false;
 		load();
 		return true;
@@ -92,7 +103,7 @@ public final class HomeModel {
 
 	private void load() {
 		cells.clear();
-		String json = prefs.getStringPref(MainActivityPrefs.HOME_LAYOUT);
+		String json = prefs.getStringPref(layoutPref());
 		saved = json;
 		if (json == null) {
 			defaults();
@@ -127,7 +138,7 @@ public final class HomeModel {
 
 	private void defaults() {
 		cells.clear();
-		for (String key : DEFAULT_TYPES) {
+		for (String key : car ? DEFAULT_TYPES_AA : DEFAULT_TYPES) {
 			HomeWidgetType t = HomeWidgets.find(key);
 			if (t != null) add(t);
 		}
@@ -135,7 +146,7 @@ public final class HomeModel {
 
 	/** Every widget removed, the way a fresh install has it. */
 	public void reset() {
-		prefs.removePref(MainActivityPrefs.HOME_LAYOUT);
+		prefs.removePref(layoutPref());
 		load();
 	}
 
@@ -260,7 +271,7 @@ public final class HomeModel {
 			root.put("v", 1);
 			root.put("cells", arr);
 			saved = root.toString();
-			prefs.applyStringPref(MainActivityPrefs.HOME_LAYOUT, saved);
+			prefs.applyStringPref(layoutPref(), saved);
 		} catch (JSONException ex) {
 			Log.e(ex, "Failed to save the Home layout");
 		}

@@ -1391,6 +1391,30 @@ public class SettingsFragment extends MainActivityFragment
 				TopToast.show(R.drawable.home_page, R.string.home_pref_reset_done);
 			});
 		});
+		// The car screen has a set of widgets of its own: edited on the car screen itself, started from
+		// a copy of this one if that is handier than the defaults.
+		sub.addButton(o -> {
+			o.title = R.string.home_pref_aa_copy;
+			o.subtitle = R.string.home_pref_aa_copy_sub;
+			o.icon = R.drawable.car;
+			o.onClick = () -> UiUtils.showQuestion(ctx, R.string.home_pref_aa_copy, R.string.home_pref_aa_copy_question,
+					R.drawable.car).onSuccess(v -> {
+				String mine = ps.getStringPref(MainActivityPrefs.HOME_LAYOUT);
+				if (mine == null) ps.removePref(MainActivityPrefs.HOME_LAYOUT_AA);
+				else ps.applyStringPref(MainActivityPrefs.HOME_LAYOUT_AA, mine);
+				TopToast.show(R.drawable.car, R.string.home_pref_aa_copy_done);
+			});
+		});
+		sub.addButton(o -> {
+			o.title = R.string.home_pref_aa_reset;
+			o.subtitle = R.string.home_pref_aa_reset_sub;
+			o.icon = R.drawable.refresh;
+			o.onClick = () -> UiUtils.showQuestion(ctx, R.string.home_pref_aa_reset, R.string.home_pref_reset_question,
+					R.drawable.car).onSuccess(v -> {
+				ps.removePref(MainActivityPrefs.HOME_LAYOUT_AA);
+				TopToast.show(R.drawable.car, R.string.home_pref_aa_reset_done);
+			});
+		});
 	}
 
 	private static void addNavTabsPrefs(MainActivityDelegate a, PreferenceSet parent) {
