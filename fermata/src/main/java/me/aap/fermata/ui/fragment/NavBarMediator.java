@@ -95,7 +95,7 @@ public class NavBarMediator extends PrefNavBarMediator
 			if (hidden.contains(name)) continue;
 			switch (name) {
 				case "home":
-					items.add(create(ctx, R.id.home_fragment, R.drawable.home, R.string.home,
+					items.add(create(ctx, R.id.home_fragment, R.drawable.home_page, R.string.home,
 							items.size() < max));
 					continue;
 				case "folders":
@@ -457,7 +457,7 @@ public class NavBarMediator extends PrefNavBarMediator
 	public static int getTabIcon(String name) {
 		switch (name) {
 			case "home":
-				return R.drawable.home;
+				return R.drawable.home_page;
 			case "folders":
 				return me.aap.utils.R.drawable.folder;
 			case "favorites":

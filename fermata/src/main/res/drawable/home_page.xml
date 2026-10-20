@@ -6,10 +6,10 @@
   <group
       android:pivotX="12"
       android:pivotY="12"
-      android:scaleX="1.22"
-      android:scaleY="1.22">
+      android:scaleX="1.1"
+      android:scaleY="1.1">
     <path
         android:pathData="M10,20v-6h4v6h5v-8h3L12,3 2,12h3v8z"
-        android:fillColor="#000000"/>
+        android:fillColor="#FF000000"/>
   </group>
 </vector>

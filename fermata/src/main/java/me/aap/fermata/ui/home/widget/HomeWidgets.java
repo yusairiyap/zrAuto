@@ -54,6 +54,9 @@ public final class HomeWidgets {
 			HomeWidgetType.builder("ambience", R.string.home_w_ambience, R.string.home_w_ambience_d,
 							R.drawable.ambience, 0xFF5B9BFF, AmbienceWidget::new)
 					.sizes(2, 1, 4, 2, 8, 4).available(AmbienceAddon::isEnabled).build(),
+			HomeWidgetType.builder("queue", R.string.home_w_queue, R.string.home_w_queue_d,
+							R.drawable.queue_music, 0xFFFF8A65, QueueWidget::new)
+					.sizes(2, 2, 2, 3, 8, 6).available(MusicPlayer::isEnabled).build(),
 			HomeWidgetType.builder("timer", R.string.home_w_timer, R.string.home_w_timer_d,
 							R.drawable.timer, 0xFF8E7CFF, TimerWidget::new)
 					.sizes(2, 1, 2, 2, 8, 3).build(),

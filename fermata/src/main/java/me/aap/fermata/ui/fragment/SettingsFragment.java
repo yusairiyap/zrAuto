@@ -1272,7 +1272,7 @@ public class SettingsFragment extends MainActivityFragment
 		PreferenceSet sub = parent.subSet(o -> {
 			o.title = R.string.home;
 			o.subtitle = R.string.home_pref_sub;
-			o.icon = R.drawable.home;
+			o.icon = R.drawable.home_page;
 		});
 		homeSet = sub;
 		sub.addBooleanPref(o -> {
@@ -1386,9 +1386,9 @@ public class SettingsFragment extends MainActivityFragment
 			o.subtitle = R.string.home_pref_reset_sub;
 			o.icon = R.drawable.refresh;
 			o.onClick = () -> UiUtils.showQuestion(ctx, R.string.home_pref_reset, R.string.home_pref_reset_question,
-					R.drawable.home).onSuccess(v -> {
+					R.drawable.home_page).onSuccess(v -> {
 				ps.removePref(MainActivityPrefs.HOME_LAYOUT);
-				TopToast.show(R.drawable.home, R.string.home_pref_reset_done);
+				TopToast.show(R.drawable.home_page, R.string.home_pref_reset_done);
 			});
 		});
 	}

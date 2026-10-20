@@ -98,8 +98,12 @@ final class HomePickers {
 		LinearLayout box = new LinearLayout(ctx);
 		box.setOrientation(LinearLayout.VERTICAL);
 
+		// What the background is: a picture from the phone, or the cover of what plays.
+		ChipFlowLayout types = new ChipFlowLayout(ctx);
+		types.setPadding(0, 0, 0, HomeUi.dp(ctx, 4));
+		box.addView(types);
+
 		TextView hint = new TextView(ctx);
-		hint.setText(R.string.home_bg_hint);
 		hint.setTextColor(p.textSecondary);
 		hint.setTextSize(13);
 		box.addView(hint);
@@ -118,6 +122,22 @@ final class HomePickers {
 			}));
 		}
 		box.addView(chips);
+		Runnable[] refill = new Runnable[1];
+		refill[0] = () -> {
+			int src = prefs.getIntPref(MainActivityPrefs.HOME_BG_SOURCE);
+			types.removeAllViews();
+			types.addView(ChipFlowLayout.chip(ctx, R.drawable.home_image, R.string.home_bg_source_picture, src == 0, () -> {
+				prefs.applyIntPref(MainActivityPrefs.HOME_BG_SOURCE, 0);
+				refill[0].run();
+			}));
+			types.addView(ChipFlowLayout.chip(ctx, R.drawable.music, R.string.home_bg_source_cover, src == 1, () -> {
+				prefs.applyIntPref(MainActivityPrefs.HOME_BG_SOURCE, 1);
+				refill[0].run();
+			}));
+			hint.setText(src == 0 ? R.string.home_bg_hint : R.string.home_bg_hint_cover);
+			chips.setVisibility(src == 0 ? android.view.View.VISIBLE : android.view.View.GONE);
+		};
+		refill[0].run();
 
 		LayoutInflater inf = LayoutInflater.from(ctx);
 		EffectsUi.Row dim = EffectsUi.addRow(inf, box, R.string.home_bg_dim, 80, 5, v -> v + "%",

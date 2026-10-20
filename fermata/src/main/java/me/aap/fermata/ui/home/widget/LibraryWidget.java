@@ -8,6 +8,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.annotation.Nullable;
@@ -48,6 +49,9 @@ abstract class LibraryWidget extends HomeWidgetView {
 	private TextView emptyText;
 	private TextView firstLine;
 	private ProgressBar busy;
+	/** The row to scroll to when the list is drawn (the queue's playing song), -1 for none. */
+	protected int focusRow = -1;
+	private ScrollView listScroll;
 	private HomeSkeleton skeleton;
 	private TextView backChip;
 	/** Set while something is opened inside the card: the rows are its contents, a chip leads back. */
@@ -125,7 +129,17 @@ abstract class LibraryWidget extends HomeWidgetView {
 		LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.WRAP_CONTENT);
 		ll.topMargin = px(4);
-		column.addView(list, ll);
+		// Long lists scroll inside the card; the top and bottom melt away while there is more.
+		listScroll = new ScrollView(ctx);
+		listScroll.setVerticalScrollBarEnabled(false);
+		listScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+		listScroll.setVerticalFadingEdgeEnabled(true);
+		listScroll.setFadingEdgeLength(px(22));
+		listScroll.addView(list, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.WRAP_CONTENT));
+		LinearLayout.LayoutParams lsl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+		lsl.topMargin = px(4);
+		column.addView(listScroll, lsl);
 
 		emptyText = text(ROLE_SECONDARY, 13, false);
 		emptyText.setText(emptyRes());
@@ -149,6 +163,12 @@ abstract class LibraryWidget extends HomeWidgetView {
 				ViewGroup.LayoutParams.MATCH_PARENT));
 		content.addView(busy, blp);
 		built = true;
+	}
+
+	/** A list longer than the card scrolls, and keeps the page from taking that drag. */
+	@Override
+	protected int gestures() {
+		return ((listScroll != null) && (list.getHeight() > listScroll.getHeight())) ? GESTURE_V : 0;
 	}
 
 	@Override
@@ -295,14 +315,14 @@ abstract class LibraryWidget extends HomeWidgetView {
 		list.removeAllViews();
 		count.setText(total > 0 ? String.valueOf(total) : "");
 		emptyText.setVisibility(none && !isCompact() && !loading ? VISIBLE : GONE);
-		list.setVisibility(none || isCompact() ? GONE : VISIBLE);
+		listScroll.setVisibility(none || isCompact() ? GONE : VISIBLE);
 		firstLine.setVisibility((!none && isCompact()) ? VISIBLE : GONE);
 		if (none) return;
 		if (isCompact()) {
 			firstLine.setText(rows.get(0).title());
 			return;
 		}
-		int shown = Math.min(rows.size(), Math.max(1, capacity) * cols);
+		int shown = rows.size();
 		boolean art = optBool("art", true);
 		LinearLayout line = null;
 		for (int i = 0; i < shown; i++) {
@@ -320,6 +340,10 @@ abstract class LibraryWidget extends HomeWidgetView {
 				v.setAlpha(0f);
 				v.animate().alpha(1f).setDuration(220).setStartDelay(Math.min(i, 6) * 30L).start();
 			}
+		}
+		if ((focusRow >= 0) && (list.getChildCount() > 0)) {
+			View target = list.getChildAt(Math.min(list.getChildCount() - 1, focusRow / cols));
+			listScroll.post(() -> listScroll.smoothScrollTo(0, Math.max(0, target.getTop() - px(48))));
 		}
 	}
 

@@ -4,7 +4,6 @@ import me.aap.fermata.ui.home.widget.HomeWidgets;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
-import android.graphics.DashPathEffect;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.os.SystemClock;
@@ -111,9 +110,6 @@ final class HomeGridLayout extends ViewGroup {
 		setClipChildren(false);
 		setClipToPadding(false);
 		setWillNotDraw(false);
-		hintLine.setStyle(Paint.Style.STROKE);
-		hintLine.setStrokeWidth(HomeUi.dp(ctx, 2.5f));
-		hintLine.setPathEffect(new DashPathEffect(new float[]{HomeUi.dp(ctx, 9), HomeUi.dp(ctx, 6)}, 0));
 		gap = HomeUi.dp(ctx, 10);
 	}
 
@@ -764,12 +760,11 @@ final class HomeGridLayout extends ViewGroup {
 		float r = HomeWidgetView.CORNER_DP * getResources().getDisplayMetrics().density;
 		int accent = host.palette().accent;
 		hintRect.set(c.getLeft(), c.getTop(), c.getLeft() + hintW, c.getTop() + hintH);
-		hintFill.setColor(HomeUi.alpha(accent, 0.2f));
+		hintFill.setColor(HomeUi.alpha(accent, 0.18f));
 		canvas.drawRoundRect(hintRect, r, r, hintFill);
-		hintLine.setColor(accent);
-		float in = hintLine.getStrokeWidth() / 2f;
-		hintRect.inset(in, in);
-		canvas.drawRoundRect(hintRect, r, r, hintLine);
+		float d = getResources().getDisplayMetrics().density;
+		hintRect.inset(2f * d, 2f * d);
+		HomeUi.glow(canvas, hintRect, r, accent, d, 1f, hintLine);
 	}
 
 	// ---------------------------------------------------------------------------------------------

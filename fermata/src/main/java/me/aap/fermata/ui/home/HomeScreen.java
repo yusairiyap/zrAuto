@@ -249,6 +249,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	private void applyBackgroundSource() {
 		if (followsCover()) {
 			bgGeneration++;
+			nowBg.forget();
 			if (shown) nowBg.start(prefs.getIntPref(MainActivityPrefs.HOME_BG_BLUR));
 		} else {
 			nowBg.stop();
@@ -312,8 +313,42 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		model.save();
 		HomeModal.dismissNow();
 		nowBg.stop();
-		behind.setActive(false);
-		systemBars(false);
+		fadeBackgroundOut();
+	}
+
+	/**
+	 * Leaving: the background fades away with the tab instead of vanishing when its extension under the
+	 * bars is given back (that and the status bar going back at once made the bars flash).
+	 */
+	private void fadeBackgroundOut() {
+		if (bgFade != null) bgFade.cancel();
+		if (!animate()) {
+			behind.setActive(false);
+			behind.setShown(1f);
+			systemBars(false);
+			return;
+		}
+		ValueAnimator a = ValueAnimator.ofFloat(1f, 0f);
+		a.setDuration(260);
+		a.addUpdateListener(v -> behind.setShown((float) v.getAnimatedValue()));
+		a.addListener(new android.animation.AnimatorListenerAdapter() {
+			private boolean cancelled;
+
+			@Override
+			public void onAnimationCancel(android.animation.Animator an) {
+				cancelled = true;
+			}
+
+			@Override
+			public void onAnimationEnd(android.animation.Animator an) {
+				if (cancelled || shown) return;
+				behind.setActive(false);
+				behind.setShown(1f);
+				systemBars(false);
+			}
+		});
+		bgFade = a;
+		a.start();
 	}
 
 	/**
@@ -755,12 +790,31 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 				barsApplied = true;
 			}
 			int c = topColor | 0xFF000000;
-			win.setStatusBarColor(c);
+			glideStatusBar(win, c);
 			ic.setAppearanceLightStatusBars(HomeUi.isLight(c));
 		} else if (barsApplied) {
 			barsApplied = false;
+			if (statusAnim != null) statusAnim.cancel();
 			a.matchStatusBarToBackground();
 			if (savedLightIcons != null) ic.setAppearanceLightStatusBars(savedLightIcons);
 		}
+	}
+
+	@Nullable
+	private ValueAnimator statusAnim;
+
+	/** The status bar moves to the colour of the background's top edge, not jumps (below Android 15, where it is its own). */
+	private void glideStatusBar(Window win, int to) {
+		if (statusAnim != null) statusAnim.cancel();
+		int from = win.getStatusBarColor();
+		if ((from == to) || !animate()) {
+			win.setStatusBarColor(to);
+			return;
+		}
+		ValueAnimator va = ValueAnimator.ofObject(new android.animation.ArgbEvaluator(), from, to);
+		va.setDuration(360);
+		va.addUpdateListener(v -> win.setStatusBarColor((Integer) v.getAnimatedValue()));
+		statusAnim = va;
+		va.start();
 	}
 }

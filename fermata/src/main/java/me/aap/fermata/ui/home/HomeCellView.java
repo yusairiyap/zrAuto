@@ -3,7 +3,6 @@ package me.aap.fermata.ui.home;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
-import android.graphics.DashPathEffect;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.os.SystemClock;
@@ -122,9 +121,6 @@ final class HomeCellView extends FrameLayout implements HomeStackView.Callback {
 		addView(badge, new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT,
 				Gravity.CENTER));
 
-		outline.setStyle(Paint.Style.STROKE);
-		outline.setStrokeWidth(HomeUi.dp(ctx, 2));
-		outline.setPathEffect(new DashPathEffect(new float[]{HomeUi.dp(ctx, 7), HomeUi.dp(ctx, 5)}, 0));
 		setChromeAlpha(0f);
 	}
 
@@ -409,6 +405,7 @@ final class HomeCellView extends FrameLayout implements HomeStackView.Callback {
 				pressed = true;
 				grabbed = false;
 				removeCallbacks(pickup);
+				claimGestures();
 				if (panel != null) break;
 				if (!editing && hitNoGrab(this, e.getX(), e.getY())) break;
 				if (!(editing && hitChrome(e.getX(), e.getY()))) {
@@ -422,6 +419,7 @@ final class HomeCellView extends FrameLayout implements HomeStackView.Callback {
 					grid.moveDrag(lastRawX, lastRawY);
 				} else if ((Math.abs(lastRawX - downRawX) > slop) || (Math.abs(lastRawY - downRawY) > slop)) {
 					removeCallbacks(pickup);
+					releaseGestures();
 				}
 			}
 			case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -527,10 +525,9 @@ final class HomeCellView extends FrameLayout implements HomeStackView.Callback {
 			tintPaint.setColor(HomeUi.alpha(host.palette().accent, 0.35f));
 			c.drawRoundRect(rect, r, r, tintPaint);
 		}
-		float inset = outline.getStrokeWidth() / 2f;
-		rect.inset(inset, inset);
-		outline.setColor(stackTarget ? host.palette().accent : 0xFFFFFFFF);
-		outline.setAlpha(Math.round((stackTarget ? 255 : 150) * Math.max(editAmount, stackTarget ? 1f : 0f)));
-		c.drawRoundRect(rect, r, r, outline);
+		float d = getResources().getDisplayMetrics().density;
+		rect.inset(2f * d, 2f * d);
+		HomeUi.glow(c, rect, r, stackTarget ? host.palette().accent : 0xFFFFFFFF, d,
+				stackTarget ? 1f : 0.55f * editAmount, outline);
 	}
 }

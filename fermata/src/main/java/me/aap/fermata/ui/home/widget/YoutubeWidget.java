@@ -59,9 +59,11 @@ final class YoutubeWidget extends HomeWidgetView {
 		@Override
 		public void onPlayableChanged(PlayableItem oldItem, PlayableItem newItem) {
 			if (optInt("source", 0) != 0) return;
-			removeCallbacks(reload);
-			postDelayed(reload, CHANGE_DELAY_MS);
+			// Seeking, pausing and the like announce the same song again: only another song matters.
 			post(() -> {
+				if (query().equals(lastQuery)) return;
+				removeCallbacks(reload);
+				postDelayed(reload, CHANGE_DELAY_MS);
 				stale = true;
 				render();
 			});
@@ -177,7 +179,9 @@ final class YoutubeWidget extends HomeWidgetView {
 		// A video that was never opened is named by its id: nothing to search by.
 		if (name.matches("[A-Za-z0-9_-]{11}")) name = "";
 		name = name.replaceFirst("\\.[A-Za-z0-9]{2,4}$", "").trim();
-		return name.isEmpty() ? TASTES[1] : name;
+		// A title not known yet (it is read a moment after the song starts) is not a new search.
+		if (name.isEmpty()) return lastQuery.isEmpty() ? TASTES[1] : lastQuery;
+		return name;
 	}
 
 	private void load(boolean force) {

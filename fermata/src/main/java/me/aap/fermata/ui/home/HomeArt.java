@@ -58,7 +58,9 @@ public final class HomeArt {
 	 * is delivered once {@code wanted} says no.
 	 */
 	public static void cover(MainActivityDelegate a, PlayableItem pi, MediaMetadataCompat md,
-													 BooleanSupplier wanted, Consumer<Bitmap> out) {
+													 BooleanSupplier wanted, Consumer<Bitmap> deliver) {
+		// Covers on a black canvas (a square cover in a 16:9 picture) lose the black, so they fill the card.
+		Consumer<Bitmap> out = bm -> deliver.accept(trimBars(bm));
 		String uri = (pi instanceof MusicTrackItem t) ? t.getArtUri() : null;
 		if (uri == null) {
 			Bitmap bm = (md == null) ? null : md.getBitmap(METADATA_KEY_ALBUM_ART);
@@ -80,6 +82,54 @@ public final class HomeArt {
 			if (u == null) out.accept(null);
 			else fetch(a, u.toString(), wanted, out);
 		});
+	}
+
+	/**
+	 * Cuts off black bars along the edges (up to a third of each side): a square cover that sits in the
+	 * middle of a wide picture, with black either side, is what music videos and many uploads have.
+	 */
+	@Nullable
+	static Bitmap trimBars(@Nullable Bitmap bm) {
+		if (bm == null) return null;
+		try {
+			Bitmap src = (bm.getConfig() == Bitmap.Config.HARDWARE) ? bm.copy(Bitmap.Config.ARGB_8888, false) : bm;
+			if (src == null) return bm;
+			int w = src.getWidth();
+			int h = src.getHeight();
+			if ((w < 16) || (h < 16)) return bm;
+			int left = 0;
+			while ((left < w / 3) && isBar(src, left, true)) left++;
+			int right = 0;
+			while ((right < w / 3) && isBar(src, w - 1 - right, true)) right++;
+			int top = 0;
+			while ((top < h / 3) && isBar(src, top, false)) top++;
+			int bottom = 0;
+			while ((bottom < h / 3) && isBar(src, h - 1 - bottom, false)) bottom++;
+			// Only real bars: a hair of black at an edge is just the picture.
+			if (left < w / 40) left = 0;
+			if (right < w / 40) right = 0;
+			if (top < h / 40) top = 0;
+			if (bottom < h / 40) bottom = 0;
+			if ((left | right | top | bottom) == 0) return bm;
+			int nw = w - left - right;
+			int nh = h - top - bottom;
+			if ((nw < w / 3) || (nh < h / 3)) return bm;
+			return Bitmap.createBitmap(src, left, top, nw, nh);
+		} catch (RuntimeException ex) {
+			return bm;
+		}
+	}
+
+	/** Whether the column (or row) {@code at} is black: sampled along its length. */
+	private static boolean isBar(Bitmap bm, int at, boolean column) {
+		int len = column ? bm.getHeight() : bm.getWidth();
+		int step = Math.max(1, len / 32);
+		for (int i = 0; i < len; i += step) {
+			int c = column ? bm.getPixel(at, i) : bm.getPixel(i, at);
+			int luma = (((c >> 16) & 0xFF) * 3 + ((c >> 8) & 0xFF) * 6 + (c & 0xFF)) / 10;
+			if (luma > 26) return false;
+		}
+		return true;
 	}
 
 	private static void fetch(MainActivityDelegate a, String uri, BooleanSupplier wanted, Consumer<Bitmap> out) {

@@ -203,6 +203,9 @@ final class PowerWidget extends HomeWidgetView {
 			case GAUGE -> {
 				body.setOrientation(LinearLayout.VERTICAL);
 				body.setGravity(Gravity.CENTER);
+				// Left as the last mode had them, these put the labels off to one side.
+				valueRow.setGravity(Gravity.CENTER);
+				status.setGravity(Gravity.CENTER);
 				gaugeBox.addView(valueRow, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
 				body.addView(gaugeBox, new LinearLayout.LayoutParams(px(100), px(100)));
 				body.addView(status, new LinearLayout.LayoutParams(-1, -2));

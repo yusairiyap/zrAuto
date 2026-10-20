@@ -541,6 +541,28 @@ what each widget shows is set on the widget (edit mode > its gear).
 - New widgets: Sleep timer (`TimerWidget`), Audio effects (`EffectsWidget`, the equalizer's bands as bars), Info overlay
   (`InfoOverlayWidget`, a switch per overlay item, the car's twin prefs on the car screen).
 
+### Third round (effects, queue, glow, status bar)
+
+- **The `home` drawable is shadowed**: `fermata/src/auto/res/drawable/home.xml` (the Android Auto home button, a small glyph in a 960
+  viewport) overrides any `drawable/home.xml` in `main` in the Auto flavor, which is why the nav icon stayed small. The tab's icon is
+  `drawable/home_page.xml`; never add a drawable with a name the `auto` source set already has.
+- **Edit mode and resizing draw a glow** (`HomeUi.glow`: a few strokes, wide and faint to thin and bright), not a dashed line. It draws
+  outside the cell, which works because the grid, the scroller and its parents do not clip children.
+- **Lists inside a card scroll** (`LibraryWidget#listScroll`, a ScrollView with fading edges); such a widget returns `GESTURE_V` from
+  `gestures()` only while its list is taller than the card. `focusRow` scrolls a row into view (the queue's playing song).
+- **Effects** (`EffectsWidget`, `media/engine/EffectsControls`): switches for the equalizer, bass, virtualizer and a fourth (YouTube's
+  reverb, the platform's loudness), the equalizer's bands as bars and a preset stepper. Source: the playing engine's platform effects
+  (`Platform`), or YouTube's (`MusicPlayer.getYoutubeEffects()`, whose settings are prefs the page follows, so they work with nothing
+  playing). A new effect source implements `EffectsControls`.
+- **Info overlay widget** embeds the real `InfoOverlayView` and applies the prefs as the Music tab does (`applyInfoOverlayPrefs`);
+  it scales down to fit the card. **Queue widget** is a `LibraryWidget` over `MusicQueue#getPlayOrder`.
+- **Ambience look**: its own `autoStyle()` is Colour (the sky); Solid and Glass make it a plain card (`ownBackground()` follows the
+  style). `hasLookOption()`/`autoStyleLabel()` are the hooks for a widget that has a default look of its own.
+- **Background**: the Background card has Picture / Cover of what plays. Leaving fades the bars' extension with the tab
+  (`fadeBackgroundOut`), the status bar colour glides (`glideStatusBar`), and the cover background is not remade when it is the same song.
+- **Covers lose black bars** (`HomeArt.trimBars`) so a square cover inside a 16:9 picture fills the card.
+- A stack (or any widget) holding the page off needs `claimGestures` to be *called*: it was written but not wired for a round.
+
 ### Adding a widget (the easy path)
 
 1. Write `ui/home/widget/FooWidget extends HomeWidgetView` (constructor `(HomeHost, HomeWidgetType)`). Build views in

@@ -312,12 +312,28 @@ final class MediaWidget extends HomeWidgetView {
 		int artSide = (mode == LARGE_WIDE) ? Math.min(h, (int) (w * 0.58f)) : Math.min(w, (int) (h * 0.6f));
 		int left = (mode == LARGE_WIDE) ? Math.max((int) (artSide * 0.86f), (int) (w * 0.38f)) : 0;
 
-		// Shuffle and repeat: around the play button when the width allows, else under the seek bar.
-		int avail = ((mode == LARGE_WIDE) ? (w - left) : w) - 2 * pad;
-		int controlsNeed = px(36) * 2 + px(44) * 2 + px(52);
+		// Shuffle and repeat: around the play button when the width allows, else under the seek bar. A wide card
+		// has the controls in the middle of the right half, as large as that half allows.
+		int zone = ((mode == LARGE_WIDE) ? (w - left) : w) - 2 * pad;
+		int ex = 36;
+		int sk = 44;
+		int pl = 52;
+		if (mode == LARGE_WIDE) {
+			if (zone >= px(250)) {
+				ex = 40;
+				sk = 50;
+				pl = 62;
+			} else if (zone >= px(212)) {
+				ex = 34;
+				sk = 44;
+				pl = 56;
+			}
+		}
+		int controlsNeed = px(ex) * 2 + px(sk) * 2 + px(pl);
 		if (!large) extrasAt = 0;
-		else if (avail >= controlsNeed) extrasAt = 1;
+		else if (zone >= controlsNeed) extrasAt = 1;
 		else extrasAt = showSeek ? 2 : 0;
+		sizeControls(ex, sk, pl);
 		placeExtras();
 
 		thumb.setVisibility(strip ? VISIBLE : GONE);
@@ -353,11 +369,15 @@ final class MediaWidget extends HomeWidgetView {
 			}
 			case LARGE_WIDE -> {
 				art.setLayoutParams(lp(artSide, -1, Gravity.START, 0, 0, 0, 0));
-				texts.setLayoutParams(lp(-1, -2, Gravity.TOP, left, pad + px(4), pad, 0));
-				seekBlock.setLayoutParams(lp(-1, -2, Gravity.BOTTOM, left, 0, pad, px(72)));
-				controls.setLayoutParams(lp(-2, -2, Gravity.BOTTOM | Gravity.START,
-						left - px(6) + ((extrasAt == 1) ? 0 : 0), 0, 0, px(10)));
-				chip.setLayoutParams(lp(-2, px(36), Gravity.BOTTOM | Gravity.END, 0, 0, pad, px(18)));
+				// The name on top (clear of the chip), the controls in the middle of the right half, the
+				// seek bar under them.
+				int chipRoom = showChip ? px(132) : 0;
+				texts.setLayoutParams(lp(-1, -2, Gravity.TOP, left, pad + px(4), pad + chipRoom, 0));
+				seekBlock.setLayoutParams(lp(-1, -2, Gravity.BOTTOM, left, 0, pad, px(12)));
+				int cw = (extrasAt == 1) ? controlsNeed : (px(sk) * 2 + px(pl));
+				int cx = left + Math.max(0, (zone - cw) / 2);
+				controls.setLayoutParams(lp(-2, -2, Gravity.CENTER_VERTICAL | Gravity.START, cx, px(10), 0, px(14)));
+				chip.setLayoutParams(lp(-2, px(36), Gravity.TOP | Gravity.END, 0, pad, pad, 0));
 				badge.setLayoutParams(lp(-2, -2, Gravity.TOP | Gravity.START, pad, pad, 0, 0));
 			}
 			default -> {
@@ -372,6 +392,30 @@ final class MediaWidget extends HomeWidgetView {
 		scrim.setBackground(scrimFor(mode));
 		wash.setAlpha(strip ? 0.92f : 1f);
 		syncState();
+	}
+
+	/** The control buttons' sizes in dp: the round ones around the play button and the play button itself. */
+	private void sizeControls(int ex, int sk, int pl) {
+		for (ImageView b : new ImageView[]{shuffle, repeat}) sizeButton(b, ex);
+		for (ImageView b : new ImageView[]{prev, next}) sizeButton(b, sk);
+		LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) playBox.getLayoutParams();
+		if (lp.width != px(pl)) {
+			lp.width = px(pl);
+			lp.height = px(pl);
+			playBox.setLayoutParams(lp);
+			playBox.setBackground(HomeUi.pressable(0x33000000, 0xFFFFFFFF, px(pl) / 2f));
+		}
+	}
+
+	private void sizeButton(ImageView b, int dp) {
+		LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) b.getLayoutParams();
+		if (lp.width == px(dp)) return;
+		lp.width = px(dp);
+		lp.height = px(dp);
+		b.setLayoutParams(lp);
+		int pd = px(dp * 0.26f);
+		b.setPadding(pd, pd, pd, pd);
+		b.setBackground(HomeUi.pressable(ripple(), 0, px(dp) / 2f));
 	}
 
 	/** Puts the shuffle and repeat buttons where {@link #extrasAt} says (or takes them out). */

@@ -79,7 +79,7 @@ final class BookmarksWidget extends LibraryWidget {
 			}
 			for (String bm : marks) {
 				total++;
-				if (rows.size() >= 12) continue;
+				if (rows.size() >= 60) continue;
 				String name = PlayableItemPrefs.bookmarkName(bm);
 				int time = PlayableItemPrefs.bookmarkTime(bm);
 				CharSequence sub = DateUtils.formatElapsedTime(time) + " · " + pi.getName();

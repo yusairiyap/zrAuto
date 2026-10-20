@@ -45,7 +45,7 @@ final class FavoritesWidget extends LibraryWidget {
 			}
 			List<PlayableItem> l = new ArrayList<>(items);
 			if (optInt("order", 0) == 1) Collections.reverse(l);
-			int n = Math.min(l.size(), 12);
+			int n = Math.min(l.size(), 60);
 			for (int i = 0; i < n; i++) {
 				PlayableItem pi = l.get(i);
 				rows.add(new Row(pi.getName(), null, pi, () -> a.getMediaServiceBinder().playItem(pi), null, null));

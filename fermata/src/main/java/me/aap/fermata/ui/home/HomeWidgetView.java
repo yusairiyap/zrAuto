@@ -165,6 +165,21 @@ public abstract class HomeWidgetView extends FrameLayout {
 		return gestures();
 	}
 
+	/** What "Same as Home" means for this widget: Home's look, unless it has a look of its own to start from. */
+	protected int autoStyle() {
+		return host.defaultStyle();
+	}
+
+	@StringRes
+	protected int autoStyleLabel() {
+		return R.string.home_style_auto;
+	}
+
+	/** Whether the Look setting is offered: not for a widget that always paints its whole card itself. */
+	protected boolean hasLookOption() {
+		return !ownBackground();
+	}
+
 	/** True for a widget that paints its whole card itself (a picture, a sky): text stays white. */
 	protected boolean ownBackground() {
 		return false;
@@ -320,8 +335,8 @@ public abstract class HomeWidgetView extends FrameLayout {
 	final List<HomeOption> allOptions() {
 		List<HomeOption> l = new ArrayList<>();
 		// A widget that paints its whole card has no look to choose.
-		if (!ownBackground()) l.add(HomeOption.choice(OPT_STYLE, ctx.getString(R.string.home_opt_style), 0,
-				ctx.getString(R.string.home_style_auto), ctx.getString(R.string.home_style_solid),
+		if (hasLookOption()) l.add(HomeOption.choice(OPT_STYLE, ctx.getString(R.string.home_opt_style), 0,
+				ctx.getString(autoStyleLabel()), ctx.getString(R.string.home_style_solid),
 				ctx.getString(R.string.home_style_glass), ctx.getString(R.string.home_style_colour)));
 		if (hasHeader) l.add(HomeOption.sw(OPT_TITLE, ctx.getString(R.string.home_opt_title), true));
 		l.addAll(getOptions());
@@ -333,7 +348,7 @@ public abstract class HomeWidgetView extends FrameLayout {
 
 	public final int style() {
 		int s = optInt(OPT_STYLE, STYLE_AUTO);
-		return (s == STYLE_AUTO) ? host.defaultStyle() : s;
+		return (s == STYLE_AUTO) ? autoStyle() : s;
 	}
 
 	/** Whether text and icons are white (glass, colour, own background) rather than the theme's. */

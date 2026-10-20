@@ -26,6 +26,8 @@ final class HomeNowPlayingBg {
 	private int generation;
 	@Nullable
 	private PlayableItem shown;
+	/** The blur the picture now on screen was made with, -1 while there is none to keep. */
+	private int shownBlur = -1;
 	private final FermataServiceUiBinder.Listener listener = new FermataServiceUiBinder.Listener() {
 		@Override
 		public void onPlayableChanged(PlayableItem oldItem, PlayableItem newItem) {
@@ -61,14 +63,22 @@ final class HomeNowPlayingBg {
 	void setBlur(int blur) {
 		if (this.blur == blur) return;
 		this.blur = blur;
-		if (running) refresh(true);
+		if (running) refresh(false);
+	}
+
+	/** What is on screen is no longer what the background shows (its source changed): made again at the next start. */
+	void forget() {
+		shown = null;
+		shownBlur = -1;
 	}
 
 	private void refresh(boolean force) {
 		if (!running) return;
 		PlayableItem pi = HomeArt.displayItem(a);
-		if (!force && (pi == shown)) return;
+		// Back on Home with the same song and blur: the picture is already there, it must not fade over itself.
+		if ((pi == shown) && (shownBlur == Math.max(blur, 40)) && (pi != null)) return;
 		shown = pi;
+		shownBlur = Math.max(blur, 40);
 		int gen = ++generation;
 		if (pi == null) {
 			target.onCover(null, 0);

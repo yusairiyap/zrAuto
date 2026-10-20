@@ -85,9 +85,30 @@ final class AmbienceWidget extends HomeWidgetView {
 		super(host, type);
 	}
 
+	/** The sky is the card in the Colour look (and what it is by default); Solid and Glass make it a plain card. */
 	@Override
 	protected boolean ownBackground() {
+		return style() == STYLE_COLOUR;
+	}
+
+	@Override
+	protected int autoStyle() {
+		return STYLE_COLOUR;
+	}
+
+	@Override
+	protected int autoStyleLabel() {
+		return R.string.home_style_sky;
+	}
+
+	@Override
+	protected boolean hasLookOption() {
 		return true;
+	}
+
+	@Override
+	protected void onStyleChanged() {
+		invalidate();
 	}
 
 	@Override
@@ -444,18 +465,24 @@ final class AmbienceWidget extends HomeWidgetView {
 		int w = getWidth();
 		int h = getHeight();
 		if ((w == 0) || (h == 0) || !AmbienceAddon.isEnabled()) return;
-		if (sky == null) sky = new LinearGradient(0, 0, 0, h, skyTop, skyBottom, Shader.TileMode.CLAMP);
-		rect.set(0, 0, w, h);
-		paint.setShader(sky);
-		c.drawRect(rect, paint);
-		paint.setShader(null);
+		boolean skyCard = ownBackground();
+		if (skyCard) {
+			if (sky == null) sky = new LinearGradient(0, 0, 0, h, skyTop, skyBottom, Shader.TileMode.CLAMP);
+			rect.set(0, 0, w, h);
+			paint.setShader(sky);
+			c.drawRect(rect, paint);
+			paint.setShader(null);
+		}
 		boolean any = false;
 		for (float v : lv) if (v > 0.003f) any = true;
 		if (any || scene.isActive(lv)) scene.draw(c, w, h, lv);
-		// A shade along the bottom keeps the shortcuts readable over any weather.
-		paint.setShader(new LinearGradient(0, h * 0.5f, 0, h, 0x00000000, 0x66000000, Shader.TileMode.CLAMP));
-		c.drawRect(rect, paint);
-		paint.setShader(null);
+		if (skyCard) {
+			// A shade along the bottom keeps the shortcuts readable over any weather.
+			rect.set(0, 0, w, h);
+			paint.setShader(new LinearGradient(0, h * 0.5f, 0, h, 0x00000000, 0x66000000, Shader.TileMode.CLAMP));
+			c.drawRect(rect, paint);
+			paint.setShader(null);
+		}
 	}
 
 	@Override

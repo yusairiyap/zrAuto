@@ -200,7 +200,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		if (action == Action.POWER_USAGE) return R.drawable.power_usage;
 		if (action == Action.POWER_SAVER) return R.drawable.power_saver;
 		if ((action == Action.AMBIENCE) || (action == Action.AMBIENCE_TOGGLE)) return R.drawable.ambience;
-		if (action == Action.OPEN_HOME) return R.drawable.home;
+		if (action == Action.OPEN_HOME) return R.drawable.home_page;
 		if (action == Action.OPEN_FAVORITES) return R.drawable.favorite_filled;
 		if (action == Action.OPEN_PLAYLISTS) return R.drawable.playlist;
 		if ((action == Action.OPEN_DOWNLOADS) || (action == Action.DOWNLOAD_CURRENT)) {

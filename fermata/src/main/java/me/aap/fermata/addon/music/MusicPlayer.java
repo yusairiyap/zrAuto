@@ -119,6 +119,10 @@ public final class MusicPlayer {
 		 * the player is set). False if it can't.
 		 */
 		boolean playVideoQuietly(MainActivityDelegate a, String videoId, @Nullable String title);
+
+		/** YouTube's own equalizer and effects, which its page plays through; their settings stay when nothing plays. */
+		@Nullable
+		me.aap.fermata.media.engine.EffectsControls effects();
 	}
 
 	public static void setYoutubeHooks(@Nullable YoutubeHooks hooks) {
@@ -141,6 +145,13 @@ public final class MusicPlayer {
 																					 @Nullable String title) {
 		YoutubeHooks h = youtube;
 		return (h != null) && h.playVideoInPlace(from.getPlaybackDelegate(), videoId, title);
+	}
+
+	/** YouTube's equalizer and effects (see {@link YoutubeHooks#effects}), null without the YouTube addon. */
+	@Nullable
+	public static me.aap.fermata.media.engine.EffectsControls getYoutubeEffects() {
+		YoutubeHooks h = youtube;
+		return (h == null) ? null : h.effects();
 	}
 
 	/** See {@link YoutubeHooks#playVideoQuietly}; false without the YouTube addon. */
