@@ -57,6 +57,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	private final HomeBackgroundView bg;
 	private final HomeGridLayout grid;
 	private final BehindBarsLayers behind;
+	private final HomeBackgroundView base;
 	private final LinearLayout greeting;
 	private final TextView greetTitle;
 	private final TextView greetDate;
@@ -104,10 +105,15 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		// background (which comes in a little later, see fadeBackgroundIn) is there the window's dark
 		// colour showed through as a veil that then lifted.
 		root.setBackgroundColor(palette.background | 0xFF000000);
+		// The plain gradient on its own layer that reaches under the bars with the tab, never faded: the
+		// picture's layer fades in over it later, so the status and navigation bar areas are never bare.
+		base = new HomeBackgroundView(ctx, palette);
+		root.addView(base, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.MATCH_PARENT));
 		bg = new HomeBackgroundView(ctx, palette);
 		root.addView(bg, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));
-		behind = new BehindBarsLayers(a, root, bg);
+		behind = new BehindBarsLayers(a, root, base, bg);
 		nowBg = new HomeNowPlayingBg(a, (bm, top) -> {
 			if (bm == null) {
 				bg.setImage(null, true);
@@ -328,13 +334,13 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		if (bgFade != null) bgFade.cancel();
 		if (!animate()) {
 			behind.setActive(false);
-			behind.setShown(1f);
+			bgShown(1f);
 			systemBars(false);
 			return;
 		}
 		ValueAnimator a = ValueAnimator.ofFloat(1f, 0f);
 		a.setDuration(260);
-		a.addUpdateListener(v -> behind.setShown((float) v.getAnimatedValue()));
+		a.addUpdateListener(v -> bgShown((float) v.getAnimatedValue()));
 		a.addListener(new android.animation.AnimatorListenerAdapter() {
 			private boolean cancelled;
 
@@ -347,7 +353,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			public void onAnimationEnd(android.animation.Animator an) {
 				if (cancelled || shown) return;
 				behind.setActive(false);
-				behind.setShown(1f);
+				bgShown(1f);
 				systemBars(false);
 			}
 		});
@@ -362,22 +368,29 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	private void fadeBackgroundIn() {
 		if (bgFade != null) bgFade.cancel();
 		if (!animate()) {
-			behind.setShown(1f);
+			bgShown(1f);
 			return;
 		}
-		behind.setShown(0f);
+		bgShown(0f);
 		root.post(() -> root.post(() -> {
 			if (!shown) {
-				behind.setShown(1f);
+				bgShown(1f);
 				return;
 			}
 			ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
 			a.setDuration(420);
 			a.setInterpolator(new DecelerateInterpolator(1.4f));
-			a.addUpdateListener(v -> behind.setShown((float) v.getAnimatedValue()));
+			a.addUpdateListener(v -> bgShown((float) v.getAnimatedValue()));
 			bgFade = a;
 			a.start();
 		}));
+	}
+
+	/** Fades the picture layer (the plain gradient under it stays). */
+	private void bgShown(float f) {
+		float c = Math.max(0f, Math.min(1f, f));
+		bg.setAlpha(c);
+		bg.setVisibility(c <= 0f ? View.INVISIBLE : View.VISIBLE);
 	}
 
 	/** Back leaves edit mode first. */
@@ -624,11 +637,11 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		fade.addView(s, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));
 		fade.follow(s);
-		root.addView(fade, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+		root.addView(fade, 2, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));
 		if (!down) {
 			// Sideways the greeting stays put at the top left, in the room the grid leaves there.
-			root.addView(greeting, 2, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+			root.addView(greeting, 3, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
 					ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START));
 		}
 		grid.setScroller(s);

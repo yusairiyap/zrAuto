@@ -28,6 +28,10 @@ final class HomeNowPlayingBg {
 	private PlayableItem shown;
 	/** The blur the picture now on screen was made with, -1 while there is none to keep. */
 	private int shownBlur = -1;
+	/** The cover the picture on screen was made from: the same one again is not blurred and faded in again. */
+	@Nullable
+	private Bitmap shownCover;
+	private int shownCoverBlur = -1;
 	private final FermataServiceUiBinder.Listener listener = new FermataServiceUiBinder.Listener() {
 		@Override
 		public void onPlayableChanged(PlayableItem oldItem, PlayableItem newItem) {
@@ -70,13 +74,17 @@ final class HomeNowPlayingBg {
 	void forget() {
 		shown = null;
 		shownBlur = -1;
+		shownCover = null;
 	}
 
 	private void refresh(boolean force) {
 		if (!running) return;
 		PlayableItem pi = HomeArt.displayItem(a);
 		// Back on Home with the same song and blur: the picture is already there, it must not fade over itself.
-		if ((pi == shown) && (shownBlur == Math.max(blur, 40)) && (pi != null)) return;
+		if (HomeArt.same(pi, shown) && (shownBlur == Math.max(blur, 40)) && (pi != null)) {
+			shown = pi;
+			return;
+		}
 		shown = pi;
 		shownBlur = Math.max(blur, 40);
 		int gen = ++generation;
@@ -93,12 +101,15 @@ final class HomeNowPlayingBg {
 					return;
 				}
 				final int b = blur;
+				if ((bm == shownCover) && (shownCoverBlur == Math.max(b, 40))) return;
 				App.get().getExecutor().submitTask(() -> {
 					Bitmap soft = HomeBlur.blur(bm, Math.max(b, 40));
 					Bitmap use = (soft != null) ? soft : bm;
 					return new Object[]{use, HomeBackground.topColor(use)};
 				}).main().onSuccess(r -> {
 					if (gen != generation) return;
+					shownCover = bm;
+					shownCoverBlur = Math.max(b, 40);
 					target.onCover((Bitmap) r[0], (Integer) r[1]);
 				});
 			});

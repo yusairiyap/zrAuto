@@ -14,6 +14,7 @@ import androidx.annotation.Nullable;
 import me.aap.fermata.R;
 import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.utils.async.FutureSupplier;
 
 /** Loads cover art and thumbnails into the widgets' image views, with a small cache of its own. */
 public final class HomeImages {
@@ -52,24 +53,34 @@ public final class HomeImages {
 		cache.put(uri, bm);
 	}
 
-	/** Shows the picture at {@code uri} in {@code v} when it is loaded (and clears the old one now). */
+	/**
+	 * Shows the picture at {@code uri} in {@code v} when it is loaded (and clears the old one now). It
+	 * is the small copy the library's lists use (decoded once, saved on disk, shared with the tabs), not
+	 * the full picture; one that was not at hand comes in with a short fade instead of popping in.
+	 */
 	public static void loadUri(MainActivityDelegate a, ImageView v, @Nullable String uri) {
+		loadUri(a, v, uri, false);
+	}
+
+	private static void loadUri(MainActivityDelegate a, ImageView v, @Nullable String uri, boolean fade) {
 		v.setTag(R.id.home_image_key, uri);
+		v.animate().cancel();
+		v.setAlpha(1f);
 		if (uri == null) {
 			v.setImageDrawable(null);
 			return;
 		}
-		Bitmap hit = cache.get(uri);
-		if (hit != null) {
-			v.setImageBitmap(hit);
-			return;
-		}
 		v.setImageDrawable(null);
-		a.getLib().getBitmap(uri).main().onCompletion((bm, err) -> {
-			if (bm == null) return;
-			cache.put(uri, bm);
-			if (uri.equals(v.getTag(R.id.home_image_key))) v.setImageBitmap(bm);
+		boolean[] late = {fade};
+		FutureSupplier<Bitmap> f = a.getLib().getBitmap(uri, true, true).main().onCompletion((bm, err) -> {
+			if ((bm == null) || !uri.equals(v.getTag(R.id.home_image_key))) return;
+			v.setImageBitmap(bm);
+			if (late[0]) {
+				v.setAlpha(0f);
+				v.animate().alpha(1f).setDuration(180).start();
+			}
 		});
+		if (!f.isDone()) late[0] = true;
 	}
 
 	/** Shows the item's own picture (its icon uri) in {@code v}. */
@@ -77,9 +88,11 @@ public final class HomeImages {
 		v.setTag(R.id.home_image_item, item);
 		v.setTag(R.id.home_image_key, null);
 		v.setImageDrawable(null);
-		item.getIconUri().main().onCompletion((u, err) -> {
+		boolean[] late = {false};
+		FutureSupplier<android.net.Uri> f = item.getIconUri().main().onCompletion((u, err) -> {
 			if ((u == null) || (v.getTag(R.id.home_image_item) != item)) return;
-			loadUri(a, v, u.toString());
+			loadUri(a, v, u.toString(), late[0]);
 		});
+		if (!f.isDone()) late[0] = true;
 	}
 }

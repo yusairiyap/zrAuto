@@ -8,14 +8,18 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
-import android.widget.ScrollView;
 import android.widget.TextView;
 
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
+import androidx.recyclerview.widget.DiffUtil;
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.LinearSmoothScroller;
+import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 import me.aap.fermata.R;
@@ -37,21 +41,41 @@ import me.aap.utils.ui.activity.ActivityListener;
  * of them. The subclasses only say where the rows come from.
  */
 abstract class LibraryWidget extends HomeWidgetView {
-	/** One row: what it is called, a second line, a picture, and what tapping it (or its button) does. */
+	/**
+	 * One row: what it is called, a second line, a picture, and what tapping it (or its button) does.
+	 * {@code subFill} gets a setter for the second line, for text that is only known later; {@code
+	 * current} marks the row that plays now with a filled background.
+	 */
 	protected record Row(CharSequence title, @Nullable CharSequence sub, @Nullable MediaLib.Item art,
 											 Runnable click, @Nullable Runnable play,
-											 @Nullable Consumer<TextView> subFill) {}
+											 @Nullable Consumer<Consumer<CharSequence>> subFill, boolean current) {
+		Row(CharSequence title, @Nullable CharSequence sub, @Nullable MediaLib.Item art, Runnable click,
+				@Nullable Runnable play, @Nullable Consumer<Consumer<CharSequence>> subFill) {
+			this(title, sub, art, click, play, subFill, false);
+		}
+
+		/** What a row is, for telling the same row in an older and a newer list. */
+		Object key() {
+			return (art != null) ? art : title;
+		}
+	}
 
 	private static final long STALE_MS = 15_000;
 	private LinearLayout column;
 	private TextView count;
-	private LinearLayout list;
+	private RecyclerView listView;
+	private GridLayoutManager glm;
+	private final RowAdapter adapter = new RowAdapter();
+	private int cols = 1;
+	private boolean artOn = true;
+	private int styleEpoch;
+	@Nullable
+	private Object lastFocusKey;
 	private TextView emptyText;
 	private TextView firstLine;
 	private ProgressBar busy;
 	/** The row to scroll to when the list is drawn (the queue's playing song), -1 for none. */
 	protected int focusRow = -1;
-	private ScrollView listScroll;
 	private HomeSkeleton skeleton;
 	private TextView backChip;
 	/** Set while something is opened inside the card: the rows are its contents, a chip leads back. */
@@ -124,22 +148,23 @@ abstract class LibraryWidget extends HomeWidgetView {
 		fl.topMargin = px(4);
 		column.addView(firstLine, fl);
 
-		list = new LinearLayout(ctx);
-		list.setOrientation(LinearLayout.VERTICAL);
-		LinearLayout.LayoutParams ll = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-				ViewGroup.LayoutParams.WRAP_CONTENT);
-		ll.topMargin = px(4);
-		// Long lists scroll inside the card; the top and bottom melt away while there is more.
-		listScroll = new ScrollView(ctx);
-		listScroll.setVerticalScrollBarEnabled(false);
-		listScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
-		listScroll.setVerticalFadingEdgeEnabled(true);
-		listScroll.setFadingEdgeLength(px(22));
-		listScroll.addView(list, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-				ViewGroup.LayoutParams.WRAP_CONTENT));
+		// Rows are made only for what is on screen and recycled as the list scrolls, so a queue of
+		// hundreds costs no more than a few rows, and coming back to Home draws nothing again.
+		listView = new RecyclerView(ctx);
+		glm = new GridLayoutManager(ctx, 1);
+		listView.setLayoutManager(glm);
+		listView.setAdapter(adapter);
+		listView.setItemAnimator(null);
+		listView.setNestedScrollingEnabled(false);
+		listView.setVerticalScrollBarEnabled(false);
+		listView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+		listView.setVerticalFadingEdgeEnabled(true);
+		listView.setFadingEdgeLength(px(22));
+		listView.setItemViewCacheSize(4);
+		listView.getRecycledViewPool().setMaxRecycledViews(0, 24);
 		LinearLayout.LayoutParams lsl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
 		lsl.topMargin = px(4);
-		column.addView(listScroll, lsl);
+		column.addView(listView, lsl);
 
 		emptyText = text(ROLE_SECONDARY, 13, false);
 		emptyText.setText(emptyRes());
@@ -168,7 +193,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 	/** A list longer than the card scrolls, and keeps the page from taking that drag. */
 	@Override
 	protected int gestures() {
-		return ((listScroll != null) && (list.getHeight() > listScroll.getHeight())) ? GESTURE_V : 0;
+		return ((listView != null) && (listView.canScrollVertically(1) || listView.canScrollVertically(-1))) ?
+				GESTURE_V : 0;
 	}
 
 	@Override
@@ -201,8 +227,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 	@Override
 	protected void onActive() {
 		act().addBroadcastListener(contentListener, ActivityListener.FRAGMENT_CONTENT_CHANGED);
-		// Drawn again whenever it comes back on screen, whatever happened to it while away.
-		shownSignature = "";
+		// Back on screen: the playing song is brought into view again.
+		lastFocusKey = null;
 		render();
 		refresh(false);
 	}
@@ -294,103 +320,221 @@ abstract class LibraryWidget extends HomeWidgetView {
 	@Override
 	protected void onStyleChanged() {
 		if (skeleton != null) skeleton.setColor(softFill());
+		styleEpoch++;
+		if (built) adapter.notifyDataSetChanged();
 	}
 
 	private void render() {
 		if (!built) return;
 		updateBusy();
 		boolean none = rows.isEmpty();
-		int cols = (getCellsW() >= 4) ? 2 : 1;
+		int newCols = (getCellsW() >= 4) ? 2 : 1;
+		boolean art = optBool("art", true);
 		// Drawn again only when something it shows changed: the rows blinked on every refresh.
 		StringBuilder sig = new StringBuilder();
-		sig.append(total).append('|').append(isCompact()).append('|').append(cols).append('|').append(capacity)
-				.append('|').append(optBool("art", true)).append('|').append(loading && none)
-				.append('|').append(drillSource != null);
-		for (Row r : rows) sig.append('|').append(r.title()).append(r.sub());
+		sig.append(total).append('|').append(isCompact()).append('|').append(newCols).append('|')
+				.append(art).append('|').append(loading && none).append('|').append(drillSource != null);
+		for (Row r : rows) sig.append('|').append(r.title()).append(r.sub()).append(r.current());
 		String signature = sig.toString();
 		if (signature.equals(shownSignature)) return;
 		shownSignature = signature;
 
-		forget(list);
-		list.removeAllViews();
 		count.setText(total > 0 ? String.valueOf(total) : "");
 		emptyText.setVisibility(none && !isCompact() && !loading ? VISIBLE : GONE);
-		listScroll.setVisibility(none || isCompact() ? GONE : VISIBLE);
+		boolean listShown = !(none || isCompact());
+		listView.setVisibility(listShown ? VISIBLE : GONE);
 		firstLine.setVisibility((!none && isCompact()) ? VISIBLE : GONE);
-		if (none) return;
+		if (none) {
+			adapter.set(new ArrayList<>(), true);
+			return;
+		}
 		if (isCompact()) {
 			firstLine.setText(rows.get(0).title());
 			return;
 		}
-		int shown = rows.size();
-		boolean art = optBool("art", true);
-		LinearLayout line = null;
-		for (int i = 0; i < shown; i++) {
-			if ((i % cols) == 0) {
-				line = new LinearLayout(ctx);
-				line.setOrientation(LinearLayout.HORIZONTAL);
-				list.addView(line, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(48)));
-			}
-			View v = rowView(rows.get(i), art);
-			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
-			if ((i % cols) > 0) lp.setMarginStart(px(10));
-			line.addView(v, lp);
-			// Rows come in with a short fade, so a refresh doesn't pop.
-			if (host.animate()) {
-				v.setAlpha(0f);
-				v.animate().alpha(1f).setDuration(220).setStartDelay(Math.min(i, 6) * 30L).start();
-			}
+		boolean wasEmpty = adapter.getItemCount() == 0;
+		boolean full = (newCols != cols) || (art != artOn) || wasEmpty;
+		cols = newCols;
+		artOn = art;
+		glm.setSpanCount(cols);
+		adapter.set(rows, full);
+		if (wasEmpty && host.animate()) {
+			listView.animate().cancel();
+			listView.setAlpha(0f);
+			listView.animate().alpha(1f).setDuration(220).start();
 		}
-		if ((focusRow >= 0) && (list.getChildCount() > 0)) {
-			View target = list.getChildAt(Math.min(list.getChildCount() - 1, focusRow / cols));
-			listScroll.post(() -> listScroll.smoothScrollTo(0, Math.max(0, target.getTop() - px(48))));
+		scrollToPlaying();
+	}
+
+	/** Brings the playing row into view, once per song: never while the finger is on the list. */
+	private void scrollToPlaying() {
+		if ((focusRow < 0) || (focusRow >= rows.size())) return;
+		Object key = rows.get(focusRow).key();
+		if (key.equals(lastFocusKey)) return;
+		lastFocusKey = key;
+		listView.post(() -> {
+			if (listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE) return;
+			int target = Math.max(0, focusRow - cols);
+			int first = glm.findFirstVisibleItemPosition();
+			if ((first == RecyclerView.NO_POSITION) || (Math.abs(first - target) > 14) || !isShown()) {
+				glm.scrollToPositionWithOffset(target, 0);
+				return;
+			}
+			LinearSmoothScroller sm = new LinearSmoothScroller(ctx) {
+				@Override
+				protected int getVerticalSnapPreference() {
+					return SNAP_TO_START;
+				}
+			};
+			sm.setTargetPosition(target);
+			glm.startSmoothScroll(sm);
+		});
+	}
+
+	private final class RowAdapter extends RecyclerView.Adapter<RowHolder> {
+		private List<Row> data = new ArrayList<>();
+
+		@Override
+		public int getItemCount() {
+			return data.size();
+		}
+
+		@Override
+		public RowHolder onCreateViewHolder(ViewGroup parent, int viewType) {
+			return new RowHolder();
+		}
+
+		@Override
+		public void onBindViewHolder(RowHolder h, int position) {
+			h.bind(data.get(position), position);
+		}
+
+		/** The new rows; only what differs from the old ones is rebound (a full reset when {@code full}). */
+		void set(List<Row> now, boolean full) {
+			List<Row> old = data;
+			if (full) {
+				data = now;
+				notifyDataSetChanged();
+				return;
+			}
+			DiffUtil.DiffResult dr = DiffUtil.calculateDiff(new DiffUtil.Callback() {
+				@Override
+				public int getOldListSize() {
+					return old.size();
+				}
+
+				@Override
+				public int getNewListSize() {
+					return now.size();
+				}
+
+				@Override
+				public boolean areItemsTheSame(int o, int n) {
+					return Objects.equals(old.get(o).key(), now.get(n).key());
+				}
+
+				@Override
+				public boolean areContentsTheSame(int o, int n) {
+					Row a = old.get(o);
+					Row b = now.get(n);
+					return Objects.equals(a.title(), b.title()) && Objects.equals(a.sub(), b.sub()) &&
+							(a.current() == b.current());
+				}
+			}, false);
+			data = now;
+			dr.dispatchUpdatesTo(this);
 		}
 	}
 
-	private View rowView(Row r, boolean art) {
-		LinearLayout row = new LinearLayout(ctx);
-		row.setOrientation(LinearLayout.HORIZONTAL);
-		row.setGravity(Gravity.CENTER_VERTICAL);
+	private final class RowHolder extends RecyclerView.ViewHolder {
+		private final LinearLayout main;
+		private final ImageView thumb;
+		private final TextView title;
+		private final TextView sub;
+		private final ImageView playBtn;
+		@Nullable
+		private Row row;
+		private int paintedEpoch = -1;
+		private boolean paintedCurrent;
 
-		LinearLayout main = new LinearLayout(ctx);
-		main.setOrientation(LinearLayout.HORIZONTAL);
-		main.setGravity(Gravity.CENTER_VERTICAL);
-		main.setBackground(HomeUi.pressable(ripple(), 0, px(14)));
-		main.setClickable(true);
-		main.setFocusable(true);
-		main.setOnClickListener(v -> r.click().run());
-		main.setContentDescription(r.title());
-		row.addView(main, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+		RowHolder() {
+			super(new LinearLayout(ctx));
+			LinearLayout root = (LinearLayout) itemView;
+			root.setOrientation(LinearLayout.HORIZONTAL);
+			root.setGravity(Gravity.CENTER_VERTICAL);
+			root.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(48)));
 
-		if (art) {
-			ImageView th = HomeImages.thumb(ctx, 40, 40, 10, softFill());
-			if (r.art() != null) HomeImages.loadItem(act(), th, r.art());
+			main = new LinearLayout(ctx);
+			main.setOrientation(LinearLayout.HORIZONTAL);
+			main.setGravity(Gravity.CENTER_VERTICAL);
+			main.setClickable(true);
+			main.setFocusable(true);
+			main.setOnClickListener(v -> {
+				if (row != null) row.click().run();
+			});
+			root.addView(main, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+
+			thumb = HomeImages.thumb(ctx, 40, 40, 10, softFill());
 			LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(px(40), px(40));
 			tlp.setMarginEnd(px(10));
-			main.addView(th, tlp);
-		}
-		LinearLayout texts = new LinearLayout(ctx);
-		texts.setOrientation(LinearLayout.VERTICAL);
-		texts.setGravity(Gravity.CENTER_VERTICAL);
-		TextView t = text(ROLE_PRIMARY, 13.5f, true);
-		t.setText(r.title());
-		t.setSingleLine(true);
-		t.setEllipsize(android.text.TextUtils.TruncateAt.END);
-		texts.addView(t);
-		if ((r.sub() != null) || (r.subFill() != null)) {
-			TextView s = text(ROLE_SECONDARY, 12, false);
-			s.setSingleLine(true);
-			s.setEllipsize(android.text.TextUtils.TruncateAt.END);
-			if (r.sub() != null) s.setText(r.sub());
-			if (r.subFill() != null) r.subFill().accept(s);
-			texts.addView(s);
-		}
-		main.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+			tlp.setMarginStart(px(4));
+			main.addView(thumb, tlp);
 
-		if (r.play() != null) {
-			ImageView p = iconButton(R.drawable.play, 36, ROLE_ICON, R.string.action_play, r.play());
-			row.addView(p);
+			LinearLayout texts = new LinearLayout(ctx);
+			texts.setOrientation(LinearLayout.VERTICAL);
+			texts.setGravity(Gravity.CENTER_VERTICAL);
+			title = text(ROLE_PRIMARY, 13.5f, true);
+			title.setSingleLine(true);
+			title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+			texts.addView(title);
+			sub = text(ROLE_SECONDARY, 12, false);
+			sub.setSingleLine(true);
+			sub.setEllipsize(android.text.TextUtils.TruncateAt.END);
+			texts.addView(sub);
+			main.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+			playBtn = iconButton(R.drawable.play, 36, ROLE_ICON, R.string.action_play, () -> {
+				if ((row != null) && (row.play() != null)) row.play().run();
+			});
+			root.addView(playBtn);
 		}
-		return row;
+
+		void bind(Row r, int position) {
+			row = r;
+			// A gap between the two columns, from the rows' own padding.
+			int gap = (cols > 1) ? px(5) : 0;
+			itemView.setPadding(((position % cols) == 0) ? 0 : gap, 0, ((position % cols) == cols - 1) ? 0 : gap, 0);
+			if ((paintedEpoch != styleEpoch) || (paintedCurrent != r.current())) {
+				paintedEpoch = styleEpoch;
+				paintedCurrent = r.current();
+				// The playing song is filled with the card's accent, softly, instead of carrying a marker.
+				int fill = r.current() ? HomeUi.alpha(color(ROLE_ACCENT), 0.28f) : 0;
+				main.setBackground(HomeUi.pressable(ripple(), fill, px(14)));
+				thumb.setBackground(HomeUi.round(softFill(), px(10)));
+			}
+			main.setContentDescription(r.title());
+			title.setText(r.title());
+			if (artOn) {
+				thumb.setVisibility(VISIBLE);
+				if (r.art() == null) {
+					thumb.setTag(R.id.home_image_item, null);
+					thumb.setImageDrawable(null);
+				} else if (thumb.getTag(R.id.home_image_item) != r.art()) {
+					HomeImages.loadItem(act(), thumb, r.art());
+				}
+			} else {
+				thumb.setVisibility(GONE);
+			}
+			if ((r.sub() != null) || (r.subFill() != null)) {
+				sub.setVisibility(VISIBLE);
+				sub.setText((r.sub() != null) ? r.sub() : "");
+				if (r.subFill() != null) r.subFill().accept(txt -> {
+					if (row == r) sub.setText(txt);
+				});
+			} else {
+				sub.setVisibility(GONE);
+			}
+			playBtn.setVisibility((r.play() != null) ? VISIBLE : GONE);
+		}
 	}
 }

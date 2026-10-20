@@ -38,12 +38,12 @@ final class PlaylistsWidget extends LibraryWidget {
 				done.done(rows, 0);
 				return;
 			}
-			int n = Math.min(lists.size(), 60);
+			int n = Math.min(lists.size(), 100);
 			for (int i = 0; i < n; i++) {
 				Playlist pl = lists.get(i);
 				rows.add(new Row(pl.getName(), null, pl, () -> drill(pl.getName(), (a2, d2) -> songs(pl, a2, d2)),
-						() -> HomePlay.list(a, pl), sub -> pl.getUnsortedChildren().main().onSuccess(c -> {
-					if (c != null) sub.setText(ctx.getString(R.string.home_tracks, c.size()));
+						() -> HomePlay.list(a, pl), set -> pl.getUnsortedChildren().main().onSuccess(c -> {
+					if (c != null) set.accept(ctx.getString(R.string.home_tracks, c.size()));
 				})));
 			}
 			done.done(rows, lists.size());
@@ -58,7 +58,7 @@ final class PlaylistsWidget extends LibraryWidget {
 				done.done(rows, 0);
 				return;
 			}
-			int n = Math.min(items.size(), 120);
+			int n = Math.min(items.size(), 300);
 			for (int i = 0; i < n; i++) {
 				if (!(items.get(i) instanceof PlayableItem p)) continue;
 				String artist = (p instanceof MusicTrackItem t) ? t.getArtistName() : null;

@@ -123,6 +123,8 @@ final class MediaWidget extends HomeWidgetView {
 	/** Until when the play button shows a spinner after a skip, whatever the session has said by then. */
 	private long skipUntil;
 	private boolean startedIdle;
+	@Nullable
+	private Bitmap shownArt;
 	/** Where the shuffle and repeat buttons are: 0 not shown, 1 around the play button, 2 under the seek bar. */
 	private int extrasAt;
 	/** Where the user last seeked to, until the session reports it (the YouTube player is slow to). */
@@ -499,10 +501,13 @@ final class MediaWidget extends HomeWidgetView {
 			return;
 		}
 		idle = idleNow;
-		if (pi == shown) {
+		if (HomeArt.same(pi, shown)) {
+			// The player may hand out another object for the same song (a seek does): nothing to redraw.
+			shown = pi;
 			syncState();
 			return;
 		}
+		me.aap.fermata.util.DiagnosticLog.log("MUSIC", "home media: new item", "from=" + shown, "to=" + pi);
 		shown = pi;
 		// The new song is up: the spinner after a skip is the session's to show from here.
 		if (cbState() == PlaybackStateCompat.STATE_PLAYING) skipUntil = 0;
@@ -585,15 +590,18 @@ final class MediaWidget extends HomeWidgetView {
 		t.animate().alpha(1f).translationY(0f).setDuration(300).setInterpolator(new DecelerateInterpolator()).start();
 	}
 
+	/** The little spinner in the card's corner is gone for good: the cover simply arrives. */
 	private void setBusy(boolean on) {
-		boolean strip = (mode == STRIP_SMALL) || (mode == STRIP_WIDE);
-		artBusy.setVisibility(on && !strip ? VISIBLE : GONE);
+		artBusy.setVisibility(GONE);
 	}
 
 	/** Shows the cover, or the card's own colours when there is none; the old one fades into it. */
 	private void setArt(@Nullable Bitmap bm) {
 		hasArt = bm != null;
 		setBusy(false);
+		// The same cover again (a seek asks for it again): nothing to fade.
+		if ((bm != null) && (bm == shownArt)) return;
+		shownArt = bm;
 		if (bm == null) {
 			GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
 					new int[]{HomeUi.shade(type.accent, 0.7f), HomeUi.shade(type.accent, 0.3f)});
@@ -640,8 +648,9 @@ final class MediaWidget extends HomeWidgetView {
 			skipUntil = 0;
 		}
 		boolean skipping = SystemClock.elapsedRealtime() < skipUntil;
-		setPlayLoading(isBusy(s) || ((s == PlaybackStateCompat.STATE_PLAYING) && BufferingIndicator.isBuffering())
-				|| skipping);
+		// Starting from nothing shows no spinner at all: the button turns to pause when the song is up.
+		setPlayLoading(!startedIdle && (isBusy(s) ||
+				((s == PlaybackStateCompat.STATE_PLAYING) && BufferingIndicator.isBuffering()) || skipping));
 		if (skipping) {
 			removeCallbacks(skipEnd);
 			postDelayed(skipEnd, Math.max(50, skipUntil - SystemClock.elapsedRealtime() + 50));

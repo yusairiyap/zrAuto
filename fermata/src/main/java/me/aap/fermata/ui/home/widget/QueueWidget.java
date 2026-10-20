@@ -81,8 +81,7 @@ final class QueueWidget extends LibraryWidget {
 			boolean now = t.equals(cur);
 			if (now) playing = i;
 			String artist = t.getArtistName();
-			rows.add(new Row(now ? "▶  " + t.getName() : t.getName(), (artist == null) ? null : artist, t,
-					() -> MusicPlayer.playTrack(a, t, 0), null, null));
+			rows.add(new Row(t.getName(), artist, t, () -> MusicPlayer.playTrack(a, t, 0), null, null, now));
 		}
 		focusRow = playing;
 		done.done(rows, order.size());

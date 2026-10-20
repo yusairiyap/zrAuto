@@ -584,6 +584,27 @@ what each widget shows is set on the widget (edit mode > its gear).
 - **Home's root is opaque** (`palette.background`) from the first frame; the picture/gradient fades in over it. A transparent
   root let the window's dark colour show through the tab crossfade as a veil.
 
+### Fifth round (lists, entrance, art on seek)
+
+- **`LibraryWidget` is a `RecyclerView`** (GridLayoutManager: 1 or 2 columns), not a column of views: rows are bound for what is on screen
+  only, so a queue of hundreds costs a few rows, and coming back to Home rebinds nothing. A refresh is a `DiffUtil` against the old rows
+  (`Row#key()` = its item, else its title). `Row` has a `current` flag: the playing queue row is filled with the accent instead of
+  carrying a marker. `subFill` now gets a *setter* (`Consumer<Consumer<CharSequence>>`) that ignores a row that was recycled meanwhile.
+  The playing row is scrolled into view once per song (`lastFocusKey`), never while the finger is on the list.
+- **Thumbnails** (`HomeImages#loadUri/loadItem`) use the library's resized icon copies (`getBitmap(uri, true, true)`: decoded once,
+  saved on disk, shared with the tabs' `recent` LRU), not the full picture, and fade in when they arrive late. The full-size path is
+  only for the now-playing cover (`HomeArt`).
+- **`HomePlay` always plays as music** (queue replaced, the screen stays on Home) when the Music addon is on; only streams and the addon
+  being off go to the player they belong to.
+- **`chip()` had never set its label** (every chip made through `HomeWidgetView#chip` was blank: timer presets, Settings chip); fixed there.
+- **Entrance**: Home has two layers under its content that reach under the bars, `base` (the plain gradient, never faded) and `bg`
+  (picture, fades in later); only `bg` is faded (`bgShown`), so the status and navigation bar areas are never bare while the tab fades in.
+  Any index passed to `root.addView(.., index)` counts both.
+- **Now playing**: no corner spinner any more, and no centre spinner while starting from nothing (`startedIdle`). Items are compared by
+  id (`HomeArt#same`), the trimmed cover is memoised, and the card/background skip a cover they already show, so a seek or lyric
+  scrub that makes the player hand out another object for the song does not fade the art out and in. If it still does, the
+  Diagnostic log has `home media: new item` lines (MUSIC).
+
 ### Adding a widget (the easy path)
 
 1. Write `ui/home/widget/FooWidget extends HomeWidgetView` (constructor `(HomeHost, HomeWidgetType)`). Build views in

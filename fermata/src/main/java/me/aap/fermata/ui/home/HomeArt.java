@@ -91,6 +91,29 @@ public final class HomeArt {
 	@Nullable
 	static Bitmap trimBars(@Nullable Bitmap bm) {
 		if (bm == null) return null;
+		// The same picture again gives the same result object, so a caller can tell nothing changed.
+		if (bm == memoSrc) return memoOut;
+		Bitmap out = trimBars0(bm);
+		memoSrc = bm;
+		memoOut = out;
+		return out;
+	}
+
+	private static Bitmap memoSrc;
+	private static Bitmap memoOut;
+
+	/** Whether {@code a} and {@code b} are the same song or video (the player may hand out another object for it). */
+	public static boolean same(@Nullable PlayableItem a, @Nullable PlayableItem b) {
+		if (a == b) return true;
+		if ((a == null) || (b == null)) return false;
+		try {
+			return java.util.Objects.equals(a.getId(), b.getId());
+		} catch (RuntimeException ex) {
+			return false;
+		}
+	}
+
+	private static Bitmap trimBars0(Bitmap bm) {
 		try {
 			Bitmap src = (bm.getConfig() == Bitmap.Config.HARDWARE) ? bm.copy(Bitmap.Config.ARGB_8888, false) : bm;
 			if (src == null) return bm;

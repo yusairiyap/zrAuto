@@ -632,6 +632,7 @@ public abstract class HomeWidgetView extends FrameLayout {
 	/** A small pill button with an icon and a label. */
 	protected final TextView chip(@DrawableRes int icon, CharSequence label, Runnable onClick) {
 		TextView t = new TextView(ctx);
+		t.setText(label);
 		t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
 		t.setTypeface(Typeface.DEFAULT_BOLD);
 		t.setSingleLine(true);
