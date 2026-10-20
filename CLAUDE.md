@@ -615,6 +615,9 @@ what each widget shows is set on the widget (edit mode > its gear).
   The seek bar also asks the *engine* for position and duration (`MediaWidget#pollEngine`): the session's state and the item's metadata
   lag or lack both for YouTube, which left the bar frozen and not answering touches (a touch needs a length). `tick()` removes its own
   callback first, so a duration arriving late doesn't double the polling chain.
+- **No page-centre spinner on Home**: `MainActivityDelegate#setContentLoading` (used by `BodyLayout` while a started playback comes up, among others)
+  shows the big spinner in the middle of the page; `onHome()` keeps it off there, both when it is asked for and when its delayed
+  show fires (a song picked in the Queue card used to bring it up over the dashboard).
 - **Edit chips on a phone**: Background and Settings keep only their icons under 520dp, or the done tick went off the screen's edge.
 - **OPEN ISSUE (not solved, to be taken on in another branch): bare bars when Home is entered.** On entering Home the status bar and
   navigation bar areas show the app's dark/plain colour for the length of the tab crossfade before the background (picture or the cover's

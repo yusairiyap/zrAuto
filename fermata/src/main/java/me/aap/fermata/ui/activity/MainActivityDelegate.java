@@ -162,6 +162,7 @@ import me.aap.fermata.ytdl.YtOffline;
 import me.aap.fermata.spotify.SpotifyAuth;
 import me.aap.fermata.ui.fragment.AudioEffectsFragment;
 import me.aap.fermata.ui.fragment.DiagnosticLogFragment;
+import me.aap.fermata.ui.fragment.HomeFragment;
 import me.aap.fermata.ui.fragment.KeyTesterFragment;
 import me.aap.fermata.ui.fragment.CarModeFragment;
 import me.aap.fermata.ui.fragment.FavoritesFragment;
@@ -2284,8 +2285,16 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	private final Runnable showLoadingBar = () -> {
-		if (progressBar != null) progressBar.setLoading(true);
+		if ((progressBar != null) && !onHome()) progressBar.setLoading(true);
 	};
+
+	/**
+	 * Home never shows the spinner in the middle of the page: what it waits for (a song picked in its queue
+	 * starting) is shown by its own cards, and a spinner over a dashboard of widgets looks like a hang.
+	 */
+	private boolean onHome() {
+		return getActiveFragment() instanceof HomeFragment;
+	}
 
 	public void setContentLoading(FutureSupplier<?> contentLoading) {
 		if (this.contentLoading != null) {
@@ -2295,7 +2304,7 @@ public class MainActivityDelegate extends ActivityDelegate
 
 		hideContentLoading();
 		if (contentLoading.isDone()) return;
-		if (!loadingSuppressed) showContentLoading();
+		if (!loadingSuppressed && !onHome()) showContentLoading();
 
 		var cl = this.contentLoading = contentLoading.main();
 		cl.onCompletion((r, f) -> {
