@@ -582,7 +582,20 @@ public final class CarNav {
 			s.activity.onBackPressed();
 			return;
 		}
+		// With Home in the bar, the top of a tab goes back to Home (the dashboard with the player on it), else to what's playing.
+		if (homeIsThere(s.activity) && (f != null) && (f.getFragmentId() != R.id.home_fragment)) {
+			s.activity.exitVideoMode();
+			s.activity.showFragment(R.id.home_fragment);
+			return;
+		}
 		s.activity.getControlPanel().openNowPlaying();
+	}
+
+	/** The Home tab is in the navigation bar (and not hidden from it). */
+	private static boolean homeIsThere(MainActivityDelegate a) {
+		var prefs = a.getPrefs();
+		return me.aap.fermata.ui.fragment.NavBarMediator.getTabs(prefs).contains("home") &&
+				!me.aap.fermata.ui.fragment.NavBarMediator.getHiddenTabs(prefs).contains("home");
 	}
 
 	/**

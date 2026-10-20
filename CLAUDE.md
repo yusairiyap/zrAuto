@@ -713,7 +713,7 @@ what each widget shows is set on the widget (edit mode > its gear).
 
 ### Twelfth round (chips that turn opaque, start-up wait, edge fades)
 
-- **The top info chips** (`HomeScreen#updateTopInfoScroll`, fed by the page's scroll through `HomeFadeLayout#follow(s, onScrolled)`): staying
+- **The top info chips** (`HomeScreen#updateTopInfoScroll`, fed by the page's scroll through `HomeGridLayout#setScroller(s, onScrolled)`: a scroller has ONE scroll listener, and the grid's own `setScroller` was silently replacing the one `HomeFadeLayout#follow` had set, so the chips never reacted until edit mode was toggled (which re-applies them)): staying
   pinned, their fill blends from the translucent chip colour to an opaque panel colour over the first 56dp of scrolling
   (`InfoOverlayView#setChipFill`, which only recolours the chips' drawables), so widgets passing under them don't show through. Settings > Home >
   Header has "Hide the info chips while scrolling down" (`HOME_TOP_OVERLAY_HIDE`, `_AA` twin): they then leave with the greeting, fading.
@@ -730,6 +730,36 @@ what each widget shows is set on the widget (edit mode > its gear).
 
 - **The media widget's chip (Watch / Fullscreen / Open Music) is icon only on the car screen and at low density** (`MediaWidget#setChip`: `host.isCar()` or
   density under 1.5, i.e. under 240 dpi): the words were as big as the card's title there. The name stays as the chip's content description.
+
+### Fourteenth round (back to Home, chip fixes, open issue)
+
+- **Car mode, long Previous at the top of a tab goes to Home** when Home is in the bar (`CarNav#back`, `homeIsThere`: in `NavBarMediator.getTabs` and not
+  hidden), else to what's playing as before. Inside a folder or playlist it still goes up one level first.
+- **One scroll listener** (`HomeGridLayout#setScroller(s, onScrolled)`): the page edge fade redraw and the chips' opaque/hide step now run from the same listener
+  as the grid's on-screen check. Anything else that needs the page's scroll goes there too.
+- **Rapid edit-mode toggling crashed on Android Auto** (cause not seen; no log yet). Found and fixed on the way: `InfoOverlayView#setChipStyle` threw away the chip
+  wrappers when the fill differed (which the chips' scroll fill makes routine), leaving item views attached to the old wrappers, so the next `addView` threw
+  "already has a parent"; it recolours them instead. The chip bar's delayed transition now ends a running one first, and the toggle is logged
+  (`HOME edit mode on/off`). If it still crashes, the crash is in the Diagnostic log (`DiagnosticLog#installCrashHandler` writes it): read the stack there.
+- **`ChipFlowLayout` makes every chip of a line as tall as the tallest** (the icon-only Downloaded chip stayed shorter than the others even with a minimum height).
+
+### OPEN ISSUE: the tool bar (or an empty bar) still shows briefly when the app starts on Home
+
+Seen on a phone with the bottom navigation bar and on the car screen, after every fix below. Where things stand:
+
+- **Tried, in order, none seen to remove it on a device:** (1) `HomeToolBarMediator` hides the bar at once while `isStartupVeil()`; (2) the start-up veil
+  (`MainActivityDelegate#veilStartup`: the whole `R.id.main_activity` at alpha 0 until Home's first frame, then a 280 ms fade), which in the ninth round
+  silently did nothing because it ran before `init()` inflated the layout, so (3) it now runs after `init()`; (4) the lift waits (at most 700 ms) until the tool bar
+  is gone and the control panel has finished its cover fade (`startupSettled`); (5) the veil also covers a restore with Home saved after the process was killed.
+- **What the user sees is not known exactly**: "the toolbar", on a phone with a bottom nav bar. It may be the tool bar, the empty control panel, or the empty nav bar
+  before its tabs are in, and it may be visible *after* the lift (during the 280 ms fade) or before it (if the veil was never applied: starts through
+  another path, e.g. `state != null`, a different intent action, `HOME_OPEN_ON_START` off with a different start tab).
+- **Next steps, in order:** (a) read the Diagnostic log after a cold start: `STATE start-up veil` says whether it was applied ("on" / "no window content yet") and
+  what was showing at the lift ("tool bar", "control panel" visibility/alpha, "nav bar" visibility/child count); no line at all means the veil's condition was
+  not met, so find which part of the `startsOnHome` / `restoredHome` condition failed; (b) if the veil was on and the lift log shows everything hidden, the
+  flash is after the lift: log the tool bar's and control panel's visibility during the 280 ms fade (a `ViewTreeObserver.OnPreDrawListener` on `main_activity`);
+  (c) if it is the nav bar, hold the lift until `navBar.getChildCount() > 0` and its first layout; (d) as a last resort draw an opaque `palette.background`
+  cover view above everything on `main_activity` (not an alpha on the root) and fade *that* out, so the bars underneath never show through a fade of the root.
 
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 

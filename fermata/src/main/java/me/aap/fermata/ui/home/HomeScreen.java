@@ -36,6 +36,7 @@ import me.aap.fermata.action.Action;
 import me.aap.fermata.action.CarNav;
 import me.aap.fermata.addon.power.PowerSaver;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.view.BehindBarsLayers;
 import me.aap.fermata.ui.view.InfoOverlayView;
@@ -551,13 +552,18 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	private void setEditing(boolean on) {
 		if (editing == on) return;
 		editing = on;
+		DiagnosticLog.log("HOME", "edit mode", on ? "on" : "off");
 		grid.setEditing(on);
 		applyEditUi(true);
 		if (!on) model.save();
 	}
 
 	private void applyEditUi(boolean animated) {
-		if (animated && animate()) TransitionManager.beginDelayedTransition(chipBar);
+		if (animated && animate() && chipBar.isLaidOut()) {
+			// A toggle on top of a toggle still running: that one ends first, the new one starts from where it is.
+			TransitionManager.endTransitions(chipBar);
+			TransitionManager.beginDelayedTransition(chipBar);
+		}
 		editBtn.setVisibility(editing ? View.GONE : View.VISIBLE);
 		for (TextView c : editChips) c.setVisibility(editing ? View.VISIBLE : View.GONE);
 		// On a phone the four chips with their words are wider than the screen (the done button went off its
@@ -699,7 +705,6 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		fade = new HomeFadeLayout(ctx);
 		fade.addView(s, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));
-		fade.follow(s, this::updateTopInfoScroll);
 		root.addView(fade, 2, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));
 		if (!down) {
@@ -707,7 +712,12 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			root.addView(greeting, 3, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
 					ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START));
 		}
-		grid.setScroller(s);
+		// One listener for the page's scroll (a scroller keeps only one): the grid's on-screen check, the edge fade
+		// redraw and the info chips' turn to opaque (or away).
+		grid.setScroller(s, () -> {
+			fade.invalidate();
+			updateTopInfoScroll();
+		});
 		scroller = s;
 		startInsets(s);
 	}

@@ -613,6 +613,7 @@ public class InfoOverlayView extends LinearLayout {
 	 */
 	public void setChipStyle(int fg, int fill) {
 		boolean changed = (chipFill != fill);
+		boolean first = (chipFill == 0);
 		chipFill = fill;
 		if (chipFlow == null) {
 			chipFlow = new ChipFlowLayout(getContext());
@@ -621,8 +622,12 @@ public class InfoOverlayView extends LinearLayout {
 		setBackground(null);
 		applyPadding();
 		setForegroundColor(fg);
-		if (changed) {
-			chipWrappers.clear();
+		// Another fill (the scroll turned it opaque, or the theme changed) recolours the chips that are there:
+		// throwing the wrappers away while the item views still sit in them made addView throw "already has a parent".
+		if (changed && !first) {
+			for (LinearLayout w : chipWrappers.values()) {
+				if (w.getBackground() instanceof android.graphics.drawable.GradientDrawable d) d.setColor(fill);
+			}
 		}
 		layoutRows();
 	}

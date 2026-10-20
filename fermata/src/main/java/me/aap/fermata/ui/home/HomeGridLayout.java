@@ -113,10 +113,16 @@ final class HomeGridLayout extends ViewGroup {
 		gap = HomeUi.dp(ctx, 10);
 	}
 
-	void setScroller(@Nullable ViewGroup s) {
+	/** The page's scroller; {@code onScrolled} also runs on every scroll (a scroller has only one such listener, this one). */
+	void setScroller(@Nullable ViewGroup s, @Nullable Runnable onScrolled) {
 		if (scroller != null) scroller.setOnScrollChangeListener(null);
 		scroller = s;
-		if (s != null) s.setOnScrollChangeListener((v, x, y, ox, oy) -> updateOnScreen());
+		if (s != null) {
+			s.setOnScrollChangeListener((v, x, y, ox, oy) -> {
+				updateOnScreen();
+				if (onScrolled != null) onScrolled.run();
+			});
+		}
 	}
 
 	/**
