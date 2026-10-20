@@ -598,8 +598,9 @@ what each widget shows is set on the widget (edit mode > its gear).
   being off go to the player they belong to.
 - **`chip()` had never set its label** (every chip made through `HomeWidgetView#chip` was blank: timer presets, Settings chip); fixed there.
 - **Entrance**: Home has two layers under its content that reach under the bars, `base` (the plain gradient, never faded) and `bg`
-  (picture, fades in later); only `bg` is faded (`bgShown`), so the status and navigation bar areas are never bare while the tab fades in.
-  Any index passed to `root.addView(.., index)` counts both.
+  (the picture). Like the Music tab's layers, both are at full alpha from the first frame (holding `bg` back and fading it in after the
+  tab showed was what made a bare gradient appear first and the picture dissolve in 0.5 s later); `bg` is only faded when leaving
+  (`bgShown`) and when a *new* picture arrives (`HomeBackgroundView#setImage`). Any index passed to `root.addView(.., index)` counts both.
 - **Now playing**: no corner spinner any more, and no centre spinner while starting from nothing (`startedIdle`). Items are compared by
   id (`HomeArt#same`), the trimmed cover is memoised, and the card/background skip a cover they already show, so a seek or lyric
   scrub that makes the player hand out another object for the song does not fade the art out and in. If it still does, the

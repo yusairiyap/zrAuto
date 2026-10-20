@@ -362,28 +362,13 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	}
 
 	/**
-	 * The background reaches out under the bars one frame after the tab shows (see BehindBarsLayers),
-	 * which looked like it stretching; it is held back until it has, then comes in with a fade.
+	 * The background is there from the first frame, like the Music tab's: its layers keep the margins
+	 * that reach under the bars from the last visit (and on the very first one the tab is still almost
+	 * transparent in the crossfade when they are applied), so nothing needs holding back and fading in.
 	 */
 	private void fadeBackgroundIn() {
 		if (bgFade != null) bgFade.cancel();
-		if (!animate()) {
-			bgShown(1f);
-			return;
-		}
-		bgShown(0f);
-		root.post(() -> root.post(() -> {
-			if (!shown) {
-				bgShown(1f);
-				return;
-			}
-			ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
-			a.setDuration(420);
-			a.setInterpolator(new DecelerateInterpolator(1.4f));
-			a.addUpdateListener(v -> bgShown((float) v.getAnimatedValue()));
-			bgFade = a;
-			a.start();
-		}));
+		bgShown(1f);
 	}
 
 	/** Fades the picture layer (the plain gradient under it stays). */
