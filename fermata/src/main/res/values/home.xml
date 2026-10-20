@@ -55,6 +55,10 @@
     <string name="home_style_solid">Solid</string>
     <string name="home_style_glass">Glass</string>
     <string name="home_style_colour">Colour</string>
+    <string name="home_style_custom">Custom</string>
+    <string name="home_pref_bg_source">Background</string>
+    <string name="home_bg_source_picture">The picture I picked</string>
+    <string name="home_bg_source_cover">Cover of what plays</string>
 
     <!-- Widget names and what they do -->
     <string name="home_w_media">Now playing</string>
@@ -79,6 +83,19 @@
     <string name="home_w_youtube_d">Videos picked for what you are playing</string>
     <string name="home_w_aio">All in One</string>
     <string name="home_w_aio_d">The All in One actions as round icons</string>
+    <string name="home_w_timer">Sleep timer</string>
+    <string name="home_w_timer_d">Time left, and the usual lengths to start one with a tap</string>
+    <string name="home_w_effects">Audio effects</string>
+    <string name="home_w_effects_d">The equalizer as it is set now; opens the effects</string>
+    <string name="home_w_overlay">Info overlay</string>
+    <string name="home_w_overlay_d">Switch what the info overlay shows: clock, battery, data and more</string>
+    <string name="home_timer_idle">Stop playing after a while</string>
+    <string name="home_timer_running">Playback stops then</string>
+    <string name="home_effects_idle">Play something to tune the sound</string>
+    <string name="home_effects_none">No equalizer for this player</string>
+    <string name="home_effects_off">Equalizer off</string>
+    <string name="home_effects_on">Equalizer on</string>
+    <string name="home_effects_preset">Equalizer · %1$s</string>
     <string name="home_w_ambience">Ambience</string>
     <string name="home_w_ambience_d">Rain, fire, waves and more, with the weather drawn live</string>
 

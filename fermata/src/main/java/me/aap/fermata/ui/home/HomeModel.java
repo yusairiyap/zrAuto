@@ -202,6 +202,23 @@ public final class HomeModel {
 		return n;
 	}
 
+	/** Whether any widget has a look of its own, other than following Home's. */
+	public boolean anyStyleOverride() {
+		for (Cell c : cells) {
+			for (Item it : c.items) {
+				if (it.opts.optInt(HomeWidgetView.OPT_STYLE, HomeWidgetView.STYLE_AUTO) != HomeWidgetView.STYLE_AUTO) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/** Every widget goes back to following Home's look. */
+	public void clearStyles() {
+		for (Cell c : cells) for (Item it : c.items) it.opts.remove(HomeWidgetView.OPT_STYLE);
+	}
+
 	/** Changes one option of a widget (null removes it). */
 	public void setOpt(Item it, String key, @Nullable Object value) {
 		try {

@@ -69,6 +69,9 @@ final class HomeCellView extends FrameLayout implements HomeStackView.Callback {
 	private float lastRawX;
 	private float lastRawY;
 	private long downTime;
+	/** The directions a widget under the finger reads itself (see HomeWidgetView#gestures), and whether the page is held off. */
+	private int claims;
+	private boolean heldOff;
 	private final Runnable pickup = this::pickUp;
 
 	HomeCellView(Context ctx, HomeGridLayout grid, HomeHost host, HomeModel.Cell cell) {
@@ -244,12 +247,46 @@ final class HomeCellView extends FrameLayout implements HomeStackView.Callback {
 		if (!on) hidePanel(false);
 	}
 
+	/** 0 to 1: how far the options panel inside the card has taken the handles' place. */
+	private float panelAmount;
+	@Nullable
+	private ValueAnimator panelAnim;
+
+	private void animatePanelAmount(float to) {
+		if (panelAnim != null) panelAnim.cancel();
+		if (!host.animate()) {
+			panelAmount = to;
+			setChromeAlpha(editAmount);
+			return;
+		}
+		ValueAnimator a = ValueAnimator.ofFloat(panelAmount, to);
+		a.setDuration(180);
+		a.addUpdateListener(v -> {
+			panelAmount = (float) v.getAnimatedValue();
+			setChromeAlpha(editAmount);
+		});
+		panelAnim = a;
+		a.start();
+	}
+
 	private void setChromeAlpha(float a) {
+		a *= (1f - panelAmount);
 		for (View v : new View[]{removeBtn, optionsBtn, handle}) {
 			v.setAlpha(a);
 			v.setVisibility(a <= 0.01f ? INVISIBLE : VISIBLE);
 		}
 		invalidate();
+	}
+
+	/** While resized: the handle follows the finger, the widget only changes when it lets go. */
+	void dragHandle(float dx, float dy) {
+		handle.animate().cancel();
+		handle.setTranslationX(dx);
+		handle.setTranslationY(dy);
+	}
+
+	void resetHandle() {
+		handle.animate().translationX(0f).translationY(0f).setDuration(host.animate() ? 200 : 0).start();
 	}
 
 	void setLifted(boolean on) {
@@ -333,12 +370,15 @@ final class HomeCellView extends FrameLayout implements HomeStackView.Callback {
 		p.setAlpha(0f);
 		addView(p, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 		p.animate().alpha(1f).setDuration(180).start();
+		// The remove, options and resize handles would sit on the panel's own controls.
+		animatePanelAmount(1f);
 	}
 
 	void hidePanel(boolean animated) {
 		View p = panel;
 		if (p == null) return;
 		panel = null;
+		animatePanelAmount(0f);
 		if (animated && host.animate()) {
 			p.animate().alpha(0f).setDuration(140).withEndAction(() -> removeView(p)).start();
 		} else {
@@ -395,6 +435,35 @@ final class HomeCellView extends FrameLayout implements HomeStackView.Callback {
 			default -> {
 			}
 		}
+	}
+
+	/**
+	 * A widget that reads drags itself (lyrics scrolled, a seek bar), or a stack to swipe, keeps the
+	 * page from taking the drag over when the page scrolls the same way: held off from the touch
+	 * down, and let go again once the finger moves the other way (or has nowhere to go).
+	 */
+	private void claimGestures() {
+		heldOff = false;
+		claims = 0;
+		if (editing || (panel != null)) return;
+		if (stack.count() > 1) claims |= HomeWidgetView.GESTURE_H;
+		HomeWidgetView top = topWidget();
+		if (top != null) claims |= top.gesturesNow();
+		int page = grid.isVertical() ? HomeWidgetView.GESTURE_V : HomeWidgetView.GESTURE_H;
+		if (((claims & page) != 0) && (getParent() != null)) {
+			heldOff = true;
+			getParent().requestDisallowInterceptTouchEvent(true);
+		}
+	}
+
+	private void releaseGestures() {
+		if (!heldOff) return;
+		float dx = Math.abs(lastRawX - downRawX);
+		float dy = Math.abs(lastRawY - downRawY);
+		int dominant = (dx > dy) ? HomeWidgetView.GESTURE_H : HomeWidgetView.GESTURE_V;
+		if ((claims & dominant) != 0) return;
+		heldOff = false;
+		if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
 	}
 
 	private void pickUp() {

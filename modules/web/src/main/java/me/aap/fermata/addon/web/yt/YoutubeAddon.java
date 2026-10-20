@@ -307,6 +307,28 @@ public class YoutubeAddon extends WebBrowserAddon
 		}
 
 		@Override
+		public boolean playVideoQuietly(MainActivityDelegate a, String videoId, @Nullable String title) {
+			if ((title != null) && !title.isEmpty()) cacheVideoTitle(videoId, title);
+			ActivityFragment f = a.getFragment(getFragmentId());
+			if (f instanceof YoutubeFragment yf) {
+				YoutubeWebView web = yf.getWebView();
+				YoutubeMediaEngine eng = (web == null) ? null : web.getEngine();
+				// A video already playing in the page: swapped there, the screen stays where it is.
+				if ((eng != null) && eng.isActive()) {
+					yf.playVideoNow(videoId, title);
+					return true;
+				}
+			}
+			if (!(a.getLib() instanceof DefaultMediaLib lib)) return false;
+			// Never opened, or idle: the page is loaded (laid out, but its tab not shown) with the video.
+			if (f == null) f = a.preloadFragment(getFragmentId());
+			if (f == null) return false;
+			YoutubeVideoItem video = new YoutubeVideoItem(videoId, getRootItem(lib));
+			video.loadInFragment(f, video);
+			return true;
+		}
+
+		@Override
 		public int addToVideoQueue(MainActivityDelegate a, List<? extends PlayableItem> items) {
 			if (!(a.getFragment(getFragmentId()) instanceof YoutubeFragment f)) return -1;
 			YoutubeWebView web = f.getWebView();

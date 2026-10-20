@@ -291,6 +291,7 @@ final class HomeStackView extends FrameLayout {
 					if (!room) {
 						// Nothing that way: left to whatever scrolls the page.
 						armed = false;
+						if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
 						return false;
 					}
 					startDrag(e);

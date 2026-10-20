@@ -513,6 +513,34 @@ what each widget shows is set on the widget (edit mode > its gear).
   that opens Settings > Home (`SettingsFragment.SHOW_HOME_SETTINGS`).
 - `MeterBar` is a thin animated bar for widgets (Power breakdown, Data session limit).
 
+### Second round (gestures, placeholders, now playing)
+
+- **A widget that reads drags itself** (lyrics scrubbing, a stack's swipe) must keep the page from taking them: override
+  `HomeWidgetView#gestures()` (`GESTURE_H` / `GESTURE_V`). `HomeCellView#claimGestures` holds the scroller off from the touch down
+  when the page scrolls that way, and lets go once the finger moves the other way (a stack with nowhere to go lets go too).
+  Waiting for the widget's own intercept is too late: the scroller intercepts first. A seek bar only needs
+  `requestDisallowInterceptTouchEvent` on its own DOWN. Lyrics is the Music tab's `LyricsView` (scrub, tap a line to seek).
+- **Resizing** shows a dashed outline of the size the handle would give (`HomeGridLayout` draws it over the cells) and applies it on
+  release; the handle itself follows the finger. The inline options panel hides the three handles while it is open.
+- **Look in Settings** shows Custom when some widget has its own look (`HomeScreen.styleShown`); picking one sets every widget
+  (`HomeScreen.setAllStyles`), through the live model when Home is up, else the stored layout.
+- **Placeholders**: `HomeSkeleton` (grey rows with a sweeping light) stands in for lists while they load (Library widgets, YouTube
+  suggestions, and the suggestions again whenever the playing song changes: `stale`). A spinner is only for strips.
+- **Opening something inside a card**: `LibraryWidget#drill(title, source)` swaps the rows for another source under a back chip
+  (the playlists widget opens a playlist's songs; a tap plays one). Not saved.
+- **Now playing** (`ui/home/HomeArt`): the item shown is what plays, else where the music queue stopped (cover and title right after
+  start, like the Music tab), else the last session item; Play then starts it as music without leaving Home
+  (`MusicPlayer.playTrack/playAsMusic`). The play button shows a spinner while the session is busy or a skip was just asked for.
+  The cover is a square (never cropped) that dissolves into the blurred wash on its open side. Shuffle and repeat sit around the
+  play button when the width allows, else under the seek bar.
+- **Background from the cover** (`HomeNowPlayingBg`, Settings > Home > Background): the blurred cover fades from song to song.
+  The background itself fades in after the bars extension has been applied (`HomeScreen#fadeBackgroundIn`), not stretching.
+- **YouTube suggestions** play through `MusicPlayer#playYoutubeQuietly`: swapped into the page that plays, or the page is loaded
+  without showing its tab; the screen stays on Home.
+- **Greeting** sits pinned top left when the page scrolls sideways.
+- New widgets: Sleep timer (`TimerWidget`), Audio effects (`EffectsWidget`, the equalizer's bands as bars), Info overlay
+  (`InfoOverlayWidget`, a switch per overlay item, the car's twin prefs on the car screen).
+
 ### Adding a widget (the easy path)
 
 1. Write `ui/home/widget/FooWidget extends HomeWidgetView` (constructor `(HomeHost, HomeWidgetType)`). Build views in

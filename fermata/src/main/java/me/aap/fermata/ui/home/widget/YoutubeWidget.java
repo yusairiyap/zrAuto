@@ -25,6 +25,7 @@ import me.aap.fermata.ui.fragment.SpotifyImportFragment;
 import me.aap.fermata.ui.home.HomeHost;
 import me.aap.fermata.ui.home.HomeImages;
 import me.aap.fermata.ui.home.HomeOption;
+import me.aap.fermata.ui.home.HomeSkeleton;
 import me.aap.fermata.ui.home.HomeUi;
 import me.aap.fermata.ui.home.HomeWidgetType;
 import me.aap.fermata.ui.home.HomeWidgetView;
@@ -44,6 +45,9 @@ final class YoutubeWidget extends HomeWidgetView {
 	private LinearLayout list;
 	private TextView message;
 	private ProgressBar busy;
+	private HomeSkeleton skeleton;
+	/** The song changed (or a refresh was asked for): what shows is out of date until the new search is in. */
+	private boolean stale;
 	private List<Video> videos = new ArrayList<>();
 	private String lastQuery = "";
 	private long loadedAt;
@@ -57,6 +61,10 @@ final class YoutubeWidget extends HomeWidgetView {
 			if (optInt("source", 0) != 0) return;
 			removeCallbacks(reload);
 			postDelayed(reload, CHANGE_DELAY_MS);
+			post(() -> {
+				stale = true;
+				render();
+			});
 		}
 	};
 
@@ -70,7 +78,11 @@ final class YoutubeWidget extends HomeWidgetView {
 		column.setOrientation(LinearLayout.VERTICAL);
 		LinearLayout head = header(() -> open(R.id.youtube_fragment));
 		ImageView refresh = iconButton(R.drawable.refresh, 30, ROLE_SECONDARY, R.string.home_refresh,
-				() -> load(true));
+				() -> {
+					stale = true;
+					render();
+					load(true);
+				});
 		head.addView(refresh, Math.max(0, head.getChildCount() - 1));
 		column.addView(head, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(34)));
 
@@ -80,6 +92,13 @@ final class YoutubeWidget extends HomeWidgetView {
 				ViewGroup.LayoutParams.WRAP_CONTENT);
 		ll.topMargin = px(4);
 		column.addView(list, ll);
+
+		skeleton = new HomeSkeleton(ctx);
+		skeleton.setVisibility(GONE);
+		skeleton.setColor(softFill());
+		LinearLayout.LayoutParams sk = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+		sk.topMargin = px(4);
+		column.addView(skeleton, sk);
 
 		message = text(ROLE_SECONDARY, 13, false);
 		message.setGravity(Gravity.CENTER);
@@ -101,6 +120,11 @@ final class YoutubeWidget extends HomeWidgetView {
 				ctx.getString(R.string.home_yt_chill), ctx.getString(R.string.home_yt_hits)));
 		l.add(HomeOption.sw("thumbs", ctx.getString(R.string.home_opt_artwork), true));
 		return l;
+	}
+
+	@Override
+	protected void onStyleChanged() {
+		if (skeleton != null) skeleton.setColor(softFill());
 	}
 
 	@Override
@@ -164,42 +188,77 @@ final class YoutubeWidget extends HomeWidgetView {
 		}
 		String q = query();
 		boolean fresh = q.equals(lastQuery) && ((SystemClock.uptimeMillis() - loadedAt) < FRESH_MS);
-		if (loading || (!force && fresh && !videos.isEmpty())) return;
+		if (loading || (!force && fresh && !videos.isEmpty())) {
+			// The same search as before: what shows is not out of date after all.
+			if (!loading && stale) {
+				stale = false;
+				render();
+			}
+			return;
+		}
 		loading = true;
 		lastQuery = q;
 		int gen = ++generation;
-		if (videos.isEmpty()) showMessage(R.string.home_yt_loading);
+		render();
 		App.get().getExecutor().submitTask(() -> YoutubeSearch.search(q, 12)).main()
 				.onCompletion((found, err) -> {
 					loading = false;
 					if (gen != generation) return;
 					loadedAt = SystemClock.uptimeMillis();
-					busy.setVisibility(GONE);
+					stale = false;
 					if ((found == null) || found.isEmpty()) {
 						if (videos.isEmpty()) showMessage((err != null) ? R.string.home_yt_failed : R.string.home_yt_none);
-						return;
+						else render();
+					} else {
+						videos = found;
+						render();
 					}
-					videos = found;
-					render();
+					// The song changed again while this was searching.
+					if (isActive() && (optInt("source", 0) == 0) && !q.equals(query())) {
+						stale = true;
+						render();
+						removeCallbacks(reload);
+						postDelayed(reload, CHANGE_DELAY_MS);
+					}
 				});
 	}
 
 	private void showMessage(int res) {
 		list.setVisibility(GONE);
+		skeleton.setVisibility(GONE);
+		busy.setVisibility(GONE);
 		message.setVisibility(VISIBLE);
 		message.setText(res);
-		// The searching text has a spinner above it.
-		busy.setVisibility((res == R.string.home_yt_loading) ? VISIBLE : GONE);
-		message.setGravity((res == R.string.home_yt_loading) ? (Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM) :
-				Gravity.CENTER);
+		message.setGravity(Gravity.CENTER);
 	}
 
 	private void render() {
 		if (column == null) return;
+		boolean wait = MusicPlayer.hasYoutube() && (stale || (loading && videos.isEmpty()));
+		if (wait) {
+			// Placeholder rows (a spinner in a strip) stand in for the list until the search is in.
+			list.removeAllViews();
+			list.setVisibility(GONE);
+			message.setVisibility(GONE);
+			boolean strip = isCompact();
+			busy.setVisibility(strip ? VISIBLE : GONE);
+			if (!strip) {
+				skeleton.setRows(54, optBool("thumbs", true) ? 80 : 0, 45, (getCellsW() >= 4) ? 2 : 1);
+				if (skeleton.getVisibility() != VISIBLE) {
+					skeleton.setVisibility(VISIBLE);
+					if (host.animate()) {
+						skeleton.setAlpha(0f);
+						skeleton.animate().alpha(1f).setDuration(200).start();
+					}
+				}
+			}
+			return;
+		}
+		skeleton.setVisibility(GONE);
+		busy.setVisibility(GONE);
 		list.removeAllViews();
 		if (videos.isEmpty()) return;
 		message.setVisibility(GONE);
-		busy.setVisibility(GONE);
 		list.setVisibility(VISIBLE);
 		boolean thumbs = optBool("thumbs", true);
 		int cols = (getCellsW() >= 4) ? 2 : 1;
@@ -212,7 +271,12 @@ final class YoutubeWidget extends HomeWidgetView {
 			}
 			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
 			if ((i % cols) > 0) lp.setMarginStart(px(10));
-			line.addView(row(videos.get(i), thumbs), lp);
+			View rv = row(videos.get(i), thumbs);
+			line.addView(rv, lp);
+			if (host.animate() && isShown()) {
+				rv.setAlpha(0f);
+				rv.animate().alpha(1f).setDuration(220).setStartDelay(Math.min(i, 6) * 30L).start();
+			}
 		}
 	}
 
@@ -253,8 +317,9 @@ final class YoutubeWidget extends HomeWidgetView {
 
 	private void play(Video v) {
 		MainActivityDelegate a = host.activity();
-		// While YouTube plays, the video is swapped in its player; else its tab opens with it.
-		if (MusicPlayer.playYoutubeInPlace(a, v.videoId, v.title)) return;
+		// Played where it is: in the player that has the page (music or video as that is going), and the
+		// screen stays on Home. Only without the YouTube addon the video opens as a link.
+		if (MusicPlayer.playYoutubeQuietly(a, v.videoId, v.title)) return;
 		SpotifyImportFragment.previewVideo(a, v);
 	}
 }

@@ -23,6 +23,7 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.home.HomeHost;
 import me.aap.fermata.ui.home.HomeImages;
 import me.aap.fermata.ui.home.HomeOption;
+import me.aap.fermata.ui.home.HomeSkeleton;
 import me.aap.fermata.ui.home.HomeUi;
 import me.aap.fermata.ui.home.HomeWidgetType;
 import me.aap.fermata.ui.home.HomeWidgetView;
@@ -47,6 +48,12 @@ abstract class LibraryWidget extends HomeWidgetView {
 	private TextView emptyText;
 	private TextView firstLine;
 	private ProgressBar busy;
+	private HomeSkeleton skeleton;
+	private TextView backChip;
+	/** Set while something is opened inside the card: the rows are its contents, a chip leads back. */
+	@Nullable
+	private FetchSource drillSource;
+	private int fetchGen;
 	/** What the rows on screen were made from, so an unchanged refresh doesn't rebuild (and blink) them. */
 	private String shownSignature = "";
 	private List<Row> rows = new ArrayList<>();
@@ -79,6 +86,11 @@ abstract class LibraryWidget extends HomeWidgetView {
 		void done(List<Row> rows, int total);
 	}
 
+	/** Where the rows of something opened inside the card (a playlist's songs) come from. */
+	protected interface FetchSource {
+		void fetch(MainActivityDelegate a, FetchDone done);
+	}
+
 	protected final MainActivityDelegate act() {
 		return host.activity();
 	}
@@ -92,6 +104,12 @@ abstract class LibraryWidget extends HomeWidgetView {
 		count.setPadding(0, 0, px(4), 0);
 		head.addView(count, Math.max(0, head.getChildCount() - 1));
 		column.addView(head, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(34)));
+
+		backChip = chip(me.aap.utils.R.drawable.back, "", this::backOut);
+		backChip.setVisibility(GONE);
+		LinearLayout.LayoutParams bc = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(34));
+		bc.topMargin = px(4);
+		column.addView(backChip, bc);
 
 		firstLine = text(ROLE_SECONDARY, 13, false);
 		firstLine.setSingleLine(true);
@@ -114,6 +132,13 @@ abstract class LibraryWidget extends HomeWidgetView {
 		emptyText.setGravity(Gravity.CENTER);
 		emptyText.setVisibility(GONE);
 		column.addView(emptyText, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+		skeleton = new HomeSkeleton(ctx);
+		skeleton.setVisibility(GONE);
+		skeleton.setColor(softFill());
+		LinearLayout.LayoutParams sk = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+		sk.topMargin = px(4);
+		column.addView(skeleton, sk);
 
 		busy = spinner(28);
 		busy.setVisibility(GONE);
@@ -149,7 +174,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 	}
 
 	private void updateCapacity() {
-		int avail = heightPx() - px(28) - px(34) - px(8);
+		int avail = heightPx() - px(28) - px(34) - px(8) - ((drillSource != null) ? px(38) : 0);
 		capacity = Math.max(1, avail / px(48));
 	}
 
@@ -179,12 +204,49 @@ abstract class LibraryWidget extends HomeWidgetView {
 		return new ArrayList<>();
 	}
 
+	/** Opens something inside the card: its rows replace the list, under a chip that goes back. */
+	protected final void drill(CharSequence title, FetchSource source) {
+		drillSource = source;
+		backChip.setText(title);
+		showBack(true);
+		reset();
+	}
+
+	private void backOut() {
+		if (drillSource == null) return;
+		drillSource = null;
+		showBack(false);
+		reset();
+	}
+
+	private void showBack(boolean on) {
+		if (host.animate() && isShown()) {
+			android.transition.AutoTransition t = new android.transition.AutoTransition();
+			t.setDuration(240);
+			android.transition.TransitionManager.beginDelayedTransition(column, t);
+		}
+		backChip.setVisibility(on ? VISIBLE : GONE);
+	}
+
+	/** What was shown is not what is asked for now: placeholders until the other rows are in. */
+	private void reset() {
+		rows = new ArrayList<>();
+		total = 0;
+		shownSignature = "";
+		updateCapacity();
+		refresh(true);
+		render();
+	}
+
 	protected final void refresh(boolean force) {
-		if (loading) return;
+		if (loading && !force) return;
 		if (!force && ((SystemClock.uptimeMillis() - loadedAt) < STALE_MS)) return;
 		loading = true;
+		int gen = ++fetchGen;
 		if (built) updateBusy();
-		fetch(act(), (r, n) -> {
+		FetchSource src = (drillSource != null) ? drillSource : this::fetch;
+		src.fetch(act(), (r, n) -> {
+			if (gen != fetchGen) return;
 			loading = false;
 			loadedAt = SystemClock.uptimeMillis();
 			rows = r;
@@ -193,12 +255,25 @@ abstract class LibraryWidget extends HomeWidgetView {
 		});
 	}
 
-	/** The spinner shows while there is nothing to show yet. */
+	/** Placeholder rows (a spinner in a strip) show while there is nothing to show yet. */
 	private void updateBusy() {
 		boolean on = loading && rows.isEmpty();
-		if ((busy.getVisibility() == VISIBLE) != on) {
-			busy.setVisibility(on ? VISIBLE : GONE);
+		boolean rowsWait = on && !isCompact();
+		if ((skeleton.getVisibility() == VISIBLE) != rowsWait) {
+			skeleton.setVisibility(rowsWait ? VISIBLE : GONE);
+			if (rowsWait && host.animate()) {
+				skeleton.setAlpha(0f);
+				skeleton.animate().alpha(1f).setDuration(200).start();
+			}
 		}
+		boolean spin = on && isCompact();
+		if ((busy.getVisibility() == VISIBLE) != spin) busy.setVisibility(spin ? VISIBLE : GONE);
+		if (rowsWait) skeleton.setRows(48, optBool("art", true) ? 40 : 0, 40, (getCellsW() >= 4) ? 2 : 1);
+	}
+
+	@Override
+	protected void onStyleChanged() {
+		if (skeleton != null) skeleton.setColor(softFill());
 	}
 
 	private void render() {
@@ -209,7 +284,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 		// Drawn again only when something it shows changed: the rows blinked on every refresh.
 		StringBuilder sig = new StringBuilder();
 		sig.append(total).append('|').append(isCompact()).append('|').append(cols).append('|').append(capacity)
-				.append('|').append(optBool("art", true)).append('|').append(loading && none);
+				.append('|').append(optBool("art", true)).append('|').append(loading && none)
+				.append('|').append(drillSource != null);
 		for (Row r : rows) sig.append('|').append(r.title()).append(r.sub());
 		String signature = sig.toString();
 		if (signature.equals(shownSignature)) return;

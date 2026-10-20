@@ -90,6 +90,7 @@ import me.aap.fermata.ui.view.TopToast;
 import me.aap.utils.pref.PrefCondition;
 import me.aap.utils.pref.PrefUtils;
 import me.aap.utils.pref.PreferenceSet;
+import me.aap.utils.pref.BasicPreferenceStore;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.pref.PreferenceStore.Pref;
 import me.aap.utils.pref.PreferenceView;
@@ -1262,6 +1263,9 @@ public class SettingsFragment extends MainActivityFragment
 	 * the background picture, how the widgets look and are laid out. (What each widget shows is set
 	 * on the widget itself, from Home's edit mode.)
 	 */
+	private static final PreferenceStore.Pref<java.util.function.IntSupplier> HOME_STYLE_VIEW =
+			PreferenceStore.Pref.i("HOME_STYLE_VIEW", 0);
+
 	private void addHomePrefs(MainActivityDelegate a, PreferenceSet parent) {
 		MainActivityPrefs ps = a.getPrefs();
 		Context ctx = a.getContext();
@@ -1285,6 +1289,14 @@ public class SettingsFragment extends MainActivityFragment
 				me.aap.fermata.ui.home.HomeScreen.editOnNextShow();
 				a.showFragment(R.id.home_fragment);
 			};
+		});
+		sub.addListPref(o -> {
+			o.store = ps;
+			o.pref = MainActivityPrefs.HOME_BG_SOURCE;
+			o.title = R.string.home_pref_bg_source;
+			o.subtitle = R.string.string_format;
+			o.formatSubtitle = true;
+			o.values = new int[]{R.string.home_bg_source_picture, R.string.home_bg_source_cover};
 		});
 		sub.addButton(o -> {
 			o.title = R.string.home_bg_choose;
@@ -1314,13 +1326,22 @@ public class SettingsFragment extends MainActivityFragment
 			o.seekScale = 1;
 		});
 		sub.addListPref(o -> {
-			o.store = ps;
-			o.pref = MainActivityPrefs.HOME_CARD_STYLE;
+			// Shows Custom while some widget has a look of its own; picking a look sets every widget.
+			int shown = me.aap.fermata.ui.home.HomeScreen.styleShown(ps);
+			BasicPreferenceStore vps = new BasicPreferenceStore();
+			vps.applyIntPref(HOME_STYLE_VIEW, shown);
+			vps.addBroadcastListener((s, p) -> {
+				int v = vps.getIntPref(HOME_STYLE_VIEW);
+				if (v <= 2) me.aap.fermata.ui.home.HomeScreen.setAllStyles(ps, v);
+			});
+			o.store = vps;
+			o.pref = HOME_STYLE_VIEW;
 			o.title = R.string.home_pref_style;
 			o.subtitle = R.string.string_format;
 			o.formatSubtitle = true;
 			o.values = new int[]{R.string.home_style_solid, R.string.home_style_glass,
-					R.string.home_style_colour};
+					R.string.home_style_colour, R.string.home_style_custom};
+			o.valuesFilter = i -> (i < 3) || (shown == 3);
 		});
 		sub.addListPref(o -> {
 			o.store = ps;

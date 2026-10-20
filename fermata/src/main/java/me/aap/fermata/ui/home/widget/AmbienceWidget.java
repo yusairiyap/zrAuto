@@ -23,6 +23,7 @@ import java.util.Locale;
 import java.util.Set;
 
 import me.aap.fermata.R;
+import me.aap.fermata.action.Action;
 import me.aap.fermata.addon.ambience.AmbienceAddon;
 import me.aap.fermata.addon.ambience.AmbienceEffect;
 import me.aap.fermata.addon.ambience.AmbienceEngine;
@@ -73,6 +74,12 @@ final class AmbienceWidget extends HomeWidgetView {
 	private LinearLayout shortcuts;
 	private TextView off;
 	private LinearLayout texts;
+	/** The sounds the shortcut chips stand for now: when they change, the chips come in with a pop. */
+	private final List<AmbienceEffect> chipEffects = new ArrayList<>();
+	private final List<ImageView> chipViews = new ArrayList<>();
+	private boolean listening;
+	private int enableChecks;
+	private final Runnable waitForAddon = this::waitForAddon;
 
 	AmbienceWidget(HomeHost host, HomeWidgetType type) {
 		super(host, type);
@@ -95,6 +102,11 @@ final class AmbienceWidget extends HomeWidgetView {
 		subtitle.setSingleLine(true);
 		texts.addView(title);
 		texts.addView(subtitle);
+		// The name goes where the sounds are: the Ambience tab.
+		texts.setClickable(true);
+		texts.setFocusable(true);
+		texts.setContentDescription(ctx.getString(R.string.ambience_title));
+		texts.setOnClickListener(v -> host.run(Action.AMBIENCE));
 		content.addView(texts);
 
 		action = new ImageView(ctx);
@@ -189,27 +201,59 @@ final class AmbienceWidget extends HomeWidgetView {
 	}
 
 	private void fillShortcuts(int max) {
-		shortcuts.removeAllViews();
-		if ((max <= 0) || !AmbienceAddon.isEnabled()) return;
-		int n = 0;
+		if ((max <= 0) || !AmbienceAddon.isEnabled()) {
+			shortcuts.removeAllViews();
+			chipEffects.clear();
+			chipViews.clear();
+			return;
+		}
+		List<AmbienceEffect> want = new ArrayList<>();
 		for (AmbienceEffect e : picked()) {
-			if (n++ >= max) break;
+			if (want.size() >= max) break;
+			want.add(e);
+		}
+		if (want.equals(chipEffects) && (chipViews.size() == want.size())) {
+			// The same sounds: only which of them are on changed.
+			for (int i = 0; i < want.size(); i++) styleChip(chipViews.get(i), want.get(i));
+			return;
+		}
+		shortcuts.removeAllViews();
+		chipEffects.clear();
+		chipViews.clear();
+		boolean pop = host.animate() && isShown();
+		int n = 0;
+		for (AmbienceEffect e : want) {
 			ImageView b = new ImageView(ctx);
 			b.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
 			int pd = px(9);
 			b.setPadding(pd, pd, pd, pd);
 			b.setImageResource(e.icon);
-			boolean on = engine().isOn(e);
-			b.setImageTintList(android.content.res.ColorStateList.valueOf(on ? 0xFF14152B : e.tint));
-			b.setBackground(HomeUi.pressable(0x33FFFFFF, on ? e.tint : 0x33FFFFFF, px(20)));
 			b.setContentDescription(ctx.getString(e.name));
 			b.setClickable(true);
 			b.setFocusable(true);
 			b.setOnClickListener(v -> engine().toggle(e));
+			styleChip(b, e);
 			LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(px(40), px(40));
 			blp.setMarginEnd(px(8));
 			shortcuts.addView(b, blp);
+			chipEffects.add(e);
+			chipViews.add(b);
+			if (pop) {
+				// Each one pops in after the one before, so a resize or a first show is not a blink.
+				b.setAlpha(0f);
+				b.setScaleX(0.6f);
+				b.setScaleY(0.6f);
+				b.animate().alpha(1f).scaleX(1f).scaleY(1f).setStartDelay(80L + n * 55L).setDuration(300)
+						.setInterpolator(new OvershootInterpolator(2f)).start();
+			}
+			n++;
 		}
+	}
+
+	private void styleChip(ImageView b, AmbienceEffect e) {
+		boolean on = engine().isOn(e);
+		b.setImageTintList(android.content.res.ColorStateList.valueOf(on ? 0xFF14152B : e.tint));
+		b.setBackground(HomeUi.pressable(0x33FFFFFF, on ? e.tint : 0x33FFFFFF, px(20)));
 	}
 
 	private void pickSounds() {
@@ -258,18 +302,39 @@ final class AmbienceWidget extends HomeWidgetView {
 	@Override
 	protected void onActive() {
 		if (!AmbienceAddon.isEnabled()) {
+			// Right after the app starts the addon may not be up yet: ask again for a while.
 			sync();
+			enableChecks = 0;
+			handler.removeCallbacks(waitForAddon);
+			handler.postDelayed(waitForAddon, 500);
 			return;
 		}
+		listen();
+	}
+
+	private void listen() {
+		if (listening) return;
+		listening = true;
 		engine().addListener(changed);
 		engine().addFlashListener(flash);
 		sync();
 		clock.start();
 	}
 
+	private void waitForAddon() {
+		if (!isActive() || listening) return;
+		if (AmbienceAddon.isEnabled()) {
+			listen();
+		} else if (++enableChecks < 30) {
+			handler.postDelayed(waitForAddon, 500);
+		}
+	}
+
 	@Override
 	protected void onInactive() {
-		if (!AmbienceAddon.isEnabled()) return;
+		handler.removeCallbacks(waitForAddon);
+		if (!listening) return;
+		listening = false;
 		engine().removeListener(changed);
 		engine().removeFlashListener(flash);
 		handler.removeCallbacks(countdown);

@@ -100,6 +100,8 @@ public interface MainActivityPrefs
 	Pref<IntSupplier> HOME_BG_VERSION = Pref.i("HOME_BG_VERSION", 0);
 	Pref<IntSupplier> HOME_BG_DIM = Pref.i("HOME_BG_DIM", 35);
 	Pref<IntSupplier> HOME_BG_BLUR = Pref.i("HOME_BG_BLUR", 0);
+	/** 0 the picked picture, 1 the cover of what plays (blurred, fading from song to song). */
+	Pref<IntSupplier> HOME_BG_SOURCE = Pref.i("HOME_BG_SOURCE", 0);
 	/** 0 solid, 1 glass, 2 colour: what a widget set to "Same as Home" looks like. */
 	Pref<IntSupplier> HOME_CARD_STYLE = Pref.i("HOME_CARD_STYLE", 0);
 	/** 0 by the screen's shape, 1 scrolling down, 2 scrolling sideways. */

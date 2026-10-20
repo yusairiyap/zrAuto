@@ -149,6 +149,22 @@ public abstract class HomeWidgetView extends FrameLayout {
 		return new ArrayList<>();
 	}
 
+	public static final int GESTURE_H = 1;
+	public static final int GESTURE_V = 2;
+
+	/**
+	 * The directions in which this widget reads a drag itself (lyrics scrolled, a seek bar): while a
+	 * finger is on it, the page does not take such a drag over to scroll. {@link #GESTURE_H},
+	 * {@link #GESTURE_V} or both ORed; the stack's swipe is the cell's own business.
+	 */
+	protected int gestures() {
+		return 0;
+	}
+
+	final int gesturesNow() {
+		return gestures();
+	}
+
 	/** True for a widget that paints its whole card itself (a picture, a sky): text stays white. */
 	protected boolean ownBackground() {
 		return false;
@@ -563,6 +579,14 @@ public abstract class HomeWidgetView extends FrameLayout {
 		row.addView(title, tlp);
 		headerTitle = title;
 		if (open != null) {
+			// The icon and the name go where the arrow goes; each is its own part, so car mode selects them.
+			disc.setClickable(true);
+			disc.setFocusable(true);
+			disc.setContentDescription(ctx.getString(type.name));
+			disc.setOnClickListener(v -> open.run());
+			title.setClickable(true);
+			title.setFocusable(true);
+			title.setOnClickListener(v -> open.run());
 			ImageView b = iconButton(me.aap.utils.R.drawable.chevron_right, 30, ROLE_SECONDARY,
 					R.string.home_open, open);
 			row.addView(b);

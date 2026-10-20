@@ -145,7 +145,7 @@ final class HomeBackground {
 	}
 
 	/** The average colour of the top 8% of the picture. */
-	private static int topColor(Bitmap bm) {
+	static int topColor(Bitmap bm) {
 		int w = bm.getWidth();
 		int h = Math.max(1, bm.getHeight() / 12);
 		long r = 0, g = 0, b = 0;

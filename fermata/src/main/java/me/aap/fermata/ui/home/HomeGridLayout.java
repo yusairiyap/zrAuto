@@ -1,7 +1,12 @@
 package me.aap.fermata.ui.home;
 
 import me.aap.fermata.ui.home.widget.HomeWidgets;
+import android.animation.ValueAnimator;
 import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.DashPathEffect;
+import android.graphics.Paint;
+import android.graphics.RectF;
 import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
@@ -81,11 +86,23 @@ final class HomeGridLayout extends ViewGroup {
 	private final Runnable autoScroll = this::autoScrollStep;
 	private boolean autoScrolling;
 
-	// Resizing.
+	// Resizing: the handle is dragged, a dashed outline shows the size it would give, and the
+	// widget takes that size when the finger lets go.
 	private int startW;
 	private int startH;
 	private float resizeRawX;
 	private float resizeRawY;
+	@Nullable
+	private HomeCellView hintFor;
+	private int hintCw;
+	private int hintCh;
+	private float hintW;
+	private float hintH;
+	@Nullable
+	private ValueAnimator hintAnim;
+	private final Paint hintFill = new Paint(Paint.ANTI_ALIAS_FLAG);
+	private final Paint hintLine = new Paint(Paint.ANTI_ALIAS_FLAG);
+	private final RectF hintRect = new RectF();
 
 	HomeGridLayout(Context ctx, HomeHost host, Listener listener) {
 		super(ctx);
@@ -93,6 +110,10 @@ final class HomeGridLayout extends ViewGroup {
 		this.listener = listener;
 		setClipChildren(false);
 		setClipToPadding(false);
+		setWillNotDraw(false);
+		hintLine.setStyle(Paint.Style.STROKE);
+		hintLine.setStrokeWidth(HomeUi.dp(ctx, 2.5f));
+		hintLine.setPathEffect(new DashPathEffect(new float[]{HomeUi.dp(ctx, 9), HomeUi.dp(ctx, 6)}, 0));
 		gap = HomeUi.dp(ctx, 10);
 	}
 
@@ -661,11 +682,19 @@ final class HomeGridLayout extends ViewGroup {
 		startH = c.ch;
 		resizeRawX = rawX;
 		resizeRawY = rawY;
+		hintFor = c;
+		hintCw = c.cw;
+		hintCh = c.ch;
+		hintW = c.getWidth();
+		hintH = c.getHeight();
 		c.showBadge(c.cw + " × " + c.ch);
 		c.setLifted(true);
+		invalidate();
 	}
 
 	void moveResize(HomeCellView c, float rawX, float rawY) {
+		if (hintFor != c) return;
+		c.dragHandle(rawX - resizeRawX, rawY - resizeRawY);
 		int step = unit + gap;
 		int nw = startW + Math.round((rawX - resizeRawX) / step);
 		int nh = startH + Math.round((rawY - resizeRawY) / step);
@@ -675,21 +704,72 @@ final class HomeGridLayout extends ViewGroup {
 		else nh = Math.min(nh, cross);
 		nw = Math.max(1, nw);
 		nh = Math.max(1, nh);
-		if ((nw == c.cw) && (nh == c.ch)) return;
-		c.cell.w = nw;
-		c.cell.h = nh;
-		c.setEffectiveSize(nw, nh);
+		if ((nw == hintCw) && (nh == hintCh)) return;
+		hintCw = nw;
+		hintCh = nh;
 		c.showBadge(nw + " × " + nh);
-		c.pop();
 		performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK);
-		requestLayout();
-		changed();
+		moveHint(span(nw), span(nh));
+	}
+
+	/** The outline glides to the size the finger is asking for. */
+	private void moveHint(float toW, float toH) {
+		if (hintAnim != null) hintAnim.cancel();
+		if (!host.animate()) {
+			hintW = toW;
+			hintH = toH;
+			invalidate();
+			return;
+		}
+		final float fw = hintW;
+		final float fh = hintH;
+		ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
+		a.setDuration(180);
+		a.setInterpolator(new DecelerateInterpolator(1.6f));
+		a.addUpdateListener(v -> {
+			float f = (float) v.getAnimatedValue();
+			hintW = fw + (toW - fw) * f;
+			hintH = fh + (toH - fh) * f;
+			invalidate();
+		});
+		hintAnim = a;
+		a.start();
 	}
 
 	void endResize(HomeCellView c) {
+		if (hintFor != c) return;
+		hintFor = null;
+		if (hintAnim != null) hintAnim.cancel();
+		hintAnim = null;
 		c.showBadge(null);
+		c.resetHandle();
 		c.setLifted(false);
+		if ((hintCw != c.cw) || (hintCh != c.ch)) {
+			c.cell.w = hintCw;
+			c.cell.h = hintCh;
+			c.setEffectiveSize(hintCw, hintCh);
+			c.pop();
+			requestLayout();
+			changed();
+		}
+		invalidate();
 		model.save();
+	}
+
+	@Override
+	protected void dispatchDraw(Canvas canvas) {
+		super.dispatchDraw(canvas);
+		HomeCellView c = hintFor;
+		if (c == null) return;
+		float r = HomeWidgetView.CORNER_DP * getResources().getDisplayMetrics().density;
+		int accent = host.palette().accent;
+		hintRect.set(c.getLeft(), c.getTop(), c.getLeft() + hintW, c.getTop() + hintH);
+		hintFill.setColor(HomeUi.alpha(accent, 0.2f));
+		canvas.drawRoundRect(hintRect, r, r, hintFill);
+		hintLine.setColor(accent);
+		float in = hintLine.getStrokeWidth() / 2f;
+		hintRect.inset(in, in);
+		canvas.drawRoundRect(hintRect, r, r, hintLine);
 	}
 
 	// ---------------------------------------------------------------------------------------------

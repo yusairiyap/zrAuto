@@ -53,7 +53,16 @@ public final class HomeWidgets {
 					.sizes(2, 1, 4, 1, 8, 4).build(),
 			HomeWidgetType.builder("ambience", R.string.home_w_ambience, R.string.home_w_ambience_d,
 							R.drawable.ambience, 0xFF5B9BFF, AmbienceWidget::new)
-					.sizes(2, 1, 4, 2, 8, 4).available(AmbienceAddon::isEnabled).build());
+					.sizes(2, 1, 4, 2, 8, 4).available(AmbienceAddon::isEnabled).build(),
+			HomeWidgetType.builder("timer", R.string.home_w_timer, R.string.home_w_timer_d,
+							R.drawable.timer, 0xFF8E7CFF, TimerWidget::new)
+					.sizes(2, 1, 2, 2, 8, 3).build(),
+			HomeWidgetType.builder("effects", R.string.home_w_effects, R.string.home_w_effects_d,
+							R.drawable.equalizer, 0xFF4DD0E1, EffectsWidget::new)
+					.sizes(2, 1, 2, 2, 8, 4).build(),
+			HomeWidgetType.builder("overlay", R.string.home_w_overlay, R.string.home_w_overlay_d,
+							R.drawable.clock, 0xFFFFB74D, InfoOverlayWidget::new)
+					.sizes(2, 1, 4, 2, 8, 4).build());
 
 	private HomeWidgets() {
 	}

@@ -9,6 +9,7 @@ import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_DISPLAY_
 import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_DURATION;
 import static android.support.v4.media.MediaMetadataCompat.METADATA_KEY_TITLE;
 
+import android.animation.ValueAnimator;
 import android.graphics.Bitmap;
 import android.content.res.ColorStateList;
 import android.graphics.Canvas;
@@ -28,6 +29,7 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -45,11 +47,17 @@ import me.aap.fermata.R;
 import me.aap.fermata.action.Action;
 import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.music.MusicTrackItem;
+import me.aap.fermata.addon.music.MusicQueue;
+import me.aap.fermata.media.engine.BufferingIndicator;
+import me.aap.fermata.media.engine.MediaEngine;
+import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
+import me.aap.fermata.media.pref.BrowsableItemPrefs;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
-import me.aap.fermata.ui.fragment.MusicPlayerFragment;
+import me.aap.fermata.ui.view.TopToast;
+import me.aap.fermata.ui.home.HomeArt;
 import me.aap.fermata.ui.home.HomeBlur;
 import me.aap.fermata.ui.home.HomeHost;
 import me.aap.fermata.ui.home.HomeImages;
@@ -84,16 +92,22 @@ final class MediaWidget extends HomeWidgetView {
 	private ImageView prev;
 	private ImageView next;
 	private ImageView play;
+	private ProgressBar playLoading;
+	private FrameLayout playBox;
+	private ImageView shuffle;
+	private ImageView repeat;
 	private Seek seek;
 	private TextView timeNow;
 	private TextView timeAll;
 	private LinearLayout seekBlock;
+	private LinearLayout timesRow;
 	private TextView chip;
 	private LinearLayout controls;
 	private LinearLayout texts;
 
 	private int mode = -1;
 	private int appliedW;
+	private int appliedH;
 	private int generation;
 	@Nullable
 	private PlayableItem shown;
@@ -101,12 +115,23 @@ final class MediaWidget extends HomeWidgetView {
 	private boolean playing;
 	private boolean videoNow;
 	private boolean hasArt;
+	/** Nothing is loaded in a player: what shows is where the queue stopped, and play starts it as music. */
+	private boolean idle;
+	private boolean playLoadingShown;
+	@Nullable
+	private ValueAnimator playIconAnim;
+	/** Until when the play button shows a spinner after a skip, whatever the session has said by then. */
+	private long skipUntil;
+	private boolean startedIdle;
+	/** Where the shuffle and repeat buttons are: 0 not shown, 1 around the play button, 2 under the seek bar. */
+	private int extrasAt;
 	/** Where the user last seeked to, until the session reports it (the YouTube player is slow to). */
 	private long seekPos;
 	private long seekAt;
 	private int durationAsks;
 	private Runnable chipAction = () -> {};
 	private final Runnable ticker = this::tick;
+	private final Runnable bufferingListener = () -> post(this::syncState);
 	private final MediaSessionCallback.Listener stateListener = new MediaSessionCallback.Listener() {
 		@Override
 		public void onPlaybackStateChanged(MediaSessionCallback cb, PlaybackStateCompat state) {
@@ -178,12 +203,14 @@ final class MediaWidget extends HomeWidgetView {
 		seek = new Seek();
 		noGrab(seek);
 		seekBlock.addView(seek, new LinearLayout.LayoutParams(-1, px(34)));
-		LinearLayout times = new LinearLayout(ctx);
+		timesRow = new LinearLayout(ctx);
+		timesRow.setGravity(Gravity.CENTER_VERTICAL);
 		timeNow = text(ROLE_SECONDARY, 11.5f, false);
 		timeAll = text(ROLE_SECONDARY, 11.5f, false);
-		times.addView(timeNow, new LinearLayout.LayoutParams(0, -2, 1f));
-		times.addView(timeAll);
-		seekBlock.addView(times, new LinearLayout.LayoutParams(-1, -2));
+		timeAll.setGravity(Gravity.END);
+		timesRow.addView(timeNow, new LinearLayout.LayoutParams(0, -2, 1f));
+		timesRow.addView(timeAll, new LinearLayout.LayoutParams(0, -2, 1f));
+		seekBlock.addView(timesRow, new LinearLayout.LayoutParams(-1, -2));
 		content.addView(seekBlock);
 
 		controls = new LinearLayout(ctx);
@@ -191,21 +218,31 @@ final class MediaWidget extends HomeWidgetView {
 		controls.setGravity(Gravity.CENTER_VERTICAL);
 		prev = iconButton(R.drawable.prev, 44, ROLE_ICON, R.string.action_prev, this::onPrev);
 		next = iconButton(R.drawable.next, 44, ROLE_ICON, R.string.action_next, this::onNext);
+		playBox = new FrameLayout(ctx);
+		playBox.setBackground(HomeUi.pressable(0x33000000, 0xFFFFFFFF, px(28)));
 		play = new ImageView(ctx);
 		play.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
 		int pp = px(13);
 		play.setPadding(pp, pp, pp, pp);
-		play.setBackground(HomeUi.pressable(0x33000000, 0xFFFFFFFF, px(28)));
 		play.setImageTintList(android.content.res.ColorStateList.valueOf(0xFF111111));
 		play.setContentDescription(ctx.getString(R.string.action_play_pause));
 		play.setClickable(true);
 		play.setFocusable(true);
 		play.setOnClickListener(v -> {
-			bounce(v);
+			bounce(playBox);
 			onPlayPause();
 		});
+		playBox.addView(play, new FrameLayout.LayoutParams(-1, -1));
+		// Takes the icon's place while a song loads, like the Music tab's play button.
+		playLoading = new ProgressBar(ctx);
+		playLoading.setIndeterminate(true);
+		playLoading.setIndeterminateTintList(ColorStateList.valueOf(0xFF111111));
+		playLoading.setVisibility(GONE);
+		playBox.addView(playLoading, new FrameLayout.LayoutParams(px(30), px(30), Gravity.CENTER));
+		shuffle = iconButton(R.drawable.shuffle, 36, ROLE_ICON, R.string.shuffle, this::onShuffle);
+		repeat = iconButton(R.drawable.repeat, 36, ROLE_ICON, R.string.repeat, this::onRepeat);
 		controls.addView(prev);
-		controls.addView(play, new LinearLayout.LayoutParams(px(52), px(52)));
+		controls.addView(playBox, new LinearLayout.LayoutParams(px(52), px(52)));
 		controls.addView(next);
 		content.addView(controls);
 
@@ -222,6 +259,7 @@ final class MediaWidget extends HomeWidgetView {
 	protected void onStyleChanged() {
 		// Always white on its own picture; nothing to follow.
 	}
+
 
 	@Override
 	protected List<HomeOption> getOptions() {
@@ -248,7 +286,7 @@ final class MediaWidget extends HomeWidgetView {
 
 	@Override
 	protected void onSized(int w, int h) {
-		if ((thumb != null) && (w != appliedW)) applyMode();
+		if ((thumb != null) && ((w != appliedW) || (h != appliedH))) applyMode();
 	}
 
 	private static FrameLayout.LayoutParams lp(int w, int h, int gravity, int l, int t, int r, int b) {
@@ -260,12 +298,27 @@ final class MediaWidget extends HomeWidgetView {
 	private void applyMode() {
 		if (mode < 0) return;
 		int w = Math.max(widthPx(), px(160));
+		int h = Math.max(heightPx(), px(120));
 		appliedW = widthPx();
+		appliedH = heightPx();
 		boolean strip = (mode == STRIP_SMALL) || (mode == STRIP_WIDE);
 		boolean large = (mode == LARGE_WIDE) || (mode == LARGE_TALL);
 		boolean showSeek = large && optBool("seek", true);
 		boolean showChip = large && optBool("chip", true);
 		int pad = px(14);
+
+		// The cover is a square that keeps its shape at any size, dissolving into the blurred wash
+		// beside or below it (a stretched or cropped cover looked wrong at some sizes).
+		int artSide = (mode == LARGE_WIDE) ? Math.min(h, (int) (w * 0.58f)) : Math.min(w, (int) (h * 0.6f));
+		int left = (mode == LARGE_WIDE) ? Math.max((int) (artSide * 0.86f), (int) (w * 0.38f)) : 0;
+
+		// Shuffle and repeat: around the play button when the width allows, else under the seek bar.
+		int avail = ((mode == LARGE_WIDE) ? (w - left) : w) - 2 * pad;
+		int controlsNeed = px(36) * 2 + px(44) * 2 + px(52);
+		if (!large) extrasAt = 0;
+		else if (avail >= controlsNeed) extrasAt = 1;
+		else extrasAt = showSeek ? 2 : 0;
+		placeExtras();
 
 		thumb.setVisibility(strip ? VISIBLE : GONE);
 		art.setVisibility(strip ? GONE : VISIBLE);
@@ -280,6 +333,7 @@ final class MediaWidget extends HomeWidgetView {
 		artist.setTextSize(strip ? 12.5f : 14);
 		title.setSingleLine(true);
 		texts.setGravity(strip ? Gravity.CENTER_VERTICAL : Gravity.START);
+		int seekRoom = (extrasAt == 2) ? 142 : 134;
 
 		switch (mode) {
 			case STRIP_SMALL -> {
@@ -298,17 +352,17 @@ final class MediaWidget extends HomeWidgetView {
 				controls.setLayoutParams(lp(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, 0, 0, px(8)));
 			}
 			case LARGE_WIDE -> {
-				art.setLayoutParams(lp((int) (w * 0.56f), -1, Gravity.START, 0, 0, 0, 0));
-				int left = (int) (w * 0.44f);
+				art.setLayoutParams(lp(artSide, -1, Gravity.START, 0, 0, 0, 0));
 				texts.setLayoutParams(lp(-1, -2, Gravity.TOP, left, pad + px(4), pad, 0));
 				seekBlock.setLayoutParams(lp(-1, -2, Gravity.BOTTOM, left, 0, pad, px(72)));
-				controls.setLayoutParams(lp(-2, -2, Gravity.BOTTOM | Gravity.START, left - px(6), 0, 0, px(10)));
+				controls.setLayoutParams(lp(-2, -2, Gravity.BOTTOM | Gravity.START,
+						left - px(6) + ((extrasAt == 1) ? 0 : 0), 0, 0, px(10)));
 				chip.setLayoutParams(lp(-2, px(36), Gravity.BOTTOM | Gravity.END, 0, 0, pad, px(18)));
 				badge.setLayoutParams(lp(-2, -2, Gravity.TOP | Gravity.START, pad, pad, 0, 0));
 			}
 			default -> {
-				art.setLayoutParams(lp(-1, -1, Gravity.TOP, 0, 0, 0, 0));
-				texts.setLayoutParams(lp(-1, -2, Gravity.BOTTOM, pad, 0, pad, px(showSeek ? 134 : 82)));
+				art.setLayoutParams(lp(-1, artSide, Gravity.TOP, 0, 0, 0, 0));
+				texts.setLayoutParams(lp(-1, -2, Gravity.BOTTOM, pad, 0, pad, px(showSeek ? seekRoom : 82)));
 				seekBlock.setLayoutParams(lp(-1, -2, Gravity.BOTTOM, pad, 0, pad, px(72)));
 				controls.setLayoutParams(lp(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, 0, 0, px(10)));
 				chip.setLayoutParams(lp(-2, px(36), Gravity.TOP | Gravity.END, 0, pad, pad, 0));
@@ -318,6 +372,23 @@ final class MediaWidget extends HomeWidgetView {
 		scrim.setBackground(scrimFor(mode));
 		wash.setAlpha(strip ? 0.92f : 1f);
 		syncState();
+	}
+
+	/** Puts the shuffle and repeat buttons where {@link #extrasAt} says (or takes them out). */
+	private void placeExtras() {
+		boolean row = extrasAt == 2;
+		for (ImageView b : new ImageView[]{shuffle, repeat}) {
+			if (b.getParent() instanceof ViewGroup p) p.removeView(b);
+		}
+		if (extrasAt == 1) {
+			controls.addView(shuffle, 0);
+			controls.addView(repeat);
+		} else if (row) {
+			// Under the seek bar, between the two times.
+			timesRow.addView(shuffle, 1, new LinearLayout.LayoutParams(px(30), px(30)));
+			timesRow.addView(repeat, 2, new LinearLayout.LayoutParams(px(30), px(30)));
+		}
+		updateModes();
 	}
 
 	private GradientDrawable scrimFor(int m) {
@@ -343,6 +414,7 @@ final class MediaWidget extends HomeWidgetView {
 		MainActivityDelegate a = act();
 		a.getMediaSessionCallback().addBroadcastListener(stateListener);
 		a.getMediaServiceBinder().addBroadcastListener(itemListener);
+		BufferingIndicator.addListener(bufferingListener);
 		syncItem();
 		syncState();
 	}
@@ -352,6 +424,7 @@ final class MediaWidget extends HomeWidgetView {
 		MainActivityDelegate a = act();
 		a.getMediaSessionCallback().removeBroadcastListener(stateListener);
 		a.getMediaServiceBinder().removeBroadcastListener(itemListener);
+		BufferingIndicator.removeListener(bufferingListener);
 		removeCallbacks(ticker);
 	}
 
@@ -367,24 +440,28 @@ final class MediaWidget extends HomeWidgetView {
 	private void syncItem() {
 		if (title == null) return;
 		MainActivityDelegate a = act();
-		PlayableItem pi = Action.getFavoritableItem(a);
+		PlayableItem pi = HomeArt.displayItem(a);
+		boolean idleNow = (pi != null) && HomeArt.isIdle(a);
 		if (pi == null) {
-			PlayableItem last = a.getMediaSessionCallback().getResumeItem();
 			shown = null;
+			idle = false;
 			generation++;
 			swap(title, ctx.getString(R.string.home_media_idle));
-			swap(artist, (last != null) ? last.getName() : ctx.getString(R.string.home_media_idle_sub));
+			swap(artist, ctx.getString(R.string.home_media_idle_sub));
 			setBusy(false);
 			setArt(null);
 			duration = 0;
 			syncState();
 			return;
 		}
+		idle = idleNow;
 		if (pi == shown) {
 			syncState();
 			return;
 		}
 		shown = pi;
+		// The new song is up: the spinner after a skip is the session's to show from here.
+		if (cbState() == PlaybackStateCompat.STATE_PLAYING) skipUntil = 0;
 		int gen = ++generation;
 		duration = 0;
 		swap(title, pi.getName());
@@ -400,15 +477,38 @@ final class MediaWidget extends HomeWidgetView {
 			String t = md.getString(METADATA_KEY_TITLE);
 			if ((t == null) || t.isEmpty()) t = md.getString(METADATA_KEY_DISPLAY_TITLE);
 			if ((t != null) && !t.isEmpty()) swap(title, t);
-			String ar = md.getString(METADATA_KEY_ARTIST);
-			if ((ar == null) || ar.isEmpty()) ar = md.getString(METADATA_KEY_ALBUM_ARTIST);
-			if ((ar == null) || ar.isEmpty()) ar = md.getString(METADATA_KEY_ALBUM);
-			if ((ar != null) && !ar.isEmpty()) swap(artist, ar);
+			swap(artist, artistOf(pi, md));
 			duration = md.getLong(METADATA_KEY_DURATION);
-			loadArt(pi, md, gen);
+			HomeArt.cover(act(), pi, md, () -> gen == generation, bm -> {
+				if (gen == generation) setArt(bm);
+			});
 			syncState();
 		});
 		syncState();
+	}
+
+	/** The line under the title, as the Music tab has it: the artist, else the album, else where it is from. */
+	private String artistOf(PlayableItem pi, MediaMetadataCompat md) {
+		String ar = md.getString(METADATA_KEY_ARTIST);
+		if ((ar == null) || ar.isEmpty()) ar = md.getString(METADATA_KEY_ALBUM_ARTIST);
+		if ((ar == null) || ar.isEmpty()) ar = md.getString(METADATA_KEY_ALBUM);
+		if ((ar != null) && !ar.isEmpty()) return ar;
+		if (pi instanceof MusicTrackItem t) {
+			String name = t.getArtistName();
+			if ((name != null) && !name.isEmpty()) return name;
+			if (t.getVideoId() != null) return "YouTube";
+		}
+		MediaEngine eng = act().getMediaSessionCallback().getEngine();
+		if ((eng != null) && (eng.getId() == me.aap.fermata.media.pref.MediaPrefs.MEDIA_ENG_YT) &&
+				(pi == eng.getSource())) {
+			return "YouTube";
+		}
+		BrowsableItem parent = pi.getParent();
+		return ((parent == null) || parent.isExternal()) ? "" : parent.getName();
+	}
+
+	private int cbState() {
+		return act().getMediaSessionCallback().getPlaybackState().getState();
 	}
 
 	/** The duration may only become known after the item (the YouTube player says it late). */
@@ -423,68 +523,27 @@ final class MediaWidget extends HomeWidgetView {
 		});
 	}
 
-	/** Changes a text with a short cross-fade, so a new song's name doesn't pop in. */
+	/**
+	 * Changes a text, the new one fading and settling in. The text is set at once: it can't be lost
+	 * to an animation that was cut short.
+	 */
 	private void swap(TextView t, CharSequence s) {
-		if (s.toString().contentEquals(t.getText())) {
-			t.animate().cancel();
-			t.setAlpha(1f);
-			return;
-		}
-		if (!t.isAttachedToWindow() || !isShown() || !host.animate()) {
-			t.setText(s);
-			return;
-		}
+		if (s.toString().contentEquals(t.getText())) return;
 		t.animate().cancel();
-		t.animate().alpha(0f).setDuration(130).withEndAction(() -> {
-			t.setText(s);
-			t.animate().alpha(1f).setDuration(260).start();
-		}).start();
+		t.setText(s);
+		if (!t.isAttachedToWindow() || !isShown() || !host.animate()) {
+			t.setAlpha(1f);
+			t.setTranslationY(0f);
+			return;
+		}
+		t.setAlpha(0f);
+		t.setTranslationY(px(5));
+		t.animate().alpha(1f).translationY(0f).setDuration(300).setInterpolator(new DecelerateInterpolator()).start();
 	}
 
 	private void setBusy(boolean on) {
 		boolean strip = (mode == STRIP_SMALL) || (mode == STRIP_WIDE);
 		artBusy.setVisibility(on && !strip ? VISIBLE : GONE);
-	}
-
-	private void loadArt(PlayableItem pi, MediaMetadataCompat md, int gen) {
-		String uri = (pi instanceof MusicTrackItem t) ? t.getArtUri() : null;
-		if (uri == null) {
-			Bitmap bm = md.getBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART);
-			if (bm != null) {
-				setArt(bm);
-				return;
-			}
-			uri = md.getString(METADATA_KEY_ALBUM_ART_URI);
-			if (uri == null) uri = md.getString(METADATA_KEY_DISPLAY_ICON_URI);
-		}
-		if (uri == null) {
-			pi.getIconUri().main().onSuccess(u -> {
-				if (gen != generation) return;
-				if (u == null) setArt(null);
-				else fetchArt(pi, u.toString(), gen);
-			});
-		} else {
-			fetchArt(pi, uri, gen);
-		}
-	}
-
-	private void fetchArt(PlayableItem pi, String uri, int gen) {
-		Bitmap hit = HomeImages.cached(uri);
-		if (hit != null) {
-			setArt(hit);
-			return;
-		}
-		act().getLib().getBitmap(uri).main().onCompletion((bm, err) -> {
-			if (gen != generation) return;
-			if (bm == null) {
-				setArt(null);
-				return;
-			}
-			// A video's picture comes letterboxed from YouTube.
-			Bitmap use = MusicPlayerFragment.cropLetterbox(bm);
-			HomeImages.put(uri, use);
-			setArt(use);
-		});
 	}
 
 	/** Shows the cover, or the card's own colours when there is none; the old one fades into it. */
@@ -514,6 +573,13 @@ final class MediaWidget extends HomeWidgetView {
 		thumb.set(new BitmapDrawable(getResources(), bm));
 	}
 
+	private static boolean isBusy(int st) {
+		return (st == PlaybackStateCompat.STATE_CONNECTING) || (st == PlaybackStateCompat.STATE_BUFFERING) ||
+				(st == PlaybackStateCompat.STATE_SKIPPING_TO_NEXT) ||
+				(st == PlaybackStateCompat.STATE_SKIPPING_TO_PREVIOUS) ||
+				(st == PlaybackStateCompat.STATE_SKIPPING_TO_QUEUE_ITEM);
+	}
+
 	/** Play state, the video chip and the seek bar follow the session. */
 	private void syncState() {
 		if (play == null) return;
@@ -522,19 +588,29 @@ final class MediaWidget extends HomeWidgetView {
 		PlaybackStateCompat st = cb.getPlaybackState();
 		int s = st.getState();
 		playing = (s == PlaybackStateCompat.STATE_PLAYING) || (s == PlaybackStateCompat.STATE_BUFFERING);
-		play.setImageResource(playing ? R.drawable.pause : R.drawable.play);
-		play.setAlpha((s == PlaybackStateCompat.STATE_BUFFERING) ? 0.7f : 1f);
-		boolean idle = shown == null;
-		prev.setAlpha(idle ? 0.4f : 1f);
-		next.setAlpha(idle ? 0.4f : 1f);
+		play.setImageResource((s == PlaybackStateCompat.STATE_PLAYING) ? R.drawable.pause : R.drawable.play);
+		// Also while playing but stalled for data, and right after a skip until the next song has started.
+		// A start from nothing is over once the session plays.
+		if (startedIdle && (s == PlaybackStateCompat.STATE_PLAYING)) {
+			startedIdle = false;
+			skipUntil = 0;
+		}
+		boolean skipping = SystemClock.elapsedRealtime() < skipUntil;
+		setPlayLoading(isBusy(s) || ((s == PlaybackStateCompat.STATE_PLAYING) && BufferingIndicator.isBuffering())
+				|| skipping);
+		if (skipping) {
+			removeCallbacks(skipEnd);
+			postDelayed(skipEnd, Math.max(50, skipUntil - SystemClock.elapsedRealtime() + 50));
+		}
+		boolean none = shown == null;
+		prev.setAlpha(none ? 0.4f : 1f);
+		next.setAlpha(none ? 0.4f : 1f);
+		play.setAlpha(1f);
 
 		videoNow = a.isVideoPlaying();
 		boolean canWatch = MusicPlayer.canSwitchToVideo(cb);
-		if (idle) {
-			PlayableItem last = cb.getResumeItem();
-			if (last != null) {
-				setChip(R.drawable.play, R.string.home_media_continue, a::continueLastPlayed);
-			} else if (MusicPlayer.isEnabled()) {
+		if (idle || none) {
+			if (MusicPlayer.isEnabled()) {
 				setChip(R.drawable.music, R.string.home_media_open_music, () -> host.open(R.id.music_addon));
 			} else {
 				setChip(me.aap.utils.R.drawable.folder, R.string.home_media_open_library,
@@ -552,9 +628,52 @@ final class MediaWidget extends HomeWidgetView {
 		}
 		boolean large = (mode == LARGE_WIDE) || (mode == LARGE_TALL);
 		badge.setVisibility(large && videoNow ? VISIBLE : GONE);
+		seek.setAlpha(idle ? 0.55f : 1f);
+		updateModes();
 
 		removeCallbacks(ticker);
 		tick();
+	}
+
+	private final Runnable skipEnd = this::syncState;
+
+	/**
+	 * While loading or buffering, a spinner takes the place of the play icon: the two cross-fade, the
+	 * spinner growing in a little, as on the Music tab's play button.
+	 */
+	private void setPlayLoading(boolean busy) {
+		if (busy == playLoadingShown) return;
+		playLoadingShown = busy;
+		playLoading.animate().cancel();
+		if (playIconAnim != null) playIconAnim.cancel();
+		if (!host.animate() || !isShown()) {
+			play.setImageAlpha(busy ? 0 : 255);
+			playLoading.setAlpha(1f);
+			playLoading.setScaleX(1f);
+			playLoading.setScaleY(1f);
+			playLoading.setVisibility(busy ? VISIBLE : GONE);
+			return;
+		}
+		ValueAnimator ia = ValueAnimator.ofInt(play.getImageAlpha(), busy ? 0 : 255);
+		ia.setDuration(220);
+		ia.setInterpolator(new DecelerateInterpolator());
+		ia.addUpdateListener(v -> play.setImageAlpha((int) v.getAnimatedValue()));
+		ia.start();
+		playIconAnim = ia;
+		if (busy) {
+			if (playLoading.getVisibility() != VISIBLE) {
+				playLoading.setAlpha(0f);
+				playLoading.setScaleX(0.6f);
+				playLoading.setScaleY(0.6f);
+				playLoading.setVisibility(VISIBLE);
+			}
+			playLoading.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(220)
+					.setInterpolator(new DecelerateInterpolator()).start();
+		} else {
+			playLoading.animate().alpha(0f).scaleX(0.6f).scaleY(0.6f).setDuration(220)
+					.setInterpolator(new DecelerateInterpolator())
+					.withEndAction(() -> playLoading.setVisibility(GONE)).start();
+		}
 	}
 
 	private void setChip(int icon, int label, Runnable action) {
@@ -563,9 +682,90 @@ final class MediaWidget extends HomeWidgetView {
 		chipAction = action;
 	}
 
-	/** The position now, extrapolated from the session's last report. */
+	// ---------------------------------------------------------------------------------------------
+	// Shuffle and repeat live on the playing item's container (the music queue, or its folder), as
+	// on the Music tab.
+
+	@Nullable
+	private PlayableItem modeItem() {
+		MediaSessionCallback cb = act().getMediaSessionCallback();
+		MusicTrackItem t = MusicPlayer.getCurrentTrack(cb);
+		return (t != null) ? t : cb.getCurrentItem();
+	}
+
+	@Nullable
+	private BrowsableItemPrefs modePrefs() {
+		PlayableItem i = modeItem();
+		if (i != null) return i.getParent().getPrefs();
+		MusicQueue q = MusicPlayer.getQueue(act());
+		return (q != null) ? q.getPrefs() : null;
+	}
+
+	private void updateModes() {
+		if ((shuffle == null) || (extrasAt == 0)) return;
+		BrowsableItemPrefs p = modePrefs();
+		boolean shuffleOn = (p != null) && p.getShufflePref();
+		PlayableItem i = modeItem();
+		boolean one = (p != null) && (i != null) && i.getId().equals(p.getRepeatItemPref());
+		boolean all = (p != null) && p.getRepeatPref();
+		shuffle.setImageResource(shuffleOn ? R.drawable.shuffle_filled : R.drawable.shuffle);
+		shuffle.setAlpha(shuffleOn ? 1f : 0.55f);
+		repeat.setImageResource(one ? R.drawable.repeat_one : (all ? R.drawable.repeat_filled : R.drawable.repeat));
+		repeat.setAlpha((one || all) ? 1f : 0.55f);
+	}
+
+	private void onShuffle() {
+		MediaSessionCallback cb = act().getMediaSessionCallback();
+		BrowsableItemPrefs p = modePrefs();
+		if (p == null) return;
+		boolean enable = !p.getShufflePref();
+		PlayableItem i = modeItem();
+		// Through the session when it is the session's own item, so its shuffle state follows.
+		if ((i != null) && (i == cb.getCurrentItem())) {
+			cb.onSetShuffleMode(enable ? PlaybackStateCompat.SHUFFLE_MODE_ALL : PlaybackStateCompat.SHUFFLE_MODE_NONE);
+		} else {
+			p.setShufflePref(enable);
+		}
+		updateModes();
+	}
+
+	/** Cycles off, repeat the whole queue/folder, repeat the current song. */
+	private void onRepeat() {
+		MediaSessionCallback cb = act().getMediaSessionCallback();
+		PlayableItem i = modeItem();
+		BrowsableItemPrefs p = modePrefs();
+		if (p == null) return;
+		boolean one = (i != null) && i.getId().equals(p.getRepeatItemPref());
+		boolean all = p.getRepeatPref();
+		int m;
+		if (one) m = PlaybackStateCompat.REPEAT_MODE_NONE;
+		else if (all) m = (i != null) ? PlaybackStateCompat.REPEAT_MODE_ONE : PlaybackStateCompat.REPEAT_MODE_NONE;
+		else m = PlaybackStateCompat.REPEAT_MODE_ALL;
+		if ((i != null) && (i == cb.getCurrentItem())) {
+			cb.onSetRepeatMode(m);
+		} else {
+			p.setRepeatItemPref(((i != null) && (m == PlaybackStateCompat.REPEAT_MODE_ONE)) ? i.getId() : null);
+			p.setRepeatPref(m == PlaybackStateCompat.REPEAT_MODE_ALL);
+		}
+		updateModes();
+		TopToast.show(R.drawable.repeat, (m == PlaybackStateCompat.REPEAT_MODE_ONE) ? R.string.music_repeat_one :
+				(m == PlaybackStateCompat.REPEAT_MODE_ALL) ? R.string.music_repeat_all : R.string.music_repeat_off);
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Position
+
+	/** The position now, extrapolated from the session's last report; where playback stopped when idle. */
 	private long position() {
-		PlaybackStateCompat st = act().getMediaSessionCallback().getPlaybackState();
+		MainActivityDelegate a = act();
+		if (idle) {
+			if (shown instanceof MusicTrackItem) {
+				MusicQueue q = MusicPlayer.getQueue(a);
+				return (q != null) ? q.getSavedPosition() : 0;
+			}
+			return a.getMediaSessionCallback().getResumePosition();
+		}
+		PlaybackStateCompat st = a.getMediaSessionCallback().getPlaybackState();
 		// Just seeked: the session may not have heard of it yet, so go on from where the user put it.
 		long since = SystemClock.elapsedRealtime() - seekAt;
 		if ((seekAt > 0) && (since < 3000)) {
@@ -606,23 +806,78 @@ final class MediaWidget extends HomeWidgetView {
 			else cb.onPlay();
 			return;
 		}
-		// Nothing loaded: where the last session stopped, else the Music tab.
-		if (cb.getResumeItem() != null) a.continueLastPlayed();
-		else if (MusicPlayer.isEnabled()) host.open(R.id.music_addon);
+		// Nothing loaded: where the last session stopped, played as music right here (the screen stays).
+		startIdle();
+	}
+
+	private void startIdle() {
+		MainActivityDelegate a = act();
+		MediaSessionCallback cb = a.getMediaSessionCallback();
+		PlayableItem last = cb.getResumeItem();
+		// What played when the app last ran, if it was not a queue track (a local video, say).
+		if ((last != null) && !(last instanceof MusicTrackItem) && !last.isExternal()) {
+			skipUntil = SystemClock.elapsedRealtime() + 8000;
+			startedIdle = true;
+			MusicPlayer.playAsMusic(a, last, cb.getResumePosition());
+			syncState();
+			return;
+		}
+		MusicQueue q = MusicPlayer.getQueue(a);
+		if ((q != null) && !q.isEmpty()) {
+			MusicTrackItem t = q.getSavedCurrent();
+			skipUntil = SystemClock.elapsedRealtime() + 8000;
+			startedIdle = true;
+			if (t != null) MusicPlayer.playTrack(a, t, q.getSavedPosition());
+			else MusicPlayer.playTrack(a, q.getTrack(0), 0);
+			syncState();
+			return;
+		}
+		if (MusicPlayer.isEnabled()) host.open(R.id.music_addon);
 		else host.open(R.id.folders_fragment);
 	}
 
 	private void onPrev() {
 		MediaSessionCallback cb = act().getMediaSessionCallback();
-		if (cb.getCurrentItem() == null) return;
+		if (cb.getCurrentItem() == null) {
+			skipFromSavedQueue(false);
+			return;
+		}
 		// Like any player: back to the start first, unless it has only just begun.
-		if (position() > 3000) cb.onSeekTo(0);
-		else cb.onSkipToPrevious();
+		if (position() > 3000) {
+			cb.onSeekTo(0);
+			return;
+		}
+		skipUntil = SystemClock.elapsedRealtime() + 2500;
+		cb.onSkipToPrevious();
+		syncState();
 	}
 
 	private void onNext() {
 		MediaSessionCallback cb = act().getMediaSessionCallback();
-		if (cb.getCurrentItem() != null) cb.onSkipToNext();
+		if (cb.getCurrentItem() == null) {
+			skipFromSavedQueue(true);
+			return;
+		}
+		skipUntil = SystemClock.elapsedRealtime() + 2500;
+		cb.onSkipToNext();
+		syncState();
+	}
+
+	/** Next or previous right after the app started: the queue's neighbour of where it stopped, wrapping around. */
+	private void skipFromSavedQueue(boolean forward) {
+		MainActivityDelegate a = act();
+		MusicQueue q = MusicPlayer.getQueue(a);
+		if ((q == null) || q.isEmpty()) return;
+		List<MusicTrackItem> order = q.getPlayOrder();
+		int n = order.size();
+		if (n == 0) return;
+		MusicTrackItem cur = q.getSavedCurrent();
+		int idx = (cur == null) ? -1 : order.indexOf(cur);
+		int target = (idx < 0) ? (forward ? 0 : n - 1) : Math.floorMod(idx + (forward ? 1 : -1), n);
+		skipUntil = SystemClock.elapsedRealtime() + 8000;
+		startedIdle = true;
+		MusicPlayer.playTrack(a, order.get(target), 0);
+		syncState();
 	}
 
 	private void bounce(View v) {
@@ -756,23 +1011,30 @@ final class MediaWidget extends HomeWidgetView {
 			invalidate();
 		}
 
+		/** The room at each end, so the thumb is whole at 0 and at the end. */
+		private float inset() {
+			return px(9);
+		}
+
 		@Override
 		protected void onDraw(Canvas c) {
 			float h = getHeight();
-			float w = getWidth();
+			float in = inset();
+			float w = getWidth() - 2 * in;
 			float cy = h / 2f;
 			float t = px(4);
 			p.setColor(0x44FFFFFF);
-			c.drawRoundRect(0, cy - t / 2, w, cy + t / 2, t / 2, t / 2, p);
+			c.drawRoundRect(in, cy - t / 2, in + w, cy + t / 2, t / 2, t / 2, p);
 			p.setColor(0xFFFFFFFF);
-			c.drawRoundRect(0, cy - t / 2, w * fraction, cy + t / 2, t / 2, t / 2, p);
-			c.drawCircle(w * fraction, cy, touching ? px(8) : px(5.5f), p);
+			c.drawRoundRect(in, cy - t / 2, in + w * fraction, cy + t / 2, t / 2, t / 2, p);
+			c.drawCircle(in + w * fraction, cy, touching ? px(8) : px(5.5f), p);
 		}
 
 		@Override
 		public boolean onTouchEvent(MotionEvent e) {
-			if (duration <= 0) return false;
-			float f = Math.max(0f, Math.min(1f, e.getX() / Math.max(1, getWidth())));
+			if ((duration <= 0) || idle) return false;
+			float in = inset();
+			float f = Math.max(0f, Math.min(1f, (e.getX() - in) / Math.max(1, getWidth() - 2 * in)));
 			switch (e.getActionMasked()) {
 				case MotionEvent.ACTION_DOWN -> {
 					touching = true;

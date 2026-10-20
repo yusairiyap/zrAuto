@@ -85,6 +85,10 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	private int bgBlur = -1;
 	private int bgGeneration;
 	private final Runnable loadBg = () -> loadBackground(true);
+	private final HomeNowPlayingBg nowBg;
+	private final Runnable blurCover;
+	@Nullable
+	private ValueAnimator bgFade;
 
 	public HomeScreen(MainActivityDelegate a) {
 		this.a = a;
@@ -100,6 +104,19 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		root.addView(bg, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));
 		behind = new BehindBarsLayers(a, root, bg);
+		nowBg = new HomeNowPlayingBg(a, (bm, top) -> {
+			if (bm == null) {
+				bg.setImage(null, true);
+				topColor = defaultTopColor();
+			} else {
+				bg.setImage(bm, true);
+				float dark = 1f - (1f - prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM) / 100f) * 0.4f;
+				topColor = HomeUi.mix(top, 0xFF000000, dark);
+			}
+			applyGreeting();
+			if (shown) systemBars(true);
+		});
+		blurCover = () -> nowBg.setBlur(prefs.getIntPref(MainActivityPrefs.HOME_BG_BLUR));
 
 		grid = new HomeGridLayout(ctx, this, this);
 		grid.bind(model);
@@ -162,6 +179,34 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	}
 
 	private static boolean editOnShow;
+	/** The Home page that is alive (there is at most one), for Settings to reach. */
+	@Nullable
+	private static HomeScreen live;
+
+	/**
+	 * What Settings > Home > Look shows: 0 to 2 when every widget follows it, 3 (Custom) when some
+	 * widget has a look of its own.
+	 */
+	public static int styleShown(MainActivityPrefs prefs) {
+		HomeScreen h = live;
+		boolean custom = (h != null) ? h.model.anyStyleOverride() : new HomeModel(prefs).anyStyleOverride();
+		return custom ? 3 : Math.max(0, Math.min(2, prefs.getIntPref(MainActivityPrefs.HOME_CARD_STYLE)));
+	}
+
+	/** A look picked in Settings: every widget follows it, whatever look it had of its own. */
+	public static void setAllStyles(MainActivityPrefs prefs, int style) {
+		prefs.applyIntPref(MainActivityPrefs.HOME_CARD_STYLE, style);
+		HomeScreen h = live;
+		if (h != null) {
+			h.model.clearStyles();
+			h.model.saveLater();
+			h.grid.restyle();
+		} else {
+			HomeModel m = new HomeModel(prefs);
+			m.clearStyles();
+			m.save();
+		}
+	}
 
 	/** Settings > Home > Edit widgets: the next time Home shows, it comes up in edit mode. */
 	public static void editOnNextShow() {
@@ -183,6 +228,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	}
 
 	public void onViewCreated() {
+		live = this;
 		behind.attach();
 		prefs.addBroadcastListener(this);
 		root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
@@ -194,7 +240,27 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		loadBackground(false);
 	}
 
+	/** True when the background is the cover of what plays (Settings > Home) instead of a picture. */
+	private boolean followsCover() {
+		return prefs.getIntPref(MainActivityPrefs.HOME_BG_SOURCE) == 1;
+	}
+
+	/** The background's source changed (or Home came back): follow the cover, or load the picture. */
+	private void applyBackgroundSource() {
+		if (followsCover()) {
+			bgGeneration++;
+			if (shown) nowBg.start(prefs.getIntPref(MainActivityPrefs.HOME_BG_BLUR));
+		} else {
+			nowBg.stop();
+			bgVersion = -1;
+			loadBackground(true);
+		}
+	}
+
 	public void onDestroyView() {
+		if (live == this) live = null;
+		nowBg.stop();
+		if (bgFade != null) bgFade.cancel();
 		prefs.removeBroadcastListener(this);
 		behind.detach();
 		root.removeCallbacks(loadBg);
@@ -212,6 +278,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		shown = true;
 		behind.setActive(true);
 		systemBars(true);
+		fadeBackgroundIn();
+		if (followsCover()) nowBg.start(prefs.getIntPref(MainActivityPrefs.HOME_BG_BLUR));
 		applyGreeting();
 		if (model.reloadIfChanged()) {
 			grid.sync();
@@ -243,8 +311,34 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		if (editing) setEditing(false);
 		model.save();
 		HomeModal.dismissNow();
+		nowBg.stop();
 		behind.setActive(false);
 		systemBars(false);
+	}
+
+	/**
+	 * The background reaches out under the bars one frame after the tab shows (see BehindBarsLayers),
+	 * which looked like it stretching; it is held back until it has, then comes in with a fade.
+	 */
+	private void fadeBackgroundIn() {
+		if (bgFade != null) bgFade.cancel();
+		if (!animate()) {
+			behind.setShown(1f);
+			return;
+		}
+		behind.setShown(0f);
+		root.post(() -> root.post(() -> {
+			if (!shown) {
+				behind.setShown(1f);
+				return;
+			}
+			ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
+			a.setDuration(420);
+			a.setInterpolator(new DecelerateInterpolator(1.4f));
+			a.addUpdateListener(v -> behind.setShown((float) v.getAnimatedValue()));
+			bgFade = a;
+			a.start();
+		}));
 	}
 
 	/** Back leaves edit mode first. */
@@ -338,7 +432,14 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		if (changed.contains(MainActivityPrefs.HOME_CARD_STYLE)) grid.restyle();
 		if (changed.contains(MainActivityPrefs.HOME_GREETING)) applyGreeting();
 		if (changed.contains(MainActivityPrefs.HOME_BG_DIM)) bg.setDim(prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM));
-		if (changed.contains(MainActivityPrefs.HOME_BG_VERSION) || changed.contains(MainActivityPrefs.HOME_BG_BLUR)) {
+		if (changed.contains(MainActivityPrefs.HOME_BG_SOURCE)) {
+			applyBackgroundSource();
+		} else if (followsCover()) {
+			if (changed.contains(MainActivityPrefs.HOME_BG_BLUR)) {
+				root.removeCallbacks(blurCover);
+				root.postDelayed(blurCover, 350);
+			}
+		} else if (changed.contains(MainActivityPrefs.HOME_BG_VERSION) || changed.contains(MainActivityPrefs.HOME_BG_BLUR)) {
 			// A slider sends many values: only the last one is worked on.
 			root.removeCallbacks(loadBg);
 			root.postDelayed(loadBg, 350);
@@ -486,6 +587,11 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		fade.follow(s);
 		root.addView(fade, 1, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));
+		if (!down) {
+			// Sideways the greeting stays put at the top left, in the room the grid leaves there.
+			root.addView(greeting, 2, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+					ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START));
+		}
 		grid.setScroller(s);
 		scroller = s;
 		startInsets(s);
@@ -571,10 +677,14 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	private int insetTarget;
 
 	private void applyGreeting() {
-		boolean show = vertical && prefs.getBooleanPref(MainActivityPrefs.HOME_GREETING);
+		boolean show = prefs.getBooleanPref(MainActivityPrefs.HOME_GREETING);
 		greeting.setVisibility(show ? View.VISIBLE : View.GONE);
 		if (!show) return;
 		Context ctx = palette.ctx;
+		greetTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, vertical ? 28 : 22);
+		greetDate.setTextSize(TypedValue.COMPLEX_UNIT_SP, vertical ? 14 : 13);
+		greeting.setPadding(HomeUi.dp(ctx, 20), HomeUi.dp(ctx, vertical ? 16 : 8), HomeUi.dp(ctx, vertical ? 76 : 20),
+				HomeUi.dp(ctx, vertical ? 8 : 0));
 		int hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
 		greetTitle.setText((hour < 5) ? R.string.home_greet_night : (hour < 12) ? R.string.home_greet_morning :
 				(hour < 18) ? R.string.home_greet_afternoon : R.string.home_greet_evening);
@@ -589,6 +699,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	// Background and the status bar
 
 	private void loadBackground(boolean animate) {
+		if (followsCover()) return;
 		int version = prefs.getIntPref(MainActivityPrefs.HOME_BG_VERSION);
 		int blur = prefs.getIntPref(MainActivityPrefs.HOME_BG_BLUR);
 		bg.setDim(prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM));
