@@ -47,6 +47,7 @@
     <string name="home_opt_power_left">Time left</string>
     <string name="home_opt_power_temp">Temperature</string>
     <string name="home_power_car_phone">Android Auto %1$d mAh · phone alone %2$d mAh</string>
+    <string name="home_opt_data_pie">Pie chart</string>
     <string name="home_opt_data_breakdown">Breakdown by kind</string>
     <string name="home_opt_data_session">Android Auto session limit</string>
     <string name="home_opt_style">Look</string>

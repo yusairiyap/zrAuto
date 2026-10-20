@@ -44,6 +44,11 @@ final class DataUsageWidget extends HomeWidgetView {
 	private LinearLayout centre;
 	private LinearLayout legend;
 	private final TextView[] legendValues = new TextView[DataUsageStore.CATS];
+	/** The "Breakdown" view: a line per kind with its share as a bar, in place of the ring. */
+	private LinearLayout bdBox;
+	private TextView bdTotal;
+	private final MeterBar[] bdBars = new MeterBar[DataUsageStore.CATS];
+	private final TextView[] bdValues = new TextView[DataUsageStore.CATS];
 	private TextView off;
 	private LinearLayout session;
 	private TextView sessionText;
@@ -117,6 +122,38 @@ final class DataUsageWidget extends HomeWidgetView {
 		LinearLayout.LayoutParams lgp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
 		lgp.setMarginStart(px(14));
 		body.addView(legend, lgp);
+
+		bdBox = new LinearLayout(ctx);
+		bdBox.setOrientation(LinearLayout.VERTICAL);
+		bdBox.setGravity(Gravity.CENTER_VERTICAL);
+		bdTotal = text(ROLE_PRIMARY, 16, true);
+		bdTotal.setSingleLine(true);
+		bdTotal.setEllipsize(android.text.TextUtils.TruncateAt.END);
+		bdBox.addView(bdTotal);
+		for (int i = 0; i < DataUsageStore.CATS; i++) {
+			LinearLayout line = new LinearLayout(ctx);
+			line.setGravity(Gravity.CENTER_VERTICAL);
+			View dot = new View(ctx);
+			dot.setBackground(HomeUi.oval(catColors[i]));
+			line.addView(dot, new LinearLayout.LayoutParams(px(9), px(9)));
+			TextView name = text(ROLE_SECONDARY, 12.5f, false);
+			name.setText(NAMES[i]);
+			name.setSingleLine(true);
+			LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+			nlp.setMarginStart(px(8));
+			line.addView(name, nlp);
+			bdValues[i] = text(ROLE_PRIMARY, 12.5f, true);
+			line.addView(bdValues[i]);
+			LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(-1, -2);
+			llp.topMargin = px(i == 0 ? 6 : 5);
+			bdBox.addView(line, llp);
+			bdBars[i] = new MeterBar(ctx);
+			LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(-1, px(5));
+			blp.topMargin = px(3);
+			bdBox.addView(bdBars[i], blp);
+		}
+		bdBox.setVisibility(GONE);
+		body.addView(bdBox, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 		column.addView(body, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
 		session = new LinearLayout(ctx);
@@ -141,6 +178,9 @@ final class DataUsageWidget extends HomeWidgetView {
 	@Override
 	protected List<HomeOption> getOptions() {
 		List<HomeOption> l = new ArrayList<>();
+		l.add(HomeOption.choice("view", ctx.getString(R.string.home_opt_power_view), 0,
+				ctx.getString(R.string.home_opt_auto), ctx.getString(R.string.home_opt_data_pie),
+				ctx.getString(R.string.home_opt_power_breakdown)));
 		l.add(HomeOption.sw("breakdown", ctx.getString(R.string.home_opt_data_breakdown), true));
 		l.add(HomeOption.sw("session", ctx.getString(R.string.home_opt_data_session), true));
 		return l;
@@ -150,6 +190,7 @@ final class DataUsageWidget extends HomeWidgetView {
 	protected void onStyleChanged() {
 		if (ring == null) return;
 		sessionBar.setColors(softFill(), color(ROLE_PRIMARY));
+		for (int i = 0; i < bdBars.length; i++) bdBars[i].setColors(softFill(), catColors[i]);
 		ring.setColors(catColors, softFill(), ContextCompat.getColor(ctx, R.color.data_usage_warning),
 				ContextCompat.getColor(ctx, R.color.data_usage_limit));
 		refresh();
@@ -173,14 +214,22 @@ final class DataUsageWidget extends HomeWidgetView {
 
 	private void layoutFor() {
 		boolean strip = getCellsH() == 1;
-		boolean wide = !strip && getCellsW() >= 3 && optBool("breakdown", true);
+		int view = optInt("view", 0);
+		boolean list = !strip && (view == 2);
+		boolean wide = !strip && !list && (view == 0) && getCellsW() >= 3 && optBool("breakdown", true);
 		int tallPx = (heightPx() > 0) ? heightPx() : px(getCellsH() * 90f);
 		// The session line and its bar need a card tall enough to leave the ring its room.
 		boolean sess = !strip && (tallPx >= px(220)) && optBool("session", true) && DataSessionLimit.isEnabled();
-		ringBox.setVisibility(strip ? GONE : VISIBLE);
+		ringBox.setVisibility((strip || list) ? GONE : VISIBLE);
+		bdBox.setVisibility(list ? VISIBLE : GONE);
 		legend.setVisibility(wide ? VISIBLE : GONE);
 		session.setVisibility(sess ? VISIBLE : GONE);
-		if (!strip) {
+		if (list) {
+			// The bars under each line only when the card is tall enough for all four lines with them.
+			int room = tallPx - px(28) - px(34) - px(4) - (sess ? px(36) : 0);
+			for (MeterBar b : bdBars) b.setVisibility((room >= px(150)) ? VISIBLE : GONE);
+		}
+		if (!strip && !list) {
 			int availH = heightPx() - px(28) - px(34) - px(4) - (sess ? px(36) : 0);
 			int availW = widthPx() - px(28) - (wide ? px(150) : 0);
 			int side = Math.max(px(64), Math.min(availH, availW));
@@ -247,6 +296,14 @@ final class DataUsageWidget extends HomeWidgetView {
 		}
 		for (int i = 0; i < legendValues.length; i++) {
 			legendValues[i].setText(Formatter.formatShortFileSize(ctx, (i < usage.length) ? usage[i] : 0));
+		}
+		String of = (lim > 0) ? ctx.getString(R.string.home_data_of, Formatter.formatShortFileSize(ctx, lim)) : "";
+		bdTotal.setText(Formatter.formatShortFileSize(ctx, total) + (of.isEmpty() ? "" : "  " + of));
+		float share = Math.max(1, total);
+		for (int i = 0; i < bdValues.length; i++) {
+			long u = (i < usage.length) ? usage[i] : 0;
+			bdValues[i].setText(Formatter.formatShortFileSize(ctx, u));
+			bdBars[i].setFraction(u / share);
 		}
 		placeCentre(strip);
 		refreshSession();

@@ -613,6 +613,8 @@ what each widget shows is set on the widget (edit mode > its gear).
   one-line stats drop temperature, then time left; Data's caption becomes "of 18 GB" under ~105dp; its session line needs a card
   at least 220dp tall; Fuel's refuel chip and date need room, and a one-cell-high Fuel drops its title row, its figures opening the tab).
 - A card 2 cells wide gets smaller pictures and play buttons in `LibraryWidget` rows (`widthPx() < 230dp`).
+- **Data usage has a Show option** like Power: Automatic (ring, and the legend beside it when wide), Pie chart (ring only) or Breakdown
+  (a line per kind with its share as a bar and the total on top; the bars go when the card is under 150dp of room).
 
 ### Adding a widget (the easy path)
 
