@@ -14,6 +14,7 @@ import me.aap.fermata.R;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.home.HomeHost;
+import me.aap.fermata.ui.home.HomeInfo;
 import me.aap.fermata.ui.home.HomeWidgetType;
 import me.aap.fermata.ui.home.HomeWidgetView;
 import me.aap.fermata.ui.view.InfoOverlayView;
@@ -30,6 +31,7 @@ final class InfoOverlayWidget extends HomeWidgetView implements PreferenceStore.
 	private InfoOverlayView overlay;
 	private TextView none;
 	private View pick;
+	private View headerRow;
 
 	InfoOverlayWidget(HomeHost host, HomeWidgetType type) {
 		super(host, type);
@@ -39,13 +41,12 @@ final class InfoOverlayWidget extends HomeWidgetView implements PreferenceStore.
 	protected void onCreate(FrameLayout content) {
 		column = new LinearLayout(ctx);
 		column.setOrientation(LinearLayout.VERTICAL);
-		column.addView(header(() -> open(R.id.info_overlay_fragment)),
-				new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(34)));
+		headerRow = header(() -> open(R.id.info_overlay_fragment));
+		column.addView(headerRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(34)));
 		holder = new FrameLayout(ctx);
 		overlay = new InfoOverlayView(ctx);
 		holder.addView(overlay, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
 				ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL | Gravity.START));
-		holder.setPadding(px(12), 0, px(12), px(8));
 		chipLook();
 		LinearLayout empty = new LinearLayout(ctx);
 		empty.setOrientation(LinearLayout.VERTICAL);
@@ -107,41 +108,27 @@ final class InfoOverlayWidget extends HomeWidgetView implements PreferenceStore.
 	/** The overlay's settings as the Music tab applies them (the position setting does not matter here). */
 	private void apply() {
 		if (overlay == null) return;
-		MainActivityDelegate ad = host.activity();
-		MainActivityPrefs p = ad.getPrefs();
-		boolean clock = p.getInfoOverlayShowClockPref(ad);
-		boolean battery = p.getInfoOverlayShowBatteryPctPref(ad);
-		boolean temp = p.getInfoOverlayShowBatteryTempPref(ad);
-		boolean distance = p.getInfoOverlayShowDistancePref(ad);
-		boolean dataUsage = p.getInfoOverlayShowDataUsagePref(ad);
-		boolean dataRemaining = p.getInfoOverlayShowDataRemainingPref(ad);
-		boolean downloaded = p.getInfoOverlayShowDownloadedPref(ad);
-		boolean dataSession = p.getInfoOverlayShowDataSessionPref(ad);
-		boolean power = p.getInfoOverlayShowPowerPref(ad);
-		boolean any = clock || battery || temp || distance || dataUsage || dataRemaining || downloaded ||
-				dataSession || power;
+		boolean any = HomeInfo.apply(host.activity(), overlay);
 		overlay.setVisibility(any ? VISIBLE : GONE);
 		View empty = holder.findViewWithTag("empty");
 		if (empty != null) empty.setVisibility(any ? GONE : VISIBLE);
-		if (!any) return;
-		overlay.setSize(p.getInfoOverlaySizePref(ad));
-		overlay.setOrder(p.getInfoOverlayOrderPref(ad));
-		overlay.setItems(clock, p.getInfoOverlayShowClockIconPref(ad), battery,
-				p.getInfoOverlayShowBatteryIconPref(ad), temp, p.getInfoOverlayShowTempIconPref(ad), distance,
-				p.getInfoOverlayShowDistanceIconPref(ad));
-		overlay.setDataItems(dataUsage, dataRemaining, p.getInfoOverlayShowDataIconPref(ad));
-		overlay.setSessionItem(dataSession, p.getInfoOverlayDataSessionBarPref(ad),
-				p.getInfoOverlayDataSessionLeftPref(ad));
-		overlay.setPowerItem(power, p.getInfoOverlayShowPowerIconPref(ad));
-		overlay.setDownloadedItem(downloaded);
 		fit();
 	}
 
-	/** Chips wrap onto lines; scales them down only when even that is taller than the room. */
+	/**
+	 * Chips wrap onto lines; scaled down only when even that is taller than the room. A card too short
+	 * for its title row (a one-cell strip, the car screen's small cards) drops the title, which gives the
+	 * chips the whole card; a tap on them opens the settings instead.
+	 */
 	private void fit() {
-		if ((overlay == null) || (overlay.getVisibility() != VISIBLE) || (widthPx() == 0) || (heightPx() == 0)) return;
-		int availW = widthPx() - px(24);
-		int availH = heightPx() - px(34) - px(8);
+		if ((overlay == null) || (heightPx() == 0) || (widthPx() == 0)) return;
+		boolean strip = heightPx() < px(130);
+		headerRow.setVisibility(strip ? GONE : VISIBLE);
+		overlay.setOnClickListener(strip ? v -> open(R.id.info_overlay_fragment) : null);
+		overlay.setClickable(strip);
+		if (overlay.getVisibility() != VISIBLE) return;
+		int availW = widthPx() - px(28);
+		int availH = heightPx() - px(28) - (strip ? 0 : px(34) + px(4));
 		if ((availW <= 0) || (availH <= 0)) return;
 		overlay.measure(View.MeasureSpec.makeMeasureSpec(availW, View.MeasureSpec.AT_MOST),
 				View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));

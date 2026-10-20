@@ -112,6 +112,14 @@ public interface MainActivityPrefs
 	Pref<IntSupplier> HOME_COLUMNS = Pref.i("HOME_COLUMNS", 0);
 	Pref<IntSupplier> HOME_GAP = Pref.i("HOME_GAP", 10);
 	Pref<BooleanSupplier> HOME_GREETING = Pref.b("HOME_GREETING", true);
+	/** What the greeting says in the morning, afternoon, evening and night; empty keeps the built-in words. */
+	Pref<Supplier<String>> HOME_GREET_MORNING = Pref.s("HOME_GREET_MORNING", (String) null);
+	Pref<Supplier<String>> HOME_GREET_AFTERNOON = Pref.s("HOME_GREET_AFTERNOON", (String) null);
+	Pref<Supplier<String>> HOME_GREET_EVENING = Pref.s("HOME_GREET_EVENING", (String) null);
+	Pref<Supplier<String>> HOME_GREET_NIGHT = Pref.s("HOME_GREET_NIGHT", (String) null);
+	/** The info overlay's chips on the greeting's row, before the edit button (the phone's, and the car screen's own). */
+	Pref<BooleanSupplier> HOME_TOP_OVERLAY = Pref.b("HOME_TOP_OVERLAY", false);
+	Pref<BooleanSupplier> HOME_TOP_OVERLAY_AA = Pref.b("HOME_TOP_OVERLAY_AA", false);
 	Pref<BooleanSupplier> HOME_ANIMATE = Pref.b("HOME_ANIMATE", true);
 	Pref<BooleanSupplier> CHECK_UPDATES = Pref.b("CHECK_UPDATES", true);
 	Pref<LongSupplier> CHECK_UPDATES_STAMP = Pref.l("CHECK_UPDATES_STAMP", 0);

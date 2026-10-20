@@ -1375,6 +1375,35 @@ public class SettingsFragment extends MainActivityFragment
 			o.title = R.string.home_pref_greeting;
 			o.subtitle = R.string.home_pref_greeting_sub;
 		});
+		// What the greeting says, by the time of day (empty: the built-in words).
+		Pref<?>[] greetPrefs = {MainActivityPrefs.HOME_GREET_MORNING, MainActivityPrefs.HOME_GREET_AFTERNOON,
+				MainActivityPrefs.HOME_GREET_EVENING, MainActivityPrefs.HOME_GREET_NIGHT};
+		int[] greetTitles = {R.string.home_pref_greet_morning, R.string.home_pref_greet_afternoon,
+				R.string.home_pref_greet_evening, R.string.home_pref_greet_night};
+		int[] greetHints = {R.string.home_greet_morning, R.string.home_greet_afternoon,
+				R.string.home_greet_evening, R.string.home_greet_night};
+		for (int i = 0; i < greetPrefs.length; i++) {
+			final int k = i;
+			sub.addStringPref(o -> {
+				o.store = ps;
+				o.pref = (Pref<me.aap.utils.function.Supplier<String>>) greetPrefs[k];
+				o.title = greetTitles[k];
+				o.hint = greetHints[k];
+				o.trim = true;
+			});
+		}
+		sub.addBooleanPref(o -> {
+			o.store = ps;
+			o.pref = MainActivityPrefs.HOME_TOP_OVERLAY;
+			o.title = R.string.home_pref_top_overlay;
+			o.subtitle = R.string.home_pref_top_overlay_sub;
+		});
+		sub.addBooleanPref(o -> {
+			o.store = ps;
+			o.pref = MainActivityPrefs.HOME_TOP_OVERLAY_AA;
+			o.title = R.string.home_pref_top_overlay_aa;
+			o.subtitle = R.string.home_pref_top_overlay_sub;
+		});
 		sub.addBooleanPref(o -> {
 			o.store = ps;
 			o.pref = MainActivityPrefs.HOME_ANIMATE;

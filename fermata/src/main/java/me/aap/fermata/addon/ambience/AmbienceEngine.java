@@ -480,6 +480,7 @@ public final class AmbienceEngine {
 	public void setHeld(boolean h) {
 		if (held == h) return;
 		held = h;
+		DiagnosticLog.log("AMBIENCE", h ? "held back: the playback paused" : "released: the playback went on");
 		if (h) {
 			// Nothing is heard, so the timer waits too instead of running out in silence.
 			if (endAt != 0) {

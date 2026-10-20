@@ -187,6 +187,13 @@
     <string name="home_pref_columns">Widgets across</string>
     <string name="home_pref_columns_sub">How many units fit across (down, when scrolling sideways); 0 fits the screen</string>
     <string name="home_pref_gap">Space between widgets</string>
+    <string name="home_pref_greet_morning">Morning greeting</string>
+    <string name="home_pref_greet_afternoon">Afternoon greeting</string>
+    <string name="home_pref_greet_evening">Evening greeting</string>
+    <string name="home_pref_greet_night">Night greeting</string>
+    <string name="home_pref_top_overlay">Info overlay beside the edit button</string>
+    <string name="home_pref_top_overlay_aa">Info overlay beside the edit button on Android Auto</string>
+    <string name="home_pref_top_overlay_sub">The overlay\'s chips in the greeting\'s row, from Settings > Info overlay</string>
     <string name="home_pref_greeting">Greeting</string>
     <string name="home_pref_greeting_sub">The greeting and the date above the widgets</string>
     <string name="home_pref_animate">Animations</string>

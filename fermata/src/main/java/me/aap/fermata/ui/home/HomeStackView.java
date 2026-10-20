@@ -25,7 +25,8 @@ import me.aap.fermata.R;
  * Widgets of the same size stacked on top of each other. A swipe left or right slides the top one
  * away and brings the next up (looking like a pager with a little depth); a row of dots, away
  * again a moment after the last touch, says how many there are and which one shows. In car mode
- * the dots come with two buttons, as a steering wheel can't swipe.
+ * the dots come with two buttons, as a steering wheel can't swipe. The stack goes round: past the
+ * last widget comes the first again, and back from the first is the last.
  */
 final class HomeStackView extends FrameLayout {
 	private static final long SETTLE_MS = 280;
@@ -115,7 +116,26 @@ final class HomeStackView extends FrameLayout {
 	}
 
 	int topIndex() {
-		return Math.round(pos);
+		int n = widgets.size();
+		return (n == 0) ? 0 : ((Math.round(pos) % n) + n) % n;
+	}
+
+	/** {@code p} brought into 0 (inclusive) to the number of widgets (exclusive). */
+	private float mod(float p) {
+		int n = widgets.size();
+		if (n == 0) return 0f;
+		p %= n;
+		return (p < 0) ? p + n : p;
+	}
+
+	/** The shortest way round the stack from here to {@code d} steps away, from -n/2 up to n/2. */
+	private float wrap(float d) {
+		int n = widgets.size();
+		if (n < 2) return d;
+		d %= n;
+		if (d >= n / 2f) d -= n;
+		else if (d < -n / 2f) d += n;
+		return d;
 	}
 
 	void add(HomeWidgetView w) {
@@ -153,7 +173,8 @@ final class HomeStackView extends FrameLayout {
 		index = Math.max(0, Math.min(index, widgets.size() - 1));
 		if (settle != null) settle.cancel();
 		if (animate && cb.animations() && isLaidOut()) {
-			animateTo(index);
+			int r = Math.round(pos);
+			animateTo(r + Math.round(wrap(index - r)));
 		} else {
 			pos = index;
 			apply();
@@ -161,11 +182,12 @@ final class HomeStackView extends FrameLayout {
 	}
 
 	private void goBy(int d) {
-		int i = Math.max(0, Math.min(Math.round(pos) + d, widgets.size() - 1));
-		if (i == Math.round(pos)) return;
+		int n = widgets.size();
+		if (n < 2) return;
+		int r = Math.round(pos);
 		showDots();
-		animateTo(i);
-		cb.onTopChanged(i);
+		animateTo(r + d);
+		cb.onTopChanged((((r + d) % n) + n) % n);
 	}
 
 	/** Shows the dots now and takes them down again a moment after the last touch. */
@@ -178,7 +200,7 @@ final class HomeStackView extends FrameLayout {
 	}
 
 	private boolean pinned() {
-		return cb.isEditing() || cb.isCar();
+		return cb.isEditing();
 	}
 
 	private void fadeDotsOut() {
@@ -187,7 +209,7 @@ final class HomeStackView extends FrameLayout {
 		dots.animate().alpha(0f).setDuration(350).start();
 	}
 
-	/** The dots stay up in edit mode and car mode, and the buttons show in car mode. */
+	/** The dots stay up in edit mode (and only then), and the buttons show in car mode. */
 	void syncControls() {
 		boolean many = widgets.size() > 1;
 		boolean car = cb.isCar() && many;
@@ -200,6 +222,9 @@ final class HomeStackView extends FrameLayout {
 			dots.setAlpha(1f);
 		} else if (!many) {
 			dots.setAlpha(0f);
+		} else if (dots.getAlpha() > 0f) {
+			// Edit mode over: the dots that stayed up for it go away again after a moment.
+			postDelayed(hideDots, DOTS_SHOW_MS);
 		}
 	}
 
@@ -232,7 +257,7 @@ final class HomeStackView extends FrameLayout {
 		int w = getWidth();
 		for (int i = 0; i < n; i++) {
 			HomeWidgetView v = widgets.get(i);
-			float d = i - pos;
+			float d = wrap(i - pos);
 			float a = Math.abs(d);
 			if (a >= 1f) {
 				if (v.getVisibility() != INVISIBLE) v.setVisibility(INVISIBLE);
@@ -248,7 +273,7 @@ final class HomeStackView extends FrameLayout {
 			float f = 1f - a;
 			v.setAlpha(f * f * (3f - 2f * f));
 		}
-		dots.setPos(pos);
+		dots.setPos(mod(pos));
 	}
 
 	private void animateTo(int index) {
@@ -265,6 +290,9 @@ final class HomeStackView extends FrameLayout {
 			@Override
 			public void onAnimationEnd(android.animation.Animator animation) {
 				if (settle == a) settle = null;
+				// Back into 0..n-1 after going round the end.
+				pos = mod(pos);
+				apply();
 			}
 		});
 		settle = a;
@@ -290,13 +318,6 @@ final class HomeStackView extends FrameLayout {
 				float dx = e.getX() - downX;
 				float dy = e.getY() - downY;
 				if ((Math.abs(dx) > slop) && (Math.abs(dx) > Math.abs(dy) * 1.3f)) {
-					boolean room = (dx < 0) ? (pos < widgets.size() - 1 - 0.01f) : (pos > 0.01f);
-					if (!room) {
-						// Nothing that way: left to whatever scrolls the page.
-						armed = false;
-						if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
-						return false;
-					}
 					startDrag(e);
 					return true;
 				}
@@ -341,12 +362,6 @@ final class HomeStackView extends FrameLayout {
 					float dx = e.getX() - downX;
 					float dy = e.getY() - downY;
 					if ((Math.abs(dx) > slop) && (Math.abs(dx) > Math.abs(dy) * 1.3f)) {
-						boolean room = (dx < 0) ? (pos < widgets.size() - 1 - 0.01f) : (pos > 0.01f);
-						if (!room) {
-							armed = false;
-							if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
-							return true;
-						}
 						startDrag(e);
 						// The finger has already moved by the slop: the card follows from where it started.
 						startX = downX;
@@ -369,12 +384,8 @@ final class HomeStackView extends FrameLayout {
 		int w = Math.max(1, getWidth());
 		switch (e.getActionMasked()) {
 			case MotionEvent.ACTION_MOVE -> {
-				float p = startPos - (e.getX() - startX) / w;
-				int last = widgets.size() - 1;
-				// A little give past the ends, not a pager that stops dead.
-				if (p < 0) p = p * 0.25f;
-				else if (p > last) p = last + (p - last) * 0.25f;
-				pos = p;
+				// No ends: the stack goes round (see apply).
+				pos = startPos - (e.getX() - startX) / w;
 				apply();
 				showDots();
 			}
@@ -392,10 +403,10 @@ final class HomeStackView extends FrameLayout {
 				float projected = pos - ((Math.abs(vx) > minFling) ? vx / w * 0.25f : 0f);
 				int target = Math.round(projected);
 				target = Math.max(from - 1, Math.min(from + 1, target));
-				target = Math.max(0, Math.min(target, widgets.size() - 1));
 				if (e.getActionMasked() == MotionEvent.ACTION_CANCEL) target = Math.round(pos);
 				animateTo(target);
-				if (target != from) cb.onTopChanged(target);
+				int n = widgets.size();
+				if (target != from) cb.onTopChanged(((target % n) + n) % n);
 				showDots();
 			}
 			default -> {
@@ -442,7 +453,8 @@ final class HomeStackView extends FrameLayout {
 			c.drawRoundRect(r, h / 2f, h / 2f, fill);
 			float x = dot;
 			for (int i = 0; i < n; i++) {
-				float near = Math.max(0f, 1f - Math.abs(i - p));
+				float dist = Math.abs(i - p);
+				float near = Math.max(0f, 1f - Math.min(dist, n - dist));
 				float w = dot + (wide - dot) * near;
 				fill.setColor(near > 0.5f ? 0xFFFFFFFF : 0x99FFFFFF);
 				fill.setAlpha(Math.round(255 * (0.55f + 0.45f * near)));

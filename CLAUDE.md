@@ -633,6 +633,22 @@ what each widget shows is set on the widget (edit mode > its gear).
   (a direct layer of the tab, margins already negative before the tab is shown) and see whether the bars fill; then try keeping the
   tool bar visible (alpha 0, not GONE) while Home shows.
 
+### Seventh round (stacks go round, greeting, top info overlay)
+
+- **Stacks loop** (`HomeStackView`): `pos` is unbounded while dragging or animating and `wrap`/`mod` bring it back (after each settle too);
+  a swipe or the car's prev/next past the last widget goes to the first (and back). The dots measure circular distance.
+  They show on touch and fade after 1.8 s; only edit mode pins them (`syncControls` also re-arms the fade when edit mode ends, which used
+  to leave them up for good, and car mode no longer pins them: its prev/next buttons stay).
+- **Greeting by the hour** (`HomeScreen#greetingText`): morning from 5, afternoon 12, evening 17, night 21 (10:47 pm is night). Each of the four
+  can be replaced in Settings > Home (`HOME_GREET_*`, empty = the built-in words).
+- **Info overlay on the greeting's row** (`HOME_TOP_OVERLAY`, `HOME_TOP_OVERLAY_AA` for the car screen): `HomeScreen#topInfo`, the same
+  `InfoOverlayView` in chip mode (`HomeInfo#apply` fills it from Settings > Info overlay, the widget uses it too), one row before the edit
+  button, shrunk to the room the greeting leaves and hidden while editing. The Info overlay *widget* drops its title row below 130dp of
+  height (the chips get the whole card and a tap on them opens the settings) and fits its chips to the card minus its padding.
+- **Ambience alone**: with "Pause with playback" the ambience is held only when music that *was playing* pauses or stops
+  (`AmbienceAddon#wasPlaying`); the session repeats "paused"/"stopped" while nothing plays, and each repeat used to hold an ambience that had
+  just been started on its own into silence. Held/released is in the Diagnostic log (AMBIENCE).
+
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 
 - Size what is *inside* a card from its pixels, not from cell counts or fixed dp: the Data ring's words (`used`/`caption`) and the Power
