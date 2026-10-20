@@ -132,7 +132,8 @@ public class AmbienceFragment extends MainActivityFragment implements ToolBarChi
 		chip.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.settings, 0, 0, 0);
 		chip.setCompoundDrawableTintList(ColorStateList.valueOf(textPrimary));
 		chip.setOnClickListener(v -> onToolBarChipClick());
-		settingsRow.addView(chip);
+		// A style gives a code-built view no layout params, so the 40dp height is set here.
+		settingsRow.addView(chip, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(40)));
 		LinearLayout.LayoutParams srlp = new LinearLayout.LayoutParams(
 				ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
 		srlp.topMargin = px(14);

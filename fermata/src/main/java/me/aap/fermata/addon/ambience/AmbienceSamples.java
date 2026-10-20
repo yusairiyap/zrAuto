@@ -211,8 +211,8 @@ public final class AmbienceSamples {
 		if (frames <= 0) return d.pcm;
 		int ch = d.channels;
 		int total = d.pcm.length / ch;
-		int len = (int) Math.round(frames * d.rate / 48000.0);
-		int start = (int) Math.round(margin * d.rate / 48000.0);
+		int len = (int) Math.round((double) frames * d.rate / 48000.0);
+		int start = (int) Math.round((double) margin * d.rate / 48000.0);
 		if (total < len + 2) return d.pcm;
 		if (start + len > total) start = (total - len) / 2;
 		return java.util.Arrays.copyOfRange(d.pcm, start * ch, (start + len) * ch);
