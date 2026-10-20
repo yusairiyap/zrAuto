@@ -33,13 +33,29 @@ final class AllInOneWidget extends TileWidget {
 				ctx.getString(R.string.home_labels_auto), ctx.getString(R.string.home_labels_show),
 				ctx.getString(R.string.home_labels_hide)));
 		l.add(HomeOption.sw("colour", ctx.getString(R.string.home_opt_colourful), true));
+		l.add(pickOption());
 		return l;
 	}
 
 	@Override
-	protected boolean showLabels() {
-		int mode = optInt("labels", 0);
-		return (mode == 1) || ((mode == 0) && super.showLabels());
+	protected List<Pick> candidates() {
+		MainActivityDelegate a = host.activity();
+		List<Pick> l = new ArrayList<>();
+		for (Action action : AllInOneMenu.getItems(a)) {
+			l.add(new Pick(action.name(), ActionFabMediator.iconFor(a, action),
+					ctx.getString(ActionFabMediator.labelFor(a, action))));
+		}
+		return l;
+	}
+
+	@Override
+	protected int pickHintRes() {
+		return R.string.home_pick_items_hint_aio;
+	}
+
+	@Override
+	protected int labelMode() {
+		return optInt("labels", 0);
 	}
 
 	@Override
@@ -48,6 +64,7 @@ final class AllInOneWidget extends TileWidget {
 		boolean colour = optBool("colour", true);
 		int i = 0;
 		for (Action action : AllInOneMenu.getItems(a)) {
+			if (!isPicked(action.name())) continue;
 			int tint = colour ? hue(i++) : color(ROLE_ICON);
 			flow.addView(tile(ActionFabMediator.iconFor(a, action),
 					ctx.getString(ActionFabMediator.labelFor(a, action)), tint, () -> {

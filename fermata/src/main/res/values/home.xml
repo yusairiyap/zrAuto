@@ -123,8 +123,6 @@
     <string name="home_labels_show">Always</string>
     <string name="home_labels_hide">Never</string>
     <string name="home_opt_colourful">Colourful icons</string>
-    <string name="home_opt_settings_tile">Include Settings</string>
-    <string name="home_opt_hidden_tabs">Include pages hidden from the bar</string>
     <string name="home_opt_text_size">Text size</string>
     <string name="home_size_auto">By size</string>
     <string name="home_size_small">Small</string>
@@ -137,6 +135,10 @@
     <string name="home_opt_shortcuts">Sound shortcuts</string>
     <string name="home_opt_pick_sounds">Pick the sounds</string>
     <string name="home_opt_show_timer">Show the timer</string>
+    <string name="home_opt_pick_items">Pick the items</string>
+    <string name="home_pick_items_hint">The items that get a round shortcut on the card.</string>
+    <string name="home_pick_items_hint_aio">The All in One actions that get a round shortcut on the card.</string>
+    <string name="home_pick_items_hint_pages">The pages that get a round shortcut on the card. Pages hidden from the bar can be picked too.</string>
     <string name="home_pick_sounds_hint">The sounds that get a round shortcut on the card, in this order.</string>
 
     <!-- Widget texts -->

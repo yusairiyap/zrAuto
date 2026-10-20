@@ -193,6 +193,13 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
 			if ((r - l) != (or - ol)) fitTopInfo();
 		});
+		// The edit button and the info chips sit on the greeting's middle line; the chips leave with it.
+		View.OnLayoutChangeListener align = (v, l, t, r, b, ol, ot, or, ob) -> {
+			if (((b - t) != (ob - ot)) || (v == greeting)) alignHeader();
+		};
+		greeting.addOnLayoutChangeListener(align);
+		chipBar.addOnLayoutChangeListener(align);
+		topScroll.addOnLayoutChangeListener(align);
 
 		empty = new LinearLayout(ctx);
 		empty.setOrientation(LinearLayout.VERTICAL);
@@ -335,7 +342,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		root.post(() -> {
 			if (!shown) return;
 			grid.playEntrance();
-			this.a.liftStartupVeil();
+			this.a.liftStartupVeil(true);
 			greeting.animate().alpha(1f).setDuration(380).setInterpolator(new DecelerateInterpolator(1.8f)).start();
 		});
 		entered = true;
@@ -684,7 +691,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		fade = new HomeFadeLayout(ctx);
 		fade.addView(s, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));
-		fade.follow(s);
+		fade.follow(s, this::alignHeader);
 		root.addView(fade, 2, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));
 		if (!down) {
@@ -831,6 +838,32 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		int fg = bg.hasImage() ? 0xFFFFFFFF : palette.textPrimary;
 		topInfo.setChipStyle(fg, (fg & 0x00FFFFFF) | 0x2E000000);
 		fitTopInfo();
+	}
+
+	/**
+	 * Puts the edit button and the info chips on the middle line of the greeting's two lines (the date
+	 * under the title), and, scrolling down, takes the chips away with the greeting. Without a greeting
+	 * they keep their place at the top.
+	 */
+	private void alignHeader() {
+		Context ctx = palette.ctx;
+		boolean greet = (greeting.getVisibility() == View.VISIBLE) && (greeting.getHeight() > 0);
+		if (!greet) {
+			chipBar.setTranslationY(0f);
+			topScroll.setTranslationY(0f);
+			topScroll.setAlpha(1f);
+			return;
+		}
+		float centre = greeting.getPaddingTop()
+				+ (greeting.getHeight() - greeting.getPaddingTop() - greeting.getPaddingBottom()) / 2f;
+		float margin = HomeUi.dp(ctx, 2);
+		chipBar.setTranslationY(Math.max(margin - HomeUi.dp(ctx, 10), centre - chipBar.getHeight() / 2f - HomeUi.dp(ctx, 10)));
+		float scrolled = (vertical && (scroller != null)) ? scroller.getScrollY() : 0f;
+		float base = Math.max(margin - HomeUi.dp(ctx, 15), centre - topScroll.getHeight() / 2f - HomeUi.dp(ctx, 15));
+		topScroll.setTranslationY(base - scrolled);
+		// Fades while the greeting leaves, like the greeting itself.
+		float gone = Math.min(1f, scrolled / Math.max(1f, greeting.getHeight() * 0.8f));
+		topScroll.setAlpha(1f - gone);
 	}
 
 	/**

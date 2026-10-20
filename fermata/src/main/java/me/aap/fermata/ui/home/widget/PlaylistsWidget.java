@@ -2,6 +2,7 @@ package me.aap.fermata.ui.home.widget;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import me.aap.fermata.R;
 import me.aap.fermata.addon.music.MusicTrackItem;
@@ -22,6 +23,11 @@ final class PlaylistsWidget extends LibraryWidget {
 	@Override
 	protected int tabId() {
 		return R.id.playlists_fragment;
+	}
+
+	@Override
+	protected boolean watchesPlaying() {
+		return true;
 	}
 
 	@Override
@@ -59,12 +65,17 @@ final class PlaylistsWidget extends LibraryWidget {
 				return;
 			}
 			int n = Math.min(items.size(), 300);
+			Set<String> playing = playingIds(a);
+			int at = -1;
 			for (int i = 0; i < n; i++) {
 				if (!(items.get(i) instanceof PlayableItem p)) continue;
 				String artist = (p instanceof MusicTrackItem t) ? t.getArtistName() : null;
 				Runnable play = () -> HomePlay.tapped(a, p);
-				rows.add(new Row(p.getName(), artist, p, play, play, null));
+				boolean now = (at < 0) && playing.contains(p.getOrigId());
+				if (now) at = rows.size();
+				rows.add(new Row(p.getName(), artist, p, play, play, null, now));
 			}
+			focusRow = at;
 			done.done(rows, items.size());
 		});
 	}

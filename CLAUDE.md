@@ -489,9 +489,9 @@ what each widget shows is set on the widget (edit mode > its gear).
   colour before that (`HomeScreen#systemBars`, restored with `MainActivityDelegate#matchStatusBarToBackground`).
 - **Background**: `HomeBackground` copies the picked picture (system picker, no permission) to `files/home_bg.jpg`, shrunk to
   1600 px; `HOME_BG_VERSION` only says it changed. Blur is a small copy drawn large again (no RenderScript). Not in backups.
-- **Car mode**: `CarNav#findScope` treats `HomeFragment` as a scope, which finds every visible view *with a click listener*.
-  So: every control needs a click listener (the helpers add one), and **never put a click listener on a whole card or a row that
-  contains other controls** (it would swallow them: split the row into separate clickable parts, as `LibraryWidget` does).
+- **Car mode**: not on Home. `CarNav` leaves Next/Previous to the user's own key bindings while the Home tab is in front (`CarNav#isHome`,
+  like fullscreen video: only an open modal, menu or panel over it is walked through, e.g. `HomeModal`, which is a modal scope). Home's cards are
+  touched. Keep that in mind for new Home modals: mark them with `CarNav.markModalScope`. The stack's prev/next buttons stay on the car screen (touch).
 
 ### Smoothness rules (learned from the first tablet test)
 
@@ -676,6 +676,26 @@ what each widget shows is set on the widget (edit mode > its gear).
 - **Cold start into Home** (`MainActivityDelegate#veilStartup` / `liftStartupVeil`): when the app starts on Home the whole window content is
   held at alpha 0 until Home has laid out its first frame (`HomeScreen#onShown`, 2.5 s safety delay), then fades in 280 ms; the tool bar is
   hidden at once meanwhile (`HomeToolBarMediator`), so no empty bars show first (seen on a phone with the bottom nav bar).
+
+### Tenth round (playing rows, item pickers, car header, start-up veil for real)
+
+- **Favorites and the songs of an opened playlist mark the playing song** like the Queue: `LibraryWidget#watchesPlaying()` listens for
+  `onPlayableChanged`, `playingIds(a)` is the session item, the queue entry's source and the favoritable item, and a row is current when
+  its `getOrigId()` is in it; `focusRow` brings it into view once per song. `marksPlayingOnTop()` is for lists whose top-level rows are songs.
+- **All in One and Pages pick their items** (`TileWidget#pickOption`, "Pick the items"): a card of chips like the ambience sounds picker, a
+  tap shows or hides that tile (`opt "items"`; empty = the card's own default set, so a page added later still shows, "-" = none).
+  `candidates()` lists what can be picked, `defaultPicked(key)` what shows before anything was picked (Pages: the bar's pages, and the old
+  "settings"/"hidden" switches still count).
+- **Tile cards size from their pixel height** (`TileWidget#applySize`, from `onSized`): the icon shrinks to fit and the names only show
+  when they fit under it (Labels "Automatic"); a card two cells high on a wide car screen is short in pixels, which is what clipped the names.
+- **Car screen, scrolling down**: the edit button and the info chips sit on the middle line of the greeting's two lines
+  (`HomeScreen#alignHeader`, a translation, since the pinned bar and the greeting have different heights), and the chips fade and leave
+  with the greeting as the page scrolls (`HomeFadeLayout#follow(s, onScrolled)`).
+- **The start-up veil never ran in the ninth round**: `veilStartup()` was called before `init()` inflated the layout, so
+  `findViewById(R.id.main_activity)` was null and it returned silently. It now runs right after `init()`; Home lifts it with
+  `liftStartupVeil(true)`, which also hides the tool bar before the first visible frame, and `isStartupVeil()` stays true for 1 s after
+  the lift so the tool bar mediator hides the bar at once instead of fading it. The Diagnostic log has `STATE start-up veil` lines
+  (on / lifted by Home / lifted by the safety delay / no window content yet).
 
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 

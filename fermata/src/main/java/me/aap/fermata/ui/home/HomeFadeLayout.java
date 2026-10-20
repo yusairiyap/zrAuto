@@ -13,6 +13,8 @@ import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ScrollView;
 
+import androidx.annotation.Nullable;
+
 /**
  * Holds the page's scroller and lets its content melt away at the edges it can still scroll to
  * (never at an end it has reached), so widgets don't end in a hard line under the status bar or run
@@ -34,9 +36,12 @@ public final class HomeFadeLayout extends FrameLayout {
 		setClipToPadding(false);
 	}
 
-	/** The scroller to follow: redrawn as it scrolls. */
-	public void follow(ViewGroup scroller) {
-		scroller.setOnScrollChangeListener((v, x, y, ox, oy) -> invalidate());
+	/** The scroller to follow: redrawn as it scrolls ({@code onScrolled}, if any, also runs). */
+	public void follow(ViewGroup scroller, @Nullable Runnable onScrolled) {
+		scroller.setOnScrollChangeListener((v, x, y, ox, oy) -> {
+			invalidate();
+			if (onScrolled != null) onScrolled.run();
+		});
 	}
 
 	private static float strength(float distance, float reach) {

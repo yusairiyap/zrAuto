@@ -78,6 +78,7 @@ import android.os.Build.VERSION;
 import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
 import android.os.OperationCanceledException;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
@@ -449,13 +450,6 @@ public class MainActivityDelegate extends ActivityDelegate
 		getPrefs().addBroadcastListener(this);
 		int navId;
 		int fragmentId;
-		// A cold start that goes to Home: nothing of the bars shows (empty) before Home is ready, then it all fades in.
-		if ((state == null) && !isCarActivity() && (getPrefs().getShowAddonOnStartPref() == null) &&
-				getPrefs().getBooleanPref(MainActivityPrefs.HOME_OPEN_ON_START) &&
-				((intent == null) || Intent.ACTION_MAIN.equals(intent.getAction()))) {
-			veilStartup();
-		}
-
 		if (state != null) {
 			navId = state.getInt("navId", ID_NULL);
 			fragmentId = state.getInt("fragmentId", ID_NULL);
@@ -472,6 +466,13 @@ public class MainActivityDelegate extends ActivityDelegate
 		b.getMediaSessionCallback().addAssistant(this, isCarActivityNotMirror() ? 0 : 1);
 		if (b.getCurrentItem() == null) b.getMediaSessionCallback().onPrepare();
 		init();
+		// A cold start that goes to Home: nothing of the bars shows (empty) before Home is ready, then it all fades in.
+		// Only now: the layout is inflated by init(), before that there is no window content to hide.
+		if ((state == null) && !isCarActivity() && (getPrefs().getShowAddonOnStartPref() == null) &&
+				getPrefs().getBooleanPref(MainActivityPrefs.HOME_OPEN_ON_START) &&
+				((intent == null) || Intent.ACTION_MAIN.equals(intent.getAction()))) {
+			veilStartup();
+		}
 
 		for (FermataAddon addon : AddonManager.get().getAddons()) {
 			if (addon instanceof FermataActivityAddon)
@@ -573,28 +574,46 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	private boolean startupVeil;
+	private long veilLiftedAt;
 
 	/** Hides the whole window content until {@link #liftStartupVeil} (or a safety delay), see onActivityCreate. */
 	private void veilStartup() {
 		View root = findViewById(R.id.main_activity);
-		if (root == null) return;
+		if (root == null) {
+			DiagnosticLog.log("STATE", "start-up veil", "no window content yet");
+			return;
+		}
 		startupVeil = true;
 		root.setAlpha(0f);
-		postDelayed(this::liftStartupVeil, 2500);
+		DiagnosticLog.log("STATE", "start-up veil", "on");
+		postDelayed(() -> liftStartupVeil(false), 2500);
 	}
 
-	/** Brings the window content in with a fade once the first screen is laid out; harmless at any other time. */
-	public void liftStartupVeil() {
+	/**
+	 * Brings the window content in with a fade once the first screen is laid out; harmless at any other time.
+	 *
+	 * @param homeShown Home itself is on screen (it has no title bar): the bar is gone before the first
+	 *                  visible frame, not faded away in it. False is the safety delay, when nothing came.
+	 */
+	public void liftStartupVeil(boolean homeShown) {
 		if (!startupVeil) return;
 		startupVeil = false;
+		veilLiftedAt = SystemClock.uptimeMillis();
 		View root = findViewById(R.id.main_activity);
 		if (root == null) return;
+		if (homeShown && (toolBar != null)) {
+			toolBar.animate().cancel();
+			toolBar.setVisibility(View.GONE);
+			toolBar.setAlpha(1f);
+		}
+		DiagnosticLog.log("STATE", "start-up veil", homeShown ? "lifted by Home" : "lifted by the safety delay");
 		root.animate().cancel();
 		root.animate().alpha(1f).setDuration(280).start();
 	}
 
+	/** Still behind the start-up veil, or only just out of it (the screen is still settling). */
 	public boolean isStartupVeil() {
-		return startupVeil;
+		return startupVeil || ((veilLiftedAt != 0) && ((SystemClock.uptimeMillis() - veilLiftedAt) < 1000));
 	}
 
 	private void defaultIntent() {

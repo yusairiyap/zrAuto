@@ -201,7 +201,8 @@ public final class CarNav {
 				handler.removeCallbacks(longPress);
 				// Fullscreen video (YouTube's too): the keys are the user's own bindings, untouched,
 				// unless a picker or menu is open over it (add to playlist): that one is moved through.
-				boolean fullscreen = (a != null) && isFullscreenVideo(a);
+				// Home: the same, its cards are touched, not walked through (a Home modal still is).
+				boolean fullscreen = (a != null) && (isFullscreenVideo(a) || isHome(a));
 				Scope s = (a == null) ? null : findScope(a, fullscreen);
 				if (fullscreen && (s == null)) {
 					downCode = 0;
@@ -255,7 +256,12 @@ public final class CarNav {
 	public static boolean onTransport(boolean next) {
 		if (!isEnabled()) return false;
 		MainActivityDelegate a = MainActivityDelegate.getUiDelegate();
-		Scope s = (a == null) ? null : findScope(a, isFullscreenVideo(a));
+		boolean own = (a != null) && (isFullscreenVideo(a) || isHome(a));
+		Scope s = (a == null) ? null : findScope(a, own);
+		if ((s == null) && own) {
+			clear();
+			return false;
+		}
 		if (s == null) {
 			clear();
 			WebView web = (a == null) ? null : findWebPage(a);
@@ -347,6 +353,11 @@ public final class CarNav {
 		a.onBackPressed();
 	}
 
+	/** The Home tab is in front: car mode leaves the keys to the user's bindings there. */
+	private static boolean isHome(MainActivityDelegate a) {
+		return a.getActiveFragment() instanceof me.aap.fermata.ui.fragment.HomeFragment;
+	}
+
 	/** A video is fullscreen: local video mode, or a WebView player's own (YouTube). */
 	private static boolean isFullscreenVideo(MainActivityDelegate a) {
 		if (a.isVideoMode()) return true;
@@ -404,8 +415,7 @@ public final class CarNav {
 		if (overlaysOnly) return null;
 		ActivityFragment f = a.getActiveFragment();
 		if ((f instanceof MediaLibFragment) || (f instanceof DownloadsFragment) ||
-				(f instanceof SettingsFragment) || (f instanceof AudioEffectsFragment) ||
-				(f instanceof me.aap.fermata.ui.fragment.HomeFragment)) {
+				(f instanceof SettingsFragment) || (f instanceof AudioEffectsFragment)) {
 			View v = f.getView();
 			if ((v != null) && v.isShown()) return new Scope(a, v, null, f);
 		}

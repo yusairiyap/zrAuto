@@ -18,12 +18,16 @@ import androidx.recyclerview.widget.LinearSmoothScroller;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Consumer;
 
 import me.aap.fermata.R;
 import me.aap.fermata.media.lib.MediaLib;
+import me.aap.fermata.media.lib.MediaLib.PlayableItem;
+import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.home.HomeHost;
 import me.aap.fermata.ui.home.HomeImages;
@@ -90,6 +94,14 @@ abstract class LibraryWidget extends HomeWidgetView {
 	private boolean built;
 	private long loadedAt;
 	private boolean loading;
+	private final FermataServiceUiBinder.Listener playingListener = new FermataServiceUiBinder.Listener() {
+		@Override
+		public void onPlayableChanged(PlayableItem oldItem, PlayableItem newItem) {
+			post(() -> {
+				if ((drillSource != null) || marksPlayingOnTop()) refresh(true);
+			});
+		}
+	};
 	private final ActivityListener contentListener = new ActivityListener() {
 		@Override
 		public void onActivityEvent(ActivityDelegate a, long e) {
@@ -109,6 +121,37 @@ abstract class LibraryWidget extends HomeWidgetView {
 
 	@StringRes
 	protected abstract int emptyRes();
+
+	/** Whether the list marks the playing song and follows it (favorites, the songs of an opened playlist). */
+	protected boolean watchesPlaying() {
+		return false;
+	}
+
+	/** Whether the top-level rows are songs too, so a song change redraws them (not only an opened playlist). */
+	protected boolean marksPlayingOnTop() {
+		return false;
+	}
+
+	/**
+	 * The ids the playing song goes by: the session's item, the queue entry's source and what Add to
+	 * favorites would act on. A row is the playing one when its {@code getOrigId()} is in the set.
+	 */
+	protected static Set<String> playingIds(MainActivityDelegate a) {
+		Set<String> ids = new HashSet<>();
+		try {
+			PlayableItem cur = a.getMediaSessionCallback().getCurrentItem();
+			if (cur != null) {
+				ids.add(cur.getOrigId());
+				if (cur instanceof me.aap.fermata.addon.music.MusicTrackItem t) ids.add(t.getSourceId());
+			}
+			PlayableItem fav = me.aap.fermata.action.Action.getFavoritableItem(a);
+			if (fav != null) ids.add(fav.getOrigId());
+		} catch (RuntimeException ignore) {
+			// An item that is going away: nothing is marked this time.
+		}
+		ids.remove(null);
+		return ids;
+	}
 
 	protected interface FetchDone {
 		void done(List<Row> rows, int total);
@@ -227,6 +270,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 	@Override
 	protected void onActive() {
 		act().addBroadcastListener(contentListener, ActivityListener.FRAGMENT_CONTENT_CHANGED);
+		if (watchesPlaying()) act().getMediaServiceBinder().addBroadcastListener(playingListener);
 		// Back on screen: the playing song is brought into view again.
 		lastFocusKey = null;
 		render();
@@ -236,6 +280,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 	@Override
 	protected void onInactive() {
 		act().removeBroadcastListener(contentListener);
+		if (watchesPlaying()) act().getMediaServiceBinder().removeBroadcastListener(playingListener);
 	}
 
 	@Override
@@ -278,6 +323,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 	private void reset() {
 		rows = new ArrayList<>();
 		total = 0;
+		focusRow = -1;
+		lastFocusKey = null;
 		shownSignature = "";
 		updateCapacity();
 		refresh(true);

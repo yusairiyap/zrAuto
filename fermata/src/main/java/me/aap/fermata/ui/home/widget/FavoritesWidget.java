@@ -3,6 +3,7 @@ package me.aap.fermata.ui.home.widget;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 import me.aap.fermata.R;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
@@ -21,6 +22,16 @@ final class FavoritesWidget extends LibraryWidget {
 	@Override
 	protected int tabId() {
 		return R.id.favorites_fragment;
+	}
+
+	@Override
+	protected boolean watchesPlaying() {
+		return true;
+	}
+
+	@Override
+	protected boolean marksPlayingOnTop() {
+		return true;
 	}
 
 	@Override
@@ -47,10 +58,15 @@ final class FavoritesWidget extends LibraryWidget {
 			List<PlayableItem> l = new ArrayList<>(items);
 			if (optInt("order", 0) == 1) Collections.reverse(l);
 			int n = Math.min(l.size(), 300);
+			Set<String> playing = playingIds(a);
+			int at = -1;
 			for (int i = 0; i < n; i++) {
 				PlayableItem pi = l.get(i);
-				rows.add(new Row(pi.getName(), null, pi, () -> HomePlay.tapped(a, pi), null, null));
+				boolean now = (at < 0) && playing.contains(pi.getOrigId());
+				if (now) at = i;
+				rows.add(new Row(pi.getName(), null, pi, () -> HomePlay.tapped(a, pi), null, null, now));
 			}
+			focusRow = at;
 			done.done(rows, items.size());
 		});
 	}
