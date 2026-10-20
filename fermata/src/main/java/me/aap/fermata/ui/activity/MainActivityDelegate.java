@@ -449,6 +449,12 @@ public class MainActivityDelegate extends ActivityDelegate
 		getPrefs().addBroadcastListener(this);
 		int navId;
 		int fragmentId;
+		// A cold start that goes to Home: nothing of the bars shows (empty) before Home is ready, then it all fades in.
+		if ((state == null) && !isCarActivity() && (getPrefs().getShowAddonOnStartPref() == null) &&
+				getPrefs().getBooleanPref(MainActivityPrefs.HOME_OPEN_ON_START) &&
+				((intent == null) || Intent.ACTION_MAIN.equals(intent.getAction()))) {
+			veilStartup();
+		}
 
 		if (state != null) {
 			navId = state.getInt("navId", ID_NULL);
@@ -564,6 +570,31 @@ public class MainActivityDelegate extends ActivityDelegate
 		}
 
 		return completed(false);
+	}
+
+	private boolean startupVeil;
+
+	/** Hides the whole window content until {@link #liftStartupVeil} (or a safety delay), see onActivityCreate. */
+	private void veilStartup() {
+		View root = findViewById(R.id.main_activity);
+		if (root == null) return;
+		startupVeil = true;
+		root.setAlpha(0f);
+		postDelayed(this::liftStartupVeil, 2500);
+	}
+
+	/** Brings the window content in with a fade once the first screen is laid out; harmless at any other time. */
+	public void liftStartupVeil() {
+		if (!startupVeil) return;
+		startupVeil = false;
+		View root = findViewById(R.id.main_activity);
+		if (root == null) return;
+		root.animate().cancel();
+		root.animate().alpha(1f).setDuration(280).start();
+	}
+
+	public boolean isStartupVeil() {
+		return startupVeil;
 	}
 
 	private void defaultIntent() {

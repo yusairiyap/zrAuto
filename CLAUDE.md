@@ -662,6 +662,21 @@ what each widget shows is set on the widget (edit mode > its gear).
 - **Lyrics widget** has a "Scrub and tap lines to seek" switch (`scrub`); off, the view is not interactive and the card claims no
   gestures, so the page scrolls over it.
 
+### Ninth round (top overlay row, stack buttons, ambience in the car, cold start)
+
+- **The top info overlay is one row that scrolls** (`HomeScreen#topScroll` around `topInfo`; `InfoOverlayView#setOneRow` / `ChipFlowLayout#setOneRow`):
+  it used to be given a fixed width from one measurement, and a reading that grew a digit (-2509 mA) wrapped the last chip onto a second
+  line. Now the scroller is as wide as the room the greeting leaves (or as the chips if narrower), re-fitted whenever the chips change
+  size, and the end fades out when it scrolls.
+- **The car's stack buttons fade with the dots** (`HomeStackView#fadeArrows`); a tap on a hidden one only brings the controls back.
+- **Ambience asks for audio focus** (`AmbienceEngine#requestFocus`, transient "may duck", changes ignored) when it starts while the app's own
+  player is not playing; with Android Auto connected, a stream from an app holding no focus was not played through the car (the card and
+  notification said playing, nothing was heard; first thing after an app start). Not confirmed on a car: the Diagnostic log has
+  `AMBIENCE audio focus result=` and `track playing state= device=` lines to read if it still stays silent.
+- **Cold start into Home** (`MainActivityDelegate#veilStartup` / `liftStartupVeil`): when the app starts on Home the whole window content is
+  held at alpha 0 until Home has laid out its first frame (`HomeScreen#onShown`, 2.5 s safety delay), then fades in 280 ms; the tool bar is
+  hidden at once meanwhile (`HomeToolBarMediator`), so no empty bars show first (seen on a phone with the bottom nav bar).
+
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 
 - Size what is *inside* a card from its pixels, not from cell counts or fixed dp: the Data ring's words (`used`/`caption`) and the Power

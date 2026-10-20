@@ -65,6 +65,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	private final LinearLayout chipBar;
 	/** The info overlay's chips on the greeting's row, when Settings > Home asks for them. */
 	private final InfoOverlayView topInfo;
+	/** Holds {@link #topInfo}: when its chips are wider than the room, the row scrolls and fades out at the end. */
+	private final HorizontalScrollView topScroll;
 	private final TextView editBtn;
 	private final TextView[] editChips = new TextView[4];
 	private final LinearLayout empty;
@@ -171,11 +173,23 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		root.addView(chipBar, clp);
 
 		topInfo = new InfoOverlayView(ctx);
-		topInfo.setVisibility(View.GONE);
+		topInfo.setOneRow(true);
+		topScroll = new HorizontalScrollView(ctx);
+		topScroll.setHorizontalScrollBarEnabled(false);
+		topScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+		topScroll.setHorizontalFadingEdgeEnabled(true);
+		topScroll.setFadingEdgeLength(HomeUi.dp(ctx, 28));
+		topScroll.addView(topInfo, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+				ViewGroup.LayoutParams.WRAP_CONTENT));
+		topScroll.setVisibility(View.GONE);
 		FrameLayout.LayoutParams ilp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
 				ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END);
 		ilp.setMargins(0, HomeUi.dp(ctx, 15), HomeUi.dp(ctx, 68), 0);
-		root.addView(topInfo, ilp);
+		root.addView(topScroll, ilp);
+		// A chip's text grows as its reading does (the current in mA gets a digit): the row is fitted again.
+		topInfo.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+			if ((r - l) != (or - ol)) root.post(this::fitTopInfo);
+		});
 		root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
 			if ((r - l) != (or - ol)) fitTopInfo();
 		});
@@ -321,6 +335,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		root.post(() -> {
 			if (!shown) return;
 			grid.playEntrance();
+			this.a.liftStartupVeil();
 			greeting.animate().alpha(1f).setDuration(380).setInterpolator(new DecelerateInterpolator(1.8f)).start();
 		});
 		entered = true;
@@ -811,42 +826,40 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		boolean want = !editing && prefs.getBooleanPref(a.isCarActivity() ? MainActivityPrefs.HOME_TOP_OVERLAY_AA :
 				MainActivityPrefs.HOME_TOP_OVERLAY);
 		boolean any = want && HomeInfo.apply(a, topInfo, 0.85f);
-		topInfo.setVisibility(any ? View.VISIBLE : View.GONE);
+		topScroll.setVisibility(any ? View.VISIBLE : View.GONE);
 		if (!any) return;
 		int fg = bg.hasImage() ? 0xFFFFFFFF : palette.textPrimary;
 		topInfo.setChipStyle(fg, (fg & 0x00FFFFFF) | 0x2E000000);
 		fitTopInfo();
 	}
 
-	/** One row, shrunk to the room the greeting leaves it; gone when even that would be too small to read. */
+	/**
+	 * One row, as wide as the room the greeting leaves it (or as its chips, if they are narrower); chips that
+	 * do not fit are reached by scrolling the row, with its end fading out, and never wrap onto a second line.
+	 */
 	private void fitTopInfo() {
-		if ((topInfo.getVisibility() == View.GONE) || (root.getWidth() == 0)) return;
+		if ((topScroll.getVisibility() == View.GONE) || (root.getWidth() == 0)) return;
 		Context ctx = palette.ctx;
 		float greetW = 0f;
 		if (greeting.getVisibility() == View.VISIBLE) {
-			greetW = Math.max(greetTitle.getPaint().measureText(greetTitle.getText().toString()) * greetTitle.getTextSize() /
-					Math.max(1f, greetTitle.getPaint().getTextSize()), greetDate.getPaint().measureText(greetDate.getText().toString()))
-					+ HomeUi.dp(ctx, 28);
+			greetW = Math.max(greetTitle.getPaint().measureText(greetTitle.getText().toString()),
+					greetDate.getPaint().measureText(greetDate.getText().toString())) + HomeUi.dp(ctx, 28);
 		}
 		int avail = Math.round(root.getWidth() - HomeUi.dp(ctx, 68) - greetW - HomeUi.dp(ctx, 8));
-		topInfo.measure(View.MeasureSpec.makeMeasureSpec(4000, View.MeasureSpec.AT_MOST),
+		topInfo.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
 				View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
 		int need = topInfo.getMeasuredWidth();
-		float k = ((need > avail) && (need > 0)) ? (avail / (float) need) : 1f;
-		if (k < 0.55f) {
-			topInfo.setVisibility(View.INVISIBLE);
+		if (avail < HomeUi.dp(ctx, 90)) {
+			topScroll.setVisibility(View.INVISIBLE);
 			return;
 		}
-		topInfo.setVisibility(View.VISIBLE);
-		FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) topInfo.getLayoutParams();
-		if (lp.width != need) {
-			lp.width = need;
-			topInfo.setLayoutParams(lp);
+		topScroll.setVisibility(View.VISIBLE);
+		FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) topScroll.getLayoutParams();
+		int want = Math.min(need, avail);
+		if (lp.width != want) {
+			lp.width = want;
+			topScroll.setLayoutParams(lp);
 		}
-		topInfo.setPivotX(need);
-		topInfo.setPivotY(0f);
-		topInfo.setScaleX(k);
-		topInfo.setScaleY(k);
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -892,6 +905,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		int base = palette.background | 0xFF000000;
 		return HomeUi.mix(base, palette.accent, palette.light ? 0.16f : 0.2f);
 	}
+
 
 	/**
 	 * The status bar takes the colour of the background's top edge while Home shows (from Android 15

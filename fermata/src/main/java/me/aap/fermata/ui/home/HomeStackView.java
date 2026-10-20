@@ -80,6 +80,8 @@ final class HomeStackView extends FrameLayout {
 
 		prev = arrow(ctx, true);
 		next = arrow(ctx, false);
+		prev.setAlpha(0f);
+		next.setAlpha(0f);
 		LayoutParams plp = new LayoutParams(HomeUi.dp(ctx, 34), HomeUi.dp(ctx, 34),
 				Gravity.BOTTOM | Gravity.START);
 		plp.setMargins(HomeUi.dp(ctx, 10), 0, 0, HomeUi.dp(ctx, 4));
@@ -102,7 +104,11 @@ final class HomeStackView extends FrameLayout {
 		b.setContentDescription(ctx.getString(left ? R.string.home_stack_prev : R.string.home_stack_next));
 		b.setClickable(true);
 		b.setFocusable(true);
-		b.setOnClickListener(v -> goBy(left ? -1 : 1));
+		// Hidden with the dots after a moment; a tap on one that is hidden only brings the controls back.
+		b.setOnClickListener(v -> {
+			if (b.getAlpha() < 0.5f) showDots();
+			else goBy(left ? -1 : 1);
+		});
 		b.setVisibility(GONE);
 		return b;
 	}
@@ -196,6 +202,7 @@ final class HomeStackView extends FrameLayout {
 		removeCallbacks(hideDots);
 		dots.animate().cancel();
 		dots.animate().alpha(1f).setDuration(160).start();
+		fadeArrows(1f, 160);
 		if (!pinned()) postDelayed(hideDots, DOTS_SHOW_MS);
 	}
 
@@ -207,6 +214,15 @@ final class HomeStackView extends FrameLayout {
 		if (pinned()) return;
 		dots.animate().cancel();
 		dots.animate().alpha(0f).setDuration(350).start();
+		fadeArrows(0f, 350);
+	}
+
+	/** The car's prev/next buttons follow the dots: up while they are, gone with them. */
+	private void fadeArrows(float to, long ms) {
+		for (ImageView b : new ImageView[]{prev, next}) {
+			b.animate().cancel();
+			b.animate().alpha(to).setDuration(ms).start();
+		}
 	}
 
 	/** The dots stay up in edit mode (and only then), and the buttons show in car mode. */
@@ -220,6 +236,8 @@ final class HomeStackView extends FrameLayout {
 		if (many && pinned()) {
 			dots.animate().cancel();
 			dots.setAlpha(1f);
+			prev.setAlpha(1f);
+			next.setAlpha(1f);
 		} else if (!many) {
 			dots.setAlpha(0f);
 		} else if (dots.getAlpha() > 0f) {

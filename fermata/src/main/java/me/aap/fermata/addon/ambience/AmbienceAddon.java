@@ -62,6 +62,13 @@ public class AmbienceAddon implements FermataFragmentAddon, FermataActivityAddon
 		return (m != null) && (m.getAddon(AmbienceAddon.class) != null);
 	}
 
+	private static volatile boolean musicPlaying;
+
+	/** Whether the app's own player is playing right now. */
+	static boolean isMusicPlaying() {
+		return musicPlaying;
+	}
+
 	/** Whether music was playing at the last state change: only then does pausing hold the ambience. */
 	private boolean wasPlaying;
 
@@ -91,6 +98,7 @@ public class AmbienceAddon implements FermataFragmentAddon, FermataActivityAddon
 	public void onPlaybackStateChanged(MediaSessionCallback cb, PlaybackStateCompat state) {
 		AmbienceEngine e = AmbienceEngine.get();
 		int s = state.getState();
+		musicPlaying = (s == PlaybackStateCompat.STATE_PLAYING);
 		boolean was = wasPlaying;
 		if (s == PlaybackStateCompat.STATE_PLAYING) wasPlaying = true;
 		else if ((s == PlaybackStateCompat.STATE_PAUSED) || (s == PlaybackStateCompat.STATE_STOPPED)) wasPlaying = false;

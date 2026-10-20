@@ -21,15 +21,22 @@ import me.aap.utils.ui.UiUtils;
  */
 public class ChipFlowLayout extends ViewGroup {
 	private final int gap;
+	private boolean oneRow;
 
 	public ChipFlowLayout(Context ctx) {
 		super(ctx);
 		gap = UiUtils.toIntPx(ctx, 8);
 	}
 
+	/** Never wraps: one row as wide as its chips (for a scroller to show part of). */
+	public void setOneRow(boolean oneRow) {
+		this.oneRow = oneRow;
+		requestLayout();
+	}
+
 	@Override
 	protected void onMeasure(int widthSpec, int heightSpec) {
-		int maxW = MeasureSpec.getSize(widthSpec) - getPaddingLeft() - getPaddingRight();
+		int maxW = oneRow ? Integer.MAX_VALUE / 2 : MeasureSpec.getSize(widthSpec) - getPaddingLeft() - getPaddingRight();
 		int x = 0;
 		int y = 0;
 		int rowH = 0;
@@ -57,7 +64,7 @@ public class ChipFlowLayout extends ViewGroup {
 
 	@Override
 	protected void onLayout(boolean changed, int l, int t, int r, int b) {
-		int maxW = r - l - getPaddingLeft() - getPaddingRight();
+		int maxW = oneRow ? Integer.MAX_VALUE / 2 : r - l - getPaddingLeft() - getPaddingRight();
 		int x = 0;
 		int y = 0;
 		int rowH = 0;

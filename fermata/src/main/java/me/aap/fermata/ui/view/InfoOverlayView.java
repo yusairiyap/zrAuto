@@ -614,7 +614,10 @@ public class InfoOverlayView extends LinearLayout {
 	public void setChipStyle(int fg, int fill) {
 		boolean changed = (chipFill != fill);
 		chipFill = fill;
-		if (chipFlow == null) chipFlow = new ChipFlowLayout(getContext());
+		if (chipFlow == null) {
+			chipFlow = new ChipFlowLayout(getContext());
+			chipFlow.setOneRow(oneRow);
+		}
 		setBackground(null);
 		applyPadding();
 		setForegroundColor(fg);
@@ -650,6 +653,13 @@ public class InfoOverlayView extends LinearLayout {
 
 	private int chipFill;
 	private ChipFlowLayout chipFlow;
+	private boolean oneRow;
+
+	/** In chip mode: one row however many chips (for a scroller to show part of), instead of wrapping. */
+	public void setOneRow(boolean oneRow) {
+		this.oneRow = oneRow;
+		if (chipFlow != null) chipFlow.setOneRow(oneRow);
+	}
 	private final java.util.Map<String, LinearLayout> chipWrappers = new java.util.HashMap<>();
 
 	private void applyVisibility() {

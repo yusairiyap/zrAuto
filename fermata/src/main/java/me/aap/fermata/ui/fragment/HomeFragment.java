@@ -138,6 +138,12 @@ public class HomeFragment extends MainActivityFragment {
 		@Override
 		public void enable(ToolBarView tb, ActivityFragment f) {
 			tb.animate().cancel();
+			MainActivityDelegate d = MainActivityDelegate.getActivityDelegate(tb.getContext()).peek();
+			if ((d != null) && d.isStartupVeil()) {
+				// Still hidden behind the start-up veil: no empty bar fading away in the first frames.
+				tb.setVisibility(View.GONE);
+				return;
+			}
 			if ((tb.getVisibility() == View.VISIBLE) && tb.isLaidOut()) {
 				tb.animate().alpha(0f).setDuration(160).withEndAction(() -> {
 					tb.setVisibility(View.GONE);
