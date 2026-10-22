@@ -707,12 +707,12 @@ abstract class LibraryWidget extends HomeWidgetView {
 				if (row != null) row.click().run();
 			});
 			removeBtn = iconButton(R.drawable.home_row_remove, 32, ROLE_SECONDARY, R.string.home_row_remove, () -> {
-			int pos = getAdapterPosition();
-			if ((pos == RecyclerView.NO_POSITION) || (pos >= rows.size())) return;
-			// Gone from the card at once; the real list follows when the source reports the change.
-			rows.remove(pos);
-			adapter.notifyItemRemoved(pos);
-			onRemoved(pos);
+				int pos = getAdapterPosition();
+				if ((pos == RecyclerView.NO_POSITION) || (pos >= rows.size())) return;
+				// Gone from the card at once; the real list follows when the source reports the change.
+				rows.remove(pos);
+				adapter.notifyItemRemoved(pos);
+				onRemoved(pos);
 			});
 			removeBtn.setVisibility(GONE);
 			removeBtn.setTag(R.id.home_no_grab, Boolean.TRUE);
