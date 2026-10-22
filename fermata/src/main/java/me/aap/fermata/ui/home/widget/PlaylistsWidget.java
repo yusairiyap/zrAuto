@@ -29,6 +29,11 @@ final class PlaylistsWidget extends LibraryWidget {
 	}
 
 	@Override
+	protected boolean supportsMenu() {
+		return true;
+	}
+
+	@Override
 	protected List<HomeOption> moreOptions() {
 		List<HomeOption> l = new ArrayList<>();
 		l.add(HomeOption.sw("openlast", ctx.getString(R.string.home_opt_open_playlist), true));

@@ -37,6 +37,7 @@ import me.aap.fermata.ui.home.HomeSkeleton;
 import me.aap.fermata.ui.home.HomeUi;
 import me.aap.fermata.ui.home.HomeWidgetType;
 import me.aap.fermata.ui.home.HomeWidgetView;
+import me.aap.fermata.ui.view.MediaItemMenuHandler;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.utils.ui.activity.ActivityDelegate;
 import me.aap.utils.ui.activity.ActivityListener;
@@ -74,6 +75,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 	private final RowAdapter adapter = new RowAdapter();
 	private int cols = 1;
 	private boolean artOn = true;
+	private boolean menuShown;
 	private int styleEpoch;
 	@Nullable
 	private Object lastFocusKey;
@@ -138,6 +140,30 @@ abstract class LibraryWidget extends HomeWidgetView {
 	/** Whether the list marks the playing song and follows it (favorites, the songs of an opened playlist). */
 	protected boolean watchesPlaying() {
 		return false;
+	}
+
+	/**
+	 * Whether a long press on a row opens the same menu as in the real tab (the option "Long-press menu", on unless
+	 * switched off). While it is on, a long press on a row no longer picks the card up and starts edit mode; in edit
+	 * mode a hold still picks the card up.
+	 */
+	protected boolean supportsMenu() {
+		return false;
+	}
+
+	private boolean menuOn() {
+		return supportsMenu() && optBool("menu", true);
+	}
+
+	/** The row's own long-press menu, the one the library tab shows for that item. */
+	private void showMenu(Row r) {
+		if (r.art() == null) return;
+		MainActivityDelegate a = act();
+		try {
+			new MediaItemMenuHandler(a.getContextMenu(), r.art()).show();
+		} catch (RuntimeException ex) {
+			me.aap.fermata.util.DiagnosticLog.log("HOME", "row menu failed", String.valueOf(ex));
+		}
 	}
 
 	/** Whether the top-level rows are songs too, so a song change redraws them (not only an opened playlist). */
@@ -315,6 +341,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 	protected List<HomeOption> getOptions() {
 		List<HomeOption> l = new ArrayList<>();
 		l.add(HomeOption.sw("art", ctx.getString(R.string.home_opt_artwork), true));
+		if (supportsMenu()) l.add(HomeOption.sw("menu", ctx.getString(R.string.home_opt_row_menu), true));
 		l.addAll(moreOptions());
 		return l;
 	}
@@ -405,10 +432,11 @@ abstract class LibraryWidget extends HomeWidgetView {
 		boolean none = rows.isEmpty();
 		int newCols = (getCellsW() >= 4) ? 2 : 1;
 		boolean art = optBool("art", true);
+		boolean menu = menuOn();
 		// Drawn again only when something it shows changed: the rows blinked on every refresh.
 		StringBuilder sig = new StringBuilder();
 		sig.append(total).append('|').append(isCompact()).append('|').append(newCols).append('|')
-				.append(art).append('|').append(loading && none).append('|').append(drillSource != null);
+				.append(art).append('|').append(menu).append('|').append(loading && none).append('|').append(drillSource != null);
 		for (Row r : rows) sig.append('|').append(r.title()).append(r.sub()).append(r.current());
 		String signature = sig.toString();
 		if (signature.equals(shownSignature)) return;
@@ -428,9 +456,10 @@ abstract class LibraryWidget extends HomeWidgetView {
 			return;
 		}
 		boolean wasEmpty = adapter.getItemCount() == 0;
-		boolean full = (newCols != cols) || (art != artOn) || wasEmpty;
+		boolean full = (newCols != cols) || (art != artOn) || (menu != menuShown) || wasEmpty;
 		cols = newCols;
 		artOn = art;
+		menuShown = menu;
 		glm.setSpanCount(cols);
 		adapter.set(rows, full);
 		if (wasEmpty && host.animate()) {
@@ -618,6 +647,14 @@ abstract class LibraryWidget extends HomeWidgetView {
 				badge.setImageTintList(android.content.res.ColorStateList.valueOf(color(ROLE_SECONDARY)));
 			}
 			main.setContentDescription(r.title());
+			// A long press on the row opens its menu: it is marked so the card does not take that press for picking itself up.
+			boolean menu = menuOn() && (r.art() != null);
+			main.setTag(R.id.home_no_grab, menu ? Boolean.TRUE : null);
+			main.setOnLongClickListener(menu ? v -> {
+				showMenu(r);
+				return true;
+			} : null);
+			main.setLongClickable(menu);
 			title.setText(r.title());
 			if (artOn) {
 				thumb.setVisibility(VISIBLE);

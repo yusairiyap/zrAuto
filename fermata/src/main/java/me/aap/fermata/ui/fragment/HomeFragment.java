@@ -111,7 +111,23 @@ public class HomeFragment extends MainActivityFragment {
 	public void switchingTo(@NonNull ActivityFragment to) {
 		super.switchingTo(to);
 		if (getContext() == null) return;
-		getActivityDelegate().setOverlaysSuppressed(false);
+		MainActivityDelegate a = getActivityDelegate();
+		a.setOverlaysSuppressed(false);
+		// The tab coming up has a tool bar: its room is there from its first layout (invisible, then fading in as the
+		// tab fills it), not added a frame later, which pushed its list down and left it scrolled a little.
+		ToolBarView tb = a.getToolBar();
+		ToolBarView.Mediator m = to.getToolBarMediator();
+		if ((tb != null) && (tb.getVisibility() == View.GONE) && (m != null) && !(m instanceof ToolBarView.Mediator.Invisible)) {
+			tb.animate().cancel();
+			tb.setAlpha(0f);
+			tb.setVisibility(View.INVISIBLE);
+		}
+	}
+
+	/** Short: Home is mostly background, and the tab it replaces shows through it for as long as the fade lasts. */
+	@Override
+	public long getFadeInMillis() {
+		return 110L;
 	}
 
 	private void enter() {
@@ -142,7 +158,7 @@ public class HomeFragment extends MainActivityFragment {
 	}
 
 	/**
-	 * Draws {@code v} as a picture in its parent's overlay and fades that out over 180 ms. The view itself is about to go
+	 * Draws {@code v} as a picture in its parent's overlay and fades that out over 110 ms. The view itself is about to go
 	 * out of the layout (its room is Home's); the picture takes no room, so nothing is resized while it fades.
 	 */
 	private static void fadeGhost(View v) {
@@ -165,7 +181,7 @@ public class HomeFragment extends MainActivityFragment {
 		d.setAlpha(from);
 		parent.getOverlay().add(d);
 		ValueAnimator va = ValueAnimator.ofInt(from, 0);
-		va.setDuration(180);
+		va.setDuration(110);
 		va.addUpdateListener(an -> d.setAlpha((Integer) an.getAnimatedValue()));
 		va.addListener(new AnimatorListenerAdapter() {
 			@Override
@@ -196,8 +212,14 @@ public class HomeFragment extends MainActivityFragment {
 		@Override
 		public void disable(ToolBarView tb) {
 			tb.animate().cancel();
-			tb.setAlpha(1f);
 			ToolBarView.Mediator.super.disable(tb);
+			// Whatever follows (the next tab's own mediator) fills the bar next; it is seen fading in, not appearing.
+			if (tb.getVisibility() != View.GONE) {
+				tb.setAlpha(0f);
+				tb.animate().alpha(1f).setDuration(160).start();
+			} else {
+				tb.setAlpha(1f);
+			}
 		}
 	}
 }

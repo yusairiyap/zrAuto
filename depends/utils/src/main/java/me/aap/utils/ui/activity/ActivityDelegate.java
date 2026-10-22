@@ -425,7 +425,9 @@ public abstract class ActivityDelegate implements EventBroadcaster<ActivityListe
 		try {
 			tr.commitNow();
 			postBroadcastEvent(FRAGMENT_CHANGED);
-			if (activeId != ID_NULL) crossfadeFragmentViews(fromView, switchingTo.getView());
+			if (activeId != ID_NULL) {
+				crossfadeFragmentViews(fromView, switchingTo.getView(), switchingTo.getFadeInMillis());
+			}
 			return switchingTo;
 		} catch (IllegalStateException err) {
 			activeFragmentId = ID_NULL;
@@ -454,17 +456,17 @@ public abstract class ActivityDelegate implements EventBroadcaster<ActivityListe
 	 * this method relies on for its synchronous return), so the fade is driven directly on the
 	 * fragments' root views instead, the same way {@code ControlPanelView} already fades its FABs.
 	 */
-	private void crossfadeFragmentViews(@Nullable View from, @Nullable View to) {
+	private void crossfadeFragmentViews(@Nullable View from, @Nullable View to, long fadeIn) {
 		if (to != null) {
 			to.animate().cancel();
 			to.setAlpha(0f);
-			to.animate().alpha(1f).setDuration(FRAGMENT_FADE_IN_DURATION).start();
+			to.animate().alpha(1f).setDuration(fadeIn).start();
 		}
 		if ((from != null) && (from != to)) {
 			from.animate().cancel();
 			from.setAlpha(1f);
 			from.setVisibility(View.VISIBLE);
-			from.animate().alpha(0f).setDuration(FRAGMENT_FADE_OUT_DURATION)
+			from.animate().alpha(0f).setDuration(Math.min(FRAGMENT_FADE_OUT_DURATION, fadeIn))
 					.withEndAction(() -> from.setVisibility(View.GONE)).start();
 		}
 	}

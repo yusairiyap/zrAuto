@@ -397,7 +397,9 @@ final class HomeStackView extends FrameLayout {
 	@Override
 	public boolean onTouchEvent(MotionEvent e) {
 		if (!dragging) {
-			if ((widgets.size() < 2) || cb.isEditing()) return false;
+			// Also in edit mode: the cell hands its touches here (it keeps the children away from them), so a sideways
+			// swipe turns the stack while a hold still picks the card up.
+			if (widgets.size() < 2) return false;
 			switch (e.getActionMasked()) {
 				case MotionEvent.ACTION_DOWN -> {
 					downX = e.getX();

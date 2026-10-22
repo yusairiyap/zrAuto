@@ -498,10 +498,11 @@ final class HomeCellView extends FrameLayout implements HomeStackView.Callback {
 	private void claimGestures() {
 		heldOff = false;
 		claims = 0;
-		if (editing || (panel != null)) return;
+		if (panel != null) return;
 		if (stack.count() > 1) claims |= HomeWidgetView.GESTURE_H;
 		HomeWidgetView top = topWidget();
-		if (top != null) claims |= top.gesturesNow();
+		// What the widget under the finger reads itself does not apply while editing (it gets no touches then).
+		if ((top != null) && !editing) claims |= top.gesturesNow();
 		int page = grid.isVertical() ? HomeWidgetView.GESTURE_V : HomeWidgetView.GESTURE_H;
 		if (((claims & page) != 0) && (getParent() != null)) {
 			heldOff = true;
@@ -565,7 +566,9 @@ final class HomeCellView extends FrameLayout implements HomeStackView.Callback {
 
 	@Override
 	public boolean onTouchEvent(MotionEvent e) {
-		// Stays the target of the gesture, so the long press can be seen.
+		// In edit mode the stack never sees a touch (this cell takes them all, for the pick-up), so it is fed here: a swipe
+		// across a stacked card turns it; holding picks it up as before (the stack lets go when that happens: CANCEL).
+		if (editing && (panel == null) && (stack.count() > 1) && !hitChrome(e.getX(), e.getY())) stack.onTouchEvent(e);
 		return true;
 	}
 

@@ -59,6 +59,8 @@ final class HomeGridLayout extends ViewGroup {
 	private int unit = 100;
 	/** Sideways: the width of the page it sits in, so cards that do not fill it are centred (0 = no such room). */
 	private int viewportW;
+	/** Sideways: where the middle of the cards should be (in this view's own coordinates), NaN for the middle of the page. */
+	private float centreX = Float.NaN;
 	/** Sideways: the room put before the cards to centre them, see {@link #setViewportWidth}. */
 	private int lead;
 	private boolean editing;
@@ -121,9 +123,10 @@ final class HomeGridLayout extends ViewGroup {
 	 * Scrolling sideways with fewer cards than fill the page: they sit in the middle of it. Once they need more room
 	 * than the page has, the lead is 0 and the row scrolls as before.
 	 */
-	void setViewportWidth(int w) {
-		if (viewportW == w) return;
+	void setViewportWidth(int w, float centreX) {
+		if ((viewportW == w) && (this.centreX == centreX)) return;
 		viewportW = w;
+		this.centreX = centreX;
 		if (!vertical) requestLayout();
 	}
 
@@ -383,7 +386,8 @@ final class HomeGridLayout extends ViewGroup {
 		} else {
 			int natural = extent + padW;
 			int total = Math.max(natural, viewportW);
-			lead = (total - natural) / 2;
+			float want = Float.isNaN(centreX) ? (total - natural) / 2f : (centreX - extent / 2f - getPaddingLeft());
+			lead = Math.max(0, Math.min(total - natural, Math.round(want)));
 			setMeasuredDimension(total, (hMode == MeasureSpec.UNSPECIFIED) ?
 					cross * unit + (cross - 1) * gap + padH : h);
 		}

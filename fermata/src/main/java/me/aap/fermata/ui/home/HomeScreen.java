@@ -754,7 +754,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		measureSideExtras(down);
 		if (vertical) grid.setPadding(side + extraLeft, 0, side + extraRight, HomeUi.dp(ctx, 16));
 		else grid.setPadding(side, HomeUi.dp(ctx, 58), side, HomeUi.dp(ctx, 8));
-		grid.setViewportWidth(vertical ? 0 : w);
+		grid.setViewportWidth(vertical ? 0 : w, vertical ? Float.NaN : sidewaysCentre());
 		grid.setArrangement(vertical, count, gap);
 		applyHeaderRoom();
 	}
@@ -794,7 +794,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			}
 			if (diff > 0) l = diff;
 			else r = -diff;
-			sideKey = rootLeft * 31 + root.getWidth() * 17 + (pill ? navLoc[0] + 7 : 0) + (pill && nb.isRight() ? 1 : 0);
+			sideKey = sideKeyNow();
 		}
 		if ((extraLeft != l) || (extraRight != r)) {
 			DiagnosticLog.log("HOME", "side room", "left=" + l, "right=" + r, "root=" + root.getWidth());
@@ -804,24 +804,50 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	}
 
 	private final int[] navLoc = new int[2];
+
+	/**
+	 * Scrolling sideways: where the middle of the cards goes, in the page's own coordinates: the middle of the room between
+	 * the screen's edge and the side pill (or of the window without one), so the margin on each side of the cards is equal.
+	 */
+	private float sidewaysCentre() {
+		View decor = root.getRootView();
+		if ((decor == root) || !root.isAttachedToWindow() || (decor.getWidth() <= 0)) return Float.NaN;
+		root.getLocationInWindow(sideLoc);
+		NavBarView nb = a.getNavBar();
+		boolean pill = (nb != null) && (nb.getVisibility() == View.VISIBLE) && !nb.isBottom() && !a.isBarsHidden() &&
+				(nb.getWidth() > 0);
+		float from = 0f;
+		float to = decor.getWidth();
+		if (pill) {
+			nb.getLocationInWindow(navLoc);
+			if (nb.isRight()) to = navLoc[0];
+			else from = navLoc[0] + nb.getWidth();
+		}
+		sideKey = sideKeyNow();
+		return (from + to) / 2f - sideLoc[0];
+	}
+
+	/** What the side room depends on: where the root and the pill are (and which side the pill is on). */
+	private int sideKeyNow() {
+		NavBarView nb = a.getNavBar();
+		boolean pill = (nb != null) && (nb.getVisibility() == View.VISIBLE) && !nb.isBottom() && !a.isBarsHidden() &&
+				(nb.getWidth() > 0);
+		int pillX = 0;
+		if (pill) {
+			nb.getLocationInWindow(navLoc);
+			pillX = navLoc[0];
+		}
+		root.getLocationInWindow(sideLoc);
+		return sideLoc[0] * 31 + root.getWidth() * 17 + (pill ? pillX + 7 : 0) + (pill && nb.isRight() ? 1 : 0);
+	}
 	/** What the side room was last worked out from; when the root or the pill moves, it is worked out again. */
 	private int sideKey;
 	private final ViewTreeObserver.OnPreDrawListener sideSync = this::onSidePreDraw;
 
 	private boolean onSidePreDraw() {
-		if (shown && vertical && root.isAttachedToWindow() && (root.getWidth() > 0)) {
-			View decor = root.getRootView();
-			root.getLocationInWindow(sideLoc);
-			NavBarView nb = a.getNavBar();
-			boolean pill = (nb != null) && (nb.getVisibility() == View.VISIBLE) && !nb.isBottom() && !a.isBarsHidden() &&
-					(nb.getWidth() > 0);
-			int pillX = 0;
-			if (pill) {
-				nb.getLocationInWindow(navLoc);
-				pillX = navLoc[0];
-			}
-			int key = sideLoc[0] * 31 + root.getWidth() * 17 + (pill ? pillX + 7 : 0) + (pill && nb.isRight() ? 1 : 0);
-			if ((decor != root) && (key != sideKey)) {
+		if (shown && root.isAttachedToWindow() && (root.getWidth() > 0)) {
+			int key = sideKeyNow();
+			if ((root.getRootView() != root) && (key != sideKey)) {
 				sideKey = key;
 				root.post(this::applyArrangement);
 			}

@@ -783,6 +783,21 @@ what each widget shows is set on the widget (edit mode > its gear).
   (a connection that gave out in the car) vanished without a trace. Now it is logged (`TRANSPORT engine ended: ...`), tried again twice 2.5 s apart, then stopped
   cleanly. Not confirmed as the cause: next time, ask for the Diagnostic log's TRANSPORT and YT lines around the end of the song.
 
+### Seventeenth round (toolbar room, row menus, stack swipe in edit mode, sideways centring)
+
+- **Leaving Home keeps the tool bar's room** (`HomeFragment#switchingTo`): when the tab coming up has a tool bar, the bar goes INVISIBLE (not GONE) with alpha 0 before the
+  switch commits, so that tab is laid out with the bar's room from its first frame; it used to appear a frame later and push the list down (the list "suddenly scrolled a
+  bit" on coming back to Playlists/Favorites). `HomeToolBarMediator#disable` then fades it in under the next tab's own mediator.
+- **A shorter crossfade into Home** (`ActivityFragment#getFadeInMillis`, 200 ms by default, 110 ms for Home; the outgoing tab fades in at most the same time, and the
+  tool bar's picture too): Home is mostly background, so the old tab (and a toolbar picture) showed through it for the whole fade.
+- **Sideways rows are centred between the screen's edge and the side pill too** (`HomeScreen#sidewaysCentre` -> `HomeGridLayout#setViewportWidth(w, centreX)`): a row shorter
+  than the page sits so that the margin before the first card equals the gap after the last; a row that needs the room scrolls as before (lead 0).
+- **Library rows can open the tab's long-press menu** (`LibraryWidget#supportsMenu`, Favorites and Playlists; option "Menu on long press", on by default): a long press on a row
+  opens `MediaItemMenuHandler` for its item, and the row is marked `home_no_grab` so the card does not take that press for picking itself up and starting edit mode. In edit mode
+  the cell takes every touch as before, so a hold still moves the card. Turn the option off to get the old long press (pick up, edit mode) back on those rows.
+- **A stacked card swipes in edit mode** (`HomeCellView#onTouchEvent` feeds `HomeStackView#onTouchEvent`): the cell intercepts everything while editing, so the stack never saw a
+  touch; a sideways swipe now turns the stack, and holding for `PICKUP_MS` still picks the card up (the stack gets CANCEL then).
+
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 
 - Size what is *inside* a card from its pixels, not from cell counts or fixed dp: the Data ring's words (`used`/`caption`) and the Power
