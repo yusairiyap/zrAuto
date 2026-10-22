@@ -2237,7 +2237,14 @@ public class MainActivityDelegate extends ActivityDelegate
 				FLAG_KEEP_SCREEN_ON | FLAG_TURN_SCREEN_ON | FLAG_DISMISS_KEYGUARD | FLAG_SHOW_WHEN_LOCKED;
 		var app = FermataApplication.get();
 		if (!app.isMirroringMode()) {
-			if (clearFlags) getWindow().clearFlags(screenOnFlags);
+			if (clearFlags) {
+				// Coming back to the app (the shade, the lock screen, another app, Android Auto) clears the flags that only
+				// mirroring needs; keeping the screen awake for a fullscreen video is not one of them, or the screen dimmed
+				// and went off a minute or two into a video after any such return.
+				int f = screenOnFlags;
+				if (videoMode) f &= ~FLAG_KEEP_SCREEN_ON;
+				getWindow().clearFlags(f);
+			}
 			return false;
 		}
 		setFullScreen(true);
@@ -2249,6 +2256,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	public void keepScreenOn(boolean on) {
+		DiagnosticLog.log("STATE", "keep screen on", String.valueOf(on));
 		if (on) getWindow().addFlags(FLAG_KEEP_SCREEN_ON);
 		else getWindow().clearFlags(FLAG_KEEP_SCREEN_ON);
 	}
