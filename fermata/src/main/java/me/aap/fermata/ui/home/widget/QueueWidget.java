@@ -45,6 +45,18 @@ final class QueueWidget extends LibraryWidget {
 		return true;
 	}
 
+	@Override
+	protected boolean supportsRemove() {
+		return true;
+	}
+
+	/** Takes the song out of the queue, as swiping it away does in the Music tab (positions in the play order). */
+	@Override
+	protected void onRemoved(int position) {
+		MusicQueue q = MusicPlayer.getQueue(act());
+		if (q != null) q.remove(position);
+	}
+
 	/** The same move as the Music tab's queue drag: positions in the play order, which is how the rows are listed. */
 	@Override
 	protected void onReordered(int from, int to) {

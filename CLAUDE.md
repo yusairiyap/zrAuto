@@ -842,6 +842,10 @@ what each widget shows is set on the widget (edit mode > its gear).
   Music tab's `QueueTouchCallback`, and the rows' positions are the play order's). The row is marked `home_no_grab` so the card does not take that press for picking itself up;
   in edit mode the cell still takes every touch. A refresh that arrives while a row is held (the queue listener, the playing song changing) is held back and run after the drop
   (`dragging`, `refreshAfterDrag`). Not inside an opened list (`drillSource`). Never run on a device.
+- **Queue rows carry a remove button (left) and a drag handle (right)** like Spotify's playlist editor: `LibraryWidget#supportsRemove`/`removeOn`/`onRemoved` (option "Remove button",
+  `MusicQueue#remove(position)`, the row leaves the card at once) and the handle (option "Drag handle", shown only while "Reorder on long press" is on; pressing it calls
+  `ItemTouchHelper#startDrag` at once, so no long press is needed). Both are tagged `home_no_grab`. The rows' look is keyed by `rowMode` (bits for menu, reorder, remove, handle) so
+  toggling any of the options rebinds them.
 
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 

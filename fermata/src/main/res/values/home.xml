@@ -233,6 +233,10 @@
     <string name="home_downloaded">Downloaded</string>
     <string name="home_opt_row_menu">Menu on long press</string>
     <string name="home_opt_row_reorder">Reorder on long press</string>
+    <string name="home_opt_row_handle">Drag handle</string>
+    <string name="home_opt_row_remove">Remove button</string>
+    <string name="home_row_remove">Remove from queue</string>
+    <string name="home_row_drag">Move</string>
     <string name="home_pref_greeting">Greeting</string>
     <string name="home_pref_greeting_sub">The greeting and the date above the widgets</string>
     <string name="home_pref_animate">Animations</string>

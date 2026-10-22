@@ -76,7 +76,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 	private final RowAdapter adapter = new RowAdapter();
 	private int cols = 1;
 	private boolean artOn = true;
-	private boolean menuShown;
+	private int rowModeShown;
 	private int styleEpoch;
 	@Nullable
 	private Object lastFocusKey;
@@ -170,6 +170,24 @@ abstract class LibraryWidget extends HomeWidgetView {
 
 	/** A row was dropped at a new place: {@code from} and {@code to} are positions in the rows as fetched. */
 	protected void onReordered(int from, int to) {
+	}
+
+	/** Whether each row has a remove button on its left (the option "Remove button", on unless switched off). */
+	protected boolean supportsRemove() {
+		return false;
+	}
+
+	protected boolean removeOn() {
+		return supportsRemove() && (drillSource == null) && optBool("remove", true);
+	}
+
+	/** A row's remove button was pressed: {@code position} is its place in the rows as fetched. */
+	protected void onRemoved(int position) {
+	}
+
+	/** The grip on the right of each row, which picks the row up at once (the option "Drag handle"; needs reordering on). */
+	private boolean handleOn() {
+		return reorderOn() && optBool("handle", true);
 	}
 
 	private ItemTouchHelper touchHelper;
@@ -438,7 +456,11 @@ abstract class LibraryWidget extends HomeWidgetView {
 		List<HomeOption> l = new ArrayList<>();
 		l.add(HomeOption.sw("art", ctx.getString(R.string.home_opt_artwork), true));
 		if (supportsMenu()) l.add(HomeOption.sw("menu", ctx.getString(R.string.home_opt_row_menu), true));
-		if (supportsReorder()) l.add(HomeOption.sw("reorder", ctx.getString(R.string.home_opt_row_reorder), true));
+		if (supportsReorder()) {
+			l.add(HomeOption.sw("reorder", ctx.getString(R.string.home_opt_row_reorder), true));
+			l.add(HomeOption.sw("handle", ctx.getString(R.string.home_opt_row_handle), true));
+		}
+		if (supportsRemove()) l.add(HomeOption.sw("remove", ctx.getString(R.string.home_opt_row_remove), true));
 		l.addAll(moreOptions());
 		return l;
 	}
@@ -534,11 +556,11 @@ abstract class LibraryWidget extends HomeWidgetView {
 		boolean none = rows.isEmpty();
 		int newCols = (getCellsW() >= 4) ? 2 : 1;
 		boolean art = optBool("art", true);
-		boolean menu = menuOn() || reorderOn();
+		int rowMode = (menuOn() ? 1 : 0) | (reorderOn() ? 2 : 0) | (removeOn() ? 4 : 0) | (handleOn() ? 8 : 0);
 		// Drawn again only when something it shows changed: the rows blinked on every refresh.
 		StringBuilder sig = new StringBuilder();
 		sig.append(total).append('|').append(isCompact()).append('|').append(newCols).append('|')
-				.append(art).append('|').append(menu).append('|').append(loading && none).append('|').append(drillSource != null);
+				.append(art).append('|').append(rowMode).append('|').append(loading && none).append('|').append(drillSource != null);
 		for (Row r : rows) sig.append('|').append(r.title()).append(r.sub()).append(r.current());
 		String signature = sig.toString();
 		if (signature.equals(shownSignature)) return;
@@ -558,10 +580,10 @@ abstract class LibraryWidget extends HomeWidgetView {
 			return;
 		}
 		boolean wasEmpty = adapter.getItemCount() == 0;
-		boolean full = (newCols != cols) || (art != artOn) || (menu != menuShown) || wasEmpty;
+		boolean full = (newCols != cols) || (art != artOn) || (rowMode != rowModeShown) || wasEmpty;
 		cols = newCols;
 		artOn = art;
-		menuShown = menu;
+		rowModeShown = rowMode;
 		glm.setSpanCount(cols);
 		adapter.set(rows, full);
 		if (wasEmpty && host.animate()) {
@@ -658,6 +680,10 @@ abstract class LibraryWidget extends HomeWidgetView {
 		private final TextView title;
 		private final TextView sub;
 		private final ImageView playBtn;
+		/** Left of the row: takes it out of the list (the queue). */
+		private final ImageView removeBtn;
+		/** Right of the row: pressed down it picks the row up to move it at once. */
+		private final ImageView handle;
 		/** A small download icon at the end of the row of a song that is on the phone: part of the row, no chip of its own. */
 		private final ImageView badge;
 		@Nullable
@@ -680,6 +706,17 @@ abstract class LibraryWidget extends HomeWidgetView {
 			main.setOnClickListener(v -> {
 				if (row != null) row.click().run();
 			});
+			removeBtn = iconButton(R.drawable.home_row_remove, 32, ROLE_SECONDARY, R.string.home_row_remove, () -> {
+			int pos = getAdapterPosition();
+			if ((pos == RecyclerView.NO_POSITION) || (pos >= rows.size())) return;
+			// Gone from the card at once; the real list follows when the source reports the change.
+			rows.remove(pos);
+			adapter.notifyItemRemoved(pos);
+			onRemoved(pos);
+			});
+			removeBtn.setVisibility(GONE);
+			removeBtn.setTag(R.id.home_no_grab, Boolean.TRUE);
+			root.addView(removeBtn);
 			root.addView(main, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
 
 			thumb = HomeImages.thumb(ctx, 40, 40, 10, softFill());
@@ -714,6 +751,20 @@ abstract class LibraryWidget extends HomeWidgetView {
 				if ((row != null) && (row.play() != null)) row.play().run();
 			});
 			root.addView(playBtn);
+
+			handle = iconButton(R.drawable.drag_handle, 32, ROLE_SECONDARY, R.string.home_row_drag, () -> {
+			});
+			handle.setVisibility(GONE);
+			handle.setTag(R.id.home_no_grab, Boolean.TRUE);
+			handle.setOnTouchListener((v, e) -> {
+				if ((e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) && (touchHelper != null) && reorderOn()) {
+					listView.getParent().requestDisallowInterceptTouchEvent(true);
+					touchHelper.startDrag(this);
+					return true;
+				}
+				return false;
+			});
+			root.addView(handle);
 		}
 
 		void bind(Row r, int position) {
@@ -753,6 +804,19 @@ abstract class LibraryWidget extends HomeWidgetView {
 			boolean menu = menuOn() && (r.art() != null);
 			// A row that can be picked up to move it is marked too: that press is the list's, not the card's.
 			main.setTag(R.id.home_no_grab, (menu || reorderOn()) ? Boolean.TRUE : null);
+			int bs = narrow ? px(28) : px(32);
+			for (ImageView b : new ImageView[]{removeBtn, handle}) {
+				ViewGroup.LayoutParams bl = b.getLayoutParams();
+				if (bl.width != bs) {
+					bl.width = bs;
+					bl.height = bs;
+					b.setLayoutParams(bl);
+					int bp = Math.round(bs * 0.26f);
+					b.setPadding(bp, bp, bp, bp);
+				}
+			}
+			removeBtn.setVisibility(removeOn() ? VISIBLE : GONE);
+			handle.setVisibility(handleOn() ? VISIBLE : GONE);
 			main.setOnLongClickListener(menu ? v -> {
 				showMenu(r);
 				return true;
