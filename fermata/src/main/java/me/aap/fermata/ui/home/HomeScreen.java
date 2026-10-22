@@ -40,6 +40,7 @@ import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.view.BehindBarsLayers;
 import me.aap.fermata.ui.view.InfoOverlayView;
+import me.aap.fermata.ui.view.OverflowFrameLayout;
 import me.aap.utils.app.App;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.ui.view.NavBarView;
@@ -82,8 +83,15 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	private ValueAnimator insetAnim;
 	private final View.OnLayoutChangeListener insetSync = (v, l, t, r, b, ol, ot, or, ob) -> syncInsets(true);
 	private boolean vertical = true;
+	/** The room a side navigation pill takes from one side, given to the other side as well so the page is centred in the window. */
+	private int extraLeft;
+	private int extraRight;
+	private final int[] sideLoc = new int[2];
 	private boolean editing;
 	private boolean shown;
+	/** The first screen since the app started: it stays invisible while the bars settle, then fades in once (like the Music tab). */
+	private boolean quiet;
+	private static final long QUIET_MS = 500;
 	private boolean entered;
 	private boolean barsApplied;
 	@Nullable
@@ -105,7 +113,11 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		this.model = new HomeModel(prefs, a.isCarActivity());
 		Context ctx = palette.ctx;
 
-		root = new FrameLayout(ctx);
+		// Not a plain FrameLayout: with a tab's alpha below 1 (its crossfade, its fade in at start) a view that reports
+		// overlapping rendering is drawn through a layer the size of its own bounds, which cut the background off where
+		// it reaches under the status bar, the navigation bar and a side pill for the whole fade and popped it in at the
+		// end (the late fill-in). The Music tab's root is this class for the same reason.
+		root = new OverflowFrameLayout(ctx, null);
 		root.setClipChildren(false);
 		root.setClipToPadding(false);
 		// Opaque from the very first frame: the tab crossfades in over the one before it, and until the
@@ -127,8 +139,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 				topColor = defaultTopColor();
 			} else {
 				bg.setImage(bm, true);
-				float dark = 1f - (1f - prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM) / 100f) * 0.4f;
-				topColor = HomeUi.mix(top, 0xFF000000, dark);
+				topColor = dimmedTop(top);
 			}
 			applyGreeting();
 			if (shown) systemBars(true);
@@ -267,6 +278,18 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		editOnShow = true;
 	}
 
+	/** The Home item's menu in the navigation bar: Home comes up in edit mode (at once when it is already showing). */
+	public static void startEditing(MainActivityDelegate a) {
+		HomeScreen h = live;
+		if ((h != null) && h.shown) {
+			h.setEditing(true);
+			return;
+		}
+		editOnShow = true;
+		a.exitVideoMode();
+		a.showFragment(R.id.home_fragment);
+	}
+
 	/** Settings > Home: choose the background picture. */
 	public static void pickBackground(MainActivityDelegate a) {
 		HomeBackground.pick(a, null);
@@ -281,8 +304,10 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		return root;
 	}
 
-	public void onViewCreated() {
+	public void onViewCreated(boolean quietStart) {
 		live = this;
+		quiet = quietStart;
+		if (quiet) root.setAlpha(0f);
 		behind.attach();
 		prefs.addBroadcastListener(this);
 		root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
@@ -346,12 +371,30 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			greeting.animate().cancel();
 			greeting.setAlpha(animate() ? 0f : 1f);
 		}
-		root.post(() -> {
+		Runnable enter = () -> {
 			if (!shown) return;
 			grid.playEntrance();
-			this.a.liftStartupVeil(true);
 			greeting.animate().alpha(1f).setDuration(380).setInterpolator(new DecelerateInterpolator(1.8f)).start();
-		});
+		};
+		// Only on the very first screen: a tab restored hidden and shown later fades in with the tab switch as usual.
+		boolean first = quiet && a.isInitialFragmentShow();
+		quiet = false;
+		if (first) {
+			if (!animate()) {
+				root.setAlpha(1f);
+				root.post(enter);
+			} else {
+				// The first moments are a burst of layout (bars, insets, the widgets); the page fades in once it has
+				// settled and its widgets rise with it, as the Music tab does.
+				root.postDelayed(() -> {
+					if (!shown) return;
+					root.animate().alpha(1f).setDuration(350).start();
+					enter.run();
+				}, QUIET_MS);
+			}
+		} else {
+			root.post(enter);
+		}
 		entered = true;
 		if (editOnShow) {
 			editOnShow = false;
@@ -519,6 +562,9 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			applyArrangement();
 		}
 		if (changed.contains(MainActivityPrefs.HOME_CARD_STYLE)) grid.restyle();
+		if (changed.contains(MainActivityPrefs.HOME_EDIT_BUTTON) || changed.contains(MainActivityPrefs.HOME_EDIT_BUTTON_AA)) {
+			applyEditUi(true);
+		}
 		if (changed.contains(MainActivityPrefs.HOME_GREETING) || changed.contains(MainActivityPrefs.HOME_GREETING_AA) ||
 				changed.contains(MainActivityPrefs.HOME_GREET_MORNING) ||
 				changed.contains(MainActivityPrefs.HOME_GREET_AFTERNOON) ||
@@ -564,8 +610,13 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			TransitionManager.endTransitions(chipBar);
 			TransitionManager.beginDelayedTransition(chipBar);
 		}
-		editBtn.setVisibility(editing ? View.GONE : View.VISIBLE);
+		boolean button = editButtonWanted();
+		editBtn.setVisibility((editing || !button) ? View.GONE : View.VISIBLE);
 		for (TextView c : editChips) c.setVisibility(editing ? View.VISIBLE : View.GONE);
+		// With the button off the bar has nothing in it (and no pill drawn): edit mode is still there from a long press
+		// on a widget, from Settings > Home and from Home's menu in the navigation bar.
+		chipBar.setVisibility((editing || button) ? View.VISIBLE : View.GONE);
+		applyHeaderRoom();
 		// On a phone the four chips with their words are wider than the screen (the done button went off its
 		// edge): Background and Settings keep only their icons there.
 		Context ctx = palette.ctx;
@@ -581,6 +632,33 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			c.setContentDescription(ctx.getString(labels[i]));
 		}
 		applyTopInfo();
+	}
+
+	/** Whether the little edit button shows in the top right corner (Settings > Home > Header, per screen). */
+	private boolean editButtonWanted() {
+		return prefs.getBooleanPref(car() ? MainActivityPrefs.HOME_EDIT_BUTTON_AA : MainActivityPrefs.HOME_EDIT_BUTTON);
+	}
+
+	/**
+	 * How far the header sits from the right edge: the corner's own room (more when the edit button is there), and what
+	 * keeps the page centred when a side pill takes room from one side only.
+	 */
+	private void applyHeaderRoom() {
+		Context ctx = palette.ctx;
+		boolean button = editButtonWanted() || editing;
+		FrameLayout.LayoutParams clp = (FrameLayout.LayoutParams) chipBar.getLayoutParams();
+		int chipEnd = HomeUi.dp(ctx, 12) + extraRight;
+		if (clp.getMarginEnd() != chipEnd) {
+			clp.setMarginEnd(chipEnd);
+			chipBar.setLayoutParams(clp);
+		}
+		FrameLayout.LayoutParams ilp = (FrameLayout.LayoutParams) topScroll.getLayoutParams();
+		int infoEnd = HomeUi.dp(ctx, button ? 68 : 12) + extraRight;
+		if (ilp.getMarginEnd() != infoEnd) {
+			ilp.setMarginEnd(infoEnd);
+			topScroll.setLayoutParams(ilp);
+		}
+		applyGreeting();
 	}
 
 	private TextView pillChip(@DrawableRes int icon, @StringRes int label, boolean primary, Runnable onClick) {
@@ -662,10 +740,31 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 				prefs.getIntPref(car() ? MainActivityPrefs.HOME_GAP_AA : MainActivityPrefs.HOME_GAP))));
 		if ((scroller == null) || (down != vertical)) buildScroller(down);
 		int side = HomeUi.dp(ctx, 12);
-		if (vertical) grid.setPadding(side, 0, side, HomeUi.dp(ctx, 16));
+		measureSideExtras(down);
+		if (vertical) grid.setPadding(side + extraLeft, 0, side + extraRight, HomeUi.dp(ctx, 16));
 		else grid.setPadding(side, HomeUi.dp(ctx, 58), side, HomeUi.dp(ctx, 8));
 		grid.setArrangement(vertical, count, gap);
-		applyGreeting();
+		applyHeaderRoom();
+	}
+
+	/**
+	 * A side navigation pill pads the whole tab clear of it on its own side only, which left the widgets nearer the edge
+	 * on the other side (a wide empty strip on the right, a thin margin on the left). Scrolling down, the other side gets
+	 * the same room, so the page sits centred in the window. Scrolling sideways keeps the page against the pill.
+	 */
+	private void measureSideExtras(boolean down) {
+		int l = 0;
+		int r = 0;
+		View decor = root.getRootView();
+		if (down && (decor != root) && root.isAttachedToWindow() && (decor.getWidth() > 0)) {
+			root.getLocationInWindow(sideLoc);
+			int left = Math.max(0, sideLoc[0]);
+			int right = Math.max(0, decor.getWidth() - (sideLoc[0] + root.getWidth()));
+			l = Math.max(0, right - left);
+			r = Math.max(0, left - right);
+		}
+		extraLeft = l;
+		extraRight = r;
 	}
 
 	private void buildScroller(boolean down) {
@@ -811,14 +910,18 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		Context ctx = palette.ctx;
 		greetTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, vertical ? 28 : 22);
 		greetDate.setTextSize(TypedValue.COMPLEX_UNIT_SP, vertical ? 14 : 13);
-		greeting.setPadding(HomeUi.dp(ctx, 20), HomeUi.dp(ctx, vertical ? 16 : 8), HomeUi.dp(ctx, vertical ? 76 : 20),
+		// Room on the right for the edit button when it is there; the side pill's balancing room on either side.
+		boolean button = editButtonWanted() || editing;
+		greeting.setPadding(HomeUi.dp(ctx, 20) + (vertical ? extraLeft : 0), HomeUi.dp(ctx, vertical ? 16 : 8),
+				HomeUi.dp(ctx, vertical ? (button ? 76 : 20) : 20) + (vertical ? extraRight : 0),
 				HomeUi.dp(ctx, vertical ? 8 : 0));
 		greetTitle.setText(greetingText(Calendar.getInstance().get(Calendar.HOUR_OF_DAY)));
 		greetDate.setText(DateUtils.formatDateTime(ctx, System.currentTimeMillis(),
 				FORMAT_SHOW_WEEKDAY | FORMAT_SHOW_DATE));
-		boolean onPicture = bg.hasImage();
-		greetTitle.setTextColor(onPicture ? 0xFFFFFFFF : palette.textPrimary);
-		greetDate.setTextColor(onPicture ? 0xCCFFFFFF : palette.textSecondary);
+		// The theme's own text colours on a picture too: the picture is dimmed towards black in a dark theme and towards
+		// white in a light one, so the theme's text always reads on it.
+		greetTitle.setTextColor(palette.textPrimary);
+		greetDate.setTextColor(palette.textSecondary);
 		applyTopInfo();
 	}
 
@@ -853,7 +956,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		boolean any = want && HomeInfo.apply(a, topInfo, 0.85f);
 		topScroll.setVisibility(any ? View.VISIBLE : View.GONE);
 		if (!any) return;
-		int fg = bg.hasImage() ? 0xFFFFFFFF : palette.textPrimary;
+		int fg = palette.textPrimary;
 		topFillBase = (fg & 0x00FFFFFF) | 0x2E000000;
 		topInfo.setChipStyle(fg, topFillBase);
 		fitTopInfo();
@@ -924,7 +1027,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			greetW = Math.max(greetTitle.getPaint().measureText(greetTitle.getText().toString()),
 					greetDate.getPaint().measureText(greetDate.getText().toString())) + HomeUi.dp(ctx, 28);
 		}
-		int avail = Math.round(root.getWidth() - HomeUi.dp(ctx, 68) - greetW - HomeUi.dp(ctx, 8));
+		int reserve = ((FrameLayout.LayoutParams) topScroll.getLayoutParams()).getMarginEnd();
+		int avail = Math.round(root.getWidth() - reserve - greetW - extraLeft - HomeUi.dp(ctx, 8));
 		topInfo.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
 				View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
 		int need = topInfo.getMeasuredWidth();
@@ -971,9 +1075,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 						topColor = defaultTopColor();
 					} else {
 						bg.setImage(l.bitmap(), animate);
-						// What shows at the top once dimmed and shaded.
-						float dark = 1f - (1f - prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM) / 100f) * 0.4f;
-						topColor = HomeUi.mix(l.topColor(), 0xFF000000, dark);
+						topColor = dimmedTop(l.topColor());
 					}
 					applyGreeting();
 					if (shown) systemBars(true);
@@ -981,8 +1083,13 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	}
 
 	private int defaultTopColor() {
-		int base = palette.background | 0xFF000000;
-		return HomeUi.mix(base, palette.accent, palette.light ? 0.16f : 0.2f);
+		return HomeBackgroundView.plainTop(palette);
+	}
+
+	/** What shows at the top of a picture once it is dimmed and shaded (towards white in a light theme, black in a dark one). */
+	private int dimmedTop(int top) {
+		float dark = 1f - (1f - prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM) / 100f) * 0.4f;
+		return HomeUi.mix(top, HomeBackgroundView.veil(palette), dark);
 	}
 
 

@@ -11,7 +11,6 @@ import androidx.annotation.Nullable;
 import me.aap.fermata.R;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.home.HomeScreen;
-import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.utils.ui.fragment.ActivityFragment;
 import me.aap.utils.ui.view.ToolBarView;
 
@@ -23,7 +22,6 @@ import me.aap.utils.ui.view.ToolBarView;
  */
 public class HomeFragment extends MainActivityFragment {
 	private HomeScreen screen;
-	private boolean covered;
 
 	@Override
 	public int getFragmentId() {
@@ -64,7 +62,9 @@ public class HomeFragment extends MainActivityFragment {
 	@Override
 	public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
 		super.onViewCreated(view, savedInstanceState);
-		screen.onViewCreated();
+		// Like the Music tab: the first screen after the app starts (or comes back from being killed) stays
+		// invisible while the bars and insets settle, then fades in once.
+		screen.onViewCreated((savedInstanceState != null) || getActivityDelegate().isInitialFragmentShow());
 	}
 
 	@Override
@@ -87,42 +87,49 @@ public class HomeFragment extends MainActivityFragment {
 		else enter();
 	}
 
-	// Both run before the fragment transaction that shows or hides this tab commits, so the control
-	// panel is already on its way out while the tab fades in.
+	// Both run before the fragment transaction that shows or hides this tab commits, exactly as the Music
+	// tab's do: the bars Home has no use for are put away here, so the tab is laid out once, at its final
+	// size, instead of first with them and again without (which re-packed a sideways grid in the middle of
+	// the fade in on the car screen, and cut the background short under the bars).
 	@Override
 	public void switchingFrom(@Nullable ActivityFragment from) {
 		super.switchingFrom(from);
 		MainActivityDelegate a = null;
 		if (getContext() != null) a = getActivityDelegate();
 		else if ((from instanceof MainActivityFragment m) && (m.getContext() != null)) a = m.getActivityDelegate();
-		if (a != null) cover(a, true);
+		if (a != null) putBarsAway(a);
 	}
 
 	@Override
 	public void switchingTo(@NonNull ActivityFragment to) {
 		super.switchingTo(to);
 		if (getContext() == null) return;
-		cover(getActivityDelegate(), false);
+		getActivityDelegate().setOverlaysSuppressed(false);
 	}
 
 	private void enter() {
-		MainActivityDelegate a = getActivityDelegate();
-		cover(a, true);
+		putBarsAway(getActivityDelegate());
 		if (screen != null) screen.onShown();
 	}
 
 	private void leave() {
 		if (screen != null) screen.onHidden();
-		if (getContext() != null) cover(getActivityDelegate(), false);
+		// The control panel and the floating buttons were given back by switchingTo(), before the switch
+		// committed: doing it again here, after the next tab (the Music tab suppresses them) had its say, would undo that.
 	}
 
-	/** The control panel fades away (and back) with the tab: the media widget is the player here. */
-	private void cover(MainActivityDelegate a, boolean on) {
-		covered = on;
-		ControlPanelView cp = a.getControlPanel();
-		if (cp != null) cp.setCovered(on);
-		// The floating buttons have nothing to do here: the widgets are the controls.
-		a.setFabsHidden(on);
+	/**
+	 * No title bar, control panel or floating buttons over Home: the media widget is its player and the
+	 * widgets are its controls. Done at once, not faded, like the Music tab does.
+	 */
+	private static void putBarsAway(MainActivityDelegate a) {
+		ToolBarView tb = a.getToolBar();
+		if ((tb != null) && (tb.getVisibility() != View.GONE)) {
+			tb.animate().cancel();
+			tb.setAlpha(1f);
+			tb.setVisibility(View.GONE);
+		}
+		a.setOverlaysSuppressed(true);
 	}
 
 	@Override
@@ -131,27 +138,15 @@ public class HomeFragment extends MainActivityFragment {
 		return super.onBackPressed();
 	}
 
-	/** The title bar is gone while Home shows: it fades out, and the next tab's brings its own back. */
+	/** The title bar is gone while Home shows (already, see putBarsAway); the next tab's brings its own back. */
 	private static final class HomeToolBarMediator implements ToolBarView.Mediator {
 		static final HomeToolBarMediator instance = new HomeToolBarMediator();
 
 		@Override
 		public void enable(ToolBarView tb, ActivityFragment f) {
 			tb.animate().cancel();
-			MainActivityDelegate d = MainActivityDelegate.getActivityDelegate(tb.getContext()).peek();
-			if ((d != null) && d.isStartupVeil()) {
-				// Still hidden behind the start-up veil: no empty bar fading away in the first frames.
-				tb.setVisibility(View.GONE);
-				return;
-			}
-			if ((tb.getVisibility() == View.VISIBLE) && tb.isLaidOut()) {
-				tb.animate().alpha(0f).setDuration(160).withEndAction(() -> {
-					tb.setVisibility(View.GONE);
-					tb.setAlpha(1f);
-				}).start();
-			} else {
-				tb.setVisibility(View.GONE);
-			}
+			tb.setAlpha(1f);
+			tb.setVisibility(View.GONE);
 		}
 
 		@Override

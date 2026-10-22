@@ -163,6 +163,12 @@ final class MediaWidget extends HomeWidgetView {
 		return true;
 	}
 
+	/** Over a cover the card is dark; in a light theme it is the Music tab's whitish wash instead. */
+	@Override
+	protected boolean ownBackgroundDark() {
+		return !host.palette().light;
+	}
+
 	private MainActivityDelegate act() {
 		return host.activity();
 	}
@@ -197,7 +203,7 @@ final class MediaWidget extends HomeWidgetView {
 
 		badge = text(ROLE_PRIMARY, 11, true);
 		badge.setText(R.string.home_media_video);
-		badge.setBackground(HomeUi.round(0x88000000, px(10)));
+		badge.setBackground(HomeUi.round(ownBackgroundDark() ? 0x88000000 : 0x26000000, px(10)));
 		badge.setPadding(px(9), px(4), px(9), px(4));
 		badge.setVisibility(GONE);
 		content.addView(badge);
@@ -223,12 +229,12 @@ final class MediaWidget extends HomeWidgetView {
 		prev = iconButton(R.drawable.prev, 44, ROLE_ICON, R.string.action_prev, this::onPrev);
 		next = iconButton(R.drawable.next, 44, ROLE_ICON, R.string.action_next, this::onNext);
 		playBox = new FrameLayout(ctx);
-		playBox.setBackground(HomeUi.pressable(0x33000000, 0xFFFFFFFF, px(28)));
+		playBox.setBackground(HomeUi.pressable(0x33000000, host.palette().playFill | 0xFF000000, px(28)));
 		play = new ImageView(ctx);
 		play.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
 		int pp = px(13);
 		play.setPadding(pp, pp, pp, pp);
-		play.setImageTintList(android.content.res.ColorStateList.valueOf(0xFF111111));
+		play.setImageTintList(android.content.res.ColorStateList.valueOf(host.palette().playIcon));
 		play.setContentDescription(ctx.getString(R.string.action_play_pause));
 		play.setClickable(true);
 		play.setFocusable(true);
@@ -240,7 +246,7 @@ final class MediaWidget extends HomeWidgetView {
 		// Takes the icon's place while a song loads, like the Music tab's play button.
 		playLoading = new ProgressBar(ctx);
 		playLoading.setIndeterminate(true);
-		playLoading.setIndeterminateTintList(ColorStateList.valueOf(0xFF111111));
+		playLoading.setIndeterminateTintList(ColorStateList.valueOf(host.palette().playIcon));
 		playLoading.setVisibility(GONE);
 		playBox.addView(playLoading, new FrameLayout.LayoutParams(px(30), px(30), Gravity.CENTER));
 		shuffle = iconButton(R.drawable.shuffle, 36, ROLE_ICON, R.string.shuffle, this::onShuffle);
@@ -251,7 +257,8 @@ final class MediaWidget extends HomeWidgetView {
 		content.addView(controls);
 
 		chip = chip(R.drawable.video_fullscreen, "", () -> chipAction.run());
-		chip.setBackground(HomeUi.pressable(0x33FFFFFF, 0x44000000, px(17)));
+		chip.setBackground(HomeUi.pressable(ownBackgroundDark() ? 0x33FFFFFF : host.palette().chipRipple,
+				ownBackgroundDark() ? 0x44000000 : host.palette().chipFill, px(17)));
 		content.addView(chip);
 
 		artBusy = spinner(20);
@@ -408,7 +415,7 @@ final class MediaWidget extends HomeWidgetView {
 			lp.width = px(pl);
 			lp.height = px(pl);
 			playBox.setLayoutParams(lp);
-			playBox.setBackground(HomeUi.pressable(0x33000000, 0xFFFFFFFF, px(pl) / 2f));
+			playBox.setBackground(HomeUi.pressable(0x33000000, host.palette().playFill | 0xFF000000, px(pl) / 2f));
 		}
 	}
 
@@ -442,15 +449,17 @@ final class MediaWidget extends HomeWidgetView {
 
 	private GradientDrawable scrimFor(int m) {
 		GradientDrawable g = new GradientDrawable();
+		// Black over a cover in a dark theme; white (the Music tab's whitish wash) in a light one.
+		int c = ownBackgroundDark() ? 0x000000 : 0xFFFFFF;
 		if (m == LARGE_WIDE) {
 			g.setOrientation(GradientDrawable.Orientation.LEFT_RIGHT);
-			g.setColors(new int[]{0x00000000, 0x33000000, 0x88000000});
+			g.setColors(new int[]{c, 0x33000000 | c, 0x88000000 | c});
 		} else if ((m == STRIP_SMALL) || (m == STRIP_WIDE)) {
 			g.setOrientation(GradientDrawable.Orientation.LEFT_RIGHT);
-			g.setColors(new int[]{0x55000000, 0x77000000});
+			g.setColors(new int[]{0x55000000 | c, 0x77000000 | c});
 		} else {
 			g.setOrientation(GradientDrawable.Orientation.TOP_BOTTOM);
-			g.setColors(new int[]{0x00000000, 0x22000000, 0xCC000000});
+			g.setColors(new int[]{c, 0x22000000 | c, 0xCC000000 | c});
 		}
 		return g;
 	}
@@ -608,7 +617,9 @@ final class MediaWidget extends HomeWidgetView {
 		shownArt = bm;
 		if (bm == null) {
 			GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-					new int[]{HomeUi.shade(type.accent, 0.7f), HomeUi.shade(type.accent, 0.3f)});
+					ownBackgroundDark() ?
+							new int[]{HomeUi.shade(type.accent, 0.7f), HomeUi.shade(type.accent, 0.3f)} :
+							new int[]{HomeUi.mix(type.accent, 0xFFFFFFFF, 0.7f), HomeUi.mix(type.accent, 0xFFFFFFFF, 0.5f)});
 			wash.set(g);
 			art.set(null);
 			thumb.setIcon(true);
@@ -1131,9 +1142,10 @@ final class MediaWidget extends HomeWidgetView {
 			float w = getWidth() - 2 * in;
 			float cy = h / 2f;
 			float t = px(4);
-			p.setColor(0x44FFFFFF);
+			int fg = color(ROLE_PRIMARY);
+			p.setColor(HomeUi.alpha(fg, 0.27f));
 			c.drawRoundRect(in, cy - t / 2, in + w, cy + t / 2, t / 2, t / 2, p);
-			p.setColor(0xFFFFFFFF);
+			p.setColor(fg);
 			c.drawRoundRect(in, cy - t / 2, in + w * fraction, cy + t / 2, t / 2, t / 2, p);
 			c.drawCircle(in + w * fraction, cy, touching ? px(8) : px(5.5f), p);
 		}

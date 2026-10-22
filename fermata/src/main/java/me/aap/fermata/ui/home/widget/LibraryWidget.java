@@ -29,6 +29,7 @@ import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.home.HomeArt;
 import me.aap.fermata.ui.home.HomeHost;
 import me.aap.fermata.ui.home.HomeImages;
 import me.aap.fermata.ui.home.HomeOption;
@@ -36,6 +37,7 @@ import me.aap.fermata.ui.home.HomeSkeleton;
 import me.aap.fermata.ui.home.HomeUi;
 import me.aap.fermata.ui.home.HomeWidgetType;
 import me.aap.fermata.ui.home.HomeWidgetView;
+import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.utils.ui.activity.ActivityDelegate;
 import me.aap.utils.ui.activity.ActivityListener;
 
@@ -102,6 +104,17 @@ abstract class LibraryWidget extends HomeWidgetView {
 			});
 		}
 	};
+	private final Runnable refreshBadges = () -> {
+		if (!built) return;
+		for (int i = 0, n = listView.getChildCount(); i < n; i++) {
+			if (listView.getChildViewHolder(listView.getChildAt(i)) instanceof RowHolder h) h.updateBadge();
+		}
+	};
+	/** A download finished or was removed: the rows on screen show or lose their small badge. */
+	private final YtDownloads.Listener downloadsListener = () -> {
+		removeCallbacks(refreshBadges);
+		postDelayed(refreshBadges, 400);
+	};
 	private final ActivityListener contentListener = new ActivityListener() {
 		@Override
 		public void onActivityEvent(ActivityDelegate a, long e) {
@@ -134,23 +147,35 @@ abstract class LibraryWidget extends HomeWidgetView {
 
 	/**
 	 * The ids the playing song goes by: the session's item, the queue entry's source and what Add to
-	 * favorites would act on. A row is the playing one when its {@code getOrigId()} is in the set.
+	 * favorites would act on. A row is the playing one when its {@code getOrigId()} is in the set. With
+	 * nothing loaded yet (the app has just started) it is the song last played, the one the media card shows.
 	 */
 	protected static Set<String> playingIds(MainActivityDelegate a) {
 		Set<String> ids = new HashSet<>();
 		try {
-			PlayableItem cur = a.getMediaSessionCallback().getCurrentItem();
-			if (cur != null) {
-				ids.add(cur.getOrigId());
-				if (cur instanceof me.aap.fermata.addon.music.MusicTrackItem t) ids.add(t.getSourceId());
-			}
-			PlayableItem fav = me.aap.fermata.action.Action.getFavoritableItem(a);
-			if (fav != null) ids.add(fav.getOrigId());
+			addIds(ids, a.getMediaSessionCallback().getCurrentItem());
+			addIds(ids, me.aap.fermata.action.Action.getFavoritableItem(a));
+			if (HomeArt.isIdle(a)) addIds(ids, HomeArt.displayItem(a));
 		} catch (RuntimeException ignore) {
 			// An item that is going away: nothing is marked this time.
 		}
 		ids.remove(null);
 		return ids;
+	}
+
+	private static void addIds(Set<String> ids, @Nullable PlayableItem pi) {
+		if (pi == null) return;
+		ids.add(pi.getOrigId());
+		if (pi instanceof me.aap.fermata.addon.music.MusicTrackItem t) {
+			ids.add(t.getSourceId());
+			PlayableItem fav = t.getFavoritableItem();
+			if (fav != null) ids.add(fav.getOrigId());
+		}
+	}
+
+	/** Whether {@code r} is a song that is on the phone (a downloaded YouTube video), for the row's small badge. */
+	private static boolean isDownloaded(Row r) {
+		return (r.art() instanceof PlayableItem p) && YtDownloads.get().isDownloaded(YtDownloads.videoIdOf(p));
 	}
 
 	protected interface FetchDone {
@@ -270,6 +295,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 	@Override
 	protected void onActive() {
 		act().addBroadcastListener(contentListener, ActivityListener.FRAGMENT_CONTENT_CHANGED);
+		YtDownloads.get().addListener(downloadsListener);
 		if (watchesPlaying()) act().getMediaServiceBinder().addBroadcastListener(playingListener);
 		// Back on screen: the playing song is brought into view again.
 		lastFocusKey = null;
@@ -280,6 +306,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 	@Override
 	protected void onInactive() {
 		act().removeBroadcastListener(contentListener);
+		YtDownloads.get().removeListener(downloadsListener);
+		removeCallbacks(refreshBadges);
 		if (watchesPlaying()) act().getMediaServiceBinder().removeBroadcastListener(playingListener);
 	}
 
@@ -499,6 +527,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 		private final TextView title;
 		private final TextView sub;
 		private final ImageView playBtn;
+		/** A small "Downloaded" badge on the right of a song that is on the phone. */
+		private final TextView badge;
 		@Nullable
 		private Row row;
 		private int paintedEpoch = -1;
@@ -540,6 +570,18 @@ abstract class LibraryWidget extends HomeWidgetView {
 			texts.addView(sub);
 			main.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
+			badge = new TextView(ctx);
+			badge.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 10.5f);
+			badge.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+			badge.setSingleLine(true);
+			badge.setGravity(Gravity.CENTER_VERTICAL);
+			badge.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.download, 0, 0, 0);
+			badge.setVisibility(GONE);
+			LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(22));
+			blp.setMarginStart(px(6));
+			blp.setMarginEnd(px(2));
+			root.addView(badge, blp);
+
 			playBtn = iconButton(R.drawable.play, 36, ROLE_ICON, R.string.action_play, () -> {
 				if ((row != null) && (row.play() != null)) row.play().run();
 			});
@@ -576,6 +618,9 @@ abstract class LibraryWidget extends HomeWidgetView {
 				int fill = r.current() ? HomeUi.alpha(color(ROLE_ACCENT), 0.28f) : 0;
 				main.setBackground(HomeUi.pressable(ripple(), fill, px(14)));
 				thumb.setBackground(HomeUi.round(softFill(), px(10)));
+				badge.setBackground(HomeUi.round(softFill(), px(11)));
+				badge.setTextColor(color(ROLE_SECONDARY));
+				badge.setCompoundDrawableTintList(android.content.res.ColorStateList.valueOf(color(ROLE_SECONDARY)));
 			}
 			main.setContentDescription(r.title());
 			title.setText(r.title());
@@ -600,6 +645,21 @@ abstract class LibraryWidget extends HomeWidgetView {
 				sub.setVisibility(GONE);
 			}
 			playBtn.setVisibility((r.play() != null) ? VISIBLE : GONE);
+			updateBadge();
+		}
+
+		/** Shown when the row's song is on the phone: the word on a wide card, only the icon on a narrow one. */
+		void updateBadge() {
+			Row r = row;
+			boolean on = (r != null) && isDownloaded(r);
+			badge.setVisibility(on ? VISIBLE : GONE);
+			if (!on) return;
+			boolean narrow = widthPx() < px(300);
+			badge.setText(narrow ? "" : ctx.getString(R.string.home_downloaded));
+			badge.setContentDescription(ctx.getString(R.string.home_downloaded));
+			int padH = narrow ? px(5) : px(8);
+			badge.setPadding(padH, 0, padH, 0);
+			badge.setCompoundDrawablePadding(narrow ? 0 : px(4));
 		}
 	}
 }

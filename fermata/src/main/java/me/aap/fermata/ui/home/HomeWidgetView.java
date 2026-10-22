@@ -180,9 +180,14 @@ public abstract class HomeWidgetView extends FrameLayout {
 		return !ownBackground();
 	}
 
-	/** True for a widget that paints its whole card itself (a picture, a sky): text stays white. */
+	/** True for a widget that paints its whole card itself (a picture, a sky). */
 	protected boolean ownBackground() {
 		return false;
+	}
+
+	/** Whether such a card is dark, so its text stays white: a sky is, a cover over a light theme is not. */
+	protected boolean ownBackgroundDark() {
+		return true;
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -351,15 +356,23 @@ public abstract class HomeWidgetView extends FrameLayout {
 		return (s == STYLE_AUTO) ? autoStyle() : s;
 	}
 
-	/** Whether text and icons are white (glass, colour, own background) rather than the theme's. */
+	/**
+	 * Whether the card's surface is dark, so faint fills and ripples are white: every card in a dark theme, none in a
+	 * light one (there the cards are light, in every look), except one that paints itself dark (a night sky).
+	 */
 	public final boolean lightText() {
-		return ownBackground() || (style() != STYLE_SOLID) || !host.palette().light;
+		if (ownBackground()) return ownBackgroundDark();
+		return !host.palette().light;
 	}
 
 	public final int color(int role) {
 		HomePalette p = host.palette();
 		int s = style();
-		boolean white = ownBackground() || (s != STYLE_SOLID);
+		// White text and icons: on a card that paints itself dark, and in a dark theme on every look but Solid
+		// (whose card is the theme's own, with the theme's own text); in a light theme never, as the cards are light.
+		boolean white = ownBackground() ? ownBackgroundDark() : (!p.light && (s != STYLE_SOLID));
+		// Only the accent-gradient card of a dark theme turns the accent roles white; a light theme's pale tint keeps them.
+		boolean tinted = (s == STYLE_COLOUR) && !ownBackground() && !p.light;
 		switch (role) {
 			case ROLE_PRIMARY:
 				return white ? 0xFFFFFFFF : p.textPrimary;
@@ -370,9 +383,9 @@ public abstract class HomeWidgetView extends FrameLayout {
 			case ROLE_ICON:
 				return white ? 0xFFFFFFFF : p.icon;
 			case ROLE_ACCENT:
-				return (s == STYLE_COLOUR) && !ownBackground() ? 0xFFFFFFFF : type.accent;
+				return tinted ? 0xFFFFFFFF : type.accent;
 			default:
-				return (s == STYLE_COLOUR) && !ownBackground() ? HomeUi.shade(type.accent, 0.45f) :
+				return tinted ? HomeUi.shade(type.accent, 0.45f) :
 						(HomeUi.isLight(type.accent) ? 0xFF000000 : 0xFFFFFFFF);
 		}
 	}
@@ -406,15 +419,21 @@ public abstract class HomeWidgetView extends FrameLayout {
 		final int c1;
 		final int c2;
 		final int stroke;
+		boolean light = host.palette().light;
 		if (ownBackground()) {
-			c1 = c2 = 0xFF14161F;
+			c1 = c2 = ownBackgroundDark() ? 0xFF14161F : (host.palette().cardFill | 0xFF000000);
 			stroke = 0;
 		} else if (s == STYLE_SOLID) {
 			c1 = c2 = host.palette().cardFill | 0xFF000000;
 			stroke = 0;
 		} else if (s == STYLE_GLASS) {
-			c1 = c2 = 0x66101018;
-			stroke = 0x22FFFFFF;
+			c1 = c2 = light ? 0xB3FFFFFF : 0x66101018;
+			stroke = light ? 0x1F000000 : 0x22FFFFFF;
+		} else if (light) {
+			// A pale tint of the accent, with the theme's dark text on it.
+			c1 = HomeUi.mix(type.accent, 0xFFFFFFFF, 0.8f) | 0xFF000000;
+			c2 = HomeUi.mix(type.accent, 0xFFFFFFFF, 0.64f) | 0xFF000000;
+			stroke = 0;
 		} else {
 			c1 = HomeUi.shade(type.accent, 0.8f) | 0xFF000000;
 			c2 = HomeUi.shade(type.accent, 0.42f) | 0xFF000000;

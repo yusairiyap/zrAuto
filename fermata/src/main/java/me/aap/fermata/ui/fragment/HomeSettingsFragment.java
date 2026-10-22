@@ -267,6 +267,7 @@ public class HomeSettingsFragment extends ReorderListFragment {
 		Pref<BooleanSupplier> overlay = aa ? MainActivityPrefs.HOME_TOP_OVERLAY_AA : MainActivityPrefs.HOME_TOP_OVERLAY;
 		Pref<BooleanSupplier> overlayHide = aa ? MainActivityPrefs.HOME_TOP_OVERLAY_HIDE_AA :
 				MainActivityPrefs.HOME_TOP_OVERLAY_HIDE;
+		Pref<BooleanSupplier> editButton = aa ? MainActivityPrefs.HOME_EDIT_BUTTON_AA : MainActivityPrefs.HOME_EDIT_BUTTON;
 
 		section(box, R.string.home_sec_layout);
 		addChoiceRow(box, R.string.home_pref_arrange, R.string.home_pref_arrange_sub,
@@ -281,6 +282,8 @@ public class HomeSettingsFragment extends ReorderListFragment {
 		section(box, R.string.home_sec_header);
 		addSwitchRow(box, R.string.home_pref_greeting, R.string.home_pref_greeting_sub,
 				() -> p.getBooleanPref(greeting), on -> p.applyBooleanPref(greeting, on), null);
+		addSwitchRow(box, R.string.home_pref_edit_button, R.string.home_pref_edit_button_sub,
+				() -> p.getBooleanPref(editButton), on -> p.applyBooleanPref(editButton, on), null);
 		addSwitchRow(box, R.string.home_pref_top_overlay, R.string.home_pref_top_overlay_sub,
 				() -> p.getBooleanPref(overlay), on -> p.applyBooleanPref(overlay, on), null);
 		addSwitchRow(box, R.string.home_pref_top_overlay_hide, R.string.home_pref_top_overlay_hide_sub,

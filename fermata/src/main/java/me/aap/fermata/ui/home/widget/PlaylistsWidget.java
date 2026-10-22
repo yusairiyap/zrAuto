@@ -8,16 +8,31 @@ import me.aap.fermata.R;
 import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.lib.MediaLib.Playlist;
+import me.aap.fermata.media.lib.MediaLib.Item;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.home.HomeHost;
+import me.aap.fermata.ui.home.HomeOption;
 import me.aap.fermata.ui.home.HomePlay;
 import me.aap.fermata.ui.home.HomeWidgetType;
 import me.aap.utils.async.FutureSupplier;
 
-/** The first playlists with their sizes; a tap opens one, its button plays it. */
+/**
+ * The first playlists with their sizes; a tap opens one, its button plays it. Right after the app starts the playlist
+ * of the song last played is already open, with that song marked.
+ */
 final class PlaylistsWidget extends LibraryWidget {
+	/** The playlist of the last played song is opened once per widget: backing out of it sticks. */
+	private boolean openedLast;
+
 	PlaylistsWidget(HomeHost host, HomeWidgetType type) {
 		super(host, type);
+	}
+
+	@Override
+	protected List<HomeOption> moreOptions() {
+		List<HomeOption> l = new ArrayList<>();
+		l.add(HomeOption.sw("openlast", ctx.getString(R.string.home_opt_open_playlist), true));
+		return l;
 	}
 
 	@Override
@@ -53,6 +68,28 @@ final class PlaylistsWidget extends LibraryWidget {
 				})));
 			}
 			done.done(rows, lists.size());
+			if (!openedLast && optBool("openlast", true) && !isCompact()) {
+				openedLast = true;
+				Set<String> ids = playingIds(a);
+				if (!ids.isEmpty()) openHolding(a, lists, 0, ids);
+			}
+		});
+	}
+
+	/** Looks through the playlists, one after the other, for the one holding the song; opens it when it is found. */
+	private void openHolding(MainActivityDelegate a, List<Playlist> lists, int i, Set<String> ids) {
+		if ((i >= Math.min(lists.size(), 100)) || !isActive()) return;
+		Playlist pl = lists.get(i);
+		pl.getUnsortedChildren().main().onCompletion((items, err) -> {
+			if (items != null) {
+				for (Item it : items) {
+					if ((it instanceof PlayableItem p) && ids.contains(p.getOrigId())) {
+						drill(pl.getName(), (a2, d2) -> songs(pl, a2, d2));
+						return;
+					}
+				}
+			}
+			openHolding(a, lists, i + 1, ids);
 		});
 	}
 
