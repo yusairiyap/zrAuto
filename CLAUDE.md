@@ -798,6 +798,17 @@ what each widget shows is set on the widget (edit mode > its gear).
 - **A stacked card swipes in edit mode** (`HomeCellView#onTouchEvent` feeds `HomeStackView#onTouchEvent`): the cell intercepts everything while editing, so the stack never saw a
   touch; a sideways swipe now turns the stack, and holding for `PICKUP_MS` still picks the card up (the stack gets CANCEL then).
 
+### Eighteenth round (same menu on rows, fade through, smoother auto turn)
+
+- **The row menu is the tab card's menu**: `MediaItemMenuHandler(menu, item, listItem=true)` (the Home widgets' third argument). The short menu a bare item gets (no view) lacked
+  Play, Play as music/video, Add into queue, Search alternative videos, Refresh thumbnail and Preferred media engine, all of which were gated on `view != null`; they now
+  check `listItem`. Play from Home goes through `HomePlay.tapped` (what a tap on that row does), not the session directly. Select only exists in the tabs (it needs their list).
+- **Home fades in only after the old tab is gone** (`ActivityFragment#getFadeInDelayMillis`: 70 ms for Home, then 140 ms in): a plain crossfade left the old tab's grid and its tool bar
+  showing through Home for a few frames (seen frame by frame in a screen recording). The old tab fades out in the delay, the tool bar's picture in the same 70 ms.
+  `ViewPropertyAnimator` keeps its start delay between calls: the crossfade always sets it (0 for the tab fading out).
+- **A stack turning by itself** (`HomeStackView#animateTo(index, auto=true)`): 620 ms with a fast-out-slow-in curve (it starts from rest, unlike a swipe settling), and the widgets are
+  drawn from hardware layers while it moves (`layers`), so sliding and dissolving two heavy cards is a transform per frame, not a redraw.
+
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 
 - Size what is *inside* a card from its pixels, not from cell counts or fixed dp: the Data ring's words (`used`/`caption`) and the Power

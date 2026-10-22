@@ -30,6 +30,7 @@ import me.aap.fermata.R;
  */
 final class HomeStackView extends FrameLayout {
 	private static final long SETTLE_MS = 280;
+	private static final long AUTO_SETTLE_MS = 620;
 	private static final long DOTS_SHOW_MS = 1800;
 
 	interface Callback {
@@ -192,11 +193,15 @@ final class HomeStackView extends FrameLayout {
 	}
 
 	private void goBy(int d) {
+		goBy(d, false);
+	}
+
+	private void goBy(int d, boolean auto) {
 		int n = widgets.size();
 		if (n < 2) return;
 		int r = Math.round(pos);
 		showDots();
-		animateTo(r + d);
+		animateTo(r + d, auto);
 		cb.onTopChanged((((r + d) % n) + n) % n);
 	}
 
@@ -253,7 +258,7 @@ final class HomeStackView extends FrameLayout {
 
 	private void rotateStep() {
 		// Only a stack that is on screen and not being used: a finger on it, edit mode or a swipe in progress wait a round.
-		if (isShown() && !cb.isEditing() && !dragging && !armed && (settle == null) && (widgets.size() > 1)) goBy(1);
+		if (isShown() && !cb.isEditing() && !dragging && !armed && (settle == null) && (widgets.size() > 1)) goBy(1, true);
 		scheduleRotate();
 	}
 
@@ -300,6 +305,11 @@ final class HomeStackView extends FrameLayout {
 	// ---------------------------------------------------------------------------------------------
 	// Position
 
+	/** The widgets drawn from a layer (while one slides in and the other out by itself), or from their own views again. */
+	private void layers(boolean on) {
+		for (HomeWidgetView v : widgets) v.setLayerType(on ? LAYER_TYPE_HARDWARE : LAYER_TYPE_NONE, null);
+	}
+
 	/** Lays the widgets out for the position: the front one slides off, the next comes up behind. */
 	private void apply() {
 		int n = widgets.size();
@@ -326,11 +336,22 @@ final class HomeStackView extends FrameLayout {
 	}
 
 	private void animateTo(int index) {
+		animateTo(index, false);
+	}
+
+	/**
+	 * @param auto the stack turning by itself: slower and eased at both ends (a swipe settles from the speed of the
+	 *             finger, this one starts from rest), and each widget is drawn from a layer while it moves, so the
+	 *             slide and the dissolve cost a card nothing but a transform (no redraw of a list or a graph per frame).
+	 */
+	private void animateTo(int index, boolean auto) {
 		if (settle != null) settle.cancel();
 		float from = pos;
 		ValueAnimator a = ValueAnimator.ofFloat(from, index);
-		a.setDuration(SETTLE_MS);
-		a.setInterpolator(new DecelerateInterpolator(1.6f));
+		a.setDuration(auto ? AUTO_SETTLE_MS : SETTLE_MS);
+		a.setInterpolator(auto ? new android.view.animation.PathInterpolator(0.4f, 0f, 0.2f, 1f) :
+				new DecelerateInterpolator(1.6f));
+		if (auto) layers(true);
 		a.addUpdateListener(v -> {
 			pos = (float) v.getAnimatedValue();
 			apply();
@@ -342,6 +363,7 @@ final class HomeStackView extends FrameLayout {
 				// Back into 0..n-1 after going round the end.
 				pos = mod(pos);
 				apply();
+				if (settle == null) layers(false);
 			}
 		});
 		settle = a;

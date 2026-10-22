@@ -160,7 +160,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 		if (r.art() == null) return;
 		MainActivityDelegate a = act();
 		try {
-			new MediaItemMenuHandler(a.getContextMenu(), r.art()).show();
+			new MediaItemMenuHandler(a.getContextMenu(), r.art(), true).show();
 		} catch (RuntimeException ex) {
 			me.aap.fermata.util.DiagnosticLog.log("HOME", "row menu failed", String.valueOf(ex));
 		}

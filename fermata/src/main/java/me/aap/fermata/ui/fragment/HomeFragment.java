@@ -127,7 +127,13 @@ public class HomeFragment extends MainActivityFragment {
 	/** Short: Home is mostly background, and the tab it replaces shows through it for as long as the fade lasts. */
 	@Override
 	public long getFadeInMillis() {
-		return 110L;
+		return 140L;
+	}
+
+	/** The tab it replaces is gone (70 ms) before Home comes in: nothing of it, nor of its tool bar, shows through. */
+	@Override
+	public long getFadeInDelayMillis() {
+		return 70L;
 	}
 
 	private void enter() {
@@ -158,7 +164,7 @@ public class HomeFragment extends MainActivityFragment {
 	}
 
 	/**
-	 * Draws {@code v} as a picture in its parent's overlay and fades that out over 110 ms. The view itself is about to go
+	 * Draws {@code v} as a picture in its parent's overlay and fades that out over 70 ms. The view itself is about to go
 	 * out of the layout (its room is Home's); the picture takes no room, so nothing is resized while it fades.
 	 */
 	private static void fadeGhost(View v) {
@@ -181,7 +187,7 @@ public class HomeFragment extends MainActivityFragment {
 		d.setAlpha(from);
 		parent.getOverlay().add(d);
 		ValueAnimator va = ValueAnimator.ofInt(from, 0);
-		va.setDuration(110);
+		va.setDuration(70);
 		va.addUpdateListener(an -> d.setAlpha((Integer) an.getAnimatedValue()));
 		va.addListener(new AnimatorListenerAdapter() {
 			@Override
