@@ -188,6 +188,7 @@ public class HomeFragment extends MainActivityFragment {
 	}
 
 	private static final long GHOST_MS = 180L;
+	private static final long BAR_GHOST_MS = 90L;
 
 	private void enter() {
 		putBarsAway(getActivityDelegate());
@@ -240,7 +241,10 @@ public class HomeFragment extends MainActivityFragment {
 		d.setAlpha(from);
 		parent.getOverlay().add(d);
 		ValueAnimator va = ValueAnimator.ofInt(from, 0);
-		va.setDuration(GHOST_MS);
+		// Quicker than the old tab's picture, and dropping fast at first: the bar is a dark pill, and left over the bright
+		// Home for as long as the rest dissolves it showed as a black bar at the top.
+		va.setDuration(BAR_GHOST_MS);
+		va.setInterpolator(new android.view.animation.DecelerateInterpolator(1.5f));
 		va.addUpdateListener(an -> d.setAlpha((Integer) an.getAnimatedValue()));
 		va.addListener(new AnimatorListenerAdapter() {
 			@Override
