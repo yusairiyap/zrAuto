@@ -823,6 +823,10 @@ what each widget shows is set on the widget (edit mode > its gear).
   (Music or Home is the tab being shown; the active id is already the new one during a switch). Any tab that suppresses the overlays must go through the
   same check when it hides.
 
+- **Play as video from a Home row's menu** (`HomePlay#asVideo`): the menu's Play as video used to fall through to the session's `playItem`, which
+  started the item without bringing the video up. It now does what the tab's `playTapped(pi, false)` does (`getBody().playItem`, which enters fullscreen
+  video; externally played items go through `playExternally`), even while music mode is on.
+
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 
 - Size what is *inside* a card from its pixels, not from cell counts or fixed dp: the Data ring's words (`used`/`caption`) and the Power

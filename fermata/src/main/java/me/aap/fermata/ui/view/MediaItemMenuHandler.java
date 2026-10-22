@@ -595,9 +595,11 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 			if (item instanceof PlayableItem pi) {
 				f = getMainActivity().getActiveMediaLibFragment();
 				if (f != null) f.getAdapter().playTapped(pi, id == R.id.item_play);
-				else if ((id == R.id.item_play) && (getMainActivity().getActiveFragment() instanceof me.aap.fermata.ui.fragment.HomeFragment)) {
-					// A row of a Home widget: what a tap there does (plays as music, the screen stays on Home).
-					me.aap.fermata.ui.home.HomePlay.tapped(getMainActivity(), pi);
+				else if (getMainActivity().getActiveFragment() instanceof me.aap.fermata.ui.fragment.HomeFragment) {
+					// A row of a Home widget: Play does what a tap there does (plays as music, the screen stays on
+					// Home), Play as video plays it in the video player, fullscreen.
+					if (id == R.id.item_play) me.aap.fermata.ui.home.HomePlay.tapped(getMainActivity(), pi);
+					else me.aap.fermata.ui.home.HomePlay.asVideo(getMainActivity(), pi);
 				} else getMainActivity().getMediaServiceBinder().playItem(pi);
 			}
 		} else if (id == R.id.share_item) {
