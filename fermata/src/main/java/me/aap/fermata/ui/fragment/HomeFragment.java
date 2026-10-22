@@ -108,7 +108,7 @@ public class HomeFragment extends MainActivityFragment {
 		// A picture of the tab being left is taken first, while it still has the layout the user last saw: without the
 		// tool bar its list moved up the moment the bar went, and was seen doing so while it faded out.
 		if ((a != null) && a.getPrefs().getBooleanPref(MainActivityPrefs.HOME_ANIMATE) && !(from instanceof MusicPlayerFragment)) {
-			ghosted = ghostOf(from);
+			ghosted = ghostOf(from, a.getToolBar());
 		}
 		if (a != null) putBarsAway(a);
 	}
@@ -151,7 +151,7 @@ public class HomeFragment extends MainActivityFragment {
 	 * Draws the tab being left as a picture in its parent's overlay (above Home, taking no room) and fades it out over
 	 * {@link #GHOST_MS}. The tab itself is hidden by the switch at once.
 	 */
-	private static boolean ghostOf(@Nullable ActivityFragment from) {
+	private static boolean ghostOf(@Nullable ActivityFragment from, @Nullable View bar) {
 		View v = (from != null) ? from.getView() : null;
 		if ((v == null) || !v.isLaidOut() || (v.getVisibility() != View.VISIBLE) || (v.getWidth() <= 0) ||
 				(v.getHeight() <= 0) || (v.getAlpha() < 0.99f) || !(v.getParent() instanceof ViewGroup parent)) {
@@ -170,13 +170,27 @@ public class HomeFragment extends MainActivityFragment {
 		} catch (RuntimeException | OutOfMemoryError ex) {
 			return false;
 		}
-		BitmapDrawable d = new BitmapDrawable(v.getResources(), bm);
+		// The strip the tool bar (and the status bar) sat in is bare dark background in the picture, which against the
+		// bright top of Home showed as a black bar for as long as the picture lasted: that strip fades out on its own, faster.
+		int band = 0;
+		if ((bar != null) && (bar.getVisibility() == View.VISIBLE) && bar.isLaidOut()) {
+			int[] bl = new int[2];
+			int[] vl = new int[2];
+			bar.getLocationInWindow(bl);
+			v.getLocationInWindow(vl);
+			band = Math.max(0, Math.min(v.getHeight(), bl[1] + bar.getHeight() - vl[1]));
+		}
+		GhostDrawable d = new GhostDrawable(bm, band);
 		d.setBounds(v.getLeft(), v.getTop(), v.getRight(), v.getBottom());
 		parent.getOverlay().add(d);
-		ValueAnimator va = ValueAnimator.ofInt(255, 0);
+		ValueAnimator va = ValueAnimator.ofFloat(0f, 1f);
 		va.setDuration(GHOST_MS);
-		va.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
-		va.addUpdateListener(an -> d.setAlpha((Integer) an.getAnimatedValue()));
+		va.addUpdateListener(an -> {
+			float t = (Float) an.getAnimatedValue();
+			float main = t * t * (3f - 2f * t);
+			float top = Math.min(1f, t * GHOST_MS / (float) BAR_GHOST_MS);
+			d.setFades(1f - main, 1f - (1f - (1f - top) * (1f - top)));
+		});
 		va.addListener(new AnimatorListenerAdapter() {
 			@Override
 			public void onAnimationEnd(Animator an) {
@@ -185,6 +199,55 @@ public class HomeFragment extends MainActivityFragment {
 		});
 		va.start();
 		return true;
+	}
+
+	/** A picture whose top {@code band} pixels fade on their own alpha. */
+	private static final class GhostDrawable extends android.graphics.drawable.Drawable {
+		private final Bitmap bm;
+		private final int band;
+		private final android.graphics.Paint main = new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG);
+		private final android.graphics.Paint top = new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG);
+
+		GhostDrawable(Bitmap bm, int band) {
+			this.bm = bm;
+			this.band = band;
+		}
+
+		void setFades(float mainAlpha, float topAlpha) {
+			main.setAlpha(Math.round(255 * Math.max(0f, Math.min(1f, mainAlpha))));
+			top.setAlpha(Math.round(255 * Math.max(0f, Math.min(1f, topAlpha))));
+			invalidateSelf();
+		}
+
+		@Override
+		public void draw(@NonNull Canvas c) {
+			android.graphics.Rect b = getBounds();
+			c.save();
+			c.clipRect(b.left, b.top + band, b.right, b.bottom);
+			c.drawBitmap(bm, b.left, b.top, main);
+			c.restore();
+			if (band > 0) {
+				c.save();
+				c.clipRect(b.left, b.top, b.right, b.top + band);
+				c.drawBitmap(bm, b.left, b.top, top);
+				c.restore();
+			}
+		}
+
+		@Override
+		public void setAlpha(int alpha) {
+			main.setAlpha(alpha);
+			top.setAlpha(alpha);
+		}
+
+		@Override
+		public void setColorFilter(@Nullable android.graphics.ColorFilter cf) {
+		}
+
+		@Override
+		public int getOpacity() {
+			return android.graphics.PixelFormat.TRANSLUCENT;
+		}
 	}
 
 	private static final long GHOST_MS = 180L;

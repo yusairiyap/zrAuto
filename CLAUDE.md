@@ -819,7 +819,9 @@ what each widget shows is set on the widget (edit mode > its gear).
   left is GONE at once). A picture is taken only when the tab is laid out and fully opaque, and never of the Music tab (a WebView/SurfaceView does not draw
   into a bitmap; Music to Home keeps the short 140 ms crossfade). Do not go back to fading the old tab's real view: it relayouts under the fade.
 - **The tool bar's own picture is faster than the tab's** (`BAR_GHOST_MS` 90 ms, decelerating, against `GHOST_MS` 180 ms): the bar is a dark pill, and
-  at the tab's pace it stayed over the bright Home for a moment as a black bar at the top left.
+  at the tab's pace it stayed over the bright Home for a moment as a black bar at the top left. The strip of the tab's own picture that the bar (and the
+  status bar) sat over is bare dark background too, so `GhostDrawable` fades that top band on its own, faster alpha curve than the rest of the picture
+  (what was still seen as a black bar from Favorites to Home after the bar's picture alone was sped up).
 - **Music to Home showed the control panel**: Music's `onHiddenChanged` -> `setListening(false)` ran during the commit, after Home had suppressed the
   overlays, and gave them back. `MusicPlayerFragment#suppressOverlays` now keeps them suppressed while `MainActivityDelegate#activeKeepsOverlaysAway()`
   (Music or Home is the tab being shown; the active id is already the new one during a switch). Any tab that suppresses the overlays must go through the
