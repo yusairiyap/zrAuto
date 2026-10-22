@@ -108,7 +108,14 @@ abstract class LibraryWidget extends HomeWidgetView {
 		}
 	};
 	/** Favorites, a playlist or the list of playlists changed (from a menu, a tab, anywhere): the rows are read again at once. */
-	private final Runnable libraryListener = () -> post(() -> refresh(true));
+	private final Runnable libraryListener = () -> post(this::libraryChanged);
+	private final Runnable readAgain = () -> refresh(true);
+
+	/** Many adds in a row (an import) read the list once, a moment after the last, not once per song. */
+	private void libraryChanged() {
+		removeCallbacks(readAgain);
+		postDelayed(readAgain, 120);
+	}
 	private final Runnable refreshBadges = () -> {
 		if (!built) return;
 		for (int i = 0, n = listView.getChildCount(); i < n; i++) {
@@ -469,6 +476,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 		act().removeBroadcastListener(contentListener);
 		YtDownloads.get().removeListener(downloadsListener);
 		me.aap.fermata.media.lib.ItemContainer.removeContentListener(libraryListener);
+		removeCallbacks(readAgain);
 		removeCallbacks(refreshBadges);
 		if (watchesPlaying()) act().getMediaServiceBinder().removeBroadcastListener(playingListener);
 	}

@@ -159,8 +159,10 @@ public class HomeFragment extends MainActivityFragment {
 		}
 		Bitmap bm;
 		try {
-			bm = Bitmap.createBitmap(v.getWidth(), v.getHeight(), Bitmap.Config.ARGB_8888);
+			// Half size: it is on screen for 180 ms while fading, and a full-screen picture is ~16 MB on a tablet.
+			bm = Bitmap.createBitmap(Math.max(1, v.getWidth() / 2), Math.max(1, v.getHeight() / 2), Bitmap.Config.ARGB_8888);
 			Canvas c = new Canvas(bm);
+			c.scale(0.5f, 0.5f);
 			android.util.TypedValue tv = new android.util.TypedValue();
 			if (v.getContext().getTheme().resolveAttribute(android.R.attr.colorBackground, tv, true) &&
 					(tv.type >= android.util.TypedValue.TYPE_FIRST_COLOR_INT) && (tv.type <= android.util.TypedValue.TYPE_LAST_COLOR_INT)) {
@@ -224,12 +226,12 @@ public class HomeFragment extends MainActivityFragment {
 			android.graphics.Rect b = getBounds();
 			c.save();
 			c.clipRect(b.left, b.top + band, b.right, b.bottom);
-			c.drawBitmap(bm, b.left, b.top, main);
+			c.drawBitmap(bm, null, b, main);
 			c.restore();
 			if (band > 0) {
 				c.save();
 				c.clipRect(b.left, b.top, b.right, b.top + band);
-				c.drawBitmap(bm, b.left, b.top, top);
+				c.drawBitmap(bm, null, b, top);
 				c.restore();
 			}
 		}
