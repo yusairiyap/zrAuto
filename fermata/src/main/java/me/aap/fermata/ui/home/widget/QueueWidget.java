@@ -41,6 +41,18 @@ final class QueueWidget extends LibraryWidget {
 	}
 
 	@Override
+	protected boolean supportsReorder() {
+		return true;
+	}
+
+	/** The same move as the Music tab's queue drag: positions in the play order, which is how the rows are listed. */
+	@Override
+	protected void onReordered(int from, int to) {
+		MusicQueue q = MusicPlayer.getQueue(act());
+		if (q != null) q.move(from, to);
+	}
+
+	@Override
 	protected int emptyRes() {
 		return R.string.home_queue_empty;
 	}

@@ -104,6 +104,15 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 		this.view = null;
 	}
 
+	@Nullable
+	private Runnable onClosed;
+
+	/** Called when the menu has closed, whatever was picked (a Home row's list is drawn again then). */
+	public MediaItemMenuHandler onClosed(@Nullable Runnable r) {
+		onClosed = r;
+		return this;
+	}
+
 	public OverlayMenu getMenu() {
 		return menu;
 	}
@@ -142,7 +151,11 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 			builder.setSelectionHandler(this);
 			// The card stays outlined while its menu is open -- see MediaItemView#showItemMenu().
 			MediaItemView iv = view;
-			if (iv != null) builder.setCloseHandlerHandler(m -> iv.menuClosed());
+			Runnable closed = onClosed;
+			if ((iv != null) || (closed != null)) builder.setCloseHandlerHandler(m -> {
+				if (iv != null) iv.menuClosed();
+				if (closed != null) closed.run();
+			});
 		});
 	}
 

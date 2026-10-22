@@ -14,6 +14,7 @@ import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearSmoothScroller;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -155,12 +156,103 @@ abstract class LibraryWidget extends HomeWidgetView {
 		return supportsMenu() && optBool("menu", true);
 	}
 
+	/**
+	 * Whether a long press on a row picks it up to move it (the option "Reorder on long press", on unless switched off):
+	 * what the Music tab's queue does, with {@link #onReordered} saying where the row went. Not inside an opened list.
+	 */
+	protected boolean supportsReorder() {
+		return false;
+	}
+
+	protected boolean reorderOn() {
+		return supportsReorder() && (drillSource == null) && optBool("reorder", true);
+	}
+
+	/** A row was dropped at a new place: {@code from} and {@code to} are positions in the rows as fetched. */
+	protected void onReordered(int from, int to) {
+	}
+
+	private ItemTouchHelper touchHelper;
+	private boolean dragging;
+	private boolean refreshAfterDrag;
+	private int dragFrom = -1;
+	private int dragTo = -1;
+
+	private final class ReorderCallback extends ItemTouchHelper.Callback {
+		@Override
+		public int getMovementFlags(RecyclerView rv, RecyclerView.ViewHolder vh) {
+			int dirs = !reorderOn() ? 0 : (cols > 1) ? (ItemTouchHelper.UP | ItemTouchHelper.DOWN | ItemTouchHelper.LEFT |
+					ItemTouchHelper.RIGHT) : (ItemTouchHelper.UP | ItemTouchHelper.DOWN);
+			return makeMovementFlags(dirs, 0);
+		}
+
+		@Override
+		public boolean isLongPressDragEnabled() {
+			return reorderOn();
+		}
+
+		@Override
+		public boolean isItemViewSwipeEnabled() {
+			return false;
+		}
+
+		@Override
+		public boolean onMove(RecyclerView rv, RecyclerView.ViewHolder from, RecyclerView.ViewHolder to) {
+			int f = from.getAdapterPosition();
+			int t = to.getAdapterPosition();
+			if ((f == RecyclerView.NO_POSITION) || (t == RecyclerView.NO_POSITION) || (f >= rows.size()) || (t >= rows.size())) {
+				return false;
+			}
+			if (dragFrom == -1) dragFrom = f;
+			dragTo = t;
+			rows.add(t, rows.remove(f));
+			adapter.notifyItemMoved(f, t);
+			return true;
+		}
+
+		@Override
+		public void onSwiped(RecyclerView.ViewHolder vh, int direction) {
+		}
+
+		@Override
+		public void onSelectedChanged(@Nullable RecyclerView.ViewHolder vh, int state) {
+			super.onSelectedChanged(vh, state);
+			if (state == ItemTouchHelper.ACTION_STATE_DRAG) {
+				dragging = true;
+				listView.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+				if (vh != null) vh.itemView.animate().scaleX(1.03f).scaleY(1.03f).setDuration(120).start();
+			}
+		}
+
+		@Override
+		public void clearView(RecyclerView rv, RecyclerView.ViewHolder vh) {
+			super.clearView(rv, vh);
+			vh.itemView.animate().scaleX(1f).scaleY(1f).setDuration(120).start();
+			int f = dragFrom;
+			int t = dragTo;
+			dragFrom = dragTo = -1;
+			dragging = false;
+			// Committed once the drop is done, not on every step (the Music tab does the same).
+			if ((f != -1) && (t != -1) && (f != t)) onReordered(f, t);
+			if (refreshAfterDrag || (f != -1)) {
+				refreshAfterDrag = false;
+				post(() -> refresh(true));
+			}
+		}
+	}
+
 	/** The row's own long-press menu, the one the library tab shows for that item. */
 	private void showMenu(Row r) {
 		if (r.art() == null) return;
 		MainActivityDelegate a = act();
 		try {
-			new MediaItemMenuHandler(a.getContextMenu(), r.art(), true).show();
+			// Whatever the menu did (removed from Favorites, added to a playlist, queued...) shows in the cards at once: the
+			// library gives no notice of its own, so every list on Home is read again when the menu closes, and once more
+			// shortly after for changes that finish in the background.
+			new MediaItemMenuHandler(a.getContextMenu(), r.art(), true).onClosed(() -> {
+				a.fireBroadcastEvent(ActivityListener.FRAGMENT_CONTENT_CHANGED);
+				postDelayed(() -> a.fireBroadcastEvent(ActivityListener.FRAGMENT_CONTENT_CHANGED), 450);
+			}).show();
 		} catch (RuntimeException ex) {
 			me.aap.fermata.util.DiagnosticLog.log("HOME", "row menu failed", String.valueOf(ex));
 		}
@@ -256,6 +348,10 @@ abstract class LibraryWidget extends HomeWidgetView {
 		listView.setFadingEdgeLength(px(22));
 		listView.setItemViewCacheSize(4);
 		listView.getRecycledViewPool().setMaxRecycledViews(0, 24);
+		if (supportsReorder()) {
+			touchHelper = new ItemTouchHelper(new ReorderCallback());
+			touchHelper.attachToRecyclerView(listView);
+		}
 		LinearLayout.LayoutParams lsl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
 		lsl.topMargin = px(4);
 		column.addView(listView, lsl);
@@ -342,6 +438,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 		List<HomeOption> l = new ArrayList<>();
 		l.add(HomeOption.sw("art", ctx.getString(R.string.home_opt_artwork), true));
 		if (supportsMenu()) l.add(HomeOption.sw("menu", ctx.getString(R.string.home_opt_row_menu), true));
+		if (supportsReorder()) l.add(HomeOption.sw("reorder", ctx.getString(R.string.home_opt_row_reorder), true));
 		l.addAll(moreOptions());
 		return l;
 	}
@@ -396,6 +493,11 @@ abstract class LibraryWidget extends HomeWidgetView {
 		src.fetch(act(), (r, n) -> {
 			if (gen != fetchGen) return;
 			loading = false;
+			// Rows are being moved under a finger: the new list is read once the drop is done.
+			if (dragging) {
+				refreshAfterDrag = true;
+				return;
+			}
 			loadedAt = SystemClock.uptimeMillis();
 			rows = r;
 			total = n;
@@ -432,7 +534,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 		boolean none = rows.isEmpty();
 		int newCols = (getCellsW() >= 4) ? 2 : 1;
 		boolean art = optBool("art", true);
-		boolean menu = menuOn();
+		boolean menu = menuOn() || reorderOn();
 		// Drawn again only when something it shows changed: the rows blinked on every refresh.
 		StringBuilder sig = new StringBuilder();
 		sig.append(total).append('|').append(isCompact()).append('|').append(newCols).append('|')
@@ -649,7 +751,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 			main.setContentDescription(r.title());
 			// A long press on the row opens its menu: it is marked so the card does not take that press for picking itself up.
 			boolean menu = menuOn() && (r.art() != null);
-			main.setTag(R.id.home_no_grab, menu ? Boolean.TRUE : null);
+			// A row that can be picked up to move it is marked too: that press is the list's, not the card's.
+			main.setTag(R.id.home_no_grab, (menu || reorderOn()) ? Boolean.TRUE : null);
 			main.setOnLongClickListener(menu ? v -> {
 				showMenu(r);
 				return true;

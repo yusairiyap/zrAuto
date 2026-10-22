@@ -232,6 +232,7 @@
     <string name="home_opt_open_playlist">Open the last played song\'s playlist</string>
     <string name="home_downloaded">Downloaded</string>
     <string name="home_opt_row_menu">Menu on long press</string>
+    <string name="home_opt_row_reorder">Reorder on long press</string>
     <string name="home_pref_greeting">Greeting</string>
     <string name="home_pref_greeting_sub">The greeting and the date above the widgets</string>
     <string name="home_pref_animate">Animations</string>

@@ -831,6 +831,18 @@ what each widget shows is set on the widget (edit mode > its gear).
   started the item without bringing the video up. It now does what the tab's `playTapped(pi, false)` does (`getBody().playItem`, which enters fullscreen
   video; externally played items go through `playExternally`), even while music mode is on.
 
+### Twentieth round (rows refresh after their menu, queue reordering)
+
+- **A Home row's menu changes show in the lists at once** (`MediaItemMenuHandler#onClosed`, set by `LibraryWidget#showMenu`): the library sends no notice when a favorite is
+  removed or a song is added to a playlist (the tab only reloaded its own fragment), so the cards stayed as they were. When the menu closes the widget fires
+  `FRAGMENT_CONTENT_CHANGED`, which every `LibraryWidget` already answers with a forced refresh (an unchanged list does not blink, see the signature), and once more
+  450 ms later for changes that finish in the background.
+- **The Queue card reorders on long press** (`LibraryWidget#supportsReorder`/`reorderOn`/`onReordered`, option "Reorder on long press", on by default, `QueueWidget` turns it on):
+  an `ItemTouchHelper` with long-press drag (rows move in the adapter on the way; one `MusicQueue#move(from, to)` when the row is dropped, in play-order positions like the
+  Music tab's `QueueTouchCallback`, and the rows' positions are the play order's). The row is marked `home_no_grab` so the card does not take that press for picking itself up;
+  in edit mode the cell still takes every touch. A refresh that arrives while a row is held (the queue listener, the playing song changing) is held back and run after the drop
+  (`dragging`, `refreshAfterDrag`). Not inside an opened list (`drillSource`). Never run on a device.
+
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 
 - Size what is *inside* a card from its pixels, not from cell counts or fixed dp: the Data ring's words (`used`/`caption`) and the Power
