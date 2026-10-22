@@ -847,6 +847,16 @@ what each widget shows is set on the widget (edit mode > its gear).
   `ItemTouchHelper#startDrag` at once, so no long press is needed). Both are tagged `home_no_grab`. The rows' look is keyed by `rowMode` (bits for menu, reorder, remove, handle) so
   toggling any of the options rebinds them.
 
+- **Rows picked up or removed must move in the adapter's own list** (`RowAdapter#adopt`): a refresh whose rows look the same as the ones shown (same signature) used to
+  replace `rows` without handing the adapter the new list, so a drag or a remove moved rows in a list the adapter was not reading, and the rows were rebound from one
+  that had not moved (a song seen twice, the other one gone from view). `render()` adopts the list on that path, and a drag start / a remove adopts it again.
+- **Removed rows leave with an animation**: the list has a `DefaultItemAnimator` (add 200, remove 220, move 240 ms, no change animation: refreshes in place must not blink;
+  none when Home's animation is off), so a removed queue song fades out and the rows under it slide up.
+- **Every list answers every change at once** (`ItemContainer#addContentListener`, called from `setNewChildren`, i.e. any add or remove in Favorites, a playlist or the list of
+  playlists, from a menu, a tab or the Music tab): the Favorites, Playlists and their opened lists re-read at once, not when the 15 s staleness ran out or the menu closed; and a list
+  coming back on screen re-reads at once (`onActive` forces it). The Queue card listens to the queue instead (`QueueWidget#watch`, re-resolved on every read: the queue is made the
+  first time something is queued, which a card already up never saw before) and to the playing song.
+
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 
 - Size what is *inside* a card from its pixels, not from cell counts or fixed dp: the Data ring's words (`used`/`caption`) and the Power

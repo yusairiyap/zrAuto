@@ -227,9 +227,30 @@ public abstract class ItemContainer<C extends Item> extends BrowsableItemBase {
 		return tb.append(getScheme()).append(':').append(id).releaseString();
 	}
 
+	private static final java.util.Set<Runnable> CONTENT_LISTENERS = new java.util.concurrent.CopyOnWriteArraySet<>();
+
+	/**
+	 * Told whenever the children of any container (Favorites, a playlist, the list of playlists) were replaced by an add or a
+	 * remove, from whichever thread did it: what the Home cards listen to, so they follow every change at once.
+	 */
+	public static void addContentListener(Runnable l) {
+		CONTENT_LISTENERS.add(l);
+	}
+
+	public static void removeContentListener(Runnable l) {
+		CONTENT_LISTENERS.remove(l);
+	}
+
 	@SuppressWarnings({"rawtypes", "unchecked"})
 	private void setNewChildren(List<C> c) {
 		super.setChildren((List) c);
+		for (Runnable l : CONTENT_LISTENERS) {
+			try {
+				l.run();
+			} catch (RuntimeException ex) {
+				Log.e(ex, "Content listener failed");
+			}
+		}
 	}
 
 	@SuppressWarnings("unchecked")

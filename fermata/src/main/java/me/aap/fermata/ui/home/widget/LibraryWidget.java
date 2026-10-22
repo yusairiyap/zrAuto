@@ -107,6 +107,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 			});
 		}
 	};
+	/** Favorites, a playlist or the list of playlists changed (from a menu, a tab, anywhere): the rows are read again at once. */
+	private final Runnable libraryListener = () -> post(() -> refresh(true));
 	private final Runnable refreshBadges = () -> {
 		if (!built) return;
 		for (int i = 0, n = listView.getChildCount(); i < n; i++) {
@@ -141,6 +143,11 @@ abstract class LibraryWidget extends HomeWidgetView {
 	/** Whether the list marks the playing song and follows it (favorites, the songs of an opened playlist). */
 	protected boolean watchesPlaying() {
 		return false;
+	}
+
+	/** Whether changes to Favorites and the playlists redraw this list (not the queue's: it has its own listener). */
+	protected boolean followsLibrary() {
+		return true;
 	}
 
 	/**
@@ -237,6 +244,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 			super.onSelectedChanged(vh, state);
 			if (state == ItemTouchHelper.ACTION_STATE_DRAG) {
 				dragging = true;
+				adapter.adopt(rows);
 				listView.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
 				if (vh != null) vh.itemView.animate().scaleX(1.03f).scaleY(1.03f).setDuration(120).start();
 			}
@@ -358,7 +366,18 @@ abstract class LibraryWidget extends HomeWidgetView {
 		glm = new GridLayoutManager(ctx, 1);
 		listView.setLayoutManager(glm);
 		listView.setAdapter(adapter);
-		listView.setItemAnimator(null);
+		if (host.animate()) {
+			// Rows that leave fade out and the ones below slide up into the gap (a removed queue song, a favorite taken out);
+			// rows that change in place are not animated, which made every refresh blink.
+			androidx.recyclerview.widget.DefaultItemAnimator ia = new androidx.recyclerview.widget.DefaultItemAnimator();
+			ia.setSupportsChangeAnimations(false);
+			ia.setAddDuration(200);
+			ia.setRemoveDuration(220);
+			ia.setMoveDuration(240);
+			listView.setItemAnimator(ia);
+		} else {
+			listView.setItemAnimator(null);
+		}
 		listView.setNestedScrollingEnabled(false);
 		listView.setVerticalScrollBarEnabled(false);
 		listView.setOverScrollMode(View.OVER_SCROLL_NEVER);
@@ -436,17 +455,20 @@ abstract class LibraryWidget extends HomeWidgetView {
 	protected void onActive() {
 		act().addBroadcastListener(contentListener, ActivityListener.FRAGMENT_CONTENT_CHANGED);
 		YtDownloads.get().addListener(downloadsListener);
+		if (followsLibrary()) me.aap.fermata.media.lib.ItemContainer.addContentListener(libraryListener);
 		if (watchesPlaying()) act().getMediaServiceBinder().addBroadcastListener(playingListener);
 		// Back on screen: the playing song is brought into view again.
 		lastFocusKey = null;
 		render();
-		refresh(false);
+		// Changes made while Home was away (in a tab) are not waited for until the list is old enough to be read again.
+		refresh(true);
 	}
 
 	@Override
 	protected void onInactive() {
 		act().removeBroadcastListener(contentListener);
 		YtDownloads.get().removeListener(downloadsListener);
+		me.aap.fermata.media.lib.ItemContainer.removeContentListener(libraryListener);
 		removeCallbacks(refreshBadges);
 		if (watchesPlaying()) act().getMediaServiceBinder().removeBroadcastListener(playingListener);
 	}
@@ -563,7 +585,12 @@ abstract class LibraryWidget extends HomeWidgetView {
 				.append(art).append('|').append(rowMode).append('|').append(loading && none).append('|').append(drillSource != null);
 		for (Row r : rows) sig.append('|').append(r.title()).append(r.sub()).append(r.current());
 		String signature = sig.toString();
-		if (signature.equals(shownSignature)) return;
+		if (signature.equals(shownSignature)) {
+			// Nothing to redraw, but the adapter must hold the list the rows are now taken from: a row picked up or removed is
+			// moved in that list, and with the old one still there the rows were rebound from a list that had not moved.
+			adapter.adopt(rows);
+			return;
+		}
 		shownSignature = signature;
 
 		count.setText(total > 0 ? String.valueOf(total) : "");
@@ -635,6 +662,11 @@ abstract class LibraryWidget extends HomeWidgetView {
 		@Override
 		public void onBindViewHolder(RowHolder h, int position) {
 			h.bind(data.get(position), position);
+		}
+
+		/** Takes {@code now} as the rows without telling anyone: they look the same as the ones held. */
+		void adopt(List<Row> now) {
+			data = now;
 		}
 
 		/** The new rows; only what differs from the old ones is rebound (a full reset when {@code full}). */
@@ -710,8 +742,11 @@ abstract class LibraryWidget extends HomeWidgetView {
 				int pos = getAdapterPosition();
 				if ((pos == RecyclerView.NO_POSITION) || (pos >= rows.size())) return;
 				// Gone from the card at once; the real list follows when the source reports the change.
+					adapter.adopt(rows);
 				rows.remove(pos);
 				adapter.notifyItemRemoved(pos);
+				if (cols > 1) adapter.notifyItemRangeChanged(pos, rows.size() - pos);
+				if (total > 0) count.setText(String.valueOf(total - 1));
 				onRemoved(pos);
 			});
 			removeBtn.setVisibility(GONE);

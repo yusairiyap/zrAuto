@@ -74,8 +74,23 @@ final class QueueWidget extends LibraryWidget {
 		super.onActive();
 		act().getMediaServiceBinder().addBroadcastListener(itemListener);
 		// Songs added, removed, moved or shuffled: the list follows the queue, not only the playing song.
-		watched = MusicPlayer.getQueue(act());
-		if (watched != null) watched.addListener(queueListener);
+		watch(MusicPlayer.getQueue(act()));
+	}
+
+	/**
+	 * The queue may not exist yet when the card comes up (it is made the first time something is queued), so every read
+	 * looks again and listens to the one it finds: otherwise a queue made later was only seen after the list went stale.
+	 */
+	private void watch(@Nullable MusicQueue q) {
+		if (q == watched) return;
+		if (watched != null) watched.removeListener(queueListener);
+		watched = q;
+		if ((q != null) && isActive()) q.addListener(queueListener);
+	}
+
+	@Override
+	protected boolean followsLibrary() {
+		return false;
 	}
 
 	@Override
@@ -90,6 +105,7 @@ final class QueueWidget extends LibraryWidget {
 	protected void fetch(MainActivityDelegate a, FetchDone done) {
 		List<Row> rows = new ArrayList<>();
 		MusicQueue q = MusicPlayer.getQueue(a);
+		watch(q);
 		if ((q == null) || q.isEmpty()) {
 			focusRow = -1;
 			done.done(rows, 0);
