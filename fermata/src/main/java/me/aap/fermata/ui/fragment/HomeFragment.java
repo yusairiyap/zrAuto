@@ -104,6 +104,12 @@ public class HomeFragment extends MainActivityFragment {
 		MainActivityDelegate a = null;
 		if (getContext() != null) a = getActivityDelegate();
 		else if ((from instanceof MainActivityFragment m) && (m.getContext() != null)) a = m.getActivityDelegate();
+		ghosted = false;
+		// A picture of the tab being left is taken first, while it still has the layout the user last saw: without the
+		// tool bar its list moved up the moment the bar went, and was seen doing so while it faded out.
+		if ((a != null) && a.getPrefs().getBooleanPref(MainActivityPrefs.HOME_ANIMATE) && !(from instanceof MusicPlayerFragment)) {
+			ghosted = ghostOf(from);
+		}
 		if (a != null) putBarsAway(a);
 	}
 
@@ -124,17 +130,64 @@ public class HomeFragment extends MainActivityFragment {
 		}
 	}
 
-	/** Short: Home is mostly background, and the tab it replaces shows through it for as long as the fade lasts. */
+	/** True when the tab left is shown as a picture over Home (see ghostOf), which then needs no fade of its own. */
+	private boolean ghosted;
+
+	/**
+	 * With the old tab's picture over it, Home is simply there (opaque) and the picture fades away: no dip through the
+	 * background in between. Without one (the Music tab) a short crossfade as before.
+	 */
 	@Override
 	public long getFadeInMillis() {
-		return 140L;
+		return ghosted ? 0L : 140L;
 	}
 
-	/** The tab it replaces is gone (70 ms) before Home comes in: nothing of it, nor of its tool bar, shows through. */
 	@Override
 	public long getFadeInDelayMillis() {
-		return 70L;
+		return 0L;
 	}
+
+	/**
+	 * Draws the tab being left as a picture in its parent's overlay (above Home, taking no room) and fades it out over
+	 * {@link #GHOST_MS}. The tab itself is hidden by the switch at once.
+	 */
+	private static boolean ghostOf(@Nullable ActivityFragment from) {
+		View v = (from != null) ? from.getView() : null;
+		if ((v == null) || !v.isLaidOut() || (v.getVisibility() != View.VISIBLE) || (v.getWidth() <= 0) ||
+				(v.getHeight() <= 0) || (v.getAlpha() < 0.99f) || !(v.getParent() instanceof ViewGroup parent)) {
+			return false;
+		}
+		Bitmap bm;
+		try {
+			bm = Bitmap.createBitmap(v.getWidth(), v.getHeight(), Bitmap.Config.ARGB_8888);
+			Canvas c = new Canvas(bm);
+			android.util.TypedValue tv = new android.util.TypedValue();
+			if (v.getContext().getTheme().resolveAttribute(android.R.attr.colorBackground, tv, true) &&
+					(tv.type >= android.util.TypedValue.TYPE_FIRST_COLOR_INT) && (tv.type <= android.util.TypedValue.TYPE_LAST_COLOR_INT)) {
+				c.drawColor(tv.data);
+			}
+			v.draw(c);
+		} catch (RuntimeException | OutOfMemoryError ex) {
+			return false;
+		}
+		BitmapDrawable d = new BitmapDrawable(v.getResources(), bm);
+		d.setBounds(v.getLeft(), v.getTop(), v.getRight(), v.getBottom());
+		parent.getOverlay().add(d);
+		ValueAnimator va = ValueAnimator.ofInt(255, 0);
+		va.setDuration(GHOST_MS);
+		va.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+		va.addUpdateListener(an -> d.setAlpha((Integer) an.getAnimatedValue()));
+		va.addListener(new AnimatorListenerAdapter() {
+			@Override
+			public void onAnimationEnd(Animator an) {
+				parent.getOverlay().remove(d);
+			}
+		});
+		va.start();
+		return true;
+	}
+
+	private static final long GHOST_MS = 180L;
 
 	private void enter() {
 		putBarsAway(getActivityDelegate());
@@ -164,7 +217,7 @@ public class HomeFragment extends MainActivityFragment {
 	}
 
 	/**
-	 * Draws {@code v} as a picture in its parent's overlay and fades that out over 70 ms. The view itself is about to go
+	 * Draws {@code v} as a picture in its parent's overlay and fades that out together with the old tab's picture. The view itself is about to go
 	 * out of the layout (its room is Home's); the picture takes no room, so nothing is resized while it fades.
 	 */
 	private static void fadeGhost(View v) {
@@ -187,7 +240,7 @@ public class HomeFragment extends MainActivityFragment {
 		d.setAlpha(from);
 		parent.getOverlay().add(d);
 		ValueAnimator va = ValueAnimator.ofInt(from, 0);
-		va.setDuration(70);
+		va.setDuration(GHOST_MS);
 		va.addUpdateListener(an -> d.setAlpha((Integer) an.getAnimatedValue()));
 		va.addListener(new AnimatorListenerAdapter() {
 			@Override

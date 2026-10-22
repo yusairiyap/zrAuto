@@ -594,7 +594,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	 * content loading indicator over it.
 	 */
 	private static void suppressOverlays(MainActivityDelegate a, boolean suppress) {
-		a.setOverlaysSuppressed(suppress);
+		// Hiding this tab (setListening(false), from onHiddenChanged during the commit) runs after the tab coming up
+		// had its say: giving the panel back then, with Home coming up, showed it over Home.
+		a.setOverlaysSuppressed(suppress || a.activeKeepsOverlaysAway());
 	}
 
 	@Override

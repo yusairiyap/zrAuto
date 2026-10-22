@@ -3276,6 +3276,11 @@ public class MainActivityDelegate extends ActivityDelegate
 		return (f instanceof MusicPlayerFragment) || (f instanceof HomeFragment);
 	}
 
+	/** The tab being shown (already the new one while a switch runs) has its own player UI: Music or Home. */
+	public boolean activeKeepsOverlaysAway() {
+		return keepsOverlaysAway(getActiveFragment());
+	}
+
 	public void setOverlaysSuppressed(boolean suppressed) {
 		// In picture-in-picture they stay away whatever the tab showing says.
 		if (pipSuppressed) suppressed = true;

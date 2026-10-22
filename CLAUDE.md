@@ -809,6 +809,20 @@ what each widget shows is set on the widget (edit mode > its gear).
 - **A stack turning by itself** (`HomeStackView#animateTo(index, auto=true)`): 620 ms with a fast-out-slow-in curve (it starts from rest, unlike a swipe settling), and the widgets are
   drawn from hardware layers while it moves (`layers`), so sliding and dissolving two heavy cards is a transform per frame, not a redraw.
 
+### Nineteenth round (picture of the old tab, panel on Music to Home)
+
+- **The "shadow" entering Home was two things, seen frame by frame in a screen recording**: the old tab's list jumped up the moment the tool bar left
+  the layout (its content insets follow the bar), and the 70 ms fade-through of the previous round then dipped through the bare background before Home
+  came in (the dip made the jump easier to see). Now `HomeFragment#ghostOf` (from `switchingFrom`, before `putBarsAway`) draws the tab being left into a
+  bitmap (filled with the theme's `colorBackground` first, so it is opaque) in its parent's overlay, and fades that out over `GHOST_MS` (180 ms, the tool
+  bar's picture too) while Home is simply there at alpha 1 (`getFadeInMillis()` 0, so `ActivityDelegate#crossfadeFragmentViews` skips the fade; the tab
+  left is GONE at once). A picture is taken only when the tab is laid out and fully opaque, and never of the Music tab (a WebView/SurfaceView does not draw
+  into a bitmap; Music to Home keeps the short 140 ms crossfade). Do not go back to fading the old tab's real view: it relayouts under the fade.
+- **Music to Home showed the control panel**: Music's `onHiddenChanged` -> `setListening(false)` ran during the commit, after Home had suppressed the
+  overlays, and gave them back. `MusicPlayerFragment#suppressOverlays` now keeps them suppressed while `MainActivityDelegate#activeKeepsOverlaysAway()`
+  (Music or Home is the tab being shown; the active id is already the new one during a switch). Any tab that suppresses the overlays must go through the
+  same check when it hides.
+
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 
 - Size what is *inside* a card from its pixels, not from cell counts or fixed dp: the Data ring's words (`used`/`caption`) and the Power
