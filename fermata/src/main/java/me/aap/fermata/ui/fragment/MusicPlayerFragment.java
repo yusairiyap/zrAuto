@@ -82,6 +82,7 @@ import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.fermata.ui.view.BarsClipping;
 import me.aap.fermata.ui.view.EffectsUi;
 import me.aap.fermata.ui.view.LyricsCard;
 import me.aap.fermata.ui.view.LyricsView;
@@ -130,8 +131,6 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	// The containers unclipped for the status bar, and how they were, see unclipForStatusBar().
 	@Nullable
 	private ViewGroup[] clipViews;
-	private boolean[] clipChildrenWas;
-	private boolean[] clipToPaddingWas;
 	private final int[] extLoc2 = new int[2];
 	private ImageView art;
 	private LoadingDimView loading;
@@ -1319,32 +1318,15 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	 */
 	private void unclipForStatusBar(View root) {
 		if (clipViews != null) return;
-		List<ViewGroup> l = new ArrayList<>();
-		for (ViewParent p = root.getParent(); p instanceof ViewGroup g; p = g.getParent()) {
-			l.add(g);
-			if (g.getId() == R.id.main_activity) break;
-		}
-		ViewGroup[] views = l.toArray(new ViewGroup[0]);
-		clipChildrenWas = new boolean[views.length];
-		clipToPaddingWas = new boolean[views.length];
-		for (int i = 0; i < views.length; i++) {
-			clipChildrenWas[i] = views[i].getClipChildren();
-			clipToPaddingWas[i] = views[i].getClipToPadding();
-			views[i].setClipChildren(false);
-			views[i].setClipToPadding(false);
-		}
-		clipViews = views;
+		clipViews = BarsClipping.acquire(root);
 	}
 
-	/** Puts the containers' clipping back as unclipForStatusBar() found it. */
+	/** Puts the containers' clipping back, see BarsClipping. */
 	private void restoreClipping() {
 		ViewGroup[] views = clipViews;
 		if (views == null) return;
 		clipViews = null;
-		for (int i = 0; i < views.length; i++) {
-			views[i].setClipChildren(clipChildrenWas[i]);
-			views[i].setClipToPadding(clipToPaddingWas[i]);
-		}
+		BarsClipping.release(views);
 	}
 
 	private void syncInsets() {

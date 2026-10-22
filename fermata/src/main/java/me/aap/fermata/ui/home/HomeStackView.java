@@ -41,6 +41,9 @@ final class HomeStackView extends FrameLayout {
 
 		/** The widget on top changed (swiped, or a dot was tapped). */
 		void onTopChanged(int index);
+
+		/** Seconds between the stack turning to its next widget by itself, 0 for never. */
+		int rotateSeconds();
 	}
 
 	private final Callback cb;
@@ -62,6 +65,7 @@ final class HomeStackView extends FrameLayout {
 	@Nullable
 	private ValueAnimator settle;
 	private final Runnable hideDots = this::fadeDotsOut;
+	private final Runnable rotateTick = this::rotateStep;
 
 	HomeStackView(Context ctx, Callback cb) {
 		super(ctx);
@@ -244,6 +248,31 @@ final class HomeStackView extends FrameLayout {
 			// Edit mode over: the dots that stayed up for it go away again after a moment.
 			postDelayed(hideDots, DOTS_SHOW_MS);
 		}
+		scheduleRotate();
+	}
+
+	private void rotateStep() {
+		// Only a stack that is on screen and not being used: a finger on it, edit mode or a swipe in progress wait a round.
+		if (isShown() && !cb.isEditing() && !dragging && !armed && (settle == null) && (widgets.size() > 1)) goBy(1);
+		scheduleRotate();
+	}
+
+	/** (Re)starts the wait for the next turn by itself, if Settings > Home asks for them. */
+	void scheduleRotate() {
+		removeCallbacks(rotateTick);
+		if (!isAttachedToWindow() || (widgets.size() < 2)) return;
+		int sec = cb.rotateSeconds();
+		if (sec > 0) postDelayed(rotateTick, sec * 1000L);
+	}
+
+	/** A touch on the stack starts the wait over: it turns by itself only after being left alone for a whole round. */
+	@Override
+	public boolean dispatchTouchEvent(MotionEvent e) {
+		int a = e.getActionMasked();
+		if (a == MotionEvent.ACTION_DOWN) removeCallbacks(rotateTick);
+		boolean r = super.dispatchTouchEvent(e);
+		if ((a == MotionEvent.ACTION_UP) || (a == MotionEvent.ACTION_CANCEL)) scheduleRotate();
+		return r;
 	}
 
 	@Override
@@ -251,11 +280,13 @@ final class HomeStackView extends FrameLayout {
 		super.onAttachedToWindow();
 		// A moment of dots when a stack first shows, so it is known to be one.
 		if (widgets.size() > 1) post(this::showDots);
+		scheduleRotate();
 	}
 
 	@Override
 	protected void onDetachedFromWindow() {
 		removeCallbacks(hideDots);
+		removeCallbacks(rotateTick);
 		if (settle != null) settle.cancel();
 		super.onDetachedFromWindow();
 	}

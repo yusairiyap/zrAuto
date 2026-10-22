@@ -131,6 +131,8 @@ public interface MainActivityPrefs
 	/** The little edit button in the top right corner (the phone's, and the car screen's own); edit mode is also a long press away. */
 	Pref<BooleanSupplier> HOME_EDIT_BUTTON = Pref.b("HOME_EDIT_BUTTON", true);
 	Pref<BooleanSupplier> HOME_EDIT_BUTTON_AA = Pref.b("HOME_EDIT_BUTTON_AA", true);
+	/** Seconds between a stack of widgets turning to its next one by itself; 0 = never. */
+	Pref<IntSupplier> HOME_STACK_ROTATE = Pref.i("HOME_STACK_ROTATE", 0);
 	Pref<BooleanSupplier> HOME_ANIMATE = Pref.b("HOME_ANIMATE", true);
 	Pref<BooleanSupplier> CHECK_UPDATES = Pref.b("CHECK_UPDATES", true);
 	Pref<LongSupplier> CHECK_UPDATES_STAMP = Pref.l("CHECK_UPDATES_STAMP", 0);

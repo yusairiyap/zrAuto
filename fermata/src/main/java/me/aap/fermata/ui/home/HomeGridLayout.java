@@ -57,6 +57,10 @@ final class HomeGridLayout extends ViewGroup {
 	private int cross = 4;
 	private int gap;
 	private int unit = 100;
+	/** Sideways: the width of the page it sits in, so cards that do not fill it are centred (0 = no such room). */
+	private int viewportW;
+	/** Sideways: the room put before the cards to centre them, see {@link #setViewportWidth}. */
+	private int lead;
 	private boolean editing;
 	@Nullable
 	private ViewGroup scroller;
@@ -111,6 +115,16 @@ final class HomeGridLayout extends ViewGroup {
 		setClipToPadding(false);
 		setWillNotDraw(false);
 		gap = HomeUi.dp(ctx, 10);
+	}
+
+	/**
+	 * Scrolling sideways with fewer cards than fill the page: they sit in the middle of it. Once they need more room
+	 * than the page has, the lead is 0 and the row scrolls as before.
+	 */
+	void setViewportWidth(int w) {
+		if (viewportW == w) return;
+		viewportW = w;
+		if (!vertical) requestLayout();
 	}
 
 	/** The page's scroller; {@code onScrolled} also runs on every scroll (a scroller has only one such listener, this one). */
@@ -282,6 +296,11 @@ final class HomeGridLayout extends ViewGroup {
 		return any;
 	}
 
+	/** The seconds between a stack turning by itself changed (Settings > Home): every stack follows. */
+	void resyncRotation() {
+		for (HomeCellView c : order) c.stack.scheduleRotate();
+	}
+
 	void restyle() {
 		for (HomeCellView c : order) for (HomeWidgetView w : c.stack.getWidgets()) w.restyle();
 	}
@@ -362,7 +381,10 @@ final class HomeGridLayout extends ViewGroup {
 		if (vertical) {
 			setMeasuredDimension(w, extent + padH);
 		} else {
-			setMeasuredDimension(extent + padW, (hMode == MeasureSpec.UNSPECIFIED) ?
+			int natural = extent + padW;
+			int total = Math.max(natural, viewportW);
+			lead = (total - natural) / 2;
+			setMeasuredDimension(total, (hMode == MeasureSpec.UNSPECIFIED) ?
 					cross * unit + (cross - 1) * gap + padH : h);
 		}
 	}
@@ -375,7 +397,7 @@ final class HomeGridLayout extends ViewGroup {
 		for (int i = 0; i < order.size(); i++) {
 			HomeCellView c = order.get(i);
 			int[] at = slots.get(i);
-			int x = getPaddingLeft() + (vertical ? at[1] : at[0]) * (unit + gap);
+			int x = getPaddingLeft() + (vertical ? 0 : lead) + (vertical ? at[1] : at[0]) * (unit + gap);
 			int y = getPaddingTop() + (vertical ? at[0] : at[1]) * (unit + gap);
 			boolean had = c.getWidth() > 0;
 			int oldL = c.getLeft();
@@ -749,8 +771,8 @@ final class HomeGridLayout extends ViewGroup {
 		if ((hintCw != c.cw) || (hintCh != c.ch)) {
 			c.cell.w = hintCw;
 			c.cell.h = hintCh;
+			c.growOnNextSize();
 			c.setEffectiveSize(hintCw, hintCh);
-			c.pop();
 			requestLayout();
 			changed();
 		}

@@ -744,19 +744,39 @@ what each widget shows is set on the widget (edit mode > its gear).
   theme as light cards in every look (Glass = white glass with a hairline, Colour = a pale tint of the accent, theme text on both); a card that
   paints itself says `ownBackgroundDark()` (the Ambience sky stays dark; the media card is the Music tab's whitish wash in a light theme, with the
   theme's play button colours, seek bar and chip). Dark-theme looks are unchanged on purpose.
-- **Centred in the window** (`HomeScreen#measureSideExtras`): body_layout pads every tab clear of a side navigation pill on that side only, which left
-  a thin margin on one side and a wide empty strip on the other (the pill's own width, ~100dp, plus gaps). Scrolling down, the grid, the greeting and
-  the header get the same room on the other side (`extraLeft/extraRight`, from the root's offsets in the window), so the page sits in the middle.
-  Scrolling sideways keeps the page against the pill. Not verified on the car screen: if its left edge is still clipped there, look at what the
-  window's real left edge is (the car may be letterboxing the display) before adding more padding.
+- **Centred between the screen's edge and the side pill** (`HomeScreen#measureSideExtras`, re-run by `onSidePreDraw` whenever the root or the pill moves; the
+  first version centred on the whole window and left the cards cramped against the pill): body_layout pads every tab clear of a side navigation pill on that
+  side only, and by more than the pill's visible width, which left a thin margin on one side and a wide strip on the other. Scrolling down, the side with the
+  smaller margin gets the difference as extra grid/greeting/header padding (`extraLeft/extraRight`), so the margin from the screen's edge to the first card equals
+  the gap from the last card to the pill (no side pill: centred in the window). The `HOME side room` lines in the Diagnostic log say what it worked out. Scrolling
+  sideways keeps its padding, and `HomeGridLayout#setViewportWidth` centres a row that is shorter than the page (no scrolling); a longer one scrolls as before.
+  Not verified on the car screen: if its left edge is still clipped there, look at what the window's real left edge is (the car may be letterboxing the display).
 - **Edit button off** (`HOME_EDIT_BUTTON`, `_AA` twin, Settings > Home > Header): the chip bar is GONE while not editing; the greeting and the info chips
   take the room back (`applyHeaderRoom`). Edit mode stays a long press, Settings > Home > Edit widgets, and **Home's long-press menu in the navigation
   bar** ("Edit home screen layout", `NavBarMediator#contributeItemMenu`, `HomeScreen.startEditing`).
 - **Last played song in the widgets right after the app starts**: `LibraryWidget#playingIds` also takes `HomeArt.displayItem` while nothing is loaded
   (the queue's saved track, or the resume item), so Favorites, an opened playlist and the Queue mark it and scroll to it. The Playlists widget opens the
   playlist that holds that song by itself, once per widget (`openHolding`; "Open the last played song's playlist" switch, backing out sticks).
-- **Downloaded badge** on the right of a favorite / playlist / queue row whose song is on the phone (`LibraryWidget.RowHolder#updateBadge`, icon and word
-  on a wide card, icon only under 300dp); `YtDownloads.Listener` refreshes the rows on screen when a download finishes or goes.
+- **Downloaded badge** at the end of a favorite / playlist / queue row whose song is on the phone (`LibraryWidget.RowHolder#updateBadge`): just the download icon
+  inside the row's own `main` layout (so the playing row's fill runs under it), not a chip of its own; `YtDownloads.Listener` refreshes the rows on screen when a
+  download finishes or goes.
+
+### Sixteenth round (smooth bars, shared clipping, auto-rotate, grow, tile colours)
+
+- **The tool bar is still seen fading when Home comes up** (`HomeFragment#fadeGhost`): it goes out of the layout at once (Home is laid out once, see the fifteenth round), but a
+  picture of it is drawn in `main_activity`'s overlay and faded over 180 ms. Anything that must leave the layout at once and still look as if it faded can do the same.
+- **Unclipping the containers for the status bar is shared** (`ui/view/BarsClipping`, used by `BehindBarsLayers` and the Music tab): both tabs unclip the same containers and
+  overlap while one fades out and the other in; each used to keep its own copy of "how they were", so the second one to unclip saved the first one's unclipped state
+  as the original and restored THAT, leaving the containers unclipped for good: every other tab's list then scrolled out behind the status bar with no top fade over
+  it (the see-through status bar that came and went). One original per container, a count of users, restored when the last lets go (`BODY containers clipped again`
+  in the Diagnostic log). **Never save and restore `clipChildren` / `clipToPadding` of the shared containers yourself.**
+- **Stacks can turn by themselves** (`HOME_STACK_ROTATE`, seconds, 0 = off, Settings > Home; `HomeStackView#scheduleRotate`): after the interval a stack on screen goes to
+  its next widget unless edit mode, a finger or a swipe is on it; a touch starts the wait over. At least 3 s (`HomeScreen#stackRotateSeconds`).
+- **A resized card grows into its new size** (`HomeCellView#growOnNextSize`, started from `onSizeChanged`): it is already laid out at the new size and is drawn scaled
+  down to the old one, settling over 320 ms with the pivot travelling from the top left to the centre; the others glide to their places as before. (An animated real size
+  would relayout the widgets every frame.)
+- **Tile colours in a light theme** (`TileWidget#hue`): deeper and darker (saturation 0.78, value 0.62) than the pastel used on dark cards; All in One and Pages use it.
+
 - **A song's natural end that did not go on** (reported as "sometimes", more in a light theme; the light theme itself cannot reach playback, but a
   system theme that follows the clock recreates the activity at dusk and dawn, and `YoutubeFragment#onDestroyView` stops playback then by design): the move to
   the next track in `MediaSessionCallback#engineEnded` was a chain of futures with no failure handling, so a next track that could not be resolved or prepared

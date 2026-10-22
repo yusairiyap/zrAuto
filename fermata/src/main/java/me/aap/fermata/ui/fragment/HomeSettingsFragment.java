@@ -229,6 +229,9 @@ public class HomeSettingsFragment extends ReorderListFragment {
 		addSwitchRow(box, R.string.home_pref_animate, R.string.home_pref_animate_sub,
 				() -> p.getBooleanPref(MainActivityPrefs.HOME_ANIMATE),
 				on -> p.applyBooleanPref(MainActivityPrefs.HOME_ANIMATE, on), null);
+		addValueSliderRow(box, R.string.home_pref_rotate, R.string.home_pref_rotate_sub, 0, 60,
+				() -> p.getIntPref(MainActivityPrefs.HOME_STACK_ROTATE), v -> p.applyIntPref(MainActivityPrefs.HOME_STACK_ROTATE, v),
+				v -> (v == 0) ? getString(R.string.home_rotate_off) : getString(R.string.home_rotate_secs, v), null);
 		// Shows nothing picked while some widget has a look of its own; picking one sets every widget.
 		addChoiceRow(box, R.string.home_pref_style, R.string.home_pref_style_sub,
 				new int[]{R.string.home_style_solid, R.string.home_style_glass, R.string.home_style_colour},

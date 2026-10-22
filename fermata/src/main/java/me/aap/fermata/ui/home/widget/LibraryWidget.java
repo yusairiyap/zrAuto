@@ -527,8 +527,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 		private final TextView title;
 		private final TextView sub;
 		private final ImageView playBtn;
-		/** A small "Downloaded" badge on the right of a song that is on the phone. */
-		private final TextView badge;
+		/** A small download icon at the end of the row of a song that is on the phone: part of the row, no chip of its own. */
+		private final ImageView badge;
 		@Nullable
 		private Row row;
 		private int paintedEpoch = -1;
@@ -570,17 +570,14 @@ abstract class LibraryWidget extends HomeWidgetView {
 			texts.addView(sub);
 			main.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-			badge = new TextView(ctx);
-			badge.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 10.5f);
-			badge.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-			badge.setSingleLine(true);
-			badge.setGravity(Gravity.CENTER_VERTICAL);
-			badge.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.download, 0, 0, 0);
+			badge = new ImageView(ctx);
+			badge.setImageResource(R.drawable.download);
+			badge.setScaleType(ImageView.ScaleType.FIT_CENTER);
 			badge.setVisibility(GONE);
-			LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(22));
+			LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(px(18), px(18));
 			blp.setMarginStart(px(6));
-			blp.setMarginEnd(px(2));
-			root.addView(badge, blp);
+			blp.setMarginEnd(px(10));
+			main.addView(badge, blp);
 
 			playBtn = iconButton(R.drawable.play, 36, ROLE_ICON, R.string.action_play, () -> {
 				if ((row != null) && (row.play() != null)) row.play().run();
@@ -618,9 +615,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 				int fill = r.current() ? HomeUi.alpha(color(ROLE_ACCENT), 0.28f) : 0;
 				main.setBackground(HomeUi.pressable(ripple(), fill, px(14)));
 				thumb.setBackground(HomeUi.round(softFill(), px(10)));
-				badge.setBackground(HomeUi.round(softFill(), px(11)));
-				badge.setTextColor(color(ROLE_SECONDARY));
-				badge.setCompoundDrawableTintList(android.content.res.ColorStateList.valueOf(color(ROLE_SECONDARY)));
+				badge.setImageTintList(android.content.res.ColorStateList.valueOf(color(ROLE_SECONDARY)));
 			}
 			main.setContentDescription(r.title());
 			title.setText(r.title());
@@ -648,18 +643,12 @@ abstract class LibraryWidget extends HomeWidgetView {
 			updateBadge();
 		}
 
-		/** Shown when the row's song is on the phone: the word on a wide card, only the icon on a narrow one. */
+		/** Shown when the row's song is on the phone, at the end of the row itself (so the playing row's fill runs under it). */
 		void updateBadge() {
 			Row r = row;
 			boolean on = (r != null) && isDownloaded(r);
 			badge.setVisibility(on ? VISIBLE : GONE);
-			if (!on) return;
-			boolean narrow = widthPx() < px(300);
-			badge.setText(narrow ? "" : ctx.getString(R.string.home_downloaded));
-			badge.setContentDescription(ctx.getString(R.string.home_downloaded));
-			int padH = narrow ? px(5) : px(8);
-			badge.setPadding(padH, 0, padH, 0);
-			badge.setCompoundDrawablePadding(narrow ? 0 : px(4));
+			if (on) badge.setContentDescription(ctx.getString(R.string.home_downloaded));
 		}
 	}
 }

@@ -1,5 +1,11 @@
 package me.aap.fermata.ui.fragment;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.drawable.BitmapDrawable;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -10,6 +16,7 @@ import androidx.annotation.Nullable;
 
 import me.aap.fermata.R;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.home.HomeScreen;
 import me.aap.utils.ui.fragment.ActivityFragment;
 import me.aap.utils.ui.view.ToolBarView;
@@ -120,16 +127,53 @@ public class HomeFragment extends MainActivityFragment {
 
 	/**
 	 * No title bar, control panel or floating buttons over Home: the media widget is its player and the
-	 * widgets are its controls. Done at once, not faded, like the Music tab does.
+	 * widgets are its controls. They are taken out of the layout at once, like the Music tab does (so Home is laid
+	 * out once, at its final size); the tool bar is still seen fading away, as a picture of itself.
 	 */
 	private static void putBarsAway(MainActivityDelegate a) {
 		ToolBarView tb = a.getToolBar();
 		if ((tb != null) && (tb.getVisibility() != View.GONE)) {
+			if (a.getPrefs().getBooleanPref(MainActivityPrefs.HOME_ANIMATE)) fadeGhost(tb);
 			tb.animate().cancel();
 			tb.setAlpha(1f);
 			tb.setVisibility(View.GONE);
 		}
 		a.setOverlaysSuppressed(true);
+	}
+
+	/**
+	 * Draws {@code v} as a picture in its parent's overlay and fades that out over 180 ms. The view itself is about to go
+	 * out of the layout (its room is Home's); the picture takes no room, so nothing is resized while it fades.
+	 */
+	private static void fadeGhost(View v) {
+		if (!v.isLaidOut() || (v.getVisibility() != View.VISIBLE) || (v.getWidth() <= 0) || (v.getHeight() <= 0) ||
+				(v.getAlpha() < 0.05f) || !(v.getParent() instanceof ViewGroup parent)) {
+			return;
+		}
+		Bitmap bm;
+		try {
+			bm = Bitmap.createBitmap(v.getWidth(), v.getHeight(), Bitmap.Config.ARGB_8888);
+			v.draw(new Canvas(bm));
+		} catch (RuntimeException | OutOfMemoryError ex) {
+			return;
+		}
+		BitmapDrawable d = new BitmapDrawable(v.getResources(), bm);
+		int x = Math.round(v.getX());
+		int y = Math.round(v.getY());
+		d.setBounds(x, y, x + v.getWidth(), y + v.getHeight());
+		int from = Math.round(255 * Math.min(1f, v.getAlpha()));
+		d.setAlpha(from);
+		parent.getOverlay().add(d);
+		ValueAnimator va = ValueAnimator.ofInt(from, 0);
+		va.setDuration(180);
+		va.addUpdateListener(an -> d.setAlpha((Integer) an.getAnimatedValue()));
+		va.addListener(new AnimatorListenerAdapter() {
+			@Override
+			public void onAnimationEnd(Animator an) {
+				parent.getOverlay().remove(d);
+			}
+		});
+		va.start();
 	}
 
 	@Override

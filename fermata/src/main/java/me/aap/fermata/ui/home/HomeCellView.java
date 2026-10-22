@@ -211,6 +211,11 @@ final class HomeCellView extends FrameLayout implements HomeStackView.Callback {
 	}
 
 	@Override
+	public int rotateSeconds() {
+		return host.stackRotateSeconds();
+	}
+
+	@Override
 	public void onTopChanged(int index) {
 		cell.top = index;
 		grid.changed();
@@ -311,6 +316,56 @@ final class HomeCellView extends FrameLayout implements HomeStackView.Callback {
 		}
 		badge.setText(text);
 		badge.setVisibility(VISIBLE);
+	}
+
+	private boolean growNext;
+
+	/** The next size change (a resize just let go of) grows from the old size to the new one instead of jumping. */
+	void growOnNextSize() {
+		growNext = host.animate();
+	}
+
+	@Override
+	protected void onSizeChanged(int w, int h, int ow, int oh) {
+		super.onSizeChanged(w, h, ow, oh);
+		// The centre again (a grow moves the pivot and leaves it where it ended).
+		setPivotX(w / 2f);
+		setPivotY(h / 2f);
+		if (growNext && (ow > 0) && (oh > 0) && (w > 0) && (h > 0) && ((ow != w) || (oh != h))) {
+			growNext = false;
+			grow(ow / (float) w, oh / (float) h);
+		}
+	}
+
+	/**
+	 * The card is already laid out at its new size; it is drawn scaled down to the old one and settles into the new one.
+	 * The pivot travels from the top left corner (where the card grows from) to the centre (where the edit-mode scale
+	 * sits), so nothing jumps when it arrives.
+	 */
+	private void grow(float fromX, float fromY) {
+		if (scaleAnim != null) scaleAnim.cancel();
+		final float to = targetScale();
+		ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
+		a.setDuration(320);
+		a.setInterpolator(new DecelerateInterpolator(1.8f));
+		a.addUpdateListener(v -> {
+			float f = (float) v.getAnimatedValue();
+			setPivotX(getWidth() / 2f * f);
+			setPivotY(getHeight() / 2f * f);
+			setScaleX(fromX + (to - fromX) * f);
+			setScaleY(fromY + (to - fromY) * f);
+		});
+		a.addListener(new android.animation.AnimatorListenerAdapter() {
+			@Override
+			public void onAnimationEnd(android.animation.Animator an) {
+				setPivotX(getWidth() / 2f);
+				setPivotY(getHeight() / 2f);
+				setScaleX(to);
+				setScaleY(to);
+			}
+		});
+		scaleAnim = a;
+		a.start();
 	}
 
 	/** A short bounce, for a size change. */

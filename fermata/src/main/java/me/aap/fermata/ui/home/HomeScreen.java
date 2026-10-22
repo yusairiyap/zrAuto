@@ -14,6 +14,7 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
@@ -309,6 +310,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		quiet = quietStart;
 		if (quiet) root.setAlpha(0f);
 		behind.attach();
+		root.getViewTreeObserver().addOnPreDrawListener(sideSync);
 		prefs.addBroadcastListener(this);
 		root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
 			if (((r - l) != (or - ol)) || ((b - t) != (ob - ot))) root.post(this::applyArrangement);
@@ -343,6 +345,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		if (bgFade != null) bgFade.cancel();
 		prefs.removeBroadcastListener(this);
 		behind.detach();
+		ViewTreeObserver vto = root.getViewTreeObserver();
+		if (vto.isAlive()) vto.removeOnPreDrawListener(sideSync);
 		root.removeCallbacks(loadBg);
 		model.save();
 		HomeModal.dismissNow();
@@ -524,6 +528,12 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	}
 
 	@Override
+	public int stackRotateSeconds() {
+		int s = prefs.getIntPref(MainActivityPrefs.HOME_STACK_ROTATE);
+		return (s <= 0) ? 0 : Math.max(3, s);
+	}
+
+	@Override
 	public boolean animate() {
 		if (!prefs.getBooleanPref(MainActivityPrefs.HOME_ANIMATE)) return false;
 		try {
@@ -562,6 +572,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			applyArrangement();
 		}
 		if (changed.contains(MainActivityPrefs.HOME_CARD_STYLE)) grid.restyle();
+		if (changed.contains(MainActivityPrefs.HOME_STACK_ROTATE)) grid.resyncRotation();
 		if (changed.contains(MainActivityPrefs.HOME_EDIT_BUTTON) || changed.contains(MainActivityPrefs.HOME_EDIT_BUTTON_AA)) {
 			applyEditUi(true);
 		}
@@ -743,28 +754,79 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		measureSideExtras(down);
 		if (vertical) grid.setPadding(side + extraLeft, 0, side + extraRight, HomeUi.dp(ctx, 16));
 		else grid.setPadding(side, HomeUi.dp(ctx, 58), side, HomeUi.dp(ctx, 8));
+		grid.setViewportWidth(vertical ? 0 : w);
 		grid.setArrangement(vertical, count, gap);
 		applyHeaderRoom();
 	}
 
 	/**
-	 * A side navigation pill pads the whole tab clear of it on its own side only, which left the widgets nearer the edge
-	 * on the other side (a wide empty strip on the right, a thin margin on the left). Scrolling down, the other side gets
-	 * the same room, so the page sits centred in the window. Scrolling sideways keeps the page against the pill.
+	 * Scrolling down, the page is centred in the room the side navigation pill leaves: the margin from the screen's edge
+	 * to the first card equals the gap from the last card to the pill. The tab is padded clear of the pill on its own
+	 * side only (and by more than the pill's visible width), which left a thin margin on one side and a wide empty
+	 * strip on the other. Whichever side has the smaller margin gets the difference as extra padding. Without a side
+	 * pill the page is centred in the window. Scrolling sideways keeps its own padding (the row is centred by the grid
+	 * when it is shorter than the page).
 	 */
 	private void measureSideExtras(boolean down) {
 		int l = 0;
 		int r = 0;
 		View decor = root.getRootView();
-		if (down && (decor != root) && root.isAttachedToWindow() && (decor.getWidth() > 0)) {
+		if (down && (decor != root) && root.isAttachedToWindow() && (decor.getWidth() > 0) && (root.getWidth() > 0)) {
 			root.getLocationInWindow(sideLoc);
-			int left = Math.max(0, sideLoc[0]);
-			int right = Math.max(0, decor.getWidth() - (sideLoc[0] + root.getWidth()));
-			l = Math.max(0, right - left);
-			r = Math.max(0, left - right);
+			int rootLeft = sideLoc[0];
+			int rootRight = rootLeft + root.getWidth();
+			NavBarView nb = a.getNavBar();
+			boolean pill = (nb != null) && (nb.getVisibility() == View.VISIBLE) && !nb.isBottom() && !a.isBarsHidden() &&
+					(nb.getWidth() > 0);
+			int diff;
+			if (!pill) {
+				// Left margin against right margin, both to the window's edges.
+				diff = (decor.getWidth() - rootRight) - rootLeft;
+			} else {
+				nb.getLocationInWindow(navLoc);
+				if (nb.isRight()) {
+					// (pill's edge - last card) against (screen's edge - first card); the 12dp inside the root cancel out.
+					diff = navLoc[0] - rootRight - rootLeft;
+				} else {
+					diff = rootLeft - (navLoc[0] + nb.getWidth()) - (decor.getWidth() - rootRight);
+					diff = -diff;
+				}
+			}
+			if (diff > 0) l = diff;
+			else r = -diff;
+			sideKey = rootLeft * 31 + root.getWidth() * 17 + (pill ? navLoc[0] + 7 : 0) + (pill && nb.isRight() ? 1 : 0);
+		}
+		if ((extraLeft != l) || (extraRight != r)) {
+			DiagnosticLog.log("HOME", "side room", "left=" + l, "right=" + r, "root=" + root.getWidth());
 		}
 		extraLeft = l;
 		extraRight = r;
+	}
+
+	private final int[] navLoc = new int[2];
+	/** What the side room was last worked out from; when the root or the pill moves, it is worked out again. */
+	private int sideKey;
+	private final ViewTreeObserver.OnPreDrawListener sideSync = this::onSidePreDraw;
+
+	private boolean onSidePreDraw() {
+		if (shown && vertical && root.isAttachedToWindow() && (root.getWidth() > 0)) {
+			View decor = root.getRootView();
+			root.getLocationInWindow(sideLoc);
+			NavBarView nb = a.getNavBar();
+			boolean pill = (nb != null) && (nb.getVisibility() == View.VISIBLE) && !nb.isBottom() && !a.isBarsHidden() &&
+					(nb.getWidth() > 0);
+			int pillX = 0;
+			if (pill) {
+				nb.getLocationInWindow(navLoc);
+				pillX = navLoc[0];
+			}
+			int key = sideLoc[0] * 31 + root.getWidth() * 17 + (pill ? pillX + 7 : 0) + (pill && nb.isRight() ? 1 : 0);
+			if ((decor != root) && (key != sideKey)) {
+				sideKey = key;
+				root.post(this::applyArrangement);
+			}
+		}
+		return true;
 	}
 
 	private void buildScroller(boolean down) {
