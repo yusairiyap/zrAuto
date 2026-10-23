@@ -491,10 +491,11 @@ public final class YoutubeCommentsView {
 			if (searchingAll) cancelSearchAll();
 			else startSearchAll();
 		});
-		LinearLayout.LayoutParams chipLp = new LinearLayout.LayoutParams(WRAP_CONTENT, dp(36));
+		searchAllChip.setPadding(dp(20), 0, dp(20), 0);
+		LinearLayout.LayoutParams chipLp = new LinearLayout.LayoutParams(WRAP_CONTENT, dp(40));
 		chipLp.gravity = Gravity.CENTER_HORIZONTAL;
-		chipLp.topMargin = dp(6);
-		chipLp.bottomMargin = dp(6);
+		chipLp.topMargin = dp(8);
+		chipLp.bottomMargin = dp(8);
 		root.addView(searchAllChip, chipLp);
 
 		// The box for writing, only where it can be used (see updateCompose()).
@@ -840,7 +841,10 @@ public final class YoutubeCommentsView {
 		if (searchAllChip == null) return;
 		boolean few = searching() && (matches.size() < SEARCH_ALL_BELOW);
 		searchAllChip.setVisibility((few && (searchingAll || (nextToken != null))) ? View.VISIBLE : View.GONE);
+		// Search all is the accent (like the selected sort); Cancel is the neutral grey, a stop rather than a go.
 		searchAllChip.setText(searchingAll ? R.string.yt_comments_search_cancel : R.string.yt_comments_search_all);
+		searchAllChip.setTextColor(searchingAll ? primary : onAccent);
+		searchAllChip.setBackground(searchingAll ? pressable(chipFill, 20) : pressable(accent, 20));
 		if (skeleton != null) skeleton.setVisibility((searchingAll && matches.isEmpty()) ? View.VISIBLE : View.GONE);
 	}
 
