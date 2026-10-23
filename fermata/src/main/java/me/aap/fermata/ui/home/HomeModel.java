@@ -8,7 +8,11 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.utils.app.App;
@@ -44,6 +48,8 @@ public final class HomeModel {
 		/** Freeflow: where the card was put, in dp from the page's top left; -1 until it has a place. */
 		public float x = -1;
 		public float y = -1;
+		/** Each arrangement's own size, place and order for this card (the active one is in w, h, x, y). */
+		final Map<String, Geo> geo = new HashMap<>();
 		public final List<Item> items = new ArrayList<>();
 
 		Cell(long id, int w, int h) {
@@ -67,7 +73,27 @@ public final class HomeModel {
 
 	private final MainActivityPrefs prefs;
 	private final boolean car;
+	/** One arrangement's geometry for a card: its size, its free place (-1 until chosen) and its order in the list. */
+	static final class Geo {
+		final int w;
+		final int h;
+		final float x;
+		final float y;
+		final int ord;
+
+		Geo(int w, int h, float x, float y, int ord) {
+			this.w = w;
+			this.h = h;
+			this.x = x;
+			this.y = y;
+			this.ord = ord;
+		}
+	}
+
 	private final List<Cell> cells = new ArrayList<>();
+	/** The arrangement the cells are laid out in now ("down", "side" or "free"); null until one is shown. */
+	@Nullable
+	private String layout;
 	private long nextCell = 1;
 	private long nextItem = 1;
 	/** What was last written, to tell our own saves from a reset made elsewhere. */
@@ -115,12 +141,23 @@ public final class HomeModel {
 		try {
 			JSONObject root = new JSONObject(json);
 			JSONArray arr = root.getJSONArray("cells");
+			layout = root.optString("layout", null);
 			for (int i = 0; i < arr.length(); i++) {
 				JSONObject o = arr.getJSONObject(i);
 				Cell c = new Cell(o.getLong("id"), o.getInt("w"), o.getInt("h"));
 				c.top = o.optInt("top", 0);
 				c.x = (float) o.optDouble("x", -1);
 				c.y = (float) o.optDouble("y", -1);
+				JSONObject g = o.optJSONObject("g");
+				if (g != null) {
+					Iterator<String> keys = g.keys();
+					while (keys.hasNext()) {
+						String key = keys.next();
+						JSONObject go = g.getJSONObject(key);
+						c.geo.put(key, new Geo(go.getInt("w"), go.getInt("h"), (float) go.optDouble("x", -1),
+								(float) go.optDouble("y", -1), go.optInt("ord", 0)));
+					}
+				}
 				JSONArray items = o.getJSONArray("items");
 				for (int j = 0; j < items.length(); j++) {
 					JSONObject io = items.getJSONObject(j);
@@ -251,9 +288,48 @@ public final class HomeModel {
 		App.get().getHandler().postDelayed(saveNow, SAVE_DELAY_MS);
 	}
 
+	/**
+	 * Shows the cards in arrangement {@code key}: each card takes the size and place it had in that
+	 * arrangement, and the order it had there. What the arrangement has not seen yet keeps its size.
+	 * @return whether it changed
+	 */
+	public boolean switchLayout(String key) {
+		if (key.equals(layout)) return false;
+		// What the cards are now is the arrangement it was in (an older layout has no name): kept for that one.
+		store((layout != null) ? layout : key);
+		layout = key;
+		for (Cell c : cells) {
+			Geo g = c.geo.get(key);
+			if (g != null) {
+				c.w = g.w;
+				c.h = g.h;
+				c.x = g.x;
+				c.y = g.y;
+			} else {
+				c.x = -1;
+				c.y = -1;
+			}
+		}
+		// Cards this arrangement has not placed yet go after the ones it has, in their current order.
+		cells.sort(Comparator.comparingInt(c -> {
+			Geo g = c.geo.get(key);
+			return (g == null) ? Integer.MAX_VALUE : g.ord;
+		}));
+		return true;
+	}
+
+	/** Keeps the cards' size, place and order as they are now for arrangement {@code key}. */
+	private void store(String key) {
+		for (int i = 0; i < cells.size(); i++) {
+			Cell c = cells.get(i);
+			c.geo.put(key, new Geo(c.w, c.h, c.x, c.y, i));
+		}
+	}
+
 	public void save() {
 		App.get().getHandler().removeCallbacks(saveNow);
 		try {
+			if (layout != null) store(layout);
 			JSONArray arr = new JSONArray();
 			for (Cell c : cells) {
 				JSONObject o = new JSONObject();
@@ -261,6 +337,19 @@ public final class HomeModel {
 				o.put("w", c.w);
 				o.put("h", c.h);
 				o.put("top", c.top);
+				if (!c.geo.isEmpty()) {
+					JSONObject g = new JSONObject();
+					for (Map.Entry<String, Geo> e : c.geo.entrySet()) {
+						JSONObject go = new JSONObject();
+						go.put("w", e.getValue().w);
+						go.put("h", e.getValue().h);
+						go.put("x", (double) e.getValue().x);
+						go.put("y", (double) e.getValue().y);
+						go.put("ord", e.getValue().ord);
+						g.put(e.getKey(), go);
+					}
+					o.put("g", g);
+				}
 				if (c.x >= 0) {
 					o.put("x", c.x);
 					o.put("y", c.y);
@@ -278,6 +367,7 @@ public final class HomeModel {
 			}
 			JSONObject root = new JSONObject();
 			root.put("v", 1);
+			if (layout != null) root.put("layout", layout);
 			root.put("cells", arr);
 			saved = root.toString();
 			prefs.applyStringPref(layoutPref(), saved);

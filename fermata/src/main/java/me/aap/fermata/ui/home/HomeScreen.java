@@ -592,6 +592,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			applyTopInfo();
 		}
 		if (changed.contains(MainActivityPrefs.HOME_BG_DIM)) bg.setDim(prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM));
+		if (changed.contains(MainActivityPrefs.HOME_BG_ZOOM)) bg.setZoom(prefs.getIntPref(MainActivityPrefs.HOME_BG_ZOOM));
 		if (changed.contains(MainActivityPrefs.HOME_BG_SOURCE)) {
 			applyBackgroundSource();
 		} else if (followsCover()) {
@@ -761,6 +762,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		grid.setViewportWidth(vertical ? 0 : w, vertical ? Float.NaN : sidewaysCentre());
 		grid.setArrangement(vertical, count, gap);
 		grid.setFreeform(mode == 3);
+		// Each arrangement keeps its own sizes, places and order (see HomeModel#switchLayout).
+		if (model.switchLayout(!down ? "side" : (mode == 3 ? "free" : "down"))) grid.sync();
 		grid.setSnap(prefs.getBooleanPref(car() ? MainActivityPrefs.HOME_SNAP_GRID_AA : MainActivityPrefs.HOME_SNAP_GRID));
 		applyHeaderRoom();
 	}
@@ -1147,6 +1150,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		int version = prefs.getIntPref(MainActivityPrefs.HOME_BG_VERSION);
 		int blur = prefs.getIntPref(MainActivityPrefs.HOME_BG_BLUR);
 		bg.setDim(prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM));
+		bg.setZoom(prefs.getIntPref(MainActivityPrefs.HOME_BG_ZOOM));
 		if ((version == bgVersion) && (blur == bgBlur)) return;
 		bgVersion = version;
 		bgBlur = blur;

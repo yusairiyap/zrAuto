@@ -249,6 +249,9 @@ public class HomeSettingsFragment extends ReorderListFragment {
 		addValueSliderRow(box, R.string.home_bg_dim, R.string.home_bg_dim_sub, 0, 80,
 				() -> p.getIntPref(MainActivityPrefs.HOME_BG_DIM), v -> p.applyIntPref(MainActivityPrefs.HOME_BG_DIM, v),
 				v -> getString(R.string.power_set_percent, v), null);
+		addValueSliderRow(box, R.string.home_bg_zoom, R.string.home_bg_zoom_sub, 100, 300,
+				() -> p.getIntPref(MainActivityPrefs.HOME_BG_ZOOM), v -> p.applyIntPref(MainActivityPrefs.HOME_BG_ZOOM, v),
+				v -> getString(R.string.power_set_percent, v), null);
 		addValueSliderRow(box, R.string.home_bg_blur, R.string.home_bg_blur_sub, 0, 100,
 				() -> p.getIntPref(MainActivityPrefs.HOME_BG_BLUR), v -> p.applyIntPref(MainActivityPrefs.HOME_BG_BLUR, v),
 				v -> (v == 0) ? getString(R.string.home_bg_blur_off) : getString(R.string.power_set_percent, v), null);

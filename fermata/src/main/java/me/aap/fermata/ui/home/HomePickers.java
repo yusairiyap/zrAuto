@@ -143,6 +143,9 @@ final class HomePickers {
 		EffectsUi.Row dim = EffectsUi.addRow(inf, box, R.string.home_bg_dim, 80, 5, v -> v + "%",
 				v -> prefs.applyIntPref(MainActivityPrefs.HOME_BG_DIM, v));
 		dim.set(Math.min(80, prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM)));
+		EffectsUi.Row zoom = EffectsUi.addRow(inf, box, R.string.home_bg_zoom, 300, 5, v -> Math.max(100, v) + "%",
+				v -> prefs.applyIntPref(MainActivityPrefs.HOME_BG_ZOOM, Math.max(100, v)));
+		zoom.set(Math.max(100, prefs.getIntPref(MainActivityPrefs.HOME_BG_ZOOM)));
 		EffectsUi.Row blur = EffectsUi.addRow(inf, box, R.string.home_bg_blur, 100, 5,
 				v -> (v == 0) ? ctx.getString(R.string.home_bg_blur_off) : v + "%",
 				v -> prefs.applyIntPref(MainActivityPrefs.HOME_BG_BLUR, v));

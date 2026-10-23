@@ -29,6 +29,7 @@ final class HomeBackgroundView extends View {
 	private Bitmap fading;
 	private float fadeIn = 1f;
 	private int dim = 35;
+	private float zoom = 1f;
 	private LinearGradient plain;
 	private LinearGradient top;
 	private LinearGradient bottom;
@@ -46,6 +47,12 @@ final class HomeBackgroundView extends View {
 
 	void setDim(int pct) {
 		dim = Math.max(0, Math.min(90, pct));
+		invalidate();
+	}
+
+	/** Zoomed in on the middle of the picture: {@code pct} of 100 (the picture fits the screen, as before). */
+	void setZoom(int pct) {
+		zoom = Math.max(100, Math.min(300, pct)) / 100f;
 		invalidate();
 	}
 
@@ -121,7 +128,7 @@ final class HomeBackgroundView extends View {
 
 	private void draw(Canvas c, Bitmap bm, int w, int h, float alpha) {
 		if (alpha <= 0f) return;
-		float s = Math.max((float) w / bm.getWidth(), (float) h / bm.getHeight());
+		float s = Math.max((float) w / bm.getWidth(), (float) h / bm.getHeight()) * zoom;
 		matrix.setScale(s, s);
 		matrix.postTranslate((w - bm.getWidth() * s) / 2f, (h - bm.getHeight() * s) / 2f);
 		paint.setAlpha(Math.round(255 * alpha));

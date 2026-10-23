@@ -348,7 +348,9 @@ final class HomeGridLayout extends ViewGroup {
 		float d = getResources().getDisplayMetrics().density;
 		float r = HomeWidgetView.CORNER_DP * d;
 		int step = unit + gap;
-		int cols = Math.max(1, (getWidth() - getPaddingLeft() - getPaddingRight() + gap) / step);
+		int avail = getWidth() - getPaddingLeft() - getPaddingRight();
+		int cols = Math.max(1, (avail + gap) / step);
+		int origin = freeOriginX(avail);
 		// One row past the last card, so there is room to drop it below the rest.
 		int rows = Math.max(1, (getHeight() - getPaddingTop() - getPaddingBottom() + gap) / step) + 1;
 		int accent = host.palette().accent;
@@ -358,7 +360,7 @@ final class HomeGridLayout extends ViewGroup {
 		RectF cell = new RectF();
 		for (int row = 0; row < rows; row++) {
 			for (int col = 0; col < cols; col++) {
-				float l = getPaddingLeft() + col * step;
+				float l = getPaddingLeft() + origin + col * step;
 				float t = getPaddingTop() + row * step;
 				cell.set(l, t, l + unit, t + unit);
 				canvas.drawRoundRect(cell, r, r, gridPaint);
@@ -383,13 +385,14 @@ final class HomeGridLayout extends ViewGroup {
 	/** Freeflow: where each card is, in pixels from the top left of the content (kept inside its width). */
 	private void placeFree(int avail) {
 		float density = getResources().getDisplayMetrics().density;
+		int origin = freeOriginX(avail);
 		slots.clear();
 		for (int i = 0; i < order.size(); i++) slots.add(null);
 		int bottom = 0;
 		for (int i = 0; i < order.size(); i++) {
 			HomeCellView c = order.get(i);
 			if (c.cell.x < 0) continue;
-			int x = Math.max(0, Math.min(Math.round(c.cell.x * density), avail - span(c.cw)));
+			int x = Math.max(0, Math.min(origin + Math.round(c.cell.x * density), avail - span(c.cw)));
 			int y = Math.max(0, Math.round(c.cell.y * density));
 			slots.set(i, new int[]{x, y});
 			bottom = Math.max(bottom, y + span(c.ch) + gap);
@@ -397,25 +400,38 @@ final class HomeGridLayout extends ViewGroup {
 		// The cards with no place yet go in a column below the rest, in their order.
 		for (int i = 0; i < order.size(); i++) {
 			if (slots.get(i) != null) continue;
-			slots.set(i, new int[]{0, bottom});
+			slots.set(i, new int[]{origin, bottom});
 			bottom += span(order.get(i).ch) + gap;
 		}
 	}
 
+	/**
+	 * Freeflow: where the block of columns that fits the page starts, so it sits centred across it, as
+	 * the scrolling grid's cards do. The cards' places are kept from this point.
+	 */
+	private int freeOriginX(int avail) {
+		int step = unit + gap;
+		int cols = Math.max(1, (avail + gap) / step);
+		int used = cols * unit + (cols - 1) * gap;
+		return Math.max(0, (avail - used) / 2);
+	}
+
 	/** Freeflow: a card let go stays where it was dropped, moved clear of the cards it would cover. */
 	private void dropFree(HomeCellView d) {
+		int avail = getWidth() - getPaddingLeft() - getPaddingRight();
+		int origin = freeOriginX(avail);
 		int left = d.getLeft() + Math.round(d.getTranslationX()) - getPaddingLeft();
 		int top = d.getTop() + Math.round(d.getTranslationY()) - getPaddingTop();
 		int step = unit + gap;
 		if (snap) {
-			// The nearest cell of the grid, then clear of the cards it would cover (on a row boundary again).
-			left = Math.max(0, Math.round((float) left / step)) * step;
+			// The nearest cell of the grid (the columns start at the origin), then clear of the cards it would cover.
+			left = origin + Math.round((float) (left - origin) / step) * step;
 			top = Math.max(0, Math.round((float) top / step)) * step;
 		}
 		int[] at = freeSpot(d, left, top);
 		if (snap) at[1] = ((at[1] + step - 1) / step) * step;
 		float density = getResources().getDisplayMetrics().density;
-		d.cell.x = at[0] / density;
+		d.cell.x = (at[0] - origin) / density;
 		d.cell.y = at[1] / density;
 		boolean moved = (getPaddingLeft() + at[0] != d.getLeft()) || (getPaddingTop() + at[1] != d.getTop());
 		// Moved: the layout glides it from where it was let go to its place. Not moved: back to rest.

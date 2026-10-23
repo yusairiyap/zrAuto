@@ -17,6 +17,7 @@
     <string name="home_options">Options</string>
     <string name="home_resize">Resize</string>
     <string name="home_unstack">Take out of the stack</string>
+    <string name="home_stack_pin">Stay on this widget</string>
     <string name="home_stacked">Stacked, %1$d widgets. Swipe it sideways to switch.</string>
     <string name="home_stack_prev">Previous widget</string>
     <string name="home_stack_next">Next widget</string>
@@ -34,6 +35,8 @@
     <string name="home_bg_remove">Remove</string>
     <string name="home_bg_dim">Darken</string>
     <string name="home_bg_blur">Blur</string>
+    <string name="home_bg_zoom">Zoom</string>
+    <string name="home_bg_zoom_sub">How far the picture is zoomed in</string>
     <string name="home_bg_blur_off">Off</string>
     <string name="home_bg_set">Background set</string>
     <string name="home_bg_failed">Could not use that picture: %1$s</string>

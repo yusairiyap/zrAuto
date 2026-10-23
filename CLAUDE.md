@@ -1127,3 +1127,27 @@ translated strings across many locales, **ask the user before proceeding** rathe
 - **Comments panel** shows views/likes from the `next` response (`YtComments#views/likes`, best effort).
 - **Download picker** shows sizes per quality (`DownloadsAddon#estimateSizes`, one player request per video,
   up to 10 videos).
+
+## Open issue: blank screen on a clean install (not solved)
+
+Symptom, reported on a phone after clearing the app's data (and on a fresh install): the window shows the
+status bar and the bars but no content, the welcome wizard does not appear, and the Diagnostic log cannot be
+opened because the screen stays blank. An earlier build from the same branch started normally, so this is
+the start path of a fresh install, not every start.
+
+What was already changed, each with a note in its commit:
+- `PoiAddon` asked for the location permission in its constructor, before the wizard (fixed; `Voyageur` asks when used).
+- `FuelTracker.start` asks for location at start-up (now skipped while `WelcomeWizard.isDue`).
+- `HomeScreen#onViewCreated` makes the page invisible for the quiet start, and `onShown` decided whether to fade
+  it in by asking `isInitialFragmentShow()` again, which could be false by then (the page stayed at alpha 0).
+  The fade is now decided once, at view creation, and always runs (`STATE home quiet start` in the log if
+  Home was not shown yet).
+
+Not yet checked: whether the Music tab or Home is the first fragment on a fresh install, whether
+`HomeScreen#onShown` ever runs before the quiet-start timer, and whether the welcome wizard's overlay is
+attached (`MainActivityDelegate#onActivityCreate` posts `WelcomeWizard.maybeShow` 1200 ms later).
+
+For the next session: the in-app Diagnostic log is only readable once the UI works, so the first step is to
+make the start path write to a file that survives a blank screen (for example the existing `DiagnosticLog`
+writing to the app's external files directory), or to add `DiagnosticLog` lines in `MainActivity#onCreate`
+and the Home/Music `onViewCreated` paths. Ask the user for that file, not for adb.

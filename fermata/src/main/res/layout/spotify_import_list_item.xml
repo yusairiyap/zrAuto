@@ -100,6 +100,10 @@
         style="@style/Widget.Material3.Button.TextButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="@string/spotify_import_search_more"
-        android:textColor="@color/spotify_import_button" />
+        android:contentDescription="@string/spotify_import_search_more"
+        android:minWidth="48dp"
+        app:icon="@drawable/search"
+        app:iconGravity="textStart"
+        app:iconPadding="0dp"
+        app:iconTint="@color/spotify_import_button" />
 </LinearLayout>
