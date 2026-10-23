@@ -112,10 +112,13 @@ public final class HomeModel {
 
 	/** Every arrangement's own cards (the one on screen is {@link #cells}; the others as they were last shown). */
 	private final Map<String, JSONArray> arrangements = new HashMap<>();
+	/** Each arrangement's background (dim, blur, zoom, quality, source) as it was when it was last left. */
+	private final Map<String, JSONObject> backgrounds = new HashMap<>();
 
 	private void load() {
 		cells.clear();
 		arrangements.clear();
+		backgrounds.clear();
 		String json = prefs.getStringPref(layoutPref());
 		saved = json;
 		if (json == null) {
@@ -134,6 +137,14 @@ public final class HomeModel {
 					arrangements.put(key, all.getJSONArray(key));
 				}
 			}
+			JSONObject bgs = root.optJSONObject("backgrounds");
+			if (bgs != null) {
+				Iterator<String> keys = bgs.keys();
+				while (keys.hasNext()) {
+					String key = keys.next();
+					backgrounds.put(key, bgs.getJSONObject(key));
+				}
+			}
 			JSONArray arr = ((layout != null) && arrangements.containsKey(layout)) ?
 					arrangements.get(layout) : root.getJSONArray("cells");
 			cells.addAll(parseCells(arr));
@@ -141,6 +152,7 @@ public final class HomeModel {
 			Log.e(ex, "Failed to read the Home layout");
 			cells.clear();
 			arrangements.clear();
+			backgrounds.clear();
 			defaults();
 		}
 	}
@@ -280,6 +292,41 @@ public final class HomeModel {
 		App.get().getHandler().postDelayed(saveNow, SAVE_DELAY_MS);
 	}
 
+	/** The arrangement on screen ("down-p" and so on), or null until one is shown. */
+	@Nullable
+	public String layoutKey() {
+		return layout;
+	}
+
+	/** Remembers the background set now (Settings > Home) as the one of the arrangement on screen. */
+	public void rememberBackground() {
+		if (layout == null) return;
+		JSONObject bg = new JSONObject();
+		try {
+			bg.put("dim", prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM));
+			bg.put("blur", prefs.getIntPref(MainActivityPrefs.HOME_BG_BLUR));
+			bg.put("zoom", prefs.getIntPref(MainActivityPrefs.HOME_BG_ZOOM));
+			bg.put("hq", prefs.getBooleanPref(MainActivityPrefs.HOME_BG_HQ));
+			bg.put("source", prefs.getIntPref(MainActivityPrefs.HOME_BG_SOURCE));
+		} catch (JSONException ex) {
+			Log.e(ex, "Failed to read the Home background");
+			return;
+		}
+		backgrounds.put(layout, bg);
+		saveLater();
+	}
+
+	/** Sets the background the arrangement on screen had when it was last left; one never left keeps the current. */
+	public void restoreBackground() {
+		JSONObject bg = (layout == null) ? null : backgrounds.get(layout);
+		if (bg == null) return;
+		prefs.applyIntPref(MainActivityPrefs.HOME_BG_DIM, bg.optInt("dim", 35));
+		prefs.applyIntPref(MainActivityPrefs.HOME_BG_BLUR, bg.optInt("blur", 0));
+		prefs.applyIntPref(MainActivityPrefs.HOME_BG_ZOOM, bg.optInt("zoom", 100));
+		prefs.applyBooleanPref(MainActivityPrefs.HOME_BG_HQ, bg.optBoolean("hq", false));
+		prefs.applyIntPref(MainActivityPrefs.HOME_BG_SOURCE, bg.optInt("source", 0));
+	}
+
 	/**
 	 * Shows the arrangement {@code key} (its own cards, sizes, places, stacks and widget settings). One not shown
 	 * before starts as the one on screen: a copy, so the two then change apart.
@@ -339,12 +386,15 @@ public final class HomeModel {
 			if (layout != null) arrangements.put(layout, now);
 			JSONObject all = new JSONObject();
 			for (Map.Entry<String, JSONArray> e : arrangements.entrySet()) all.put(e.getKey(), e.getValue());
+			JSONObject bgs = new JSONObject();
+			for (Map.Entry<String, JSONObject> e : backgrounds.entrySet()) bgs.put(e.getKey(), e.getValue());
 			JSONObject root = new JSONObject();
 			root.put("v", 2);
 			root.put("next", nextCell);
 			if (layout != null) root.put("layout", layout);
 			root.put("cells", now);
 			root.put("arrangements", all);
+			root.put("backgrounds", bgs);
 			saved = root.toString();
 			prefs.applyStringPref(layoutPref(), saved);
 		} catch (JSONException ex) {
