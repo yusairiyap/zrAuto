@@ -758,6 +758,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		grid.setViewportWidth(vertical ? 0 : w, vertical ? Float.NaN : sidewaysCentre());
 		grid.setArrangement(vertical, count, gap);
 		grid.setFreeform(mode == 3);
+		grid.setSnap(prefs.getBooleanPref(car() ? MainActivityPrefs.HOME_SNAP_GRID_AA : MainActivityPrefs.HOME_SNAP_GRID));
 		applyHeaderRoom();
 	}
 

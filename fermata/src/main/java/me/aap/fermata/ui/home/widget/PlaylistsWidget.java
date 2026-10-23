@@ -31,6 +31,11 @@ final class PlaylistsWidget extends LibraryWidget {
 	}
 
 	@Override
+	protected boolean supportsFullWidth() {
+		return true;
+	}
+
+	@Override
 	protected boolean supportsMenu() {
 		return true;
 	}

@@ -22,6 +22,11 @@ import me.aap.fermata.ui.home.HomeWidgetType;
 final class QueueWidget extends LibraryWidget {
 	private final FermataServiceUiBinder.Listener itemListener = new FermataServiceUiBinder.Listener() {
 		@Override
+	protected boolean supportsFullWidth() {
+		return true;
+	}
+
+	@Override
 		public void onPlayableChanged(PlayableItem oldItem, PlayableItem newItem) {
 			post(() -> refresh(true));
 		}

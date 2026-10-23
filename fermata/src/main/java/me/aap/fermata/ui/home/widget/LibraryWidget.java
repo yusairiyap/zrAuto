@@ -189,6 +189,11 @@ abstract class LibraryWidget extends HomeWidgetView {
 	}
 
 	/** Whether each row has a remove button on its left (the option "Remove button", on unless switched off). */
+	/** Whether the card can show its rows one per line across its whole width (an option). */
+	protected boolean supportsFullWidth() {
+		return false;
+	}
+
 	protected boolean supportsRemove() {
 		return false;
 	}
@@ -507,6 +512,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 			l.add(HomeOption.sw("handle", ctx.getString(R.string.home_opt_row_handle), true));
 		}
 		if (supportsRemove()) l.add(HomeOption.sw("remove", ctx.getString(R.string.home_opt_row_remove), true));
+		if (supportsFullWidth()) l.add(HomeOption.sw("full", ctx.getString(R.string.home_opt_row_full), false));
 		l.addAll(moreOptions());
 		return l;
 	}
@@ -601,7 +607,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 		if (!built) return;
 		updateBusy();
 		boolean none = rows.isEmpty();
-		int newCols = (getCellsW() >= 4) ? 2 : 1;
+		// Wide cards split their rows into two columns, unless the card asks for full-width rows.
+		int newCols = ((getCellsW() >= 4) && !(supportsFullWidth() && optBool("full", false))) ? 2 : 1;
 		boolean art = optBool("art", true);
 		int rowMode = (menuOn() ? 1 : 0) | (reorderOn() ? 2 : 0) | (removeOn() ? 4 : 0) | (handleOn() ? 8 : 0);
 		// Drawn again only when something it shows changed: the rows blinked on every refresh.

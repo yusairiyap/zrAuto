@@ -277,6 +277,11 @@ public class HomeSettingsFragment extends ReorderListFragment {
 				new int[]{R.string.home_arrange_auto, R.string.home_arrange_down, R.string.home_arrange_side,
 						R.string.home_arrange_free},
 				() -> p.getIntPref(arrange), i -> p.applyIntPref(arrange, i));
+		// Only for Freeflow (the row is greyed out in the other layouts).
+		Pref<BooleanSupplier> snap = aa ? MainActivityPrefs.HOME_SNAP_GRID_AA : MainActivityPrefs.HOME_SNAP_GRID;
+		addSwitchRow(box, R.string.home_pref_snap, R.string.home_pref_snap_sub,
+				() -> p.getBooleanPref(snap), on -> p.applyBooleanPref(snap, on),
+				() -> p.getIntPref(arrange) == 3);
 		addValueSliderRow(box, R.string.home_pref_columns, R.string.home_pref_columns_sub, 0, 8,
 				() -> p.getIntPref(columns), v -> p.applyIntPref(columns, v),
 				v -> (v == 0) ? getString(R.string.home_opt_auto) : String.valueOf(v), null);

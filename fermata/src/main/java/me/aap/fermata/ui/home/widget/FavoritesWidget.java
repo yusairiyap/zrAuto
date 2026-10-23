@@ -20,6 +20,11 @@ final class FavoritesWidget extends LibraryWidget {
 	}
 
 	@Override
+	protected boolean supportsFullWidth() {
+		return true;
+	}
+
+	@Override
 	protected int tabId() {
 		return R.id.favorites_fragment;
 	}

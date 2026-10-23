@@ -59,6 +59,9 @@ final class HomeGridLayout extends ViewGroup {
 	private int unit = 100;
 	/** Freeflow (scrolling down only): the cards keep the places they were dropped at, see placeFree(). */
 	private boolean freeform;
+	/** Freeflow: a card let go lands on the nearest cell of the grid. */
+	private boolean snap;
+	private final Paint gridPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 	private static final int FREE_UNIT_DP = 90;
 	/** Sideways: the width of the page it sits in, so cards that do not fill it are centred (0 = no such room). */
 	private int viewportW;
@@ -330,6 +333,36 @@ final class HomeGridLayout extends ViewGroup {
 		return freeform && vertical;
 	}
 
+	void setSnap(boolean on) {
+		snap = on;
+	}
+
+	/** Freeflow, while a card is held: the grid's cells behind everything, so it can be put where it fits. */
+	@Override
+	protected void onDraw(Canvas canvas) {
+		super.onDraw(canvas);
+		if ((dragging == null) || !free()) return;
+		float d = getResources().getDisplayMetrics().density;
+		float r = HomeWidgetView.CORNER_DP * d;
+		int step = unit + gap;
+		int cols = Math.max(1, (getWidth() - getPaddingLeft() - getPaddingRight() + gap) / step);
+		// One row past the last card, so there is room to drop it below the rest.
+		int rows = Math.max(1, (getHeight() - getPaddingTop() - getPaddingBottom() + gap) / step) + 1;
+		int accent = host.palette().accent;
+		gridPaint.setStyle(Paint.Style.STROKE);
+		gridPaint.setStrokeWidth(d);
+		gridPaint.setColor(HomeUi.alpha(accent, 0.35f));
+		RectF cell = new RectF();
+		for (int row = 0; row < rows; row++) {
+			for (int col = 0; col < cols; col++) {
+				float l = getPaddingLeft() + col * step;
+				float t = getPaddingTop() + row * step;
+				cell.set(l, t, l + unit, t + unit);
+				canvas.drawRoundRect(cell, r, r, gridPaint);
+			}
+		}
+	}
+
 	/** Freeflow: a cell size that is the same everywhere, every card at its place, the page as tall as they reach. */
 	private void measureFree(int w, int padW, int padH) {
 		unit = HomeUi.dp(getContext(), FREE_UNIT_DP);
@@ -370,7 +403,14 @@ final class HomeGridLayout extends ViewGroup {
 	private void dropFree(HomeCellView d) {
 		int left = d.getLeft() + Math.round(d.getTranslationX()) - getPaddingLeft();
 		int top = d.getTop() + Math.round(d.getTranslationY()) - getPaddingTop();
+		int step = unit + gap;
+		if (snap) {
+			// The nearest cell of the grid, then clear of the cards it would cover (on a row boundary again).
+			left = Math.max(0, Math.round((float) left / step)) * step;
+			top = Math.max(0, Math.round((float) top / step)) * step;
+		}
 		int[] at = freeSpot(d, left, top);
+		if (snap) at[1] = ((at[1] + step - 1) / step) * step;
 		float density = getResources().getDisplayMetrics().density;
 		d.cell.x = at[0] / density;
 		d.cell.y = at[1] / density;
