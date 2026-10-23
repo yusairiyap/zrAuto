@@ -104,6 +104,8 @@ public interface MainActivityPrefs
 	Pref<IntSupplier> HOME_BG_BLUR = Pref.i("HOME_BG_BLUR", 0);
 	/** How far the Home picture is zoomed in on its middle, 100 (fits the screen) to 300. */
 	Pref<IntSupplier> HOME_BG_ZOOM = Pref.i("HOME_BG_ZOOM", 100);
+	/** The now-playing cover behind Home is the largest picture YouTube has, not the list's smaller copy. */
+	Pref<BooleanSupplier> HOME_BG_HQ = Pref.b("HOME_BG_HQ", false);
 	/** 0 the picked picture, 1 the cover of what plays (blurred, fading from song to song). */
 	Pref<IntSupplier> HOME_BG_SOURCE = Pref.i("HOME_BG_SOURCE", 0);
 	/** 0 solid, 1 glass, 2 colour: what a widget set to "Same as Home" looks like. */

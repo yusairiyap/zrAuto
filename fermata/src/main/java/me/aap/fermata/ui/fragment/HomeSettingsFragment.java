@@ -241,6 +241,9 @@ public class HomeSettingsFragment extends ReorderListFragment {
 				v -> getString(R.string.power_set_percent, v), null);
 
 		section(box, R.string.home_sec_background);
+		addSwitchRow(box, R.string.home_pref_bg_hq, R.string.home_pref_bg_hq_sub,
+				() -> p.getBooleanPref(MainActivityPrefs.HOME_BG_HQ),
+				on -> p.applyBooleanPref(MainActivityPrefs.HOME_BG_HQ, on), null);
 		addChoiceRow(box, R.string.home_pref_bg_source, R.string.home_pref_bg_source_sub,
 				new int[]{R.string.home_bg_source_picture, R.string.home_bg_source_cover},
 				() -> p.getIntPref(MainActivityPrefs.HOME_BG_SOURCE),

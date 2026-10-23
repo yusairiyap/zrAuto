@@ -4,6 +4,7 @@ import android.graphics.Bitmap;
 
 import androidx.annotation.Nullable;
 
+import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -94,7 +95,7 @@ final class HomeNowPlayingBg {
 		}
 		pi.getMediaData().main().onCompletion((md, err) -> {
 			if (gen != generation) return;
-			HomeArt.cover(a, pi, md, () -> gen == generation, bm -> {
+			HomeArt.cover(a, pi, md, a.getPrefs().getBooleanPref(MainActivityPrefs.HOME_BG_HQ), () -> gen == generation, bm -> {
 				if (gen != generation) return;
 				if (bm == null) {
 					target.onCover(null, 0);
