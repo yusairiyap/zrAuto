@@ -60,6 +60,7 @@ import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ytcomments.YtComments;
 import me.aap.fermata.ytcomments.YtComments.Comment;
 import me.aap.fermata.ytcomments.YtComments.Page;
+import me.aap.fermata.ytcomments.YtStats;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.utils.log.Log;
 
@@ -1505,27 +1506,9 @@ public final class YoutubeCommentsView {
 	private void setStats(long views, long likes) {
 		if (statsLine == null) return;
 		android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder();
-		if (views >= 0) appendStat(sb, R.drawable.visibility, YtComments.shortCount(views));
-		if (likes >= 0) appendStat(sb, R.drawable.thumb_up, YtComments.shortCount(likes));
+		YtStats.appendStats(sb, ctx, statsLine.getTextSize(), statsLine.getCurrentTextColor(), views, likes);
 		statsLine.setText(sb);
 		statsLine.setVisibility((sb.length() == 0) ? View.GONE : View.VISIBLE);
-	}
-
-	private void appendStat(android.text.SpannableStringBuilder sb, int icon, String value) {
-		android.graphics.drawable.Drawable d = androidx.core.content.ContextCompat.getDrawable(ctx, icon);
-		if (sb.length() > 0) sb.append("    ");
-		if (d != null) {
-			d = d.mutate();
-			int size = Math.round(statsLine.getTextSize() * 1.1f);
-			d.setBounds(0, 0, size, size);
-			d.setTint(statsLine.getCurrentTextColor());
-			int at = sb.length();
-			sb.append("\u00a0");
-			sb.setSpan(new android.text.style.ImageSpan(d, android.text.style.DynamicDrawableSpan.ALIGN_BOTTOM),
-					at, at + 1, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-			sb.append(' ');
-		}
-		sb.append(value);
 	}
 
 	private TextView text(String s, float sp, int color, boolean bold) {

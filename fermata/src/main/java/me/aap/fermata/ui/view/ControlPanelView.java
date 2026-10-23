@@ -59,6 +59,8 @@ import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.fragment.MusicPlayerFragment;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.ytcomments.YtStats;
+import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.function.BooleanSupplier;
 import me.aap.utils.function.DoubleSupplier;
@@ -1310,6 +1312,11 @@ public class ControlPanelView extends ConstraintLayout
 		FermataServiceUiBinder b = getActivity().getMediaServiceBinder();
 		CharSequence[] t = titleOf(b.getMetadata(), b.getCurrentItem());
 		c.setTitle(t[0], t[1]);
+		// A YouTube video's views and likes, read once in the background (then this runs again).
+		String videoId = YtDownloads.videoIdOf(Action.getFavoritableItem(getActivity()));
+		long[] stats = (videoId == null) ? null : YtStats.cached(videoId);
+		if ((videoId != null) && (stats == null)) YtStats.load(videoId, this::syncVideoControls);
+		c.setStats((stats == null) ? -1 : stats[0], (stats == null) ? -1 : stats[1]);
 		MediaSessionCallback cb = b.getMediaSessionCallback();
 		c.setSkipAvailable(!cb.isAtListStart(), !cb.isAtListEnd());
 	}
