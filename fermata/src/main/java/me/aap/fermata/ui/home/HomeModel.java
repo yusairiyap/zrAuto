@@ -41,6 +41,9 @@ public final class HomeModel {
 		public int w;
 		public int h;
 		public int top;
+		/** Freeflow: where the card was put, in dp from the page's top left; -1 until it has a place. */
+		public float x = -1;
+		public float y = -1;
 		public final List<Item> items = new ArrayList<>();
 
 		Cell(long id, int w, int h) {
@@ -116,6 +119,8 @@ public final class HomeModel {
 				JSONObject o = arr.getJSONObject(i);
 				Cell c = new Cell(o.getLong("id"), o.getInt("w"), o.getInt("h"));
 				c.top = o.optInt("top", 0);
+				c.x = (float) o.optDouble("x", -1);
+				c.y = (float) o.optDouble("y", -1);
 				JSONArray items = o.getJSONArray("items");
 				for (int j = 0; j < items.length(); j++) {
 					JSONObject io = items.getJSONObject(j);
@@ -256,6 +261,10 @@ public final class HomeModel {
 				o.put("w", c.w);
 				o.put("h", c.h);
 				o.put("top", c.top);
+				if (c.x >= 0) {
+					o.put("x", c.x);
+					o.put("y", c.y);
+				}
 				JSONArray items = new JSONArray();
 				for (Item it : c.items) {
 					JSONObject io = new JSONObject();

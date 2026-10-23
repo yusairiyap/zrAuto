@@ -57,6 +57,9 @@ final class HomeGridLayout extends ViewGroup {
 	private int cross = 4;
 	private int gap;
 	private int unit = 100;
+	/** Freeflow (scrolling down only): the cards keep the places they were dropped at, see placeFree(). */
+	private boolean freeform;
+	private static final int FREE_UNIT_DP = 90;
 	private boolean editing;
 	@Nullable
 	private ViewGroup scroller;
@@ -294,6 +297,96 @@ final class HomeGridLayout extends ViewGroup {
 	// ---------------------------------------------------------------------------------------------
 	// Layout
 
+	void setFreeform(boolean on) {
+		if (freeform == on) return;
+		freeform = on;
+		lastCross = 0;
+		requestLayout();
+	}
+
+	private boolean free() {
+		return freeform && vertical;
+	}
+
+	/** Freeflow: a cell size that is the same everywhere, every card at its place, the page as tall as they reach. */
+	private void measureFree(int w, int padW, int padH) {
+		unit = HomeUi.dp(getContext(), FREE_UNIT_DP);
+		placeFree(w - padW);
+		int bottom = 0;
+		for (int i = 0; i < order.size(); i++) {
+			HomeCellView c = order.get(i);
+			c.measure(MeasureSpec.makeMeasureSpec(span(c.cw), MeasureSpec.EXACTLY),
+					MeasureSpec.makeMeasureSpec(span(c.ch), MeasureSpec.EXACTLY));
+			bottom = Math.max(bottom, slots.get(i)[1] + span(c.ch));
+		}
+		setMeasuredDimension(w, bottom + padH);
+	}
+
+	/** Freeflow: where each card is, in pixels from the top left of the content (kept inside its width). */
+	private void placeFree(int avail) {
+		float density = getResources().getDisplayMetrics().density;
+		slots.clear();
+		for (int i = 0; i < order.size(); i++) slots.add(null);
+		int bottom = 0;
+		for (int i = 0; i < order.size(); i++) {
+			HomeCellView c = order.get(i);
+			if (c.cell.x < 0) continue;
+			int x = Math.max(0, Math.min(Math.round(c.cell.x * density), avail - span(c.cw)));
+			int y = Math.max(0, Math.round(c.cell.y * density));
+			slots.set(i, new int[]{x, y});
+			bottom = Math.max(bottom, y + span(c.ch) + gap);
+		}
+		// The cards with no place yet go in a column below the rest, in their order.
+		for (int i = 0; i < order.size(); i++) {
+			if (slots.get(i) != null) continue;
+			slots.set(i, new int[]{0, bottom});
+			bottom += span(order.get(i).ch) + gap;
+		}
+	}
+
+	/** Freeflow: a card let go stays where it was dropped, moved clear of the cards it would cover. */
+	private void dropFree(HomeCellView d) {
+		int left = d.getLeft() + Math.round(d.getTranslationX()) - getPaddingLeft();
+		int top = d.getTop() + Math.round(d.getTranslationY()) - getPaddingTop();
+		int[] at = freeSpot(d, left, top);
+		float density = getResources().getDisplayMetrics().density;
+		d.cell.x = at[0] / density;
+		d.cell.y = at[1] / density;
+		boolean moved = (getPaddingLeft() + at[0] != d.getLeft()) || (getPaddingTop() + at[1] != d.getTop());
+		// Moved: the layout glides it from where it was let go to its place. Not moved: back to rest.
+		if (!moved) d.animate().translationX(0f).translationY(0f).setDuration(220)
+				.setInterpolator(new DecelerateInterpolator(1.5f)).start();
+		changed();
+		requestLayout();
+	}
+
+	/** Where {@code d} can be put with its top left near (x, y): pushed down past any card it would cover. */
+	private int[] freeSpot(HomeCellView d, int x, int y) {
+		int w = span(d.cw);
+		int h = span(d.ch);
+		int avail = getWidth() - getPaddingLeft() - getPaddingRight();
+		x = Math.max(0, Math.min(x, avail - w));
+		y = Math.max(0, y);
+		// Each card can push it past itself only once, so this ends.
+		for (int guard = 0; guard <= order.size(); guard++) {
+			boolean covered = false;
+			for (int i = 0; i < order.size() && !covered; i++) {
+				HomeCellView o = order.get(i);
+				if (o == d) continue;
+				int[] os = slots.get(i);
+				int ow = span(o.cw);
+				int oh = span(o.ch);
+				if ((x < os[0] + ow + gap) && (os[0] < x + w + gap) &&
+						(y < os[1] + oh + gap) && (os[1] < y + h + gap)) {
+					y = os[1] + oh + gap;
+					covered = true;
+				}
+			}
+			if (!covered) break;
+		}
+		return new int[]{x, y};
+	}
+
 	private void pack() {
 		slots.clear();
 		occupied.clear();
@@ -342,6 +435,10 @@ final class HomeGridLayout extends ViewGroup {
 		int hMode = MeasureSpec.getMode(hSpec);
 		int padW = getPaddingLeft() + getPaddingRight();
 		int padH = getPaddingTop() + getPaddingBottom();
+		if (free()) {
+			measureFree(w, padW, padH);
+			return;
+		}
 		if (vertical) {
 			unit = Math.max(1, (w - padW - gap * (cross - 1)) / cross);
 		} else if (hMode == MeasureSpec.UNSPECIFIED) {
@@ -375,8 +472,8 @@ final class HomeGridLayout extends ViewGroup {
 		for (int i = 0; i < order.size(); i++) {
 			HomeCellView c = order.get(i);
 			int[] at = slots.get(i);
-			int x = getPaddingLeft() + (vertical ? at[1] : at[0]) * (unit + gap);
-			int y = getPaddingTop() + (vertical ? at[0] : at[1]) * (unit + gap);
+			int x = getPaddingLeft() + (free() ? at[0] : (vertical ? at[1] : at[0]) * (unit + gap));
+			int y = getPaddingTop() + (free() ? at[1] : (vertical ? at[0] : at[1]) * (unit + gap));
 			boolean had = c.getWidth() > 0;
 			int oldL = c.getLeft();
 			int oldT = c.getTop();
@@ -472,6 +569,13 @@ final class HomeGridLayout extends ViewGroup {
 		float gy = rawY - loc[1];
 
 		HomeCellView hit = cellAt(gx, gy, d);
+		if (free()) {
+			// Freeflow: nothing makes way; only the middle of a same-size card takes it as a stack.
+			setStackTarget((hit != null) && canStack(d, hit) && inCenter(hit, gx, gy) ? hit : null);
+			hoverCell = null;
+			startAutoScroll();
+			return;
+		}
 		long now = SystemClock.uptimeMillis();
 		if (hit != null) {
 			boolean stackable = canStack(d, hit);
@@ -604,6 +708,10 @@ final class HomeGridLayout extends ViewGroup {
 		d.setLifted(false);
 		if ((target != null) && !cancel) {
 			mergeInto(target, d);
+			return;
+		}
+		if (free() && !cancel) {
+			dropFree(d);
 			return;
 		}
 		d.animate().translationX(0f).translationY(0f).setDuration(220)

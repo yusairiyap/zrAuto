@@ -189,6 +189,7 @@
     <string name="home_arrange_auto">By the screen\'s shape</string>
     <string name="home_arrange_down">Scroll down</string>
     <string name="home_arrange_side">Scroll sideways</string>
+    <string name="home_arrange_free">Freeflow</string>
     <string name="home_pref_columns">Widgets across</string>
     <string name="home_pref_columns_sub">How many units fit across (down, when scrolling sideways); 0 fits the screen</string>
     <string name="home_pref_gap">Space between widgets</string>

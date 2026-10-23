@@ -652,7 +652,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		float d = ctx.getResources().getDisplayMetrics().density;
 		int mode = prefs.getIntPref(car() ? MainActivityPrefs.HOME_ARRANGE_AA : MainActivityPrefs.HOME_ARRANGE);
 		boolean landscape = w > h;
-		boolean down = (mode == 1) || ((mode == 0) && !(landscape && ((h / d) < 600)));
+		// Freeflow (3) scrolls down too, its cards keep the places they were dropped at.
+		boolean down = (mode == 1) || (mode == 3) || ((mode == 0) && !(landscape && ((h / d) < 600)));
 		int count = prefs.getIntPref(car() ? MainActivityPrefs.HOME_COLUMNS_AA : MainActivityPrefs.HOME_COLUMNS);
 		if (count <= 0) {
 			count = down ? Math.max(4, Math.min(8, (int) (w / d / 90f))) : Math.max(2, Math.min(5, (int) (h / d / 105f)));
@@ -665,6 +666,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		if (vertical) grid.setPadding(side, 0, side, HomeUi.dp(ctx, 16));
 		else grid.setPadding(side, HomeUi.dp(ctx, 58), side, HomeUi.dp(ctx, 8));
 		grid.setArrangement(vertical, count, gap);
+		grid.setFreeform(mode == 3);
 		applyGreeting();
 	}
 

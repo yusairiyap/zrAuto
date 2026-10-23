@@ -270,7 +270,8 @@ public class HomeSettingsFragment extends ReorderListFragment {
 
 		section(box, R.string.home_sec_layout);
 		addChoiceRow(box, R.string.home_pref_arrange, R.string.home_pref_arrange_sub,
-				new int[]{R.string.home_arrange_auto, R.string.home_arrange_down, R.string.home_arrange_side},
+				new int[]{R.string.home_arrange_auto, R.string.home_arrange_down, R.string.home_arrange_side,
+						R.string.home_arrange_free},
 				() -> p.getIntPref(arrange), i -> p.applyIntPref(arrange, i));
 		addValueSliderRow(box, R.string.home_pref_columns, R.string.home_pref_columns_sub, 0, 8,
 				() -> p.getIntPref(columns), v -> p.applyIntPref(columns, v),
