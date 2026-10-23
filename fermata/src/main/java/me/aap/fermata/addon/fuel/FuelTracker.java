@@ -18,6 +18,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.welcome.WelcomeWizard;
 import me.aap.utils.log.Log;
 import me.aap.utils.pref.PreferenceStore;
 
@@ -95,6 +96,12 @@ public class FuelTracker implements LocationListener {
 		// The request is still worth making (it's the phone UI's chance to actually grant it); its
 		// outcome just isn't what decides anything -- checkConnection() re-reads the real granted
 		// state from the package manager on every poll.
+		// A fresh install goes through the welcome wizard first: the location dialog waits for the next
+		// start, so it doesn't cover the wizard (the connection is read as it is, see checkConnection).
+		if (WelcomeWizard.isDue(a)) {
+			checkConnection();
+			return;
+		}
 		a.getAppActivity().checkPermissions(ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION)
 				.onCompletion((result, fail) -> checkConnection());
 	}
