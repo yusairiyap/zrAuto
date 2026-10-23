@@ -100,6 +100,9 @@ final class HomeGridLayout extends ViewGroup {
 	// Resizing: the handle is dragged, a dashed outline shows the size it would give, and the
 	// widget takes that size when the finger lets go.
 	private int startW;
+	/** The size the card was asked for: kept whole, so a narrower layout can show it smaller and a wider one again full. */
+	private int wantCw;
+	private int wantCh;
 	private int startH;
 	private float resizeRawX;
 	private float resizeRawY;
@@ -612,6 +615,7 @@ final class HomeGridLayout extends ViewGroup {
 	void beginDrag(HomeCellView c, float rawX, float rawY) {
 		if (!editing) listener.onEditRequested();
 		dragging = c;
+		invalidate();
 		lastHit = null;
 		stackTarget = null;
 		orderChanged = false;
@@ -766,6 +770,7 @@ final class HomeGridLayout extends ViewGroup {
 		HomeCellView d = dragging;
 		if (d == null) return;
 		dragging = null;
+		invalidate();
 		hoverCell = null;
 		removeCallbacks(dwellCheck);
 		stopAutoScroll();
@@ -854,8 +859,10 @@ final class HomeGridLayout extends ViewGroup {
 	// Resizing
 
 	void startResize(HomeCellView c, float rawX, float rawY) {
-		startW = c.cw;
-		startH = c.ch;
+		startW = c.cell.w;
+		wantCw = c.cell.w;
+		wantCh = c.cell.h;
+		startH = c.cell.h;
 		resizeRawX = rawX;
 		resizeRawY = rawY;
 		hintFor = c;
@@ -876,6 +883,8 @@ final class HomeGridLayout extends ViewGroup {
 		int nh = startH + Math.round((rawY - resizeRawY) / step);
 		nw = Math.max(c.minW(), Math.min(nw, c.maxW()));
 		nh = Math.max(c.minH(), Math.min(nh, c.maxH()));
+		wantCw = Math.max(1, nw);
+		wantCh = Math.max(1, nh);
 		if (vertical) nw = Math.min(nw, cross);
 		else nh = Math.min(nh, cross);
 		nw = Math.max(1, nw);
@@ -920,10 +929,11 @@ final class HomeGridLayout extends ViewGroup {
 		c.showBadge(null);
 		c.resetHandle();
 		c.setLifted(false);
-		if ((hintCw != c.cw) || (hintCh != c.ch)) {
-			c.cell.w = hintCw;
-			c.cell.h = hintCh;
-			c.growOnNextSize();
+		if ((wantCw != c.cell.w) || (wantCh != c.cell.h)) {
+			if ((hintCw != c.cw) || (hintCh != c.ch)) c.growOnNextSize();
+			// The size asked for is kept; the layout shows it as far as its columns allow.
+			c.cell.w = wantCw;
+			c.cell.h = wantCh;
 			c.setEffectiveSize(hintCw, hintCh);
 			requestLayout();
 			changed();

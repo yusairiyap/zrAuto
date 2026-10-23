@@ -380,8 +380,9 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			grid.playEntrance();
 			greeting.animate().alpha(1f).setDuration(380).setInterpolator(new DecelerateInterpolator(1.8f)).start();
 		};
-		// Only on the very first screen: a tab restored hidden and shown later fades in with the tab switch as usual.
-		boolean first = quiet && a.isInitialFragmentShow();
+		// Decided when the view was made (see onViewCreated): it set the page invisible then, so it must fade in
+		// now. Asking isInitialFragmentShow() here instead left the page blank whenever this ran after the switch.
+		boolean first = quiet;
 		quiet = false;
 		if (first) {
 			if (!animate()) {
@@ -569,7 +570,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		}
 		if (changed.contains(MainActivityPrefs.HOME_ARRANGE) || changed.contains(MainActivityPrefs.HOME_COLUMNS) ||
 				changed.contains(MainActivityPrefs.HOME_GAP) || changed.contains(MainActivityPrefs.HOME_ARRANGE_AA) ||
-				changed.contains(MainActivityPrefs.HOME_COLUMNS_AA) || changed.contains(MainActivityPrefs.HOME_GAP_AA)) {
+				changed.contains(MainActivityPrefs.HOME_COLUMNS_AA) || changed.contains(MainActivityPrefs.HOME_GAP_AA) ||
+				changed.contains(MainActivityPrefs.HOME_SNAP_GRID) || changed.contains(MainActivityPrefs.HOME_SNAP_GRID_AA)) {
 			applyArrangement();
 		}
 		if (changed.contains(MainActivityPrefs.HOME_CARD_STYLE)) grid.restyle();

@@ -1119,7 +1119,8 @@ public final class YoutubeCommentsView {
 		if (ime) kb = Math.max(kb, wi.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime()).bottom);
 		// Anything small is just the system navigation bar.
 		if (!ime && (kb < ovH * 0.15f)) kb = 0;
-		boolean typing = (kb > 0) || ime;
+		// The search line's keyboard does not move the card: its header would be pushed out of sight.
+		boolean typing = ((kb > 0) || ime) && !searchOpen();
 		// A window already shrunk for the keyboard has made room for it: only the rest is ours.
 		int lift = Math.max(0, kb - Math.max(0, openHeight - ovH));
 		int gravity;

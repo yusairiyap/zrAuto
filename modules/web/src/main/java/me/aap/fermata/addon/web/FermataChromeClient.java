@@ -132,6 +132,9 @@ public class FermataChromeClient extends WebChromeClient {
 	@Override
 	public void onHideCustomView() {
 		if (customViewCallback == null) return;
+		// Back (the system hides the page's fullscreen view for it) with the comments beside the video:
+		// they close, search first, and the video stays fullscreen.
+		if (me.aap.fermata.ui.view.YoutubeCommentsView.dismissOpen()) return;
 		touchStamp = 0;
 		MainActivityDelegate a = MainActivityDelegate.get(customView.getContext());
 		View removed = customView;
