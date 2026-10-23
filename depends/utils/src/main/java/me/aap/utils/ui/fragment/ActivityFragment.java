@@ -33,6 +33,22 @@ public abstract class ActivityFragment extends Fragment {
 		return FloatingButton.Mediator.Back.instance;
 	}
 
+	/**
+	 * How long the crossfade into this tab lasts when it is switched to (the tab it replaces fades out in the same
+	 * time at most). A tab that is mostly background (Home) wants it short, or the old tab shows through it.
+	 */
+	public long getFadeInMillis() {
+		return 200L;
+	}
+
+	/**
+	 * How long the tab it replaces fades out alone before this one starts to fade in (0: they cross, the default). A tab
+	 * that is mostly background (Home) fades in only once the old one is gone, or the old tab shows through it.
+	 */
+	public long getFadeInDelayMillis() {
+		return 0L;
+	}
+
 	public boolean isRootPage() {
 		return true;
 	}

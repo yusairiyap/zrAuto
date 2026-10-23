@@ -466,17 +466,6 @@ public class MainActivityDelegate extends ActivityDelegate
 		b.getMediaSessionCallback().addAssistant(this, isCarActivityNotMirror() ? 0 : 1);
 		if (b.getCurrentItem() == null) b.getMediaSessionCallback().onPrepare();
 		init();
-		// A cold start that goes to Home: nothing of the bars shows (empty) before Home is ready, then it all fades in.
-		// Only now: the layout is inflated by init(), before that there is no window content to hide.
-		// Also the first screen after the process was killed and came back through the recent apps (saved state, Home).
-		boolean coldProcess = firstUiCreate;
-		firstUiCreate = false;
-		boolean startsOnHome = (state == null) && (getPrefs().getShowAddonOnStartPref() == null) &&
-				getPrefs().getBooleanPref(MainActivityPrefs.HOME_OPEN_ON_START) &&
-				((intent == null) || Intent.ACTION_MAIN.equals(intent.getAction()));
-		boolean restoredHome = (state != null) && coldProcess && (state.getInt("fragmentId", ID_NULL) == R.id.home_fragment);
-		if (!isCarActivity() && (startsOnHome || restoredHome)) veilStartup();
-
 		for (FermataAddon addon : AddonManager.get().getAddons()) {
 			if (addon instanceof FermataActivityAddon)
 				((FermataActivityAddon) addon).onActivityCreate(this);
@@ -574,71 +563,6 @@ public class MainActivityDelegate extends ActivityDelegate
 		}
 
 		return completed(false);
-	}
-
-	private boolean startupVeil;
-	private long veilLiftedAt;
-	private long veilAt;
-	/** True until the first activity of this process has been created. */
-	private static boolean firstUiCreate = true;
-
-	/** Hides the whole window content until {@link #liftStartupVeil} (or a safety delay), see onActivityCreate. */
-	private void veilStartup() {
-		View root = findViewById(R.id.main_activity);
-		if (root == null) {
-			DiagnosticLog.log("STATE", "start-up veil", "no window content yet");
-			return;
-		}
-		startupVeil = true;
-		veilAt = SystemClock.uptimeMillis();
-		root.setAlpha(0f);
-		DiagnosticLog.log("STATE", "start-up veil", "on");
-		postDelayed(() -> liftStartupVeil(false), 2500);
-	}
-
-	/**
-	 * Brings the window content in with a fade once the first screen is laid out; harmless at any other time.
-	 *
-	 * @param homeShown Home itself is on screen (it has no title bar): the bar is gone before the first
-	 *                  visible frame, not faded away in it. False is the safety delay, when nothing came.
-	 */
-	public void liftStartupVeil(boolean homeShown) {
-		if (!startupVeil) return;
-		if (homeShown && (toolBar != null)) {
-			toolBar.animate().cancel();
-			toolBar.setVisibility(View.GONE);
-			toolBar.setAlpha(1f);
-		}
-		// Home covers the control panel with a fade: the content is not shown while that bar is still on its way out
-		// (an empty panel and nav bar showing for a moment is what the veil is for).
-		long waited = SystemClock.uptimeMillis() - veilAt;
-		if (homeShown && (waited < 700) && !startupSettled()) {
-			postDelayed(() -> liftStartupVeil(true), 40);
-			return;
-		}
-		startupVeil = false;
-		veilLiftedAt = SystemClock.uptimeMillis();
-		View root = findViewById(R.id.main_activity);
-		if (root == null) return;
-		DiagnosticLog.log("STATE", "start-up veil", (homeShown ? "lifted by Home" : "lifted by the safety delay") +
-				" after " + waited + " ms, tool bar " + (toolBar == null ? "none" : toolBar.getVisibility()) +
-				", control panel " + (controlPanel == null ? "none" : controlPanel.getVisibility() + "/" + controlPanel.getAlpha()) +
-				", nav bar " + (navBar == null ? "none" : navBar.getVisibility() + "/" + navBar.getChildCount()));
-		root.animate().cancel();
-		root.animate().alpha(1f).setDuration(280).start();
-	}
-
-	/** Nothing of the bars Home hides is still showing (or fading out). */
-	private boolean startupSettled() {
-		boolean tool = (toolBar == null) || (toolBar.getVisibility() != View.VISIBLE);
-		boolean panel = (controlPanel == null) || (controlPanel.getVisibility() != View.VISIBLE) ||
-				(controlPanel.getAlpha() < 0.02f);
-		return tool && panel;
-	}
-
-	/** Still behind the start-up veil, or only just out of it (the screen is still settling). */
-	public boolean isStartupVeil() {
-		return startupVeil || ((veilLiftedAt != 0) && ((SystemClock.uptimeMillis() - veilLiftedAt) < 1000));
 	}
 
 	private void defaultIntent() {
@@ -2313,7 +2237,14 @@ public class MainActivityDelegate extends ActivityDelegate
 				FLAG_KEEP_SCREEN_ON | FLAG_TURN_SCREEN_ON | FLAG_DISMISS_KEYGUARD | FLAG_SHOW_WHEN_LOCKED;
 		var app = FermataApplication.get();
 		if (!app.isMirroringMode()) {
-			if (clearFlags) getWindow().clearFlags(screenOnFlags);
+			if (clearFlags) {
+				// Coming back to the app (the shade, the lock screen, another app, Android Auto) clears the flags that only
+				// mirroring needs; keeping the screen awake for a fullscreen video is not one of them, or the screen dimmed
+				// and went off a minute or two into a video after any such return.
+				int f = screenOnFlags;
+				if (videoMode) f &= ~FLAG_KEEP_SCREEN_ON;
+				getWindow().clearFlags(f);
+			}
 			return false;
 		}
 		setFullScreen(true);
@@ -2325,6 +2256,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	public void keepScreenOn(boolean on) {
+		DiagnosticLog.log("STATE", "keep screen on", String.valueOf(on));
 		if (on) getWindow().addFlags(FLAG_KEEP_SCREEN_ON);
 		else getWindow().clearFlags(FLAG_KEEP_SCREEN_ON);
 	}
@@ -3325,18 +3257,28 @@ public class MainActivityDelegate extends ActivityDelegate
 			pipSuppressed = false;
 			// Back to where the Music tab keeps them away by itself (fullscreen video keeps its own
 			// bars hidden: unsuppressing does not show them).
-			setOverlaysSuppressed(getActiveFragment() instanceof MusicPlayerFragment);
+			setOverlaysSuppressed(keepsOverlaysAway(getActiveFragment()));
 		}
 	}
 
 	private void resyncOverlaysAfterSwitch() {
-		if ((getActiveFragment() instanceof MusicPlayerFragment) || isVideoMode() || pipSuppressed) return;
+		if (keepsOverlaysAway(getActiveFragment()) || isVideoMode() || pipSuppressed) return;
 		ControlPanelView cp = getControlPanel();
 		if ((cp != null) && cp.isSuppressed()) {
 			DiagnosticLog.log("STATE", "control panel still suppressed after a tab switch: restored");
 		}
 		setOverlaysSuppressed(false);
 		getMediaServiceBinder().resyncControlPanel();
+	}
+
+	/** The tabs with their own player UI (Music, Home): no control panel, floating buttons or loading spinner over them. */
+	private static boolean keepsOverlaysAway(@Nullable ActivityFragment f) {
+		return (f instanceof MusicPlayerFragment) || (f instanceof HomeFragment);
+	}
+
+	/** The tab being shown (already the new one while a switch runs) has its own player UI: Music or Home. */
+	public boolean activeKeepsOverlaysAway() {
+		return keepsOverlaysAway(getActiveFragment());
 	}
 
 	public void setOverlaysSuppressed(boolean suppressed) {
@@ -3353,22 +3295,11 @@ public class MainActivityDelegate extends ActivityDelegate
 		applyFabSuppression();
 	}
 
-	// See setOverlaysSuppressed() and setFabsHidden().
+	// See setOverlaysSuppressed().
 	private boolean overlaysSuppressed;
-	private boolean fabsHiddenByTab;
-
-	/**
-	 * The floating buttons stay away while the tab showing (Home) has no use for them, on top of
-	 * whatever setOverlaysSuppressed() decides: the control panel is handled apart (it fades).
-	 */
-	public void setFabsHidden(boolean hidden) {
-		if (fabsHiddenByTab == hidden) return;
-		fabsHiddenByTab = hidden;
-		applyFabSuppression();
-	}
 
 	private void applyFabSuppression() {
-		boolean suppressed = overlaysSuppressed || fabsHiddenByTab;
+		boolean suppressed = overlaysSuppressed;
 		// The primary one first: the others may mirror its visibility.
 		if (floatingButton != null) floatingButton.setSuppressed(suppressed);
 		if (floatingButton2 != null) floatingButton2.setSuppressed(suppressed);

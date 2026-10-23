@@ -483,9 +483,9 @@ what each widget shows is set on the widget (edit mode > its gear).
   Home" follows `HOME_CARD_STYLE`. Text/icon colours come from `color(ROLE_*)`; views made with `text()/icon()/iconButton()/
   chip()/header()` re-tint themselves when the look changes. Widgets that paint their whole card (media, ambience) override
   `ownBackground()` and stay white.
-- **Chrome that hides**: the tool bar fades out (`HomeFragment.HomeToolBarMediator`), the control panel is *covered*
-  (`ControlPanelView#setCovered`, the fade the YouTube search panel already uses, not suppressed, so the floating buttons stay),
-  the background runs under the status bar through `BehindBarsLayers` (Android 15+) and the status bar takes the picture's top
+- **Chrome that hides**: exactly as the Music tab does it (see the fifteenth round): the tool bar goes GONE and the control panel and
+  floating buttons are *suppressed* (`MainActivityDelegate#setOverlaysSuppressed`) at once, from `HomeFragment#switchingFrom`, before the switch
+  commits, never faded. The background runs under the status bar through `BehindBarsLayers` (Android 15+) and the status bar takes the picture's top
   colour before that (`HomeScreen#systemBars`, restored with `MainActivityDelegate#matchStatusBarToBackground`).
 - **Background**: `HomeBackground` copies the picked picture (system picker, no permission) to `files/home_bg.jpg`, shrunk to
   1600 px; `HOME_BG_VERSION` only says it changed. Blur is a small copy drawn large again (no RenderScript). Not in backups.
@@ -503,13 +503,13 @@ what each widget shows is set on the widget (edit mode > its gear).
 - **Real blur** is `HomeBlur.blur(bitmap, strength)` (box blur on a small copy); a tiny copy stretched up shows as blocks. The
   media widget's wash and the background both use it. Pictures change through `MediaWidget.Fader` (two stacked images,
   cross-fade), texts through `swap`.
-- **Own insets.** `HomeScreen` does not use `insetScrollableContent`: the title bar is gone here and the control panel is covered, so
-  following them made the page jump when they finished fading. Top room is 0, bottom room is only a bottom nav pill (animated).
+- **Own insets.** `HomeScreen` does not use `insetScrollableContent`: the title bar and the control panel are gone here, so
+  there is nothing to follow. Top room is 0, bottom room is only a bottom nav pill (animated).
 - **Entrance**: `HomeGridLayout#prepareEntrance` hides the widgets in `onShown` itself; `playEntrance` (one post later) brings them in.
   Doing both in the post showed the widgets for a frame first.
 - **Edge fades** (`HomeFadeLayout`, wraps the scroller): content melts at the edges it can still scroll to (top/bottom, or left/right
   in sideways mode), clearing the part under a bottom nav pill, because Home opts out of the bars' own edge fade.
-- **FABs are hidden** on Home (`MainActivityDelegate#setFabsHidden`, from `HomeFragment#cover`); the edit chip bar has a Settings chip
+- **FABs are hidden** on Home (suppressed with the control panel, see above); the edit chip bar has a Settings chip
   that opens Settings > Home (`SettingsFragment.SHOW_HOME_SETTINGS`).
 - `MeterBar` is a thin animated bar for widgets (Power breakdown, Data session limit).
 
@@ -619,19 +619,7 @@ what each widget shows is set on the widget (edit mode > its gear).
   shows the big spinner in the middle of the page; `onHome()` keeps it off there, both when it is asked for and when its delayed
   show fires (a song picked in the Queue card used to bring it up over the dashboard).
 - **Edit chips on a phone**: Background and Settings keep only their icons under 520dp, or the done tick went off the screen's edge.
-- **OPEN ISSUE (not solved, to be taken on in another branch): bare bars when Home is entered.** On entering Home the status bar and
-  navigation bar areas show the app's dark/plain colour for the length of the tab crossfade before the background (picture or the cover's
-  blur) is there; the Music tab, which uses the same mechanism, fills them from the first frame. What was tried, in this order, none of
-  which changed the look: (1) `root.setBackgroundColor(palette.background)` (only fills the tab's own bounds), (2) a never-faded
-  `base` gradient layer under `bg` in `BehindBarsLayers` (also appears late), (3) removing the held-back, delayed fade of `bg`
-  (`fadeBackgroundIn` now just shows it at once). The remaining suspects, to check with the Diagnostic log and screenshots of single frames:
-  the **tool bar** and **nav bar** (Home hides the tool bar with `HomeToolBarMediator`, fading it to GONE, which may change what
-  `BodyLayout`/`MainActivityDelegate#matchStatusBarToBackground` paint behind the status bar, and the nav pill/bar draws its own
-  scrim there), the status bar colour set in `HomeScreen#systemBars`/`glideStatusBar` coming after the tab has shown, and
-  `BehindBarsLayers#update` (margins applied in a pre-draw, and clipping only released while `root.isShown()`), compared line by line
-  with `MusicPlayerFragment#extendBackground`. A good first experiment: make Home's `bg` a child laid out in `music_backdrop` style
-  (a direct layer of the tab, margins already negative before the tab is shown) and see whether the bars fill; then try keeping the
-  tool bar visible (alpha 0, not GONE) while Home shows.
+- The bare bars on entering Home that this round left open are solved, see the fifteenth round.
 
 ### Seventh round (stacks go round, greeting, top info overlay)
 
@@ -673,11 +661,9 @@ what each widget shows is set on the widget (edit mode > its gear).
   player is not playing; with Android Auto connected, a stream from an app holding no focus was not played through the car (the card and
   notification said playing, nothing was heard; first thing after an app start). Not confirmed on a car: the Diagnostic log has
   `AMBIENCE audio focus result=` and `track playing state= device=` lines to read if it still stays silent.
-- **Cold start into Home** (`MainActivityDelegate#veilStartup` / `liftStartupVeil`): when the app starts on Home the whole window content is
-  held at alpha 0 until Home has laid out its first frame (`HomeScreen#onShown`, 2.5 s safety delay), then fades in 280 ms; the tool bar is
-  hidden at once meanwhile (`HomeToolBarMediator`), so no empty bars show first (seen on a phone with the bottom nav bar).
+- (The window-wide start-up veil that was here is gone, replaced by the Music tab's own quiet start; see the fifteenth round.)
 
-### Tenth round (playing rows, item pickers, car header, start-up veil for real)
+### Tenth round (playing rows, item pickers, car header)
 
 - **Favorites and the songs of an opened playlist mark the playing song** like the Queue: `LibraryWidget#watchesPlaying()` listens for
   `onPlayableChanged`, `playingIds(a)` is the session item, the queue entry's source and the favoritable item, and a row is current when
@@ -691,11 +677,6 @@ what each widget shows is set on the widget (edit mode > its gear).
 - **Car screen, scrolling down**: the edit button and the info chips sit on the middle line of the greeting's two lines
   (`HomeScreen#alignHeader`, a translation, since the pinned bar and the greeting have different heights); both stay pinned when the page
   scrolls (only the greeting scrolls away).
-- **The start-up veil never ran in the ninth round**: `veilStartup()` was called before `init()` inflated the layout, so
-  `findViewById(R.id.main_activity)` was null and it returned silently. It now runs right after `init()`; Home lifts it with
-  `liftStartupVeil(true)`, which also hides the tool bar before the first visible frame, and `isStartupVeil()` stays true for 1 s after
-  the lift so the tool bar mediator hides the bar at once instead of fading it. The Diagnostic log has `STATE start-up veil` lines
-  (on / lifted by Home / lifted by the safety delay / no window content yet).
 
 ### Eleventh round (title rows that give way, data strip, chip sizes)
 
@@ -719,10 +700,6 @@ what each widget shows is set on the widget (edit mode > its gear).
   Header has "Hide the info chips while scrolling down" (`HOME_TOP_OVERLAY_HIDE`, `_AA` twin): they then leave with the greeting, fading.
 - **No `setHorizontalFadingEdgeEnabled` on the chips' scroller**: on the car screen the built-in fading edge drew hard dark boxes at the row's
   ends (the "weird cut"). The row sits in a `HomeFadeLayout` (a layer cleared with gradients, as the page's own edge fade, which draws right there).
-- **Start-up veil, more**: it also covers the first screen after the process was killed and restored with Home saved (`restoredHome`), and the lift
-  waits (at most 700 ms) until the tool bar is gone and the control panel has finished fading out (`startupSettled`): Home's `cover()` fades the
-  panel away from the same moment, and an empty bar fading out in the first visible frames is what looked like "the toolbar". The log line
-  `STATE start-up veil ... lifted by Home after N ms, tool bar, control panel, nav bar` says what was still showing at the lift.
 - **An opened playlist's songs have no play button** (a tap on a row plays it); the playlists themselves keep theirs, back at the top they come back
   with the list's fade.
 
@@ -743,23 +720,163 @@ what each widget shows is set on the widget (edit mode > its gear).
   (`HOME edit mode on/off`). If it still crashes, the crash is in the Diagnostic log (`DiagnosticLog#installCrashHandler` writes it): read the stack there.
 - **`ChipFlowLayout` makes every chip of a line as tall as the tallest** (the icon-only Downloaded chip stayed shorter than the others even with a minimum height).
 
-### OPEN ISSUE: the tool bar (or an empty bar) still shows briefly when the app starts on Home
+### Fifteenth round (the late fill-in, found; light theme; centring; last played; edit button; downloaded badge)
 
-Seen on a phone with the bottom navigation bar and on the car screen, after every fix below. Where things stand:
+- **The cause of the late fill-in under the status bar and navigation bar, and of the start-up flash (open for five rounds): Home's root was a
+  plain `FrameLayout`.** The tab-switch crossfade (`ActivityDelegate#crossfadeFragmentViews`) and the start-up fade put the tab's root at alpha
+  below 1; a view that reports overlapping rendering (every ViewGroup by default) is then drawn through an offscreen layer *the size of its own
+  bounds*, which cut off the background layers (`base`, `bg`) wherever they reach past the root under the bars, for the whole fade, and popped
+  them in at the end. The Music tab never had it because its root is `OverflowFrameLayout` (`hasOverlappingRendering()` false, the alpha is
+  applied to each child). `HomeScreen`'s root is that class now. **Any new tab whose background reaches under the bars needs it too.**
+- **Home hides its bars the way the Music tab does** (the other half of "the Music tab has no glitch"): in `HomeFragment#switchingFrom`, before the
+  transaction commits, the tool bar goes GONE and `setOverlaysSuppressed(true)` takes the control panel and the floating buttons away, all at once.
+  Fading them (what Home did: the tool bar 160 ms, the control panel with `setCovered`) resized the tab in the middle of its fade in: on the car
+  screen the sideways grid has a row count from its *height*, so the whole grid re-packed when the tool bar finished going. `switchingTo` gives
+  them back (not `leave()`: after the next tab, the Music tab, suppressed them there, giving them back again would undo it).
+  `MainActivityDelegate#keepsOverlaysAway` (Music or Home) is what the picture-in-picture exit and `resyncOverlaysAfterSwitch` check.
+- **Quiet start, as the Music tab's** (`HomeScreen#onViewCreated(quiet)`, `quiet` = restored, or the first fragment shown since the app started): the root
+  stays at alpha 0 for `QUIET_MS` (500 ms), then fades in over 350 ms with the widgets' entrance. The window-wide veil of the earlier rounds
+  (`veilStartup`, `liftStartupVeil`, `isStartupVeil`, and the tool bar mediator's check of it) is deleted: it faded the whole window, bars included,
+  and never ran on the car screen at all.
+- **Light theme.** `HomeBackgroundView` dims and shades towards white (`veil`) and its plain gradient is barely tinted (`plainTop`); the
+  greeting and the top chips use the theme's own text colours on a picture too, and the chips' opaque fill (a theme panel colour) now has
+  matching text (white text on the light panel was the invisible "weird" chips). Cards: `HomeWidgetView#lightText/color/applyStyle` treat a light
+  theme as light cards in every look (Glass = white glass with a hairline, Colour = a pale tint of the accent, theme text on both); a card that
+  paints itself says `ownBackgroundDark()` (the Ambience sky stays dark; the media card is the Music tab's whitish wash in a light theme, with the
+  theme's play button colours, seek bar and chip). Dark-theme looks are unchanged on purpose.
+- **Centred between the screen's edge and the side pill** (`HomeScreen#measureSideExtras`, re-run by `onSidePreDraw` whenever the root or the pill moves; the
+  first version centred on the whole window and left the cards cramped against the pill): body_layout pads every tab clear of a side navigation pill on that
+  side only, and by more than the pill's visible width, which left a thin margin on one side and a wide strip on the other. Scrolling down, the side with the
+  smaller margin gets the difference as extra grid/greeting/header padding (`extraLeft/extraRight`), so the margin from the screen's edge to the first card equals
+  the gap from the last card to the pill (no side pill: centred in the window). The `HOME side room` lines in the Diagnostic log say what it worked out. Scrolling
+  sideways keeps its padding, and `HomeGridLayout#setViewportWidth` centres a row that is shorter than the page (no scrolling); a longer one scrolls as before.
+  Not verified on the car screen: if its left edge is still clipped there, look at what the window's real left edge is (the car may be letterboxing the display).
+- **Edit button off** (`HOME_EDIT_BUTTON`, `_AA` twin, Settings > Home > Header): the chip bar is GONE while not editing; the greeting and the info chips
+  take the room back (`applyHeaderRoom`). Edit mode stays a long press, Settings > Home > Edit widgets, and **Home's long-press menu in the navigation
+  bar** ("Edit home screen layout", `NavBarMediator#contributeItemMenu`, `HomeScreen.startEditing`).
+- **Last played song in the widgets right after the app starts**: `LibraryWidget#playingIds` also takes `HomeArt.displayItem` while nothing is loaded
+  (the queue's saved track, or the resume item), so Favorites, an opened playlist and the Queue mark it and scroll to it. The Playlists widget opens the
+  playlist that holds that song by itself, once per widget (`openHolding`; "Open the last played song's playlist" switch, backing out sticks).
+- **Downloaded badge** at the end of a favorite / playlist / queue row whose song is on the phone (`LibraryWidget.RowHolder#updateBadge`): just the download icon
+  inside the row's own `main` layout (so the playing row's fill runs under it), not a chip of its own; `YtDownloads.Listener` refreshes the rows on screen when a
+  download finishes or goes.
 
-- **Tried, in order, none seen to remove it on a device:** (1) `HomeToolBarMediator` hides the bar at once while `isStartupVeil()`; (2) the start-up veil
-  (`MainActivityDelegate#veilStartup`: the whole `R.id.main_activity` at alpha 0 until Home's first frame, then a 280 ms fade), which in the ninth round
-  silently did nothing because it ran before `init()` inflated the layout, so (3) it now runs after `init()`; (4) the lift waits (at most 700 ms) until the tool bar
-  is gone and the control panel has finished its cover fade (`startupSettled`); (5) the veil also covers a restore with Home saved after the process was killed.
-- **What the user sees is not known exactly**: "the toolbar", on a phone with a bottom nav bar. It may be the tool bar, the empty control panel, or the empty nav bar
-  before its tabs are in, and it may be visible *after* the lift (during the 280 ms fade) or before it (if the veil was never applied: starts through
-  another path, e.g. `state != null`, a different intent action, `HOME_OPEN_ON_START` off with a different start tab).
-- **Next steps, in order:** (a) read the Diagnostic log after a cold start: `STATE start-up veil` says whether it was applied ("on" / "no window content yet") and
-  what was showing at the lift ("tool bar", "control panel" visibility/alpha, "nav bar" visibility/child count); no line at all means the veil's condition was
-  not met, so find which part of the `startsOnHome` / `restoredHome` condition failed; (b) if the veil was on and the lift log shows everything hidden, the
-  flash is after the lift: log the tool bar's and control panel's visibility during the 280 ms fade (a `ViewTreeObserver.OnPreDrawListener` on `main_activity`);
-  (c) if it is the nav bar, hold the lift until `navBar.getChildCount() > 0` and its first layout; (d) as a last resort draw an opaque `palette.background`
-  cover view above everything on `main_activity` (not an alpha on the root) and fade *that* out, so the bars underneath never show through a fade of the root.
+### Sixteenth round (smooth bars, shared clipping, auto-rotate, grow, tile colours)
+
+- **The tool bar is still seen fading when Home comes up** (`HomeFragment#fadeGhost`): it goes out of the layout at once (Home is laid out once, see the fifteenth round), but a
+  picture of it is drawn in `main_activity`'s overlay and faded over 180 ms. Anything that must leave the layout at once and still look as if it faded can do the same.
+- **Unclipping the containers for the status bar is shared** (`ui/view/BarsClipping`, used by `BehindBarsLayers` and the Music tab): both tabs unclip the same containers and
+  overlap while one fades out and the other in; each used to keep its own copy of "how they were", so the second one to unclip saved the first one's unclipped state
+  as the original and restored THAT, leaving the containers unclipped for good: every other tab's list then scrolled out behind the status bar with no top fade over
+  it (the see-through status bar that came and went). One original per container, a count of users, restored when the last lets go (`BODY containers clipped again`
+  in the Diagnostic log). **Never save and restore `clipChildren` / `clipToPadding` of the shared containers yourself.**
+- **Stacks can turn by themselves** (`HOME_STACK_ROTATE`, seconds, 0 = off, Settings > Home; `HomeStackView#scheduleRotate`): after the interval a stack on screen goes to
+  its next widget unless edit mode, a finger or a swipe is on it; a touch starts the wait over. At least 3 s (`HomeScreen#stackRotateSeconds`).
+- **A resized card grows into its new size** (`HomeCellView#growOnNextSize`, started from `onSizeChanged`): it is already laid out at the new size and is drawn scaled
+  down to the old one, settling over 320 ms with the pivot travelling from the top left to the centre; the others glide to their places as before. (An animated real size
+  would relayout the widgets every frame.)
+- **Tile colours in a light theme** (`TileWidget#hue`): deeper and darker (saturation 0.78, value 0.62) than the pastel used on dark cards; All in One and Pages use it.
+
+- **A song's natural end that did not go on** (reported as "sometimes", more in a light theme; the light theme itself cannot reach playback, but a
+  system theme that follows the clock recreates the activity at dusk and dawn, and `YoutubeFragment#onDestroyView` stops playback then by design): the move to
+  the next track in `MediaSessionCallback#engineEnded` was a chain of futures with no failure handling, so a next track that could not be resolved or prepared
+  (a connection that gave out in the car) vanished without a trace. Now it is logged (`TRANSPORT engine ended: ...`), tried again twice 2.5 s apart, then stopped
+  cleanly. Not confirmed as the cause: next time, ask for the Diagnostic log's TRANSPORT and YT lines around the end of the song.
+
+### Seventeenth round (toolbar room, row menus, stack swipe in edit mode, sideways centring)
+
+- **Leaving Home keeps the tool bar's room** (`HomeFragment#switchingTo`): when the tab coming up has a tool bar, the bar goes INVISIBLE (not GONE) with alpha 0 before the
+  switch commits, so that tab is laid out with the bar's room from its first frame; it used to appear a frame later and push the list down (the list "suddenly scrolled a
+  bit" on coming back to Playlists/Favorites). `HomeToolBarMediator#disable` then fades it in under the next tab's own mediator.
+- **A shorter crossfade into Home** (`ActivityFragment#getFadeInMillis`, 200 ms by default, 110 ms for Home; the outgoing tab fades in at most the same time, and the
+  tool bar's picture too): Home is mostly background, so the old tab (and a toolbar picture) showed through it for the whole fade.
+- **Sideways rows are centred between the screen's edge and the side pill too** (`HomeScreen#sidewaysCentre` -> `HomeGridLayout#setViewportWidth(w, centreX)`): a row shorter
+  than the page sits so that the margin before the first card equals the gap after the last; a row that needs the room scrolls as before (lead 0).
+- **Library rows can open the tab's long-press menu** (`LibraryWidget#supportsMenu`, Favorites and Playlists; option "Menu on long press", on by default): a long press on a row
+  opens `MediaItemMenuHandler` for its item, and the row is marked `home_no_grab` so the card does not take that press for picking itself up and starting edit mode. In edit mode
+  the cell takes every touch as before, so a hold still moves the card. Turn the option off to get the old long press (pick up, edit mode) back on those rows.
+- **A stacked card swipes in edit mode** (`HomeCellView#onTouchEvent` feeds `HomeStackView#onTouchEvent`): the cell intercepts everything while editing, so the stack never saw a
+  touch; a sideways swipe now turns the stack, and holding for `PICKUP_MS` still picks the card up (the stack gets CANCEL then).
+
+### Eighteenth round (same menu on rows, fade through, smoother auto turn)
+
+- **The row menu is the tab card's menu**: `MediaItemMenuHandler(menu, item, listItem=true)` (the Home widgets' third argument). The short menu a bare item gets (no view) lacked
+  Play, Play as music/video, Add into queue, Search alternative videos, Refresh thumbnail and Preferred media engine, all of which were gated on `view != null`; they now
+  check `listItem`. Play from Home goes through `HomePlay.tapped` (what a tap on that row does), not the session directly. Select only exists in the tabs (it needs their list).
+- **Home fades in only after the old tab is gone** (`ActivityFragment#getFadeInDelayMillis`: 70 ms for Home, then 140 ms in): a plain crossfade left the old tab's grid and its tool bar
+  showing through Home for a few frames (seen frame by frame in a screen recording). The old tab fades out in the delay, the tool bar's picture in the same 70 ms.
+  `ViewPropertyAnimator` keeps its start delay between calls: the crossfade always sets it (0 for the tab fading out).
+- **A stack turning by itself** (`HomeStackView#animateTo(index, auto=true)`): 620 ms with a fast-out-slow-in curve (it starts from rest, unlike a swipe settling), and the widgets are
+  drawn from hardware layers while it moves (`layers`), so sliding and dissolving two heavy cards is a transform per frame, not a redraw.
+
+### Nineteenth round (picture of the old tab, panel on Music to Home)
+
+- **The "shadow" entering Home was two things, seen frame by frame in a screen recording**: the old tab's list jumped up the moment the tool bar left
+  the layout (its content insets follow the bar), and the 70 ms fade-through of the previous round then dipped through the bare background before Home
+  came in (the dip made the jump easier to see). Now `HomeFragment#ghostOf` (from `switchingFrom`, before `putBarsAway`) draws the tab being left into a
+  bitmap (filled with the theme's `colorBackground` first, so it is opaque) in its parent's overlay, and fades that out over `GHOST_MS` (180 ms, the tool
+  bar's picture too) while Home is simply there at alpha 1 (`getFadeInMillis()` 0, so `ActivityDelegate#crossfadeFragmentViews` skips the fade; the tab
+  left is GONE at once). A picture is taken only when the tab is laid out and fully opaque, and never of the Music tab (a WebView/SurfaceView does not draw
+  into a bitmap; Music to Home keeps the short 140 ms crossfade). Do not go back to fading the old tab's real view: it relayouts under the fade.
+- **The tool bar's own picture is faster than the tab's** (`BAR_GHOST_MS` 90 ms, decelerating, against `GHOST_MS` 180 ms): the bar is a dark pill, and
+  at the tab's pace it stayed over the bright Home for a moment as a black bar at the top left. The strip of the tab's own picture that the bar (and the
+  status bar) sat over is bare dark background too, so `GhostDrawable` fades that top band on its own, faster alpha curve than the rest of the picture
+  (what was still seen as a black bar from Favorites to Home after the bar's picture alone was sped up).
+- **Music to Home showed the control panel**: Music's `onHiddenChanged` -> `setListening(false)` ran during the commit, after Home had suppressed the
+  overlays, and gave them back. `MusicPlayerFragment#suppressOverlays` now keeps them suppressed while `MainActivityDelegate#activeKeepsOverlaysAway()`
+  (Music or Home is the tab being shown; the active id is already the new one during a switch). Any tab that suppresses the overlays must go through the
+  same check when it hides.
+
+- **Play as video from a Home row's menu** (`HomePlay#asVideo`): the menu's Play as video used to fall through to the session's `playItem`, which
+  started the item without bringing the video up. It now does what the tab's `playTapped(pi, false)` does (`getBody().playItem`, which enters fullscreen
+  video; externally played items go through `playExternally`), even while music mode is on.
+
+### Twentieth round (rows refresh after their menu, queue reordering)
+
+- **A Home row's menu changes show in the lists at once** (`MediaItemMenuHandler#onClosed`, set by `LibraryWidget#showMenu`): the library sends no notice when a favorite is
+  removed or a song is added to a playlist (the tab only reloaded its own fragment), so the cards stayed as they were. When the menu closes the widget fires
+  `FRAGMENT_CONTENT_CHANGED`, which every `LibraryWidget` already answers with a forced refresh (an unchanged list does not blink, see the signature), and once more
+  450 ms later for changes that finish in the background.
+- **The Queue card reorders on long press** (`LibraryWidget#supportsReorder`/`reorderOn`/`onReordered`, option "Reorder on long press", on by default, `QueueWidget` turns it on):
+  an `ItemTouchHelper` with long-press drag (rows move in the adapter on the way; one `MusicQueue#move(from, to)` when the row is dropped, in play-order positions like the
+  Music tab's `QueueTouchCallback`, and the rows' positions are the play order's). The row is marked `home_no_grab` so the card does not take that press for picking itself up;
+  in edit mode the cell still takes every touch. A refresh that arrives while a row is held (the queue listener, the playing song changing) is held back and run after the drop
+  (`dragging`, `refreshAfterDrag`). Not inside an opened list (`drillSource`). Never run on a device.
+- **Queue rows carry a remove button (left) and a drag handle (right)** like Spotify's playlist editor: `LibraryWidget#supportsRemove`/`removeOn`/`onRemoved` (option "Remove button",
+  `MusicQueue#remove(position)`, the row leaves the card at once) and the handle (option "Drag handle", shown only while "Reorder on long press" is on; pressing it calls
+  `ItemTouchHelper#startDrag` at once, so no long press is needed). Both are tagged `home_no_grab`. The rows' look is keyed by `rowMode` (bits for menu, reorder, remove, handle) so
+  toggling any of the options rebinds them.
+
+- **Rows picked up or removed must move in the adapter's own list** (`RowAdapter#adopt`): a refresh whose rows look the same as the ones shown (same signature) used to
+  replace `rows` without handing the adapter the new list, so a drag or a remove moved rows in a list the adapter was not reading, and the rows were rebound from one
+  that had not moved (a song seen twice, the other one gone from view). `render()` adopts the list on that path, and a drag start / a remove adopts it again.
+- **Removed rows leave with an animation**: the list has a `DefaultItemAnimator` (add 200, remove 220, move 240 ms, no change animation: refreshes in place must not blink;
+  none when Home's animation is off), so a removed queue song fades out and the rows under it slide up.
+- **Every list answers every change at once** (`ItemContainer#addContentListener`, called from `setNewChildren`, i.e. any add or remove in Favorites, a playlist or the list of
+  playlists, from a menu, a tab or the Music tab): the Favorites, Playlists and their opened lists re-read at once, not when the 15 s staleness ran out or the menu closed; and a list
+  coming back on screen re-reads at once (`onActive` forces it). The Queue card listens to the queue instead (`QueueWidget#watch`, re-resolved on every read: the queue is made the
+  first time something is queued, which a card already up never saw before) and to the playing song.
+
+- **The now-playing card's Previous / Next are dimmed and dead on the queue's first / last song** (Repeat off), the Music tab's rule: `MediaWidget#syncState` calls
+  `FermataServiceUiBinder.setSkipAvailable` from `MediaSessionCallback#isAtListStart/End`, and `onPrev` / `onNext` return early there. Nothing loaded (right after app start) keeps them working
+  (they start the saved queue's neighbour).
+- **A queued YouTube song's channel is looked up** (`MusicQueue#lookUpMissingChannels`, from `changed()` and `getPlayOrder()`, at most every 1.5 s and once per video per 5 minutes): a song queued
+  from a list or a search was never played, so only `setInfo` while playing gave it a channel, and its row (the Music tab's queue and the Queue card) showed none until it played. The
+  background thread asks the YouTube addon's cache first, then YouTube's oEmbed (`YoutubeSearch.lookUpById`) and calls `MusicTrackItem#setInfo`, which saves and tells the queue's listeners, so
+  both lists fill in. Until then the Queue card shows "YouTube" like the Music tab.
+  A track made from a Favorites / playlist entry takes what that entry already knows when it is queued (`MusicQueue#newTrack`: the item's loaded metadata, else the YouTube addon's stored
+  `VideoInfo`, channel and length), and for a YouTube entry whose metadata is not loaded yet it reads it from the item and fills the channel in (`setInfo`), so the oEmbed look-up is only
+  the last resort for songs that came from neither.
+
+- **The Playlists card fills the playlists that hold the playing song** (`PlaylistsWidget#fetch`/`holders`: each playlist's children are read in turn, the cached ones at once, and every playlist
+  containing the song (`playingIds`, also the last played song right after app start) is a `current` row, the accent fill the playing song's row has; the first one is scrolled into view, and the
+  one-time "open the last played song's playlist" now uses it too). `marksPlayingOnTop()` is on, so a song change re-reads the list.
+  **The search for the holders does not hold the card back** (`PlaylistsWidget#scanHolders`): the rows are drawn at once from the last known `holding` set, and the scan (one playlist after the
+  other, hundreds of reads on a big library) runs behind, redraws only when its answer differs, and is not repeated for the same playing song and the same library change count. The first
+  version waited for the scan before showing any row, which made the card slow to appear with 200+ playlists.
+- **Long lists appear fast** (`LibraryWidget`): `ItemContainer#changeCount` counts every add/remove of Favorites and playlists; a card coming back on screen re-reads only when the count moved
+  (`seenChanges`) or it has no rows, instead of every time. A card sitting in a stack (not active) reads its list 700 ms after it was bound (`prefetch`), so rows and pictures are there when it is
+  swiped to; the skeleton placeholder still shows if the read is not done by then.
 
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 

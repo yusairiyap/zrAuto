@@ -237,7 +237,7 @@ abstract class TileWidget extends HomeWidgetView {
 		t.setOnClickListener(v -> click.run());
 		int d = diamPx;
 		FrameLayout disc = new FrameLayout(ctx);
-		disc.setBackground(HomeUi.oval(HomeUi.alpha(tint, lightText() ? 0.28f : 0.2f)));
+		disc.setBackground(HomeUi.oval(HomeUi.alpha(tint, lightText() ? 0.28f : 0.16f)));
 		ImageView ic = new ImageView(ctx);
 		ic.setImageResource(icon);
 		ic.setImageTintList(android.content.res.ColorStateList.valueOf(tint));
@@ -257,9 +257,14 @@ abstract class TileWidget extends HomeWidgetView {
 		return t;
 	}
 
-	/** A bright colour for the {@code i}th tile, spread around the colour wheel. */
+	/**
+	 * A colour for the {@code i}th tile, spread around the colour wheel: bright on a dark card, deeper and darker in a
+	 * light theme, where the pastel version vanished against the card.
+	 */
 	protected final int hue(int i) {
-		return android.graphics.Color.HSVToColor(new float[]{(i * 47f + 200f) % 360f, 0.5f, 1f});
+		float h = (i * 47f + 200f) % 360f;
+		boolean light = (getHost() != null) && getHost().palette().light;
+		return android.graphics.Color.HSVToColor(new float[]{h, light ? 0.78f : 0.5f, light ? 0.62f : 1f});
 	}
 
 	@Nullable

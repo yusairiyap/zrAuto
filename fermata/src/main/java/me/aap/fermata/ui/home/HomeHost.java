@@ -28,4 +28,7 @@ public interface HomeHost {
 
 	/** Whether Home animations (stack dots, entrances) are on. */
 	boolean animate();
+
+	/** Seconds between a stack turning to its next widget by itself, 0 when it does not. */
+	int stackRotateSeconds();
 }

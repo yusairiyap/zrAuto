@@ -79,17 +79,38 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 	private final Item item;
 	@Nullable
 	private final MediaItemView view;
+	/** Whether the menu is the one of a row in a list (a card of the tab, or a row of a Home widget), not of a bare item. */
+	private final boolean listItem;
 
 	public MediaItemMenuHandler(OverlayMenu menu, MediaItemView view) {
 		this.menu = menu;
 		this.view = view;
 		this.item = view.getItem();
+		this.listItem = true;
 	}
 
 	public MediaItemMenuHandler(OverlayMenu menu, Item item) {
+		this(menu, item, false);
+	}
+
+	/**
+	 * @param listItem the item is a row of a list shown outside the library tabs (a Home widget): its menu is the one the
+	 *                 tab's card has (Play, Add into queue, alternatives, engine choice...), not the short one of a bare item
+	 */
+	public MediaItemMenuHandler(OverlayMenu menu, Item item, boolean listItem) {
 		this.menu = menu;
 		this.item = item;
+		this.listItem = listItem;
 		this.view = null;
+	}
+
+	@Nullable
+	private Runnable onClosed;
+
+	/** Called when the menu has closed, whatever was picked (a Home row's list is drawn again then). */
+	public MediaItemMenuHandler onClosed(@Nullable Runnable r) {
+		onClosed = r;
+		return this;
 	}
 
 	public OverlayMenu getMenu() {
@@ -130,7 +151,11 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 			builder.setSelectionHandler(this);
 			// The card stays outlined while its menu is open -- see MediaItemView#showItemMenu().
 			MediaItemView iv = view;
-			if (iv != null) builder.setCloseHandlerHandler(m -> iv.menuClosed());
+			Runnable closed = onClosed;
+			if ((iv != null) || (closed != null)) builder.setCloseHandlerHandler(m -> {
+				if (iv != null) iv.menuClosed();
+				if (closed != null) closed.run();
+			});
 		});
 	}
 
@@ -148,8 +173,8 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 		// Favorites and playlists: Play first, doing exactly what a tap does; and no per-item Repeat
 		// there (the lists' own Repeat/Shuffle live in the control panel and the Music tab).
 		BrowsableItem parent = pi.getParent();
-		boolean inList = (view != null) && ((parent instanceof Favorites) || (parent instanceof Playlist));
-		if ((view != null) && (inList || a.getPrefs().getTapOpensMenuPref(a))) {
+		boolean inList = listItem && ((parent instanceof Favorites) || (parent instanceof Playlist));
+		if (listItem && (inList || a.getPrefs().getTapOpensMenuPref(a))) {
 			b.addItem(R.id.item_play, R.drawable.play, R.string.play);
 		}
 
@@ -166,7 +191,7 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 				}
 			}
 
-			if ((view != null) && MusicPlayer.isEnabled() && !(pi instanceof StreamItem) &&
+			if (listItem && MusicPlayer.isEnabled() && !(pi instanceof StreamItem) &&
 					!(pi instanceof ArchiveItem)) {
 				// What a tap does here (music: listening already, or by default in Settings > Playback,
 				// for Favorites and playlists): the other way round is what's worth offering.
@@ -200,7 +225,7 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 				b.addItem(R.id.share_item, R.drawable.share, R.string.share);
 			}
 
-			if (view != null) {
+			if (listItem) {
 				// YouTube videos and local files can be searched for other videos by their title.
 				if (YoutubeAlternativesPicker.canSearch(pi)) {
 					b.addItem(R.id.youtube_alternatives, R.drawable.search, R.string.youtube_alternatives);
@@ -298,7 +323,7 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 	}
 
 	protected boolean addMediaEngMenu() {
-		return (view != null) && getMainActivity().getMediaSessionCallback().getEngineManager()
+		return listItem && getMainActivity().getMediaSessionCallback().getEngineManager()
 				.isAdditionalPlayerSupported();
 	}
 
@@ -583,7 +608,12 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 			if (item instanceof PlayableItem pi) {
 				f = getMainActivity().getActiveMediaLibFragment();
 				if (f != null) f.getAdapter().playTapped(pi, id == R.id.item_play);
-				else getMainActivity().getMediaServiceBinder().playItem(pi);
+				else if (getMainActivity().getActiveFragment() instanceof me.aap.fermata.ui.fragment.HomeFragment) {
+					// A row of a Home widget: Play does what a tap there does (plays as music, the screen stays on
+					// Home), Play as video plays it in the video player, fullscreen.
+					if (id == R.id.item_play) me.aap.fermata.ui.home.HomePlay.tapped(getMainActivity(), pi);
+					else me.aap.fermata.ui.home.HomePlay.asVideo(getMainActivity(), pi);
+				} else getMainActivity().getMediaServiceBinder().playItem(pi);
 			}
 		} else if (id == R.id.share_item) {
 			ShareSheet.share(getMainActivity(), item);

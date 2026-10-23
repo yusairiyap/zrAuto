@@ -30,6 +30,11 @@ final class FavoritesWidget extends LibraryWidget {
 	}
 
 	@Override
+	protected boolean supportsMenu() {
+		return true;
+	}
+
+	@Override
 	protected boolean marksPlayingOnTop() {
 		return true;
 	}

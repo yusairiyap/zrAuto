@@ -15,7 +15,8 @@ import androidx.annotation.Nullable;
 /**
  * Paints the Home tab's background: the picked picture (centre-cropped, dimmed, with a soft shade
  * at the top and bottom where the status bar and the navigation bar sit), or, with none, a quiet
- * gradient in the theme's colours. A new picture fades over the old one.
+ * gradient in the theme's colours. A new picture fades over the old one. The dim and the shade go
+ * towards black in a dark theme and towards white in a light one, like the Music tab's scrim does.
  */
 final class HomeBackgroundView extends View {
 	private final HomePalette palette;
@@ -71,16 +72,27 @@ final class HomeBackgroundView extends View {
 		a.start();
 	}
 
+	/** What the plain gradient is at its top: the theme's background with a little of the accent (barely, in a light theme). */
+	static int plainTop(HomePalette p) {
+		return HomeUi.mix(p.background | 0xFF000000, p.accent, p.light ? 0.06f : 0.2f);
+	}
+
+	/** The colour the dim and the shade are made of: black in a dark theme, white in a light one. */
+	static int veil(HomePalette p) {
+		return p.light ? 0xFFFFFFFF : 0xFF000000;
+	}
+
 	@Override
 	protected void onSizeChanged(int w, int h, int ow, int oh) {
 		super.onSizeChanged(w, h, ow, oh);
 		int bg = palette.background | 0xFF000000;
-		int tint = HomeUi.mix(bg, palette.accent, palette.light ? 0.16f : 0.2f);
-		plain = new LinearGradient(0, 0, 0, h, new int[]{tint, bg, HomeUi.mix(bg, palette.accent, 0.06f)},
+		int v = veil(palette) & 0x00FFFFFF;
+		plain = new LinearGradient(0, 0, 0, h, new int[]{plainTop(palette), bg,
+				HomeUi.mix(bg, palette.accent, palette.light ? 0.02f : 0.06f)},
 				new float[]{0f, 0.55f, 1f}, Shader.TileMode.CLAMP);
 		float edge = Math.min(h * 0.25f, HomeUi.dp(getContext(), 140));
-		top = new LinearGradient(0, 0, 0, edge, 0x99000000, 0x00000000, Shader.TileMode.CLAMP);
-		bottom = new LinearGradient(0, h - edge, 0, h, 0x00000000, 0x99000000, Shader.TileMode.CLAMP);
+		top = new LinearGradient(0, 0, 0, edge, 0x99000000 | v, v, Shader.TileMode.CLAMP);
+		bottom = new LinearGradient(0, h - edge, 0, h, v, 0x99000000 | v, Shader.TileMode.CLAMP);
 	}
 
 	@Override
@@ -96,7 +108,7 @@ final class HomeBackgroundView extends View {
 		if (image != null) draw(c, image, w, h, fadeIn);
 		if (image != null || fading != null) {
 			shade.setShader(null);
-			shade.setColor(0xFF000000);
+			shade.setColor(veil(palette));
 			shade.setAlpha(Math.round(255 * dim / 100f));
 			c.drawRect(0, 0, w, h, shade);
 			shade.setAlpha(255);

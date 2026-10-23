@@ -64,6 +64,7 @@ import static me.aap.fermata.media.pref.PlaybackControlPrefs.getTimeMillis;
 import static me.aap.utils.async.Completed.completed;
 import static me.aap.utils.async.Completed.completedNull;
 import static me.aap.utils.async.Completed.completedVoid;
+import static me.aap.utils.function.ResultConsumer.Cancel.isCancellation;
 import static me.aap.utils.function.CheckedRunnable.runWithRetry;
 import static me.aap.utils.misc.Assert.assertNotNull;
 import static me.aap.utils.misc.MiscUtils.ifNotNull;
@@ -1531,10 +1532,15 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		playerTask = engineEnded(engine);
 	}
 
+	/** How many times in a row the move on after a song's natural end failed and was tried again. */
+	private int endRetries;
+	private static final int END_RETRIES_MAX = 2;
+	private static final long END_RETRY_DELAY_MS = 2500;
+
 	private FutureSupplier<?> engineEnded(MediaEngine engine) {
 		PlayableItem i = engine.getSource();
 		DiagnosticLog.log("TRANSPORT", "engine ended", "engine=" + engine, "item=" + i,
-				"playNext=" + ((i == null) ? null : i.getParent().getPrefs().getPlayNextPref()));
+				"playNext=" + playNextOf(i));
 
 		if (i != null) {
 			if (i instanceof StreamItem) {
@@ -1546,12 +1552,14 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			if (i.isVideo()) i.getPrefs().setWatchedPref(true);
 
 			if (!i.getParent().getPrefs().getPlayNextPref()) {
+				DiagnosticLog.log("TRANSPORT", "engine ended: play next is off, stopping", "item=" + i);
 				onStop(true);
 				return completedVoid();
 			}
 
-			return getNextPlayable(i).then(this::prepareItem).then(next -> {
+			FutureSupplier<Void> f = getNextPlayable(i).then(this::prepareItem).then(next -> {
 				DiagnosticLog.log("TRANSPORT", "engine ended: next", "next=" + next);
+				endRetries = 0;
 				if (next != null) {
 					skipTo(true, next);
 				} else {
@@ -1561,10 +1569,46 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 				return completedVoid();
 			});
+			// Used to vanish without a trace: a next track that could not be resolved or prepared (a
+			// connection that gave out in the car, a source that failed) left the song's end as the
+			// last thing that happened, with nothing playing and nothing said.
+			f.onFailure(err -> endFailed(engine, i, err));
+			return f;
 		} else {
+			DiagnosticLog.log("TRANSPORT", "engine ended with no item: stopping");
 			onStop(false);
 			return completedVoid();
 		}
+	}
+
+	private static String playNextOf(@Nullable PlayableItem i) {
+		try {
+			return (i == null) ? "null" : String.valueOf(i.getParent().getPrefs().getPlayNextPref());
+		} catch (RuntimeException ex) {
+			return "unknown (" + ex + ")";
+		}
+	}
+
+	/** Going on after a song's end failed: said in the diagnostic log, tried again twice, then stopped cleanly. */
+	private void endFailed(MediaEngine engine, PlayableItem ended, Throwable err) {
+		if (isCancellation(err)) return;
+		DiagnosticLog.log("TRANSPORT", "engine ended: moving on failed", "item=" + ended, "attempt=" + endRetries,
+				"cause=" + describe(err));
+		if ((engine != getEngine()) || (endRetries >= END_RETRIES_MAX)) {
+			if (engine == getEngine()) {
+				endRetries = 0;
+				onStop(false);
+			}
+			return;
+		}
+		endRetries++;
+		handler.postDelayed(() -> {
+			// Nothing else happened meanwhile: the same song is still the one that ended.
+			if ((engine != getEngine()) || (engine.getSource() != ended)) return;
+			DiagnosticLog.log("TRANSPORT", "engine ended: trying again", "item=" + ended, "attempt=" + endRetries);
+			playerTask.cancel();
+			playerTask = engineEnded(engine);
+		}, END_RETRY_DELAY_MS);
 	}
 
 	@Override
