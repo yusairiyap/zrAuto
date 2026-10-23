@@ -1,8 +1,10 @@
 package me.aap.fermata.ui.home.widget;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
 
 import me.aap.fermata.R;
 import me.aap.fermata.addon.music.MusicTrackItem;
@@ -17,8 +19,8 @@ import me.aap.fermata.ui.home.HomeWidgetType;
 import me.aap.utils.async.FutureSupplier;
 
 /**
- * The first playlists with their sizes; a tap opens one, its button plays it. Right after the app starts the playlist
- * of the song last played is already open, with that song marked.
+ * The first playlists with their sizes; a tap opens one, its button plays it. A playlist holding the song that plays is
+ * filled with the accent. Right after the app starts the playlist of the song last played is already open, with that song marked.
  */
 final class PlaylistsWidget extends LibraryWidget {
 	/** The playlist of the last played song is opened once per widget: backing out of it sticks. */
@@ -56,45 +58,62 @@ final class PlaylistsWidget extends LibraryWidget {
 	}
 
 	@Override
+	protected boolean marksPlayingOnTop() {
+		return true;
+	}
+
+	@Override
 	protected void fetch(MainActivityDelegate a, FetchDone done) {
 		FutureSupplier<List<Playlist>> f = a.getLib().getPlaylists().getChildren();
 		f.main().onCompletion((lists, err) -> {
-			List<Row> rows = new ArrayList<>();
 			if (lists == null) {
-				done.done(rows, 0);
+				focusRow = -1;
+				done.done(new ArrayList<>(), 0);
 				return;
 			}
-			int n = Math.min(lists.size(), 100);
-			for (int i = 0; i < n; i++) {
-				Playlist pl = lists.get(i);
-				rows.add(new Row(pl.getName(), null, pl, () -> drill(pl.getName(), (a2, d2) -> songs(pl, a2, d2)),
-						() -> HomePlay.list(a, pl), set -> pl.getUnsortedChildren().main().onSuccess(c -> {
-					if (c != null) set.accept(ctx.getString(R.string.home_tracks, c.size()));
-				})));
-			}
-			done.done(rows, lists.size());
-			if (!openedLast && optBool("openlast", true) && !isCompact()) {
-				openedLast = true;
-				Set<String> ids = playingIds(a);
-				if (!ids.isEmpty()) openHolding(a, lists, 0, ids);
-			}
+			Set<String> ids = playingIds(a);
+			// The playlists holding the playing song are filled with the accent, like the playing row of a list of songs.
+			holders(lists, 0, ids, new HashSet<>(), holding -> {
+				List<Row> rows = new ArrayList<>();
+				int n = Math.min(lists.size(), 100);
+				int first = -1;
+				for (int i = 0; i < n; i++) {
+					Playlist pl = lists.get(i);
+					boolean now = holding.contains(i);
+					if (now && (first < 0)) first = i;
+					rows.add(new Row(pl.getName(), null, pl, () -> drill(pl.getName(), (a2, d2) -> songs(pl, a2, d2)),
+							() -> HomePlay.list(a, pl), set -> pl.getUnsortedChildren().main().onSuccess(c -> {
+						if (c != null) set.accept(ctx.getString(R.string.home_tracks, c.size()));
+					}), now));
+				}
+				focusRow = first;
+				done.done(rows, lists.size());
+				// Right after the app starts the playlist of the last played song is opened, once per widget.
+				if (!openedLast && optBool("openlast", true) && !isCompact() && (first >= 0)) {
+					openedLast = true;
+					Playlist pl = lists.get(first);
+					drill(pl.getName(), (a2, d2) -> songs(pl, a2, d2));
+				}
+			});
 		});
 	}
 
-	/** Looks through the playlists, one after the other, for the one holding the song; opens it when it is found. */
-	private void openHolding(MainActivityDelegate a, List<Playlist> lists, int i, Set<String> ids) {
-		if ((i >= Math.min(lists.size(), 100)) || !isActive()) return;
-		Playlist pl = lists.get(i);
-		pl.getUnsortedChildren().main().onCompletion((items, err) -> {
+	/** Looks through the playlists, one after the other, for those holding the playing song: calls back with their positions. */
+	private void holders(List<Playlist> lists, int i, Set<String> ids, Set<Integer> found, Consumer<Set<Integer>> done) {
+		if (ids.isEmpty() || (i >= Math.min(lists.size(), 100))) {
+			done.accept(found);
+			return;
+		}
+		lists.get(i).getUnsortedChildren().main().onCompletion((items, err) -> {
 			if (items != null) {
 				for (Item it : items) {
 					if ((it instanceof PlayableItem p) && ids.contains(p.getOrigId())) {
-						drill(pl.getName(), (a2, d2) -> songs(pl, a2, d2));
-						return;
+						found.add(i);
+						break;
 					}
 				}
 			}
-			openHolding(a, lists, i + 1, ids);
+			holders(lists, i + 1, ids, found, done);
 		});
 	}
 

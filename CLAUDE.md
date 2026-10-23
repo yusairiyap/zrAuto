@@ -868,6 +868,10 @@ what each widget shows is set on the widget (edit mode > its gear).
   `VideoInfo`, channel and length), and for a YouTube entry whose metadata is not loaded yet it reads it from the item and fills the channel in (`setInfo`), so the oEmbed look-up is only
   the last resort for songs that came from neither.
 
+- **The Playlists card fills the playlists that hold the playing song** (`PlaylistsWidget#fetch`/`holders`: each playlist's children are read in turn, the cached ones at once, and every playlist
+  containing the song (`playingIds`, also the last played song right after app start) is a `current` row, the accent fill the playing song's row has; the first one is scrolled into view, and the
+  one-time "open the last played song's playlist" now uses it too). `marksPlayingOnTop()` is on, so a song change re-reads the list.
+
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 
 - Size what is *inside* a card from its pixels, not from cell counts or fixed dp: the Data ring's words (`used`/`caption`) and the Power
