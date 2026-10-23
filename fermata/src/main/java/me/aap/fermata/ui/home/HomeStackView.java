@@ -149,6 +149,17 @@ final class HomeStackView extends FrameLayout {
 		return d;
 	}
 
+	/** Turns the stack to its widget of the type {@code key}; false if it has none. */
+	boolean showType(String key) {
+		for (int i = 0; i < widgets.size(); i++) {
+			if (widgets.get(i).type.key.equals(key)) {
+				setTop(i, true);
+				return true;
+			}
+		}
+		return false;
+	}
+
 	void add(HomeWidgetView w) {
 		// Under the dots and buttons, which are the last children.
 		addView(w, widgets.size(), new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));

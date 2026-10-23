@@ -31,6 +31,11 @@ final class PlaylistsWidget extends LibraryWidget {
 	}
 
 	@Override
+	protected boolean supportsQueueOnPlay() {
+		return true;
+	}
+
+	@Override
 	protected boolean supportsFullWidth() {
 		return true;
 	}
@@ -93,7 +98,10 @@ final class PlaylistsWidget extends LibraryWidget {
 				boolean now = holding.contains(pl.getId());
 				if (now && (first < 0)) first = i;
 				rows.add(new Row(pl.getName(), null, pl, () -> drill(pl.getName(), (a2, d2) -> songs(pl, a2, d2)),
-						() -> HomePlay.list(a, pl), set -> pl.getUnsortedChildren().main().onSuccess(c -> {
+						() -> {
+							HomePlay.list(a, pl);
+							queueOnPlay();
+						}, set -> pl.getUnsortedChildren().main().onSuccess(c -> {
 					if (c != null) set.accept(ctx.getString(R.string.home_tracks, c.size()));
 				}), now));
 			}
@@ -178,7 +186,10 @@ final class PlaylistsWidget extends LibraryWidget {
 			for (int i = 0; i < n; i++) {
 				if (!(items.get(i) instanceof PlayableItem p)) continue;
 				String artist = (p instanceof MusicTrackItem t) ? t.getArtistName() : null;
-				Runnable play = () -> HomePlay.tapped(a, p);
+				Runnable play = () -> {
+					HomePlay.tapped(a, p);
+					queueOnPlay();
+				};
 				boolean now = (at < 0) && playing.contains(p.getOrigId());
 				if (now) at = rows.size();
 				// A tap on the row plays it already: no play button inside an opened playlist (the list's own rows keep theirs).

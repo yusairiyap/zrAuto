@@ -413,6 +413,11 @@ public abstract class HomeWidgetView extends FrameLayout {
 		applyStyle(created && isShown() && host.animate());
 	}
 
+	/** Turns the stack this widget is in to its widget of type {@code typeKey}, if it has one. */
+	protected final boolean bringStackTo(String typeKey) {
+		return (getParent() instanceof HomeStackView st) && st.showType(typeKey);
+	}
+
 	/** {@code argb} with its alpha scaled to {@code pct} of 100 (an opaque colour is opaque at 100). */
 	private static int alphaOf(int argb, int pct) {
 		int a = (argb >>> 24) == 0 ? 255 : (argb >>> 24);

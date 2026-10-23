@@ -188,6 +188,16 @@ abstract class LibraryWidget extends HomeWidgetView {
 	protected void onReordered(int from, int to) {
 	}
 
+	/** Whether playing from the card can bring a Queue widget stacked with it to the top (an option). */
+	protected boolean supportsQueueOnPlay() {
+		return false;
+	}
+
+	/** After something is played from the card: the Queue of its stack comes to the top, if the option says so. */
+	protected final void queueOnPlay() {
+		if (supportsQueueOnPlay() && optBool("queueOnPlay", false)) bringStackTo("queue");
+	}
+
 	/** Whether the card can show its rows one per line across its whole width (an option). */
 	protected boolean supportsFullWidth() {
 		return false;
@@ -513,6 +523,9 @@ abstract class LibraryWidget extends HomeWidgetView {
 		}
 		if (supportsRemove()) l.add(HomeOption.sw("remove", ctx.getString(R.string.home_opt_row_remove), true));
 		if (supportsFullWidth()) l.add(HomeOption.sw("full", ctx.getString(R.string.home_opt_row_full), false));
+		if (supportsQueueOnPlay()) {
+			l.add(HomeOption.sw("queueOnPlay", ctx.getString(R.string.home_opt_queue_on_play), false));
+		}
 		l.addAll(moreOptions());
 		return l;
 	}

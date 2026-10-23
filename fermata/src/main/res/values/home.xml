@@ -244,6 +244,7 @@
     <string name="home_opt_row_reorder">Reorder on long press</string>
     <string name="home_opt_row_handle">Drag handle</string>
     <string name="home_opt_row_full">Full-width rows</string>
+    <string name="home_opt_queue_on_play">Show the queue when playing</string>
     <string name="home_opt_row_remove">Remove button</string>
     <string name="home_row_remove">Remove from queue</string>
     <string name="home_row_drag">Move</string>
