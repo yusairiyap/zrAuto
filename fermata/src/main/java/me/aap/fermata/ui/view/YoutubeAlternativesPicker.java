@@ -588,11 +588,10 @@ public final class YoutubeAlternativesPicker {
 		});
 		m.addView(miniSet, new LinearLayout.LayoutParams(dp(42), dp(42)));
 
-		TextView more = pill(ctx.getString(R.string.youtube_alt_search_more));
-		more.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-		more.setPadding(dp(12), 0, dp(12), 0);
+		// A search glass like the other round buttons of this line (the words did not fit a narrow car screen).
+		View more = roundButton(R.drawable.search, chipFill, primary, R.string.youtube_alt_search_more);
 		more.setOnClickListener(v -> morphTo(false));
-		LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(WRAP_CONTENT, dp(42));
+		LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(dp(42), dp(42));
 		mlp.setMarginStart(dp(6));
 		m.addView(more, mlp);
 
