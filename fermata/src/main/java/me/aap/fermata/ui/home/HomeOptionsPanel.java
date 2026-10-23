@@ -14,6 +14,9 @@ import android.widget.TextView;
 
 import androidx.appcompat.widget.SwitchCompat;
 
+import java.util.List;
+import java.util.function.Consumer;
+
 import me.aap.fermata.R;
 import me.aap.fermata.ui.view.ChipFlowLayout;
 import me.aap.fermata.ui.view.EffectsUi;
@@ -95,7 +98,13 @@ final class HomeOptionsPanel {
 		if (cell.stack.count() > 1) {
 			// Only where the stack turns by itself: this widget then stays up when the others would turn.
 			if (host.stackRotateSeconds() > 0) {
-				rows.addView(switchRow(p, w, HomeOption.sw("pin", ctx.getString(R.string.home_stack_pin), false)));
+				// The stack is held as one: the switch is on when any of its widgets is, and sets them all.
+				List<HomeWidgetView> stacked = cell.stack.getWidgets();
+				boolean held = false;
+				for (HomeWidgetView s : stacked) held |= s.optBool("pin", false);
+				rows.addView(switchRow(p, ctx.getString(R.string.home_stack_pin), held, on -> {
+					for (HomeWidgetView s : stacked) s.setOpt("pin", on);
+				}));
 			}
 			rows.addView(buttonRow(p, ctx.getString(R.string.home_unstack), R.drawable.view_grid, () -> {
 				close.run();
@@ -110,19 +119,23 @@ final class HomeOptionsPanel {
 	}
 
 	private static View switchRow(HomePalette p, HomeWidgetView w, HomeOption o) {
+		return switchRow(p, o.label, w.optBool(o.key, o.defBool), on -> w.setOpt(o.key, on));
+	}
+
+	private static View switchRow(HomePalette p, String label, boolean checked, Consumer<Boolean> onChange) {
 		Context ctx = p.ctx;
 		LinearLayout row = new LinearLayout(ctx);
 		row.setGravity(Gravity.CENTER_VERTICAL);
 		row.setMinimumHeight(HomeUi.dp(ctx, 48));
 		TextView t = new TextView(ctx);
-		t.setText(o.label);
+		t.setText(label);
 		t.setTextColor(p.textPrimary);
 		t.setTextSize(14);
 		row.addView(t, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 		SwitchCompat sw = new SwitchCompat(ctx);
 		SwitchStyle.apply(sw, ctx);
-		sw.setChecked(w.optBool(o.key, o.defBool));
-		sw.setOnCheckedChangeListener((b, on) -> w.setOpt(o.key, on));
+		sw.setChecked(checked);
+		sw.setOnCheckedChangeListener((b, on) -> onChange.accept(on));
 		row.addView(sw);
 		return row;
 	}
