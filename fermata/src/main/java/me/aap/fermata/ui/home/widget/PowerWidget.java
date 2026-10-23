@@ -42,6 +42,7 @@ final class PowerWidget extends HomeWidgetView {
 	private LinearLayout column;
 	private android.view.View headerRow;
 	private boolean headerOn = true;
+	private boolean statsOn = true;
 	private FrameLayout gaugeBox;
 	private PowerGaugeView gauge;
 	private PowerLiveGraphView graph;
@@ -183,6 +184,8 @@ final class PowerWidget extends HomeWidgetView {
 		int need = (mode == STRIP) ? Integer.MAX_VALUE : (mode == GAUGE) ? px(174) : px(160);
 		boolean show = h >= need;
 		headerOn = show;
+		// The graph gets the room under the figures: its line of figures goes when the card is short (6x2 hid the graph).
+		statsOn = (mode != GRAPH) || (h >= px(240));
 		headerRow.setVisibility(show ? VISIBLE : GONE);
 		body.setClickable(!show);
 		body.setOnClickListener(show ? null : v -> open(R.id.power_usage_addon));
@@ -403,7 +406,7 @@ final class PowerWidget extends HomeWidgetView {
 			}
 		}
 		stats.setText(sb);
-		stats.setVisibility(sb.isEmpty() ? GONE : VISIBLE);
+		stats.setVisibility((sb.isEmpty() || !statsOn) ? GONE : VISIBLE);
 		if (mode == GRAPH) graph.setData(t.getGraph());
 		if (mode == BREAKDOWN) refreshBreakdown(t);
 	}

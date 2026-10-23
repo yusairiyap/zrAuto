@@ -101,8 +101,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 	private boolean built;
 	private long loadedAt;
 	private boolean loading;
-	/** The list is faded out for going back; its rows fade in once they are read. */
-	private boolean fadeInRows;
+	/** The list is fading out for going back; its rows are swapped while it is hidden and fade in after. */
+	private boolean backing;
 	private final FermataServiceUiBinder.Listener playingListener = new FermataServiceUiBinder.Listener() {
 		@Override
 		public void onPlayableChanged(PlayableItem oldItem, PlayableItem newItem) {
@@ -548,16 +548,26 @@ abstract class LibraryWidget extends HomeWidgetView {
 		if (drillSource == null) return;
 		drillSource = null;
 		showBack(false);
-		// The rows used to be swapped in one frame, next to the chip leaving: the list now fades out and the playlists fade in.
-		if (host.animate() && isShown() && built) {
-			listView.animate().cancel();
-			listView.animate().alpha(0f).setDuration(120).withEndAction(() -> {
-				fadeInRows = true;
-				reset();
-			}).start();
-		} else {
+		if (!host.animate() || !isShown() || !built) {
 			reset();
+			return;
 		}
+		// The opened list's rows stay until the playlists are read (no placeholder in between): the list fades out, the
+		// playlists are swapped in while it is hidden, and they fade in once both are done.
+		backing = true;
+		focusRow = -1;
+		lastFocusKey = null;
+		listView.animate().cancel();
+		listView.animate().alpha(0f).setDuration(120).withEndAction(() -> {
+			backing = false;
+			if (!loading) showRowsAgain();
+		}).start();
+		refresh(true);
+	}
+
+	private void showRowsAgain() {
+		listView.animate().cancel();
+		listView.animate().alpha(1f).setDuration(160).start();
 	}
 
 	private void showBack(boolean on) {
@@ -601,11 +611,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 			rows = r;
 			total = n;
 			render();
-			if (fadeInRows) {
-				fadeInRows = false;
-				listView.animate().cancel();
-				listView.animate().alpha(1f).setDuration(160).start();
-			}
+			// Back to the playlists: once they are read and the list is hidden, it fades in.
+			if (!backing && (listView.getAlpha() < 1f)) showRowsAgain();
 		});
 	}
 
