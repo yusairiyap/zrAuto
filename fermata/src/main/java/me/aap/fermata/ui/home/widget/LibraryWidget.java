@@ -91,6 +91,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 	@Nullable
 	private FetchSource drillSource;
 	private int fetchGen;
+	/** The library's change count when the list was last asked for. */
+	private int seenChanges = -1;
 	/** What the rows on screen were made from, so an unchanged refresh doesn't rebuild (and blink) them. */
 	private String shownSignature = "";
 	private List<Row> rows = new ArrayList<>();
@@ -434,8 +436,19 @@ abstract class LibraryWidget extends HomeWidgetView {
 	@Override
 	protected void onBind() {
 		render();
-		if (isActive()) refresh(true);
+		if (isActive()) {
+			refresh(true);
+		} else if (rows.isEmpty()) {
+			// A card waiting in a stack (or off screen) reads its list a moment after it was made, so the rows and their
+			// pictures are there already when it is swiped to, instead of loading in front of the finger.
+			removeCallbacks(prefetch);
+			postDelayed(prefetch, 700);
+		}
 	}
+
+	private final Runnable prefetch = () -> {
+		if (built && !isActive() && rows.isEmpty() && !loading) refresh(false);
+	};
 
 	@Override
 	protected void onResized(int w, int h) {
@@ -467,8 +480,11 @@ abstract class LibraryWidget extends HomeWidgetView {
 		// Back on screen: the playing song is brought into view again.
 		lastFocusKey = null;
 		render();
-		// Changes made while Home was away (in a tab) are not waited for until the list is old enough to be read again.
-		refresh(true);
+		// Changes made while Home was away (in a tab) are not waited for until the list is old enough to be read again;
+		// a list that nothing has changed since it was read keeps its rows (a long one is read from the library again
+		// only when it has to be: coming back to Home and swiping to a card showed it late).
+		boolean changed = !followsLibrary() || (me.aap.fermata.media.lib.ItemContainer.changeCount() != seenChanges) || rows.isEmpty();
+		refresh(changed);
 	}
 
 	@Override
@@ -539,6 +555,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 		if (loading && !force) return;
 		if (!force && ((SystemClock.uptimeMillis() - loadedAt) < STALE_MS)) return;
 		loading = true;
+		seenChanges = me.aap.fermata.media.lib.ItemContainer.changeCount();
 		int gen = ++fetchGen;
 		if (built) updateBusy();
 		FetchSource src = (drillSource != null) ? drillSource : this::fetch;

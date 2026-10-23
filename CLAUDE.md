@@ -871,6 +871,12 @@ what each widget shows is set on the widget (edit mode > its gear).
 - **The Playlists card fills the playlists that hold the playing song** (`PlaylistsWidget#fetch`/`holders`: each playlist's children are read in turn, the cached ones at once, and every playlist
   containing the song (`playingIds`, also the last played song right after app start) is a `current` row, the accent fill the playing song's row has; the first one is scrolled into view, and the
   one-time "open the last played song's playlist" now uses it too). `marksPlayingOnTop()` is on, so a song change re-reads the list.
+  **The search for the holders does not hold the card back** (`PlaylistsWidget#scanHolders`): the rows are drawn at once from the last known `holding` set, and the scan (one playlist after the
+  other, hundreds of reads on a big library) runs behind, redraws only when its answer differs, and is not repeated for the same playing song and the same library change count. The first
+  version waited for the scan before showing any row, which made the card slow to appear with 200+ playlists.
+- **Long lists appear fast** (`LibraryWidget`): `ItemContainer#changeCount` counts every add/remove of Favorites and playlists; a card coming back on screen re-reads only when the count moved
+  (`seenChanges`) or it has no rows, instead of every time. A card sitting in a stack (not active) reads its list 700 ms after it was bound (`prefetch`), so rows and pictures are there when it is
+  swiped to; the skeleton placeholder still shows if the read is not done by then.
 
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 

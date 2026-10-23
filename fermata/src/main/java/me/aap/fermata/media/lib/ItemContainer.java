@@ -233,6 +233,13 @@ public abstract class ItemContainer<C extends Item> extends BrowsableItemBase {
 	 * Told whenever the children of any container (Favorites, a playlist, the list of playlists) were replaced by an add or a
 	 * remove, from whichever thread did it: what the Home cards listen to, so they follow every change at once.
 	 */
+	private static final java.util.concurrent.atomic.AtomicInteger CHANGES = new java.util.concurrent.atomic.AtomicInteger();
+
+	/** How many times any container's children were replaced so far: a list that was read at some count is current while it still is. */
+	public static int changeCount() {
+		return CHANGES.get();
+	}
+
 	public static void addContentListener(Runnable l) {
 		CONTENT_LISTENERS.add(l);
 	}
@@ -244,6 +251,7 @@ public abstract class ItemContainer<C extends Item> extends BrowsableItemBase {
 	@SuppressWarnings({"rawtypes", "unchecked"})
 	private void setNewChildren(List<C> c) {
 		super.setChildren((List) c);
+		CHANGES.incrementAndGet();
 		for (Runnable l : CONTENT_LISTENERS) {
 			try {
 				l.run();
