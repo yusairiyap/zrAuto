@@ -17,7 +17,7 @@
     <string name="home_options">Options</string>
     <string name="home_resize">Resize</string>
     <string name="home_unstack">Take out of the stack</string>
-    <string name="home_stack_pin">Stay on this widget</string>
+    <string name="home_stack_pin">Keep this stack still</string>
     <string name="home_stacked">Stacked, %1$d widgets. Swipe it sideways to switch.</string>
     <string name="home_stack_prev">Previous widget</string>
     <string name="home_stack_next">Next widget</string>

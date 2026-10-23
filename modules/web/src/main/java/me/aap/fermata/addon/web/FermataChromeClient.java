@@ -131,7 +131,7 @@ public class FermataChromeClient extends WebChromeClient {
 
 	/** When a Back closed the comments beside the video, see onHideCustomView. */
 	private long backClosedAt;
-	private static final long BACK_REPEAT_MS = 800;
+	private static final long BACK_REPEAT_MS = 3000;
 
 	@Override
 	public void onHideCustomView() {

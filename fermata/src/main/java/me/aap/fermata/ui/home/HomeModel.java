@@ -8,7 +8,6 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -48,8 +47,6 @@ public final class HomeModel {
 		/** Freeflow: where the card was put, in dp from the page's top left; -1 until it has a place. */
 		public float x = -1;
 		public float y = -1;
-		/** Each arrangement's own size, place and order for this card (the active one is in w, h, x, y). */
-		final Map<String, Geo> geo = new HashMap<>();
 		public final List<Item> items = new ArrayList<>();
 
 		Cell(long id, int w, int h) {
@@ -73,23 +70,6 @@ public final class HomeModel {
 
 	private final MainActivityPrefs prefs;
 	private final boolean car;
-	/** One arrangement's geometry for a card: its size, its free place (-1 until chosen) and its order in the list. */
-	static final class Geo {
-		final int w;
-		final int h;
-		final float x;
-		final float y;
-		final int ord;
-
-		Geo(int w, int h, float x, float y, int ord) {
-			this.w = w;
-			this.h = h;
-			this.x = x;
-			this.y = y;
-			this.ord = ord;
-		}
-	}
-
 	private final List<Cell> cells = new ArrayList<>();
 	/** The arrangement the cells are laid out in now ("down", "side" or "free"); null until one is shown. */
 	@Nullable
@@ -130,8 +110,12 @@ public final class HomeModel {
 		return true;
 	}
 
+	/** Every arrangement's own cards (the one on screen is {@link #cells}; the others as they were last shown). */
+	private final Map<String, JSONArray> arrangements = new HashMap<>();
+
 	private void load() {
 		cells.clear();
+		arrangements.clear();
 		String json = prefs.getStringPref(layoutPref());
 		saved = json;
 		if (json == null) {
@@ -140,42 +124,50 @@ public final class HomeModel {
 		}
 		try {
 			JSONObject root = new JSONObject(json);
-			JSONArray arr = root.getJSONArray("cells");
 			layout = root.optString("layout", null);
-			for (int i = 0; i < arr.length(); i++) {
-				JSONObject o = arr.getJSONObject(i);
-				Cell c = new Cell(o.getLong("id"), o.getInt("w"), o.getInt("h"));
-				c.top = o.optInt("top", 0);
-				c.x = (float) o.optDouble("x", -1);
-				c.y = (float) o.optDouble("y", -1);
-				JSONObject g = o.optJSONObject("g");
-				if (g != null) {
-					Iterator<String> keys = g.keys();
-					while (keys.hasNext()) {
-						String key = keys.next();
-						JSONObject go = g.getJSONObject(key);
-						c.geo.put(key, new Geo(go.getInt("w"), go.getInt("h"), (float) go.optDouble("x", -1),
-								(float) go.optDouble("y", -1), go.optInt("ord", 0)));
-					}
+			nextCell = Math.max(nextCell, root.optLong("next", 1));
+			JSONObject all = root.optJSONObject("arrangements");
+			if (all != null) {
+				Iterator<String> keys = all.keys();
+				while (keys.hasNext()) {
+					String key = keys.next();
+					arrangements.put(key, all.getJSONArray(key));
 				}
-				JSONArray items = o.getJSONArray("items");
-				for (int j = 0; j < items.length(); j++) {
-					JSONObject io = items.getJSONObject(j);
-					String type = io.getString("type");
-					if (HomeWidgets.find(type) == null) continue; // A widget this build doesn't have.
-					JSONObject opts = io.optJSONObject("o");
-					c.items.add(new Item(io.getString("id"), type, (opts != null) ? opts : new JSONObject()));
-				}
-				if (c.items.isEmpty()) continue;
-				c.top = Math.max(0, Math.min(c.top, c.items.size() - 1));
-				cells.add(c);
-				nextCell = Math.max(nextCell, c.id + 1);
 			}
+			JSONArray arr = ((layout != null) && arrangements.containsKey(layout)) ?
+					arrangements.get(layout) : root.getJSONArray("cells");
+			cells.addAll(parseCells(arr));
 		} catch (JSONException ex) {
 			Log.e(ex, "Failed to read the Home layout");
 			cells.clear();
+			arrangements.clear();
 			defaults();
 		}
+	}
+
+	/** The cards written by {@link #cellsJson()}; a card without a widget is left out. */
+	private List<Cell> parseCells(JSONArray arr) throws JSONException {
+		List<Cell> out = new ArrayList<>();
+		for (int i = 0; i < arr.length(); i++) {
+			JSONObject o = arr.getJSONObject(i);
+			Cell c = new Cell(o.getLong("id"), o.getInt("w"), o.getInt("h"));
+			c.top = o.optInt("top", 0);
+			c.x = (float) o.optDouble("x", -1);
+			c.y = (float) o.optDouble("y", -1);
+			JSONArray items = o.getJSONArray("items");
+			for (int j = 0; j < items.length(); j++) {
+				JSONObject io = items.getJSONObject(j);
+				String type = io.getString("type");
+				if (HomeWidgets.find(type) == null) continue; // A widget this build doesn't have.
+				JSONObject opts = io.optJSONObject("o");
+				c.items.add(new Item(io.getString("id"), type, (opts != null) ? opts : new JSONObject()));
+			}
+			if (c.items.isEmpty()) continue;
+			c.top = Math.max(0, Math.min(c.top, c.items.size() - 1));
+			out.add(c);
+			nextCell = Math.max(nextCell, c.id + 1);
+		}
+		return out;
 	}
 
 	private void defaults() {
@@ -251,12 +243,6 @@ public final class HomeModel {
 		c.top = Math.max(0, Math.min(c.top, c.items.size() - 1));
 		Cell n = new Cell(nextCell++, c.w, c.h);
 		n.items.add(it);
-		// Taken out of the stack, it keeps the size and order it had in each arrangement, right after the
-		// stack it came from; its free place is not copied (it would land on top of the stack).
-		for (Map.Entry<String, Geo> e : c.geo.entrySet()) {
-			Geo g = e.getValue();
-			n.geo.put(e.getKey(), new Geo(g.w, g.h, -1, -1, g.ord));
-		}
 		cells.add(cells.indexOf(c) + 1, n);
 		return n;
 	}
@@ -295,70 +281,39 @@ public final class HomeModel {
 	}
 
 	/**
-	 * Shows the cards in arrangement {@code key}: each card takes the size and place it had in that
-	 * arrangement, and the order it had there. What the arrangement has not seen yet keeps its size.
+	 * Shows the arrangement {@code key} (its own cards, sizes, places, stacks and widget settings). One not shown
+	 * before starts as the one on screen: a copy, so the two then change apart.
 	 * @return whether it changed
 	 */
 	public boolean switchLayout(String key) {
 		if (key.equals(layout)) return false;
-		// What the cards are now is the arrangement it was in (an older layout has no name): kept for that one.
-		store((layout != null) ? layout : key);
-		layout = key;
-		for (Cell c : cells) {
-			Geo g = c.geo.get(key);
-			if (g != null) {
-				c.w = g.w;
-				c.h = g.h;
-				c.x = g.x;
-				c.y = g.y;
-			} else {
-				c.x = -1;
-				c.y = -1;
-			}
+		JSONArray now = cellsJson();
+		if (layout != null) arrangements.put(layout, now);
+		JSONArray next = arrangements.containsKey(key) ? arrangements.get(key) : now;
+		try {
+			List<Cell> parsed = parseCells(next);
+			layout = key;
+			cells.clear();
+			cells.addAll(parsed);
+		} catch (JSONException ex) {
+			Log.e(ex, "Failed to read the Home arrangement " + key);
 		}
-		// Cards this arrangement has not placed yet go after the ones it has, in their current order.
-		cells.sort(Comparator.comparingInt(c -> {
-			Geo g = c.geo.get(key);
-			return (g == null) ? Integer.MAX_VALUE : g.ord;
-		}));
 		return true;
 	}
 
-	/** Keeps the cards' size, place and order as they are now for arrangement {@code key}. */
-	private void store(String key) {
-		for (int i = 0; i < cells.size(); i++) {
-			Cell c = cells.get(i);
-			c.geo.put(key, new Geo(c.w, c.h, c.x, c.y, i));
-		}
-	}
-
-	public void save() {
-		App.get().getHandler().removeCallbacks(saveNow);
+	/** The cards on screen, as they are written to the layout. */
+	private JSONArray cellsJson() {
+		JSONArray arr = new JSONArray();
 		try {
-			if (layout != null) store(layout);
-			JSONArray arr = new JSONArray();
 			for (Cell c : cells) {
 				JSONObject o = new JSONObject();
 				o.put("id", c.id);
 				o.put("w", c.w);
 				o.put("h", c.h);
 				o.put("top", c.top);
-				if (!c.geo.isEmpty()) {
-					JSONObject g = new JSONObject();
-					for (Map.Entry<String, Geo> e : c.geo.entrySet()) {
-						JSONObject go = new JSONObject();
-						go.put("w", e.getValue().w);
-						go.put("h", e.getValue().h);
-						go.put("x", (double) e.getValue().x);
-						go.put("y", (double) e.getValue().y);
-						go.put("ord", e.getValue().ord);
-						g.put(e.getKey(), go);
-					}
-					o.put("g", g);
-				}
 				if (c.x >= 0) {
-					o.put("x", c.x);
-					o.put("y", c.y);
+					o.put("x", (double) c.x);
+					o.put("y", (double) c.y);
 				}
 				JSONArray items = new JSONArray();
 				for (Item it : c.items) {
@@ -371,10 +326,25 @@ public final class HomeModel {
 				o.put("items", items);
 				arr.put(o);
 			}
+		} catch (JSONException ex) {
+			Log.e(ex, "Failed to write the Home layout");
+		}
+		return arr;
+	}
+
+	public void save() {
+		App.get().getHandler().removeCallbacks(saveNow);
+		try {
+			JSONArray now = cellsJson();
+			if (layout != null) arrangements.put(layout, now);
+			JSONObject all = new JSONObject();
+			for (Map.Entry<String, JSONArray> e : arrangements.entrySet()) all.put(e.getKey(), e.getValue());
 			JSONObject root = new JSONObject();
-			root.put("v", 1);
+			root.put("v", 2);
+			root.put("next", nextCell);
 			if (layout != null) root.put("layout", layout);
-			root.put("cells", arr);
+			root.put("cells", now);
+			root.put("arrangements", all);
 			saved = root.toString();
 			prefs.applyStringPref(layoutPref(), saved);
 		} catch (JSONException ex) {

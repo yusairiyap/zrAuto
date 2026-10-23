@@ -772,7 +772,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		// Each arrangement keeps its own sizes, places and order (see HomeModel#switchLayout).
 		// Portrait and landscape keep their own arrangements, each with its own sizes, places and order.
 		String arrangement = !down ? "side" : (mode == 3 ? "free" : "down");
-		if (model.switchLayout(arrangement + (landscape ? "-l" : "-p"))) grid.sync();
+		// The cards of another arrangement are made again from the model, not reused (their views kept the old cards).
+		if (model.switchLayout(arrangement + (landscape ? "-l" : "-p"))) grid.rebuild();
 		grid.setSnap(prefs.getBooleanPref(car() ? MainActivityPrefs.HOME_SNAP_GRID_AA : MainActivityPrefs.HOME_SNAP_GRID));
 		applyHeaderRoom();
 	}

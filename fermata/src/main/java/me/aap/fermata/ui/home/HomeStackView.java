@@ -269,9 +269,10 @@ final class HomeStackView extends FrameLayout {
 
 	private void rotateStep() {
 		// Only a stack that is on screen and not being used: a finger on it, edit mode or a swipe in progress wait a round.
-		// A pinned widget ("Stay on this widget") holds the stack: it turns only when someone turns it.
-		boolean pinned = !widgets.isEmpty() && widgets.get(topIndex()).optBool("pin", false);
-		if (isShown() && !cb.isEditing() && !dragging && !armed && (settle == null) && (widgets.size() > 1) && !pinned) {
+		// A pinned widget holds the whole stack: nothing turns it by itself while one of its widgets is pinned.
+		boolean pinned = false;
+		for (HomeWidgetView w : widgets) pinned |= w.optBool("pin", false);
+		if (!pinned && isShown() && !cb.isEditing() && !dragging && !armed && (settle == null) && (widgets.size() > 1)) {
 			goBy(1, true);
 		}
 		scheduleRotate();

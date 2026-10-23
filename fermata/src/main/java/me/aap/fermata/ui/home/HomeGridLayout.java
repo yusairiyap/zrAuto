@@ -204,6 +204,18 @@ final class HomeGridLayout extends ViewGroup {
 		sync();
 	}
 
+	/** Every card made again from the model: its cards were swapped for another arrangement's. */
+	void rebuild() {
+		for (HomeCellView v : new ArrayList<>(order)) {
+			v.animate().cancel();
+			removeView(v);
+		}
+		order.clear();
+		sync();
+		arrange();
+		requestLayout();
+	}
+
 	/** Makes the views match the model: new cells appear, removed ones go, changed stacks are rebuilt. */
 	void sync() {
 		if (model == null) return;
