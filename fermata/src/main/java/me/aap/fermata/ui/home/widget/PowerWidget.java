@@ -43,6 +43,9 @@ final class PowerWidget extends HomeWidgetView {
 	private android.view.View headerRow;
 	private boolean headerOn = true;
 	private boolean statsOn = true;
+	/** The graph goes beside the figures (a wide card too short for both one above the other). */
+	private boolean beside;
+	private boolean builtBeside;
 	private FrameLayout gaugeBox;
 	private PowerGaugeView gauge;
 	private PowerLiveGraphView graph;
@@ -171,6 +174,10 @@ final class PowerWidget extends HomeWidgetView {
 	protected void onSized(int w, int h) {
 		if (column == null) return;
 		applyHeader();
+		if (beside != builtBeside) {
+			rebuild();
+			return;
+		}
 		refresh();
 	}
 
@@ -185,11 +192,17 @@ final class PowerWidget extends HomeWidgetView {
 		boolean show = h >= need;
 		headerOn = show;
 		// The graph gets the room under the figures: its line of figures goes when the card is short (6x2 hid the graph).
-		statsOn = (mode != GRAPH) || (h >= px(240));
+		beside = sideBySide(mode, narrow);
+		statsOn = (mode != GRAPH) || beside || (h >= px(240));
 		headerRow.setVisibility(show ? VISIBLE : GONE);
 		body.setClickable(!show);
 		body.setOnClickListener(show ? null : v -> open(R.id.power_usage_addon));
 		if (mode == GAUGE) sizeGauge();
+	}
+
+	private boolean sideBySide(int m, boolean nar) {
+		int h = (heightPx() > 0) ? heightPx() : px(getCellsH() * 90f);
+		return (m == GRAPH) && !nar && (h < px(240));
 	}
 
 	/** Puts the pieces together for the card's size. */
@@ -202,13 +215,15 @@ final class PowerWidget extends HomeWidgetView {
 		else if (view == 3) m = BREAKDOWN;
 		else m = (getCellsW() >= 3) ? GRAPH : GAUGE;
 		boolean nar = getCellsW() < 3;
-		if ((m == mode) && (nar == narrow)) {
+		if ((m == mode) && (nar == narrow) && (sideBySide(m, nar) == builtBeside)) {
 			applyHeader();
 			refresh();
 			return;
 		}
 		mode = m;
 		narrow = nar;
+		beside = sideBySide(m, nar);
+		builtBeside = beside;
 		applyHeader();
 		body.removeAllViews();
 		detach(gaugeBox);
@@ -275,8 +290,6 @@ final class PowerWidget extends HomeWidgetView {
 			default -> {
 				flatValue(true);
 				stats.setSingleLine(false);
-				body.setOrientation(LinearLayout.VERTICAL);
-				body.setGravity(Gravity.TOP);
 				LinearLayout top = new LinearLayout(ctx);
 				top.setOrientation(narrow ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
 				top.setGravity(narrow ? Gravity.START : Gravity.BOTTOM);
@@ -287,14 +300,31 @@ final class PowerWidget extends HomeWidgetView {
 						new LinearLayout.LayoutParams(0, -2, 1f);
 				if (!narrow) slp.setMarginStart(px(10));
 				top.addView(status, slp);
-				body.addView(top, new LinearLayout.LayoutParams(-1, -2));
 				stats.setGravity(Gravity.START);
 				LinearLayout.LayoutParams stp = new LinearLayout.LayoutParams(-1, -2);
 				stp.topMargin = px(2);
-				body.addView(stats, stp);
-				LinearLayout.LayoutParams glp = new LinearLayout.LayoutParams(-1, 0, 1f);
-				glp.topMargin = px(4);
-				body.addView(graph, glp);
+				if (beside) {
+					// A short wide card: the figures stand on the left and the graph takes the height beside them.
+					LinearLayout figures = new LinearLayout(ctx);
+					figures.setOrientation(LinearLayout.VERTICAL);
+					figures.setGravity(Gravity.TOP);
+					figures.addView(top, new LinearLayout.LayoutParams(-1, -2));
+					figures.addView(stats, stp);
+					body.setOrientation(LinearLayout.HORIZONTAL);
+					body.setGravity(Gravity.CENTER_VERTICAL);
+					body.addView(figures, new LinearLayout.LayoutParams(0, -1, 0.42f));
+					LinearLayout.LayoutParams gsp = new LinearLayout.LayoutParams(0, -1, 0.58f);
+					gsp.setMarginStart(px(8));
+					body.addView(graph, gsp);
+				} else {
+					body.setOrientation(LinearLayout.VERTICAL);
+					body.setGravity(Gravity.TOP);
+					body.addView(top, new LinearLayout.LayoutParams(-1, -2));
+					body.addView(stats, stp);
+					LinearLayout.LayoutParams glp = new LinearLayout.LayoutParams(-1, 0, 1f);
+					glp.topMargin = px(4);
+					body.addView(graph, glp);
+				}
 			}
 		}
 		value.setTextSize((m == STRIP) ? 22 : (m == GAUGE) ? 19 : 28);

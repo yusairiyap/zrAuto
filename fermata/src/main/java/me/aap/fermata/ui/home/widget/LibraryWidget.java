@@ -547,19 +547,22 @@ abstract class LibraryWidget extends HomeWidgetView {
 	private void backOut() {
 		if (drillSource == null) return;
 		drillSource = null;
-		showBack(false);
 		if (!host.animate() || !isShown() || !built) {
+			showBack(false);
 			reset();
 			return;
 		}
-		// The opened list's rows stay until the playlists are read (no placeholder in between): the list fades out, the
-		// playlists are swapped in while it is hidden, and they fade in once both are done.
+		// The rows stay until the playlists are read (no placeholder in between). The list fades out, and only then the back
+		// chip leaves and the list goes back to its top, all while it is hidden: before, the list jumped while visible (the
+		// chip collapsing moved it, and it kept the folder's scroll).
 		backing = true;
 		focusRow = -1;
 		lastFocusKey = null;
 		listView.animate().cancel();
 		listView.animate().alpha(0f).setDuration(120).withEndAction(() -> {
 			backing = false;
+			showBack(false);
+			listView.scrollToPosition(0);
 			if (!loading) showRowsAgain();
 		}).start();
 		refresh(true);
