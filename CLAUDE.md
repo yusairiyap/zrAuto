@@ -1151,3 +1151,35 @@ For the next session: the in-app Diagnostic log is only readable once the UI wor
 make the start path write to a file that survives a blank screen (for example the existing `DiagnosticLog`
 writing to the app's external files directory), or to add `DiagnosticLog` lines in `MainActivity#onCreate`
 and the Home/Music `onViewCreated` paths. Ask the user for that file, not for adb.
+
+## Open issue: Back closes the YouTube comments, but the video pauses (not solved)
+
+Symptom (reported on the device, several times): with the comments open beside fullscreen video, the Back
+gesture closes the comment column as intended, but the video playback pauses (the frame stops, the audio
+may go on). Fullscreen is also left, which is what Back must not do.
+
+What the logs show (`VIDEO` lines, added for this):
+- The first hide of the custom view (`FermataChromeClient#onHideCustomView`, comments open) is consumed:
+  `YoutubeCommentsView.dismissOpen()` closes the column (search line first), and the method returns without
+  calling the custom-view callback, so the page stays fullscreen.
+- About 2.4 s later a second `onHideCustomView` arrives with the comments already closed
+  (`VIDEO hide custom view comments open=false ms since a back closed them=2370`). That one runs the real
+  exit (`exitFullScreenUi` -> `setFullScreen(false)` -> `VIDEO left fullscreen`), so the page leaves
+  fullscreen, which is the playback-pause the user sees.
+- Nothing in our code requests the second call, so it is most likely WebView/Chromium redelivering the back.
+  An 800 ms guard missed it; 3000 ms was added in `FermataChromeClient` (`BACK_REPEAT_MS`). That covers the
+  observed gap but also means a Back pressed within 3 s of closing the comments does not leave fullscreen.
+
+Not yet checked:
+- Whether the pause comes from the page's own exit (YouTube pauses when leaving its fullscreen element) or
+  from something of ours (`YoutubeFragment`/`MusicPlayer` reacting to the fullscreen change, the dock's
+  `watchDock`, the video's `setSplitShare` transform). Look at the `VIDEO` and `YT` lines around the pause.
+- Whether the redelivered back can be ignored more precisely: for example, by remembering the custom view
+  that was kept, and treating a hide for that same view as the echo of the consumed back only while the
+  page is still playing, instead of a time window.
+- Whether a consumed back should also re-run the page's own fullscreen request (the
+  `YoutubeFragment#enterVideoFullScreen` path), so the page stays fullscreen with its video playing.
+
+For the next session: ask for the Diagnostic log from one Back press with the comments open (the `BACK`,
+`VIDEO` and `YT` lines around it). Do not treat a longer time window as the fix; find the echo or the
+pause source.
