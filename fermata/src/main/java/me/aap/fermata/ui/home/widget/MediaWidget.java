@@ -673,6 +673,10 @@ final class MediaWidget extends HomeWidgetView {
 		boolean none = shown == null;
 		prev.setAlpha(none ? 0.4f : 1f);
 		next.setAlpha(none ? 0.4f : 1f);
+		// Dimmed and dead on the first / last song of the queue (a list) with Repeat off, as on the Music tab.
+		boolean playingNow = !none && (cb.getCurrentItem() != null);
+		FermataServiceUiBinder.setSkipAvailable(prev, !(playingNow && cb.isAtListStart()));
+		FermataServiceUiBinder.setSkipAvailable(next, !(playingNow && cb.isAtListEnd()));
 		play.setAlpha(1f);
 
 		videoNow = a.isVideoPlaying();
@@ -961,6 +965,7 @@ final class MediaWidget extends HomeWidgetView {
 			skipFromSavedQueue(false);
 			return;
 		}
+		if (cb.isAtListStart()) return;
 		// Like any player: back to the start first, unless it has only just begun.
 		if (position() > 3000) {
 			cb.onSeekTo(0);
@@ -977,6 +982,7 @@ final class MediaWidget extends HomeWidgetView {
 			skipFromSavedQueue(true);
 			return;
 		}
+		if (cb.isAtListEnd()) return;
 		skipUntil = SystemClock.elapsedRealtime() + 2500;
 		cb.onSkipToNext();
 		syncState();

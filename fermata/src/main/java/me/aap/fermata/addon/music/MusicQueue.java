@@ -5,6 +5,9 @@ import static me.aap.utils.async.Completed.completedNull;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -18,6 +21,8 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import me.aap.fermata.R;
 import me.aap.fermata.media.lib.ExtRoot;
@@ -286,8 +291,14 @@ public class MusicQueue extends ExtRoot {
 	 * order (starting from the track that was playing when it was turned on, kept as tracks are
 	 * added, moved or removed, and saved with the queue), else the queue's own order.
 	 */
-	public synchronized List<MusicTrackItem> getPlayOrder() {
-		return new ArrayList<>(playOrder(null));
+	public List<MusicTrackItem> getPlayOrder() {
+		List<MusicTrackItem> order;
+		synchronized (this) {
+			order = new ArrayList<>(playOrder(null));
+		}
+		// Also for a queue restored at start, which nothing has changed yet.
+		lookUpMissingChannels();
+		return order;
 	}
 
 	/** {@code t}'s position in {@link #getPlayOrder()}, or -1. */
@@ -345,6 +356,58 @@ public class MusicQueue extends ExtRoot {
 		save();
 		reset();
 		for (Listener l : new ArrayList<>(listeners)) l.onQueueChanged(this);
+		lookUpMissingChannels();
+	}
+
+	/** When a video's channel was last asked for, so a failed look-up is not repeated more than every few minutes. */
+	private static final Map<String, Long> CHANNEL_TRIED = new ConcurrentHashMap<>();
+	private long channelScan;
+
+	/**
+	 * A YouTube song queued from a list or a search was never played, so its channel is not known and its row stayed
+	 * without one until it played (the Music tab's queue showed "YouTube" there). The channels are looked up in the
+	 * background, from what Favorites already know or YouTube's oEmbed, and each row shows its channel when it arrives.
+	 */
+	private void lookUpMissingChannels() {
+		long now = SystemClock.uptimeMillis();
+		List<MusicTrackItem> missing = new ArrayList<>();
+		synchronized (this) {
+			if ((now - channelScan) < 1500) return;
+			channelScan = now;
+			for (MusicTrackItem t : tracks) {
+				String vid = t.getVideoId();
+				if ((vid == null) || (t.getArtistName() != null)) continue;
+				Long last = CHANNEL_TRIED.get(vid);
+				if ((last != null) && ((now - last) < 300_000)) continue;
+				CHANNEL_TRIED.put(vid, now);
+				missing.add(t);
+				if (missing.size() >= 60) break;
+			}
+		}
+		if (missing.isEmpty()) return;
+
+		Thread th = new Thread(() -> {
+			Handler main = new Handler(Looper.getMainLooper());
+			for (MusicTrackItem t : missing) {
+				String vid = t.getVideoId();
+				String channel = null;
+				for (me.aap.fermata.addon.FermataAddon a : me.aap.fermata.addon.AddonManager.get().getAddons()) {
+					if (!(a instanceof me.aap.fermata.addon.VideoTitleCache c)) continue;
+					me.aap.fermata.addon.VideoTitleCache.VideoInfo vi = c.getCachedVideoInfo(vid);
+					if ((vi != null) && (vi.artist != null) && !vi.artist.isEmpty()) channel = vi.artist;
+					break;
+				}
+				if (channel == null) {
+					me.aap.fermata.spotify.SpotifyImportModel.Video v = me.aap.fermata.spotify.YoutubeSearch.lookUpById(vid);
+					if (v != null) channel = v.channel;
+				}
+				if (channel == null) continue;
+				String ch = channel;
+				main.post(() -> t.setInfo(null, ch));
+			}
+		}, "queue-channel-lookup");
+		th.setDaemon(true);
+		th.start();
 	}
 
 	/** Takes over a list's Shuffle and Repeat settings, when the queue is made from that list. */

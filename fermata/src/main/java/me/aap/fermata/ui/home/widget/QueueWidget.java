@@ -120,7 +120,9 @@ final class QueueWidget extends LibraryWidget {
 			MusicTrackItem t = order.get(i);
 			boolean now = t.equals(cur);
 			if (now) playing = i;
+			// The channel, once known (it is looked up for songs queued without one); "YouTube" until then, as on the Music tab.
 			String artist = t.getArtistName();
+			if ((artist == null) && (t.getVideoId() != null)) artist = "YouTube";
 			rows.add(new Row(t.getName(), artist, t, () -> MusicPlayer.playTrack(a, t, 0), null, null, now));
 		}
 		focusRow = playing;

@@ -857,6 +857,14 @@ what each widget shows is set on the widget (edit mode > its gear).
   coming back on screen re-reads at once (`onActive` forces it). The Queue card listens to the queue instead (`QueueWidget#watch`, re-resolved on every read: the queue is made the
   first time something is queued, which a card already up never saw before) and to the playing song.
 
+- **The now-playing card's Previous / Next are dimmed and dead on the queue's first / last song** (Repeat off), the Music tab's rule: `MediaWidget#syncState` calls
+  `FermataServiceUiBinder.setSkipAvailable` from `MediaSessionCallback#isAtListStart/End`, and `onPrev` / `onNext` return early there. Nothing loaded (right after app start) keeps them working
+  (they start the saved queue's neighbour).
+- **A queued YouTube song's channel is looked up** (`MusicQueue#lookUpMissingChannels`, from `changed()` and `getPlayOrder()`, at most every 1.5 s and once per video per 5 minutes): a song queued
+  from a list or a search was never played, so only `setInfo` while playing gave it a channel, and its row (the Music tab's queue and the Queue card) showed none until it played. The
+  background thread asks the YouTube addon's cache first, then YouTube's oEmbed (`YoutubeSearch.lookUpById`) and calls `MusicTrackItem#setInfo`, which saves and tells the queue's listeners, so
+  both lists fill in. Until then the Queue card shows "YouTube" like the Music tab.
+
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 
 - Size what is *inside* a card from its pixels, not from cell counts or fixed dp: the Data ring's words (`used`/`caption`) and the Power
