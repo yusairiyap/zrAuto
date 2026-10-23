@@ -190,6 +190,8 @@
     <string name="home_arrange_down">Scroll down</string>
     <string name="home_arrange_side">Scroll sideways</string>
     <string name="home_arrange_free">Freeflow</string>
+    <string name="home_pref_snap">Snap to grid</string>
+    <string name="home_pref_snap_sub">Freeflow: a card dropped lands on the nearest cell</string>
     <string name="home_pref_columns">Widgets across</string>
     <string name="home_pref_columns_sub">How many units fit across (down, when scrolling sideways); 0 fits the screen</string>
     <string name="home_pref_gap">Space between widgets</string>
