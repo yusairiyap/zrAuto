@@ -101,6 +101,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 	private boolean built;
 	private long loadedAt;
 	private boolean loading;
+	/** The list is faded out for going back; its rows fade in once they are read. */
+	private boolean fadeInRows;
 	private final FermataServiceUiBinder.Listener playingListener = new FermataServiceUiBinder.Listener() {
 		@Override
 		public void onPlayableChanged(PlayableItem oldItem, PlayableItem newItem) {
@@ -546,7 +548,16 @@ abstract class LibraryWidget extends HomeWidgetView {
 		if (drillSource == null) return;
 		drillSource = null;
 		showBack(false);
-		reset();
+		// The rows used to be swapped in one frame, next to the chip leaving: the list now fades out and the playlists fade in.
+		if (host.animate() && isShown() && built) {
+			listView.animate().cancel();
+			listView.animate().alpha(0f).setDuration(120).withEndAction(() -> {
+				fadeInRows = true;
+				reset();
+			}).start();
+		} else {
+			reset();
+		}
 	}
 
 	private void showBack(boolean on) {
@@ -590,6 +601,11 @@ abstract class LibraryWidget extends HomeWidgetView {
 			rows = r;
 			total = n;
 			render();
+			if (fadeInRows) {
+				fadeInRows = false;
+				listView.animate().cancel();
+				listView.animate().alpha(1f).setDuration(160).start();
+			}
 		});
 	}
 
