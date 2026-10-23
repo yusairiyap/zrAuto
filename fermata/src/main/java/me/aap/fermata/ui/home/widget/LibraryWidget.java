@@ -188,12 +188,12 @@ abstract class LibraryWidget extends HomeWidgetView {
 	protected void onReordered(int from, int to) {
 	}
 
-	/** Whether each row has a remove button on its left (the option "Remove button", on unless switched off). */
 	/** Whether the card can show its rows one per line across its whole width (an option). */
 	protected boolean supportsFullWidth() {
 		return false;
 	}
 
+	/** Whether each row has a remove button on its left (the option "Remove button", on unless switched off). */
 	protected boolean supportsRemove() {
 		return false;
 	}
