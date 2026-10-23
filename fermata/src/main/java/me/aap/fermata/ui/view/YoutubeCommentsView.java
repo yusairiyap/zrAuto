@@ -109,6 +109,11 @@ public final class YoutubeCommentsView {
 	private List<Row> matches = new ArrayList<>();
 	private LinearLayout searchRow;
 	private EditText searchInput;
+	/** Below this many matches the "Search all comments" chip is offered (more comments still to load). */
+	private static final int SEARCH_ALL_BELOW = 3;
+	/** The search is loading every page of comments, showing the matches as they come. */
+	private boolean searchingAll;
+	private TextView searchAllChip;
 	private FrameLayout overlay;
 	private FrameLayout card;
 	private FrameLayout.LayoutParams cardLp;
@@ -294,7 +299,9 @@ public final class YoutubeCommentsView {
 			v.closeSearch();
 			return true;
 		}
-		v.dismiss();
+		// Already closing (its slide was cut short, so nothing removes it): take it away now.
+		if (v.dismissing) v.dismissFast();
+		else v.dismiss();
 		return true;
 	}
 
@@ -476,6 +483,19 @@ public final class YoutubeCommentsView {
 		skeleton.setVisibility(View.GONE);
 		listHolder.addView(skeleton, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 		root.addView(listHolder, new LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f));
+
+		// Search, with few or no matches: every page of comments is read for it (or the search is cancelled).
+		searchAllChip = pill(ctx.getString(R.string.yt_comments_search_all));
+		searchAllChip.setVisibility(View.GONE);
+		searchAllChip.setOnClickListener(v -> {
+			if (searchingAll) cancelSearchAll();
+			else startSearchAll();
+		});
+		LinearLayout.LayoutParams chipLp = new LinearLayout.LayoutParams(WRAP_CONTENT, dp(36));
+		chipLp.gravity = Gravity.CENTER_HORIZONTAL;
+		chipLp.topMargin = dp(6);
+		chipLp.bottomMargin = dp(6);
+		root.addView(searchAllChip, chipLp);
 
 		// The box for writing, only where it can be used (see updateCompose()).
 		if (!car) {
@@ -745,6 +765,7 @@ public final class YoutubeCommentsView {
 						adapter.notifyItemRangeInserted(start, rows.size() - start);
 					});
 					list.post(this::maybeLoadMore);
+					if (searchingAll) list.post(this::continueSearchAll);
 				});
 			} catch (Exception ex) {
 				Log.e(ex, "Failed to load more comments of ", videoId);
@@ -752,6 +773,7 @@ public final class YoutubeCommentsView {
 					if (destroyed || (gen != generation)) return;
 					loadingMore = false;
 					moreFailed = true;
+					if (searchingAll) finishSearchAll();
 					changed(() -> adapter.notifyItemChanged(rows.size()));
 				});
 			}
@@ -789,21 +811,67 @@ public final class YoutubeCommentsView {
 
 	/** The rows changed in more than one place: the list is bound again. */
 	private void resetRows() {
-		if (searching()) matches = buildMatches();
+		if (searching()) {
+			matches = buildMatches();
+			updateSearchAll();
+			if (searchingAll) setStatus(true, ctx.getString(R.string.yt_comments_search_all_progress, matches.size()));
+		}
 		adapter.notifyDataSetChanged();
 	}
 
 	private void onQuery(String text) {
 		if (text.equals(query)) return;
 		query = text;
+		searchingAll = false;
 		matches = searching() ? buildMatches() : new ArrayList<>();
 		adapter.notifyDataSetChanged();
-		if (searching()) {
-			setStatus(false, matches.isEmpty() ? ctx.getString(R.string.yt_comments_search_none) :
-					ctx.getString(R.string.yt_comments_search_found, matches.size()));
-		} else if (!rows.isEmpty()) {
-			setStatus(false, null);
+		updateSearchAll();
+		if (searching()) setStatus(false, matchStatus());
+		else if (!rows.isEmpty()) setStatus(false, null);
+	}
+
+	private CharSequence matchStatus() {
+		return matches.isEmpty() ? ctx.getString(R.string.yt_comments_search_none) :
+				ctx.getString(R.string.yt_comments_search_found, matches.size());
+	}
+
+	/** The chip (Search all comments, or Cancel while it runs) and the placeholder until the first match. */
+	private void updateSearchAll() {
+		if (searchAllChip == null) return;
+		boolean few = searching() && (matches.size() < SEARCH_ALL_BELOW);
+		searchAllChip.setVisibility((few && (searchingAll || (nextToken != null))) ? View.VISIBLE : View.GONE);
+		searchAllChip.setText(searchingAll ? R.string.yt_comments_search_cancel : R.string.yt_comments_search_all);
+		if (skeleton != null) skeleton.setVisibility((searchingAll && matches.isEmpty()) ? View.VISIBLE : View.GONE);
+	}
+
+	private void startSearchAll() {
+		searchingAll = true;
+		updateSearchAll();
+		setStatus(true, ctx.getString(R.string.yt_comments_search_all_progress, matches.size()));
+		continueSearchAll();
+	}
+
+	/** Loads the next page for the search; called again when each page has come in. */
+	private void continueSearchAll() {
+		if (!searchingAll || destroyed) return;
+		if (nextToken == null) {
+			finishSearchAll();
+			return;
 		}
+		if (!loadingMore) loadMore();
+	}
+
+	private void cancelSearchAll() {
+		if (!searchingAll) return;
+		searchingAll = false;
+		updateSearchAll();
+		setStatus(false, matchStatus());
+	}
+
+	private void finishSearchAll() {
+		searchingAll = false;
+		updateSearchAll();
+		setStatus(false, matchStatus());
 	}
 
 	/** The loaded comments, replies included, that contain what is searched for. */
@@ -844,7 +912,12 @@ public final class YoutubeCommentsView {
 			closeSearch();
 			return;
 		}
+		searchRow.animate().cancel();
 		searchRow.setVisibility(View.VISIBLE);
+		searchRow.setAlpha(0f);
+		searchRow.setTranslationY(-dp(10));
+		searchRow.animate().alpha(1f).translationY(0f).setDuration(220)
+				.setInterpolator(new DecelerateInterpolator(1.6f)).start();
 		searchInput.requestFocus();
 		InputMethodManager imm = (InputMethodManager) ctx.getSystemService(Context.INPUT_METHOD_SERVICE);
 		if (imm != null) imm.showSoftInput(searchInput, InputMethodManager.SHOW_IMPLICIT);
@@ -857,10 +930,15 @@ public final class YoutubeCommentsView {
 
 	/** Takes the search line away and shows every comment again. */
 	void closeSearch() {
-		searchRow.setVisibility(View.GONE);
 		InputMethodManager imm = (InputMethodManager) ctx.getSystemService(Context.INPUT_METHOD_SERVICE);
 		if (imm != null) imm.hideSoftInputFromWindow(searchInput.getWindowToken(), 0);
+		// Still "open" while it fades, so a second Back closes the search line's card as usual.
+		searchRow.animate().cancel();
+		searchRow.animate().alpha(0f).translationY(-dp(10)).setDuration(160)
+				.setInterpolator(new AccelerateInterpolator(1.4f))
+				.withEndAction(() -> searchRow.setVisibility(View.GONE)).start();
 		searchInput.setText("");
+		cancelSearchAll();
 	}
 
 	private void toggleReplies(Row p) {

@@ -1142,6 +1142,13 @@ public class MainActivityDelegate extends ActivityDelegate
 			return;
 		}
 
+		if (!videoMode) {
+			// Who took the fullscreen away (the comment column's log says whether it was open).
+			StackTraceElement[] st = new Throwable().getStackTrace();
+			DiagnosticLog.log("VIDEO", "left fullscreen", "comments open=" +
+					me.aap.fermata.ui.view.YoutubeCommentsView.isOpen(),
+					(st.length > 2) ? ("from " + st[1] + " via " + st[2]) : "");
+		}
 		ControlPanelView cp = getControlPanel();
 		videoBarsShown = false;
 		if (scrollBars != null) scrollBars.reset(false);
