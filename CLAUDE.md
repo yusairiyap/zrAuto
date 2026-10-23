@@ -1154,6 +1154,11 @@ and the Home/Music `onViewCreated` paths. Ask the user for that file, not for ad
 
 ## Open issue: Back closes the YouTube comments, but the video pauses (not solved)
 
+Status: the page-side consume (the first hide returning early, and its time guard) was reverted, so Back with
+the comments open once again leaves fullscreen (and the column closes with it); the comment view's own Back
+handling (`YoutubeCommentsView.dismissOpen`, search first) is kept. The notes below describe the reverted
+attempt, and the pause question still stands for the plain fullscreen exit.
+
 Symptom (reported on the device, several times): with the comments open beside fullscreen video, the Back
 gesture closes the comment column as intended, but the video playback pauses (the frame stops, the audio
 may go on). Fullscreen is also left, which is what Back must not do.

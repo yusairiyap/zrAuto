@@ -129,25 +129,9 @@ public class FermataChromeClient extends WebChromeClient {
 		a.fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 	}
 
-	/** When a Back closed the comments beside the video, see onHideCustomView. */
-	private long backClosedAt;
-	private static final long BACK_REPEAT_MS = 3000;
-
 	@Override
 	public void onHideCustomView() {
 		if (customViewCallback == null) return;
-		// Back (the system hides the page's fullscreen view for it) with the comments beside the video:
-		// they close, search first, and the video stays fullscreen. The same Back is reported again
-		// right after that: it must not take the video out of fullscreen too (its frame stops then).
-		long now = android.os.SystemClock.uptimeMillis();
-		me.aap.fermata.util.DiagnosticLog.log("VIDEO", "hide custom view", "comments open=" +
-				me.aap.fermata.ui.view.YoutubeCommentsView.isOpen(), "ms since a back closed them=" +
-				(now - backClosedAt));
-		if (me.aap.fermata.ui.view.YoutubeCommentsView.dismissOpen()) {
-			backClosedAt = now;
-			return;
-		}
-		if (now - backClosedAt < BACK_REPEAT_MS) return;
 		touchStamp = 0;
 		MainActivityDelegate a = MainActivityDelegate.get(customView.getContext());
 		View removed = customView;
