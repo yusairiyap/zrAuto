@@ -108,6 +108,8 @@ public interface MainActivityPrefs
 	Pref<IntSupplier> HOME_BG_SOURCE = Pref.i("HOME_BG_SOURCE", 0);
 	/** 0 solid, 1 glass, 2 colour: what a widget set to "Same as Home" looks like. */
 	Pref<IntSupplier> HOME_CARD_STYLE = Pref.i("HOME_CARD_STYLE", 0);
+	/** How opaque the widgets' cards are, 0 (see-through) to 100. */
+	Pref<IntSupplier> HOME_CARD_ALPHA = Pref.i("HOME_CARD_ALPHA", 100);
 	/** 0 by the screen's shape, 1 scrolling down, 2 scrolling sideways. */
 	Pref<IntSupplier> HOME_ARRANGE = Pref.i("HOME_ARRANGE", 0);
 	/** Freeflow: a card let go lands on the grid's cells (phone screen). */

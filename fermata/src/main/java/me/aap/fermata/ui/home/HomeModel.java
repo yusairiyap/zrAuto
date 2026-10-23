@@ -251,6 +251,12 @@ public final class HomeModel {
 		c.top = Math.max(0, Math.min(c.top, c.items.size() - 1));
 		Cell n = new Cell(nextCell++, c.w, c.h);
 		n.items.add(it);
+		// Taken out of the stack, it keeps the size and order it had in each arrangement, right after the
+		// stack it came from; its free place is not copied (it would land on top of the stack).
+		for (Map.Entry<String, Geo> e : c.geo.entrySet()) {
+			Geo g = e.getValue();
+			n.geo.put(e.getKey(), new Geo(g.w, g.h, -1, -1, g.ord));
+		}
 		cells.add(cells.indexOf(c) + 1, n);
 		return n;
 	}

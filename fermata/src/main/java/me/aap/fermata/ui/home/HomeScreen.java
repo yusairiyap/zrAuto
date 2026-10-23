@@ -530,6 +530,11 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	}
 
 	@Override
+	@Override
+	public int cardAlpha() {
+		return Math.max(0, Math.min(100, prefs.getIntPref(MainActivityPrefs.HOME_CARD_ALPHA)));
+	}
+
 	public int stackRotateSeconds() {
 		int s = prefs.getIntPref(MainActivityPrefs.HOME_STACK_ROTATE);
 		return (s <= 0) ? 0 : Math.max(3, s);
@@ -574,7 +579,9 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 				changed.contains(MainActivityPrefs.HOME_SNAP_GRID) || changed.contains(MainActivityPrefs.HOME_SNAP_GRID_AA)) {
 			applyArrangement();
 		}
-		if (changed.contains(MainActivityPrefs.HOME_CARD_STYLE)) grid.restyle();
+		if (changed.contains(MainActivityPrefs.HOME_CARD_STYLE) || changed.contains(MainActivityPrefs.HOME_CARD_ALPHA)) {
+			grid.restyle();
+		}
 		if (changed.contains(MainActivityPrefs.HOME_STACK_ROTATE)) grid.resyncRotation();
 		if (changed.contains(MainActivityPrefs.HOME_EDIT_BUTTON) || changed.contains(MainActivityPrefs.HOME_EDIT_BUTTON_AA)) {
 			applyEditUi(true);
@@ -763,7 +770,9 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		grid.setArrangement(vertical, count, gap);
 		grid.setFreeform(mode == 3);
 		// Each arrangement keeps its own sizes, places and order (see HomeModel#switchLayout).
-		if (model.switchLayout(!down ? "side" : (mode == 3 ? "free" : "down"))) grid.sync();
+		// Portrait and landscape keep their own arrangements, each with its own sizes, places and order.
+		String arrangement = !down ? "side" : (mode == 3 ? "free" : "down");
+		if (model.switchLayout(arrangement + (landscape ? "-l" : "-p"))) grid.sync();
 		grid.setSnap(prefs.getBooleanPref(car() ? MainActivityPrefs.HOME_SNAP_GRID_AA : MainActivityPrefs.HOME_SNAP_GRID));
 		applyHeaderRoom();
 	}

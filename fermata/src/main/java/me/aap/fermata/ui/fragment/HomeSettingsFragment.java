@@ -236,6 +236,9 @@ public class HomeSettingsFragment extends ReorderListFragment {
 		addChoiceRow(box, R.string.home_pref_style, R.string.home_pref_style_sub,
 				new int[]{R.string.home_style_solid, R.string.home_style_glass, R.string.home_style_colour},
 				() -> HomeScreen.styleShown(p), i -> HomeScreen.setAllStyles(p, i));
+		addValueSliderRow(box, R.string.home_pref_card_alpha, R.string.home_pref_card_alpha_sub, 0, 100,
+				() -> p.getIntPref(MainActivityPrefs.HOME_CARD_ALPHA), v -> p.applyIntPref(MainActivityPrefs.HOME_CARD_ALPHA, v),
+				v -> getString(R.string.power_set_percent, v), null);
 
 		section(box, R.string.home_sec_background);
 		addChoiceRow(box, R.string.home_pref_bg_source, R.string.home_pref_bg_source_sub,

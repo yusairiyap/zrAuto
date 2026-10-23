@@ -413,11 +413,17 @@ public abstract class HomeWidgetView extends FrameLayout {
 		applyStyle(created && isShown() && host.animate());
 	}
 
+	/** {@code argb} with its alpha scaled to {@code pct} of 100 (an opaque colour is opaque at 100). */
+	private static int alphaOf(int argb, int pct) {
+		int a = (argb >>> 24) == 0 ? 255 : (argb >>> 24);
+		return ((Math.round(a * pct / 100f) & 0xFF) << 24) | (argb & 0x00FFFFFF);
+	}
+
 	/** Moves the card and everything tinted to the colours of the look now chosen, gliding when asked. */
 	private void applyStyle(boolean animate) {
 		int s = style();
-		final int c1;
-		final int c2;
+		int c1;
+		int c2;
 		final int stroke;
 		boolean light = host.palette().light;
 		if (ownBackground()) {
@@ -439,6 +445,10 @@ public abstract class HomeWidgetView extends FrameLayout {
 			c2 = HomeUi.shade(type.accent, 0.42f) | 0xFF000000;
 			stroke = 0;
 		}
+		// The card's transparency (Settings > Home > Widget look): the colours' own alpha, scaled.
+		final int opacity = host.cardAlpha();
+		final int o1 = alphaOf(c1, opacity);
+		final int o2 = alphaOf(c2, opacity);
 		if (styleAnim != null) {
 			styleAnim.cancel();
 			styleAnim = null;
@@ -456,13 +466,13 @@ public abstract class HomeWidgetView extends FrameLayout {
 		for (Soft so : softs) paintSoft(so);
 		if (created) onStyleChanged();
 		if (!animate || (cardNow1 == 0)) {
-			paintStyle(1f, c1, c2, stroke, c1, c2, stroke);
+			paintStyle(1f, o1, o2, stroke, o1, o2, stroke);
 			return;
 		}
 		ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
 		a.setDuration(280);
 		a.setInterpolator(new android.view.animation.DecelerateInterpolator());
-		a.addUpdateListener(v -> paintStyle((float) v.getAnimatedValue(), f1, f2, fs, c1, c2, stroke));
+		a.addUpdateListener(v -> paintStyle((float) v.getAnimatedValue(), f1, f2, fs, o1, o2, stroke));
 		styleAnim = a;
 		a.start();
 	}

@@ -93,14 +93,14 @@ final class HomeOptionsPanel {
 			}
 		}
 		if (cell.stack.count() > 1) {
-			rows.addView(buttonRow(p, ctx.getString(R.string.home_unstack), R.drawable.view_grid, () -> {
-				close.run();
-				grid.unstack(cell, w);
-			}));
 			// Only where the stack turns by itself: this widget then stays up when the others would turn.
 			if (host.stackRotateSeconds() > 0) {
 				rows.addView(switchRow(p, w, HomeOption.sw("pin", ctx.getString(R.string.home_stack_pin), false)));
 			}
+			rows.addView(buttonRow(p, ctx.getString(R.string.home_unstack), R.drawable.view_grid, () -> {
+				close.run();
+				grid.unstack(cell, w);
+			}));
 		}
 		rows.addView(buttonRow(p, ctx.getString(R.string.home_remove), R.drawable.delete, () -> {
 			close.run();

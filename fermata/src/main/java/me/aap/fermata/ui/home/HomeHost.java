@@ -31,4 +31,7 @@ public interface HomeHost {
 
 	/** Seconds between a stack turning to its next widget by itself, 0 when it does not. */
 	int stackRotateSeconds();
+
+	/** How opaque the widgets' cards are, 0 to 100 (Settings > Home > Widget look). */
+	int cardAlpha();
 }
