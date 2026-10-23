@@ -1484,10 +1484,12 @@ public class SpotifyImportFragment extends MainActivityFragment {
 			if (h.searchMore != null) {
 				h.searchMore.setVisibility(View.VISIBLE);
 				h.searchMore.setEnabled(!engine.isImporting());
-				// An icon only (a search glass, on the list and the grid alike): what it does is its description.
-				h.searchMore.setContentDescription(h.searchMore.getContext().getString(t.altExpanded ?
-						R.string.spotify_import_hide_more : R.string.spotify_import_search_more));
-				h.searchMore.setAlpha(t.altExpanded ? 0.5f : 1f);
+				if (h.searchMore instanceof TextView sm) {
+					sm.setText(t.altExpanded ? R.string.spotify_import_hide_more :
+							R.string.spotify_import_search_more);
+				} else {
+					h.searchMore.setAlpha(t.altExpanded ? 0.5f : 1f);
+				}
 				h.searchMore.setOnClickListener(v -> onSearchMore(t));
 			}
 
