@@ -34,6 +34,7 @@
     <string name="home_bg_remove">Remove</string>
     <string name="home_bg_dim">Darken</string>
     <string name="home_bg_blur">Blur</string>
+    <string name="home_bg_blur_off">Off</string>
     <string name="home_bg_set">Background set</string>
     <string name="home_bg_failed">Could not use that picture: %1$s</string>
 
