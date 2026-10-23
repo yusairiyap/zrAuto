@@ -2943,6 +2943,10 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	@Override
 	public void onBackPressed() {
+		if (isVideoMode()) {
+			DiagnosticLog.log("BACK", "in fullscreen video",
+					"comments open=" + me.aap.fermata.ui.view.YoutubeCommentsView.isOpen());
+		}
 		if (me.aap.fermata.ui.welcome.WelcomeWizard.onBack()) return;
 		if (me.aap.fermata.ui.home.HomeModal.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.ShareSheet.dismissOpen()) return;

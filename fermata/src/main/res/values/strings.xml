@@ -522,6 +522,9 @@
     <string name="yt_comments_nothing">Comments need a YouTube video to be playing</string>
     <string name="yt_comments_loading">Loading comments…</string>
     <string name="yt_comments_empty">No comments yet</string>
+    <string name="yt_comments_search_hint">Search comments</string>
+    <string name="yt_comments_search_none">No comments match</string>
+    <string name="yt_comments_search_found">%1$d found</string>
     <string name="yt_comments_off">Comments are turned off for this video</string>
     <string name="yt_comments_failed">Couldn\'t load the comments</string>
     <string name="yt_comments_retry">Try again</string>

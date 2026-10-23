@@ -18,8 +18,11 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
 import android.text.InputType;
+import android.text.SpannableString;
 import android.text.TextUtils;
 import android.text.TextWatcher;
+import android.text.style.BackgroundColorSpan;
+import android.text.style.StyleSpan;
 import android.util.LruCache;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -101,6 +104,11 @@ public final class YoutubeCommentsView {
 	private final ExecutorService executor = Executors.newFixedThreadPool(2);
 	private final LruCache<String, Bitmap> images = new LruCache<>(60);
 	private final List<Row> rows = new ArrayList<>();
+	// Search: while query isn't empty, the list shows matches (the loaded comments that contain it).
+	private String query = "";
+	private List<Row> matches = new ArrayList<>();
+	private LinearLayout searchRow;
+	private EditText searchInput;
 	private FrameLayout overlay;
 	private FrameLayout card;
 	private FrameLayout.LayoutParams cardLp;
@@ -269,12 +277,22 @@ public final class YoutubeCommentsView {
 		if (v != null) v.dismissFast();
 	}
 
+	/** Whether the comments card (or its docked column) is on screen. */
+	public static boolean isOpen() {
+		YoutubeCommentsView v = open;
+		return (v != null) && (v.overlay != null) && (v.overlay.getParent() != null);
+	}
+
 	/** Closes the card if it's open (for the back button); returns whether it was. */
 	public static boolean dismissOpen() {
 		YoutubeCommentsView v = open;
 		if ((v == null) || (v.overlay == null) || (v.overlay.getParent() == null)) {
 			open = null;
 			return false;
+		}
+		if (v.searchOpen()) {
+			v.closeSearch();
+			return true;
 		}
 		v.dismiss();
 		return true;
@@ -335,6 +353,16 @@ public final class YoutubeCommentsView {
 			if (input != null) hideKeyboard();
 			dismiss();
 		});
+		ImageView search = new ImageView(ctx);
+		search.setImageResource(R.drawable.search);
+		search.setImageTintList(ColorStateList.valueOf(secondary));
+		search.setScaleType(ImageView.ScaleType.CENTER);
+		search.setBackground(pressable(0, 22));
+		search.setClickable(true);
+		search.setFocusable(true);
+		search.setOnClickListener(v -> toggleSearch());
+		search.setVisibility(car ? View.GONE : View.VISIBLE);
+		header.addView(search, new LinearLayout.LayoutParams(dp(44), dp(44)));
 		header.addView(close, new LinearLayout.LayoutParams(dp(44), dp(44)));
 		root.addView(header, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
@@ -375,6 +403,42 @@ public final class YoutubeCommentsView {
 		sortRow.addView(sortNew, slp);
 		sortRow.setVisibility(View.GONE);
 		root.addView(sortRow, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+
+		// Search: filters the comments loaded so far as the text is typed (see onQuery).
+		searchRow = new LinearLayout(ctx);
+		searchRow.setOrientation(LinearLayout.HORIZONTAL);
+		searchRow.setGravity(Gravity.CENTER_VERTICAL);
+		searchRow.setPadding(dp(4), 0, dp(4), dp(6));
+		searchRow.setVisibility(View.GONE);
+		searchInput = new EditText(ctx);
+		searchInput.setHint(R.string.yt_comments_search_hint);
+		searchInput.setHintTextColor(secondary);
+		searchInput.setTextColor(primary);
+		searchInput.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+		searchInput.setSingleLine(true);
+		searchInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+		searchInput.setMinHeight(dp(44));
+		searchInput.setPadding(dp(16), 0, dp(16), 0);
+		GradientDrawable field = new GradientDrawable();
+		field.setColor(chipFill);
+		field.setCornerRadius(dp(22));
+		searchInput.setBackground(field);
+		searchInput.addTextChangedListener(new TextWatcher() {
+			@Override
+			public void beforeTextChanged(CharSequence s, int st, int c, int af) {
+			}
+
+			@Override
+			public void onTextChanged(CharSequence s, int st, int b, int c) {
+			}
+
+			@Override
+			public void afterTextChanged(Editable e) {
+				onQuery(e.toString().trim());
+			}
+		});
+		searchRow.addView(searchInput, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		root.addView(searchRow, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
 		statusRow = new LinearLayout(ctx);
 		statusRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -569,7 +633,7 @@ public final class YoutubeCommentsView {
 		nextToken = null;
 		loadingMore = false;
 		moreFailed = false;
-		adapter.notifyDataSetChanged();
+		resetRows();
 		setStatus(true, ctx.getString(R.string.yt_comments_loading));
 		updateCompose();
 
@@ -625,7 +689,7 @@ public final class YoutubeCommentsView {
 		updateSortRow();
 		for (Comment c : p.comments) rows.add(new Row(TYPE_COMMENT, c, null));
 		nextToken = p.next;
-		adapter.notifyDataSetChanged();
+		resetRows();
 		setStatus(false, rows.isEmpty() ? ctx.getString(R.string.yt_comments_empty) : null);
 		updateCompose();
 		list.post(this::maybeLoadMore);
@@ -665,7 +729,7 @@ public final class YoutubeCommentsView {
 		int gen = generation;
 		loadingMore = true;
 		moreFailed = false;
-		adapter.notifyItemInserted(rows.size());
+		changed(() -> adapter.notifyItemInserted(rows.size()));
 		executor.execute(() -> {
 			try {
 				Page p = YtComments.more(token);
@@ -676,8 +740,10 @@ public final class YoutubeCommentsView {
 					int start = rows.size();
 					for (Comment c : p.comments) rows.add(new Row(TYPE_COMMENT, c, null));
 					nextToken = p.next;
-					adapter.notifyItemRemoved(footer);
-					adapter.notifyItemRangeInserted(start, rows.size() - start);
+					changed(() -> {
+						adapter.notifyItemRemoved(footer);
+						adapter.notifyItemRangeInserted(start, rows.size() - start);
+					});
 					list.post(this::maybeLoadMore);
 				});
 			} catch (Exception ex) {
@@ -686,7 +752,7 @@ public final class YoutubeCommentsView {
 					if (destroyed || (gen != generation)) return;
 					loadingMore = false;
 					moreFailed = true;
-					adapter.notifyItemChanged(rows.size());
+					changed(() -> adapter.notifyItemChanged(rows.size()));
 				});
 			}
 		});
@@ -694,6 +760,108 @@ public final class YoutubeCommentsView {
 
 	// ---------------------------------------------------------------------------------------------
 	// Replies
+
+	// ---------------------------------------------------------------------------------------------
+	// Search
+
+	private boolean searching() {
+		return !query.isEmpty();
+	}
+
+	/** The rows the list shows: all of them, or while searching the comments that match. */
+	private List<Row> shown() {
+		return searching() ? matches : rows;
+	}
+
+	/** The footer (more comments coming, or the retry) is not shown while searching. */
+	private boolean footerShown() {
+		return !searching() && (loadingMore || moreFailed);
+	}
+
+	/**
+	 * A change to {@link #rows} that the list can show as it is. While searching the list shows the
+	 * matches instead, so the change is shown by making them again: its positions are not the list's.
+	 */
+	private void changed(Runnable notify) {
+		if (searching()) resetRows();
+		else notify.run();
+	}
+
+	/** The rows changed in more than one place: the list is bound again. */
+	private void resetRows() {
+		if (searching()) matches = buildMatches();
+		adapter.notifyDataSetChanged();
+	}
+
+	private void onQuery(String text) {
+		if (text.equals(query)) return;
+		query = text;
+		matches = searching() ? buildMatches() : new ArrayList<>();
+		adapter.notifyDataSetChanged();
+		if (searching()) {
+			setStatus(false, matches.isEmpty() ? ctx.getString(R.string.yt_comments_search_none) :
+					ctx.getString(R.string.yt_comments_search_found, matches.size()));
+		} else if (!rows.isEmpty()) {
+			setStatus(false, null);
+		}
+	}
+
+	/** The loaded comments, replies included, that contain what is searched for. */
+	private List<Row> buildMatches() {
+		List<Row> found = new ArrayList<>();
+		for (Row r : rows) {
+			if ((r.type == TYPE_COMMENT) && (r.c != null) && (indexOf(r.c.text, query, 0) >= 0)) {
+				found.add(r);
+			}
+		}
+		return found;
+	}
+
+	/** The comment's text with what is searched for in bold on a highlight. */
+	private CharSequence highlight(String text) {
+		SpannableString s = new SpannableString(text);
+		int fill = (accent & 0x00ffffff) | 0x66000000;
+		int i = indexOf(text, query, 0);
+		while (i >= 0) {
+			int end = i + query.length();
+			s.setSpan(new BackgroundColorSpan(fill), i, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+			s.setSpan(new StyleSpan(Typeface.BOLD), i, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+			i = indexOf(text, query, end);
+		}
+		return s;
+	}
+
+	/** Where {@code what} first occurs in {@code text} at or after {@code from}, ignoring case; -1 if nowhere. */
+	private static int indexOf(String text, String what, int from) {
+		for (int i = from; i + what.length() <= text.length(); i++) {
+			if (text.regionMatches(true, i, what, 0, what.length())) return i;
+		}
+		return -1;
+	}
+
+	private void toggleSearch() {
+		if (searchOpen()) {
+			closeSearch();
+			return;
+		}
+		searchRow.setVisibility(View.VISIBLE);
+		searchInput.requestFocus();
+		InputMethodManager imm = (InputMethodManager) ctx.getSystemService(Context.INPUT_METHOD_SERVICE);
+		if (imm != null) imm.showSoftInput(searchInput, InputMethodManager.SHOW_IMPLICIT);
+	}
+
+	/** Whether the search line is up: Back takes it away before it closes the card. */
+	boolean searchOpen() {
+		return (searchRow != null) && (searchRow.getVisibility() == View.VISIBLE);
+	}
+
+	/** Takes the search line away and shows every comment again. */
+	void closeSearch() {
+		searchRow.setVisibility(View.GONE);
+		InputMethodManager imm = (InputMethodManager) ctx.getSystemService(Context.INPUT_METHOD_SERVICE);
+		if (imm != null) imm.hideSoftInputFromWindow(searchInput.getWindowToken(), 0);
+		searchInput.setText("");
+	}
 
 	private void toggleReplies(Row p) {
 		p.repliesOpen = !p.repliesOpen;
@@ -735,8 +903,9 @@ public final class YoutubeCommentsView {
 		int idx = rows.indexOf(p);
 		if (idx < 0) return;
 		if (p.shown > 0) {
+			int removed = p.shown;
 			for (int k = 0; k < p.shown; k++) rows.remove(idx + 1);
-			adapter.notifyItemRangeRemoved(idx + 1, p.shown);
+			changed(() -> adapter.notifyItemRangeRemoved(idx + 1, removed));
 			p.shown = 0;
 		}
 		if (p.repliesOpen) {
@@ -744,9 +913,10 @@ public final class YoutubeCommentsView {
 			if (p.repliesNext != null) group.add(p.moreRow());
 			rows.addAll(idx + 1, group);
 			p.shown = group.size();
-			adapter.notifyItemRangeInserted(idx + 1, group.size());
+			int added = group.size();
+			changed(() -> adapter.notifyItemRangeInserted(idx + 1, added));
 		}
-		adapter.notifyItemChanged(idx);
+		changed(() -> adapter.notifyItemChanged(idx));
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -761,7 +931,7 @@ public final class YoutubeCommentsView {
 		if (compose == null) return;
 		compose.setVisibility(canWrite() ? View.VISIBLE : View.GONE);
 		// The Reply buttons follow the sign-in too.
-		adapter.notifyDataSetChanged();
+		resetRows();
 	}
 
 	private void setReplyTo(@Nullable Row target) {
@@ -832,7 +1002,7 @@ public final class YoutubeCommentsView {
 
 		if (!reply) {
 			rows.add(0, new Row(TYPE_COMMENT, shown, null));
-			adapter.notifyItemInserted(0);
+			changed(() -> adapter.notifyItemInserted(0));
 			list.scrollToPosition(0);
 			setStatus(false, null);
 			return;
@@ -924,12 +1094,12 @@ public final class YoutubeCommentsView {
 	private final class Adapter extends RecyclerView.Adapter<Holder> {
 		@Override
 		public int getItemCount() {
-			return rows.size() + ((loadingMore || moreFailed) ? 1 : 0);
+			return shown().size() + (footerShown() ? 1 : 0);
 		}
 
 		@Override
 		public int getItemViewType(int position) {
-			return (position >= rows.size()) ? TYPE_FOOTER : rows.get(position).type;
+			return (position >= shown().size()) ? TYPE_FOOTER : shown().get(position).type;
 		}
 
 		@NonNull
@@ -944,11 +1114,11 @@ public final class YoutubeCommentsView {
 
 		@Override
 		public void onBindViewHolder(@NonNull Holder h, int position) {
-			if (position >= rows.size()) {
+			if (position >= shown().size()) {
 				bindFooter(h);
 				return;
 			}
-			Row row = rows.get(position);
+			Row row = shown().get(position);
 			if (row.type == TYPE_COMMENT) bindComment(h, row);
 			else bindMoreReplies(h, row);
 		}
@@ -1077,7 +1247,7 @@ public final class YoutubeCommentsView {
 		if (c.hearted) meta.append("  ♥");
 		h.meta.setText(meta);
 
-		h.body.setText(c.text);
+		h.body.setText(searching() ? highlight(c.text) : c.text);
 		boolean longText = c.text.length() > LONG_TEXT;
 		if (longText && !row.textOpen) {
 			h.body.setMaxLines(5);
@@ -1132,7 +1302,7 @@ public final class YoutubeCommentsView {
 			h.pill.setText(R.string.yt_comments_retry);
 			h.pill.setOnClickListener(v -> {
 				moreFailed = false;
-				adapter.notifyItemChanged(rows.size());
+				changed(() -> adapter.notifyItemChanged(rows.size()));
 				loadMore();
 			});
 		} else {
