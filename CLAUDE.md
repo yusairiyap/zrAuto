@@ -864,6 +864,9 @@ what each widget shows is set on the widget (edit mode > its gear).
   from a list or a search was never played, so only `setInfo` while playing gave it a channel, and its row (the Music tab's queue and the Queue card) showed none until it played. The
   background thread asks the YouTube addon's cache first, then YouTube's oEmbed (`YoutubeSearch.lookUpById`) and calls `MusicTrackItem#setInfo`, which saves and tells the queue's listeners, so
   both lists fill in. Until then the Queue card shows "YouTube" like the Music tab.
+  A track made from a Favorites / playlist entry takes what that entry already knows when it is queued (`MusicQueue#newTrack`: the item's loaded metadata, else the YouTube addon's stored
+  `VideoInfo`, channel and length), and for a YouTube entry whose metadata is not loaded yet it reads it from the item and fills the channel in (`setInfo`), so the oEmbed look-up is only
+  the last resort for songs that came from neither.
 
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 

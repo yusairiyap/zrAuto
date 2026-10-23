@@ -8,6 +8,7 @@ import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.support.v4.media.MediaMetadataCompat;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -153,8 +154,40 @@ public class MusicQueue extends ExtRoot {
 		}
 
 		String name = src.getName();
-		return new MusicTrackItem(id, this, sourceId, src,
-				((name == null) || name.isEmpty()) ? null : name, null, 0);
+		// What the item already knows (a Favorites or playlist entry has its channel and length stored with it), so the
+		// row shows them from the start, not only once the song has played.
+		String artist = null;
+		long duration = 0;
+		MediaMetadataCompat md = src.getMediaData().peek();
+		if (md != null) {
+			artist = emptyToNull(md.getString(MediaMetadataCompat.METADATA_KEY_ARTIST));
+			duration = Math.max(0, md.getLong(MediaMetadataCompat.METADATA_KEY_DURATION));
+		}
+		if ((artist == null) && sourceId.startsWith(MusicTrackItem.YT_PREFIX)) {
+			me.aap.fermata.addon.VideoTitleCache.VideoInfo vi = cachedVideoInfo(sourceId.substring(MusicTrackItem.YT_PREFIX.length()));
+			if (vi != null) {
+				artist = emptyToNull(vi.artist);
+				if ((duration <= 0) && (vi.durationMs > 0)) duration = vi.durationMs;
+			}
+		}
+		MusicTrackItem t = new MusicTrackItem(id, this, sourceId, src,
+				((name == null) || name.isEmpty()) ? null : name, artist, duration);
+		if ((artist == null) && (t.getVideoId() != null)) {
+			// Metadata that is not loaded yet is read from the item itself, and the row follows.
+			src.getMediaData().main().onSuccess(m -> {
+				String a = (m == null) ? null : emptyToNull(m.getString(MediaMetadataCompat.METADATA_KEY_ARTIST));
+				if (a != null) t.setInfo(null, a);
+			});
+		}
+		return t;
+	}
+
+	@Nullable
+	private static me.aap.fermata.addon.VideoTitleCache.VideoInfo cachedVideoInfo(String videoId) {
+		for (me.aap.fermata.addon.FermataAddon a : me.aap.fermata.addon.AddonManager.get().getAddons()) {
+			if (a instanceof me.aap.fermata.addon.VideoTitleCache c) return c.getCachedVideoInfo(videoId);
+		}
+		return null;
 	}
 
 	/**
