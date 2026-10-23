@@ -215,7 +215,7 @@
     <string name="home_pref_bg_hq">Highest quality cover</string>
     <string name="home_pref_bg_hq_sub">Load the largest picture of the playing song as the background</string>
     <string name="home_pref_card_alpha">Widget transparency</string>
-    <string name="home_pref_card_alpha_sub">How see-through the widgets' cards are</string>
+    <string name="home_pref_card_alpha_sub">How see-through the widgets\' cards are</string>
     <string name="home_pref_bg_source_sub">A picture from the phone, or the blurred cover of what plays</string>
     <string name="home_bg_remove_sub">Back to the plain background</string>
     <string name="home_bg_dim_sub">How much the picture is darkened</string>
