@@ -394,6 +394,8 @@
     <string name="playlist_add_failed">Couldn\'t show the playlist picker. Try again, or restart the app if it keeps happening.</string>
     <string name="playlist_remove_item">Remove from playlist</string>
     <string name="playlist_create">Create playlist</string>
+    <string name="playlist_recent">Recently added</string>
+    <string name="playlist_all">All playlists</string>
     <string name="playlist_remove">Remove playlist</string>
     <string name="playlist_name">Playlist name</string>
     <string name="playlist_rename">Rename playlist</string>

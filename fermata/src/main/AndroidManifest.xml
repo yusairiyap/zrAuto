@@ -114,6 +114,29 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <category android:name="android.intent.category.DEFAULT" />
 
+                <!-- YouTube video links from other apps: played in the YouTube tab -->
+                <data android:scheme="https" android:host="youtu.be" />
+                <data android:scheme="https" android:host="youtube.com" />
+                <data android:scheme="https" android:host="www.youtube.com" />
+                <data android:scheme="https" android:host="m.youtube.com" />
+                <data android:scheme="https" android:host="music.youtube.com" />
+                <data android:scheme="vnd.youtube" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.BROWSABLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+
                 <data android:scheme="zrauto" />
                 <data android:host="open" />
                 <data android:host="play" />

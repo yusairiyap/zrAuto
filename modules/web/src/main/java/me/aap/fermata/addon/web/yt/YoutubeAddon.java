@@ -307,6 +307,14 @@ public class YoutubeAddon extends WebBrowserAddon
 		}
 
 		@Override
+		public boolean openLink(MainActivityDelegate a, String videoId) {
+			if (!(a.getLib() instanceof DefaultMediaLib lib)) return false;
+			a.getMediaServiceBinder().playItem(new YoutubeVideoItem(videoId, getRootItem(lib)));
+			showVideo(a);
+			return true;
+		}
+
+		@Override
 		public boolean playVideoQuietly(MainActivityDelegate a, String videoId, @Nullable String title) {
 			if ((title != null) && !title.isEmpty()) cacheVideoTitle(videoId, title);
 			ActivityFragment f = a.getFragment(getFragmentId());

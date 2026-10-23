@@ -259,7 +259,13 @@ class DefaultPlaylist extends ItemContainer<PlayableItem> implements Playlist, P
 
 	@Override
 	protected void itemAdded(PlayableItem i) {
+		setPlaylistAddedAtPref(System.currentTimeMillis());
 		getLib().getAtvInterface(a -> a.addProgram(i));
+	}
+
+	@Override
+	public long getLastAddedTime() {
+		return getPlaylistAddedAtPref();
 	}
 
 	/** A YouTube entry keeps its channel/duration for the list's subtitles. */

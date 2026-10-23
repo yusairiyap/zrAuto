@@ -159,6 +159,7 @@ import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.media.service.MediaSessionCallbackAssistant;
 import me.aap.fermata.media.service.PlaybackResume;
+import me.aap.fermata.ytdl.YoutubeLink;
 import me.aap.fermata.ytdl.YtOffline;
 import me.aap.fermata.spotify.SpotifyAuth;
 import me.aap.fermata.ui.fragment.AudioEffectsFragment;
@@ -530,6 +531,9 @@ public class MainActivityDelegate extends ActivityDelegate
 		}
 
 		Uri u = intent.getData();
+
+		String ytId = YoutubeLink.videoIdOf(intent);
+		if ((ytId != null) && MusicPlayer.openYoutubeLink(this, ytId)) return completed(true);
 
 		if (SpotifyAuth.isCallback(u)) {
 			SpotifyImportFragment.handleAuthCallback(this, u);
