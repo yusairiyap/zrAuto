@@ -46,7 +46,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 			Action.DOWNLOADS_PAUSE_RESUME, Action.ALL_IN_ONE, Action.AUDIO_EFFECTS, Action.SLEEP_TIMER,
 			Action.QUALITY, Action.YOUTUBE_ALTERNATIVES, Action.YOUTUBE_COMMENTS, Action.LYRICS,
 			Action.POWER_USAGE, Action.POWER_SAVER, Action.AMBIENCE, Action.AMBIENCE_TOGGLE,
-			Action.SETTINGS);
+			Action.SETTINGS, Action.SHARE_VIDEO);
 
 	private final Pref<IntSupplier> actionPref;
 	@Nullable
@@ -199,6 +199,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		if (action == Action.SETTINGS) return R.drawable.settings;
 		if (action == Action.POWER_USAGE) return R.drawable.power_usage;
 		if (action == Action.POWER_SAVER) return R.drawable.power_saver;
+		if (action == Action.SHARE_VIDEO) return R.drawable.share;
 		if ((action == Action.AMBIENCE) || (action == Action.AMBIENCE_TOGGLE)) return R.drawable.ambience;
 		if (action == Action.OPEN_HOME) return R.drawable.home_page;
 		if (action == Action.OPEN_FAVORITES) return R.drawable.favorite_filled;

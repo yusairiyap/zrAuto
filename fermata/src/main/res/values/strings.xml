@@ -1234,6 +1234,9 @@
     <string name="car_mode_where_web">YouTube and browser pages (not in fullscreen, and not while YouTube search or Up next is open, which move like a list)</string>
     <string name="car_mode_where_all_in_one">The All in One card: Next on the last action goes back to the first</string>
     <string name="ytdl_nothing_playing">Nothing from YouTube is playing</string>
+    <string name="share_video_none">Only YouTube videos can be shared</string>
+    <string name="share_video">Share video</string>
+    <string name="action_share_video">Share video</string>
     <string name="ytdl_channel">YouTube downloads</string>
     <string name="ytdl_notif_title">Downloading %1$d of %2$d</string>
     <string name="ytdl_notif_title_one">Downloading</string>
