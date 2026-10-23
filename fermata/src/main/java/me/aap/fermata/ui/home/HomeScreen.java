@@ -530,11 +530,11 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	}
 
 	@Override
-	@Override
 	public int cardAlpha() {
 		return Math.max(0, Math.min(100, prefs.getIntPref(MainActivityPrefs.HOME_CARD_ALPHA)));
 	}
 
+	@Override
 	public int stackRotateSeconds() {
 		int s = prefs.getIntPref(MainActivityPrefs.HOME_STACK_ROTATE);
 		return (s <= 0) ? 0 : Math.max(3, s);
