@@ -204,6 +204,11 @@ public enum Action {
 			me.aap.fermata.ui.view.TopToast.show(R.drawable.ambience, R.string.ambience_stopped);
 		}
 	})),
+	// The Home tab with its widgets. Persisted by ordinal: new actions only ever go at the end.
+	OPEN_HOME(R.string.action_open_home, a(a -> {
+		a.exitVideoMode();
+		a.showFragment(R.id.home_fragment);
+	})),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

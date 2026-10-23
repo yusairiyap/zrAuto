@@ -90,6 +90,7 @@ import me.aap.fermata.ui.view.TopToast;
 import me.aap.utils.pref.PrefCondition;
 import me.aap.utils.pref.PrefUtils;
 import me.aap.utils.pref.PreferenceSet;
+import me.aap.utils.pref.BasicPreferenceStore;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.pref.PreferenceStore.Pref;
 import me.aap.utils.pref.PreferenceView;
@@ -110,6 +111,7 @@ public class SettingsFragment extends MainActivityFragment
 	public static final Object SHOW_PRIVATE_MODE_SETTINGS = "private_mode_settings";
 	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Secondary/Tertiary FAB settings subsection. */
 	public static final Object SHOW_FAB_SETTINGS = "fab_settings";
+	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Home page. */
 	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Key bindings page. */
 	public static final Object SHOW_KEY_BINDINGS = "key_bindings";
 	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the Interface page. */
@@ -405,6 +407,8 @@ public class SettingsFragment extends MainActivityFragment
 		PreferenceSet set = new PreferenceSet();
 		PreferenceSet sub1;
 		PreferenceSet sub2;
+
+		addHomePrefs(a, set);
 
 		interfaceSet = sub1 = set.subSet(o -> {
 			o.title = R.string.interface_prefs;
@@ -1249,6 +1253,17 @@ public class SettingsFragment extends MainActivityFragment
 	}
 
 	/** Interface &gt; Navigation tabs: its own page, rows to drag into order (see {@link NavTabsFragment}). */
+	private void addHomePrefs(MainActivityDelegate a, PreferenceSet parent) {
+		// Home has a settings page of its own (HomeSettingsFragment), in the look of the Power settings.
+		parent.addButton(o -> {
+			o.title = R.string.home;
+			o.subtitle = R.string.home_pref_sub;
+			o.icon = R.drawable.home_page;
+			o.onClick = () -> a.showFragment(R.id.home_settings_fragment, a.isCarActivity() ?
+					HomeSettingsFragment.AA : HomeSettingsFragment.PHONE);
+		});
+	}
+
 	private static void addNavTabsPrefs(MainActivityDelegate a, PreferenceSet parent) {
 		parent.addButton(o -> {
 			o.title = R.string.nav_tabs_prefs;

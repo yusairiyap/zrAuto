@@ -452,6 +452,341 @@ provider doesn't offer a folder to pick, so Drive is manual only.
 - **None of this has run on a device yet** (no emulator in the cloud session). If sound is silent, choppy or the weather
   looks wrong, look for `AMBIENCE` lines in the Diagnostic log first.
 
+## Home tab and its widgets
+
+`ui/home/` + `ui/fragment/HomeFragment`. Home is **built into the nav bar** (name `"home"` in `NavBarMediator`, like
+folders/favorites/playlists; not an addon) and is the start page: `MainActivityDelegate#defaultIntent` opens it when no
+"open on start" tab is set and `HOME_OPEN_ON_START` is on (Settings > Home). The old "resume what played last" start is now
+the media widget's **Continue** chip (`MainActivityDelegate#continueLastPlayed`). Action `OPEN_HOME` (end of the enum) is in
+the FAB list, All in One and key bindings. Settings > Home (`SettingsFragment#addHomePrefs`) holds the page-wide settings;
+what each widget shows is set on the widget (edit mode > its gear).
+
+- **Pieces.** `HomeFragment` only passes its lifecycle to `HomeScreen`, which builds everything in code in the Music palette
+  (`HomePalette`): `HomeBackgroundView` (picture or gradient), a `ScrollView` or `HorizontalScrollView` holding the
+  `HomeGridLayout`, the greeting, the pinned edit chip bar (top right) and the status bar handling. `HomeScreen` is the
+  `HomeHost` widgets talk to. No XML layouts on purpose.
+- **Model** (`HomeModel`, JSON in `MainActivityPrefs.HOME_LAYOUT`, null = the default set): an *ordered list of cells*, each a
+  stack of widgets of one size (w x h grid units). Only the order is stored; `HomeGridLayout` packs the cells first-fit along
+  the scrolling direction, so one layout fits phone, tablet and car screen. Scrolling down = fixed columns, sideways = fixed
+  rows (`HOME_ARRANGE`; by default sideways only in landscape under 600dp high). Widget type keys are saved: never rename one.
+- **Edit mode** (chip top right, or a long press on any widget, or Settings > Home > Edit widgets): a hold of ~170 ms picks a
+  widget up (a swipe still scrolls); the others glide aside (position FLIP animation in `onLayout`, sizes get a bounce);
+  dropping on the middle of a cell of the *same size* stacks them (`canStack`); handles: remove (top left, with Undo), gear
+  (top right) and resize (bottom right). All of it is in `HomeGridLayout`/`HomeCellView`; touches are caught in
+  `HomeCellView#dispatchTouchEvent` *before* the children (so a button under the finger doesn't matter).
+- **Stacks** (`HomeStackView`): swipe sideways to switch; dots show on swipe and fade after 1.8 s (always in edit/car mode);
+  car mode gets prev/next buttons. Hidden stack members are `INVISIBLE`, which is also what deactivates them.
+- **Options**: `HomeWidgetView#getOptions` (switch / choice / slider / button, `HomeOption`) after the common Look and Title.
+  The panel is shown *inside the card* when it is 3x2 or bigger, else in a `HomeModal` card over the page (same rows,
+  `HomeOptionsPanel`). Values live in the widget's JSON (`optInt/optBool/optString`, written with `setOpt`).
+- **Look**: `STYLE_SOLID` (theme card), `STYLE_GLASS` (dark translucent), `STYLE_COLOUR` (the widget type's accent); "Same as
+  Home" follows `HOME_CARD_STYLE`. Text/icon colours come from `color(ROLE_*)`; views made with `text()/icon()/iconButton()/
+  chip()/header()` re-tint themselves when the look changes. Widgets that paint their whole card (media, ambience) override
+  `ownBackground()` and stay white.
+- **Chrome that hides**: the tool bar fades out (`HomeFragment.HomeToolBarMediator`), the control panel is *covered*
+  (`ControlPanelView#setCovered`, the fade the YouTube search panel already uses, not suppressed, so the floating buttons stay),
+  the background runs under the status bar through `BehindBarsLayers` (Android 15+) and the status bar takes the picture's top
+  colour before that (`HomeScreen#systemBars`, restored with `MainActivityDelegate#matchStatusBarToBackground`).
+- **Background**: `HomeBackground` copies the picked picture (system picker, no permission) to `files/home_bg.jpg`, shrunk to
+  1600 px; `HOME_BG_VERSION` only says it changed. Blur is a small copy drawn large again (no RenderScript). Not in backups.
+- **Car mode**: not on Home. `CarNav` leaves Next/Previous to the user's own key bindings while the Home tab is in front (`CarNav#isHome`,
+  like fullscreen video: only an open modal, menu or panel over it is walked through, e.g. `HomeModal`, which is a modal scope). Home's cards are
+  touched. Keep that in mind for new Home modals: mark them with `CarNav.markModalScope`. The stack's prev/next buttons stay on the car screen (touch).
+
+### Smoothness rules (learned from the first tablet test)
+
+- **Size before the first frame.** A widget that lays itself out by pixels overrides `onSized(wPx, hPx)` and reads
+  `widthPx()/heightPx()`: it runs from the measure pass (EXACTLY specs only), so the first frame is already right. Never size
+  from `onSizeChanged`/`getHeight()` in `onBind`; the Power gauge once drew small and then jumped (fixed that way).
+- **Styles animate.** `HomeWidgetView#applyStyle(true)` cross-fades fill and text/icon tints (280 ms). Text/icon/progress views made with
+  the base helpers re-tint themselves; a custom view recolours itself in `onStyleChanged`. Loading shows `spinner(dp)`.
+- **Real blur** is `HomeBlur.blur(bitmap, strength)` (box blur on a small copy); a tiny copy stretched up shows as blocks. The
+  media widget's wash and the background both use it. Pictures change through `MediaWidget.Fader` (two stacked images,
+  cross-fade), texts through `swap`.
+- **Own insets.** `HomeScreen` does not use `insetScrollableContent`: the title bar is gone here and the control panel is covered, so
+  following them made the page jump when they finished fading. Top room is 0, bottom room is only a bottom nav pill (animated).
+- **Entrance**: `HomeGridLayout#prepareEntrance` hides the widgets in `onShown` itself; `playEntrance` (one post later) brings them in.
+  Doing both in the post showed the widgets for a frame first.
+- **Edge fades** (`HomeFadeLayout`, wraps the scroller): content melts at the edges it can still scroll to (top/bottom, or left/right
+  in sideways mode), clearing the part under a bottom nav pill, because Home opts out of the bars' own edge fade.
+- **FABs are hidden** on Home (`MainActivityDelegate#setFabsHidden`, from `HomeFragment#cover`); the edit chip bar has a Settings chip
+  that opens Settings > Home (`SettingsFragment.SHOW_HOME_SETTINGS`).
+- `MeterBar` is a thin animated bar for widgets (Power breakdown, Data session limit).
+
+### Second round (gestures, placeholders, now playing)
+
+- **A widget that reads drags itself** (lyrics scrubbing, a stack's swipe) must keep the page from taking them: override
+  `HomeWidgetView#gestures()` (`GESTURE_H` / `GESTURE_V`). `HomeCellView#claimGestures` holds the scroller off from the touch down
+  when the page scrolls that way, and lets go once the finger moves the other way (a stack with nowhere to go lets go too).
+  Waiting for the widget's own intercept is too late: the scroller intercepts first. A seek bar only needs
+  `requestDisallowInterceptTouchEvent` on its own DOWN. Lyrics is the Music tab's `LyricsView` (scrub, tap a line to seek).
+- **Resizing** shows a dashed outline of the size the handle would give (`HomeGridLayout` draws it over the cells) and applies it on
+  release; the handle itself follows the finger. The inline options panel hides the three handles while it is open.
+- **Look in Settings** shows Custom when some widget has its own look (`HomeScreen.styleShown`); picking one sets every widget
+  (`HomeScreen.setAllStyles`), through the live model when Home is up, else the stored layout.
+- **Placeholders**: `HomeSkeleton` (grey rows with a sweeping light) stands in for lists while they load (Library widgets, YouTube
+  suggestions, and the suggestions again whenever the playing song changes: `stale`). A spinner is only for strips.
+- **Opening something inside a card**: `LibraryWidget#drill(title, source)` swaps the rows for another source under a back chip
+  (the playlists widget opens a playlist's songs; a tap plays one). Not saved.
+- **Now playing** (`ui/home/HomeArt`): the item shown is what plays, else where the music queue stopped (cover and title right after
+  start, like the Music tab), else the last session item; Play then starts it as music without leaving Home
+  (`MusicPlayer.playTrack/playAsMusic`). The play button shows a spinner while the session is busy or a skip was just asked for.
+  The cover is a square (never cropped) that dissolves into the blurred wash on its open side. Shuffle and repeat sit around the
+  play button when the width allows, else under the seek bar.
+- **Background from the cover** (`HomeNowPlayingBg`, Settings > Home > Background): the blurred cover fades from song to song.
+  The background itself fades in after the bars extension has been applied (`HomeScreen#fadeBackgroundIn`), not stretching.
+- **YouTube suggestions** play through `MusicPlayer#playYoutubeQuietly`: swapped into the page that plays, or the page is loaded
+  without showing its tab; the screen stays on Home.
+- **Greeting** sits pinned top left when the page scrolls sideways.
+- New widgets: Sleep timer (`TimerWidget`), Audio effects (`EffectsWidget`, the equalizer's bands as bars), Info overlay
+  (`InfoOverlayWidget`, a switch per overlay item, the car's twin prefs on the car screen).
+
+### Third round (effects, queue, glow, status bar)
+
+- **The `home` drawable is shadowed**: `fermata/src/auto/res/drawable/home.xml` (the Android Auto home button, a small glyph in a 960
+  viewport) overrides any `drawable/home.xml` in `main` in the Auto flavor, which is why the nav icon stayed small. The tab's icon is
+  `drawable/home_page.xml`; never add a drawable with a name the `auto` source set already has.
+- **Edit mode and resizing draw a glow** (`HomeUi.glow`: a few strokes, wide and faint to thin and bright), not a dashed line. It draws
+  outside the cell, which works because the grid, the scroller and its parents do not clip children.
+- **Lists inside a card scroll** (`LibraryWidget#listScroll`, a ScrollView with fading edges); such a widget returns `GESTURE_V` from
+  `gestures()` only while its list is taller than the card. `focusRow` scrolls a row into view (the queue's playing song).
+- **Effects** (`EffectsWidget`, `media/engine/EffectsControls`): switches for the equalizer, bass, virtualizer and a fourth (YouTube's
+  reverb, the platform's loudness), the equalizer's bands as bars and a preset stepper. Source: the playing engine's platform effects
+  (`Platform`), or YouTube's (`MusicPlayer.getYoutubeEffects()`, whose settings are prefs the page follows, so they work with nothing
+  playing). A new effect source implements `EffectsControls`.
+- **Info overlay widget** embeds the real `InfoOverlayView` and applies the prefs as the Music tab does (`applyInfoOverlayPrefs`);
+  it scales down to fit the card. **Queue widget** is a `LibraryWidget` over `MusicQueue#getPlayOrder`.
+- **Ambience look**: its own `autoStyle()` is Colour (the sky); Solid and Glass make it a plain card (`ownBackground()` follows the
+  style). `hasLookOption()`/`autoStyleLabel()` are the hooks for a widget that has a default look of its own.
+- **Background**: the Background card has Picture / Cover of what plays. Leaving fades the bars' extension with the tab
+  (`fadeBackgroundOut`), the status bar colour glides (`glideStatusBar`), and the cover background is not remade when it is the same song.
+- **Covers lose black bars** (`HomeArt.trimBars`) so a square cover inside a 16:9 picture fills the card.
+- A stack (or any widget) holding the page off needs `claimGestures` to be *called*: it was written but not wired for a round.
+
+### Fourth round (play from widgets, swipe zones, chips, sliders)
+
+- **Tapping a song or playlist in a widget plays it as the tab does** (`ui/home/HomePlay`: `tapped` / `list`): music-tab
+  playback (`MusicPlayer.play`, so the queue is rebuilt) when `tapPlaysAsMusic`, else the session's `playItem`. Favorites,
+  Playlists and their drill-in use it; never call `playItem` straight from a widget.
+- **The whole card swipes a stack** (`HomeStackView#onTouchEvent`): content that consumes nothing never made the stack a
+  touch target (only the title did), so the stack takes DOWN itself and starts the drag on the first horizontal move; with no
+  neighbour to go to it hands the touch back (`requestDisallowInterceptTouchEvent(false)`). Neighbours move 55% of the width and
+  cross-dissolve (smoothstep), so no cut-off ghost of the next card shows.
+- **Queue widget** listens to `MusicQueue.Listener` while active, so it follows the queue as it changes.
+- **Info overlay widget** is the real `InfoOverlayView` in chip mode (`setChipStyle(fg, fill)`: no shaded bar, no dividers, every
+  item its own rounded chip in a `ChipFlowLayout`, same items/order/icons as the settings); it scales down only when the wrapped
+  chips are taller than the card.
+- **Effects widget**: a row per effect (switch + strength slider; the equalizer's row has the preset chip), the bars below when
+  all rows fit and 90dp is left; bars can be dragged to set a band. What is shown is decided from the card's pixel height
+  (`arrange`, from `onSized`), never from cell counts. `EffectsControls` gained `hasLevel/level/setLevel/setBand`
+  (platform: BassBoost/Virtualizer 0..1000, loudness 0..`LOUDNESS_MAX_MB`; YouTube: the strength prefs).
+- **Ambience** follows Home's look like any widget (no own default); it only paints its sky when the look is Colour.
+- **Home's root is opaque** (`palette.background`) from the first frame; the picture/gradient fades in over it. A transparent
+  root let the window's dark colour show through the tab crossfade as a veil.
+
+### Fifth round (lists, entrance, art on seek)
+
+- **`LibraryWidget` is a `RecyclerView`** (GridLayoutManager: 1 or 2 columns), not a column of views: rows are bound for what is on screen
+  only, so a queue of hundreds costs a few rows, and coming back to Home rebinds nothing. A refresh is a `DiffUtil` against the old rows
+  (`Row#key()` = its item, else its title). `Row` has a `current` flag: the playing queue row is filled with the accent instead of
+  carrying a marker. `subFill` now gets a *setter* (`Consumer<Consumer<CharSequence>>`) that ignores a row that was recycled meanwhile.
+  The playing row is scrolled into view once per song (`lastFocusKey`), never while the finger is on the list.
+- **Thumbnails** (`HomeImages#loadUri/loadItem`) use the library's resized icon copies (`getBitmap(uri, true, true)`: decoded once,
+  saved on disk, shared with the tabs' `recent` LRU), not the full picture, and fade in when they arrive late. The full-size path is
+  only for the now-playing cover (`HomeArt`).
+- **`HomePlay` always plays as music** (queue replaced, the screen stays on Home) when the Music addon is on; only streams and the addon
+  being off go to the player they belong to.
+- **`chip()` had never set its label** (every chip made through `HomeWidgetView#chip` was blank: timer presets, Settings chip); fixed there.
+- **Entrance**: Home has two layers under its content that reach under the bars, `base` (the plain gradient, never faded) and `bg`
+  (the picture). Like the Music tab's layers, both are at full alpha from the first frame (holding `bg` back and fading it in after the
+  tab showed was what made a bare gradient appear first and the picture dissolve in 0.5 s later); `bg` is only faded when leaving
+  (`bgShown`) and when a *new* picture arrives (`HomeBackgroundView#setImage`). Any index passed to `root.addView(.., index)` counts both.
+- **Now playing**: no corner spinner any more. Items are compared by
+  id (`HomeArt#same`), the trimmed cover is memoised, and the card/background skip a cover they already show, so a seek or lyric
+  scrub that makes the player hand out another object for the song does not fade the art out and in. If it still does, the
+  Diagnostic log has `home media: new item` lines (MUSIC).
+
+### Sixth round (Android Auto layout, open issue)
+
+- **The car screen has its own widgets**: `MainActivityPrefs.HOME_LAYOUT_AA`, the same JSON as `HOME_LAYOUT`; `HomeModel(prefs, car)` picks
+  the pref (and its default set, `DEFAULT_TYPES_AA`) from `a.isCarActivity()`, and nothing is shared between the two. It is edited on the car
+  screen (edit mode works there too); Settings > Home (its Android Auto pill) has "Copy these widgets to Android Auto" and "Reset the Android Auto widgets".
+- **Now playing**: the play button's spinner (busy, buffering, just skipped) is wanted and stays; the spinners that were *not* wanted
+  were the card's corner one (gone) and the page-centre one (below). The seek bar also asks the *engine* for position and duration (`MediaWidget#pollEngine`): the session's state and the item's metadata
+  lag or lack both for YouTube, which left the bar frozen and not answering touches (a touch needs a length). `tick()` removes its own
+  callback first, so a duration arriving late doesn't double the polling chain.
+- **No page-centre spinner on Home**: `MainActivityDelegate#setContentLoading` (used by `BodyLayout` while a started playback comes up, among others)
+  shows the big spinner in the middle of the page; `onHome()` keeps it off there, both when it is asked for and when its delayed
+  show fires (a song picked in the Queue card used to bring it up over the dashboard).
+- **Edit chips on a phone**: Background and Settings keep only their icons under 520dp, or the done tick went off the screen's edge.
+- **OPEN ISSUE (not solved, to be taken on in another branch): bare bars when Home is entered.** On entering Home the status bar and
+  navigation bar areas show the app's dark/plain colour for the length of the tab crossfade before the background (picture or the cover's
+  blur) is there; the Music tab, which uses the same mechanism, fills them from the first frame. What was tried, in this order, none of
+  which changed the look: (1) `root.setBackgroundColor(palette.background)` (only fills the tab's own bounds), (2) a never-faded
+  `base` gradient layer under `bg` in `BehindBarsLayers` (also appears late), (3) removing the held-back, delayed fade of `bg`
+  (`fadeBackgroundIn` now just shows it at once). The remaining suspects, to check with the Diagnostic log and screenshots of single frames:
+  the **tool bar** and **nav bar** (Home hides the tool bar with `HomeToolBarMediator`, fading it to GONE, which may change what
+  `BodyLayout`/`MainActivityDelegate#matchStatusBarToBackground` paint behind the status bar, and the nav pill/bar draws its own
+  scrim there), the status bar colour set in `HomeScreen#systemBars`/`glideStatusBar` coming after the tab has shown, and
+  `BehindBarsLayers#update` (margins applied in a pre-draw, and clipping only released while `root.isShown()`), compared line by line
+  with `MusicPlayerFragment#extendBackground`. A good first experiment: make Home's `bg` a child laid out in `music_backdrop` style
+  (a direct layer of the tab, margins already negative before the tab is shown) and see whether the bars fill; then try keeping the
+  tool bar visible (alpha 0, not GONE) while Home shows.
+
+### Seventh round (stacks go round, greeting, top info overlay)
+
+- **Stacks loop** (`HomeStackView`): `pos` is unbounded while dragging or animating and `wrap`/`mod` bring it back (after each settle too);
+  a swipe or the car's prev/next past the last widget goes to the first (and back). The dots measure circular distance.
+  They show on touch and fade after 1.8 s; only edit mode pins them (`syncControls` also re-arms the fade when edit mode ends, which used
+  to leave them up for good, and car mode no longer pins them: its prev/next buttons stay).
+- **Greeting by the hour** (`HomeScreen#greetingText`): morning from 5, afternoon 12, evening 17, night 21 (10:47 pm is night). Each of the four
+  can be replaced in Settings > Home (`HOME_GREET_*`, empty = the built-in words).
+- **Info overlay on the greeting's row** (`HOME_TOP_OVERLAY`, `HOME_TOP_OVERLAY_AA` for the car screen): `HomeScreen#topInfo`, the same
+  `InfoOverlayView` in chip mode (`HomeInfo#apply` fills it from Settings > Info overlay, the widget uses it too), one row before the edit
+  button, shrunk to the room the greeting leaves and hidden while editing. The Info overlay *widget* drops its title row below 130dp of
+  height (the chips get the whole card and a tap on them opens the settings) and fits its chips to the card minus its padding.
+- **Ambience alone**: with "Pause with playback" the ambience is held only when music that *was playing* pauses or stops
+  (`AmbienceAddon#wasPlaying`); the session repeats "paused"/"stopped" while nothing plays, and each repeat used to hold an ambience that had
+  just been started on its own into silence. Held/released is in the Diagnostic log (AMBIENCE).
+
+### Eighth round (Home settings page, info overlay fit, lyrics scrub option)
+
+- **Settings > Home is a page of its own** (`ui/fragment/HomeSettingsFragment`, id `home_settings_fragment`, a `ReorderListFragment` with no rows, like
+  `PowerSettingsFragment`): what holds on every screen (open on start, animation, widget look, background, the greeting's words) is
+  listed first with no group around it; under two pills (Phone / Android Auto) are each screen's own settings, with their `*_AA` twins:
+  layout (`HOME_ARRANGE`, `HOME_COLUMNS`, `HOME_GAP`), header (`HOME_GREETING`, `HOME_TOP_OVERLAY`) and widgets (edit, copy, reset). `HomeScreen`
+  picks the twin from `a.isCarActivity()`. The row helpers (`addValueSliderRow`, `addChoiceRow`, `addActionRow`) now live in
+  `ReorderListFragment` for both pages. Settings has only a button for it; its Back goes to Home when it was opened from Home's chips.
+- **Info overlay widget**: chips a little smaller than the Music tab's (`HomeInfo.apply(.., factor)`), smaller still under 130dp of card, and placed
+  by hand (top-left pivot, pushed down to the middle) when scaled, so a two-line set of chips never overflows the card.
+- **Lyrics widget** has a "Scrub and tap lines to seek" switch (`scrub`); off, the view is not interactive and the card claims no
+  gestures, so the page scrolls over it.
+
+### Ninth round (top overlay row, stack buttons, ambience in the car, cold start)
+
+- **The top info overlay is one row that scrolls** (`HomeScreen#topScroll` around `topInfo`; `InfoOverlayView#setOneRow` / `ChipFlowLayout#setOneRow`):
+  it used to be given a fixed width from one measurement, and a reading that grew a digit (-2509 mA) wrapped the last chip onto a second
+  line. Now the scroller is as wide as the room the greeting leaves (or as the chips if narrower), re-fitted whenever the chips change
+  size, and the end fades out when it scrolls.
+- **The car's stack buttons fade with the dots** (`HomeStackView#fadeArrows`); a tap on a hidden one only brings the controls back.
+- **Ambience asks for audio focus** (`AmbienceEngine#requestFocus`, transient "may duck", changes ignored) when it starts while the app's own
+  player is not playing; with Android Auto connected, a stream from an app holding no focus was not played through the car (the card and
+  notification said playing, nothing was heard; first thing after an app start). Not confirmed on a car: the Diagnostic log has
+  `AMBIENCE audio focus result=` and `track playing state= device=` lines to read if it still stays silent.
+- **Cold start into Home** (`MainActivityDelegate#veilStartup` / `liftStartupVeil`): when the app starts on Home the whole window content is
+  held at alpha 0 until Home has laid out its first frame (`HomeScreen#onShown`, 2.5 s safety delay), then fades in 280 ms; the tool bar is
+  hidden at once meanwhile (`HomeToolBarMediator`), so no empty bars show first (seen on a phone with the bottom nav bar).
+
+### Tenth round (playing rows, item pickers, car header, start-up veil for real)
+
+- **Favorites and the songs of an opened playlist mark the playing song** like the Queue: `LibraryWidget#watchesPlaying()` listens for
+  `onPlayableChanged`, `playingIds(a)` is the session item, the queue entry's source and the favoritable item, and a row is current when
+  its `getOrigId()` is in it; `focusRow` brings it into view once per song. `marksPlayingOnTop()` is for lists whose top-level rows are songs.
+- **All in One and Pages pick their items** (`TileWidget#pickOption`, "Pick the items"): a card of chips like the ambience sounds picker, a
+  tap shows or hides that tile (`opt "items"`; empty = the card's own default set, so a page added later still shows, "-" = none).
+  `candidates()` lists what can be picked, `defaultPicked(key)` what shows before anything was picked (Pages: the bar's pages, and the old
+  "settings"/"hidden" switches still count).
+- **Tile cards size from their pixel height** (`TileWidget#applySize`, from `onSized`): the icon shrinks to fit and the names only show
+  when they fit under it (Labels "Automatic"); a card two cells high on a wide car screen is short in pixels, which is what clipped the names.
+- **Car screen, scrolling down**: the edit button and the info chips sit on the middle line of the greeting's two lines
+  (`HomeScreen#alignHeader`, a translation, since the pinned bar and the greeting have different heights); both stay pinned when the page
+  scrolls (only the greeting scrolls away).
+- **The start-up veil never ran in the ninth round**: `veilStartup()` was called before `init()` inflated the layout, so
+  `findViewById(R.id.main_activity)` was null and it returned silently. It now runs right after `init()`; Home lifts it with
+  `liftStartupVeil(true)`, which also hides the tool bar before the first visible frame, and `isStartupVeil()` stays true for 1 s after
+  the lift so the tool bar mediator hides the bar at once instead of fading it. The Diagnostic log has `STATE start-up veil` lines
+  (on / lifted by Home / lifted by the safety delay / no window content yet).
+
+### Eleventh round (title rows that give way, data strip, chip sizes)
+
+- **Power and Data drop their title row (icon, name, arrow) when the card is too short in pixels**, like Fuel does in a strip: `PowerWidget#applyHeader`
+  (a strip always; the meter under 174dp, the graph/breakdown under 160dp) and `DataUsageWidget#layoutFor` (a strip always; a ring card under ~152dp,
+  the breakdown list under ~166dp). The figures then open the tab on a tap (`body.setOnClickListener`), and the ring/meter size and the session-line
+  room are worked out with or without the 34dp row (`headerOn`). Decide such things from the measured height, never from the cell count.
+- **Data usage strip (4x1)** shows the total and its "of 18 GB · 72%" on the left and, beside it, the Android Auto session (`home_data_car_session`:
+  used of the limit, what is left, with the bar; "Starts when Android Auto connects" while no session runs) when the session limit is on and the
+  option "session" is on; otherwise the four kinds as a small 2x2 grid (dot + name + figure).
+- **Info overlay chips are all one height** (`InfoOverlayView#layoutChips`): the icon-only Downloaded chip was only as tall as its icon, shorter than
+  the chips with text; every chip wrapper now has the height of one text line plus its padding and the icon-only one is as wide as it is tall.
+  The cut chip at the row's right end in the earlier build was the row running under the edit button; the row is now fitted to the room the
+  greeting and the button leave (see the ninth round).
+
+### Twelfth round (chips that turn opaque, start-up wait, edge fades)
+
+- **The top info chips** (`HomeScreen#updateTopInfoScroll`, fed by the page's scroll through `HomeGridLayout#setScroller(s, onScrolled)`: a scroller has ONE scroll listener, and the grid's own `setScroller` was silently replacing the one `HomeFadeLayout#follow` had set, so the chips never reacted until edit mode was toggled (which re-applies them)): staying
+  pinned, their fill blends from the translucent chip colour to an opaque panel colour over the first 56dp of scrolling
+  (`InfoOverlayView#setChipFill`, which only recolours the chips' drawables), so widgets passing under them don't show through. Settings > Home >
+  Header has "Hide the info chips while scrolling down" (`HOME_TOP_OVERLAY_HIDE`, `_AA` twin): they then leave with the greeting, fading.
+- **No `setHorizontalFadingEdgeEnabled` on the chips' scroller**: on the car screen the built-in fading edge drew hard dark boxes at the row's
+  ends (the "weird cut"). The row sits in a `HomeFadeLayout` (a layer cleared with gradients, as the page's own edge fade, which draws right there).
+- **Start-up veil, more**: it also covers the first screen after the process was killed and restored with Home saved (`restoredHome`), and the lift
+  waits (at most 700 ms) until the tool bar is gone and the control panel has finished fading out (`startupSettled`): Home's `cover()` fades the
+  panel away from the same moment, and an empty bar fading out in the first visible frames is what looked like "the toolbar". The log line
+  `STATE start-up veil ... lifted by Home after N ms, tool bar, control panel, nav bar` says what was still showing at the lift.
+- **An opened playlist's songs have no play button** (a tap on a row plays it); the playlists themselves keep theirs, back at the top they come back
+  with the list's fade.
+
+### Thirteenth round (icon-only media chip)
+
+- **The media widget's chip (Watch / Fullscreen / Open Music) is icon only on the car screen and at low density** (`MediaWidget#setChip`: `host.isCar()` or
+  density under 1.5, i.e. under 240 dpi): the words were as big as the card's title there. The name stays as the chip's content description. The wide card then leaves only ~48dp (not 132dp) beside the title for it (`chipIconOnly()` in `MediaWidget`).
+
+### Fourteenth round (back to Home, chip fixes, open issue)
+
+- **Car mode, long Previous at the top of a tab goes to Home** when Home is in the bar (`CarNav#back`, `homeIsThere`: in `NavBarMediator.getTabs` and not
+  hidden), else to what's playing as before. Inside a folder or playlist it still goes up one level first.
+- **One scroll listener** (`HomeGridLayout#setScroller(s, onScrolled)`): the page edge fade redraw and the chips' opaque/hide step now run from the same listener
+  as the grid's on-screen check. Anything else that needs the page's scroll goes there too.
+- **Rapid edit-mode toggling crashed on Android Auto** (cause not seen; no log yet). Found and fixed on the way: `InfoOverlayView#setChipStyle` threw away the chip
+  wrappers when the fill differed (which the chips' scroll fill makes routine), leaving item views attached to the old wrappers, so the next `addView` threw
+  "already has a parent"; it recolours them instead. The chip bar's delayed transition now ends a running one first, and the toggle is logged
+  (`HOME edit mode on/off`). If it still crashes, the crash is in the Diagnostic log (`DiagnosticLog#installCrashHandler` writes it): read the stack there.
+- **`ChipFlowLayout` makes every chip of a line as tall as the tallest** (the icon-only Downloaded chip stayed shorter than the others even with a minimum height).
+
+### OPEN ISSUE: the tool bar (or an empty bar) still shows briefly when the app starts on Home
+
+Seen on a phone with the bottom navigation bar and on the car screen, after every fix below. Where things stand:
+
+- **Tried, in order, none seen to remove it on a device:** (1) `HomeToolBarMediator` hides the bar at once while `isStartupVeil()`; (2) the start-up veil
+  (`MainActivityDelegate#veilStartup`: the whole `R.id.main_activity` at alpha 0 until Home's first frame, then a 280 ms fade), which in the ninth round
+  silently did nothing because it ran before `init()` inflated the layout, so (3) it now runs after `init()`; (4) the lift waits (at most 700 ms) until the tool bar
+  is gone and the control panel has finished its cover fade (`startupSettled`); (5) the veil also covers a restore with Home saved after the process was killed.
+- **What the user sees is not known exactly**: "the toolbar", on a phone with a bottom nav bar. It may be the tool bar, the empty control panel, or the empty nav bar
+  before its tabs are in, and it may be visible *after* the lift (during the 280 ms fade) or before it (if the veil was never applied: starts through
+  another path, e.g. `state != null`, a different intent action, `HOME_OPEN_ON_START` off with a different start tab).
+- **Next steps, in order:** (a) read the Diagnostic log after a cold start: `STATE start-up veil` says whether it was applied ("on" / "no window content yet") and
+  what was showing at the lift ("tool bar", "control panel" visibility/alpha, "nav bar" visibility/child count); no line at all means the veil's condition was
+  not met, so find which part of the `startsOnHome` / `restoredHome` condition failed; (b) if the veil was on and the lift log shows everything hidden, the
+  flash is after the lift: log the tool bar's and control panel's visibility during the 280 ms fade (a `ViewTreeObserver.OnPreDrawListener` on `main_activity`);
+  (c) if it is the nav bar, hold the lift until `navBar.getChildCount() > 0` and its first layout; (d) as a last resort draw an opaque `palette.background`
+  cover view above everything on `main_activity` (not an alpha on the root) and fade *that* out, so the bars underneath never show through a fade of the root.
+
+### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
+
+- Size what is *inside* a card from its pixels, not from cell counts or fixed dp: the Data ring's words (`used`/`caption`) and the Power
+  gauge's number follow the ring's diameter (a 19sp "12 GB" does not fit a 70dp ring), and what does not fit is left out (Power's
+  one-line stats drop temperature, then time left; Data's caption becomes "of 18 GB" under ~105dp; its session line needs a card
+  at least 220dp tall; Fuel's refuel chip and date need room, and a one-cell-high Fuel drops its title row, its figures opening the tab).
+- A card 2 cells wide gets smaller pictures and play buttons in `LibraryWidget` rows (`widthPx() < 230dp`).
+- **Data usage has a Show option** like Power: Automatic (ring, and the legend beside it when wide), Pie chart (ring only) or Breakdown
+  (a line per kind with its share as a bar and the total on top; the bars go when the card is under 150dp of room).
+
+### Adding a widget (the easy path)
+
+1. Write `ui/home/widget/FooWidget extends HomeWidgetView` (constructor `(HomeHost, HomeWidgetType)`). Build views in
+   `onCreate(FrameLayout content)`, fill them in `onBind()`, listen to data only between `onActive()` and `onInactive()`,
+   adapt to the size in `onResized`/`isCompact()`/`isLarge()`/`getCellsW()`/`getCellsH()` (and the height in
+   `onSizeChanged` for "how many rows fit"), list settings in `getOptions()`, run app actions with `host.run(Action)`,
+   open tabs with `open(id)`. For a grid of round icons extend `TileWidget` (implement `tabId()` and `fill()`); for a list of
+   library rows extend `LibraryWidget` (implement `fetch()`).
+2. Register it in `widget/HomeWidgets` (key, name, description, icon, accent, min/default/max size, optional `available`).
+3. Add `home_w_<key>` and `home_w_<key>_d` (and any texts) to `values/home.xml`. Nothing else: the add list, options panel,
+   look, stacking, resizing, saving and car mode come with the base class. If it needs an addon, show `note(...)` when off.
+
+Never run on a device from the cloud session. The **live video** is *not* drawn inside the media widget: the YouTube WebView
+lives in its own tab and moving or resizing it restarts the player, so the large media widget shows the video's poster
+picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) that go to the real player.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

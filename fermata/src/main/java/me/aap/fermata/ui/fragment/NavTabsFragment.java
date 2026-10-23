@@ -41,7 +41,9 @@ public class NavTabsFragment extends ReorderListFragment {
 		for (String name : NavBarMediator.getTabs(prefs)) {
 			boolean shown = !hidden.contains(name);
 			String state = ctx.getString(shown ? R.string.nav_tab_shown : R.string.nav_tab_hidden);
-			if (name.equals(start)) state += " · " + ctx.getString(R.string.nav_tab_opens_on_start);
+			boolean opensOnStart = name.equals(start) ||
+					("home".equals(name) && (start == null) && prefs.getBooleanPref(MainActivityPrefs.HOME_OPEN_ON_START));
+			if (opensOnStart) state += " · " + ctx.getString(R.string.nav_tab_opens_on_start);
 			rows.add(new Row(name, NavBarMediator.getTabIcon(name), NavBarMediator.getTabTitle(ctx, name),
 					state, shown));
 		}

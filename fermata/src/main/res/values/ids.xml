@@ -63,6 +63,8 @@
     <item name="power_usage_addon" type="id" />
     <item name="power_usage_toolbar_chip" type="id" />
     <item name="power_settings_fragment" type="id" />
+    <item name="home_settings_fragment" type="id" />
+    <item name="settings_row_tag" type="id" />
     <item name="ambience_addon" type="id" />
     <item name="ambience_toolbar_chip" type="id" />
     <item name="fuel_log_toolbar_chip" type="id" />
@@ -253,4 +255,8 @@
     <item name="video_controls_next" type="id" />
     <!-- Marks a bar given a hardware layer by ScrollBarsController for the length of a step. -->
     <item name="scroll_bars_layer" type="id" />
+    <item name="home_fragment" type="id" />
+    <item name="home_image_key" type="id" />
+    <item name="home_image_item" type="id" />
+    <item name="home_no_grab" type="id" />
 </resources>

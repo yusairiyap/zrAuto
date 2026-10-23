@@ -112,6 +112,17 @@ public final class MusicPlayer {
 		 * is playing, so there is nothing to switch.
 		 */
 		boolean playVideoInPlace(MainActivityDelegate a, String videoId, @Nullable String title);
+
+		/**
+		 * Plays {@code videoId} without leaving the screen it is asked from: swapped in the page that is
+		 * playing, or loaded into the YouTube page without showing its tab (as music or as video the way
+		 * the player is set). False if it can't.
+		 */
+		boolean playVideoQuietly(MainActivityDelegate a, String videoId, @Nullable String title);
+
+		/** YouTube's own equalizer and effects, which its page plays through; their settings stay when nothing plays. */
+		@Nullable
+		me.aap.fermata.media.engine.EffectsControls effects();
 	}
 
 	public static void setYoutubeHooks(@Nullable YoutubeHooks hooks) {
@@ -134,6 +145,20 @@ public final class MusicPlayer {
 																					 @Nullable String title) {
 		YoutubeHooks h = youtube;
 		return (h != null) && h.playVideoInPlace(from.getPlaybackDelegate(), videoId, title);
+	}
+
+	/** YouTube's equalizer and effects (see {@link YoutubeHooks#effects}), null without the YouTube addon. */
+	@Nullable
+	public static me.aap.fermata.media.engine.EffectsControls getYoutubeEffects() {
+		YoutubeHooks h = youtube;
+		return (h == null) ? null : h.effects();
+	}
+
+	/** See {@link YoutubeHooks#playVideoQuietly}; false without the YouTube addon. */
+	public static boolean playYoutubeQuietly(MainActivityDelegate from, String videoId,
+																					 @Nullable String title) {
+		YoutubeHooks h = youtube;
+		return (h != null) && h.playVideoQuietly(from.getPlaybackDelegate(), videoId, title);
 	}
 
 	/** Shows the YouTube tab with its video fullscreen (a no-op without the YouTube addon). */

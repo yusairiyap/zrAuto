@@ -91,6 +91,44 @@ public interface MainActivityPrefs
 	Pref<DoubleSupplier> P_SPLIT_PERCENT_SUB = Pref.f("P_SPLIT_PERCENT_SUB", 0.5f);
 	Pref<DoubleSupplier> L_SPLIT_PERCENT_SUB = Pref.f("L_SPLIT_PERCENT_SUB", 0.5f);
 	Pref<Supplier<String>> SHOW_ADDON_ON_START = Pref.s("SHOW_ADDON_ON_START", (String) null);
+	// The Home tab (see ui/home/HomeFragment): the widgets as JSON (null until the user changes the
+	// default set), whether the app opens on it, the background picture (its file is
+	// files/home_bg.jpg, the version only says it changed), how it is dimmed and blurred, how the
+	// cards look, which way the widgets are laid out and how many fit across.
+	Pref<Supplier<String>> HOME_LAYOUT = Pref.s("HOME_LAYOUT", (String) null);
+	/** The car screen's own set of widgets (sizes, order, which ones), in the same JSON; null until changed there. */
+	Pref<Supplier<String>> HOME_LAYOUT_AA = Pref.s("HOME_LAYOUT_AA", (String) null);
+	Pref<BooleanSupplier> HOME_OPEN_ON_START = Pref.b("HOME_OPEN_ON_START", true);
+	Pref<IntSupplier> HOME_BG_VERSION = Pref.i("HOME_BG_VERSION", 0);
+	Pref<IntSupplier> HOME_BG_DIM = Pref.i("HOME_BG_DIM", 35);
+	Pref<IntSupplier> HOME_BG_BLUR = Pref.i("HOME_BG_BLUR", 0);
+	/** 0 the picked picture, 1 the cover of what plays (blurred, fading from song to song). */
+	Pref<IntSupplier> HOME_BG_SOURCE = Pref.i("HOME_BG_SOURCE", 0);
+	/** 0 solid, 1 glass, 2 colour: what a widget set to "Same as Home" looks like. */
+	Pref<IntSupplier> HOME_CARD_STYLE = Pref.i("HOME_CARD_STYLE", 0);
+	/** 0 by the screen's shape, 1 scrolling down, 2 scrolling sideways. */
+	Pref<IntSupplier> HOME_ARRANGE = Pref.i("HOME_ARRANGE", 0);
+	/** Widgets across (down, when arranged sideways); 0 to fit the screen. */
+	Pref<IntSupplier> HOME_COLUMNS = Pref.i("HOME_COLUMNS", 0);
+	Pref<IntSupplier> HOME_GAP = Pref.i("HOME_GAP", 10);
+	Pref<BooleanSupplier> HOME_GREETING = Pref.b("HOME_GREETING", true);
+	/** The car screen's own arrangement, spacing and greeting switch (its widgets are HOME_LAYOUT_AA). */
+	Pref<IntSupplier> HOME_ARRANGE_AA = Pref.i("HOME_ARRANGE_AA", 0);
+	Pref<IntSupplier> HOME_COLUMNS_AA = Pref.i("HOME_COLUMNS_AA", 0);
+	Pref<IntSupplier> HOME_GAP_AA = Pref.i("HOME_GAP_AA", 10);
+	Pref<BooleanSupplier> HOME_GREETING_AA = Pref.b("HOME_GREETING_AA", true);
+	/** What the greeting says in the morning, afternoon, evening and night; empty keeps the built-in words. */
+	Pref<Supplier<String>> HOME_GREET_MORNING = Pref.s("HOME_GREET_MORNING", (String) null);
+	Pref<Supplier<String>> HOME_GREET_AFTERNOON = Pref.s("HOME_GREET_AFTERNOON", (String) null);
+	Pref<Supplier<String>> HOME_GREET_EVENING = Pref.s("HOME_GREET_EVENING", (String) null);
+	Pref<Supplier<String>> HOME_GREET_NIGHT = Pref.s("HOME_GREET_NIGHT", (String) null);
+	/** The info overlay's chips on the greeting's row, before the edit button (the phone's, and the car screen's own). */
+	Pref<BooleanSupplier> HOME_TOP_OVERLAY = Pref.b("HOME_TOP_OVERLAY", false);
+	Pref<BooleanSupplier> HOME_TOP_OVERLAY_AA = Pref.b("HOME_TOP_OVERLAY_AA", false);
+	/** The chips on the greeting's row leave with the greeting when the page scrolls down (else they stay, and turn opaque). */
+	Pref<BooleanSupplier> HOME_TOP_OVERLAY_HIDE = Pref.b("HOME_TOP_OVERLAY_HIDE", false);
+	Pref<BooleanSupplier> HOME_TOP_OVERLAY_HIDE_AA = Pref.b("HOME_TOP_OVERLAY_HIDE_AA", false);
+	Pref<BooleanSupplier> HOME_ANIMATE = Pref.b("HOME_ANIMATE", true);
 	Pref<BooleanSupplier> CHECK_UPDATES = Pref.b("CHECK_UPDATES", true);
 	Pref<LongSupplier> CHECK_UPDATES_STAMP = Pref.l("CHECK_UPDATES_STAMP", 0);
 	Pref<BooleanSupplier> SYS_BARS_ON_VIDEO_TOUCH = Pref.b("SYS_BARS_ON_VIDEO_TOUCH", false);

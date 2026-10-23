@@ -307,6 +307,34 @@ public class YoutubeAddon extends WebBrowserAddon
 		}
 
 		@Override
+		public boolean playVideoQuietly(MainActivityDelegate a, String videoId, @Nullable String title) {
+			if ((title != null) && !title.isEmpty()) cacheVideoTitle(videoId, title);
+			ActivityFragment f = a.getFragment(getFragmentId());
+			if (f instanceof YoutubeFragment yf) {
+				YoutubeWebView web = yf.getWebView();
+				YoutubeMediaEngine eng = (web == null) ? null : web.getEngine();
+				// A video already playing in the page: swapped there, the screen stays where it is.
+				if ((eng != null) && eng.isActive()) {
+					yf.playVideoNow(videoId, title);
+					return true;
+				}
+			}
+			if (!(a.getLib() instanceof DefaultMediaLib lib)) return false;
+			// Never opened, or idle: the page is loaded (laid out, but its tab not shown) with the video.
+			if (f == null) f = a.preloadFragment(getFragmentId());
+			if (f == null) return false;
+			YoutubeVideoItem video = new YoutubeVideoItem(videoId, getRootItem(lib));
+			video.loadInFragment(f, video);
+			return true;
+		}
+
+		@Nullable
+		@Override
+		public me.aap.fermata.media.engine.EffectsControls effects() {
+			return new YtEffects();
+		}
+
+		@Override
 		public int addToVideoQueue(MainActivityDelegate a, List<? extends PlayableItem> items) {
 			if (!(a.getFragment(getFragmentId()) instanceof YoutubeFragment f)) return -1;
 			YoutubeWebView web = f.getWebView();
@@ -321,6 +349,109 @@ public class YoutubeAddon extends WebBrowserAddon
 				n++;
 			}
 			return n;
+		}
+	}
+
+	/** The page's equalizer, bass, virtualizer and reverb as small switches; the page follows the prefs. */
+	private final class YtEffects implements me.aap.fermata.media.engine.EffectsControls {
+		@Override
+		public boolean has(int kind) {
+			return true;
+		}
+
+		@Override
+		public boolean isOn(int kind) {
+			return switch (kind) {
+				case EQ -> eqEnabled();
+				case BASS -> bassEnabled();
+				case VIRT -> virtEnabled();
+				default -> reverbEnabled();
+			};
+		}
+
+		@Override
+		public void setOn(int kind, boolean on) {
+			switch (kind) {
+				case EQ -> setEqEnabled(on);
+				case BASS -> setBassEnabled(on);
+				case VIRT -> setVirtEnabled(on);
+				default -> setReverbEnabled(on);
+			}
+		}
+
+		@Override
+		public int label(int kind) {
+			return switch (kind) {
+				case EQ -> me.aap.fermata.R.string.equalier;
+				case BASS -> me.aap.fermata.R.string.bass_boost;
+				case VIRT -> me.aap.fermata.R.string.virtualizer;
+				default -> me.aap.fermata.R.string.live_hall;
+			};
+		}
+
+		@Nullable
+		@Override
+		public float[] bands() {
+			int[] b = eqBands();
+			float[] lv = new float[b.length];
+			float span = YoutubeEqualizerPresets.BAND_MAX - YoutubeEqualizerPresets.BAND_MIN;
+			for (int i = 0; i < b.length; i++) lv[i] = (b[i] - YoutubeEqualizerPresets.BAND_MIN) / span;
+			return lv;
+		}
+
+		@Nullable
+		@Override
+		public String preset(android.content.Context ctx) {
+			int p = eqPreset();
+			return ((p > 0) && (p <= YoutubeEqualizerPresets.PRESET_NAMES.length)) ?
+					ctx.getString(YoutubeEqualizerPresets.PRESET_NAMES[p - 1]) : null;
+		}
+
+		@Override
+		public boolean hasLevel(int kind) {
+			return kind != EQ;
+		}
+
+		@Override
+		public float level(int kind) {
+			return switch (kind) {
+				case BASS -> bassStrength() / 1000f;
+				case VIRT -> virtStrength() / 1000f;
+				case EXTRA -> reverbStrength() / 1500f;
+				default -> 0f;
+			};
+		}
+
+		@Override
+		public void setLevel(int kind, float v) {
+			float c = Math.max(0f, Math.min(1f, v));
+			switch (kind) {
+				case BASS -> setBassStrength(Math.round(c * 1000));
+				case VIRT -> setVirtStrength(Math.round(c * 1000));
+				case EXTRA -> setReverbStrength(Math.round(c * 1500));
+				default -> {
+				}
+			}
+		}
+
+		@Override
+		public void setBand(int band, float v) {
+			int[] b = eqBands().clone();
+			if ((band < 0) || (band >= b.length)) return;
+			float c = Math.max(0f, Math.min(1f, v));
+			b[band] = Math.round(YoutubeEqualizerPresets.BAND_MIN +
+					c * (YoutubeEqualizerPresets.BAND_MAX - YoutubeEqualizerPresets.BAND_MIN));
+			setEqBands(b);
+			if (eqPreset() != 0) setEqPreset(0);
+		}
+
+		@Override
+		public void nextPreset() {
+			// 0 is manual, 1.. are the built-in curves; the bands are set first so the page gets both at once.
+			int n = YoutubeEqualizerPresets.PRESETS.length;
+			int next = (eqPreset() % n) + 1;
+			setEqBands(YoutubeEqualizerPresets.PRESETS[next - 1].clone());
+			setEqPreset(next);
 		}
 	}
 

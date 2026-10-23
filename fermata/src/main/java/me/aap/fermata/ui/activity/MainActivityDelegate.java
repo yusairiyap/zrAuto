@@ -78,6 +78,7 @@ import android.os.Build.VERSION;
 import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
 import android.os.OperationCanceledException;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
@@ -162,6 +163,7 @@ import me.aap.fermata.ytdl.YtOffline;
 import me.aap.fermata.spotify.SpotifyAuth;
 import me.aap.fermata.ui.fragment.AudioEffectsFragment;
 import me.aap.fermata.ui.fragment.DiagnosticLogFragment;
+import me.aap.fermata.ui.fragment.HomeFragment;
 import me.aap.fermata.ui.fragment.KeyTesterFragment;
 import me.aap.fermata.ui.fragment.CarModeFragment;
 import me.aap.fermata.ui.fragment.FavoritesFragment;
@@ -448,7 +450,6 @@ public class MainActivityDelegate extends ActivityDelegate
 		getPrefs().addBroadcastListener(this);
 		int navId;
 		int fragmentId;
-
 		if (state != null) {
 			navId = state.getInt("navId", ID_NULL);
 			fragmentId = state.getInt("fragmentId", ID_NULL);
@@ -465,6 +466,16 @@ public class MainActivityDelegate extends ActivityDelegate
 		b.getMediaSessionCallback().addAssistant(this, isCarActivityNotMirror() ? 0 : 1);
 		if (b.getCurrentItem() == null) b.getMediaSessionCallback().onPrepare();
 		init();
+		// A cold start that goes to Home: nothing of the bars shows (empty) before Home is ready, then it all fades in.
+		// Only now: the layout is inflated by init(), before that there is no window content to hide.
+		// Also the first screen after the process was killed and came back through the recent apps (saved state, Home).
+		boolean coldProcess = firstUiCreate;
+		firstUiCreate = false;
+		boolean startsOnHome = (state == null) && (getPrefs().getShowAddonOnStartPref() == null) &&
+				getPrefs().getBooleanPref(MainActivityPrefs.HOME_OPEN_ON_START) &&
+				((intent == null) || Intent.ACTION_MAIN.equals(intent.getAction()));
+		boolean restoredHome = (state != null) && coldProcess && (state.getInt("fragmentId", ID_NULL) == R.id.home_fragment);
+		if (!isCarActivity() && (startsOnHome || restoredHome)) veilStartup();
 
 		for (FermataAddon addon : AddonManager.get().getAddons()) {
 			if (addon instanceof FermataActivityAddon)
@@ -565,6 +576,71 @@ public class MainActivityDelegate extends ActivityDelegate
 		return completed(false);
 	}
 
+	private boolean startupVeil;
+	private long veilLiftedAt;
+	private long veilAt;
+	/** True until the first activity of this process has been created. */
+	private static boolean firstUiCreate = true;
+
+	/** Hides the whole window content until {@link #liftStartupVeil} (or a safety delay), see onActivityCreate. */
+	private void veilStartup() {
+		View root = findViewById(R.id.main_activity);
+		if (root == null) {
+			DiagnosticLog.log("STATE", "start-up veil", "no window content yet");
+			return;
+		}
+		startupVeil = true;
+		veilAt = SystemClock.uptimeMillis();
+		root.setAlpha(0f);
+		DiagnosticLog.log("STATE", "start-up veil", "on");
+		postDelayed(() -> liftStartupVeil(false), 2500);
+	}
+
+	/**
+	 * Brings the window content in with a fade once the first screen is laid out; harmless at any other time.
+	 *
+	 * @param homeShown Home itself is on screen (it has no title bar): the bar is gone before the first
+	 *                  visible frame, not faded away in it. False is the safety delay, when nothing came.
+	 */
+	public void liftStartupVeil(boolean homeShown) {
+		if (!startupVeil) return;
+		if (homeShown && (toolBar != null)) {
+			toolBar.animate().cancel();
+			toolBar.setVisibility(View.GONE);
+			toolBar.setAlpha(1f);
+		}
+		// Home covers the control panel with a fade: the content is not shown while that bar is still on its way out
+		// (an empty panel and nav bar showing for a moment is what the veil is for).
+		long waited = SystemClock.uptimeMillis() - veilAt;
+		if (homeShown && (waited < 700) && !startupSettled()) {
+			postDelayed(() -> liftStartupVeil(true), 40);
+			return;
+		}
+		startupVeil = false;
+		veilLiftedAt = SystemClock.uptimeMillis();
+		View root = findViewById(R.id.main_activity);
+		if (root == null) return;
+		DiagnosticLog.log("STATE", "start-up veil", (homeShown ? "lifted by Home" : "lifted by the safety delay") +
+				" after " + waited + " ms, tool bar " + (toolBar == null ? "none" : toolBar.getVisibility()) +
+				", control panel " + (controlPanel == null ? "none" : controlPanel.getVisibility() + "/" + controlPanel.getAlpha()) +
+				", nav bar " + (navBar == null ? "none" : navBar.getVisibility() + "/" + navBar.getChildCount()));
+		root.animate().cancel();
+		root.animate().alpha(1f).setDuration(280).start();
+	}
+
+	/** Nothing of the bars Home hides is still showing (or fading out). */
+	private boolean startupSettled() {
+		boolean tool = (toolBar == null) || (toolBar.getVisibility() != View.VISIBLE);
+		boolean panel = (controlPanel == null) || (controlPanel.getVisibility() != View.VISIBLE) ||
+				(controlPanel.getAlpha() < 0.02f);
+		return tool && panel;
+	}
+
+	/** Still behind the start-up veil, or only just out of it (the screen is still settling). */
+	public boolean isStartupVeil() {
+		return startupVeil || ((veilLiftedAt != 0) && ((SystemClock.uptimeMillis() - veilLiftedAt) < 1000));
+	}
+
 	private void defaultIntent() {
 		if (getActiveFragment() != null) {
 			checkUpdates();
@@ -572,6 +648,13 @@ public class MainActivityDelegate extends ActivityDelegate
 		}
 
 		String showAddon = getPrefs().getShowAddonOnStartPref();
+		// Nothing picked to start on: Home, unless the user turned that off (then the old way, where
+		// the app was left).
+		if ((showAddon == null) && getPrefs().getBooleanPref(MainActivityPrefs.HOME_OPEN_ON_START)) {
+			showFragment(R.id.home_fragment);
+			checkUpdates();
+			return;
+		}
 		if (showAddon != null) {
 			int fragId = NavBarMediator.nameToFragmentId(showAddon);
 
@@ -603,6 +686,15 @@ public class MainActivityDelegate extends ActivityDelegate
 			showFragment(R.id.folders_fragment);
 			setContentLoading(f);
 		}
+	}
+
+	/**
+	 * Goes back to what was last played, the way the app used to start: a YouTube video or a Music tab
+	 * track where it was left off, else the library item's tab. Used by Home's player.
+	 */
+	public FutureSupplier<Boolean> continueLastPlayed() {
+		return resumeLastPlayed().then(resumed ->
+				Boolean.TRUE.equals(resumed) ? completed(true) : goToCurrent());
 	}
 
 	/**
@@ -1375,7 +1467,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * theme's windowLightStatusBar already sets them. Not on the car screen, whose status bar
 	 * belongs to the car.
 	 */
-	private void matchStatusBarToBackground() {
+	public void matchStatusBarToBackground() {
 		if (isCarActivity()) return;
 		TypedArray ta = getContext().obtainStyledAttributes(
 				new int[]{android.R.attr.colorBackground});
@@ -2268,8 +2360,16 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	private final Runnable showLoadingBar = () -> {
-		if (progressBar != null) progressBar.setLoading(true);
+		if ((progressBar != null) && !onHome()) progressBar.setLoading(true);
 	};
+
+	/**
+	 * Home never shows the spinner in the middle of the page: what it waits for (a song picked in its queue
+	 * starting) is shown by its own cards, and a spinner over a dashboard of widgets looks like a hang.
+	 */
+	private boolean onHome() {
+		return getActiveFragment() instanceof HomeFragment;
+	}
 
 	public void setContentLoading(FutureSupplier<?> contentLoading) {
 		if (this.contentLoading != null) {
@@ -2279,7 +2379,7 @@ public class MainActivityDelegate extends ActivityDelegate
 
 		hideContentLoading();
 		if (contentLoading.isDone()) return;
-		if (!loadingSuppressed) showContentLoading();
+		if (!loadingSuppressed && !onHome()) showContentLoading();
 
 		var cl = this.contentLoading = contentLoading.main();
 		cl.onCompletion((r, f) -> {
@@ -2327,7 +2427,9 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	protected ActivityFragment createFragment(int id) {
-		if (id == R.id.folders_fragment) {
+		if (id == R.id.home_fragment) {
+			return new me.aap.fermata.ui.fragment.HomeFragment();
+		} else if (id == R.id.folders_fragment) {
 			return new FoldersFragment();
 		} else if (id == R.id.favorites_fragment) {
 			return new FavoritesFragment();
@@ -2353,6 +2455,8 @@ public class MainActivityDelegate extends ActivityDelegate
 			return new me.aap.fermata.ui.fragment.FabSettingsFragment();
 		} else if (id == R.id.power_settings_fragment) {
 			return new me.aap.fermata.ui.fragment.PowerSettingsFragment();
+		} else if (id == R.id.home_settings_fragment) {
+			return new me.aap.fermata.ui.fragment.HomeSettingsFragment();
 		} else if (id == R.id.nav_tabs_fragment) {
 			return new me.aap.fermata.ui.fragment.NavTabsFragment();
 		} else if (id == R.id.info_overlay_fragment) {
@@ -2836,6 +2940,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Override
 	public void onBackPressed() {
 		if (me.aap.fermata.ui.welcome.WelcomeWizard.onBack()) return;
+		if (me.aap.fermata.ui.home.HomeModal.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.ShareSheet.dismissOpen()) return;
 		if (PlaylistPicker.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.YoutubeAlternativesPicker.dismissOpen()) return;
@@ -3244,6 +3349,26 @@ public class MainActivityDelegate extends ActivityDelegate
 			if (suppressed) hideContentLoading();
 			else if (contentLoading != null) showContentLoading();
 		}
+		overlaysSuppressed = suppressed;
+		applyFabSuppression();
+	}
+
+	// See setOverlaysSuppressed() and setFabsHidden().
+	private boolean overlaysSuppressed;
+	private boolean fabsHiddenByTab;
+
+	/**
+	 * The floating buttons stay away while the tab showing (Home) has no use for them, on top of
+	 * whatever setOverlaysSuppressed() decides: the control panel is handled apart (it fades).
+	 */
+	public void setFabsHidden(boolean hidden) {
+		if (fabsHiddenByTab == hidden) return;
+		fabsHiddenByTab = hidden;
+		applyFabSuppression();
+	}
+
+	private void applyFabSuppression() {
+		boolean suppressed = overlaysSuppressed || fabsHiddenByTab;
 		// The primary one first: the others may mirror its visibility.
 		if (floatingButton != null) floatingButton.setSuppressed(suppressed);
 		if (floatingButton2 != null) floatingButton2.setSuppressed(suppressed);

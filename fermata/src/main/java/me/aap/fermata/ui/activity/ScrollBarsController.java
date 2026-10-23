@@ -134,7 +134,7 @@ public final class ScrollBarsController implements ViewTreeObserver.OnScrollChan
 	}
 
 	/** How far a bottom nav bar is moved by this right now (down: positive). */
-	float getNavDy() {
+	public float getNavDy() {
 		return navDy;
 	}
 

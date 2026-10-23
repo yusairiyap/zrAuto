@@ -60,7 +60,7 @@ import me.aap.utils.ui.menu.OverlayMenuView;
  * </ul>
  * What's "on top", first match wins: an open menu, picker or panel ({@link #markScope} - the
  * YouTube search / Up next panel, the Music tab's queue, the add to playlist / download pickers, every
- * overlay menu), else a Favorites / Playlists / Folders / Downloads list. Anywhere else, and with car
+ * overlay menu), else a Favorites / Playlists / Folders / Downloads list or the Home tab's widgets. Anywhere else, and with car
  * mode off, the keys do what they're bound to.
  * <p>
  * A web page (the YouTube tab's, the browser's; not fullscreen, and not under an open panel, which
@@ -201,7 +201,8 @@ public final class CarNav {
 				handler.removeCallbacks(longPress);
 				// Fullscreen video (YouTube's too): the keys are the user's own bindings, untouched,
 				// unless a picker or menu is open over it (add to playlist): that one is moved through.
-				boolean fullscreen = (a != null) && isFullscreenVideo(a);
+				// Home: the same, its cards are touched, not walked through (a Home modal still is).
+				boolean fullscreen = (a != null) && (isFullscreenVideo(a) || isHome(a));
 				Scope s = (a == null) ? null : findScope(a, fullscreen);
 				if (fullscreen && (s == null)) {
 					downCode = 0;
@@ -255,7 +256,12 @@ public final class CarNav {
 	public static boolean onTransport(boolean next) {
 		if (!isEnabled()) return false;
 		MainActivityDelegate a = MainActivityDelegate.getUiDelegate();
-		Scope s = (a == null) ? null : findScope(a, isFullscreenVideo(a));
+		boolean own = (a != null) && (isFullscreenVideo(a) || isHome(a));
+		Scope s = (a == null) ? null : findScope(a, own);
+		if ((s == null) && own) {
+			clear();
+			return false;
+		}
 		if (s == null) {
 			clear();
 			WebView web = (a == null) ? null : findWebPage(a);
@@ -345,6 +351,11 @@ public final class CarNav {
 		WebView web = (downWeb == null) ? null : downWeb.get();
 		if (web != null) WebNav.clear(web);
 		a.onBackPressed();
+	}
+
+	/** The Home tab is in front: car mode leaves the keys to the user's bindings there. */
+	private static boolean isHome(MainActivityDelegate a) {
+		return a.getActiveFragment() instanceof me.aap.fermata.ui.fragment.HomeFragment;
 	}
 
 	/** A video is fullscreen: local video mode, or a WebView player's own (YouTube). */
@@ -571,7 +582,20 @@ public final class CarNav {
 			s.activity.onBackPressed();
 			return;
 		}
+		// With Home in the bar, the top of a tab goes back to Home (the dashboard with the player on it), else to what's playing.
+		if (homeIsThere(s.activity) && (f != null) && (f.getFragmentId() != R.id.home_fragment)) {
+			s.activity.exitVideoMode();
+			s.activity.showFragment(R.id.home_fragment);
+			return;
+		}
 		s.activity.getControlPanel().openNowPlaying();
+	}
+
+	/** The Home tab is in the navigation bar (and not hidden from it). */
+	private static boolean homeIsThere(MainActivityDelegate a) {
+		var prefs = a.getPrefs();
+		return me.aap.fermata.ui.fragment.NavBarMediator.getTabs(prefs).contains("home") &&
+				!me.aap.fermata.ui.fragment.NavBarMediator.getHiddenTabs(prefs).contains("home");
 	}
 
 	/**

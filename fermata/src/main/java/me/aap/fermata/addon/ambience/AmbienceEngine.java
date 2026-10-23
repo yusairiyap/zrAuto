@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
@@ -480,6 +481,7 @@ public final class AmbienceEngine {
 	public void setHeld(boolean h) {
 		if (held == h) return;
 		held = h;
+		DiagnosticLog.log("AMBIENCE", h ? "held back: the playback paused" : "released: the playback went on");
 		if (h) {
 			// Nothing is heard, so the timer waits too instead of running out in silence.
 			if (endAt != 0) {
@@ -573,6 +575,7 @@ public final class AmbienceEngine {
 		cancelTimer();
 		unregisterNoisy();
 		main.removeCallbacksAndMessages(null);
+		abandonFocus();
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -592,8 +595,49 @@ public final class AmbienceEngine {
 			running = true;
 		}
 		AmbienceService.start(FermataApplication.get());
+		requestFocus();
 		Thread t = new Thread(this::run, "ambience");
 		t.start();
+	}
+
+	@androidx.annotation.Nullable
+	private AudioFocusRequest focus;
+
+	/**
+	 * Audio focus, for the car: with Android Auto connected, a stream from an app that holds no focus at all is
+	 * not played through the car (the card and notification said "playing" and nothing was heard). It is only
+	 * asked for when the app's own player is not playing, since that one holds the focus itself, and as the
+	 * "may duck" kind, so another app's music goes quieter underneath instead of stopping; any later change of
+	 * focus is ignored, the ambience simply mixes on.
+	 */
+	private void requestFocus() {
+		if ((focus != null) || AmbienceAddon.isMusicPlaying()) return;
+		try {
+			AudioManager am = FermataApplication.get().getSystemService(AudioManager.class);
+			if (am == null) return;
+			AudioFocusRequest r = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+					.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
+							.setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+					.setWillPauseWhenDucked(false)
+					.setOnAudioFocusChangeListener(change -> {
+					}).build();
+			int res = am.requestAudioFocus(r);
+			DiagnosticLog.log("AMBIENCE", "audio focus", "result=" + res);
+			if (res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) focus = r;
+		} catch (RuntimeException ex) {
+			DiagnosticLog.log("AMBIENCE", "audio focus failed", ex);
+		}
+	}
+
+	private void abandonFocus() {
+		AudioFocusRequest r = focus;
+		focus = null;
+		if (r == null) return;
+		try {
+			AudioManager am = FermataApplication.get().getSystemService(AudioManager.class);
+			if (am != null) am.abandonAudioFocusRequest(r);
+		} catch (RuntimeException ignore) {
+		}
 	}
 
 	private static float curve(float g) {
@@ -628,6 +672,8 @@ public final class AmbienceEngine {
 					.setTransferMode(AudioTrack.MODE_STREAM)
 					.build();
 			track.play();
+			DiagnosticLog.log("AMBIENCE", "track playing", "state=" + track.getPlayState(),
+					"device=" + ((track.getRoutedDevice() == null) ? "none" : track.getRoutedDevice().getType()));
 
 			float[] ml = new float[BLOCK], mr = new float[BLOCK];
 			float[] vl = new float[BLOCK], vr = new float[BLOCK];
@@ -750,6 +796,7 @@ public final class AmbienceEngine {
 				synchronized (lock) {
 					again = running;
 				}
+				if (!again) abandonFocus();
 				// Not when a new thread has started meanwhile: that one needs the service.
 				if (!again) AmbienceService.stop(FermataApplication.get());
 			});

@@ -21,43 +21,64 @@ import me.aap.utils.ui.UiUtils;
  */
 public class ChipFlowLayout extends ViewGroup {
 	private final int gap;
+	private boolean oneRow;
 
 	public ChipFlowLayout(Context ctx) {
 		super(ctx);
 		gap = UiUtils.toIntPx(ctx, 8);
 	}
 
+	/** Never wraps: one row as wide as its chips (for a scroller to show part of). */
+	public void setOneRow(boolean oneRow) {
+		this.oneRow = oneRow;
+		requestLayout();
+	}
+
 	@Override
 	protected void onMeasure(int widthSpec, int heightSpec) {
-		int maxW = MeasureSpec.getSize(widthSpec) - getPaddingLeft() - getPaddingRight();
+		int maxW = oneRow ? Integer.MAX_VALUE / 2 : MeasureSpec.getSize(widthSpec) - getPaddingLeft() - getPaddingRight();
 		int x = 0;
 		int y = 0;
 		int rowH = 0;
 		int usedW = 0;
 
+		java.util.List<View> row = new java.util.ArrayList<>();
 		for (int i = 0; i < getChildCount(); i++) {
 			View c = getChildAt(i);
 			if (c.getVisibility() == GONE) continue;
 			measureChild(c, MeasureSpec.makeMeasureSpec(maxW, MeasureSpec.AT_MOST), heightSpec);
 			int w = c.getMeasuredWidth();
 			if ((x > 0) && (x + w > maxW)) {
+				equalize(row, rowH);
+				row.clear();
 				x = 0;
 				y += rowH + gap;
 				rowH = 0;
 			}
+			row.add(c);
 			x += w + gap;
 			rowH = Math.max(rowH, c.getMeasuredHeight());
 			usedW = Math.max(usedW, x - gap);
 		}
+		equalize(row, rowH);
 
 		int h = y + rowH + getPaddingTop() + getPaddingBottom();
 		setMeasuredDimension(resolveSize(usedW + getPaddingLeft() + getPaddingRight(), widthSpec),
 				resolveSize(h, heightSpec));
 	}
 
+	/** Every chip of a line is as tall as the tallest of them (an icon-only chip is otherwise shorter than one with text). */
+	private static void equalize(java.util.List<View> row, int rowH) {
+		for (View c : row) {
+			if (c.getMeasuredHeight() == rowH) continue;
+			c.measure(MeasureSpec.makeMeasureSpec(c.getMeasuredWidth(), MeasureSpec.EXACTLY),
+					MeasureSpec.makeMeasureSpec(rowH, MeasureSpec.EXACTLY));
+		}
+	}
+
 	@Override
 	protected void onLayout(boolean changed, int l, int t, int r, int b) {
-		int maxW = r - l - getPaddingLeft() - getPaddingRight();
+		int maxW = oneRow ? Integer.MAX_VALUE / 2 : r - l - getPaddingLeft() - getPaddingRight();
 		int x = 0;
 		int y = 0;
 		int rowH = 0;

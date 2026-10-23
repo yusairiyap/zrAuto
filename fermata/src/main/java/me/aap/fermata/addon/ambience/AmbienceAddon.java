@@ -62,6 +62,16 @@ public class AmbienceAddon implements FermataFragmentAddon, FermataActivityAddon
 		return (m != null) && (m.getAddon(AmbienceAddon.class) != null);
 	}
 
+	private static volatile boolean musicPlaying;
+
+	/** Whether the app's own player is playing right now. */
+	static boolean isMusicPlaying() {
+		return musicPlaying;
+	}
+
+	/** Whether music was playing at the last state change: only then does pausing hold the ambience. */
+	private boolean wasPlaying;
+
 	private void attach(MediaSessionCallback cb) {
 		if (!listening) {
 			listening = true;
@@ -87,13 +97,19 @@ public class AmbienceAddon implements FermataFragmentAddon, FermataActivityAddon
 	@Override
 	public void onPlaybackStateChanged(MediaSessionCallback cb, PlaybackStateCompat state) {
 		AmbienceEngine e = AmbienceEngine.get();
+		int s = state.getState();
+		musicPlaying = (s == PlaybackStateCompat.STATE_PLAYING);
+		boolean was = wasPlaying;
+		if (s == PlaybackStateCompat.STATE_PLAYING) wasPlaying = true;
+		else if ((s == PlaybackStateCompat.STATE_PAUSED) || (s == PlaybackStateCompat.STATE_STOPPED)) wasPlaying = false;
 		if (!AmbienceEngine.prefs().getBooleanPref(AmbienceEngine.FOLLOW)) {
 			e.setHeld(false);
 			return;
 		}
-		int s = state.getState();
 		if (s == PlaybackStateCompat.STATE_PLAYING) e.setHeld(false);
-		else if ((s == PlaybackStateCompat.STATE_PAUSED) || (s == PlaybackStateCompat.STATE_STOPPED)) {
+		// Only when music that was playing pauses or stops. The session says "paused" or "stopped" again and
+		// again while nothing plays; each of those used to hold an ambience started on its own into silence.
+		else if (was && ((s == PlaybackStateCompat.STATE_PAUSED) || (s == PlaybackStateCompat.STATE_STOPPED))) {
 			e.setHeld(true);
 		}
 	}
