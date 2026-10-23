@@ -1146,11 +1146,12 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	// Background and the status bar
 
 	private void loadBackground(boolean animate) {
+		// Before the early return: the cover background is drawn by the same view, so it needs them too.
+		bg.setDim(prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM));
+		bg.setZoom(prefs.getIntPref(MainActivityPrefs.HOME_BG_ZOOM));
 		if (followsCover()) return;
 		int version = prefs.getIntPref(MainActivityPrefs.HOME_BG_VERSION);
 		int blur = prefs.getIntPref(MainActivityPrefs.HOME_BG_BLUR);
-		bg.setDim(prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM));
-		bg.setZoom(prefs.getIntPref(MainActivityPrefs.HOME_BG_ZOOM));
 		if ((version == bgVersion) && (blur == bgBlur)) return;
 		bgVersion = version;
 		bgBlur = blur;
