@@ -140,6 +140,9 @@ public class FermataChromeClient extends WebChromeClient {
 		// they close, search first, and the video stays fullscreen. The same Back is reported again
 		// right after that: it must not take the video out of fullscreen too (its frame stops then).
 		long now = android.os.SystemClock.uptimeMillis();
+		me.aap.fermata.util.DiagnosticLog.log("VIDEO", "hide custom view", "comments open=" +
+				me.aap.fermata.ui.view.YoutubeCommentsView.isOpen(), "ms since a back closed them=" +
+				(now - backClosedAt));
 		if (me.aap.fermata.ui.view.YoutubeCommentsView.dismissOpen()) {
 			backClosedAt = now;
 			return;
