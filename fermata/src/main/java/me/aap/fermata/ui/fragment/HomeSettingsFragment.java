@@ -229,6 +229,9 @@ public class HomeSettingsFragment extends ReorderListFragment {
 		addSwitchRow(box, R.string.home_pref_animate, R.string.home_pref_animate_sub,
 				() -> p.getBooleanPref(MainActivityPrefs.HOME_ANIMATE),
 				on -> p.applyBooleanPref(MainActivityPrefs.HOME_ANIMATE, on), null);
+		addValueSliderRow(box, R.string.home_pref_rotate, R.string.home_pref_rotate_sub, 0, 60,
+				() -> p.getIntPref(MainActivityPrefs.HOME_STACK_ROTATE), v -> p.applyIntPref(MainActivityPrefs.HOME_STACK_ROTATE, v),
+				v -> (v == 0) ? getString(R.string.home_rotate_off) : getString(R.string.home_rotate_secs, v), null);
 		// Shows nothing picked while some widget has a look of its own; picking one sets every widget.
 		addChoiceRow(box, R.string.home_pref_style, R.string.home_pref_style_sub,
 				new int[]{R.string.home_style_solid, R.string.home_style_glass, R.string.home_style_colour},
@@ -267,6 +270,7 @@ public class HomeSettingsFragment extends ReorderListFragment {
 		Pref<BooleanSupplier> overlay = aa ? MainActivityPrefs.HOME_TOP_OVERLAY_AA : MainActivityPrefs.HOME_TOP_OVERLAY;
 		Pref<BooleanSupplier> overlayHide = aa ? MainActivityPrefs.HOME_TOP_OVERLAY_HIDE_AA :
 				MainActivityPrefs.HOME_TOP_OVERLAY_HIDE;
+		Pref<BooleanSupplier> editButton = aa ? MainActivityPrefs.HOME_EDIT_BUTTON_AA : MainActivityPrefs.HOME_EDIT_BUTTON;
 
 		section(box, R.string.home_sec_layout);
 		addChoiceRow(box, R.string.home_pref_arrange, R.string.home_pref_arrange_sub,
@@ -282,6 +286,8 @@ public class HomeSettingsFragment extends ReorderListFragment {
 		section(box, R.string.home_sec_header);
 		addSwitchRow(box, R.string.home_pref_greeting, R.string.home_pref_greeting_sub,
 				() -> p.getBooleanPref(greeting), on -> p.applyBooleanPref(greeting, on), null);
+		addSwitchRow(box, R.string.home_pref_edit_button, R.string.home_pref_edit_button_sub,
+				() -> p.getBooleanPref(editButton), on -> p.applyBooleanPref(editButton, on), null);
 		addSwitchRow(box, R.string.home_pref_top_overlay, R.string.home_pref_top_overlay_sub,
 				() -> p.getBooleanPref(overlay), on -> p.applyBooleanPref(overlay, on), null);
 		addSwitchRow(box, R.string.home_pref_top_overlay_hide, R.string.home_pref_top_overlay_hide_sub,

@@ -42,6 +42,7 @@ import me.aap.fermata.addon.AddonManager;
 import me.aap.fermata.addon.FermataAddon;
 import me.aap.fermata.addon.FermataFragmentAddon;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.home.HomeScreen;
 import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.ui.view.MediaItemListView;
@@ -161,6 +162,17 @@ public class NavBarMediator extends PrefNavBarMediator
 
 		String name = idToName(id);
 		MainActivityDelegate a = MainActivityDelegate.get(nb.getContext());
+		if (id == R.id.home_fragment) {
+			// Home's own item: the widgets' edit mode, without hunting for the little button (which can be off).
+			OverlayMenuItemView edit =
+					(OverlayMenuItemView) b.addItem(R.id.nav_edit_home, R.drawable.edit, R.string.home_edit_layout);
+			edit.setHandler(i -> {
+				HomeScreen.startEditing(a);
+				return true;
+			});
+			edit.setTextColor(tint);
+			TextViewCompat.setCompoundDrawableTintList(edit, tint);
+		}
 		boolean isStart = name.equals(a.getPrefs().getShowAddonOnStartPref());
 		int icon = isStart ? R.drawable.bookmark_filled : R.drawable.bookmark;
 		int title = isStart ? R.string.remove_open_on_start : R.string.set_open_on_start;

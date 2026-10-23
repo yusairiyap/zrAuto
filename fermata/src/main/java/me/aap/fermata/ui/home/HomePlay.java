@@ -33,6 +33,20 @@ public final class HomePlay {
 		a.getMediaServiceBinder().playItem(pi);
 	}
 
+	/**
+	 * "Play as video" from a row's menu: plays it in the video player even while music mode is on (what the tab's menu
+	 * does), and the video goes fullscreen as it does there, instead of staying a hidden session under Home.
+	 */
+	public static void asVideo(MainActivityDelegate a, PlayableItem pi) {
+		MusicPlayer.markStarted();
+		if (pi instanceof MediaLib.ExternallyPlayableItem ext) {
+			a.playExternally(ext, pi);
+			return;
+		}
+		if (Objects.equals(a.getCurrentPlayable(), pi) && !MusicPlayer.isMusicModeActive(a)) return;
+		a.getBody().playItem(pi);
+	}
+
 	/** A whole playlist or folder: as music all its tracks become the queue, else its first item plays. */
 	public static void list(MainActivityDelegate a, MediaLib.BrowsableItem list) {
 		if (MusicPlayer.isEnabled()) {

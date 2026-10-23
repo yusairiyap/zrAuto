@@ -4,14 +4,10 @@ import android.os.Build.VERSION;
 import android.os.Build.VERSION_CODES;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.ViewParent;
 import android.view.ViewTreeObserver;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-
-import java.util.ArrayList;
-import java.util.List;
 
 import me.aap.fermata.R;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -38,8 +34,6 @@ public final class BehindBarsLayers {
 	private final int[] barExt = new int[2];
 	@Nullable
 	private ViewGroup[] clipViews;
-	private boolean[] clipChildrenWas;
-	private boolean[] clipToPaddingWas;
 	private boolean active = true;
 	private boolean attached;
 	private final ViewTreeObserver.OnPreDrawListener preDraw = () -> {
@@ -150,35 +144,17 @@ public final class BehindBarsLayers {
 
 	/**
 	 * The bar's area is main_activity's own top padding: every container between it and the root
-	 * has to let the layers draw out into it. The previous settings are kept, for
-	 * {@link #restoreClipping()}.
+	 * has to let the layers draw out into it, see {@link BarsClipping}.
 	 */
 	private void unclipForStatusBar() {
 		if (clipViews != null) return;
-		List<ViewGroup> l = new ArrayList<>();
-		for (ViewParent p = root.getParent(); p instanceof ViewGroup g; p = g.getParent()) {
-			l.add(g);
-			if (g.getId() == R.id.main_activity) break;
-		}
-		ViewGroup[] views = l.toArray(new ViewGroup[0]);
-		clipChildrenWas = new boolean[views.length];
-		clipToPaddingWas = new boolean[views.length];
-		for (int i = 0; i < views.length; i++) {
-			clipChildrenWas[i] = views[i].getClipChildren();
-			clipToPaddingWas[i] = views[i].getClipToPadding();
-			views[i].setClipChildren(false);
-			views[i].setClipToPadding(false);
-		}
-		clipViews = views;
+		clipViews = BarsClipping.acquire(root);
 	}
 
 	private void restoreClipping() {
 		ViewGroup[] views = clipViews;
 		if (views == null) return;
 		clipViews = null;
-		for (int i = 0; i < views.length; i++) {
-			views[i].setClipChildren(clipChildrenWas[i]);
-			views[i].setClipToPadding(clipToPaddingWas[i]);
-		}
+		BarsClipping.release(views);
 	}
 }

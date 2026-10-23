@@ -60,6 +60,12 @@ final class HomeGridLayout extends ViewGroup {
 	/** Freeflow (scrolling down only): the cards keep the places they were dropped at, see placeFree(). */
 	private boolean freeform;
 	private static final int FREE_UNIT_DP = 90;
+	/** Sideways: the width of the page it sits in, so cards that do not fill it are centred (0 = no such room). */
+	private int viewportW;
+	/** Sideways: where the middle of the cards should be (in this view's own coordinates), NaN for the middle of the page. */
+	private float centreX = Float.NaN;
+	/** Sideways: the room put before the cards to centre them, see {@link #setViewportWidth}. */
+	private int lead;
 	private boolean editing;
 	@Nullable
 	private ViewGroup scroller;
@@ -114,6 +120,17 @@ final class HomeGridLayout extends ViewGroup {
 		setClipToPadding(false);
 		setWillNotDraw(false);
 		gap = HomeUi.dp(ctx, 10);
+	}
+
+	/**
+	 * Scrolling sideways with fewer cards than fill the page: they sit in the middle of it. Once they need more room
+	 * than the page has, the lead is 0 and the row scrolls as before.
+	 */
+	void setViewportWidth(int w, float centreX) {
+		if ((viewportW == w) && (this.centreX == centreX)) return;
+		viewportW = w;
+		this.centreX = centreX;
+		if (!vertical) requestLayout();
 	}
 
 	/** The page's scroller; {@code onScrolled} also runs on every scroll (a scroller has only one such listener, this one). */
@@ -283,6 +300,11 @@ final class HomeGridLayout extends ViewGroup {
 			}
 		}
 		return any;
+	}
+
+	/** The seconds between a stack turning by itself changed (Settings > Home): every stack follows. */
+	void resyncRotation() {
+		for (HomeCellView c : order) c.stack.scheduleRotate();
 	}
 
 	void restyle() {
@@ -459,7 +481,11 @@ final class HomeGridLayout extends ViewGroup {
 		if (vertical) {
 			setMeasuredDimension(w, extent + padH);
 		} else {
-			setMeasuredDimension(extent + padW, (hMode == MeasureSpec.UNSPECIFIED) ?
+			int natural = extent + padW;
+			int total = Math.max(natural, viewportW);
+			float want = Float.isNaN(centreX) ? (total - natural) / 2f : (centreX - extent / 2f - getPaddingLeft());
+			lead = Math.max(0, Math.min(total - natural, Math.round(want)));
+			setMeasuredDimension(total, (hMode == MeasureSpec.UNSPECIFIED) ?
 					cross * unit + (cross - 1) * gap + padH : h);
 		}
 	}
@@ -472,7 +498,7 @@ final class HomeGridLayout extends ViewGroup {
 		for (int i = 0; i < order.size(); i++) {
 			HomeCellView c = order.get(i);
 			int[] at = slots.get(i);
-			int x = getPaddingLeft() + (free() ? at[0] : (vertical ? at[1] : at[0]) * (unit + gap));
+			int x = getPaddingLeft() + (vertical ? 0 : lead) + (free() ? at[0] : (vertical ? at[1] : at[0]) * (unit + gap));
 			int y = getPaddingTop() + (free() ? at[1] : (vertical ? at[0] : at[1]) * (unit + gap));
 			boolean had = c.getWidth() > 0;
 			int oldL = c.getLeft();
@@ -857,8 +883,8 @@ final class HomeGridLayout extends ViewGroup {
 		if ((hintCw != c.cw) || (hintCh != c.ch)) {
 			c.cell.w = hintCw;
 			c.cell.h = hintCh;
+			c.growOnNextSize();
 			c.setEffectiveSize(hintCw, hintCh);
-			c.pop();
 			requestLayout();
 			changed();
 		}

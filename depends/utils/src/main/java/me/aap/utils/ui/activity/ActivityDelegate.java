@@ -425,7 +425,10 @@ public abstract class ActivityDelegate implements EventBroadcaster<ActivityListe
 		try {
 			tr.commitNow();
 			postBroadcastEvent(FRAGMENT_CHANGED);
-			if (activeId != ID_NULL) crossfadeFragmentViews(fromView, switchingTo.getView());
+			if (activeId != ID_NULL) {
+				crossfadeFragmentViews(fromView, switchingTo.getView(), switchingTo.getFadeInMillis(),
+						switchingTo.getFadeInDelayMillis());
+			}
 			return switchingTo;
 		} catch (IllegalStateException err) {
 			activeFragmentId = ID_NULL;
@@ -454,17 +457,26 @@ public abstract class ActivityDelegate implements EventBroadcaster<ActivityListe
 	 * this method relies on for its synchronous return), so the fade is driven directly on the
 	 * fragments' root views instead, the same way {@code ControlPanelView} already fades its FABs.
 	 */
-	private void crossfadeFragmentViews(@Nullable View from, @Nullable View to) {
+	private void crossfadeFragmentViews(@Nullable View from, @Nullable View to, long fadeIn, long delay) {
 		if (to != null) {
 			to.animate().cancel();
-			to.setAlpha(0f);
-			to.animate().alpha(1f).setDuration(FRAGMENT_FADE_IN_DURATION).start();
+			// No fade (the fragment shows a picture of the old tab over itself instead): there from the first frame.
+			if ((fadeIn <= 0) && (delay <= 0)) {
+				to.setAlpha(1f);
+			} else {
+				to.setAlpha(0f);
+				to.animate().alpha(1f).setStartDelay(delay).setDuration(fadeIn).start();
+			}
 		}
 		if ((from != null) && (from != to)) {
 			from.animate().cancel();
+			if (fadeIn <= 0) {
+				from.setVisibility(View.GONE);
+				return;
+			}
 			from.setAlpha(1f);
 			from.setVisibility(View.VISIBLE);
-			from.animate().alpha(0f).setDuration(FRAGMENT_FADE_OUT_DURATION)
+			from.animate().alpha(0f).setStartDelay(0L).setDuration((delay > 0) ? delay : Math.min(FRAGMENT_FADE_OUT_DURATION, fadeIn))
 					.withEndAction(() -> from.setVisibility(View.GONE)).start();
 		}
 	}

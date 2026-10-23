@@ -30,6 +30,7 @@ import me.aap.fermata.R;
  */
 final class HomeStackView extends FrameLayout {
 	private static final long SETTLE_MS = 280;
+	private static final long AUTO_SETTLE_MS = 620;
 	private static final long DOTS_SHOW_MS = 1800;
 
 	interface Callback {
@@ -41,6 +42,9 @@ final class HomeStackView extends FrameLayout {
 
 		/** The widget on top changed (swiped, or a dot was tapped). */
 		void onTopChanged(int index);
+
+		/** Seconds between the stack turning to its next widget by itself, 0 for never. */
+		int rotateSeconds();
 	}
 
 	private final Callback cb;
@@ -62,6 +66,7 @@ final class HomeStackView extends FrameLayout {
 	@Nullable
 	private ValueAnimator settle;
 	private final Runnable hideDots = this::fadeDotsOut;
+	private final Runnable rotateTick = this::rotateStep;
 
 	HomeStackView(Context ctx, Callback cb) {
 		super(ctx);
@@ -188,11 +193,15 @@ final class HomeStackView extends FrameLayout {
 	}
 
 	private void goBy(int d) {
+		goBy(d, false);
+	}
+
+	private void goBy(int d, boolean auto) {
 		int n = widgets.size();
 		if (n < 2) return;
 		int r = Math.round(pos);
 		showDots();
-		animateTo(r + d);
+		animateTo(r + d, auto);
 		cb.onTopChanged((((r + d) % n) + n) % n);
 	}
 
@@ -244,6 +253,31 @@ final class HomeStackView extends FrameLayout {
 			// Edit mode over: the dots that stayed up for it go away again after a moment.
 			postDelayed(hideDots, DOTS_SHOW_MS);
 		}
+		scheduleRotate();
+	}
+
+	private void rotateStep() {
+		// Only a stack that is on screen and not being used: a finger on it, edit mode or a swipe in progress wait a round.
+		if (isShown() && !cb.isEditing() && !dragging && !armed && (settle == null) && (widgets.size() > 1)) goBy(1, true);
+		scheduleRotate();
+	}
+
+	/** (Re)starts the wait for the next turn by itself, if Settings > Home asks for them. */
+	void scheduleRotate() {
+		removeCallbacks(rotateTick);
+		if (!isAttachedToWindow() || (widgets.size() < 2)) return;
+		int sec = cb.rotateSeconds();
+		if (sec > 0) postDelayed(rotateTick, sec * 1000L);
+	}
+
+	/** A touch on the stack starts the wait over: it turns by itself only after being left alone for a whole round. */
+	@Override
+	public boolean dispatchTouchEvent(MotionEvent e) {
+		int a = e.getActionMasked();
+		if (a == MotionEvent.ACTION_DOWN) removeCallbacks(rotateTick);
+		boolean r = super.dispatchTouchEvent(e);
+		if ((a == MotionEvent.ACTION_UP) || (a == MotionEvent.ACTION_CANCEL)) scheduleRotate();
+		return r;
 	}
 
 	@Override
@@ -251,11 +285,13 @@ final class HomeStackView extends FrameLayout {
 		super.onAttachedToWindow();
 		// A moment of dots when a stack first shows, so it is known to be one.
 		if (widgets.size() > 1) post(this::showDots);
+		scheduleRotate();
 	}
 
 	@Override
 	protected void onDetachedFromWindow() {
 		removeCallbacks(hideDots);
+		removeCallbacks(rotateTick);
 		if (settle != null) settle.cancel();
 		super.onDetachedFromWindow();
 	}
@@ -268,6 +304,11 @@ final class HomeStackView extends FrameLayout {
 
 	// ---------------------------------------------------------------------------------------------
 	// Position
+
+	/** The widgets drawn from a layer (while one slides in and the other out by itself), or from their own views again. */
+	private void layers(boolean on) {
+		for (HomeWidgetView v : widgets) v.setLayerType(on ? LAYER_TYPE_HARDWARE : LAYER_TYPE_NONE, null);
+	}
 
 	/** Lays the widgets out for the position: the front one slides off, the next comes up behind. */
 	private void apply() {
@@ -295,11 +336,22 @@ final class HomeStackView extends FrameLayout {
 	}
 
 	private void animateTo(int index) {
+		animateTo(index, false);
+	}
+
+	/**
+	 * @param auto the stack turning by itself: slower and eased at both ends (a swipe settles from the speed of the
+	 *             finger, this one starts from rest), and each widget is drawn from a layer while it moves, so the
+	 *             slide and the dissolve cost a card nothing but a transform (no redraw of a list or a graph per frame).
+	 */
+	private void animateTo(int index, boolean auto) {
 		if (settle != null) settle.cancel();
 		float from = pos;
 		ValueAnimator a = ValueAnimator.ofFloat(from, index);
-		a.setDuration(SETTLE_MS);
-		a.setInterpolator(new DecelerateInterpolator(1.6f));
+		a.setDuration(auto ? AUTO_SETTLE_MS : SETTLE_MS);
+		a.setInterpolator(auto ? new android.view.animation.PathInterpolator(0.4f, 0f, 0.2f, 1f) :
+				new DecelerateInterpolator(1.6f));
+		if (auto) layers(true);
 		a.addUpdateListener(v -> {
 			pos = (float) v.getAnimatedValue();
 			apply();
@@ -311,6 +363,7 @@ final class HomeStackView extends FrameLayout {
 				// Back into 0..n-1 after going round the end.
 				pos = mod(pos);
 				apply();
+				if (settle == null) layers(false);
 			}
 		});
 		settle = a;
@@ -366,7 +419,9 @@ final class HomeStackView extends FrameLayout {
 	@Override
 	public boolean onTouchEvent(MotionEvent e) {
 		if (!dragging) {
-			if ((widgets.size() < 2) || cb.isEditing()) return false;
+			// Also in edit mode: the cell hands its touches here (it keeps the children away from them), so a sideways
+			// swipe turns the stack while a hold still picks the card up.
+			if (widgets.size() < 2) return false;
 			switch (e.getActionMasked()) {
 				case MotionEvent.ACTION_DOWN -> {
 					downX = e.getX();
