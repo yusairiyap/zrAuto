@@ -122,7 +122,7 @@ final class HomeOptionsPanel {
 		return switchRow(p, o.label, w.optBool(o.key, o.defBool), on -> w.setOpt(o.key, on));
 	}
 
-	private static View switchRow(HomePalette p, String label, boolean checked, Consumer<Boolean> onChange) {
+	private static View switchRow(HomePalette p, CharSequence label, boolean checked, Consumer<Boolean> onChange) {
 		Context ctx = p.ctx;
 		LinearLayout row = new LinearLayout(ctx);
 		row.setGravity(Gravity.CENTER_VERTICAL);
