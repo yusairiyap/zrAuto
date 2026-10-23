@@ -391,9 +391,10 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 				// The first moments are a burst of layout (bars, insets, the widgets); the page fades in once it has
 				// settled and its widgets rise with it, as the Music tab does.
 				root.postDelayed(() -> {
-					if (!shown) return;
+					// Always faded in: if Home is not shown yet, the page must not stay blank (the bars still draw).
+					if (!shown) DiagnosticLog.log("STATE", "home quiet start", "not shown yet, faded in anyway");
 					root.animate().alpha(1f).setDuration(350).start();
-					enter.run();
+					if (shown) enter.run();
 				}, QUIET_MS);
 			}
 		} else {
