@@ -562,7 +562,6 @@ abstract class LibraryWidget extends HomeWidgetView {
 		listView.animate().alpha(0f).setDuration(120).withEndAction(() -> {
 			backing = false;
 			showBack(false);
-			listView.scrollToPosition(0);
 			if (!loading) showRowsAgain();
 		}).start();
 		refresh(true);

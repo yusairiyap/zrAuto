@@ -311,7 +311,7 @@ final class PowerWidget extends HomeWidgetView {
 					figures.addView(top, new LinearLayout.LayoutParams(-1, -2));
 					figures.addView(stats, stp);
 					body.setOrientation(LinearLayout.HORIZONTAL);
-					body.setGravity(Gravity.CENTER_VERTICAL);
+					body.setGravity(Gravity.TOP);
 					body.addView(figures, new LinearLayout.LayoutParams(0, -1, 0.42f));
 					LinearLayout.LayoutParams gsp = new LinearLayout.LayoutParams(0, -1, 0.58f);
 					gsp.setMarginStart(px(8));
