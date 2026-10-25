@@ -99,6 +99,9 @@ public final class SettingsSplit {
 	public void sync(@NonNull MainActivityDelegate a) {
 		boolean want = isWide(a) && !a.isVideoMode() && !SettingsNav.entries().isEmpty() &&
 				(a.getActiveFragment() instanceof MainActivityFragment f) && f.isSettingsPage();
+		if (want && (a.getActiveFragment() instanceof MainActivityFragment f) && (f.settingsEntryTitle() != 0)) {
+			SettingsNav.select("btn:" + a.getContext().getString(f.settingsEntryTitle()));
+		}
 		if (want) show(a);
 		else hide();
 	}

@@ -70,6 +70,15 @@ public abstract class MainActivityFragment extends ActivityFragment {
 		return false;
 	}
 
+	/**
+	 * For a settings page the root of Settings lists by itself (Home, Captions, Lyrics): the title of that entry, so the list beside
+	 * the page marks it however the page was opened. Other pages leave the entry (or category) they were reached from marked.
+	 */
+	@androidx.annotation.StringRes
+	public int settingsEntryTitle() {
+		return 0;
+	}
+
 	@Override
 	public FloatingButton.Mediator getFloatingButtonMediator() {
 		return FloatingButtonMediator.instance;

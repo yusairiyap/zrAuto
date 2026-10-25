@@ -53,6 +53,11 @@ public class HomeSettingsFragment extends ReorderListFragment {
 	private TextView aaTab;
 
 	@Override
+	public int settingsEntryTitle() {
+		return R.string.home;
+	}
+
+	@Override
 	public int getFragmentId() {
 		return R.id.home_settings_fragment;
 	}
