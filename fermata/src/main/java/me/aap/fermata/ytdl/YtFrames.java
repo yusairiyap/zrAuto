@@ -5,6 +5,7 @@ import android.media.MediaMetadataRetriever;
 
 import androidx.annotation.Nullable;
 
+import java.io.IOException;
 import java.util.Collections;
 
 import me.aap.fermata.util.DiagnosticLog;
@@ -47,7 +48,13 @@ public final class YtFrames {
 			DiagnosticLog.log("ART", "frame failed", videoId, String.valueOf(ex));
 			return null;
 		} finally {
-			if (mmr != null) mmr.release();
+			if (mmr != null) {
+				try {
+					mmr.release();
+				} catch (IOException ex) {
+					// Nothing is left to free: the retriever is only dropped.
+				}
+			}
 		}
 	}
 }
