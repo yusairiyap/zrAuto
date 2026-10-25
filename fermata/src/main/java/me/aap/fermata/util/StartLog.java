@@ -42,8 +42,19 @@ public final class StartLog {
 	private StartLog() {
 	}
 
+	private static volatile boolean enabled;
+
+	/**
+	 * Whether ordinary lines are kept: only while the app has not been through its first start (the welcome wizard not done), where a
+	 * blank screen is the risk. A normal start writes nothing; a crash is always written.
+	 */
+	public static void setEnabled(boolean on) {
+		enabled = on;
+	}
+
 	/** Adds a line; written soon, off the calling thread. */
 	public static void add(String msg) {
+		if (!enabled) return;
 		String text = append(msg);
 		io.execute(() -> write(text));
 	}

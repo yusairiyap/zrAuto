@@ -53,6 +53,7 @@ public class FermataApplication extends NetSplitCompatApp {
 		// Wired up here rather than from an Activity: the events worth tracing (media service
 		// lifecycle, an Android Auto display takeover) happen outside, or before, any one Activity.
 		DiagnosticLog.init();
+		me.aap.fermata.util.StartLog.setEnabled(!getSharedPreferences("fermata", MODE_PRIVATE).getBoolean("WELCOME_DONE", false));
 		DiagnosticLog.startup("application created, fresh="
 				+ getSharedPreferences("fermata", MODE_PRIVATE).getBoolean(me.aap.fermata.ui.welcome.WelcomeWizard.FRESH_KEY, false)
 				+ " done=" + getSharedPreferences("fermata", MODE_PRIVATE).getBoolean("WELCOME_DONE", false)
