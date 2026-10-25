@@ -271,7 +271,10 @@ public final class VideoBackdrop {
 	@androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
 	private void copyWindow() {
 		Activity act = activity(view.getContext());
-		if ((act == null) || (act.getWindow() == null)) return;
+		if ((act == null) || (act.getWindow() == null)) {
+			note("snapshot: no activity window, context=" + view.getContext().getClass().getSimpleName());
+			return;
+		}
 		view.getLocationInWindow(loc);
 		Rect src = new Rect(loc[0], loc[1], loc[0] + view.getWidth(), loc[1] + view.getHeight());
 		if (src.isEmpty()) return;
@@ -281,10 +284,19 @@ public final class VideoBackdrop {
 		try {
 			PixelCopy.request(act.getWindow(), src, target, result -> {
 				copying = false;
-				if (!on || (result != PixelCopy.SUCCESS)) return;
+				if (!on) return;
+				if (result != PixelCopy.SUCCESS) {
+					note("snapshot failed: PixelCopy result " + result);
+					return;
+				}
 				// The controls may have come up while the copy was made: only a copy taken in quiet is kept.
 				FrameBackdrop fb = FrameBackdrop.of(view);
-				if ((fb != null) && (fb.quietMs() < QUIET_MS)) return;
+				if ((fb != null) && (fb.quietMs() < QUIET_MS)) {
+					note("snapshot dropped: controls came up");
+					return;
+				}
+				note("snapshot ok " + target.getWidth() + "x" + target.getHeight() + " of " + where.width() + "x" +
+						where.height() + " brightness " + brightness(target));
 				shown(target, where, true);
 			}, handler);
 		} catch (Throwable ex) {
@@ -345,6 +357,30 @@ public final class VideoBackdrop {
 	/** Whether a snapshot is still fading in over the one before. */
 	boolean crossfading() {
 		return (back != null) && (android.os.SystemClock.uptimeMillis() - swappedAt < CROSSFADE_MS);
+	}
+
+	private String lastNote = "";
+
+	/** A line in the Diagnostic log when what happens to the copies changes (not one per copy). */
+	private void note(String what) {
+		String key = what.replaceAll("[0-9]+", "#");
+		if (key.equals(lastNote)) return;
+		lastNote = key;
+		DiagnosticLog.log("BODY", "video copy", what);
+	}
+
+	/** The average brightness (0 to 255) at nine points: near 0 means the copy holds no picture. */
+	private static int brightness(Bitmap b) {
+		int w = b.getWidth();
+		int h = b.getHeight();
+		int sum = 0;
+		for (int i = 1; i <= 3; i++) {
+			for (int j = 1; j <= 3; j++) {
+				int c = b.getPixel(w * i / 4, h * j / 4);
+				sum += (((c >> 16) & 0xFF) + ((c >> 8) & 0xFF) + (c & 0xFF)) / 3;
+			}
+		}
+		return sum / 9;
 	}
 
 	/** Nearly black at nine points across the picture. */

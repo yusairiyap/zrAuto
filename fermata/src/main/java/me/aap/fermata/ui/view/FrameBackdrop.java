@@ -85,6 +85,7 @@ public class FrameBackdrop extends View {
 	static boolean cover(View self, Object key, RectF r, float radius, float alpha, Glass.Look look) {
 		FrameBackdrop b = Glass.realBlur() && Glass.webBlur() ? shownBackdrop() : null;
 		if ((b == null) || insideOtherVideo(self, b)) {
+			if ((b == null) && Glass.webBlur()) status("no backdrop on screen (backdrops=" + all.size() + ")");
 			clear(key);
 			return false;
 		}
@@ -110,7 +111,11 @@ public class FrameBackdrop extends View {
 		if (changed) b.invalidate();
 		b.startChecking();
 		VideoBackdrop src = b.source();
-		if ((src == null) || (src.front == null)) return false;
+		if ((src == null) || (src.front == null)) {
+			status((src == null) ? "no copier" : "no picture yet");
+			return false;
+		}
+		status("covering " + self.getClass().getSimpleName());
 		// The patch fades in when its first picture arrives; the surface's tint follows it (Glass#setBlurAmount).
 		long now = SystemClock.uptimeMillis();
 		if (e.pictureSince == 0) e.pictureSince = now;
@@ -118,6 +123,15 @@ public class FrameBackdrop extends View {
 		Glass.setBlurAmount(fade * fade * (3f - 2f * fade));
 		if (fade < 1f) b.postInvalidateOnAnimation();
 		return true;
+	}
+
+	private static String lastStatus = "";
+
+	/** A line in the Diagnostic log when the state of the blur over video changes. */
+	private static void status(String s) {
+		if (s.equals(lastStatus)) return;
+		lastStatus = s;
+		me.aap.fermata.util.DiagnosticLog.log("BODY", "glass over video", s);
 	}
 
 	/** A surface inside some other VideoView (local video's buttons) is not this one's to cover. */
@@ -212,7 +226,8 @@ public class FrameBackdrop extends View {
 			getLocationInWindow(loc);
 			local.set(e.rect);
 			local.offset(-loc[0], -loc[1]);
-			src.drawBlurredPicture(this, c, local, e.radius, a, e.look, e.lens, paint);
+			boolean ok = src.drawBlurredPicture(this, c, local, e.radius, a, e.look, e.lens, paint);
+			if (!ok) status("patch not drawn (hardware=" + c.isHardwareAccelerated() + " rect=" + local.toShortString() + ")");
 		}
 		// Frames only while something fades (a patch coming in, a snapshot crossfading); the surfaces' tints follow.
 		if (again) {
