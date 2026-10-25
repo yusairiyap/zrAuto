@@ -27,13 +27,17 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
 import androidx.appcompat.widget.SwitchCompat;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
 import me.aap.fermata.R;
+import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.fermata.ui.activity.ScrollBarsController;
 import me.aap.fermata.ui.view.CaptionStyle;
 import me.aap.fermata.ui.view.CaptionsOverlayView;
 import me.aap.fermata.ui.view.EffectsUi;
@@ -45,6 +49,7 @@ import me.aap.utils.function.Supplier;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.pref.PreferenceStore.Pref;
 import me.aap.utils.ui.UiUtils;
+import me.aap.utils.ui.view.ToolBarView;
 
 /**
  * Settings &gt; Captions and Settings &gt; Lyrics: a live preview that stays on top (what changes
@@ -143,9 +148,21 @@ public abstract class TextStyleFragment extends MainActivityFragment {
 		root.addView(preview, plp);
 		previewView = preview;
 		// Where the scroll view's top padding ends, checked before every frame (it changes as the
-		// bars move), moved with a translation so nothing is laid out again.
+		// bars move), moved with a translation so nothing is laid out again. When the tool bar is
+		// scrolled away (or not there) the preview rises to just under the status bar with it, instead
+		// of floating where the bar was.
 		previewSync = () -> {
-			float ty = scroll.getPaddingTop() + dp(8);
+			float rest = scroll.getPaddingTop() + dp(8);
+			float ty = rest;
+			MainActivityDelegate a = getActivityDelegate();
+			ToolBarView tb = a.getToolBar();
+			ScrollBarsController sb = a.getScrollBars();
+			float hidden = ((tb == null) || (tb.getVisibility() != View.VISIBLE)) ? 1f :
+					(sb != null) ? Math.max(0f, Math.min(1f, sb.getToolBarHidden())) : 0f;
+			if (hidden > 0f) {
+				float top = Math.min(rest, statusBarBottom(scroll) + dp(8));
+				ty = rest + (top - rest) * hidden;
+			}
 			if (preview.getTranslationY() != ty) preview.setTranslationY(ty);
 			return true;
 		};
@@ -158,6 +175,16 @@ public abstract class TextStyleFragment extends MainActivityFragment {
 		prefs().addBroadcastListener(prefListener);
 		for (Runnable r : syncers) r.run();
 		return root;
+	}
+
+	/** How far down the status bar (and a cut-out) reaches, in {@code v}'s own coordinates. */
+	private float statusBarBottom(View v) {
+		WindowInsetsCompat i = ViewCompat.getRootWindowInsets(v);
+		if (i == null) return 0f;
+		int top = i.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()).top;
+		int[] loc = new int[2];
+		v.getLocationOnScreen(loc);
+		return Math.max(0, top - loc[1]);
 	}
 
 	@Override
@@ -256,6 +283,7 @@ public abstract class TextStyleFragment extends MainActivityFragment {
 		section(col, R.string.captions_section_box);
 		swatchRow(col, R.string.caption_bg_color, MainActivityPrefs.CAPTION_BG_COLOR, false);
 		sliderRow(col, R.string.caption_bg_opacity, MainActivityPrefs.CAPTION_BG_OPACITY, 0, 100, 5, "%");
+		switchRow(col, R.string.caption_box_fit, R.string.caption_box_fit_sub, MainActivityPrefs.CAPTION_BOX_FIT);
 
 		section(col, R.string.caption_position);
 		chipsRow(col, R.string.caption_position, names(CaptionStyle.POSITION_NAMES), MainActivityPrefs.CAPTION_POSITION, 0);

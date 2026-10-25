@@ -233,6 +233,8 @@ public interface MainActivityPrefs
 	Pref<IntSupplier> CAPTION_EDGE_STRENGTH = Pref.i("CAPTION_EDGE_STRENGTH", 60);
 	Pref<IntSupplier> CAPTION_BG_COLOR = Pref.i("CAPTION_BG_COLOR", 7);
 	Pref<IntSupplier> CAPTION_BG_OPACITY = Pref.i("CAPTION_BG_OPACITY", 50);
+	// The box is as wide as the text's longest line (on), else as wide as the text area (off).
+	Pref<BooleanSupplier> CAPTION_BOX_FIT = Pref.b("CAPTION_BOX_FIT", true);
 	// 0 bottom, 1 middle, 2 top; and how far from that edge, percent of the picture's height.
 	Pref<IntSupplier> CAPTION_POSITION = Pref.i("CAPTION_POSITION", 0);
 	Pref<IntSupplier> CAPTION_MARGIN = Pref.i("CAPTION_MARGIN", 10);

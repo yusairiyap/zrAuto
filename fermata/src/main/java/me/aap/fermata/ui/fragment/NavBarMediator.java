@@ -384,6 +384,7 @@ public class NavBarMediator extends PrefNavBarMediator
 		AddonManager amgr = FermataApplication.get().getAddonManager();
 		Set<String> names = newLinkedHashSet(BuildConfig.ADDONS.length + 5);
 		String[] pref = ps.getStringArrayPref(p);
+		if (pref == null) pref = new String[0]; // Nothing saved yet: a fresh install
 		// Home leads, unless the saved order (from before it existed, or placed by the user) says otherwise.
 		if (!java.util.Arrays.asList(pref).contains("home")) names.add("home");
 		CollectionUtils.addAll(names, pref);

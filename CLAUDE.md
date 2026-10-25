@@ -1174,29 +1174,16 @@ translated strings across many locales, **ask the user before proceeding** rathe
 - **Download picker** shows sizes per quality (`DownloadsAddon#estimateSizes`, one player request per video,
   up to 10 videos).
 
-## Open issue: blank screen on a clean install (not solved)
+## Blank screen on a clean install (cause found, waiting for confirmation on a device)
 
-Symptom, reported on a phone after clearing the app's data (and on a fresh install): the window shows the
-status bar and the bars but no content, the welcome wizard does not appear, and the Diagnostic log cannot be
-opened because the screen stays blank. An earlier build from the same branch started normally, so this is
-the start path of a fresh install, not every start.
-
-What was already changed, each with a note in its commit:
-- `PoiAddon` asked for the location permission in its constructor, before the wizard (fixed; `Voyageur` asks when used).
-- `FuelTracker.start` asks for location at start-up (now skipped while `WelcomeWizard.isDue`).
-- `HomeScreen#onViewCreated` makes the page invisible for the quiet start, and `onShown` decided whether to fade
-  it in by asking `isInitialFragmentShow()` again, which could be false by then (the page stayed at alpha 0).
-  The fade is now decided once, at view creation, and always runs (`STATE home quiet start` in the log if
-  Home was not shown yet).
-
-Not yet checked: whether the Music tab or Home is the first fragment on a fresh install, whether
-`HomeScreen#onShown` ever runs before the quiet-start timer, and whether the welcome wizard's overlay is
-attached (`MainActivityDelegate#onActivityCreate` posts `WelcomeWizard.maybeShow` 1200 ms later).
-
-For the next session: the in-app Diagnostic log is only readable once the UI works, so the first step is to
-make the start path write to a file that survives a blank screen (for example the existing `DiagnosticLog`
-writing to the app's external files directory), or to add `DiagnosticLog` lines in `MainActivity#onCreate`
-and the Home/Music `onViewCreated` paths. Ask the user for that file, not for adb.
+Symptom (phone, app data cleared or a fresh install): bars but no content, no welcome wizard, Diagnostic log
+unreachable. The start log (`util/StartLog`, `Downloads/zrAuto_start_log.txt`, written only until `WELCOME_DONE`;
+crashes always) showed the first-tab callback throwing a `NullPointerException` inside `HomeScreen.<init>`:
+`NavBarMediator#getLayout` called `Arrays.asList(null)`, because `NAV_BAR_*` string-array prefs (`Pref.sa(..., null)`)
+are null until saved, and the Pages widget (`PagesWidget#fill` -> `NavBarMediator.getTabs`) is in Home's default set.
+The exception escaped into a future's completion handler, so nothing was shown and nothing crashed visibly. Fixed by
+treating a null saved layout as empty. The lesson: a string-array pref read can be null; never pass it to
+`Arrays.asList`. Once a fresh start is confirmed good, delete `StartLog` and the `DiagnosticLog.startup` breadcrumbs.
 
 ## Open issue: Back closes the YouTube comments, but the video pauses (not solved)
 
@@ -1234,3 +1221,14 @@ Not yet checked:
 For the next session: ask for the Diagnostic log from one Back press with the comments open (the `BACK`,
 `VIDEO` and `YT` lines around it). Do not treat a longer time window as the fix; find the echo or the
 pause source.
+
+## Captions box, preview position, data banner colour
+
+- **Captions background fits the text** (`CAPTION_BOX_FIT`, default on, Settings > Captions > Background): the box is as wide as
+  the longest line (`CaptionsOverlayView#textW`) instead of the whole text area (84% of the picture); the text itself stays centred
+  where it was (`textLeft`), only the box changes.
+- **The preview on Captions / Lyrics settings rises with the tool bar** (`TextStyleFragment#previewSync`): it sits under the tool bar
+  while it shows and slides up to just under the status bar by `ScrollBarsController#getToolBarHidden()`; at once when the tool bar is
+  gone. The list's own padding still never follows the bars.
+- **Data warning / limit banner colour**: `DataUsageAlerts` built the banner inside a `TopPopup.holder` (a swipe layout around the card)
+  and tinted the holder, which has no background, so the card stayed white under white text. The tint goes on the holder's child.

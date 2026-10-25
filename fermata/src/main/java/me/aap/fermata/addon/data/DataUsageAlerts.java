@@ -162,7 +162,10 @@ public final class DataUsageAlerts implements DataUsageTracker.AlertListener, Ac
 		boolean paused = t.isLimitPaused();
 		int bg = ContextCompat.getColor(ctx, limit ? R.color.data_usage_limit : R.color.data_usage_warning);
 		int fg = limit ? 0xFFFFFFFF : 0xFF1A1A1A;
-		b.setBackgroundTintList(ColorStateList.valueOf(bg));
+		// The colour goes on the card inside the swipe holder: the holder itself has no background,
+		// which left the card white under white text.
+		View card = (b instanceof ViewGroup g) && (g.getChildCount() > 0) ? g.getChildAt(0) : b;
+		card.setBackgroundTintList(ColorStateList.valueOf(bg));
 		ImageView icon = b.findViewById(R.id.data_usage_banner_icon);
 		icon.setImageTintList(ColorStateList.valueOf(bg));
 		icon.setBackgroundTintList(ColorStateList.valueOf(fg));
