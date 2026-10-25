@@ -95,6 +95,7 @@ import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.pref.PreferenceStore.Pref;
 import me.aap.utils.pref.PreferenceView;
 import me.aap.utils.pref.PreferenceViewAdapter;
+import me.aap.fermata.ui.home.HomeModel;
 import me.aap.fermata.ui.view.SettingsNav;
 import me.aap.fermata.ui.view.SettingsSplit;
 import me.aap.utils.ui.UiUtils;
@@ -1773,6 +1774,14 @@ public class SettingsFragment extends MainActivityFragment
 	 * preferences replace the app's, and the app restarts. Also used by the welcome and setup wizard.
 	 */
 	public static void importPrefs(MainActivityDelegate a) {
+		importPrefs(a, null);
+	}
+
+	/**
+	 * As {@link #importPrefs(MainActivityDelegate)}, but when the restore went through {@code onRestored} runs instead
+	 * of the plain "restored, the app closes" message (the welcome wizard shows its own page).
+	 */
+	public static void importPrefs(MainActivityDelegate a, @Nullable Runnable onRestored) {
 		if (Utils.isSafSupported(a)) {
 			a.startActivityForResult(
 							() -> new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("application/zip"))
@@ -1793,7 +1802,7 @@ public class SettingsFragment extends MainActivityFragment
 							if (f == null) return;
 
 							try (InputStream is = ctx.getContentResolver().openInputStream(f.getUri())) {
-								importPrefs(a, is);
+								importStream(a, is, onRestored);
 							}
 						} catch (Exception ex) {
 							Log.e(ex, "Failed to import preferences");
@@ -1812,7 +1821,7 @@ public class SettingsFragment extends MainActivityFragment
 				File f = res.getLocalFile();
 				if (f == null) return;
 				try (InputStream is = new FileInputStream(f)) {
-					importPrefs(a, is);
+					importStream(a, is, onRestored);
 				} catch (Exception ex) {
 					Context ctx = a.getContext();
 					Log.e(ex, "Failed to import preferences");
@@ -1822,12 +1831,24 @@ public class SettingsFragment extends MainActivityFragment
 		}
 	}
 
-	private static void importPrefs(MainActivityDelegate a, InputStream is) throws IOException {
+	private static void importStream(MainActivityDelegate a, InputStream is, @Nullable Runnable onRestored)
+			throws IOException {
 		Context ctx = a.getContext();
 
+		// Home keeps its own copy of the layout and writes it when the screen goes away, which would put the old
+		// layout back over the restored one while the app closes.
+		HomeModel.freeze(true);
 		try (ZipInputStream zis = (SDK_INT >= N) ? new ZipInputStream(is, UTF_8) :
 				new ZipInputStream(is)) {
 			PrefUtils.importSharedPrefs(ctx, zis);
+		} catch (IOException | RuntimeException ex) {
+			HomeModel.freeze(false);
+			throw ex;
+		}
+
+		if (onRestored != null) {
+			onRestored.run();
+			return;
 		}
 
 		UiUtils.showInfo(ctx, ctx.getString(R.string.import_prefs_ok)).thenRun(() -> {

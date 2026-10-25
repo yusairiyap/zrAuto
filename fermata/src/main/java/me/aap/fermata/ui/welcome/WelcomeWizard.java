@@ -194,11 +194,11 @@ public final class WelcomeWizard {
 			runAfter();
 			return;
 		}
-		show(a);
+		show(a, true);
 		if (!isOpen()) {
-			// No view to put it over yet (the window is not laid out): tried again a little later, a few times, rather than never.
+			// No view to put it over yet (the window is not laid out): tried again very soon, a good few times, rather than never.
 			DiagnosticLog.startup("wizard not shown, attempt " + attempt);
-			if (attempt < 12) a.postDelayed(() -> maybeShow(a, attempt + 1), 500);
+			if (attempt < 40) a.postDelayed(() -> maybeShow(a, attempt + 1), 150);
 			else runAfter();
 		}
 	}
@@ -245,6 +245,11 @@ public final class WelcomeWizard {
 
 	/** Shows the wizard from its first page (Settings &gt; Other, or a new install). */
 	public static void show(@NonNull MainActivityDelegate a) {
+		show(a, false);
+	}
+
+	/** {@code instant}: the wizard is there in full from the first frame (the start of a fresh install), not faded in. */
+	private static void show(@NonNull MainActivityDelegate a, boolean instant) {
 		if (isOpen()) {
 			// Waiting out a detour: asked for again, it comes back.
 			if (open.hidden) open.reveal();
@@ -257,7 +262,7 @@ public final class WelcomeWizard {
 		}
 		WelcomeWizard w = new WelcomeWizard(a);
 		open = w;
-		w.build();
+		w.build(instant);
 		DiagnosticLog.startup("wizard shown");
 	}
 
@@ -307,6 +312,7 @@ public final class WelcomeWizard {
 			w.closePicker();
 			return true;
 		}
+		if (w.restored) return true; // Nothing to go back to: it only waits for the restart.
 		if (w.index > 0) w.go(w.index - 1);
 		else w.close(false);
 		return true;
@@ -385,19 +391,30 @@ public final class WelcomeWizard {
 		p.body = this::tuneBody;
 		p = add(WelcomeArtView.DONE, R.string.wz_done_title, R.string.wz_done_text, true, false);
 		p.primary = R.string.wz_finish;
+		// Only shown after a restore, then alone: see showRestored().
+		restoredPage = add(WelcomeArtView.DONE, R.string.wz_restored_title, R.string.wz_restored_text, true, false);
+		restoredPage.primary = R.string.wz_restart;
 	}
+
+	/** The last page of a restore from a backup: the app has to restart before the restored settings are used. */
+	private Page restoredPage;
+	private boolean restored;
 
 	/** The pages in use now: the car ones only once the user said they use Android Auto. */
 	private List<Page> active() {
 		List<Page> l = new ArrayList<>(pages.size());
-		for (Page p : pages) if (!p.car || carChoice) l.add(p);
+		if (restored) {
+			l.add(restoredPage);
+			return l;
+		}
+		for (Page p : pages) if (((p != restoredPage)) && (!p.car || carChoice)) l.add(p);
 		return l;
 	}
 
 	// ---------------------------------------------------------------------------------------------
 	// The frame
 
-	private void build() {
+	private void build(boolean instant) {
 		overlay = new FrameLayout(pc);
 		overlay.setClickable(true);
 		overlay.setFocusable(false);
@@ -489,7 +506,8 @@ public final class WelcomeWizard {
 			}
 		});
 
-		overlay.animate().alpha(1f).setDuration(320).start();
+		if (instant) overlay.setAlpha(1f);
+		else overlay.animate().alpha(1f).setDuration(320).start();
 		go(0);
 	}
 
@@ -794,6 +812,10 @@ public final class WelcomeWizard {
 	}
 
 	private void next() {
+		if (restored) {
+			me.aap.fermata.util.Utils.restartApp(a.getContext());
+			return;
+		}
 		if (index >= active().size() - 1) {
 			close(true);
 			return;
@@ -808,7 +830,9 @@ public final class WelcomeWizard {
 		primary.setText(p.primary != 0 ? p.primary : R.string.wz_next);
 		skip.setText(p.setup ? R.string.wz_skip : R.string.wz_skip_intro);
 		skip.setVisibility(last ? View.INVISIBLE : View.VISIBLE);
-		if (last) {
+		if (restored) {
+			left.setVisibility(View.INVISIBLE);
+		} else if (last) {
 			left.setText(R.string.wz_more_settings);
 			left.setVisibility(View.VISIBLE);
 			left.setOnClickListener(v -> {
@@ -1043,7 +1067,20 @@ public final class WelcomeWizard {
 		a.getPrefs().applyBooleanPref(DONE, true);
 		boolean saf = me.aap.fermata.util.Utils.isSafSupported(a);
 		if (!saf) close(true);
-		SettingsFragment.importPrefs(a);
+		SettingsFragment.importPrefs(a, saf ? this::showRestored : null);
+	}
+
+	/** The restore went through: the wizard ends on the page that says the app restarts. */
+	private void showRestored() {
+		DiagnosticLog.startup("wizard: backup restored");
+		restored = true;
+		stopKeySimulator();
+		closePicker();
+		if (animating) {
+			handler.postDelayed(() -> go(0), 450);
+		} else {
+			go(0);
+		}
 	}
 
 	private void backupNow() {

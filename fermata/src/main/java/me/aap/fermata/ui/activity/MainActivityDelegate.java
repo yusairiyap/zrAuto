@@ -492,9 +492,10 @@ public class MainActivityDelegate extends ActivityDelegate
 				return;
 			}
 
-			// Just installed: the welcome and setup wizard, once the first screen has settled.
+			// Just installed: the welcome and setup wizard, at once and in front of everything, so the first
+			// screen is never seen before it (it is made behind it, as it always was).
 			if (!isCarActivity()) {
-				postDelayed(() -> me.aap.fermata.ui.welcome.WelcomeWizard.maybeShow(this), 1200);
+				me.aap.fermata.ui.welcome.WelcomeWizard.maybeShow(this);
 			}
 
 			if ((intent != null) && !Intent.ACTION_MAIN.equals(intent.getAction())) {

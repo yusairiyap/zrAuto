@@ -80,6 +80,15 @@ public final class HomeModel {
 	@Nullable
 	private String saved;
 	private final Runnable saveNow = this::save;
+	/**
+	 * Set once a backup has been written over the preferences: the app is about to close, and a model that
+	 * still holds the old layout must not write it back over the restored one.
+	 */
+	private static volatile boolean frozen;
+
+	public static void freeze(boolean on) {
+		frozen = on;
+	}
 
 	/** The phone's layout, or the car screen's own ({@code car}); they never share anything. */
 	public HomeModel(MainActivityPrefs prefs, boolean car) {
@@ -381,6 +390,7 @@ public final class HomeModel {
 
 	public void save() {
 		App.get().getHandler().removeCallbacks(saveNow);
+		if (frozen) return;
 		try {
 			JSONArray now = cellsJson();
 			if (layout != null) arrangements.put(layout, now);

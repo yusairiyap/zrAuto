@@ -11,6 +11,9 @@
     <string name="wz_start">Get started</string>
     <string name="wz_setup">Set it up</string>
     <string name="wz_finish">Start listening</string>
+    <string name="wz_restart">Restart now</string>
+    <string name="wz_restored_title">Backup restored</string>
+    <string name="wz_restored_text">Your settings, widgets and layout are back. zrAuto has to restart for them to take effect; tap the button and it opens again by itself.</string>
     <string name="wz_more_settings">More settings</string>
     <string name="wz_phase_welcome">Welcome</string>
     <string name="wz_phase_setup">Setup</string>

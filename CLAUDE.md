@@ -1232,3 +1232,17 @@ pause source.
   gone. The list's own padding still never follows the bars.
 - **Data warning / limit banner colour**: `DataUsageAlerts` built the banner inside a `TopPopup.holder` (a swipe layout around the card)
   and tinted the holder, which has no background, so the card stayed white under white text. The tint goes on the holder's child.
+
+## Wizard first, restore keeps Home, restore page in the wizard
+
+- **The wizard comes up at once on a fresh start** (`MainActivityDelegate#onActivityCreate` calls `WelcomeWizard.maybeShow` in the
+  permission callback, no 1.2 s wait; `show(a, instant=true)` puts it at full alpha from its first frame; retries are 150 ms apart). Home is
+  still built behind it, so nothing about the first tab changes, it just is never seen first.
+- **A restore must not be overwritten by Home**: `HomeModel` keeps its own copy of the layout JSON (widgets, sizes, per-widget options, each
+  arrangement's background) and `HomeScreen#onDestroyView`/`onHidden` save it, which wrote the old layout back over the restored one while the
+  app closed. `SettingsFragment#importStream` calls `HomeModel.freeze(true)` before it writes the backup's prefs (and `false` if that fails), and
+  `HomeModel#save` does nothing while frozen. Any other model that caches a pref's value and writes it back on stop needs the same treatment.
+- **Restore from the wizard** (`WelcomeWizard#restoreBackup` -> `SettingsFragment.importPrefs(a, onRestored)`): instead of the plain
+  "restored, the app closes" message the wizard goes to a page of its own (`restoredPage`, shown alone: `restored` makes `active()` return only
+  it) saying the app has to restart; its button calls `Utils.restartApp` (starts the launch intent with NEW_TASK|CLEAR_TASK, then ends the
+  process 300 ms later). Not run on a device. Back does nothing there. The file-picker route (no system picker) keeps the old message and exit.
