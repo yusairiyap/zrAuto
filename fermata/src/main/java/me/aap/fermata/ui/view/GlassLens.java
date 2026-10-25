@@ -127,12 +127,9 @@ public final class GlassLens {
 		Glass.register(self);
 		RenderNode src = inside(self, body) ? null : body.getGlassSource();
 		if (src == null) {
-			// The tab is not recorded (a web tab, fullscreen YouTube): the page blurs itself under the surface
-			// (PageBlur), with the experimental blur over web pages and video on. Never through fullscreen YouTube's
-			// GlassFrame: a bar drawing it crashed the app natively as soon as a video played (only the video buttons
-			// inside the VideoView draw that frame).
-			// Over fullscreen YouTube the page cannot (its fullscreen element is the video): the blurred picture is drawn
-			// under the surface by the FrameBackdrop inside the VideoView, the way the video buttons draw it.
+			// The tab is not recorded (a web tab, fullscreen YouTube), with the experimental blur over web pages and
+			// video on. Over fullscreen YouTube a copy of the video is drawn blurred under the surface by the FrameBackdrop
+			// inside the VideoView (VideoBackdrop makes the copy); over a web page the page blurs itself (PageBlur).
 			if (FrameBackdrop.cover(self, slot, r, radius, alpha, look)) {
 				PageBlur.clear(slot);
 				return true;

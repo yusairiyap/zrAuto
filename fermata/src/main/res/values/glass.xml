@@ -48,7 +48,6 @@
     <string name="glass_web_sub">The bars, menus and floating buttons blur the YouTube and browser pages (the page blurs itself under them), and over fullscreen video (YouTube and local files) they blur the picture. It may flicker or cost more battery on some phones; a page that can\'t blur shows frosted glass instead.</string>
     <string name="glass_on_home">Home cards</string>
     <string name="glass_on_home_sub">Widgets with the Glass look (Settings &gt; Home &gt; Widget look) blur the Home background behind them</string>
-    <string name="glass_web_off_after_crash">The blur over fullscreen video was turned off because the app closed while it was drawn. Switch this off and on to try it again.</string>
     <string name="glass_on_tiles">Settings cards</string>
     <string name="glass_on_tiles_sub">The rows of the settings pages in the glass look too; off, they keep the Normal look</string>
     <string name="glass_rim_where">Where the rim light shows</string>

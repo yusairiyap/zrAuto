@@ -1112,6 +1112,21 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
   with it set, and the frame then never records (page blur and the rest of the glass are unchanged). Switching the experimental switch
   clears it; the settings page says so under the switch, which is now the last row. `BODY glass over video turned off` in the log.
 
+### Eleventh round (fullscreen YouTube blurs a copy, never the page)
+
+- **Nothing draws YouTube's page a second time any more**: `GlassFrame` is a plain FrameLayout (the shared blurred layer of the tenth
+  round showed nothing on the device, and every earlier way to blur the page itself flickered or crashed). The tenth round's crash guard
+  (`GLASS_FRAME_OFF`) is gone with it.
+- **`VideoBackdrop` copies the picture with PixelCopy** in two ways: *live* from a SurfaceView found anywhere under the VideoView (local
+  video; fullscreen YouTube if Chrome puts its video on such a layer; a surface that copies black 8 times in a row is given up), else a
+  *window snapshot* of the VideoView's area (`PixelCopy.request(Window, ..)`, fullscreen YouTube only, `isVideoMode()`), taken every
+  350 ms (1.5 s paused) and **only while no glass control shows over the video** (`FrameBackdrop#quietMs` >= 350 ms; a copy that finishes
+  after a control came up is dropped), so it holds the video alone; while controls are up the blur shows the last quiet snapshot.
+  `BODY video copy start tree=...` (the views inside the video view) and `BODY video copy from surface/window snapshot` say which is used.
+- **`FrameBackdrop` draws the copy** through a `GlassLens` per surface (a bitmap, so several lenses are fine) under every glass surface over
+  fullscreen YouTube: bars, floating buttons, menus, dialogs *and the video buttons* (`Glass.videoButton` now reports to it). Every surface
+  over the video is noted even before a picture exists, which is what keeps snapshots from catching the controls.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

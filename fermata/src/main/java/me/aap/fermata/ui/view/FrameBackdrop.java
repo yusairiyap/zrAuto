@@ -1,14 +1,18 @@
 package me.aap.fermata.ui.view;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.graphics.RectF;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.view.View;
-import android.view.ViewGroup;
+import android.view.ViewParent;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -18,14 +22,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The blur under the glass surfaces over fullscreen YouTube (the floating buttons, the control panel, menus and
- * dialogs), with the experimental blur over video on. The page cannot blur itself there (its fullscreen element is the
- * video, see {@link PageBlur}), and a surface outside the video drawing the picture's {@link GlassFrame} crashed the app
- * natively. The fullscreen video buttons, which sit inside the VideoView, always drew it safely; so this view sits in
- * the VideoView too, right above the frame, and draws the blurred picture in the places the surfaces report
- * ({@link #cover}). Under the surfaces, which then draw only their tint and rim, it looks as if they blurred the video.
+ * The blur under the glass surfaces over fullscreen YouTube (the video buttons, the floating buttons, the control panel,
+ * menus and dialogs), with the experimental blur over video on. It sits in the YoutubeVideoView right above the picture
+ * and draws, in the places the surfaces report ({@link #cover}), the video's copied picture ({@link VideoBackdrop}: live
+ * from a surface, or a snapshot taken while no control showed) blurred. Under the surfaces, which then draw only their
+ * tint and rim, it looks as if they blurred the video. The page itself is never drawn a second time.
  * <p>
- * Off (the switch, not fullscreen, below Android 12) it draws nothing and has no entries.
+ * It also says how long no glass control has shown over the video ({@link #quietMs}), which is when a window snapshot
+ * holds the video alone. Off (the switch, not fullscreen, below Android 12) it draws nothing and has no entries.
  */
 public class FrameBackdrop extends View {
 	private static final long CHECK_MS = 100;
@@ -34,8 +38,11 @@ public class FrameBackdrop extends View {
 	private final Map<Object, Entry> entries = new IdentityHashMap<>();
 	private final int[] loc = new int[2];
 	private final RectF local = new RectF();
+	private final Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
 	private String shownState = "";
 	private boolean checking;
+	/** The last time a glass control was seen showing over the video. */
+	private long busyAt;
 
 	private static final class Entry {
 		final WeakReference<View> view;
@@ -59,14 +66,23 @@ public class FrameBackdrop extends View {
 		all.add(new WeakReference<>(this));
 	}
 
+	/** The backdrop in the VideoView {@code v}, if it has one (YouTube's). */
+	@Nullable
+	static FrameBackdrop of(VideoView v) {
+		for (int i = 0, n = v.getChildCount(); i < n; i++) {
+			if (v.getChildAt(i) instanceof FrameBackdrop b) return b;
+		}
+		return null;
+	}
+
 	/**
 	 * A glass surface ({@code self}, {@code r} in its coordinates) over fullscreen YouTube: its blurred patch is drawn
-	 * under it. True when there is a picture to blur (the surface then draws as over a blur).
+	 * under it. True when there is a picture to blur (the surface then draws as over a blur). Each surface over the video
+	 * is noted even before a picture exists, so no snapshot is taken while it shows.
 	 */
 	static boolean cover(View self, Object key, RectF r, float radius, float alpha, Glass.Look look) {
-		FrameBackdrop b = Glass.realBlur() && Glass.webBlur() ? active() : null;
-		// Only once the frame has its blurred picture (see GlassFrame#recordBlur).
-		if ((b == null) || (b.frame() == null) || GlassFrame.holds(b.frame(), self)) {
+		FrameBackdrop b = Glass.realBlur() && Glass.webBlur() ? shownBackdrop() : null;
+		if ((b == null) || insideOtherVideo(self, b)) {
 			clear(key);
 			return false;
 		}
@@ -88,9 +104,19 @@ public class FrameBackdrop extends View {
 		e.radius = radius;
 		e.alpha = alpha;
 		e.look = look;
+		if (alpha * viewAlpha(self) > 0.02f) b.busyAt = SystemClock.uptimeMillis();
 		if (changed) b.invalidate();
 		b.startChecking();
-		return true;
+		VideoBackdrop src = b.source();
+		return (src != null) && (src.front != null);
+	}
+
+	/** A surface inside some other VideoView (local video's buttons) is not this one's to cover. */
+	private static boolean insideOtherVideo(View self, FrameBackdrop b) {
+		for (ViewParent p = self.getParent(); p != null; p = p.getParent()) {
+			if (p instanceof VideoView v) return v != b.getParent();
+		}
+		return false;
 	}
 
 	/** The surface {@code key} is not over fullscreen YouTube now, or not drawn: its patch goes. */
@@ -113,42 +139,44 @@ public class FrameBackdrop extends View {
 		}
 	}
 
-	/** The picture changed (GlassFrame drew): the patches are drawn again. */
-	static void frameDrawn(GlassFrame f) {
-		if (!(f.getParent() instanceof ViewGroup g)) return;
-		for (int i = 0, n = g.getChildCount(); i < n; i++) {
-			if ((g.getChildAt(i) instanceof FrameBackdrop b) && !b.entries.isEmpty()) b.invalidate();
-		}
+	/** How long no glass control has been seen showing over the video (0 while one shows). */
+	long quietMs() {
+		if (busy()) busyAt = SystemClock.uptimeMillis();
+		return SystemClock.uptimeMillis() - busyAt;
 	}
 
-	/** The backdrop beside a recording frame on screen, if any. */
-	private static FrameBackdrop active() {
+	private boolean busy() {
+		for (Entry e : entries.values()) {
+			View v = e.view.get();
+			if ((v != null) && v.isAttachedToWindow() && v.isShown() && (e.alpha * viewAlpha(v) > 0.02f)) return true;
+		}
+		return false;
+	}
+
+	/** The backdrop of a fullscreen YouTube view on screen, if any. */
+	@Nullable
+	private static FrameBackdrop shownBackdrop() {
 		for (int i = all.size() - 1; i >= 0; i--) {
 			FrameBackdrop b = all.get(i).get();
 			if (b == null) {
 				all.remove(i);
 				continue;
 			}
-			if (!b.isAttachedToWindow() || !b.isShown() || (b.getWidth() <= 0)) continue;
-			GlassFrame f = b.frame();
-			if ((f != null) && f.isRecording()) return b;
+			if (b.isAttachedToWindow() && b.isShown() && (b.getWidth() > 0) && VideoBackdrop.videoMode(b)) return b;
 		}
 		return null;
 	}
 
-	private GlassFrame frame() {
-		if (!(getParent() instanceof ViewGroup g)) return null;
-		for (int i = 0, n = g.getChildCount(); i < n; i++) {
-			if (g.getChildAt(i) instanceof GlassFrame f) return f;
-		}
-		return null;
+	@Nullable
+	private VideoBackdrop source() {
+		return (getParent() instanceof VideoView v) ? v.backdrop : null;
 	}
 
 	@Override
 	protected void onDraw(@NonNull Canvas c) {
-		GlassFrame f = frame();
-		if ((f == null) || !f.isRecording() || entries.isEmpty()) return;
-		getLocationInWindow(loc);
+		VideoBackdrop src = source();
+		Bitmap f = (src != null) ? src.front : null;
+		if ((f == null) || entries.isEmpty()) return;
 		for (Iterator<Entry> it = entries.values().iterator(); it.hasNext(); ) {
 			Entry e = it.next();
 			View v = e.view.get();
@@ -158,9 +186,10 @@ public class FrameBackdrop extends View {
 			}
 			float a = e.alpha * viewAlpha(v);
 			if (a <= 0f) continue;
+			getLocationInWindow(loc);
 			local.set(e.rect);
 			local.offset(-loc[0], -loc[1]);
-			GlassFrame.drawShared(f, e.lens, this, c, local, e.radius, a);
+			VideoBackdrop.drawBlurred(this, f, src.frontRect, c, local, e.radius, a, e.look, e.lens, paint);
 		}
 	}
 
@@ -191,6 +220,7 @@ public class FrameBackdrop extends View {
 				v.getLocationInWindow(loc);
 				sb.append(loc[0]).append(',').append(loc[1]).append(',').append(Math.round(viewAlpha(v) * 100)).append(';');
 			}
+			if (busy()) busyAt = SystemClock.uptimeMillis();
 			String s = sb.toString();
 			if (!s.equals(shownState)) {
 				shownState = s;

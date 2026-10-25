@@ -169,17 +169,7 @@ public class GlassSettingsFragment extends ReorderListFragment {
 		if (Glass.realBlur()) {
 			addSwitchRow(h, R.string.glass_web, R.string.glass_web_sub,
 					() -> p.getBooleanPref(MainActivityPrefs.GLASS_WEB),
-					on -> {
-						try (var e = p.editPreferenceStore()) {
-							e.setBooleanPref(MainActivityPrefs.GLASS_WEB, on);
-							e.removePref(MainActivityPrefs.GLASS_FRAME_OFF);
-						}
-					}, isGlass);
-			TextView off = text(R.string.glass_web_off_after_crash, 12.5f, textSecondary, false);
-			off.setPadding(dp(4), dp(6), dp(4), 0);
-			h.addView(off);
-			syncers.add(() -> off.setVisibility(p.getBooleanPref(MainActivityPrefs.GLASS_WEB) &&
-					p.getBooleanPref(MainActivityPrefs.GLASS_FRAME_OFF) ? View.VISIBLE : View.GONE));
+					on -> p.applyBooleanPref(MainActivityPrefs.GLASS_WEB, on), isGlass);
 		}
 		for (Runnable r : syncers) r.run();
 		return h;

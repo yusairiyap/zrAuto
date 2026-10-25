@@ -225,9 +225,6 @@ public interface MainActivityPrefs
 	Pref<IntSupplier> GLASS_QUALITY = Pref.i("GLASS_QUALITY", 1);
 	// Experimental: blur over web pages (YouTube, the browser) and fullscreen YouTube video too (Glass#webBlur).
 	Pref<BooleanSupplier> GLASS_WEB = Pref.b("GLASS_WEB", false);
-	// Set at start when the last run ended while the blur over fullscreen video was drawn (GlassFrame#crashGuard):
-	// that blur stays off until GLASS_WEB is switched again.
-	Pref<BooleanSupplier> GLASS_FRAME_OFF = Pref.b("GLASS_FRAME_OFF", false);
 	// Settings cards in the glass look too (off: they keep the Normal look whatever the style).
 	Pref<BooleanSupplier> GLASS_TILES = Pref.b("GLASS_TILES", false);
 	// Where the rim light (GLASS_RIM) shows (Settings > UI style > Rim light): every part but the settings cards.

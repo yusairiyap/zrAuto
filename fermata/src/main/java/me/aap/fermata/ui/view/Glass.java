@@ -395,7 +395,7 @@ public final class Glass {
 
 	/**
 	 * A fullscreen video button's glass: the picture behind it blurred when {@link #webBlur} is on and the
-	 * picture can be read (YouTube's page, recorded by {@link GlassFrame}), else tint, grain and rim. Off glass
+	 * picture can be read (a copy of it, see {@link VideoBackdrop}), else tint, grain and rim. Off glass
 	 * it is the plain {@code color} disc.
 	 */
 	public static android.graphics.drawable.Drawable videoButton(View self, int color) {
@@ -430,7 +430,9 @@ public final class Glass {
 				return;
 			}
 			Look l = look();
-			boolean blurred = webBlur() && (GlassFrame.drawBehind(self, c, rect, r, a, l, lens) ||
+			// Over fullscreen YouTube the patch under the button is drawn by the FrameBackdrop below it; over local video
+			// the button draws the copied picture itself.
+			boolean blurred = webBlur() && (FrameBackdrop.cover(self, lens, rect, r, a, l) ||
 					VideoBackdrop.drawBehindButton(self, c, rect, r, a, l, lens));
 			paintOver(c, rect, r, color, a, l.rimFor(RIM_VIDEO), false, self.getResources().getDisplayMetrics().density,
 					paint, blurred);
