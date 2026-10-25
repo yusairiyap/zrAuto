@@ -511,7 +511,26 @@ public class SettingsFragment extends MainActivityFragment
 				false);
 	}
 
+	/** The context the pages are built with: the activity's, so a page can be built with no screen (see {@link #prepareNav}). */
+	private Context buildContext;
+
+	/**
+	 * Builds the settings once without showing them, so the list of categories beside the settings pages (a wide window) is
+	 * there for a page opened before Settings ever was (Home settings from Home's chips).
+	 */
+	public static void prepareNav(MainActivityDelegate a) {
+		if (!SettingsNav.entries().isEmpty()) return;
+		try {
+			SettingsFragment f = new SettingsFragment();
+			f.createAdapter(a);
+			f.cleanUp(a);
+		} catch (RuntimeException ex) {
+			Log.e(ex, "Failed to prepare the settings list");
+		}
+	}
+
 	private PreferenceViewAdapter createAdapter(MainActivityDelegate a) {
+		buildContext = a.getContext();
 		MediaLibPrefs mediaPrefs = a.getMediaServiceBinder().getLib().getPrefs();
 		int[] timeUnits =
 				new int[]{R.string.time_unit_second, R.string.time_unit_minute,
@@ -1862,7 +1881,7 @@ public class SettingsFragment extends MainActivityFragment
 
 			if (a != null) {
 				ChangeableCondition cond = PrefCondition.create(store, info.enabledPref);
-				a.contributeSettings(getContext(), store, set, cond);
+				a.contributeSettings(buildContext, store, set, cond);
 			}
 		}
 

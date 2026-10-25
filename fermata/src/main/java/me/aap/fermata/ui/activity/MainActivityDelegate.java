@@ -472,6 +472,8 @@ public class MainActivityDelegate extends ActivityDelegate
 				((FermataActivityAddon) addon).onActivityCreate(this);
 		}
 
+		if (me.aap.fermata.ui.view.SettingsSplit.isWide(this)) post(() -> SettingsFragment.prepareNav(this));
+
 		String[] perms = getRequiredPermissions();
 		// The permissions are asked first, as ever (the library needs storage before anything is listed: asking only
 		// when the welcome wizard closed left the app starting without it, and it crashed); the wizard follows.
