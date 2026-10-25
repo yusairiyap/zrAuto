@@ -1146,7 +1146,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			me.aap.fermata.ui.view.Glass.Look l = me.aap.fermata.ui.view.Glass.look();
 			int ta = Math.round(Math.max(115, l.tintAlpha()) * cardAlpha() / 100f);
 			topFillBase = (palette.light ? 0x00FFFFFF : 0x00101018) | (Math.min(255, ta) << 24);
-			topInfo.setChipStroke(palette.light ? 0x1F000000 : 0x29FFFFFF);
+			topInfo.setChipStroke((me.aap.fermata.ui.view.Glass.rim(me.aap.fermata.ui.view.Glass.RIM_HOME) > 0f) ?
+					(palette.light ? 0x1F000000 : 0x29FFFFFF) : 0);
 			// Home's background blurred behind each chip, as behind the glass cards (Android 12+).
 			topInfo.setChipBackdrop(me.aap.fermata.ui.view.Glass.realBlur() ? chipGlass : null);
 		} else {

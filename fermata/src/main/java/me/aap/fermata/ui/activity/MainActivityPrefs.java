@@ -225,6 +225,16 @@ public interface MainActivityPrefs
 	Pref<IntSupplier> GLASS_QUALITY = Pref.i("GLASS_QUALITY", 1);
 	// Experimental: blur over web pages (YouTube, the browser) and fullscreen YouTube video too (Glass#webBlur).
 	Pref<BooleanSupplier> GLASS_WEB = Pref.b("GLASS_WEB", false);
+	// Settings cards in the glass look too (off: they keep the Normal look whatever the style).
+	Pref<BooleanSupplier> GLASS_TILES = Pref.b("GLASS_TILES", false);
+	// Where the rim light (GLASS_RIM) shows (Settings > UI style > Rim light): every part but the settings cards.
+	Pref<BooleanSupplier> GLASS_RIM_TOOLBAR = Pref.b("GLASS_RIM_TOOLBAR", true);
+	Pref<BooleanSupplier> GLASS_RIM_NAV = Pref.b("GLASS_RIM_NAV", true);
+	Pref<BooleanSupplier> GLASS_RIM_FAB = Pref.b("GLASS_RIM_FAB", true);
+	Pref<BooleanSupplier> GLASS_RIM_MENUS = Pref.b("GLASS_RIM_MENUS", true);
+	Pref<BooleanSupplier> GLASS_RIM_HOME = Pref.b("GLASS_RIM_HOME", true);
+	Pref<BooleanSupplier> GLASS_RIM_VIDEO = Pref.b("GLASS_RIM_VIDEO", true);
+	Pref<BooleanSupplier> GLASS_RIM_TILES = Pref.b("GLASS_RIM_TILES", false);
 	Pref<BooleanSupplier> CAPTIONS_ON = Pref.b("CAPTIONS_ON", false);
 	// Language code to prefer ("" = the phone's), and whether speech-recognition captions may be used
 	// when a video has no written ones.

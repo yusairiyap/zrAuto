@@ -145,7 +145,7 @@ public final class MenuStyle implements OverlayMenuView.Styler {
 		t.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
 		t.setTextColor(c.textPrimary);
 		t.setTypeface(Typeface.DEFAULT_BOLD);
-		t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+		t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
 		t.setMaxLines(2);
 		t.setEllipsize(TextUtils.TruncateAt.END);
 		t.setPadding(c.dp(14), c.dp(10), c.dp(14), c.dp(12));
@@ -153,10 +153,31 @@ public final class MenuStyle implements OverlayMenuView.Styler {
 
 	private static void styleItem(OverlayMenuItemView item, SettingsStyle.Colors c, float scale, boolean car) {
 		int h = c.dp(16);
-		int v = Math.round(c.dp(12) * Math.max(0.8f, scale));
-		item.setPadding(h, v, h, v);
-		item.setCompoundDrawablePadding(c.dp(16));
-		item.setMinHeight(c.dp(48));
+		if (car) {
+			int v = Math.round(c.dp(12) * Math.max(0.8f, scale));
+			item.setPadding(h, v, h, v);
+			item.setCompoundDrawablePadding(c.dp(16));
+			item.setMinHeight(c.dp(48));
+		} else {
+			// On the phone the rows are the size of the settings rows (15sp text, 22dp icons): the menus' own size,
+			// scaled by the interface's text and icon size, made every menu much bigger than the pages under it.
+			item.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+			item.setPadding(h, c.dp(10), h, c.dp(10));
+			item.setCompoundDrawablePadding(c.dp(14));
+			item.setMinHeight(c.dp(44));
+			Drawable[] ds = item.getCompoundDrawablesRelative();
+			int is = c.dp(22);
+			if ((ds[0] != null) && ((ds[0].getBounds().width() != is) || (ds[0].getBounds().height() != is))) {
+				ds[0].setBounds(0, 0, is, is);
+				item.setCompoundDrawablesRelative(ds[0], ds[1], ds[2], ds[3]);
+			} else if (ds[0] == null) {
+				Drawable[] ld = item.getCompoundDrawables();
+				if ((ld[0] != null) && ((ld[0].getBounds().width() != is) || (ld[0].getBounds().height() != is))) {
+					ld[0].setBounds(0, 0, is, is);
+					item.setCompoundDrawables(ld[0], ld[1], ld[2], ld[3]);
+				}
+			}
+		}
 		item.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
 		item.setTextColor(c.textPrimary);
 		TextViewCompat.setCompoundDrawableTintList(item, ColorStateList.valueOf(c.accent));
@@ -286,7 +307,7 @@ public final class MenuStyle implements OverlayMenuView.Styler {
 			Glass.Look l = Glass.look().withMinTint(55f);
 			boolean blurred = Glass.realBlur() && GlassLens.behindBars(view, canvas, rect, radius, a, l, lens);
 			if (!blurred) l = l.withMinTint(80f);
-			Glass.paintOver(canvas, rect, radius, color, a, l, light, view.getResources().getDisplayMetrics().density,
+			Glass.paintOver(canvas, rect, radius, color, a, l.rimFor(Glass.RIM_MENUS), light, view.getResources().getDisplayMetrics().density,
 					paint, blurred);
 		}
 

@@ -61,6 +61,14 @@ public final class Glass {
 	public static final int QUALITY_BALANCED = 1;
 	public static final int QUALITY_SAVER = 2;
 	static final long ANIM_MS = 320;
+	/** The parts the rim light can be on or off for (Settings > UI style > Rim light), see {@link Look#rimFor}. */
+	public static final int RIM_TOOLBAR = 1;
+	public static final int RIM_NAV = 2;
+	public static final int RIM_FAB = 4;
+	public static final int RIM_MENUS = 8;
+	public static final int RIM_HOME = 16;
+	public static final int RIM_VIDEO = 32;
+	public static final int RIM_TILES = 64;
 
 	/** Each style's blur (dp), tint (%), saturation (%), grain and rim (1 = on). NORMAL has none. */
 	private static final int[][] PRESETS = {
@@ -85,9 +93,21 @@ public final class Glass {
 		public final boolean menus;
 		/** The size the blur is rendered at, 1 = full. */
 		public final float scale;
+		/** The parts with the rim light (RIM_*), and whether the settings cards are glass too. */
+		final int rimParts;
+		final boolean tiles;
+		@Nullable
+		private Look noRim;
 
 		Look(int style, float blurDp, float tint, float saturation, float grain, float rim, boolean bars,
 				 boolean home, boolean menus, float scale) {
+			this(style, blurDp, tint, saturation, grain, rim, bars, home, menus, scale, ~0, false);
+		}
+
+		Look(int style, float blurDp, float tint, float saturation, float grain, float rim, boolean bars,
+				 boolean home, boolean menus, float scale, int rimParts, boolean tiles) {
+			this.rimParts = rimParts;
+			this.tiles = tiles;
 			this.style = style;
 			this.blurDp = blurDp;
 			this.tint = tint;
@@ -111,18 +131,38 @@ public final class Glass {
 
 		/** The same look with at least {@code t} of tint (text on it must stay readable). */
 		public Look withMinTint(float t) {
-			return (tint >= t) ? this : new Look(style, blurDp, t, saturation, grain, rim, bars, home, menus, scale);
+			return (tint >= t) ? this :
+					new Look(style, blurDp, t, saturation, grain, rim, bars, home, menus, scale, rimParts, tiles);
+		}
+
+		/**
+		 * This look as drawn on {@code part} (RIM_*): its rim light only where Settings > UI style > Rim light has
+		 * it, fading in and out when that changes.
+		 */
+		public Look rimFor(int part) {
+			float r = rim(part);
+			if (r == rim) return this;
+			if (r <= 0f) {
+				Look n = noRim;
+				if (n == null) noRim = n = withRim(0f);
+				return n;
+			}
+			return withRim(r);
+		}
+
+		private Look withRim(float r) {
+			return new Look(style, blurDp, tint, saturation, grain, r, bars, home, menus, scale, rimParts, tiles);
 		}
 
 		/** The same look with another blur (the settings previews draw it scaled down). */
 		public Look withBlur(float dp) {
-			return new Look(style, dp, tint, saturation, grain, rim, bars, home, menus, scale);
+			return new Look(style, dp, tint, saturation, grain, rim, bars, home, menus, scale, rimParts, tiles);
 		}
 
 		boolean sameAs(Look o) {
 			return (style == o.style) && (blurDp == o.blurDp) && (tint == o.tint) && (saturation == o.saturation) &&
 					(grain == o.grain) && (rim == o.rim) && (bars == o.bars) && (home == o.home) &&
-					(menus == o.menus) && (scale == o.scale);
+					(menus == o.menus) && (scale == o.scale) && (rimParts == o.rimParts) && (tiles == o.tiles);
 		}
 	}
 
@@ -169,12 +209,30 @@ public final class Glass {
 	 */
 	public static float amount() {
 		Look t = target();
-		float to = t.isGlass() ? 1f : 0f;
+		return glide((from != null) && from.isGlass() ? 1f : 0f, t.isGlass() ? 1f : 0f);
+	}
+
+	/** As {@link #amount}, for the settings cards: 0 while they keep the Normal look (GLASS_TILES off). */
+	public static float tileAmount() {
+		Look t = target();
+		return glide((from != null) && from.isGlass() && from.tiles ? 1f : 0f, t.isGlass() && t.tiles ? 1f : 0f);
+	}
+
+	/** How much rim light {@code part} (RIM_*) has now, 0 to 1, gliding after a change. */
+	public static float rim(int part) {
+		return glide((from != null) ? rimOf(from, part) : 0f, rimOf(target(), part));
+	}
+
+	private static float rimOf(Look l, int part) {
+		return (l.isGlass() && ((l.rimParts & part) != 0)) ? l.rim : 0f;
+	}
+
+	/** From {@code fr} (the look before a change) to {@code to}, with the glide's curve. */
+	private static float glide(float fr, float to) {
 		if ((animStart < 0) || (from == null)) return to;
 		float f = (SystemClock.uptimeMillis() - animStart) / (float) ANIM_MS;
 		if (f >= 1f) return to;
 		f = 1f - (1f - f) * (1f - f);
-		float fr = from.isGlass() ? 1f : 0f;
 		return fr + (to - fr) * f;
 	}
 
@@ -198,14 +256,27 @@ public final class Glass {
 				p.getBooleanPref(MainActivityPrefs.GLASS_GRAIN) ? 1f : 0f,
 				p.getBooleanPref(MainActivityPrefs.GLASS_RIM) ? 1f : 0f,
 				p.getBooleanPref(MainActivityPrefs.GLASS_BARS), p.getBooleanPref(MainActivityPrefs.GLASS_HOME),
-				p.getBooleanPref(MainActivityPrefs.GLASS_MENUS), scale);
+				p.getBooleanPref(MainActivityPrefs.GLASS_MENUS), scale, rimParts(p),
+				p.getBooleanPref(MainActivityPrefs.GLASS_TILES));
 		target = l;
 		return l;
 	}
 
+	private static int rimParts(MainActivityPrefs p) {
+		int m = 0;
+		if (p.getBooleanPref(MainActivityPrefs.GLASS_RIM_TOOLBAR)) m |= RIM_TOOLBAR;
+		if (p.getBooleanPref(MainActivityPrefs.GLASS_RIM_NAV)) m |= RIM_NAV;
+		if (p.getBooleanPref(MainActivityPrefs.GLASS_RIM_FAB)) m |= RIM_FAB;
+		if (p.getBooleanPref(MainActivityPrefs.GLASS_RIM_MENUS)) m |= RIM_MENUS;
+		if (p.getBooleanPref(MainActivityPrefs.GLASS_RIM_HOME)) m |= RIM_HOME;
+		if (p.getBooleanPref(MainActivityPrefs.GLASS_RIM_VIDEO)) m |= RIM_VIDEO;
+		if (p.getBooleanPref(MainActivityPrefs.GLASS_RIM_TILES)) m |= RIM_TILES;
+		return m;
+	}
+
 	/** NORMAL as a glass look: the usual mostly opaque surface, so a change to or from it glides too. */
 	private static Look asGlass(Look n) {
-		return new Look(n.style, 0f, 95f, 1f, 0f, 0f, n.bars, n.home, n.menus, n.scale);
+		return new Look(n.style, 0f, 95f, 1f, 0f, 0f, n.bars, n.home, n.menus, n.scale, n.rimParts, n.tiles);
 	}
 
 	private static Look mix(Look a, Look b, float f) {
@@ -216,7 +287,7 @@ public final class Glass {
 		Look flags = b.isGlass() ? b : a;
 		return new Look(flags.style, lerp(x.blurDp, y.blurDp, f), lerp(x.tint, y.tint, f),
 				lerp(x.saturation, y.saturation, f), lerp(x.grain, y.grain, f), lerp(x.rim, y.rim, f),
-				flags.bars, flags.home, flags.menus, b.scale);
+				flags.bars, flags.home, flags.menus, b.scale, flags.rimParts, flags.tiles);
 	}
 
 	private static float lerp(float a, float b, float f) {
@@ -271,7 +342,11 @@ public final class Glass {
 				prefs.contains(MainActivityPrefs.GLASS_GRAIN) || prefs.contains(MainActivityPrefs.GLASS_RIM) ||
 				prefs.contains(MainActivityPrefs.GLASS_BARS) || prefs.contains(MainActivityPrefs.GLASS_HOME) ||
 				prefs.contains(MainActivityPrefs.GLASS_MENUS) || prefs.contains(MainActivityPrefs.GLASS_QUALITY) ||
-				prefs.contains(MainActivityPrefs.GLASS_WEB);
+				prefs.contains(MainActivityPrefs.GLASS_WEB) || prefs.contains(MainActivityPrefs.GLASS_TILES) ||
+				prefs.contains(MainActivityPrefs.GLASS_RIM_TOOLBAR) || prefs.contains(MainActivityPrefs.GLASS_RIM_NAV) ||
+				prefs.contains(MainActivityPrefs.GLASS_RIM_FAB) || prefs.contains(MainActivityPrefs.GLASS_RIM_MENUS) ||
+				prefs.contains(MainActivityPrefs.GLASS_RIM_HOME) || prefs.contains(MainActivityPrefs.GLASS_RIM_VIDEO) ||
+				prefs.contains(MainActivityPrefs.GLASS_RIM_TILES);
 	}
 
 	/** Glass on the tool bar, nav bar, control panel and floating buttons. */
@@ -346,7 +421,8 @@ public final class Glass {
 			Look l = look();
 			boolean blurred = webBlur() && (GlassFrame.drawBehind(self, c, rect, r, a, l, lens) ||
 					VideoBackdrop.drawBehindButton(self, c, rect, r, a, l, lens));
-			paintOver(c, rect, r, color, a, l, false, self.getResources().getDisplayMetrics().density, paint, blurred);
+			paintOver(c, rect, r, color, a, l.rimFor(RIM_VIDEO), false, self.getResources().getDisplayMetrics().density,
+					paint, blurred);
 		}
 
 		@Override
@@ -565,6 +641,7 @@ public final class Glass {
 		private boolean hasManual;
 
 		Tile(int normalFill, float radius, boolean light, boolean picked, int accent, float density) {
+			// (shownAmount etc. are set by apply below.)
 			this.normalFill = normalFill;
 			this.light = light;
 			this.accent = accent;
@@ -574,7 +651,7 @@ public final class Glass {
 			rimPaint.setStyle(Paint.Style.STROKE);
 			// (Whatever the superclass set up is not a colour from outside.)
 			hasManual = false;
-			apply(amount(), pick);
+			apply(tileAmount(), pick);
 		}
 
 		void setPicked(boolean picked, boolean animate) {
@@ -610,12 +687,11 @@ public final class Glass {
 
 		@Override
 		public void draw(Canvas c) {
-			float a = amount();
+			float a = tileAmount();
 			if ((a != shownAmount) || (pick != shownPick)) apply(a, pick);
 			super.draw(c);
-			// Glass with the rim light on: the light edge along the top instead of a border (none with it off).
-			Look l = look();
-			float rim = a * l.rim * (1f - pick);
+			// The rim light where Settings > UI style > Rim light has it on the settings cards (off by default).
+			float rim = rim(RIM_TILES) * (1f - pick);
 			if (rim <= 0f) return;
 			float sw = Math.max(1f, density);
 			android.graphics.Rect b = getBounds();
@@ -657,7 +733,142 @@ public final class Glass {
 		int accent = (tl != null) ? tl.getDefaultColor() : 0xFF7FA6FF;
 		float d = sb.getResources().getDisplayMetrics().density;
 		sb.setThumbTintList(null);
-		sb.setThumb(new Knob(accent, d));
+		Knob k = new Knob(accent, d);
+		sb.setThumb(k);
+		// The filled part of the track ends round under the bead in glass (the bead is see-through, and the
+		// track's square cut showed through it).
+		if ((sb.getProgressDrawable() instanceof android.graphics.drawable.LayerDrawable pd) &&
+				(pd.mutate() instanceof android.graphics.drawable.LayerDrawable ld) &&
+				(ld.findDrawableByLayerId(android.R.id.progress) instanceof android.graphics.drawable.ClipDrawable cd)) {
+			RoundFill f = new RoundFill(cd, k);
+			f.setBounds(cd.getBounds());
+			f.setLevel(cd.getLevel());
+			f.setState(cd.getState());
+			ld.setDrawableByLayerId(android.R.id.progress, f);
+			ld.invalidateSelf();
+		}
+	}
+
+	/**
+	 * A seek bar's filled track: the usual clipped bar in Normal; in glass a pill from the start to the level,
+	 * with a round end that sits under the knob. Blends with the style's glide.
+	 */
+	private static final class RoundFill extends android.graphics.drawable.Drawable
+			implements android.graphics.drawable.Drawable.Callback {
+		private final android.graphics.drawable.Drawable inner;
+		private final Knob knob;
+		private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+		private final RectF rect = new RectF();
+		@Nullable
+		private android.content.res.ColorStateList tint;
+		private int alpha = 255;
+
+		RoundFill(android.graphics.drawable.Drawable inner, Knob knob) {
+			this.inner = inner;
+			this.knob = knob;
+			inner.setCallback(this);
+		}
+
+		@Override
+		public void draw(Canvas c) {
+			float g = amount();
+			if (g < 1f) {
+				inner.setAlpha(Math.round(alpha * (1f - g)));
+				inner.draw(c);
+			}
+			if (g <= 0f) return;
+			android.graphics.Rect b = getBounds();
+			float h = b.height();
+			if ((h <= 0) || (b.width() <= 0)) return;
+			float x = b.left + b.width() * (getLevel() / 10000f);
+			if (x <= b.left) return;
+			// At least a circle: a round start that grows into the pill.
+			rect.set(b.left, b.top, Math.max(x, b.left + h), b.bottom);
+			int color = (tint != null) ? tint.getColorForState(getState(), tint.getDefaultColor()) : knob.accent;
+			paint.setColor(color);
+			paint.setAlpha(Math.round((color >>> 24) * (alpha / 255f) * g));
+			c.drawRoundRect(rect, h / 2f, h / 2f, paint);
+		}
+
+		@Override
+		protected boolean onLevelChange(int level) {
+			inner.setLevel(level);
+			invalidateSelf();
+			return true;
+		}
+
+		@Override
+		protected void onBoundsChange(android.graphics.Rect bounds) {
+			inner.setBounds(bounds);
+		}
+
+		@Override
+		public boolean isStateful() {
+			return true;
+		}
+
+		@Override
+		protected boolean onStateChange(int[] state) {
+			inner.setState(state);
+			invalidateSelf();
+			return true;
+		}
+
+		@Override
+		public void setTintList(@Nullable android.content.res.ColorStateList t) {
+			tint = t;
+			inner.setTintList(t);
+			invalidateSelf();
+		}
+
+		@Override
+		public void setTintMode(@Nullable android.graphics.PorterDuff.Mode mode) {
+			inner.setTintMode(mode);
+		}
+
+		@Override
+		public int getIntrinsicHeight() {
+			return inner.getIntrinsicHeight();
+		}
+
+		@Override
+		public int getIntrinsicWidth() {
+			return inner.getIntrinsicWidth();
+		}
+
+		@Override
+		public void setAlpha(int alpha) {
+			this.alpha = alpha;
+			invalidateSelf();
+		}
+
+		@Override
+		public void setColorFilter(@Nullable android.graphics.ColorFilter cf) {
+			paint.setColorFilter(cf);
+			inner.setColorFilter(cf);
+		}
+
+		@Override
+		public int getOpacity() {
+			return android.graphics.PixelFormat.TRANSLUCENT;
+		}
+
+		@Override
+		public void invalidateDrawable(@androidx.annotation.NonNull android.graphics.drawable.Drawable who) {
+			invalidateSelf();
+		}
+
+		@Override
+		public void scheduleDrawable(@androidx.annotation.NonNull android.graphics.drawable.Drawable who,
+																 @androidx.annotation.NonNull Runnable what, long when) {
+			scheduleSelf(what, when);
+		}
+
+		@Override
+		public void unscheduleDrawable(@androidx.annotation.NonNull android.graphics.drawable.Drawable who,
+																	 @androidx.annotation.NonNull Runnable what) {
+			unscheduleSelf(what);
+		}
 	}
 
 	private static final class Knob extends android.graphics.drawable.Drawable {
@@ -777,7 +988,7 @@ public final class Glass {
 			float r = (radius < 0) ? Math.min(rect.width(), rect.height()) / 2f : radius;
 			float a = alpha / 255f;
 			if (onBars()) {
-				paintOver(c, rect, r, color, a, look(), false, density, paint, false);
+				paintOver(c, rect, r, color, a, look().rimFor(RIM_VIDEO), false, density, paint, false);
 			} else {
 				paint.setShader(null);
 				paint.setStyle(Paint.Style.FILL);

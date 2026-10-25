@@ -293,7 +293,7 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 			if (Glass.realBlur()) {
 				GlassLens.behindBars(this, canvas, r, radius, alpha, l, (r == main) ? mainLens : auxLens);
 			}
-			Glass.paintOver(canvas, r, radius, pillColor, alpha, l,
+			Glass.paintOver(canvas, r, radius, pillColor, alpha, l.rimFor(Glass.RIM_NAV),
 					androidx.core.graphics.ColorUtils.calculateLuminance(pillColor | 0xFF000000) > 0.5,
 					getResources().getDisplayMetrics().density, glassPaint);
 			return;

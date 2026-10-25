@@ -17,13 +17,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The frame holding a web page (the YouTube tab's page, the browser's tabs) or YouTube's fullscreen picture: with
- * the experimental blur over web pages and video on ({@link Glass#webBlur}), it records itself into a RenderNode,
+ * The frame holding YouTube's fullscreen picture (child 0 of YoutubeVideoView): with the experimental blur over
+ * video on ({@link Glass#webBlur}), it records itself into a RenderNode,
  * the same display list the screen draws, and glass surfaces draw that node blurred instead of the whole tab:
  * the fullscreen video buttons ({@link Glass#videoButton}, beside the frame in the VideoView), and the bars,
  * floating buttons, menus and dialogs ({@link GlassLens#behindBars}) whenever the tab itself is not recorded (a
- * web tab, fullscreen YouTube). Drawing the page through this frame did not flicker on the device where drawing
- * it through the whole tab did. Off, it is a plain FrameLayout.
+ * web tab, fullscreen YouTube). Drawing the fullscreen picture through this frame did not flicker on the device
+ * where drawing it through the whole tab did; a frame around the plain YouTube page (not fullscreen) crashed the app
+ * natively on entering the tab, so the page itself is never put in one. Off, it is a plain FrameLayout.
  */
 public class GlassFrame extends FrameLayout {
 	private static final List<WeakReference<GlassFrame>> frames = new ArrayList<>();
@@ -50,9 +51,18 @@ public class GlassFrame extends FrameLayout {
 			// What is behind the glass changed: the surfaces showing it are drawn again.
 			Glass.invalidateSurfaces();
 		} else {
-			recording = false;
+			setRecording(false);
 			super.draw(canvas);
 		}
+	}
+
+	private void setRecording(boolean on) {
+		if (recording == on) return;
+		recording = on;
+		// Written before the first recorded frame: a native crash right after it leaves this as the last line.
+		View c = (getChildCount() > 0) ? getChildAt(0) : null;
+		me.aap.fermata.util.DiagnosticLog.log("BODY", "glass frame", on ? "recording" : "plain",
+				(c != null) ? c.getClass().getSimpleName() : "empty", getWidth() + "x" + getHeight());
 	}
 
 	@Override
@@ -64,7 +74,7 @@ public class GlassFrame extends FrameLayout {
 	@androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.S)
 	private void drawRecorded(Canvas canvas) {
 		if (!(node instanceof android.graphics.RenderNode)) node = new android.graphics.RenderNode("glassFrame");
-		recording = true;
+		setRecording(true);
 		GlassLens.recordAndDraw(canvas, (android.graphics.RenderNode) node, getWidth(), getHeight(), super::draw);
 	}
 

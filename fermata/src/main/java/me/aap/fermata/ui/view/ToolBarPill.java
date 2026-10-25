@@ -137,7 +137,7 @@ public final class ToolBarPill {
 				Glass.Look l = Glass.look();
 				float a = alpha / 255f;
 				if (Glass.realBlur()) GlassLens.behindBars(view, canvas, rect, radius, a, l, lens);
-				Glass.paintOver(canvas, rect, radius, color, a, l,
+				Glass.paintOver(canvas, rect, radius, color, a, l.rimFor(Glass.RIM_TOOLBAR),
 						androidx.core.graphics.ColorUtils.calculateLuminance(color | 0xFF000000) > 0.5,
 						view.getResources().getDisplayMetrics().density, glassPaint);
 				return;

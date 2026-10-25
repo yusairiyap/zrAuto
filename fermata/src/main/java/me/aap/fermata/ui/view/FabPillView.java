@@ -304,7 +304,7 @@ public class FabPillView extends View implements ViewTreeObserver.OnPreDrawListe
 			boolean blurred = (!videoLook || Glass.webBlur()) && Glass.realBlur() &&
 					GlassLens.behindBars(this, canvas, cur, radius, alpha, l, lens);
 			int color = videoLook ? VideoControlsOverlay.BUTTON_BG : pillColor;
-			Glass.paintOver(canvas, cur, radius, color, alpha, l,
+			Glass.paintOver(canvas, cur, radius, color, alpha, l.rimFor(Glass.RIM_FAB),
 					!videoLook && (androidx.core.graphics.ColorUtils.calculateLuminance(pillColor | 0xFF000000) > 0.5),
 					getResources().getDisplayMetrics().density, glassPaint, blurred);
 			return;

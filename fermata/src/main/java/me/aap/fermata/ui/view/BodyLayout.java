@@ -217,7 +217,8 @@ public class BodyLayout extends SplitLayout
 	private void syncGlass() {
 		// Experimental (Glass#webBlur): fullscreen local video is blurred too (VideoBackdrop fills in the picture,
 		// which the tab's recording only has as a hole). Web pages never are through the tab: drawing the whole tab
-		// with a WebView in it a second time flickered; the page's own GlassFrame is blurred instead.
+		// with a WebView in it a second time flickered, and through a frame around the page it crashed the app; only
+		// fullscreen YouTube's picture (its own GlassFrame) is blurred.
 		boolean want = Glass.realBlur() && Glass.wantsSource() && (Glass.webBlur() || (getMode() == Mode.FRAME));
 		if (want) {
 			long now = SystemClock.uptimeMillis();

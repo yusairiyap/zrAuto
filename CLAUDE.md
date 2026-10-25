@@ -1046,6 +1046,23 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
   the same); with glass the edge is the rim light (gradient stroke) only while Rim light is on, no border otherwise. The knob
   has no coloured core and takes later thumb tints (`Knob#setTintList`); every `StepSeekBar` (Audio effects) uses it.
 
+### Sixth round (no frame around the page, rim light per part, round seek fill, menu size)
+
+- **The YouTube / browser page is never in a GlassFrame**: with the experimental blur on, putting the plain page (not
+  fullscreen) in a recording frame crashed the app natively on entering the YouTube tab (nothing logged). Only fullscreen
+  YouTube's picture (child 0 of `YoutubeVideoView`) is a GlassFrame; over the plain page the bars are tint only. A frame
+  that starts or stops recording writes `BODY glass frame recording/plain <child> <size>` first, so a crash right after
+  it leaves that as the last line.
+- **Rim light per part**: `GLASS_RIM` is the style's rim, `GLASS_RIM_TOOLBAR/NAV/FAB/MENUS/HOME/VIDEO/TILES` say where it shows
+  (Settings > UI style > "Where the rim light shows", an expandable group; settings cards off by default). Draw a surface
+  with `look.rimFor(Glass.RIM_*)`; `Glass.rim(part)` glides when a part is switched.
+- **Settings cards keep the Normal look** unless `GLASS_TILES` (Where > Settings cards) is on: `Glass.Tile` blends by
+  `tileAmount()`, not `amount()`.
+- **Seek bars in glass**: `Glass.knob` also wraps the track's progress layer in `RoundFill` (a pill ending round under the
+  see-through bead; the clipped bar in Normal, blended by `amount()`).
+- **Context menu rows on the phone** are the settings rows' size (15sp, 22dp icons, `MenuStyle#styleItem`), not scaled by the
+  interface's text/icon size; the car screen keeps its own sizing.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

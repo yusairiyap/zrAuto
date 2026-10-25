@@ -338,7 +338,7 @@ public abstract class HomeWidgetView extends FrameLayout {
 			host.drawGlassBehind(this, c, glassRect, r, 1f, l, glassLens);
 			// The card's transparency (Settings > Home > Widget look) is how strong the tint is.
 			me.aap.fermata.ui.view.Glass.paintOver(c, glassRect, r, light ? 0xFFFFFFFF : 0xFF101018,
-					host.cardAlpha() / 100f, l, light, dp, glassPaint);
+					host.cardAlpha() / 100f, l.rimFor(me.aap.fermata.ui.view.Glass.RIM_HOME), light, dp, glassPaint);
 		}
 		super.draw(c);
 	}

@@ -144,6 +144,7 @@ public class GlassSettingsFragment extends ReorderListFragment {
 		addSwitchRow(h, R.string.glass_rim, R.string.glass_rim_sub,
 				() -> p.getBooleanPref(MainActivityPrefs.GLASS_RIM),
 				on -> p.applyBooleanPref(MainActivityPrefs.GLASS_RIM, on), isGlass);
+		addRimParts(h, () -> isGlass.getAsBoolean() && p.getBooleanPref(MainActivityPrefs.GLASS_RIM));
 		if (Glass.realBlur()) {
 			addChoiceRow(h, R.string.glass_quality, R.string.glass_quality_sub,
 					new int[]{R.string.glass_quality_high, R.string.glass_quality_balanced, R.string.glass_quality_saver},
@@ -166,8 +167,82 @@ public class GlassSettingsFragment extends ReorderListFragment {
 		addSwitchRow(h, R.string.glass_on_home, R.string.glass_on_home_sub,
 				() -> p.getBooleanPref(MainActivityPrefs.GLASS_HOME),
 				on -> p.applyBooleanPref(MainActivityPrefs.GLASS_HOME, on), isGlass);
+		addSwitchRow(h, R.string.glass_on_tiles, R.string.glass_on_tiles_sub,
+				() -> p.getBooleanPref(MainActivityPrefs.GLASS_TILES),
+				on -> p.applyBooleanPref(MainActivityPrefs.GLASS_TILES, on), isGlass);
 		for (Runnable r : syncers) r.run();
 		return h;
+	}
+
+	@SuppressWarnings("unchecked")
+	private static final me.aap.utils.pref.PreferenceStore.Pref<java.util.function.BooleanSupplier>[] RIM_PREFS =
+			new me.aap.utils.pref.PreferenceStore.Pref[]{MainActivityPrefs.GLASS_RIM_TOOLBAR,
+					MainActivityPrefs.GLASS_RIM_NAV, MainActivityPrefs.GLASS_RIM_FAB, MainActivityPrefs.GLASS_RIM_MENUS,
+					MainActivityPrefs.GLASS_RIM_HOME, MainActivityPrefs.GLASS_RIM_VIDEO, MainActivityPrefs.GLASS_RIM_TILES};
+	private static final int[][] RIM_TEXTS = {
+			{R.string.glass_rim_toolbar, R.string.glass_rim_toolbar_sub},
+			{R.string.glass_rim_nav, R.string.glass_rim_nav_sub},
+			{R.string.glass_rim_fab, R.string.glass_rim_fab_sub},
+			{R.string.glass_rim_menus, R.string.glass_rim_menus_sub},
+			{R.string.glass_rim_home, R.string.glass_rim_home_sub},
+			{R.string.glass_rim_video, R.string.glass_rim_video_sub},
+			{R.string.glass_rim_tiles, R.string.glass_rim_tiles_sub},
+	};
+
+	/**
+	 * "Where the rim light shows": a row that opens and closes the switches for each part (closed at first),
+	 * indented under the rim light switch. The switches are usable while the rim light itself is on.
+	 */
+	private void addRimParts(LinearLayout parent, java.util.function.BooleanSupplier usable) {
+		MainActivityPrefs p = ps();
+		LinearLayout head = new LinearLayout(palette);
+		head.setOrientation(LinearLayout.HORIZONTAL);
+		head.setGravity(Gravity.CENTER_VERTICAL);
+		head.setPadding(dp(16), dp(12), dp(16), dp(12));
+		head.setBackground(pressable(rounded(tileFill, 16)));
+		head.setClickable(true);
+		head.setFocusable(true);
+		LinearLayout labels = new LinearLayout(palette);
+		labels.setOrientation(LinearLayout.VERTICAL);
+		labels.addView(text(R.string.glass_rim_where, 15, textPrimary, true));
+		TextView count = text(0, 12.5f, textSecondary, false);
+		labels.addView(count);
+		head.addView(labels, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		android.widget.ImageView chevron = new android.widget.ImageView(palette);
+		chevron.setImageResource(R.drawable.expand);
+		chevron.setImageTintList(android.content.res.ColorStateList.valueOf(textSecondary));
+		// The icon points up: turned down while closed.
+		chevron.setRotation(180f);
+		head.addView(chevron, new LinearLayout.LayoutParams(dp(24), dp(24)));
+		LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		hlp.topMargin = dp(10);
+		parent.addView(head, hlp);
+
+		LinearLayout body = new LinearLayout(palette);
+		body.setOrientation(LinearLayout.VERTICAL);
+		body.setPadding(dp(16), 0, 0, 0);
+		body.setVisibility(View.GONE);
+		for (int i = 0; i < RIM_PREFS.length; i++) {
+			var pref = RIM_PREFS[i];
+			addSwitchRow(body, RIM_TEXTS[i][0], RIM_TEXTS[i][1], () -> p.getBooleanPref(pref),
+					on -> p.applyBooleanPref(pref, on), usable);
+		}
+		parent.addView(body, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		head.setOnClickListener(v -> {
+			boolean open = body.getVisibility() != View.VISIBLE;
+			if (getView() instanceof android.view.ViewGroup root) {
+				android.transition.TransitionManager.beginDelayedTransition(root, new android.transition.AutoTransition()
+						.setDuration(220));
+			}
+			body.setVisibility(open ? View.VISIBLE : View.GONE);
+			chevron.animate().rotation(open ? 0f : 180f).setDuration(220).start();
+		});
+		syncers.add(() -> {
+			int on = 0;
+			for (var pref : RIM_PREFS) if (p.getBooleanPref(pref)) on++;
+			count.setText(getString(R.string.glass_rim_where_count, on, RIM_PREFS.length));
+			labels.setAlpha(usable.getAsBoolean() ? 1f : 0.45f);
+		});
 	}
 
 	/** The four styles as small phones, the one set filled with the accent. */
