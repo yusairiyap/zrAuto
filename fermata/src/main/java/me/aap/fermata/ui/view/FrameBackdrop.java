@@ -48,6 +48,8 @@ public class FrameBackdrop extends View {
 		final WeakReference<View> view;
 		final RectF rect = new RectF();
 		final GlassLens[] lens = new GlassLens[1];
+		/** When a picture was first there for this patch: it fades in from then (0 = not yet). */
+		long pictureSince;
 		float radius;
 		float alpha;
 		Glass.Look look;
@@ -108,7 +110,14 @@ public class FrameBackdrop extends View {
 		if (changed) b.invalidate();
 		b.startChecking();
 		VideoBackdrop src = b.source();
-		return (src != null) && (src.front != null);
+		if ((src == null) || (src.front == null)) return false;
+		// The patch fades in when its first picture arrives; the surface's tint follows it (Glass#setBlurAmount).
+		long now = SystemClock.uptimeMillis();
+		if (e.pictureSince == 0) e.pictureSince = now;
+		float t = Math.min(1f, (now - e.pictureSince) / (float) FADE_IN_MS);
+		Glass.setBlurAmount(t * t * (3f - 2f * t));
+		if (t < 1f) b.postInvalidateOnAnimation();
+		return true;
 	}
 
 	/** A surface inside some other VideoView (local video's buttons) is not this one's to cover. */
@@ -172,11 +181,21 @@ public class FrameBackdrop extends View {
 		return (getParent() instanceof VideoView v) ? v.backdrop : null;
 	}
 
+	/** A new copy of the picture is there: the patches are drawn again (only they, never the video). */
+	void pictureChanged() {
+		if (!entries.isEmpty()) invalidate();
+	}
+
+	/** How long a patch takes to fade in when its first picture arrives (it never pops in). */
+	private static final long FADE_IN_MS = 240;
+
 	@Override
 	protected void onDraw(@NonNull Canvas c) {
 		VideoBackdrop src = source();
 		Bitmap f = (src != null) ? src.front : null;
 		if ((f == null) || entries.isEmpty()) return;
+		long now = SystemClock.uptimeMillis();
+		boolean again = src.crossfading();
 		for (Iterator<Entry> it = entries.values().iterator(); it.hasNext(); ) {
 			Entry e = it.next();
 			View v = e.view.get();
@@ -186,10 +205,19 @@ public class FrameBackdrop extends View {
 			}
 			float a = e.alpha * viewAlpha(v);
 			if (a <= 0f) continue;
+			if (e.pictureSince == 0) e.pictureSince = now;
+			float t = Math.min(1f, (now - e.pictureSince) / (float) FADE_IN_MS);
+			if (t < 1f) again = true;
+			a *= t * t * (3f - 2f * t);
 			getLocationInWindow(loc);
 			local.set(e.rect);
 			local.offset(-loc[0], -loc[1]);
-			VideoBackdrop.drawBlurred(this, f, src.frontRect, c, local, e.radius, a, e.look, e.lens, paint);
+			src.drawBlurredPicture(this, c, local, e.radius, a, e.look, e.lens, paint);
+		}
+		// Frames only while something fades (a patch coming in, a snapshot crossfading); the surfaces' tints follow.
+		if (again) {
+			postInvalidateOnAnimation();
+			Glass.invalidateSurfaces();
 		}
 	}
 

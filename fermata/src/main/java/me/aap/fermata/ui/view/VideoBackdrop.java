@@ -42,11 +42,19 @@ import me.aap.fermata.util.DiagnosticLog;
  * fullscreen YouTube. Nothing in the playback is touched; with the switch off nothing here runs.
  */
 public final class VideoBackdrop {
-	/** Copies a second: from a surface while playing / paused; window snapshots while playing / paused. */
+	/**
+	 * Copies from a surface while some glass shows it, playing / paused, and while none does (a picture kept ready for
+	 * when one comes); window snapshots while playing / paused.
+	 */
 	private static final long PLAY_MS = 66;
 	private static final long PAUSE_MS = 500;
-	private static final long SNAP_PLAY_MS = 350;
-	private static final long SNAP_PAUSE_MS = 1500;
+	private static final long IDLE_MS = 1000;
+	private static final long SNAP_PLAY_MS = 1000;
+	private static final long SNAP_PAUSE_MS = 2000;
+	/** How long after the copy was last drawn under some glass it still counts as in use. */
+	private static final long USE_MS = 1500;
+	/** A new snapshot fades in over the one before for this long (live copies follow each other too fast for it). */
+	static final long CROSSFADE_MS = 320;
 	/** How long the controls must have been gone before a window snapshot (their fade out). */
 	private static final long QUIET_MS = 350;
 	private static final List<VideoBackdrop> running = new ArrayList<>();
@@ -57,6 +65,13 @@ public final class VideoBackdrop {
 	private int nextBuf;
 	@Nullable
 	Bitmap front;
+	/** The copy before {@link #front}, faded out under it for {@link #CROSSFADE_MS} after a snapshot (else null). */
+	@Nullable
+	Bitmap back;
+	final RectF backRect = new RectF();
+	long swappedAt;
+	/** The last time the copy was drawn under some glass. */
+	private long usedAt;
 	/** Where {@link #front} is, in window coordinates. */
 	final RectF frontRect = new RectF();
 	private boolean on;
@@ -91,6 +106,11 @@ public final class VideoBackdrop {
 	private static boolean wanted(VideoView v) {
 		if (!Glass.webBlur() || !Glass.wantsSource() || !v.isAttachedToWindow() || !v.isShown() || (v.getWidth() <= 0))
 			return false;
+		// The power saver keeps the glass to its tint over video: no copies at all.
+		try {
+			if (me.aap.fermata.addon.power.PowerSaver.get().isActive()) return false;
+		} catch (Throwable ignore) {
+		}
 		VideoBackdrop b = v.backdrop;
 		return (surfaceOf(v, b) != null) || snapshots(v);
 	}
@@ -150,7 +170,17 @@ public final class VideoBackdrop {
 		running.remove(this);
 		handler.removeCallbacks(tick);
 		front = null;
+		back = null;
 		Glass.invalidateSurfaces();
+	}
+
+	/** The copy was drawn under some glass: live copies run at full rate for a while. */
+	void used() {
+		usedAt = android.os.SystemClock.uptimeMillis();
+	}
+
+	private boolean inUse() {
+		return android.os.SystemClock.uptimeMillis() - usedAt < USE_MS;
 	}
 
 	private final Runnable tick = new Runnable() {
@@ -163,7 +193,10 @@ public final class VideoBackdrop {
 			}
 			boolean live = copy();
 			boolean playing = playing();
-			handler.postDelayed(this, live ? (playing ? PLAY_MS : PAUSE_MS) : (playing ? SNAP_PLAY_MS : SNAP_PAUSE_MS));
+			// Live copies at full rate only while some glass shows them; else one a second, so the first frame of glass
+			// that comes up has a recent picture and the full rate picks up straight after.
+			long next = live ? (!inUse() ? IDLE_MS : playing ? PLAY_MS : PAUSE_MS) : (playing ? SNAP_PLAY_MS : SNAP_PAUSE_MS);
+			handler.postDelayed(this, next);
 		}
 	};
 
@@ -228,7 +261,7 @@ public final class VideoBackdrop {
 					return;
 				}
 				blackCopies = 0;
-				shown(target, where);
+				shown(target, where, false);
 			}, handler);
 		} catch (Throwable ex) {
 			copying = false;
@@ -252,20 +285,66 @@ public final class VideoBackdrop {
 				// The controls may have come up while the copy was made: only a copy taken in quiet is kept.
 				FrameBackdrop fb = FrameBackdrop.of(view);
 				if ((fb != null) && (fb.quietMs() < QUIET_MS)) return;
-				shown(target, where);
+				shown(target, where, true);
 			}, handler);
 		} catch (Throwable ex) {
 			copying = false;
 		}
 	}
 
-	private void shown(Bitmap target, RectF where) {
+	private void shown(Bitmap target, RectF where, boolean crossfade) {
+		Bitmap old = front;
+		if (crossfade && (old != null) && (old != target)) {
+			back = old;
+			backRect.set(frontRect);
+			swappedAt = android.os.SystemClock.uptimeMillis();
+		} else {
+			back = null;
+		}
 		front = target;
 		frontRect.set(where);
+		// Three buffers: the one shown, the one fading out under it, and the next to copy into.
 		nextBuf = (nextBuf + 1) % bufs.length;
-		// The surfaces showing the picture blurred, and the patches and buttons in the video view, are drawn again.
+		// Only the glass is drawn again (the surfaces and the patches in the video view), never the video or the page.
 		Glass.invalidateSurfaces();
-		Glass.invalidateTree(view);
+		FrameBackdrop fb = FrameBackdrop.of(view);
+		if (fb != null) fb.pictureChanged();
+	}
+
+	/**
+	 * Draws the copy (and, while a new snapshot fades in, the one before it under it) at its place, relative to the
+	 * content origin of a lens: one blurred picture whatever the crossfade.
+	 */
+	void drawPicture(Canvas c, float dx, float dy, Paint paint) {
+		Bitmap f = front;
+		if (f == null) return;
+		Bitmap b = back;
+		float t = 1f;
+		if (b != null) {
+			t = (android.os.SystemClock.uptimeMillis() - swappedAt) / (float) CROSSFADE_MS;
+			if (t >= 1f) {
+				back = null;
+				t = 1f;
+			}
+		}
+		int a = paint.getAlpha();
+		if ((b != null) && (t < 1f)) {
+			dst.set(backRect);
+			dst.offset(dx, dy);
+			paint.setAlpha(255);
+			c.drawBitmap(b, null, dst, paint);
+		}
+		dst.set(frontRect);
+		dst.offset(dx, dy);
+		// Smoothstep: the new picture eases in and settles.
+		paint.setAlpha(Math.round(255 * t * t * (3f - 2f * t)));
+		c.drawBitmap(f, null, dst, paint);
+		paint.setAlpha(a);
+	}
+
+	/** Whether a snapshot is still fading in over the one before. */
+	boolean crossfading() {
+		return (back != null) && (android.os.SystemClock.uptimeMillis() - swappedAt < CROSSFADE_MS);
 	}
 
 	/** Nearly black at nine points across the picture. */
@@ -317,6 +396,7 @@ public final class VideoBackdrop {
 		for (VideoBackdrop b : running) {
 			Bitmap f = b.front;
 			if ((f == null) || !b.view.isShown()) continue;
+			b.used();
 			b.dst.set(b.frontRect);
 			b.dst.offset(-o[0], -o[1]);
 			c.drawBitmap(f, null, b.dst, b.under);
@@ -338,7 +418,28 @@ public final class VideoBackdrop {
 		VideoBackdrop b = vv.backdrop;
 		Bitmap f = b.front;
 		if (f == null) return false;
+		b.used();
 		return drawBlurred(self, f, b.frontRect, c, r, radius, alpha, look, slot, b.plain);
+	}
+
+	/** Draws this copy (crossfading, see {@link #drawPicture}) blurred under {@code r} of {@code self}. */
+	boolean drawBlurredPicture(View self, Canvas c, RectF r, float radius, float alpha, Glass.Look look, GlassLens[] slot,
+														 Paint paint) {
+		if (!Glass.realBlur() || (front == null)) return false;
+		used();
+		return drawPicture31(self, c, r, radius, alpha, look, slot, paint);
+	}
+
+	@androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
+	private boolean drawPicture31(View self, Canvas c, RectF r, float radius, float alpha, Glass.Look look,
+																GlassLens[] slot, Paint paint) {
+		int[] me = new int[2];
+		self.getLocationInWindow(me);
+		float dx = -me[0];
+		float dy = -me[1];
+		if (slot[0] == null) slot[0] = new GlassLens();
+		return slot[0].draw(c, rc -> drawPicture(rc, dx, dy, paint), 0, 0, r, radius, alpha, look,
+				self.getResources().getDisplayMetrics().density);
 	}
 
 	/** Draws {@code f} (at {@code where}, window coordinates) blurred under {@code r} of {@code self}. */

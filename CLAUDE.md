@@ -1127,6 +1127,14 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
   fullscreen YouTube: bars, floating buttons, menus, dialogs *and the video buttons* (`Glass.videoButton` now reports to it). Every surface
   over the video is noted even before a picture exists, which is what keeps snapshots from catching the controls.
 
+- **Cost kept low** (`VideoBackdrop`): live copies run at 15/s only while some glass actually drew the copy in the last 1.5 s
+  (`used()`, from `drawUnder`, `drawBehindButton` and `FrameBackdrop`), else once a second so a picture is ready; snapshots once a second
+  (2 s paused); none with the power saver on. After a copy only the glass is redrawn (`Glass.invalidateSurfaces` + `FrameBackdrop#pictureChanged`;
+  the video buttons register as surfaces), never the video view: the old `invalidateTree(view)` made Chrome repaint the page every copy.
+- **Nothing pops**: a new snapshot crossfades over the previous one for 320 ms inside the same lens (`drawPicture`, three buffers: shown,
+  fading out, being copied into); a patch whose first picture arrives fades in over 240 ms, and the surface's tint and grain blend from the
+  frosted look to the thin glass look with it (`Glass.setBlurAmount`, read once by the next `paintOver(.., blurred=true)`).
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

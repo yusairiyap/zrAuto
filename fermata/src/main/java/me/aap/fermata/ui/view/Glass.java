@@ -346,6 +346,16 @@ public final class Glass {
 		FrameBackdrop.clear(slot);
 	}
 
+	private static float blurAmount = 1f;
+
+	/**
+	 * How much of the blur reported by the next {@code paintOver(.., blurred=true)} is really there (0 to 1), set by the
+	 * code that drew it right before; used once, then back to 1.
+	 */
+	static void setBlurAmount(float a) {
+		blurAmount = Math.max(0f, Math.min(1f, a));
+	}
+
 	/** Whether a change of {@code prefs} changes the look. */
 	public static boolean touches(List<PreferenceStore.Pref<?>> prefs) {
 		return prefs.contains(MainActivityPrefs.GLASS_STYLE) || prefs.contains(MainActivityPrefs.GLASS_BLUR) ||
@@ -432,6 +442,8 @@ public final class Glass {
 			Look l = look();
 			// Over fullscreen YouTube the patch under the button is drawn by the FrameBackdrop below it; over local video
 			// the button draws the copied picture itself.
+			// Drawn again with the other glass when the copied picture changes.
+			register(self);
 			boolean blurred = webBlur() && (FrameBackdrop.cover(self, lens, rect, r, a, l) ||
 					VideoBackdrop.drawBehindButton(self, c, rect, r, a, l, lens));
 			paintOver(c, rect, r, color, a, l.rimFor(RIM_VIDEO), false, self.getResources().getDisplayMetrics().density,
@@ -564,12 +576,17 @@ public final class Glass {
 		paint.setShader(null);
 		paint.setStyle(Paint.Style.FILL);
 		paint.clearShadowLayer();
-		int ta = blurred ? l.tintAlpha() : Math.max(115, l.tintAlpha());
+		// How much blur is really under it: a patch that is still fading in (FrameBackdrop) gives less than 1, and the
+		// tint and grain blend from the frosted look to the thin glass look with it instead of jumping.
+		float b = blurred ? blurAmount : 0f;
+		blurAmount = 1f;
+		int ta = Math.round(Math.max(115, l.tintAlpha()) + (l.tintAlpha() - Math.max(115, l.tintAlpha())) * b);
 		paint.setColor((rgb & 0x00FFFFFF) | (Math.round(ta * alpha) << 24));
 		c.drawRoundRect(r, radius, radius, paint);
 		// With nothing blurred under it (a page that can't blur itself, below Android 12) the frosted look is faked:
 		// the thicker tint above and always some grain, so what shows through reads as frosted, not see-through.
-		float grain = blurred ? l.grain : Math.max(l.grain, 0.7f * amount());
+		float frosted = Math.max(l.grain, 0.7f * amount());
+		float grain = frosted + (l.grain - frosted) * b;
 		if (grain > 0f) {
 			paint.setColor(0xFFFFFFFF);
 			paint.setShader(grainShader());
