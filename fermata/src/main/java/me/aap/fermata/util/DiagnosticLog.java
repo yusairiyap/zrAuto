@@ -219,19 +219,6 @@ public final class DiagnosticLog {
 	 * itself throw -- that would replace the real crash with this method's, and could still leave
 	 * the real one unreported if it happens before the chained previous handler runs.
 	 */
-	/**
-	 * A line about how the app is starting, always kept (even with the log off) in the Downloads folder as {@code zrAuto_start_log.txt}
-	 * (see {@link StartLog}), which a file manager can read when the screen stays blank.
-	 */
-	public static void startup(String msg) {
-		try {
-			log("STATE", msg);
-			StartLog.add(msg);
-		} catch (Throwable ignore) {
-			// Best effort only.
-		}
-	}
-
 	public static void logCrash(Thread thread, Throwable err) {
 		try {
 			StringBuilder sb = new StringBuilder(256);
@@ -248,8 +235,6 @@ public final class DiagnosticLog {
 				entries.addLast(line);
 			}
 			appendToFile(line);
-			// Also in the Downloads folder (see StartLog): the app that crashes at start can't show its own log.
-			StartLog.addNow("CRASH thread=" + thread.getName() + "\n" + android.util.Log.getStackTraceString(err));
 		} catch (Throwable ignore) {
 			// See the doc comment: this must never add a second failure on top of the real one.
 		}

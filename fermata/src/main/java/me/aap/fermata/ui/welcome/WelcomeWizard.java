@@ -184,7 +184,6 @@ public final class WelcomeWizard {
 		MainActivityPrefs p = a.getPrefs();
 		boolean done = p.getBooleanPref(DONE);
 		boolean fresh = isFreshInstall(a.getContext());
-		DiagnosticLog.startup("wizard check: attempt=" + attempt + " done=" + done + " open=" + isOpen() + " fresh=" + fresh);
 		if (done || isOpen() || a.isCarActivity()) {
 			runAfter();
 			return;
@@ -197,7 +196,6 @@ public final class WelcomeWizard {
 		show(a, true);
 		if (!isOpen()) {
 			// No view to put it over yet (the window is not laid out): tried again very soon, a good few times, rather than never.
-			DiagnosticLog.startup("wizard not shown, attempt " + attempt);
 			if (attempt < 40) a.postDelayed(() -> maybeShow(a, attempt + 1), 150);
 			else runAfter();
 		}
@@ -263,7 +261,6 @@ public final class WelcomeWizard {
 		WelcomeWizard w = new WelcomeWizard(a);
 		open = w;
 		w.build(instant);
-		DiagnosticLog.startup("wizard shown");
 	}
 
 	/**
@@ -1072,7 +1069,6 @@ public final class WelcomeWizard {
 
 	/** The restore went through: the wizard ends on the page that says the app restarts. */
 	private void showRestored() {
-		DiagnosticLog.startup("wizard: backup restored");
 		restored = true;
 		stopKeySimulator();
 		closePicker();

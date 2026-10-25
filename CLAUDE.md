@@ -1174,16 +1174,16 @@ translated strings across many locales, **ask the user before proceeding** rathe
 - **Download picker** shows sizes per quality (`DownloadsAddon#estimateSizes`, one player request per video,
   up to 10 videos).
 
-## Blank screen on a clean install (cause found, waiting for confirmation on a device)
+## Blank screen on a clean install (solved)
 
-Symptom (phone, app data cleared or a fresh install): bars but no content, no welcome wizard, Diagnostic log
-unreachable. The start log (`util/StartLog`, `Downloads/zrAuto_start_log.txt`, written only until `WELCOME_DONE`;
-crashes always) showed the first-tab callback throwing a `NullPointerException` inside `HomeScreen.<init>`:
-`NavBarMediator#getLayout` called `Arrays.asList(null)`, because `NAV_BAR_*` string-array prefs (`Pref.sa(..., null)`)
-are null until saved, and the Pages widget (`PagesWidget#fill` -> `NavBarMediator.getTabs`) is in Home's default set.
-The exception escaped into a future's completion handler, so nothing was shown and nothing crashed visibly. Fixed by
-treating a null saved layout as empty. The lesson: a string-array pref read can be null; never pass it to
-`Arrays.asList`. Once a fresh start is confirmed good, delete `StartLog` and the `DiagnosticLog.startup` breadcrumbs.
+Symptom (phone, app data cleared or a fresh install): bars but no content, no welcome wizard. A temporary start log written to
+Downloads showed the first-tab callback throwing a `NullPointerException` inside `HomeScreen.<init>`: `NavBarMediator#getLayout`
+called `Arrays.asList(null)`, because `NAV_BAR_*` string-array prefs (`Pref.sa(..., null)`) are null until saved, and the Pages
+widget (`PagesWidget#fill` -> `NavBarMediator.getTabs`) is in Home's default set. The exception escaped into a future's completion
+handler, so nothing was shown and nothing crashed visibly. Fixed by treating a null saved layout as empty; confirmed on the device,
+and the start log is gone. The lesson: a string-array pref read can be null; never pass it to `Arrays.asList`. And a failure inside a
+future's completion handler is silent: if a start path shows nothing, look for an exception swallowed there first (the temporary
+fix for that was a log written to a file a file manager can reach, e.g. via MediaStore Downloads).
 
 ## Open issue: Back closes the YouTube comments, but the video pauses (not solved)
 
