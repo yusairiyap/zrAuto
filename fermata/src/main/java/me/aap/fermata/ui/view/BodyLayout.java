@@ -215,9 +215,9 @@ public class BodyLayout extends SplitLayout
 	 * frame is asked for: only frames that happen anyway redraw them).
 	 */
 	private void syncGlass() {
-		// Not over fullscreen video (a SurfaceView or a web page, neither of which the recording can show), and never
-		// with a WebView in the tab: drawing a WebView a second time flickered or crashed (see PageBlur for web pages).
-		boolean want = Glass.realBlur() && Glass.wantsSource() && (getMode() != Mode.FRAME);
+		// Only in the tab mode (FRAME): never over fullscreen video (a SurfaceView or a web page, neither of which the recording
+		// can show), and never with a WebView in the tab: drawing a WebView a second time flickered or crashed (see PageBlur).
+		boolean want = Glass.realBlur() && Glass.wantsSource() && (getMode() == Mode.FRAME);
 		if (want) {
 			long now = SystemClock.uptimeMillis();
 			MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
