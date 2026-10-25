@@ -235,6 +235,18 @@ public final class DiagnosticLog {
 				entries.addLast(line);
 			}
 			appendToFile(line);
+			// Also where a file manager can reach it (Android/data/<app>/files/last_crash.txt): the app that crashes at
+			// start can't show its own log.
+			try {
+				File dir = FermataApplication.get().getExternalFilesDir(null);
+				if (dir != null) {
+					try (java.io.FileWriter w = new java.io.FileWriter(new File(dir, "last_crash.txt"), false)) {
+						w.write(line);
+					}
+				}
+			} catch (Throwable ignore2) {
+				// Best effort only.
+			}
 		} catch (Throwable ignore) {
 			// See the doc comment: this must never add a second failure on top of the real one.
 		}

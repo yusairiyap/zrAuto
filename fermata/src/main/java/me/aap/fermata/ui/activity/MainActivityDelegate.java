@@ -473,14 +473,9 @@ public class MainActivityDelegate extends ActivityDelegate
 		}
 
 		String[] perms = getRequiredPermissions();
-		// A fresh install goes through the welcome wizard first: the permission dialogs (one of them reads as a location
-		// permission) came up over a blank screen before anything was shown. They are asked when the wizard closes.
-		boolean wizardFirst = !isCarActivity() && me.aap.fermata.ui.welcome.WelcomeWizard.isDue(this);
-		if (wizardFirst) {
-			me.aap.fermata.ui.welcome.WelcomeWizard.afterWizard(() -> a.checkPermissions(perms));
-			postDelayed(() -> me.aap.fermata.ui.welcome.WelcomeWizard.maybeShow(this), 1000);
-		}
-		(wizardFirst ? completed(new int[0]) : a.checkPermissions(perms)).onCompletion((result, fail) -> {
+		// The permissions are asked first, as ever (the library needs storage before anything is listed: asking only
+		// when the welcome wizard closed left the app starting without it, and it crashed); the wizard follows.
+		a.checkPermissions(perms).onCompletion((result, fail) -> {
 			if (fail != null) {
 				if (!isCarActivityNotMirror()) Log.e(fail);
 			} else {
@@ -495,7 +490,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			}
 
 			// Just installed: the welcome and setup wizard, once the first screen has settled.
-			if (!isCarActivity() && !wizardFirst) {
+			if (!isCarActivity()) {
 				postDelayed(() -> me.aap.fermata.ui.welcome.WelcomeWizard.maybeShow(this), 1200);
 			}
 

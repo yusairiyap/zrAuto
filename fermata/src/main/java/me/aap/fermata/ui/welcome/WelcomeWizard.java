@@ -688,7 +688,39 @@ public final class WelcomeWizard {
 
 		@Override
 		public boolean onTouchEvent(MotionEvent e) {
-			if (!dragging) return super.onTouchEvent(e);
+			if (!dragging) {
+				// Nothing under the finger took the touch (the picture on the left): the area is the target itself, and the
+				// moves come straight here, never through onInterceptTouchEvent, so the swipe starts here too.
+				if (animating || (picker != null)) return super.onTouchEvent(e);
+				switch (e.getActionMasked()) {
+					case MotionEvent.ACTION_DOWN -> {
+						downX = e.getX();
+						downY = e.getY();
+						if (velocity != null) velocity.recycle();
+						velocity = android.view.VelocityTracker.obtain();
+						velocity.addMovement(e);
+						return true;
+					}
+					case MotionEvent.ACTION_MOVE -> {
+						if (velocity == null) return false;
+						velocity.addMovement(e);
+						float mx = e.getX() - downX;
+						float my = e.getY() - downY;
+						if ((Math.abs(mx) > slop) && (Math.abs(mx) > Math.abs(my) * 1.3f)) {
+							dragging = true;
+							if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
+							drag(mx);
+						}
+						return true;
+					}
+					case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+						if (velocity != null) velocity.recycle();
+						velocity = null;
+						return true;
+					}
+				}
+				return super.onTouchEvent(e);
+			}
 			if (velocity != null) velocity.addMovement(e);
 			float dx = e.getX() - downX;
 			switch (e.getActionMasked()) {
