@@ -211,6 +211,9 @@ public enum Action {
 	})),
 	// The YouTube video that plays, shared as its youtu.be link (see YtShare).
 	SHARE_VIDEO(R.string.action_share_video, a(me.aap.fermata.ytdl.YtShare::shareCurrent)),
+	// Covers blurred to their colours only, or shown again (see CoverHide). Persisted by ordinal: new
+	// actions only ever go at the end.
+	COVER_HIDE(R.string.action_cover_hide, a(me.aap.fermata.ui.view.CoverHide::toggle)),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

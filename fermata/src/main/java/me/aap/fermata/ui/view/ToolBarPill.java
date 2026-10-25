@@ -49,7 +49,8 @@ public final class ToolBarPill {
 						Math.round(r.bottom), radius(r, maxRadius));
 				// A soft shadow, like the one FloatingBarsView paints under the nav bar's pill -- none
 				// under a see-through pill (see setTranslucent()), where it would show as a smudge.
-				boolean clear = (view.getBackground() instanceof PillDrawable d) && (d.translucent || d.merged);
+				boolean clear = Glass.onBars() ||
+						((view.getBackground() instanceof PillDrawable d) && (d.translucent || d.merged));
 				outline.setAlpha(clear ? 0f : 0.35f);
 			}
 		});
@@ -130,12 +131,26 @@ public final class ToolBarPill {
 			Rect b = getBounds();
 			pillRect(view, inner, b.left, b.top, b.right, b.bottom, rect);
 			if (rect.isEmpty()) return;
+			float radius = radius(rect, maxRadius);
+			if (Glass.onBars()) {
+				// Glass: the content behind it blurred (Android 12+), under the bar's colour as a tint.
+				Glass.Look l = Glass.look();
+				float a = alpha / 255f;
+				if (Glass.realBlur()) GlassLens.behindBars(view, canvas, rect, radius, a, l, lens);
+				Glass.paintOver(canvas, rect, radius, color, a, l,
+						androidx.core.graphics.ColorUtils.calculateLuminance(color | 0xFF000000) > 0.5,
+						view.getResources().getDisplayMetrics().density, glassPaint);
+				return;
+			}
 			paint.setColor(color);
 			int a = translucent ? 0x59 : Color.alpha(color);
 			paint.setAlpha(Math.round(a * (alpha / 255f)));
-			float radius = radius(rect, maxRadius);
 			canvas.drawRoundRect(rect, radius, radius, paint);
 		}
+
+		private final Paint glassPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+		// Made on first use, Android 12+ only (see Glass).
+		private final GlassLens[] lens = new GlassLens[1];
 
 		@Override
 		public void setAlpha(int alpha) {

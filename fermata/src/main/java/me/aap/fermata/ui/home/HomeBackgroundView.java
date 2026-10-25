@@ -102,6 +102,35 @@ final class HomeBackgroundView extends View {
 		bottom = new LinearGradient(0, h - edge, 0, h, v, 0x99000000 | v, Shader.TileMode.CLAMP);
 	}
 
+	/** What this layer last drew, for Home's glass cards to blur (a RenderNode; Android 12+, glass on Home). */
+	@Nullable
+	private Object glassNode;
+
+	@Override
+	public void draw(Canvas c) {
+		if (me.aap.fermata.ui.view.Glass.realBlur() && me.aap.fermata.ui.view.Glass.onHome() &&
+				c.isHardwareAccelerated()) {
+			drawGlassSource(c);
+		} else {
+			glassNode = null;
+			super.draw(c);
+		}
+	}
+
+	@androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.S)
+	private void drawGlassSource(Canvas c) {
+		if (!(glassNode instanceof android.graphics.RenderNode)) glassNode = new android.graphics.RenderNode("homeGlass");
+		me.aap.fermata.ui.view.GlassLens.recordAndDraw(c, (android.graphics.RenderNode) glassNode, getWidth(), getHeight(),
+				super::draw);
+	}
+
+	/** See {@link #draw}: null while it is not recorded. */
+	@androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.S)
+	@Nullable
+	android.graphics.RenderNode glassNode() {
+		return ((glassNode instanceof android.graphics.RenderNode n) && n.hasDisplayList()) ? n : null;
+	}
+
 	@Override
 	protected void onDraw(Canvas c) {
 		int w = getWidth();

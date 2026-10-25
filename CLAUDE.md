@@ -950,6 +950,31 @@ Never run on a device from the cloud session. The **live video** is *not* drawn 
 lives in its own tab and moving or resizing it restarts the player, so the large media widget shows the video's poster
 picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) that go to the real player.
 
+## Hide cover, UI style (glass)
+
+- **Hide cover** (`ui/view/CoverHide`, action `COVER_HIDE` at the end of the enum: FAB list, the FAB long-press Screen group,
+  All in One, key bindings; pref `COVER_HIDDEN`): covers are shown as their colours only, a 6 px copy box blurred and stretched
+  (`CoverHide.veil`, the last one cached; `applyToThumb` for list rows, uncached). The Music tab's cover, its background, the
+  swipe peek card and the queue rows follow (`MusicPlayerFragment#applyCoverHide`), with a small eye chip in the cover's top
+  right corner (a tap shows the covers again). Home's media card (`MediaWidget#setArt`) and the "cover of what plays"
+  background (`HomeNowPlayingBg`, which then ignores the blur setting) follow too.
+- **UI style** (`ui/view/Glass`, page `ui/fragment/GlassSettingsFragment`, Settings > Interface > UI style; prefs `GLASS_*`):
+  Normal (unchanged), Frosted, Clear, Acrylic; picking one writes its preset into blur / tint / saturation / grain / rim,
+  which can then be tuned; "Bars" and "Home cards" say where it goes. Previews are `GlassStylePreview` (a phone drawn in
+  code, like `HomeLayoutPreview`; the big one scrolls rows under the bars and uses the real blur).
+- **How the real-time blur works (Android 12+ only, no library)**: `BodyLayout#draw` records itself into a RenderNode
+  (`GlassLens.recordAndDraw`, the BlurView 3 `BlurTarget` idea: the screen draws that node, so nothing is drawn twice) while
+  the bars are glass; each glass surface (`ToolBarPill`'s drawable, `FloatingBarsView#drawPill`) draws it through a
+  `GlassLens`: a RenderNode the size of the surface plus a margin, holding the content node moved into place, with a blur
+  (+ saturation) `RenderEffect`, clipped to the pill. Only the surface's area is blurred, on the GPU. `BodyLayout#syncGlass`
+  (its pre-draw) invalidates the bars each frame that happens anyway, so they follow scrolling without asking for frames.
+  Home's Glass cards blur Home's own background layers instead (`HomeBackgroundView#draw` records each, `HomeScreen
+  #drawGlassBehind31`; a card can never blur the tab, which contains itself: a RenderNode cycle), redrawn from their own
+  pre-draw (`HomeWidgetView#glassSync`). A WebView must not be drawn twice in a frame, so on the YouTube / browser tabs the
+  bars get the tint only (`Glass.hasWebView`, checked twice a second). Below Android 12 glass is the tint, grain and rim
+  without blur (RenderScript is deprecated and slow). With glass on the bars the bottom fade is off and the top fade only
+  covers the status bar. **None of this has run on a device yet**: `BODY glass source on/off` is in the Diagnostic log.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

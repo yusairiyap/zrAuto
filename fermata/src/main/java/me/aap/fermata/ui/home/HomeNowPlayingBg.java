@@ -65,6 +65,18 @@ final class HomeNowPlayingBg {
 		return running;
 	}
 
+	/** Hide cover (CoverHide) turned on or off: the picture is made again, colours only or as set. */
+	void coverHideChanged() {
+		if (running) refresh(false);
+	}
+
+	/** The blur asked for, or {@link #HIDDEN} while covers are hidden (which overrides it). */
+	private int effectiveBlur() {
+		return me.aap.fermata.ui.view.CoverHide.isOn() ? HIDDEN : blur;
+	}
+
+	private static final int HIDDEN = 1000;
+
 	void setBlur(int blur) {
 		if (this.blur == blur) return;
 		this.blur = blur;
@@ -82,12 +94,13 @@ final class HomeNowPlayingBg {
 		if (!running) return;
 		PlayableItem pi = HomeArt.displayItem(a);
 		// Back on Home with the same song and blur: the picture is already there, it must not fade over itself.
-		if (HomeArt.same(pi, shown) && (shownBlur == blur) && (pi != null)) {
+		int eb = effectiveBlur();
+		if (HomeArt.same(pi, shown) && (shownBlur == eb) && (pi != null)) {
 			shown = pi;
 			return;
 		}
 		shown = pi;
-		shownBlur = blur;
+		shownBlur = eb;
 		int gen = ++generation;
 		if (pi == null) {
 			target.onCover(null, 0);
@@ -101,10 +114,11 @@ final class HomeNowPlayingBg {
 					target.onCover(null, 0);
 					return;
 				}
-				final int b = blur;
+				final int b = eb;
 				if ((bm == shownCover) && (shownCoverBlur == b)) return;
 				App.get().getExecutor().submitTask(() -> {
-					Bitmap soft = HomeBlur.blur(bm, b);
+					// Covers hidden: its colours only, whatever the blur setting says.
+					Bitmap soft = (b == HIDDEN) ? me.aap.fermata.ui.view.CoverHide.veil(bm) : HomeBlur.blur(bm, b);
 					Bitmap use = (soft != null) ? soft : bm;
 					return new Object[]{use, HomeBackground.topColor(use)};
 				}).main().onSuccess(r -> {

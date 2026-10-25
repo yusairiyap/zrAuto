@@ -2403,6 +2403,8 @@ public class MainActivityDelegate extends ActivityDelegate
 			return new me.aap.fermata.ui.fragment.PowerSettingsFragment();
 		} else if (id == R.id.home_settings_fragment) {
 			return new me.aap.fermata.ui.fragment.HomeSettingsFragment();
+		} else if (id == R.id.glass_settings_fragment) {
+			return new me.aap.fermata.ui.fragment.GlassSettingsFragment();
 		} else if (id == R.id.nav_tabs_fragment) {
 			return new me.aap.fermata.ui.fragment.NavTabsFragment();
 		} else if (id == R.id.info_overlay_fragment) {
@@ -3023,6 +3025,19 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	@Override
 	public void onPreferenceChanged(PreferenceStore store, List<PreferenceStore.Pref<?>> prefs) {
+		if (me.aap.fermata.ui.view.Glass.touches(prefs)) {
+			// The UI style (glass): read again now, whichever listener hears of it first, and every glass
+			// surface redrawn (the tool bar's shadow goes with glass too).
+			me.aap.fermata.ui.view.Glass.reset();
+			if (toolBar != null) {
+				toolBar.invalidateOutline();
+				toolBar.invalidate();
+			}
+			View fb = findViewById(R.id.floating_bars);
+			if (fb != null) fb.invalidate();
+			BodyLayout b = getBody();
+			if (b != null) b.invalidate();
+		}
 		if (MainActivityPrefs.hasThemePref(this, prefs)) {
 			recreate();
 		} else if (MainActivityPrefs.hasNavBarPosPref(this, prefs)) {

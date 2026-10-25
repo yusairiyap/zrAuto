@@ -185,7 +185,8 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 		// keeps it.
 		float navPlainA = ((nb.getVisibility() == VISIBLE) && (nb.getHeight() > 0)) ?
 				Math.max(0f, Math.min(1f, nb.getAlpha())) : 0f;
-		float newFadeA = a.isVideoMode() ? 0f : navPlainA * (1f - newGlass);
+		// Glass bars (ui/view/Glass) show the content through them: no fade under them either.
+		float newFadeA = (a.isVideoMode() || Glass.onBars()) ? 0f : navPlainA * (1f - newGlass);
 		logFade(newFadeA > 0f, a, nb, newGlass);
 		float newFadeTop = 0f;
 		if ((pos == NavBarView.POSITION_BOTTOM) && (newFadeA > 0f)) {
@@ -278,9 +279,25 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 		}
 	}
 
+	private final Paint glassPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+	// One lens per pill (the main one and the side layout's control panel), made on first use.
+	private final GlassLens[] mainLens = new GlassLens[1];
+	private final GlassLens[] auxLens = new GlassLens[1];
+
 	private void drawPill(Canvas canvas, RectF r, float alpha) {
 		if (r.isEmpty() || (alpha <= 0f)) return;
 		float radius = Math.min(maxRadius, Math.min(r.width(), r.height()) / 2f);
+		if (Glass.onBars()) {
+			// Glass: the content behind the pill blurred (Android 12+), the pill's colour as a tint over it.
+			Glass.Look l = Glass.look();
+			if (Glass.realBlur()) {
+				GlassLens.behindBars(this, canvas, r, radius, alpha, l, (r == main) ? mainLens : auxLens);
+			}
+			Glass.paintOver(canvas, r, radius, pillColor, alpha, l,
+					androidx.core.graphics.ColorUtils.calculateLuminance(pillColor | 0xFF000000) > 0.5,
+					getResources().getDisplayMetrics().density, glassPaint);
+			return;
+		}
 		pillPaint.setColor(pillColor);
 		float fill = Color.alpha(pillColor) + (GLASS_ALPHA - Color.alpha(pillColor)) * glass;
 		pillPaint.setAlpha(Math.round(fill * alpha));

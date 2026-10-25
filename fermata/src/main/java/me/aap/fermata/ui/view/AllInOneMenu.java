@@ -830,6 +830,9 @@ public final class AllInOneMenu {
 			title = ctx.getString(R.string.action_power_saver);
 			hint = ctx.getString(me.aap.fermata.addon.power.PowerSaver.get().isActive() ?
 					R.string.state_on : R.string.state_off);
+		} else if (action == Action.COVER_HIDE) {
+			title = ctx.getString(R.string.action_cover_hide);
+			hint = ctx.getString(CoverHide.isOn() ? R.string.state_on : R.string.state_off);
 		} else if (action == Action.AMBIENCE) {
 			// What is on, as the hint.
 			title = ctx.getString(R.string.action_ambience);

@@ -205,6 +205,21 @@ public interface MainActivityPrefs
 	// YouTube's captions (see ytcaptions/CaptionsHub): shown as lyrics over the Music tab's cover
 	// (the Lyrics chip), and as captions over fullscreen video (the Captions action). Off until asked.
 	Pref<BooleanSupplier> LYRICS_ON = Pref.b("LYRICS_ON", false);
+	// Covers hidden (CoverHide): the Music tab's cover, Home's media card and its now-playing background
+	// are blurred so far that only their colours show. The COVER_HIDE action toggles it.
+	Pref<BooleanSupplier> COVER_HIDDEN = Pref.b("COVER_HIDDEN", false);
+	// The UI style (ui/view/Glass, Settings > Interface > UI style): 0 the usual bars and cards, 1 frosted
+	// glass, 2 clear glass, 3 acrylic. Picking a style writes its values into the GLASS_* prefs below, which
+	// can then be tuned: blur (dp), tint (% opacity), saturation (%), grain and the rim light, and where
+	// the glass goes (the tool bar, nav bar and control panel; Home's Glass cards).
+	Pref<IntSupplier> GLASS_STYLE = Pref.i("GLASS_STYLE", 0);
+	Pref<IntSupplier> GLASS_BLUR = Pref.i("GLASS_BLUR", 22);
+	Pref<IntSupplier> GLASS_TINT = Pref.i("GLASS_TINT", 55);
+	Pref<IntSupplier> GLASS_SATURATION = Pref.i("GLASS_SATURATION", 140);
+	Pref<BooleanSupplier> GLASS_GRAIN = Pref.b("GLASS_GRAIN", true);
+	Pref<BooleanSupplier> GLASS_RIM = Pref.b("GLASS_RIM", true);
+	Pref<BooleanSupplier> GLASS_BARS = Pref.b("GLASS_BARS", true);
+	Pref<BooleanSupplier> GLASS_HOME = Pref.b("GLASS_HOME", true);
 	Pref<BooleanSupplier> CAPTIONS_ON = Pref.b("CAPTIONS_ON", false);
 	// Language code to prefer ("" = the phone's), and whether speech-recognition captions may be used
 	// when a video has no written ones.

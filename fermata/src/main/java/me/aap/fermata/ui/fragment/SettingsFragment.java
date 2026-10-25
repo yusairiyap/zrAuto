@@ -580,6 +580,7 @@ public class SettingsFragment extends MainActivityFragment
 				addAAInterface(a, aaSet);
 				aaInterfaceSet = aaSet;
 			}
+			addGlassPrefs(a, sub1);
 			addFabSettings(a, sub1, false);
 			addAllInOne(a, sub1, false);
 			addInfoOverlayPrefs(a, sub1, false);
@@ -1397,6 +1398,16 @@ public class SettingsFragment extends MainActivityFragment
 			o.icon = R.drawable.home_page;
 			o.onClick = () -> a.showFragment(R.id.home_settings_fragment, a.isCarActivity() ?
 					HomeSettingsFragment.AA : HomeSettingsFragment.PHONE);
+		});
+	}
+
+	/** Interface &gt; UI style: the glass look of the bars and Home's cards, a page of its own (GlassSettingsFragment). */
+	private static void addGlassPrefs(MainActivityDelegate a, PreferenceSet parent) {
+		parent.addButton(o -> {
+			o.title = R.string.glass_settings;
+			o.subtitle = R.string.glass_settings_sub;
+			o.icon = R.drawable.glass_style;
+			o.onClick = () -> a.showFragment(R.id.glass_settings_fragment);
 		});
 	}
 

@@ -83,6 +83,7 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.view.BarsClipping;
+import me.aap.fermata.ui.view.CoverHide;
 import me.aap.fermata.ui.view.EffectsUi;
 import me.aap.fermata.ui.view.LyricsCard;
 import me.aap.fermata.ui.view.LyricsView;
@@ -218,6 +219,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	// blur setting changes, without reloading it.
 	@Nullable
 	private Bitmap artBitmap;
+	/** Whether the cover on screen is the hidden one (CoverHide). */
+	private boolean artHidden;
+	@Nullable
+	private ImageView coverChip;
 	/** The card behind the cover showing the next / previous song's cover while it is swiped. */
 	@Nullable
 	private View peekCard;
@@ -677,8 +682,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			if (queue != null) queue.addListener(this);
 			settings().addBroadcastListener(this);
 			a.getPrefs().addBroadcastListener(this);
-			// The Info Overlay settings may have changed while this tab was away.
+			// The Info Overlay settings may have changed while this tab was away, and Hide cover too.
 			applyInfoOverlayPrefs();
+			applyCoverHide();
 			me.aap.fermata.ytcaptions.CaptionsHub.get().acquire(a, captionsListener);
 		} else {
 			me.aap.fermata.ytcaptions.CaptionsHub.get().release(captionsListener);
@@ -845,11 +851,80 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			// Through the palette: the placeholder is drawn in its colors.
 			fade(art, ContextCompat.getDrawable(palette, R.drawable.music_art_placeholder));
 			fade(bg, null);
+			updateCoverChip();
 			return;
 		}
 
-		fade(art, new BitmapDrawable(getResources(), bm));
+		artHidden = CoverHide.isOn();
+		fade(art, new BitmapDrawable(getResources(), artHidden ? CoverHide.veil(bm) : bm));
 		updateBackground(true);
+		updateCoverChip();
+	}
+
+	/**
+	 * "Hide cover" turned on or off (CoverHide): the cover, the background behind it and the queue's
+	 * pictures follow, crossfading; the eye chip on the cover says it is on.
+	 */
+	private void applyCoverHide() {
+		boolean on = CoverHide.isOn();
+		updateCoverChip();
+		if (on == artHidden) return;
+		artHidden = on;
+		Bitmap bm = artBitmap;
+		if (bm != null) {
+			crossfade(art, new BitmapDrawable(getResources(), on ? CoverHide.veil(bm) : bm));
+			updateBackground(true);
+		}
+		if (peekImg != null) {
+			Bitmap p = (peekSide < 0) ? peekPrev : (peekSide > 0) ? peekNext : null;
+			if (p != null) peekImg.setImageBitmap(CoverHide.apply(p));
+		}
+		if (adapter != null) adapter.notifyDataSetChanged();
+	}
+
+	/**
+	 * The small eye chip in the cover's top right corner while covers are hidden; a tap shows them
+	 * again. Made on first use, only touched when its state changes.
+	 */
+	private void updateCoverChip() {
+		boolean on = CoverHide.isOn();
+		if (coverChip == null) {
+			if (!on || (getView() == null)) return;
+			ViewGroup card = getView().findViewById(R.id.music_art_card);
+			if (card == null) return;
+			ImageView c = new ImageView(requireContext());
+			int p = Math.round(6 * getResources().getDisplayMetrics().density);
+			c.setPadding(p, p, p, p);
+			c.setImageResource(R.drawable.cover_hidden);
+			c.setImageTintList(android.content.res.ColorStateList.valueOf(0xFFFFFFFF));
+			android.graphics.drawable.GradientDrawable pill = new android.graphics.drawable.GradientDrawable();
+			pill.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+			pill.setColor(0x66000000);
+			c.setBackground(pill);
+			c.setContentDescription(getString(R.string.cover_hidden_chip));
+			c.setOnClickListener(v -> CoverHide.toggle(getActivityDelegate()));
+			int s = Math.round(30 * getResources().getDisplayMetrics().density);
+			int m = Math.round(10 * getResources().getDisplayMetrics().density);
+			FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(s, s, Gravity.TOP | Gravity.END);
+			lp.setMargins(m, m, m, m);
+			card.addView(c, lp);
+			c.setVisibility(View.GONE);
+			coverChip = c;
+		}
+		boolean shown = coverChip.getVisibility() == View.VISIBLE;
+		if (shown == on) return;
+		coverChip.animate().cancel();
+		if (on) {
+			coverChip.setVisibility(View.VISIBLE);
+			coverChip.setAlpha(0f);
+			coverChip.setScaleX(0.6f);
+			coverChip.setScaleY(0.6f);
+			coverChip.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(220)
+					.setInterpolator(new OvershootInterpolator(1.4f)).start();
+		} else {
+			coverChip.animate().alpha(0f).scaleX(0.6f).scaleY(0.6f).setDuration(160)
+					.withEndAction(() -> coverChip.setVisibility(View.GONE)).start();
+		}
 	}
 
 	private static PreferenceStore settings() {
@@ -860,7 +935,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	private void updateBackground(boolean fade) {
 		Bitmap bm = artBitmap;
 		if ((bm == null) || (bg == null)) return;
-		Bitmap blurred = blur(bm, settings().getIntPref(MusicAddon.BG_BLUR));
+		// Covers hidden: the background is the cover's colours only too, whatever the blur setting.
+		Bitmap blurred = CoverHide.isOn() ? CoverHide.veil(bm) : blur(bm, settings().getIntPref(MusicAddon.BG_BLUR));
 		Drawable d = (blurred != null) ? new BitmapDrawable(getResources(), blurred) : null;
 		if (fade) fade(bg, d);
 		else bg.setImageDrawable(d);
@@ -881,6 +957,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			applyInfoOverlayPrefs();
 			return;
 		}
+		if (prefs.contains(MainActivityPrefs.COVER_HIDDEN)) applyCoverHide();
 		if (prefs.contains(MusicAddon.BG_BLUR)) updateBackground(false);
 		if (prefs.contains(MusicAddon.BG_ZOOM)) updateZoom();
 	}
@@ -1646,12 +1723,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		peekArt(prev).main().onSuccess(bm -> {
 			if (peekFor != i) return;
 			peekPrev = bm;
-			if ((peekSide < 0) && (bm != null) && (peekImg != null)) peekImg.setImageBitmap(bm);
+			if ((peekSide < 0) && (bm != null) && (peekImg != null)) peekImg.setImageBitmap(CoverHide.apply(bm));
 		});
 		peekArt(next).main().onSuccess(bm -> {
 			if (peekFor != i) return;
 			peekNext = bm;
-			if ((peekSide > 0) && (bm != null) && (peekImg != null)) peekImg.setImageBitmap(bm);
+			if ((peekSide > 0) && (bm != null) && (peekImg != null)) peekImg.setImageBitmap(CoverHide.apply(bm));
 		});
 	}
 
@@ -1691,7 +1768,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 						// The card behind becomes the cover: the cover takes its picture and place at
 						// once, the real one crossfades in when loaded (setArt).
 						if (peek != null) {
-							art.setImageDrawable(new BitmapDrawable(getResources(), peek));
+							art.setImageDrawable(new BitmapDrawable(getResources(), CoverHide.apply(peek)));
 							shownArt = null;
 						}
 						v.setTranslationX(0f);
@@ -2805,20 +2882,20 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 
 			if (uri != null) {
 				lib.getBitmap(uri, true, true).main().onSuccess(bm -> {
-					if ((track == t) && (bm != null)) art.setImageBitmap(cropLetterbox(bm));
+					if ((track == t) && (bm != null)) art.setImageBitmap(CoverHide.applyToThumb(cropLetterbox(bm)));
 				});
 			} else {
 				t.getMediaData().main().onSuccess(md -> {
 					if (track != t) return;
 					Bitmap bm = md.getBitmap(METADATA_KEY_ALBUM_ART);
 					if (bm != null) {
-						art.setImageBitmap(bm);
+						art.setImageBitmap(CoverHide.applyToThumb(bm));
 						return;
 					}
 					String u = md.getString(METADATA_KEY_ALBUM_ART_URI);
 					if (u == null) return;
 					lib.getBitmap(u, true, true).main().onSuccess(b -> {
-						if ((track == t) && (b != null)) art.setImageBitmap(b);
+						if ((track == t) && (b != null)) art.setImageBitmap(CoverHide.applyToThumb(b));
 					});
 					if (subtitle.getText().length() == 0) {
 						String ar = md.getString(METADATA_KEY_ARTIST);

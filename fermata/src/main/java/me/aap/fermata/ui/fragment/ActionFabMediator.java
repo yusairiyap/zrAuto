@@ -46,7 +46,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 			Action.DOWNLOADS_PAUSE_RESUME, Action.ALL_IN_ONE, Action.AUDIO_EFFECTS, Action.SLEEP_TIMER,
 			Action.QUALITY, Action.YOUTUBE_ALTERNATIVES, Action.YOUTUBE_COMMENTS, Action.LYRICS,
 			Action.POWER_USAGE, Action.POWER_SAVER, Action.AMBIENCE, Action.AMBIENCE_TOGGLE,
-			Action.SETTINGS, Action.SHARE_VIDEO);
+			Action.SETTINGS, Action.SHARE_VIDEO, Action.COVER_HIDE);
 
 	private final Pref<IntSupplier> actionPref;
 	@Nullable
@@ -126,7 +126,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 	private final me.aap.utils.pref.PreferenceStore.Listener switchListener = (store, prefs) -> {
 		FloatingButton fb = fab;
 		if ((fb != null) && (prefs.contains(MainActivityPrefs.LYRICS_ON) ||
-				prefs.contains(MainActivityPrefs.CAPTIONS_ON))) {
+				prefs.contains(MainActivityPrefs.CAPTIONS_ON) || prefs.contains(MainActivityPrefs.COVER_HIDDEN))) {
 			updateIcon(fb);
 		}
 	};
@@ -200,6 +200,8 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		if (action == Action.POWER_USAGE) return R.drawable.power_usage;
 		if (action == Action.POWER_SAVER) return R.drawable.power_saver;
 		if (action == Action.SHARE_VIDEO) return R.drawable.share;
+		if (action == Action.COVER_HIDE) return me.aap.fermata.ui.view.CoverHide.isOn() ?
+				R.drawable.cover_hidden : R.drawable.visibility;
 		if ((action == Action.AMBIENCE) || (action == Action.AMBIENCE_TOGGLE)) return R.drawable.ambience;
 		if (action == Action.OPEN_HOME) return R.drawable.home_page;
 		if (action == Action.OPEN_FAVORITES) return R.drawable.favorite_filled;
@@ -285,6 +287,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 						addAction(a, fb, sb, Action.PRIVATE_MODE_TOGGLE, 1);
 						addSettings(a, sb, R.id.private_mode_settings, R.drawable.private_mode,
 								R.string.private_mode_settings, SettingsFragment.SHOW_PRIVATE_MODE_SETTINGS);
+						addAction(a, fb, sb, Action.COVER_HIDE, 2);
 					});
 			category(a, fb, b, R.id.fab_cat_library, R.drawable.favorite, R.string.fab_cat_library,
 					sb -> {

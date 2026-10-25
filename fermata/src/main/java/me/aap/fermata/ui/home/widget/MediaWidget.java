@@ -476,6 +476,7 @@ final class MediaWidget extends HomeWidgetView {
 		a.getMediaSessionCallback().addBroadcastListener(stateListener);
 		a.getMediaServiceBinder().addBroadcastListener(itemListener);
 		BufferingIndicator.addListener(bufferingListener);
+		a.getPrefs().addBroadcastListener(coverHideListener);
 		syncItem();
 		syncState();
 	}
@@ -486,6 +487,7 @@ final class MediaWidget extends HomeWidgetView {
 		a.getMediaSessionCallback().removeBroadcastListener(stateListener);
 		a.getMediaServiceBinder().removeBroadcastListener(itemListener);
 		BufferingIndicator.removeListener(bufferingListener);
+		a.getPrefs().removeBroadcastListener(coverHideListener);
 		removeCallbacks(ticker);
 	}
 
@@ -611,13 +613,24 @@ final class MediaWidget extends HomeWidgetView {
 		artBusy.setVisibility(GONE);
 	}
 
+	/** Hide cover (CoverHide) turned on or off while the card is up: the cover shown again, as it now should be. */
+	private final me.aap.utils.pref.PreferenceStore.Listener coverHideListener = (store, prefs) -> {
+		if (prefs.contains(me.aap.fermata.ui.activity.MainActivityPrefs.COVER_HIDDEN) && (shownArt != null)) {
+			setArt(shownArt);
+		}
+	};
+	/** Whether the cover on screen is the hidden one (colours only). */
+	private boolean artHidden;
+
 	/** Shows the cover, or the card's own colours when there is none; the old one fades into it. */
 	private void setArt(@Nullable Bitmap bm) {
 		hasArt = bm != null;
 		setBusy(false);
+		boolean hide = me.aap.fermata.ui.view.CoverHide.isOn();
 		// The same cover again (a seek asks for it again): nothing to fade.
-		if ((bm != null) && (bm == shownArt)) return;
+		if ((bm != null) && (bm == shownArt) && (hide == artHidden)) return;
 		shownArt = bm;
+		artHidden = hide;
 		if (bm == null) {
 			GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
 					ownBackgroundDark() ?
@@ -635,12 +648,15 @@ final class MediaWidget extends HomeWidgetView {
 		int sh = Math.max(8, Math.round(sw * (float) bm.getHeight() / bm.getWidth()));
 		Bitmap small = Bitmap.createScaledBitmap(bm, sw, sh, true);
 		Bitmap soft = HomeBlur.blur(small, 70);
-		Drawable d = new BitmapDrawable(getResources(), (soft != null) ? soft : small);
+		Drawable d = new BitmapDrawable(getResources(), hide ? me.aap.fermata.ui.view.CoverHide.veil(bm) :
+				(soft != null) ? soft : small);
 		wash.set(d);
-		art.set(new BitmapDrawable(getResources(), bm));
+		// Covers hidden: the cover's colours only, on the card and in the thumbnail.
+		Bitmap shownBm = hide ? me.aap.fermata.ui.view.CoverHide.veil(bm) : bm;
+		art.set(new BitmapDrawable(getResources(), shownBm));
 		thumb.tint(0);
 		thumb.setIcon(false);
-		thumb.set(new BitmapDrawable(getResources(), bm));
+		thumb.set(new BitmapDrawable(getResources(), shownBm));
 	}
 
 	private static boolean isBusy(int st) {

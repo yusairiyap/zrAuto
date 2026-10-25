@@ -101,6 +101,7 @@ public class BodyLayout extends SplitLayout
 	 */
 	private final ViewTreeObserver.OnPreDrawListener topFadeSync = () -> {
 		syncRefreshOffset();
+		syncGlass();
 		float end = -1f;
 		float alpha = 0f;
 		if (computeTopFade()) {
@@ -159,6 +160,88 @@ public class BodyLayout extends SplitLayout
 	protected void dispatchDraw(@NonNull Canvas canvas) {
 		super.dispatchDraw(canvas);
 		drawTopFade(canvas);
+	}
+
+	// ---- Glass (see ui/view/Glass) ----
+
+	/** The content as last drawn, for the glass bars to blur (a RenderNode; Android 12+ only). */
+	@Nullable
+	private Object glassNode;
+	private boolean glassActive;
+	private boolean glassWeb;
+	private long glassWebCheckAt;
+	private float glassStatus;
+	private long glassStatusAt;
+
+	/**
+	 * With glass on the bars, this layout draws itself through a RenderNode of its own, which the bars
+	 * then draw again blurred (GlassLens): the same display list, so nothing is drawn twice here.
+	 */
+	@Override
+	public void draw(@NonNull Canvas canvas) {
+		if (glassActive && Glass.realBlur() && canvas.isHardwareAccelerated()) drawGlassSource(canvas);
+		else super.draw(canvas);
+	}
+
+	@androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.S)
+	private void drawGlassSource(Canvas canvas) {
+		if (glassNode == null) glassNode = new android.graphics.RenderNode("glassSource");
+		GlassLens.recordAndDraw(canvas, (android.graphics.RenderNode) glassNode, getWidth(), getHeight(), super::draw);
+	}
+
+	/**
+	 * The recorded content, while the bars are glass and it can be blurred (Android 12+, no web page on
+	 * screen); null otherwise, and the bars then draw only the tint.
+	 */
+	@androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.S)
+	@Nullable
+	public android.graphics.RenderNode getGlassSource() {
+		if (!glassActive || !(glassNode instanceof android.graphics.RenderNode n) || !n.hasDisplayList()) return null;
+		return n;
+	}
+
+	/**
+	 * Before every frame: whether the bars blur this layout's content, and if so, the bars are drawn
+	 * again with the content as it is now (invalidated here, before the frame's drawing, so no extra
+	 * frame is asked for: only frames that happen anyway redraw them).
+	 */
+	private void syncGlass() {
+		boolean want = Glass.realBlur() && Glass.onBars() && (getMode() == Mode.FRAME);
+		if (want) {
+			long now = SystemClock.uptimeMillis();
+			// A WebView must not be drawn twice in a frame: looked for twice a second.
+			if (now >= glassWebCheckAt) {
+				glassWebCheckAt = now + 500;
+				MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
+				ActivityFragment f = (a != null) ? a.getActiveFragment() : null;
+				glassWeb = (f != null) && Glass.hasWebView(f.getView());
+			}
+			want = !glassWeb;
+		}
+		if (want != glassActive) {
+			glassActive = want;
+			DiagnosticLog.log("BODY", "glass source", want ? "on" : "off");
+			invalidate();
+		}
+		if (!glassActive) return;
+		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
+		if (a == null) return;
+		View tb = a.getToolBar();
+		if (tb != null) tb.invalidate();
+		if (getParent() instanceof android.view.ViewGroup p) {
+			View fb = p.findViewById(R.id.floating_bars);
+			if (fb != null) fb.invalidate();
+		}
+	}
+
+	/** {@link #statusBarInside()}, asked again at most once a second (window insets cost). */
+	private float glassStatusInside() {
+		long now = SystemClock.uptimeMillis();
+		if (now >= glassStatusAt) {
+			glassStatusAt = now + 1000;
+			glassStatus = statusBarInside();
+		}
+		return glassStatus;
 	}
 
 	/**
@@ -259,7 +342,12 @@ public class BodyLayout extends SplitLayout
 		// Down past the status bar too, where the content runs on behind it (edge to edge).
 		// (Only worked out while it's away: asking for the window's insets every frame costs.)
 		float end = rest;
-		if (hidden > 0f) end += (statusBarInside() + topFadeLen + topFadeEdge - rest) * hidden;
+		if (Glass.onBars()) {
+			// Glass bars show the content through them: the fade only keeps the status bar readable.
+			end = glassStatusInside() + topFadeLen;
+		} else if (hidden > 0f) {
+			end += (statusBarInside() + topFadeLen + topFadeEdge - rest) * hidden;
+		}
 		if (end <= 0f) return false;
 		fadeEnd = end;
 		fadeAlpha = Math.min(1f, alpha);

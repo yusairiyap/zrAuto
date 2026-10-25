@@ -276,12 +276,49 @@ public abstract class HomeWidgetView extends FrameLayout {
 	protected void onAttachedToWindow() {
 		super.onAttachedToWindow();
 		setActive(isShown());
+		getViewTreeObserver().addOnPreDrawListener(glassSync);
 	}
 
 	@Override
 	protected void onDetachedFromWindow() {
+		getViewTreeObserver().removeOnPreDrawListener(glassSync);
 		setActive(false);
 		super.onDetachedFromWindow();
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Glass (see ui/view/Glass)
+
+	private final me.aap.fermata.ui.view.GlassLens[] glassLens = new me.aap.fermata.ui.view.GlassLens[1];
+	private final android.graphics.Paint glassPaint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+	private final android.graphics.RectF glassRect = new android.graphics.RectF();
+	/**
+	 * A glass card shows the background behind it, which moves under it as the page scrolls or the card
+	 * glides: drawn again before each frame (an invalidate here asks for no extra frame).
+	 */
+	private final android.view.ViewTreeObserver.OnPreDrawListener glassSync = () -> {
+		if (glassCard() && me.aap.fermata.ui.view.Glass.realBlur() && isShown()) invalidate();
+		return true;
+	};
+
+	/** The Glass look with the glass UI style on Home: the background blurred behind the card. */
+	protected final boolean glassCard() {
+		return (item != null) && me.aap.fermata.ui.view.Glass.onHome() && (style() == STYLE_GLASS) && !ownBackground();
+	}
+
+	@Override
+	public void draw(android.graphics.Canvas c) {
+		if (glassCard() && (getWidth() > 0) && (getHeight() > 0)) {
+			boolean light = host.palette().light;
+			float r = CORNER_DP * dp;
+			glassRect.set(0, 0, getWidth(), getHeight());
+			me.aap.fermata.ui.view.Glass.Look l = me.aap.fermata.ui.view.Glass.look();
+			host.drawGlassBehind(this, c, glassRect, r, 1f, l, glassLens);
+			// The card's transparency (Settings > Home > Widget look) is how strong the tint is.
+			me.aap.fermata.ui.view.Glass.paintOver(c, glassRect, r, light ? 0xFFFFFFFF : 0xFF101018,
+					host.cardAlpha() / 100f, l, light, dp, glassPaint);
+		}
+		super.draw(c);
 	}
 
 	@Override
@@ -437,6 +474,10 @@ public abstract class HomeWidgetView extends FrameLayout {
 		} else if (s == STYLE_SOLID) {
 			c1 = c2 = host.palette().cardFill | 0xFF000000;
 			stroke = 0;
+		} else if ((s == STYLE_GLASS) && glassCard()) {
+			// Real glass: the card's fill is drawn under it in draw(), the card itself stays clear.
+			c1 = c2 = 0;
+			stroke = 0;
 		} else if (s == STYLE_GLASS) {
 			c1 = c2 = light ? 0xB3FFFFFF : 0x66101018;
 			stroke = light ? 0x1F000000 : 0x22FFFFFF;
@@ -452,8 +493,9 @@ public abstract class HomeWidgetView extends FrameLayout {
 		}
 		// The card's transparency (Settings > Home > Widget look): the colours' own alpha, scaled.
 		final int opacity = host.cardAlpha();
-		final int o1 = alphaOf(c1, opacity);
-		final int o2 = alphaOf(c2, opacity);
+		// (0 is clear: alphaOf would read it as opaque black.)
+		final int o1 = (c1 == 0) ? 0 : alphaOf(c1, opacity);
+		final int o2 = (c2 == 0) ? 0 : alphaOf(c2, opacity);
 		if (styleAnim != null) {
 			styleAnim.cancel();
 			styleAnim = null;

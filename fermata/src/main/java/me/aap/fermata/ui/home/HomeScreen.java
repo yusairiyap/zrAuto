@@ -534,6 +534,49 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		return Math.max(0, Math.min(100, prefs.getIntPref(MainActivityPrefs.HOME_CARD_ALPHA)));
 	}
 
+	private final int[] glassCardLoc = new int[2];
+	private final int[] glassBgLoc = new int[2];
+
+	@Override
+	public boolean drawGlassBehind(View card, android.graphics.Canvas c, android.graphics.RectF r, float radius,
+																 float alpha, me.aap.fermata.ui.view.Glass.Look look,
+																 me.aap.fermata.ui.view.GlassLens[] slot) {
+		if (!me.aap.fermata.ui.view.Glass.realBlur()) return false;
+		return drawGlassBehind31(card, c, r, radius, alpha, look, slot);
+	}
+
+	/**
+	 * Both background layers, as they are drawn (each recorded by its view): the plain one, then the
+	 * picture at its own alpha (it fades when a new one comes and when Home is left). A blur of the two
+	 * mixed is the mix of the two blurred, so drawing them so under one blur is exact.
+	 */
+	@androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.S)
+	private boolean drawGlassBehind31(View card, android.graphics.Canvas c, android.graphics.RectF r, float radius,
+																		float alpha, me.aap.fermata.ui.view.Glass.Look look,
+																		me.aap.fermata.ui.view.GlassLens[] slot) {
+		android.graphics.RenderNode b0 = base.glassNode();
+		android.graphics.RenderNode b1 = bg.glassNode();
+		if ((b0 == null) && (b1 == null)) return false;
+		// Both layers have the same place and size (the root's, plus how far they reach under the bars).
+		base.getLocationInWindow(glassBgLoc);
+		card.getLocationInWindow(glassCardLoc);
+		float bgAlpha = bg.getAlpha();
+		float dx = bg.getX() - base.getX();
+		float dy = bg.getY() - base.getY();
+		if (slot[0] == null) slot[0] = new me.aap.fermata.ui.view.GlassLens();
+		return slot[0].draw(c, rc -> {
+			if (b0 != null) rc.drawRenderNode(b0);
+			if ((b1 != null) && (bgAlpha > 0f)) {
+				int save = rc.save();
+				rc.translate(dx, dy);
+				if (bgAlpha < 1f) rc.saveLayerAlpha(null, Math.round(255 * bgAlpha));
+				rc.drawRenderNode(b1);
+				rc.restoreToCount(save);
+			}
+		}, glassBgLoc[0] - glassCardLoc[0], glassBgLoc[1] - glassCardLoc[1], r, radius, alpha, look,
+				card.getResources().getDisplayMetrics().density);
+	}
+
 	@Override
 	public int stackRotateSeconds() {
 		int s = prefs.getIntPref(MainActivityPrefs.HOME_STACK_ROTATE);
@@ -579,7 +622,11 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 				changed.contains(MainActivityPrefs.HOME_SNAP_GRID) || changed.contains(MainActivityPrefs.HOME_SNAP_GRID_AA)) {
 			applyArrangement();
 		}
-		if (changed.contains(MainActivityPrefs.HOME_CARD_STYLE) || changed.contains(MainActivityPrefs.HOME_CARD_ALPHA)) {
+		if (changed.contains(MainActivityPrefs.HOME_CARD_STYLE) || changed.contains(MainActivityPrefs.HOME_CARD_ALPHA) ||
+				me.aap.fermata.ui.view.Glass.touches(changed)) {
+			me.aap.fermata.ui.view.Glass.reset();
+			base.invalidate();
+			bg.invalidate();
 			grid.restyle();
 		}
 		if (changed.contains(MainActivityPrefs.HOME_STACK_ROTATE)) grid.resyncRotation();
@@ -598,6 +645,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 				!java.util.Collections.disjoint(MainActivityPrefs.infoOverlayPrefs(), changed)) {
 			applyTopInfo();
 		}
+		if (changed.contains(MainActivityPrefs.COVER_HIDDEN)) nowBg.coverHideChanged();
 		if (changed.contains(HomeBgPrefs.dim(car()))) bg.setDim(prefs.getIntPref(HomeBgPrefs.dim(car())));
 		if (changed.contains(HomeBgPrefs.zoom(car()))) bg.setZoom(prefs.getIntPref(HomeBgPrefs.zoom(car())));
 		if (changed.contains(HomeBgPrefs.source(car()))) {
