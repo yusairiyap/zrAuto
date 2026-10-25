@@ -402,6 +402,7 @@
     <string name="playlist_pin">Pin to top</string>
     <string name="settings_split_resize">Drag to resize the list</string>
     <string name="playlist_unpin">Unpin</string>
+    <string name="playlist_pinned">Pinned</string>
     <string name="playlist_move">Move to playlist</string>
     <string name="sort_custom">Custom order</string>
     <string name="playlist_sorted_hint">Switch the sort to Custom order to rearrange the playlist.</string>

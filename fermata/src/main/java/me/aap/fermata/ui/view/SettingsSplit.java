@@ -61,6 +61,9 @@ public final class SettingsSplit {
 	private NavAdapter adapter;
 	private int widthPx;
 	private boolean shown;
+	/** The tab in front, and the one before it: to or from Home the list fades, between other tabs it slides. */
+	private int curId;
+	private int prevId;
 	@Nullable
 	private ValueAnimator anim;
 	private SettingsStyle.Colors colors;
@@ -107,6 +110,11 @@ public final class SettingsSplit {
 
 	/** The tab in front changed (or the window did): the list comes or goes. */
 	public void sync(@NonNull MainActivityDelegate a) {
+		int id = a.getActiveFragmentId();
+		if (id != curId) {
+			prevId = curId;
+			curId = id;
+		}
 		boolean want = isWide(a) && !a.isVideoMode() && !SettingsNav.entries().isEmpty() &&
 				(a.getActiveFragment() instanceof MainActivityFragment f) && f.isSettingsPage();
 		if (want && (a.getActiveFragment() instanceof MainActivityFragment f) && (f.settingsEntryTitle() != 0)) {
@@ -132,13 +140,13 @@ public final class SettingsSplit {
 		lp.width = widthPx;
 		panel.setLayoutParams(lp);
 		panel.bringToFront();
-		animate(0, widthPx, true);
+		animate(0, widthPx, true, prevId == R.id.home_fragment);
 	}
 
 	private void hide() {
 		if (!shown || (panel == null)) return;
 		shown = false;
-		animate(widthPx, 0, false);
+		animate(widthPx, 0, false, curId == R.id.home_fragment);
 	}
 
 	private void build(MainActivityDelegate a) {
@@ -171,26 +179,56 @@ public final class SettingsSplit {
 	}
 
 	/**
-	 * The list comes or goes with a plain fade. The pages make room for it (or take the room back) at once: animating their margin
-	 * relaid out a whole page every frame, which is what made the entrance and the exit stutter.
+	 * The list comes or goes. Between other tabs it slides in with the pages making room for it as it comes; to or from Home it only
+	 * fades (a little longer), the pages making room at once, so the two crossfade as one picture.
 	 */
-	private void animate(int from, int to, boolean in) {
+	private void animate(int from, int to, boolean in, boolean fade) {
 		if (anim != null) anim.cancel();
 		View pr = body.findViewById(R.id.swiperefresh);
 		FrameLayout p = panel;
 		if ((pr == null) || (p == null)) return;
-		setContentMargin(pr, in ? to : 0);
-		p.setTranslationX(0);
 		p.animate().cancel();
-		if (in) {
-			p.setAlpha(0f);
-			p.setVisibility(View.VISIBLE);
-			p.animate().alpha(1f).setDuration(220).start();
-		} else {
-			p.animate().alpha(0f).setDuration(140).withEndAction(() -> {
-				if (!shown) p.setVisibility(View.GONE);
-			}).start();
+		if (fade) {
+			setContentMargin(pr, in ? to : 0);
+			p.setTranslationX(0);
+			if (in) {
+				p.setAlpha(0f);
+				p.setVisibility(View.VISIBLE);
+				p.animate().alpha(1f).setDuration(320).start();
+			} else {
+				p.animate().alpha(0f).setDuration(320).withEndAction(() -> {
+					if (!shown) p.setVisibility(View.GONE);
+				}).start();
+			}
+			return;
 		}
+		ValueAnimator va = ValueAnimator.ofInt(from, to);
+		va.setDuration(240);
+		va.setInterpolator(new DecelerateInterpolator(1.6f));
+		va.addUpdateListener(v -> {
+			int w = (Integer) v.getAnimatedValue();
+			setContentMargin(pr, w);
+			float f = (widthPx == 0) ? 1f : Math.max(0f, Math.min(1f, w / (float) widthPx));
+			p.setTranslationX(-(1f - f) * widthPx * 0.35f);
+			p.setAlpha(f);
+		});
+		va.addListener(new android.animation.AnimatorListenerAdapter() {
+			private boolean cancelled;
+
+			@Override
+			public void onAnimationCancel(android.animation.Animator animation) {
+				cancelled = true;
+			}
+
+			@Override
+			public void onAnimationEnd(android.animation.Animator animation) {
+				if (cancelled || in) return;
+				p.setVisibility(View.GONE);
+				setContentMargin(pr, 0);
+			}
+		});
+		anim = va;
+		va.start();
 	}
 
 	private static void setContentMargin(View content, int px) {
@@ -243,7 +281,6 @@ public final class SettingsSplit {
 		@Override
 		protected void onDraw(@NonNull Canvas c) {
 			float x = getWidth() - colors.dp(11);
-			c.drawRect(x - colors.dp(0.5f), colors.dp(8), x + colors.dp(0.5f), getHeight() - colors.dp(8), line);
 			float h = colors.dp(dragging ? 56 : 44);
 			float w = colors.dp(dragging ? 6 : 4);
 			r.set(x - w / 2f, (getHeight() - h) / 2f, x + w / 2f, (getHeight() + h) / 2f);

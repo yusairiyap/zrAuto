@@ -219,6 +219,29 @@ public final class DiagnosticLog {
 	 * itself throw -- that would replace the real crash with this method's, and could still leave
 	 * the real one unreported if it happens before the chained previous handler runs.
 	 */
+	/**
+	 * A line about how the app is starting, always kept (even with the log off) in {@code Android/data/<app>/files/start_log.txt}, which a
+	 * file manager can read when the screen stays blank. Short: the file starts over past 24 KB.
+	 */
+	public static void startup(String msg) {
+		try {
+			log("STATE", msg);
+			File dir = FermataApplication.get().getExternalFilesDir(null);
+			if (dir == null) return;
+			File f = new File(dir, "start_log.txt");
+			boolean over = f.length() > 24_000;
+			String stamp;
+			synchronized (DiagnosticLog.stamp) {
+				stamp = DiagnosticLog.stamp.format(new Date());
+			}
+			try (java.io.FileWriter w = new java.io.FileWriter(f, !over)) {
+				w.write(stamp + " " + msg + "\n");
+			}
+		} catch (Throwable ignore) {
+			// Best effort only.
+		}
+	}
+
 	public static void logCrash(Thread thread, Throwable err) {
 		try {
 			StringBuilder sb = new StringBuilder(256);

@@ -109,6 +109,7 @@ public class HomeFragment extends MainActivityFragment {
 		// tool bar its list moved up the moment the bar went, and was seen doing so while it faded out.
 		// Between Home and a settings page a plain crossfade: no picture of the old page, no timed dips.
 		boolean plain = (from instanceof MainActivityFragment m) && m.isSettingsPage();
+		plainFade = plain;
 		if ((a != null) && !plain && a.getPrefs().getBooleanPref(MainActivityPrefs.HOME_ANIMATE) && !(from instanceof MusicPlayerFragment)) {
 			ghosted = ghostOf(from, a.getToolBar());
 		}
@@ -134,6 +135,8 @@ public class HomeFragment extends MainActivityFragment {
 
 	/** True when the tab left is shown as a picture over Home (see ghostOf), which then needs no fade of its own. */
 	private boolean ghosted;
+	/** Coming from a settings page: a plain, longer crossfade. */
+	private boolean plainFade;
 
 	/**
 	 * With the old tab's picture over it, Home is simply there (opaque) and the picture fades away: no dip through the
@@ -141,7 +144,7 @@ public class HomeFragment extends MainActivityFragment {
 	 */
 	@Override
 	public long getFadeInMillis() {
-		return ghosted ? 0L : 140L;
+		return ghosted ? 0L : plainFade ? 320L : 140L;
 	}
 
 	@Override

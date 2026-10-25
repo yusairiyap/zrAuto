@@ -476,7 +476,7 @@ public abstract class ActivityDelegate implements EventBroadcaster<ActivityListe
 			}
 			from.setAlpha(1f);
 			from.setVisibility(View.VISIBLE);
-			from.animate().alpha(0f).setStartDelay(0L).setDuration((delay > 0) ? delay : Math.min(FRAGMENT_FADE_OUT_DURATION, fadeIn))
+			from.animate().alpha(0f).setStartDelay(0L).setDuration((delay > 0) ? delay : (fadeIn > FRAGMENT_FADE_IN_DURATION) ? fadeIn : Math.min(FRAGMENT_FADE_OUT_DURATION, fadeIn))
 					.withEndAction(() -> from.setVisibility(View.GONE)).start();
 		}
 	}

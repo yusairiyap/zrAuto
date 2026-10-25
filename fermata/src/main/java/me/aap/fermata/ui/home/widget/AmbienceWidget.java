@@ -110,7 +110,7 @@ final class AmbienceWidget extends HomeWidgetView {
 		title.setSingleLine(true);
 		title.setEllipsize(android.text.TextUtils.TruncateAt.END);
 		subtitle = text(ROLE_SECONDARY, 13, false);
-		subtitle.setSingleLine(true);
+		subtitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
 		texts.addView(title);
 		texts.addView(subtitle);
 		// The name goes where the sounds are: the Ambience tab.
@@ -190,9 +190,12 @@ final class AmbienceWidget extends HomeWidgetView {
 		int btn = px(strip ? 46 : 52);
 		action.setLayoutParams(lp(btn, btn, Gravity.END | (strip ? Gravity.CENTER_VERTICAL : Gravity.BOTTOM),
 				0, 0, pad, strip ? 0 : pad));
-		texts.setLayoutParams(lp(-1, -2, Gravity.TOP | Gravity.START, pad, pad, strip ? px(60) : px(120), 0));
 		title.setTextSize(strip ? 17 : 21);
 		boolean showTimer = !strip && optBool("timer", true) && (getCellsW() >= 3 || getCellsH() >= 2);
+		// The words wrap to a second line and stop short of the timer chip (which they ran under, cut off with no dots), and take
+		// the room back when the chip is off.
+		texts.setLayoutParams(lp(-1, -2, Gravity.TOP | Gravity.START, pad, pad, strip ? px(60) : showTimer ? px(124) : px(66), 0));
+		subtitle.setMaxLines(strip ? 1 : 2);
 		timer.setVisibility(showTimer ? VISIBLE : GONE);
 		timer.setLayoutParams(lp(-2, px(34), Gravity.TOP | Gravity.END, 0, pad, pad, 0));
 		int max = strip ? 0 : optInt("count", 4);

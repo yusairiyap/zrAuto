@@ -477,7 +477,9 @@ public class MainActivityDelegate extends ActivityDelegate
 		String[] perms = getRequiredPermissions();
 		// The permissions are asked first, as ever (the library needs storage before anything is listed: asking only
 		// when the welcome wizard closed left the app starting without it, and it crashed); the wizard follows.
+		DiagnosticLog.startup("start: asking for permissions, restored=" + (fragmentId != ID_NULL));
 		a.checkPermissions(perms).onCompletion((result, fail) -> {
+			DiagnosticLog.startup("start: permissions answered, failure=" + fail);
 			if (fail != null) {
 				if (!isCarActivityNotMirror()) Log.e(fail);
 			} else {

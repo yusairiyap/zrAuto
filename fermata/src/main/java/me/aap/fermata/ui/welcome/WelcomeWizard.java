@@ -177,19 +177,30 @@ public final class WelcomeWizard {
 	 * updated (it had been used before the wizard existed) is marked as done without showing it.
 	 */
 	public static void maybeShow(@NonNull MainActivityDelegate a) {
+		maybeShow(a, 0);
+	}
+
+	private static void maybeShow(@NonNull MainActivityDelegate a, int attempt) {
 		MainActivityPrefs p = a.getPrefs();
-		if (p.getBooleanPref(DONE) || isOpen() || a.isCarActivity()) {
+		boolean done = p.getBooleanPref(DONE);
+		boolean fresh = isFreshInstall(a.getContext());
+		DiagnosticLog.startup("wizard check: attempt=" + attempt + " done=" + done + " open=" + isOpen() + " fresh=" + fresh);
+		if (done || isOpen() || a.isCarActivity()) {
 			runAfter();
 			return;
 		}
-		if (!isFreshInstall(a.getContext())) {
+		if (!fresh) {
 			p.applyBooleanPref(DONE, true);
 			runAfter();
 			return;
 		}
 		show(a);
-		// The page could not be put up (no view yet): the permissions that were waiting for it are asked now.
-		if (!isOpen()) runAfter();
+		if (!isOpen()) {
+			// No view to put it over yet (the window is not laid out): tried again a little later, a few times, rather than never.
+			DiagnosticLog.startup("wizard not shown, attempt " + attempt);
+			if (attempt < 12) a.postDelayed(() -> maybeShow(a, attempt + 1), 500);
+			else runAfter();
+		}
 	}
 
 	/** What waits for the wizard to be over (the start-up permission dialogs, which would cover it). */
@@ -247,6 +258,7 @@ public final class WelcomeWizard {
 		WelcomeWizard w = new WelcomeWizard(a);
 		open = w;
 		w.build();
+		DiagnosticLog.startup("wizard shown");
 	}
 
 	/**

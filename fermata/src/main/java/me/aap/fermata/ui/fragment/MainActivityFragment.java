@@ -79,6 +79,20 @@ public abstract class MainActivityFragment extends ActivityFragment {
 		return 0;
 	}
 
+	/** Coming from Home to a settings page: a longer plain crossfade (Home does the same the other way). */
+	private boolean settingsFromHome;
+
+	@Override
+	public void switchingFrom(@androidx.annotation.Nullable ActivityFragment from) {
+		super.switchingFrom(from);
+		settingsFromHome = isSettingsPage() && (from instanceof HomeFragment);
+	}
+
+	@Override
+	public long getFadeInMillis() {
+		return settingsFromHome ? 320L : super.getFadeInMillis();
+	}
+
 	@Override
 	public FloatingButton.Mediator getFloatingButtonMediator() {
 		return FloatingButtonMediator.instance;

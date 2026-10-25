@@ -263,6 +263,16 @@ abstract class LibraryWidget extends HomeWidgetView {
 		return false;
 	}
 
+	/** Whether the row is one the user pinned to the top (a small pin at the end of the row, unless "Hide pinned icon" is on). */
+	protected boolean isPinnedRow(Row r) {
+		return false;
+	}
+
+	/** The option "Hide pinned icon". */
+	private boolean pinHidden() {
+		return optBool("hidePinned", false);
+	}
+
 	/** The option "Hide downloaded icon": the small badge on rows whose song is on the phone stays off. */
 	private boolean badgeHidden() {
 		return optBool("hideDownloaded", false);
@@ -712,12 +722,12 @@ abstract class LibraryWidget extends HomeWidgetView {
 		int newCols = ((getCellsW() >= 4) && !(supportsFullWidth() && optBool("full", false))) ? 2 : 1;
 		boolean art = optBool("art", true);
 		int rowMode = (menuOn() ? 1 : 0) | (reorderOn() ? 2 : 0) | (removeOn() ? 4 : 0) | (handleOn() ? 8 : 0) |
-				(badgeHidden() ? 16 : 0);
+				(badgeHidden() ? 16 : 0) | (pinHidden() ? 32 : 0);
 		// Drawn again only when something it shows changed: the rows blinked on every refresh.
 		StringBuilder sig = new StringBuilder();
 		sig.append(total).append('|').append(isCompact()).append('|').append(newCols).append('|')
 				.append(art).append('|').append(rowMode).append('|').append(loading && none).append('|').append(drillSource != null);
-		for (Row r : rows) sig.append('|').append(r.title()).append(r.sub()).append(r.current());
+		for (Row r : rows) sig.append('|').append(r.title()).append(r.sub()).append(r.current()).append(isPinnedRow(r));
 		String signature = sig.toString();
 		if (signature.equals(shownSignature)) {
 			// Nothing to redraw, but the adapter must hold the list the rows are now taken from: a row picked up or removed is
@@ -858,6 +868,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 		private final ImageView handle;
 		/** A small download icon at the end of the row of a song that is on the phone: part of the row, no chip of its own. */
 		private final ImageView badge;
+		/** A small pin at the end of a pinned playlist's row. */
+		private final ImageView pinBadge;
 		@Nullable
 		private Row row;
 		private int paintedEpoch = -1;
@@ -924,6 +936,15 @@ abstract class LibraryWidget extends HomeWidgetView {
 			blp.setMarginEnd(px(10));
 			main.addView(badge, blp);
 
+			pinBadge = new ImageView(ctx);
+			pinBadge.setImageResource(R.drawable.bookmark_filled);
+			pinBadge.setScaleType(ImageView.ScaleType.FIT_CENTER);
+			pinBadge.setVisibility(GONE);
+			pinBadge.setContentDescription(ctx.getString(R.string.playlist_pinned));
+			LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(px(18), px(18));
+			plp.setMarginEnd(px(10));
+			main.addView(pinBadge, plp);
+
 			playBtn = iconButton(R.drawable.play, 36, ROLE_ICON, R.string.action_play, () -> {
 				if ((row != null) && (row.play() != null)) row.play().run();
 			});
@@ -977,6 +998,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 				main.setBackground(HomeUi.pressable(ripple(), fill, px(14)));
 				thumb.setBackground(HomeUi.round(softFill(), px(10)));
 				badge.setImageTintList(android.content.res.ColorStateList.valueOf(color(ROLE_SECONDARY)));
+				pinBadge.setImageTintList(android.content.res.ColorStateList.valueOf(color(ROLE_ACCENT)));
 			}
 			main.setContentDescription(r.title());
 			// A long press on the row opens its menu: it is marked so the card does not take that press for picking itself up.
@@ -1031,6 +1053,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 			Row r = row;
 			boolean on = (r != null) && !badgeHidden() && isDownloaded(r);
 			badge.setVisibility(on ? VISIBLE : GONE);
+			pinBadge.setVisibility((r != null) && !pinHidden() && isPinnedRow(r) ? VISIBLE : GONE);
 			if (on) badge.setContentDescription(ctx.getString(R.string.home_downloaded));
 		}
 	}

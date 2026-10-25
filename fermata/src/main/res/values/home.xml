@@ -249,6 +249,7 @@
     <string name="home_opt_queue_on_play">Show the queue when playing</string>
     <string name="home_opt_row_remove">Remove button</string>
     <string name="home_sec_preview">Preview</string>
+    <string name="home_opt_hide_pinned">Hide pinned icon</string>
     <string name="home_opt_hide_downloaded">Hide downloaded icon</string>
     <string name="home_opt_car_keys">Control with car keys</string>
     <string name="home_row_remove">Remove from queue</string>
