@@ -311,6 +311,8 @@ public abstract class HomeWidgetView extends FrameLayout {
 		}
 		return true;
 	};
+	/** Whether the card was last styled for real glass (its own fill clear). */
+	private boolean styledGlass;
 	/** The UI style gliding to a new look: drawn again each frame of it. */
 	private final Runnable glassAnim = () -> {
 		if (!isShown() || (item == null) || (style() != STYLE_GLASS)) return;
@@ -318,8 +320,6 @@ public abstract class HomeWidgetView extends FrameLayout {
 		// The glide over: the card's own fill follows (clear for real glass, the translucent Glass fill otherwise).
 		if (glassCard() != styledGlass) applyStyle();
 	};
-	/** Whether the card was last styled for real glass (its own fill clear). */
-	private boolean styledGlass;
 
 	/** The Glass look with the glass UI style on Home: the background blurred behind the card. */
 	protected final boolean glassCard() {
