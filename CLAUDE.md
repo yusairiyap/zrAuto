@@ -738,6 +738,9 @@ what each widget shows is set on the widget (edit mode > its gear).
   stays at alpha 0 for `QUIET_MS` (500 ms), then fades in over 350 ms with the widgets' entrance. The window-wide veil of the earlier rounds
   (`veilStartup`, `liftStartupVeil`, `isStartupVeil`, and the tool bar mediator's check of it) is deleted: it faded the whole window, bars included,
   and never ran on the car screen at all.
+- **The bars are veiled until the first tab is up** (`MainActivityDelegate#veilBars`, end of `init`): tool bar and nav bar at alpha 0 and the
+  overlays suppressed, so no empty pills show while the permissions are checked; the first `showFragment` fades the two bars in
+  (`unveilBars`, 500 ms later on Home/Music to match their quiet start, 200 ms on other tabs, 4 s fallback).
 - **Light theme.** `HomeBackgroundView` dims and shades towards white (`veil`) and its plain gradient is barely tinted (`plainTop`); the
   greeting and the top chips use the theme's own text colours on a picture too, and the chips' opaque fill (a theme panel colour) now has
   matching text (white text on the light panel was the invisible "weird" chips). Cards: `HomeWidgetView#lightText/color/applyStyle` treat a light
