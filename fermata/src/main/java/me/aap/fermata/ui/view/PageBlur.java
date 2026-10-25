@@ -37,7 +37,8 @@ import me.aap.fermata.util.DiagnosticLog;
  */
 public final class PageBlur {
 	private static final long REFRESH_MS = 2000;
-	private static final long CHECK_MS = 400;
+	/** How often the boxes are compared with their surfaces while any are up (their fades, a surface hidden). */
+	private static final long CHECK_MS = 100;
 	private static final Handler handler = new Handler(Looper.getMainLooper());
 	/** Per glass surface (its lens slot, one per pill): where it is. */
 	private static final Map<Object, Entry> entries = new IdentityHashMap<>();
@@ -49,13 +50,18 @@ public final class PageBlur {
 	private static boolean checking;
 	private static final int[] loc = new int[2];
 
+	private static int nextId;
+
 	private static final class Entry {
+		final int id = ++nextId;
 		final WeakReference<View> view;
 		final RectF rect = new RectF();
 		float radius;
 		float alpha;
 		float blurPx;
 		float saturation;
+		/** The alpha the box shows with: the surface's own times its views'. */
+		float shown;
 
 		Entry(View v) {
 			view = new WeakReference<>(v);
@@ -93,6 +99,7 @@ public final class PageBlur {
 		e.alpha = alpha;
 		e.blurPx = look.blurDp * self.getResources().getDisplayMetrics().density;
 		e.saturation = look.saturation;
+		e.shown = alpha * viewAlpha(self);
 		schedule();
 		return Boolean.TRUE.equals(supported.get(w));
 	}
@@ -136,6 +143,12 @@ public final class PageBlur {
 			View v = e.view.get();
 			return (v == null) || !v.isAttachedToWindow() || !v.isShown() || (e.alpha <= 0f);
 		});
+		// A surface fading as a view (a menu opening or closing, a bar sliding away) is not drawn again on each step:
+		// its box takes the view's own alpha here, and the page eases between the values (see script).
+		for (Entry e : entries.values()) {
+			View v = e.view.get();
+			if (v != null) e.shown = e.alpha * viewAlpha(v);
+		}
 		long now = SystemClock.uptimeMillis();
 		for (WebView w : pages) {
 			String data = boxes(w);
@@ -165,7 +178,20 @@ public final class PageBlur {
 		}
 	}
 
-	/** The boxes over {@code w}, in its own pixels: [[left, top, width, height, radius, alpha, blur, saturation]]. */
+	/** {@code v}'s alpha as seen on screen: its own and its parents', with the transition alphas of the bars. */
+	private static float viewAlpha(View v) {
+		float a = 1f;
+		for (Object p = v; p instanceof View pv; p = pv.getParent()) {
+			a *= pv.getAlpha();
+			if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) a *= pv.getTransitionAlpha();
+			if (a <= 0f) return 0f;
+		}
+		return a;
+	}
+
+	/**
+	 * The boxes over {@code w}, in its own pixels: [[id, left, top, width, height, radius, alpha, blur, saturation]].
+	 */
 	private static String boxes(WebView w) {
 		w.getLocationInWindow(loc);
 		RectF page = new RectF(loc[0], loc[1], loc[0] + w.getWidth(), loc[1] + w.getHeight());
@@ -173,8 +199,9 @@ public final class PageBlur {
 		for (Entry e : entries.values()) {
 			if (!RectF.intersects(page, e.rect)) continue;
 			if (sb.length() > 1) sb.append(',');
-			sb.append(String.format(Locale.ROOT, "[%.1f,%.1f,%.1f,%.1f,%.1f,%.3f,%.1f,%.2f]", e.rect.left - page.left,
-					e.rect.top - page.top, e.rect.width(), e.rect.height(), e.radius, e.alpha, e.blurPx, e.saturation));
+			sb.append(String.format(Locale.ROOT, "[%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.2f,%.1f,%.2f]", e.id,
+					e.rect.left - page.left, e.rect.top - page.top, e.rect.width(), e.rect.height(), e.radius, e.shown,
+					e.blurPx, e.saturation));
 		}
 		return sb.append(']').toString();
 	}
@@ -184,22 +211,33 @@ public final class PageBlur {
 	 * returns whether the page can do backdrop-filter.
 	 */
 	private static String script(String data) {
+		// Boxes are kept by id: a new one fades in from nothing, one no longer listed fades out and is then removed,
+		// and a change of alpha eases (opacity transition). Size and place change at once, with the surface. In
+		// fullscreen the boxes go into the page's fullscreen element (the top layer, which covers everything else);
+		// when that is the video element itself nothing can be put over it, and the answer is false (frosted look).
 		return "(function(d){try{var id='__zrauto_glass',h=document.getElementById(id);" +
 				"var ok=!!(window.CSS&&(CSS.supports('backdrop-filter','blur(1px)')||" +
 				"CSS.supports('-webkit-backdrop-filter','blur(1px)')));" +
+				"var fs=document.fullscreenElement||document.webkitFullscreenElement;" +
+				"var host=(fs&&fs.tagName!=='VIDEO')?fs:(document.body||document.documentElement);" +
+				"if(fs&&fs.tagName==='VIDEO')ok=false;" +
 				"if(!h){if(!d.length)return ok;h=document.createElement('div');h.id=id;" +
-				"h.style.cssText='position:fixed;left:0;top:0;width:0;height:0;z-index:2147483647;pointer-events:none;';" +
-				"(document.body||document.documentElement).appendChild(h);}" +
-				"else if(!h.parentNode)(document.body||document.documentElement).appendChild(h);" +
-				"while(h.children.length>d.length)h.removeChild(h.lastChild);" +
-				"while(h.children.length<d.length){var n=document.createElement('div');" +
+				"h.style.cssText='position:fixed;left:0;top:0;width:0;height:0;z-index:2147483647;pointer-events:none;';}" +
+				"if(h.parentNode!==host)host.appendChild(h);" +
+				"var r=window.devicePixelRatio||1,seen={};" +
+				"for(var i=0;i<d.length;i++){var x=d[i],k='b'+x[0];seen[k]=1;var n=h.querySelector('[data-k=\"'+k+'\"]');" +
+				"var fresh=!n;if(fresh){n=document.createElement('div');n.setAttribute('data-k',k);" +
 				"n.style.cssText='position:fixed;pointer-events:none;margin:0;padding:0;border:0;background:transparent;" +
-				"overflow:hidden;';h.appendChild(n);}" +
-				"var r=window.devicePixelRatio||1;" +
-				"for(var i=0;i<d.length;i++){var x=d[i],s=h.children[i].style;" +
-				"s.left=(x[0]/r)+'px';s.top=(x[1]/r)+'px';s.width=(x[2]/r)+'px';s.height=(x[3]/r)+'px';" +
-				"s.borderRadius=(x[4]/r)+'px';s.opacity=x[5];" +
-				"var f='blur('+(x[6]/r)+'px) saturate('+x[7]+')';s.backdropFilter=f;s.webkitBackdropFilter=f;}" +
+				"overflow:hidden;opacity:0;transition:opacity 220ms ease-out;';h.appendChild(n);}" +
+				"n.removeAttribute('data-gone');var s=n.style;" +
+				"s.left=(x[1]/r)+'px';s.top=(x[2]/r)+'px';s.width=(x[3]/r)+'px';s.height=(x[4]/r)+'px';" +
+				"s.borderRadius=(x[5]/r)+'px';" +
+				"var f='blur('+(x[7]/r)+'px) saturate('+x[8]+')';s.backdropFilter=f;s.webkitBackdropFilter=f;" +
+				"if(fresh){(function(n,a){requestAnimationFrame(function(){requestAnimationFrame(function(){" +
+				"if(!n.getAttribute('data-gone'))n.style.opacity=a;});});})(n,x[6]);}else s.opacity=x[6];}" +
+				"for(var c=h.firstChild;c;){var nx=c.nextSibling;if(!seen[c.getAttribute('data-k')]&&!c.getAttribute('data-gone')){" +
+				"c.setAttribute('data-gone','1');c.style.opacity=0;(function(c){setTimeout(function(){" +
+				"if(c.getAttribute('data-gone')&&c.parentNode)c.parentNode.removeChild(c);},260);})(c);}c=nx;}" +
 				"return ok;}catch(e){return false;}})(" + data + ")";
 	}
 

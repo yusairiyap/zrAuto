@@ -1076,6 +1076,18 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
   ToolBarPill and FloatingBarsView now pass `behindBars`' result as `blurred`. A playing `<video>` in the page may not blur
   (it can be its own layer). Never run on a device.
 
+### Eighth round (no bar draws the fullscreen frame, boxes that fade)
+
+- **Playing a YouTube video crashed the app** (log: `BODY glass frame recording FrameLayout 2560x1600`, then a restart): the bars,
+  floating buttons and menus drew fullscreen YouTube's GlassFrame (`drawBehindAny`, now deleted). Only the video buttons inside the
+  VideoView draw it, as in the build where it worked. Everything else over a web page, fullscreen included, goes through `PageBlur`;
+  in fullscreen its boxes go into `document.fullscreenElement` (the top layer), and when that is the `<video>` itself the answer is
+  false, so the surfaces draw the frosted look.
+- **The page's boxes fade** (`PageBlur#script`): kept by id, a new one fades in from 0, one no longer listed fades out over 220 ms and
+  is then removed, alpha changes ease (CSS opacity transition). The alpha sent is the surface's own times its views' alpha and
+  transition alpha (`viewAlpha`), sampled every 100 ms while boxes are up, so a menu's open/close fade and the bars sliding away are
+  followed without redraws.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,
