@@ -91,6 +91,11 @@ public class KeyTesterFragment extends MainActivityFragment implements KeyTester
 	private boolean resumed;
 
 	@Override
+	public boolean isSettingsPage() {
+		return true;
+	}
+
+	@Override
 	public int getFragmentId() {
 		return R.id.key_tester_fragment;
 	}

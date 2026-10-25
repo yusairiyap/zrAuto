@@ -683,6 +683,8 @@ public class PreferenceView extends ConstraintLayout {
 		} else {
 			applyEnabled(true);
 		}
+
+		if (rowStyler != null) rowStyler.accept(this, opts);
 	}
 
 	/** Greys the row out (and stops taps on it and its controls) while it doesn't apply. */
@@ -698,16 +700,24 @@ public class PreferenceView extends ConstraintLayout {
 		for (int i = 0, n = g.getChildCount(); i < n; i++) setEnabledTree(g.getChildAt(i), on);
 	}
 
-	private ImageView getIconView() {
+	public ImageView getIconView() {
 		return (ImageView) getChildAt(0);
 	}
 
-	private TextView getTitleView() {
+	public TextView getTitleView() {
 		return (TextView) getChildAt(1);
 	}
 
-	private TextView getSubtitleView() {
+	public TextView getSubtitleView() {
 		return (TextView) getChildAt(2);
+	}
+
+	@Nullable
+	private static java.util.function.BiConsumer<PreferenceView, Opts> rowStyler;
+
+	/** Gives every settings row one look (an app sets it; called each time a row is bound, after the platform's own). */
+	public static void setRowStyler(@Nullable java.util.function.BiConsumer<PreferenceView, Opts> s) {
+		rowStyler = s;
 	}
 
 	private static BiHolder<? extends VirtualResource, List<? extends VirtualResource>> fileSupplier(

@@ -95,6 +95,8 @@ public interface MainActivityPrefs
 	// default set), whether the app opens on it, the background picture (its file is
 	// files/home_bg.jpg, the version only says it changed), how it is dimmed and blurred, how the
 	// cards look, which way the widgets are laid out and how many fit across.
+	/** The width in dp of the categories list beside a settings page on a wide window (dragged by its divider). */
+	Pref<IntSupplier> SETTINGS_NAV_DP = Pref.i("SETTINGS_NAV_DP", 320);
 	/** Ids of the playlists pinned to the top of the Playlists widget, newest pin first, one per line. */
 	Pref<Supplier<String>> PINNED_PLAYLISTS = Pref.s("PINNED_PLAYLISTS", "");
 	Pref<Supplier<String>> HOME_LAYOUT = Pref.s("HOME_LAYOUT", (String) null);

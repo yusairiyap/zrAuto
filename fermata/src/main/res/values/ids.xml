@@ -30,7 +30,6 @@
     <item name="favorites_fragment" type="id" />
     <item name="playlists_fragment" type="id" />
     <item name="settings_fragment" type="id" />
-    <item name="settings_nav_list" type="id" />
     <item name="diagnostic_log_fragment" type="id" />
     <item name="key_tester_fragment" type="id" />
     <item name="car_nav_scope" type="id" />

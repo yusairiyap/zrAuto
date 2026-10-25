@@ -79,6 +79,11 @@ public abstract class TextStyleFragment extends MainActivityFragment {
 	protected abstract boolean forCaptions();
 
 	@Override
+	public boolean isSettingsPage() {
+		return true;
+	}
+
+	@Override
 	public CharSequence getTitle() {
 		return getString(forCaptions() ? R.string.captions : R.string.lyrics);
 	}

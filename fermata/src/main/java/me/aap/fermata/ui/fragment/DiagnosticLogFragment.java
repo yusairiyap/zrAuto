@@ -50,6 +50,11 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 	private boolean topShown;
 
 	@Override
+	public boolean isSettingsPage() {
+		return true;
+	}
+
+	@Override
 	public int getFragmentId() {
 		return R.id.diagnostic_log_fragment;
 	}

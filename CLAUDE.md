@@ -897,6 +897,25 @@ what each widget shows is set on the widget (edit mode > its gear).
 - **Back with the YouTube comments open** is guarded by an overlay-priority `OnBackInvokedCallback` (`YoutubeCommentsView#armBackGuard`): the WebView registers its own fullscreen-exit callback, newer than the
   activity's, so Back used to leave fullscreen (pausing the video) before the comments saw it.
 
+### Twenty-second round (one settings look, the list beside every settings page, live previews, crash on first run)
+
+- **One look for every settings row**: `PreferenceView#setRowStyler` (set to `ui/view/SettingsStyle#apply` in `MainActivityDelegate#init`) is called after each PreferenceSet row is bound
+  and gives it the Home settings page's look (rounded tile, bold title, accent icon and tick). The option pages built in code (`ReorderListFragment`) draw the same tiles with the same colours
+  (`SettingsStyle.Colors` is the palette they share). A new settings control should use those, not its own colours.
+- **The list of categories beside every settings page on a wide window** (>= 720dp, not the car screen): `ui/view/SettingsSplit`, a view added to `BodyLayout` (below the tool bar, over the page
+  container, which gets a left margin as wide as it) and shown while the fragment in front says `MainActivityFragment#isSettingsPage()` (Settings, `ReorderListFragment` pages, Captions/Lyrics, All in One,
+  the key simulator, the diagnostic log). It stays while the pages change, slides in and out, and a divider on its right edge drags its width (`SETTINGS_NAV_DP`). What it lists is `SettingsNav`: `SettingsFragment`
+  publishes the root's categories and the buttons at its root (`publishNav`); a page reached from a button keeps that button selected, a page inside a category its category. Settings itself shows only the
+  chosen category on a wide window (`twoPane`: its root is never the page). Nothing is listed until Settings has been built once, so on a fresh start the list is missing from pages opened before it.
+  A new settings page only needs `isSettingsPage()`; it must not add a left pane of its own.
+- **Home settings previews** (`ui/home/HomeLayoutPreview`): a phone or the car's display drawn live from the prefs (arrangement, columns or rows, gap, greeting, info chips, edit button, the picture with dim, zoom
+  and blur, and sample cards packed first-fit the way `HomeGridLayout` does, cut off at the scrolling edge). One big one tops each screen's part; the arrangement picker is four small ones
+  (`HomeSettingsFragment#addArrangeCards`). It listens to the prefs itself while attached.
+- **First-run crash**: the permission dialogs must come before anything that lists the library; deferring them until the wizard closed (the twenty-first round) left the app starting without storage access and it
+  crashed on the first thing that left the wizard, and again at every start. They are asked first again, as ever. `DiagnosticLog#logCrash` also writes `Android/data/<app>/files/last_crash.txt`, which a file manager can reach
+  when the app cannot start.
+- **The wizard swipes over its picture too**: a touch nothing under it takes makes `PageHost` itself the target, and then the moves never go through `onInterceptTouchEvent`; `PageHost#onTouchEvent` starts the drag.
+
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 
 - Size what is *inside* a card from its pixels, not from cell counts or fixed dp: the Data ring's words (`used`/`caption`) and the Power

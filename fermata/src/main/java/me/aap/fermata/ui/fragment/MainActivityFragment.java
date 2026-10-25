@@ -62,6 +62,14 @@ public abstract class MainActivityFragment extends ActivityFragment {
 		return true;
 	}
 
+	/**
+	 * Whether this is one of the settings pages: on a wide window they all sit beside the same list of settings categories
+	 * (see {@code SettingsSplit}), which can be dragged wider or narrower.
+	 */
+	public boolean isSettingsPage() {
+		return false;
+	}
+
 	@Override
 	public FloatingButton.Mediator getFloatingButtonMediator() {
 		return FloatingButtonMediator.instance;

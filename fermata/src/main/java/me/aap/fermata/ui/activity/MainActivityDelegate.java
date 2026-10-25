@@ -2918,6 +2918,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		matchStatusBarToBackground();
 		me.aap.utils.ui.view.DialogView.setStyler(me.aap.fermata.ui.view.DialogStyle::apply);
 		// One switch look everywhere (see SwitchStyle); the settings rows' switches follow it too.
+		me.aap.utils.pref.PreferenceView.setRowStyler(me.aap.fermata.ui.view.SettingsStyle::apply);
 		me.aap.utils.pref.PreferenceView.setSwitchStyler(b -> {
 			if (b instanceof androidx.appcompat.widget.SwitchCompat sw) {
 				me.aap.fermata.ui.view.SwitchStyle.apply(sw,
