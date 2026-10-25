@@ -422,7 +422,7 @@ public final class AllInOneMenu {
 		card = new DraggableCard(ctx);
 		card.setClickable(true);
 		card.setAlpha(0f);
-		card.setBackground(panel());
+		card.setBackground(panel(card));
 		card.setElevation(dp(12));
 		card.addView(scroll, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
@@ -464,7 +464,7 @@ public final class AllInOneMenu {
 		buildContent();
 		updateStatus();
 		FrameLayout c = new FrameLayout(ctx);
-		c.setBackground(panel());
+		c.setBackground(panel(c));
 		c.addView(root, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 		// As wide as the real card, at most: the tiles keep their proportions.
 		MaxWidthFrame frame = new MaxWidthFrame(ctx, dp(cardWidthDp()));
@@ -599,11 +599,9 @@ public final class AllInOneMenu {
 	// ---------------------------------------------------------------------------------------------
 
 	/** The card's fill: the palette's panel colour (the queue panel's), a clean, near-opaque surface. */
-	private Drawable panel() {
-		GradientDrawable d = new GradientDrawable();
-		d.setColor(color(R.attr.musicPanelFill));
-		d.setCornerRadius(dp(28));
-		return d;
+	private Drawable panel(View v) {
+		// Glass with the UI style's glass on menus and dialogs (MenuStyle#panel).
+		return MenuStyle.panel(v, color(R.attr.musicPanelFill), dp(28));
 	}
 
 	/** The card, which a downward drag pulls away (and, dragged far or flung, dismisses). */

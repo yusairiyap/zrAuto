@@ -66,15 +66,21 @@ public final class GlassLens {
 											float density) {
 		if (!c.isHardwareAccelerated() || r.isEmpty() || (alpha <= 0f)) return false;
 		float blur = look.blurDp * density;
+		// Rendered at a fraction of the size (the quality setting) and stretched back up: the blur's
+		// work goes down with the square of it, and blurred content loses nothing to the stretch.
+		float s = Glass.renderScale(look);
 		// Room around the surface for the blur to read from, so its edges are not darkened.
 		int m = (int) Math.ceil(blur * 1.5f);
-		int w = (int) Math.ceil(r.width()) + 2 * m;
-		int h = (int) Math.ceil(r.height()) + 2 * m;
+		int w = (int) Math.ceil((r.width() + 2 * m) * s);
+		int h = (int) Math.ceil((r.height() + 2 * m) * s);
 		if ((w <= 0) || (h <= 0)) return false;
 		node.setPosition(0, 0, w, h);
-		applyEffect(blur, look.saturation);
+		// Its own layer at its own (small) size, the blur applied to that layer.
+		node.setUseCompositingLayer(true, null);
+		applyEffect(blur * s, look.saturation);
 		RecordingCanvas rc = node.beginRecording(w, h);
 		try {
+			rc.scale(s, s);
 			rc.translate(srcX - r.left + m, srcY - r.top + m);
 			content.accept(rc);
 		} finally {
@@ -86,6 +92,7 @@ public final class GlassLens {
 		clip.addRoundRect(r, radius, radius, Path.Direction.CW);
 		c.clipPath(clip);
 		c.translate(r.left - m, r.top - m);
+		if (s != 1f) c.scale(1f / s, 1f / s);
 		c.drawRenderNode(node);
 		c.restoreToCount(save);
 		return true;
@@ -116,6 +123,8 @@ public final class GlassLens {
 		if (a == null) return false;
 		BodyLayout body = a.getBody();
 		if (body == null) return false;
+		// Drawn again when the content under it changes or it moves (see Glass#register).
+		Glass.register(self);
 		RenderNode src = body.getGlassSource();
 		if (src == null) return false;
 		if (slot[0] == null) slot[0] = new GlassLens();

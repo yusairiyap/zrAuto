@@ -105,6 +105,13 @@ final class HomeBackgroundView extends View {
 	/** What this layer last drew, for Home's glass cards to blur (a RenderNode; Android 12+, glass on Home). */
 	@Nullable
 	private Object glassNode;
+	/** Told when this layer was drawn again (the glass cards over it then are too). */
+	@Nullable
+	private Runnable onRedraw;
+
+	void setOnRedraw(@Nullable Runnable r) {
+		onRedraw = r;
+	}
 
 	@Override
 	public void draw(Canvas c) {
@@ -122,6 +129,7 @@ final class HomeBackgroundView extends View {
 		if (!(glassNode instanceof android.graphics.RenderNode)) glassNode = new android.graphics.RenderNode("homeGlass");
 		me.aap.fermata.ui.view.GlassLens.recordAndDraw(c, (android.graphics.RenderNode) glassNode, getWidth(), getHeight(),
 				super::draw);
+		if (onRedraw != null) onRedraw.run();
 	}
 
 	/** See {@link #draw}: null while it is not recorded. */

@@ -2920,6 +2920,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		a.setContentView(getLayout());
 		matchStatusBarToBackground();
 		me.aap.utils.ui.view.DialogView.setStyler(me.aap.fermata.ui.view.DialogStyle::apply);
+		me.aap.utils.ui.menu.OverlayMenuView.setStyler(new me.aap.fermata.ui.view.MenuStyle());
 		// One switch look everywhere (see SwitchStyle); the settings rows' switches follow it too.
 		me.aap.utils.pref.PreferenceView.setRowStyler(me.aap.fermata.ui.view.SettingsStyle::apply);
 		me.aap.utils.pref.PreferenceView.setSwitchStyler(b -> {

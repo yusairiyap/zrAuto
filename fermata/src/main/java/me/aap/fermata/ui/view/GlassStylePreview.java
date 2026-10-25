@@ -68,15 +68,22 @@ public final class GlassStylePreview extends View implements PreferenceStore.Lis
 	@Override
 	protected void onAttachedToWindow() {
 		super.onAttachedToWindow();
-		if (style < 0) prefs.addBroadcastListener(this);
+		if (style < 0) {
+			prefs.addBroadcastListener(this);
+			Glass.addAnimListener(glide);
+		}
 	}
 
 	@Override
 	protected void onDetachedFromWindow() {
 		prefs.removeBroadcastListener(this);
+		Glass.removeAnimListener(glide);
 		running = false;
 		super.onDetachedFromWindow();
 	}
+
+	/** The look gliding to a new one after a change: drawn each frame of it. */
+	private final Runnable glide = this::invalidate;
 
 	@Override
 	public void onPreferenceChanged(PreferenceStore store, java.util.List<PreferenceStore.Pref<?>> changed) {
@@ -228,7 +235,7 @@ public final class GlassStylePreview extends View implements PreferenceStore.Lis
 
 	/** The look with its blur scaled to the miniature (a phone ~0.35 of the real one). */
 	private Glass.Look scaled(Glass.Look l) {
-		return new Glass.Look(l.style, l.blurDp * 0.45f, l.tint, l.saturation, l.grain, l.rim, l.bars, l.home);
+		return l.withBlur(l.blurDp * 0.45f);
 	}
 
 	/** Icons as dots on the bars, and a title line, so they read as bars. */

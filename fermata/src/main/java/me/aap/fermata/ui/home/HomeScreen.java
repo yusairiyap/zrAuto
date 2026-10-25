@@ -134,6 +134,9 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		root.addView(bg, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));
 		behind = new BehindBarsLayers(a, root, base, bg);
+		// Glass cards show these layers blurred: drawn again with them.
+		base.setOnRedraw(this::invalidateGlassCards);
+		bg.setOnRedraw(this::invalidateGlassCards);
 		nowBg = new HomeNowPlayingBg(a, (bm, top) -> {
 			if (bm == null) {
 				bg.setImage(null, true);
@@ -532,6 +535,19 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	@Override
 	public int cardAlpha() {
 		return Math.max(0, Math.min(100, prefs.getIntPref(MainActivityPrefs.HOME_CARD_ALPHA)));
+	}
+
+	/** The cards with real glass are drawn again (the background behind them changed). */
+	private void invalidateGlassCards() {
+		invalidateGlassCards(grid);
+	}
+
+	private static void invalidateGlassCards(View v) {
+		if (v instanceof HomeWidgetView w) {
+			if (w.glassCard()) w.invalidate();
+		} else if (v instanceof ViewGroup g) {
+			for (int i = 0, n = g.getChildCount(); i < n; i++) invalidateGlassCards(g.getChildAt(i));
+		}
 	}
 
 	private final int[] glassCardLoc = new int[2];

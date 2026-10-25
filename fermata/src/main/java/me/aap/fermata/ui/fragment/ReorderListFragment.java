@@ -680,6 +680,12 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 	}
 
 	protected final GradientDrawable rounded(int color, int radiusDp) {
+		// The tiles take the glass UI style's look (a sheen with a hairline rim) when it is on.
+		if (color == tileFill) {
+			GradientDrawable g = me.aap.fermata.ui.view.Glass.tile(dp(radiusDp + 2),
+					androidx.core.graphics.ColorUtils.calculateLuminance(textPrimary | 0xFF000000) < 0.5);
+			if (g != null) return g;
+		}
 		GradientDrawable d = new GradientDrawable();
 		d.setColor(color);
 		d.setCornerRadius(dp(radiusDp));

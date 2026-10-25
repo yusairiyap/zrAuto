@@ -201,9 +201,9 @@ public class VideoControlsOverlay extends FrameLayout {
 		b.setClickable(true);
 		b.setFocusable(true);
 
-		GradientDrawable normal = new GradientDrawable();
-		normal.setShape(GradientDrawable.OVAL);
-		normal.setColor(BUTTON_BG);
+		// Glass (tint, grain, rim) with the UI style's glass on the bars: video can't be blurred behind it.
+		android.graphics.drawable.Drawable normal = Glass.surface(BUTTON_BG, -1f,
+				ctx.getResources().getDisplayMetrics().density);
 		GradientDrawable focused = new GradientDrawable();
 		focused.setShape(GradientDrawable.OVAL);
 		focused.setColor(BUTTON_BG);

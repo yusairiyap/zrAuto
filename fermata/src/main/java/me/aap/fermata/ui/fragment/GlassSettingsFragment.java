@@ -68,6 +68,8 @@ public class GlassSettingsFragment extends ReorderListFragment {
 			e.removePref(MainActivityPrefs.GLASS_RIM);
 			e.removePref(MainActivityPrefs.GLASS_BARS);
 			e.removePref(MainActivityPrefs.GLASS_HOME);
+			e.removePref(MainActivityPrefs.GLASS_MENUS);
+			e.removePref(MainActivityPrefs.GLASS_QUALITY);
 		}
 		for (Runnable r : syncers) r.run();
 	}
@@ -141,11 +143,19 @@ public class GlassSettingsFragment extends ReorderListFragment {
 		addSwitchRow(h, R.string.glass_rim, R.string.glass_rim_sub,
 				() -> p.getBooleanPref(MainActivityPrefs.GLASS_RIM),
 				on -> p.applyBooleanPref(MainActivityPrefs.GLASS_RIM, on), isGlass);
+		if (Glass.realBlur()) {
+			addChoiceRow(h, R.string.glass_quality, R.string.glass_quality_sub,
+					new int[]{R.string.glass_quality_high, R.string.glass_quality_balanced, R.string.glass_quality_saver},
+					() -> p.getIntPref(MainActivityPrefs.GLASS_QUALITY), i -> p.applyIntPref(MainActivityPrefs.GLASS_QUALITY, i));
+		}
 
 		section(h, R.string.glass_sec_where);
 		addSwitchRow(h, R.string.glass_on_bars, R.string.glass_on_bars_sub,
 				() -> p.getBooleanPref(MainActivityPrefs.GLASS_BARS),
 				on -> p.applyBooleanPref(MainActivityPrefs.GLASS_BARS, on), isGlass);
+		addSwitchRow(h, R.string.glass_on_menus, R.string.glass_on_menus_sub,
+				() -> p.getBooleanPref(MainActivityPrefs.GLASS_MENUS),
+				on -> p.applyBooleanPref(MainActivityPrefs.GLASS_MENUS, on), isGlass);
 		addSwitchRow(h, R.string.glass_on_home, R.string.glass_on_home_sub,
 				() -> p.getBooleanPref(MainActivityPrefs.GLASS_HOME),
 				on -> p.applyBooleanPref(MainActivityPrefs.GLASS_HOME, on), isGlass);

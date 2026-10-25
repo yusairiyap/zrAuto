@@ -220,6 +220,9 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> GLASS_RIM = Pref.b("GLASS_RIM", true);
 	Pref<BooleanSupplier> GLASS_BARS = Pref.b("GLASS_BARS", true);
 	Pref<BooleanSupplier> GLASS_HOME = Pref.b("GLASS_HOME", true);
+	Pref<BooleanSupplier> GLASS_MENUS = Pref.b("GLASS_MENUS", true);
+	// The size the blur is rendered at (Glass.QUALITY_*): full, half (default), a quarter.
+	Pref<IntSupplier> GLASS_QUALITY = Pref.i("GLASS_QUALITY", 1);
 	Pref<BooleanSupplier> CAPTIONS_ON = Pref.b("CAPTIONS_ON", false);
 	// Language code to prefer ("" = the phone's), and whether speech-recognition captions may be used
 	// when a video has no written ones.

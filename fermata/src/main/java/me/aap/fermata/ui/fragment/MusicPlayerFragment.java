@@ -883,11 +883,13 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	}
 
 	/**
-	 * The small eye chip in the cover's top right corner while covers are hidden; a tap shows them
-	 * again. Made on first use, only touched when its state changes.
+	 * The small eye chip in the cover's top right corner (Music addon settings: "Hide cover button"):
+	 * an eye while covers show, a struck-out eye while they are hidden; a tap switches. Made on first use,
+	 * only touched when its state changes.
 	 */
 	private void updateCoverChip() {
-		boolean on = CoverHide.isOn();
+		boolean hidden = CoverHide.isOn();
+		boolean on = settings().getBooleanPref(MusicAddon.COVER_CHIP);
 		if (coverChip == null) {
 			if (!on || (getView() == null)) return;
 			ViewGroup card = getView().findViewById(R.id.music_art_card);
@@ -901,7 +903,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			pill.setShape(android.graphics.drawable.GradientDrawable.OVAL);
 			pill.setColor(0x66000000);
 			c.setBackground(pill);
-			c.setContentDescription(getString(R.string.cover_hidden_chip));
+			c.setContentDescription(getString(R.string.action_cover_hide));
 			c.setOnClickListener(v -> CoverHide.toggle(getActivityDelegate()));
 			int s = Math.round(30 * getResources().getDisplayMetrics().density);
 			int m = Math.round(10 * getResources().getDisplayMetrics().density);
@@ -910,6 +912,20 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			card.addView(c, lp);
 			c.setVisibility(View.GONE);
 			coverChip = c;
+		}
+		int icon = hidden ? R.drawable.cover_hidden : R.drawable.visibility;
+		if (!Integer.valueOf(icon).equals(coverChip.getTag())) {
+			coverChip.setTag(icon);
+			coverChip.setImageResource(icon);
+			coverChip.setContentDescription(getString(hidden ? R.string.cover_hidden_chip : R.string.cover_shown_chip));
+			if (coverChip.getVisibility() == View.VISIBLE) {
+				// A little pop as it switches.
+				coverChip.animate().cancel();
+				coverChip.setScaleX(0.75f);
+				coverChip.setScaleY(0.75f);
+				coverChip.animate().scaleX(1f).scaleY(1f).setDuration(200)
+						.setInterpolator(new OvershootInterpolator(1.6f)).start();
+			}
 		}
 		boolean shown = coverChip.getVisibility() == View.VISIBLE;
 		if (shown == on) return;
@@ -958,6 +974,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			return;
 		}
 		if (prefs.contains(MainActivityPrefs.COVER_HIDDEN)) applyCoverHide();
+		if (prefs.contains(MusicAddon.COVER_CHIP)) updateCoverChip();
 		if (prefs.contains(MusicAddon.BG_BLUR)) updateBackground(false);
 		if (prefs.contains(MusicAddon.BG_ZOOM)) updateZoom();
 	}

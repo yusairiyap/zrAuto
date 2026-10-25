@@ -7,33 +7,48 @@ import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Shader;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
+import android.os.SystemClock;
+import android.view.Choreographer;
 import android.view.View;
 
 import androidx.annotation.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.WeakHashMap;
 
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.utils.pref.PreferenceStore;
 
 /**
  * The UI style (Settings > Interface > UI style): the usual bars and cards, or glass. With glass, the
- * tool bar, the nav bar / control panel pill and Home's Glass cards show what is behind them blurred
- * (real time, Android 12+), under a tint of the bar's own colour, a little saturation, a faint grain
- * and a light rim along the top edge, the way frosted glass catches light.
+ * tool bar, the nav bar / control panel pill, the floating buttons' pill, menus, dialogs and Home's
+ * Glass cards show what is behind them blurred (real time, Android 12+), under a tint of their own
+ * colour, a little saturation, a faint grain and a light rim along the top edge.
  * <p>
- * How it is drawn: {@code BodyLayout} records the tab's content into a RenderNode once per frame
- * (the same display list the screen draws, so nothing is drawn twice on the UI thread), and each
- * glass surface draws that node through a {@link GlassLens}: its own small RenderNode with a blur
- * RenderEffect, as big as the surface (plus a margin for the blur's edge), clipped to its shape. The
- * blur runs on the GPU over that area only, which is what makes it cheap enough to follow scrolling.
- * Below Android 12 there is no RenderEffect (RenderScript is deprecated and slow), so the glass is the
- * tint, grain and rim over the content without the blur.
+ * How it is drawn: {@code BodyLayout} records the tab's content into a RenderNode (the same display
+ * list the screen draws, so nothing is drawn twice on the UI thread), and each glass surface draws that
+ * node through a {@link GlassLens}: its own small RenderNode with a blur RenderEffect, as big as the
+ * surface (plus a margin), clipped to its shape, rendered at a fraction of the size (the quality
+ * setting) and stretched back up. Below Android 12 there is no RenderEffect (RenderScript is deprecated
+ * and slow), so the glass is the tint, grain and rim without the blur.
  * <p>
- * A web page (the YouTube and browser tabs) is never blurred: a WebView draws through a functor,
- * which must not be drawn a second time in the frame; the bars there get the tint only.
+ * <b>A surface is only drawn again when something under it changed</b>: the surfaces are registered
+ * here ({@link #register}), and BodyLayout calls {@link #invalidateSurfaces} when a view in the tab
+ * asks to be drawn again ({@code onDescendantInvalidated}) and {@link #syncSurfaces} before a frame
+ * to catch a surface that moved. Invalidating them before every frame instead kept the screen
+ * redrawing (and blurring) 60 times a second while nothing moved.
+ * <p>
+ * Web pages (the YouTube and browser tabs) and fullscreen video are never blurred: a WebView draws
+ * through a functor that must not be drawn twice in a frame (it flickers), and video is a SurfaceView
+ * or the page's own fullscreen layer, which nothing in the app's drawing can read. There the glass is
+ * the tint, grain and rim.
+ * <p>
+ * Style changes glide: {@link #look()} is the look on its way from the old values to the new ones for
+ * {@link #ANIM_MS}, while every surface is drawn again each frame.
  */
 public final class Glass {
 	public static final int NORMAL = 0;
@@ -41,6 +56,11 @@ public final class Glass {
 	public static final int CLEAR = 2;
 	public static final int ACRYLIC = 3;
 	public static final int STYLE_COUNT = 4;
+	/** Blur quality: rendered at full size, half, or a quarter (and when the power saver is on). */
+	public static final int QUALITY_HIGH = 0;
+	public static final int QUALITY_BALANCED = 1;
+	public static final int QUALITY_SAVER = 2;
+	static final long ANIM_MS = 320;
 
 	/** Each style's blur (dp), tint (%), saturation (%), grain and rim (1 = on). NORMAL has none. */
 	private static final int[][] PRESETS = {
@@ -50,19 +70,24 @@ public final class Glass {
 			{34, 74, 110, 1, 0},
 	};
 
-	/** What a glass surface is drawn with: read from the prefs, kept until one of them changes. */
+	/** What a glass surface is drawn with. */
 	public static final class Look {
 		public final int style;
 		public final float blurDp;
-		public final int tint;
+		/** The tint, 0 to 100 (% opacity). */
+		public final float tint;
 		public final float saturation;
-		public final boolean grain;
-		public final boolean rim;
+		/** How much grain and rim light, 0 to 1 (they fade in and out with a change). */
+		public final float grain;
+		public final float rim;
 		public final boolean bars;
 		public final boolean home;
+		public final boolean menus;
+		/** The size the blur is rendered at, 1 = full. */
+		public final float scale;
 
-		Look(int style, float blurDp, int tint, float saturation, boolean grain, boolean rim, boolean bars,
-				 boolean home) {
+		Look(int style, float blurDp, float tint, float saturation, float grain, float rim, boolean bars,
+				 boolean home, boolean menus, float scale) {
 			this.style = style;
 			this.blurDp = blurDp;
 			this.tint = tint;
@@ -71,6 +96,8 @@ public final class Glass {
 			this.rim = rim;
 			this.bars = bars;
 			this.home = home;
+			this.menus = menus;
+			this.scale = scale;
 		}
 
 		public boolean isGlass() {
@@ -79,16 +106,39 @@ public final class Glass {
 
 		/** The tint's alpha, 0 to 255. */
 		public int tintAlpha() {
-			return Math.round(Math.max(0, Math.min(100, tint)) * 2.55f);
+			return Math.round(Math.max(0f, Math.min(100f, tint)) * 2.55f);
+		}
+
+		/** The same look with at least {@code t} of tint (text on it must stay readable). */
+		public Look withMinTint(float t) {
+			return (tint >= t) ? this : new Look(style, blurDp, t, saturation, grain, rim, bars, home, menus, scale);
+		}
+
+		/** The same look with another blur (the settings previews draw it scaled down). */
+		public Look withBlur(float dp) {
+			return new Look(style, dp, tint, saturation, grain, rim, bars, home, menus, scale);
+		}
+
+		boolean sameAs(Look o) {
+			return (style == o.style) && (blurDp == o.blurDp) && (tint == o.tint) && (saturation == o.saturation) &&
+					(grain == o.grain) && (rim == o.rim) && (bars == o.bars) && (home == o.home) &&
+					(menus == o.menus) && (scale == o.scale);
 		}
 	}
 
 	@Nullable
-	private static Look look;
+	private static Look target;
+	@Nullable
+	private static Look from;
+	private static long animStart = -1;
+	private static boolean ticking;
 	@Nullable
 	private static PreferenceStore.Listener listener;
 	@Nullable
 	private static Bitmap grainTile;
+	private static final WeakHashMap<View, long[]> surfaces = new WeakHashMap<>();
+	private static final List<Runnable> animListeners = new ArrayList<>();
+	private static final int[] loc = new int[2];
 
 	private Glass() {
 	}
@@ -99,29 +149,103 @@ public final class Glass {
 		return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S;
 	}
 
+	/** The look to draw now: the one set, or on its way to it after a change. */
 	public static Look look() {
-		Look l = look;
+		Look t = target();
+		if (animStart < 0) return t;
+		float f = (SystemClock.uptimeMillis() - animStart) / (float) ANIM_MS;
+		if ((f >= 1f) || (from == null)) {
+			animStart = -1;
+			return t;
+		}
+		// Ease out: most of the change at once, settling softly.
+		f = 1f - (1f - f) * (1f - f);
+		return mix(from, t, f);
+	}
+
+	/** The look set in the prefs, without the glide. */
+	private static Look target() {
+		Look l = target;
 		if (l != null) return l;
 		MainActivityPrefs p = MainActivityPrefs.get();
 		if (listener == null) {
 			// Held here: the store keeps its listeners weakly.
 			listener = (store, prefs) -> {
-				if (touches(prefs)) look = null;
+				if (touches(prefs)) reset();
 			};
 			p.addBroadcastListener(listener);
 		}
 		int style = Math.max(0, Math.min(STYLE_COUNT - 1, p.getIntPref(MainActivityPrefs.GLASS_STYLE)));
+		int q = p.getIntPref(MainActivityPrefs.GLASS_QUALITY);
+		float scale = (q == QUALITY_HIGH) ? 1f : (q == QUALITY_SAVER) ? 0.25f : 0.5f;
 		l = new Look(style, Math.max(0, p.getIntPref(MainActivityPrefs.GLASS_BLUR)),
 				p.getIntPref(MainActivityPrefs.GLASS_TINT), p.getIntPref(MainActivityPrefs.GLASS_SATURATION) / 100f,
-				p.getBooleanPref(MainActivityPrefs.GLASS_GRAIN), p.getBooleanPref(MainActivityPrefs.GLASS_RIM),
-				p.getBooleanPref(MainActivityPrefs.GLASS_BARS), p.getBooleanPref(MainActivityPrefs.GLASS_HOME));
-		look = l;
+				p.getBooleanPref(MainActivityPrefs.GLASS_GRAIN) ? 1f : 0f,
+				p.getBooleanPref(MainActivityPrefs.GLASS_RIM) ? 1f : 0f,
+				p.getBooleanPref(MainActivityPrefs.GLASS_BARS), p.getBooleanPref(MainActivityPrefs.GLASS_HOME),
+				p.getBooleanPref(MainActivityPrefs.GLASS_MENUS), scale);
+		target = l;
 		return l;
 	}
 
-	/** Forgets the look read: the next {@link #look()} reads the prefs again. */
+	/** NORMAL as a glass look: the usual mostly opaque surface, so a change to or from it glides too. */
+	private static Look asGlass(Look n) {
+		return new Look(n.style, 0f, 95f, 1f, 0f, 0f, n.bars, n.home, n.menus, n.scale);
+	}
+
+	private static Look mix(Look a, Look b, float f) {
+		if (!a.isGlass() && !b.isGlass()) return b;
+		Look x = a.isGlass() ? a : asGlass(a);
+		Look y = b.isGlass() ? b : asGlass(b);
+		// Glass until the glide is over; the switches follow the look that has glass.
+		Look flags = b.isGlass() ? b : a;
+		return new Look(flags.style, lerp(x.blurDp, y.blurDp, f), lerp(x.tint, y.tint, f),
+				lerp(x.saturation, y.saturation, f), lerp(x.grain, y.grain, f), lerp(x.rim, y.rim, f),
+				flags.bars, flags.home, flags.menus, b.scale);
+	}
+
+	private static float lerp(float a, float b, float f) {
+		return a + (b - a) * f;
+	}
+
+	/**
+	 * The prefs changed: read again, and glide from what is on screen to the new look, every surface
+	 * drawn again each frame of it.
+	 */
 	public static void reset() {
-		look = null;
+		Look before = (target != null) ? look() : null;
+		target = null;
+		Look after = target();
+		if ((before == null) || before.sameAs(after)) return;
+		from = before;
+		animStart = SystemClock.uptimeMillis();
+		if (!ticking) {
+			ticking = true;
+			Choreographer.getInstance().postFrameCallback(tick);
+		}
+	}
+
+	private static final Choreographer.FrameCallback tick = new Choreographer.FrameCallback() {
+		@Override
+		public void doFrame(long frameTimeNanos) {
+			look();
+			invalidateSurfaces();
+			for (Runnable r : new ArrayList<>(animListeners)) r.run();
+			if (animStart >= 0) {
+				Choreographer.getInstance().postFrameCallback(this);
+			} else {
+				ticking = false;
+			}
+		}
+	};
+
+	/** Called each frame while the look glides (Home's cards, the previews), and once at its end. */
+	public static void addAnimListener(Runnable r) {
+		if (!animListeners.contains(r)) animListeners.add(r);
+	}
+
+	public static void removeAnimListener(Runnable r) {
+		animListeners.remove(r);
 	}
 
 	/** Whether a change of {@code prefs} changes the look. */
@@ -129,10 +253,11 @@ public final class Glass {
 		return prefs.contains(MainActivityPrefs.GLASS_STYLE) || prefs.contains(MainActivityPrefs.GLASS_BLUR) ||
 				prefs.contains(MainActivityPrefs.GLASS_TINT) || prefs.contains(MainActivityPrefs.GLASS_SATURATION) ||
 				prefs.contains(MainActivityPrefs.GLASS_GRAIN) || prefs.contains(MainActivityPrefs.GLASS_RIM) ||
-				prefs.contains(MainActivityPrefs.GLASS_BARS) || prefs.contains(MainActivityPrefs.GLASS_HOME);
+				prefs.contains(MainActivityPrefs.GLASS_BARS) || prefs.contains(MainActivityPrefs.GLASS_HOME) ||
+				prefs.contains(MainActivityPrefs.GLASS_MENUS) || prefs.contains(MainActivityPrefs.GLASS_QUALITY);
 	}
 
-	/** Glass on the tool bar, nav bar and control panel. */
+	/** Glass on the tool bar, nav bar, control panel and floating buttons. */
 	public static boolean onBars() {
 		Look l = look();
 		return l.isGlass() && l.bars;
@@ -143,6 +268,67 @@ public final class Glass {
 		Look l = look();
 		return l.isGlass() && l.home;
 	}
+
+	/** Glass under menus and dialogs. */
+	public static boolean onMenus() {
+		Look l = look();
+		return l.isGlass() && l.menus;
+	}
+
+	/** Some glass surface wants the tab content recorded (see BodyLayout). */
+	public static boolean wantsSource() {
+		Look l = look();
+		return l.isGlass() && (l.bars || l.menus);
+	}
+
+	/** The size the blur is rendered at now: the quality setting, a quarter while the power saver is on. */
+	static float renderScale(Look l) {
+		try {
+			if (me.aap.fermata.addon.power.PowerSaver.get().isActive()) return Math.min(l.scale, 0.25f);
+		} catch (Throwable ignore) {
+		}
+		return l.scale;
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Surfaces
+
+	/** {@code v} draws the tab content through a lens: drawn again when the content changes. Weakly held. */
+	public static void register(View v) {
+		if (!surfaces.containsKey(v)) surfaces.put(v, new long[]{Long.MIN_VALUE});
+	}
+
+	public static void unregister(View v) {
+		surfaces.remove(v);
+	}
+
+	/** The content under the surfaces changed: they are drawn again. */
+	public static void invalidateSurfaces() {
+		if (surfaces.isEmpty()) return;
+		for (View v : new ArrayList<>(surfaces.keySet())) {
+			if (v.isAttachedToWindow() && (v.getVisibility() == View.VISIBLE)) v.invalidate();
+		}
+	}
+
+	/** Before a frame: a surface that moved (a bar sliding, a menu rising) is drawn again at its new place. */
+	public static void syncSurfaces() {
+		if (surfaces.isEmpty()) return;
+		for (var e : new ArrayList<>(surfaces.entrySet())) {
+			View v = e.getKey();
+			if ((v == null) || !v.isAttachedToWindow() || (v.getVisibility() != View.VISIBLE)) continue;
+			v.getLocationInWindow(loc);
+			long key = (((long) loc[0]) << 32) ^ (loc[1] & 0xFFFFFFFFL) ^ (((long) v.getWidth()) << 48) ^
+					(((long) v.getHeight()) << 16);
+			long[] last = e.getValue();
+			if (last[0] != key) {
+				last[0] = key;
+				v.invalidate();
+			}
+		}
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Picking a style
 
 	/** Picks a style: its values are written into the prefs (which can then be tuned one by one). */
 	public static void applyStyle(MainActivityPrefs p, int style) {
@@ -170,11 +356,11 @@ public final class Glass {
 				(p.getBooleanPref(MainActivityPrefs.GLASS_RIM) == (v[4] != 0));
 	}
 
-	/** A preset's look, for the style previews (bars and Home on, as they would be). */
+	/** A preset's look, for the style previews (every surface on, full quality). */
 	public static Look preset(int style) {
 		int[] v = (style > 0) && (style < PRESETS.length) ? PRESETS[style] : null;
-		if (v == null) return new Look(NORMAL, 0, 0, 1f, false, false, true, true);
-		return new Look(style, v[0], v[1], v[2] / 100f, v[3] != 0, v[4] != 0, true, true);
+		if (v == null) return new Look(NORMAL, 0, 0, 1f, 0f, 0f, true, true, true, 1f);
+		return new Look(style, v[0], v[1], v[2] / 100f, v[3], v[4], true, true, true, 1f);
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -182,40 +368,117 @@ public final class Glass {
 
 	/**
 	 * A glass surface's tint, grain and rim over whatever was drawn under {@code r} (the blur through a
-	 * {@link GlassLens}, or nothing below Android 12). {@code rgb} is the surface's own colour (its alpha is
-	 * ignored), {@code alpha} how much of the surface shows (a fading bar), {@code light} a light theme
-	 * (the rim and grain are then darker and fainter).
+	 * {@link GlassLens}, or nothing below Android 12 / over a web page or video). {@code rgb} is the
+	 * surface's own colour (its alpha is ignored), {@code alpha} how much of the surface shows (a fading
+	 * bar), {@code light} a light theme (the rim and grain are then darker and fainter).
 	 */
 	public static void paintOver(Canvas c, RectF r, float radius, int rgb, float alpha, Look l, boolean light,
 															 float density, Paint paint) {
+		paintOver(c, r, radius, rgb, alpha, l, light, density, paint, realBlur());
+	}
+
+	/** As above; {@code blurred} says whether a blur is under it (else the tint never goes thinner than 45%). */
+	public static void paintOver(Canvas c, RectF r, float radius, int rgb, float alpha, Look l, boolean light,
+															 float density, Paint paint, boolean blurred) {
 		if (r.isEmpty() || (alpha <= 0f)) return;
 		paint.setShader(null);
 		paint.setStyle(Paint.Style.FILL);
 		paint.clearShadowLayer();
-		// Below Android 12 the tint alone has to keep text readable: never thinner than 45%.
-		int ta = realBlur() ? l.tintAlpha() : Math.max(115, l.tintAlpha());
+		int ta = blurred ? l.tintAlpha() : Math.max(115, l.tintAlpha());
 		paint.setColor((rgb & 0x00FFFFFF) | (Math.round(ta * alpha) << 24));
 		c.drawRoundRect(r, radius, radius, paint);
-		if (l.grain) {
+		if (l.grain > 0f) {
 			paint.setColor(0xFFFFFFFF);
 			paint.setShader(grainShader());
-			paint.setAlpha(Math.round((light ? 22 : 30) * alpha));
+			paint.setAlpha(Math.round((light ? 22 : 30) * alpha * l.grain));
 			c.drawRoundRect(r, radius, radius, paint);
 			paint.setShader(null);
 		}
-		if (l.rim) {
+		if (l.rim > 0f) {
 			float sw = Math.max(1f, density);
 			paint.setStyle(Paint.Style.STROKE);
 			paint.setStrokeWidth(sw);
 			int top = light ? 0x99FFFFFF : 0x59FFFFFF;
 			int bottom = light ? 0x14000000 : 0x0DFFFFFF;
 			paint.setShader(new LinearGradient(0, r.top, 0, r.bottom, top, bottom, Shader.TileMode.CLAMP));
-			paint.setAlpha(Math.round(255 * alpha));
+			paint.setAlpha(Math.round(255 * alpha * l.rim));
 			float h = sw / 2f;
 			c.drawRoundRect(r.left + h, r.top + h, r.right - h, r.bottom - h, Math.max(0f, radius - h),
 					Math.max(0f, radius - h), paint);
 			paint.setShader(null);
 			paint.setStyle(Paint.Style.FILL);
+		}
+	}
+
+	/**
+	 * A tile in the glass look for list rows and option tiles (settings rows, chips): a faint vertical
+	 * sheen with a hairline rim, no blur (there are many of them, all inside the tab). Null while the UI
+	 * style is Normal, so the caller keeps its own fill.
+	 */
+	@Nullable
+	public static GradientDrawable tile(float radiusPx, boolean light) {
+		if (!look().isGlass()) return null;
+		GradientDrawable d = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+				light ? new int[]{0xCCFFFFFF, 0x8CFFFFFF} : new int[]{0x24FFFFFF, 0x0FFFFFFF});
+		d.setCornerRadius(radiusPx);
+		d.setStroke(1, light ? 0x1F000000 : 0x29FFFFFF);
+		return d;
+	}
+
+	/**
+	 * A surface with no blur behind it (over fullscreen video, which nothing can read): glass tint, grain
+	 * and rim while the bars are glass, else the plain {@code color}. {@code radius} below 0 = a pill /
+	 * disc (half the short side).
+	 */
+	public static android.graphics.drawable.Drawable surface(int color, float radius, float density) {
+		return new Surface(color, radius, density);
+	}
+
+	private static final class Surface extends android.graphics.drawable.Drawable {
+		private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+		private final RectF rect = new RectF();
+		private final int color;
+		private final float radius;
+		private final float density;
+		private int alpha = 255;
+
+		Surface(int color, float radius, float density) {
+			this.color = color;
+			this.radius = radius;
+			this.density = density;
+		}
+
+		@Override
+		public void draw(Canvas c) {
+			rect.set(getBounds());
+			if (rect.isEmpty()) return;
+			float r = (radius < 0) ? Math.min(rect.width(), rect.height()) / 2f : radius;
+			float a = alpha / 255f;
+			if (onBars()) {
+				paintOver(c, rect, r, color, a, look(), false, density, paint, false);
+			} else {
+				paint.setShader(null);
+				paint.setStyle(Paint.Style.FILL);
+				paint.setColor(color);
+				paint.setAlpha(Math.round((color >>> 24) * a));
+				c.drawRoundRect(rect, r, r, paint);
+			}
+		}
+
+		@Override
+		public void setAlpha(int alpha) {
+			this.alpha = alpha;
+			invalidateSelf();
+		}
+
+		@Override
+		public void setColorFilter(@Nullable android.graphics.ColorFilter cf) {
+			paint.setColorFilter(cf);
+		}
+
+		@Override
+		public int getOpacity() {
+			return android.graphics.PixelFormat.TRANSLUCENT;
 		}
 	}
 

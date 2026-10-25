@@ -195,7 +195,8 @@ public final class LyricsCard implements CaptionsHub.Listener {
 		GradientDrawable bg = new GradientDrawable();
 		bg.setColor(color(R.attr.musicPanelFill));
 		bg.setCornerRadius(dp(28));
-		card.setBackground(bg);
+		// Glass with the UI style's glass on menus and dialogs (MenuStyle#panel).
+		card.setBackground(MenuStyle.panel(card, color(R.attr.musicPanelFill), bg.getCornerRadius()));
 		card.setElevation(dp(12));
 		card.addView(root, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 

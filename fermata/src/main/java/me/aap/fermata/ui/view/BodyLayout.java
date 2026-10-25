@@ -179,8 +179,12 @@ public class BodyLayout extends SplitLayout
 	 */
 	@Override
 	public void draw(@NonNull Canvas canvas) {
-		if (glassActive && Glass.realBlur() && canvas.isHardwareAccelerated()) drawGlassSource(canvas);
-		else super.draw(canvas);
+		if (glassActive && Glass.realBlur() && canvas.isHardwareAccelerated()) {
+			drawGlassSource(canvas);
+			Glass.invalidateSurfaces();
+		} else {
+			super.draw(canvas);
+		}
 	}
 
 	@androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.S)
@@ -206,32 +210,43 @@ public class BodyLayout extends SplitLayout
 	 * frame is asked for: only frames that happen anyway redraw them).
 	 */
 	private void syncGlass() {
-		boolean want = Glass.realBlur() && Glass.onBars() && (getMode() == Mode.FRAME);
+		boolean want = Glass.realBlur() && Glass.wantsSource() && (getMode() == Mode.FRAME);
 		if (want) {
 			long now = SystemClock.uptimeMillis();
-			// A WebView must not be drawn twice in a frame: looked for twice a second.
-			if (now >= glassWebCheckAt) {
+			MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
+			ActivityFragment f = (a != null) ? a.getActiveFragment() : null;
+			int id = (f != null) ? f.getFragmentId() : 0;
+			// A WebView must not be drawn twice in a frame (it flickers): the web tabs are known at once,
+			// before their first frame, and stay "web" while they fade out after a switch; any other
+			// WebView is looked for twice a second.
+			if ((id == R.id.youtube_fragment) || (id == R.id.web_browser_fragment)) {
+				glassWebUntil = now + 600;
+			} else if (now >= glassWebCheckAt) {
 				glassWebCheckAt = now + 500;
-				MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
-				ActivityFragment f = (a != null) ? a.getActiveFragment() : null;
 				glassWeb = (f != null) && Glass.hasWebView(f.getView());
 			}
-			want = !glassWeb;
+			want = !glassWeb && (now >= glassWebUntil);
 		}
 		if (want != glassActive) {
 			glassActive = want;
 			DiagnosticLog.log("BODY", "glass source", want ? "on" : "off");
 			invalidate();
+			Glass.invalidateSurfaces();
 		}
-		if (!glassActive) return;
-		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
-		if (a == null) return;
-		View tb = a.getToolBar();
-		if (tb != null) tb.invalidate();
-		if (getParent() instanceof android.view.ViewGroup p) {
-			View fb = p.findViewById(R.id.floating_bars);
-			if (fb != null) fb.invalidate();
-		}
+		// Only what moved is drawn again here; content changes come through onDescendantInvalidated.
+		if (Glass.wantsSource()) Glass.syncSurfaces();
+	}
+
+	private long glassWebUntil;
+
+	/**
+	 * Something in the tab asked to be drawn again: the glass surfaces showing it blurred are drawn
+	 * again too (in the same frame; nothing changed, nothing is redrawn).
+	 */
+	@Override
+	public void onDescendantInvalidated(@NonNull View child, @NonNull View target) {
+		super.onDescendantInvalidated(child, target);
+		if (glassActive) Glass.invalidateSurfaces();
 	}
 
 	/** {@link #statusBarInside()}, asked again at most once a second (window insets cost). */
@@ -370,6 +385,8 @@ public class BodyLayout extends SplitLayout
 
 	@Override
 	public boolean dispatchTouchEvent(MotionEvent e) {
+		// Where the finger is, for a context menu opened by a long press (MenuStyle).
+		MenuStyle.recordTouch(e);
 		// Only watched, never taken: which content the finger scrolls, see ScrollBarsController.
 		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
 		ScrollBarsController sb = (a != null) ? a.getScrollBars() : null;

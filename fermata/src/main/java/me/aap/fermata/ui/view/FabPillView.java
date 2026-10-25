@@ -291,10 +291,24 @@ public class FabPillView extends View implements ViewTreeObserver.OnPreDrawListe
 		return Math.max(0f, Math.min(1f, a));
 	}
 
+	private final Paint glassPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+	private final GlassLens[] lens = new GlassLens[1];
+
 	@Override
 	protected void onDraw(@NonNull Canvas canvas) {
 		if (!pill || cur.isEmpty() || (alpha <= 0f)) return;
 		float radius = Math.min(cur.width(), cur.height()) / 2f;
+		if (Glass.onBars()) {
+			// Glass: the tab blurred behind it (Android 12+), not over video, which nothing can read.
+			Glass.Look l = Glass.look();
+			boolean blurred = !videoLook && Glass.realBlur() &&
+					GlassLens.behindBars(this, canvas, cur, radius, alpha, l, lens);
+			int color = videoLook ? VideoControlsOverlay.BUTTON_BG : pillColor;
+			Glass.paintOver(canvas, cur, radius, color, alpha, l,
+					!videoLook && (androidx.core.graphics.ColorUtils.calculateLuminance(pillColor | 0xFF000000) > 0.5),
+					getResources().getDisplayMetrics().density, glassPaint, blurred);
+			return;
+		}
 		int color = videoLook ? VideoControlsOverlay.BUTTON_BG : pillColor;
 		paint.setColor(color);
 		paint.setAlpha(Math.round(Color.alpha(color) * alpha));

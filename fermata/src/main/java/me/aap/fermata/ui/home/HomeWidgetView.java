@@ -277,11 +277,13 @@ public abstract class HomeWidgetView extends FrameLayout {
 		super.onAttachedToWindow();
 		setActive(isShown());
 		getViewTreeObserver().addOnPreDrawListener(glassSync);
+		me.aap.fermata.ui.view.Glass.addAnimListener(glassAnim);
 	}
 
 	@Override
 	protected void onDetachedFromWindow() {
 		getViewTreeObserver().removeOnPreDrawListener(glassSync);
+		me.aap.fermata.ui.view.Glass.removeAnimListener(glassAnim);
 		setActive(false);
 		super.onDetachedFromWindow();
 	}
@@ -292,13 +294,26 @@ public abstract class HomeWidgetView extends FrameLayout {
 	private final me.aap.fermata.ui.view.GlassLens[] glassLens = new me.aap.fermata.ui.view.GlassLens[1];
 	private final android.graphics.Paint glassPaint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
 	private final android.graphics.RectF glassRect = new android.graphics.RectF();
+	private final int[] glassLoc = new int[2];
+	private long glassLastLoc = Long.MIN_VALUE;
 	/**
 	 * A glass card shows the background behind it, which moves under it as the page scrolls or the card
-	 * glides: drawn again before each frame (an invalidate here asks for no extra frame).
+	 * glides: drawn again when it has moved (only then: invalidating it before every frame kept the screen
+	 * redrawing while nothing moved). A new picture behind it redraws it from HomeScreen.
 	 */
 	private final android.view.ViewTreeObserver.OnPreDrawListener glassSync = () -> {
-		if (glassCard() && me.aap.fermata.ui.view.Glass.realBlur() && isShown()) invalidate();
+		if (!glassCard() || !me.aap.fermata.ui.view.Glass.realBlur() || !isShown()) return true;
+		getLocationInWindow(glassLoc);
+		long key = (((long) glassLoc[0]) << 32) ^ (glassLoc[1] & 0xFFFFFFFFL);
+		if (key != glassLastLoc) {
+			glassLastLoc = key;
+			invalidate();
+		}
 		return true;
+	};
+	/** The UI style gliding to a new look: drawn again each frame of it. */
+	private final Runnable glassAnim = () -> {
+		if (isShown() && (item != null) && (style() == STYLE_GLASS)) invalidate();
 	};
 
 	/** The Glass look with the glass UI style on Home: the background blurred behind the card. */
