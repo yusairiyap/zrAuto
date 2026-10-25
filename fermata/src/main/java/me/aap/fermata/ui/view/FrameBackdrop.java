@@ -114,9 +114,9 @@ public class FrameBackdrop extends View {
 		// The patch fades in when its first picture arrives; the surface's tint follows it (Glass#setBlurAmount).
 		long now = SystemClock.uptimeMillis();
 		if (e.pictureSince == 0) e.pictureSince = now;
-		float t = Math.min(1f, (now - e.pictureSince) / (float) FADE_IN_MS);
-		Glass.setBlurAmount(t * t * (3f - 2f * t));
-		if (t < 1f) b.postInvalidateOnAnimation();
+		float fade = Math.min(1f, (now - e.pictureSince) / (float) FADE_IN_MS);
+		Glass.setBlurAmount(fade * fade * (3f - 2f * fade));
+		if (fade < 1f) b.postInvalidateOnAnimation();
 		return true;
 	}
 
