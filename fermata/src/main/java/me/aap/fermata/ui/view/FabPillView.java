@@ -296,7 +296,10 @@ public class FabPillView extends View implements ViewTreeObserver.OnPreDrawListe
 
 	@Override
 	protected void onDraw(@NonNull Canvas canvas) {
-		if (!pill || cur.isEmpty() || (alpha <= 0f)) return;
+		if (!pill || cur.isEmpty() || (alpha <= 0f)) {
+			Glass.notDrawn(lens);
+			return;
+		}
 		float radius = Math.min(cur.width(), cur.height()) / 2f;
 		if (Glass.onBars()) {
 			// Glass: the tab blurred behind it (Android 12+), not over video, which nothing can read.

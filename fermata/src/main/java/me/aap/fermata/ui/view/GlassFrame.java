@@ -38,6 +38,7 @@ public class GlassFrame extends FrameLayout {
 	public void draw(@NonNull Canvas canvas) {
 		if (Glass.webBlur() && Glass.wantsSource() && canvas.isHardwareAccelerated()) {
 			drawRecorded(canvas);
+			FrameBackdrop.frameDrawn(this);
 			// What is behind the glass changed: the surfaces showing it are drawn again.
 			Glass.invalidateSurfaces();
 		} else {
@@ -77,6 +78,24 @@ public class GlassFrame extends FrameLayout {
 		if (!Glass.realBlur()) return false;
 		GlassFrame f = find(self);
 		if ((f == null) || !f.recording) return false;
+		return drawFrame(f, self, c, r, radius, alpha, look, slot);
+	}
+
+	boolean isRecording() {
+		return recording;
+	}
+
+	/** Whether {@code v} is inside {@code frame}: such a surface must never draw the frame (a RenderNode cycle). */
+	static boolean holds(View frame, View v) {
+		for (ViewParent p = v.getParent(); p != null; p = p.getParent()) {
+			if (p == frame) return true;
+		}
+		return false;
+	}
+
+	/** Draws {@code f}'s picture blurred under {@code r} (in {@code self}'s coordinates); for {@link FrameBackdrop}. */
+	static boolean drawLens(GlassFrame f, View self, Canvas c, RectF r, float radius, float alpha, Glass.Look look,
+													GlassLens[] slot) {
 		return drawFrame(f, self, c, r, radius, alpha, look, slot);
 	}
 

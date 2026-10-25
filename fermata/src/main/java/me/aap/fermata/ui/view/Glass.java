@@ -301,6 +301,7 @@ public final class Glass {
 	public static void reset() {
 		web = null;
 		PageBlur.reset();
+		FrameBackdrop.reset();
 		Look before = (target != null) ? look() : null;
 		target = null;
 		Look after = target();
@@ -334,6 +335,15 @@ public final class Glass {
 
 	public static void removeAnimListener(Runnable r) {
 		animListeners.remove(r);
+	}
+
+	/**
+	 * The glass surface of lens slot {@code slot} is not drawn now (hidden, faded out, not glass): what was blurred under
+	 * it for it (a box in a web page, a patch over fullscreen video) goes too.
+	 */
+	public static void notDrawn(Object slot) {
+		PageBlur.clear(slot);
+		FrameBackdrop.clear(slot);
 	}
 
 	/** Whether a change of {@code prefs} changes the look. */

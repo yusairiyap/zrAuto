@@ -1088,6 +1088,18 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
   transition alpha (`viewAlpha`), sampled every 100 ms while boxes are up, so a menu's open/close fade and the bars sliding away are
   followed without redraws.
 
+### Ninth round (blur over fullscreen YouTube from inside the VideoView, boxes of hidden pills)
+
+- **Over fullscreen YouTube the bars, floating buttons, menus and dialogs are blurred by `FrameBackdrop`**, a view added to
+  `YoutubeVideoView` right above its GlassFrame (child 1): surfaces report their window rect (`FrameBackdrop.cover`, from
+  `GlassLens#behindBars` before PageBlur), and it draws the frame's picture through a lens per surface *from inside the VideoView*,
+  the way the video buttons always did safely; the surfaces then draw tint and rim only. The page cannot do it there (its
+  fullscreen element is the video: `BODY page blur frosted only`). A surface inside the frame never gets a patch (`GlassFrame.holds`).
+  Patches follow view alpha (sampled every 100 ms while up) and are redrawn on each frame the picture changes (`frameDrawn`).
+- **A pill that stops drawing takes its blur with it** (`Glass.notDrawn(slot)`: the PageBlur box and the FrameBackdrop patch):
+  called where `FloatingBarsView#drawPill`, `FabPillView#onDraw` and `ToolBarPill` return early (alpha 0, empty, merged). The control
+  panel sliding away left its box in the page before, a blurred strip with no pill over it.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

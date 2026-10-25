@@ -64,6 +64,8 @@ public class YoutubeVideoView extends VideoView {
 	protected void init(Context context) {
 		// Records the page for the glass buttons over it when the experimental blur over video is on (GlassFrame).
 		addView(new me.aap.fermata.ui.view.GlassFrame(context), new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		// Right above it, the blur under the bars, floating buttons and menus over fullscreen video (FrameBackdrop).
+		addView(new me.aap.fermata.ui.view.FrameBackdrop(context), new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 		addDimOverlay(context);
 		addBufferingSpinner(context);
 		addTransitionOverlay(context);

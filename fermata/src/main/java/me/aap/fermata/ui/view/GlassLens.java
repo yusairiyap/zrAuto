@@ -131,9 +131,15 @@ public final class GlassLens {
 			// (PageBlur), with the experimental blur over web pages and video on. Never through fullscreen YouTube's
 			// GlassFrame: a bar drawing it crashed the app natively as soon as a video played (only the video buttons
 			// inside the VideoView draw that frame).
+			// Over fullscreen YouTube the page cannot (its fullscreen element is the video): the blurred picture is drawn
+			// under the surface by the FrameBackdrop inside the VideoView, the way the video buttons draw it.
+			if (FrameBackdrop.cover(self, slot, r, radius, alpha, look)) {
+				PageBlur.clear(slot);
+				return true;
+			}
 			return PageBlur.cover(self, slot, r, radius, alpha, look);
 		}
-		PageBlur.clear(slot);
+		Glass.notDrawn(slot);
 		if (slot[0] == null) slot[0] = new GlassLens();
 		int[] bl = new int[2];
 		int[] sl = new int[2];

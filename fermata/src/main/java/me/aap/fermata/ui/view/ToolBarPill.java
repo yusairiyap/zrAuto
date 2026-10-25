@@ -127,10 +127,16 @@ public final class ToolBarPill {
 
 		@Override
 		public void draw(@NonNull Canvas canvas) {
-			if (merged) return;
+			if (merged) {
+				Glass.notDrawn(lens);
+				return;
+			}
 			Rect b = getBounds();
 			pillRect(view, inner, b.left, b.top, b.right, b.bottom, rect);
-			if (rect.isEmpty()) return;
+			if (rect.isEmpty()) {
+				Glass.notDrawn(lens);
+				return;
+			}
 			float radius = radius(rect, maxRadius);
 			if (Glass.onBars()) {
 				// Glass: the content behind it blurred (Android 12+), under the bar's colour as a tint.

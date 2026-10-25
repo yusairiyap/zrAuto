@@ -285,7 +285,11 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 	private final GlassLens[] auxLens = new GlassLens[1];
 
 	private void drawPill(Canvas canvas, RectF r, float alpha) {
-		if (r.isEmpty() || (alpha <= 0f)) return;
+		if (r.isEmpty() || (alpha <= 0f)) {
+			// Gone (the control panel slid away): its blur in a web page or over video goes with it.
+			Glass.notDrawn((r == main) ? mainLens : auxLens);
+			return;
+		}
 		float radius = Math.min(maxRadius, Math.min(r.width(), r.height()) / 2f);
 		if (Glass.onBars()) {
 			// Glass: the content behind the pill blurred (Android 12+), the pill's colour as a tint over it.
