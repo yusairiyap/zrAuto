@@ -304,9 +304,8 @@ public final class MenuStyle implements OverlayMenuView.Styler {
 		}
 
 		@Override
-		public boolean getOutline(@NonNull Outline outline) {
+		public void getOutline(@NonNull Outline outline) {
 			outline.setRoundRect(getBounds(), radius);
-			return true;
 		}
 	}
 }
