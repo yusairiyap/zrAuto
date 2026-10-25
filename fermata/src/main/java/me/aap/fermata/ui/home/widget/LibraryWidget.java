@@ -170,6 +170,59 @@ abstract class LibraryWidget extends HomeWidgetView {
 		return false;
 	}
 
+	/**
+	 * Whether a touch on the card on the car screen gives it the Next/Previous keys (the option "Control with car keys", on unless
+	 * switched off): the rows are outlined and walked through with short presses, long Next opens the row (a playlist) or plays it,
+	 * long Previous goes up one level, and from the outermost list gives the keys back to the user's own bindings.
+	 */
+	protected boolean supportsCarKeys() {
+		return true;
+	}
+
+	private boolean carKeysOn() {
+		return supportsCarKeys() && optBool("carKeys", true);
+	}
+
+	/** The card the car keys are on right now (one at a time). */
+	@Nullable
+	private static LibraryWidget carFocused;
+	/** The list was replaced (opened a playlist, went back): the outline goes to its first row once it is in. */
+	private boolean carReselect;
+
+	@Override
+	public boolean dispatchTouchEvent(android.view.MotionEvent e) {
+		if ((e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) && built && carKeysOn() && !host.isEditing() &&
+				me.aap.fermata.action.CarNav.isEnabled()) {
+			takeCarKeys();
+		}
+		return super.dispatchTouchEvent(e);
+	}
+
+	private void takeCarKeys() {
+		if (carFocused == this) return;
+		if (carFocused != null) carFocused.releaseCarKeys();
+		carFocused = this;
+		me.aap.fermata.action.CarNav.markModalScope(listView, this::carBack);
+		listView.post(() -> {
+			if (carFocused == this) me.aap.fermata.action.CarNav.selectFirst(act(), listView);
+		});
+	}
+
+	/** Long Previous: up out of an opened list, else the keys go back to their usual bindings. */
+	private void carBack() {
+		if (drillSource != null) {
+			backOut();
+			return;
+		}
+		releaseCarKeys();
+	}
+
+	private void releaseCarKeys() {
+		if (carFocused == this) carFocused = null;
+		carReselect = false;
+		if (listView != null) me.aap.fermata.action.CarNav.release(listView);
+	}
+
 	private boolean menuOn() {
 		return supportsMenu() && optBool("menu", true);
 	}
@@ -208,6 +261,11 @@ abstract class LibraryWidget extends HomeWidgetView {
 	/** Whether each row has a remove button on its left (the option "Remove button", on unless switched off). */
 	protected boolean supportsRemove() {
 		return false;
+	}
+
+	/** The option "Hide downloaded icon": the small badge on rows whose song is on the phone stays off. */
+	private boolean badgeHidden() {
+		return optBool("hideDownloaded", false);
 	}
 
 	protected boolean removeOn() {
@@ -506,6 +564,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 
 	@Override
 	protected void onInactive() {
+		releaseCarKeys();
 		act().removeBroadcastListener(contentListener);
 		YtDownloads.get().removeListener(downloadsListener);
 		me.aap.fermata.media.lib.ItemContainer.removeContentListener(libraryListener);
@@ -524,6 +583,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 			l.add(HomeOption.sw("handle", ctx.getString(R.string.home_opt_row_handle), true));
 		}
 		if (supportsRemove()) l.add(HomeOption.sw("remove", ctx.getString(R.string.home_opt_row_remove), true));
+		l.add(HomeOption.sw("hideDownloaded", ctx.getString(R.string.home_opt_hide_downloaded), false));
+		if (supportsCarKeys()) l.add(HomeOption.sw("carKeys", ctx.getString(R.string.home_opt_car_keys), true));
 		if (supportsFullWidth()) l.add(HomeOption.sw("full", ctx.getString(R.string.home_opt_row_full), false));
 		if (supportsQueueOnPlay()) {
 			l.add(HomeOption.sw("queueOnPlay", ctx.getString(R.string.home_opt_queue_on_play), false));
@@ -539,6 +600,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 	/** Opens something inside the card: its rows replace the list, under a chip that goes back. */
 	protected final void drill(CharSequence title, FetchSource source) {
 		drillSource = source;
+		carReselect = carFocused == this;
 		backChip.setText(title);
 		showBack(true);
 		reset();
@@ -547,6 +609,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 	private void backOut() {
 		if (drillSource == null) return;
 		drillSource = null;
+		carReselect = carFocused == this;
 		if (!host.animate() || !isShown() || !built) {
 			showBack(false);
 			reset();
@@ -648,7 +711,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 		// Wide cards split their rows into two columns, unless the card asks for full-width rows.
 		int newCols = ((getCellsW() >= 4) && !(supportsFullWidth() && optBool("full", false))) ? 2 : 1;
 		boolean art = optBool("art", true);
-		int rowMode = (menuOn() ? 1 : 0) | (reorderOn() ? 2 : 0) | (removeOn() ? 4 : 0) | (handleOn() ? 8 : 0);
+		int rowMode = (menuOn() ? 1 : 0) | (reorderOn() ? 2 : 0) | (removeOn() ? 4 : 0) | (handleOn() ? 8 : 0) |
+				(badgeHidden() ? 16 : 0);
 		// Drawn again only when something it shows changed: the rows blinked on every refresh.
 		StringBuilder sig = new StringBuilder();
 		sig.append(total).append('|').append(isCompact()).append('|').append(newCols).append('|')
@@ -683,6 +747,12 @@ abstract class LibraryWidget extends HomeWidgetView {
 		rowModeShown = rowMode;
 		glm.setSpanCount(cols);
 		adapter.set(rows, full);
+		if (carReselect) {
+			carReselect = false;
+			listView.post(() -> {
+				if (carFocused == this) me.aap.fermata.action.CarNav.selectFirst(act(), listView);
+			});
+		}
 		if (wasEmpty && host.animate()) {
 			listView.animate().cancel();
 			listView.setAlpha(0f);
@@ -821,6 +891,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 			});
 			removeBtn.setVisibility(GONE);
 			removeBtn.setTag(R.id.home_no_grab, Boolean.TRUE);
+			// Car keys walk through the rows only; the row's own buttons are for fingers.
+			me.aap.fermata.action.CarNav.skip(removeBtn);
 			root.addView(removeBtn);
 			root.addView(main, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
 
@@ -855,12 +927,14 @@ abstract class LibraryWidget extends HomeWidgetView {
 			playBtn = iconButton(R.drawable.play, 36, ROLE_ICON, R.string.action_play, () -> {
 				if ((row != null) && (row.play() != null)) row.play().run();
 			});
+			me.aap.fermata.action.CarNav.skip(playBtn);
 			root.addView(playBtn);
 
 			handle = iconButton(R.drawable.drag_handle, 32, ROLE_SECONDARY, R.string.home_row_drag, () -> {
 			});
 			handle.setVisibility(GONE);
 			handle.setTag(R.id.home_no_grab, Boolean.TRUE);
+			me.aap.fermata.action.CarNav.skip(handle);
 			handle.setOnTouchListener((v, e) -> {
 				if ((e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) && (touchHelper != null) && reorderOn()) {
 					listView.getParent().requestDisallowInterceptTouchEvent(true);
@@ -955,7 +1029,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 		/** Shown when the row's song is on the phone, at the end of the row itself (so the playing row's fill runs under it). */
 		void updateBadge() {
 			Row r = row;
-			boolean on = (r != null) && isDownloaded(r);
+			boolean on = (r != null) && !badgeHidden() && isDownloaded(r);
 			badge.setVisibility(on ? VISIBLE : GONE);
 			if (on) badge.setContentDescription(ctx.getString(R.string.home_downloaded));
 		}

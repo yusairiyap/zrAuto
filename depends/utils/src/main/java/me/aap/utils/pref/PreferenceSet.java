@@ -74,7 +74,7 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 		return null;
 	}
 
-	List<Supplier<? extends PreferenceView.Opts>> getPreferences() {
+	public List<Supplier<? extends PreferenceView.Opts>> getPreferences() {
 		return preferences;
 	}
 

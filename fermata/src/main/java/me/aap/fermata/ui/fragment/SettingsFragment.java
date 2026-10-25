@@ -121,7 +121,20 @@ public class SettingsFragment extends MainActivityFragment
 	private static final String ADDON_SETTINGS = "addon_settings:";
 	private static final String KEY_SETTINGS = "key_settings:";
 
+	/** The page showing (on a tablet: the right pane). */
 	private PreferenceViewAdapter adapter;
+	/**
+	 * Tablet layout (one pane per side, as in One UI's settings): the categories on the left, the chosen one with its pages on
+	 * the right. Null on a phone, where the categories are the first page of the one list.
+	 */
+	@Nullable
+	private PreferenceViewAdapter navAdapter;
+	@Nullable
+	private PreferenceSet rootSet;
+	/** The category showing on the right (a direct child of the root). */
+	@Nullable
+	private PreferenceSet navSelected;
+	private boolean twoPane;
 	private PreferenceSet dimSettingsSet;
 	private PreferenceSet privateModeSettingsSet;
 	// Each addon's own settings page, by module name, see addonSettings().
@@ -208,7 +221,21 @@ public class SettingsFragment extends MainActivityFragment
 	@Override
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
 													 @Nullable Bundle savedInstanceState) {
-		return inflater.inflate(me.aap.utils.R.layout.pref_list_view, container, false);
+		// Wide windows (a tablet, not the car screen) get the two panes; the window's width, so split screen follows.
+		twoPane = !MainActivityDelegate.get(requireContext()).isCarActivity() &&
+				(getResources().getConfiguration().screenWidthDp >= 720);
+		View detail = inflater.inflate(me.aap.utils.R.layout.pref_list_view, container, false);
+		if (!twoPane) return detail;
+		android.content.Context ctx = requireContext();
+		float d = getResources().getDisplayMetrics().density;
+		android.widget.LinearLayout panes = new android.widget.LinearLayout(ctx);
+		panes.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+		RecyclerView nav = new RecyclerView(ctx);
+		nav.setId(R.id.settings_nav_list);
+		nav.setClipToPadding(false);
+		panes.addView(nav, new android.widget.LinearLayout.LayoutParams(Math.round(320 * d), ViewGroup.LayoutParams.MATCH_PARENT));
+		panes.addView(detail, new android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+		return panes;
 	}
 
 	@Override
@@ -230,8 +257,23 @@ public class SettingsFragment extends MainActivityFragment
 			listView.setAdapter(adapter);
 			a.insetScrollableContent(listView);
 
+			RecyclerView navList = view.findViewById(R.id.settings_nav_list);
+			if (twoPane && (navList != null) && (rootSet != null)) {
+				PreferenceSet root = rootSet;
+				// The categories are the left pane for good; the right pane starts on the first of them.
+				PreferenceSet first = firstCategory(root);
+				navSelected = first;
+				navAdapter = createNavAdapter(root);
+				navList.setHasFixedSize(true);
+				navList.setLayoutManager(new LinearLayoutManager(getContext()));
+				navList.setAdapter(navAdapter);
+				a.insetScrollableContent(navList);
+				navAdapter.setPreferenceSet(root);
+				if (first != null) adapter.setPreferenceSet(first);
+			}
+
 			if (state != null) {
-				PreferenceSet p = adapter.getPreferenceSet().find(state.getInt("id", ID_NULL));
+				PreferenceSet p = (rootSet != null ? rootSet : adapter.getPreferenceSet()).find(state.getInt("id", ID_NULL));
 				if (p != null) adapter.setPreferenceSet(p);
 			}
 
@@ -245,13 +287,65 @@ public class SettingsFragment extends MainActivityFragment
 		super.onDestroyView();
 	}
 
+	@Nullable
+	private static PreferenceSet firstCategory(PreferenceSet root) {
+		for (Object o : root.getPreferences()) {
+			if (o instanceof PreferenceSet s) return s;
+		}
+		return null;
+	}
+
+	/** The direct child of the root that {@code set} is, or sits under. */
+	@Nullable
+	private static PreferenceSet categoryOf(PreferenceSet set) {
+		PreferenceSet p = set;
+		while ((p != null) && (p.getParent() != null) && (p.getParent().getParent() != null)) p = p.getParent();
+		return ((p != null) && (p.getParent() != null)) ? p : null;
+	}
+
+	/** The categories list of the tablet layout: it never leaves the root; a tap on a category opens it on the right. */
+	private PreferenceViewAdapter createNavAdapter(PreferenceSet root) {
+		return new PreferenceViewAdapter(root) {
+			@Override
+			public void setPreferenceSet(PreferenceSet set) {
+				if (set == root) {
+					super.setPreferenceSet(set);
+					return;
+				}
+				PreferenceViewAdapter detail = adapter;
+				if (detail != null) detail.setPreferenceSet(set);
+			}
+
+			@Override
+			public void onBindViewHolder(@NonNull PrefViewHolder holder, int position) {
+				super.onBindViewHolder(holder, position);
+				boolean on = (navSelected != null) && (root.getPreferences().get(position) == navSelected);
+				holder.itemView.setBackgroundResource(on ? R.drawable.settings_nav_selected : me.aap.utils.R.drawable.box_secondary);
+			}
+		};
+	}
+
+	/** The right pane now shows {@code set}: the left one follows with the category it belongs to. */
+	private void pageShown(PreferenceSet set) {
+		PreferenceViewAdapter nav = navAdapter;
+		if (nav == null) return;
+		PreferenceSet cat = categoryOf(set);
+		if ((cat == null) || (cat == navSelected)) return;
+		navSelected = cat;
+		nav.notifyDataSetChanged();
+	}
+
 	private void cleanUp(MainActivityDelegate a) {
 		a.removeBroadcastListener(this);
 		a.getPrefs().removeBroadcastListener(this);
 		FermataApplication.get().getAddonManager()
 				.removeBroadcastListeners(l -> l instanceof AddonPrefsBuilder);
 		if (adapter != null) adapter.onDestroy();
+		if (navAdapter != null) navAdapter.onDestroy();
 		adapter = null;
+		navAdapter = null;
+		rootSet = null;
+		navSelected = null;
 	}
 
 	@Override
@@ -263,7 +357,10 @@ public class SettingsFragment extends MainActivityFragment
 	public void onPreferenceChanged(PreferenceStore store, List<Pref<?>> prefs) {
 		MainActivityDelegate.getActivityDelegate(requireContext()).onSuccess(a -> {
 			if (adapter == null) return;
-			if (MainActivityPrefs.hasTextIconSizePref(a, prefs)) adapter.setSize(a.getTextIconSize());
+			if (MainActivityPrefs.hasTextIconSizePref(a, prefs)) {
+				adapter.setSize(a.getTextIconSize());
+				if (navAdapter != null) navAdapter.setSize(a.getTextIconSize());
+			}
 		});
 	}
 
@@ -276,7 +373,10 @@ public class SettingsFragment extends MainActivityFragment
 
 	@Override
 	public boolean isRootPage() {
-		return (adapter == null) || (adapter.getPreferenceSet().getParent() == null);
+		if (adapter == null) return true;
+		PreferenceSet cur = adapter.getPreferenceSet();
+		// On a tablet a category is the top of the right pane.
+		return (cur.getParent() == null) || (twoPane && (cur.getParent() == rootSet));
 	}
 
 	@Override
@@ -289,7 +389,7 @@ public class SettingsFragment extends MainActivityFragment
 		}
 		returnToKeyTesterFrom = null;
 		PreferenceSet p = adapter.getPreferenceSet().getParent();
-		if (p == null) return false;
+		if ((p == null) || (twoPane && (p == rootSet))) return false;
 		adapter.setPreferenceSet(p);
 		return true;
 	}
@@ -1041,10 +1141,12 @@ public class SettingsFragment extends MainActivityFragment
 
 		addDiagnostics(a, set);
 
+		rootSet = set;
 		return new PreferenceViewAdapter(set) {
 			@Override
 			public void setPreferenceSet(PreferenceSet set) {
 				super.setPreferenceSet(set);
+				pageShown(set);
 				a.fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 			}
 		};

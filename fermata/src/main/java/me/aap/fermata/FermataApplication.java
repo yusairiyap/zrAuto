@@ -60,7 +60,11 @@ public class FermataApplication extends NetSplitCompatApp {
 
 	@Override
 	protected void attachBaseContext(Context ctx) {
-		var ps = SharedPreferenceStore.create(ctx.getSharedPreferences("fermata", MODE_PRIVATE));
+		var sp = ctx.getSharedPreferences("fermata", MODE_PRIVATE);
+		// A start with nothing stored (a fresh install, or the app's data cleared on an older install) is remembered until the
+		// welcome wizard has been through, so a restart half way still shows it.
+		if (sp.getAll().isEmpty()) sp.edit().putBoolean(me.aap.fermata.ui.welcome.WelcomeWizard.FRESH_KEY, true).apply();
+		var ps = SharedPreferenceStore.create(sp);
 		if (ps.hasPref(LOCALE)) {
 			var loc = MainActivityPrefs.Lang.get(ps.getIntPref(LOCALE)).locale;
 			var cfg = ctx.getResources().getConfiguration();

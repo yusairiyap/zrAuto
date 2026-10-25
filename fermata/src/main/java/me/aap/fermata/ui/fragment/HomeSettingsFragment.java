@@ -19,6 +19,7 @@ import java.util.List;
 
 import me.aap.fermata.R;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.fermata.ui.home.HomeBgPrefs;
 import me.aap.fermata.ui.home.HomeScreen;
 import me.aap.fermata.ui.view.TopToast;
 import me.aap.utils.function.BooleanSupplier;
@@ -97,9 +98,13 @@ public class HomeSettingsFragment extends ReorderListFragment {
 		try (var e = ps().editPreferenceStore()) {
 			e.removePref(MainActivityPrefs.HOME_OPEN_ON_START);
 			e.removePref(MainActivityPrefs.HOME_ANIMATE);
-			e.removePref(MainActivityPrefs.HOME_BG_SOURCE);
-			e.removePref(MainActivityPrefs.HOME_BG_DIM);
-			e.removePref(MainActivityPrefs.HOME_BG_BLUR);
+			for (boolean car : new boolean[]{false, true}) {
+				e.removePref(HomeBgPrefs.source(car));
+				e.removePref(HomeBgPrefs.dim(car));
+				e.removePref(HomeBgPrefs.blur(car));
+				e.removePref(HomeBgPrefs.zoom(car));
+				e.removePref(HomeBgPrefs.hq(car));
+			}
 			e.removePref(MainActivityPrefs.HOME_GREET_MORNING);
 			e.removePref(MainActivityPrefs.HOME_GREET_AFTERNOON);
 			e.removePref(MainActivityPrefs.HOME_GREET_EVENING);
@@ -240,28 +245,6 @@ public class HomeSettingsFragment extends ReorderListFragment {
 				() -> p.getIntPref(MainActivityPrefs.HOME_CARD_ALPHA), v -> p.applyIntPref(MainActivityPrefs.HOME_CARD_ALPHA, v),
 				v -> getString(R.string.power_set_percent, v), null);
 
-		section(box, R.string.home_sec_background);
-		addSwitchRow(box, R.string.home_pref_bg_hq, R.string.home_pref_bg_hq_sub,
-				() -> p.getBooleanPref(MainActivityPrefs.HOME_BG_HQ),
-				on -> p.applyBooleanPref(MainActivityPrefs.HOME_BG_HQ, on), null);
-		addChoiceRow(box, R.string.home_pref_bg_source, R.string.home_pref_bg_source_sub,
-				new int[]{R.string.home_bg_source_picture, R.string.home_bg_source_cover},
-				() -> p.getIntPref(MainActivityPrefs.HOME_BG_SOURCE),
-				i -> p.applyIntPref(MainActivityPrefs.HOME_BG_SOURCE, i));
-		addActionRow(box, R.string.home_bg_choose, R.string.home_pref_bg_sub, R.drawable.home_image,
-				() -> HomeScreen.pickBackground(delegate()));
-		addActionRow(box, R.string.home_bg_remove, R.string.home_bg_remove_sub, R.drawable.delete,
-				() -> HomeScreen.clearBackground(delegate()));
-		addValueSliderRow(box, R.string.home_bg_dim, R.string.home_bg_dim_sub, 0, 80,
-				() -> p.getIntPref(MainActivityPrefs.HOME_BG_DIM), v -> p.applyIntPref(MainActivityPrefs.HOME_BG_DIM, v),
-				v -> getString(R.string.power_set_percent, v), null);
-		addValueSliderRow(box, R.string.home_bg_zoom, R.string.home_bg_zoom_sub, 100, 300,
-				() -> p.getIntPref(MainActivityPrefs.HOME_BG_ZOOM), v -> p.applyIntPref(MainActivityPrefs.HOME_BG_ZOOM, v),
-				v -> getString(R.string.power_set_percent, v), null);
-		addValueSliderRow(box, R.string.home_bg_blur, R.string.home_bg_blur_sub, 0, 100,
-				() -> p.getIntPref(MainActivityPrefs.HOME_BG_BLUR), v -> p.applyIntPref(MainActivityPrefs.HOME_BG_BLUR, v),
-				v -> (v == 0) ? getString(R.string.home_bg_blur_off) : getString(R.string.power_set_percent, v), null);
-
 		section(box, R.string.home_sec_greeting_words);
 		addTextRow(box, R.string.home_pref_greet_morning, R.string.home_greet_morning, MainActivityPrefs.HOME_GREET_MORNING);
 		addTextRow(box, R.string.home_pref_greet_afternoon, R.string.home_greet_afternoon, MainActivityPrefs.HOME_GREET_AFTERNOON);
@@ -296,6 +279,29 @@ public class HomeSettingsFragment extends ReorderListFragment {
 				v -> (v == 0) ? getString(R.string.home_opt_auto) : String.valueOf(v), null);
 		addValueSliderRow(box, R.string.home_pref_gap, R.string.home_pref_gap_sub, 4, 20,
 				() -> p.getIntPref(gap), v -> p.applyIntPref(gap, v), String::valueOf, null);
+
+		// The picture, dimming and blur are each screen's own (and each arrangement of it remembers its own, see HomeModel).
+		section(box, R.string.home_sec_background);
+		addSwitchRow(box, R.string.home_pref_bg_hq, R.string.home_pref_bg_hq_sub,
+				() -> p.getBooleanPref(HomeBgPrefs.hq(aa)),
+				on -> p.applyBooleanPref(HomeBgPrefs.hq(aa), on), null);
+		addChoiceRow(box, R.string.home_pref_bg_source, R.string.home_pref_bg_source_sub,
+				new int[]{R.string.home_bg_source_picture, R.string.home_bg_source_cover},
+				() -> p.getIntPref(HomeBgPrefs.source(aa)),
+				i -> p.applyIntPref(HomeBgPrefs.source(aa), i));
+		addActionRow(box, R.string.home_bg_choose, R.string.home_pref_bg_sub, R.drawable.home_image,
+				() -> HomeScreen.pickBackground(delegate(), aa));
+		addActionRow(box, R.string.home_bg_remove, R.string.home_bg_remove_sub, R.drawable.delete,
+				() -> HomeScreen.clearBackground(delegate(), aa));
+		addValueSliderRow(box, R.string.home_bg_dim, R.string.home_bg_dim_sub, 0, 80,
+				() -> p.getIntPref(HomeBgPrefs.dim(aa)), v -> p.applyIntPref(HomeBgPrefs.dim(aa), v),
+				v -> getString(R.string.power_set_percent, v), null);
+		addValueSliderRow(box, R.string.home_bg_zoom, R.string.home_bg_zoom_sub, 100, 300,
+				() -> p.getIntPref(HomeBgPrefs.zoom(aa)), v -> p.applyIntPref(HomeBgPrefs.zoom(aa), v),
+				v -> getString(R.string.power_set_percent, v), null);
+		addValueSliderRow(box, R.string.home_bg_blur, R.string.home_bg_blur_sub, 0, 100,
+				() -> p.getIntPref(HomeBgPrefs.blur(aa)), v -> p.applyIntPref(HomeBgPrefs.blur(aa), v),
+				v -> (v == 0) ? getString(R.string.home_bg_blur_off) : getString(R.string.power_set_percent, v), null);
 
 		section(box, R.string.home_sec_header);
 		addSwitchRow(box, R.string.home_pref_greeting, R.string.home_pref_greeting_sub,

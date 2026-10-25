@@ -1513,7 +1513,11 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	@Override
 	public void onEngineEnded(MediaEngine engine) {
 		// A closed or replaced engine reporting late must not move the session on.
-		if (engine != getEngine()) return;
+		if (engine != getEngine()) {
+			DiagnosticLog.log("TRANSPORT", "engine ended: ignored, not the current engine", "ended=" + engine,
+					"current=" + getEngine());
+			return;
+		}
 		BufferingIndicator.setBuffering(false);
 		playerTask.cancel();
 
@@ -1529,7 +1533,14 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			return;
 		}
 
-		playerTask = engineEnded(engine);
+		try {
+			playerTask = engineEnded(engine);
+		} catch (RuntimeException ex) {
+			// Used to escape to the engine's callback with nothing said and nothing playing.
+			DiagnosticLog.log("TRANSPORT", "engine ended: failed", "item=" + engine.getSource(), "cause=" + describe(ex));
+			Log.e(ex, "Failed to move on after the end of a track");
+			endFailed(engine, engine.getSource(), ex);
+		}
 	}
 
 	/** How many times in a row the move on after a song's natural end failed and was tried again. */

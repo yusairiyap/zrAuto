@@ -88,6 +88,8 @@ import me.aap.utils.pref.PreferenceStore;
  */
 public final class WelcomeWizard {
 	/** The wizard was gone through, or skipped: it does not come up by itself again. */
+	/** Written by the application when it starts with empty preferences; stays until the wizard is done. */
+	public static final String FRESH_KEY = "WELCOME_FRESH";
 	public static final PreferenceStore.Pref<me.aap.utils.function.BooleanSupplier> DONE =
 			PreferenceStore.Pref.b("WELCOME_DONE", false);
 	private static final long LONG_PRESS_MS = 600;
@@ -176,12 +178,32 @@ public final class WelcomeWizard {
 	 */
 	public static void maybeShow(@NonNull MainActivityDelegate a) {
 		MainActivityPrefs p = a.getPrefs();
-		if (p.getBooleanPref(DONE) || isOpen() || a.isCarActivity()) return;
+		if (p.getBooleanPref(DONE) || isOpen() || a.isCarActivity()) {
+			runAfter();
+			return;
+		}
 		if (!isFreshInstall(a.getContext())) {
 			p.applyBooleanPref(DONE, true);
+			runAfter();
 			return;
 		}
 		show(a);
+		// The page could not be put up (no view yet): the permissions that were waiting for it are asked now.
+		if (!isOpen()) runAfter();
+	}
+
+	/** What waits for the wizard to be over (the start-up permission dialogs, which would cover it). */
+	private static Runnable afterWizard;
+
+	/** Runs {@code r} once the wizard is closed, or at once if it is not going to come. */
+	public static void afterWizard(@NonNull Runnable r) {
+		afterWizard = r;
+	}
+
+	private static void runAfter() {
+		Runnable r = afterWizard;
+		afterWizard = null;
+		if (r != null) r.run();
 	}
 
 	/**
@@ -192,8 +214,16 @@ public final class WelcomeWizard {
 		return !a.getPrefs().getBooleanPref(DONE) && !a.isCarActivity() && isFreshInstall(a.getContext());
 	}
 
-	/** Whether the app was installed just now and never updated since. */
+	/**
+	 * Whether the app starts with no data of its own: installed just now and never updated since, or with its data cleared
+	 * (an install that is older, with the preferences found empty at start, see FermataApplication#attachBaseContext).
+	 */
 	private static boolean isFreshInstall(Context ctx) {
+		try {
+			if (ctx.getSharedPreferences("fermata", Context.MODE_PRIVATE).getBoolean(FRESH_KEY, false)) return true;
+		} catch (RuntimeException ignore) {
+			// Falls back to the install times.
+		}
 		try {
 			PackageInfo pi = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0);
 			return Math.abs(pi.lastUpdateTime - pi.firstInstallTime) < 2 * 60_000L;
@@ -759,6 +789,7 @@ public final class WelcomeWizard {
 		if (settle != null) settle.cancel();
 		a.getPrefs().applyBooleanPref(DONE, true);
 		DiagnosticLog.log("WELCOME", finished ? "finished" : "closed", "page=" + index);
+		runAfter();
 		if (hidden) {
 			// Out of sight already (a detour that did not come back): nothing to fade.
 			hidden = false;

@@ -361,6 +361,11 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 					if (!me.aap.fermata.spotify.SpotifyApi.LIKED_PLAYLIST_NAME.equals(((Playlist) bi).getName())) {
 						b.addItem(R.id.playlist_rename, R.drawable.edit, R.string.playlist_rename).setData(bi);
 					}
+					if (listItem) {
+						boolean pinned = me.aap.fermata.ui.home.HomePins.isPinned(a.getPrefs(), bi.getId());
+						b.addItem(R.id.playlist_pin, pinned ? R.drawable.bookmark_filled : R.drawable.bookmark,
+								pinned ? R.string.playlist_unpin : R.string.playlist_pin).setData(bi);
+					}
 					b.addItem(R.id.playlist_remove, R.drawable.playlist_remove, R.string.playlist_remove)
 							.setData(bi);
 				}
@@ -661,6 +666,9 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 			YoutubeAlternativesPicker.show(getMainActivity(), (PlayableItem) item, true);
 		} else if (id == R.id.playlist_rename) {
 			renamePlaylist(i.getData());
+		} else if (id == R.id.playlist_pin) {
+			Playlist p = i.getData();
+			me.aap.fermata.ui.home.HomePins.toggle(getMainActivity().getPrefs(), p.getId());
 		} else if (id == R.id.bookmark_remove_all_confirm) {
 			if ((item instanceof PlayableItem)) {
 				((PlayableItem) item).getPrefs().removePref(BOOKMARKS);

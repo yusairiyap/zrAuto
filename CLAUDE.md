@@ -878,6 +878,25 @@ what each widget shows is set on the widget (edit mode > its gear).
   (`seenChanges`) or it has no rows, instead of every time. A card sitting in a stack (not active) reads its list 700 ms after it was bound (`prefetch`), so rows and pictures are there when it is
   swiped to; the skeleton placeholder still shows if the read is not done by then.
 
+### Twenty-first round (car keys on widgets, pins, per-screen background, tablet settings)
+
+- **Car keys on a Library card** (`LibraryWidget#takeCarKeys`, option "Control with car keys", on by default): on the car screen a touch on Favorites / Playlists / Queue
+  gives the card the Next/Previous keys: its `listView` is marked as a *modal* `CarNav` scope (so Home's "keys stay the user's own" rule yields to it), the first row is outlined
+  (`CarNav.selectFirst`), short keys walk the rows, long Next = `performClick` on the row (opens a playlist at the top level, plays inside it / in Queue / Favorites),
+  long Previous = `carBack` (up out of an opened list, else `releaseCarKeys` -> `CarNav.release`, the keys return to the user's bindings). Only the row's main view is a stop
+  (the play, remove and drag buttons are tagged `CarNav.skip`). After an open/back the outline goes to the first row of the new list (`carReselect`). Released in `onInactive`. Never run on a car.
+- **Pinned playlists** (`HomePins`, pref `PINNED_PLAYLISTS`, the row menu's "Pin to top" / "Unpin" for a playlist opened from a Home card): `PlaylistsWidget#pinnedFirst` puts them first,
+  newest pin on top; the list refresh (DiffUtil) moves the rows.
+- **Hide downloaded icon** option on every Library card (`hideDownloaded`, bit 16 of `rowMode`).
+- **The Home background is per screen**: `HomeBgPrefs` picks the phone's or the car screen's prefs (`HOME_BG_*` / `HOME_BG_*_AA`) and `HomeBackground` its picture file (`home_bg.jpg` /
+  `home_bg_aa.jpg`). Each screen's arrangements remember their own dim/blur/zoom/quality/source (`HomeModel#rememberBackground`). The settings sit under each screen's Layout in Settings > Home.
+- **Settings on a tablet** (window >= 720dp wide, not the car screen): `SettingsFragment` shows two panes. The left `navAdapter` stays on the root set (a tap on a category calls the right
+  adapter), the right `adapter` holds the category and its pages; `pageShown` keeps the left highlight (`settings_nav_selected`) in step, Back never goes above a category (`twoPane`).
+- **A fresh start is judged by the app's data**: `FermataApplication#attachBaseContext` writes `WELCOME_FRESH` when the preferences are empty (a fresh install, or the data cleared on an older
+  install, which `firstInstallTime ~ lastUpdateTime` missed), and the start-up permission dialogs (one reads as a location permission) wait for the wizard (`WelcomeWizard#afterWizard`).
+- **Back with the YouTube comments open** is guarded by an overlay-priority `OnBackInvokedCallback` (`YoutubeCommentsView#armBackGuard`): the WebView registers its own fullscreen-exit callback, newer than the
+  activity's, so Back used to leave fullscreen (pausing the video) before the comments saw it.
+
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 
 - Size what is *inside* a card from its pixels, not from cell counts or fixed dp: the Data ring's words (`used`/`caption`) and the Power

@@ -145,7 +145,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			applyGreeting();
 			if (shown) systemBars(true);
 		});
-		blurCover = () -> nowBg.setBlur(prefs.getIntPref(MainActivityPrefs.HOME_BG_BLUR));
+		blurCover = () -> nowBg.setBlur(prefs.getIntPref(HomeBgPrefs.blur(car())));
 
 		grid = new HomeGridLayout(ctx, this, this);
 		grid.bind(model);
@@ -292,13 +292,13 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	}
 
 	/** Settings > Home: choose the background picture. */
-	public static void pickBackground(MainActivityDelegate a) {
-		HomeBackground.pick(a, null);
+	public static void pickBackground(MainActivityDelegate a, boolean car) {
+		HomeBackground.pick(a, car, null);
 	}
 
 	/** Settings > Home: back to the plain background. */
-	public static void clearBackground(MainActivityDelegate a) {
-		HomeBackground.clear(a);
+	public static void clearBackground(MainActivityDelegate a, boolean car) {
+		HomeBackground.clear(a, car);
 	}
 
 	public View getRoot() {
@@ -323,7 +323,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 
 	/** True when the background is the cover of what plays (Settings > Home) instead of a picture. */
 	private boolean followsCover() {
-		return prefs.getIntPref(MainActivityPrefs.HOME_BG_SOURCE) == 1;
+		return prefs.getIntPref(HomeBgPrefs.source(car())) == 1;
 	}
 
 	/** The background's source changed (or Home came back): follow the cover, or load the picture. */
@@ -331,7 +331,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		if (followsCover()) {
 			bgGeneration++;
 			nowBg.forget();
-			if (shown) nowBg.start(prefs.getIntPref(MainActivityPrefs.HOME_BG_BLUR));
+			if (shown) nowBg.start(prefs.getIntPref(HomeBgPrefs.blur(car())));
 		} else {
 			nowBg.stop();
 			bgVersion = -1;
@@ -363,7 +363,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		behind.setActive(true);
 		systemBars(true);
 		fadeBackgroundIn();
-		if (followsCover()) nowBg.start(prefs.getIntPref(MainActivityPrefs.HOME_BG_BLUR));
+		if (followsCover()) nowBg.start(prefs.getIntPref(HomeBgPrefs.blur(car())));
 		applyGreeting();
 		if (model.reloadIfChanged()) {
 			grid.sync();
@@ -598,16 +598,16 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 				!java.util.Collections.disjoint(MainActivityPrefs.infoOverlayPrefs(), changed)) {
 			applyTopInfo();
 		}
-		if (changed.contains(MainActivityPrefs.HOME_BG_DIM)) bg.setDim(prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM));
-		if (changed.contains(MainActivityPrefs.HOME_BG_ZOOM)) bg.setZoom(prefs.getIntPref(MainActivityPrefs.HOME_BG_ZOOM));
-		if (changed.contains(MainActivityPrefs.HOME_BG_SOURCE)) {
+		if (changed.contains(HomeBgPrefs.dim(car()))) bg.setDim(prefs.getIntPref(HomeBgPrefs.dim(car())));
+		if (changed.contains(HomeBgPrefs.zoom(car()))) bg.setZoom(prefs.getIntPref(HomeBgPrefs.zoom(car())));
+		if (changed.contains(HomeBgPrefs.source(car()))) {
 			applyBackgroundSource();
 		} else if (followsCover()) {
-			if (changed.contains(MainActivityPrefs.HOME_BG_BLUR)) {
+			if (changed.contains(HomeBgPrefs.blur(car()))) {
 				root.removeCallbacks(blurCover);
 				root.postDelayed(blurCover, 350);
 			}
-		} else if (changed.contains(MainActivityPrefs.HOME_BG_VERSION) || changed.contains(MainActivityPrefs.HOME_BG_BLUR)) {
+		} else if (changed.contains(HomeBgPrefs.version(car())) || changed.contains(HomeBgPrefs.blur(car()))) {
 			// A slider sends many values: only the last one is worked on.
 			root.removeCallbacks(loadBg);
 			root.postDelayed(loadBg, 350);
@@ -774,8 +774,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		String arrangement = !down ? "side" : (mode == 3 ? "free" : "down");
 		// The cards of another arrangement are made again from the model, not reused (their views kept the old cards).
 		String key = arrangement + (landscape ? "-l" : "-p");
-		// The phone's arrangements keep their own background (blur, zoom, dim, quality, source); the car screen shares it.
-		boolean swapping = !car() && !key.equals(model.layoutKey());
+		// Each arrangement keeps its own background (blur, zoom, dim, quality, source); the car screen has its own set.
+		boolean swapping = !key.equals(model.layoutKey());
 		if (swapping) model.rememberBackground();
 		if (model.switchLayout(key)) grid.rebuild();
 		if (swapping) model.restoreBackground();
@@ -1162,17 +1162,18 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 
 	private void loadBackground(boolean animate) {
 		// Before the early return: the cover background is drawn by the same view, so it needs them too.
-		bg.setDim(prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM));
-		bg.setZoom(prefs.getIntPref(MainActivityPrefs.HOME_BG_ZOOM));
+		bg.setDim(prefs.getIntPref(HomeBgPrefs.dim(car())));
+		bg.setZoom(prefs.getIntPref(HomeBgPrefs.zoom(car())));
 		if (followsCover()) return;
-		int version = prefs.getIntPref(MainActivityPrefs.HOME_BG_VERSION);
-		int blur = prefs.getIntPref(MainActivityPrefs.HOME_BG_BLUR);
+		int version = prefs.getIntPref(HomeBgPrefs.version(car()));
+		int blur = prefs.getIntPref(HomeBgPrefs.blur(car()));
 		if ((version == bgVersion) && (blur == bgBlur)) return;
 		bgVersion = version;
 		bgBlur = blur;
 		int gen = ++bgGeneration;
 		Context ctx = a.getContext();
-		if (!HomeBackground.exists(ctx)) {
+		boolean car = car();
+		if (!HomeBackground.exists(ctx, car)) {
 			bg.setImage(null, animate);
 			topColor = defaultTopColor();
 			applyGreeting();
@@ -1181,7 +1182,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		}
 		int sw = ctx.getResources().getDisplayMetrics().widthPixels;
 		int sh = ctx.getResources().getDisplayMetrics().heightPixels;
-		App.get().getExecutor().submitTask(() -> HomeBackground.load(ctx, blur, sw, sh))
+		App.get().getExecutor().submitTask(() -> HomeBackground.load(ctx, car, blur, sw, sh))
 				.main().onSuccess(l -> {
 					if (gen != bgGeneration) return;
 					if (l == null) {
@@ -1202,7 +1203,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 
 	/** What shows at the top of a picture once it is dimmed and shaded (towards white in a light theme, black in a dark one). */
 	private int dimmedTop(int top) {
-		float dark = 1f - (1f - prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM) / 100f) * 0.4f;
+		float dark = 1f - (1f - prefs.getIntPref(HomeBgPrefs.dim(car())) / 100f) * 0.4f;
 		return HomeUi.mix(top, HomeBackgroundView.veil(palette), dark);
 	}
 

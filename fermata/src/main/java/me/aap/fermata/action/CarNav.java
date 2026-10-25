@@ -179,6 +179,17 @@ public final class CarNav {
 		step(s, 1);
 	}
 
+	/**
+	 * Takes {@code root} out of the scopes again (a Home widget that had the keys): the keys go back to the user's own bindings,
+	 * and the outline comes down if it was on this scope.
+	 */
+	public static void release(@NonNull View root) {
+		root.setTag(R.id.car_nav_scope, null);
+		root.setTag(R.id.car_nav_modal, null);
+		Scope s = scope;
+		if ((s != null) && (s.root == root)) clear();
+	}
+
 	/** Leaves {@code v} (and what's in it) out: a button too risky to land on, like Clear. */
 	public static void skip(@Nullable View v) {
 		if (v != null) v.setTag(R.id.car_nav_skip, Boolean.TRUE);
