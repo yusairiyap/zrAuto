@@ -80,6 +80,15 @@ public final class HomeModel {
 	@Nullable
 	private String saved;
 	private final Runnable saveNow = this::save;
+	/**
+	 * Set once a backup has been written over the preferences: the app is about to close, and a model that
+	 * still holds the old layout must not write it back over the restored one.
+	 */
+	private static volatile boolean frozen;
+
+	public static void freeze(boolean on) {
+		frozen = on;
+	}
 
 	/** The phone's layout, or the car screen's own ({@code car}); they never share anything. */
 	public HomeModel(MainActivityPrefs prefs, boolean car) {
@@ -303,11 +312,11 @@ public final class HomeModel {
 		if (layout == null) return;
 		JSONObject bg = new JSONObject();
 		try {
-			bg.put("dim", prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM));
-			bg.put("blur", prefs.getIntPref(MainActivityPrefs.HOME_BG_BLUR));
-			bg.put("zoom", prefs.getIntPref(MainActivityPrefs.HOME_BG_ZOOM));
-			bg.put("hq", prefs.getBooleanPref(MainActivityPrefs.HOME_BG_HQ));
-			bg.put("source", prefs.getIntPref(MainActivityPrefs.HOME_BG_SOURCE));
+			bg.put("dim", prefs.getIntPref(HomeBgPrefs.dim(car)));
+			bg.put("blur", prefs.getIntPref(HomeBgPrefs.blur(car)));
+			bg.put("zoom", prefs.getIntPref(HomeBgPrefs.zoom(car)));
+			bg.put("hq", prefs.getBooleanPref(HomeBgPrefs.hq(car)));
+			bg.put("source", prefs.getIntPref(HomeBgPrefs.source(car)));
 		} catch (JSONException ex) {
 			Log.e(ex, "Failed to read the Home background");
 			return;
@@ -320,11 +329,11 @@ public final class HomeModel {
 	public void restoreBackground() {
 		JSONObject bg = (layout == null) ? null : backgrounds.get(layout);
 		if (bg == null) return;
-		prefs.applyIntPref(MainActivityPrefs.HOME_BG_DIM, bg.optInt("dim", 35));
-		prefs.applyIntPref(MainActivityPrefs.HOME_BG_BLUR, bg.optInt("blur", 0));
-		prefs.applyIntPref(MainActivityPrefs.HOME_BG_ZOOM, bg.optInt("zoom", 100));
-		prefs.applyBooleanPref(MainActivityPrefs.HOME_BG_HQ, bg.optBoolean("hq", false));
-		prefs.applyIntPref(MainActivityPrefs.HOME_BG_SOURCE, bg.optInt("source", 0));
+		prefs.applyIntPref(HomeBgPrefs.dim(car), bg.optInt("dim", 35));
+		prefs.applyIntPref(HomeBgPrefs.blur(car), bg.optInt("blur", 0));
+		prefs.applyIntPref(HomeBgPrefs.zoom(car), bg.optInt("zoom", 100));
+		prefs.applyBooleanPref(HomeBgPrefs.hq(car), bg.optBoolean("hq", false));
+		prefs.applyIntPref(HomeBgPrefs.source(car), bg.optInt("source", 0));
 	}
 
 	/**
@@ -381,6 +390,7 @@ public final class HomeModel {
 
 	public void save() {
 		App.get().getHandler().removeCallbacks(saveNow);
+		if (frozen) return;
 		try {
 			JSONArray now = cellsJson();
 			if (layout != null) arrangements.put(layout, now);

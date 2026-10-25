@@ -61,6 +61,8 @@ public class BodyLayout extends SplitLayout
 	private static final long FADE_MS = 300L;
 	private Mode mode;
 	private FutureSupplier<?> startingPlayback = completedVoid();
+	/** The list of settings categories beside a settings page on a wide window. */
+	private final SettingsSplit settingsSplit = new SettingsSplit(this);
 
 	public BodyLayout(@NonNull Context ctx, @Nullable AttributeSet attrs) {
 		super(ctx, attrs);
@@ -435,6 +437,13 @@ public class BodyLayout extends SplitLayout
 	protected void onConfigurationChanged(Configuration newConfig) {
 		super.onConfigurationChanged(newConfig);
 		setMode(getMode());
+		post(() -> {
+			try {
+				if (isAttachedToWindow()) settingsSplit.sync(getActivity());
+			} catch (RuntimeException ex) {
+				// The activity is going (recreated by the new configuration): nothing to sync.
+			}
+		});
 	}
 
 	@Override
@@ -455,6 +464,7 @@ public class BodyLayout extends SplitLayout
 			}
 			setMode(Mode.FRAME);
 		}
+		if (e == FRAGMENT_CHANGED) settingsSplit.sync(a);
 	}
 
 	public void playItem(MediaLib.PlayableItem i) {

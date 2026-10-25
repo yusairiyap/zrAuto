@@ -100,6 +100,11 @@ public class AllInOneFragment extends MainActivityFragment {
 	private final Adapter adapter = new Adapter();
 
 	@Override
+	public boolean isSettingsPage() {
+		return true;
+	}
+
+	@Override
 	public int getFragmentId() {
 		return R.id.all_in_one_fragment;
 	}

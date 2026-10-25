@@ -94,6 +94,7 @@ final class HomePickers {
 		HomePalette p = host.palette();
 		Context ctx = p.ctx;
 		MainActivityDelegate a = host.activity();
+		boolean car = a.isCarActivity();
 		MainActivityPrefs prefs = a.getPrefs();
 		LinearLayout box = new LinearLayout(ctx);
 		box.setOrientation(LinearLayout.VERTICAL);
@@ -113,25 +114,25 @@ final class HomePickers {
 		chips.addView(ChipFlowLayout.chip(ctx, R.drawable.home_image, R.string.home_bg_choose, true,
 				() -> {
 					HomeModal.dismissNow();
-					HomeBackground.pick(a, null);
+					HomeBackground.pick(a, car, null);
 				}));
-		if (HomeBackground.exists(ctx)) {
+		if (HomeBackground.exists(ctx, car)) {
 			chips.addView(ChipFlowLayout.chip(ctx, R.drawable.delete, R.string.home_bg_remove, false, () -> {
 				HomeModal.dismissNow();
-				HomeBackground.clear(a);
+				HomeBackground.clear(a, car);
 			}));
 		}
 		box.addView(chips);
 		Runnable[] refill = new Runnable[1];
 		refill[0] = () -> {
-			int src = prefs.getIntPref(MainActivityPrefs.HOME_BG_SOURCE);
+			int src = prefs.getIntPref(HomeBgPrefs.source(car));
 			types.removeAllViews();
 			types.addView(ChipFlowLayout.chip(ctx, R.drawable.home_image, R.string.home_bg_source_picture, src == 0, () -> {
-				prefs.applyIntPref(MainActivityPrefs.HOME_BG_SOURCE, 0);
+				prefs.applyIntPref(HomeBgPrefs.source(car), 0);
 				refill[0].run();
 			}));
 			types.addView(ChipFlowLayout.chip(ctx, R.drawable.music, R.string.home_bg_source_cover, src == 1, () -> {
-				prefs.applyIntPref(MainActivityPrefs.HOME_BG_SOURCE, 1);
+				prefs.applyIntPref(HomeBgPrefs.source(car), 1);
 				refill[0].run();
 			}));
 			hint.setText(src == 0 ? R.string.home_bg_hint : R.string.home_bg_hint_cover);
@@ -141,15 +142,15 @@ final class HomePickers {
 
 		LayoutInflater inf = LayoutInflater.from(ctx);
 		EffectsUi.Row dim = EffectsUi.addRow(inf, box, R.string.home_bg_dim, 80, 5, v -> v + "%",
-				v -> prefs.applyIntPref(MainActivityPrefs.HOME_BG_DIM, v));
-		dim.set(Math.min(80, prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM)));
+				v -> prefs.applyIntPref(HomeBgPrefs.dim(car), v));
+		dim.set(Math.min(80, prefs.getIntPref(HomeBgPrefs.dim(car))));
 		EffectsUi.Row zoom = EffectsUi.addRow(inf, box, R.string.home_bg_zoom, 300, 5, v -> Math.max(100, v) + "%",
-				v -> prefs.applyIntPref(MainActivityPrefs.HOME_BG_ZOOM, Math.max(100, v)));
-		zoom.set(Math.max(100, prefs.getIntPref(MainActivityPrefs.HOME_BG_ZOOM)));
+				v -> prefs.applyIntPref(HomeBgPrefs.zoom(car), Math.max(100, v)));
+		zoom.set(Math.max(100, prefs.getIntPref(HomeBgPrefs.zoom(car))));
 		EffectsUi.Row blur = EffectsUi.addRow(inf, box, R.string.home_bg_blur, 100, 5,
 				v -> (v == 0) ? ctx.getString(R.string.home_bg_blur_off) : v + "%",
-				v -> prefs.applyIntPref(MainActivityPrefs.HOME_BG_BLUR, v));
-		blur.set(prefs.getIntPref(MainActivityPrefs.HOME_BG_BLUR));
+				v -> prefs.applyIntPref(HomeBgPrefs.blur(car), v));
+		blur.set(prefs.getIntPref(HomeBgPrefs.blur(car)));
 		HomeModal.show(host, ctx.getString(R.string.home_background), R.drawable.home_image, box, null);
 	}
 }

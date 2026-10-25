@@ -50,6 +50,8 @@ public final class CaptionsOverlayView extends View
 	@Nullable
 	private StaticLayout strokeLayout;
 	private int laidOutFor = -1;
+	/** The longest line's width: what the box hugs when the style says to fit it. */
+	private float textW;
 	private float alphaNow;
 	private ValueAnimator fade;
 
@@ -229,6 +231,11 @@ public final class CaptionsOverlayView extends View
 		strokeLayout = (s.edge == CaptionStyle.EDGE_OUTLINE) ?
 				StaticLayout.Builder.obtain(t, 0, t.length(), stroke, tw)
 						.setAlignment(Layout.Alignment.ALIGN_CENTER).setLineSpacing(0f, 1.05f).build() : null;
+		float widest = 0f;
+		for (int i = 0, n = layout.getLineCount(); i < n; i++) {
+			widest = Math.max(widest, layout.getLineWidth(i));
+		}
+		textW = widest;
 		laidOutFor = w * 31 + h;
 	}
 
@@ -245,9 +252,12 @@ public final class CaptionsOverlayView extends View
 
 		float padX = fill.getTextSize() * 0.45f;
 		float padY = fill.getTextSize() * 0.22f;
-		float boxW = l.getWidth() + 2 * padX;
+		float boxW = (s.boxFit ? Math.min(textW, l.getWidth()) : l.getWidth()) + 2 * padX;
 		float boxH = l.getHeight() + 2 * padY;
 		float left = (w - boxW) / 2f;
+		// The text is centred in its own area, which is centred on the picture: where the box sits
+		// or how wide it is never moves it.
+		float textLeft = (w - l.getWidth()) / 2f;
 		float top = switch (s.position) {
 			case CaptionStyle.POS_TOP -> h * s.margin;
 			case CaptionStyle.POS_MIDDLE -> (h - boxH) / 2f;
@@ -264,7 +274,7 @@ public final class CaptionsOverlayView extends View
 			c.drawRoundRect(rect, r, r, box);
 		}
 		c.save();
-		c.translate(left + padX, top + padY);
+		c.translate(textLeft, top + padY);
 		// Room around the text for a shadow or glow to reach into.
 		float room = fill.getTextSize();
 		int save = c.saveLayerAlpha(-room, -room, l.getWidth() + room, l.getHeight() + room, a255);

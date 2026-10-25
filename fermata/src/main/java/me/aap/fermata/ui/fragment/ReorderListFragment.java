@@ -142,6 +142,11 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 
 	// ---- Fragment ----
 
+	@Override
+	public boolean isSettingsPage() {
+		return true;
+	}
+
 	/** The rows stay put under a drag: the bars never move away under them. */
 	@Override
 	public boolean collapsesBarsOnScroll() {

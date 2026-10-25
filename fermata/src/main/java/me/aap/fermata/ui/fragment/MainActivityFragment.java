@@ -62,6 +62,23 @@ public abstract class MainActivityFragment extends ActivityFragment {
 		return true;
 	}
 
+	/**
+	 * Whether this is one of the settings pages: on a wide window they all sit beside the same list of settings categories
+	 * (see {@code SettingsSplit}), which can be dragged wider or narrower.
+	 */
+	public boolean isSettingsPage() {
+		return false;
+	}
+
+	/**
+	 * For a settings page the root of Settings lists by itself (Home, Captions, Lyrics): the title of that entry, so the list beside
+	 * the page marks it however the page was opened. Other pages leave the entry (or category) they were reached from marked.
+	 */
+	@androidx.annotation.StringRes
+	public int settingsEntryTitle() {
+		return 0;
+	}
+
 	@Override
 	public FloatingButton.Mediator getFloatingButtonMediator() {
 		return FloatingButtonMediator.instance;

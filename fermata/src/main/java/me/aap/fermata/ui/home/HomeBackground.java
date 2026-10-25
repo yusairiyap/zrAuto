@@ -32,6 +32,7 @@ import me.aap.utils.ui.UiUtils;
 final class HomeBackground {
 	private static final int MAX_EDGE = 1600;
 	private static final String FILE = "home_bg.jpg";
+	private static final String FILE_AA = "home_bg_aa.jpg";
 
 	/** A loaded picture and the colour of its top strip (for the status bar). */
 	record Loaded(Bitmap bitmap, int topColor) {}
@@ -39,16 +40,16 @@ final class HomeBackground {
 	private HomeBackground() {
 	}
 
-	static File file(Context ctx) {
-		return new File(ctx.getFilesDir(), FILE);
+	static File file(Context ctx, boolean car) {
+		return new File(ctx.getFilesDir(), car ? FILE_AA : FILE);
 	}
 
-	static boolean exists(Context ctx) {
-		return file(ctx).isFile();
+	static boolean exists(Context ctx, boolean car) {
+		return file(ctx, car).isFile();
 	}
 
 	/** Opens the system's picture picker; the chosen one becomes the background. */
-	static void pick(MainActivityDelegate a, @Nullable Runnable done) {
+	static void pick(MainActivityDelegate a, boolean car, @Nullable Runnable done) {
 		a.startActivityForResult(() -> new Intent(Intent.ACTION_OPEN_DOCUMENT)
 				.addCategory(Intent.CATEGORY_OPENABLE).setType("image/*")).onCompletion((d, err) -> {
 			Context ctx = a.getContext();
@@ -59,7 +60,7 @@ final class HomeBackground {
 			if ((d == null) || (d.getData() == null)) return;
 			Uri uri = d.getData();
 			App.get().getExecutor().submitTask(() -> {
-				save(ctx, uri);
+				save(ctx, uri, car);
 				return null;
 			}).main().onCompletion((r, e2) -> {
 				if (e2 != null) {
@@ -68,22 +69,22 @@ final class HomeBackground {
 					return;
 				}
 				MainActivityPrefs p = a.getPrefs();
-				p.applyIntPref(MainActivityPrefs.HOME_BG_VERSION, p.getIntPref(MainActivityPrefs.HOME_BG_VERSION) + 1);
+				p.applyIntPref(HomeBgPrefs.version(car), p.getIntPref(HomeBgPrefs.version(car)) + 1);
 				TopToast.show(R.drawable.home_image, R.string.home_bg_set);
 				if (done != null) done.run();
 			});
 		});
 	}
 
-	static void clear(MainActivityDelegate a) {
-		File f = file(a.getContext());
+	static void clear(MainActivityDelegate a, boolean car) {
+		File f = file(a.getContext(), car);
 		if (f.isFile() && !f.delete()) Log.w("Could not delete the Home background");
 		MainActivityPrefs p = a.getPrefs();
-		p.applyIntPref(MainActivityPrefs.HOME_BG_VERSION, p.getIntPref(MainActivityPrefs.HOME_BG_VERSION) + 1);
+		p.applyIntPref(HomeBgPrefs.version(car), p.getIntPref(HomeBgPrefs.version(car)) + 1);
 	}
 
 	/** Decodes the picked picture shrunk to a sensible size (turned upright) and stores it as JPEG. */
-	private static void save(Context ctx, Uri uri) throws IOException {
+	private static void save(Context ctx, Uri uri, boolean car) throws IOException {
 		Bitmap bm;
 		try {
 			ImageDecoder.Source src = ImageDecoder.createSource(ctx.getContentResolver(), uri);
@@ -102,11 +103,11 @@ final class HomeBackground {
 			}
 			if (bm == null) throw new IOException("Not a picture: " + uri);
 		}
-		File tmp = new File(ctx.getFilesDir(), FILE + ".tmp");
+		File tmp = new File(ctx.getFilesDir(), (car ? FILE_AA : FILE) + ".tmp");
 		try (FileOutputStream out = new FileOutputStream(tmp)) {
 			bm.compress(Bitmap.CompressFormat.JPEG, 88, out);
 		}
-		File f = file(ctx);
+		File f = file(ctx, car);
 		if (f.exists() && !f.delete()) Log.w("Could not replace the Home background");
 		if (!tmp.renameTo(f)) throw new IOException("Could not store the picture");
 	}
@@ -116,8 +117,8 @@ final class HomeBackground {
 	 * {@code w x h}; null if there is none. Blocks: call it off the main thread.
 	 */
 	@Nullable
-	static Loaded load(Context ctx, int blur, int w, int h) {
-		File f = file(ctx);
+	static Loaded load(Context ctx, boolean car, int blur, int w, int h) {
+		File f = file(ctx, car);
 		if (!f.isFile()) return null;
 		try {
 			BitmapFactory.Options o = new BitmapFactory.Options();

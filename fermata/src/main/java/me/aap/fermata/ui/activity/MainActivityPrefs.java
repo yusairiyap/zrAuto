@@ -95,6 +95,10 @@ public interface MainActivityPrefs
 	// default set), whether the app opens on it, the background picture (its file is
 	// files/home_bg.jpg, the version only says it changed), how it is dimmed and blurred, how the
 	// cards look, which way the widgets are laid out and how many fit across.
+	/** The width in dp of the categories list beside a settings page on a wide window (dragged by its divider). */
+	Pref<IntSupplier> SETTINGS_NAV_DP = Pref.i("SETTINGS_NAV_DP", 320);
+	/** Ids of the playlists pinned to the top of the Playlists widget, newest pin first, one per line. */
+	Pref<Supplier<String>> PINNED_PLAYLISTS = Pref.s("PINNED_PLAYLISTS", "");
 	Pref<Supplier<String>> HOME_LAYOUT = Pref.s("HOME_LAYOUT", (String) null);
 	/** The car screen's own set of widgets (sizes, order, which ones), in the same JSON; null until changed there. */
 	Pref<Supplier<String>> HOME_LAYOUT_AA = Pref.s("HOME_LAYOUT_AA", (String) null);
@@ -108,6 +112,13 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> HOME_BG_HQ = Pref.b("HOME_BG_HQ", false);
 	/** 0 the picked picture, 1 the cover of what plays (blurred, fading from song to song). */
 	Pref<IntSupplier> HOME_BG_SOURCE = Pref.i("HOME_BG_SOURCE", 0);
+	/** The car screen's own background: the same settings as above, with its own picture (files/home_bg_aa.jpg). */
+	Pref<IntSupplier> HOME_BG_VERSION_AA = Pref.i("HOME_BG_VERSION_AA", 0);
+	Pref<IntSupplier> HOME_BG_DIM_AA = Pref.i("HOME_BG_DIM_AA", 35);
+	Pref<IntSupplier> HOME_BG_BLUR_AA = Pref.i("HOME_BG_BLUR_AA", 0);
+	Pref<IntSupplier> HOME_BG_ZOOM_AA = Pref.i("HOME_BG_ZOOM_AA", 100);
+	Pref<BooleanSupplier> HOME_BG_HQ_AA = Pref.b("HOME_BG_HQ_AA", false);
+	Pref<IntSupplier> HOME_BG_SOURCE_AA = Pref.i("HOME_BG_SOURCE_AA", 0);
 	/** 0 solid, 1 glass, 2 colour: what a widget set to "Same as Home" looks like. */
 	Pref<IntSupplier> HOME_CARD_STYLE = Pref.i("HOME_CARD_STYLE", 0);
 	/** How opaque the widgets' cards are, 0 (see-through) to 100. */
@@ -222,6 +233,8 @@ public interface MainActivityPrefs
 	Pref<IntSupplier> CAPTION_EDGE_STRENGTH = Pref.i("CAPTION_EDGE_STRENGTH", 60);
 	Pref<IntSupplier> CAPTION_BG_COLOR = Pref.i("CAPTION_BG_COLOR", 7);
 	Pref<IntSupplier> CAPTION_BG_OPACITY = Pref.i("CAPTION_BG_OPACITY", 50);
+	// The box is as wide as the text's longest line (on), else as wide as the text area (off).
+	Pref<BooleanSupplier> CAPTION_BOX_FIT = Pref.b("CAPTION_BOX_FIT", true);
 	// 0 bottom, 1 middle, 2 top; and how far from that edge, percent of the picture's height.
 	Pref<IntSupplier> CAPTION_POSITION = Pref.i("CAPTION_POSITION", 0);
 	Pref<IntSupplier> CAPTION_MARGIN = Pref.i("CAPTION_MARGIN", 10);

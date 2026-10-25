@@ -878,6 +878,52 @@ what each widget shows is set on the widget (edit mode > its gear).
   (`seenChanges`) or it has no rows, instead of every time. A card sitting in a stack (not active) reads its list 700 ms after it was bound (`prefetch`), so rows and pictures are there when it is
   swiped to; the skeleton placeholder still shows if the read is not done by then.
 
+### Twenty-first round (car keys on widgets, pins, per-screen background, tablet settings)
+
+- **Car keys on a Library card** (`LibraryWidget#takeCarKeys`, option "Control with car keys", on by default): on the car screen a touch on Favorites / Playlists / Queue
+  gives the card the Next/Previous keys: its `listView` is marked as a *modal* `CarNav` scope (so Home's "keys stay the user's own" rule yields to it), the first row is outlined
+  (`CarNav.selectFirst`), short keys walk the rows, long Next = `performClick` on the row (opens a playlist at the top level, plays inside it / in Queue / Favorites),
+  long Previous = `carBack` (up out of an opened list, else `releaseCarKeys` -> `CarNav.release`, the keys return to the user's bindings). Only the row's main view is a stop
+  (the play, remove and drag buttons are tagged `CarNav.skip`). After an open/back the outline goes to the first row of the new list (`carReselect`). Released in `onInactive`. Never run on a car.
+- **Pinned playlists** (`HomePins`, pref `PINNED_PLAYLISTS`, the row menu's "Pin to top" / "Unpin" for a playlist opened from a Home card): `PlaylistsWidget#pinnedFirst` puts them first,
+  newest pin on top; the list refresh (DiffUtil) moves the rows.
+- **Hide downloaded icon** option on every Library card (`hideDownloaded`, bit 16 of `rowMode`).
+- **The Home background is per screen**: `HomeBgPrefs` picks the phone's or the car screen's prefs (`HOME_BG_*` / `HOME_BG_*_AA`) and `HomeBackground` its picture file (`home_bg.jpg` /
+  `home_bg_aa.jpg`). Each screen's arrangements remember their own dim/blur/zoom/quality/source (`HomeModel#rememberBackground`). The settings sit under each screen's Layout in Settings > Home.
+- **Settings on a tablet** (window >= 720dp wide, not the car screen): `SettingsFragment` shows two panes. The left `navAdapter` stays on the root set (a tap on a category calls the right
+  adapter), the right `adapter` holds the category and its pages; `pageShown` keeps the left highlight (`settings_nav_selected`) in step, Back never goes above a category (`twoPane`).
+- **A fresh start is judged by the app's data**: `FermataApplication#attachBaseContext` writes `WELCOME_FRESH` when the preferences are empty (a fresh install, or the data cleared on an older
+  install, which `firstInstallTime ~ lastUpdateTime` missed), and the start-up permission dialogs (one reads as a location permission) wait for the wizard (`WelcomeWizard#afterWizard`).
+- **Back with the YouTube comments open** is guarded by an overlay-priority `OnBackInvokedCallback` (`YoutubeCommentsView#armBackGuard`): the WebView registers its own fullscreen-exit callback, newer than the
+  activity's, so Back used to leave fullscreen (pausing the video) before the comments saw it.
+
+### Twenty-second round (one settings look, the list beside every settings page, live previews, crash on first run)
+
+- **One look for every settings row**: `PreferenceView#setRowStyler` (set to `ui/view/SettingsStyle#apply` in `MainActivityDelegate#init`) is called after each PreferenceSet row is bound
+  and gives it the Home settings page's look (rounded tile, bold title, accent icon and tick). The option pages built in code (`ReorderListFragment`) draw the same tiles with the same colours
+  (`SettingsStyle.Colors` is the palette they share). A new settings control should use those, not its own colours.
+- **The list of categories beside every settings page on a wide window** (>= 720dp, not the car screen): `ui/view/SettingsSplit`, a view added to `BodyLayout` (below the tool bar, over the page
+  container, which gets a left margin as wide as it) and shown while the fragment in front says `MainActivityFragment#isSettingsPage()` (Settings, `ReorderListFragment` pages, Captions/Lyrics, All in One,
+  the key simulator, the diagnostic log). It stays while the pages change, slides in and out, and a divider on its right edge drags its width (`SETTINGS_NAV_DP`). What it lists is `SettingsNav`: `SettingsFragment`
+  publishes the root's categories and the buttons at its root (`publishNav`); a page reached from a button keeps that button selected, a page inside a category its category. Settings itself shows only the
+  chosen category on a wide window (`twoPane`: its root is never the page). Nothing is listed until Settings has been built once, so on a fresh start the list is missing from pages opened before it.
+  A new settings page only needs `isSettingsPage()`; it must not add a left pane of its own.
+- **Home settings previews** (`ui/home/HomeLayoutPreview`): a phone or the car's display drawn live from the prefs (arrangement, columns or rows, gap, greeting, info chips, edit button, the picture with dim, zoom
+  and blur, and sample cards packed first-fit the way `HomeGridLayout` does, cut off at the scrolling edge). One big one tops each screen's part; the arrangement picker is four small ones
+  (`HomeSettingsFragment#addArrangeCards`). It listens to the prefs itself while attached.
+- **First-run crash**: the permission dialogs must come before anything that lists the library; deferring them until the wizard closed (the twenty-first round) left the app starting without storage access and it
+  crashed on the first thing that left the wizard, and again at every start. They are asked first again, as ever. `DiagnosticLog#logCrash` also writes `Android/data/<app>/files/last_crash.txt`, which a file manager can reach
+  when the app cannot start.
+- **The wizard swipes over its picture too**: a touch nothing under it takes makes `PageHost` itself the target, and then the moves never go through `onInterceptTouchEvent`; `PageHost#onTouchEvent` starts the drag.
+
+- **`SettingsSplit` outlives its activity in a static list** (`live`): when the theme changes the activity is recreated and the old body layout is still listed, and asking the destroyed activity's delegate
+  (`MainActivityDelegate.get`) throws `ActivityDestroyedException`: the crash on a theme change and on opening Settings that followed. `entriesChanged` skips bodies that are not attached and catches the rest.
+  A selected category keeps the tile's own transparency (`ColorUtils.blendARGB`, never `mix()` of two opaque colours: the tile fill is a see-through white or black and went solid) and always has a stroke of the same
+  width, so it is not a different size. The list fades in and out and the pages' margin is set at once: animating the margin relaid out a whole page every frame.
+- **Between Home and a settings page a plain crossfade** (`HomeFragment#switchingFrom`: no picture of the old page, no delayed fade).
+- **`HomeLayoutPreview` moves**: the cards glide to their new places when a setting changes (`computeLayout` sets origin/target, `frame` interpolates), the picture of the arrangement in use scrolls gently along its way
+  (`scrolls()`), and Freeflow leaves holes (`FREE_HOLES`) so the page shows empty room around the cards. It only runs frames while visible.
+
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 
 - Size what is *inside* a card from its pixels, not from cell counts or fixed dp: the Data ring's words (`used`/`caption`) and the Power
@@ -1128,29 +1174,16 @@ translated strings across many locales, **ask the user before proceeding** rathe
 - **Download picker** shows sizes per quality (`DownloadsAddon#estimateSizes`, one player request per video,
   up to 10 videos).
 
-## Open issue: blank screen on a clean install (not solved)
+## Blank screen on a clean install (solved)
 
-Symptom, reported on a phone after clearing the app's data (and on a fresh install): the window shows the
-status bar and the bars but no content, the welcome wizard does not appear, and the Diagnostic log cannot be
-opened because the screen stays blank. An earlier build from the same branch started normally, so this is
-the start path of a fresh install, not every start.
-
-What was already changed, each with a note in its commit:
-- `PoiAddon` asked for the location permission in its constructor, before the wizard (fixed; `Voyageur` asks when used).
-- `FuelTracker.start` asks for location at start-up (now skipped while `WelcomeWizard.isDue`).
-- `HomeScreen#onViewCreated` makes the page invisible for the quiet start, and `onShown` decided whether to fade
-  it in by asking `isInitialFragmentShow()` again, which could be false by then (the page stayed at alpha 0).
-  The fade is now decided once, at view creation, and always runs (`STATE home quiet start` in the log if
-  Home was not shown yet).
-
-Not yet checked: whether the Music tab or Home is the first fragment on a fresh install, whether
-`HomeScreen#onShown` ever runs before the quiet-start timer, and whether the welcome wizard's overlay is
-attached (`MainActivityDelegate#onActivityCreate` posts `WelcomeWizard.maybeShow` 1200 ms later).
-
-For the next session: the in-app Diagnostic log is only readable once the UI works, so the first step is to
-make the start path write to a file that survives a blank screen (for example the existing `DiagnosticLog`
-writing to the app's external files directory), or to add `DiagnosticLog` lines in `MainActivity#onCreate`
-and the Home/Music `onViewCreated` paths. Ask the user for that file, not for adb.
+Symptom (phone, app data cleared or a fresh install): bars but no content, no welcome wizard. A temporary start log written to
+Downloads showed the first-tab callback throwing a `NullPointerException` inside `HomeScreen.<init>`: `NavBarMediator#getLayout`
+called `Arrays.asList(null)`, because `NAV_BAR_*` string-array prefs (`Pref.sa(..., null)`) are null until saved, and the Pages
+widget (`PagesWidget#fill` -> `NavBarMediator.getTabs`) is in Home's default set. The exception escaped into a future's completion
+handler, so nothing was shown and nothing crashed visibly. Fixed by treating a null saved layout as empty; confirmed on the device,
+and the start log is gone. The lesson: a string-array pref read can be null; never pass it to `Arrays.asList`. And a failure inside a
+future's completion handler is silent: if a start path shows nothing, look for an exception swallowed there first (the temporary
+fix for that was a log written to a file a file manager can reach, e.g. via MediaStore Downloads).
 
 ## Open issue: Back closes the YouTube comments, but the video pauses (not solved)
 
@@ -1188,3 +1221,28 @@ Not yet checked:
 For the next session: ask for the Diagnostic log from one Back press with the comments open (the `BACK`,
 `VIDEO` and `YT` lines around it). Do not treat a longer time window as the fix; find the echo or the
 pause source.
+
+## Captions box, preview position, data banner colour
+
+- **Captions background fits the text** (`CAPTION_BOX_FIT`, default on, Settings > Captions > Background): the box is as wide as
+  the longest line (`CaptionsOverlayView#textW`) instead of the whole text area (84% of the picture); the text itself stays centred
+  where it was (`textLeft`), only the box changes.
+- **The preview on Captions / Lyrics settings rises with the tool bar** (`TextStyleFragment#previewSync`): it sits under the tool bar
+  while it shows and slides up to just under the status bar by `ScrollBarsController#getToolBarHidden()`; at once when the tool bar is
+  gone. The list's own padding still never follows the bars.
+- **Data warning / limit banner colour**: `DataUsageAlerts` built the banner inside a `TopPopup.holder` (a swipe layout around the card)
+  and tinted the holder, which has no background, so the card stayed white under white text. The tint goes on the holder's child.
+
+## Wizard first, restore keeps Home, restore page in the wizard
+
+- **The wizard comes up at once on a fresh start** (`MainActivityDelegate#onActivityCreate` calls `WelcomeWizard.maybeShow` in the
+  permission callback, no 1.2 s wait; `show(a, instant=true)` puts it at full alpha from its first frame; retries are 150 ms apart). Home is
+  still built behind it, so nothing about the first tab changes, it just is never seen first.
+- **A restore must not be overwritten by Home**: `HomeModel` keeps its own copy of the layout JSON (widgets, sizes, per-widget options, each
+  arrangement's background) and `HomeScreen#onDestroyView`/`onHidden` save it, which wrote the old layout back over the restored one while the
+  app closed. `SettingsFragment#importStream` calls `HomeModel.freeze(true)` before it writes the backup's prefs (and `false` if that fails), and
+  `HomeModel#save` does nothing while frozen. Any other model that caches a pref's value and writes it back on stop needs the same treatment.
+- **Restore from the wizard** (`WelcomeWizard#restoreBackup` -> `SettingsFragment.importPrefs(a, onRestored)`): instead of the plain
+  "restored, the app closes" message the wizard goes to a page of its own (`restoredPage`, shown alone: `restored` makes `active()` return only
+  it) saying the app has to restart; its button calls `Utils.restartApp` (starts the launch intent with NEW_TASK|CLEAR_TASK, then ends the
+  process 300 ms later). Not run on a device. Back does nothing there. The file-picker route (no system picker) keeps the old message and exit.

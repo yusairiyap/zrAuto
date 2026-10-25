@@ -96,6 +96,8 @@ final class MediaWidget extends HomeWidgetView {
 	private FrameLayout playBox;
 	private ImageView shuffle;
 	private ImageView repeat;
+	/** The size in dp of the shuffle and repeat buttons, wherever they sit. */
+	private int extraDp = 42;
 	private Seek seek;
 	private TextView timeNow;
 	private TextView timeAll;
@@ -249,8 +251,8 @@ final class MediaWidget extends HomeWidgetView {
 		playLoading.setIndeterminateTintList(ColorStateList.valueOf(host.palette().playIcon));
 		playLoading.setVisibility(GONE);
 		playBox.addView(playLoading, new FrameLayout.LayoutParams(px(30), px(30), Gravity.CENTER));
-		shuffle = iconButton(R.drawable.shuffle, 36, ROLE_ICON, R.string.shuffle, this::onShuffle);
-		repeat = iconButton(R.drawable.repeat, 36, ROLE_ICON, R.string.repeat, this::onRepeat);
+		shuffle = iconButton(R.drawable.shuffle, 42, ROLE_ICON, R.string.shuffle, this::onShuffle);
+		repeat = iconButton(R.drawable.repeat, 42, ROLE_ICON, R.string.repeat, this::onRepeat);
 		controls.addView(prev);
 		controls.addView(playBox, new LinearLayout.LayoutParams(px(52), px(52)));
 		controls.addView(next);
@@ -326,20 +328,21 @@ final class MediaWidget extends HomeWidgetView {
 		// Shuffle and repeat: around the play button when the width allows, else under the seek bar. A wide card
 		// has the controls in the middle of the right half, as large as that half allows.
 		int zone = ((mode == LARGE_WIDE) ? (w - left) : w) - 2 * pad;
-		int ex = 36;
+		int ex = 42;
 		int sk = 44;
 		int pl = 52;
 		if (mode == LARGE_WIDE) {
 			if (zone >= px(250)) {
-				ex = 40;
+				ex = 46;
 				sk = 50;
 				pl = 62;
 			} else if (zone >= px(212)) {
-				ex = 34;
+				ex = 40;
 				sk = 44;
 				pl = 56;
 			}
 		}
+		extraDp = ex;
 		int controlsNeed = px(ex) * 2 + px(sk) * 2 + px(pl);
 		if (!large) extrasAt = 0;
 		else if (zone >= controlsNeed) extrasAt = 1;
@@ -360,7 +363,7 @@ final class MediaWidget extends HomeWidgetView {
 		artist.setTextSize(strip ? 12.5f : 14);
 		title.setSingleLine(true);
 		texts.setGravity(strip ? Gravity.CENTER_VERTICAL : Gravity.START);
-		int seekRoom = (extrasAt == 2) ? 142 : 134;
+		int seekRoom = (extrasAt == 2) ? 150 : 134;
 
 		switch (mode) {
 			case STRIP_SMALL -> {
@@ -441,8 +444,8 @@ final class MediaWidget extends HomeWidgetView {
 			controls.addView(repeat);
 		} else if (row) {
 			// Under the seek bar, between the two times.
-			timesRow.addView(shuffle, 1, new LinearLayout.LayoutParams(px(30), px(30)));
-			timesRow.addView(repeat, 2, new LinearLayout.LayoutParams(px(30), px(30)));
+			timesRow.addView(shuffle, 1, new LinearLayout.LayoutParams(px(extraDp), px(extraDp)));
+			timesRow.addView(repeat, 2, new LinearLayout.LayoutParams(px(extraDp), px(extraDp)));
 		}
 		updateModes();
 	}

@@ -125,6 +125,7 @@ public class MediaItemView extends ConstraintLayout
 	private VectorDrawableCompat watchedVideoDrawable;
 	private VectorDrawableCompat watchingVideoDrawable;
 	private VectorDrawableCompat downloadedDrawable;
+	private VectorDrawableCompat pinnedDrawable;
 	/** A download finished or was removed: the "downloaded" badge may have to appear or go. */
 	private final YtDownloads.Listener downloadListener = this::downloadsChanged;
 	// What the badge showed last: the listener is told of every progress tick, and a redraw is for the
@@ -575,6 +576,15 @@ public class MediaItemView extends ConstraintLayout
 			if (d == null) {
 				d = archiveLabelDrawable =
 						VectorDrawableCompat.create(getResources(), R.drawable.archive_label, null);
+				if (d == null) return;
+				d.setTint(BADGE_ICON_COLOR);
+			}
+		} else if ((item instanceof me.aap.fermata.media.lib.MediaLib.Playlist pl) &&
+				me.aap.fermata.ui.home.HomePins.isPinned(getMainActivity().getPrefs(), pl.getId())) {
+			// A playlist pinned to the top: the same badge as a downloaded or watched video, with a pin.
+			d = pinnedDrawable;
+			if (d == null) {
+				d = pinnedDrawable = VectorDrawableCompat.create(getResources(), R.drawable.pin, null);
 				if (d == null) return;
 				d.setTint(BADGE_ICON_COLOR);
 			}

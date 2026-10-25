@@ -249,7 +249,7 @@ public abstract class ItemContainer<C extends Item> extends BrowsableItemBase {
 	}
 
 	@SuppressWarnings({"rawtypes", "unchecked"})
-	private void setNewChildren(List<C> c) {
+	void setNewChildren(List<C> c) {
 		super.setChildren((List) c);
 		CHANGES.incrementAndGet();
 		for (Runnable l : CONTENT_LISTENERS) {

@@ -19,6 +19,8 @@ import java.util.List;
 
 import me.aap.fermata.R;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.fermata.ui.home.HomeBgPrefs;
+import me.aap.fermata.ui.home.HomeLayoutPreview;
 import me.aap.fermata.ui.home.HomeScreen;
 import me.aap.fermata.ui.view.TopToast;
 import me.aap.utils.function.BooleanSupplier;
@@ -49,6 +51,11 @@ public class HomeSettingsFragment extends ReorderListFragment {
 	private TextView phoneTab;
 	@Nullable
 	private TextView aaTab;
+
+	@Override
+	public int settingsEntryTitle() {
+		return R.string.home;
+	}
 
 	@Override
 	public int getFragmentId() {
@@ -97,9 +104,13 @@ public class HomeSettingsFragment extends ReorderListFragment {
 		try (var e = ps().editPreferenceStore()) {
 			e.removePref(MainActivityPrefs.HOME_OPEN_ON_START);
 			e.removePref(MainActivityPrefs.HOME_ANIMATE);
-			e.removePref(MainActivityPrefs.HOME_BG_SOURCE);
-			e.removePref(MainActivityPrefs.HOME_BG_DIM);
-			e.removePref(MainActivityPrefs.HOME_BG_BLUR);
+			for (boolean car : new boolean[]{false, true}) {
+				e.removePref(HomeBgPrefs.source(car));
+				e.removePref(HomeBgPrefs.dim(car));
+				e.removePref(HomeBgPrefs.blur(car));
+				e.removePref(HomeBgPrefs.zoom(car));
+				e.removePref(HomeBgPrefs.hq(car));
+			}
 			e.removePref(MainActivityPrefs.HOME_GREET_MORNING);
 			e.removePref(MainActivityPrefs.HOME_GREET_AFTERNOON);
 			e.removePref(MainActivityPrefs.HOME_GREET_EVENING);
@@ -240,28 +251,6 @@ public class HomeSettingsFragment extends ReorderListFragment {
 				() -> p.getIntPref(MainActivityPrefs.HOME_CARD_ALPHA), v -> p.applyIntPref(MainActivityPrefs.HOME_CARD_ALPHA, v),
 				v -> getString(R.string.power_set_percent, v), null);
 
-		section(box, R.string.home_sec_background);
-		addSwitchRow(box, R.string.home_pref_bg_hq, R.string.home_pref_bg_hq_sub,
-				() -> p.getBooleanPref(MainActivityPrefs.HOME_BG_HQ),
-				on -> p.applyBooleanPref(MainActivityPrefs.HOME_BG_HQ, on), null);
-		addChoiceRow(box, R.string.home_pref_bg_source, R.string.home_pref_bg_source_sub,
-				new int[]{R.string.home_bg_source_picture, R.string.home_bg_source_cover},
-				() -> p.getIntPref(MainActivityPrefs.HOME_BG_SOURCE),
-				i -> p.applyIntPref(MainActivityPrefs.HOME_BG_SOURCE, i));
-		addActionRow(box, R.string.home_bg_choose, R.string.home_pref_bg_sub, R.drawable.home_image,
-				() -> HomeScreen.pickBackground(delegate()));
-		addActionRow(box, R.string.home_bg_remove, R.string.home_bg_remove_sub, R.drawable.delete,
-				() -> HomeScreen.clearBackground(delegate()));
-		addValueSliderRow(box, R.string.home_bg_dim, R.string.home_bg_dim_sub, 0, 80,
-				() -> p.getIntPref(MainActivityPrefs.HOME_BG_DIM), v -> p.applyIntPref(MainActivityPrefs.HOME_BG_DIM, v),
-				v -> getString(R.string.power_set_percent, v), null);
-		addValueSliderRow(box, R.string.home_bg_zoom, R.string.home_bg_zoom_sub, 100, 300,
-				() -> p.getIntPref(MainActivityPrefs.HOME_BG_ZOOM), v -> p.applyIntPref(MainActivityPrefs.HOME_BG_ZOOM, v),
-				v -> getString(R.string.power_set_percent, v), null);
-		addValueSliderRow(box, R.string.home_bg_blur, R.string.home_bg_blur_sub, 0, 100,
-				() -> p.getIntPref(MainActivityPrefs.HOME_BG_BLUR), v -> p.applyIntPref(MainActivityPrefs.HOME_BG_BLUR, v),
-				v -> (v == 0) ? getString(R.string.home_bg_blur_off) : getString(R.string.power_set_percent, v), null);
-
 		section(box, R.string.home_sec_greeting_words);
 		addTextRow(box, R.string.home_pref_greet_morning, R.string.home_greet_morning, MainActivityPrefs.HOME_GREET_MORNING);
 		addTextRow(box, R.string.home_pref_greet_afternoon, R.string.home_greet_afternoon, MainActivityPrefs.HOME_GREET_AFTERNOON);
@@ -281,11 +270,16 @@ public class HomeSettingsFragment extends ReorderListFragment {
 				MainActivityPrefs.HOME_TOP_OVERLAY_HIDE;
 		Pref<BooleanSupplier> editButton = aa ? MainActivityPrefs.HOME_EDIT_BUTTON_AA : MainActivityPrefs.HOME_EDIT_BUTTON;
 
+		// What the screen looks like with these settings, drawn live: it follows every option below.
+		section(box, R.string.home_sec_preview);
+		HomeLayoutPreview live = new HomeLayoutPreview(palette, p, aa, -1);
+		live.setBackground(rounded(tileFill, 16));
+		LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(MATCH_PARENT, dp(aa ? 200 : 250));
+		plp.topMargin = dp(2);
+		box.addView(live, plp);
+
 		section(box, R.string.home_sec_layout);
-		addChoiceRow(box, R.string.home_pref_arrange, R.string.home_pref_arrange_sub,
-				new int[]{R.string.home_arrange_auto, R.string.home_arrange_down, R.string.home_arrange_side,
-						R.string.home_arrange_free},
-				() -> p.getIntPref(arrange), i -> p.applyIntPref(arrange, i));
+		addArrangeCards(box, aa, arrange);
 		// Only for Freeflow (the row is greyed out in the other layouts).
 		Pref<BooleanSupplier> snap = aa ? MainActivityPrefs.HOME_SNAP_GRID_AA : MainActivityPrefs.HOME_SNAP_GRID;
 		addSwitchRow(box, R.string.home_pref_snap, R.string.home_pref_snap_sub,
@@ -296,6 +290,29 @@ public class HomeSettingsFragment extends ReorderListFragment {
 				v -> (v == 0) ? getString(R.string.home_opt_auto) : String.valueOf(v), null);
 		addValueSliderRow(box, R.string.home_pref_gap, R.string.home_pref_gap_sub, 4, 20,
 				() -> p.getIntPref(gap), v -> p.applyIntPref(gap, v), String::valueOf, null);
+
+		// The picture, dimming and blur are each screen's own (and each arrangement of it remembers its own, see HomeModel).
+		section(box, R.string.home_sec_background);
+		addSwitchRow(box, R.string.home_pref_bg_hq, R.string.home_pref_bg_hq_sub,
+				() -> p.getBooleanPref(HomeBgPrefs.hq(aa)),
+				on -> p.applyBooleanPref(HomeBgPrefs.hq(aa), on), null);
+		addChoiceRow(box, R.string.home_pref_bg_source, R.string.home_pref_bg_source_sub,
+				new int[]{R.string.home_bg_source_picture, R.string.home_bg_source_cover},
+				() -> p.getIntPref(HomeBgPrefs.source(aa)),
+				i -> p.applyIntPref(HomeBgPrefs.source(aa), i));
+		addActionRow(box, R.string.home_bg_choose, R.string.home_pref_bg_sub, R.drawable.home_image,
+				() -> HomeScreen.pickBackground(delegate(), aa));
+		addActionRow(box, R.string.home_bg_remove, R.string.home_bg_remove_sub, R.drawable.delete,
+				() -> HomeScreen.clearBackground(delegate(), aa));
+		addValueSliderRow(box, R.string.home_bg_dim, R.string.home_bg_dim_sub, 0, 80,
+				() -> p.getIntPref(HomeBgPrefs.dim(aa)), v -> p.applyIntPref(HomeBgPrefs.dim(aa), v),
+				v -> getString(R.string.power_set_percent, v), null);
+		addValueSliderRow(box, R.string.home_bg_zoom, R.string.home_bg_zoom_sub, 100, 300,
+				() -> p.getIntPref(HomeBgPrefs.zoom(aa)), v -> p.applyIntPref(HomeBgPrefs.zoom(aa), v),
+				v -> getString(R.string.power_set_percent, v), null);
+		addValueSliderRow(box, R.string.home_bg_blur, R.string.home_bg_blur_sub, 0, 100,
+				() -> p.getIntPref(HomeBgPrefs.blur(aa)), v -> p.applyIntPref(HomeBgPrefs.blur(aa), v),
+				v -> (v == 0) ? getString(R.string.home_bg_blur_off) : getString(R.string.power_set_percent, v), null);
 
 		section(box, R.string.home_sec_header);
 		addSwitchRow(box, R.string.home_pref_greeting, R.string.home_pref_greeting_sub,
@@ -342,6 +359,58 @@ public class HomeSettingsFragment extends ReorderListFragment {
 						TopToast.show(R.drawable.home_page, R.string.home_pref_reset_done);
 					}));
 		}
+	}
+
+	/**
+	 * The ways the cards can be laid out, each drawn as a small picture of the screen laid out that way (the car's display
+	 * for Android Auto): a tap on one picks it, the picked one is outlined in the accent.
+	 */
+	private void addArrangeCards(LinearLayout parent, boolean aa, Pref<IntSupplier> arrange) {
+		MainActivityPrefs p = ps();
+		TextView title = text(R.string.home_pref_arrange, 15, textPrimary, true);
+		title.setPadding(dp(4), dp(12), 0, 0);
+		parent.addView(title);
+		TextView sub = text(R.string.home_pref_arrange_sub, 12.5f, textSecondary, false);
+		sub.setPadding(dp(4), 0, 0, dp(8));
+		parent.addView(sub);
+		int[] labels = {R.string.home_arrange_auto, R.string.home_arrange_down, R.string.home_arrange_side, R.string.home_arrange_free};
+		LinearLayout row = new LinearLayout(palette);
+		row.setOrientation(LinearLayout.HORIZONTAL);
+		GradientDrawable[] fills = new GradientDrawable[labels.length];
+		for (int i = 0; i < labels.length; i++) {
+			int mode = i;
+			LinearLayout cell = new LinearLayout(palette);
+			cell.setOrientation(LinearLayout.VERTICAL);
+			cell.setGravity(Gravity.CENTER_HORIZONTAL);
+			cell.setPadding(dp(6), dp(8), dp(6), dp(10));
+			fills[i] = rounded(tileFill, 16);
+			cell.setBackground(pressable(fills[i]));
+			cell.setClickable(true);
+			cell.setFocusable(true);
+			cell.addView(new HomeLayoutPreview(palette, p, aa, mode),
+					new LinearLayout.LayoutParams(MATCH_PARENT, dp(aa ? 84 : 150)));
+			TextView t = text(labels[i], 13, textPrimary, true);
+			t.setGravity(Gravity.CENTER);
+			t.setSingleLine(true);
+			t.setPadding(0, dp(6), 0, 0);
+			cell.addView(t, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+			cell.setOnClickListener(v -> {
+				p.applyIntPref(arrange, mode);
+				for (Runnable rr : syncers) rr.run();
+			});
+			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f);
+			lp.setMargins((i == 0) ? 0 : dp(3), 0, (i == labels.length - 1) ? 0 : dp(3), 0);
+			row.addView(cell, lp);
+		}
+		syncers.add(() -> {
+			int sel = p.getIntPref(arrange);
+			for (int i = 0; i < fills.length; i++) {
+				boolean on = i == sel;
+				fills[i].setStroke(on ? dp(2) : 0, accent);
+				fills[i].setColor(on ? androidx.core.graphics.ColorUtils.blendARGB(tileFill, accent, 0.14f) : tileFill);
+			}
+		});
+		parent.addView(row, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 	}
 
 	/** A row showing a text setting (the default words in grey while it is empty); a tap asks for new ones. */

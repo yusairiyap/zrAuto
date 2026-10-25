@@ -473,6 +473,8 @@ public class MainActivityDelegate extends ActivityDelegate
 		}
 
 		String[] perms = getRequiredPermissions();
+		// The permissions are asked first, as ever (the library needs storage before anything is listed: asking only
+		// when the welcome wizard closed left the app starting without it, and it crashed); the wizard follows.
 		a.checkPermissions(perms).onCompletion((result, fail) -> {
 			if (fail != null) {
 				if (!isCarActivityNotMirror()) Log.e(fail);
@@ -487,9 +489,10 @@ public class MainActivityDelegate extends ActivityDelegate
 				return;
 			}
 
-			// Just installed: the welcome and setup wizard, once the first screen has settled.
+			// Just installed: the welcome and setup wizard, at once and in front of everything, so the first
+			// screen is never seen before it (it is made behind it, as it always was).
 			if (!isCarActivity()) {
-				postDelayed(() -> me.aap.fermata.ui.welcome.WelcomeWizard.maybeShow(this), 1200);
+				me.aap.fermata.ui.welcome.WelcomeWizard.maybeShow(this);
 			}
 
 			if ((intent != null) && !Intent.ACTION_MAIN.equals(intent.getAction())) {
@@ -2916,6 +2919,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		matchStatusBarToBackground();
 		me.aap.utils.ui.view.DialogView.setStyler(me.aap.fermata.ui.view.DialogStyle::apply);
 		// One switch look everywhere (see SwitchStyle); the settings rows' switches follow it too.
+		me.aap.utils.pref.PreferenceView.setRowStyler(me.aap.fermata.ui.view.SettingsStyle::apply);
 		me.aap.utils.pref.PreferenceView.setSwitchStyler(b -> {
 			if (b instanceof androidx.appcompat.widget.SwitchCompat sw) {
 				me.aap.fermata.ui.view.SwitchStyle.apply(sw,

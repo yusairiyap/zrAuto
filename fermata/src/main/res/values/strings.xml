@@ -399,6 +399,10 @@
     <string name="playlist_remove">Remove playlist</string>
     <string name="playlist_name">Playlist name</string>
     <string name="playlist_rename">Rename playlist</string>
+    <string name="playlist_pin">Pin to top</string>
+    <string name="settings_split_resize">Drag to resize the list</string>
+    <string name="playlist_unpin">Unpin</string>
+    <string name="playlist_pinned">Pinned</string>
     <string name="playlist_move">Move to playlist</string>
     <string name="sort_custom">Custom order</string>
     <string name="playlist_sorted_hint">Switch the sort to Custom order to rearrange the playlist.</string>
@@ -1385,6 +1389,8 @@
     <string name="caption_edge_strength">Edge strength (%)</string>
     <string name="caption_bg_color">Background color</string>
     <string name="caption_bg_opacity">Background opacity (%)</string>
+    <string name="caption_box_fit">Fit the background to the text</string>
+    <string name="caption_box_fit_sub">Only as wide as the longest line, not the whole text area</string>
     <string name="caption_bg_opacity_sub">0 for text with no box behind it</string>
     <string name="caption_position">Position</string>
     <string name="caption_pos_bottom">Bottom</string>

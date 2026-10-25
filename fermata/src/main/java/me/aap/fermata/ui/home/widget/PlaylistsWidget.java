@@ -14,6 +14,7 @@ import me.aap.fermata.media.lib.MediaLib.Item;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.home.HomeHost;
 import me.aap.fermata.ui.home.HomeOption;
+import me.aap.fermata.ui.home.HomePins;
 import me.aap.fermata.ui.home.HomePlay;
 import me.aap.fermata.ui.home.HomeWidgetType;
 import me.aap.utils.async.FutureSupplier;
@@ -53,6 +54,16 @@ final class PlaylistsWidget extends LibraryWidget {
 	}
 
 	@Override
+	protected boolean supportsPins() {
+		return true;
+	}
+
+	@Override
+	protected boolean isPinnedRow(Row r) {
+		return (r.art() instanceof Playlist pl) && HomePins.isPinned(act().getPrefs(), pl.getId());
+	}
+
+	@Override
 	protected int tabId() {
 		return R.id.playlists_fragment;
 	}
@@ -81,7 +92,8 @@ final class PlaylistsWidget extends LibraryWidget {
 	@Override
 	protected void fetch(MainActivityDelegate a, FetchDone done) {
 		FutureSupplier<List<Playlist>> f = a.getLib().getPlaylists().getChildren();
-		f.main().onCompletion((lists, err) -> {
+		f.main().onCompletion((all, err) -> {
+			List<Playlist> lists = (all == null) ? null : pinnedFirst(a, all);
 			if (lists == null) {
 				focusRow = -1;
 				done.done(new ArrayList<>(), 0);
@@ -110,6 +122,25 @@ final class PlaylistsWidget extends LibraryWidget {
 			openLast(lists, first);
 			scanHolders(a, lists);
 		});
+	}
+
+	/** The pinned playlists first (the newest pin on top), the rest in the library's order. */
+	private static List<Playlist> pinnedFirst(MainActivityDelegate a, List<Playlist> all) {
+		List<String> pins = HomePins.ids(a.getPrefs());
+		if (pins.isEmpty()) return all;
+		List<Playlist> out = new ArrayList<>(all.size());
+		for (String id : pins) {
+			for (Playlist pl : all) {
+				if (id.equals(pl.getId())) {
+					out.add(pl);
+					break;
+				}
+			}
+		}
+		for (Playlist pl : all) {
+			if (!pins.contains(pl.getId())) out.add(pl);
+		}
+		return out;
 	}
 
 	/** Right after the app starts the playlist of the last played song is opened, once per widget. */

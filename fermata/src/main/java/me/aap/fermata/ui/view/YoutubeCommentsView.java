@@ -249,6 +249,41 @@ public final class YoutubeCommentsView {
 				videoId, title, shouldDock(a, host));
 		open = v;
 		v.build();
+		v.armBackGuard();
+	}
+
+	/**
+	 * The system's Back gesture goes to the newest back callback of the same priority, and the WebView registers its own while
+	 * the page is fullscreen (to leave fullscreen), which is newer than the activity's. So Back with the comments open left
+	 * fullscreen (pausing the video) and the comments with it. This callback has the overlay priority, so it is asked first and
+	 * only closes the comments (search first); it is taken away again when they are gone.
+	 */
+	@Nullable
+	private Object backGuard;
+
+	private void armBackGuard() {
+		if ((android.os.Build.VERSION.SDK_INT < 33) || (backGuard != null)) return;
+		try {
+			android.view.Window w = MainActivityDelegate.get(ctx).getWindow();
+			if (w == null) return;
+			android.window.OnBackInvokedCallback cb = YoutubeCommentsView::dismissOpen;
+			w.getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_OVERLAY, cb);
+			backGuard = cb;
+		} catch (RuntimeException ex) {
+			Log.e(ex, "Failed to guard Back for the comments");
+		}
+	}
+
+	private void disarmBackGuard() {
+		Object g = backGuard;
+		backGuard = null;
+		if ((g == null) || (android.os.Build.VERSION.SDK_INT < 33)) return;
+		try {
+			android.view.Window w = MainActivityDelegate.get(ctx).getWindow();
+			if (w != null) w.getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback((android.window.OnBackInvokedCallback) g);
+		} catch (RuntimeException ex) {
+			Log.e(ex, "Failed to release the Back guard of the comments");
+		}
 	}
 
 	/**
@@ -1736,6 +1771,7 @@ public final class YoutubeCommentsView {
 		splitView = null;
 		host.removeView(overlay);
 		images.evictAll();
+		disarmBackGuard();
 		if (open == this) open = null;
 	}
 

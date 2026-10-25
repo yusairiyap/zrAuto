@@ -170,6 +170,59 @@ abstract class LibraryWidget extends HomeWidgetView {
 		return false;
 	}
 
+	/**
+	 * Whether a touch on the card on the car screen gives it the Next/Previous keys (the option "Control with car keys", on unless
+	 * switched off): the rows are outlined and walked through with short presses, long Next opens the row (a playlist) or plays it,
+	 * long Previous goes up one level, and from the outermost list gives the keys back to the user's own bindings.
+	 */
+	protected boolean supportsCarKeys() {
+		return true;
+	}
+
+	private boolean carKeysOn() {
+		return supportsCarKeys() && optBool("carKeys", true);
+	}
+
+	/** The card the car keys are on right now (one at a time). */
+	@Nullable
+	private static LibraryWidget carFocused;
+	/** The list was replaced (opened a playlist, went back): the outline goes to its first row once it is in. */
+	private boolean carReselect;
+
+	@Override
+	public boolean dispatchTouchEvent(android.view.MotionEvent e) {
+		if ((e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) && built && carKeysOn() && !host.isEditing() &&
+				me.aap.fermata.action.CarNav.isEnabled()) {
+			takeCarKeys();
+		}
+		return super.dispatchTouchEvent(e);
+	}
+
+	private void takeCarKeys() {
+		if (carFocused == this) return;
+		if (carFocused != null) carFocused.releaseCarKeys();
+		carFocused = this;
+		me.aap.fermata.action.CarNav.markModalScope(listView, this::carBack);
+		listView.post(() -> {
+			if (carFocused == this) me.aap.fermata.action.CarNav.selectFirst(act(), listView);
+		});
+	}
+
+	/** Long Previous: up out of an opened list, else the keys go back to their usual bindings. */
+	private void carBack() {
+		if (drillSource != null) {
+			backOut();
+			return;
+		}
+		releaseCarKeys();
+	}
+
+	private void releaseCarKeys() {
+		if (carFocused == this) carFocused = null;
+		carReselect = false;
+		if (listView != null) me.aap.fermata.action.CarNav.release(listView);
+	}
+
 	private boolean menuOn() {
 		return supportsMenu() && optBool("menu", true);
 	}
@@ -208,6 +261,26 @@ abstract class LibraryWidget extends HomeWidgetView {
 	/** Whether each row has a remove button on its left (the option "Remove button", on unless switched off). */
 	protected boolean supportsRemove() {
 		return false;
+	}
+
+	/** Whether the card has pinned rows: the option "Hide pinned icon" (under "Hide downloaded icon") and a thin line between them and the rest. */
+	protected boolean supportsPins() {
+		return false;
+	}
+
+	/** Whether the row is one the user pinned to the top (a small pin at the end of the row, unless "Hide pinned icon" is on). */
+	protected boolean isPinnedRow(Row r) {
+		return false;
+	}
+
+	/** The option "Hide pinned icon". */
+	private boolean pinHidden() {
+		return optBool("hidePinned", false);
+	}
+
+	/** The option "Hide downloaded icon": the small badge on rows whose song is on the phone stays off. */
+	private boolean badgeHidden() {
+		return optBool("hideDownloaded", false);
 	}
 
 	protected boolean removeOn() {
@@ -410,6 +483,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 		listView.setVerticalFadingEdgeEnabled(true);
 		listView.setFadingEdgeLength(px(22));
 		listView.setItemViewCacheSize(4);
+		listView.addItemDecoration(new PinSplitDecoration());
 		listView.getRecycledViewPool().setMaxRecycledViews(0, 24);
 		if (supportsReorder()) {
 			touchHelper = new ItemTouchHelper(new ReorderCallback());
@@ -506,6 +580,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 
 	@Override
 	protected void onInactive() {
+		releaseCarKeys();
 		act().removeBroadcastListener(contentListener);
 		YtDownloads.get().removeListener(downloadsListener);
 		me.aap.fermata.media.lib.ItemContainer.removeContentListener(libraryListener);
@@ -524,6 +599,9 @@ abstract class LibraryWidget extends HomeWidgetView {
 			l.add(HomeOption.sw("handle", ctx.getString(R.string.home_opt_row_handle), true));
 		}
 		if (supportsRemove()) l.add(HomeOption.sw("remove", ctx.getString(R.string.home_opt_row_remove), true));
+		l.add(HomeOption.sw("hideDownloaded", ctx.getString(R.string.home_opt_hide_downloaded), false));
+		if (supportsPins()) l.add(HomeOption.sw("hidePinned", ctx.getString(R.string.home_opt_hide_pinned), false));
+		if (supportsCarKeys()) l.add(HomeOption.sw("carKeys", ctx.getString(R.string.home_opt_car_keys), true));
 		if (supportsFullWidth()) l.add(HomeOption.sw("full", ctx.getString(R.string.home_opt_row_full), false));
 		if (supportsQueueOnPlay()) {
 			l.add(HomeOption.sw("queueOnPlay", ctx.getString(R.string.home_opt_queue_on_play), false));
@@ -539,6 +617,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 	/** Opens something inside the card: its rows replace the list, under a chip that goes back. */
 	protected final void drill(CharSequence title, FetchSource source) {
 		drillSource = source;
+		carReselect = carFocused == this;
 		backChip.setText(title);
 		showBack(true);
 		reset();
@@ -547,6 +626,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 	private void backOut() {
 		if (drillSource == null) return;
 		drillSource = null;
+		carReselect = carFocused == this;
 		if (!host.animate() || !isShown() || !built) {
 			showBack(false);
 			reset();
@@ -648,12 +728,13 @@ abstract class LibraryWidget extends HomeWidgetView {
 		// Wide cards split their rows into two columns, unless the card asks for full-width rows.
 		int newCols = ((getCellsW() >= 4) && !(supportsFullWidth() && optBool("full", false))) ? 2 : 1;
 		boolean art = optBool("art", true);
-		int rowMode = (menuOn() ? 1 : 0) | (reorderOn() ? 2 : 0) | (removeOn() ? 4 : 0) | (handleOn() ? 8 : 0);
+		int rowMode = (menuOn() ? 1 : 0) | (reorderOn() ? 2 : 0) | (removeOn() ? 4 : 0) | (handleOn() ? 8 : 0) |
+				(badgeHidden() ? 16 : 0) | (pinHidden() ? 32 : 0);
 		// Drawn again only when something it shows changed: the rows blinked on every refresh.
 		StringBuilder sig = new StringBuilder();
 		sig.append(total).append('|').append(isCompact()).append('|').append(newCols).append('|')
 				.append(art).append('|').append(rowMode).append('|').append(loading && none).append('|').append(drillSource != null);
-		for (Row r : rows) sig.append('|').append(r.title()).append(r.sub()).append(r.current());
+		for (Row r : rows) sig.append('|').append(r.title()).append(r.sub()).append(r.current()).append(isPinnedRow(r));
 		String signature = sig.toString();
 		if (signature.equals(shownSignature)) {
 			// Nothing to redraw, but the adapter must hold the list the rows are now taken from: a row picked up or removed is
@@ -682,7 +763,18 @@ abstract class LibraryWidget extends HomeWidgetView {
 		artOn = art;
 		rowModeShown = rowMode;
 		glm.setSpanCount(cols);
+		int lead = 0;
+		if (supportsPins() && (drillSource == null)) {
+			while ((lead < rows.size()) && isPinnedRow(rows.get(lead))) lead++;
+		}
+		setPinSplit(((lead > 0) && (lead < rows.size()) && (cols == 1)) ? lead - 1 : -1);
 		adapter.set(rows, full);
+		if (carReselect) {
+			carReselect = false;
+			listView.post(() -> {
+				if (carFocused == this) me.aap.fermata.action.CarNav.selectFirst(act(), listView);
+			});
+		}
 		if (wasEmpty && host.animate()) {
 			listView.animate().cancel();
 			listView.setAlpha(0f);
@@ -776,6 +868,61 @@ abstract class LibraryWidget extends HomeWidgetView {
 		}
 	}
 
+	/** The position of the last pinned row when unpinned ones follow it (a thin line is drawn under it), else -1. */
+	private int pinSplit = -1;
+	/** How much of that line shows: it fades in when it comes. */
+	private float pinSplitAlpha = 1f;
+	private android.animation.ValueAnimator pinSplitAnim;
+
+	private void setPinSplit(int pos) {
+		if (pos == pinSplit) return;
+		boolean appears = (pinSplit < 0) && (pos >= 0);
+		pinSplit = pos;
+		if (pinSplitAnim != null) pinSplitAnim.cancel();
+		if (appears && host.animate()) {
+			pinSplitAlpha = 0f;
+			pinSplitAnim = android.animation.ValueAnimator.ofFloat(0f, 1f);
+			pinSplitAnim.setStartDelay(160);
+			pinSplitAnim.setDuration(300);
+			pinSplitAnim.addUpdateListener(an -> {
+				pinSplitAlpha = (Float) an.getAnimatedValue();
+				listView.invalidate();
+			});
+			pinSplitAnim.start();
+		} else {
+			pinSplitAlpha = 1f;
+		}
+		listView.invalidateItemDecorations();
+	}
+
+	/**
+	 * A tiny inline separator between the pinned rows and the others: a short hairline in the gap under the last pinned row. It is
+	 * drawn on the row's own bottom edge and alpha, so it moves and fades with the row while the list animates.
+	 */
+	private final class PinSplitDecoration extends RecyclerView.ItemDecoration {
+		private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+
+		@Override
+		public void getItemOffsets(android.graphics.Rect out, View view, RecyclerView parent, RecyclerView.State state) {
+			if ((pinSplit >= 0) && (parent.getChildAdapterPosition(view) == pinSplit)) out.bottom = px(8);
+		}
+
+		@Override
+		public void onDraw(android.graphics.Canvas c, RecyclerView parent, RecyclerView.State state) {
+			if (pinSplit < 0) return;
+			for (int i = 0, n = parent.getChildCount(); i < n; i++) {
+				View v = parent.getChildAt(i);
+				if (parent.getChildAdapterPosition(v) != pinSplit) continue;
+				float y = v.getBottom() + v.getTranslationY() + px(4);
+				float a = v.getAlpha() * pinSplitAlpha;
+				paint.setColor(color(ROLE_SECONDARY));
+				paint.setAlpha(Math.round(70 * a));
+				float inset = px(26);
+				c.drawRoundRect(inset, y - px(0.5f), parent.getWidth() - inset, y + px(0.5f), px(1), px(1), paint);
+			}
+		}
+	}
+
 	private final class RowHolder extends RecyclerView.ViewHolder {
 		private final LinearLayout main;
 		private final ImageView thumb;
@@ -788,6 +935,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 		private final ImageView handle;
 		/** A small download icon at the end of the row of a song that is on the phone: part of the row, no chip of its own. */
 		private final ImageView badge;
+		/** A small pin at the end of a pinned playlist's row. */
+		private final ImageView pinBadge;
 		@Nullable
 		private Row row;
 		private int paintedEpoch = -1;
@@ -821,6 +970,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 			});
 			removeBtn.setVisibility(GONE);
 			removeBtn.setTag(R.id.home_no_grab, Boolean.TRUE);
+			// Car keys walk through the rows only; the row's own buttons are for fingers.
+			me.aap.fermata.action.CarNav.skip(removeBtn);
 			root.addView(removeBtn);
 			root.addView(main, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
 
@@ -852,15 +1003,26 @@ abstract class LibraryWidget extends HomeWidgetView {
 			blp.setMarginEnd(px(10));
 			main.addView(badge, blp);
 
+			pinBadge = new ImageView(ctx);
+			pinBadge.setImageResource(R.drawable.pin);
+			pinBadge.setScaleType(ImageView.ScaleType.FIT_CENTER);
+			pinBadge.setVisibility(GONE);
+			pinBadge.setContentDescription(ctx.getString(R.string.playlist_pinned));
+			LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(px(18), px(18));
+			plp.setMarginEnd(px(10));
+			main.addView(pinBadge, plp);
+
 			playBtn = iconButton(R.drawable.play, 36, ROLE_ICON, R.string.action_play, () -> {
 				if ((row != null) && (row.play() != null)) row.play().run();
 			});
+			me.aap.fermata.action.CarNav.skip(playBtn);
 			root.addView(playBtn);
 
 			handle = iconButton(R.drawable.drag_handle, 32, ROLE_SECONDARY, R.string.home_row_drag, () -> {
 			});
 			handle.setVisibility(GONE);
 			handle.setTag(R.id.home_no_grab, Boolean.TRUE);
+			me.aap.fermata.action.CarNav.skip(handle);
 			handle.setOnTouchListener((v, e) -> {
 				if ((e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) && (touchHelper != null) && reorderOn()) {
 					listView.getParent().requestDisallowInterceptTouchEvent(true);
@@ -903,6 +1065,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 				main.setBackground(HomeUi.pressable(ripple(), fill, px(14)));
 				thumb.setBackground(HomeUi.round(softFill(), px(10)));
 				badge.setImageTintList(android.content.res.ColorStateList.valueOf(color(ROLE_SECONDARY)));
+				pinBadge.setImageTintList(android.content.res.ColorStateList.valueOf(color(ROLE_SECONDARY)));
 			}
 			main.setContentDescription(r.title());
 			// A long press on the row opens its menu: it is marked so the card does not take that press for picking itself up.
@@ -955,8 +1118,9 @@ abstract class LibraryWidget extends HomeWidgetView {
 		/** Shown when the row's song is on the phone, at the end of the row itself (so the playing row's fill runs under it). */
 		void updateBadge() {
 			Row r = row;
-			boolean on = (r != null) && isDownloaded(r);
+			boolean on = (r != null) && !badgeHidden() && isDownloaded(r);
 			badge.setVisibility(on ? VISIBLE : GONE);
+			pinBadge.setVisibility((r != null) && !pinHidden() && isPinnedRow(r) ? VISIBLE : GONE);
 			if (on) badge.setContentDescription(ctx.getString(R.string.home_downloaded));
 		}
 	}

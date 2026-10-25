@@ -95,6 +95,9 @@ import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.pref.PreferenceStore.Pref;
 import me.aap.utils.pref.PreferenceView;
 import me.aap.utils.pref.PreferenceViewAdapter;
+import me.aap.fermata.ui.home.HomeModel;
+import me.aap.fermata.ui.view.SettingsNav;
+import me.aap.fermata.ui.view.SettingsSplit;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.fragment.FilePickerFragment;
 import me.aap.utils.vfs.local.LocalFileSystem;
@@ -121,7 +124,17 @@ public class SettingsFragment extends MainActivityFragment
 	private static final String ADDON_SETTINGS = "addon_settings:";
 	private static final String KEY_SETTINGS = "key_settings:";
 
+	private static final String CATEGORY = "category:";
+
+	/** The page showing. */
 	private PreferenceViewAdapter adapter;
+	@Nullable
+	private PreferenceSet rootSet;
+	/**
+	 * Wide window (a tablet): the categories are the list beside the page ({@code SettingsSplit}), so the page never shows the
+	 * root itself, only a category and what is under it.
+	 */
+	private boolean twoPane;
 	private PreferenceSet dimSettingsSet;
 	private PreferenceSet privateModeSettingsSet;
 	// Each addon's own settings page, by module name, see addonSettings().
@@ -139,6 +152,28 @@ public class SettingsFragment extends MainActivityFragment
 	private PreferenceSet returnToKeyTesterFrom;
 	@Nullable
 	private Object pendingInput;
+
+	/** Same as {@link #SHOW_DIM_SETTINGS}, but for the category with this preference set id (the list beside the page). */
+	public static Object category(int setId) {
+		return CATEGORY + setId;
+	}
+
+	/** Shows a category of the root (a tap in the list beside the page). */
+	public void showCategory(int setId) {
+		PreferenceSet root = rootSet;
+		PreferenceViewAdapter ad = adapter;
+		if ((root == null) || (ad == null)) {
+			pendingInput = CATEGORY + setId;
+			return;
+		}
+		PreferenceSet p = root.find(setId);
+		if (p != null) ad.setPreferenceSet(p);
+	}
+
+	@Override
+	public boolean isSettingsPage() {
+		return true;
+	}
 
 	/**
 	 * Same as {@link #SHOW_DIM_SETTINGS}, but for an addon's own settings page (Settings > Addons >
@@ -182,6 +217,12 @@ public class SettingsFragment extends MainActivityFragment
 			adapter.setPreferenceSet(interfaceSet);
 		} else if ((pendingInput == SHOW_AA_INTERFACE) && (aaInterfaceSet != null)) {
 			adapter.setPreferenceSet(aaInterfaceSet);
+		} else if ((pendingInput instanceof String cs) && cs.startsWith(CATEGORY)) {
+			try {
+				showCategory(Integer.parseInt(cs.substring(CATEGORY.length())));
+			} catch (NumberFormatException ignore) {
+				// Not one of ours.
+			}
 		} else if ((pendingInput instanceof String ks) && ks.startsWith(KEY_SETTINGS)) {
 			PreferenceSet p = keySettingsSets.get(ks.substring(KEY_SETTINGS.length()));
 			if (p != null) {
@@ -208,6 +249,8 @@ public class SettingsFragment extends MainActivityFragment
 	@Override
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
 													 @Nullable Bundle savedInstanceState) {
+		// The window's width, so split screen follows.
+		twoPane = SettingsSplit.isWide(MainActivityDelegate.get(requireContext()));
 		return inflater.inflate(me.aap.utils.R.layout.pref_list_view, container, false);
 	}
 
@@ -230,8 +273,23 @@ public class SettingsFragment extends MainActivityFragment
 			listView.setAdapter(adapter);
 			a.insetScrollableContent(listView);
 
+			if (twoPane && (rootSet != null)) {
+				// The categories are the list beside the page; the page starts on the one shown last, else the first.
+				PreferenceSet start = null;
+				String sel = SettingsNav.selected();
+				if ((sel != null) && sel.startsWith("set:")) {
+					try {
+						start = rootSet.find(Integer.parseInt(sel.substring(4)));
+					} catch (NumberFormatException ignore) {
+						// Falls back to the first.
+					}
+				}
+				if (start == null) start = firstCategory(rootSet);
+				if (start != null) adapter.setPreferenceSet(start);
+			}
+
 			if (state != null) {
-				PreferenceSet p = adapter.getPreferenceSet().find(state.getInt("id", ID_NULL));
+				PreferenceSet p = (rootSet != null ? rootSet : adapter.getPreferenceSet()).find(state.getInt("id", ID_NULL));
 				if (p != null) adapter.setPreferenceSet(p);
 			}
 
@@ -245,6 +303,54 @@ public class SettingsFragment extends MainActivityFragment
 		super.onDestroyView();
 	}
 
+	@Nullable
+	private static PreferenceSet firstCategory(PreferenceSet root) {
+		for (Object o : root.getPreferences()) {
+			if (o instanceof PreferenceSet s) return s;
+		}
+		return null;
+	}
+
+	/** The direct child of the root that {@code set} is, or sits under. */
+	@Nullable
+	private static PreferenceSet categoryOf(PreferenceSet set) {
+		PreferenceSet p = set;
+		while ((p != null) && (p.getParent() != null) && (p.getParent().getParent() != null)) p = p.getParent();
+		return ((p != null) && (p.getParent() != null)) ? p : null;
+	}
+
+	/** The page now showing: the list beside it (a wide window) marks the category it is in. */
+	private void pageShown(PreferenceSet set) {
+		if (!twoPane) return;
+		PreferenceSet cat = categoryOf(set);
+		if (cat != null) SettingsNav.select(SettingsNav.categoryKey(cat.getId()));
+	}
+
+	/**
+	 * What the list beside the pages shows: the root's categories, and the buttons at the root that open a page of their own
+	 * (Home, Captions, Lyrics, ...).
+	 */
+	private static void publishNav(PreferenceSet root, Context ctx) {
+		List<SettingsNav.Entry> out = new java.util.ArrayList<>();
+		for (var o : root.getPreferences()) {
+			try {
+				PreferenceView.Opts opts = o.get();
+				if ((opts.visibility != null) && !opts.visibility.get()) continue;
+				CharSequence title = (opts.ctitle != null) ? opts.ctitle : ((opts.title != ID_NULL) ? ctx.getString(opts.title) : null);
+				if (title == null) continue;
+				CharSequence sub = (opts.csubtitle != null) ? opts.csubtitle : ((opts.subtitle != ID_NULL) ? ctx.getString(opts.subtitle) : null);
+				if (o instanceof PreferenceSet s) {
+					out.add(new SettingsNav.Entry(SettingsNav.categoryKey(s.getId()), title, sub, opts.icon, s.getId(), null));
+				} else if ((opts instanceof PreferenceView.ButtonOpts b) && (b.onClick != null)) {
+					out.add(new SettingsNav.Entry("btn:" + title, title, sub, opts.icon, 0, b.onClick));
+				}
+			} catch (RuntimeException ex) {
+				Log.e(ex, "A settings entry could not be listed");
+			}
+		}
+		SettingsNav.publish(out);
+	}
+
 	private void cleanUp(MainActivityDelegate a) {
 		a.removeBroadcastListener(this);
 		a.getPrefs().removeBroadcastListener(this);
@@ -252,11 +358,16 @@ public class SettingsFragment extends MainActivityFragment
 				.removeBroadcastListeners(l -> l instanceof AddonPrefsBuilder);
 		if (adapter != null) adapter.onDestroy();
 		adapter = null;
+		rootSet = null;
 	}
 
 	@Override
 	public void onActivityEvent(MainActivityDelegate a, long e) {
-		if (e == ACTIVITY_DESTROY) cleanUp(a);
+		if (e == ACTIVITY_DESTROY) {
+			cleanUp(a);
+			// Its buttons belong to this activity.
+			SettingsNav.clear();
+		}
 	}
 
 	@Override
@@ -276,7 +387,10 @@ public class SettingsFragment extends MainActivityFragment
 
 	@Override
 	public boolean isRootPage() {
-		return (adapter == null) || (adapter.getPreferenceSet().getParent() == null);
+		if (adapter == null) return true;
+		PreferenceSet cur = adapter.getPreferenceSet();
+		// On a tablet a category is the top of the right pane.
+		return (cur.getParent() == null) || (twoPane && (cur.getParent() == rootSet));
 	}
 
 	@Override
@@ -289,7 +403,7 @@ public class SettingsFragment extends MainActivityFragment
 		}
 		returnToKeyTesterFrom = null;
 		PreferenceSet p = adapter.getPreferenceSet().getParent();
-		if (p == null) return false;
+		if ((p == null) || (twoPane && (p == rootSet))) return false;
 		adapter.setPreferenceSet(p);
 		return true;
 	}
@@ -398,7 +512,26 @@ public class SettingsFragment extends MainActivityFragment
 				false);
 	}
 
+	/** The context the pages are built with: the activity's, so a page can be built with no screen (see {@link #prepareNav}). */
+	private Context buildContext;
+
+	/**
+	 * Builds the settings once without showing them, so the list of categories beside the settings pages (a wide window) is
+	 * there for a page opened before Settings ever was (Home settings from Home's chips).
+	 */
+	public static void prepareNav(MainActivityDelegate a) {
+		if (!SettingsNav.entries().isEmpty()) return;
+		try {
+			SettingsFragment f = new SettingsFragment();
+			f.createAdapter(a);
+			f.cleanUp(a);
+		} catch (RuntimeException ex) {
+			Log.e(ex, "Failed to prepare the settings list");
+		}
+	}
+
 	private PreferenceViewAdapter createAdapter(MainActivityDelegate a) {
+		buildContext = a.getContext();
 		MediaLibPrefs mediaPrefs = a.getMediaServiceBinder().getLib().getPrefs();
 		int[] timeUnits =
 				new int[]{R.string.time_unit_second, R.string.time_unit_minute,
@@ -1041,10 +1174,13 @@ public class SettingsFragment extends MainActivityFragment
 
 		addDiagnostics(a, set);
 
+		rootSet = set;
+		publishNav(set, a.getContext());
 		return new PreferenceViewAdapter(set) {
 			@Override
 			public void setPreferenceSet(PreferenceSet set) {
 				super.setPreferenceSet(set);
+				pageShown(set);
 				a.fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 			}
 		};
@@ -1638,6 +1774,14 @@ public class SettingsFragment extends MainActivityFragment
 	 * preferences replace the app's, and the app restarts. Also used by the welcome and setup wizard.
 	 */
 	public static void importPrefs(MainActivityDelegate a) {
+		importPrefs(a, null);
+	}
+
+	/**
+	 * As {@link #importPrefs(MainActivityDelegate)}, but when the restore went through {@code onRestored} runs instead
+	 * of the plain "restored, the app closes" message (the welcome wizard shows its own page).
+	 */
+	public static void importPrefs(MainActivityDelegate a, @Nullable Runnable onRestored) {
 		if (Utils.isSafSupported(a)) {
 			a.startActivityForResult(
 							() -> new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("application/zip"))
@@ -1658,7 +1802,7 @@ public class SettingsFragment extends MainActivityFragment
 							if (f == null) return;
 
 							try (InputStream is = ctx.getContentResolver().openInputStream(f.getUri())) {
-								importPrefs(a, is);
+								importStream(a, is, onRestored);
 							}
 						} catch (Exception ex) {
 							Log.e(ex, "Failed to import preferences");
@@ -1677,7 +1821,7 @@ public class SettingsFragment extends MainActivityFragment
 				File f = res.getLocalFile();
 				if (f == null) return;
 				try (InputStream is = new FileInputStream(f)) {
-					importPrefs(a, is);
+					importStream(a, is, onRestored);
 				} catch (Exception ex) {
 					Context ctx = a.getContext();
 					Log.e(ex, "Failed to import preferences");
@@ -1687,12 +1831,24 @@ public class SettingsFragment extends MainActivityFragment
 		}
 	}
 
-	private static void importPrefs(MainActivityDelegate a, InputStream is) throws IOException {
+	private static void importStream(MainActivityDelegate a, InputStream is, @Nullable Runnable onRestored)
+			throws IOException {
 		Context ctx = a.getContext();
 
+		// Home keeps its own copy of the layout and writes it when the screen goes away, which would put the old
+		// layout back over the restored one while the app closes.
+		HomeModel.freeze(true);
 		try (ZipInputStream zis = (SDK_INT >= N) ? new ZipInputStream(is, UTF_8) :
 				new ZipInputStream(is)) {
 			PrefUtils.importSharedPrefs(ctx, zis);
+		} catch (IOException | RuntimeException ex) {
+			HomeModel.freeze(false);
+			throw ex;
+		}
+
+		if (onRestored != null) {
+			onRestored.run();
+			return;
 		}
 
 		UiUtils.showInfo(ctx, ctx.getString(R.string.import_prefs_ok)).thenRun(() -> {
@@ -1746,7 +1902,7 @@ public class SettingsFragment extends MainActivityFragment
 
 			if (a != null) {
 				ChangeableCondition cond = PrefCondition.create(store, info.enabledPref);
-				a.contributeSettings(getContext(), store, set, cond);
+				a.contributeSettings(buildContext, store, set, cond);
 			}
 		}
 

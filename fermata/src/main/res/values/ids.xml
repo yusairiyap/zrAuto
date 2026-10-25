@@ -122,6 +122,7 @@
     <item name="playlist_remove" type="id" />
     <item name="playlist_remove_item" type="id" />
     <item name="playlist_rename" type="id" />
+    <item name="playlist_pin" type="id" />
     <item name="playlist_move" type="id" />
     <item name="playlist_selected_favorites" type="id" />
     <item name="playlist_selected_remove" type="id" />

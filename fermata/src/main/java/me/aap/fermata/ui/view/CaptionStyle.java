@@ -60,12 +60,14 @@ public final class CaptionStyle {
 	public final float edgeStrength;
 	/** ARGB: the box's colour with its opacity, 0 alpha for none. */
 	public final int boxColor;
+	/** The box is as wide as the longest line of text, not the whole text area. */
+	public final boolean boxFit;
 	public final int position;
 	/** How far from the top or bottom edge, as a share (0 .. 0.4) of the picture's height. */
 	public final float margin;
 
 	private CaptionStyle(Typeface typeface, float size, int textColor, int edge, int edgeColor,
-											 float edgeStrength, int boxColor, int position, float margin) {
+											 float edgeStrength, int boxColor, boolean boxFit, int position, float margin) {
 		this.typeface = typeface;
 		this.size = size;
 		this.textColor = textColor;
@@ -73,6 +75,7 @@ public final class CaptionStyle {
 		this.edgeColor = edgeColor;
 		this.edgeStrength = edgeStrength;
 		this.boxColor = boxColor;
+		this.boxFit = boxFit;
 		this.position = position;
 		this.margin = margin;
 	}
@@ -97,9 +100,10 @@ public final class CaptionStyle {
 		float strength = clamp(p.getIntPref(MainActivityPrefs.CAPTION_EDGE_STRENGTH), 0, 100) / 100f;
 		int box = withOpacity(color(p.getIntPref(MainActivityPrefs.CAPTION_BG_COLOR)),
 				p.getIntPref(MainActivityPrefs.CAPTION_BG_OPACITY));
+		boolean fit = p.getBooleanPref(MainActivityPrefs.CAPTION_BOX_FIT);
 		int pos = clamp(p.getIntPref(MainActivityPrefs.CAPTION_POSITION), 0, 2);
 		float margin = clamp(p.getIntPref(MainActivityPrefs.CAPTION_MARGIN), 0, 40) / 100f;
-		return new CaptionStyle(tf, size, text, edge, edgeColor, strength, box, pos, margin);
+		return new CaptionStyle(tf, size, text, edge, edgeColor, strength, box, fit, pos, margin);
 	}
 
 	private static int color(int i) {

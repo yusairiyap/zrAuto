@@ -92,6 +92,24 @@ public class Utils {
 		return MiscUtils.isSafSupported();
 	}
 
+	/**
+	 * Closes the app and opens it again: the launch intent is started first, then the process ends, and the system
+	 * brings the new start up in a fresh process. If it cannot be started the app is just closed.
+	 */
+	public static void restartApp(Context ctx) {
+		try {
+			Intent i = ctx.getPackageManager().getLaunchIntentForPackage(ctx.getPackageName());
+			if (i != null) {
+				i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+				ctx.startActivity(i);
+			}
+		} catch (RuntimeException ex) {
+			Log.e(ex, "Failed to start the app again");
+		}
+		if (ctx instanceof android.app.Activity act) act.finishAffinity();
+		App.get().getHandler().postDelayed(() -> Runtime.getRuntime().exit(0), 300);
+	}
+
 	public static boolean isExternalStorageManager() {
 		return (SDK_INT >= VERSION_CODES.R) && Environment.isExternalStorageManager();
 	}
