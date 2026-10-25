@@ -814,6 +814,10 @@ public interface MediaLib {
 		default int getIcon() {
 			return R.drawable.playlist;
 		}
+
+		/** The pinned playlists changed: the pinned ones go first (in the order they were pinned), the rest in their own order. */
+		default void pinsChanged() {
+		}
 	}
 
 	interface Playlist extends BrowsableItem {

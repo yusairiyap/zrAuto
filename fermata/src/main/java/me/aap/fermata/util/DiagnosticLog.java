@@ -220,23 +220,13 @@ public final class DiagnosticLog {
 	 * the real one unreported if it happens before the chained previous handler runs.
 	 */
 	/**
-	 * A line about how the app is starting, always kept (even with the log off) in {@code Android/data/<app>/files/start_log.txt}, which a
-	 * file manager can read when the screen stays blank. Short: the file starts over past 24 KB.
+	 * A line about how the app is starting, always kept (even with the log off) in the Downloads folder as {@code zrAuto_start_log.txt}
+	 * (see {@link StartLog}), which a file manager can read when the screen stays blank.
 	 */
 	public static void startup(String msg) {
 		try {
 			log("STATE", msg);
-			File dir = FermataApplication.get().getExternalFilesDir(null);
-			if (dir == null) return;
-			File f = new File(dir, "start_log.txt");
-			boolean over = f.length() > 24_000;
-			String stamp;
-			synchronized (DiagnosticLog.stamp) {
-				stamp = DiagnosticLog.stamp.format(new Date());
-			}
-			try (java.io.FileWriter w = new java.io.FileWriter(f, !over)) {
-				w.write(stamp + " " + msg + "\n");
-			}
+			StartLog.add(msg);
 		} catch (Throwable ignore) {
 			// Best effort only.
 		}
@@ -258,18 +248,8 @@ public final class DiagnosticLog {
 				entries.addLast(line);
 			}
 			appendToFile(line);
-			// Also where a file manager can reach it (Android/data/<app>/files/last_crash.txt): the app that crashes at
-			// start can't show its own log.
-			try {
-				File dir = FermataApplication.get().getExternalFilesDir(null);
-				if (dir != null) {
-					try (java.io.FileWriter w = new java.io.FileWriter(new File(dir, "last_crash.txt"), false)) {
-						w.write(line);
-					}
-				}
-			} catch (Throwable ignore2) {
-				// Best effort only.
-			}
+			// Also in the Downloads folder (see StartLog): the app that crashes at start can't show its own log.
+			StartLog.addNow("CRASH thread=" + thread.getName() + "\n" + android.util.Log.getStackTraceString(err));
 		} catch (Throwable ignore) {
 			// See the doc comment: this must never add a second failure on top of the real one.
 		}

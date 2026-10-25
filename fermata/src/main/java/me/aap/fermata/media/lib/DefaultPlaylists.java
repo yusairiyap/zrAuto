@@ -90,7 +90,44 @@ class DefaultPlaylists extends ItemContainer<Playlist> implements Playlists, Pla
 			children.add(DefaultPlaylist.create(tb.releaseString(), this, id, lib));
 		}
 
+		pinFirst(children, ids);
 		return completed(children);
+	}
+
+	@Override
+	public void pinsChanged() {
+		list().main().onSuccess(children -> {
+			List<Playlist> l = new ArrayList<>(children);
+			pinFirst(l, getPlaylistIdsPref());
+			setNewChildren(l);
+		});
+	}
+
+	/**
+	 * The pinned playlists first (the newest pin on top), then the rest in the saved order {@code order} (the numeric ids). Stable, so
+	 * with nothing pinned the list is untouched.
+	 */
+	private static void pinFirst(List<? extends Item> l, int[] order) {
+		List<String> pins = me.aap.fermata.ui.home.HomePins.ids(me.aap.fermata.FermataApplication.get().getPreferenceStore());
+		java.util.Map<String, Integer> saved = new java.util.HashMap<>();
+		for (int i = 0; i < order.length; i++) saved.put(String.valueOf(order[i]), i);
+		java.util.Comparator<Item> byKey = (a, b) -> {
+			int pa = pins.indexOf(a.getId());
+			int pb = pins.indexOf(b.getId());
+			if ((pa >= 0) || (pb >= 0)) {
+				if (pa < 0) return 1;
+				if (pb < 0) return -1;
+				return Integer.compare(pa, pb);
+			}
+			return Integer.compare(savedIndex(saved, a), savedIndex(saved, b));
+		};
+		if (!pins.isEmpty() || !l.isEmpty()) java.util.Collections.sort((List<Item>) l, byKey);
+	}
+
+	private static int savedIndex(java.util.Map<String, Integer> saved, Item i) {
+		String[] parts = i.getId().split(":");
+		Integer idx = (parts.length > 1) ? saved.get(parts[1]) : null;
+		return (idx == null) ? Integer.MAX_VALUE : idx;
 	}
 
 	@Override

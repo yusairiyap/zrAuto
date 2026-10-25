@@ -448,6 +448,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			return;
 		}
 
+		DiagnosticLog.startup("activity created, car=" + isCarActivity());
 		getPrefs().addBroadcastListener(this);
 		int navId;
 		int fragmentId;
@@ -471,8 +472,6 @@ public class MainActivityDelegate extends ActivityDelegate
 			if (addon instanceof FermataActivityAddon)
 				((FermataActivityAddon) addon).onActivityCreate(this);
 		}
-
-		if (me.aap.fermata.ui.view.SettingsSplit.isWide(this)) post(() -> SettingsFragment.prepareNav(this));
 
 		String[] perms = getRequiredPermissions();
 		// The permissions are asked first, as ever (the library needs storage before anything is listed: asking only
@@ -576,6 +575,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	private void defaultIntent() {
+		DiagnosticLog.startup("start: opening the first tab, active=" + getActiveFragment());
 		if (getActiveFragment() != null) {
 			checkUpdates();
 			return;

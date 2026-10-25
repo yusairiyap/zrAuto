@@ -50,8 +50,12 @@ final class PlaylistsWidget extends LibraryWidget {
 	protected List<HomeOption> moreOptions() {
 		List<HomeOption> l = new ArrayList<>();
 		l.add(HomeOption.sw("openlast", ctx.getString(R.string.home_opt_open_playlist), true));
-		l.add(HomeOption.sw("hidePinned", ctx.getString(R.string.home_opt_hide_pinned), false));
 		return l;
+	}
+
+	@Override
+	protected boolean supportsPins() {
+		return true;
 	}
 
 	@Override

@@ -263,6 +263,11 @@ abstract class LibraryWidget extends HomeWidgetView {
 		return false;
 	}
 
+	/** Whether the card has pinned rows: the option "Hide pinned icon" (under "Hide downloaded icon") and a thin line between them and the rest. */
+	protected boolean supportsPins() {
+		return false;
+	}
+
 	/** Whether the row is one the user pinned to the top (a small pin at the end of the row, unless "Hide pinned icon" is on). */
 	protected boolean isPinnedRow(Row r) {
 		return false;
@@ -478,6 +483,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 		listView.setVerticalFadingEdgeEnabled(true);
 		listView.setFadingEdgeLength(px(22));
 		listView.setItemViewCacheSize(4);
+		listView.addItemDecoration(new PinSplitDecoration());
 		listView.getRecycledViewPool().setMaxRecycledViews(0, 24);
 		if (supportsReorder()) {
 			touchHelper = new ItemTouchHelper(new ReorderCallback());
@@ -594,6 +600,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 		}
 		if (supportsRemove()) l.add(HomeOption.sw("remove", ctx.getString(R.string.home_opt_row_remove), true));
 		l.add(HomeOption.sw("hideDownloaded", ctx.getString(R.string.home_opt_hide_downloaded), false));
+		if (supportsPins()) l.add(HomeOption.sw("hidePinned", ctx.getString(R.string.home_opt_hide_pinned), false));
 		if (supportsCarKeys()) l.add(HomeOption.sw("carKeys", ctx.getString(R.string.home_opt_car_keys), true));
 		if (supportsFullWidth()) l.add(HomeOption.sw("full", ctx.getString(R.string.home_opt_row_full), false));
 		if (supportsQueueOnPlay()) {
@@ -756,6 +763,11 @@ abstract class LibraryWidget extends HomeWidgetView {
 		artOn = art;
 		rowModeShown = rowMode;
 		glm.setSpanCount(cols);
+		int lead = 0;
+		if (supportsPins() && (drillSource == null)) {
+			while ((lead < rows.size()) && isPinnedRow(rows.get(lead))) lead++;
+		}
+		setPinSplit(((lead > 0) && (lead < rows.size()) && (cols == 1)) ? lead - 1 : -1);
 		adapter.set(rows, full);
 		if (carReselect) {
 			carReselect = false;
@@ -856,6 +868,61 @@ abstract class LibraryWidget extends HomeWidgetView {
 		}
 	}
 
+	/** The position of the last pinned row when unpinned ones follow it (a thin line is drawn under it), else -1. */
+	private int pinSplit = -1;
+	/** How much of that line shows: it fades in when it comes. */
+	private float pinSplitAlpha = 1f;
+	private android.animation.ValueAnimator pinSplitAnim;
+
+	private void setPinSplit(int pos) {
+		if (pos == pinSplit) return;
+		boolean appears = (pinSplit < 0) && (pos >= 0);
+		pinSplit = pos;
+		if (pinSplitAnim != null) pinSplitAnim.cancel();
+		if (appears && host.animate()) {
+			pinSplitAlpha = 0f;
+			pinSplitAnim = android.animation.ValueAnimator.ofFloat(0f, 1f);
+			pinSplitAnim.setStartDelay(160);
+			pinSplitAnim.setDuration(300);
+			pinSplitAnim.addUpdateListener(an -> {
+				pinSplitAlpha = (Float) an.getAnimatedValue();
+				listView.invalidate();
+			});
+			pinSplitAnim.start();
+		} else {
+			pinSplitAlpha = 1f;
+		}
+		listView.invalidateItemDecorations();
+	}
+
+	/**
+	 * A tiny inline separator between the pinned rows and the others: a short hairline in the gap under the last pinned row. It is
+	 * drawn on the row's own bottom edge and alpha, so it moves and fades with the row while the list animates.
+	 */
+	private final class PinSplitDecoration extends RecyclerView.ItemDecoration {
+		private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+
+		@Override
+		public void getItemOffsets(android.graphics.Rect out, View view, RecyclerView parent, RecyclerView.State state) {
+			if ((pinSplit >= 0) && (parent.getChildAdapterPosition(view) == pinSplit)) out.bottom = px(8);
+		}
+
+		@Override
+		public void onDraw(android.graphics.Canvas c, RecyclerView parent, RecyclerView.State state) {
+			if (pinSplit < 0) return;
+			for (int i = 0, n = parent.getChildCount(); i < n; i++) {
+				View v = parent.getChildAt(i);
+				if (parent.getChildAdapterPosition(v) != pinSplit) continue;
+				float y = v.getBottom() + v.getTranslationY() + px(4);
+				float a = v.getAlpha() * pinSplitAlpha;
+				paint.setColor(color(ROLE_SECONDARY));
+				paint.setAlpha(Math.round(70 * a));
+				float inset = px(26);
+				c.drawRoundRect(inset, y - px(0.5f), parent.getWidth() - inset, y + px(0.5f), px(1), px(1), paint);
+			}
+		}
+	}
+
 	private final class RowHolder extends RecyclerView.ViewHolder {
 		private final LinearLayout main;
 		private final ImageView thumb;
@@ -937,7 +1004,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 			main.addView(badge, blp);
 
 			pinBadge = new ImageView(ctx);
-			pinBadge.setImageResource(R.drawable.bookmark_filled);
+			pinBadge.setImageResource(R.drawable.pin);
 			pinBadge.setScaleType(ImageView.ScaleType.FIT_CENTER);
 			pinBadge.setVisibility(GONE);
 			pinBadge.setContentDescription(ctx.getString(R.string.playlist_pinned));
@@ -998,7 +1065,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 				main.setBackground(HomeUi.pressable(ripple(), fill, px(14)));
 				thumb.setBackground(HomeUi.round(softFill(), px(10)));
 				badge.setImageTintList(android.content.res.ColorStateList.valueOf(color(ROLE_SECONDARY)));
-				pinBadge.setImageTintList(android.content.res.ColorStateList.valueOf(color(ROLE_ACCENT)));
+				pinBadge.setImageTintList(android.content.res.ColorStateList.valueOf(color(ROLE_SECONDARY)));
 			}
 			main.setContentDescription(r.title());
 			// A long press on the row opens its menu: it is marked so the card does not take that press for picking itself up.

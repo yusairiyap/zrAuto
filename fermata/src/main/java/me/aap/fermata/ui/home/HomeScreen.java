@@ -306,6 +306,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	}
 
 	public void onViewCreated(boolean quietStart) {
+		DiagnosticLog.startup("home screen created, quiet=" + quietStart);
 		live = this;
 		quiet = quietStart;
 		if (quiet) root.setAlpha(0f);

@@ -61,9 +61,7 @@ public final class SettingsSplit {
 	private NavAdapter adapter;
 	private int widthPx;
 	private boolean shown;
-	/** The tab in front, and the one before it: to or from Home the list fades, between other tabs it slides. */
-	private int curId;
-	private int prevId;
+	private boolean preparing;
 	@Nullable
 	private ValueAnimator anim;
 	private SettingsStyle.Colors colors;
@@ -110,12 +108,19 @@ public final class SettingsSplit {
 
 	/** The tab in front changed (or the window did): the list comes or goes. */
 	public void sync(@NonNull MainActivityDelegate a) {
-		int id = a.getActiveFragmentId();
-		if (id != curId) {
-			prevId = curId;
-			curId = id;
+		boolean page = isWide(a) && !a.isVideoMode() && (a.getActiveFragment() instanceof MainActivityFragment f) && f.isSettingsPage();
+		// A settings page opened before Settings ever was (Home's chips): the list is made now, not at every start of the app.
+		if (page && SettingsNav.entries().isEmpty() && !preparing) {
+			preparing = true;
+			body.post(() -> {
+				try {
+					SettingsFragment.prepareNav(a);
+				} finally {
+					preparing = false;
+				}
+			});
 		}
-		boolean want = isWide(a) && !a.isVideoMode() && !SettingsNav.entries().isEmpty() &&
+		boolean want = page && !SettingsNav.entries().isEmpty() &&
 				(a.getActiveFragment() instanceof MainActivityFragment f) && f.isSettingsPage();
 		if (want && (a.getActiveFragment() instanceof MainActivityFragment f) && (f.settingsEntryTitle() != 0)) {
 			SettingsNav.select("btn:" + a.getContext().getString(f.settingsEntryTitle()));
@@ -140,13 +145,13 @@ public final class SettingsSplit {
 		lp.width = widthPx;
 		panel.setLayoutParams(lp);
 		panel.bringToFront();
-		animate(0, widthPx, true, prevId == R.id.home_fragment);
+		animate(0, widthPx, true);
 	}
 
 	private void hide() {
 		if (!shown || (panel == null)) return;
 		shown = false;
-		animate(widthPx, 0, false, curId == R.id.home_fragment);
+		animate(widthPx, 0, false);
 	}
 
 	private void build(MainActivityDelegate a) {
@@ -178,30 +183,13 @@ public final class SettingsSplit {
 		return Math.max(Math.round(MIN_DP * d), Math.min(Math.max(max, Math.round(MIN_DP * d)), px));
 	}
 
-	/**
-	 * The list comes or goes. Between other tabs it slides in with the pages making room for it as it comes; to or from Home it only
-	 * fades (a little longer), the pages making room at once, so the two crossfade as one picture.
-	 */
-	private void animate(int from, int to, boolean in, boolean fade) {
+	/** The list slides in or out while the pages make room for it (or take the room back). */
+	private void animate(int from, int to, boolean in) {
 		if (anim != null) anim.cancel();
 		View pr = body.findViewById(R.id.swiperefresh);
 		FrameLayout p = panel;
 		if ((pr == null) || (p == null)) return;
 		p.animate().cancel();
-		if (fade) {
-			setContentMargin(pr, in ? to : 0);
-			p.setTranslationX(0);
-			if (in) {
-				p.setAlpha(0f);
-				p.setVisibility(View.VISIBLE);
-				p.animate().alpha(1f).setDuration(320).start();
-			} else {
-				p.animate().alpha(0f).setDuration(320).withEndAction(() -> {
-					if (!shown) p.setVisibility(View.GONE);
-				}).start();
-			}
-			return;
-		}
 		ValueAnimator va = ValueAnimator.ofInt(from, to);
 		va.setDuration(240);
 		va.setInterpolator(new DecelerateInterpolator(1.6f));
