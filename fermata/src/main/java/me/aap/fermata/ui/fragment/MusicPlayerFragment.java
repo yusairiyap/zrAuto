@@ -614,6 +614,8 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	public void onHiddenChanged(boolean hidden) {
 		super.onHiddenChanged(hidden);
 		updateActive();
+		// The More card can sit over the whole window (glass on menus): it goes with the tab.
+		if (hidden) AllInOneMenu.dismissOpen();
 	}
 
 	@Override

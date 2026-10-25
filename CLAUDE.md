@@ -1017,6 +1017,19 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
 - **Playlists card**: which playlist is open, and whether the last played song's one was opened, are kept per widget id for the
   life of the app (`PlaylistsWidget#OPEN`, `OPENED_LAST`): a card made again used to show every playlist with no back chip.
 
+### Fourth round (More card over the window, chip blur, experimental web/video blur)
+
+- **Music tab's More card** opens on `R.id.main_activity` (not the tab's root) while glass is on menus (`AllInOneMenu#showMusic`),
+  so it can blur the tab; the anchor still places it over the chip; `MusicPlayerFragment#onHiddenChanged` closes it with the tab.
+- **Home's info chips** blur the background like the glass cards: `InfoOverlayView#setChipBackdrop` (each chip is a `ChipWrap`
+  drawing the backdrop under its fill), redrawn on background change, the row's scroll and the hide-while-scrolling slide.
+- **Experimental "Blur over web pages and video"** (`GLASS_WEB`, `Glass.webBlur`): lifts the WebView guard and the FRAME-mode
+  condition in `BodyLayout#syncGlass` (the bars and the FAB pill blur YouTube / the browser / fullscreen YouTube), and
+  `YoutubeVideoView`'s picture frame is a `GlassFrame`, which records itself so the fullscreen buttons (`Glass.videoButton`) can
+  blur the video behind them (they sit beside the frame in the VideoView, not inside it). The WebView's functor is drawn twice;
+  that is the experiment. A third-party library would not help: BlurView 3 uses the same RenderNode capture on Android 12+.
+  Local video is a SurfaceView, unreadable: its glass blurs black.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

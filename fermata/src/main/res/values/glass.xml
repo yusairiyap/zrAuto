@@ -44,6 +44,8 @@
     <string name="glass_quality_high">High</string>
     <string name="glass_quality_balanced">Balanced</string>
     <string name="glass_quality_saver">Battery</string>
+    <string name="glass_web">Blur over web pages and video (experimental)</string>
+    <string name="glass_web_sub">The bars blur YouTube and browser pages, and the fullscreen YouTube buttons blur the video. The page is drawn a second time for it, which Android doesn\'t promise to handle: it may flicker or cost more battery on some phones. Local video files can\'t be blurred at all.</string>
     <string name="glass_on_home">Home cards</string>
     <string name="glass_on_home_sub">Widgets with the Glass look (Settings &gt; Home &gt; Widget look) blur the Home background behind them</string>
     <string name="glass_reset">Reset UI style</string>

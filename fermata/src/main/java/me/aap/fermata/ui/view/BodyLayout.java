@@ -215,8 +215,10 @@ public class BodyLayout extends SplitLayout
 	 * frame is asked for: only frames that happen anyway redraw them).
 	 */
 	private void syncGlass() {
-		boolean want = Glass.realBlur() && Glass.wantsSource() && (getMode() == Mode.FRAME);
-		if (want) {
+		// Experimental (Glass#webBlur): web pages and fullscreen video are blurred too, so neither stops it.
+		boolean web = Glass.webBlur();
+		boolean want = Glass.realBlur() && Glass.wantsSource() && (web || (getMode() == Mode.FRAME));
+		if (want && !web) {
 			long now = SystemClock.uptimeMillis();
 			MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
 			ActivityFragment f = (a != null) ? a.getActiveFragment() : null;

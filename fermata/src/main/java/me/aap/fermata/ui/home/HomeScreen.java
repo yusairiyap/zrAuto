@@ -202,7 +202,10 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		topScroll = new HomeFadeLayout(ctx);
 		topScroll.addView(topInner, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.WRAP_CONTENT));
-		topScroll.follow(topInner, null);
+		// Glass chips show the background blurred behind them: drawn again as the row scrolls.
+		topScroll.follow(topInner, () -> {
+			if (topGlass) topInfo.invalidateChips();
+		});
 		topScroll.setVisibility(View.GONE);
 		FrameLayout.LayoutParams ilp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
 				ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END);
@@ -542,6 +545,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	/** The cards with real glass are drawn again (the background behind them changed). */
 	private void invalidateGlassCards() {
 		invalidateGlassCards(grid);
+		if (topGlass) topInfo.invalidateChips();
 	}
 
 	private static void invalidateGlassCards(View v) {
@@ -1143,9 +1147,12 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			int ta = Math.round(Math.max(115, l.tintAlpha()) * cardAlpha() / 100f);
 			topFillBase = (palette.light ? 0x00FFFFFF : 0x00101018) | (Math.min(255, ta) << 24);
 			topInfo.setChipStroke(palette.light ? 0x1F000000 : 0x29FFFFFF);
+			// Home's background blurred behind each chip, as behind the glass cards (Android 12+).
+			topInfo.setChipBackdrop(me.aap.fermata.ui.view.Glass.realBlur() ? chipGlass : null);
 		} else {
 			topFillBase = (fg & 0x00FFFFFF) | 0x2E000000;
 			topInfo.setChipStroke(0);
+			topInfo.setChipBackdrop(null);
 		}
 		topInfo.setChipStyle(fg, topFillBase);
 		fitTopInfo();
@@ -1192,6 +1199,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			topScroll.setTranslationY(topBase - scrolled);
 			topScroll.setAlpha(1f - gone);
 			topInfo.setChipFill(topFillBase);
+			// The blurred background behind them follows where they are now.
+			if (topGlass) topInfo.invalidateChips();
 			return;
 		}
 		topScroll.setTranslationY(topBase);
@@ -1200,6 +1209,19 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		int target = (palette.panelFill & 0x00FFFFFF) | 0xF2000000;
 		topInfo.setChipFill(androidx.core.graphics.ColorUtils.blendARGB(topFillBase, target, solid));
 	}
+
+	/** The info chips' glass: the background blurred behind each, through a lens kept on the chip. */
+	private final me.aap.fermata.ui.view.InfoOverlayView.ChipBackdrop chipGlass = (chip, c, r, radius) -> {
+		Object t = chip.getTag(R.id.home_glass_lens);
+		me.aap.fermata.ui.view.GlassLens[] slot;
+		if (t instanceof me.aap.fermata.ui.view.GlassLens[] s) {
+			slot = s;
+		} else {
+			slot = new me.aap.fermata.ui.view.GlassLens[1];
+			chip.setTag(R.id.home_glass_lens, slot);
+		}
+		drawGlassBehind(chip, c, r, radius, 1f, me.aap.fermata.ui.view.Glass.look(), slot);
+	};
 
 	/** Whether the info chips were last styled for glass; the glide's end restyles them (see glassGlide). */
 	private boolean topGlass;

@@ -301,7 +301,7 @@ public class FabPillView extends View implements ViewTreeObserver.OnPreDrawListe
 		if (Glass.onBars()) {
 			// Glass: the tab blurred behind it (Android 12+), not over video, which nothing can read.
 			Glass.Look l = Glass.look();
-			boolean blurred = !videoLook && Glass.realBlur() &&
+			boolean blurred = (!videoLook || Glass.webBlur()) && Glass.realBlur() &&
 					GlassLens.behindBars(this, canvas, cur, radius, alpha, l, lens);
 			int color = videoLook ? VideoControlsOverlay.BUTTON_BG : pillColor;
 			Glass.paintOver(canvas, cur, radius, color, alpha, l,

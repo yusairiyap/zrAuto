@@ -66,6 +66,7 @@
     <item name="home_settings_fragment" type="id" />
     <item name="glass_settings_fragment" type="id" />
     <item name="menu_anchor" type="id" />
+    <item name="home_glass_lens" type="id" />
     <item name="menu_anchored" type="id" />
     <item name="menu_place_listener" type="id" />
     <item name="settings_row_tag" type="id" />

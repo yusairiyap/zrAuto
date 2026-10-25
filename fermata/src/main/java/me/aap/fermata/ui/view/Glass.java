@@ -228,6 +228,7 @@ public final class Glass {
 	 * drawn again each frame of it.
 	 */
 	public static void reset() {
+		web = null;
 		Look before = (target != null) ? look() : null;
 		target = null;
 		Look after = target();
@@ -269,7 +270,8 @@ public final class Glass {
 				prefs.contains(MainActivityPrefs.GLASS_TINT) || prefs.contains(MainActivityPrefs.GLASS_SATURATION) ||
 				prefs.contains(MainActivityPrefs.GLASS_GRAIN) || prefs.contains(MainActivityPrefs.GLASS_RIM) ||
 				prefs.contains(MainActivityPrefs.GLASS_BARS) || prefs.contains(MainActivityPrefs.GLASS_HOME) ||
-				prefs.contains(MainActivityPrefs.GLASS_MENUS) || prefs.contains(MainActivityPrefs.GLASS_QUALITY);
+				prefs.contains(MainActivityPrefs.GLASS_MENUS) || prefs.contains(MainActivityPrefs.GLASS_QUALITY) ||
+				prefs.contains(MainActivityPrefs.GLASS_WEB);
 	}
 
 	/** Glass on the tool bar, nav bar, control panel and floating buttons. */
@@ -288,6 +290,79 @@ public final class Glass {
 	public static boolean onMenus() {
 		Look l = look();
 		return l.isGlass() && l.menus;
+	}
+
+	@Nullable
+	private static Boolean web;
+
+	/**
+	 * Experimental (Settings > UI style): blur over web pages and fullscreen YouTube video too. A WebView draws
+	 * through a functor that is then drawn a second time in the frame (in the lens), which Chromium does not
+	 * promise to handle: it can flicker or show stale frames, depending on the device. Off by default.
+	 * Local video (a SurfaceView) can't be read at all, so its glass blurs black even with this on.
+	 */
+	public static boolean webBlur() {
+		Boolean w = web;
+		if (w == null) web = w = realBlur() && MainActivityPrefs.get().getBooleanPref(MainActivityPrefs.GLASS_WEB);
+		return w;
+	}
+
+	/**
+	 * A fullscreen video button's glass: the picture behind it blurred when {@link #webBlur} is on and the
+	 * picture can be read (YouTube's page, recorded by {@link GlassFrame}), else tint, grain and rim. Off glass
+	 * it is the plain {@code color} disc.
+	 */
+	public static android.graphics.drawable.Drawable videoButton(View self, int color) {
+		return new VideoButton(self, color);
+	}
+
+	private static final class VideoButton extends android.graphics.drawable.Drawable {
+		private final View self;
+		private final int color;
+		private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+		private final RectF rect = new RectF();
+		private final GlassLens[] lens = new GlassLens[1];
+		private int alpha = 255;
+
+		VideoButton(View self, int color) {
+			this.self = self;
+			this.color = color;
+		}
+
+		@Override
+		public void draw(Canvas c) {
+			rect.set(getBounds());
+			if (rect.isEmpty()) return;
+			float r = Math.min(rect.width(), rect.height()) / 2f;
+			float a = alpha / 255f;
+			if (!onBars()) {
+				paint.setShader(null);
+				paint.setStyle(Paint.Style.FILL);
+				paint.setColor(color);
+				paint.setAlpha(Math.round((color >>> 24) * a));
+				c.drawRoundRect(rect, r, r, paint);
+				return;
+			}
+			Look l = look();
+			boolean blurred = webBlur() && GlassFrame.drawBehind(self, c, rect, r, a, l, lens);
+			paintOver(c, rect, r, color, a, l, false, self.getResources().getDisplayMetrics().density, paint, blurred);
+		}
+
+		@Override
+		public void setAlpha(int alpha) {
+			this.alpha = alpha;
+			invalidateSelf();
+		}
+
+		@Override
+		public void setColorFilter(@Nullable android.graphics.ColorFilter cf) {
+			paint.setColorFilter(cf);
+		}
+
+		@Override
+		public int getOpacity() {
+			return android.graphics.PixelFormat.TRANSLUCENT;
+		}
 	}
 
 	/** Some glass surface wants the tab content recorded (see BodyLayout). */

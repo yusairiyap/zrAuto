@@ -70,6 +70,7 @@ public class GlassSettingsFragment extends ReorderListFragment {
 			e.removePref(MainActivityPrefs.GLASS_HOME);
 			e.removePref(MainActivityPrefs.GLASS_MENUS);
 			e.removePref(MainActivityPrefs.GLASS_QUALITY);
+			e.removePref(MainActivityPrefs.GLASS_WEB);
 		}
 		for (Runnable r : syncers) r.run();
 	}
@@ -157,6 +158,11 @@ public class GlassSettingsFragment extends ReorderListFragment {
 		addSwitchRow(h, R.string.glass_on_menus, R.string.glass_on_menus_sub,
 				() -> p.getBooleanPref(MainActivityPrefs.GLASS_MENUS),
 				on -> p.applyBooleanPref(MainActivityPrefs.GLASS_MENUS, on), isGlass);
+		if (Glass.realBlur()) {
+			addSwitchRow(h, R.string.glass_web, R.string.glass_web_sub,
+					() -> p.getBooleanPref(MainActivityPrefs.GLASS_WEB),
+					on -> p.applyBooleanPref(MainActivityPrefs.GLASS_WEB, on), isGlass);
+		}
 		addSwitchRow(h, R.string.glass_on_home, R.string.glass_on_home_sub,
 				() -> p.getBooleanPref(MainActivityPrefs.GLASS_HOME),
 				on -> p.applyBooleanPref(MainActivityPrefs.GLASS_HOME, on), isGlass);

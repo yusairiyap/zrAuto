@@ -240,9 +240,19 @@ public final class AllInOneMenu {
 	 * @param timer  opens straight on the sleep timer page
 	 */
 	public static void showMusic(@NonNull MainActivityDelegate a, @NonNull Context ctx,
-															 @NonNull ViewGroup host, @NonNull View insets, @NonNull View anchor,
+															 @NonNull ViewGroup host, @Nullable View insets, @NonNull View anchor,
 															 boolean timer, @NonNull Hooks hooks) {
 		dismissOpen();
+		// With glass on menus the card opens over the whole window, as from a floating button, so its glass can
+		// blur the tab behind it: inside the tab it would blur the picture that holds itself (see GlassLens#inside).
+		// It still sits over the chip that opened it when there is room (the anchor is found through the window).
+		if (Glass.realBlur() && Glass.onMenus()) {
+			ViewGroup top = a.findViewById(R.id.main_activity);
+			if ((top != null) && (top.getWidth() > 0)) {
+				host = top;
+				insets = null;
+			}
+		}
 		boolean own = a.getPrefs().getBooleanPref(MainActivityPrefs.fab(a,
 				MainActivityPrefs.AIO_MUSIC_MORE));
 		AllInOneMenu m = new AllInOneMenu(a, ctx, host, insets, anchor,

@@ -201,9 +201,9 @@ public class VideoControlsOverlay extends FrameLayout {
 		b.setClickable(true);
 		b.setFocusable(true);
 
-		// Glass (tint, grain, rim) with the UI style's glass on the bars: video can't be blurred behind it.
-		android.graphics.drawable.Drawable normal = Glass.surface(BUTTON_BG, -1f,
-				ctx.getResources().getDisplayMetrics().density);
+		// Glass (tint, grain, rim) with the UI style's glass on the bars; with the experimental blur over video,
+		// YouTube's picture blurred behind it too (Glass#videoButton).
+		android.graphics.drawable.Drawable normal = Glass.videoButton(b, BUTTON_BG);
 		GradientDrawable focused = new GradientDrawable();
 		focused.setShape(GradientDrawable.OVAL);
 		focused.setColor(BUTTON_BG);

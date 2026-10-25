@@ -62,7 +62,8 @@ public class YoutubeVideoView extends VideoView {
 
 	@Override
 	protected void init(Context context) {
-		addView(new FrameLayout(context), new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		// Records the page for the glass buttons over it when the experimental blur over video is on (GlassFrame).
+		addView(new me.aap.fermata.ui.view.GlassFrame(context), new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 		addDimOverlay(context);
 		addBufferingSpinner(context);
 		addTransitionOverlay(context);

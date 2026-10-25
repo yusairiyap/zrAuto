@@ -223,6 +223,8 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> GLASS_MENUS = Pref.b("GLASS_MENUS", true);
 	// The size the blur is rendered at (Glass.QUALITY_*): full, half (default), a quarter.
 	Pref<IntSupplier> GLASS_QUALITY = Pref.i("GLASS_QUALITY", 1);
+	// Experimental: blur over web pages (YouTube, the browser) and fullscreen YouTube video too (Glass#webBlur).
+	Pref<BooleanSupplier> GLASS_WEB = Pref.b("GLASS_WEB", false);
 	Pref<BooleanSupplier> CAPTIONS_ON = Pref.b("CAPTIONS_ON", false);
 	// Language code to prefer ("" = the phone's), and whether speech-recognition captions may be used
 	// when a video has no written ones.
