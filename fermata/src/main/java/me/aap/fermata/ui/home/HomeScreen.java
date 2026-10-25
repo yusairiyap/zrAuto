@@ -1234,9 +1234,14 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	private boolean topGlass;
 	private final Runnable glassGlide = () -> {
 		if (me.aap.fermata.ui.view.Glass.onHome() != topGlass) applyTopInfo();
+		// In a method: a field's lambda may not name the final chipBar, which the constructor sets later.
+		glideChipBar();
+	};
+
+	private void glideChipBar() {
 		chipBar.invalidate();
 		syncChipBarElevation();
-	};
+	}
 
 	private void syncChipBarElevation() {
 		chipBar.setElevation(me.aap.fermata.ui.view.Glass.onHome() ? 0f : HomeUi.dp(palette.ctx, 6));
