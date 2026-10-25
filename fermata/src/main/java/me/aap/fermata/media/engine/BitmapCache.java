@@ -62,6 +62,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.provider.FermataContentProvider;
 import me.aap.fermata.vfs.FermataVfsManager;
+import me.aap.fermata.ytdl.YtFrames;
 import me.aap.utils.app.App;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.async.PromiseQueue;
@@ -139,6 +140,8 @@ public class BitmapCache {
 		}
 	};
 	private final AtomicInteger savedSinceTrim = new AtomicInteger();
+	/** Held while a YouTube video's frame is read or taken (see {@link #readOrCaptureFrame}). */
+	private final Object frameLock = new Object();
 
 	public BitmapCache() {
 		File cache = App.get().getExternalCacheDir();
@@ -218,7 +221,10 @@ public class BitmapCache {
 		if (bm != null) return completed(bm);
 
 		if (u.startsWith("http://") || u.startsWith("https://")) {
-			if (iconUri == null) return loadHttpBitmap(u, null, 0);
+			if (iconUri == null) {
+				String videoId = frameVideoId(u);
+				return (videoId != null) ? loadVideoFrame(u, videoId) : loadHttpBitmap(u, null, 0);
+			}
 			// A list thumbnail: the small resized copy saved from an earlier download is all it needs,
 			// no need to check the original with the server, let alone decode it at full size again.
 			String src = (thumbQuality() == THUMB_QUALITY_SAVER) ? youtubeSmall(u) : u;
@@ -459,6 +465,82 @@ public class BitmapCache {
 		});
 	}
 
+	/** The video id of a YouTube album art (its maxresdefault.jpg), or null for any other address. */
+	@Nullable
+	private static String youtubeVideoId(String uri) {
+		if (!uri.endsWith("/maxresdefault.jpg")) return null;
+		if (!uri.contains("ytimg.com/") && !uri.contains("img.youtube.com/")) return null;
+		int s = uri.indexOf("/vi/");
+		if (s < 0) return null;
+		s += "/vi/".length();
+		int e = uri.indexOf('/', s);
+		return (e > s) ? uri.substring(s, e) : null;
+	}
+
+	/**
+	 * The video id, when the full-size album art of a YouTube video is taken as a frame of the video itself: only with the
+	 * High thumbnail quality (see {@link #loadVideoFrame}); null otherwise.
+	 */
+	@Nullable
+	private static String frameVideoId(String uri) {
+		return (thumbQuality() == THUMB_QUALITY_HIGH) ? youtubeVideoId(uri) : null;
+	}
+
+	/** The name a frame of {@code videoId} is kept under (in the image cache, like the downloaded pictures). */
+	private static String frameUri(String videoId) {
+		return "ytframe://" + videoId + ".jpg";
+	}
+
+	/**
+	 * High quality album art of a YouTube video: a picture of the video at its middle (see {@link YtFrames}), kept on the phone
+	 * so it is taken once. Falls back to the thumbnail when no frame can be taken.
+	 */
+	private FutureSupplier<Bitmap> loadVideoFrame(String uri, String videoId) {
+		return App.get().getExecutor().submitTask(() -> readOrCaptureFrame(videoId))
+				.then(bm -> (bm != null) ? completed(bm) : loadHttpBitmap(uri, null, 0));
+	}
+
+	/**
+	 * One frame at a time: the same song's art is asked for by several places at once, and only the first one takes the frame.
+	 */
+	@Nullable
+	private Bitmap readOrCaptureFrame(String videoId) {
+		synchronized (frameLock) {
+			String uri = frameUri(videoId);
+			Bitmap cached = getCachedBitmap(uri);
+			if (cached != null) return cached;
+
+			File f = toImageFile(uri);
+			if (f.isFile()) {
+				Bitmap bm = BitmapFactory.decodeFile(f.getPath());
+				if (bm != null) return cacheBitmap(uri, bm);
+				//noinspection ResultOfMethodCallIgnored
+				f.delete();
+			}
+
+			if (isInvalid(uri)) return null;
+			Bitmap bm = YtFrames.middleFrame(videoId);
+			if (bm == null) {
+				markInvalid(uri);
+				return null;
+			}
+			saveFrame(f, bm);
+			return cacheBitmap(uri, bm);
+		}
+	}
+
+	private static void saveFrame(File f, Bitmap bm) {
+		File dir = f.getParentFile();
+		if (dir != null) //noinspection ResultOfMethodCallIgnored
+			dir.mkdirs();
+		try (OutputStream out = new FileOutputStream(f)) {
+			bm.compress(CompressFormat.JPEG, 92, out);
+		} catch (Exception ex) {
+			//noinspection ResultOfMethodCallIgnored
+			f.delete();
+		}
+	}
+
 	/** For a YouTube maxresdefault.jpg thumbnail: the hqdefault.jpg one, which always exists. */
 	@Nullable
 	private static String youtubeFallback(String uri) {
@@ -484,6 +566,17 @@ public class BitmapCache {
 		toImageFile(uri).delete();
 		if (iconUri.startsWith(iconsCacheUri)) {
 			new File(iconsCache, iconUri.substring(iconsCacheUri.length())).delete();
+		}
+		// The frame taken of the video for High quality album art goes too: it is taken again.
+		String videoId = youtubeVideoId(uri);
+		if (videoId != null) {
+			String frame = frameUri(videoId);
+			recent.remove(frame);
+			synchronized (cache) {
+				cache.remove(frame);
+			}
+			invalidBitmapUris.remove(frame);
+			toImageFile(frame).delete();
 		}
 	}
 

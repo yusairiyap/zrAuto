@@ -11,6 +11,7 @@ import androidx.annotation.NonNull;
 
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
+import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.engine.MetadataBuilder;
 import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
@@ -204,6 +205,8 @@ public abstract class PlayableItemBase extends ItemBase implements PlayableItem,
 		if (prefs.getSubtitleArtistPref()) {
 			s = md.getString(MediaMetadataCompat.METADATA_KEY_ARTIST);
 			if (s == null) s = md.getString(MediaMetadataCompat.METADATA_KEY_ALBUM_ARTIST);
+			// The channel's name as it is shown everywhere else ("Artist - Topic" is just "Artist").
+			s = MusicTrackItem.cleanArtist(s);
 			if ((s != null) && !s.isEmpty()) {
 				if (tb.length() != 0) tb.append(" - ");
 				tb.append(s);

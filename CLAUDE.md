@@ -840,15 +840,21 @@ what each widget shows is set on the widget (edit mode > its gear).
   removed or a song is added to a playlist (the tab only reloaded its own fragment), so the cards stayed as they were. When the menu closes the widget fires
   `FRAGMENT_CONTENT_CHANGED`, which every `LibraryWidget` already answers with a forced refresh (an unchanged list does not blink, see the signature), and once more
   450 ms later for changes that finish in the background.
-- **The Queue card reorders on long press** (`LibraryWidget#supportsReorder`/`reorderOn`/`onReordered`, option "Reorder on long press", on by default, `QueueWidget` turns it on):
-  an `ItemTouchHelper` with long-press drag (rows move in the adapter on the way; one `MusicQueue#move(from, to)` when the row is dropped, in play-order positions like the
-  Music tab's `QueueTouchCallback`, and the rows' positions are the play order's). The row is marked `home_no_grab` so the card does not take that press for picking itself up;
-  in edit mode the cell still takes every touch. A refresh that arrives while a row is held (the queue listener, the playing song changing) is held back and run after the drop
-  (`dragging`, `refreshAfterDrag`). Not inside an opened list (`drillSource`). Never run on a device.
-- **Queue rows carry a remove button (left) and a drag handle (right)** like Spotify's playlist editor: `LibraryWidget#supportsRemove`/`removeOn`/`onRemoved` (option "Remove button",
-  `MusicQueue#remove(position)`, the row leaves the card at once) and the handle (option "Drag handle", shown only while "Reorder on long press" is on; pressing it calls
-  `ItemTouchHelper#startDrag` at once, so no long press is needed). Both are tagged `home_no_grab`. The rows' look is keyed by `rowMode` (bits for menu, reorder, remove, handle) so
-  toggling any of the options rebinds them.
+- **Rows move with a drag handle only** (`LibraryWidget#supportsReorder`/`reorderOn`/`onReordered`, option "Drag handle"; an `ItemTouchHelper` started from the handle, since a long
+  press never drags any more). The Queue card (on by default), Favorites and an opened playlist's songs have it; rows move in the adapter on the way and the move is committed once on
+  drop (`onReordered`, positions as fetched). Queue: `MusicQueue#move(from, to)` in play-order positions. Favorites: `Favorites#moveItem`, mapped back to library positions when
+  "Latest first" reverses the list (`FavoritesWidget#libraryIndex`). An opened playlist: `Playlist#moveItem` through `PlaylistsWidget#songIndex`. `rowsEditable()` is false for a
+  top-level list of playlists, so those have no handle or remove button. A refresh that arrives while a row is held is held back and run after the drop (`dragging`, `refreshAfterDrag`).
+- **Remove button** (option "Remove button", left of the row; `LibraryWidget#supportsRemove`/`removeByDefault`/`onRemoved(position, row)`): the row leaves the card at once.
+  Queue on by default (`MusicQueue#remove(position)`); Favorites and an opened playlist off by default (`removeItem`/`removeItems` on the library, the row passed in).
+- **The Queue card's long press is its menu** (option "Menu on long press", on by default, `QueueWidget#showMenu`): Play next (`MusicPlayer#playNext`), Play as video
+  (`HomePlay#asVideo`), Download (`YtDownloadMenu#addTo`), Share (`ShareSheet`), Remove from queue (`indexInPlayOrder`). The old long-press reorder is gone ("Reorder on long press"
+  removed). Never run on a device.
+- **High album art takes a frame of the video** (`BitmapCache#loadVideoFrame`, `ytdl/YtFrames`): with the High thumbnail quality, a full-size YouTube album art is a picture of the
+  video at its middle, from its best H.264 stream up to 1080p (`YtStreamResolver`), kept as `ytframe://<id>.jpg` in the image cache. Balanced/Saver keep maxresdefault.jpg.
+  Frames are taken one at a time (`frameLock`); "Refresh thumbnail" drops the frame too. Logged under ART. Not run against live YouTube from the cloud session.
+- **Channel names**: a playlist or Favorites row's artist line (the tab's subtitle in `PlayableItemBase`, and the widget's rows in `LibraryWidget#artistOf`) goes through
+  `MusicTrackItem#cleanArtist`, so "Artist - Topic" shows as "Artist" as on the Music tab.
 
 - **Rows picked up or removed must move in the adapter's own list** (`RowAdapter#adopt`): a refresh whose rows look the same as the ones shown (same signature) used to
   replace `rows` without handing the adapter the new list, so a drag or a remove moved rows in a list the adapter was not reading, and the rows were rebound from one

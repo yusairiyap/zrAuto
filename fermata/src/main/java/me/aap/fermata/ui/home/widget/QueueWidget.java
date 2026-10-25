@@ -1,8 +1,11 @@
 package me.aap.fermata.ui.home.widget;
 
+import static me.aap.utils.async.Completed.completedVoid;
+
 import androidx.annotation.Nullable;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import me.aap.fermata.R;
@@ -13,7 +16,10 @@ import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.home.HomeHost;
+import me.aap.fermata.ui.home.HomePlay;
 import me.aap.fermata.ui.home.HomeWidgetType;
+import me.aap.fermata.ui.view.ShareSheet;
+import me.aap.fermata.ytdl.YtDownloadMenu;
 
 /**
  * The Music tab's queue, in the order it plays: the song playing now marked and scrolled into view
@@ -55,11 +61,49 @@ final class QueueWidget extends LibraryWidget {
 		return true;
 	}
 
+	/** A long press on a song opens its menu (the option "Menu on long press"); the drag handle moves it. */
+	@Override
+	protected boolean supportsMenu() {
+		return true;
+	}
+
 	/** Takes the song out of the queue, as swiping it away does in the Music tab (positions in the play order). */
 	@Override
-	protected void onRemoved(int position) {
+	protected void onRemoved(int position, Row row) {
 		MusicQueue q = MusicPlayer.getQueue(act());
 		if (q != null) q.remove(position);
+	}
+
+	/** The song's own menu: play it next or as a video, download, share, or take it out of the queue. */
+	@Override
+	protected void showMenu(Row r) {
+		if (!(r.art() instanceof MusicTrackItem t)) return;
+		MainActivityDelegate a = act();
+		a.getContextMenu().showFuture(b -> {
+			b.addItem(R.id.queue_row_play_next, R.drawable.queue_music, R.string.youtube_play_next)
+					.setHandler(i -> {
+						MusicPlayer.playNext(a, t);
+						return true;
+					});
+			b.addItem(R.id.queue_row_play_video, R.drawable.video, R.string.play_as_video)
+					.setHandler(i -> {
+						HomePlay.asVideo(a, t);
+						return true;
+					});
+			YtDownloadMenu.addTo(b, a, Collections.singletonList(t));
+			b.addItem(R.id.queue_row_share, R.drawable.share, R.string.share)
+					.setHandler(i -> {
+						ShareSheet.share(a, t);
+						return true;
+					});
+			b.addItem(R.id.queue_row_remove, R.drawable.home_row_remove, R.string.home_row_remove)
+					.setHandler(i -> {
+						MusicQueue q = MusicPlayer.getQueue(a);
+						if (q != null) q.remove(q.indexInPlayOrder(t));
+						return true;
+					});
+			return completedVoid();
+		});
 	}
 
 	/** The same move as the Music tab's queue drag: positions in the play order, which is how the rows are listed. */

@@ -269,4 +269,9 @@
     <item name="home_image_key" type="id" />
     <item name="home_image_item" type="id" />
     <item name="home_no_grab" type="id" />
+    <item name="queue_row_play_next" type="id" />
+    <item name="queue_row_play_video" type="id" />
+    <item name="queue_row_share" type="id" />
+    <item name="queue_row_remove" type="id" />
+    <item name="spotify_import_search" type="id" />
 </resources>
