@@ -24,7 +24,16 @@ public class GlassFrame extends FrameLayout {
 	/** A RenderNode while recorded (Android 12+). */
 	@Nullable
 	private Object node;
+	/** The picture blurred once per frame into its own layer (Android 12+), shared by every patch. */
+	@Nullable
+	private Object blurNode;
+	private float blurScale = 1f;
+	private float effectBlur = -1f;
+	private float effectSat = -1f;
+	private final java.util.Map<Object, Object> patches = new java.util.WeakHashMap<>();
 	private boolean recording;
+	/** Set (written to disk) while patches of the picture are drawn; see {@link #crashGuard}. */
+	private static boolean busy;
 
 	public GlassFrame(@NonNull Context ctx) {
 		this(ctx, null);
@@ -36,7 +45,7 @@ public class GlassFrame extends FrameLayout {
 
 	@Override
 	public void draw(@NonNull Canvas canvas) {
-		if (Glass.webBlur() && Glass.wantsSource() && canvas.isHardwareAccelerated()) {
+		if (Glass.webBlur() && Glass.wantsSource() && canvas.isHardwareAccelerated() && !offAfterCrash()) {
 			drawRecorded(canvas);
 			FrameBackdrop.frameDrawn(this);
 			// What is behind the glass changed: the surfaces showing it are drawn again.
@@ -50,6 +59,7 @@ public class GlassFrame extends FrameLayout {
 	private void setRecording(boolean on) {
 		if (recording == on) return;
 		recording = on;
+		if (!on) setBusy(false);
 		// Written before the first recorded frame: a native crash right after it leaves this as the last line.
 		View c = (getChildCount() > 0) ? getChildAt(0) : null;
 		me.aap.fermata.util.DiagnosticLog.log("BODY", "glass frame", on ? "recording" : "plain",
@@ -66,7 +76,146 @@ public class GlassFrame extends FrameLayout {
 	private void drawRecorded(Canvas canvas) {
 		if (!(node instanceof android.graphics.RenderNode)) node = new android.graphics.RenderNode("glassFrame");
 		setRecording(true);
-		GlassLens.recordAndDraw(canvas, (android.graphics.RenderNode) node, getWidth(), getHeight(), super::draw);
+		android.graphics.RenderNode src = (android.graphics.RenderNode) node;
+		GlassLens.recordAndDraw(canvas, src, getWidth(), getHeight(), super::draw);
+		recordBlur(src);
+	}
+
+	/**
+	 * Blurs the picture once into {@code blurNode} (its own small layer, never drawn by the frame itself). Every glass
+	 * patch over the video (the video buttons, and through FrameBackdrop the floating buttons, control panel, menus) draws
+	 * a clipped piece of that layer, so the page's WebView is drawn only twice a frame however many patches there are.
+	 * Each patch drawing the page through a lens of its own crashed the app natively once the control panel's joined the
+	 * three buttons'.
+	 */
+	@androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.S)
+	private void recordBlur(android.graphics.RenderNode src) {
+		if (!(blurNode instanceof android.graphics.RenderNode)) blurNode = new android.graphics.RenderNode("glassFrameBlur");
+		android.graphics.RenderNode b = (android.graphics.RenderNode) blurNode;
+		Glass.Look l = Glass.look();
+		float s = Glass.renderScale(l);
+		int w = (int) Math.ceil(getWidth() * s);
+		int h = (int) Math.ceil(getHeight() * s);
+		if ((w <= 0) || (h <= 0)) return;
+		float blur = Math.max(1f, l.blurDp * getResources().getDisplayMetrics().density * s);
+		b.setPosition(0, 0, w, h);
+		b.setUseCompositingLayer(true, null);
+		if ((blur != effectBlur) || (l.saturation != effectSat)) {
+			effectBlur = blur;
+			effectSat = l.saturation;
+			android.graphics.RenderEffect e = android.graphics.RenderEffect.createBlurEffect(blur, blur,
+					android.graphics.Shader.TileMode.CLAMP);
+			if (Math.abs(l.saturation - 1f) > 0.01f) {
+				android.graphics.ColorMatrix cm = new android.graphics.ColorMatrix();
+				cm.setSaturation(l.saturation);
+				e = android.graphics.RenderEffect.createColorFilterEffect(new android.graphics.ColorMatrixColorFilter(cm), e);
+			}
+			b.setRenderEffect(e);
+		}
+		android.graphics.RecordingCanvas rc = b.beginRecording(w, h);
+		try {
+			rc.scale(s, s);
+			rc.drawRenderNode(src);
+		} finally {
+			b.endRecording();
+		}
+		blurScale = s;
+	}
+
+	/**
+	 * Draws a piece of {@code f}'s blurred picture under {@code r} (in {@code self}'s coordinates), clipped to a rounded
+	 * rect, at {@code alpha}. {@code slot} keys the small wrapper node that carries the alpha. False when there is none yet.
+	 */
+	static boolean drawShared(GlassFrame f, Object slot, View self, Canvas c, RectF r, float radius, float alpha) {
+		if (!Glass.realBlur() || !c.isHardwareAccelerated() || r.isEmpty() || (alpha <= 0f) || !f.recording) return false;
+		return drawShared31(f, slot, self, c, r, radius, alpha);
+	}
+
+	@androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.S)
+	private static boolean drawShared31(GlassFrame f, Object slot, View self, Canvas c, RectF r, float radius,
+																			float alpha) {
+		if (!(f.blurNode instanceof android.graphics.RenderNode b) || !b.hasDisplayList()) return false;
+		setBusy(true);
+		Object po = f.patches.get(slot);
+		if (!(po instanceof android.graphics.RenderNode)) {
+			po = new android.graphics.RenderNode("glassPatch");
+			f.patches.put(slot, po);
+		}
+		android.graphics.RenderNode p = (android.graphics.RenderNode) po;
+		p.setPosition(0, 0, b.getWidth(), b.getHeight());
+		p.setHasOverlappingRendering(false);
+		p.setAlpha(Math.min(1f, alpha));
+		android.graphics.RecordingCanvas rc = p.beginRecording(b.getWidth(), b.getHeight());
+		try {
+			rc.drawRenderNode(b);
+		} finally {
+			p.endRecording();
+		}
+		int[] fl = new int[2];
+		int[] sl = new int[2];
+		f.getLocationInWindow(fl);
+		self.getLocationInWindow(sl);
+		int save = c.save();
+		android.graphics.Path clip = new android.graphics.Path();
+		clip.addRoundRect(r, radius, radius, android.graphics.Path.Direction.CW);
+		c.clipPath(clip);
+		c.translate(fl[0] - sl[0], fl[1] - sl[1]);
+		float s = f.blurScale;
+		if (s != 1f) c.scale(1f / s, 1f / s);
+		c.drawRenderNode(p);
+		c.restoreToCount(save);
+		return true;
+	}
+
+	// ---- Crash guard: if the app dies while the picture is blurred, the next start leaves it off ----
+
+	private static final String BUSY_KEY = "GLASS_FRAME_BUSY";
+
+	/**
+	 * At start: when the last run ended (killed, crashed) while patches of the picture were being drawn, the blur over
+	 * video stays off (GLASS_FRAME_OFF) until the experimental switch is turned off and on again; the rest of the glass
+	 * is unchanged. It errs on the safe side: a run closed from the recent apps list while fullscreen video was blurred
+	 * counts too.
+	 */
+	public static void crashGuard(me.aap.fermata.FermataApplication app) {
+		try {
+			android.content.SharedPreferences sp = app.getDefaultSharedPreferences();
+			if (!sp.getBoolean(BUSY_KEY, false)) return;
+			sp.edit().remove(BUSY_KEY).putBoolean("GLASS_FRAME_OFF", true).commit();
+			me.aap.fermata.util.DiagnosticLog.log("BODY", "glass over video turned off: the last run ended while it was drawn");
+		} catch (Throwable ignore) {
+		}
+	}
+
+	private static boolean offAfterCrash() {
+		return MainActivityPrefsAccess.frameOff();
+	}
+
+	private static void setBusy(boolean on) {
+		if (busy == on) return;
+		busy = on;
+		try {
+			// commit, not apply: it must be on disk before the frame that could crash is drawn.
+			android.content.SharedPreferences.Editor e =
+					me.aap.fermata.FermataApplication.get().getDefaultSharedPreferences().edit();
+			if (on) e.putBoolean(BUSY_KEY, true);
+			else e.remove(BUSY_KEY);
+			e.commit();
+		} catch (Throwable ignore) {
+		}
+	}
+
+	@Override
+	protected void onDetachedFromWindow() {
+		super.onDetachedFromWindow();
+		setRecording(false);
+	}
+
+	private static final class MainActivityPrefsAccess {
+		static boolean frameOff() {
+			return me.aap.fermata.ui.activity.MainActivityPrefs.get()
+					.getBooleanPref(me.aap.fermata.ui.activity.MainActivityPrefs.GLASS_FRAME_OFF);
+		}
 	}
 
 	/**
@@ -78,7 +227,7 @@ public class GlassFrame extends FrameLayout {
 		if (!Glass.realBlur()) return false;
 		GlassFrame f = find(self);
 		if ((f == null) || !f.recording) return false;
-		return drawFrame(f, self, c, r, radius, alpha, look, slot);
+		return drawShared(f, slot, self, c, r, radius, alpha);
 	}
 
 	boolean isRecording() {
@@ -91,26 +240,6 @@ public class GlassFrame extends FrameLayout {
 			if (p == frame) return true;
 		}
 		return false;
-	}
-
-	/** Draws {@code f}'s picture blurred under {@code r} (in {@code self}'s coordinates); for {@link FrameBackdrop}. */
-	static boolean drawLens(GlassFrame f, View self, Canvas c, RectF r, float radius, float alpha, Glass.Look look,
-													GlassLens[] slot) {
-		return drawFrame(f, self, c, r, radius, alpha, look, slot);
-	}
-
-	private static boolean drawFrame(GlassFrame f, View self, Canvas c, RectF r, float radius, float alpha,
-																	 Glass.Look look, GlassLens[] slot) {
-		if (!Glass.realBlur()) return false;
-		return drawFrame31(f, self, c, r, radius, alpha, look, slot);
-	}
-
-	@androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.S)
-	private static boolean drawFrame31(GlassFrame f, View self, Canvas c, RectF r, float radius, float alpha,
-																		 Glass.Look look, GlassLens[] slot) {
-		if (!(f.node instanceof android.graphics.RenderNode n) || !n.hasDisplayList()) return false;
-		if (slot[0] == null) slot[0] = new GlassLens();
-		return slot[0].draw(c, self, n, f, r, radius, alpha, look);
 	}
 
 	/** The GlassFrame among the children of the VideoView {@code v} sits in (never one of v's own parents). */

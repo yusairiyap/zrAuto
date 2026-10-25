@@ -1100,6 +1100,18 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
   called where `FloatingBarsView#drawPill`, `FabPillView#onDraw` and `ToolBarPill` return early (alpha 0, empty, merged). The control
   panel sliding away left its box in the page before, a blurred strip with no pill over it.
 
+### Tenth round (one blurred layer for every patch, crash guard)
+
+- **The page is blurred once per frame** (`GlassFrame#recordBlur`: a small RenderNode with a compositing layer and the blur effect,
+  holding the frame's node, never drawn by the frame itself), and every patch over fullscreen YouTube (video buttons via
+  `GlassFrame.drawBehind`, everything else via `FrameBackdrop`) draws a clipped piece of that layer (`drawShared`, a tiny wrapper node per
+  slot for the alpha). A lens per patch drew the WebView once per patch: with the control panel's patch added to the three buttons' the
+  app died natively the moment the panel appeared. Never go back to a lens of the frame per surface.
+- **Crash guard**: `GlassFrame#setBusy` writes `GLASS_FRAME_BUSY` with `commit()` before the first patch is drawn and removes it when the
+  frame stops recording; `GlassFrame.crashGuard` (from `FermataApplication#onCreate`) turns `GLASS_FRAME_OFF` on when the last run ended
+  with it set, and the frame then never records (page blur and the rest of the glass are unchanged). Switching the experimental switch
+  clears it; the settings page says so under the switch, which is now the last row. `BODY glass over video turned off` in the log.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

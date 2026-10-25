@@ -159,17 +159,28 @@ public class GlassSettingsFragment extends ReorderListFragment {
 		addSwitchRow(h, R.string.glass_on_menus, R.string.glass_on_menus_sub,
 				() -> p.getBooleanPref(MainActivityPrefs.GLASS_MENUS),
 				on -> p.applyBooleanPref(MainActivityPrefs.GLASS_MENUS, on), isGlass);
-		if (Glass.realBlur()) {
-			addSwitchRow(h, R.string.glass_web, R.string.glass_web_sub,
-					() -> p.getBooleanPref(MainActivityPrefs.GLASS_WEB),
-					on -> p.applyBooleanPref(MainActivityPrefs.GLASS_WEB, on), isGlass);
-		}
 		addSwitchRow(h, R.string.glass_on_home, R.string.glass_on_home_sub,
 				() -> p.getBooleanPref(MainActivityPrefs.GLASS_HOME),
 				on -> p.applyBooleanPref(MainActivityPrefs.GLASS_HOME, on), isGlass);
 		addSwitchRow(h, R.string.glass_on_tiles, R.string.glass_on_tiles_sub,
 				() -> p.getBooleanPref(MainActivityPrefs.GLASS_TILES),
 				on -> p.applyBooleanPref(MainActivityPrefs.GLASS_TILES, on), isGlass);
+		// The experimental switch last, on its own.
+		if (Glass.realBlur()) {
+			addSwitchRow(h, R.string.glass_web, R.string.glass_web_sub,
+					() -> p.getBooleanPref(MainActivityPrefs.GLASS_WEB),
+					on -> {
+						try (var e = p.editPreferenceStore()) {
+							e.setBooleanPref(MainActivityPrefs.GLASS_WEB, on);
+							e.removePref(MainActivityPrefs.GLASS_FRAME_OFF);
+						}
+					}, isGlass);
+			TextView off = text(R.string.glass_web_off_after_crash, 12.5f, textSecondary, false);
+			off.setPadding(dp(4), dp(6), dp(4), 0);
+			h.addView(off);
+			syncers.add(() -> off.setVisibility(p.getBooleanPref(MainActivityPrefs.GLASS_WEB) &&
+					p.getBooleanPref(MainActivityPrefs.GLASS_FRAME_OFF) ? View.VISIBLE : View.GONE));
+		}
 		for (Runnable r : syncers) r.run();
 		return h;
 	}

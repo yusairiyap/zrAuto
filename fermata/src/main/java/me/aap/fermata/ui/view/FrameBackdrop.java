@@ -65,6 +65,7 @@ public class FrameBackdrop extends View {
 	 */
 	static boolean cover(View self, Object key, RectF r, float radius, float alpha, Glass.Look look) {
 		FrameBackdrop b = Glass.realBlur() && Glass.webBlur() ? active() : null;
+		// Only once the frame has its blurred picture (see GlassFrame#recordBlur).
 		if ((b == null) || (b.frame() == null) || GlassFrame.holds(b.frame(), self)) {
 			clear(key);
 			return false;
@@ -159,7 +160,7 @@ public class FrameBackdrop extends View {
 			if (a <= 0f) continue;
 			local.set(e.rect);
 			local.offset(-loc[0], -loc[1]);
-			GlassFrame.drawLens(f, this, c, local, e.radius, a, e.look, e.lens);
+			GlassFrame.drawShared(f, e.lens, this, c, local, e.radius, a);
 		}
 	}
 
