@@ -163,6 +163,21 @@ public final class Glass {
 		return mix(from, t, f);
 	}
 
+	/**
+	 * How much glass there is now, 0 (Normal) to 1, gliding between the two after a change of style: what
+	 * the settings tiles and the seek bar knob blend by.
+	 */
+	public static float amount() {
+		Look t = target();
+		float to = t.isGlass() ? 1f : 0f;
+		if ((animStart < 0) || (from == null)) return to;
+		float f = (SystemClock.uptimeMillis() - animStart) / (float) ANIM_MS;
+		if (f >= 1f) return to;
+		f = 1f - (1f - f) * (1f - f);
+		float fr = from.isGlass() ? 1f : 0f;
+		return fr + (to - fr) * f;
+	}
+
 	/** The look set in the prefs, without the glide. */
 	private static Look target() {
 		Look l = target;
@@ -418,11 +433,182 @@ public final class Glass {
 	@Nullable
 	public static GradientDrawable tile(float radiusPx, boolean light) {
 		if (!look().isGlass()) return null;
-		GradientDrawable d = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-				light ? new int[]{0xCCFFFFFF, 0x8CFFFFFF} : new int[]{0x24FFFFFF, 0x0FFFFFFF});
+		GradientDrawable d = new GradientDrawable();
+		d.setColor(tileFill(light));
 		d.setCornerRadius(radiusPx);
-		d.setStroke(1, light ? 0x1F000000 : 0x29FFFFFF);
+		d.setStroke(1, tileRim(light));
 		return d;
+	}
+
+	/** A glass tile's fill: flat, a see-through white (no gradient: it read as dated). */
+	public static int tileFill(boolean light) {
+		return light ? 0xB8FFFFFF : 0x1AFFFFFF;
+	}
+
+	/** A glass tile's hairline rim. */
+	public static int tileRim(boolean light) {
+		return light ? 0x17000000 : 0x26FFFFFF;
+	}
+
+	/**
+	 * A row's tile that follows the UI style as it glides (see {@link #amount}): {@code normalFill} in Normal,
+	 * the flat glass fill with a hairline rim in glass, blended on the way. {@code picked} adds the accent
+	 * outline (and a tint of it in glass). A colour set on it from outside (a picked option) wins until
+	 * {@code normalFill} is set again.
+	 */
+	public static GradientDrawable tile(int normalFill, float radiusPx, boolean light, boolean picked, int accent,
+																			float density) {
+		return new Tile(normalFill, radiusPx, light, picked, accent, density);
+	}
+
+	private static final class Tile extends GradientDrawable {
+		private final int normalFill;
+		private final boolean light;
+		private final boolean picked;
+		private final int accent;
+		private final float density;
+		private float shownAmount = -1f;
+		private boolean internal;
+		/** A colour set from outside (other than the normal fill): kept, see {@link #tile}. */
+		private int manual;
+		private boolean hasManual;
+
+		Tile(int normalFill, float radius, boolean light, boolean picked, int accent, float density) {
+			this.normalFill = normalFill;
+			this.light = light;
+			this.picked = picked;
+			this.accent = accent;
+			this.density = density;
+			setCornerRadius(radius);
+			// (Whatever the superclass set up is not a colour from outside.)
+			hasManual = false;
+			apply(amount());
+		}
+
+		@Override
+		public void setColor(int argb) {
+			if (!internal) {
+				hasManual = argb != normalFill;
+				manual = argb;
+				shownAmount = -1f;
+			}
+			super.setColor(argb);
+		}
+
+		@Override
+		public void draw(Canvas c) {
+			float a = amount();
+			if (a != shownAmount) apply(a);
+			super.draw(c);
+		}
+
+		private void apply(float a) {
+			shownAmount = a;
+			internal = true;
+			try {
+				int nf = picked ? androidx.core.graphics.ColorUtils.blendARGB(normalFill, accent, 0.14f) : normalFill;
+				int gf = picked ? (accent & 0x00FFFFFF) | 0x33000000 : tileFill(light);
+				super.setColor(hasManual ? manual : androidx.core.graphics.ColorUtils.blendARGB(nf, gf, a));
+				int rim = androidx.core.graphics.ColorUtils.blendARGB(tileRim(light) & 0x00FFFFFF, tileRim(light), a);
+				// A picked row keeps its accent outline in both looks, the same width either way.
+				setStroke(Math.max(1, Math.round((picked ? 2f : 1f) * density)), picked ? accent : rim);
+			} finally {
+				internal = false;
+			}
+		}
+	}
+
+	/**
+	 * A seek bar's knob that follows the UI style: the plain filled disc in Normal; in glass a see-through
+	 * bead with a bright rim and the accent in its middle. Replaces the thumb and its tint.
+	 */
+	public static void knob(android.widget.SeekBar sb) {
+		if (sb.getThumb() instanceof Knob) return;
+		android.content.res.ColorStateList tl = sb.getThumbTintList();
+		int accent = (tl != null) ? tl.getDefaultColor() : 0xFF7FA6FF;
+		float d = sb.getResources().getDisplayMetrics().density;
+		sb.setThumbTintList(null);
+		sb.setThumb(new Knob(accent, d));
+	}
+
+	private static final class Knob extends android.graphics.drawable.Drawable {
+		private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+		private final int accent;
+		private final float density;
+		private final int size;
+		private int alpha = 255;
+
+		Knob(int accent, float density) {
+			this.accent = accent;
+			this.density = density;
+			size = Math.round(20 * density);
+		}
+
+		@Override
+		public int getIntrinsicWidth() {
+			return size;
+		}
+
+		@Override
+		public int getIntrinsicHeight() {
+			return size;
+		}
+
+		@Override
+		public void draw(Canvas c) {
+			android.graphics.Rect b = getBounds();
+			float cx = b.exactCenterX();
+			float cy = b.exactCenterY();
+			float r = Math.min(b.width(), b.height()) / 2f;
+			float g = amount();
+			float a = alpha / 255f;
+			paint.setStyle(Paint.Style.FILL);
+			paint.setShader(null);
+			if (g < 1f) {
+				paint.setColor(accent);
+				paint.setAlpha(Math.round(255 * a * (1f - g)));
+				c.drawCircle(cx, cy, r, paint);
+			}
+			if (g <= 0f) return;
+			// The bead: a faint white body, lighter at the top, a crisp rim and the accent core.
+			paint.setShader(new LinearGradient(0, cy - r, 0, cy + r, 0x66FFFFFF, 0x26FFFFFF, Shader.TileMode.CLAMP));
+			paint.setAlpha(Math.round(255 * a * g));
+			c.drawCircle(cx, cy, r, paint);
+			paint.setShader(null);
+			paint.setStyle(Paint.Style.STROKE);
+			paint.setStrokeWidth(1.5f * density);
+			paint.setColor(0xF2FFFFFF);
+			paint.setAlpha(Math.round(242 * a * g));
+			c.drawCircle(cx, cy, r - 0.75f * density, paint);
+			paint.setStyle(Paint.Style.FILL);
+			paint.setColor(accent);
+			paint.setAlpha(Math.round(255 * a * g));
+			c.drawCircle(cx, cy, r * 0.42f, paint);
+		}
+
+		@Override
+		public void setAlpha(int alpha) {
+			this.alpha = alpha;
+			invalidateSelf();
+		}
+
+		@Override
+		public void setColorFilter(@Nullable android.graphics.ColorFilter cf) {
+			paint.setColorFilter(cf);
+		}
+
+		@Override
+		public int getOpacity() {
+			return android.graphics.PixelFormat.TRANSLUCENT;
+		}
+	}
+
+	/** Every view under {@code v} drawn again (the glide reaching tiles and knobs that draw by {@link #amount}). */
+	public static void invalidateTree(View v) {
+		v.invalidate();
+		if (v instanceof android.view.ViewGroup g) {
+			for (int i = 0, n = g.getChildCount(); i < n; i++) invalidateTree(g.getChildAt(i));
+		}
 	}
 
 	/**

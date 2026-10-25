@@ -268,10 +268,11 @@ final class MediaWidget extends HomeWidgetView {
 		chip = chip(R.drawable.video_fullscreen, "", () -> chipAction.run());
 		chip.setBackground(HomeUi.pressable(ownBackgroundDark() ? 0x33FFFFFF : host.palette().chipRipple,
 				ownBackgroundDark() ? 0x44000000 : host.palette().chipFill, px(17)));
-		eye = iconButton(R.drawable.visibility, 36, ROLE_ICON, R.string.action_cover_hide,
-				() -> me.aap.fermata.ui.view.CoverHide.toggle(act()));
-		eye.setBackground(HomeUi.pressable(ownBackgroundDark() ? 0x33FFFFFF : host.palette().chipRipple,
-				ownBackgroundDark() ? 0x44000000 : host.palette().chipFill, px(18)));
+		// The same colour as the chip beside it (its text and icon), not the card's dimmer icon role.
+		eye = iconButton(R.drawable.visibility, 36, ROLE_PRIMARY, R.string.action_cover_hide,
+				() -> me.aap.fermata.ui.view.CoverHide.toggle(act(), false));
+		// The chip's own soft fill, kept in step with it when the look changes.
+		trackSoft(eye, 18);
 		topRight = new LinearLayout(ctx);
 		topRight.setOrientation(LinearLayout.HORIZONTAL);
 		topRight.setGravity(Gravity.CENTER_VERTICAL);

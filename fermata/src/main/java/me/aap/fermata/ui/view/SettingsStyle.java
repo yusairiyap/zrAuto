@@ -65,19 +65,8 @@ public final class SettingsStyle {
 		 * {@link Glass#tile}); a picked one is tinted with the accent and outlined, the same width either way.
 		 */
 		public GradientDrawable tile(float radiusDp, boolean picked) {
-			GradientDrawable g = Glass.tile(dp(radiusDp), light());
-			if (g == null) {
-				g = rounded(picked ? androidx.core.graphics.ColorUtils.blendARGB(tileFill, accent, 0.14f) : tileFill,
-						radiusDp);
-				g.setStroke(dp(2), picked ? accent : 0x00000000);
-				return g;
-			}
-			if (picked) {
-				int a = accent & 0x00FFFFFF;
-				g.setColors(new int[]{a | 0x47000000, a | 0x1F000000});
-				g.setStroke(dp(1.5f), a | 0xCC000000);
-			}
-			return g;
+			// Follows the UI style as it changes, gliding (Glass#tile).
+			return Glass.tile(tileFill, dp(radiusDp), light(), picked, accent, density);
 		}
 
 		/** A rounded fill with a ripple over it when pressed. */
@@ -102,6 +91,7 @@ public final class SettingsStyle {
 			sb.setThumbTintList(ColorStateList.valueOf(c.accent));
 			sb.setSecondaryProgressTintList(ColorStateList.valueOf(c.textSecondary));
 			sb.setProgressBackgroundTintList(ColorStateList.valueOf((c.textSecondary & 0xFFFFFF) | 0x55000000));
+			Glass.knob(sb);
 		} else if (v instanceof android.view.ViewGroup g) {
 			for (int i = 0, n = g.getChildCount(); i < n; i++) tintSliders(g.getChildAt(i), c);
 		}
@@ -110,7 +100,7 @@ public final class SettingsStyle {
 	/** Restyles one row of a PreferenceSet page; set as {@link PreferenceView#setRowStyler}. */
 	public static void apply(PreferenceView v, PreferenceView.Opts o) {
 		Colors c = new Colors(v.getContext());
-		v.setBackground(c.pressable(Glass.look().isGlass() ? c.tile(18, false) : c.rounded(c.tileFill, 16)));
+		v.setBackground(c.pressable(c.tile(16, false)));
 		v.setPadding(c.dp(16), c.dp(12), c.dp(16), c.dp(12));
 
 		// The same sizes as the option pages built in code and the category list: 15sp over 12.5sp.

@@ -315,6 +315,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		behind.attach();
 		root.getViewTreeObserver().addOnPreDrawListener(sideSync);
 		prefs.addBroadcastListener(this);
+		me.aap.fermata.ui.view.Glass.addAnimListener(glassGlide);
 		root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
 			if (((r - l) != (or - ol)) || ((b - t) != (ob - ot))) root.post(this::applyArrangement);
 		});
@@ -347,6 +348,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		nowBg.stop();
 		if (bgFade != null) bgFade.cancel();
 		prefs.removeBroadcastListener(this);
+		me.aap.fermata.ui.view.Glass.removeAnimListener(glassGlide);
 		behind.detach();
 		ViewTreeObserver vto = root.getViewTreeObserver();
 		if (vto.isAlive()) vto.removeOnPreDrawListener(sideSync);
@@ -643,6 +645,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			me.aap.fermata.ui.view.Glass.reset();
 			base.invalidate();
 			bg.invalidate();
+			applyTopInfo();
 			grid.restyle();
 		}
 		if (changed.contains(MainActivityPrefs.HOME_STACK_ROTATE)) grid.resyncRotation();
@@ -1133,7 +1136,17 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		topScroll.setVisibility(any ? View.VISIBLE : View.GONE);
 		if (!any) return;
 		int fg = palette.textPrimary;
-		topFillBase = (fg & 0x00FFFFFF) | 0x2E000000;
+		topGlass = me.aap.fermata.ui.view.Glass.onHome();
+		if (topGlass) {
+			// The glass UI style: the same tint and hairline rim as the glass cards under them.
+			me.aap.fermata.ui.view.Glass.Look l = me.aap.fermata.ui.view.Glass.look();
+			int ta = Math.round(Math.max(115, l.tintAlpha()) * cardAlpha() / 100f);
+			topFillBase = (palette.light ? 0x00FFFFFF : 0x00101018) | (Math.min(255, ta) << 24);
+			topInfo.setChipStroke(palette.light ? 0x1F000000 : 0x29FFFFFF);
+		} else {
+			topFillBase = (fg & 0x00FFFFFF) | 0x2E000000;
+			topInfo.setChipStroke(0);
+		}
 		topInfo.setChipStyle(fg, topFillBase);
 		fitTopInfo();
 		updateTopInfoScroll();
@@ -1187,6 +1200,12 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		int target = (palette.panelFill & 0x00FFFFFF) | 0xF2000000;
 		topInfo.setChipFill(androidx.core.graphics.ColorUtils.blendARGB(topFillBase, target, solid));
 	}
+
+	/** Whether the info chips were last styled for glass; the glide's end restyles them (see glassGlide). */
+	private boolean topGlass;
+	private final Runnable glassGlide = () -> {
+		if (me.aap.fermata.ui.view.Glass.onHome() != topGlass) applyTopInfo();
+	};
 
 	/** The chips' fill with the page at the top (see applyTopInfo). */
 	private int topFillBase = 0x2EFFFFFF;

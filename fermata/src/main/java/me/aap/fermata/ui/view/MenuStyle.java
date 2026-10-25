@@ -125,7 +125,7 @@ public final class MenuStyle implements OverlayMenuView.Styler {
 			if (v.getId() == me.aap.utils.R.id.overlay_menu_title) {
 				styleTitle((TextView) v, c);
 			} else if (v instanceof OverlayMenuItemView item) {
-				styleItem(item, c, scale);
+				styleItem(item, c, scale, car);
 			}
 		}
 	}
@@ -151,7 +151,7 @@ public final class MenuStyle implements OverlayMenuView.Styler {
 		t.setPadding(c.dp(14), c.dp(10), c.dp(14), c.dp(12));
 	}
 
-	private static void styleItem(OverlayMenuItemView item, SettingsStyle.Colors c, float scale) {
+	private static void styleItem(OverlayMenuItemView item, SettingsStyle.Colors c, float scale, boolean car) {
 		int h = c.dp(16);
 		int v = Math.round(c.dp(12) * Math.max(0.8f, scale));
 		item.setPadding(h, v, h, v);
@@ -162,9 +162,12 @@ public final class MenuStyle implements OverlayMenuView.Styler {
 		TextViewCompat.setCompoundDrawableTintList(item, ColorStateList.valueOf(c.accent));
 		float r = c.dp(14);
 		StateListDrawable states = new StateListDrawable();
-		// The row the car keys (or a d-pad) are on, and a selected one: a rounded accent outline.
-		states.addState(new int[]{android.R.attr.state_focused}, row(c, r, true));
-		states.addState(new int[]{android.R.attr.state_selected}, row(c, r, true));
+		// On the car screen the row the steering wheel keys are on gets a rounded accent outline. Not on the
+		// phone: the menu gives its first row focus as it opens, which is only noise under a finger.
+		if (car) {
+			states.addState(new int[]{android.R.attr.state_focused}, row(c, r, true));
+			states.addState(new int[]{android.R.attr.state_selected}, row(c, r, true));
+		}
 		states.addState(new int[]{}, new GradientDrawable());
 		GradientDrawable mask = new GradientDrawable();
 		mask.setColor(0xFF000000);

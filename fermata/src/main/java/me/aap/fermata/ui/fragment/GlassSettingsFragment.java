@@ -146,7 +146,8 @@ public class GlassSettingsFragment extends ReorderListFragment {
 		if (Glass.realBlur()) {
 			addChoiceRow(h, R.string.glass_quality, R.string.glass_quality_sub,
 					new int[]{R.string.glass_quality_high, R.string.glass_quality_balanced, R.string.glass_quality_saver},
-					() -> p.getIntPref(MainActivityPrefs.GLASS_QUALITY), i -> p.applyIntPref(MainActivityPrefs.GLASS_QUALITY, i));
+					() -> p.getIntPref(MainActivityPrefs.GLASS_QUALITY), i -> p.applyIntPref(MainActivityPrefs.GLASS_QUALITY, i),
+					isGlass);
 		}
 
 		section(h, R.string.glass_sec_where);

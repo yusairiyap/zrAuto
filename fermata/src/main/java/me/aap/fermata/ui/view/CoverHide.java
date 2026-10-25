@@ -30,8 +30,14 @@ public final class CoverHide {
 
 	/** The action: on / off, said in the top popup. */
 	public static void toggle(MainActivityDelegate a) {
+		toggle(a, true);
+	}
+
+	/** {@code say}: the top popup says so (the action); the eye buttons don't, their icon shows it. */
+	public static void toggle(MainActivityDelegate a, boolean say) {
 		boolean on = !isOn();
 		a.getPrefs().applyBooleanPref(MainActivityPrefs.COVER_HIDDEN, on);
+		if (!say) return;
 		TopToast.show(on ? R.drawable.cover_hidden : R.drawable.visibility,
 				on ? R.string.cover_hidden_on : R.string.cover_hidden_off);
 	}

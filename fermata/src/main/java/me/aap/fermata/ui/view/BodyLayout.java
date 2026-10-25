@@ -148,11 +148,16 @@ public class BodyLayout extends SplitLayout
 	protected void onAttachedToWindow() {
 		super.onAttachedToWindow();
 		getViewTreeObserver().addOnPreDrawListener(topFadeSync);
+		Glass.addAnimListener(glide);
 	}
+
+	/** The UI style gliding to a new look: everything drawn again each frame (tiles and knobs blend by it). */
+	private final Runnable glide = () -> Glass.invalidateTree(getRootView());
 
 	@Override
 	protected void onDetachedFromWindow() {
 		getViewTreeObserver().removeOnPreDrawListener(topFadeSync);
+		Glass.removeAnimListener(glide);
 		super.onDetachedFromWindow();
 	}
 

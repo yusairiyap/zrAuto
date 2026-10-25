@@ -658,6 +658,7 @@ public class InfoOverlayView extends LinearLayout {
 				android.graphics.drawable.GradientDrawable d = new android.graphics.drawable.GradientDrawable();
 				d.setColor(chipFill);
 				d.setCornerRadius(toIntPx(getContext(), 40));
+				if (chipStroke != 0) d.setStroke(Math.max(1, toIntPx(getContext(), 1)), chipStroke);
 				w.setBackground(d);
 				chipWrappers.put(key, w);
 			}
@@ -673,7 +674,19 @@ public class InfoOverlayView extends LinearLayout {
 	}
 
 	private int chipFill;
+	/** A hairline round every chip (the glass look), 0 for none. */
+	private int chipStroke;
 	private ChipFlowLayout chipFlow;
+
+	/** Chip mode: a hairline of {@code color} round every chip (0 for none), the glass UI style's rim. */
+	public void setChipStroke(int color) {
+		if (chipStroke == color) return;
+		chipStroke = color;
+		int sw = Math.max(1, toIntPx(getContext(), 1));
+		for (LinearLayout w : chipWrappers.values()) {
+			if (w.getBackground() instanceof android.graphics.drawable.GradientDrawable d) d.setStroke(sw, color);
+		}
+	}
 	private boolean oneRow;
 
 	/** In chip mode: one row however many chips (for a scroller to show part of), instead of wrapping. */

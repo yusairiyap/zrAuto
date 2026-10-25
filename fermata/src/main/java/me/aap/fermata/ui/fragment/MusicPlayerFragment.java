@@ -904,7 +904,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			pill.setColor(0x66000000);
 			c.setBackground(pill);
 			c.setContentDescription(getString(R.string.action_cover_hide));
-			c.setOnClickListener(v -> CoverHide.toggle(getActivityDelegate()));
+			c.setOnClickListener(v -> CoverHide.toggle(getActivityDelegate(), false));
 			int s = Math.round(30 * getResources().getDisplayMetrics().density);
 			int m = Math.round(10 * getResources().getDisplayMetrics().density);
 			FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(s, s, Gravity.TOP | Gravity.END);

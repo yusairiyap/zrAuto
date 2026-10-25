@@ -626,6 +626,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 	private void backOut() {
 		if (drillSource == null) return;
 		drillSource = null;
+		onBackOut();
 		carReselect = carFocused == this;
 		if (!host.animate() || !isShown() || !built) {
 			showBack(false);
@@ -641,10 +642,20 @@ abstract class LibraryWidget extends HomeWidgetView {
 		listView.animate().cancel();
 		listView.animate().alpha(0f).setDuration(120).withEndAction(() -> {
 			backing = false;
-			showBack(false);
+			// Something opened again meanwhile (a card made again reopening its playlist): its chip stays.
+			showBack(drillSource != null);
 			if (!loading) showRowsAgain();
 		}).start();
 		refresh(true);
+	}
+
+	/** The card went back out of what was opened in it (its back chip, the car's long Previous). */
+	protected void onBackOut() {
+	}
+
+	/** Something is opened inside the card (see {@link #drill}). */
+	protected final boolean isDrilled() {
+		return drillSource != null;
 	}
 
 	private void showRowsAgain() {

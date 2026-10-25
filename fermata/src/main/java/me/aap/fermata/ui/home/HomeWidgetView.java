@@ -313,8 +313,13 @@ public abstract class HomeWidgetView extends FrameLayout {
 	};
 	/** The UI style gliding to a new look: drawn again each frame of it. */
 	private final Runnable glassAnim = () -> {
-		if (isShown() && (item != null) && (style() == STYLE_GLASS)) invalidate();
+		if (!isShown() || (item == null) || (style() != STYLE_GLASS)) return;
+		invalidate();
+		// The glide over: the card's own fill follows (clear for real glass, the translucent Glass fill otherwise).
+		if (glassCard() != styledGlass) applyStyle();
 	};
+	/** Whether the card was last styled for real glass (its own fill clear). */
+	private boolean styledGlass;
 
 	/** The Glass look with the glass UI style on Home: the background blurred behind the card. */
 	protected final boolean glassCard() {
@@ -323,6 +328,8 @@ public abstract class HomeWidgetView extends FrameLayout {
 
 	@Override
 	public void draw(android.graphics.Canvas c) {
+		// The UI style changed while this card was away (another tab): its fill follows now.
+		if ((item != null) && (glassCard() != styledGlass)) post(this::applyStyle);
 		if (glassCard() && (getWidth() > 0) && (getHeight() > 0)) {
 			boolean light = host.palette().light;
 			float r = CORNER_DP * dp;
@@ -479,6 +486,7 @@ public abstract class HomeWidgetView extends FrameLayout {
 	/** Moves the card and everything tinted to the colours of the look now chosen, gliding when asked. */
 	private void applyStyle(boolean animate) {
 		int s = style();
+		styledGlass = glassCard();
 		int c1;
 		int c2;
 		final int stroke;

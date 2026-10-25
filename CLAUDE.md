@@ -1002,6 +1002,21 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
 - **Hide cover button**: `MusicAddon.COVER_CHIP` (Music addon settings) and Home's player card option `eye`; the card lays out
   without its cover while hidden (`MediaWidget#layoutHidden`, `relayout` with an AutoTransition) and re-checks in `onActive`.
 
+### Third round (the native crash, tiles and knobs that glide, Playlists card)
+
+- **A lens must never blur the content that holds it**: the Music tab's More card and the All in One settings preview are
+  inside `body_layout`, and drawing the body's RenderNode inside them is a RenderNode cycle that kills the render thread
+  natively (no Java exception, nothing in the Diagnostic log: "it crashed, nothing logged"). `GlassLens#inside` refuses that;
+  such a surface gets the tint only.
+- Settings tiles (`Glass.tile(normalFill, ...)`, a GradientDrawable that re-colours itself by `Glass.amount()`: flat glass fill +
+  hairline, no gradient) and seek bar knobs (`Glass.knob(SeekBar)`: disc in Normal, a bead with a rim and the accent core in
+  glass) blend while the style glides; `BodyLayout#glide` redraws the whole window each frame of the glide.
+- Home cards restyle when the glide ends (`HomeWidgetView#glassAnim`, and a check in `draw`): restyling mid-glide left them
+  clear (transparent) after going back to Normal. The top info chips take the glass cards' tint and a rim (`setChipStroke`).
+- Menu rows get the focus outline only on the car screen; the eye buttons toggle without a top popup (`CoverHide.toggle(a, false)`).
+- **Playlists card**: which playlist is open, and whether the last played song's one was opened, are kept per widget id for the
+  life of the app (`PlaylistsWidget#OPEN`, `OPENED_LAST`): a card made again used to show every playlist with no back chip.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

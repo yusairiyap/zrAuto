@@ -24,8 +24,14 @@ import me.aap.utils.async.FutureSupplier;
  * filled with the accent. Right after the app starts the playlist of the song last played is already open, with that song marked.
  */
 final class PlaylistsWidget extends LibraryWidget {
-	/** The playlist of the last played song is opened once per widget: backing out of it sticks. */
-	private boolean openedLast;
+	/**
+	 * Kept for the life of the app, by the widget's id: Home makes a card again now and then (its layout read
+	 * again), and a new card used to forget the playlist that was open in it and show all of them, with no back
+	 * chip. Which playlist is open in each card, and the cards that already opened the last played song's
+	 * playlist by themselves (backing out of it sticks).
+	 */
+	private static final java.util.Map<String, String> OPEN = new java.util.HashMap<>();
+	private static final Set<String> OPENED_LAST = new HashSet<>();
 
 	PlaylistsWidget(HomeHost host, HomeWidgetType type) {
 		super(host, type);
@@ -109,7 +115,7 @@ final class PlaylistsWidget extends LibraryWidget {
 				Playlist pl = lists.get(i);
 				boolean now = holding.contains(pl.getId());
 				if (now && (first < 0)) first = i;
-				rows.add(new Row(pl.getName(), null, pl, () -> drill(pl.getName(), (a2, d2) -> songs(pl, a2, d2)),
+				rows.add(new Row(pl.getName(), null, pl, () -> open(pl),
 						() -> {
 							HomePlay.list(a, pl);
 							queueOnPlay();
@@ -119,7 +125,7 @@ final class PlaylistsWidget extends LibraryWidget {
 			}
 			focusRow = first;
 			done.done(rows, lists.size());
-			openLast(lists, first);
+			if (!reopen(lists)) openLast(lists, first);
 			scanHolders(a, lists);
 		});
 	}
@@ -145,10 +151,37 @@ final class PlaylistsWidget extends LibraryWidget {
 
 	/** Right after the app starts the playlist of the last played song is opened, once per widget. */
 	private void openLast(List<Playlist> lists, int first) {
-		if (openedLast || (first < 0) || !optBool("openlast", true) || isCompact()) return;
-		openedLast = true;
-		Playlist pl = lists.get(first);
+		String key = getItem().id;
+		if (OPENED_LAST.contains(key) || (first < 0) || !optBool("openlast", true) || isCompact()) return;
+		OPENED_LAST.add(key);
+		open(lists.get(first));
+	}
+
+	/** Opens a playlist in the card, remembered for a card made again (see {@link #OPEN}). */
+	private void open(Playlist pl) {
+		OPEN.put(getItem().id, pl.getId());
 		drill(pl.getName(), (a2, d2) -> songs(pl, a2, d2));
+	}
+
+	/** The card was made again with a playlist open in it before: that playlist again. */
+	private boolean reopen(List<Playlist> lists) {
+		if (isDrilled()) return false;
+		String id = OPEN.get(getItem().id);
+		if (id == null) return false;
+		for (Playlist pl : lists) {
+			if (id.equals(pl.getId())) {
+				open(pl);
+				return true;
+			}
+		}
+		// Deleted meanwhile.
+		OPEN.remove(getItem().id);
+		return false;
+	}
+
+	@Override
+	protected void onBackOut() {
+		OPEN.remove(getItem().id);
 	}
 
 	/** Looks through the playlists, one after the other, for those holding the playing song, unless that is known already. */

@@ -122,13 +122,26 @@ public final class GlassLens {
 		var a = me.aap.fermata.ui.activity.MainActivityDelegate.getActivityDelegate(self.getContext()).peek();
 		if (a == null) return false;
 		BodyLayout body = a.getBody();
-		if (body == null) return false;
+		if ((body == null) || inside(self, body)) return false;
 		// Drawn again when the content under it changes or it moves (see Glass#register).
 		Glass.register(self);
 		RenderNode src = body.getGlassSource();
 		if (src == null) return false;
 		if (slot[0] == null) slot[0] = new GlassLens();
 		return slot[0].draw(c, self, src, body, r, radius, alpha, look);
+	}
+
+	/**
+	 * Whether {@code v} is inside {@code body}: such a surface (the Music tab's More card, the All in One
+	 * preview on its settings page) would draw the content that holds itself, a RenderNode cycle that
+	 * crashes the render thread (natively: no Java exception, nothing in the Diagnostic log). It gets the
+	 * tint alone.
+	 */
+	private static boolean inside(View v, View body) {
+		for (android.view.ViewParent p = v.getParent(); p != null; p = p.getParent()) {
+			if (p == body) return true;
+		}
+		return false;
 	}
 
 	/** Records {@code drawer}'s drawing into {@code node} ({@code w} x {@code h}, unclipped) and draws it on {@code c}. */
