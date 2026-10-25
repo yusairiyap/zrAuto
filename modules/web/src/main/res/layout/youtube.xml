@@ -1,4 +1,5 @@
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- A GlassFrame: with the experimental blur over web pages on, the glass bars and menus blur the page through it. -->
+<me.aap.fermata.ui.view.GlassFrame xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
@@ -7,4 +8,4 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-</FrameLayout>
+</me.aap.fermata.ui.view.GlassFrame>

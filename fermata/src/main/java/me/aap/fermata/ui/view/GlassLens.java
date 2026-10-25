@@ -122,13 +122,25 @@ public final class GlassLens {
 		var a = me.aap.fermata.ui.activity.MainActivityDelegate.getActivityDelegate(self.getContext()).peek();
 		if (a == null) return false;
 		BodyLayout body = a.getBody();
-		if ((body == null) || inside(self, body)) return false;
+		if (body == null) return false;
 		// Drawn again when the content under it changes or it moves (see Glass#register).
 		Glass.register(self);
-		RenderNode src = body.getGlassSource();
-		if (src == null) return false;
+		RenderNode src = inside(self, body) ? null : body.getGlassSource();
+		if (src == null) {
+			// The tab is not recorded (a web tab, fullscreen YouTube): the page's own frame, with the experimental
+			// blur over web pages and video on.
+			return GlassFrame.drawBehindAny(self, c, r, radius, alpha, look, slot);
+		}
 		if (slot[0] == null) slot[0] = new GlassLens();
-		return slot[0].draw(c, self, src, body, r, radius, alpha, look);
+		int[] bl = new int[2];
+		int[] sl = new int[2];
+		body.getLocationInWindow(bl);
+		self.getLocationInWindow(sl);
+		// Local video leaves a hole in the tab's recording: its copied picture fills it (VideoBackdrop).
+		return slot[0].draw(c, rc -> {
+			rc.drawRenderNode(src);
+			VideoBackdrop.drawUnder(rc, body);
+		}, bl[0] - sl[0], bl[1] - sl[1], r, radius, alpha, look, self.getResources().getDisplayMetrics().density);
 	}
 
 	/**

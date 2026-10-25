@@ -22,14 +22,18 @@ public class StepSeekBar extends AppCompatSeekBar {
 
 	public StepSeekBar(Context context) {
 		super(context);
+		Glass.knob(this);
 	}
 
 	public StepSeekBar(Context context, AttributeSet attrs) {
 		super(context, attrs);
+		// The knob follows the UI style (a glass bead with glass on), like every other slider.
+		Glass.knob(this);
 	}
 
 	public StepSeekBar(Context context, AttributeSet attrs, int defStyleAttr) {
 		super(context, attrs, defStyleAttr);
+		Glass.knob(this);
 	}
 
 	@Override

@@ -215,10 +215,11 @@ public class BodyLayout extends SplitLayout
 	 * frame is asked for: only frames that happen anyway redraw them).
 	 */
 	private void syncGlass() {
-		// Experimental (Glass#webBlur): web pages and fullscreen video are blurred too, so neither stops it.
-		boolean web = Glass.webBlur();
-		boolean want = Glass.realBlur() && Glass.wantsSource() && (web || (getMode() == Mode.FRAME));
-		if (want && !web) {
+		// Experimental (Glass#webBlur): fullscreen local video is blurred too (VideoBackdrop fills in the picture,
+		// which the tab's recording only has as a hole). Web pages never are through the tab: drawing the whole tab
+		// with a WebView in it a second time flickered; the page's own GlassFrame is blurred instead.
+		boolean want = Glass.realBlur() && Glass.wantsSource() && (Glass.webBlur() || (getMode() == Mode.FRAME));
+		if (want) {
 			long now = SystemClock.uptimeMillis();
 			MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
 			ActivityFragment f = (a != null) ? a.getActiveFragment() : null;

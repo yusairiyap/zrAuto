@@ -1030,6 +1030,22 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
   that is the experiment. A third-party library would not help: BlurView 3 uses the same RenderNode capture on Android 12+.
   Local video is a SurfaceView, unreadable: its glass blurs black.
 
+### Fifth round (web pages through their own frame, local video through PixelCopy)
+
+- Device test: blurring YouTube's fullscreen picture through its own frame (`GlassFrame`, the VideoView's child 0) did not
+  flicker; blurring the YouTube tab through the whole tab's recording flickered without end. So the tab is never recorded on a
+  web tab again (the guard in `BodyLayout#syncGlass` holds even with `GLASS_WEB`), and the page lives in a `GlassFrame` too
+  (`youtube.xml` root, the browser's `browserTabHost`). `GlassLens#behindBars` falls back to the biggest recording frame on
+  screen (`GlassFrame.drawBehindAny`) when the tab is not recorded, so bars, the FAB pill, menus and dialogs blur the page and
+  fullscreen YouTube. A frame invalidates the glass surfaces when its content changes.
+- **PixelCopy of the window is useless for the bars** (the copy holds the glass itself, never what is under it). PixelCopy of a
+  *SurfaceView* is not: `VideoBackdrop` copies local video's surface (a quarter size, ~15/s playing, 2/s paused) while
+  `GLASS_WEB` is on, and the copy is drawn with DST_OVER under the tab's recording, filling the hole the SurfaceView punches
+  (`drawUnder`), and alone behind the fullscreen buttons (`drawBehindButton`). The engines and their SurfaceView are untouched.
+- Tiles (`Glass.tile`): the picked state glides (`Glass.setPicked`, reused per row in `SettingsSplit` while the row's entry is
+  the same); with glass the edge is the rim light (gradient stroke) only while Rim light is on, no border otherwise. The knob
+  has no coloured core and takes later thumb tints (`Knob#setTintList`); every `StepSeekBar` (Audio effects) uses it.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

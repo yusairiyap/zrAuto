@@ -7,7 +7,8 @@
     android:clipChildren="false"
     android:clipToPadding="false">
 
-    <FrameLayout
+    <!-- A GlassFrame: with the experimental blur over web pages on, the glass bars and menus blur the pages through it. -->
+    <me.aap.fermata.ui.view.GlassFrame
         android:id="@+id/browserTabHost"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -19,7 +20,7 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
-    </FrameLayout>
+    </me.aap.fermata.ui.view.GlassFrame>
 
     <FrameLayout
         android:id="@+id/browserFullScreenView"

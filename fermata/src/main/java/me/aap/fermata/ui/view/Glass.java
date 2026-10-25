@@ -344,7 +344,8 @@ public final class Glass {
 				return;
 			}
 			Look l = look();
-			boolean blurred = webBlur() && GlassFrame.drawBehind(self, c, rect, r, a, l, lens);
+			boolean blurred = webBlur() && (GlassFrame.drawBehind(self, c, rect, r, a, l, lens) ||
+					VideoBackdrop.drawBehindButton(self, c, rect, r, a, l, lens));
 			paintOver(c, rect, r, color, a, l, false, self.getResources().getDisplayMetrics().density, paint, blurred);
 		}
 
@@ -536,13 +537,28 @@ public final class Glass {
 		return new Tile(normalFill, radiusPx, light, picked, accent, density);
 	}
 
+	/** A tile made by {@link #tile(int, float, boolean, boolean, int, float)}: picked or not, gliding when asked. */
+	public static void setPicked(android.graphics.drawable.Drawable d, boolean picked, boolean animate) {
+		if (d instanceof Tile t) t.setPicked(picked, animate);
+	}
+
+	public static boolean isTile(@Nullable android.graphics.drawable.Drawable d) {
+		return d instanceof Tile;
+	}
+
 	private static final class Tile extends GradientDrawable {
 		private final int normalFill;
 		private final boolean light;
-		private final boolean picked;
 		private final int accent;
 		private final float density;
+		private final Paint rimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+		private final RectF rimRect = new RectF();
+		/** 0 not picked, 1 picked: glides between the two (see {@link #setPicked}). */
+		private float pick;
+		@Nullable
+		private android.animation.ValueAnimator pickAnim;
 		private float shownAmount = -1f;
+		private float shownPick = -1f;
 		private boolean internal;
 		/** A colour set from outside (other than the normal fill): kept, see {@link #tile}. */
 		private int manual;
@@ -551,13 +567,35 @@ public final class Glass {
 		Tile(int normalFill, float radius, boolean light, boolean picked, int accent, float density) {
 			this.normalFill = normalFill;
 			this.light = light;
-			this.picked = picked;
 			this.accent = accent;
 			this.density = density;
+			pick = picked ? 1f : 0f;
 			setCornerRadius(radius);
+			rimPaint.setStyle(Paint.Style.STROKE);
 			// (Whatever the superclass set up is not a colour from outside.)
 			hasManual = false;
-			apply(amount());
+			apply(amount(), pick);
+		}
+
+		void setPicked(boolean picked, boolean animate) {
+			float to = picked ? 1f : 0f;
+			if (pickAnim != null) pickAnim.cancel();
+			pickAnim = null;
+			if (!animate) {
+				pick = to;
+				invalidateSelf();
+				return;
+			}
+			if (pick == to) return;
+			android.animation.ValueAnimator va = android.animation.ValueAnimator.ofFloat(pick, to);
+			va.setDuration(220);
+			va.setInterpolator(new android.view.animation.DecelerateInterpolator());
+			va.addUpdateListener(v -> {
+				pick = (float) v.getAnimatedValue();
+				invalidateSelf();
+			});
+			pickAnim = va;
+			va.start();
 		}
 
 		@Override
@@ -573,20 +611,36 @@ public final class Glass {
 		@Override
 		public void draw(Canvas c) {
 			float a = amount();
-			if (a != shownAmount) apply(a);
+			if ((a != shownAmount) || (pick != shownPick)) apply(a, pick);
 			super.draw(c);
+			// Glass with the rim light on: the light edge along the top instead of a border (none with it off).
+			Look l = look();
+			float rim = a * l.rim * (1f - pick);
+			if (rim <= 0f) return;
+			float sw = Math.max(1f, density);
+			android.graphics.Rect b = getBounds();
+			float h = sw / 2f;
+			rimRect.set(b.left + h, b.top + h, b.right - h, b.bottom - h);
+			rimPaint.setStrokeWidth(sw);
+			rimPaint.setShader(new LinearGradient(0, b.top, 0, b.bottom, light ? 0xB3FFFFFF : 0x66FFFFFF,
+					light ? 0x0F000000 : 0x08FFFFFF, Shader.TileMode.CLAMP));
+			rimPaint.setAlpha(Math.round(255 * rim));
+			float r = Math.max(0f, getCornerRadius() - h);
+			c.drawRoundRect(rimRect, r, r, rimPaint);
 		}
 
-		private void apply(float a) {
+		private void apply(float a, float p) {
 			shownAmount = a;
+			shownPick = p;
 			internal = true;
 			try {
-				int nf = picked ? androidx.core.graphics.ColorUtils.blendARGB(normalFill, accent, 0.14f) : normalFill;
-				int gf = picked ? (accent & 0x00FFFFFF) | 0x33000000 : tileFill(light);
+				int nf = androidx.core.graphics.ColorUtils.blendARGB(normalFill,
+						androidx.core.graphics.ColorUtils.blendARGB(normalFill, accent, 0.14f), p);
+				int gf = androidx.core.graphics.ColorUtils.blendARGB(tileFill(light), (accent & 0x00FFFFFF) | 0x33000000, p);
 				super.setColor(hasManual ? manual : androidx.core.graphics.ColorUtils.blendARGB(nf, gf, a));
-				int rim = androidx.core.graphics.ColorUtils.blendARGB(tileRim(light) & 0x00FFFFFF, tileRim(light), a);
-				// A picked row keeps its accent outline in both looks, the same width either way.
-				setStroke(Math.max(1, Math.round((picked ? 2f : 1f) * density)), picked ? accent : rim);
+				// The picked outline fades in and out with the pick; always the same width, so nothing moves.
+				int outline = (accent & 0x00FFFFFF) | (Math.round(255 * p) << 24);
+				setStroke(Math.max(1, Math.round(2f * density)), outline);
 			} finally {
 				internal = false;
 			}
@@ -608,7 +662,7 @@ public final class Glass {
 
 	private static final class Knob extends android.graphics.drawable.Drawable {
 		private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-		private final int accent;
+		private int accent;
 		private final float density;
 		private final int size;
 		private int alpha = 255;
@@ -617,6 +671,15 @@ public final class Glass {
 			this.accent = accent;
 			this.density = density;
 			size = Math.round(20 * density);
+		}
+
+		/** A thumb tint given to the seek bar later (a slider in another colour) is the disc's colour. */
+		@Override
+		public void setTintList(@Nullable android.content.res.ColorStateList tint) {
+			if (tint != null) {
+				accent = tint.getDefaultColor();
+				invalidateSelf();
+			}
 		}
 
 		@Override
@@ -645,20 +708,18 @@ public final class Glass {
 				c.drawCircle(cx, cy, r, paint);
 			}
 			if (g <= 0f) return;
-			// The bead: a faint white body, lighter at the top, a crisp rim and the accent core.
-			paint.setShader(new LinearGradient(0, cy - r, 0, cy + r, 0x66FFFFFF, 0x26FFFFFF, Shader.TileMode.CLAMP));
+			// The bead: a see-through white body, lighter at the top, and a light rim brightest at the top (no
+			// coloured core: the track's filled part says where it is).
+			paint.setShader(new LinearGradient(0, cy - r, 0, cy + r, 0x8CFFFFFF, 0x40FFFFFF, Shader.TileMode.CLAMP));
 			paint.setAlpha(Math.round(255 * a * g));
 			c.drawCircle(cx, cy, r, paint);
-			paint.setShader(null);
 			paint.setStyle(Paint.Style.STROKE);
 			paint.setStrokeWidth(1.5f * density);
-			paint.setColor(0xF2FFFFFF);
-			paint.setAlpha(Math.round(242 * a * g));
-			c.drawCircle(cx, cy, r - 0.75f * density, paint);
-			paint.setStyle(Paint.Style.FILL);
-			paint.setColor(accent);
+			paint.setShader(new LinearGradient(0, cy - r, 0, cy + r, 0xFFFFFFFF, 0x66FFFFFF, Shader.TileMode.CLAMP));
 			paint.setAlpha(Math.round(255 * a * g));
-			c.drawCircle(cx, cy, r * 0.42f, paint);
+			c.drawCircle(cx, cy, r - 0.75f * density, paint);
+			paint.setShader(null);
+			paint.setStyle(Paint.Style.FILL);
 		}
 
 		@Override
