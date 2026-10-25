@@ -166,9 +166,30 @@ final class MediaWidget extends HomeWidgetView {
 		super(host, type);
 	}
 
+	/**
+	 * The card's first look, "Cover" (what it always was): the blurred cover is the card. Solid, Glass and Colour put the cover
+	 * on the card of that look instead, dissolving into its fill (or, in Glass, into Home's blurred background).
+	 */
+	private static final int STYLE_COVER = 4;
+
+	@Override
+	protected int autoStyle() {
+		return STYLE_COVER;
+	}
+
+	@Override
+	protected int autoStyleLabel() {
+		return R.string.home_style_cover;
+	}
+
+	@Override
+	protected boolean hasLookOption() {
+		return true;
+	}
+
 	@Override
 	protected boolean ownBackground() {
-		return true;
+		return style() == STYLE_COVER;
 	}
 
 	/** Over a cover the card is dark; in a light theme it is the Music tab's whitish wash instead. */
@@ -212,7 +233,6 @@ final class MediaWidget extends HomeWidgetView {
 
 		badge = text(ROLE_PRIMARY, 11, true);
 		badge.setText(R.string.home_media_video);
-		badge.setBackground(HomeUi.round(ownBackgroundDark() ? 0x88000000 : 0x26000000, px(10)));
 		badge.setPadding(px(9), px(4), px(9), px(4));
 		badge.setVisibility(GONE);
 		content.addView(badge);
@@ -266,8 +286,6 @@ final class MediaWidget extends HomeWidgetView {
 		content.addView(controls);
 
 		chip = chip(R.drawable.video_fullscreen, "", () -> chipAction.run());
-		chip.setBackground(HomeUi.pressable(ownBackgroundDark() ? 0x33FFFFFF : host.palette().chipRipple,
-				ownBackgroundDark() ? 0x44000000 : host.palette().chipFill, px(17)));
 		// The same colour as the chip beside it (its text and icon), not the card's dimmer icon role.
 		eye = iconButton(R.drawable.visibility, 36, ROLE_PRIMARY, R.string.action_cover_hide,
 				() -> me.aap.fermata.ui.view.CoverHide.toggle(act(), false));
@@ -285,11 +303,25 @@ final class MediaWidget extends HomeWidgetView {
 		artBusy = spinner(20);
 		artBusy.setVisibility(GONE);
 		content.addView(artBusy, lp(px(20), px(20), Gravity.TOP | Gravity.END, 0, px(12), px(12), 0));
+		applyLook();
 	}
 
 	@Override
 	protected void onStyleChanged() {
-		// Always white on its own picture; nothing to follow.
+		applyLook();
+	}
+
+	/** What follows the look: the wash is the card only in Cover; the badge, chip and scrim follow the card's darkness. */
+	private void applyLook() {
+		if (wash == null) return;
+		wash.setVisibility(ownBackground() ? VISIBLE : GONE);
+		boolean dark = lightText();
+		badge.setBackground(HomeUi.round(dark ? 0x88000000 : 0x26000000, px(10)));
+		chip.setBackground(HomeUi.pressable(dark ? 0x33FFFFFF : host.palette().chipRipple,
+				dark ? 0x44000000 : host.palette().chipFill, px(17)));
+		if (mode >= 0) scrim.setBackground(scrimFor(mode));
+		seek.invalidate();
+		invalidate();
 	}
 
 
@@ -487,10 +519,19 @@ final class MediaWidget extends HomeWidgetView {
 		updateModes();
 	}
 
+	@Nullable
 	private GradientDrawable scrimFor(int m) {
 		GradientDrawable g = new GradientDrawable();
 		// Black over a cover in a dark theme; white (the Music tab's whitish wash) in a light one.
-		int c = ownBackgroundDark() ? 0x000000 : 0xFFFFFF;
+		int c = lightText() ? 0x000000 : 0xFFFFFF;
+		if (!ownBackground()) {
+			// On a card of its own look the words sit on the card's fill, beside or under the cover; only where they
+			// lie over the cover (the medium card) does it darken (or lighten) under them.
+			if (m != MEDIUM) return null;
+			g.setOrientation(GradientDrawable.Orientation.TOP_BOTTOM);
+			g.setColors(new int[]{c, 0x11000000 | c, 0xAA000000 | c});
+			return g;
+		}
 		if (m == LARGE_WIDE) {
 			g.setOrientation(GradientDrawable.Orientation.LEFT_RIGHT);
 			g.setColors(new int[]{c, 0x33000000 | c, 0x88000000 | c});

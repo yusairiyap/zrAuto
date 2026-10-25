@@ -1049,6 +1049,11 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
   (`MenuStyle.panel`, glass with `GLASS_MENUS`, no shadow then); `HomeModal` (widget settings, Background) uses it too, it is on
   `main_activity`. What is drawn inside Home (the edit button and chip bar, a widget's inline settings panel) cannot blur the tab that holds it,
   so `ui/home/HomeGlassFill` blurs Home's background layers like the glass cards (with `GLASS_HOME`), redrawn when it moves.
+- **Now playing card has a Look**: its first choice is "Cover" (`MediaWidget.STYLE_COVER`, returned by `autoStyle()`, so "Same as Home" and
+  `setAllStyles` keep the blurred cover as the card, as before); Solid, Glass and Colour make it an ordinary card of that look with the wash
+  hidden and the cover dissolving into the fill or the glass (`applyLook`, `scrimFor` only darkens under words that lie over the cover).
+- **`ModalProgressPopup`** (the Spotify sync / import progress) is a modal card like the playlist picker: `MenuStyle.panel`, Music palette
+  colours, an accent disc with the icon, a close button (cancels while running), pills in the settings tile colours, rising into place.
 - **Menus open at the finger anywhere**: `MenuStyle.recordTouch` is fed from `MainActivity#dispatchTouchEvent` (not only the tab), and a menu
   tagged `R.id.menu_at_finger` (the nav bar's, `NavBarMediator#createOverlayMenu`) is placed like the context menu.
 - **Fullscreen video is never blurred** (YouTube or local): `BodyLayout` does not record in FRAME mode and `behindBars` returns false in
