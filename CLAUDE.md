@@ -1127,3 +1127,64 @@ translated strings across many locales, **ask the user before proceeding** rathe
 - **Comments panel** shows views/likes from the `next` response (`YtComments#views/likes`, best effort).
 - **Download picker** shows sizes per quality (`DownloadsAddon#estimateSizes`, one player request per video,
   up to 10 videos).
+
+## Open issue: blank screen on a clean install (not solved)
+
+Symptom, reported on a phone after clearing the app's data (and on a fresh install): the window shows the
+status bar and the bars but no content, the welcome wizard does not appear, and the Diagnostic log cannot be
+opened because the screen stays blank. An earlier build from the same branch started normally, so this is
+the start path of a fresh install, not every start.
+
+What was already changed, each with a note in its commit:
+- `PoiAddon` asked for the location permission in its constructor, before the wizard (fixed; `Voyageur` asks when used).
+- `FuelTracker.start` asks for location at start-up (now skipped while `WelcomeWizard.isDue`).
+- `HomeScreen#onViewCreated` makes the page invisible for the quiet start, and `onShown` decided whether to fade
+  it in by asking `isInitialFragmentShow()` again, which could be false by then (the page stayed at alpha 0).
+  The fade is now decided once, at view creation, and always runs (`STATE home quiet start` in the log if
+  Home was not shown yet).
+
+Not yet checked: whether the Music tab or Home is the first fragment on a fresh install, whether
+`HomeScreen#onShown` ever runs before the quiet-start timer, and whether the welcome wizard's overlay is
+attached (`MainActivityDelegate#onActivityCreate` posts `WelcomeWizard.maybeShow` 1200 ms later).
+
+For the next session: the in-app Diagnostic log is only readable once the UI works, so the first step is to
+make the start path write to a file that survives a blank screen (for example the existing `DiagnosticLog`
+writing to the app's external files directory), or to add `DiagnosticLog` lines in `MainActivity#onCreate`
+and the Home/Music `onViewCreated` paths. Ask the user for that file, not for adb.
+
+## Open issue: Back closes the YouTube comments, but the video pauses (not solved)
+
+Status: the page-side consume (the first hide returning early, and its time guard) was reverted, so Back with
+the comments open once again leaves fullscreen (and the column closes with it); the comment view's own Back
+handling (`YoutubeCommentsView.dismissOpen`, search first) is kept. The notes below describe the reverted
+attempt, and the pause question still stands for the plain fullscreen exit.
+
+Symptom (reported on the device, several times): with the comments open beside fullscreen video, the Back
+gesture closes the comment column as intended, but the video playback pauses (the frame stops, the audio
+may go on). Fullscreen is also left, which is what Back must not do.
+
+What the logs show (`VIDEO` lines, added for this):
+- The first hide of the custom view (`FermataChromeClient#onHideCustomView`, comments open) is consumed:
+  `YoutubeCommentsView.dismissOpen()` closes the column (search line first), and the method returns without
+  calling the custom-view callback, so the page stays fullscreen.
+- About 2.4 s later a second `onHideCustomView` arrives with the comments already closed
+  (`VIDEO hide custom view comments open=false ms since a back closed them=2370`). That one runs the real
+  exit (`exitFullScreenUi` -> `setFullScreen(false)` -> `VIDEO left fullscreen`), so the page leaves
+  fullscreen, which is the playback-pause the user sees.
+- Nothing in our code requests the second call, so it is most likely WebView/Chromium redelivering the back.
+  An 800 ms guard missed it; 3000 ms was added in `FermataChromeClient` (`BACK_REPEAT_MS`). That covers the
+  observed gap but also means a Back pressed within 3 s of closing the comments does not leave fullscreen.
+
+Not yet checked:
+- Whether the pause comes from the page's own exit (YouTube pauses when leaving its fullscreen element) or
+  from something of ours (`YoutubeFragment`/`MusicPlayer` reacting to the fullscreen change, the dock's
+  `watchDock`, the video's `setSplitShare` transform). Look at the `VIDEO` and `YT` lines around the pause.
+- Whether the redelivered back can be ignored more precisely: for example, by remembering the custom view
+  that was kept, and treating a hide for that same view as the echo of the consumed back only while the
+  page is still playing, instead of a time window.
+- Whether a consumed back should also re-run the page's own fullscreen request (the
+  `YoutubeFragment#enterVideoFullScreen` path), so the page stays fullscreen with its video playing.
+
+For the next session: ask for the Diagnostic log from one Back press with the comments open (the `BACK`,
+`VIDEO` and `YT` lines around it). Do not treat a longer time window as the fix; find the echo or the
+pause source.

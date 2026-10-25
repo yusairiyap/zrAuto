@@ -209,6 +209,8 @@ public enum Action {
 		a.exitVideoMode();
 		a.showFragment(R.id.home_fragment);
 	})),
+	// The YouTube video that plays, shared as its youtu.be link (see YtShare).
+	SHARE_VIDEO(R.string.action_share_video, a(me.aap.fermata.ytdl.YtShare::shareCurrent)),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

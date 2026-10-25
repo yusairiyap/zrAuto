@@ -102,18 +102,27 @@ public interface MainActivityPrefs
 	Pref<IntSupplier> HOME_BG_VERSION = Pref.i("HOME_BG_VERSION", 0);
 	Pref<IntSupplier> HOME_BG_DIM = Pref.i("HOME_BG_DIM", 35);
 	Pref<IntSupplier> HOME_BG_BLUR = Pref.i("HOME_BG_BLUR", 0);
+	/** How far the Home picture is zoomed in on its middle, 100 (fits the screen) to 300. */
+	Pref<IntSupplier> HOME_BG_ZOOM = Pref.i("HOME_BG_ZOOM", 100);
+	/** The now-playing cover behind Home is the largest picture YouTube has, not the list's smaller copy. */
+	Pref<BooleanSupplier> HOME_BG_HQ = Pref.b("HOME_BG_HQ", false);
 	/** 0 the picked picture, 1 the cover of what plays (blurred, fading from song to song). */
 	Pref<IntSupplier> HOME_BG_SOURCE = Pref.i("HOME_BG_SOURCE", 0);
 	/** 0 solid, 1 glass, 2 colour: what a widget set to "Same as Home" looks like. */
 	Pref<IntSupplier> HOME_CARD_STYLE = Pref.i("HOME_CARD_STYLE", 0);
+	/** How opaque the widgets' cards are, 0 (see-through) to 100. */
+	Pref<IntSupplier> HOME_CARD_ALPHA = Pref.i("HOME_CARD_ALPHA", 100);
 	/** 0 by the screen's shape, 1 scrolling down, 2 scrolling sideways. */
 	Pref<IntSupplier> HOME_ARRANGE = Pref.i("HOME_ARRANGE", 0);
+	/** Freeflow: a card let go lands on the grid's cells (phone screen). */
+	Pref<BooleanSupplier> HOME_SNAP_GRID = Pref.b("HOME_SNAP_GRID", false);
 	/** Widgets across (down, when arranged sideways); 0 to fit the screen. */
 	Pref<IntSupplier> HOME_COLUMNS = Pref.i("HOME_COLUMNS", 0);
 	Pref<IntSupplier> HOME_GAP = Pref.i("HOME_GAP", 10);
 	Pref<BooleanSupplier> HOME_GREETING = Pref.b("HOME_GREETING", true);
 	/** The car screen's own arrangement, spacing and greeting switch (its widgets are HOME_LAYOUT_AA). */
 	Pref<IntSupplier> HOME_ARRANGE_AA = Pref.i("HOME_ARRANGE_AA", 0);
+	Pref<BooleanSupplier> HOME_SNAP_GRID_AA = Pref.b("HOME_SNAP_GRID_AA", false);
 	Pref<IntSupplier> HOME_COLUMNS_AA = Pref.i("HOME_COLUMNS_AA", 0);
 	Pref<IntSupplier> HOME_GAP_AA = Pref.i("HOME_GAP_AA", 10);
 	Pref<BooleanSupplier> HOME_GREETING_AA = Pref.b("HOME_GREETING_AA", true);

@@ -827,6 +827,11 @@ public interface MediaLib {
 		/** As {@link #addItems(List)}; with {@code allowDuplicates} also the items already here. */
 		FutureSupplier<Void> addItems(List<PlayableItem> items, boolean allowDuplicates);
 
+		/** When items were last added to this playlist (epoch ms), 0 if never. */
+		default long getLastAddedTime() {
+			return 0;
+		}
+
 		/**
 		 * Renames this playlist. Fails with an {@link IllegalArgumentException} (carrying a
 		 * user-readable message) if the name is empty, contains '/' or is already used by another

@@ -184,6 +184,14 @@ public final class WelcomeWizard {
 		show(a);
 	}
 
+	/**
+	 * Whether the wizard is still to come: a fresh install that has not been through it. Anything
+	 * that would put a system dialog up at start-up (a permission) waits for it.
+	 */
+	public static boolean isDue(@NonNull MainActivityDelegate a) {
+		return !a.getPrefs().getBooleanPref(DONE) && !a.isCarActivity() && isFreshInstall(a.getContext());
+	}
+
 	/** Whether the app was installed just now and never updated since. */
 	private static boolean isFreshInstall(Context ctx) {
 		try {

@@ -101,6 +101,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 	private boolean built;
 	private long loadedAt;
 	private boolean loading;
+	/** The list is fading out for going back; its rows are swapped while it is hidden and fade in after. */
+	private boolean backing;
 	private final FermataServiceUiBinder.Listener playingListener = new FermataServiceUiBinder.Listener() {
 		@Override
 		public void onPlayableChanged(PlayableItem oldItem, PlayableItem newItem) {
@@ -186,6 +188,21 @@ abstract class LibraryWidget extends HomeWidgetView {
 
 	/** A row was dropped at a new place: {@code from} and {@code to} are positions in the rows as fetched. */
 	protected void onReordered(int from, int to) {
+	}
+
+	/** Whether playing from the card can bring a Queue widget stacked with it to the top (an option). */
+	protected boolean supportsQueueOnPlay() {
+		return false;
+	}
+
+	/** After something is played from the card: the Queue of its stack comes to the top, if the option says so. */
+	protected final void queueOnPlay() {
+		if (supportsQueueOnPlay() && optBool("queueOnPlay", false)) bringStackTo("queue");
+	}
+
+	/** Whether the card can show its rows one per line across its whole width (an option). */
+	protected boolean supportsFullWidth() {
+		return false;
 	}
 
 	/** Whether each row has a remove button on its left (the option "Remove button", on unless switched off). */
@@ -507,6 +524,10 @@ abstract class LibraryWidget extends HomeWidgetView {
 			l.add(HomeOption.sw("handle", ctx.getString(R.string.home_opt_row_handle), true));
 		}
 		if (supportsRemove()) l.add(HomeOption.sw("remove", ctx.getString(R.string.home_opt_row_remove), true));
+		if (supportsFullWidth()) l.add(HomeOption.sw("full", ctx.getString(R.string.home_opt_row_full), false));
+		if (supportsQueueOnPlay()) {
+			l.add(HomeOption.sw("queueOnPlay", ctx.getString(R.string.home_opt_queue_on_play), false));
+		}
 		l.addAll(moreOptions());
 		return l;
 	}
@@ -526,8 +547,29 @@ abstract class LibraryWidget extends HomeWidgetView {
 	private void backOut() {
 		if (drillSource == null) return;
 		drillSource = null;
-		showBack(false);
-		reset();
+		if (!host.animate() || !isShown() || !built) {
+			showBack(false);
+			reset();
+			return;
+		}
+		// The rows stay until the playlists are read (no placeholder in between). The list fades out, and only then the back
+		// chip leaves and the list goes back to its top, all while it is hidden: before, the list jumped while visible (the
+		// chip collapsing moved it, and it kept the folder's scroll).
+		backing = true;
+		focusRow = -1;
+		lastFocusKey = null;
+		listView.animate().cancel();
+		listView.animate().alpha(0f).setDuration(120).withEndAction(() -> {
+			backing = false;
+			showBack(false);
+			if (!loading) showRowsAgain();
+		}).start();
+		refresh(true);
+	}
+
+	private void showRowsAgain() {
+		listView.animate().cancel();
+		listView.animate().alpha(1f).setDuration(160).start();
 	}
 
 	private void showBack(boolean on) {
@@ -571,6 +613,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 			rows = r;
 			total = n;
 			render();
+			// Back to the playlists: once they are read and the list is hidden, it fades in.
+			if (!backing && (listView.getAlpha() < 1f)) showRowsAgain();
 		});
 	}
 
@@ -601,7 +645,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 		if (!built) return;
 		updateBusy();
 		boolean none = rows.isEmpty();
-		int newCols = (getCellsW() >= 4) ? 2 : 1;
+		// Wide cards split their rows into two columns, unless the card asks for full-width rows.
+		int newCols = ((getCellsW() >= 4) && !(supportsFullWidth() && optBool("full", false))) ? 2 : 1;
 		boolean art = optBool("art", true);
 		int rowMode = (menuOn() ? 1 : 0) | (reorderOn() ? 2 : 0) | (removeOn() ? 4 : 0) | (handleOn() ? 8 : 0);
 		// Drawn again only when something it shows changed: the rows blinked on every refresh.

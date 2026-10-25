@@ -32,6 +32,7 @@ import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.StringRes;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import me.aap.fermata.R;
@@ -54,6 +55,8 @@ public final class PlaylistPicker {
 		void onPick(Playlist playlist);
 	}
 
+	/** How many playlists the "Recently added" section lists. */
+	private static final int RECENT_MAX = 3;
 	private static PlaylistPicker open;
 
 	private final Context ctx;
@@ -142,20 +145,26 @@ public final class PlaylistPicker {
 		header.addView(title, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
 		root.addView(header, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
-		// The rows scroll when there are many.
+		// The rows scroll when there are many. The playlists items were last added to come first.
+		List<Playlist> recent = recentlyAdded(playlists);
+		List<Playlist> others = new ArrayList<>(playlists);
+		others.removeAll(recent);
+		boolean otherSection = create || !others.isEmpty();
 		LinearLayout rows = new LinearLayout(ctx);
 		rows.setOrientation(LinearLayout.VERTICAL);
+		if (!recent.isEmpty()) {
+			rows.addView(sectionLabel(R.string.playlist_recent), sectionParams());
+			for (Playlist pl : recent) rows.addView(playlistRow(pl, () -> pick(pl, cb)), rowParams());
+			if (otherSection) rows.addView(sectionLabel(R.string.playlist_all), sectionParams());
+		}
 		if (create) {
 			rows.addView(createRow(() -> {
 				dismissNow();
 				cb.onCreate();
 			}), rowParams());
 		}
-		for (Playlist pl : playlists) {
-			rows.addView(playlistRow(pl, () -> {
-				dismissNow();
-				cb.onPick(pl);
-			}), rowParams());
+		for (Playlist pl : others) {
+			rows.addView(playlistRow(pl, () -> pick(pl, cb)), rowParams());
 		}
 		ScrollView scroll = new ScrollView(ctx);
 		scroll.setVerticalScrollBarEnabled(false);
@@ -179,7 +188,8 @@ public final class PlaylistPicker {
 		card.setElevation(dp(12));
 		card.addView(root, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 
-		int rowsH = dp(10 + 26 + 10 + 46 + 32) + (playlists.size() + (create ? 1 : 0)) * dp(72);
+		int sectionsH = recent.isEmpty() ? 0 : dp(30) * (otherSection ? 2 : 1);
+		int rowsH = dp(10 + 26 + 10 + 46 + 32) + sectionsH + (playlists.size() + (create ? 1 : 0)) * dp(72);
 		FrameLayout.LayoutParams lp = OverlayCard.params(a, host, rowsH);
 		overlay.addView(card, lp);
 		host.addView(overlay, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
@@ -189,6 +199,31 @@ public final class PlaylistPicker {
 		card.animate().translationY(0f).alpha(1f).setDuration(260)
 				.setInterpolator(new DecelerateInterpolator(1.6f)).start();
 		overlay.animate().alpha(1f).setDuration(220).start();
+	}
+
+	private void pick(Playlist pl, Callback cb) {
+		dismissNow();
+		cb.onPick(pl);
+	}
+
+	/** The playlists items were last added to, newest first (at most {@link #RECENT_MAX}). */
+	private static List<Playlist> recentlyAdded(List<Playlist> playlists) {
+		List<Playlist> recent = new ArrayList<>();
+		for (Playlist pl : playlists) {
+			if (pl.getLastAddedTime() > 0) recent.add(pl);
+		}
+		recent.sort((a, b) -> Long.compare(b.getLastAddedTime(), a.getLastAddedTime()));
+		return (recent.size() > RECENT_MAX) ? new ArrayList<>(recent.subList(0, RECENT_MAX)) : recent;
+	}
+
+	private TextView sectionLabel(@StringRes int res) {
+		TextView t = text(ctx.getString(res), 12, secondary, true);
+		t.setPadding(dp(12), dp(8), dp(8), dp(4));
+		return t;
+	}
+
+	private static LinearLayout.LayoutParams sectionParams() {
+		return new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
 	}
 
 	private LinearLayout.LayoutParams rowParams() {

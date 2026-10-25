@@ -1,7 +1,5 @@
 package me.aap.fermata.addon.poi;
 
-import static android.Manifest.permission.ACCESS_FINE_LOCATION;
-
 import android.content.Context;
 
 import androidx.annotation.IdRes;
@@ -11,7 +9,6 @@ import androidx.annotation.NonNull;
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.addon.AddonInfo;
 import me.aap.fermata.addon.FermataAddon;
-import me.aap.fermata.ui.activity.MainActivity;
 import me.aap.utils.app.App;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.function.Supplier;
@@ -31,11 +28,6 @@ public class PoiAddon implements FermataAddon {
 	private static final AddonInfo info = FermataAddon.findAddonInfo(PoiAddon.class.getName());
 	private static final Pref<Supplier<String>> POI_DB_URL = Pref.s("POI_DB_URL", "");
 	private FutureSupplier<Voyageur> voyageur;
-
-	public PoiAddon() {
-		var main = MainActivity.getActiveInstance();
-		if (main != null) main.checkPermissions(ACCESS_FINE_LOCATION);
-	}
 
 	@IdRes
 	@Override

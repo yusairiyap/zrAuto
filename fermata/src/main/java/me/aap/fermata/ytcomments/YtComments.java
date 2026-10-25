@@ -173,6 +173,12 @@ public final class YtComments {
 	// ---------------------------------------------------------------------------------------------
 	// Reading
 
+	/** {views, likes} of {@code videoId} (each -1 where YouTube doesn't say): one request, no comments. */
+	public static long[] stats(String videoId) throws IOException {
+		JSONObject watch = call("next", body -> body.put("videoId", videoId));
+		return new long[]{views(watch), likes(watch)};
+	}
+
 	/** The first batch of {@code videoId}'s comments, top comments first. */
 	public static Page load(String videoId) throws IOException {
 		JSONObject watch = call("next", body -> body.put("videoId", videoId));

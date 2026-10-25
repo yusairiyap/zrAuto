@@ -1277,7 +1277,7 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 				if (ia != null) {
 					String label = v.getContext().getString(me.aap.fermata.R.string.youtube_search_in_page);
 					icon.setVisibility(VISIBLE);
-					icon.setImageResource(me.aap.fermata.R.drawable.more);
+					icon.setImageResource(me.aap.fermata.R.drawable.search);
 					icon.setContentDescription(label);
 					TooltipCompat.setTooltipText(icon, label);
 					icon.setOnClickListener(x -> ia.run());

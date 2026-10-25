@@ -59,6 +59,12 @@ public final class HomeArt {
 	 */
 	public static void cover(MainActivityDelegate a, PlayableItem pi, MediaMetadataCompat md,
 													 BooleanSupplier wanted, Consumer<Bitmap> deliver) {
+		cover(a, pi, md, false, wanted, deliver);
+	}
+
+	/** {@code hq}: the largest picture of the song, bypassing the list copies (the Home background's option). */
+	public static void cover(MainActivityDelegate a, PlayableItem pi, MediaMetadataCompat md, boolean hq,
+													 BooleanSupplier wanted, Consumer<Bitmap> deliver) {
 		// Covers on a black canvas (a square cover in a 16:9 picture) lose the black, so they fill the card.
 		Consumer<Bitmap> out = bm -> deliver.accept(trimBars(bm));
 		String uri = (pi instanceof MusicTrackItem t) ? t.getArtUri() : null;
@@ -74,13 +80,13 @@ public final class HomeArt {
 			}
 		}
 		if (uri != null) {
-			fetch(a, uri, wanted, out);
+			fetch(a, hq ? largest(uri) : uri, hq, wanted, out);
 			return;
 		}
 		pi.getIconUri().main().onSuccess(u -> {
 			if (!wanted.getAsBoolean()) return;
 			if (u == null) out.accept(null);
-			else fetch(a, u.toString(), wanted, out);
+			else fetch(a, hq ? largest(u.toString()) : u.toString(), hq, wanted, out);
 		});
 	}
 
@@ -155,13 +161,20 @@ public final class HomeArt {
 		return true;
 	}
 
-	private static void fetch(MainActivityDelegate a, String uri, BooleanSupplier wanted, Consumer<Bitmap> out) {
-		Bitmap hit = HomeImages.cached(uri);
+	/** A YouTube thumbnail address with the largest picture of the video (1280x720 where YouTube has it). */
+	private static String largest(String uri) {
+		if (!uri.contains("ytimg.com/vi/") && !uri.contains("img.youtube.com/vi/")) return uri;
+		return uri.replaceAll("/(default|0|1|2|3|hqdefault|mqdefault|sddefault)\\.jpg", "/maxresdefault.jpg");
+	}
+
+	private static void fetch(MainActivityDelegate a, String uri, boolean hq, BooleanSupplier wanted,
+														Consumer<Bitmap> out) {
+		Bitmap hit = hq ? null : HomeImages.cached(uri);
 		if (hit != null) {
 			out.accept(hit);
 			return;
 		}
-		a.getLib().getBitmap(uri).main().onCompletion((bm, err) -> {
+		(hq ? a.getLib().getBitmap(uri, false, false) : a.getLib().getBitmap(uri)).main().onCompletion((bm, err) -> {
 			if (!wanted.getAsBoolean()) return;
 			String vid = (bm == null) ? YtDownloads.thumbnailVideoId(uri) : null;
 			if (vid != null) {

@@ -31,6 +31,11 @@ final class QueueWidget extends LibraryWidget {
 	private MusicQueue watched;
 	private final MusicQueue.Listener queueListener = q -> post(() -> refresh(true));
 
+	@Override
+	protected boolean supportsFullWidth() {
+		return true;
+	}
+
 	QueueWidget(HomeHost host, HomeWidgetType type) {
 		super(host, type);
 	}

@@ -236,8 +236,14 @@ public class HomeSettingsFragment extends ReorderListFragment {
 		addChoiceRow(box, R.string.home_pref_style, R.string.home_pref_style_sub,
 				new int[]{R.string.home_style_solid, R.string.home_style_glass, R.string.home_style_colour},
 				() -> HomeScreen.styleShown(p), i -> HomeScreen.setAllStyles(p, i));
+		addValueSliderRow(box, R.string.home_pref_card_alpha, R.string.home_pref_card_alpha_sub, 0, 100,
+				() -> p.getIntPref(MainActivityPrefs.HOME_CARD_ALPHA), v -> p.applyIntPref(MainActivityPrefs.HOME_CARD_ALPHA, v),
+				v -> getString(R.string.power_set_percent, v), null);
 
 		section(box, R.string.home_sec_background);
+		addSwitchRow(box, R.string.home_pref_bg_hq, R.string.home_pref_bg_hq_sub,
+				() -> p.getBooleanPref(MainActivityPrefs.HOME_BG_HQ),
+				on -> p.applyBooleanPref(MainActivityPrefs.HOME_BG_HQ, on), null);
 		addChoiceRow(box, R.string.home_pref_bg_source, R.string.home_pref_bg_source_sub,
 				new int[]{R.string.home_bg_source_picture, R.string.home_bg_source_cover},
 				() -> p.getIntPref(MainActivityPrefs.HOME_BG_SOURCE),
@@ -249,9 +255,12 @@ public class HomeSettingsFragment extends ReorderListFragment {
 		addValueSliderRow(box, R.string.home_bg_dim, R.string.home_bg_dim_sub, 0, 80,
 				() -> p.getIntPref(MainActivityPrefs.HOME_BG_DIM), v -> p.applyIntPref(MainActivityPrefs.HOME_BG_DIM, v),
 				v -> getString(R.string.power_set_percent, v), null);
+		addValueSliderRow(box, R.string.home_bg_zoom, R.string.home_bg_zoom_sub, 100, 300,
+				() -> p.getIntPref(MainActivityPrefs.HOME_BG_ZOOM), v -> p.applyIntPref(MainActivityPrefs.HOME_BG_ZOOM, v),
+				v -> getString(R.string.power_set_percent, v), null);
 		addValueSliderRow(box, R.string.home_bg_blur, R.string.home_bg_blur_sub, 0, 100,
 				() -> p.getIntPref(MainActivityPrefs.HOME_BG_BLUR), v -> p.applyIntPref(MainActivityPrefs.HOME_BG_BLUR, v),
-				v -> getString(R.string.power_set_percent, v), null);
+				v -> (v == 0) ? getString(R.string.home_bg_blur_off) : getString(R.string.power_set_percent, v), null);
 
 		section(box, R.string.home_sec_greeting_words);
 		addTextRow(box, R.string.home_pref_greet_morning, R.string.home_greet_morning, MainActivityPrefs.HOME_GREET_MORNING);
@@ -274,8 +283,14 @@ public class HomeSettingsFragment extends ReorderListFragment {
 
 		section(box, R.string.home_sec_layout);
 		addChoiceRow(box, R.string.home_pref_arrange, R.string.home_pref_arrange_sub,
-				new int[]{R.string.home_arrange_auto, R.string.home_arrange_down, R.string.home_arrange_side},
+				new int[]{R.string.home_arrange_auto, R.string.home_arrange_down, R.string.home_arrange_side,
+						R.string.home_arrange_free},
 				() -> p.getIntPref(arrange), i -> p.applyIntPref(arrange, i));
+		// Only for Freeflow (the row is greyed out in the other layouts).
+		Pref<BooleanSupplier> snap = aa ? MainActivityPrefs.HOME_SNAP_GRID_AA : MainActivityPrefs.HOME_SNAP_GRID;
+		addSwitchRow(box, R.string.home_pref_snap, R.string.home_pref_snap_sub,
+				() -> p.getBooleanPref(snap), on -> p.applyBooleanPref(snap, on),
+				() -> p.getIntPref(arrange) == 3);
 		addValueSliderRow(box, R.string.home_pref_columns, R.string.home_pref_columns_sub, 0, 8,
 				() -> p.getIntPref(columns), v -> p.applyIntPref(columns, v),
 				v -> (v == 0) ? getString(R.string.home_opt_auto) : String.valueOf(v), null);

@@ -149,6 +149,17 @@ final class HomeStackView extends FrameLayout {
 		return d;
 	}
 
+	/** Turns the stack to its widget of the type {@code key}; false if it has none. */
+	boolean showType(String key) {
+		for (int i = 0; i < widgets.size(); i++) {
+			if (widgets.get(i).type.key.equals(key)) {
+				setTop(i, true);
+				return true;
+			}
+		}
+		return false;
+	}
+
 	void add(HomeWidgetView w) {
 		// Under the dots and buttons, which are the last children.
 		addView(w, widgets.size(), new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
@@ -258,7 +269,12 @@ final class HomeStackView extends FrameLayout {
 
 	private void rotateStep() {
 		// Only a stack that is on screen and not being used: a finger on it, edit mode or a swipe in progress wait a round.
-		if (isShown() && !cb.isEditing() && !dragging && !armed && (settle == null) && (widgets.size() > 1)) goBy(1, true);
+		// A pinned widget holds the whole stack: nothing turns it by itself while one of its widgets is pinned.
+		boolean pinned = false;
+		for (HomeWidgetView w : widgets) pinned |= w.optBool("pin", false);
+		if (!pinned && isShown() && !cb.isEditing() && !dragging && !armed && (settle == null) && (widgets.size() > 1)) {
+			goBy(1, true);
+		}
 		scheduleRotate();
 	}
 

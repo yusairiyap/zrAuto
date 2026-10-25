@@ -380,8 +380,9 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			grid.playEntrance();
 			greeting.animate().alpha(1f).setDuration(380).setInterpolator(new DecelerateInterpolator(1.8f)).start();
 		};
-		// Only on the very first screen: a tab restored hidden and shown later fades in with the tab switch as usual.
-		boolean first = quiet && a.isInitialFragmentShow();
+		// Decided when the view was made (see onViewCreated): it set the page invisible then, so it must fade in
+		// now. Asking isInitialFragmentShow() here instead left the page blank whenever this ran after the switch.
+		boolean first = quiet;
 		quiet = false;
 		if (first) {
 			if (!animate()) {
@@ -391,9 +392,10 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 				// The first moments are a burst of layout (bars, insets, the widgets); the page fades in once it has
 				// settled and its widgets rise with it, as the Music tab does.
 				root.postDelayed(() -> {
-					if (!shown) return;
+					// Always faded in: if Home is not shown yet, the page must not stay blank (the bars still draw).
+					if (!shown) DiagnosticLog.log("STATE", "home quiet start", "not shown yet, faded in anyway");
 					root.animate().alpha(1f).setDuration(350).start();
-					enter.run();
+					if (shown) enter.run();
 				}, QUIET_MS);
 			}
 		} else {
@@ -528,6 +530,11 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	}
 
 	@Override
+	public int cardAlpha() {
+		return Math.max(0, Math.min(100, prefs.getIntPref(MainActivityPrefs.HOME_CARD_ALPHA)));
+	}
+
+	@Override
 	public int stackRotateSeconds() {
 		int s = prefs.getIntPref(MainActivityPrefs.HOME_STACK_ROTATE);
 		return (s <= 0) ? 0 : Math.max(3, s);
@@ -568,10 +575,13 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		}
 		if (changed.contains(MainActivityPrefs.HOME_ARRANGE) || changed.contains(MainActivityPrefs.HOME_COLUMNS) ||
 				changed.contains(MainActivityPrefs.HOME_GAP) || changed.contains(MainActivityPrefs.HOME_ARRANGE_AA) ||
-				changed.contains(MainActivityPrefs.HOME_COLUMNS_AA) || changed.contains(MainActivityPrefs.HOME_GAP_AA)) {
+				changed.contains(MainActivityPrefs.HOME_COLUMNS_AA) || changed.contains(MainActivityPrefs.HOME_GAP_AA) ||
+				changed.contains(MainActivityPrefs.HOME_SNAP_GRID) || changed.contains(MainActivityPrefs.HOME_SNAP_GRID_AA)) {
 			applyArrangement();
 		}
-		if (changed.contains(MainActivityPrefs.HOME_CARD_STYLE)) grid.restyle();
+		if (changed.contains(MainActivityPrefs.HOME_CARD_STYLE) || changed.contains(MainActivityPrefs.HOME_CARD_ALPHA)) {
+			grid.restyle();
+		}
 		if (changed.contains(MainActivityPrefs.HOME_STACK_ROTATE)) grid.resyncRotation();
 		if (changed.contains(MainActivityPrefs.HOME_EDIT_BUTTON) || changed.contains(MainActivityPrefs.HOME_EDIT_BUTTON_AA)) {
 			applyEditUi(true);
@@ -589,6 +599,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			applyTopInfo();
 		}
 		if (changed.contains(MainActivityPrefs.HOME_BG_DIM)) bg.setDim(prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM));
+		if (changed.contains(MainActivityPrefs.HOME_BG_ZOOM)) bg.setZoom(prefs.getIntPref(MainActivityPrefs.HOME_BG_ZOOM));
 		if (changed.contains(MainActivityPrefs.HOME_BG_SOURCE)) {
 			applyBackgroundSource();
 		} else if (followsCover()) {
@@ -741,7 +752,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		float d = ctx.getResources().getDisplayMetrics().density;
 		int mode = prefs.getIntPref(car() ? MainActivityPrefs.HOME_ARRANGE_AA : MainActivityPrefs.HOME_ARRANGE);
 		boolean landscape = w > h;
-		boolean down = (mode == 1) || ((mode == 0) && !(landscape && ((h / d) < 600)));
+		// Freeflow (3) scrolls down too, its cards keep the places they were dropped at.
+		boolean down = (mode == 1) || (mode == 3) || ((mode == 0) && !(landscape && ((h / d) < 600)));
 		int count = prefs.getIntPref(car() ? MainActivityPrefs.HOME_COLUMNS_AA : MainActivityPrefs.HOME_COLUMNS);
 		if (count <= 0) {
 			count = down ? Math.max(4, Math.min(8, (int) (w / d / 90f))) : Math.max(2, Math.min(5, (int) (h / d / 105f)));
@@ -756,6 +768,18 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		else grid.setPadding(side, HomeUi.dp(ctx, 58), side, HomeUi.dp(ctx, 8));
 		grid.setViewportWidth(vertical ? 0 : w, vertical ? Float.NaN : sidewaysCentre());
 		grid.setArrangement(vertical, count, gap);
+		grid.setFreeform(mode == 3);
+		// Each arrangement keeps its own sizes, places and order (see HomeModel#switchLayout).
+		// Portrait and landscape keep their own arrangements, each with its own sizes, places and order.
+		String arrangement = !down ? "side" : (mode == 3 ? "free" : "down");
+		// The cards of another arrangement are made again from the model, not reused (their views kept the old cards).
+		String key = arrangement + (landscape ? "-l" : "-p");
+		// The phone's arrangements keep their own background (blur, zoom, dim, quality, source); the car screen shares it.
+		boolean swapping = !car() && !key.equals(model.layoutKey());
+		if (swapping) model.rememberBackground();
+		if (model.switchLayout(key)) grid.rebuild();
+		if (swapping) model.restoreBackground();
+		grid.setSnap(prefs.getBooleanPref(car() ? MainActivityPrefs.HOME_SNAP_GRID_AA : MainActivityPrefs.HOME_SNAP_GRID));
 		applyHeaderRoom();
 	}
 
@@ -1137,10 +1161,12 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	// Background and the status bar
 
 	private void loadBackground(boolean animate) {
+		// Before the early return: the cover background is drawn by the same view, so it needs them too.
+		bg.setDim(prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM));
+		bg.setZoom(prefs.getIntPref(MainActivityPrefs.HOME_BG_ZOOM));
 		if (followsCover()) return;
 		int version = prefs.getIntPref(MainActivityPrefs.HOME_BG_VERSION);
 		int blur = prefs.getIntPref(MainActivityPrefs.HOME_BG_BLUR);
-		bg.setDim(prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM));
 		if ((version == bgVersion) && (blur == bgBlur)) return;
 		bgVersion = version;
 		bgBlur = blur;

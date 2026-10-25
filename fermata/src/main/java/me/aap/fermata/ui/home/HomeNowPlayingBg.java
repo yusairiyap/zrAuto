@@ -4,6 +4,7 @@ import android.graphics.Bitmap;
 
 import androidx.annotation.Nullable;
 
+import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -81,12 +82,12 @@ final class HomeNowPlayingBg {
 		if (!running) return;
 		PlayableItem pi = HomeArt.displayItem(a);
 		// Back on Home with the same song and blur: the picture is already there, it must not fade over itself.
-		if (HomeArt.same(pi, shown) && (shownBlur == Math.max(blur, 40)) && (pi != null)) {
+		if (HomeArt.same(pi, shown) && (shownBlur == blur) && (pi != null)) {
 			shown = pi;
 			return;
 		}
 		shown = pi;
-		shownBlur = Math.max(blur, 40);
+		shownBlur = blur;
 		int gen = ++generation;
 		if (pi == null) {
 			target.onCover(null, 0);
@@ -94,22 +95,22 @@ final class HomeNowPlayingBg {
 		}
 		pi.getMediaData().main().onCompletion((md, err) -> {
 			if (gen != generation) return;
-			HomeArt.cover(a, pi, md, () -> gen == generation, bm -> {
+			HomeArt.cover(a, pi, md, a.getPrefs().getBooleanPref(MainActivityPrefs.HOME_BG_HQ), () -> gen == generation, bm -> {
 				if (gen != generation) return;
 				if (bm == null) {
 					target.onCover(null, 0);
 					return;
 				}
 				final int b = blur;
-				if ((bm == shownCover) && (shownCoverBlur == Math.max(b, 40))) return;
+				if ((bm == shownCover) && (shownCoverBlur == b)) return;
 				App.get().getExecutor().submitTask(() -> {
-					Bitmap soft = HomeBlur.blur(bm, Math.max(b, 40));
+					Bitmap soft = HomeBlur.blur(bm, b);
 					Bitmap use = (soft != null) ? soft : bm;
 					return new Object[]{use, HomeBackground.topColor(use)};
 				}).main().onSuccess(r -> {
 					if (gen != generation) return;
 					shownCover = bm;
-					shownCoverBlur = Math.max(b, 40);
+					shownCoverBlur = b;
 					target.onCover((Bitmap) r[0], (Integer) r[1]);
 				});
 			});

@@ -3,6 +3,7 @@ package me.aap.fermata.media.pref;
 import androidx.annotation.NonNull;
 
 import me.aap.utils.function.BooleanSupplier;
+import me.aap.utils.function.LongSupplier;
 import me.aap.utils.function.Supplier;
 
 import me.aap.utils.pref.PreferenceStore;
@@ -13,6 +14,8 @@ import me.aap.utils.pref.PreferenceStore;
 public interface PlaylistPrefs extends BrowsableItemPrefs {
 	Pref<Supplier<String>> PLAYLIST_NAME = Pref.s("NAME", "");
 	Pref<Supplier<String[]>> PLAYLIST_ITEMS = Pref.sa("ITEMS", new String[0]);
+	/** When items were last added to the playlist (epoch ms), 0 if never. */
+	Pref<LongSupplier> PLAYLIST_ADDED_AT = Pref.l("ADDED_AT", 0).withInheritance(false);
 
 	@NonNull
 	PreferenceStore getPlaylistPreferenceStore();
@@ -31,6 +34,14 @@ public interface PlaylistPrefs extends BrowsableItemPrefs {
 
 	default void setPlaylistItemsPref(String[] items) {
 		getPlaylistPreferenceStore().applyStringArrayPref(PLAYLIST_ITEMS, items);
+	}
+
+	default long getPlaylistAddedAtPref() {
+		return getPlaylistPreferenceStore().getLongPref(PLAYLIST_ADDED_AT);
+	}
+
+	default void setPlaylistAddedAtPref(long time) {
+		getPlaylistPreferenceStore().applyLongPref(PLAYLIST_ADDED_AT, time);
 	}
 
 	@Override

@@ -8,7 +8,10 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.utils.app.App;
@@ -41,6 +44,9 @@ public final class HomeModel {
 		public int w;
 		public int h;
 		public int top;
+		/** Freeflow: where the card was put, in dp from the page's top left; -1 until it has a place. */
+		public float x = -1;
+		public float y = -1;
 		public final List<Item> items = new ArrayList<>();
 
 		Cell(long id, int w, int h) {
@@ -65,6 +71,9 @@ public final class HomeModel {
 	private final MainActivityPrefs prefs;
 	private final boolean car;
 	private final List<Cell> cells = new ArrayList<>();
+	/** The arrangement the cells are laid out in now ("down", "side" or "free"); null until one is shown. */
+	@Nullable
+	private String layout;
 	private long nextCell = 1;
 	private long nextItem = 1;
 	/** What was last written, to tell our own saves from a reset made elsewhere. */
@@ -101,8 +110,15 @@ public final class HomeModel {
 		return true;
 	}
 
+	/** Every arrangement's own cards (the one on screen is {@link #cells}; the others as they were last shown). */
+	private final Map<String, JSONArray> arrangements = new HashMap<>();
+	/** Each arrangement's background (dim, blur, zoom, quality, source) as it was when it was last left. */
+	private final Map<String, JSONObject> backgrounds = new HashMap<>();
+
 	private void load() {
 		cells.clear();
+		arrangements.clear();
+		backgrounds.clear();
 		String json = prefs.getStringPref(layoutPref());
 		saved = json;
 		if (json == null) {
@@ -111,29 +127,59 @@ public final class HomeModel {
 		}
 		try {
 			JSONObject root = new JSONObject(json);
-			JSONArray arr = root.getJSONArray("cells");
-			for (int i = 0; i < arr.length(); i++) {
-				JSONObject o = arr.getJSONObject(i);
-				Cell c = new Cell(o.getLong("id"), o.getInt("w"), o.getInt("h"));
-				c.top = o.optInt("top", 0);
-				JSONArray items = o.getJSONArray("items");
-				for (int j = 0; j < items.length(); j++) {
-					JSONObject io = items.getJSONObject(j);
-					String type = io.getString("type");
-					if (HomeWidgets.find(type) == null) continue; // A widget this build doesn't have.
-					JSONObject opts = io.optJSONObject("o");
-					c.items.add(new Item(io.getString("id"), type, (opts != null) ? opts : new JSONObject()));
+			layout = root.optString("layout", null);
+			nextCell = Math.max(nextCell, root.optLong("next", 1));
+			JSONObject all = root.optJSONObject("arrangements");
+			if (all != null) {
+				Iterator<String> keys = all.keys();
+				while (keys.hasNext()) {
+					String key = keys.next();
+					arrangements.put(key, all.getJSONArray(key));
 				}
-				if (c.items.isEmpty()) continue;
-				c.top = Math.max(0, Math.min(c.top, c.items.size() - 1));
-				cells.add(c);
-				nextCell = Math.max(nextCell, c.id + 1);
 			}
+			JSONObject bgs = root.optJSONObject("backgrounds");
+			if (bgs != null) {
+				Iterator<String> keys = bgs.keys();
+				while (keys.hasNext()) {
+					String key = keys.next();
+					backgrounds.put(key, bgs.getJSONObject(key));
+				}
+			}
+			JSONArray arr = ((layout != null) && arrangements.containsKey(layout)) ?
+					arrangements.get(layout) : root.getJSONArray("cells");
+			cells.addAll(parseCells(arr));
 		} catch (JSONException ex) {
 			Log.e(ex, "Failed to read the Home layout");
 			cells.clear();
+			arrangements.clear();
+			backgrounds.clear();
 			defaults();
 		}
+	}
+
+	/** The cards written by {@link #cellsJson()}; a card without a widget is left out. */
+	private List<Cell> parseCells(JSONArray arr) throws JSONException {
+		List<Cell> out = new ArrayList<>();
+		for (int i = 0; i < arr.length(); i++) {
+			JSONObject o = arr.getJSONObject(i);
+			Cell c = new Cell(o.getLong("id"), o.getInt("w"), o.getInt("h"));
+			c.top = o.optInt("top", 0);
+			c.x = (float) o.optDouble("x", -1);
+			c.y = (float) o.optDouble("y", -1);
+			JSONArray items = o.getJSONArray("items");
+			for (int j = 0; j < items.length(); j++) {
+				JSONObject io = items.getJSONObject(j);
+				String type = io.getString("type");
+				if (HomeWidgets.find(type) == null) continue; // A widget this build doesn't have.
+				JSONObject opts = io.optJSONObject("o");
+				c.items.add(new Item(io.getString("id"), type, (opts != null) ? opts : new JSONObject()));
+			}
+			if (c.items.isEmpty()) continue;
+			c.top = Math.max(0, Math.min(c.top, c.items.size() - 1));
+			out.add(c);
+			nextCell = Math.max(nextCell, c.id + 1);
+		}
+		return out;
 	}
 
 	private void defaults() {
@@ -246,16 +292,76 @@ public final class HomeModel {
 		App.get().getHandler().postDelayed(saveNow, SAVE_DELAY_MS);
 	}
 
-	public void save() {
-		App.get().getHandler().removeCallbacks(saveNow);
+	/** The arrangement on screen ("down-p" and so on), or null until one is shown. */
+	@Nullable
+	public String layoutKey() {
+		return layout;
+	}
+
+	/** Remembers the background set now (Settings > Home) as the one of the arrangement on screen. */
+	public void rememberBackground() {
+		if (layout == null) return;
+		JSONObject bg = new JSONObject();
 		try {
-			JSONArray arr = new JSONArray();
+			bg.put("dim", prefs.getIntPref(MainActivityPrefs.HOME_BG_DIM));
+			bg.put("blur", prefs.getIntPref(MainActivityPrefs.HOME_BG_BLUR));
+			bg.put("zoom", prefs.getIntPref(MainActivityPrefs.HOME_BG_ZOOM));
+			bg.put("hq", prefs.getBooleanPref(MainActivityPrefs.HOME_BG_HQ));
+			bg.put("source", prefs.getIntPref(MainActivityPrefs.HOME_BG_SOURCE));
+		} catch (JSONException ex) {
+			Log.e(ex, "Failed to read the Home background");
+			return;
+		}
+		backgrounds.put(layout, bg);
+		saveLater();
+	}
+
+	/** Sets the background the arrangement on screen had when it was last left; one never left keeps the current. */
+	public void restoreBackground() {
+		JSONObject bg = (layout == null) ? null : backgrounds.get(layout);
+		if (bg == null) return;
+		prefs.applyIntPref(MainActivityPrefs.HOME_BG_DIM, bg.optInt("dim", 35));
+		prefs.applyIntPref(MainActivityPrefs.HOME_BG_BLUR, bg.optInt("blur", 0));
+		prefs.applyIntPref(MainActivityPrefs.HOME_BG_ZOOM, bg.optInt("zoom", 100));
+		prefs.applyBooleanPref(MainActivityPrefs.HOME_BG_HQ, bg.optBoolean("hq", false));
+		prefs.applyIntPref(MainActivityPrefs.HOME_BG_SOURCE, bg.optInt("source", 0));
+	}
+
+	/**
+	 * Shows the arrangement {@code key} (its own cards, sizes, places, stacks and widget settings). One not shown
+	 * before starts as the one on screen: a copy, so the two then change apart.
+	 * @return whether it changed
+	 */
+	public boolean switchLayout(String key) {
+		if (key.equals(layout)) return false;
+		JSONArray now = cellsJson();
+		if (layout != null) arrangements.put(layout, now);
+		JSONArray next = arrangements.containsKey(key) ? arrangements.get(key) : now;
+		try {
+			List<Cell> parsed = parseCells(next);
+			layout = key;
+			cells.clear();
+			cells.addAll(parsed);
+		} catch (JSONException ex) {
+			Log.e(ex, "Failed to read the Home arrangement " + key);
+		}
+		return true;
+	}
+
+	/** The cards on screen, as they are written to the layout. */
+	private JSONArray cellsJson() {
+		JSONArray arr = new JSONArray();
+		try {
 			for (Cell c : cells) {
 				JSONObject o = new JSONObject();
 				o.put("id", c.id);
 				o.put("w", c.w);
 				o.put("h", c.h);
 				o.put("top", c.top);
+				if (c.x >= 0) {
+					o.put("x", (double) c.x);
+					o.put("y", (double) c.y);
+				}
 				JSONArray items = new JSONArray();
 				for (Item it : c.items) {
 					JSONObject io = new JSONObject();
@@ -267,9 +373,28 @@ public final class HomeModel {
 				o.put("items", items);
 				arr.put(o);
 			}
+		} catch (JSONException ex) {
+			Log.e(ex, "Failed to write the Home layout");
+		}
+		return arr;
+	}
+
+	public void save() {
+		App.get().getHandler().removeCallbacks(saveNow);
+		try {
+			JSONArray now = cellsJson();
+			if (layout != null) arrangements.put(layout, now);
+			JSONObject all = new JSONObject();
+			for (Map.Entry<String, JSONArray> e : arrangements.entrySet()) all.put(e.getKey(), e.getValue());
+			JSONObject bgs = new JSONObject();
+			for (Map.Entry<String, JSONObject> e : backgrounds.entrySet()) bgs.put(e.getKey(), e.getValue());
 			JSONObject root = new JSONObject();
-			root.put("v", 1);
-			root.put("cells", arr);
+			root.put("v", 2);
+			root.put("next", nextCell);
+			if (layout != null) root.put("layout", layout);
+			root.put("cells", now);
+			root.put("arrangements", all);
+			root.put("backgrounds", bgs);
 			saved = root.toString();
 			prefs.applyStringPref(layoutPref(), saved);
 		} catch (JSONException ex) {

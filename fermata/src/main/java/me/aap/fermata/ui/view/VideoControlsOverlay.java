@@ -11,6 +11,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.graphics.drawable.StateListDrawable;
+import android.text.SpannableStringBuilder;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -30,6 +31,7 @@ import me.aap.fermata.R;
 import me.aap.fermata.media.engine.BufferingIndicator;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ytcomments.YtStats;
 
 /**
  * The YouTube-like controls over fullscreen video, local and YouTube alike: a dim over the picture,
@@ -55,6 +57,9 @@ public class VideoControlsOverlay extends FrameLayout {
 	private final LinearLayout titleBar;
 	private final TextView title;
 	private final TextView subtitle;
+	private CharSequence channel;
+	private long statViews = -1;
+	private long statLikes = -1;
 	private final LinearLayout center;
 	private final ImageView prev;
 	private boolean prevAvailable = true;
@@ -349,8 +354,25 @@ public class VideoControlsOverlay extends FrameLayout {
 
 	public void setTitle(@Nullable CharSequence t, @Nullable CharSequence sub) {
 		title.setText(t);
-		subtitle.setText(sub);
-		subtitle.setVisibility(TextUtils.isEmpty(sub) ? GONE : VISIBLE);
+		channel = sub;
+		refreshSubtitle();
+	}
+
+	/** The YouTube video's views and likes (-1 where unknown), shown after the channel name. */
+	public void setStats(long views, long likes) {
+		if ((views == statViews) && (likes == statLikes)) return;
+		statViews = views;
+		statLikes = likes;
+		refreshSubtitle();
+	}
+
+	private void refreshSubtitle() {
+		SpannableStringBuilder sb = new SpannableStringBuilder();
+		if (!TextUtils.isEmpty(channel)) sb.append(channel);
+		YtStats.appendStats(sb, getContext(), subtitle.getTextSize(), subtitle.getCurrentTextColor(),
+				statViews, statLikes);
+		subtitle.setText(sb);
+		subtitle.setVisibility((sb.length() == 0) ? GONE : VISIBLE);
 	}
 
 	/**

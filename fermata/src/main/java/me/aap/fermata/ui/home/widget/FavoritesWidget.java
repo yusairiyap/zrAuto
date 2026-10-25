@@ -20,6 +20,16 @@ final class FavoritesWidget extends LibraryWidget {
 	}
 
 	@Override
+	protected boolean supportsQueueOnPlay() {
+		return true;
+	}
+
+	@Override
+	protected boolean supportsFullWidth() {
+		return true;
+	}
+
+	@Override
 	protected int tabId() {
 		return R.id.favorites_fragment;
 	}
@@ -69,7 +79,10 @@ final class FavoritesWidget extends LibraryWidget {
 				PlayableItem pi = l.get(i);
 				boolean now = (at < 0) && playing.contains(pi.getOrigId());
 				if (now) at = i;
-				rows.add(new Row(pi.getName(), null, pi, () -> HomePlay.tapped(a, pi), null, null, now));
+				rows.add(new Row(pi.getName(), null, pi, () -> {
+					HomePlay.tapped(a, pi);
+					queueOnPlay();
+				}, null, null, now));
 			}
 			focusRow = at;
 			done.done(rows, items.size());

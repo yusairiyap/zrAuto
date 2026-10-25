@@ -17,6 +17,7 @@
     <string name="home_options">Options</string>
     <string name="home_resize">Resize</string>
     <string name="home_unstack">Take out of the stack</string>
+    <string name="home_stack_pin">Keep this stack still</string>
     <string name="home_stacked">Stacked, %1$d widgets. Swipe it sideways to switch.</string>
     <string name="home_stack_prev">Previous widget</string>
     <string name="home_stack_next">Next widget</string>
@@ -34,6 +35,9 @@
     <string name="home_bg_remove">Remove</string>
     <string name="home_bg_dim">Darken</string>
     <string name="home_bg_blur">Blur</string>
+    <string name="home_bg_zoom">Zoom</string>
+    <string name="home_bg_zoom_sub">How far the picture is zoomed in</string>
+    <string name="home_bg_blur_off">Off</string>
     <string name="home_bg_set">Background set</string>
     <string name="home_bg_failed">Could not use that picture: %1$s</string>
 
@@ -188,6 +192,9 @@
     <string name="home_arrange_auto">By the screen\'s shape</string>
     <string name="home_arrange_down">Scroll down</string>
     <string name="home_arrange_side">Scroll sideways</string>
+    <string name="home_arrange_free">Freeflow</string>
+    <string name="home_pref_snap">Snap to grid</string>
+    <string name="home_pref_snap_sub">Freeflow: a card dropped lands on the nearest cell</string>
     <string name="home_pref_columns">Widgets across</string>
     <string name="home_pref_columns_sub">How many units fit across (down, when scrolling sideways); 0 fits the screen</string>
     <string name="home_pref_gap">Space between widgets</string>
@@ -205,6 +212,10 @@
     <string name="home_sec_header">Header</string>
     <string name="home_sec_widgets">Widgets</string>
     <string name="home_pref_style_sub">How every widget\'s card looks; none is lit while a widget has a look of its own</string>
+    <string name="home_pref_bg_hq">Highest quality cover</string>
+    <string name="home_pref_bg_hq_sub">Load the largest picture of the playing song as the background</string>
+    <string name="home_pref_card_alpha">Widget transparency</string>
+    <string name="home_pref_card_alpha_sub">How see-through the widgets\' cards are</string>
     <string name="home_pref_bg_source_sub">A picture from the phone, or the blurred cover of what plays</string>
     <string name="home_bg_remove_sub">Back to the plain background</string>
     <string name="home_bg_dim_sub">How much the picture is darkened</string>
@@ -234,6 +245,8 @@
     <string name="home_opt_row_menu">Menu on long press</string>
     <string name="home_opt_row_reorder">Reorder on long press</string>
     <string name="home_opt_row_handle">Drag handle</string>
+    <string name="home_opt_row_full">Full-width rows</string>
+    <string name="home_opt_queue_on_play">Show the queue when playing</string>
     <string name="home_opt_row_remove">Remove button</string>
     <string name="home_row_remove">Remove from queue</string>
     <string name="home_row_drag">Move</string>

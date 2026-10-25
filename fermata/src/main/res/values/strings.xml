@@ -394,6 +394,8 @@
     <string name="playlist_add_failed">Couldn\'t show the playlist picker. Try again, or restart the app if it keeps happening.</string>
     <string name="playlist_remove_item">Remove from playlist</string>
     <string name="playlist_create">Create playlist</string>
+    <string name="playlist_recent">Recently added</string>
+    <string name="playlist_all">All playlists</string>
     <string name="playlist_remove">Remove playlist</string>
     <string name="playlist_name">Playlist name</string>
     <string name="playlist_rename">Rename playlist</string>
@@ -520,6 +522,12 @@
     <string name="yt_comments_nothing">Comments need a YouTube video to be playing</string>
     <string name="yt_comments_loading">Loading comments…</string>
     <string name="yt_comments_empty">No comments yet</string>
+    <string name="yt_comments_search_hint">Search comments</string>
+    <string name="yt_comments_search_none">No comments match</string>
+    <string name="yt_comments_search_found">%1$d found</string>
+    <string name="yt_comments_search_all">Search all comments</string>
+    <string name="yt_comments_search_cancel">Cancel search</string>
+    <string name="yt_comments_search_all_progress">Searching all comments... %1$d found</string>
     <string name="yt_comments_off">Comments are turned off for this video</string>
     <string name="yt_comments_failed">Couldn\'t load the comments</string>
     <string name="yt_comments_retry">Try again</string>
@@ -1232,6 +1240,8 @@
     <string name="car_mode_where_web">YouTube and browser pages (not in fullscreen, and not while YouTube search or Up next is open, which move like a list)</string>
     <string name="car_mode_where_all_in_one">The All in One card: Next on the last action goes back to the first</string>
     <string name="ytdl_nothing_playing">Nothing from YouTube is playing</string>
+    <string name="share_video_none">Only YouTube videos can be shared</string>
+    <string name="action_share_video">Share video</string>
     <string name="ytdl_channel">YouTube downloads</string>
     <string name="ytdl_notif_title">Downloading %1$d of %2$d</string>
     <string name="ytdl_notif_title_one">Downloading</string>

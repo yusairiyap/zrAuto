@@ -159,6 +159,7 @@ import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.media.service.MediaSessionCallbackAssistant;
 import me.aap.fermata.media.service.PlaybackResume;
+import me.aap.fermata.ytdl.YoutubeLink;
 import me.aap.fermata.ytdl.YtOffline;
 import me.aap.fermata.spotify.SpotifyAuth;
 import me.aap.fermata.ui.fragment.AudioEffectsFragment;
@@ -519,6 +520,9 @@ public class MainActivityDelegate extends ActivityDelegate
 		}
 
 		Uri u = intent.getData();
+
+		String ytId = YoutubeLink.videoIdOf(intent);
+		if ((ytId != null) && MusicPlayer.openYoutubeLink(this, ytId)) return completed(true);
 
 		if (SpotifyAuth.isCallback(u)) {
 			SpotifyImportFragment.handleAuthCallback(this, u);
@@ -1138,6 +1142,13 @@ public class MainActivityDelegate extends ActivityDelegate
 			return;
 		}
 
+		if (!videoMode) {
+			// Who took the fullscreen away (the comment column's log says whether it was open).
+			StackTraceElement[] st = new Throwable().getStackTrace();
+			DiagnosticLog.log("VIDEO", "left fullscreen", "comments open=" +
+					me.aap.fermata.ui.view.YoutubeCommentsView.isOpen(),
+					(st.length > 2) ? ("from " + st[1] + " via " + st[2]) : "");
+		}
 		ControlPanelView cp = getControlPanel();
 		videoBarsShown = false;
 		if (scrollBars != null) scrollBars.reset(false);
@@ -2871,6 +2882,10 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	@Override
 	public void onBackPressed() {
+		if (isVideoMode()) {
+			DiagnosticLog.log("BACK", "in fullscreen video",
+					"comments open=" + me.aap.fermata.ui.view.YoutubeCommentsView.isOpen());
+		}
 		if (me.aap.fermata.ui.welcome.WelcomeWizard.onBack()) return;
 		if (me.aap.fermata.ui.home.HomeModal.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.ShareSheet.dismissOpen()) return;

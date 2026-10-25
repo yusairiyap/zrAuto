@@ -120,6 +120,12 @@ public final class MusicPlayer {
 		 */
 		boolean playVideoQuietly(MainActivityDelegate a, String videoId, @Nullable String title);
 
+		/**
+		 * Plays the YouTube video {@code videoId} that another app sent to zrAuto (a link), as a tap on it
+		 * would: the YouTube tab comes up with it fullscreen. False if it can't.
+		 */
+		boolean openLink(MainActivityDelegate a, String videoId);
+
 		/** YouTube's own equalizer and effects, which its page plays through; their settings stay when nothing plays. */
 		@Nullable
 		me.aap.fermata.media.engine.EffectsControls effects();
@@ -152,6 +158,12 @@ public final class MusicPlayer {
 	public static me.aap.fermata.media.engine.EffectsControls getYoutubeEffects() {
 		YoutubeHooks h = youtube;
 		return (h == null) ? null : h.effects();
+	}
+
+	/** See {@link YoutubeHooks#openLink}; false without the YouTube addon. */
+	public static boolean openYoutubeLink(MainActivityDelegate a, String videoId) {
+		YoutubeHooks h = youtube;
+		return (h != null) && h.openLink(a, videoId);
 	}
 
 	/** See {@link YoutubeHooks#playVideoQuietly}; false without the YouTube addon. */
