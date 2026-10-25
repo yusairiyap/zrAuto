@@ -301,7 +301,6 @@ public final class Glass {
 	public static void reset() {
 		web = null;
 		PageBlur.reset();
-		FrameBackdrop.reset();
 		Look before = (target != null) ? look() : null;
 		target = null;
 		Look after = target();
@@ -338,22 +337,11 @@ public final class Glass {
 	}
 
 	/**
-	 * The glass surface of lens slot {@code slot} is not drawn now (hidden, faded out, not glass): what was blurred under
-	 * it for it (a box in a web page, a patch over fullscreen video) goes too.
+	 * The glass surface of lens slot {@code slot} is not drawn now (hidden, faded out, not glass): its blur box in a web
+	 * page (PageBlur) goes too.
 	 */
 	public static void notDrawn(Object slot) {
 		PageBlur.clear(slot);
-		FrameBackdrop.clear(slot);
-	}
-
-	private static float blurAmount = 1f;
-
-	/**
-	 * How much of the blur reported by the next {@code paintOver(.., blurred=true)} is really there (0 to 1), set by the
-	 * code that drew it right before; used once, then back to 1.
-	 */
-	static void setBlurAmount(float a) {
-		blurAmount = Math.max(0f, Math.min(1f, a));
 	}
 
 	/** Whether a change of {@code prefs} changes the look. */
@@ -392,79 +380,15 @@ public final class Glass {
 	private static Boolean web;
 
 	/**
-	 * Experimental (Settings > UI style): blur over web pages and fullscreen YouTube video too. A WebView draws
-	 * through a functor that is then drawn a second time in the frame (in the lens), which Chromium does not
-	 * promise to handle: it can flicker or show stale frames, depending on the device. Off by default.
-	 * Local video (a SurfaceView) can't be read at all, so its glass blurs black even with this on.
+	 * Experimental (Settings > UI style): blur over web pages (the YouTube tab, the browser) too. Our surfaces cannot read
+	 * a WebView (drawing it a second time flickered or crashed), so the page blurs itself under them (PageBlur). Over
+	 * fullscreen video (YouTube or local) nothing can be blurred and the glass is frosted (thicker tint and grain). Off by
+	 * default.
 	 */
 	public static boolean webBlur() {
 		Boolean w = web;
 		if (w == null) web = w = realBlur() && MainActivityPrefs.get().getBooleanPref(MainActivityPrefs.GLASS_WEB);
 		return w;
-	}
-
-	/**
-	 * A fullscreen video button's glass: the picture behind it blurred when {@link #webBlur} is on and the
-	 * picture can be read (a copy of it, see {@link VideoBackdrop}), else tint, grain and rim. Off glass
-	 * it is the plain {@code color} disc.
-	 */
-	public static android.graphics.drawable.Drawable videoButton(View self, int color) {
-		return new VideoButton(self, color);
-	}
-
-	private static final class VideoButton extends android.graphics.drawable.Drawable {
-		private final View self;
-		private final int color;
-		private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-		private final RectF rect = new RectF();
-		private final GlassLens[] lens = new GlassLens[1];
-		private int alpha = 255;
-
-		VideoButton(View self, int color) {
-			this.self = self;
-			this.color = color;
-		}
-
-		@Override
-		public void draw(Canvas c) {
-			rect.set(getBounds());
-			if (rect.isEmpty()) return;
-			float r = Math.min(rect.width(), rect.height()) / 2f;
-			float a = alpha / 255f;
-			if (!onBars()) {
-				paint.setShader(null);
-				paint.setStyle(Paint.Style.FILL);
-				paint.setColor(color);
-				paint.setAlpha(Math.round((color >>> 24) * a));
-				c.drawRoundRect(rect, r, r, paint);
-				return;
-			}
-			Look l = look();
-			// Over fullscreen YouTube the patch under the button is drawn by the FrameBackdrop below it; over local video
-			// the button draws the copied picture itself.
-			// Drawn again with the other glass when the copied picture changes.
-			register(self);
-			boolean blurred = webBlur() && (FrameBackdrop.cover(self, lens, rect, r, a, l) ||
-					VideoBackdrop.drawBehindButton(self, c, rect, r, a, l, lens));
-			paintOver(c, rect, r, color, a, l.rimFor(RIM_VIDEO), false, self.getResources().getDisplayMetrics().density,
-					paint, blurred);
-		}
-
-		@Override
-		public void setAlpha(int alpha) {
-			this.alpha = alpha;
-			invalidateSelf();
-		}
-
-		@Override
-		public void setColorFilter(@Nullable android.graphics.ColorFilter cf) {
-			paint.setColorFilter(cf);
-		}
-
-		@Override
-		public int getOpacity() {
-			return android.graphics.PixelFormat.TRANSLUCENT;
-		}
 	}
 
 	/** Some glass surface wants the tab content recorded (see BodyLayout). */
@@ -576,17 +500,12 @@ public final class Glass {
 		paint.setShader(null);
 		paint.setStyle(Paint.Style.FILL);
 		paint.clearShadowLayer();
-		// How much blur is really under it: a patch that is still fading in (FrameBackdrop) gives less than 1, and the
-		// tint and grain blend from the frosted look to the thin glass look with it instead of jumping.
-		float b = blurred ? blurAmount : 0f;
-		blurAmount = 1f;
-		int ta = Math.round(Math.max(115, l.tintAlpha()) + (l.tintAlpha() - Math.max(115, l.tintAlpha())) * b);
+		int ta = blurred ? l.tintAlpha() : Math.max(115, l.tintAlpha());
 		paint.setColor((rgb & 0x00FFFFFF) | (Math.round(ta * alpha) << 24));
 		c.drawRoundRect(r, radius, radius, paint);
-		// With nothing blurred under it (a page that can't blur itself, below Android 12) the frosted look is faked:
-		// the thicker tint above and always some grain, so what shows through reads as frosted, not see-through.
-		float frosted = Math.max(l.grain, 0.7f * amount());
-		float grain = frosted + (l.grain - frosted) * b;
+		// With nothing blurred under it (fullscreen video, a page that can't blur itself, below Android 12) the frosted
+		// look is faked: the thicker tint above and always some grain, so what shows through reads as frosted glass.
+		float grain = blurred ? l.grain : Math.max(l.grain, 0.7f * amount());
 		if (grain > 0f) {
 			paint.setColor(0xFFFFFFFF);
 			paint.setShader(grainShader());

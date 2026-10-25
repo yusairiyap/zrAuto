@@ -162,10 +162,7 @@ public final class PageBlur {
 				w.evaluateJavascript(script(data), res -> {
 					Boolean ok = "true".equals(res);
 					Boolean was = supported.put(w, ok);
-					if (!ok.equals(was)) {
-						DiagnosticLog.log("BODY", "page blur", ok ? "backdrop-filter" : "frosted only", "result=" + res);
-						Glass.invalidateSurfaces();
-					}
+					if (!ok.equals(was)) Glass.invalidateSurfaces();
 				});
 			} catch (Throwable ex) {
 				DiagnosticLog.log("BODY", "page blur failed", ex.toString());
@@ -212,15 +209,11 @@ public final class PageBlur {
 	 */
 	private static String script(String data) {
 		// Boxes are kept by id: a new one fades in from nothing, one no longer listed fades out and is then removed,
-		// and a change of alpha eases (opacity transition). Size and place change at once, with the surface. In
-		// fullscreen the boxes go into the page's fullscreen element (the top layer, which covers everything else);
-		// when that is the video element itself nothing can be put over it, and the answer is false (frosted look).
+		// and a change of alpha eases (opacity transition). Size and place change at once, with the surface.
 		return "(function(d){try{var id='__zrauto_glass',h=document.getElementById(id);" +
 				"var ok=!!(window.CSS&&(CSS.supports('backdrop-filter','blur(1px)')||" +
 				"CSS.supports('-webkit-backdrop-filter','blur(1px)')));" +
-				"var fs=document.fullscreenElement||document.webkitFullscreenElement;" +
-				"var host=(fs&&fs.tagName!=='VIDEO')?fs:(document.body||document.documentElement);" +
-				"if(fs&&fs.tagName==='VIDEO')ok=false;" +
+				"var host=document.body||document.documentElement;" +
 				"if(!h){if(!d.length)return ok;h=document.createElement('div');h.id=id;" +
 				"h.style.cssText='position:fixed;left:0;top:0;width:0;height:0;z-index:2147483647;pointer-events:none;';}" +
 				"if(h.parentNode!==host)host.appendChild(h);" +

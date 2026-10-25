@@ -215,11 +215,9 @@ public class BodyLayout extends SplitLayout
 	 * frame is asked for: only frames that happen anyway redraw them).
 	 */
 	private void syncGlass() {
-		// Experimental (Glass#webBlur): fullscreen local video is blurred too (VideoBackdrop fills in the picture,
-		// which the tab's recording only has as a hole). Web pages never are through the tab: drawing the whole tab
-		// with a WebView in it a second time flickered, and through a frame around the page it crashed the app; fullscreen
-		// YouTube is blurred from a copy of its picture (VideoBackdrop, FrameBackdrop).
-		boolean want = Glass.realBlur() && Glass.wantsSource() && (Glass.webBlur() || (getMode() == Mode.FRAME));
+		// Not over fullscreen video (a SurfaceView or a web page, neither of which the recording can show), and never
+		// with a WebView in the tab: drawing a WebView a second time flickered or crashed (see PageBlur for web pages).
+		boolean want = Glass.realBlur() && Glass.wantsSource() && (getMode() != Mode.FRAME);
 		if (want) {
 			long now = SystemClock.uptimeMillis();
 			MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
@@ -238,7 +236,6 @@ public class BodyLayout extends SplitLayout
 		}
 		if (want != glassActive) {
 			glassActive = want;
-			DiagnosticLog.log("BODY", "glass source", want ? "on" : "off");
 			invalidate();
 			Glass.invalidateSurfaces();
 		}
@@ -314,8 +311,10 @@ public class BodyLayout extends SplitLayout
 		// Before a frame, every frame: nothing at all built unless the log is on.
 		if (!DiagnosticLog.isEnabled()) return;
 		String why = on ? null : whyNoTopFade();
-		if (java.util.Objects.equals(why, topFadeOffReason)) return;
-		topFadeOffReason = why;
+		// The kind of reason, not its numbers (a bar's alpha or position while it fades or slides).
+		String kind = (why == null) ? null : why.replaceAll("[0-9.]+", "#");
+		if (java.util.Objects.equals(kind, topFadeOffReason)) return;
+		topFadeOffReason = kind;
 		DiagnosticLog.log("BODY", (why == null) ? "top fade on" : ("top fade off: " + why));
 	}
 

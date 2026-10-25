@@ -223,7 +223,7 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> GLASS_MENUS = Pref.b("GLASS_MENUS", true);
 	// The size the blur is rendered at (Glass.QUALITY_*): full, half (default), a quarter.
 	Pref<IntSupplier> GLASS_QUALITY = Pref.i("GLASS_QUALITY", 1);
-	// Experimental: blur over web pages (YouTube, the browser) and fullscreen YouTube video too (Glass#webBlur).
+	// Experimental: blur over web pages too (YouTube, the browser; the page blurs itself, see PageBlur).
 	Pref<BooleanSupplier> GLASS_WEB = Pref.b("GLASS_WEB", false);
 	// Settings cards in the glass look too (off: they keep the Normal look whatever the style).
 	Pref<BooleanSupplier> GLASS_TILES = Pref.b("GLASS_TILES", false);

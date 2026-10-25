@@ -129,27 +129,6 @@ public class VideoView extends FrameLayout
 		});
 	}
 
-	/** Copies of the picture for the glass (experimental blur over video), see VideoBackdrop. */
-	@Nullable
-	VideoBackdrop backdrop;
-	private final android.view.ViewTreeObserver.OnPreDrawListener backdropSync = () -> {
-		VideoBackdrop.follow(this);
-		return true;
-	};
-
-	@Override
-	protected void onAttachedToWindow() {
-		super.onAttachedToWindow();
-		getViewTreeObserver().addOnPreDrawListener(backdropSync);
-	}
-
-	@Override
-	protected void onDetachedFromWindow() {
-		getViewTreeObserver().removeOnPreDrawListener(backdropSync);
-		if (backdrop != null) backdrop.stop();
-		super.onDetachedFromWindow();
-	}
-
 	protected void init(Context context) {
 		setBackgroundColor(Color.BLACK);
 		addView(newVideoSurfaceView(), 0);

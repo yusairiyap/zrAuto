@@ -127,12 +127,11 @@ public final class GlassLens {
 		Glass.register(self);
 		RenderNode src = inside(self, body) ? null : body.getGlassSource();
 		if (src == null) {
-			// The tab is not recorded (a web tab, fullscreen YouTube), with the experimental blur over web pages and
-			// video on. Over fullscreen YouTube a copy of the video is drawn blurred under the surface by the FrameBackdrop
-			// inside the VideoView (VideoBackdrop makes the copy); over a web page the page blurs itself (PageBlur).
-			if (FrameBackdrop.cover(self, slot, r, radius, alpha, look)) {
-				PageBlur.clear(slot);
-				return true;
+			// The tab is not recorded (a web tab, fullscreen video). Over fullscreen video nothing can be blurred: the
+			// surface is frosted. Over a web page, with the experimental switch, the page blurs itself (PageBlur).
+			if (a.isVideoMode()) {
+				Glass.notDrawn(slot);
+				return false;
 			}
 			return PageBlur.cover(self, slot, r, radius, alpha, look);
 		}
@@ -142,11 +141,8 @@ public final class GlassLens {
 		int[] sl = new int[2];
 		body.getLocationInWindow(bl);
 		self.getLocationInWindow(sl);
-		// Local video leaves a hole in the tab's recording: its copied picture fills it (VideoBackdrop).
-		return slot[0].draw(c, rc -> {
-			rc.drawRenderNode(src);
-			VideoBackdrop.drawUnder(rc, body);
-		}, bl[0] - sl[0], bl[1] - sl[1], r, radius, alpha, look, self.getResources().getDisplayMetrics().density);
+		return slot[0].draw(c, rc -> rc.drawRenderNode(src), bl[0] - sl[0], bl[1] - sl[1], r, radius, alpha, look,
+				self.getResources().getDisplayMetrics().density);
 	}
 
 	/**

@@ -1017,123 +1017,35 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
 - **Playlists card**: which playlist is open, and whether the last played song's one was opened, are kept per widget id for the
   life of the app (`PlaylistsWidget#OPEN`, `OPENED_LAST`): a card made again used to show every playlist with no back chip.
 
-### Fourth round (More card over the window, chip blur, experimental web/video blur)
+### Fourth round onwards (More card, chips, tiles, rim light, seek bars, menus, web pages)
 
 - **Music tab's More card** opens on `R.id.main_activity` (not the tab's root) while glass is on menus (`AllInOneMenu#showMusic`),
   so it can blur the tab; the anchor still places it over the chip; `MusicPlayerFragment#onHiddenChanged` closes it with the tab.
 - **Home's info chips** blur the background like the glass cards: `InfoOverlayView#setChipBackdrop` (each chip is a `ChipWrap`
   drawing the backdrop under its fill), redrawn on background change, the row's scroll and the hide-while-scrolling slide.
-- **Experimental "Blur over web pages and video"** (`GLASS_WEB`, `Glass.webBlur`): lifts the WebView guard and the FRAME-mode
-  condition in `BodyLayout#syncGlass` (the bars and the FAB pill blur YouTube / the browser / fullscreen YouTube), and
-  `YoutubeVideoView`'s picture frame is a `GlassFrame`, which records itself so the fullscreen buttons (`Glass.videoButton`) can
-  blur the video behind them (they sit beside the frame in the VideoView, not inside it). The WebView's functor is drawn twice;
-  that is the experiment. A third-party library would not help: BlurView 3 uses the same RenderNode capture on Android 12+.
-  Local video is a SurfaceView, unreadable: its glass blurs black.
-
-### Fifth round (web pages through their own frame, local video through PixelCopy)
-
-- Device test: blurring YouTube's fullscreen picture through its own frame (`GlassFrame`, the VideoView's child 0) did not
-  flicker; blurring the YouTube tab through the whole tab's recording flickered without end. So the tab is never recorded on a
-  web tab again (the guard in `BodyLayout#syncGlass` holds even with `GLASS_WEB`), and the page lives in a `GlassFrame` too
-  (`youtube.xml` root, the browser's `browserTabHost`). `GlassLens#behindBars` falls back to the biggest recording frame on
-  screen (`GlassFrame.drawBehindAny`) when the tab is not recorded, so bars, the FAB pill, menus and dialogs blur the page and
-  fullscreen YouTube. A frame invalidates the glass surfaces when its content changes.
-- **PixelCopy of the window is useless for the bars** (the copy holds the glass itself, never what is under it). PixelCopy of a
-  *SurfaceView* is not: `VideoBackdrop` copies local video's surface (a quarter size, ~15/s playing, 2/s paused) while
-  `GLASS_WEB` is on, and the copy is drawn with DST_OVER under the tab's recording, filling the hole the SurfaceView punches
-  (`drawUnder`), and alone behind the fullscreen buttons (`drawBehindButton`). The engines and their SurfaceView are untouched.
-- Tiles (`Glass.tile`): the picked state glides (`Glass.setPicked`, reused per row in `SettingsSplit` while the row's entry is
-  the same); with glass the edge is the rim light (gradient stroke) only while Rim light is on, no border otherwise. The knob
-  has no coloured core and takes later thumb tints (`Knob#setTintList`); every `StepSeekBar` (Audio effects) uses it.
-
-### Sixth round (no frame around the page, rim light per part, round seek fill, menu size)
-
-- **The YouTube / browser page is never in a GlassFrame**: with the experimental blur on, putting the plain page (not
-  fullscreen) in a recording frame crashed the app natively on entering the YouTube tab (nothing logged). Only fullscreen
-  YouTube's picture (child 0 of `YoutubeVideoView`) is a GlassFrame; over the plain page the bars are tint only. A frame
-  that starts or stops recording writes `BODY glass frame recording/plain <child> <size>` first, so a crash right after
-  it leaves that as the last line.
+- **Tiles** (`Glass.tile`): the picked state glides (`Glass.setPicked`, reused per row in `SettingsSplit`). Settings cards keep the
+  Normal look unless `GLASS_TILES` (Where > Settings cards) is on (`Tile` blends by `tileAmount()`).
 - **Rim light per part**: `GLASS_RIM` is the style's rim, `GLASS_RIM_TOOLBAR/NAV/FAB/MENUS/HOME/VIDEO/TILES` say where it shows
-  (Settings > UI style > "Where the rim light shows", an expandable group; settings cards off by default). Draw a surface
-  with `look.rimFor(Glass.RIM_*)`; `Glass.rim(part)` glides when a part is switched.
-- **Settings cards keep the Normal look** unless `GLASS_TILES` (Where > Settings cards) is on: `Glass.Tile` blends by
-  `tileAmount()`, not `amount()`.
-- **Seek bars in glass**: `Glass.knob` also wraps the track's progress layer in `RoundFill` (a pill ending round under the
-  see-through bead; the clipped bar in Normal, blended by `amount()`).
+  (Settings > UI style > "Where the rim light shows", an expandable group; settings cards off by default). Draw a surface with
+  `look.rimFor(Glass.RIM_*)`; `Glass.rim(part)` glides when a part is switched.
+- **Seek bars in glass**: `Glass.knob` gives a see-through bead (no coloured core; later thumb tints are taken, every `StepSeekBar`
+  uses it) and wraps the track's progress layer in `RoundFill` (a pill ending round under the bead; the clipped bar in Normal).
 - **Context menu rows on the phone** are the settings rows' size (15sp, 22dp icons, `MenuStyle#styleItem`), not scaled by the
   interface's text/icon size; the car screen keeps its own sizing.
-
-### Seventh round (the page blurs itself)
-
-- **Glass over a web page = CSS in the page** (`ui/view/PageBlur`, experimental switch only): when nothing of ours can blur
-  what is under a surface (`GlassLens#behindBars`: no tab recording, no fullscreen GlassFrame), the surface reports its
-  window rect, radius, alpha, blur and saturation (`PageBlur.cover`, keyed by its lens slot), and a script keeps matching
-  boxes in the page (`#__zrauto_glass`, position fixed, no touches) with `backdrop-filter: blur() saturate()`, so Chromium
-  blurs the page under our bar and the bar draws only tint and rim. Sent at most once a frame when changed, every 2 s
-  anyway (page reloads), boxes of hidden surfaces dropped every 400 ms, all cleared on a UI style change (`PageBlur.reset`).
-  `cover` returns whether the page supports backdrop-filter (`BODY page blur` in the Diagnostic log); if not, the surface
-  is drawn *unblurred*: `Glass#paintOver(.., blurred=false)` = at least 45% tint plus grain (the "fake frosted" look).
-  ToolBarPill and FloatingBarsView now pass `behindBars`' result as `blurred`. A playing `<video>` in the page may not blur
-  (it can be its own layer). Never run on a device.
-
-### Eighth round (no bar draws the fullscreen frame, boxes that fade)
-
-- **Playing a YouTube video crashed the app** (log: `BODY glass frame recording FrameLayout 2560x1600`, then a restart): the bars,
-  floating buttons and menus drew fullscreen YouTube's GlassFrame (`drawBehindAny`, now deleted). Only the video buttons inside the
-  VideoView draw it, as in the build where it worked. Everything else over a web page, fullscreen included, goes through `PageBlur`;
-  in fullscreen its boxes go into `document.fullscreenElement` (the top layer), and when that is the `<video>` itself the answer is
-  false, so the surfaces draw the frosted look.
-- **The page's boxes fade** (`PageBlur#script`): kept by id, a new one fades in from 0, one no longer listed fades out over 220 ms and
-  is then removed, alpha changes ease (CSS opacity transition). The alpha sent is the surface's own times its views' alpha and
-  transition alpha (`viewAlpha`), sampled every 100 ms while boxes are up, so a menu's open/close fade and the bars sliding away are
-  followed without redraws.
-
-### Ninth round (blur over fullscreen YouTube from inside the VideoView, boxes of hidden pills)
-
-- **Over fullscreen YouTube the bars, floating buttons, menus and dialogs are blurred by `FrameBackdrop`**, a view added to
-  `YoutubeVideoView` right above its GlassFrame (child 1): surfaces report their window rect (`FrameBackdrop.cover`, from
-  `GlassLens#behindBars` before PageBlur), and it draws the frame's picture through a lens per surface *from inside the VideoView*,
-  the way the video buttons always did safely; the surfaces then draw tint and rim only. The page cannot do it there (its
-  fullscreen element is the video: `BODY page blur frosted only`). A surface inside the frame never gets a patch (`GlassFrame.holds`).
-  Patches follow view alpha (sampled every 100 ms while up) and are redrawn on each frame the picture changes (`frameDrawn`).
-- **A pill that stops drawing takes its blur with it** (`Glass.notDrawn(slot)`: the PageBlur box and the FrameBackdrop patch):
-  called where `FloatingBarsView#drawPill`, `FabPillView#onDraw` and `ToolBarPill` return early (alpha 0, empty, merged). The control
-  panel sliding away left its box in the page before, a blurred strip with no pill over it.
-
-### Tenth round (one blurred layer for every patch, crash guard)
-
-- **The page is blurred once per frame** (`GlassFrame#recordBlur`: a small RenderNode with a compositing layer and the blur effect,
-  holding the frame's node, never drawn by the frame itself), and every patch over fullscreen YouTube (video buttons via
-  `GlassFrame.drawBehind`, everything else via `FrameBackdrop`) draws a clipped piece of that layer (`drawShared`, a tiny wrapper node per
-  slot for the alpha). A lens per patch drew the WebView once per patch: with the control panel's patch added to the three buttons' the
-  app died natively the moment the panel appeared. Never go back to a lens of the frame per surface.
-- **Crash guard**: `GlassFrame#setBusy` writes `GLASS_FRAME_BUSY` with `commit()` before the first patch is drawn and removes it when the
-  frame stops recording; `GlassFrame.crashGuard` (from `FermataApplication#onCreate`) turns `GLASS_FRAME_OFF` on when the last run ended
-  with it set, and the frame then never records (page blur and the rest of the glass are unchanged). Switching the experimental switch
-  clears it; the settings page says so under the switch, which is now the last row. `BODY glass over video turned off` in the log.
-
-### Eleventh round (fullscreen YouTube blurs a copy, never the page)
-
-- **Nothing draws YouTube's page a second time any more**: `GlassFrame` is a plain FrameLayout (the shared blurred layer of the tenth
-  round showed nothing on the device, and every earlier way to blur the page itself flickered or crashed). The tenth round's crash guard
-  (`GLASS_FRAME_OFF`) is gone with it.
-- **`VideoBackdrop` copies the picture with PixelCopy** in two ways: *live* from a SurfaceView found anywhere under the VideoView (local
-  video; fullscreen YouTube if Chrome puts its video on such a layer; a surface that copies black 8 times in a row is given up), else a
-  *window snapshot* of the VideoView's area (`PixelCopy.request(Window, ..)`, fullscreen YouTube only, `isVideoMode()`), taken every
-  350 ms (1.5 s paused) and **only while no glass control shows over the video** (`FrameBackdrop#quietMs` >= 350 ms; a copy that finishes
-  after a control came up is dropped), so it holds the video alone; while controls are up the blur shows the last quiet snapshot.
-  `BODY video copy start tree=...` (the views inside the video view) and `BODY video copy from surface/window snapshot` say which is used.
-- **`FrameBackdrop` draws the copy** through a `GlassLens` per surface (a bitmap, so several lenses are fine) under every glass surface over
-  fullscreen YouTube: bars, floating buttons, menus, dialogs *and the video buttons* (`Glass.videoButton` now reports to it). Every surface
-  over the video is noted even before a picture exists, which is what keeps snapshots from catching the controls.
-
-- **Cost kept low** (`VideoBackdrop`): live copies run at 15/s only while some glass actually drew the copy in the last 1.5 s
-  (`used()`, from `drawUnder`, `drawBehindButton` and `FrameBackdrop`), else once a second so a picture is ready; snapshots once a second
-  (2 s paused); none with the power saver on. After a copy only the glass is redrawn (`Glass.invalidateSurfaces` + `FrameBackdrop#pictureChanged`;
-  the video buttons register as surfaces), never the video view: the old `invalidateTree(view)` made Chrome repaint the page every copy.
-- **Nothing pops**: a new snapshot crossfades over the previous one for 320 ms inside the same lens (`drawPicture`, three buffers: shown,
-  fading out, being copied into); a patch whose first picture arrives fades in over 240 ms, and the surface's tint and grain blend from the
-  frosted look to the thin glass look with it (`Glass.setBlurAmount`, read once by the next `paintOver(.., blurred=true)`).
+- **Web pages (experimental `GLASS_WEB`, "Blur over web pages")**: our surfaces cannot read a WebView. Drawing the tab with a WebView
+  in it a second time flickered without end; recording a frame around the page, or around fullscreen YouTube's picture, crashed the
+  app natively (nothing logged) or showed nothing; PixelCopy of the window holds the glass itself, and of fullscreen YouTube found no
+  video surface (Chrome draws it in its own view). **Do not try those again.** What works: the page blurs itself (`ui/view/PageBlur`):
+  a surface reports its window rect, radius, alpha, blur and saturation (`PageBlur.cover`, keyed by its lens slot, from
+  `GlassLens#behindBars` when the tab is not recorded), and a script keeps matching boxes in the page (`#__zrauto_glass`, position fixed,
+  no touches) with `backdrop-filter: blur() saturate()`. Boxes fade in and out (kept by id, CSS opacity transition) and take the view
+  alpha of their surface (sampled every 100 ms while up); sent at most once a frame when changed and every 2 s anyway (page reloads).
+  A pill that stops drawing takes its box with it (`Glass.notDrawn(slot)`, where `FloatingBarsView#drawPill`, `FabPillView#onDraw` and
+  `ToolBarPill` return early). `cover` returns whether the page supports backdrop-filter.
+- **Fullscreen video is never blurred** (YouTube or local): `BodyLayout` does not record in FRAME mode and `behindBars` returns false in
+  video mode, so every surface there (control panel, floating buttons, menus, dialogs, the video buttons via `Glass.surface`) draws the
+  **frosted look**: `Glass#paintOver(.., blurred=false)` = at least 45% tint plus grain, so the video reads as behind frosted glass. The
+  same look covers web pages without the experimental switch, and everything below Android 12.
 
 ## This app cannot be built in this (cloud) session
 

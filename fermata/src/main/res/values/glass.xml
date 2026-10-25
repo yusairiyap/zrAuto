@@ -36,7 +36,7 @@
     <string name="glass_rim">Rim light</string>
     <string name="glass_rim_sub">A thin bright edge along the top, like light on glass</string>
     <string name="glass_on_bars">Bars</string>
-    <string name="glass_on_bars_sub">The tool bar, the navigation bar, the control panel and the floating buttons. Over the YouTube and browser pages and over fullscreen video they are tinted glass without the blur.</string>
+    <string name="glass_on_bars_sub">The tool bar, the navigation bar, the control panel and the floating buttons. Over fullscreen video, and over web pages unless the option below is on, they are frosted glass without the blur.</string>
     <string name="glass_on_menus">Menus and dialogs</string>
     <string name="glass_on_menus_sub">Long-press menus, dialogs and cards such as the playlist picker and All in One</string>
     <string name="glass_quality">Blur quality</string>
@@ -44,8 +44,8 @@
     <string name="glass_quality_high">High</string>
     <string name="glass_quality_balanced">Balanced</string>
     <string name="glass_quality_saver">Battery</string>
-    <string name="glass_web">Blur over web pages and video (experimental)</string>
-    <string name="glass_web_sub">The bars, menus and floating buttons blur the YouTube and browser pages (the page blurs itself under them), and over fullscreen video (YouTube and local files) they blur the picture. It may flicker or cost more battery on some phones; a page that can\'t blur shows frosted glass instead.</string>
+    <string name="glass_web">Blur over web pages (experimental)</string>
+    <string name="glass_web_sub">The bars, menus and floating buttons blur the YouTube and browser pages: the page blurs itself under them. A playing video in the page may stay sharp. Over fullscreen video the glass stays frosted.</string>
     <string name="glass_on_home">Home cards</string>
     <string name="glass_on_home_sub">Widgets with the Glass look (Settings &gt; Home &gt; Widget look) blur the Home background behind them</string>
     <string name="glass_on_tiles">Settings cards</string>

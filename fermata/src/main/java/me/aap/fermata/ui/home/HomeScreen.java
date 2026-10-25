@@ -86,6 +86,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	private boolean vertical = true;
 	/** The room a side navigation pill takes from one side, given to the other side as well so the page is centred in the window. */
 	private int extraLeft;
+	private long sideLoggedAt;
 	private int extraRight;
 	private final int[] sideLoc = new int[2];
 	private boolean editing;
@@ -891,7 +892,9 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			else r = -diff;
 			sideKey = sideKeyNow();
 		}
-		if ((extraLeft != l) || (extraRight != r)) {
+		// Once a second at most: while the side pill slides this changes on every frame.
+		if (((extraLeft != l) || (extraRight != r)) && (SystemClock.uptimeMillis() - sideLoggedAt > 1000)) {
+			sideLoggedAt = SystemClock.uptimeMillis();
 			DiagnosticLog.log("HOME", "side room", "left=" + l, "right=" + r, "root=" + root.getWidth());
 		}
 		extraLeft = l;

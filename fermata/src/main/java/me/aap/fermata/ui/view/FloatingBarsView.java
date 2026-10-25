@@ -232,8 +232,10 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 			else why = "nav bar vis=" + nb.getVisibility() + " h=" + nb.getHeight() + " alpha=" +
 						nb.getAlpha();
 		}
-		if (java.util.Objects.equals(why, fadeOffReason)) return;
-		fadeOffReason = why;
+		// The kind of reason, not its numbers: a nav bar fading in logged a line on every frame.
+		String kind = (why == null) ? null : why.replaceAll("[0-9.]+", "#");
+		if (java.util.Objects.equals(kind, fadeOffReason)) return;
+		fadeOffReason = kind;
 		me.aap.fermata.util.DiagnosticLog.log("BODY",
 				(why == null) ? "bottom fade on" : ("bottom fade off: " + why));
 	}
@@ -286,7 +288,7 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 
 	private void drawPill(Canvas canvas, RectF r, float alpha) {
 		if (r.isEmpty() || (alpha <= 0f)) {
-			// Gone (the control panel slid away): its blur in a web page or over video goes with it.
+			// Gone (the control panel slid away): its blur box in a web page goes with it.
 			Glass.notDrawn((r == main) ? mainLens : auxLens);
 			return;
 		}
