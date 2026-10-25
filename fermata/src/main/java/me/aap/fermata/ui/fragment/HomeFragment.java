@@ -107,7 +107,9 @@ public class HomeFragment extends MainActivityFragment {
 		ghosted = false;
 		// A picture of the tab being left is taken first, while it still has the layout the user last saw: without the
 		// tool bar its list moved up the moment the bar went, and was seen doing so while it faded out.
-		if ((a != null) && a.getPrefs().getBooleanPref(MainActivityPrefs.HOME_ANIMATE) && !(from instanceof MusicPlayerFragment)) {
+		// Between Home and a settings page a plain crossfade: no picture of the old page, no timed dips.
+		boolean plain = (from instanceof MainActivityFragment m) && m.isSettingsPage();
+		if ((a != null) && !plain && a.getPrefs().getBooleanPref(MainActivityPrefs.HOME_ANIMATE) && !(from instanceof MusicPlayerFragment)) {
 			ghosted = ghostOf(from, a.getToolBar());
 		}
 		if (a != null) putBarsAway(a);

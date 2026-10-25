@@ -70,18 +70,34 @@ public final class SettingsStyle {
 		return tv.data;
 	}
 
+	/** The sliders of a row in the accent, as the option pages' (the control panel's) are. */
+	private static void tintSliders(android.view.View v, Colors c) {
+		if (v instanceof android.widget.SeekBar sb) {
+			sb.setProgressTintList(ColorStateList.valueOf(c.accent));
+			sb.setThumbTintList(ColorStateList.valueOf(c.accent));
+			sb.setSecondaryProgressTintList(ColorStateList.valueOf(c.textSecondary));
+			sb.setProgressBackgroundTintList(ColorStateList.valueOf((c.textSecondary & 0xFFFFFF) | 0x55000000));
+		} else if (v instanceof android.view.ViewGroup g) {
+			for (int i = 0, n = g.getChildCount(); i < n; i++) tintSliders(g.getChildAt(i), c);
+		}
+	}
+
 	/** Restyles one row of a PreferenceSet page; set as {@link PreferenceView#setRowStyler}. */
 	public static void apply(PreferenceView v, PreferenceView.Opts o) {
 		Colors c = new Colors(v.getContext());
 		v.setBackground(c.pressable(c.rounded(c.tileFill, 16)));
 		v.setPadding(c.dp(16), c.dp(12), c.dp(16), c.dp(12));
 
+		// The same sizes as the option pages built in code and the category list: 15sp over 12.5sp.
 		TextView title = v.getTitleView();
 		title.setTextColor(c.textPrimary);
 		title.setTypeface(Typeface.DEFAULT_BOLD);
+		title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
 		TextView sub = v.getSubtitleView();
 		sub.setTextColor(c.textSecondary);
 		sub.setTypeface(Typeface.DEFAULT);
+		sub.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f);
+		tintSliders(v, c);
 
 		ImageView icon = v.getIconView();
 		if (icon.getVisibility() == android.view.View.VISIBLE) icon.setImageTintList(ColorStateList.valueOf(c.accent));

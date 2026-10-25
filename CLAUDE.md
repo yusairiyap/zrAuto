@@ -916,6 +916,14 @@ what each widget shows is set on the widget (edit mode > its gear).
   when the app cannot start.
 - **The wizard swipes over its picture too**: a touch nothing under it takes makes `PageHost` itself the target, and then the moves never go through `onInterceptTouchEvent`; `PageHost#onTouchEvent` starts the drag.
 
+- **`SettingsSplit` outlives its activity in a static list** (`live`): when the theme changes the activity is recreated and the old body layout is still listed, and asking the destroyed activity's delegate
+  (`MainActivityDelegate.get`) throws `ActivityDestroyedException`: the crash on a theme change and on opening Settings that followed. `entriesChanged` skips bodies that are not attached and catches the rest.
+  A selected category keeps the tile's own transparency (`ColorUtils.blendARGB`, never `mix()` of two opaque colours: the tile fill is a see-through white or black and went solid) and always has a stroke of the same
+  width, so it is not a different size. The list fades in and out and the pages' margin is set at once: animating the margin relaid out a whole page every frame.
+- **Between Home and a settings page a plain crossfade** (`HomeFragment#switchingFrom`: no picture of the old page, no delayed fade).
+- **`HomeLayoutPreview` moves**: the cards glide to their new places when a setting changes (`computeLayout` sets origin/target, `frame` interpolates), the picture of the arrangement in use scrolls gently along its way
+  (`scrolls()`), and Freeflow leaves holes (`FREE_HOLES`) so the page shows empty room around the cards. It only runs frames while visible.
+
 ### Phone sizes (a cell is ~90dp there: 2x2 is ~185dp, 4x1 is 380x90dp)
 
 - Size what is *inside* a card from its pixels, not from cell counts or fixed dp: the Data ring's words (`used`/`caption`) and the Power

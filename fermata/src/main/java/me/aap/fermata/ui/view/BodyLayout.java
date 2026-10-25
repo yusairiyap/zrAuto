@@ -437,7 +437,13 @@ public class BodyLayout extends SplitLayout
 	protected void onConfigurationChanged(Configuration newConfig) {
 		super.onConfigurationChanged(newConfig);
 		setMode(getMode());
-		post(() -> settingsSplit.sync(getActivity()));
+		post(() -> {
+			try {
+				if (isAttachedToWindow()) settingsSplit.sync(getActivity());
+			} catch (RuntimeException ex) {
+				// The activity is going (recreated by the new configuration): nothing to sync.
+			}
+		});
 	}
 
 	@Override

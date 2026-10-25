@@ -8,12 +8,14 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Shader;
+import android.os.SystemClock;
 import android.view.View;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.Interpolator;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import me.aap.fermata.ui.activity.MainActivityPrefs;
@@ -24,9 +26,12 @@ import me.aap.utils.pref.PreferenceStore;
 /**
  * A small picture of a Home screen as the settings describe it, drawn live from them: a phone or the car's display with
  * the greeting, the info chips, the picture behind (dimmed, zoomed, blurred) and a sample set of cards packed the way
- * the arrangement does (scrolling down, sideways, or freeflow), with as many columns or rows and as much room between them
- * as asked. The cards that run past the edge are cut off, as they would scroll. Used big, on top of the Home settings, and small,
- * one for each arrangement to pick from.
+ * the arrangement does (scrolling down, sideways, or freeflow, which leaves a gap where a card was taken away), with as
+ * many columns or rows and as much room between them as asked. The cards that run past the edge are cut off, as they would
+ * scroll. Used big, on top of the Home settings, and small, one for each arrangement to pick from.
+ * <p>
+ * It moves: when a setting changes the cards glide from where they were to where they now go, and the picture that shows the
+ * arrangement in use scrolls gently along the way its page would, to show what it does.
  */
 public final class HomeLayoutPreview extends View implements PreferenceStore.Listener {
 	public static final int AUTO = 0;
@@ -35,7 +40,12 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 	public static final int FREE = 3;
 
 	/** The sample cards: width x height in grid units; the first one is the "now playing" card. */
-	private static final int[][] SAMPLE = {{4, 2}, {2, 2}, {2, 2}, {2, 1}, {2, 1}, {4, 1}, {2, 2}, {2, 2}, {4, 2}, {2, 1}, {2, 1}};
+	private static final int[][] SAMPLE = {{4, 2}, {2, 2}, {2, 2}, {2, 1}, {2, 1}, {4, 1}, {2, 2}, {2, 2}, {4, 2}, {2, 1}, {2, 1}, {2, 2}};
+	/** Freeflow leaves this card's place empty: cards left where they were dropped do not fill every cell. */
+	private static final int[] FREE_HOLES = {3, 6};
+	private static final int N = SAMPLE.length;
+	private static final long MOVE_MS = 420;
+	private static final float SCROLL_DP_PER_S = 22f;
 
 	private final MainActivityPrefs prefs;
 	private final boolean car;
@@ -43,9 +53,9 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 	private final int fixedMode;
 	private final SettingsStyle.Colors c;
 	private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
-	private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
 	private final RectF r = new RectF();
 	private final Path clip = new Path();
+	private final Interpolator ease = new DecelerateInterpolator(1.8f);
 
 	private int mode;
 	private int columns;
@@ -56,6 +66,10 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 	private int dim;
 	private int zoom;
 	private int source;
+	/** Whether the shown arrangement scrolls down (else sideways). */
+	private boolean down = true;
+	/** How far the content can scroll, in dp, along its way. */
+	private float scrollRange;
 	@Nullable
 	private Bitmap picture;
 	private int pictureVersion = -1;
@@ -63,13 +77,23 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 	private int pictureSource = -1;
 	private int loadGen;
 
+	// Where each card is (x, y, w, h in dp, and whether it is drawn at all), where it was, and how far it has come.
+	private float[][] target = new float[N][5];
+	private float[][] origin = new float[N][5];
+	private float[][] now = new float[N][5];
+	private boolean haveLayout;
+	private long moveStart;
+	private boolean moving;
+	private long frameClock;
+	private float scrollPhase;
+	private boolean running;
+
 	public HomeLayoutPreview(@NonNull Context ctx, @NonNull MainActivityPrefs prefs, boolean car, int fixedMode) {
 		super(ctx);
 		this.prefs = prefs;
 		this.car = car;
 		this.fixedMode = fixedMode;
 		c = new SettingsStyle.Colors(ctx);
-		stroke.setStyle(Paint.Style.STROKE);
 		reread();
 	}
 
@@ -78,13 +102,22 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 		super.onAttachedToWindow();
 		prefs.addBroadcastListener(this);
 		reread();
+		startFrames();
 	}
 
 	@Override
 	protected void onDetachedFromWindow() {
 		prefs.removeBroadcastListener(this);
 		loadGen++;
+		running = false;
 		super.onDetachedFromWindow();
+	}
+
+	@Override
+	public void onVisibilityAggregated(boolean visible) {
+		super.onVisibilityAggregated(visible);
+		if (visible) startFrames();
+		else running = false;
 	}
 
 	@Override
@@ -92,7 +125,7 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 		post(this::reread);
 	}
 
-	/** Takes the settings as they are now and draws again. */
+	/** Takes the settings as they are now; the cards glide to where they now go. */
 	public void reread() {
 		mode = (fixedMode >= 0) ? fixedMode : prefs.getIntPref(car ? MainActivityPrefs.HOME_ARRANGE_AA : MainActivityPrefs.HOME_ARRANGE);
 		columns = prefs.getIntPref(car ? MainActivityPrefs.HOME_COLUMNS_AA : MainActivityPrefs.HOME_COLUMNS);
@@ -104,7 +137,9 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 		zoom = Math.max(100, prefs.getIntPref(HomeBgPrefs.zoom(car)));
 		source = prefs.getIntPref(HomeBgPrefs.source(car));
 		loadPicture();
+		computeLayout();
 		invalidate();
+		startFrames();
 	}
 
 	private void loadPicture() {
@@ -128,8 +163,9 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 	}
 
 	// ---------------------------------------------------------------------------------------------
+	// Where the cards go
 
-	/** The screen's shape in dp (what the packing is worked out for), and the room its layout keeps. */
+	/** The screen's shape in dp (what the packing is worked out for). */
 	private float screenW() {
 		return car ? 1100f : 392f;
 	}
@@ -137,6 +173,157 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 	private float screenH() {
 		return car ? 540f : 850f;
 	}
+
+	/** Packs the sample cards the way the arrangement does and sets them to glide there from where they are. */
+	private void computeLayout() {
+		float w = screenW();
+		float h = screenH();
+		int shown = (mode == AUTO) ? (((w > h) && (h < 600f)) ? SIDE : DOWN) : mode;
+		down = shown != SIDE;
+		float side = 12f;
+		float top = down ? (16f + (greeting ? (car ? 54f : 62f) : 38f)) : 58f;
+		int n;
+		float cell;
+		if (down) {
+			n = (columns > 0) ? columns : Math.max(4, Math.min(8, (int) (w / 90f)));
+			n = Math.max(2, Math.min(8, n));
+			cell = (w - 2 * side - (n - 1) * gap) / n;
+		} else {
+			n = (columns > 0) ? columns : Math.max(2, Math.min(5, (int) (h / 105f)));
+			n = Math.max(2, Math.min(5, n));
+			cell = (h - top - 8f - (n - 1) * gap) / n;
+		}
+
+		float[][] next = new float[N][5];
+		boolean[][] used = new boolean[down ? n : 80][down ? 80 : n];
+		float far = 0f;
+		for (int i = 0; i < N; i++) {
+			int iw = down ? Math.min(SAMPLE[i][0], n) : SAMPLE[i][0];
+			int ih = down ? SAMPLE[i][1] : Math.min(SAMPLE[i][1], n);
+			boolean done = false;
+			for (int a = 0; (a < 78) && !done; a++) {
+				for (int b = 0; (b <= (down ? n - iw : n - ih)) && !done; b++) {
+					int x = down ? b : a;
+					int y = down ? a : b;
+					if (!fits(used, x, y, iw, ih)) continue;
+					for (int p = 0; p < iw; p++) for (int q = 0; q < ih; q++) used[x + p][y + q] = true;
+					float px = side + x * (cell + gap);
+					float py = top + y * (cell + gap);
+					float cw = iw * cell + (iw - 1) * gap;
+					float ch = ih * cell + (ih - 1) * gap;
+					if (shown == FREE) {
+						// Cards left where they were dropped, a little off the grid.
+						px += ((i * 7) % 5 - 2) * 2.5f;
+						py += ((i * 11) % 5 - 2) * 2.5f;
+					}
+					next[i][0] = px;
+					next[i][1] = py;
+					next[i][2] = cw;
+					next[i][3] = ch;
+					boolean hole = false;
+					if (shown == FREE) for (int hi : FREE_HOLES) if (hi == i) hole = true;
+					next[i][4] = hole ? 0f : 1f;
+					far = Math.max(far, down ? (py + ch) : (px + cw));
+					done = true;
+				}
+			}
+		}
+		scrollRange = Math.max(0f, far - (down ? h : w) + (down ? 0f : side) + 30f);
+
+		if (!haveLayout) {
+			copy(next, target);
+			copy(next, now);
+			haveLayout = true;
+			return;
+		}
+		boolean same = true;
+		for (int i = 0; (i < N) && same; i++) for (int k = 0; k < 5; k++) if (Math.abs(next[i][k] - target[i][k]) > 0.01f) same = false;
+		if (same) return;
+		copy(now, origin);
+		copy(next, target);
+		moveStart = SystemClock.uptimeMillis();
+		moving = isAttachedToWindow();
+		if (!moving) copy(target, now);
+	}
+
+	private static void copy(float[][] from, float[][] to) {
+		for (int i = 0; i < from.length; i++) System.arraycopy(from[i], 0, to[i], 0, from[i].length);
+	}
+
+	private static boolean fits(boolean[][] used, int x, int y, int w, int h) {
+		if ((x + w > used.length) || (y + h > used[0].length)) return false;
+		for (int i = 0; i < w; i++) {
+			for (int j = 0; j < h; j++) if (used[x + i][y + j]) return false;
+		}
+		return true;
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Moving
+
+	/** Whether this picture shows its page scrolling: the big one, and the one of the arrangement in use. */
+	private boolean scrolls() {
+		if (scrollRange <= 0f) return false;
+		if (fixedMode < 0) return true;
+		return fixedMode == prefs.getIntPref(car ? MainActivityPrefs.HOME_ARRANGE_AA : MainActivityPrefs.HOME_ARRANGE);
+	}
+
+	private void startFrames() {
+		if (running || !isAttachedToWindow() || (getVisibility() != VISIBLE)) return;
+		running = true;
+		frameClock = SystemClock.uptimeMillis();
+		postOnAnimation(frame);
+	}
+
+	private final Runnable frame = new Runnable() {
+		@Override
+		public void run() {
+			if (!running) return;
+			long t = SystemClock.uptimeMillis();
+			float dt = Math.min(0.1f, (t - frameClock) / 1000f);
+			frameClock = t;
+			boolean again = false;
+			if (moving) {
+				float f = Math.min(1f, (t - moveStart) / (float) MOVE_MS);
+				float e = ease.getInterpolation(f);
+				for (int i = 0; i < N; i++) {
+					for (int k = 0; k < 4; k++) now[i][k] = origin[i][k] + (target[i][k] - origin[i][k]) * e;
+					// A card that appears or goes grows or shrinks away.
+					now[i][4] = origin[i][4] + (target[i][4] - origin[i][4]) * e;
+				}
+				if (f >= 1f) {
+					moving = false;
+					copy(target, now);
+				}
+				again = true;
+			}
+			if (scrolls()) {
+				scrollPhase += dt;
+				again = true;
+			}
+			invalidate();
+			if (again) postOnAnimation(this);
+			else running = false;
+		}
+	};
+
+	/** How far the page has scrolled now, in dp: down and back again, easing at both ends, resting for a moment first. */
+	private float scrollOffset() {
+		if (!scrolls()) return 0f;
+		float period = Math.max(4f, scrollRange / SCROLL_DP_PER_S);
+		float t = (scrollPhase % (period * 2f + 2f));
+		float f;
+		if (t < 1f) f = 0f;
+		else if (t < 1f + period) f = (t - 1f) / period;
+		else if (t < 1f + period + 1f) f = 1f;
+		else f = 1f - (t - 2f - period) / period;
+		f = Math.max(0f, Math.min(1f, f));
+		f = f * f * (3f - 2f * f);
+		return f * scrollRange;
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Drawing
 
 	@Override
 	protected void onMeasure(int wSpec, int hSpec) {
@@ -210,12 +397,29 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 
 	private void drawContent(Canvas cv, RectF scr, float k) {
 		float w = screenW();
-		float h = screenH();
-		int shown = (mode == AUTO) ? (((w > h) && (h < 600f)) ? SIDE : DOWN) : mode;
-		boolean down = shown != SIDE;
-		float side = 12f;
-		float top;
-		// The header: greeting words, info chips and the edit button.
+		float scroll = scrollOffset();
+
+		// The cards, scrolled along the way the page scrolls.
+		cv.save();
+		cv.clipRect(scr);
+		for (int i = 0; i < N; i++) {
+			float[] p = now[i];
+			if (p[4] <= 0.02f) continue;
+			float x = p[0] - (down ? 0f : scroll);
+			float y = p[1] - (down ? scroll : 0f);
+			if (p[4] < 1f) {
+				// Coming or going: grows or shrinks about its middle.
+				float s = p[4];
+				x += p[2] * (1f - s) / 2f;
+				y += p[3] * (1f - s) / 2f;
+				card(cv, scr, k, x, y, p[2] * s, p[3] * s, i == 0, s);
+			} else {
+				card(cv, scr, k, x, y, p[2], p[3], i == 0, 1f);
+			}
+		}
+		cv.restore();
+
+		// The header stays where it is while the cards pass under it: greeting words, info chips and the edit button.
 		float headTop = 14f;
 		if (greeting) {
 			bar(cv, scr, k, 16f, headTop, car ? 120f : 130f, car ? 14f : 16f, 0x66FFFFFF, 4f);
@@ -226,58 +430,12 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 			for (int i = 0; i < 3; i++) {
 				float cw = car ? 46f : 40f;
 				cx -= cw + 6f;
-				bar(cv, scr, k, cx, headTop + 2f, cw, car ? 16f : 18f, 0x44FFFFFF, 8f);
+				bar(cv, scr, k, cx, headTop + 2f, cw, car ? 16f : 18f, 0x66FFFFFF, 8f);
 			}
 		}
-		if (editButton) bar(cv, scr, k, w - 16f - 30f, headTop, 30f, 30f, 0x55FFFFFF, 15f);
+		if (editButton) bar(cv, scr, k, w - 16f - 30f, headTop, 30f, 30f, 0x66FFFFFF, 15f);
 
-		if (down) top = 16f + (greeting ? (car ? 54f : 62f) : 38f);
-		else top = 58f;
-
-		int n;
-		float cell;
-		if (down) {
-			n = (columns > 0) ? columns : Math.max(4, Math.min(8, (int) (w / 90f)));
-			n = Math.max(2, Math.min(8, n));
-			cell = (w - 2 * side - (n - 1) * gap) / n;
-		} else {
-			n = (columns > 0) ? columns : Math.max(2, Math.min(5, (int) (h / 105f)));
-			n = Math.max(2, Math.min(5, n));
-			cell = (h - top - 8f - (n - 1) * gap) / n;
-		}
-
-		// First fit along the way it scrolls.
-		List<int[]> placed = new ArrayList<>();
-		boolean[][] used = new boolean[down ? n : 80][down ? 80 : n];
-		for (int[] s : SAMPLE) {
-			int iw = down ? Math.min(s[0], n) : s[0];
-			int ih = down ? s[1] : Math.min(s[1], n);
-			boolean done = false;
-			for (int a = 0; (a < 78) && !done; a++) {
-				for (int b = 0; (b <= (down ? n - iw : n - ih)) && !done; b++) {
-					int x = down ? b : a;
-					int y = down ? a : b;
-					if (fits(used, x, y, iw, ih)) {
-						for (int i = 0; i < iw; i++) for (int j = 0; j < ih; j++) used[x + i][y + j] = true;
-						placed.add(new int[]{x, y, iw, ih, placed.size()});
-						done = true;
-					}
-				}
-			}
-		}
-		for (int[] p : placed) {
-			float x = side + p[0] * (cell + gap);
-			float y = top + p[1] * (cell + gap);
-			float cw = p[2] * cell + (p[2] - 1) * gap;
-			float ch = p[3] * cell + (p[3] - 1) * gap;
-			if (shown == FREE) {
-				// Freeflow: cards left where they were dropped, a little off the grid.
-				x += ((p[4] * 7) % 5 - 2) * 2.5f;
-				y += ((p[4] * 11) % 5 - 2) * 2.5f;
-			}
-			card(cv, scr, k, x, y, cw, ch, p[4] == 0);
-		}
-		// Past the edge it scrolls on: a soft fade says so.
+		// Past the edge it scrolls on: a soft fade says so, and a small arrow shows the way.
 		float fadeLen = car ? 70f : 90f;
 		if (down) {
 			fill.setShader(new LinearGradient(0, scr.bottom - fadeLen * k, 0, scr.bottom, 0x00080A0E, 0xCC080A0E, Shader.TileMode.CLAMP));
@@ -288,7 +446,6 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 		}
 		cv.drawRect(r, fill);
 		fill.setShader(null);
-		// And the way: a small arrow.
 		fill.setColor(0xCCFFFFFF);
 		float ax = down ? scr.centerX() : scr.right - 12f * k;
 		float ay = down ? scr.bottom - 12f * k : scr.centerY();
@@ -307,22 +464,15 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 		cv.drawPath(clip, fill);
 	}
 
-	private static boolean fits(boolean[][] used, int x, int y, int w, int h) {
-		if ((x + w > used.length) || (y + h > used[0].length)) return false;
-		for (int i = 0; i < w; i++) {
-			for (int j = 0; j < h; j++) if (used[x + i][y + j]) return false;
-		}
-		return true;
-	}
-
 	/** One sample card at {@code x, y} (dp from the screen's corner), the now-playing one in the accent. */
-	private void card(Canvas cv, RectF scr, float k, float x, float y, float w, float h, boolean media) {
+	private void card(Canvas cv, RectF scr, float k, float x, float y, float w, float h, boolean media, float alpha) {
 		fill.setStyle(Paint.Style.FILL);
 		fill.setColor(media ? mix(0xFF101418, c.accent, 0.62f) : 0xFF1B2230);
-		fill.setAlpha(media ? 235 : 215);
+		fill.setAlpha(Math.round((media ? 235 : 215) * alpha));
 		r.set(scr.left + x * k, scr.top + y * k, scr.left + (x + w) * k, scr.top + (y + h) * k);
 		float rad = Math.min(14f, Math.min(w, h) * 0.22f) * k;
 		cv.drawRoundRect(r, rad, rad, fill);
+		if (alpha < 0.6f) return;
 		float lx = x + 10f;
 		bar(cv, scr, k, lx, y + 10f, Math.max(8f, w * 0.45f), 8f, media ? 0xCCFFFFFF : 0x77FFFFFF, 4f);
 		if (h > 70f) bar(cv, scr, k, lx, y + 24f, Math.max(8f, w * 0.3f), 6f, 0x33FFFFFF, 3f);

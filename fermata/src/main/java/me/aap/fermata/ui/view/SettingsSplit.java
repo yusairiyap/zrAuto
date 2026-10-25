@@ -78,8 +78,18 @@ public final class SettingsSplit {
 				live.remove(w);
 				continue;
 			}
-			MainActivityDelegate a = MainActivityDelegate.get(s.body.getContext());
-			s.body.post(() -> s.sync(a));
+			// The body of an activity that was destroyed (the theme changed, the system recreated it) is not asked: its delegate is gone
+			// and asking for it throws.
+			if (!s.body.isAttachedToWindow()) {
+				live.remove(w);
+				continue;
+			}
+			try {
+				MainActivityDelegate a = MainActivityDelegate.get(s.body.getContext());
+				s.body.post(() -> s.sync(a));
+			} catch (RuntimeException ex) {
+				live.remove(w);
+			}
 		}
 	}
 
@@ -137,13 +147,13 @@ public final class SettingsSplit {
 		RecyclerView rv = new RecyclerView(ctx);
 		rv.setLayoutManager(new LinearLayoutManager(ctx));
 		rv.setClipToPadding(false);
-		rv.setPadding(colors.dp(12), colors.dp(8), colors.dp(8), colors.dp(16));
+		rv.setPadding(colors.dp(12), colors.dp(8), colors.dp(26), colors.dp(16));
 		adapter = new NavAdapter(a);
 		rv.setAdapter(adapter);
 		rv.setItemAnimator(null);
 		p.addView(rv, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 		Divider d = new Divider(ctx, a);
-		p.addView(d, new FrameLayout.LayoutParams(colors.dp(22), MATCH_PARENT, Gravity.END));
+		p.addView(d, new FrameLayout.LayoutParams(colors.dp(26), MATCH_PARENT, Gravity.END));
 		ConstraintLayout.LayoutParams lp = new ConstraintLayout.LayoutParams(widthPx, 0);
 		lp.topToTop = R.id.swiperefresh;
 		lp.bottomToBottom = R.id.swiperefresh;
@@ -160,39 +170,27 @@ public final class SettingsSplit {
 		return Math.max(Math.round(MIN_DP * d), Math.min(Math.max(max, Math.round(MIN_DP * d)), px));
 	}
 
-	/** Slides the list in or out while the pages make room for it (or take the room back). */
+	/**
+	 * The list comes or goes with a plain fade. The pages make room for it (or take the room back) at once: animating their margin
+	 * relaid out a whole page every frame, which is what made the entrance and the exit stutter.
+	 */
 	private void animate(int from, int to, boolean in) {
 		if (anim != null) anim.cancel();
 		View pr = body.findViewById(R.id.swiperefresh);
 		FrameLayout p = panel;
 		if ((pr == null) || (p == null)) return;
-		ValueAnimator va = ValueAnimator.ofInt(from, to);
-		va.setDuration(240);
-		va.setInterpolator(new DecelerateInterpolator(1.6f));
-		va.addUpdateListener(v -> {
-			int w = (Integer) v.getAnimatedValue();
-			setContentMargin(pr, w);
-			float f = (widthPx == 0) ? 1f : Math.max(0f, Math.min(1f, w / (float) widthPx));
-			p.setTranslationX(-(1f - f) * widthPx * 0.35f);
-			p.setAlpha(f);
-		});
-		va.addListener(new android.animation.AnimatorListenerAdapter() {
-			private boolean cancelled;
-
-			@Override
-			public void onAnimationCancel(android.animation.Animator animation) {
-				cancelled = true;
-			}
-
-			@Override
-			public void onAnimationEnd(android.animation.Animator animation) {
-				if (cancelled || in) return;
-				p.setVisibility(View.GONE);
-				setContentMargin(pr, 0);
-			}
-		});
-		anim = va;
-		va.start();
+		setContentMargin(pr, in ? to : 0);
+		p.setTranslationX(0);
+		p.animate().cancel();
+		if (in) {
+			p.setAlpha(0f);
+			p.setVisibility(View.VISIBLE);
+			p.animate().alpha(1f).setDuration(220).start();
+		} else {
+			p.animate().alpha(0f).setDuration(140).withEndAction(() -> {
+				if (!shown) p.setVisibility(View.GONE);
+			}).start();
+		}
 	}
 
 	private static void setContentMargin(View content, int px) {
@@ -244,7 +242,7 @@ public final class SettingsSplit {
 
 		@Override
 		protected void onDraw(@NonNull Canvas c) {
-			float x = getWidth() - colors.dp(6);
+			float x = getWidth() - colors.dp(11);
 			c.drawRect(x - colors.dp(0.5f), colors.dp(8), x + colors.dp(0.5f), getHeight() - colors.dp(8), line);
 			float h = colors.dp(dragging ? 56 : 44);
 			float w = colors.dp(dragging ? 6 : 4);
@@ -353,8 +351,10 @@ public final class SettingsSplit {
 				h.icon.setVisibility(View.INVISIBLE);
 			}
 			boolean on = e.key.equals(SettingsNav.selected());
-			GradientDrawable fill = colors.rounded(on ? mix(colors.tileFill, colors.accent, 0.16f) : colors.tileFill, 16);
-			if (on) fill.setStroke(colors.dp(2), colors.accent);
+			GradientDrawable fill = colors.rounded(on ? androidx.core.graphics.ColorUtils.blendARGB(colors.tileFill, colors.accent, 0.14f) :
+					colors.tileFill, 16);
+			// Always a stroke of the same width (clear when not picked), so a picked row is not a different size.
+			fill.setStroke(colors.dp(2), on ? colors.accent : 0x00000000);
 			h.itemView.setBackground(colors.pressable(fill));
 			h.itemView.setOnClickListener(v -> click(a, e));
 		}
