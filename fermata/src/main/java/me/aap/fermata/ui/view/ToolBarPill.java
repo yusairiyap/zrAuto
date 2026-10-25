@@ -136,10 +136,10 @@ public final class ToolBarPill {
 				// Glass: the content behind it blurred (Android 12+), under the bar's colour as a tint.
 				Glass.Look l = Glass.look();
 				float a = alpha / 255f;
-				if (Glass.realBlur()) GlassLens.behindBars(view, canvas, rect, radius, a, l, lens);
+				boolean blurred = Glass.realBlur() && GlassLens.behindBars(view, canvas, rect, radius, a, l, lens);
 				Glass.paintOver(canvas, rect, radius, color, a, l.rimFor(Glass.RIM_TOOLBAR),
 						androidx.core.graphics.ColorUtils.calculateLuminance(color | 0xFF000000) > 0.5,
-						view.getResources().getDisplayMetrics().density, glassPaint);
+						view.getResources().getDisplayMetrics().density, glassPaint, blurred);
 				return;
 			}
 			paint.setColor(color);

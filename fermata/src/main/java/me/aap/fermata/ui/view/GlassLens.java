@@ -127,10 +127,15 @@ public final class GlassLens {
 		Glass.register(self);
 		RenderNode src = inside(self, body) ? null : body.getGlassSource();
 		if (src == null) {
-			// The tab is not recorded (a web tab, fullscreen YouTube): the page's own frame, with the experimental
-			// blur over web pages and video on.
-			return GlassFrame.drawBehindAny(self, c, r, radius, alpha, look, slot);
+			// The tab is not recorded (a web tab, fullscreen YouTube): fullscreen YouTube's own frame, else a web page
+			// blurs itself under the surface (PageBlur), with the experimental blur over web pages and video on.
+			if (GlassFrame.drawBehindAny(self, c, r, radius, alpha, look, slot)) {
+				PageBlur.clear(slot);
+				return true;
+			}
+			return PageBlur.cover(self, slot, r, radius, alpha, look);
 		}
+		PageBlur.clear(slot);
 		if (slot[0] == null) slot[0] = new GlassLens();
 		int[] bl = new int[2];
 		int[] sl = new int[2];

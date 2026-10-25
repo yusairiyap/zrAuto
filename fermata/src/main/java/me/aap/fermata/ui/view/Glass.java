@@ -300,6 +300,7 @@ public final class Glass {
 	 */
 	public static void reset() {
 		web = null;
+		PageBlur.reset();
 		Look before = (target != null) ? look() : null;
 		target = null;
 		Look after = target();
@@ -554,10 +555,13 @@ public final class Glass {
 		int ta = blurred ? l.tintAlpha() : Math.max(115, l.tintAlpha());
 		paint.setColor((rgb & 0x00FFFFFF) | (Math.round(ta * alpha) << 24));
 		c.drawRoundRect(r, radius, radius, paint);
-		if (l.grain > 0f) {
+		// With nothing blurred under it (a page that can't blur itself, below Android 12) the frosted look is faked:
+		// the thicker tint above and always some grain, so what shows through reads as frosted, not see-through.
+		float grain = blurred ? l.grain : Math.max(l.grain, 0.7f * amount());
+		if (grain > 0f) {
 			paint.setColor(0xFFFFFFFF);
 			paint.setShader(grainShader());
-			paint.setAlpha(Math.round((light ? 22 : 30) * alpha * l.grain));
+			paint.setAlpha(Math.round((light ? 22 : 30) * alpha * grain));
 			c.drawRoundRect(r, radius, radius, paint);
 			paint.setShader(null);
 		}

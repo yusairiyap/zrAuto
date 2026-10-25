@@ -290,12 +290,11 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 		if (Glass.onBars()) {
 			// Glass: the content behind the pill blurred (Android 12+), the pill's colour as a tint over it.
 			Glass.Look l = Glass.look();
-			if (Glass.realBlur()) {
-				GlassLens.behindBars(this, canvas, r, radius, alpha, l, (r == main) ? mainLens : auxLens);
-			}
+			boolean blurred = Glass.realBlur() &&
+					GlassLens.behindBars(this, canvas, r, radius, alpha, l, (r == main) ? mainLens : auxLens);
 			Glass.paintOver(canvas, r, radius, pillColor, alpha, l.rimFor(Glass.RIM_NAV),
 					androidx.core.graphics.ColorUtils.calculateLuminance(pillColor | 0xFF000000) > 0.5,
-					getResources().getDisplayMetrics().density, glassPaint);
+					getResources().getDisplayMetrics().density, glassPaint, blurred);
 			return;
 		}
 		pillPaint.setColor(pillColor);

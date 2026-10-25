@@ -1063,6 +1063,19 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
 - **Context menu rows on the phone** are the settings rows' size (15sp, 22dp icons, `MenuStyle#styleItem`), not scaled by the
   interface's text/icon size; the car screen keeps its own sizing.
 
+### Seventh round (the page blurs itself)
+
+- **Glass over a web page = CSS in the page** (`ui/view/PageBlur`, experimental switch only): when nothing of ours can blur
+  what is under a surface (`GlassLens#behindBars`: no tab recording, no fullscreen GlassFrame), the surface reports its
+  window rect, radius, alpha, blur and saturation (`PageBlur.cover`, keyed by its lens slot), and a script keeps matching
+  boxes in the page (`#__zrauto_glass`, position fixed, no touches) with `backdrop-filter: blur() saturate()`, so Chromium
+  blurs the page under our bar and the bar draws only tint and rim. Sent at most once a frame when changed, every 2 s
+  anyway (page reloads), boxes of hidden surfaces dropped every 400 ms, all cleared on a UI style change (`PageBlur.reset`).
+  `cover` returns whether the page supports backdrop-filter (`BODY page blur` in the Diagnostic log); if not, the surface
+  is drawn *unblurred*: `Glass#paintOver(.., blurred=false)` = at least 45% tint plus grain (the "fake frosted" look).
+  ToolBarPill and FloatingBarsView now pass `behindBars`' result as `blurred`. A playing `<video>` in the page may not blur
+  (it can be its own layer). Never run on a device.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

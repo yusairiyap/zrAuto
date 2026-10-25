@@ -175,7 +175,7 @@ public class GlassSettingsFragment extends ReorderListFragment {
 	}
 
 	@SuppressWarnings("unchecked")
-	private static final me.aap.utils.pref.PreferenceStore.Pref<java.util.function.BooleanSupplier>[] RIM_PREFS =
+	private static final me.aap.utils.pref.PreferenceStore.Pref<me.aap.utils.function.BooleanSupplier>[] RIM_PREFS =
 			new me.aap.utils.pref.PreferenceStore.Pref[]{MainActivityPrefs.GLASS_RIM_TOOLBAR,
 					MainActivityPrefs.GLASS_RIM_NAV, MainActivityPrefs.GLASS_RIM_FAB, MainActivityPrefs.GLASS_RIM_MENUS,
 					MainActivityPrefs.GLASS_RIM_HOME, MainActivityPrefs.GLASS_RIM_VIDEO, MainActivityPrefs.GLASS_RIM_TILES};

@@ -45,7 +45,7 @@
     <string name="glass_quality_balanced">Balanced</string>
     <string name="glass_quality_saver">Battery</string>
     <string name="glass_web">Blur over web pages and video (experimental)</string>
-    <string name="glass_web_sub">Over fullscreen video (YouTube and local files) the bars, menus and video buttons blur the picture. The picture is drawn a second time or copied several times a second for it, which may flicker or cost more battery on some phones. The YouTube and browser pages themselves are never blurred.</string>
+    <string name="glass_web_sub">The bars, menus and floating buttons blur the YouTube and browser pages (the page blurs itself under them), and over fullscreen video (YouTube and local files) they blur the picture. It may flicker or cost more battery on some phones; a page that can\'t blur shows frosted glass instead.</string>
     <string name="glass_on_home">Home cards</string>
     <string name="glass_on_home_sub">Widgets with the Glass look (Settings &gt; Home &gt; Widget look) blur the Home background behind them</string>
     <string name="glass_on_tiles">Settings cards</string>
