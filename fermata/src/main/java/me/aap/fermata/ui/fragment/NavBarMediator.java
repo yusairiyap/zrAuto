@@ -154,6 +154,14 @@ public class NavBarMediator extends PrefNavBarMediator
 		}
 	}
 
+	/** The bar's menus open at the finger like the context menu (MenuStyle), not centred beside the bar. */
+	@Override
+	protected me.aap.utils.ui.menu.OverlayMenuView createOverlayMenu(NavBarView nb, boolean center) {
+		me.aap.utils.ui.menu.OverlayMenuView menu = super.createOverlayMenu(nb, center);
+		menu.setTag(R.id.menu_at_finger, Boolean.TRUE);
+		return menu;
+	}
+
 	@Override
 	protected void contributeItemMenu(NavBarView nb, NavButtonView btn, OverlayMenu.Builder b,
 																		 ColorStateList tint) {

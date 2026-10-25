@@ -170,8 +170,10 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		chipBar.setOrientation(LinearLayout.HORIZONTAL);
 		chipBar.setGravity(Gravity.CENTER_VERTICAL);
 		chipBar.setPadding(HomeUi.dp(ctx, 4), HomeUi.dp(ctx, 4), HomeUi.dp(ctx, 4), HomeUi.dp(ctx, 4));
-		chipBar.setBackground(HomeUi.round((palette.panelFill & 0xFFFFFF) | 0xE6000000, HomeUi.dp(ctx, 26)));
-		chipBar.setElevation(HomeUi.dp(ctx, 6));
+		// Glass like the cards when the UI style puts glass on Home (HomeGlassFill), with no shadow under it then.
+		chipBar.setBackground(new HomeGlassFill(chipBar, this, (palette.panelFill & 0xFFFFFF) | 0xE6000000,
+				HomeUi.dp(ctx, 26)));
+		syncChipBarElevation();
 		editBtn = pillChip(R.drawable.edit, 0, false, () -> setEditing(true));
 		editBtn.setContentDescription(ctx.getString(R.string.home_edit));
 		editChips[0] = pillChip(R.drawable.home_add, R.string.home_add, false, this::showAdd);
@@ -546,6 +548,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	/** The cards with real glass are drawn again (the background behind them changed). */
 	private void invalidateGlassCards() {
 		invalidateGlassCards(grid);
+		if (me.aap.fermata.ui.view.Glass.onHome()) chipBar.invalidate();
 		if (topGlass) topInfo.invalidateChips();
 	}
 
@@ -1231,7 +1234,13 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	private boolean topGlass;
 	private final Runnable glassGlide = () -> {
 		if (me.aap.fermata.ui.view.Glass.onHome() != topGlass) applyTopInfo();
+		chipBar.invalidate();
+		syncChipBarElevation();
 	};
+
+	private void syncChipBarElevation() {
+		chipBar.setElevation(me.aap.fermata.ui.view.Glass.onHome() ? 0f : HomeUi.dp(palette.ctx, 6));
+	}
 
 	/** The chips' fill with the page at the top (see applyTopInfo). */
 	private int topFillBase = 0x2EFFFFFF;

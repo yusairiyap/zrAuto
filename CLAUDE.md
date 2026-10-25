@@ -1045,6 +1045,12 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
   alpha of their surface (sampled every 100 ms while up); sent at most once a frame when changed and every 2 s anyway (page reloads).
   A pill that stops drawing takes its box with it (`Glass.notDrawn(slot)`, where `FloatingBarsView#drawPill`, `FabPillView#onDraw` and
   `ToolBarPill` return early). `cover` returns whether the page supports backdrop-filter.
+- **Top popups and Home's own surfaces**: `TopPopup#styleCard` gives the top toast, `TopConfirm` and `ShareReceiveCard` the menu card
+  (`MenuStyle.panel`, glass with `GLASS_MENUS`, no shadow then); `HomeModal` (widget settings, Background) uses it too, it is on
+  `main_activity`. What is drawn inside Home (the edit button and chip bar, a widget's inline settings panel) cannot blur the tab that holds it,
+  so `ui/home/HomeGlassFill` blurs Home's background layers like the glass cards (with `GLASS_HOME`), redrawn when it moves.
+- **Menus open at the finger anywhere**: `MenuStyle.recordTouch` is fed from `MainActivity#dispatchTouchEvent` (not only the tab), and a menu
+  tagged `R.id.menu_at_finger` (the nav bar's, `NavBarMediator#createOverlayMenu`) is placed like the context menu.
 - **Fullscreen video is never blurred** (YouTube or local): `BodyLayout` does not record in FRAME mode and `behindBars` returns false in
   video mode, so every surface there (control panel, floating buttons, menus, dialogs, the video buttons via `Glass.surface`) draws the
   **frosted look**: `Glass#paintOver(.., blurred=false)` = at least 45% tint plus grain, so the video reads as behind frosted glass. The

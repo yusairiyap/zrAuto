@@ -74,7 +74,7 @@ public final class TopToast {
 			return false;
 		}
 		b.setElevation(UiUtils.toIntPx(ctx, 8));
-		b.setBackgroundTintList(ColorStateList.valueOf(BG));
+		TopPopup.styleCard(b, BG);
 		ImageView iv = b.findViewById(R.id.data_usage_banner_icon);
 		iv.setImageResource(icon);
 		iv.setImageTintList(ColorStateList.valueOf(BG));

@@ -44,7 +44,7 @@ import me.aap.utils.ui.view.DialogView;
  * <p>
  * <b>Where it opens</b>: the context menu (long press on a list item, a Home row, a YouTube thumbnail)
  * opens at the finger (beside and below it, flipped to stay on screen), growing out of the touch point,
- * when a touch on the tab just happened ({@link #recordTouch}, from BodyLayout). On the car screen, for a
+ * when a touch just happened ({@link #recordTouch}, from MainActivity; the nav bar's menus too). On the car screen, for a
  * dialog, and when the keys opened it, it stays in the middle as before.
  */
 public final class MenuStyle implements OverlayMenuView.Styler {
@@ -54,7 +54,7 @@ public final class MenuStyle implements OverlayMenuView.Styler {
 	private static float touchX;
 	private static float touchY;
 
-	/** The finger's last press on the tab, in screen coordinates. Called from BodyLayout. */
+	/** The finger's last press anywhere in the window (the nav bar too), in screen coordinates. Called from MainActivity. */
 	public static void recordTouch(MotionEvent e) {
 		if (e.getActionMasked() != MotionEvent.ACTION_DOWN) return;
 		touchAt = SystemClock.uptimeMillis();
@@ -211,7 +211,8 @@ public final class MenuStyle implements OverlayMenuView.Styler {
 		boolean wasAnchored = menu.getTag(R.id.menu_anchored) != null;
 		// A submenu of a menu opened at the finger stays where it is, however long the first one was open.
 		boolean submenu = menu.getTag(R.id.menu_anchor) != null;
-		boolean byTouch = (menu.getId() == R.id.context_menu) && !car && !dialog &&
+		boolean atFinger = (menu.getId() == R.id.context_menu) || (menu.getTag(R.id.menu_at_finger) != null);
+		boolean byTouch = atFinger && !car && !dialog &&
 				(submenu || (SystemClock.uptimeMillis() - touchAt < TOUCH_MS));
 		if (!byTouch) {
 			menu.setTag(R.id.menu_anchor, null);

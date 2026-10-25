@@ -389,6 +389,47 @@ abstract class LibraryWidget extends HomeWidgetView {
 	}
 
 	/**
+	 * A song row of Favorites or a playlist, with its artist (the channel for a YouTube video) on the second line, as the
+	 * Queue card has it: what the item already knows (its loaded metadata, the YouTube addon's stored info), else
+	 * "YouTube" for a video until its metadata is read, which then fills the line in.
+	 */
+	protected static Row songRow(PlayableItem p, Runnable click, @Nullable Runnable play, boolean current) {
+		String artist = artistOf(p);
+		Consumer<Consumer<CharSequence>> fill = null;
+		if (artist == null) {
+			if (YtDownloads.videoIdOf(p) != null) artist = "YouTube";
+			fill = set -> p.getMediaData().main().onSuccess(m -> {
+				String a = (m == null) ? null : m.getString(android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ARTIST);
+				if ((a != null) && !a.isEmpty()) set.accept(a);
+			});
+		}
+		return new Row(p.getName(), artist, p, click, play, fill, current);
+	}
+
+	@Nullable
+	private static String artistOf(PlayableItem p) {
+		if (p instanceof me.aap.fermata.addon.music.MusicTrackItem t) {
+			String a = t.getArtistName();
+			if ((a != null) && !a.isEmpty()) return a;
+		}
+		android.support.v4.media.MediaMetadataCompat md = p.getMediaData().peek();
+		if (md != null) {
+			String a = md.getString(android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ARTIST);
+			if ((a != null) && !a.isEmpty()) return a;
+		}
+		String vid = YtDownloads.videoIdOf(p);
+		if (vid != null) {
+			for (me.aap.fermata.addon.FermataAddon ad : me.aap.fermata.addon.AddonManager.get().getAddons()) {
+				if (!(ad instanceof me.aap.fermata.addon.VideoTitleCache c)) continue;
+				me.aap.fermata.addon.VideoTitleCache.VideoInfo vi = c.getCachedVideoInfo(vid);
+				if ((vi != null) && (vi.artist != null) && !vi.artist.isEmpty()) return vi.artist;
+				break;
+			}
+		}
+		return null;
+	}
+
+	/**
 	 * The ids the playing song goes by: the session's item, the queue entry's source and what Add to
 	 * favorites would act on. A row is the playing one when its {@code getOrigId()} is in the set. With
 	 * nothing loaded yet (the app has just started) it is the song last played, the one the media card shows.

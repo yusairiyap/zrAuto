@@ -47,9 +47,9 @@ public final class TopConfirm {
 		LinearLayout card = new LinearLayout(ctx);
 		card.setOrientation(LinearLayout.VERTICAL);
 		card.setBackgroundResource(R.drawable.data_usage_banner_bg);
-		card.setBackgroundTintList(ColorStateList.valueOf(BG));
 		card.setClickable(true);
 		card.setElevation(UiUtils.toIntPx(ctx, 8));
+		TopPopup.styleCard(card, BG);
 		int pad = UiUtils.toIntPx(ctx, 12);
 		card.setPadding(pad, pad, pad, UiUtils.toIntPx(ctx, 8));
 

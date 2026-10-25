@@ -55,6 +55,16 @@ public final class TopPopup {
 		return h;
 	}
 
+	/**
+	 * Gives a top card its fill as a menu card ({@link MenuStyle#panel}): glass when the UI style puts glass on menus and
+	 * dialogs, else the same rounded fill as before. No shadow under glass: it showed through as a dark smudge.
+	 */
+	public static void styleCard(@NonNull View card, int color) {
+		card.setBackgroundTintList(null);
+		card.setBackground(MenuStyle.panel(card, color, UiUtils.toIntPx(card.getContext(), 18)));
+		if (Glass.onMenus()) card.setElevation(0f);
+	}
+
 	/** Puts {@code holder} below the status bar as it is now (it changes with fullscreen video). */
 	public static void layoutTop(View holder, ViewGroup root) {
 		if (!(holder.getLayoutParams() instanceof ConstraintLayout.LayoutParams lp)) return;

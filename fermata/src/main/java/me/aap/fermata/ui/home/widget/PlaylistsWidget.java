@@ -7,7 +7,6 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 import me.aap.fermata.R;
-import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.lib.MediaLib.Playlist;
 import me.aap.fermata.media.lib.MediaLib.Item;
@@ -249,7 +248,6 @@ final class PlaylistsWidget extends LibraryWidget {
 			int at = -1;
 			for (int i = 0; i < n; i++) {
 				if (!(items.get(i) instanceof PlayableItem p)) continue;
-				String artist = (p instanceof MusicTrackItem t) ? t.getArtistName() : null;
 				Runnable play = () -> {
 					HomePlay.tapped(a, p);
 					queueOnPlay();
@@ -257,7 +255,7 @@ final class PlaylistsWidget extends LibraryWidget {
 				boolean now = (at < 0) && playing.contains(p.getOrigId());
 				if (now) at = rows.size();
 				// A tap on the row plays it already: no play button inside an opened playlist (the list's own rows keep theirs).
-				rows.add(new Row(p.getName(), artist, p, play, null, null, now));
+				rows.add(songRow(p, play, null, now));
 			}
 			focusRow = at;
 			done.done(rows, items.size());

@@ -393,8 +393,6 @@ public class BodyLayout extends SplitLayout
 
 	@Override
 	public boolean dispatchTouchEvent(MotionEvent e) {
-		// Where the finger is, for a context menu opened by a long press (MenuStyle).
-		MenuStyle.recordTouch(e);
 		// Only watched, never taken: which content the finger scrolls, see ScrollBarsController.
 		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(getContext()).peek();
 		ScrollBarsController sb = (a != null) ? a.getScrollBars() : null;
