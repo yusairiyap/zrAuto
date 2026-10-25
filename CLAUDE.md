@@ -975,6 +975,33 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
   without blur (RenderScript is deprecated and slow). With glass on the bars the bottom fade is off and the top fade only
   covers the status bar. **None of this has run on a device yet**: `BODY glass source on/off` is in the Diagnostic log.
 
+### Second round (redraw only on change, menus, quality, glide)
+
+- **Never invalidate a glass surface before every frame.** An `invalidate()` from a pre-draw listener schedules the
+  next frame whenever the traversal didn't relayout, so the first version redrew (and blurred) 60 times a second on an
+  idle screen (~400 mA). Surfaces are registered (`Glass.register`, done by `GlassLens.behindBars`) and drawn again only
+  from `BodyLayout#onDescendantInvalidated` (something in the tab changed), `BodyLayout#draw`, and `Glass.syncSurfaces`
+  (the surface moved). Home's glass cards: `HomeWidgetView#glassSync` only when the card moved,
+  `HomeBackgroundView#setOnRedraw` when the background changed.
+- **Quality** (`GLASS_QUALITY`): the lens renders at 1, 1/2 or 1/4 size (`Glass.renderScale`, 1/4 with the power saver)
+  as its own compositing layer and is stretched back up.
+- **Glide**: `Glass.look()` interpolates from the old look to the new for `ANIM_MS` after any `GLASS_*` change (NORMAL counts
+  as tint 95%, no blur), driving `invalidateSurfaces` and `Glass.addAnimListener` listeners each frame.
+- **Web tabs**: `BodyLayout#syncGlass` treats the YouTube / browser fragment ids as web at once (and for 600 ms after
+  leaving), not after the throttled WebView search: drawing a WebView in a lens even for a few frames flickered.
+  Blur over a page or fullscreen video is not possible (functor / SurfaceView / the page's fullscreen top layer is the
+  `<video>` element itself, so not even CSS `backdrop-filter` in the page could sit over it); those get `Glass.surface`
+  (tint, grain, rim).
+- **Menus** (`ui/view/MenuStyle`, `OverlayMenuView.setStyler` hook in `depends/utils`): every menu's card (`MenuStyle.panel`,
+  glass with `GLASS_MENUS`), a left-aligned header, roomy rows with a rounded focus/selected outline for car keys. The context
+  menu opens at the finger (`recordTouch` from `BodyLayout#dispatchTouchEvent`, within 1.5 s; a submenu keeps the place),
+  centred on the car screen and for dialogs. Dialogs (`DialogStyle`) and the cards (playlist picker, All in One, lyrics,
+  download, share, alternatives, comments) use `MenuStyle.panel` too.
+- Settings rows take `SettingsStyle.Colors#tile` (`Glass.tile`: sheen + hairline rim) while the style is glass; bound rows
+  only change when the page is built again.
+- **Hide cover button**: `MusicAddon.COVER_CHIP` (Music addon settings) and Home's player card option `eye`; the card lays out
+  without its cover while hidden (`MediaWidget#layoutHidden`, `relayout` with an AutoTransition) and re-checks in `onActive`.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,
