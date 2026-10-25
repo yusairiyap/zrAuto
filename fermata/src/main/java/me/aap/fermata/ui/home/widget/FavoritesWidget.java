@@ -79,10 +79,10 @@ final class FavoritesWidget extends LibraryWidget {
 				PlayableItem pi = l.get(i);
 				boolean now = (at < 0) && playing.contains(pi.getOrigId());
 				if (now) at = i;
-				rows.add(new Row(pi.getName(), null, pi, () -> {
+				rows.add(songRow(pi, () -> {
 					HomePlay.tapped(a, pi);
 					queueOnPlay();
-				}, null, null, now));
+				}, null, now));
 			}
 			focusRow = at;
 			done.done(rows, items.size());

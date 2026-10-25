@@ -649,6 +649,7 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 		// The thumb is drawn centred on the track's ends: with no padding half of it was cut off at
 		// the lowest and the highest value. A thumb's radius of room on each side keeps it whole.
 		bar.setPadding(dp(12), 0, dp(12), 0);
+		me.aap.fermata.ui.view.Glass.knob(bar);
 		return bar;
 	}
 
@@ -680,6 +681,12 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 	}
 
 	protected final GradientDrawable rounded(int color, int radiusDp) {
+		// The tiles follow the UI style (the glass tile with glass on), gliding as it changes.
+		if (color == tileFill) {
+			return me.aap.fermata.ui.view.Glass.tile(tileFill, dp(radiusDp),
+					androidx.core.graphics.ColorUtils.calculateLuminance(textPrimary | 0xFF000000) < 0.5, false, accent,
+					density);
+		}
 		GradientDrawable d = new GradientDrawable();
 		d.setColor(color);
 		d.setCornerRadius(dp(radiusDp));
@@ -751,6 +758,13 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 	/** A title and a line under it over a row of options, the picked one filled with the accent. */
 	protected final void addChoiceRow(LinearLayout parent, @StringRes int title, @StringRes int sub, int[] labels,
 														java.util.function.IntSupplier get, java.util.function.IntConsumer set) {
+		addChoiceRow(parent, title, sub, labels, get, set, null);
+	}
+
+	/** As above; {@code enabled}, if given, greys the row out (and ignores taps) while it is false. */
+	protected final void addChoiceRow(LinearLayout parent, @StringRes int title, @StringRes int sub, int[] labels,
+														java.util.function.IntSupplier get, java.util.function.IntConsumer set,
+														@Nullable java.util.function.BooleanSupplier enabled) {
 		LinearLayout row = new LinearLayout(palette);
 		row.setOrientation(LinearLayout.VERTICAL);
 		row.setPadding(dp(16), dp(12), dp(16), dp(14));
@@ -783,6 +797,7 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 			t.setClickable(true);
 			t.setFocusable(true);
 			t.setOnClickListener(v -> {
+				if ((enabled != null) && !enabled.getAsBoolean()) return;
 				set.accept(fi);
 				for (Runnable r : syncers) r.run();
 			});
@@ -793,6 +808,7 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 		}
 		row.addView(chips);
 		syncers.add(refresh);
+		if (enabled != null) syncers.add(() -> row.setAlpha(enabled.getAsBoolean() ? 1f : 0.45f));
 		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
 		lp.topMargin = dp(10);
 		parent.addView(row, lp);

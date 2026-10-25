@@ -65,10 +65,8 @@ public final class DialogStyle {
 				}
 				if (menu == null) return;
 				was = menu.getBackground();
-				GradientDrawable g = new GradientDrawable();
-				g.setColor(panelColor);
-				g.setCornerRadius(radius);
-				menu.setBackground(g);
+				// Glass when the UI style puts glass on menus and dialogs (MenuStyle#panel).
+				menu.setBackground(MenuStyle.panel(menu, panelColor, radius));
 
 				// Rises into place while the menu fades in.
 				menu.setScaleX(0.92f);

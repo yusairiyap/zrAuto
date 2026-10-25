@@ -171,7 +171,7 @@ public class PlaylistsFragment extends MediaLibFragment {
 		if (handler.getItem() instanceof Playlist pl) {
 			builder.addItem(R.id.spotify_sync, R.drawable.refresh, R.string.spotify_sync)
 					.setHandler(i -> {
-						syncWithSpotify(pl);
+						syncWithSpotify(getMainActivity(), pl);
 						return true;
 					});
 			builder.addItem(R.id.spotify_import, R.drawable.playlist_import, R.string.spotify_import)
@@ -185,11 +185,10 @@ public class PlaylistsFragment extends MediaLibFragment {
 	/**
 	 * Adds the songs of the Spotify playlist of the same name that aren't here yet, at the top --
 	 * see {@link SpotifyPlaylistSync}. Quick when there's nothing new; otherwise a modal card
-	 * shows what's going on, with Cancel, once it takes more than a moment.
+	 * shows what's going on, with Cancel, once it takes more than a moment. Also from a Home card's row menu.
 	 */
-	private void syncWithSpotify(Playlist pl) {
-		MainActivityDelegate a = getMainActivity();
-		Context ctx = requireContext();
+	public static void syncWithSpotify(MainActivityDelegate a, Playlist pl) {
+		Context ctx = a.getContext();
 		String name = pl.getName();
 		ModalProgressPopup[] popup = {null};
 		SpotifyPlaylistSync[] sync = {null};
@@ -208,7 +207,7 @@ public class PlaylistsFragment extends MediaLibFragment {
 			if (popup[0] != null) popup[0].setProgress(last[0], prog[0], prog[1]);
 		};
 
-		sync[0] = SpotifyPlaylistSync.start(getLib(), pl, new SpotifyPlaylistSync.Callback() {
+		sync[0] = SpotifyPlaylistSync.start(a.getLib(), pl, new SpotifyPlaylistSync.Callback() {
 			@Override
 			public void onProgress(String text, int done, int total) {
 				last[0] = text;

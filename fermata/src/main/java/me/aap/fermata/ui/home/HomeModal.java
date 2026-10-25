@@ -99,9 +99,12 @@ public final class HomeModal {
 		col.addView(sv, slp);
 
 		card = new FrameLayout(ctx);
-		card.setBackground(HomeUi.round((p.panelFill & 0xFFFFFF) | 0xFF000000, HomeUi.dp(ctx, 28)));
+		// A card over the app (on main_activity, outside the tab): glass like the other modal cards when the UI style puts
+		// glass on menus and dialogs (MenuStyle#panel), with no shadow under it then.
+		card.setBackground(me.aap.fermata.ui.view.MenuStyle.panel(card, (p.panelFill & 0xFFFFFF) | 0xFF000000,
+				HomeUi.dp(ctx, 28)));
 		card.setClickable(true);
-		card.setElevation(HomeUi.dp(ctx, 12));
+		if (!me.aap.fermata.ui.view.Glass.onMenus()) card.setElevation(HomeUi.dp(ctx, 12));
 		card.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));
 		overlay.addView(card);

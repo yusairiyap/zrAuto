@@ -148,6 +148,14 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 		return r.onSuccess(v -> {
 			MediaLibFragment f = a.getActiveMediaLibFragment();
 			if (f != null) f.contributeToContextMenu(builder, this);
+			// A playlist's row on a Home card: Sync with Spotify as in the Playlists tab (which adds it itself).
+			if (listItem && (view == null) && (item instanceof Playlist pl) &&
+					!(f instanceof me.aap.fermata.ui.fragment.PlaylistsFragment)) {
+				builder.addItem(R.id.spotify_sync, R.drawable.refresh, R.string.spotify_sync).setHandler(i -> {
+					me.aap.fermata.ui.fragment.PlaylistsFragment.syncWithSpotify(a, pl);
+					return true;
+				});
+			}
 			builder.setSelectionHandler(this);
 			// The card stays outlined while its menu is open -- see MediaItemView#showItemMenu().
 			MediaItemView iv = view;

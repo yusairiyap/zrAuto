@@ -205,6 +205,36 @@ public interface MainActivityPrefs
 	// YouTube's captions (see ytcaptions/CaptionsHub): shown as lyrics over the Music tab's cover
 	// (the Lyrics chip), and as captions over fullscreen video (the Captions action). Off until asked.
 	Pref<BooleanSupplier> LYRICS_ON = Pref.b("LYRICS_ON", false);
+	// Covers hidden (CoverHide): the Music tab's cover, Home's media card and its now-playing background
+	// are blurred so far that only their colours show. The COVER_HIDE action toggles it.
+	Pref<BooleanSupplier> COVER_HIDDEN = Pref.b("COVER_HIDDEN", false);
+	// The UI style (ui/view/Glass, Settings > Interface > UI style): 0 the usual bars and cards, 1 frosted
+	// glass, 2 clear glass, 3 acrylic. Picking a style writes its values into the GLASS_* prefs below, which
+	// can then be tuned: blur (dp), tint (% opacity), saturation (%), grain and the rim light, and where
+	// the glass goes (the tool bar, nav bar and control panel; Home's Glass cards).
+	Pref<IntSupplier> GLASS_STYLE = Pref.i("GLASS_STYLE", 0);
+	Pref<IntSupplier> GLASS_BLUR = Pref.i("GLASS_BLUR", 22);
+	Pref<IntSupplier> GLASS_TINT = Pref.i("GLASS_TINT", 55);
+	Pref<IntSupplier> GLASS_SATURATION = Pref.i("GLASS_SATURATION", 140);
+	Pref<BooleanSupplier> GLASS_GRAIN = Pref.b("GLASS_GRAIN", true);
+	Pref<BooleanSupplier> GLASS_RIM = Pref.b("GLASS_RIM", true);
+	Pref<BooleanSupplier> GLASS_BARS = Pref.b("GLASS_BARS", true);
+	Pref<BooleanSupplier> GLASS_HOME = Pref.b("GLASS_HOME", true);
+	Pref<BooleanSupplier> GLASS_MENUS = Pref.b("GLASS_MENUS", true);
+	// The size the blur is rendered at (Glass.QUALITY_*): full, half (default), a quarter.
+	Pref<IntSupplier> GLASS_QUALITY = Pref.i("GLASS_QUALITY", 1);
+	// Experimental: blur over web pages too (YouTube, the browser; the page blurs itself, see PageBlur).
+	Pref<BooleanSupplier> GLASS_WEB = Pref.b("GLASS_WEB", false);
+	// Settings cards in the glass look too (off: they keep the Normal look whatever the style).
+	Pref<BooleanSupplier> GLASS_TILES = Pref.b("GLASS_TILES", false);
+	// Where the rim light (GLASS_RIM) shows (Settings > UI style > Rim light): every part but the settings cards.
+	Pref<BooleanSupplier> GLASS_RIM_TOOLBAR = Pref.b("GLASS_RIM_TOOLBAR", true);
+	Pref<BooleanSupplier> GLASS_RIM_NAV = Pref.b("GLASS_RIM_NAV", true);
+	Pref<BooleanSupplier> GLASS_RIM_FAB = Pref.b("GLASS_RIM_FAB", true);
+	Pref<BooleanSupplier> GLASS_RIM_MENUS = Pref.b("GLASS_RIM_MENUS", true);
+	Pref<BooleanSupplier> GLASS_RIM_HOME = Pref.b("GLASS_RIM_HOME", true);
+	Pref<BooleanSupplier> GLASS_RIM_VIDEO = Pref.b("GLASS_RIM_VIDEO", true);
+	Pref<BooleanSupplier> GLASS_RIM_TILES = Pref.b("GLASS_RIM_TILES", false);
 	Pref<BooleanSupplier> CAPTIONS_ON = Pref.b("CAPTIONS_ON", false);
 	// Language code to prefer ("" = the phone's), and whether speech-recognition captions may be used
 	// when a video has no written ones.

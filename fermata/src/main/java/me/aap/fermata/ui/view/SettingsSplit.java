@@ -376,11 +376,20 @@ public final class SettingsSplit {
 				h.icon.setVisibility(View.INVISIBLE);
 			}
 			boolean on = e.key.equals(SettingsNav.selected());
-			GradientDrawable fill = colors.rounded(on ? androidx.core.graphics.ColorUtils.blendARGB(colors.tileFill, colors.accent, 0.14f) :
-					colors.tileFill, 16);
-			// Always a stroke of the same width (clear when not picked), so a picked row is not a different size.
-			fill.setStroke(colors.dp(2), on ? colors.accent : 0x00000000);
-			h.itemView.setBackground(colors.pressable(fill));
+			// Always a stroke of the same width (clear when not picked), so a picked row is not a different size;
+			// the glass UI style's own tile when it is on (SettingsStyle.Colors#tile).
+			// The same row again (another category picked): its tile glides to picked or not; a row bound to another
+			// entry starts as it should be.
+			Object tile = h.itemView.getTag(R.id.glass_tile);
+			if (Glass.isTile((android.graphics.drawable.Drawable) ((tile instanceof android.graphics.drawable.Drawable) ? tile : null)) &&
+					e.key.equals(h.itemView.getTag(R.id.glass_tile_key))) {
+				Glass.setPicked((android.graphics.drawable.Drawable) tile, on, h.itemView.isAttachedToWindow());
+			} else {
+				GradientDrawable fill = colors.tile(16, on);
+				h.itemView.setTag(R.id.glass_tile, fill);
+				h.itemView.setTag(R.id.glass_tile_key, e.key);
+				h.itemView.setBackground(colors.pressable(fill));
+			}
 			h.itemView.setOnClickListener(v -> click(a, e));
 		}
 

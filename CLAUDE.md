@@ -738,6 +738,9 @@ what each widget shows is set on the widget (edit mode > its gear).
   stays at alpha 0 for `QUIET_MS` (500 ms), then fades in over 350 ms with the widgets' entrance. The window-wide veil of the earlier rounds
   (`veilStartup`, `liftStartupVeil`, `isStartupVeil`, and the tool bar mediator's check of it) is deleted: it faded the whole window, bars included,
   and never ran on the car screen at all.
+- **The bars are veiled until the first tab is up** (`MainActivityDelegate#veilBars`, end of `init`): tool bar and nav bar at alpha 0 and the
+  overlays suppressed, so no empty pills show while the permissions are checked; the first `showFragment` fades the two bars in
+  (`unveilBars`, 500 ms later on Home/Music to match their quiet start, 200 ms on other tabs, 4 s fallback).
 - **Light theme.** `HomeBackgroundView` dims and shades towards white (`veil`) and its plain gradient is barely tinted (`plainTop`); the
   greeting and the top chips use the theme's own text colours on a picture too, and the chips' opaque fill (a theme panel colour) now has
   matching text (white text on the light panel was the invisible "weird" chips). Cards: `HomeWidgetView#lightText/color/applyStyle` treat a light
@@ -949,6 +952,114 @@ what each widget shows is set on the widget (edit mode > its gear).
 Never run on a device from the cloud session. The **live video** is *not* drawn inside the media widget: the YouTube WebView
 lives in its own tab and moving or resizing it restarts the player, so the large media widget shows the video's poster
 picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) that go to the real player.
+
+## Hide cover, UI style (glass)
+
+- **Hide cover** (`ui/view/CoverHide`, action `COVER_HIDE` at the end of the enum: FAB list, the FAB long-press Screen group,
+  All in One, key bindings; pref `COVER_HIDDEN`): covers are shown as their colours only, a 6 px copy box blurred and stretched
+  (`CoverHide.veil`, the last one cached; `applyToThumb` for list rows, uncached). The Music tab's cover, its background, the
+  swipe peek card and the queue rows follow (`MusicPlayerFragment#applyCoverHide`), with a small eye chip in the cover's top
+  right corner (a tap shows the covers again). Home's media card (`MediaWidget#setArt`) and the "cover of what plays"
+  background (`HomeNowPlayingBg`, which then ignores the blur setting) follow too.
+- **UI style** (`ui/view/Glass`, page `ui/fragment/GlassSettingsFragment`, Settings > Interface > UI style; prefs `GLASS_*`):
+  Normal (unchanged), Frosted, Clear, Acrylic; picking one writes its preset into blur / tint / saturation / grain / rim,
+  which can then be tuned; "Bars" and "Home cards" say where it goes. Previews are `GlassStylePreview` (a phone drawn in
+  code, like `HomeLayoutPreview`; the big one scrolls rows under the bars and uses the real blur).
+- **How the real-time blur works (Android 12+ only, no library)**: `BodyLayout#draw` records itself into a RenderNode
+  (`GlassLens.recordAndDraw`, the BlurView 3 `BlurTarget` idea: the screen draws that node, so nothing is drawn twice) while
+  the bars are glass; each glass surface (`ToolBarPill`'s drawable, `FloatingBarsView#drawPill`) draws it through a
+  `GlassLens`: a RenderNode the size of the surface plus a margin, holding the content node moved into place, with a blur
+  (+ saturation) `RenderEffect`, clipped to the pill. Only the surface's area is blurred, on the GPU. `BodyLayout#syncGlass`
+  (its pre-draw) invalidates the bars each frame that happens anyway, so they follow scrolling without asking for frames.
+  Home's Glass cards blur Home's own background layers instead (`HomeBackgroundView#draw` records each, `HomeScreen
+  #drawGlassBehind31`; a card can never blur the tab, which contains itself: a RenderNode cycle), redrawn from their own
+  pre-draw (`HomeWidgetView#glassSync`). A WebView must not be drawn twice in a frame, so on the YouTube / browser tabs the
+  bars get the tint only (`Glass.hasWebView`, checked twice a second). Below Android 12 glass is the tint, grain and rim
+  without blur (RenderScript is deprecated and slow). With glass on the bars the bottom fade is off and the top fade only
+  covers the status bar. **None of this has run on a device yet**: `BODY glass source on/off` is in the Diagnostic log.
+
+### Second round (redraw only on change, menus, quality, glide)
+
+- **Never invalidate a glass surface before every frame.** An `invalidate()` from a pre-draw listener schedules the
+  next frame whenever the traversal didn't relayout, so the first version redrew (and blurred) 60 times a second on an
+  idle screen (~400 mA). Surfaces are registered (`Glass.register`, done by `GlassLens.behindBars`) and drawn again only
+  from `BodyLayout#onDescendantInvalidated` (something in the tab changed), `BodyLayout#draw`, and `Glass.syncSurfaces`
+  (the surface moved). Home's glass cards: `HomeWidgetView#glassSync` only when the card moved,
+  `HomeBackgroundView#setOnRedraw` when the background changed.
+- **Quality** (`GLASS_QUALITY`): the lens renders at 1, 1/2 or 1/4 size (`Glass.renderScale`, 1/4 with the power saver)
+  as its own compositing layer and is stretched back up.
+- **Glide**: `Glass.look()` interpolates from the old look to the new for `ANIM_MS` after any `GLASS_*` change (NORMAL counts
+  as tint 95%, no blur), driving `invalidateSurfaces` and `Glass.addAnimListener` listeners each frame.
+- **Web tabs**: `BodyLayout#syncGlass` treats the YouTube / browser fragment ids as web at once (and for 600 ms after
+  leaving), not after the throttled WebView search: drawing a WebView in a lens even for a few frames flickered.
+  Blur over a page or fullscreen video is not possible (functor / SurfaceView / the page's fullscreen top layer is the
+  `<video>` element itself, so not even CSS `backdrop-filter` in the page could sit over it); those get `Glass.surface`
+  (tint, grain, rim).
+- **Menus** (`ui/view/MenuStyle`, `OverlayMenuView.setStyler` hook in `depends/utils`): every menu's card (`MenuStyle.panel`,
+  glass with `GLASS_MENUS`), a left-aligned header, roomy rows with a rounded focus/selected outline for car keys. The context
+  menu opens at the finger (`recordTouch` from `BodyLayout#dispatchTouchEvent`, within 1.5 s; a submenu keeps the place),
+  centred on the car screen and for dialogs. Dialogs (`DialogStyle`) and the cards (playlist picker, All in One, lyrics,
+  download, share, alternatives, comments) use `MenuStyle.panel` too.
+- Settings rows take `SettingsStyle.Colors#tile` (`Glass.tile`: sheen + hairline rim) while the style is glass; bound rows
+  only change when the page is built again.
+- **Hide cover button**: `MusicAddon.COVER_CHIP` (Music addon settings) and Home's player card option `eye`; the card lays out
+  without its cover while hidden (`MediaWidget#layoutHidden`, `relayout` with an AutoTransition) and re-checks in `onActive`.
+
+### Third round (the native crash, tiles and knobs that glide, Playlists card)
+
+- **A lens must never blur the content that holds it**: the Music tab's More card and the All in One settings preview are
+  inside `body_layout`, and drawing the body's RenderNode inside them is a RenderNode cycle that kills the render thread
+  natively (no Java exception, nothing in the Diagnostic log: "it crashed, nothing logged"). `GlassLens#inside` refuses that;
+  such a surface gets the tint only.
+- Settings tiles (`Glass.tile(normalFill, ...)`, a GradientDrawable that re-colours itself by `Glass.amount()`: flat glass fill +
+  hairline, no gradient) and seek bar knobs (`Glass.knob(SeekBar)`: disc in Normal, a bead with a rim and the accent core in
+  glass) blend while the style glides; `BodyLayout#glide` redraws the whole window each frame of the glide.
+- Home cards restyle when the glide ends (`HomeWidgetView#glassAnim`, and a check in `draw`): restyling mid-glide left them
+  clear (transparent) after going back to Normal. The top info chips take the glass cards' tint and a rim (`setChipStroke`).
+- Menu rows get the focus outline only on the car screen; the eye buttons toggle without a top popup (`CoverHide.toggle(a, false)`).
+- **Playlists card**: which playlist is open, and whether the last played song's one was opened, are kept per widget id for the
+  life of the app (`PlaylistsWidget#OPEN`, `OPENED_LAST`): a card made again used to show every playlist with no back chip.
+
+### Fourth round onwards (More card, chips, tiles, rim light, seek bars, menus, web pages)
+
+- **Music tab's More card** opens on `R.id.main_activity` (not the tab's root) while glass is on menus (`AllInOneMenu#showMusic`),
+  so it can blur the tab; the anchor still places it over the chip; `MusicPlayerFragment#onHiddenChanged` closes it with the tab.
+- **Home's info chips** blur the background like the glass cards: `InfoOverlayView#setChipBackdrop` (each chip is a `ChipWrap`
+  drawing the backdrop under its fill), redrawn on background change, the row's scroll and the hide-while-scrolling slide.
+- **Tiles** (`Glass.tile`): the picked state glides (`Glass.setPicked`, reused per row in `SettingsSplit`). Settings cards keep the
+  Normal look unless `GLASS_TILES` (Where > Settings cards) is on (`Tile` blends by `tileAmount()`).
+- **Rim light per part**: `GLASS_RIM` is the style's rim, `GLASS_RIM_TOOLBAR/NAV/FAB/MENUS/HOME/VIDEO/TILES` say where it shows
+  (Settings > UI style > "Where the rim light shows", an expandable group; settings cards off by default). Draw a surface with
+  `look.rimFor(Glass.RIM_*)`; `Glass.rim(part)` glides when a part is switched.
+- **Seek bars in glass**: `Glass.knob` gives a see-through bead (no coloured core; later thumb tints are taken, every `StepSeekBar`
+  uses it) and wraps the track's progress layer in `RoundFill` (a pill ending round under the bead; the clipped bar in Normal).
+- **Context menu rows on the phone** are the settings rows' size (15sp, 22dp icons, `MenuStyle#styleItem`), not scaled by the
+  interface's text/icon size; the car screen keeps its own sizing.
+- **Web pages (experimental `GLASS_WEB`, "Blur over web pages")**: our surfaces cannot read a WebView. Drawing the tab with a WebView
+  in it a second time flickered without end; recording a frame around the page, or around fullscreen YouTube's picture, crashed the
+  app natively (nothing logged) or showed nothing; PixelCopy of the window holds the glass itself, and of fullscreen YouTube found no
+  video surface (Chrome draws it in its own view). **Do not try those again.** What works: the page blurs itself (`ui/view/PageBlur`):
+  a surface reports its window rect, radius, alpha, blur and saturation (`PageBlur.cover`, keyed by its lens slot, from
+  `GlassLens#behindBars` when the tab is not recorded), and a script keeps matching boxes in the page (`#__zrauto_glass`, position fixed,
+  no touches) with `backdrop-filter: blur() saturate()`. Boxes fade in and out (kept by id, CSS opacity transition) and take the view
+  alpha of their surface (sampled every 100 ms while up); sent at most once a frame when changed and every 2 s anyway (page reloads).
+  A pill that stops drawing takes its box with it (`Glass.notDrawn(slot)`, where `FloatingBarsView#drawPill`, `FabPillView#onDraw` and
+  `ToolBarPill` return early). `cover` returns whether the page supports backdrop-filter.
+- **Top popups and Home's own surfaces**: `TopPopup#styleCard` gives the top toast, `TopConfirm` and `ShareReceiveCard` the menu card
+  (`MenuStyle.panel`, glass with `GLASS_MENUS`, no shadow then); `HomeModal` (widget settings, Background) uses it too, it is on
+  `main_activity`. What is drawn inside Home (the edit button and chip bar, a widget's inline settings panel) cannot blur the tab that holds it,
+  so `ui/home/HomeGlassFill` blurs Home's background layers like the glass cards (with `GLASS_HOME`), redrawn when it moves.
+- **Now playing card has a Look**: its first choice is "Cover" (`MediaWidget.STYLE_COVER`, returned by `autoStyle()`, so "Same as Home" and
+  `setAllStyles` keep the blurred cover as the card, as before); Solid, Glass and Colour make it an ordinary card of that look with the wash
+  hidden and the cover dissolving into the fill or the glass (`applyLook`, `scrimFor` only darkens under words that lie over the cover).
+- **`ModalProgressPopup`** (the Spotify sync / import progress) is a modal card like the playlist picker: `MenuStyle.panel`, Music palette
+  colours, an accent disc with the icon, a close button (cancels while running), pills in the settings tile colours, rising into place.
+- **Menus open at the finger anywhere**: `MenuStyle.recordTouch` is fed from `MainActivity#dispatchTouchEvent` (not only the tab), and a menu
+  tagged `R.id.menu_at_finger` (the nav bar's, `NavBarMediator#createOverlayMenu`) is placed like the context menu.
+- **Fullscreen video is never blurred** (YouTube or local): `BodyLayout` does not record in FRAME mode and `behindBars` returns false in
+  video mode, so every surface there (control panel, floating buttons, menus, dialogs, the video buttons via `Glass.surface`) draws the
+  **frosted look**: `Glass#paintOver(.., blurred=false)` = at least 45% tint plus grain, so the video reads as behind frosted glass. The
+  same look covers web pages without the experimental switch, and everything below Android 12.
 
 ## This app cannot be built in this (cloud) session
 

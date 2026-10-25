@@ -240,9 +240,19 @@ public final class AllInOneMenu {
 	 * @param timer  opens straight on the sleep timer page
 	 */
 	public static void showMusic(@NonNull MainActivityDelegate a, @NonNull Context ctx,
-															 @NonNull ViewGroup host, @NonNull View insets, @NonNull View anchor,
+															 @NonNull ViewGroup host, @Nullable View insets, @NonNull View anchor,
 															 boolean timer, @NonNull Hooks hooks) {
 		dismissOpen();
+		// With glass on menus the card opens over the whole window, as from a floating button, so its glass can
+		// blur the tab behind it: inside the tab it would blur the picture that holds itself (see GlassLens#inside).
+		// It still sits over the chip that opened it when there is room (the anchor is found through the window).
+		if (Glass.realBlur() && Glass.onMenus()) {
+			ViewGroup top = a.findViewById(R.id.main_activity);
+			if ((top != null) && (top.getWidth() > 0)) {
+				host = top;
+				insets = null;
+			}
+		}
 		boolean own = a.getPrefs().getBooleanPref(MainActivityPrefs.fab(a,
 				MainActivityPrefs.AIO_MUSIC_MORE));
 		AllInOneMenu m = new AllInOneMenu(a, ctx, host, insets, anchor,
@@ -422,7 +432,7 @@ public final class AllInOneMenu {
 		card = new DraggableCard(ctx);
 		card.setClickable(true);
 		card.setAlpha(0f);
-		card.setBackground(panel());
+		card.setBackground(panel(card));
 		card.setElevation(dp(12));
 		card.addView(scroll, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
@@ -464,7 +474,7 @@ public final class AllInOneMenu {
 		buildContent();
 		updateStatus();
 		FrameLayout c = new FrameLayout(ctx);
-		c.setBackground(panel());
+		c.setBackground(panel(c));
 		c.addView(root, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 		// As wide as the real card, at most: the tiles keep their proportions.
 		MaxWidthFrame frame = new MaxWidthFrame(ctx, dp(cardWidthDp()));
@@ -599,11 +609,9 @@ public final class AllInOneMenu {
 	// ---------------------------------------------------------------------------------------------
 
 	/** The card's fill: the palette's panel colour (the queue panel's), a clean, near-opaque surface. */
-	private Drawable panel() {
-		GradientDrawable d = new GradientDrawable();
-		d.setColor(color(R.attr.musicPanelFill));
-		d.setCornerRadius(dp(28));
-		return d;
+	private Drawable panel(View v) {
+		// Glass with the UI style's glass on menus and dialogs (MenuStyle#panel).
+		return MenuStyle.panel(v, color(R.attr.musicPanelFill), dp(28));
 	}
 
 	/** The card, which a downward drag pulls away (and, dragged far or flung, dismisses). */
@@ -830,6 +838,9 @@ public final class AllInOneMenu {
 			title = ctx.getString(R.string.action_power_saver);
 			hint = ctx.getString(me.aap.fermata.addon.power.PowerSaver.get().isActive() ?
 					R.string.state_on : R.string.state_off);
+		} else if (action == Action.COVER_HIDE) {
+			title = ctx.getString(R.string.action_cover_hide);
+			hint = ctx.getString(CoverHide.isOn() ? R.string.state_on : R.string.state_off);
 		} else if (action == Action.AMBIENCE) {
 			// What is on, as the hint.
 			title = ctx.getString(R.string.action_ambience);

@@ -50,6 +50,24 @@ public class OverlayMenuView extends ScrollView implements OverlayMenu {
 	@ColorInt
 	private final int bgColor;
 
+	/**
+	 * Restyles every menu as it is shown (its card, header and items) and hears when it closes; set
+	 * once by the app (see {@link #setStyler}). Null leaves the menus as built here.
+	 */
+	public interface Styler {
+		/** {@code content} holds the header (id {@code overlay_menu_title}, if any) and the items. */
+		void onShow(OverlayMenuView menu, ViewGroup content);
+
+		void onHide(OverlayMenuView menu);
+	}
+
+	@Nullable
+	private static Styler styler;
+
+	public static void setStyler(@Nullable Styler s) {
+		styler = s;
+	}
+
 	@Nullable
 	MenuBuilder builder;
 	/** The content of a menu that was just closed, kept on screen while the menu fades out. */
@@ -78,6 +96,7 @@ public class OverlayMenuView extends ScrollView implements OverlayMenu {
 	 */
 	@Override
 	public void setBackgroundColor(int color) {
+		fillColor = color;
 		GradientDrawable bg = new GradientDrawable();
 		bg.setColor(color);
 		bg.setCornerRadius(toPx(getContext(), CORNER_RADIUS_DP));
@@ -105,6 +124,7 @@ public class OverlayMenuView extends ScrollView implements OverlayMenu {
 		builder.consumer.apply(builder).main().onSuccess(ignore -> {
 			int count = g.getChildCount();
 			if (count == 0) return;
+			if (styler != null) styler.onShow(this, g);
 
 			List<View> items = new ArrayList<>(count);
 
@@ -163,9 +183,19 @@ public class OverlayMenuView extends ScrollView implements OverlayMenu {
 			setVisibility(GONE);
 		}).start();
 		a.setActiveMenu(null);
+		if (styler != null) styler.onHide(this);
 		if (ch != null) ch.menuClosed(this);
 		if (f != null) f.requestFocus();
 	}
+
+	/** The colour last given to {@link #setBackgroundColor}: the menu's own fill. */
+	@ColorInt
+	public int getFillColor() {
+		return fillColor;
+	}
+
+	@ColorInt
+	private int fillColor;
 
 	/** Removes the content kept for the closing fade, if any. */
 	private void finishFade() {

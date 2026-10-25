@@ -220,6 +220,8 @@ public class ControlPanelView extends ConstraintLayout
 		// No background (and so no elevation shadow of its own): FloatingBarsView paints the pill
 		// behind it, shared with the nav bar when that's at the bottom.
 		setBackground(null);
+		// The seek bars' knobs follow the UI style (a glass bead with glass on).
+		knobs(this);
 		iconColor = NavBarView.resolveStyleColors(context)[0];
 		setIconTint(iconColor);
 		setLabelColor(iconColor);
@@ -387,6 +389,11 @@ public class ControlPanelView extends ConstraintLayout
 		boolean seek = findViewById(R.id.seek_bar).isEnabled();
 		// Not from inside the layout pass: posted, see CLAUDE.md on layout callbacks.
 		if (wantedLayout(seek, w) != layoutMode) post(this::applyLayout);
+	}
+
+	private static void knobs(View v) {
+		if (v instanceof android.widget.SeekBar sb) Glass.knob(sb);
+		else if (v instanceof ViewGroup g) for (int i = 0, n = g.getChildCount(); i < n; i++) knobs(g.getChildAt(i));
 	}
 
 	private ConstraintSet getConstraints(@LayoutRes int layout) {

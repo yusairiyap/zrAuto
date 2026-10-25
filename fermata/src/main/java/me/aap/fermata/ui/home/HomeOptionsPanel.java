@@ -37,7 +37,7 @@ final class HomeOptionsPanel {
 		HomePalette p = host.palette();
 		Context ctx = p.ctx;
 		FrameLayout root = new FrameLayout(ctx);
-		root.setBackground(HomeUi.round((p.panelFill & 0xFFFFFF) | 0xFF000000,
+		root.setBackground(new HomeGlassFill(root, host, (p.panelFill & 0xFFFFFF) | 0xFF000000,
 				HomeWidgetView.CORNER_DP * ctx.getResources().getDisplayMetrics().density));
 		root.setClickable(true);
 

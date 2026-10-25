@@ -63,6 +63,7 @@
     <string name="home_style_colour">Colour</string>
     <string name="home_style_custom">Custom</string>
     <string name="home_style_sky">Sky</string>
+    <string name="home_style_cover">Cover</string>
     <string name="home_pref_bg_source">Background</string>
     <string name="home_bg_source_picture">The picture I picked</string>
     <string name="home_bg_source_cover">Cover of what plays</string>

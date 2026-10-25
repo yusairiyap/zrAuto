@@ -12,7 +12,6 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
-import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -29,27 +28,33 @@ import me.aap.utils.ui.UiUtils;
 /**
  * A modal card for a longer task (e.g. a Spotify sync): a title, what's happening right now, a
  * progress bar and Cancel, over a dimmed screen that takes no touches. When the task is done the
- * card shows the outcome with Close, and goes away by itself after a few seconds. Same look as
- * {@link NetworkIssuePopup}, on the phone's and Android Auto's screen alike.
+ * card shows the outcome with Close, and goes away by itself after a few seconds. The look of the
+ * other modal cards (the playlist picker, Home's cards): the Music palette's panel (glass with the
+ * UI style's glass on menus and dialogs, {@link MenuStyle#panel}), an icon in an accent disc, a close
+ * button, and it rises into place. On the phone's and Android Auto's screen alike.
  */
 public final class ModalProgressPopup {
 	private static final long RESULT_MS = 4000;
+	private static final int OK = 0xFF1ED760;
+	private static final int WARN = 0xFFFFC857;
 	private final View scrim;
 	private final LinearLayout card;
 	private final TextView text;
 	private final ProgressBar bar;
 	private final LinearLayout chips;
-	private final ImageView icon;
+	private final View disc;
+	private final SettingsStyle.Colors colors;
 	private boolean dismissed;
 
-	private ModalProgressPopup(View scrim, LinearLayout card, ImageView icon, TextView text,
-														 ProgressBar bar, LinearLayout chips) {
+	private ModalProgressPopup(View scrim, LinearLayout card, View disc, TextView text,
+														 ProgressBar bar, LinearLayout chips, SettingsStyle.Colors colors) {
 		this.scrim = scrim;
 		this.card = card;
-		this.icon = icon;
+		this.disc = disc;
 		this.text = text;
 		this.bar = bar;
 		this.chips = chips;
+		this.colors = colors;
 	}
 
 	/** @return null if there's no screen to show it on */
@@ -77,11 +82,10 @@ public final class ModalProgressPopup {
 		if (host == null) return null;
 
 		Context ctx = host.getContext();
-		int fg = 0xFFFFFFFF;
-		int fg2 = 0xB3FFFFFF;
+		SettingsStyle.Colors c = new SettingsStyle.Colors(ctx);
 
 		FrameLayout scrim = new FrameLayout(ctx);
-		scrim.setBackgroundColor(0x99000000);
+		scrim.setBackgroundColor(0x66000000);
 		scrim.setClickable(true); // Modal: nothing underneath reacts meanwhile.
 		scrim.setFocusable(true);
 		scrim.setElevation(UiUtils.toPx(ctx, 40));
@@ -89,82 +93,147 @@ public final class ModalProgressPopup {
 		LinearLayout card = new LinearLayout(ctx);
 		card.setOrientation(LinearLayout.VERTICAL);
 		card.setClickable(true);
-		int pad = UiUtils.toIntPx(ctx, 20);
-		card.setPadding(pad, pad, pad, UiUtils.toIntPx(ctx, 14));
-		GradientDrawable shape = new GradientDrawable();
-		shape.setColor(0xF0141418);
-		shape.setCornerRadius(UiUtils.toPx(ctx, 24));
-		shape.setStroke(UiUtils.toIntPx(ctx, 1), 0x33FFFFFF);
-		card.setBackground(shape);
+		int pad = c.dp(18);
+		card.setPadding(pad, c.dp(14), pad, c.dp(14));
+		card.setBackground(MenuStyle.panel(card, MenuStyle.panelColor(ctx), c.dp(28)));
+		if (!Glass.onMenus()) card.setElevation(c.dp(12));
 
 		LinearLayout head = new LinearLayout(ctx);
 		head.setOrientation(LinearLayout.HORIZONTAL);
 		head.setGravity(Gravity.CENTER_VERTICAL);
 		card.addView(head, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
+		FrameLayout disc = new FrameLayout(ctx);
+		GradientDrawable dd = new GradientDrawable();
+		dd.setShape(GradientDrawable.OVAL);
+		dd.setColor(c.accent);
+		disc.setBackground(dd);
 		ImageView icon = new ImageView(ctx);
 		icon.setImageResource(iconRes);
-		icon.setImageTintList(ColorStateList.valueOf(0xFF1ED760));
-		int is = UiUtils.toIntPx(ctx, 28);
-		LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(is, is);
-		ilp.setMarginEnd(UiUtils.toIntPx(ctx, 14));
-		head.addView(icon, ilp);
+		icon.setImageTintList(ColorStateList.valueOf(c.onAccent));
+		disc.addView(icon, new FrameLayout.LayoutParams(c.dp(18), c.dp(18), Gravity.CENTER));
+		LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(c.dp(34), c.dp(34));
+		ilp.setMarginEnd(c.dp(12));
+		head.addView(disc, ilp);
 
 		TextView t = new TextView(ctx);
 		t.setText(title);
-		t.setTextColor(fg);
+		t.setTextColor(c.textPrimary);
 		t.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
 		t.setTypeface(Typeface.DEFAULT_BOLD);
+		t.setMaxLines(2);
+		t.setEllipsize(android.text.TextUtils.TruncateAt.END);
 		head.addView(t, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
 
+		ImageView close = new ImageView(ctx);
+		close.setImageResource(me.aap.utils.R.drawable.close);
+		close.setImageTintList(ColorStateList.valueOf(c.textPrimary));
+		int cp = c.dp(9);
+		close.setPadding(cp, cp, cp, cp);
+		close.setBackground(pressable(c, 0, c.dp(20)));
+		close.setContentDescription(ctx.getString(R.string.close));
+		close.setClickable(true);
+		head.addView(close, new LinearLayout.LayoutParams(c.dp(40), c.dp(40)));
+
 		TextView msg = new TextView(ctx);
-		msg.setTextColor(fg2);
+		msg.setTextColor(c.textSecondary);
 		msg.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
 		msg.setMaxLines(3);
 		LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		mlp.topMargin = UiUtils.toIntPx(ctx, 12);
+		mlp.topMargin = c.dp(12);
+		mlp.setMarginStart(c.dp(4));
+		mlp.setMarginEnd(c.dp(4));
 		card.addView(msg, mlp);
 
 		ProgressBar bar = new ProgressBar(ctx, null, android.R.attr.progressBarStyleHorizontal);
 		bar.setIndeterminate(true);
-		bar.setProgressTintList(ColorStateList.valueOf(0xFF1ED760));
-		bar.setIndeterminateTintList(ColorStateList.valueOf(0xFF1ED760));
+		bar.setProgressTintList(ColorStateList.valueOf(c.accent));
+		bar.setIndeterminateTintList(ColorStateList.valueOf(c.accent));
 		LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		plp.topMargin = UiUtils.toIntPx(ctx, 10);
+		plp.topMargin = c.dp(10);
+		plp.setMarginStart(c.dp(4));
+		plp.setMarginEnd(c.dp(4));
 		card.addView(bar, plp);
 
 		LinearLayout chips = new LinearLayout(ctx);
 		chips.setOrientation(LinearLayout.HORIZONTAL);
 		chips.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
 		LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		clp.topMargin = UiUtils.toIntPx(ctx, 12);
+		clp.topMargin = c.dp(12);
 		card.addView(chips, clp);
 
-		ModalProgressPopup p = new ModalProgressPopup(scrim, card, icon, msg, bar, chips);
+		ModalProgressPopup p = new ModalProgressPopup(scrim, card, disc, msg, bar, chips, c);
+		// The close button cancels while it runs (the outcome then shows), and closes the card once it is done.
+		close.setOnClickListener(v -> {
+			if ((cancel != null) && (p.bar.getVisibility() == View.VISIBLE)) cancel.run();
+			else p.dismiss();
+		});
 		if ((extra != null) && (extraText != 0)) {
-			NetworkIssuePopup.addChip(chips, R.drawable.done, extraText, fg, false, v -> {
+			p.addChip(R.drawable.done, extraText, false, v -> {
 				v.setVisibility(View.GONE);
 				extra.run();
 			});
 		}
 		if (cancel != null) {
-			NetworkIssuePopup.addChip(chips, R.drawable.close_small, R.string.cancel, fg, false,
-					v -> cancel.run()).requestFocus();
+			p.addChip(R.drawable.close_small, R.string.cancel, false, v -> cancel.run()).requestFocus();
 		}
 
-		int maxW = UiUtils.toIntPx(ctx, 480);
-		int w = Math.min(maxW, Math.max(0, host.getWidth() - UiUtils.toIntPx(ctx, 32)));
+		int maxW = c.dp(480);
+		int w = Math.min(maxW, Math.max(0, host.getWidth() - c.dp(32)));
 		scrim.addView(card, new FrameLayout.LayoutParams((w > 0) ? w : MATCH_PARENT, WRAP_CONTENT,
 				Gravity.CENTER));
 		host.addView(scrim, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 
 		scrim.setAlpha(0f);
-		scrim.animate().alpha(1f).setDuration(180).start();
-		card.setScaleX(0.9f);
-		card.setScaleY(0.9f);
-		card.animate().scaleX(1f).scaleY(1f).setDuration(320)
-				.setInterpolator(new OvershootInterpolator(1.4f)).start();
+		scrim.animate().alpha(1f).setDuration(220).start();
+		card.setTranslationY(c.dp(120));
+		card.setAlpha(0f);
+		card.animate().translationY(0f).alpha(1f).setDuration(260)
+				.setInterpolator(new DecelerateInterpolator(1.6f)).start();
 		return p;
+	}
+
+	/** A pill button in the card's colours: the accent for the main one, the settings tile's fill otherwise. */
+	private TextView addChip(@DrawableRes int iconRes, @androidx.annotation.StringRes int label, boolean primary,
+													 View.OnClickListener l) {
+		Context ctx = chips.getContext();
+		SettingsStyle.Colors c = colors;
+		int fg = primary ? c.onAccent : c.textPrimary;
+		TextView b = new TextView(ctx);
+		b.setText(label);
+		b.setTypeface(Typeface.DEFAULT_BOLD);
+		b.setTextColor(fg);
+		b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+		b.setGravity(Gravity.CENTER_VERTICAL);
+		b.setMinHeight(c.dp(44));
+		b.setMaxLines(1);
+		b.setPadding(c.dp(14), 0, c.dp(16), 0);
+		android.graphics.drawable.Drawable d = androidx.core.content.ContextCompat.getDrawable(ctx, iconRes);
+		if (d != null) {
+			d = d.mutate();
+			d.setBounds(0, 0, c.dp(18), c.dp(18));
+			d.setTint(fg);
+			b.setCompoundDrawablesRelative(d, null, null, null);
+			b.setCompoundDrawablePadding(c.dp(8));
+		}
+		b.setBackground(pressable(c, primary ? c.accent : c.tileFill, c.dp(22)));
+		b.setClickable(true);
+		b.setFocusable(true);
+		b.setOnClickListener(l);
+		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+		lp.setMarginStart(c.dp(8));
+		chips.addView(b, lp);
+		return b;
+	}
+
+	private static android.graphics.drawable.Drawable pressable(SettingsStyle.Colors c, int fill, float radius) {
+		GradientDrawable bg = new GradientDrawable();
+		bg.setCornerRadius(radius);
+		bg.setColor(fill);
+		GradientDrawable mask = new GradientDrawable();
+		mask.setCornerRadius(radius);
+		mask.setColor(0xFF000000);
+		return new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(c.ripple), bg, mask);
 	}
 
 	/** @param total 0 for "don't know yet" (an indeterminate bar) */
@@ -201,7 +270,7 @@ public final class ModalProgressPopup {
 			for (String it : items) {
 				TextView row = new TextView(ctx);
 				row.setText("♪  " + it);
-				row.setTextColor(0xFFFFFFFF);
+				row.setTextColor(colors.textPrimary);
 				row.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
 				row.setSingleLine(true);
 				row.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -222,12 +291,11 @@ public final class ModalProgressPopup {
 			card.addView(sv, card.indexOfChild(bar) + 1);
 		}
 		text.setText(msg);
-		text.setTextColor(0xFFFFFFFF);
+		text.setTextColor(colors.textPrimary);
 		bar.setVisibility(View.GONE);
-		icon.setImageTintList(ColorStateList.valueOf(ok ? 0xFF1ED760 : 0xFFFFC857));
+		if (disc.getBackground() instanceof GradientDrawable g) g.setColor(ok ? OK : WARN);
 		chips.removeAllViews();
-		NetworkIssuePopup.addChip(chips, R.drawable.close_small, R.string.close, 0xFFFFFFFF, true,
-				v -> dismiss()).requestFocus();
+		addChip(R.drawable.close_small, R.string.close, true, v -> dismiss()).requestFocus();
 		if (!list) scrim.postDelayed(this::dismiss, RESULT_MS);
 	}
 

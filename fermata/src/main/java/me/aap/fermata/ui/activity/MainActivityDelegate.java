@@ -2364,6 +2364,11 @@ public class MainActivityDelegate extends ActivityDelegate
 		// Leaving fullscreen video for another screen: the video plays on behind it.
 		if (b.isVideoMode()) b.setMode(BodyLayout.Mode.FRAME);
 		ActivityFragment f = super.showFragment(id, input);
+		if (barsVeiled && isInitialFragmentShow()) {
+			// Home and the Music tab fade their own page in once the start-up layout has settled; the bars come with it.
+			body.removeCallbacks(unveilBars);
+			body.postDelayed(unveilBars, keepsOverlaysAway(f) ? 500 : 200);
+		}
 		updateExtraFabsVisibility();
 		// Leaving the Music tab gives the control panel back (it hides it while showing), but a
 		// switch made from a key binding, while the Music tab was mid-way through its own update,
@@ -2403,6 +2408,8 @@ public class MainActivityDelegate extends ActivityDelegate
 			return new me.aap.fermata.ui.fragment.PowerSettingsFragment();
 		} else if (id == R.id.home_settings_fragment) {
 			return new me.aap.fermata.ui.fragment.HomeSettingsFragment();
+		} else if (id == R.id.glass_settings_fragment) {
+			return new me.aap.fermata.ui.fragment.GlassSettingsFragment();
 		} else if (id == R.id.nav_tabs_fragment) {
 			return new me.aap.fermata.ui.fragment.NavTabsFragment();
 		} else if (id == R.id.info_overlay_fragment) {
@@ -2918,6 +2925,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		a.setContentView(getLayout());
 		matchStatusBarToBackground();
 		me.aap.utils.ui.view.DialogView.setStyler(me.aap.fermata.ui.view.DialogStyle::apply);
+		me.aap.utils.ui.menu.OverlayMenuView.setStyler(new me.aap.fermata.ui.view.MenuStyle());
 		// One switch look everywhere (see SwitchStyle); the settings rows' switches follow it too.
 		me.aap.utils.pref.PreferenceView.setRowStyler(me.aap.fermata.ui.view.SettingsStyle::apply);
 		me.aap.utils.pref.PreferenceView.setSwitchStyler(b -> {
@@ -2989,7 +2997,41 @@ public class MainActivityDelegate extends ActivityDelegate
 				return WindowInsetsCompat.CONSUMED;
 			});
 		}
+		veilBars();
 	}
+
+	/**
+	 * The bars are out of sight from the window's first frame until the first tab is up: before it (while the
+	 * permissions are checked, the library loads) they were drawn as empty pills, a tool bar with no title and a nav bar
+	 * with no tabs, and the floating buttons popped away again when the tab turned out to be Home. The tool bar and the
+	 * nav bar then fade in ({@link #unveilBars}); the floating buttons and the control panel are given back by the first
+	 * tab as on any switch (Home and the Music tab keep them away, the others get them from resyncOverlaysAfterSwitch).
+	 */
+	private void veilBars() {
+		barsVeiled = true;
+		if (toolBar != null) toolBar.setAlpha(0f);
+		if (navBar != null) navBar.setAlpha(0f);
+		setOverlaysSuppressed(true);
+		// Never left hidden: if no tab is shown in time (a start that fails), they come back anyway.
+		body.postDelayed(unveilBars, 4000);
+	}
+
+	private void unveilBars() {
+		if (!barsVeiled) return;
+		barsVeiled = false;
+		body.removeCallbacks(unveilBars);
+		for (View v : new View[]{toolBar, navBar}) {
+			if ((v == null) || (v.getAlpha() >= 1f)) continue;
+			v.animate().cancel();
+			v.animate().alpha(1f).setStartDelay(0).setDuration(350)
+					.setInterpolator(new android.view.animation.DecelerateInterpolator(1.5f)).start();
+		}
+		if (getActiveFragment() == null) setOverlaysSuppressed(false);
+	}
+
+	// See veilBars().
+	private boolean barsVeiled;
+	private final Runnable unveilBars = this::unveilBars;
 
 	@LayoutRes
 	private int getLayout() {
@@ -3023,6 +3065,19 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	@Override
 	public void onPreferenceChanged(PreferenceStore store, List<PreferenceStore.Pref<?>> prefs) {
+		if (me.aap.fermata.ui.view.Glass.touches(prefs)) {
+			// The UI style (glass): read again now, whichever listener hears of it first, and every glass
+			// surface redrawn (the tool bar's shadow goes with glass too).
+			me.aap.fermata.ui.view.Glass.reset();
+			if (toolBar != null) {
+				toolBar.invalidateOutline();
+				toolBar.invalidate();
+			}
+			View fb = findViewById(R.id.floating_bars);
+			if (fb != null) fb.invalidate();
+			BodyLayout b = getBody();
+			if (b != null) b.invalidate();
+		}
 		if (MainActivityPrefs.hasThemePref(this, prefs)) {
 			recreate();
 		} else if (MainActivityPrefs.hasNavBarPosPref(this, prefs)) {

@@ -653,11 +653,12 @@ public class InfoOverlayView extends LinearLayout {
 			if (!isItemShown(key)) continue;
 			LinearLayout w = chipWrappers.get(key);
 			if (w == null) {
-				w = new LinearLayout(getContext());
+				w = new ChipWrap(getContext());
 				w.setGravity(Gravity.CENTER_VERTICAL);
 				android.graphics.drawable.GradientDrawable d = new android.graphics.drawable.GradientDrawable();
 				d.setColor(chipFill);
 				d.setCornerRadius(toIntPx(getContext(), 40));
+				if (chipStroke != 0) d.setStroke(Math.max(1, toIntPx(getContext(), 1)), chipStroke);
 				w.setBackground(d);
 				chipWrappers.put(key, w);
 			}
@@ -673,7 +674,58 @@ public class InfoOverlayView extends LinearLayout {
 	}
 
 	private int chipFill;
+	/** A hairline round every chip (the glass look), 0 for none. */
+	private int chipStroke;
 	private ChipFlowLayout chipFlow;
+
+	/** Draws what is behind a chip (Home's glass: its background blurred), under the chip's own fill. */
+	public interface ChipBackdrop {
+		void draw(View chip, android.graphics.Canvas c, android.graphics.RectF r, float radius);
+	}
+
+	@Nullable
+	private ChipBackdrop chipBackdrop;
+
+	/** Chip mode: what is drawn behind every chip (null for nothing), see {@link ChipBackdrop}. */
+	public void setChipBackdrop(@Nullable ChipBackdrop b) {
+		if (chipBackdrop == b) return;
+		chipBackdrop = b;
+		for (LinearLayout w : chipWrappers.values()) w.invalidate();
+	}
+
+	/** Every chip drawn again (what is behind them moved or changed). */
+	public void invalidateChips() {
+		for (LinearLayout w : chipWrappers.values()) w.invalidate();
+	}
+
+	/** A chip: its backdrop (if any) under its rounded fill. */
+	private final class ChipWrap extends LinearLayout {
+		private final android.graphics.RectF rect = new android.graphics.RectF();
+
+		ChipWrap(Context ctx) {
+			super(ctx);
+		}
+
+		@Override
+		public void draw(android.graphics.Canvas c) {
+			ChipBackdrop b = chipBackdrop;
+			if ((b != null) && (getWidth() > 0) && (getHeight() > 0)) {
+				rect.set(0, 0, getWidth(), getHeight());
+				b.draw(this, c, rect, Math.min(getWidth(), getHeight()) / 2f);
+			}
+			super.draw(c);
+		}
+	}
+
+	/** Chip mode: a hairline of {@code color} round every chip (0 for none), the glass UI style's rim. */
+	public void setChipStroke(int color) {
+		if (chipStroke == color) return;
+		chipStroke = color;
+		int sw = Math.max(1, toIntPx(getContext(), 1));
+		for (LinearLayout w : chipWrappers.values()) {
+			if (w.getBackground() instanceof android.graphics.drawable.GradientDrawable d) d.setStroke(sw, color);
+		}
+	}
 	private boolean oneRow;
 
 	/** In chip mode: one row however many chips (for a scroller to show part of), instead of wrapping. */

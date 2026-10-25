@@ -104,6 +104,12 @@ final class MediaWidget extends HomeWidgetView {
 	private LinearLayout seekBlock;
 	private LinearLayout timesRow;
 	private TextView chip;
+	/** The hide / show covers button (CoverHide), beside the chip in the top right corner. */
+	private ImageView eye;
+	private LinearLayout topRight;
+	private FrameLayout root;
+	/** The card is laid out without its cover (covers hidden): the words and controls take its room. */
+	private boolean layoutHidden;
 	private LinearLayout controls;
 	private LinearLayout texts;
 
@@ -160,9 +166,30 @@ final class MediaWidget extends HomeWidgetView {
 		super(host, type);
 	}
 
+	/**
+	 * The card's first look, "Cover" (what it always was): the blurred cover is the card. Solid, Glass and Colour put the cover
+	 * on the card of that look instead, dissolving into its fill (or, in Glass, into Home's blurred background).
+	 */
+	private static final int STYLE_COVER = 4;
+
+	@Override
+	protected int autoStyle() {
+		return STYLE_COVER;
+	}
+
+	@Override
+	protected int autoStyleLabel() {
+		return R.string.home_style_cover;
+	}
+
+	@Override
+	protected boolean hasLookOption() {
+		return true;
+	}
+
 	@Override
 	protected boolean ownBackground() {
-		return true;
+		return style() == STYLE_COVER;
 	}
 
 	/** Over a cover the card is dark; in a light theme it is the Music tab's whitish wash instead. */
@@ -177,6 +204,7 @@ final class MediaWidget extends HomeWidgetView {
 
 	@Override
 	protected void onCreate(FrameLayout content) {
+		root = content;
 		content.setPadding(0, 0, 0, 0);
 		wash = new Fader(ctx, false);
 		content.addView(wash, new FrameLayout.LayoutParams(-1, -1));
@@ -205,7 +233,6 @@ final class MediaWidget extends HomeWidgetView {
 
 		badge = text(ROLE_PRIMARY, 11, true);
 		badge.setText(R.string.home_media_video);
-		badge.setBackground(HomeUi.round(ownBackgroundDark() ? 0x88000000 : 0x26000000, px(10)));
 		badge.setPadding(px(9), px(4), px(9), px(4));
 		badge.setVisibility(GONE);
 		content.addView(badge);
@@ -259,18 +286,42 @@ final class MediaWidget extends HomeWidgetView {
 		content.addView(controls);
 
 		chip = chip(R.drawable.video_fullscreen, "", () -> chipAction.run());
-		chip.setBackground(HomeUi.pressable(ownBackgroundDark() ? 0x33FFFFFF : host.palette().chipRipple,
-				ownBackgroundDark() ? 0x44000000 : host.palette().chipFill, px(17)));
-		content.addView(chip);
+		// The same colour as the chip beside it (its text and icon), not the card's dimmer icon role.
+		eye = iconButton(R.drawable.visibility, 36, ROLE_PRIMARY, R.string.action_cover_hide,
+				() -> me.aap.fermata.ui.view.CoverHide.toggle(act(), false));
+		// The chip's own soft fill, kept in step with it when the look changes.
+		trackSoft(eye, 18);
+		topRight = new LinearLayout(ctx);
+		topRight.setOrientation(LinearLayout.HORIZONTAL);
+		topRight.setGravity(Gravity.CENTER_VERTICAL);
+		topRight.addView(eye, new LinearLayout.LayoutParams(px(36), px(36)));
+		LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(-2, px(36));
+		clp.setMarginStart(px(8));
+		topRight.addView(chip, clp);
+		content.addView(topRight);
 
 		artBusy = spinner(20);
 		artBusy.setVisibility(GONE);
 		content.addView(artBusy, lp(px(20), px(20), Gravity.TOP | Gravity.END, 0, px(12), px(12), 0));
+		applyLook();
 	}
 
 	@Override
 	protected void onStyleChanged() {
-		// Always white on its own picture; nothing to follow.
+		applyLook();
+	}
+
+	/** What follows the look: the wash is the card only in Cover; the badge, chip and scrim follow the card's darkness. */
+	private void applyLook() {
+		if (wash == null) return;
+		wash.setVisibility(ownBackground() ? VISIBLE : GONE);
+		boolean dark = lightText();
+		badge.setBackground(HomeUi.round(dark ? 0x88000000 : 0x26000000, px(10)));
+		chip.setBackground(HomeUi.pressable(dark ? 0x33FFFFFF : host.palette().chipRipple,
+				dark ? 0x44000000 : host.palette().chipFill, px(17)));
+		if (mode >= 0) scrim.setBackground(scrimFor(mode));
+		seek.invalidate();
+		invalidate();
 	}
 
 
@@ -279,6 +330,7 @@ final class MediaWidget extends HomeWidgetView {
 		List<HomeOption> l = new ArrayList<>();
 		l.add(HomeOption.sw("seek", ctx.getString(R.string.home_opt_seek), true));
 		l.add(HomeOption.sw("chip", ctx.getString(R.string.home_opt_video_chip), true));
+		l.add(HomeOption.sw("eye", ctx.getString(R.string.home_opt_cover_chip), true));
 		return l;
 	}
 
@@ -318,12 +370,15 @@ final class MediaWidget extends HomeWidgetView {
 		boolean large = (mode == LARGE_WIDE) || (mode == LARGE_TALL);
 		boolean showSeek = large && optBool("seek", true);
 		boolean showChip = large && optBool("chip", true);
+		// The hide / show covers button, and the card without its cover while covers are hidden.
+		boolean showEye = !strip && optBool("eye", true);
+		boolean hid = layoutHidden;
 		int pad = px(14);
 
 		// The cover is a square that keeps its shape at any size, dissolving into the blurred wash
 		// beside or below it (a stretched or cropped cover looked wrong at some sizes).
 		int artSide = (mode == LARGE_WIDE) ? Math.min(h, (int) (w * 0.58f)) : Math.min(w, (int) (h * 0.6f));
-		int left = (mode == LARGE_WIDE) ? Math.max((int) (artSide * 0.86f), (int) (w * 0.38f)) : 0;
+		int left = (mode == LARGE_WIDE) ? (hid ? pad : Math.max((int) (artSide * 0.86f), (int) (w * 0.38f))) : 0;
 
 		// Shuffle and repeat: around the play button when the width allows, else under the seek bar. A wide card
 		// has the controls in the middle of the right half, as large as that half allows.
@@ -350,14 +405,26 @@ final class MediaWidget extends HomeWidgetView {
 		sizeControls(ex, sk, pl);
 		placeExtras();
 
-		thumb.setVisibility(strip ? VISIBLE : GONE);
-		art.setVisibility(strip ? GONE : VISIBLE);
+		thumb.setVisibility(strip && !hid ? VISIBLE : GONE);
+		art.setVisibility(strip || hid ? GONE : VISIBLE);
 		art.setFade(mode == LARGE_WIDE ? FadeImageView.RIGHT : FadeImageView.BOTTOM);
 		artBusy.setVisibility(strip ? GONE : artBusy.getVisibility());
 		prev.setVisibility((mode == STRIP_SMALL) ? GONE : VISIBLE);
 		next.setVisibility((mode == STRIP_SMALL) ? GONE : VISIBLE);
 		seekBlock.setVisibility(showSeek ? VISIBLE : GONE);
 		chip.setVisibility(showChip ? VISIBLE : GONE);
+		eye.setVisibility(showEye ? VISIBLE : GONE);
+		topRight.setVisibility(showChip || showEye ? VISIBLE : GONE);
+		syncEye();
+		// The chip's start margin only when the eye is beside it.
+		if (chip.getLayoutParams() instanceof LinearLayout.LayoutParams clp) {
+			int ms = showEye ? px(8) : 0;
+			if (clp.getMarginStart() != ms) {
+				clp.setMarginStart(ms);
+				chip.setLayoutParams(clp);
+			}
+		}
+		int thumbRoom = hid ? 0 : px(44) + px(10);
 		badge.setVisibility(large && videoNow ? VISIBLE : GONE);
 		title.setTextSize(strip ? 15 : large ? 20 : 16);
 		artist.setTextSize(strip ? 12.5f : 14);
@@ -368,12 +435,12 @@ final class MediaWidget extends HomeWidgetView {
 		switch (mode) {
 			case STRIP_SMALL -> {
 				thumb.setLayoutParams(lp(px(44), px(44), Gravity.START | Gravity.CENTER_VERTICAL, pad, 0, 0, 0));
-				texts.setLayoutParams(lp(-1, -2, Gravity.CENTER_VERTICAL, pad + px(44) + px(10), 0, px(60), 0));
+				texts.setLayoutParams(lp(-1, -2, Gravity.CENTER_VERTICAL, pad + thumbRoom, 0, px(60), 0));
 				controls.setLayoutParams(lp(-2, -2, Gravity.END | Gravity.CENTER_VERTICAL, 0, 0, px(8), 0));
 			}
 			case STRIP_WIDE -> {
 				thumb.setLayoutParams(lp(px(44), px(44), Gravity.START | Gravity.CENTER_VERTICAL, pad, 0, 0, 0));
-				texts.setLayoutParams(lp(-1, -2, Gravity.CENTER_VERTICAL, pad + px(44) + px(10), 0, px(160), 0));
+				texts.setLayoutParams(lp(-1, -2, Gravity.CENTER_VERTICAL, pad + thumbRoom, 0, px(160), 0));
 				controls.setLayoutParams(lp(-2, -2, Gravity.END | Gravity.CENTER_VERTICAL, 0, 0, px(8), 0));
 			}
 			case MEDIUM -> {
@@ -386,13 +453,15 @@ final class MediaWidget extends HomeWidgetView {
 				// The name on top (clear of the chip), the controls in the middle of the right half, the
 				// seek bar under them.
 				// The words' chip needs about 132dp beside the name, the icon-only one (car screen, low density) about 48dp.
-				int chipRoom = showChip ? px(chipIconOnly() ? 48 : 132) : 0;
-				texts.setLayoutParams(lp(-1, -2, Gravity.TOP, left, pad + px(4), pad + chipRoom, 0));
+				int chipRoom = (showChip ? px(chipIconOnly() ? 48 : 132) : 0) + (showEye ? px(44) : 0);
+				// Without the cover the VIDEO badge sits over the name's place: the name goes under it.
+				int badgeRoom = (hid && large && videoNow) ? px(26) : 0;
+				texts.setLayoutParams(lp(-1, -2, Gravity.TOP, left, pad + px(4) + badgeRoom, pad + chipRoom, 0));
 				seekBlock.setLayoutParams(lp(-1, -2, Gravity.BOTTOM, left, 0, pad, px(12)));
 				int cw = (extrasAt == 1) ? controlsNeed : (px(sk) * 2 + px(pl));
 				int cx = left + Math.max(0, (zone - cw) / 2);
 				controls.setLayoutParams(lp(-2, -2, Gravity.CENTER_VERTICAL | Gravity.START, cx, px(10), 0, px(14)));
-				chip.setLayoutParams(lp(-2, px(36), Gravity.TOP | Gravity.END, 0, pad, pad, 0));
+				topRight.setLayoutParams(lp(-2, px(36), Gravity.TOP | Gravity.END, 0, pad, pad, 0));
 				badge.setLayoutParams(lp(-2, -2, Gravity.TOP | Gravity.START, pad, pad, 0, 0));
 			}
 			default -> {
@@ -400,7 +469,7 @@ final class MediaWidget extends HomeWidgetView {
 				texts.setLayoutParams(lp(-1, -2, Gravity.BOTTOM, pad, 0, pad, px(showSeek ? seekRoom : 82)));
 				seekBlock.setLayoutParams(lp(-1, -2, Gravity.BOTTOM, pad, 0, pad, px(72)));
 				controls.setLayoutParams(lp(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, 0, 0, px(10)));
-				chip.setLayoutParams(lp(-2, px(36), Gravity.TOP | Gravity.END, 0, pad, pad, 0));
+				topRight.setLayoutParams(lp(-2, px(36), Gravity.TOP | Gravity.END, 0, pad, pad, 0));
 				badge.setLayoutParams(lp(-2, -2, Gravity.TOP | Gravity.START, pad, pad, 0, 0));
 			}
 		}
@@ -450,10 +519,19 @@ final class MediaWidget extends HomeWidgetView {
 		updateModes();
 	}
 
+	@Nullable
 	private GradientDrawable scrimFor(int m) {
 		GradientDrawable g = new GradientDrawable();
 		// Black over a cover in a dark theme; white (the Music tab's whitish wash) in a light one.
-		int c = ownBackgroundDark() ? 0x000000 : 0xFFFFFF;
+		int c = lightText() ? 0x000000 : 0xFFFFFF;
+		if (!ownBackground()) {
+			// On a card of its own look the words sit on the card's fill, beside or under the cover; only where they
+			// lie over the cover (the medium card) does it darken (or lighten) under them.
+			if (m != MEDIUM) return null;
+			g.setOrientation(GradientDrawable.Orientation.TOP_BOTTOM);
+			g.setColors(new int[]{c, 0x11000000 | c, 0xAA000000 | c});
+			return g;
+		}
 		if (m == LARGE_WIDE) {
 			g.setOrientation(GradientDrawable.Orientation.LEFT_RIGHT);
 			g.setColors(new int[]{c, 0x33000000 | c, 0x88000000 | c});
@@ -476,7 +554,11 @@ final class MediaWidget extends HomeWidgetView {
 		a.getMediaSessionCallback().addBroadcastListener(stateListener);
 		a.getMediaServiceBinder().addBroadcastListener(itemListener);
 		BufferingIndicator.addListener(bufferingListener);
+		a.getPrefs().addBroadcastListener(coverHideListener);
 		syncItem();
+		// Hide cover switched while Home was away (on the Music tab): the cover follows at once, not
+		// only with the next song.
+		if ((shownArt != null) && (artHidden != me.aap.fermata.ui.view.CoverHide.isOn())) setArt(shownArt);
 		syncState();
 	}
 
@@ -486,6 +568,7 @@ final class MediaWidget extends HomeWidgetView {
 		a.getMediaSessionCallback().removeBroadcastListener(stateListener);
 		a.getMediaServiceBinder().removeBroadcastListener(itemListener);
 		BufferingIndicator.removeListener(bufferingListener);
+		a.getPrefs().removeBroadcastListener(coverHideListener);
 		removeCallbacks(ticker);
 	}
 
@@ -611,13 +694,54 @@ final class MediaWidget extends HomeWidgetView {
 		artBusy.setVisibility(GONE);
 	}
 
+	/** The eye button: struck out while covers are hidden. */
+	private void syncEye() {
+		if (eye == null) return;
+		boolean on = me.aap.fermata.ui.view.CoverHide.isOn();
+		int icon = on ? R.drawable.cover_hidden : R.drawable.visibility;
+		if (Integer.valueOf(icon).equals(eye.getTag())) return;
+		eye.setTag(icon);
+		eye.setImageResource(icon);
+		eye.setContentDescription(ctx.getString(on ? R.string.cover_hidden_chip : R.string.cover_shown_chip));
+	}
+
+	/** Lays the card out again for the cover shown or not, the words and controls gliding to their places. */
+	private void relayout() {
+		if ((root == null) || (mode < 0)) return;
+		if (root.isLaidOut() && isShown() && host.animate()) {
+			android.transition.AutoTransition t = new android.transition.AutoTransition();
+			t.setDuration(320);
+			t.setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f));
+			android.transition.TransitionManager.beginDelayedTransition(root, t);
+		}
+		applyMode();
+	}
+
+	/** Hide cover (CoverHide) turned on or off while the card is up: the cover shown again, as it now should be. */
+	private final me.aap.utils.pref.PreferenceStore.Listener coverHideListener = (store, prefs) -> {
+		if (!prefs.contains(me.aap.fermata.ui.activity.MainActivityPrefs.COVER_HIDDEN)) return;
+		if (shownArt != null) setArt(shownArt);
+		else syncEye();
+	};
+	/** Whether the cover on screen is the hidden one (colours only). */
+	private boolean artHidden;
+
 	/** Shows the cover, or the card's own colours when there is none; the old one fades into it. */
 	private void setArt(@Nullable Bitmap bm) {
 		hasArt = bm != null;
 		setBusy(false);
+		boolean hide = me.aap.fermata.ui.view.CoverHide.isOn();
 		// The same cover again (a seek asks for it again): nothing to fade.
-		if ((bm != null) && (bm == shownArt)) return;
+		if ((bm != null) && (bm == shownArt) && (hide == artHidden)) return;
 		shownArt = bm;
+		artHidden = hide;
+		boolean lh = hide && (bm != null);
+		if (lh != layoutHidden) {
+			layoutHidden = lh;
+			relayout();
+		} else {
+			syncEye();
+		}
 		if (bm == null) {
 			GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
 					ownBackgroundDark() ?
@@ -635,12 +759,15 @@ final class MediaWidget extends HomeWidgetView {
 		int sh = Math.max(8, Math.round(sw * (float) bm.getHeight() / bm.getWidth()));
 		Bitmap small = Bitmap.createScaledBitmap(bm, sw, sh, true);
 		Bitmap soft = HomeBlur.blur(small, 70);
-		Drawable d = new BitmapDrawable(getResources(), (soft != null) ? soft : small);
+		Drawable d = new BitmapDrawable(getResources(), hide ? me.aap.fermata.ui.view.CoverHide.veil(bm) :
+				(soft != null) ? soft : small);
 		wash.set(d);
-		art.set(new BitmapDrawable(getResources(), bm));
+		// Covers hidden: the cover's colours only, on the card and in the thumbnail.
+		Bitmap shownBm = hide ? me.aap.fermata.ui.view.CoverHide.veil(bm) : bm;
+		art.set(new BitmapDrawable(getResources(), shownBm));
 		thumb.tint(0);
 		thumb.setIcon(false);
-		thumb.set(new BitmapDrawable(getResources(), bm));
+		thumb.set(new BitmapDrawable(getResources(), shownBm));
 	}
 
 	private static boolean isBusy(int st) {

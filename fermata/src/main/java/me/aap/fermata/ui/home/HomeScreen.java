@@ -86,6 +86,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	private boolean vertical = true;
 	/** The room a side navigation pill takes from one side, given to the other side as well so the page is centred in the window. */
 	private int extraLeft;
+	private long sideLoggedAt;
 	private int extraRight;
 	private final int[] sideLoc = new int[2];
 	private boolean editing;
@@ -134,6 +135,9 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		root.addView(bg, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.MATCH_PARENT));
 		behind = new BehindBarsLayers(a, root, base, bg);
+		// Glass cards show these layers blurred: drawn again with them.
+		base.setOnRedraw(this::invalidateGlassCards);
+		bg.setOnRedraw(this::invalidateGlassCards);
 		nowBg = new HomeNowPlayingBg(a, (bm, top) -> {
 			if (bm == null) {
 				bg.setImage(null, true);
@@ -166,8 +170,10 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		chipBar.setOrientation(LinearLayout.HORIZONTAL);
 		chipBar.setGravity(Gravity.CENTER_VERTICAL);
 		chipBar.setPadding(HomeUi.dp(ctx, 4), HomeUi.dp(ctx, 4), HomeUi.dp(ctx, 4), HomeUi.dp(ctx, 4));
-		chipBar.setBackground(HomeUi.round((palette.panelFill & 0xFFFFFF) | 0xE6000000, HomeUi.dp(ctx, 26)));
-		chipBar.setElevation(HomeUi.dp(ctx, 6));
+		// Glass like the cards when the UI style puts glass on Home (HomeGlassFill), with no shadow under it then.
+		chipBar.setBackground(new HomeGlassFill(chipBar, this, (palette.panelFill & 0xFFFFFF) | 0xE6000000,
+				HomeUi.dp(ctx, 26)));
+		syncChipBarElevation();
 		editBtn = pillChip(R.drawable.edit, 0, false, () -> setEditing(true));
 		editBtn.setContentDescription(ctx.getString(R.string.home_edit));
 		editChips[0] = pillChip(R.drawable.home_add, R.string.home_add, false, this::showAdd);
@@ -199,7 +205,10 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		topScroll = new HomeFadeLayout(ctx);
 		topScroll.addView(topInner, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.WRAP_CONTENT));
-		topScroll.follow(topInner, null);
+		// Glass chips show the background blurred behind them: drawn again as the row scrolls.
+		topScroll.follow(topInner, () -> {
+			if (topGlass) topInfo.invalidateChips();
+		});
 		topScroll.setVisibility(View.GONE);
 		FrameLayout.LayoutParams ilp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
 				ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END);
@@ -312,6 +321,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		behind.attach();
 		root.getViewTreeObserver().addOnPreDrawListener(sideSync);
 		prefs.addBroadcastListener(this);
+		me.aap.fermata.ui.view.Glass.addAnimListener(glassGlide);
 		root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
 			if (((r - l) != (or - ol)) || ((b - t) != (ob - ot))) root.post(this::applyArrangement);
 		});
@@ -344,6 +354,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		nowBg.stop();
 		if (bgFade != null) bgFade.cancel();
 		prefs.removeBroadcastListener(this);
+		me.aap.fermata.ui.view.Glass.removeAnimListener(glassGlide);
 		behind.detach();
 		ViewTreeObserver vto = root.getViewTreeObserver();
 		if (vto.isAlive()) vto.removeOnPreDrawListener(sideSync);
@@ -534,6 +545,64 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		return Math.max(0, Math.min(100, prefs.getIntPref(MainActivityPrefs.HOME_CARD_ALPHA)));
 	}
 
+	/** The cards with real glass are drawn again (the background behind them changed). */
+	private void invalidateGlassCards() {
+		invalidateGlassCards(grid);
+		if (me.aap.fermata.ui.view.Glass.onHome()) chipBar.invalidate();
+		if (topGlass) topInfo.invalidateChips();
+	}
+
+	private static void invalidateGlassCards(View v) {
+		if (v instanceof HomeWidgetView w) {
+			if (w.glassCard()) w.invalidate();
+		} else if (v instanceof ViewGroup g) {
+			for (int i = 0, n = g.getChildCount(); i < n; i++) invalidateGlassCards(g.getChildAt(i));
+		}
+	}
+
+	private final int[] glassCardLoc = new int[2];
+	private final int[] glassBgLoc = new int[2];
+
+	@Override
+	public boolean drawGlassBehind(View card, android.graphics.Canvas c, android.graphics.RectF r, float radius,
+																 float alpha, me.aap.fermata.ui.view.Glass.Look look,
+																 me.aap.fermata.ui.view.GlassLens[] slot) {
+		if (!me.aap.fermata.ui.view.Glass.realBlur()) return false;
+		return drawGlassBehind31(card, c, r, radius, alpha, look, slot);
+	}
+
+	/**
+	 * Both background layers, as they are drawn (each recorded by its view): the plain one, then the
+	 * picture at its own alpha (it fades when a new one comes and when Home is left). A blur of the two
+	 * mixed is the mix of the two blurred, so drawing them so under one blur is exact.
+	 */
+	@androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.S)
+	private boolean drawGlassBehind31(View card, android.graphics.Canvas c, android.graphics.RectF r, float radius,
+																		float alpha, me.aap.fermata.ui.view.Glass.Look look,
+																		me.aap.fermata.ui.view.GlassLens[] slot) {
+		android.graphics.RenderNode b0 = base.glassNode();
+		android.graphics.RenderNode b1 = bg.glassNode();
+		if ((b0 == null) && (b1 == null)) return false;
+		// Both layers have the same place and size (the root's, plus how far they reach under the bars).
+		base.getLocationInWindow(glassBgLoc);
+		card.getLocationInWindow(glassCardLoc);
+		float bgAlpha = bg.getAlpha();
+		float dx = bg.getX() - base.getX();
+		float dy = bg.getY() - base.getY();
+		if (slot[0] == null) slot[0] = new me.aap.fermata.ui.view.GlassLens();
+		return slot[0].draw(c, rc -> {
+			if (b0 != null) rc.drawRenderNode(b0);
+			if ((b1 != null) && (bgAlpha > 0f)) {
+				int save = rc.save();
+				rc.translate(dx, dy);
+				if (bgAlpha < 1f) rc.saveLayerAlpha(null, Math.round(255 * bgAlpha));
+				rc.drawRenderNode(b1);
+				rc.restoreToCount(save);
+			}
+		}, glassBgLoc[0] - glassCardLoc[0], glassBgLoc[1] - glassCardLoc[1], r, radius, alpha, look,
+				card.getResources().getDisplayMetrics().density);
+	}
+
 	@Override
 	public int stackRotateSeconds() {
 		int s = prefs.getIntPref(MainActivityPrefs.HOME_STACK_ROTATE);
@@ -579,7 +648,12 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 				changed.contains(MainActivityPrefs.HOME_SNAP_GRID) || changed.contains(MainActivityPrefs.HOME_SNAP_GRID_AA)) {
 			applyArrangement();
 		}
-		if (changed.contains(MainActivityPrefs.HOME_CARD_STYLE) || changed.contains(MainActivityPrefs.HOME_CARD_ALPHA)) {
+		if (changed.contains(MainActivityPrefs.HOME_CARD_STYLE) || changed.contains(MainActivityPrefs.HOME_CARD_ALPHA) ||
+				me.aap.fermata.ui.view.Glass.touches(changed)) {
+			me.aap.fermata.ui.view.Glass.reset();
+			base.invalidate();
+			bg.invalidate();
+			applyTopInfo();
 			grid.restyle();
 		}
 		if (changed.contains(MainActivityPrefs.HOME_STACK_ROTATE)) grid.resyncRotation();
@@ -598,6 +672,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 				!java.util.Collections.disjoint(MainActivityPrefs.infoOverlayPrefs(), changed)) {
 			applyTopInfo();
 		}
+		if (changed.contains(MainActivityPrefs.COVER_HIDDEN)) nowBg.coverHideChanged();
 		if (changed.contains(HomeBgPrefs.dim(car()))) bg.setDim(prefs.getIntPref(HomeBgPrefs.dim(car())));
 		if (changed.contains(HomeBgPrefs.zoom(car()))) bg.setZoom(prefs.getIntPref(HomeBgPrefs.zoom(car())));
 		if (changed.contains(HomeBgPrefs.source(car()))) {
@@ -820,7 +895,9 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			else r = -diff;
 			sideKey = sideKeyNow();
 		}
-		if ((extraLeft != l) || (extraRight != r)) {
+		// Once a second at most: while the side pill slides this changes on every frame.
+		if (((extraLeft != l) || (extraRight != r)) && (SystemClock.uptimeMillis() - sideLoggedAt > 1000)) {
+			sideLoggedAt = SystemClock.uptimeMillis();
 			DiagnosticLog.log("HOME", "side room", "left=" + l, "right=" + r, "root=" + root.getWidth());
 		}
 		extraLeft = l;
@@ -1069,7 +1146,21 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		topScroll.setVisibility(any ? View.VISIBLE : View.GONE);
 		if (!any) return;
 		int fg = palette.textPrimary;
-		topFillBase = (fg & 0x00FFFFFF) | 0x2E000000;
+		topGlass = me.aap.fermata.ui.view.Glass.onHome();
+		if (topGlass) {
+			// The glass UI style: the same tint and hairline rim as the glass cards under them.
+			me.aap.fermata.ui.view.Glass.Look l = me.aap.fermata.ui.view.Glass.look();
+			int ta = Math.round(Math.max(115, l.tintAlpha()) * cardAlpha() / 100f);
+			topFillBase = (palette.light ? 0x00FFFFFF : 0x00101018) | (Math.min(255, ta) << 24);
+			topInfo.setChipStroke((me.aap.fermata.ui.view.Glass.rim(me.aap.fermata.ui.view.Glass.RIM_HOME) > 0f) ?
+					(palette.light ? 0x1F000000 : 0x29FFFFFF) : 0);
+			// Home's background blurred behind each chip, as behind the glass cards (Android 12+).
+			topInfo.setChipBackdrop(me.aap.fermata.ui.view.Glass.realBlur() ? chipGlass : null);
+		} else {
+			topFillBase = (fg & 0x00FFFFFF) | 0x2E000000;
+			topInfo.setChipStroke(0);
+			topInfo.setChipBackdrop(null);
+		}
 		topInfo.setChipStyle(fg, topFillBase);
 		fitTopInfo();
 		updateTopInfoScroll();
@@ -1115,6 +1206,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			topScroll.setTranslationY(topBase - scrolled);
 			topScroll.setAlpha(1f - gone);
 			topInfo.setChipFill(topFillBase);
+			// The blurred background behind them follows where they are now.
+			if (topGlass) topInfo.invalidateChips();
 			return;
 		}
 		topScroll.setTranslationY(topBase);
@@ -1122,6 +1215,36 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		float solid = Math.min(1f, scrolled / HomeUi.dp(ctx, 56));
 		int target = (palette.panelFill & 0x00FFFFFF) | 0xF2000000;
 		topInfo.setChipFill(androidx.core.graphics.ColorUtils.blendARGB(topFillBase, target, solid));
+	}
+
+	/** The info chips' glass: the background blurred behind each, through a lens kept on the chip. */
+	private final me.aap.fermata.ui.view.InfoOverlayView.ChipBackdrop chipGlass = (chip, c, r, radius) -> {
+		Object t = chip.getTag(R.id.home_glass_lens);
+		me.aap.fermata.ui.view.GlassLens[] slot;
+		if (t instanceof me.aap.fermata.ui.view.GlassLens[] s) {
+			slot = s;
+		} else {
+			slot = new me.aap.fermata.ui.view.GlassLens[1];
+			chip.setTag(R.id.home_glass_lens, slot);
+		}
+		drawGlassBehind(chip, c, r, radius, 1f, me.aap.fermata.ui.view.Glass.look(), slot);
+	};
+
+	/** Whether the info chips were last styled for glass; the glide's end restyles them (see glassGlide). */
+	private boolean topGlass;
+	private final Runnable glassGlide = () -> {
+		if (me.aap.fermata.ui.view.Glass.onHome() != topGlass) applyTopInfo();
+		// In a method: a field's lambda may not name the final chipBar, which the constructor sets later.
+		glideChipBar();
+	};
+
+	private void glideChipBar() {
+		chipBar.invalidate();
+		syncChipBarElevation();
+	}
+
+	private void syncChipBarElevation() {
+		chipBar.setElevation(me.aap.fermata.ui.view.Glass.onHome() ? 0f : HomeUi.dp(palette.ctx, 6));
 	}
 
 	/** The chips' fill with the page at the top (see applyTopInfo). */

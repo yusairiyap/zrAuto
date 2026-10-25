@@ -45,6 +45,8 @@ public class MusicAddon implements MediaLibAddon, FermataActivityAddon,
 	public static final Pref<IntSupplier> BG_BLUR = Pref.i("MUSIC_BG_BLUR", 60);
 	/** How far the background is zoomed in, in percent: 100 (fits the screen) to 300. */
 	public static final Pref<IntSupplier> BG_ZOOM = Pref.i("MUSIC_BG_ZOOM", 120);
+	/** The eye button on the cover that hides / shows covers (CoverHide). */
+	public static final Pref<me.aap.utils.function.BooleanSupplier> COVER_CHIP = Pref.b("MUSIC_COVER_CHIP", true);
 	@Nullable
 	private MusicQueue queue;
 	@Nullable
@@ -93,6 +95,13 @@ public class MusicAddon implements MediaLibAddon, FermataActivityAddon,
 			o.seekMax = 300;
 			o.seekScale = 5;
 			o.ems = 3;
+			o.visibility = visibility.copy();
+		});
+		set.addBooleanPref(o -> {
+			o.store = store;
+			o.pref = COVER_CHIP;
+			o.title = R.string.cover_chip_pref;
+			o.subtitle = R.string.cover_chip_pref_sub;
 			o.visibility = visibility.copy();
 		});
 	}
