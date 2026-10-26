@@ -798,7 +798,9 @@ abstract class LibraryWidget extends HomeWidgetView {
 		// Wide cards split their rows into two columns, unless the card asks for full-width rows.
 		int newCols = ((getCellsW() >= 4) && !(supportsFullWidth() && optBool("full", false))) ? 2 : 1;
 		boolean art = optBool("art", true);
-		int rowMode = (menuOn() ? 1 : 0) | (reorderOn() ? 2 : 0) | (removeOn() ? 4 : 0) | (handleOn() ? 8 : 0) |
+		// Bit 2 used to be "reorder on": it changes when a playlist opens (its rows can be moved, the top list not), which
+		// relaid the card out on every open and back. The drag handle (bit 8) is what shows, so that is the one counted.
+		int rowMode = (menuOn() ? 1 : 0) | (removeOn() ? 4 : 0) | (handleOn() ? 8 : 0) |
 				(badgeHidden() ? 16 : 0) | (pinHidden() ? 32 : 0);
 		// Drawn again only when something it shows changed: the rows blinked on every refresh.
 		StringBuilder sig = new StringBuilder();
@@ -1140,8 +1142,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 			main.setContentDescription(r.title());
 			// A long press on the row opens its menu: it is marked so the card does not take that press for picking itself up.
 			boolean menu = menuOn() && (r.art() != null);
-			// A row that can be picked up to move it is marked too: that press is the list's, not the card's.
-			main.setTag(R.id.home_no_grab, (menu || reorderOn()) ? Boolean.TRUE : null);
+			main.setTag(R.id.home_no_grab, menu ? Boolean.TRUE : null);
 			int bs = narrow ? px(28) : px(32);
 			for (ImageView b : new ImageView[]{removeBtn, handle}) {
 				ViewGroup.LayoutParams bl = b.getLayoutParams();

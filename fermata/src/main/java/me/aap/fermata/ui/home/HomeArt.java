@@ -174,7 +174,8 @@ public final class HomeArt {
 			out.accept(hit);
 			return;
 		}
-		(hq ? a.getLib().getBitmap(uri, false, false) : a.getLib().getBitmap(uri)).main().onCompletion((bm, err) -> {
+		(hq ? me.aap.fermata.FermataApplication.get().getBitmapCache().getHighestQuality(a.getContext(), uri)
+				: a.getLib().getBitmap(uri)).main().onCompletion((bm, err) -> {
 			if (!wanted.getAsBoolean()) return;
 			String vid = (bm == null) ? YtDownloads.thumbnailVideoId(uri) : null;
 			if (vid != null) {

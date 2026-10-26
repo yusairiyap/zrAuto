@@ -492,6 +492,15 @@ public class BitmapCache {
 	}
 
 	/**
+	 * The largest picture of a song's cover, for the Home card and background when "Highest quality cover" is on: a YouTube
+	 * album art becomes a frame of the video (see {@link #loadVideoFrame}), anything else loads as {@code getBitmap(ctx, uri, false, false)}.
+	 */
+	public FutureSupplier<Bitmap> getHighestQuality(Context ctx, String uri) {
+		String videoId = youtubeVideoId(uri);
+		return (videoId != null) ? loadVideoFrame(uri, videoId) : getBitmap(ctx, uri, false, false);
+	}
+
+	/**
 	 * High quality album art of a YouTube video: a picture of the video at its middle (see {@link YtFrames}), kept on the phone
 	 * so it is taken once. Falls back to the thumbnail when no frame can be taken.
 	 */
