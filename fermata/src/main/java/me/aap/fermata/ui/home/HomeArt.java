@@ -108,13 +108,13 @@ public final class HomeArt {
 			}
 		}
 		if (uri != null) {
-			fetch(a, BitmapCache.highQualityCovers() ? largest(uri) : uri, wanted, out);
+			fetch(a, BitmapCache.largestCovers() ? largest(uri) : uri, wanted, out);
 			return;
 		}
 		pi.getIconUri().main().onSuccess(u -> {
 			if (!wanted.getAsBoolean()) return;
 			if (u == null) out.accept(null);
-			else fetch(a, BitmapCache.highQualityCovers() ? largest(u.toString()) : u.toString(), wanted, out);
+			else fetch(a, BitmapCache.largestCovers() ? largest(u.toString()) : u.toString(), wanted, out);
 		});
 	}
 

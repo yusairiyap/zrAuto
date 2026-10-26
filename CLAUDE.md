@@ -850,8 +850,8 @@ what each widget shows is set on the widget (edit mode > its gear).
 - **The Queue card's long press is its menu** (option "Menu on long press", on by default, `QueueWidget#showMenu`): Play next (`MusicPlayer#playNext`), Play as video
   (`HomePlay#asVideo`), Download (`YtDownloadMenu#addTo`), Share (`ShareSheet`), Remove from queue (`indexInPlayOrder`). The old long-press reorder is gone ("Reorder on long press"
   removed). Never run on a device.
-- **Thumbnail quality is the one switch for album art** (Settings > Storage and cache, `BitmapCache.THUMB_QUALITY`): Home's card and background, the Music tab cover
-  and notifications all follow it. With High, a YouTube album art is a picture of the video at its middle (`ytdl/YtFrames`, `YtStreamResolver#frames`): the tallest stream
+- **Thumbnail quality** (Settings > Storage and cache, `BitmapCache.THUMB_QUALITY`): High = the largest YouTube picture (as before), Highest (experimental, `THUMB_QUALITY_HIGHEST`) = video frames. Home's card and background, the Music tab cover
+  and notifications all follow it. With Highest, a YouTube album art is a picture of the video at its middle (`ytdl/YtFrames`, `YtStreamResolver#frames`): the tallest stream
   up to 2160 lines in VP9, AV1 or H.264, falling back to lower ones after up to three tries. It is kept as `ytframe://<id>/2160.jpg` in the image cache (the file keeps its
   size; memory gets a copy capped at 2160 on the long side, `capFrame`). Callers show the balanced maxresdefault.jpg first (`BitmapCache#getBalancedCover`) and swap in the frame
   when it arrives (`HomeArt#fetch`, `MusicPlayerFragment#loadArt`, `FRAME_KEY`); a frame already in memory is shown straight away. "Refresh thumbnail" drops the frame too.

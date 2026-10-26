@@ -94,6 +94,11 @@ public class BitmapCache {
 	public static final int THUMB_QUALITY_BALANCED = 1;
 	/** Smaller, lighter thumbnails: the least cache and the least data. */
 	public static final int THUMB_QUALITY_SAVER = 2;
+	/**
+	 * High, and YouTube album art taken as a still of the video itself, up to 4K (experimental: slower, more data, and a still
+	 * can be a poor frame).
+	 */
+	public static final int THUMB_QUALITY_HIGHEST = 3;
 	/** How thumbnails are downloaded and stored, one of the THUMB_QUALITY_* values. */
 	public static final Pref<IntSupplier> THUMB_QUALITY =
 			Pref.i("THUMB_QUALITY", THUMB_QUALITY_BALANCED);
@@ -177,7 +182,7 @@ public class BitmapCache {
 	/** JPEG quality the resized thumbnails are saved with. */
 	private static int jpegQuality() {
 		return switch (thumbQuality()) {
-			case THUMB_QUALITY_HIGH -> 92;
+			case THUMB_QUALITY_HIGH, THUMB_QUALITY_HIGHEST -> 92;
 			case THUMB_QUALITY_SAVER -> 70;
 			default -> 82;
 		};
@@ -502,14 +507,15 @@ public class BitmapCache {
 		return small;
 	}
 
-	/** Whether the Thumbnail quality is High: album art of YouTube videos is then a frame of the video. */
-	public static boolean highQualityCovers() {
-		return thumbQuality() == THUMB_QUALITY_HIGH;
+	/** Whether full-size covers are the largest picture YouTube has (High and Highest), not the list's smaller copy. */
+	public static boolean largestCovers() {
+		int q = thumbQuality();
+		return (q == THUMB_QUALITY_HIGH) || (q == THUMB_QUALITY_HIGHEST);
 	}
 
-	/** Whether the full-size album art at {@code uri} is shown as a frame of its video (High quality, a YouTube album art). */
+	/** Whether the full-size album art at {@code uri} is shown as a frame of its video (Highest, a YouTube album art). */
 	public static boolean wantsVideoFrame(String uri) {
-		return highQualityCovers() && (youtubeVideoId(uri) != null);
+		return (thumbQuality() == THUMB_QUALITY_HIGHEST) && (youtubeVideoId(uri) != null);
 	}
 
 	/** The frame of a YouTube album art that is already in memory, or null (it is not read from the disk here). */
