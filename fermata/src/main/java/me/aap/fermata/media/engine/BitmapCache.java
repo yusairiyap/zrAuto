@@ -56,6 +56,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -140,8 +142,12 @@ public class BitmapCache {
 		}
 	};
 	private final AtomicInteger savedSinceTrim = new AtomicInteger();
-	/** Held while a YouTube video's frame is read or taken (see {@link #readOrCaptureFrame}). */
-	private final Object frameLock = new Object();
+	/**
+	 * The frame captures, one at a time on their own thread: a capture is slow and its network reads can hang, so it must not
+	 * take one of the app's few pool threads.
+	 */
+	private static final ExecutorService frameExecutor = Executors.newSingleThreadExecutor();
+	private final PromiseQueue frameQueue = new PromiseQueue(frameExecutor);
 
 	public BitmapCache() {
 		File cache = App.get().getExternalCacheDir();
@@ -221,10 +227,7 @@ public class BitmapCache {
 		if (bm != null) return completed(bm);
 
 		if (u.startsWith("http://") || u.startsWith("https://")) {
-			if (iconUri == null) {
-				String videoId = frameVideoId(u);
-				return (videoId != null) ? loadVideoFrame(u, videoId) : loadHttpBitmap(u, null, 0);
-			}
+			if (iconUri == null) return loadHttpBitmap(u, null, 0);
 			// A list thumbnail: the small resized copy saved from an earlier download is all it needs,
 			// no need to check the original with the server, let alone decode it at full size again.
 			String src = (thumbQuality() == THUMB_QUALITY_SAVER) ? youtubeSmall(u) : u;
@@ -478,15 +481,6 @@ public class BitmapCache {
 	}
 
 	/**
-	 * The video id, when the full-size album art of a YouTube video is taken as a frame of the video itself: only with the
-	 * High thumbnail quality (see {@link #loadVideoFrame}); null otherwise.
-	 */
-	@Nullable
-	private static String frameVideoId(String uri) {
-		return (thumbQuality() == THUMB_QUALITY_HIGH) ? youtubeVideoId(uri) : null;
-	}
-
-	/**
 	 * The name a frame of {@code videoId} is kept under (in the image cache, like the downloaded pictures). The 2160 is the
 	 * picture height asked for: frames taken before 4K was asked for have another name, so they are taken again.
 	 */
@@ -531,7 +525,7 @@ public class BitmapCache {
 	public FutureSupplier<Bitmap> getVideoFrame(String uri) {
 		String videoId = youtubeVideoId(uri);
 		if (videoId == null) return completedNull();
-		return App.get().getExecutor().submitTask(() -> readOrCaptureFrame(videoId));
+		return frameQueue.enqueue(() -> readOrCaptureFrame(videoId));
 	}
 
 	/**
@@ -544,42 +538,33 @@ public class BitmapCache {
 	}
 
 	/**
-	 * High quality album art of a YouTube video: a picture of the video at its middle (see {@link YtFrames}), kept on the phone
-	 * so it is taken once. Falls back to the thumbnail when no frame can be taken.
-	 */
-	private FutureSupplier<Bitmap> loadVideoFrame(String uri, String videoId) {
-		return App.get().getExecutor().submitTask(() -> readOrCaptureFrame(videoId))
-				.then(bm -> (bm != null) ? completed(bm) : loadHttpBitmap(uri, null, 0));
-	}
-
-	/**
-	 * One frame at a time: the same song's art is asked for by several places at once, and only the first one takes the frame.
+	 * Reads the frame of a video from its file, or takes it (see {@link YtFrames}) and saves it. Runs on {@link #frameQueue},
+	 * one at a time, never on the app's own threads: a capture can take many seconds, and it used to hold up every list
+	 * and picture behind it.
 	 */
 	@Nullable
 	private Bitmap readOrCaptureFrame(String videoId) {
-		synchronized (frameLock) {
-			String uri = frameUri(videoId);
-			Bitmap cached = getCachedBitmap(uri);
-			if (cached != null) return cached;
+		String uri = frameUri(videoId);
+		Bitmap cached = getCachedBitmap(uri);
+		if (cached != null) return cached;
 
-			File f = toImageFile(uri);
-			if (f.isFile()) {
-				Bitmap bm = BitmapFactory.decodeFile(f.getPath());
-				if (bm != null) return cacheBitmap(uri, capFrame(bm));
-				//noinspection ResultOfMethodCallIgnored
-				f.delete();
-			}
-
-			if (isInvalid(uri)) return null;
-			Bitmap bm = YtFrames.middleFrame(videoId);
-			if (bm == null) {
-				markInvalid(uri);
-				return null;
-			}
-			// The file keeps the frame at the size it was taken; memory gets the capped copy.
-			saveFrame(f, bm);
-			return cacheBitmap(uri, capFrame(bm));
+		File f = toImageFile(uri);
+		if (f.isFile()) {
+			Bitmap bm = BitmapFactory.decodeFile(f.getPath());
+			if (bm != null) return cacheBitmap(uri, capFrame(bm));
+			//noinspection ResultOfMethodCallIgnored
+			f.delete();
 		}
+
+		if (isInvalid(uri)) return null;
+		Bitmap bm = YtFrames.middleFrame(videoId);
+		if (bm == null) {
+			markInvalid(uri);
+			return null;
+		}
+		// The file keeps the frame at the size it was taken; memory gets the capped copy.
+		saveFrame(f, bm);
+		return cacheBitmap(uri, capFrame(bm));
 	}
 
 	private static void saveFrame(File f, Bitmap bm) {

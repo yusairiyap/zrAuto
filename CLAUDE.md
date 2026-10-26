@@ -855,6 +855,9 @@ what each widget shows is set on the widget (edit mode > its gear).
   up to 2160 lines in VP9, AV1 or H.264, falling back to lower ones after up to three tries. It is kept as `ytframe://<id>/2160.jpg` in the image cache (the file keeps its
   size; memory gets a copy capped at 2160 on the long side, `capFrame`). Callers show the balanced maxresdefault.jpg first (`BitmapCache#getBalancedCover`) and swap in the frame
   when it arrives (`HomeArt#fetch`, `MusicPlayerFragment#loadArt`, `FRAME_KEY`); a frame already in memory is shown straight away. "Refresh thumbnail" drops the frame too.
+  Only those callers ask for frames (`getVideoFrame`); lists, icons and the lock screen get the balanced picture from `getBitmap`. Captures run one at a time on their
+  own thread (`frameQueue`/`frameExecutor`), never on the app pool, which has 5 threads (`FermataApplication#getMaxNumberOfThreads`): a slow capture on the pool starved
+  every list and the Home blur. Only MP4 streams are read (AV1, H.264), since a 4K WebM stream failed in `setDataSource` on the device.
   Logged under ART. Not run against live YouTube from the cloud session.
 - **Channel names**: a playlist or Favorites row's artist line (the tab's subtitle in `PlayableItemBase`, and the widget's rows in `LibraryWidget#artistOf`) goes through
   `MusicTrackItem#cleanArtist`, so "Artist - Topic" shows as "Artist" as on the Music tab.

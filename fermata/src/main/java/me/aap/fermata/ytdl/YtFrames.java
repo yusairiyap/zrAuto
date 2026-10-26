@@ -15,7 +15,7 @@ import me.aap.fermata.util.DiagnosticLog;
  * maxresdefault.jpg is often missing (and only 1280 wide), while a frame of the best stream is as sharp as the video.
  * <p>
  * Uses the same streams as the downloads ({@link YtStreamResolver}), but every codec YouTube gives out: the tallest picture
- * up to {@link #MAX_HEIGHT} lines (4K where the video has it, as VP9 or AV1), read over HTTP at the middle of the video. If a
+ * up to {@link #MAX_HEIGHT} lines (4K where the video has it, as AV1 in MP4), read over HTTP at the middle of the video. If a
  * stream can't be decoded here, the next one down is tried. Blocks: call it on a background thread.
  */
 public final class YtFrames {

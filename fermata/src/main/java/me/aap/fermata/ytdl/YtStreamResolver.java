@@ -242,9 +242,9 @@ final class YtStreamResolver {
 	}
 
 	/**
-	 * Every picture stream of {@code videoId} up to {@code maxHeight} lines, in any of YouTube's codecs: H.264 MP4, VP9 or
-	 * AV1 (the 4K ones are only VP9 or AV1). Tallest first, and at the same height VP9, then AV1, then H.264. The same apps
-	 * and fallbacks as {@link #resolve}.
+	 * Every MP4 picture stream of {@code videoId} up to {@code maxHeight} lines: H.264 or AV1. Tallest first, and at the same
+	 * height AV1 then H.264. WebM (VP9) streams are left out: the frame reader here could not open a 4K WebM stream, and
+	 * 4K is also given as AV1 MP4 where the video has it. The same apps and fallbacks as {@link #resolve}.
 	 */
 	static Frames frames(String videoId, int maxHeight) throws IOException {
 		IOException first = null;
@@ -296,8 +296,8 @@ final class YtStreamResolver {
 				String url = fmt.optString("url", null);
 				String mime = fmt.optString("mimeType");
 				int height = fmt.optInt("height", 0);
-				if ((url == null) || !mime.startsWith("video/") || (height <= 0) || (height > maxHeight)) continue;
-				int rank = mime.contains("vp9") ? 0 : mime.contains("av01") ? 1 : mime.contains("avc1") ? 2 : -1;
+				if ((url == null) || !mime.startsWith("video/mp4") || (height <= 0) || (height > maxHeight)) continue;
+				int rank = mime.contains("av01") ? 0 : mime.contains("avc1") ? 1 : -1;
 				if (rank < 0) continue;
 				pics.add(new Pic(new Stream(url, fmt.optLong("contentLength", 0), height,
 						fmt.optInt("bitrate", 0)), rank));
