@@ -108,7 +108,7 @@ final class HomeNowPlayingBg {
 		}
 		pi.getMediaData().main().onCompletion((md, err) -> {
 			if (gen != generation) return;
-			HomeArt.cover(a, pi, md, a.getPrefs().getBooleanPref(HomeBgPrefs.hq(a.isCarActivity())), () -> gen == generation, bm -> {
+			HomeArt.cover(a, pi, md, () -> gen == generation, bm -> {
 				if (gen != generation) return;
 				if (bm == null) {
 					target.onCover(null, 0);

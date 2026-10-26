@@ -58,7 +58,6 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.TopToast;
 import me.aap.fermata.ui.home.HomeArt;
-import me.aap.fermata.ui.home.HomeBgPrefs;
 import me.aap.fermata.ui.home.HomeBlur;
 import me.aap.fermata.ui.home.HomeHost;
 import me.aap.fermata.ui.home.HomeImages;
@@ -628,8 +627,7 @@ final class MediaWidget extends HomeWidgetView {
 			if ((t != null) && !t.isEmpty()) swap(title, t);
 			swap(artist, artistOf(pi, md));
 			duration = md.getLong(METADATA_KEY_DURATION);
-			HomeArt.cover(act(), pi, md, act().getPrefs().getBooleanPref(HomeBgPrefs.hq(act().isCarActivity())),
-					() -> gen == generation, bm -> {
+			HomeArt.cover(act(), pi, md, () -> gen == generation, bm -> {
 				if (gen == generation) setArt(bm);
 			});
 			syncState();

@@ -12,48 +12,67 @@ import me.aap.fermata.util.DiagnosticLog;
 
 /**
  * A still picture of a YouTube video taken from the video itself, for the album art when High quality is chosen: YouTube's
- * maxresdefault.jpg is often missing (and always 1280 wide), while a frame of the best stream is as sharp as the video.
+ * maxresdefault.jpg is often missing (and only 1280 wide), while a frame of the best stream is as sharp as the video.
  * <p>
- * Uses the same streams as the downloads ({@link YtStreamResolver}): the tallest H.264 picture up to {@link #MAX_HEIGHT}
- * lines, read over HTTP at the middle of the video. Blocks: call it on a background thread.
+ * Uses the same streams as the downloads ({@link YtStreamResolver}), but every codec YouTube gives out: the tallest picture
+ * up to {@link #MAX_HEIGHT} lines (4K where the video has it, as VP9 or AV1), read over HTTP at the middle of the video. If a
+ * stream can't be decoded here, the next one down is tried. Blocks: call it on a background thread.
  */
 public final class YtFrames {
-	/** The tallest H.264 picture YouTube gives out (its higher resolutions are VP9 or AV1, which are not taken). */
-	private static final int MAX_HEIGHT = 1080;
+	/** The tallest picture asked for: 4K. */
+	private static final int MAX_HEIGHT = 2160;
+	/** How many streams are tried before giving up on the video (each one lower than the one before). */
+	private static final int MAX_TRIES = 3;
 
 	private YtFrames() {
 	}
 
 	/**
-	 * The frame at the middle of {@code videoId}, or null when the video has no such stream or the frame can't be read (the
-	 * reason goes to the Diagnostic log under ART).
+	 * The frame at the middle of {@code videoId}, or null when no stream or frame can be read (the reason goes to the
+	 * Diagnostic log under ART). The frame is at the full size of the stream it came from.
 	 */
 	@Nullable
 	public static Bitmap middleFrame(String videoId) {
-		MediaMetadataRetriever mmr = null;
 		try {
-			YtStreamResolver.Result r = YtStreamResolver.resolve(videoId, true, MAX_HEIGHT, 0);
-			if ((r.video == null) || (r.durationMs <= 0)) {
+			YtStreamResolver.Frames f = YtStreamResolver.frames(videoId, MAX_HEIGHT);
+			if ((f.durationMs <= 0) || f.streams.isEmpty()) {
 				DiagnosticLog.log("ART", "frame: no stream", videoId, "height=" + MAX_HEIGHT);
 				return null;
 			}
-			mmr = new MediaMetadataRetriever();
-			mmr.setDataSource(r.video.url, Collections.singletonMap("User-Agent", r.userAgent));
-			// The middle in microseconds: durationMs / 2 milliseconds.
-			Bitmap bm = mmr.getFrameAtTime(r.durationMs * 500L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
-			DiagnosticLog.log("ART", "frame taken", videoId, "height=" + r.video.height,
-					(bm == null) ? "no picture" : (bm.getWidth() + "x" + bm.getHeight()));
-			return bm;
-		} catch (Exception ex) {
+			int tries = 0;
+			for (YtStreamResolver.Stream s : f.streams) {
+				if (tries++ == MAX_TRIES) break;
+				Bitmap bm = grab(s, f);
+				if (bm != null) {
+					DiagnosticLog.log("ART", "frame taken", videoId, "height=" + s.height,
+							bm.getWidth() + "x" + bm.getHeight());
+					return bm;
+				}
+				DiagnosticLog.log("ART", "frame: stream failed, trying a lower one", videoId, "height=" + s.height);
+			}
+			return null;
+		} catch (IOException | RuntimeException ex) {
 			DiagnosticLog.log("ART", "frame failed", videoId, String.valueOf(ex));
 			return null;
+		}
+	}
+
+	/** The frame at the middle of one stream, or null if this device can't decode it. */
+	@Nullable
+	private static Bitmap grab(YtStreamResolver.Stream s, YtStreamResolver.Frames f) {
+		MediaMetadataRetriever mmr = new MediaMetadataRetriever();
+		try {
+			mmr.setDataSource(s.url, Collections.singletonMap("User-Agent", f.userAgent));
+			// The middle in microseconds: durationMs / 2 milliseconds.
+			return mmr.getFrameAtTime(f.durationMs * 500L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+		} catch (RuntimeException ex) {
+			DiagnosticLog.log("ART", "frame decode error", String.valueOf(ex));
+			return null;
 		} finally {
-			if (mmr != null) {
-				try {
-					mmr.release();
-				} catch (IOException ex) {
-					// Nothing is left to free: the retriever is only dropped.
-				}
+			try {
+				mmr.release();
+			} catch (IOException ex) {
+				// Nothing is left to free: the retriever is only dropped.
 			}
 		}
 	}

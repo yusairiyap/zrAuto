@@ -850,10 +850,12 @@ what each widget shows is set on the widget (edit mode > its gear).
 - **The Queue card's long press is its menu** (option "Menu on long press", on by default, `QueueWidget#showMenu`): Play next (`MusicPlayer#playNext`), Play as video
   (`HomePlay#asVideo`), Download (`YtDownloadMenu#addTo`), Share (`ShareSheet`), Remove from queue (`indexInPlayOrder`). The old long-press reorder is gone ("Reorder on long press"
   removed). Never run on a device.
-- **High album art takes a frame of the video** (`BitmapCache#loadVideoFrame`, `ytdl/YtFrames`): a full-size YouTube album art is a picture of the video at its middle, from its
-  best H.264 stream up to 1080p (`YtStreamResolver`), kept as `ytframe://<id>.jpg` in the image cache. It is used when the Thumbnail quality is High (Music tab, notifications) and
-  by Home's card and background when "Highest quality cover" (`HOME_BG_HQ`, `BitmapCache#getHighestQuality`) is on. Otherwise maxresdefault.jpg.
-  Frames are taken one at a time (`frameLock`); "Refresh thumbnail" drops the frame too. Logged under ART. Not run against live YouTube from the cloud session.
+- **Thumbnail quality is the one switch for album art** (Settings > Storage and cache, `BitmapCache.THUMB_QUALITY`): Home's card and background, the Music tab cover
+  and notifications all follow it. With High, a YouTube album art is a picture of the video at its middle (`ytdl/YtFrames`, `YtStreamResolver#frames`): the tallest stream
+  up to 2160 lines in VP9, AV1 or H.264, falling back to lower ones after up to three tries. It is kept as `ytframe://<id>/2160.jpg` in the image cache (the file keeps its
+  size; memory gets a copy capped at 2160 on the long side, `capFrame`). Callers show the balanced maxresdefault.jpg first (`BitmapCache#getBalancedCover`) and swap in the frame
+  when it arrives (`HomeArt#fetch`, `MusicPlayerFragment#loadArt`, `FRAME_KEY`); a frame already in memory is shown straight away. "Refresh thumbnail" drops the frame too.
+  Logged under ART. Not run against live YouTube from the cloud session.
 - **Channel names**: a playlist or Favorites row's artist line (the tab's subtitle in `PlayableItemBase`, and the widget's rows in `LibraryWidget#artistOf`) goes through
   `MusicTrackItem#cleanArtist`, so "Artist - Topic" shows as "Artist" as on the Music tab.
 

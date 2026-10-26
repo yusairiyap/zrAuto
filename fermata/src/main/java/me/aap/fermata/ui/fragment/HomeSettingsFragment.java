@@ -109,7 +109,6 @@ public class HomeSettingsFragment extends ReorderListFragment {
 				e.removePref(HomeBgPrefs.dim(car));
 				e.removePref(HomeBgPrefs.blur(car));
 				e.removePref(HomeBgPrefs.zoom(car));
-				e.removePref(HomeBgPrefs.hq(car));
 			}
 			e.removePref(MainActivityPrefs.HOME_GREET_MORNING);
 			e.removePref(MainActivityPrefs.HOME_GREET_AFTERNOON);
@@ -293,9 +292,6 @@ public class HomeSettingsFragment extends ReorderListFragment {
 
 		// The picture, dimming and blur are each screen's own (and each arrangement of it remembers its own, see HomeModel).
 		section(box, R.string.home_sec_background);
-		addSwitchRow(box, R.string.home_pref_bg_hq, R.string.home_pref_bg_hq_sub,
-				() -> p.getBooleanPref(HomeBgPrefs.hq(aa)),
-				on -> p.applyBooleanPref(HomeBgPrefs.hq(aa), on), null);
 		addChoiceRow(box, R.string.home_pref_bg_source, R.string.home_pref_bg_source_sub,
 				new int[]{R.string.home_bg_source_picture, R.string.home_bg_source_cover},
 				() -> p.getIntPref(HomeBgPrefs.source(aa)),

@@ -1323,10 +1323,10 @@
 
     <!-- Storage and cache settings -->
     <string name="storage_prefs">Storage and cache</string>
-    <string name="thumb_quality">Thumbnail quality</string>
-    <string name="thumb_quality_high">High (largest cache)</string>
-    <string name="thumb_quality_balanced">Balanced</string>
-    <string name="thumb_quality_saver">Data saver (smallest cache, less data)</string>
+    <string name="thumb_quality">Thumbnail and album art quality</string>
+    <string name="thumb_quality_high">High: album art is a frame of the video, up to 4K (largest cache, most data)</string>
+    <string name="thumb_quality_balanced">Balanced: YouTube thumbnails, up to 720p</string>
+    <string name="thumb_quality_saver">Data saver: small thumbnails (smallest cache, least data)</string>
     <string name="image_cache_limit">Image cache size limit</string>
     <string name="image_cache_limit_100">100 MB</string>
     <string name="image_cache_limit_250">250 MB</string>

@@ -486,18 +486,61 @@ public class BitmapCache {
 		return (thumbQuality() == THUMB_QUALITY_HIGH) ? youtubeVideoId(uri) : null;
 	}
 
-	/** The name a frame of {@code videoId} is kept under (in the image cache, like the downloaded pictures). */
+	/**
+	 * The name a frame of {@code videoId} is kept under (in the image cache, like the downloaded pictures). The 2160 is the
+	 * picture height asked for: frames taken before 4K was asked for have another name, so they are taken again.
+	 */
 	private static String frameUri(String videoId) {
-		return "ytframe://" + videoId + ".jpg";
+		return "ytframe://" + videoId + "/2160.jpg";
+	}
+
+	/** The long side a frame is held at in memory: a 4K frame is 33 MB as ARGB, more than the picture cache's whole share. */
+	private static final int FRAME_MEMORY_SIDE = 2160;
+
+	/** A frame held at no more than {@link #FRAME_MEMORY_SIDE} on its long side (a smaller one is returned as it is). */
+	private static Bitmap capFrame(Bitmap bm) {
+		int side = Math.max(bm.getWidth(), bm.getHeight());
+		if (side <= FRAME_MEMORY_SIDE) return bm;
+		float k = FRAME_MEMORY_SIDE / (float) side;
+		Bitmap small = Bitmap.createScaledBitmap(bm, Math.round(bm.getWidth() * k), Math.round(bm.getHeight() * k), true);
+		if (small != bm) bm.recycle();
+		return small;
+	}
+
+	/** Whether the Thumbnail quality is High: album art of YouTube videos is then a frame of the video. */
+	public static boolean highQualityCovers() {
+		return thumbQuality() == THUMB_QUALITY_HIGH;
+	}
+
+	/** Whether the full-size album art at {@code uri} is shown as a frame of its video (High quality, a YouTube album art). */
+	public static boolean wantsVideoFrame(String uri) {
+		return highQualityCovers() && (youtubeVideoId(uri) != null);
+	}
+
+	/** The frame of a YouTube album art that is already in memory, or null (it is not read from the disk here). */
+	@Nullable
+	public Bitmap getCachedVideoFrame(String uri) {
+		String videoId = youtubeVideoId(uri);
+		return (videoId == null) ? null : getCachedBitmap(frameUri(videoId));
 	}
 
 	/**
-	 * The largest picture of a song's cover, for the Home card and background when "Highest quality cover" is on: a YouTube
-	 * album art becomes a frame of the video (see {@link #loadVideoFrame}), anything else loads as {@code getBitmap(ctx, uri, false, false)}.
+	 * The frame of a YouTube album art, taken once and kept (see {@link #readOrCaptureFrame}); completes with null when the
+	 * address is not a YouTube album art or no frame can be taken. Nothing is loaded in its place: see {@link #getBalancedCover}.
 	 */
-	public FutureSupplier<Bitmap> getHighestQuality(Context ctx, String uri) {
+	public FutureSupplier<Bitmap> getVideoFrame(String uri) {
 		String videoId = youtubeVideoId(uri);
-		return (videoId != null) ? loadVideoFrame(uri, videoId) : getBitmap(ctx, uri, false, false);
+		if (videoId == null) return completedNull();
+		return App.get().getExecutor().submitTask(() -> readOrCaptureFrame(videoId));
+	}
+
+	/**
+	 * The balanced full-size picture of a cover: YouTube's maxresdefault.jpg (hqdefault.jpg where that is missing), never a frame
+	 * of the video, whatever the Thumbnail quality is. Shown first while the frame is taken.
+	 */
+	public FutureSupplier<Bitmap> getBalancedCover(Context ctx, String uri) {
+		if (uri.startsWith("http://") || uri.startsWith("https://")) return loadHttpBitmap(uri, null, 0);
+		return getBitmap(ctx, uri, true, false);
 	}
 
 	/**
@@ -522,7 +565,7 @@ public class BitmapCache {
 			File f = toImageFile(uri);
 			if (f.isFile()) {
 				Bitmap bm = BitmapFactory.decodeFile(f.getPath());
-				if (bm != null) return cacheBitmap(uri, bm);
+				if (bm != null) return cacheBitmap(uri, capFrame(bm));
 				//noinspection ResultOfMethodCallIgnored
 				f.delete();
 			}
@@ -533,8 +576,9 @@ public class BitmapCache {
 				markInvalid(uri);
 				return null;
 			}
+			// The file keeps the frame at the size it was taken; memory gets the capped copy.
 			saveFrame(f, bm);
-			return cacheBitmap(uri, bm);
+			return cacheBitmap(uri, capFrame(bm));
 		}
 	}
 

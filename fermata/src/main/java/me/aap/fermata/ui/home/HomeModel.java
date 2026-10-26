@@ -315,7 +315,6 @@ public final class HomeModel {
 			bg.put("dim", prefs.getIntPref(HomeBgPrefs.dim(car)));
 			bg.put("blur", prefs.getIntPref(HomeBgPrefs.blur(car)));
 			bg.put("zoom", prefs.getIntPref(HomeBgPrefs.zoom(car)));
-			bg.put("hq", prefs.getBooleanPref(HomeBgPrefs.hq(car)));
 			bg.put("source", prefs.getIntPref(HomeBgPrefs.source(car)));
 		} catch (JSONException ex) {
 			Log.e(ex, "Failed to read the Home background");
@@ -332,7 +331,6 @@ public final class HomeModel {
 		prefs.applyIntPref(HomeBgPrefs.dim(car), bg.optInt("dim", 35));
 		prefs.applyIntPref(HomeBgPrefs.blur(car), bg.optInt("blur", 0));
 		prefs.applyIntPref(HomeBgPrefs.zoom(car), bg.optInt("zoom", 100));
-		prefs.applyBooleanPref(HomeBgPrefs.hq(car), bg.optBoolean("hq", false));
 		prefs.applyIntPref(HomeBgPrefs.source(car), bg.optInt("source", 0));
 	}
 
