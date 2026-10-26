@@ -129,6 +129,19 @@ public final class MusicPlayer {
 		/** YouTube's own equalizer and effects, which its page plays through; their settings stay when nothing plays. */
 		@Nullable
 		me.aap.fermata.media.engine.EffectsControls effects();
+
+		/** The past searches the YouTube search panel shows as chips, most recent first (none when turned off). */
+		default List<String> searchHistory() {
+			return new ArrayList<>();
+		}
+
+		/** Forgets one past search (a long press on its chip). */
+		default void removeSearchHistory(String query) {
+		}
+
+		/** Opens the YouTube tab with {@code query} searched in its search panel, over whatever is playing. */
+		default void searchInPanel(MainActivityDelegate a, String query) {
+		}
 	}
 
 	public static void setYoutubeHooks(@Nullable YoutubeHooks hooks) {
@@ -144,6 +157,24 @@ public final class MusicPlayer {
 	public static void openYoutubeSearch(MainActivityDelegate a, boolean upNextOnly) {
 		YoutubeHooks h = youtube;
 		if (h != null) h.openSearch(a, upNextOnly);
+	}
+
+	/** See {@link YoutubeHooks#searchHistory}; empty without the YouTube addon. */
+	public static List<String> youtubeSearchHistory() {
+		YoutubeHooks h = youtube;
+		return (h == null) ? new ArrayList<>() : h.searchHistory();
+	}
+
+	/** See {@link YoutubeHooks#removeSearchHistory}; a no-op without the YouTube addon. */
+	public static void removeYoutubeSearchHistory(String query) {
+		YoutubeHooks h = youtube;
+		if (h != null) h.removeSearchHistory(query);
+	}
+
+	/** See {@link YoutubeHooks#searchInPanel}; a no-op without the YouTube addon. */
+	public static void searchYoutube(MainActivityDelegate a, String query) {
+		YoutubeHooks h = youtube;
+		if (h != null) h.searchInPanel(a, query);
 	}
 
 	/** See {@link YoutubeHooks#playVideoInPlace}; false without the YouTube addon. */

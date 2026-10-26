@@ -60,6 +60,9 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 	private int mode;
 	private int columns;
 	private int gap;
+	/** The widgets' size and the room outside them, as the settings have them (the same as the grid's). */
+	private float scale = 1f;
+	private float padding = 12f;
 	private boolean greeting;
 	private boolean overlay;
 	private boolean editButton;
@@ -130,6 +133,9 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 		mode = (fixedMode >= 0) ? fixedMode : prefs.getIntPref(car ? MainActivityPrefs.HOME_ARRANGE_AA : MainActivityPrefs.HOME_ARRANGE);
 		columns = prefs.getIntPref(car ? MainActivityPrefs.HOME_COLUMNS_AA : MainActivityPrefs.HOME_COLUMNS);
 		gap = Math.max(4, Math.min(20, prefs.getIntPref(car ? MainActivityPrefs.HOME_GAP_AA : MainActivityPrefs.HOME_GAP)));
+		scale = prefs.getIntPref(car ? MainActivityPrefs.HOME_SCALE_AA : MainActivityPrefs.HOME_SCALE) / 100f;
+		int pad = prefs.getIntPref(car ? MainActivityPrefs.HOME_PADDING_AA : MainActivityPrefs.HOME_PADDING);
+		padding = (pad < 0) ? 12f : pad;
 		greeting = prefs.getBooleanPref(car ? MainActivityPrefs.HOME_GREETING_AA : MainActivityPrefs.HOME_GREETING);
 		overlay = prefs.getBooleanPref(car ? MainActivityPrefs.HOME_TOP_OVERLAY_AA : MainActivityPrefs.HOME_TOP_OVERLAY);
 		editButton = prefs.getBooleanPref(car ? MainActivityPrefs.HOME_EDIT_BUTTON_AA : MainActivityPrefs.HOME_EDIT_BUTTON);
@@ -180,7 +186,7 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 		float h = screenH();
 		int shown = (mode == AUTO) ? (((w > h) && (h < 600f)) ? SIDE : DOWN) : mode;
 		down = shown != SIDE;
-		float side = 12f;
+		float side = padding;
 		float top = down ? (16f + (greeting ? (car ? 54f : 62f) : 38f)) : 58f;
 		int n;
 		float cell;
@@ -193,6 +199,9 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 			n = Math.max(2, Math.min(5, n));
 			cell = (h - top - 8f - (n - 1) * gap) / n;
 		}
+		// The same as the grid: Freeflow scales its places, the others only shrink to fit, and a block narrower than the page is centred.
+		cell *= (shown == FREE) ? scale : Math.min(1f, scale);
+		float lead = down ? Math.max(0f, (w - 2 * side - (n * cell + (n - 1) * gap)) / 2f) : 0f;
 
 		float[][] next = new float[N][5];
 		boolean[][] used = new boolean[down ? n : 80][down ? 80 : n];
@@ -207,7 +216,7 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 					int y = down ? a : b;
 					if (!fits(used, x, y, iw, ih)) continue;
 					for (int p = 0; p < iw; p++) for (int q = 0; q < ih; q++) used[x + p][y + q] = true;
-					float px = side + x * (cell + gap);
+					float px = side + (down ? lead : 0f) + x * (cell + gap);
 					float py = top + y * (cell + gap);
 					float cw = iw * cell + (iw - 1) * gap;
 					float ch = ih * cell + (ih - 1) * gap;

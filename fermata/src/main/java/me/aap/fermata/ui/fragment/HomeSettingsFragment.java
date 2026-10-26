@@ -118,12 +118,16 @@ public class HomeSettingsFragment extends ReorderListFragment {
 			e.removePref(MainActivityPrefs.HOME_ARRANGE);
 			e.removePref(MainActivityPrefs.HOME_COLUMNS);
 			e.removePref(MainActivityPrefs.HOME_GAP);
+			e.removePref(MainActivityPrefs.HOME_SCALE);
+			e.removePref(MainActivityPrefs.HOME_PADDING);
 			e.removePref(MainActivityPrefs.HOME_TOP_OVERLAY);
 			e.removePref(MainActivityPrefs.HOME_TOP_OVERLAY_HIDE);
 			e.removePref(MainActivityPrefs.HOME_GREETING_AA);
 			e.removePref(MainActivityPrefs.HOME_ARRANGE_AA);
 			e.removePref(MainActivityPrefs.HOME_COLUMNS_AA);
 			e.removePref(MainActivityPrefs.HOME_GAP_AA);
+			e.removePref(MainActivityPrefs.HOME_SCALE_AA);
+			e.removePref(MainActivityPrefs.HOME_PADDING_AA);
 			e.removePref(MainActivityPrefs.HOME_TOP_OVERLAY_AA);
 			e.removePref(MainActivityPrefs.HOME_TOP_OVERLAY_HIDE_AA);
 		}
@@ -289,6 +293,14 @@ public class HomeSettingsFragment extends ReorderListFragment {
 				v -> (v == 0) ? getString(R.string.home_opt_auto) : String.valueOf(v), null);
 		addValueSliderRow(box, R.string.home_pref_gap, R.string.home_pref_gap_sub, 4, 20,
 				() -> p.getIntPref(gap), v -> p.applyIntPref(gap, v), String::valueOf, null);
+		Pref<IntSupplier> scale = aa ? MainActivityPrefs.HOME_SCALE_AA : MainActivityPrefs.HOME_SCALE;
+		Pref<IntSupplier> padding = aa ? MainActivityPrefs.HOME_PADDING_AA : MainActivityPrefs.HOME_PADDING;
+		addValueSliderRow(box, R.string.home_pref_scale, R.string.home_pref_scale_sub, 40, 150,
+				() -> p.getIntPref(scale), v -> p.applyIntPref(scale, v),
+				v -> getString(R.string.power_set_percent, v), null);
+		addValueSliderRow(box, R.string.home_pref_padding, R.string.home_pref_padding_sub, -1, 48,
+				() -> p.getIntPref(padding), v -> p.applyIntPref(padding, v),
+				v -> (v < 0) ? getString(R.string.home_opt_auto) : getString(R.string.home_pad_value, v), null);
 
 		// The picture, dimming and blur are each screen's own (and each arrangement of it remembers its own, see HomeModel).
 		section(box, R.string.home_sec_background);

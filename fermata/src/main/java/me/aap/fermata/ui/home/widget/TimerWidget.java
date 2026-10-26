@@ -31,6 +31,8 @@ final class TimerWidget extends HomeWidgetView {
 	private TextView sub;
 	private MeterBar bar;
 	private LinearLayout chips;
+	/** How many chips the row was built for: rebuilt when the card measures a different count. */
+	private int chipsFor = -1;
 	/** The timer's length in seconds, as far as it is known (what the bar runs down from). */
 	private int total;
 	private boolean active;
@@ -100,7 +102,8 @@ final class TimerWidget extends HomeWidgetView {
 
 	@Override
 	protected void onSized(int w, int h) {
-		if ((column != null) && (chips.getChildCount() == 0)) rebuildChips();
+		// The first layout (before the card is measured) sees no width, so the count is only right from here on.
+		if ((column != null) && (presetCount() != chipsFor)) rebuildChips();
 	}
 
 	@Override
@@ -149,6 +152,7 @@ final class TimerWidget extends HomeWidgetView {
 	private void rebuildChips() {
 		forget(chips);
 		chips.removeAllViews();
+		chipsFor = presetCount();
 		boolean strip = getCellsH() == 1;
 		if (active && strip) {
 			chips.addView(offChip());

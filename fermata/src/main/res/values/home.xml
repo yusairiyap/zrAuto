@@ -90,6 +90,15 @@
     <string name="home_w_lyrics_d">The line being sung, following the song</string>
     <string name="home_w_youtube">YouTube suggestions</string>
     <string name="home_w_youtube_d">Videos picked for what you are playing</string>
+    <string name="home_w_comments">YouTube comments</string>
+    <string name="home_w_comments_d">The top comments of what plays; a tap opens them all</string>
+    <string name="home_w_search">YouTube search</string>
+    <string name="home_w_search_d">Search YouTube with suggestions and past searches</string>
+    <string name="home_opt_comments_sort">Which comments</string>
+    <string name="home_opt_avatars">Profile pictures</string>
+    <string name="home_opt_search_history">Past searches</string>
+    <string name="home_opt_search_suggest">Suggestions while typing</string>
+    <string name="home_search_recent">Recent searches</string>
     <string name="home_w_aio">All in One</string>
     <string name="home_w_aio_d">The All in One actions as round icons</string>
     <string name="home_w_queue">Queue</string>
@@ -221,6 +230,11 @@
     <string name="home_bg_blur_sub">How much the picture is blurred</string>
     <string name="home_pref_arrange_sub">Scrolling down or sideways, or by the screen\'s shape</string>
     <string name="home_pref_gap_sub">The room between cards</string>
+    <string name="home_pref_scale">Widget size</string>
+    <string name="home_pref_scale_sub">Makes every widget bigger or smaller. Freeflow places scale with them; the other layouts fill the page, so they can only be made smaller</string>
+    <string name="home_pref_padding">Space around the widgets</string>
+    <string name="home_pref_padding_sub">The room outside the widgets on each side, kept centred; Automatic keeps the usual one</string>
+    <string name="home_pad_value">%1$d dp</string>
     <string name="home_set_edit_on_car">The car screen\'s widgets are edited on the car screen, from its edit button.</string>
     <string name="home_set_edit_on_phone">This screen\'s widgets are edited on the phone, from its edit button.</string>
     <string name="home_pref_greet_morning">Morning greeting</string>
