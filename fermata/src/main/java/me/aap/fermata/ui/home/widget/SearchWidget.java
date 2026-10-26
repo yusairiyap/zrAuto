@@ -46,7 +46,7 @@ final class SearchWidget extends HomeWidgetView {
 	private static final int TWO_ROWS_DP = 80;
 
 	private LinearLayout column;
-	private TextView header;
+	private LinearLayout header;
 	private LinearLayout body;
 	private ScrollView wrap;
 	private ChipFlowLayout wrapChips;
