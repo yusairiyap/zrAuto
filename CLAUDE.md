@@ -858,6 +858,8 @@ what each widget shows is set on the widget (edit mode > its gear).
   Only those callers ask for frames (`getVideoFrame`); lists, icons and the lock screen get the balanced picture from `getBitmap`. Captures run one at a time on their
   own thread (`frameQueue`/`frameExecutor`), never on the app pool, which has 5 threads (`FermataApplication#getMaxNumberOfThreads`): a slow capture on the pool starved
   every list and the Home blur. Only MP4 streams are read (AV1, H.264), since a 4K WebM stream failed in `setDataSource` on the device.
+  The still is the most contrasty of three stills at 45/50/55% of the length (`YtFrames#score`, dark ones penalised). The swap from the balanced cover fades over
+  `HomeArt.FRAME_FADE_MS` (1400 ms): frames are marked with `HomeArt#markFrame` and the card, background and Music tab look that up with `isFrame`.
   Logged under ART. Not run against live YouTube from the cloud session.
 - **Channel names**: a playlist or Favorites row's artist line (the tab's subtitle in `PlayableItemBase`, and the widget's rows in `LibraryWidget#artistOf`) goes through
   `MusicTrackItem#cleanArtist`, so "Artist - Topic" shows as "Artist" as on the Music tab.
