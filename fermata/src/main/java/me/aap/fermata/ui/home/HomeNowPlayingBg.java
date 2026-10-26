@@ -123,6 +123,8 @@ final class HomeNowPlayingBg {
 					return new Object[]{use, HomeBackground.topColor(use)};
 				}).main().onSuccess(r -> {
 					if (gen != generation) return;
+					// The blurred copy of a frame fades as slowly as the frame itself.
+					if (HomeArt.isFrame(bm)) HomeArt.markFrame((Bitmap) r[0]);
 					shownCover = bm;
 					shownCoverBlur = b;
 					target.onCover((Bitmap) r[0], (Integer) r[1]);

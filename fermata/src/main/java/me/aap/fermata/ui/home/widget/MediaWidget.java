@@ -764,7 +764,7 @@ final class MediaWidget extends HomeWidgetView {
 		wash.set(d);
 		// Covers hidden: the cover's colours only, on the card and in the thumbnail.
 		Bitmap shownBm = hide ? me.aap.fermata.ui.view.CoverHide.veil(bm) : bm;
-		art.set(new BitmapDrawable(getResources(), shownBm));
+		art.set(new BitmapDrawable(getResources(), shownBm), HomeArt.isFrame(shownBm) ? HomeArt.FRAME_FADE_MS : 520);
 		thumb.tint(0);
 		thumb.setIcon(false);
 		thumb.set(new BitmapDrawable(getResources(), shownBm));
@@ -1184,6 +1184,11 @@ final class MediaWidget extends HomeWidgetView {
 		}
 
 		void set(@Nullable Drawable d) {
+			set(d, 520);
+		}
+
+		/** Shows {@code d}, fading over {@code ms}. */
+		void set(@Nullable Drawable d, int ms) {
 			ImageView in = v[1 - front];
 			ImageView out = v[front];
 			in.animate().cancel();
@@ -1198,8 +1203,8 @@ final class MediaWidget extends HomeWidgetView {
 				return;
 			}
 			in.setAlpha(0f);
-			in.animate().alpha(1f).setDuration(520).start();
-			out.animate().alpha(0f).setDuration(520).withEndAction(() -> {
+			in.animate().alpha(1f).setDuration(ms).start();
+			out.animate().alpha(0f).setDuration(ms).withEndAction(() -> {
 				if (out != v[front]) out.setImageDrawable(null);
 			}).start();
 		}

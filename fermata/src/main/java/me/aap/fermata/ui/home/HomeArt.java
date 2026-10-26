@@ -9,6 +9,9 @@ import android.support.v4.media.MediaMetadataCompat;
 
 import androidx.annotation.Nullable;
 
+import java.util.Collections;
+import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -33,7 +36,25 @@ import me.aap.utils.app.App;
  * and its cover. The media widget and the background that follows the cover share this.
  */
 public final class HomeArt {
+	/**
+	 * How long a balanced cover gives way to the video's frame. Slower than an ordinary change of cover (about 0.4 s), so that
+	 * the sharper picture grows in rather than snapping, which reads as the same picture getting clearer.
+	 */
+	public static final int FRAME_FADE_MS = 1400;
+	/** The pictures that are video frames, so the views can fade them slowly. Weak: a picture no view shows any more goes. */
+	private static final Set<Bitmap> FRAMES = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+
 	private HomeArt() {
+	}
+
+	/** Marks a picture as a video frame (see {@link #FRAME_FADE_MS}). */
+	public static void markFrame(Bitmap bm) {
+		FRAMES.add(bm);
+	}
+
+	/** Whether {@code bm} is a video frame. */
+	public static boolean isFrame(@Nullable Bitmap bm) {
+		return (bm != null) && FRAMES.contains(bm);
 	}
 
 	/** The item to show: what plays, else where the queue stopped, else what played when the app last ran. */
@@ -68,7 +89,12 @@ public final class HomeArt {
 	public static void cover(MainActivityDelegate a, PlayableItem pi, MediaMetadataCompat md,
 													 BooleanSupplier wanted, Consumer<Bitmap> deliver) {
 		// Covers on a black canvas (a square cover in a 16:9 picture) lose the black, so they fill the card.
-		Consumer<Bitmap> out = bm -> deliver.accept(trimBars(bm));
+		Consumer<Bitmap> out = bm -> {
+			boolean frame = isFrame(bm);
+			Bitmap t = trimBars(bm);
+			if (frame) markFrame(t);
+			deliver.accept(t);
+		};
 		String uri = (pi instanceof MusicTrackItem t) ? t.getArtUri() : null;
 		if (uri == null) {
 			Bitmap bm = (md == null) ? null : md.getBitmap(METADATA_KEY_ALBUM_ART);
@@ -176,6 +202,7 @@ public final class HomeArt {
 			// A frame taken earlier this session is shown straight away: no balanced picture to flash first.
 			Bitmap taken = cache.getCachedVideoFrame(uri);
 			if (taken != null) {
+				markFrame(taken);
 				out.accept(taken);
 				return;
 			}
@@ -199,6 +226,7 @@ public final class HomeArt {
 				if (f != null) {
 					framed.set(true);
 					DiagnosticLog.log("ART", "frame shown on Home", uri);
+					markFrame(f);
 					out.accept(f);
 				} else if (noBalanced.get()) {
 					// Neither picture: nothing to show (the balanced one has already come back empty).

@@ -840,6 +840,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			// A frame taken earlier this session is shown straight away: no balanced picture to flash first.
 			Bitmap taken = cache.getCachedVideoFrame(uri);
 			if (taken != null) {
+				me.aap.fermata.ui.home.HomeArt.markFrame(taken);
 				setArt(taken, frameKey);
 				return;
 			}
@@ -849,6 +850,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 			cache.getVideoFrame(uri, () -> shownItem == i).main().onSuccess(f -> {
 				if ((f == null) || (shownItem != i)) return;
 				framed.set(true);
+				me.aap.fermata.ui.home.HomeArt.markFrame(f);
 				setArt(f, frameKey);
 			});
 		}
@@ -884,7 +886,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		}
 
 		artHidden = CoverHide.isOn();
-		fade(art, new BitmapDrawable(getResources(), artHidden ? CoverHide.veil(bm) : bm));
+		// The video's frame replacing the balanced cover grows in slowly (see HomeArt.FRAME_FADE_MS).
+		fade(art, new BitmapDrawable(getResources(), artHidden ? CoverHide.veil(bm) : bm),
+				me.aap.fermata.ui.home.HomeArt.isFrame(bm) ? me.aap.fermata.ui.home.HomeArt.FRAME_FADE_MS : FADE_MS);
 		updateBackground(true);
 		updateCoverChip();
 	}
@@ -1038,8 +1042,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	 * picture just appears, instead of fading in while everything else is still settling.
 	 */
 	private void fade(ImageView v, @Nullable Drawable to) {
+		fade(v, to, FADE_MS);
+	}
+
+	private void fade(ImageView v, @Nullable Drawable to, long ms) {
 		if (quiet()) v.setImageDrawable(to);
-		else crossfade(v, to);
+		else crossfade(v, to, ms);
 	}
 
 	/**
@@ -1055,6 +1063,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	}
 
 	private static void crossfade(ImageView v, @Nullable Drawable to) {
+		crossfade(v, to, FADE_MS);
+	}
+
+	private static void crossfade(ImageView v, @Nullable Drawable to, long ms) {
 		Drawable from = v.getDrawable();
 		if (from instanceof TransitionDrawable td) from = td.getDrawable(td.getNumberOfLayers() - 1);
 		if (from == null) from = new android.graphics.drawable.ColorDrawable(0);
@@ -1062,7 +1074,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		TransitionDrawable t = new TransitionDrawable(new Drawable[]{from, to});
 		t.setCrossFadeEnabled(true);
 		v.setImageDrawable(t);
-		t.startTransition((int) FADE_MS);
+		t.startTransition((int) ms);
 	}
 
 	/**
