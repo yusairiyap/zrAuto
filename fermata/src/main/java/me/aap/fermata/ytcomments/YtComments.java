@@ -299,6 +299,16 @@ public final class YtComments {
 	}
 
 	/**
+	 * The first page of a video's comments as the comments card shows it: Top, or Newest, which is the page of the sort
+	 * token the first page carries (no token, no Newest, as the card's sort row is then hidden).
+	 */
+	public static Page firstPage(String videoId, boolean newest) throws IOException {
+		Page p = load(videoId);
+		if (newest && !p.disabled && (p.sortNew != null)) p = more(p.sortNew);
+		return p;
+	}
+
+	/**
 	 * The batch {@code token} points to: the next batch of a list, a list sorted another way, or
 	 * (see {@link Comment#repliesToken}) the replies to a comment.
 	 */

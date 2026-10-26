@@ -9,7 +9,6 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -204,7 +203,7 @@ final class CommentsWidget extends HomeWidgetView {
 		loadedFor = key;
 		int gen = ++generation;
 		render();
-		App.get().getExecutor().submitTask(() -> fetch(id, newest)).main()
+		App.get().getExecutor().submitTask(() -> YtComments.firstPage(id, newest)).main()
 				.onCompletion((page, err) -> {
 					loading = false;
 					if (gen != generation) return;
@@ -225,13 +224,6 @@ final class CommentsWidget extends HomeWidgetView {
 						render();
 					}
 				});
-	}
-
-	/** The first page of comments, or the page of the newest ones (the same as the comments card's Newest). */
-	private static YtComments.Page fetch(String id, boolean newest) throws IOException {
-		YtComments.Page p = YtComments.load(id);
-		if (newest && !p.disabled && (p.sortNew != null)) p = YtComments.more(p.sortNew);
-		return p;
 	}
 
 	private void showMessage(int res) {
