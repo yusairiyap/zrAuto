@@ -1214,7 +1214,8 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 			FermataWebView v = f.getWebView();
 			FermataChromeClient chrome = (v != null) ? v.getWebChromeClient() : null;
 			if ((chrome != null) && chrome.isFullScreen()) chrome.exitFullScreen();
-			f.search(query);
+			// The tab fades in first; the search starts once it is up, not on top of its transition.
+			a.postDelayed(() -> f.search(query), f.getFadeInDelayMillis() + f.getFadeInMillis());
 		});
 	}
 

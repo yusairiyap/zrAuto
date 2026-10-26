@@ -11,6 +11,7 @@ import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -33,23 +34,36 @@ import me.aap.utils.app.App;
 /**
  * A search box for YouTube on Home. What is typed gets YouTube's own suggestions as chips, and the past searches (the same
  * list as the search panel's, see Settings > Up next) when the field is empty. Enter, the search button or a chip opens the
- * YouTube tab with the results in its search panel; the header opens the panel without a search. In the smallest size it is
+ * YouTube tab with the results in its search panel; the header opens the panel without a search. The chips wrap when the
+ * card has room for two rows, else they scroll sideways in one row. A card one unit high is only the search input, and on
+ * the car screen (no typing while driving) the input and its icon open the panel's search field. In the smallest size it is
  * only the search icon, which opens the panel.
  */
 final class SearchWidget extends HomeWidgetView {
 	private static final int SUGGESTIONS = 6;
 	private static final long TYPE_DELAY_MS = 250;
+	/** Room the chips need for two wrapped rows, below which they go in one scrolling row. */
+	private static final int TWO_ROWS_DP = 80;
 
 	private LinearLayout column;
+	private TextView header;
 	private LinearLayout body;
-	private ScrollView scroll;
-	private ChipFlowLayout chips;
+	private ScrollView wrap;
+	private ChipFlowLayout wrapChips;
+	private HorizontalScrollView row;
+	private ChipFlowLayout rowChips;
 	private TextView caption;
 	private EditText field;
 	private LinearLayout pill;
-	private GradientDrawable pillFill = new GradientDrawable();
-	private FrameLayout content;
+	private final GradientDrawable pillFill = new GradientDrawable();
 	private ImageView bigIcon;
+
+	/** Whether the chips are laid out in one scrolling row (true) or wrapped (false). */
+	private boolean oneRow;
+	/** Whether the chips are on the card at all (not in the smallest size or the one-unit-high size). */
+	private boolean chipsShown;
+	private List<String> shownQueries = new ArrayList<>();
+	private boolean shownPredictions;
 	private int generation;
 	private final Runnable suggest = this::fetchSuggestions;
 
@@ -59,10 +73,10 @@ final class SearchWidget extends HomeWidgetView {
 
 	@Override
 	protected void onCreate(FrameLayout content) {
-		this.content = content;
 		column = new LinearLayout(ctx);
 		column.setOrientation(LinearLayout.VERTICAL);
-		column.addView(header(this::openPanel), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(34)));
+		header = header(this::openPanel);
+		column.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(34)));
 
 		body = new LinearLayout(ctx);
 		body.setOrientation(LinearLayout.VERTICAL);
@@ -87,6 +101,10 @@ final class SearchWidget extends HomeWidgetView {
 				return true;
 			}
 			return false;
+		});
+		// On the car screen the field cannot be typed in: a tap goes straight to the panel's search field.
+		field.setOnClickListener(v -> {
+			if (host.isCar()) openPanel();
 		});
 		field.addTextChangedListener(new TextWatcher() {
 			@Override
@@ -122,11 +140,21 @@ final class SearchWidget extends HomeWidgetView {
 		clp.topMargin = px(8);
 		body.addView(caption, clp);
 
-		chips = new ChipFlowLayout(ctx);
-		scroll = new ScrollView(ctx);
-		scroll.setVerticalScrollBarEnabled(false);
-		scroll.addView(chips, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-		body.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+		// The chips wrap in a column, or run on one row that scrolls sideways; only one of the two is shown.
+		wrapChips = new ChipFlowLayout(ctx);
+		wrap = new ScrollView(ctx);
+		wrap.setVerticalScrollBarEnabled(false);
+		wrap.addView(wrapChips, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.WRAP_CONTENT));
+		body.addView(wrap, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+		rowChips = new ChipFlowLayout(ctx);
+		rowChips.setOneRow(true);
+		row = new HorizontalScrollView(ctx);
+		row.setHorizontalScrollBarEnabled(false);
+		row.addView(rowChips, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+				ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
+		body.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 		column.addView(body, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 		content.addView(column, new FrameLayout.LayoutParams(-1, -1));
 
@@ -147,7 +175,6 @@ final class SearchWidget extends HomeWidgetView {
 
 	@Override
 	protected void onStyleChanged() {
-		if (pillFill == null) return;
 		pillFill.setColor(softFill());
 		if (field != null) field.setHintTextColor(color(ROLE_SECONDARY));
 		if (pill != null) pill.invalidate();
@@ -155,29 +182,45 @@ final class SearchWidget extends HomeWidgetView {
 
 	@Override
 	protected void onBind() {
-		layoutFor();
+		applyLayout();
 	}
 
 	@Override
 	protected void onResized(int w, int h) {
-		if (column != null) layoutFor();
+		if (column != null) applyLayout();
 	}
 
-	private void layoutFor() {
-		boolean strip = isCompact();
-		column.setVisibility(strip ? GONE : VISIBLE);
-		bigIcon.setVisibility(strip ? VISIBLE : GONE);
-		if (!strip) showIdle();
+	@Override
+	protected void onSized(int w, int h) {
+		if (column != null) applyLayout();
+	}
+
+	/** The room the chips get below the header and the input, from the card's height in pixels. */
+	private int chipRoom() {
+		return heightPx() - px(34) - px(46) - px(24);
+	}
+
+	private void applyLayout() {
+		boolean icon = isCompact();
+		boolean strip = !icon && (getCellsH() == 1);
+		column.setVisibility(icon ? GONE : VISIBLE);
+		bigIcon.setVisibility(icon ? VISIBLE : GONE);
+		header.setVisibility(strip ? GONE : VISIBLE);
+		// Without typing (car screen), the field is only a button for the panel.
+		boolean car = host.isCar();
+		field.setFocusable(!car);
+		field.setFocusableInTouchMode(!car);
+		chipsShown = !icon && !strip;
+		oneRow = chipRoom() < px(TWO_ROWS_DP);
+		wrap.setVisibility((chipsShown && !oneRow) ? VISIBLE : GONE);
+		row.setVisibility((chipsShown && oneRow) ? VISIBLE : GONE);
+		fillChips();
+		if (chipsShown && shownQueries.isEmpty() && fieldText().isEmpty()) showHistory();
 	}
 
 	@Override
 	protected void onActive() {
-		if (column != null && !isCompact()) showIdle();
-	}
-
-	/** Nothing typed: the past searches (when the option is on), else nothing. */
-	private void showIdle() {
-		if (fieldText().isEmpty()) showHistory();
+		if (column != null && !isCompact() && (getCellsH() > 1) && fieldText().isEmpty()) showHistory();
 	}
 
 	private String fieldText() {
@@ -215,25 +258,33 @@ final class SearchWidget extends HomeWidgetView {
 			showChips(new ArrayList<>(), false);
 			return;
 		}
-		List<String> past = MusicPlayer.youtubeSearchHistory();
-		showChips(past, false);
+		showChips(MusicPlayer.youtubeSearchHistory(), false);
 	}
 
-	/** The chips for {@code queries}: predictions (search icons) or past searches (long press removes one). */
 	private void showChips(List<String> queries, boolean predictions) {
-		forget(chips);
-		chips.removeAllViews();
-		caption.setVisibility((!predictions && !queries.isEmpty()) ? VISIBLE : GONE);
-		for (String q : queries) {
-			TextView c = chip(predictions ? R.drawable.search : 0, q, () -> submitQuery(q));
-			if (!predictions) {
+		shownQueries = queries;
+		shownPredictions = predictions;
+		fillChips();
+	}
+
+	/** Builds the chips for what is shown into the layout that is on the card now (wrapped or one row). */
+	private void fillChips() {
+		ChipFlowLayout target = oneRow ? rowChips : wrapChips;
+		forget(wrapChips);
+		forget(rowChips);
+		wrapChips.removeAllViews();
+		rowChips.removeAllViews();
+		caption.setVisibility((chipsShown && !shownPredictions && !shownQueries.isEmpty()) ? VISIBLE : GONE);
+		for (String q : shownQueries) {
+			TextView c = chip(shownPredictions ? R.drawable.search : 0, q, () -> submitQuery(q));
+			if (!shownPredictions) {
 				c.setOnLongClickListener(v -> {
 					MusicPlayer.removeYoutubeSearchHistory(q);
 					showHistory();
 					return true;
 				});
 			}
-			chips.addView(c);
+			target.addView(c);
 		}
 	}
 

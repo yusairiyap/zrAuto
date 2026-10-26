@@ -192,7 +192,6 @@ public final class YtComments {
 		}
 		p.views = views(watch);
 		p.likes = likes(watch);
-		me.aap.fermata.util.DiagnosticLog.log("COMMENTS", videoId, "views=" + p.views, "likes=" + p.likes);
 		return p;
 	}
 
@@ -629,10 +628,6 @@ public final class YtComments {
 					break;
 				}
 			}
-		}
-		if (replyParams == null) {
-			me.aap.fermata.util.DiagnosticLog.log("YTCOMMENTS", "no reply params", id,
-					"vm=" + vm.names(), "holder=" + holder.names());
 		}
 
 		return new Comment(id, (author == null) ? "" : author.optString("displayName"), avatar, text,
