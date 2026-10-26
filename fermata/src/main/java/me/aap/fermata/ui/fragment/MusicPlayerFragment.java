@@ -846,7 +846,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		}
 		AtomicBoolean framed = new AtomicBoolean();
 		if (frames) {
-			cache.getVideoFrame(uri).main().onSuccess(f -> {
+			cache.getVideoFrame(uri, () -> shownItem == i).main().onSuccess(f -> {
 				if ((f == null) || (shownItem != i)) return;
 				framed.set(true);
 				setArt(f, frameKey);

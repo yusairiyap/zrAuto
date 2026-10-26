@@ -60,6 +60,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.provider.FermataContentProvider;
@@ -522,10 +523,11 @@ public class BitmapCache {
 	 * The frame of a YouTube album art, taken once and kept (see {@link #readOrCaptureFrame}); completes with null when the
 	 * address is not a YouTube album art or no frame can be taken. Nothing is loaded in its place: see {@link #getBalancedCover}.
 	 */
-	public FutureSupplier<Bitmap> getVideoFrame(String uri) {
+	public FutureSupplier<Bitmap> getVideoFrame(String uri, BooleanSupplier wanted) {
 		String videoId = youtubeVideoId(uri);
 		if (videoId == null) return completedNull();
-		return frameQueue.enqueue(() -> readOrCaptureFrame(videoId));
+		// A request already overtaken (the song changed while it waited) takes no capture: the queue moves on at once.
+		return frameQueue.enqueue(() -> wanted.getAsBoolean() ? readOrCaptureFrame(videoId) : null);
 	}
 
 	/**

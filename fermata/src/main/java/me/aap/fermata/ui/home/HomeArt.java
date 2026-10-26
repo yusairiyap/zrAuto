@@ -19,6 +19,7 @@ import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.music.MusicQueue;
 import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.engine.BitmapCache;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -189,11 +190,15 @@ public final class HomeArt {
 		AtomicBoolean frameDone = new AtomicBoolean();
 		AtomicBoolean noBalanced = new AtomicBoolean();
 		if (frames) {
-			cache.getVideoFrame(uri).main().onCompletion((f, err) -> {
+			cache.getVideoFrame(uri, wanted).main().onCompletion((f, err) -> {
 				frameDone.set(true);
-				if (!wanted.getAsBoolean()) return;
+				if (!wanted.getAsBoolean()) {
+					DiagnosticLog.log("ART", "frame not shown: the song changed", uri);
+					return;
+				}
 				if (f != null) {
 					framed.set(true);
+					DiagnosticLog.log("ART", "frame shown on Home", uri);
 					out.accept(f);
 				} else if (noBalanced.get()) {
 					// Neither picture: nothing to show (the balanced one has already come back empty).

@@ -33,8 +33,11 @@ public final class YtFrames {
 	 */
 	@Nullable
 	public static Bitmap middleFrame(String videoId) {
+		long start = System.currentTimeMillis();
 		try {
 			YtStreamResolver.Frames f = YtStreamResolver.frames(videoId, MAX_HEIGHT);
+			DiagnosticLog.log("ART", "frame streams listed", videoId, "ms=" + (System.currentTimeMillis() - start),
+					"count=" + f.streams.size());
 			if ((f.durationMs <= 0) || f.streams.isEmpty()) {
 				DiagnosticLog.log("ART", "frame: no stream", videoId, "height=" + MAX_HEIGHT);
 				return null;
@@ -45,7 +48,7 @@ public final class YtFrames {
 				Bitmap bm = grab(s, f);
 				if (bm != null) {
 					DiagnosticLog.log("ART", "frame taken", videoId, "height=" + s.height,
-							bm.getWidth() + "x" + bm.getHeight());
+							bm.getWidth() + "x" + bm.getHeight(), "ms=" + (System.currentTimeMillis() - start));
 					return bm;
 				}
 				DiagnosticLog.log("ART", "frame: stream failed, trying a lower one", videoId, "height=" + s.height);
