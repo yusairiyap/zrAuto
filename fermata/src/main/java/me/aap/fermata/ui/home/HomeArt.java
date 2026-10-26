@@ -9,13 +9,20 @@ import android.support.v4.media.MediaMetadataCompat;
 
 import androidx.annotation.Nullable;
 
+import java.util.Collections;
+import java.util.Set;
+import java.util.WeakHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
+import me.aap.fermata.FermataApplication;
 import me.aap.fermata.action.Action;
 import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.music.MusicQueue;
 import me.aap.fermata.addon.music.MusicTrackItem;
+import me.aap.fermata.media.engine.BitmapCache;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -29,7 +36,25 @@ import me.aap.utils.app.App;
  * and its cover. The media widget and the background that follows the cover share this.
  */
 public final class HomeArt {
+	/**
+	 * How long a balanced cover gives way to the video's frame. Slower than an ordinary change of cover (about 0.4 s), so that
+	 * the sharper picture grows in rather than snapping, which reads as the same picture getting clearer.
+	 */
+	public static final int FRAME_FADE_MS = 1400;
+	/** The pictures that are video frames, so the views can fade them slowly. Weak: a picture no view shows any more goes. */
+	private static final Set<Bitmap> FRAMES = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+
 	private HomeArt() {
+	}
+
+	/** Marks a picture as a video frame (see {@link #FRAME_FADE_MS}). */
+	public static void markFrame(Bitmap bm) {
+		FRAMES.add(bm);
+	}
+
+	/** Whether {@code bm} is a video frame. */
+	public static boolean isFrame(@Nullable Bitmap bm) {
+		return (bm != null) && FRAMES.contains(bm);
 	}
 
 	/** The item to show: what plays, else where the queue stopped, else what played when the app last ran. */
@@ -57,16 +82,19 @@ public final class HomeArt {
 	 * one without a connection) and hands it over on the main thread, null if it has none. Nothing
 	 * is delivered once {@code wanted} says no.
 	 */
+	/**
+	 * With High thumbnail quality a YouTube cover is delivered twice: its balanced picture first, then the frame of the video
+	 * once that is taken (the card and background fade from one to the other). Covers in memory already are delivered once.
+	 */
 	public static void cover(MainActivityDelegate a, PlayableItem pi, MediaMetadataCompat md,
 													 BooleanSupplier wanted, Consumer<Bitmap> deliver) {
-		cover(a, pi, md, false, wanted, deliver);
-	}
-
-	/** {@code hq}: the largest picture of the song, bypassing the list copies (the Home background's option). */
-	public static void cover(MainActivityDelegate a, PlayableItem pi, MediaMetadataCompat md, boolean hq,
-													 BooleanSupplier wanted, Consumer<Bitmap> deliver) {
 		// Covers on a black canvas (a square cover in a 16:9 picture) lose the black, so they fill the card.
-		Consumer<Bitmap> out = bm -> deliver.accept(trimBars(bm));
+		Consumer<Bitmap> out = bm -> {
+			boolean frame = isFrame(bm);
+			Bitmap t = trimBars(bm);
+			if (frame) markFrame(t);
+			deliver.accept(t);
+		};
 		String uri = (pi instanceof MusicTrackItem t) ? t.getArtUri() : null;
 		if (uri == null) {
 			Bitmap bm = (md == null) ? null : md.getBitmap(METADATA_KEY_ALBUM_ART);
@@ -80,13 +108,13 @@ public final class HomeArt {
 			}
 		}
 		if (uri != null) {
-			fetch(a, hq ? largest(uri) : uri, hq, wanted, out);
+			fetch(a, BitmapCache.largestCovers() ? largest(uri) : uri, wanted, out);
 			return;
 		}
 		pi.getIconUri().main().onSuccess(u -> {
 			if (!wanted.getAsBoolean()) return;
 			if (u == null) out.accept(null);
-			else fetch(a, hq ? largest(u.toString()) : u.toString(), hq, wanted, out);
+			else fetch(a, BitmapCache.largestCovers() ? largest(u.toString()) : u.toString(), wanted, out);
 		});
 	}
 
@@ -167,15 +195,49 @@ public final class HomeArt {
 		return uri.replaceAll("/(default|0|1|2|3|hqdefault|mqdefault|sddefault)\\.jpg", "/maxresdefault.jpg");
 	}
 
-	private static void fetch(MainActivityDelegate a, String uri, boolean hq, BooleanSupplier wanted,
-														Consumer<Bitmap> out) {
-		Bitmap hit = hq ? null : HomeImages.cached(uri);
-		if (hit != null) {
-			out.accept(hit);
-			return;
+	private static void fetch(MainActivityDelegate a, String uri, BooleanSupplier wanted, Consumer<Bitmap> out) {
+		BitmapCache cache = FermataApplication.get().getBitmapCache();
+		boolean frames = BitmapCache.wantsVideoFrame(uri);
+		if (frames) {
+			// A frame taken earlier this session is shown straight away: no balanced picture to flash first.
+			Bitmap taken = cache.getCachedVideoFrame(uri);
+			if (taken != null) {
+				markFrame(taken);
+				out.accept(taken);
+				return;
+			}
+		} else {
+			Bitmap hit = HomeImages.cached(uri);
+			if (hit != null) {
+				out.accept(hit);
+				return;
+			}
 		}
-		(hq ? a.getLib().getBitmap(uri, false, false) : a.getLib().getBitmap(uri)).main().onCompletion((bm, err) -> {
-			if (!wanted.getAsBoolean()) return;
+		AtomicBoolean framed = new AtomicBoolean();
+		AtomicBoolean frameDone = new AtomicBoolean();
+		AtomicBoolean noBalanced = new AtomicBoolean();
+		if (frames) {
+			cache.getVideoFrame(uri, wanted).main().onCompletion((f, err) -> {
+				frameDone.set(true);
+				if (!wanted.getAsBoolean()) {
+					DiagnosticLog.log("ART", "frame not shown: the song changed", uri);
+					return;
+				}
+				if (f != null) {
+					framed.set(true);
+					DiagnosticLog.log("ART", "frame shown on Home", uri);
+					markFrame(f);
+					out.accept(f);
+				} else if (noBalanced.get()) {
+					// Neither picture: nothing to show (the balanced one has already come back empty).
+					out.accept(null);
+				}
+			});
+		}
+		(frames ? cache.getBalancedCover(a.getContext(), uri) : a.getLib().getBitmap(uri))
+				.main().onCompletion((bm, err) -> {
+			// The frame came first: the balanced picture is not shown over it.
+			if (!wanted.getAsBoolean() || framed.get()) return;
 			String vid = (bm == null) ? YtDownloads.thumbnailVideoId(uri) : null;
 			if (vid != null) {
 				// No connection: a downloaded video's saved cover, or a picture out of its file.
@@ -186,6 +248,12 @@ public final class HomeArt {
 				return;
 			}
 			if (bm == null) {
+				// With a frame still being taken, the card keeps what it shows until the frame is in (or is not).
+				if (frames) {
+					noBalanced.set(true);
+					if (frameDone.get() && wanted.getAsBoolean()) out.accept(null);
+					return;
+				}
 				out.accept(null);
 				return;
 			}

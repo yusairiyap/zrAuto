@@ -56,12 +56,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.provider.FermataContentProvider;
 import me.aap.fermata.vfs.FermataVfsManager;
+import me.aap.fermata.ytdl.YtFrames;
 import me.aap.utils.app.App;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.async.PromiseQueue;
@@ -90,6 +94,11 @@ public class BitmapCache {
 	public static final int THUMB_QUALITY_BALANCED = 1;
 	/** Smaller, lighter thumbnails: the least cache and the least data. */
 	public static final int THUMB_QUALITY_SAVER = 2;
+	/**
+	 * High, and YouTube album art taken as a still of the video itself, up to 4K (experimental: slower, more data, and a still
+	 * can be a poor frame).
+	 */
+	public static final int THUMB_QUALITY_HIGHEST = 3;
 	/** How thumbnails are downloaded and stored, one of the THUMB_QUALITY_* values. */
 	public static final Pref<IntSupplier> THUMB_QUALITY =
 			Pref.i("THUMB_QUALITY", THUMB_QUALITY_BALANCED);
@@ -139,6 +148,12 @@ public class BitmapCache {
 		}
 	};
 	private final AtomicInteger savedSinceTrim = new AtomicInteger();
+	/**
+	 * The frame captures, one at a time on their own thread: a capture is slow and its network reads can hang, so it must not
+	 * take one of the app's few pool threads.
+	 */
+	private static final ExecutorService frameExecutor = Executors.newSingleThreadExecutor();
+	private final PromiseQueue frameQueue = new PromiseQueue(frameExecutor);
 
 	public BitmapCache() {
 		File cache = App.get().getExternalCacheDir();
@@ -167,7 +182,7 @@ public class BitmapCache {
 	/** JPEG quality the resized thumbnails are saved with. */
 	private static int jpegQuality() {
 		return switch (thumbQuality()) {
-			case THUMB_QUALITY_HIGH -> 92;
+			case THUMB_QUALITY_HIGH, THUMB_QUALITY_HIGHEST -> 92;
 			case THUMB_QUALITY_SAVER -> 70;
 			default -> 82;
 		};
@@ -459,6 +474,119 @@ public class BitmapCache {
 		});
 	}
 
+	/** The video id of a YouTube album art (its maxresdefault.jpg), or null for any other address. */
+	@Nullable
+	private static String youtubeVideoId(String uri) {
+		if (!uri.endsWith("/maxresdefault.jpg")) return null;
+		if (!uri.contains("ytimg.com/") && !uri.contains("img.youtube.com/")) return null;
+		int s = uri.indexOf("/vi/");
+		if (s < 0) return null;
+		s += "/vi/".length();
+		int e = uri.indexOf('/', s);
+		return (e > s) ? uri.substring(s, e) : null;
+	}
+
+	/**
+	 * The name a frame of {@code videoId} is kept under (in the image cache, like the downloaded pictures). The 2160 is the
+	 * picture height asked for: frames taken before 4K was asked for have another name, so they are taken again.
+	 */
+	private static String frameUri(String videoId) {
+		return "ytframe://" + videoId + "/2160.jpg";
+	}
+
+	/** The long side a frame is held at in memory: a 4K frame is 33 MB as ARGB, more than the picture cache's whole share. */
+	private static final int FRAME_MEMORY_SIDE = 2160;
+
+	/** A frame held at no more than {@link #FRAME_MEMORY_SIDE} on its long side (a smaller one is returned as it is). */
+	private static Bitmap capFrame(Bitmap bm) {
+		int side = Math.max(bm.getWidth(), bm.getHeight());
+		if (side <= FRAME_MEMORY_SIDE) return bm;
+		float k = FRAME_MEMORY_SIDE / (float) side;
+		Bitmap small = Bitmap.createScaledBitmap(bm, Math.round(bm.getWidth() * k), Math.round(bm.getHeight() * k), true);
+		if (small != bm) bm.recycle();
+		return small;
+	}
+
+	/** Whether full-size covers are the largest picture YouTube has (High and Highest), not the list's smaller copy. */
+	public static boolean largestCovers() {
+		int q = thumbQuality();
+		return (q == THUMB_QUALITY_HIGH) || (q == THUMB_QUALITY_HIGHEST);
+	}
+
+	/** Whether the full-size album art at {@code uri} is shown as a frame of its video (Highest, a YouTube album art). */
+	public static boolean wantsVideoFrame(String uri) {
+		return (thumbQuality() == THUMB_QUALITY_HIGHEST) && (youtubeVideoId(uri) != null);
+	}
+
+	/** The frame of a YouTube album art that is already in memory, or null (it is not read from the disk here). */
+	@Nullable
+	public Bitmap getCachedVideoFrame(String uri) {
+		String videoId = youtubeVideoId(uri);
+		return (videoId == null) ? null : getCachedBitmap(frameUri(videoId));
+	}
+
+	/**
+	 * The frame of a YouTube album art, taken once and kept (see {@link #readOrCaptureFrame}); completes with null when the
+	 * address is not a YouTube album art or no frame can be taken. Nothing is loaded in its place: see {@link #getBalancedCover}.
+	 */
+	public FutureSupplier<Bitmap> getVideoFrame(String uri, BooleanSupplier wanted) {
+		String videoId = youtubeVideoId(uri);
+		if (videoId == null) return completedNull();
+		// A request already overtaken (the song changed while it waited) takes no capture: the queue moves on at once.
+		return frameQueue.enqueue(() -> wanted.getAsBoolean() ? readOrCaptureFrame(videoId) : null);
+	}
+
+	/**
+	 * The balanced full-size picture of a cover: YouTube's maxresdefault.jpg (hqdefault.jpg where that is missing), never a frame
+	 * of the video, whatever the Thumbnail quality is. Shown first while the frame is taken.
+	 */
+	public FutureSupplier<Bitmap> getBalancedCover(Context ctx, String uri) {
+		if (uri.startsWith("http://") || uri.startsWith("https://")) return loadHttpBitmap(uri, null, 0);
+		return getBitmap(ctx, uri, true, false);
+	}
+
+	/**
+	 * Reads the frame of a video from its file, or takes it (see {@link YtFrames}) and saves it. Runs on {@link #frameQueue},
+	 * one at a time, never on the app's own threads: a capture can take many seconds, and it used to hold up every list
+	 * and picture behind it.
+	 */
+	@Nullable
+	private Bitmap readOrCaptureFrame(String videoId) {
+		String uri = frameUri(videoId);
+		Bitmap cached = getCachedBitmap(uri);
+		if (cached != null) return cached;
+
+		File f = toImageFile(uri);
+		if (f.isFile()) {
+			Bitmap bm = BitmapFactory.decodeFile(f.getPath());
+			if (bm != null) return cacheBitmap(uri, capFrame(bm));
+			//noinspection ResultOfMethodCallIgnored
+			f.delete();
+		}
+
+		if (isInvalid(uri)) return null;
+		Bitmap bm = YtFrames.middleFrame(videoId);
+		if (bm == null) {
+			markInvalid(uri);
+			return null;
+		}
+		// The file keeps the frame at the size it was taken; memory gets the capped copy.
+		saveFrame(f, bm);
+		return cacheBitmap(uri, capFrame(bm));
+	}
+
+	private static void saveFrame(File f, Bitmap bm) {
+		File dir = f.getParentFile();
+		if (dir != null) //noinspection ResultOfMethodCallIgnored
+			dir.mkdirs();
+		try (OutputStream out = new FileOutputStream(f)) {
+			bm.compress(CompressFormat.JPEG, 92, out);
+		} catch (Exception ex) {
+			//noinspection ResultOfMethodCallIgnored
+			f.delete();
+		}
+	}
+
 	/** For a YouTube maxresdefault.jpg thumbnail: the hqdefault.jpg one, which always exists. */
 	@Nullable
 	private static String youtubeFallback(String uri) {
@@ -484,6 +612,17 @@ public class BitmapCache {
 		toImageFile(uri).delete();
 		if (iconUri.startsWith(iconsCacheUri)) {
 			new File(iconsCache, iconUri.substring(iconsCacheUri.length())).delete();
+		}
+		// The frame taken of the video for High quality album art goes too: it is taken again.
+		String videoId = youtubeVideoId(uri);
+		if (videoId != null) {
+			String frame = frameUri(videoId);
+			recent.remove(frame);
+			synchronized (cache) {
+				cache.remove(frame);
+			}
+			invalidBitmapUris.remove(frame);
+			toImageFile(frame).delete();
 		}
 	}
 

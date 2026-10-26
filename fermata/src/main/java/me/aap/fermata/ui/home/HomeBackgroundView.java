@@ -69,7 +69,7 @@ final class HomeBackgroundView extends View {
 			return;
 		}
 		ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
-		a.setDuration(420);
+		a.setDuration(HomeArt.isFrame(bm) ? HomeArt.FRAME_FADE_MS : 420);
 		a.addUpdateListener(v -> {
 			fadeIn = (float) v.getAnimatedValue();
 			if (fadeIn >= 1f) fading = null;

@@ -11,15 +11,18 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.Editable;
 import android.text.InputType;
 import android.text.SpannableString;
 import android.text.Spanned;
+import android.text.TextWatcher;
 import android.text.method.LinkMovementMethod;
 import android.text.style.ClickableSpan;
 import android.util.LruCache;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
@@ -99,6 +102,8 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	private static final int TYPE_EMPTY = 5;
 	/** A playlist of the "My Spotify playlists" picker. */
 	private static final int TYPE_PICK = 6;
+	/** The search box above the playlists or songs on show. */
+	private static final int TYPE_SEARCH = 7;
 	/** Added to card types in grid mode, so list and grid holders never mix. */
 	private static final int GRID = 100;
 	private static final int MAX_RESULTS = 10;
@@ -148,6 +153,11 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	@Nullable
 	private List<SpotifyApi.PlaylistInfo> picker;
 	private final Set<String> pickerSelected = new HashSet<>();
+	/** What the search box filters the list on show by (trimmed, case-insensitive), and the list it was typed for. */
+	private String filterText = "";
+	private Object filterScope;
+	/** Set while the search box is given its text back, so its own watcher does not rebuild the list again. */
+	private boolean filterSilent;
 	/** How many songs the account has liked, as of the last time the picker was opened; -1 if unknown. */
 	private int likedTotal = -1;
 	private Adapter adapter;
@@ -968,18 +978,41 @@ public class SpotifyImportFragment extends MainActivityFragment {
 
 	private void rebuild() {
 		engine.scheduleSave();
+		// The search box belongs to the list on show: another list starts with it empty.
+		Object scope = (current != null) ? current : (picker != null) ? picker : "";
+		if (scope != filterScope) {
+			filterScope = scope;
+			filterText = "";
+		}
+		String q = filterText.toLowerCase(java.util.Locale.ROOT);
 		rows.clear();
 		rows.add(new Row(TYPE_HEADER, null, null, null, null));
 
 		if ((current == null) && (picker != null)) {
-			for (SpotifyApi.PlaylistInfo p : picker) rows.add(new Row(TYPE_PICK, null, null, null, p));
+			rows.add(new Row(TYPE_SEARCH, null, null, null, null));
+			int shown = 0;
+			for (SpotifyApi.PlaylistInfo p : picker) {
+				if (!matches(p.name, q)) continue;
+				rows.add(new Row(TYPE_PICK, null, null, null, p));
+				shown++;
+			}
+			if ((shown == 0) && !q.isEmpty()) rows.add(new Row(TYPE_EMPTY, null, null, null, null));
 		} else if (current == null) {
 			if (playlists.isEmpty()) rows.add(new Row(TYPE_EMPTY, null, null, null, null));
+			else rows.add(new Row(TYPE_SEARCH, null, null, null, null));
+			int shown = 0;
 			for (Playlist pl : playlists) {
-				if (pl.included) rows.add(new Row(TYPE_PLAYLIST, pl, null, null, null));
+				if (!pl.included || !matches(pl.name, q)) continue;
+				rows.add(new Row(TYPE_PLAYLIST, pl, null, null, null));
+				shown++;
 			}
+			if ((shown == 0) && !q.isEmpty()) rows.add(new Row(TYPE_EMPTY, null, null, null, null));
 		} else {
+			rows.add(new Row(TYPE_SEARCH, null, null, null, null));
+			int shown = 0;
 			for (Track t : current.tracks) {
+				if (!matches(t.title, q) && !matches(t.artists, q)) continue;
+				shown++;
 				rows.add(new Row(TYPE_TRACK, current, t, null, null));
 				if (!t.altExpanded) continue;
 
@@ -989,9 +1022,49 @@ public class SpotifyImportFragment extends MainActivityFragment {
 					for (Video v : t.alternatives) rows.add(new Row(TYPE_ALT, current, t, v, null));
 				}
 			}
+			if ((shown == 0) && !q.isEmpty()) rows.add(new Row(TYPE_EMPTY, null, null, null, null));
 		}
 
 		if (adapter != null) adapter.notifyDataSetChanged();
+	}
+
+	/** Whether {@code text} contains the (lower-cased) search; everything matches an empty search. */
+	private static boolean matches(@Nullable String text, String q) {
+		return q.isEmpty() || ((text != null) && text.toLowerCase(java.util.Locale.ROOT).contains(q));
+	}
+
+	/** The search box above the lists: it filters what is on show as it is typed. */
+	private EditText createSearchView(Context ctx) {
+		EditText e = getActivityDelegate().createEditText(ctx);
+		e.setId(R.id.spotify_import_search);
+		e.setSingleLine(true);
+		e.setInputType(InputType.TYPE_CLASS_TEXT);
+		e.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
+		e.setHint(R.string.spotify_import_search_hint);
+		int m = UiUtils.toIntPx(ctx, 12);
+		RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.WRAP_CONTENT);
+		lp.setMargins(m, m / 2, m, m / 2);
+		e.setLayoutParams(lp);
+		e.addTextChangedListener(new TextWatcher() {
+			@Override
+			public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+			}
+
+			@Override
+			public void onTextChanged(CharSequence s, int start, int before, int count) {
+			}
+
+			@Override
+			public void afterTextChanged(Editable s) {
+				if (filterSilent) return;
+				String q = s.toString().trim();
+				if (q.equals(filterText)) return;
+				filterText = q;
+				rebuild();
+			}
+		});
+		return e;
 	}
 
 	private void refreshHeader() {
@@ -1187,6 +1260,8 @@ public class SpotifyImportFragment extends MainActivityFragment {
 				case TYPE_ALT:
 					layout = R.layout.spotify_import_alt_item;
 					break;
+				case TYPE_SEARCH:
+					return new Holder(createSearchView(parent.getContext()));
 				case TYPE_ALT_STATUS:
 				case TYPE_EMPTY:
 					return new Holder(createMessageView(parent.getContext()));
@@ -1224,9 +1299,20 @@ public class SpotifyImportFragment extends MainActivityFragment {
 				}
 				case TYPE_EMPTY -> {
 					TextView t = (TextView) h.itemView;
-					t.setText(R.string.spotify_import_empty);
+					t.setText(filterText.isEmpty() ? R.string.spotify_import_empty : R.string.spotify_import_no_match);
 				}
+				case TYPE_SEARCH -> bindSearch(h);
 			}
+		}
+
+		/** Gives the search box the text it filters by, unless it has it already (it is the one the user is typing in). */
+		private void bindSearch(Holder h) {
+			EditText e = (EditText) h.itemView;
+			if (e.getText().toString().equals(filterText)) return;
+			filterSilent = true;
+			e.setText(filterText);
+			e.setSelection(e.getText().length());
+			filterSilent = false;
 		}
 
 		private void bindHeader(Holder h) {

@@ -423,6 +423,8 @@
     <string name="spotify_import_no_links">No Spotify playlist or album links found. In Spotify, use Share &gt; Copy link to playlist, then paste it here.</string>
     <string name="spotify_import_intro">Tap a playlist to choose its tracks; everything is selected by default. Only public playlists can be imported, and Spotify shares at most the first 100 tracks of a playlist this way. No accounts or API keys are needed.</string>
     <string name="spotify_import_empty">No Spotify playlists yet. Tap \"Add Spotify link\" to paste one.</string>
+    <string name="spotify_import_search_hint">Search by name</string>
+    <string name="spotify_import_no_match">Nothing matches your search.</string>
     <string name="spotify_import_summary">%1$d playlists loaded, %2$d tracks selected</string>
     <string name="spotify_import_selected">%1$d of %2$d tracks selected</string>
     <string name="spotify_import_import">Import (%1$d)</string>
@@ -1325,6 +1327,7 @@
     <string name="thumb_quality_high">High (largest cache)</string>
     <string name="thumb_quality_balanced">Balanced</string>
     <string name="thumb_quality_saver">Data saver (smallest cache, less data)</string>
+    <string name="thumb_quality_highest">Highest (experimental): a still taken from the video itself, up to 4K. Slower, more data, and a still can be a poor frame</string>
     <string name="image_cache_limit">Image cache size limit</string>
     <string name="image_cache_limit_100">100 MB</string>
     <string name="image_cache_limit_250">250 MB</string>

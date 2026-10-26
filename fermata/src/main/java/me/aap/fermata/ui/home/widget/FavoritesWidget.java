@@ -44,6 +44,46 @@ final class FavoritesWidget extends LibraryWidget {
 		return true;
 	}
 
+	/** A drag handle and a remove button, both off unless switched on. */
+	@Override
+	protected boolean supportsReorder() {
+		return true;
+	}
+
+	@Override
+	protected boolean handleByDefault() {
+		return false;
+	}
+
+	@Override
+	protected boolean supportsRemove() {
+		return true;
+	}
+
+	@Override
+	protected boolean removeByDefault() {
+		return false;
+	}
+
+	/** Positions as the favorites are listed, which is the library's order or its reverse ("Latest first"). */
+	private boolean rowsReversed;
+	private int libraryCount;
+
+	/** The place in the library of the row at {@code pos}. */
+	private int libraryIndex(int pos) {
+		return rowsReversed ? libraryCount - 1 - pos : pos;
+	}
+
+	@Override
+	protected void onRemoved(int position, Row row) {
+		if (row.art() instanceof PlayableItem p) act().getLib().getFavorites().removeItem(p);
+	}
+
+	@Override
+	protected void onReordered(int from, int to) {
+		act().getLib().getFavorites().moveItem(libraryIndex(from), libraryIndex(to));
+	}
+
 	@Override
 	protected boolean marksPlayingOnTop() {
 		return true;
@@ -71,7 +111,9 @@ final class FavoritesWidget extends LibraryWidget {
 				return;
 			}
 			List<PlayableItem> l = new ArrayList<>(items);
-			if (optInt("order", 0) == 1) Collections.reverse(l);
+			rowsReversed = optInt("order", 0) == 1;
+			libraryCount = items.size();
+			if (rowsReversed) Collections.reverse(l);
 			int n = Math.min(l.size(), 300);
 			Set<String> playing = playingIds(a);
 			int at = -1;

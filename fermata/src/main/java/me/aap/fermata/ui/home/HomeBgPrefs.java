@@ -26,10 +26,6 @@ public final class HomeBgPrefs {
 		return car ? MainActivityPrefs.HOME_BG_ZOOM_AA : MainActivityPrefs.HOME_BG_ZOOM;
 	}
 
-	public static Pref<BooleanSupplier> hq(boolean car) {
-		return car ? MainActivityPrefs.HOME_BG_HQ_AA : MainActivityPrefs.HOME_BG_HQ;
-	}
-
 	public static Pref<IntSupplier> source(boolean car) {
 		return car ? MainActivityPrefs.HOME_BG_SOURCE_AA : MainActivityPrefs.HOME_BG_SOURCE;
 	}

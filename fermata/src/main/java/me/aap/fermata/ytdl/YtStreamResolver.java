@@ -13,6 +13,9 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
 /**
  * Finds the media streams of a YouTube video, the same key-less "InnerTube" way the rest of the app
@@ -228,6 +231,94 @@ final class YtStreamResolver {
 			return r;
 		} catch (JSONException ex) {
 			throw new IOException("Unexpected YouTube response", ex);
+		}
+	}
+
+	/** The picture streams of a video for taking a still of it: tallest first (see {@link #frames}). */
+	static final class Frames {
+		String userAgent;
+		long durationMs;
+		final List<Stream> streams = new ArrayList<>();
+	}
+
+	/**
+	 * Every MP4 picture stream of {@code videoId} up to {@code maxHeight} lines: H.264 or AV1. Tallest first, and at the same
+	 * height AV1 then H.264. WebM (VP9) streams are left out: the frame reader here could not open a 4K WebM stream, and
+	 * 4K is also given as AV1 MP4 where the video has it. The same apps and fallbacks as {@link #resolve}.
+	 */
+	static Frames frames(String videoId, int maxHeight) throws IOException {
+		IOException first = null;
+		boolean blocked = false;
+
+		for (Client c : CLIENTS) {
+			try {
+				return frames(c, videoId, maxHeight);
+			} catch (BlockedException ex) {
+				blocked = true;
+				if (first == null) first = ex;
+			} catch (IOException ex) {
+				if (first == null) first = ex;
+			}
+		}
+
+		if (blocked) throw new BlockedException("YouTube asked to confirm you're not a bot. Try again later");
+		throw (first != null) ? first : new IOException("No picture stream");
+	}
+
+	private static Frames frames(Client c, String videoId, int maxHeight) throws IOException {
+		try {
+			JSONObject resp = new JSONObject(post(c, videoId));
+			JSONObject rc = resp.optJSONObject("responseContext");
+			String vd0 = (rc != null) ? rc.optString("visitorData", null) : null;
+			if ((vd0 != null) && !vd0.isEmpty()) visitorData = vd0;
+
+			JSONObject ps = resp.optJSONObject("playabilityStatus");
+			String status = (ps != null) ? ps.optString("status") : "";
+			if (!"OK".equals(status)) {
+				String reason = (ps != null) ? ps.optString("reason") : "";
+				if (reason.toLowerCase().contains("not a bot") || reason.toLowerCase().contains("sign in")) {
+					throw new BlockedException(reason);
+				}
+				throw new IOException(reason.isEmpty() ? ("Not playable: " + status) : reason);
+			}
+
+			Frames f = new Frames();
+			f.userAgent = c.userAgent;
+			JSONObject vd = resp.optJSONObject("videoDetails");
+			if (vd != null) f.durationMs = vd.optLong("lengthSeconds", 0) * 1000;
+
+			JSONObject sd = resp.optJSONObject("streamingData");
+			JSONArray formats = (sd != null) ? sd.optJSONArray("adaptiveFormats") : null;
+			List<Pic> pics = new ArrayList<>();
+			for (int i = 0; (formats != null) && (i < formats.length()); i++) {
+				JSONObject fmt = formats.optJSONObject(i);
+				if (fmt == null) continue;
+				String url = fmt.optString("url", null);
+				String mime = fmt.optString("mimeType");
+				int height = fmt.optInt("height", 0);
+				if ((url == null) || !mime.startsWith("video/mp4") || (height <= 0) || (height > maxHeight)) continue;
+				int rank = mime.contains("av01") ? 0 : mime.contains("avc1") ? 1 : -1;
+				if (rank < 0) continue;
+				pics.add(new Pic(new Stream(url, fmt.optLong("contentLength", 0), height,
+						fmt.optInt("bitrate", 0)), rank));
+			}
+			if (pics.isEmpty()) throw new IOException("No picture stream");
+
+			pics.sort(Comparator.comparingInt((Pic p) -> -p.stream.height).thenComparingInt(p -> p.rank));
+			for (Pic p : pics) f.streams.add(p.stream);
+			return f;
+		} catch (JSONException ex) {
+			throw new IOException("Unexpected YouTube response", ex);
+		}
+	}
+
+	private static final class Pic {
+		final Stream stream;
+		final int rank;
+
+		Pic(Stream stream, int rank) {
+			this.stream = stream;
+			this.rank = rank;
 		}
 	}
 

@@ -64,8 +64,10 @@ import androidx.recyclerview.widget.RecyclerView;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import me.aap.fermata.FermataApplication;
+import me.aap.fermata.media.engine.BitmapCache;
 import me.aap.fermata.R;
 import me.aap.fermata.addon.music.MusicAddon;
 import me.aap.fermata.addon.music.MusicPlayer;
@@ -825,11 +827,37 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		}
 	}
 
+	/** Marks the shown key of a YouTube cover that is its video's frame (the balanced picture has the plain address). */
+	private static final String FRAME_KEY = "#frame";
+
 	private void loadArt(PlayableItem i, String uri) {
-		if (uri.equals(shownArt)) return;
-		MediaLib lib = getActivityDelegate().getLib();
-		lib.getBitmap(uri).main().onCompletion((bm, err) -> {
-			if (shownItem != i) return;
+		String frameKey = uri + FRAME_KEY;
+		// Also the frame: a balanced picture never comes back over the frame of the same cover.
+		if (uri.equals(shownArt) || frameKey.equals(shownArt)) return;
+		BitmapCache cache = FermataApplication.get().getBitmapCache();
+		boolean frames = BitmapCache.wantsVideoFrame(uri);
+		if (frames) {
+			// A frame taken earlier this session is shown straight away: no balanced picture to flash first.
+			Bitmap taken = cache.getCachedVideoFrame(uri);
+			if (taken != null) {
+				me.aap.fermata.ui.home.HomeArt.markFrame(taken);
+				setArt(taken, frameKey);
+				return;
+			}
+		}
+		AtomicBoolean framed = new AtomicBoolean();
+		if (frames) {
+			cache.getVideoFrame(uri, () -> shownItem == i).main().onSuccess(f -> {
+				if ((f == null) || (shownItem != i)) return;
+				framed.set(true);
+				me.aap.fermata.ui.home.HomeArt.markFrame(f);
+				setArt(f, frameKey);
+			});
+		}
+		(frames ? cache.getBalancedCover(requireContext(), uri) : getActivityDelegate().getLib().getBitmap(uri))
+				.main().onCompletion((bm, err) -> {
+			// The frame came first: the balanced picture is not shown over it.
+			if ((shownItem != i) || framed.get()) return;
 			String vid = (bm == null) ? YtDownloads.thumbnailVideoId(uri) : null;
 			if (vid != null) {
 				// No connection: a downloaded video's saved cover, or a picture out of its file.
@@ -858,7 +886,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		}
 
 		artHidden = CoverHide.isOn();
-		fade(art, new BitmapDrawable(getResources(), artHidden ? CoverHide.veil(bm) : bm));
+		// The video's frame replacing the balanced cover grows in slowly (see HomeArt.FRAME_FADE_MS).
+		fade(art, new BitmapDrawable(getResources(), artHidden ? CoverHide.veil(bm) : bm),
+				me.aap.fermata.ui.home.HomeArt.isFrame(bm) ? me.aap.fermata.ui.home.HomeArt.FRAME_FADE_MS : FADE_MS);
 		updateBackground(true);
 		updateCoverChip();
 	}
@@ -1012,8 +1042,12 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	 * picture just appears, instead of fading in while everything else is still settling.
 	 */
 	private void fade(ImageView v, @Nullable Drawable to) {
+		fade(v, to, FADE_MS);
+	}
+
+	private void fade(ImageView v, @Nullable Drawable to, long ms) {
 		if (quiet()) v.setImageDrawable(to);
-		else crossfade(v, to);
+		else crossfade(v, to, ms);
 	}
 
 	/**
@@ -1029,6 +1063,10 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	}
 
 	private static void crossfade(ImageView v, @Nullable Drawable to) {
+		crossfade(v, to, FADE_MS);
+	}
+
+	private static void crossfade(ImageView v, @Nullable Drawable to, long ms) {
 		Drawable from = v.getDrawable();
 		if (from instanceof TransitionDrawable td) from = td.getDrawable(td.getNumberOfLayers() - 1);
 		if (from == null) from = new android.graphics.drawable.ColorDrawable(0);
@@ -1036,7 +1074,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		TransitionDrawable t = new TransitionDrawable(new Drawable[]{from, to});
 		t.setCrossFadeEnabled(true);
 		v.setImageDrawable(t);
-		t.startTransition((int) FADE_MS);
+		t.startTransition((int) ms);
 	}
 
 	/**

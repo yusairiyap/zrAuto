@@ -1205,7 +1205,7 @@ public class SettingsFragment extends MainActivityFragment
 			o.subtitle = R.string.string_format;
 			o.formatSubtitle = true;
 			o.values = new int[]{R.string.thumb_quality_high, R.string.thumb_quality_balanced,
-					R.string.thumb_quality_saver};
+					R.string.thumb_quality_saver, R.string.thumb_quality_highest};
 		});
 		ps.addListPref(o -> {
 			o.store = store;

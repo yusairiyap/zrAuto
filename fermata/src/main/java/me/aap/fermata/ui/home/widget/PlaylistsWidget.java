@@ -1,6 +1,9 @@
 package me.aap.fermata.ui.home.widget;
 
+import androidx.annotation.Nullable;
+
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -49,6 +52,53 @@ final class PlaylistsWidget extends LibraryWidget {
 	@Override
 	protected boolean supportsMenu() {
 		return true;
+	}
+
+	/**
+	 * A drag handle and a remove button for the songs of an opened playlist, both off unless switched on. The playlists
+	 * themselves are not changed from the card.
+	 */
+	@Override
+	protected boolean supportsReorder() {
+		return true;
+	}
+
+	@Override
+	protected boolean handleByDefault() {
+		return false;
+	}
+
+	@Override
+	protected boolean supportsRemove() {
+		return true;
+	}
+
+	@Override
+	protected boolean removeByDefault() {
+		return false;
+	}
+
+	@Override
+	protected boolean rowsEditable() {
+		return isDrilled();
+	}
+
+	/** The playlist whose songs are open in the card, and for each row of them its place in that playlist. */
+	@Nullable
+	private Playlist openPlaylist;
+	private final List<Integer> songIndex = new ArrayList<>();
+
+	@Override
+	protected void onRemoved(int position, Row row) {
+		if ((openPlaylist != null) && (row.art() instanceof PlayableItem p)) {
+			openPlaylist.removeItems(Collections.singletonList(p));
+		}
+	}
+
+	@Override
+	protected void onReordered(int from, int to) {
+		if ((openPlaylist == null) || (from >= songIndex.size()) || (to >= songIndex.size())) return;
+		openPlaylist.moveItem(songIndex.get(from), songIndex.get(to));
 	}
 
 	@Override
@@ -159,6 +209,7 @@ final class PlaylistsWidget extends LibraryWidget {
 	/** Opens a playlist in the card, remembered for a card made again (see {@link #OPEN}). */
 	private void open(Playlist pl) {
 		OPEN.put(getItem().id, pl.getId());
+		openPlaylist = pl;
 		drill(pl.getName(), (a2, d2) -> songs(pl, a2, d2));
 	}
 
@@ -181,6 +232,8 @@ final class PlaylistsWidget extends LibraryWidget {
 	@Override
 	protected void onBackOut() {
 		OPEN.remove(getItem().id);
+		openPlaylist = null;
+		songIndex.clear();
 	}
 
 	/** Looks through the playlists, one after the other, for those holding the playing song, unless that is known already. */
@@ -246,6 +299,7 @@ final class PlaylistsWidget extends LibraryWidget {
 			int n = Math.min(items.size(), 300);
 			Set<String> playing = playingIds(a);
 			int at = -1;
+			songIndex.clear();
 			for (int i = 0; i < n; i++) {
 				if (!(items.get(i) instanceof PlayableItem p)) continue;
 				Runnable play = () -> {
@@ -256,6 +310,7 @@ final class PlaylistsWidget extends LibraryWidget {
 				if (now) at = rows.size();
 				// A tap on the row plays it already: no play button inside an opened playlist (the list's own rows keep theirs).
 				rows.add(songRow(p, play, null, now));
+				songIndex.add(i);
 			}
 			focusRow = at;
 			done.done(rows, items.size());

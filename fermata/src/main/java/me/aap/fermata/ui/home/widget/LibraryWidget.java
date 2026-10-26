@@ -228,15 +228,25 @@ abstract class LibraryWidget extends HomeWidgetView {
 	}
 
 	/**
-	 * Whether a long press on a row picks it up to move it (the option "Reorder on long press", on unless switched off):
-	 * what the Music tab's queue does, with {@link #onReordered} saying where the row went. Not inside an opened list.
+	 * Whether the rows can be moved with their drag handle (the option "Drag handle"), with {@link #onReordered} saying
+	 * where the row went. A long press never picks a row up to move it: it opens the row's menu (or edit mode elsewhere).
 	 */
 	protected boolean supportsReorder() {
 		return false;
 	}
 
+	/** Whether the rows on show are the card's own list, which may be changed (not a list opened inside the card). */
+	protected boolean rowsEditable() {
+		return drillSource == null;
+	}
+
+	/** The default of the option "Drag handle". */
+	protected boolean handleByDefault() {
+		return true;
+	}
+
 	protected boolean reorderOn() {
-		return supportsReorder() && (drillSource == null) && optBool("reorder", true);
+		return supportsReorder() && rowsEditable();
 	}
 
 	/** A row was dropped at a new place: {@code from} and {@code to} are positions in the rows as fetched. */
@@ -258,9 +268,14 @@ abstract class LibraryWidget extends HomeWidgetView {
 		return false;
 	}
 
-	/** Whether each row has a remove button on its left (the option "Remove button", on unless switched off). */
+	/** Whether each row has a remove button on its left (the option "Remove button"; see {@link #removeByDefault}). */
 	protected boolean supportsRemove() {
 		return false;
+	}
+
+	/** The default of the option "Remove button". */
+	protected boolean removeByDefault() {
+		return true;
 	}
 
 	/** Whether the card has pinned rows: the option "Hide pinned icon" (under "Hide downloaded icon") and a thin line between them and the rest. */
@@ -284,16 +299,16 @@ abstract class LibraryWidget extends HomeWidgetView {
 	}
 
 	protected boolean removeOn() {
-		return supportsRemove() && (drillSource == null) && optBool("remove", true);
+		return supportsRemove() && rowsEditable() && optBool("remove", removeByDefault());
 	}
 
-	/** A row's remove button was pressed: {@code position} is its place in the rows as fetched. */
-	protected void onRemoved(int position) {
+	/** A row's remove button was pressed: {@code position} is its place in the rows as fetched, {@code row} the row itself. */
+	protected void onRemoved(int position, Row row) {
 	}
 
 	/** The grip on the right of each row, which picks the row up at once (the option "Drag handle"; needs reordering on). */
 	private boolean handleOn() {
-		return reorderOn() && optBool("handle", true);
+		return reorderOn() && optBool("handle", handleByDefault());
 	}
 
 	private ItemTouchHelper touchHelper;
@@ -312,7 +327,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 
 		@Override
 		public boolean isLongPressDragEnabled() {
-			return reorderOn();
+			// Moved with the drag handle only: the long press is the row's menu.
+			return false;
 		}
 
 		@Override
@@ -367,7 +383,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 	}
 
 	/** The row's own long-press menu, the one the library tab shows for that item. */
-	private void showMenu(Row r) {
+	protected void showMenu(Row r) {
 		if (r.art() == null) return;
 		MainActivityDelegate a = act();
 		try {
@@ -399,7 +415,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 		if (artist == null) {
 			if (YtDownloads.videoIdOf(p) != null) artist = "YouTube";
 			fill = set -> p.getMediaData().main().onSuccess(m -> {
-				String a = (m == null) ? null : m.getString(android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ARTIST);
+				String a = (m == null) ? null : me.aap.fermata.addon.music.MusicTrackItem.cleanArtist(
+						m.getString(android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ARTIST));
 				if ((a != null) && !a.isEmpty()) set.accept(a);
 			});
 		}
@@ -414,7 +431,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 		}
 		android.support.v4.media.MediaMetadataCompat md = p.getMediaData().peek();
 		if (md != null) {
-			String a = md.getString(android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ARTIST);
+			String a = me.aap.fermata.addon.music.MusicTrackItem.cleanArtist(
+					md.getString(android.support.v4.media.MediaMetadataCompat.METADATA_KEY_ARTIST));
 			if ((a != null) && !a.isEmpty()) return a;
 		}
 		String vid = YtDownloads.videoIdOf(p);
@@ -422,7 +440,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 			for (me.aap.fermata.addon.FermataAddon ad : me.aap.fermata.addon.AddonManager.get().getAddons()) {
 				if (!(ad instanceof me.aap.fermata.addon.VideoTitleCache c)) continue;
 				me.aap.fermata.addon.VideoTitleCache.VideoInfo vi = c.getCachedVideoInfo(vid);
-				if ((vi != null) && (vi.artist != null) && !vi.artist.isEmpty()) return vi.artist;
+				String a = me.aap.fermata.addon.music.MusicTrackItem.cleanArtist(vi != null ? vi.artist : null);
+				if ((a != null) && !a.isEmpty()) return a;
 				break;
 			}
 		}
@@ -635,11 +654,10 @@ abstract class LibraryWidget extends HomeWidgetView {
 		List<HomeOption> l = new ArrayList<>();
 		l.add(HomeOption.sw("art", ctx.getString(R.string.home_opt_artwork), true));
 		if (supportsMenu()) l.add(HomeOption.sw("menu", ctx.getString(R.string.home_opt_row_menu), true));
-		if (supportsReorder()) {
-			l.add(HomeOption.sw("reorder", ctx.getString(R.string.home_opt_row_reorder), true));
-			l.add(HomeOption.sw("handle", ctx.getString(R.string.home_opt_row_handle), true));
+		if (supportsReorder()) l.add(HomeOption.sw("handle", ctx.getString(R.string.home_opt_row_handle), handleByDefault()));
+		if (supportsRemove()) {
+			l.add(HomeOption.sw("remove", ctx.getString(R.string.home_opt_row_remove), removeByDefault()));
 		}
-		if (supportsRemove()) l.add(HomeOption.sw("remove", ctx.getString(R.string.home_opt_row_remove), true));
 		l.add(HomeOption.sw("hideDownloaded", ctx.getString(R.string.home_opt_hide_downloaded), false));
 		if (supportsPins()) l.add(HomeOption.sw("hidePinned", ctx.getString(R.string.home_opt_hide_pinned), false));
 		if (supportsCarKeys()) l.add(HomeOption.sw("carKeys", ctx.getString(R.string.home_opt_car_keys), true));
@@ -780,7 +798,9 @@ abstract class LibraryWidget extends HomeWidgetView {
 		// Wide cards split their rows into two columns, unless the card asks for full-width rows.
 		int newCols = ((getCellsW() >= 4) && !(supportsFullWidth() && optBool("full", false))) ? 2 : 1;
 		boolean art = optBool("art", true);
-		int rowMode = (menuOn() ? 1 : 0) | (reorderOn() ? 2 : 0) | (removeOn() ? 4 : 0) | (handleOn() ? 8 : 0) |
+		// Bit 2 used to be "reorder on": it changes when a playlist opens (its rows can be moved, the top list not), which
+		// relaid the card out on every open and back. The drag handle (bit 8) is what shows, so that is the one counted.
+		int rowMode = (menuOn() ? 1 : 0) | (removeOn() ? 4 : 0) | (handleOn() ? 8 : 0) |
 				(badgeHidden() ? 16 : 0) | (pinHidden() ? 32 : 0);
 		// Drawn again only when something it shows changed: the rows blinked on every refresh.
 		StringBuilder sig = new StringBuilder();
@@ -1013,12 +1033,12 @@ abstract class LibraryWidget extends HomeWidgetView {
 				int pos = getAdapterPosition();
 				if ((pos == RecyclerView.NO_POSITION) || (pos >= rows.size())) return;
 				// Gone from the card at once; the real list follows when the source reports the change.
-					adapter.adopt(rows);
-				rows.remove(pos);
+				adapter.adopt(rows);
+				Row gone = rows.remove(pos);
 				adapter.notifyItemRemoved(pos);
 				if (cols > 1) adapter.notifyItemRangeChanged(pos, rows.size() - pos);
 				if (total > 0) count.setText(String.valueOf(total - 1));
-				onRemoved(pos);
+				onRemoved(pos, gone);
 			});
 			removeBtn.setVisibility(GONE);
 			removeBtn.setTag(R.id.home_no_grab, Boolean.TRUE);
@@ -1122,8 +1142,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 			main.setContentDescription(r.title());
 			// A long press on the row opens its menu: it is marked so the card does not take that press for picking itself up.
 			boolean menu = menuOn() && (r.art() != null);
-			// A row that can be picked up to move it is marked too: that press is the list's, not the card's.
-			main.setTag(R.id.home_no_grab, (menu || reorderOn()) ? Boolean.TRUE : null);
+			main.setTag(R.id.home_no_grab, menu ? Boolean.TRUE : null);
 			int bs = narrow ? px(28) : px(32);
 			for (ImageView b : new ImageView[]{removeBtn, handle}) {
 				ViewGroup.LayoutParams bl = b.getLayoutParams();

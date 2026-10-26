@@ -108,7 +108,7 @@ final class HomeNowPlayingBg {
 		}
 		pi.getMediaData().main().onCompletion((md, err) -> {
 			if (gen != generation) return;
-			HomeArt.cover(a, pi, md, a.getPrefs().getBooleanPref(HomeBgPrefs.hq(a.isCarActivity())), () -> gen == generation, bm -> {
+			HomeArt.cover(a, pi, md, () -> gen == generation, bm -> {
 				if (gen != generation) return;
 				if (bm == null) {
 					target.onCover(null, 0);
@@ -123,6 +123,8 @@ final class HomeNowPlayingBg {
 					return new Object[]{use, HomeBackground.topColor(use)};
 				}).main().onSuccess(r -> {
 					if (gen != generation) return;
+					// The blurred copy of a frame fades as slowly as the frame itself.
+					if (HomeArt.isFrame(bm)) HomeArt.markFrame((Bitmap) r[0]);
 					shownCover = bm;
 					shownCoverBlur = b;
 					target.onCover((Bitmap) r[0], (Integer) r[1]);
