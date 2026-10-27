@@ -580,11 +580,17 @@ public class YoutubeWebView extends FermataWebView {
 				"      var fade = '';\n" +
 				"      if (n === 'playing') {\n" +
 				"        trPlayT = v.currentTime; trPlayWall = Date.now();\n" +
-				// Where the song's clock is 1 s after 'playing': more than ~1.05 s means the first moment of sound was skipped
-				// (the clock ran before the sound came out), less means it was held.
-				"        (function(pv, t0, w0) { setTimeout(function() { if (!pv.paused) trace('1 s after playing: t=' + " +
-				"(pv.currentTime - t0).toFixed(2) + ' in ' + ((Date.now() - w0) / 1000).toFixed(2) + ' s'); }, 1000); })" +
-				"(v, v.currentTime, Date.now());\n" +
+				// The song's clock in its first 1.5 s, one line: how far it moved in each 100 ms of wall time. A clean start reads
+				// 100s all along; a stall reads 0 (or a small number) and the catch-up after it a big one (a skip). The fade's own
+				// trace (biggest step) and the clock 1 s in only showed that something happened, not when.
+				"        (function(pv) { var last = pv.currentTime, lw = performance.now(), n = 0, out = [];\n" +
+				"          var iv = setInterval(function() {\n" +
+				"            var now = performance.now(), t = pv.currentTime;\n" +
+				"            out.push(Math.round((t - last) * 1000) + (Math.abs(now - lw - 100) > 30 ? '@' + Math.round(now - lw) : ''));\n" +
+				"            last = t; lw = now;\n" +
+				"            if ((++n >= 15) || pv.paused) { clearInterval(iv); trace('start clock per 100 ms: ' + out.join(' ') +" +
+				" ' (t=' + t.toFixed(2) + ')'); }\n" +
+				"          }, 100); })(v);\n" +
 				// A start that took long (seconds of buffering) is still traced for its first seconds of sound.
 				"        if (Date.now() < (window.__fermataTraceUntil || 0)) window.__fermataTraceUntil = " +
 				"Math.max(window.__fermataTraceUntil, Date.now() + 5000);\n" +

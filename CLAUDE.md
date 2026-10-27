@@ -1520,16 +1520,21 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
      66 ms / 3 GCs, was the first play right after an app start), seeks, pauses and waits after `playing` (none traced), the new-song
      fade (heard with it switched off, a test setting since removed; its trace shows even 10 ms steps), the start gate (never engaged),
      YouTube pausing the start (never happened), Web Audio (`fade=element`, not in the path).
-   - **Seen with a stutter**: `YT media 1 s after playing: t=1.08 in 1.01 s`, i.e. the song's clock ran ~70-80 ms ahead of the wall
-     clock in its first second. Chromium's audio renderer drives the media clock; a jump forward like that is what it does when the sound
+   - **Seen with a stutter**: the song's clock 1 s after `playing` was 1.08 (ran ~80 ms ahead) for one stuttered song, but 1.00 for
+     another ("iPod Touch") whose fade trace had one 28% step in a 16 ms tick, i.e. the clock jumped ~100 ms inside the first 0.5 s
+     after a stall of about the same length (a pause, then a catch-up). Both point at the sound output in the first half second. Chromium's audio renderer drives the media clock; a jump forward like that is what it does when the sound
      output starts late (or under-runs) and it skips ahead to catch up, which is heard exactly as a tiny gap. So the likely cause is the
      WebView's audio output starting (each `loadVideoById` / new source makes a new audio renderer and output stream), not the app.
-   - **To confirm**: compare the `1 s after playing` line of songs that stuttered with ones that did not (clean = about 1.00). A page
+   - **To confirm**: `YT media start clock per 100 ms: 100 100 0 210 ...` (how far the clock moved in each 100 ms of the first
+     1.5 s; `@N` marks a tick that came N ms late). Clean = 100s all along; a stall = a 0 or small number, a skip = a big one after it. A page
      that has just loaded is traced now too (15 s from the tracer's injection), so the first play after an app start shows up as well.
    - **Ideas not tried** (each a guess, keep them reversible): keep the page's audio output warm with a silent Web Audio context while
      music plays (if the WebView reuses the open output for the next renderer); compare the same skips in Chrome on m.youtube.com (if it
      stutters there too, it cannot be fixed from the app); check whether it happens more with Bluetooth output than the speaker.
-   - Diagnostic lines to ask for: `YT media` (playing / waiting / seeking / `start fade:` / `1 s after playing:`), `STATE start load`,
+   - **Next fix to try once the stall's time is known**: a silent warm-up. Start each new song at volume 0, let it play for a little longer
+     than where the stall shows up, seek back to 0:00 and fade in; seeks were never heard to stutter, so the output starting would be heard
+     only as a slightly later start. Behind a YouTube setting, off by default.
+   - Diagnostic lines to ask for: `YT media` (playing / waiting / seeking / `start fade:` / `start clock per 100 ms:`), `STATE start load`,
      `YT seek while starting`.
 7. ~~**Back with YouTube comments open pauses the video**~~ **Resolved: tested OK on device.**
 8. ~~**Rapid edit-mode toggling crashed on Android Auto**~~ **Resolved: tested OK on device.**
