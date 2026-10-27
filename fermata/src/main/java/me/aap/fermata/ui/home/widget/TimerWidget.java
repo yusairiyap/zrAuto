@@ -25,6 +25,7 @@ import me.aap.fermata.ui.home.HomeWidgetType;
 import me.aap.fermata.ui.home.HomeWidgetView;
 import me.aap.fermata.ui.view.ChipFlowLayout;
 import me.aap.fermata.ui.view.TopToast;
+import me.aap.fermata.util.DiagnosticLog;
 
 /**
  * The sleep timer: how long is left (or that it is off), a bar running down, and the usual lengths
@@ -334,10 +335,15 @@ final class TimerWidget extends HomeWidgetView {
 	}
 
 	private void start(int m) {
+		DiagnosticLog.log("HOME", "timer chip", "min=" + m, "attached=" + isAttachedToWindow());
 		total = m * 60;
-		countUse(m);
-		cb().setPlaybackTimer(total, false);
+		MediaSessionCallback cb = cb();
+		cb.setPlaybackTimer(total, false);
+		DiagnosticLog.log("HOME", "timer set", "left=" + cb.getPlaybackTimer() + "s", "on=" + cb.hasPlaybackTimer());
 		TopToast.show(R.drawable.timer, ctx.getString(R.string.music_timer_set, minutes(m)));
+		// After the timer is set: counting the use saves an option, which binds the card again (the chip row is rebuilt
+		// under the finger), and nothing in that may keep the timer from starting.
+		post(() -> countUse(m));
 	}
 
 	private void refresh() {
@@ -348,6 +354,7 @@ final class TimerWidget extends HomeWidgetView {
 		int left = cb.getPlaybackTimer();
 		boolean on = cb.hasPlaybackTimer() && (waiting || (left > 0));
 		if (on != active) {
+			DiagnosticLog.log("HOME", "timer card", on ? "running" : "off", "left=" + left + "s");
 			active = on;
 			rebuildChips();
 		}
