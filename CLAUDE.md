@@ -1398,7 +1398,7 @@ pause source.
   without an animation (`showBack(on, false)`), so the list does not slide as it fades back in.
 - **Diagnostics**: the comments loader no longer logs (the old COMMENTS/YTCOMMENTS lines were removed). The keyboard lift logs `HOME keyboard lift`.
 - **Device status**: tested on the tablet and working: the comments widget, the search widget (except the keyboard, open below), the timer chips,
-  widget size and space around widgets. Not run on a device yet: the keyboard lift,: the stack manager and the add picker, the UI style on the car screen.
+  widget size and space around widgets. Not run on a device yet: the stack manager and the add picker, the UI style on the car screen.
 
 ## Start-up quiet, playback calm, search from Home
 
@@ -1420,6 +1420,32 @@ pause source.
   until it opens, `onPlayableChanged` and `enterVideoFullScreen` do not go fullscreen (`YT fullscreen held`); a freshly made tab also
   waits 350 ms more before the panel slides down, so the WebView's set-up and the slide don't stutter together.
 
+### Second round (after the first device test)
+
+- **The keyboard lift works every time**: a field that kept the focus after the keyboard was closed with Back gets no focus change on
+  the next tap, so `SearchWidget`'s click calls `followKeyboard` too.
+- **Only the first rows fade in over the placeholders** (`LibraryWidget#render`, `fromSkeleton`; never while drilled in or backing out),
+  so opening and going back keep their own fades. `util/TouchState` (fed by `MainActivity#dispatchTouchEvent`) says a finger is down (or
+  lifted under 350 ms ago): the start's queued reads wait (`HomeScreen#runNextSettled`) and `HomeSkeleton` stops redrawing its shimmer.
+- **The media card**: the artist line goes through `MusicTrackItem#cleanArtist` (no " - Topic"); a wide card with under 300dp beside the
+  cover (`TIGHT_DP`, the phone's 4x2) starts its words and controls at 30% of the width over the cover's fading side and shows the chip
+  as its icon only (`narrowChip`), so the title, the controls (shuffle and repeat beside them) and the seek bar fit.
+- **Share zrAuto** is also in the main menu, above About (`NavBarMediator`, `R.id.nav_share_app`; not on the car screen).
+- **A song downloaded as sound only can still be watched** (`MusicTrackItem#isAudioOnlyDownload`): the Music tab's Video button, the
+  Watch chip and Play as video stream it from YouTube at the usual quality from where it is (`MusicPlayer#switchToVideo` ->
+  `YtOffline.forceStream` + `startTrack(.., watch)`); Play as music goes back to the file from the video's position
+  (`playCurrentAsMusic`, `YtOffline#isForcedStream`, `clearForcedStream`).
+
+### YouTube start gate (against the stutter at a song's start; easy to take out)
+
+`modules/web/src/main/res/raw/youtube_startgate.js`, injected first by `YoutubeWebView#injectStartGate`, YouTube setting "Wait for a song to
+buffer before it starts" (`YT_START_GATE`, on by default). It wraps `HTMLMediaElement.prototype.play`: the first `play()` of a video after
+its `loadstart` is held (the promise stays pending; nothing is paused, no event is made up) until 2 s are buffered ahead of the playback
+point, or 1 s with `readyState` 4, or 3 s have passed. A resume, a seek or a later play is never held. `youtube_fade.js` leaves a held
+element alone (`__fermataGate`: not "loaded but left paused"). The `YT media` trace has `start gate: holding / open after N ms` lines
+for the first 8 s after a switch. **To turn it off**: the setting. **To take it out**: delete the script, `YoutubeStartGateScript`, the
+`injectStartGate` call and the one `__fermataGate` check in `youtube_fade.js` (all in one commit). If a start ever hangs, look there first.
+
 ## Open issues (handover list)
 
 These are the open items to take up next, in a new session or on a new branch. Each is a prompt: the first line says what is wrong.
@@ -1440,6 +1466,8 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
 4. ~~**Media card art looks blocky on One UI**~~ **Resolved: not seen any more on the device.**
 5. **A YouTube hand-over whose page never starts leaves the local engine muted with no error.**
 6. **A micro-stutter at the start of a YouTube song on the Music tab** (play, tiny pause, play). See the "Open" note in the playback section.
+   Being tried: the YouTube start gate (see "YouTube start gate" above). If the stutter is gone, mark this resolved; if starts hang or
+   the stutter stays, the `start gate:` trace lines say how long each start was held and how much was buffered.
 7. ~~**Back with YouTube comments open pauses the video**~~ **Resolved: tested OK on device.**
 8. ~~**Rapid edit-mode toggling crashed on Android Auto**~~ **Resolved: tested OK on device.**
 9. **A song sometimes does not continue to the next one** (fourteenth round). Needs TRANSPORT and YT lines around the end of the song.
