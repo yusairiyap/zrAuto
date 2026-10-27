@@ -1382,8 +1382,8 @@ pause source.
   calls `MusicPlayer.searchYoutube` -> `YoutubeFragment.searchFor`: the tab fades in, `startSearch(false)` opens the panel the way the search
   button does, and the query runs `YoutubeSearchPanel.SLIDE_MS` later. The layout follows the card's width in dp (`ICON_BELOW_DP`,
   `CHIPS_IN_STRIP_DP`) and height (`chipRoom`): one unit high = input plus one row of chips; two rows fit = wrapped, else one scrolling row.
-  On the car screen the field is not focusable; a tap opens the panel. **Keyboard: the card does not yet move above the keyboard (open, see
-  the list below).** `revealField` uses the IME inset and logs `HOME keyboard reveal`.
+  On the car screen the field is not focusable; a tap opens the panel. **Keyboard**: the page glides up with it (`HomeHost#followKeyboard`, see
+  "Start-up quiet, playback calm, search from Home" and item 3 of the list below).
 - **Widget size and space** (per screen, Settings > Home): `HOME_SCALE` (40-150%) and `HOME_PADDING` (-1 = automatic, else dp, both sides, centred).
   `HomeGridLayout#setScale` and `onMeasure`: the card size is `base * scale` and the lanes (columns, or rows sideways) are as many as fit at
   that size (`lanes`, capped by `MAX_LANES`); `colLead` centres the leftover when scrolling down. Freeflow scales its places
@@ -1396,9 +1396,9 @@ pause source.
   window reopens. Each change calls `HomeGridLayout#stackEdited` (sync, changed, save).
 - **Library back navigation** (`LibraryWidget#backOut`): the rows and the back chip change only while the list is hidden; the chip collapses
   without an animation (`showBack(on, false)`), so the list does not slide as it fades back in.
-- **Diagnostics**: the comments loader no longer logs (the old COMMENTS/YTCOMMENTS lines were removed). Keyboard reveal logs `HOME keyboard reveal`.
+- **Diagnostics**: the comments loader no longer logs (the old COMMENTS/YTCOMMENTS lines were removed). The keyboard lift logs `HOME keyboard lift`.
 - **Device status**: tested on the tablet and working: the comments widget, the search widget (except the keyboard, open below), the timer chips,
-  widget size and space around widgets. Not run on a device yet: the stack manager and the add picker, the UI style on the car screen.
+  widget size and space around widgets. Not run on a device yet: the keyboard lift,: the stack manager and the add picker, the UI style on the car screen.
 
 ## Start-up quiet, playback calm, search from Home
 
