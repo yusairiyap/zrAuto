@@ -82,6 +82,8 @@ final class MediaWidget extends HomeWidgetView {
 	private static final long TICK_MS = 500;
 	/** Room beside the cover below which a wide card is laid out tight (see applyMode). */
 	private static final int TIGHT_DP = 300;
+	/** The name and artist lines of a wide card, at the top (20sp + 14sp). */
+	private static final int TEXTS_DP = 46;
 	/** The card is tight: the chip shows only its icon. */
 	private boolean narrowChip;
 
@@ -433,11 +435,35 @@ final class MediaWidget extends HomeWidgetView {
 				pl = 56;
 			}
 		}
-		extraDp = ex;
+		// A narrow wide card (a phone at a larger display size: ~208dp beside the cover) shrinks the round buttons a
+		// little so shuffle and repeat still fit beside play, rather than going under the seek bar, which made that
+		// block taller and put it under the play button.
+		if ((mode == LARGE_WIDE) && (px(ex * 2 + sk * 2 + pl) > zone)) {
+			float f = Math.max(0.78f, zone / (float) px(ex * 2 + sk * 2 + pl));
+			ex = Math.round(ex * f);
+			sk = Math.round(sk * f);
+			pl = Math.round(pl * f);
+		}
 		int controlsNeed = px(ex) * 2 + px(sk) * 2 + px(pl);
 		if (!large) extrasAt = 0;
 		else if (zone >= controlsNeed) extrasAt = 1;
 		else extrasAt = showSeek ? 2 : 0;
+		// Wide: the controls sit between the name (top) and the seek block (bottom), never over either; on a short card
+		// they shrink to the room left between them.
+		int wideTop = pad + px(4) + px(TEXTS_DP);
+		// (The seek row is 34dp with the bar in its middle: the controls may come into its empty top part.)
+		int wideBottom = px(12) + (showSeek ? px(26) + ((extrasAt == 2) ? px(ex) : px(18)) : 0);
+		if (mode == LARGE_WIDE) {
+			int room = h - wideTop - wideBottom;
+			if ((room > 0) && (px(pl) > room)) {
+				float f = Math.max(0.7f, room / (float) px(pl));
+				ex = Math.round(ex * f);
+				sk = Math.round(sk * f);
+				pl = Math.round(pl * f);
+				controlsNeed = px(ex) * 2 + px(sk) * 2 + px(pl);
+			}
+		}
+		extraDp = ex;
 		sizeControls(ex, sk, pl);
 		placeExtras();
 
@@ -496,7 +522,11 @@ final class MediaWidget extends HomeWidgetView {
 				seekBlock.setLayoutParams(lp(-1, -2, Gravity.BOTTOM, left, 0, pad, px(12)));
 				int cw = (extrasAt == 1) ? controlsNeed : (px(sk) * 2 + px(pl));
 				int cx = left + Math.max(0, (zone - cw) / 2);
-				controls.setLayoutParams(lp(-2, -2, Gravity.CENTER_VERTICAL | Gravity.START, cx, px(10), 0, px(14)));
+				// Centred in the room between the name and the seek block (the whole card's middle overlapped the
+				// seek bar on a phone).
+				int top = wideTop + badgeRoom;
+				int bottom = Math.min(wideBottom, Math.max(0, h - top - px(pl)));
+				controls.setLayoutParams(lp(-2, -2, Gravity.CENTER_VERTICAL | Gravity.START, cx, top, 0, bottom));
 				topRight.setLayoutParams(lp(-2, px(36), Gravity.TOP | Gravity.END, 0, pad, pad, 0));
 				badge.setLayoutParams(lp(-2, -2, Gravity.TOP | Gravity.START, pad, pad, 0, 0));
 			}
