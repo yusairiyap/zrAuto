@@ -108,26 +108,30 @@ final class HomeNowPlayingBg {
 		}
 		pi.getMediaData().main().onCompletion((md, err) -> {
 			if (gen != generation) return;
-			HomeArt.cover(a, pi, md, () -> gen == generation, bm -> {
+			// Blurred and faded in once the song's first moment has passed (PlaybackCalm#afterStart).
+			me.aap.fermata.util.PlaybackCalm.afterStart(() -> {
 				if (gen != generation) return;
-				if (bm == null) {
-					target.onCover(null, 0);
-					return;
-				}
-				final int b = eb;
-				if ((bm == shownCover) && (shownCoverBlur == b)) return;
-				App.get().getExecutor().submitTask(() -> {
-					// Covers hidden: its colours only, whatever the blur setting says.
-					Bitmap soft = (b == HIDDEN) ? me.aap.fermata.ui.view.CoverHide.veil(bm) : HomeBlur.blur(bm, b);
-					Bitmap use = (soft != null) ? soft : bm;
-					return new Object[]{use, HomeBackground.topColor(use)};
-				}).main().onSuccess(r -> {
+				HomeArt.cover(a, pi, md, () -> gen == generation, bm -> {
 					if (gen != generation) return;
-					// The blurred copy of a frame fades as slowly as the frame itself.
-					if (HomeArt.isFrame(bm)) HomeArt.markFrame((Bitmap) r[0]);
-					shownCover = bm;
-					shownCoverBlur = b;
-					target.onCover((Bitmap) r[0], (Integer) r[1]);
+					if (bm == null) {
+						target.onCover(null, 0);
+						return;
+					}
+					final int b = eb;
+					if ((bm == shownCover) && (shownCoverBlur == b)) return;
+					App.get().getExecutor().submitTask(() -> {
+						// Covers hidden: its colours only, whatever the blur setting says.
+						Bitmap soft = (b == HIDDEN) ? me.aap.fermata.ui.view.CoverHide.veil(bm) : HomeBlur.blur(bm, b);
+						Bitmap use = (soft != null) ? soft : bm;
+						return new Object[]{use, HomeBackground.topColor(use)};
+					}).main().onSuccess(r -> {
+						if (gen != generation) return;
+						// The blurred copy of a frame fades as slowly as the frame itself.
+						if (HomeArt.isFrame(bm)) HomeArt.markFrame((Bitmap) r[0]);
+						shownCover = bm;
+						shownCoverBlur = b;
+						target.onCover((Bitmap) r[0], (Integer) r[1]);
+					});
 				});
 			});
 		});

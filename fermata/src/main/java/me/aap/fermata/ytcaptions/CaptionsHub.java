@@ -453,8 +453,9 @@ public final class CaptionsHub {
 
 	private void loadNow(int gen, String id, String lang, boolean auto) {
 		try {
-			// Shown with the song, so only a short wait: the song's own start (its stream) goes first.
-			me.aap.fermata.util.PlaybackCalm.awaitSteady(2500);
+			// Shown with the song, so only a short wait, but past its start: the stream goes first, and asking the page for its
+			// captions runs a script in the very page that is starting the song.
+			me.aap.fermata.util.PlaybackCalm.awaitSteady(3500);
 			YtCaptions.Result r = YtCaptions.load(id, lang, auto);
 			handler.post(() -> {
 				prefetching.remove(id);

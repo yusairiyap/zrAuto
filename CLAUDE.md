@@ -1411,6 +1411,12 @@ pause source.
   or skipping state. Background work that only makes things nicer waits for it on its own thread (`awaitSteady`, never on the main
   thread): the video-frame capture (`BitmapCache#readOrCaptureFrame`, its thread at background priority), captions (the next song's
   fully, the playing song's at most 2.5 s; `CaptionsHub`'s thread at background priority) and the queue's channel look-ups.
+- **Home waits 1.5 s into a song before reacting to it** (`PlaybackCalm#afterStart`, `START_QUIET_MS`; 0 takes it out): the media card's
+  cover, the "cover of what plays" background and the lists marking the playing song (Library widgets, Queue). The title and artist change
+  at once. That decode/blur/cross-fade burst landed on the song's first moment, the only place the stutter is heard and only on screens that
+  react to a new song (never fullscreen video). The current song's captions wait until it is steady too (3.5 s at most). Every song start
+  writes `STATE start load: main late max=..ms over50=.. gc=+.. blocking=+.. (..ms)`: how late a 100 ms main-thread tick came at worst
+  and the garbage collections in its first 3 s. A stutter with big numbers there is the app's own work; with small ones, the page.
 - **Home's media card asks the player for its position every 3 s**, not every 500 ms tick (for YouTube each ask is a script in the
   playing page); in between it counts on from the last answer, and asks again after a seek or a play/pause change.
 - **Its title ends in an ellipsis** unless the card's "Scroll a long title" option (`marquee`) is on: a scrolling title redraws every

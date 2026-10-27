@@ -106,9 +106,10 @@ abstract class LibraryWidget extends HomeWidgetView {
 	private final FermataServiceUiBinder.Listener playingListener = new FermataServiceUiBinder.Listener() {
 		@Override
 		public void onPlayableChanged(PlayableItem oldItem, PlayableItem newItem) {
-			post(() -> {
+			// Marked once the song's first moment has passed (PlaybackCalm#afterStart): a list read then competes with its start.
+			post(() -> me.aap.fermata.util.PlaybackCalm.afterStart(() -> {
 				if ((drillSource != null) || marksPlayingOnTop()) refresh(true);
-			});
+			}));
 		}
 	};
 	/** Favorites, a playlist or the list of playlists changed (from a menu, a tab, anywhere): the rows are read again at once. */

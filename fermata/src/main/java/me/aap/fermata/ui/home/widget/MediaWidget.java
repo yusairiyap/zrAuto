@@ -694,8 +694,12 @@ final class MediaWidget extends HomeWidgetView {
 			if ((t != null) && !t.isEmpty()) swap(title, t);
 			swap(artist, artistOf(pi, md));
 			duration = md.getLong(METADATA_KEY_DURATION);
-			HomeArt.cover(act(), pi, md, () -> gen == generation, bm -> {
-				if (gen == generation) setArt(bm);
+			// The cover (decoded, blurred, cross-faded) waits for the song's first moment to pass (PlaybackCalm#afterStart).
+			me.aap.fermata.util.PlaybackCalm.afterStart(() -> {
+				if (gen != generation) return;
+				HomeArt.cover(act(), pi, md, () -> gen == generation, bm -> {
+					if (gen == generation) setArt(bm);
+				});
 			});
 			syncState();
 		});
