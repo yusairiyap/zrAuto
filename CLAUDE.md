@@ -1533,6 +1533,9 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
      the page starts before the fade script is injected (`pageLoaded`), so no `startFade` runs for it; its clock read `58 90 21 161 9 0 24 0 31`
      (~0.5 s of stalls). The warm-up's seek no longer reports `waiting` to the app (`__fermataWarmSeekAt`), which flashed the spinner and
      re-published the metadata and cover on every song.
+     **A page loaded anew** (a YouTube song after a local one, the first song after an app start) is now covered: the fade script is
+     also a document-start script (`YoutubeWebView#ensureEarlyFade`, `WebViewCompat.addDocumentStartJavaScript`, re-added when the
+     warm-up setting changes), so it is in the page before its video autoplays; `pageLoaded` still injects it where that feature is missing.
      A hidden page (the Music tab playing YouTube) used to skip `startFade` altogether (no warm-up, no fade); it now warms up too
      (`(page hidden)` on the trace line), its steps also driven from `timeupdate` in case the page's timers are held back, and the
      effects path's gain curves run whatever the page's visibility (they are sample-accurate in the audio renderer).

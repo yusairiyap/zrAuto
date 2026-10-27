@@ -26,15 +26,23 @@ import android.util.AttributeSet;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.graphics.ColorUtils;
+import androidx.webkit.ScriptHandler;
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
 
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import me.aap.fermata.media.engine.stage.SoundStage;
 import me.aap.fermata.BuildConfig;
 import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.web.FermataChromeClient;
 import me.aap.fermata.addon.web.FermataJsInterface;
+import me.aap.fermata.addon.web.FermataWebClient;
 import me.aap.fermata.addon.web.FermataWebView;
+import me.aap.fermata.addon.web.WebBrowserAddon;
 import me.aap.fermata.addon.web.WebToolBarMediator;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -168,6 +176,7 @@ public class YoutubeWebView extends FermataWebView {
 	protected void onAttachedToWindow() {
 		super.onAttachedToWindow();
 		SoundStage.get().addListener(soundStageListener);
+		ensureEarlyFade();
 	}
 
 	@Override
@@ -194,9 +203,49 @@ public class YoutubeWebView extends FermataWebView {
 	}
 
 	@Override
+	public void init(WebBrowserAddon addon, FermataWebClient webClient, FermataChromeClient chromeClient) {
+		super.init(addon, webClient, chromeClient);
+		// Before any page loads, a restored one included.
+		ensureEarlyFade();
+	}
+
+	@Override
 	public void loadUrl(@NonNull String url) {
 		Log.d("Loading URL: " + url);
+		ensureEarlyFade();
 		super.loadUrl(url);
+	}
+
+	// The fade script (with its warm-up) as a document-start script: a page that is loaded anew (a YouTube song after a
+	// local one, the first song after the app starts) plays its video before pageLoaded() injects anything, so that song
+	// had no warm-up and no fade, and stuttered. pageLoaded() still injects it for WebViews without the feature; the
+	// script guards against running twice in a page.
+	private static final Set<String> FADE_ORIGINS = new HashSet<>(Arrays.asList(
+			"https://m.youtube.com", "https://www.youtube.com", "https://youtube.com"));
+	@Nullable
+	private ScriptHandler earlyFade;
+	private boolean earlyFadeWarmup;
+
+	private void ensureEarlyFade() {
+		if (getAddon() == null) return; // not set up yet: init() comes first for every page load
+		boolean warmup = getAddon().startWarmup();
+		if ((earlyFade != null) && (earlyFadeWarmup == warmup)) return;
+		if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return;
+		String script = YoutubeFadeScript.getScript(getContext());
+		if (script.isEmpty()) return;
+		try {
+			if (earlyFade != null) earlyFade.remove();
+			earlyFade = WebViewCompat.addDocumentStartJavaScript(this, script + '\n' + fadeConfigJs(), FADE_ORIGINS);
+			earlyFadeWarmup = warmup;
+		} catch (RuntimeException ex) {
+			Log.e(ex, "Failed to add the fade script at document start");
+			earlyFade = null;
+		}
+	}
+
+	private String fadeConfigJs() {
+		return "if (window.FermataFade) window.FermataFade.configure({endingEvent: " + JS_VIDEO_ENDING +
+				", warmup: " + getAddon().startWarmup() + "});";
 	}
 
 	@Override
@@ -918,6 +967,7 @@ public class YoutubeWebView extends FermataWebView {
 	}
 
 	private void configureWarmup() {
+		ensureEarlyFade();
 		evaluateJavascript("if (window.FermataFade) window.FermataFade.configure({warmup: " + getAddon().startWarmup() + "});", null);
 	}
 
@@ -974,9 +1024,7 @@ public class YoutubeWebView extends FermataWebView {
 	private void injectFade() {
 		String script = YoutubeFadeScript.getScript(getContext());
 		if (script.isEmpty()) return;
-		evaluateJavascript(script, result -> evaluateJavascript(
-				"if (window.FermataFade) window.FermataFade.configure({endingEvent: " + JS_VIDEO_ENDING +
-						", warmup: " + getAddon().startWarmup() + "});", null));
+		evaluateJavascript(script, result -> evaluateJavascript(fadeConfigJs(), null));
 	}
 
 	private void injectEqualizer() {
