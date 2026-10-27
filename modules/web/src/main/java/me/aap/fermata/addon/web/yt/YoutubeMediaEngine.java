@@ -779,6 +779,9 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	private void transitioning() {
 		switching = true;
 		switchStartedAt = SystemClock.elapsedRealtime();
+		// A new video is asked for: any pause the app asked for before is over (see isSwitchPause, which a stale one
+		// turned off, so a pause during this switch paused the session).
+		appRequestedPause = false;
 		YoutubeVideoView v = getFullScreenView();
 		if (v != null) v.showTransitionOverlay(false);
 		// The next video is loading: the play/pause button gives way to the loading circle, as for a
@@ -928,7 +931,13 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	void paused() {
 		// Silenced because another engine took over (see acceptQueueResolved() and the Music tab's
 		// MusicPlayer#playTrack()): that pause must not pause the engine that's playing now.
-		if (cb.getEngine() != this) return;
+		if (cb.getEngine() != this) {
+			// The app's own pause of a page that gave way (silenced it) is used up here: left set, it made the next
+			// pause the page made by itself (one during a song switch, back on YouTube) count as the app's, and the
+			// session paused there (a song that stopped after coming back to the app until play was pressed).
+			appRequestedPause = false;
+			return;
+		}
 		lastPauseAsked = appRequestedPause;
 		if (isSwitchPause()) {
 			DiagnosticLog.log("YT", "page paused during a switch: ignored", "id=" + currentVideoId);

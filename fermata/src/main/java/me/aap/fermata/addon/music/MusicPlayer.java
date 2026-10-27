@@ -98,6 +98,15 @@ public final class MusicPlayer {
 		void applyQuality(MainActivityDelegate a, @Nullable MediaEngine eng);
 
 		/**
+		 * The caption track of {@code videoId} from the YouTube page, when that is the video it has: {body (json3),
+		 * language, "1" if generated}, or null. Blocks for a few seconds at most; never call it on the main thread.
+		 */
+		@Nullable
+		default String[] pageCaptions(MainActivityDelegate a, String videoId, String lang, boolean allowGenerated) {
+			return null;
+		}
+
+		/**
 		 * Shows the YouTube tab's search / Up next panel over whatever is playing, without
 		 * interrupting it -- {@code upNextOnly} just opens the panel, otherwise the search field gets
 		 * the cursor too.
@@ -179,6 +188,14 @@ public final class MusicPlayer {
 	public static void searchYoutube(MainActivityDelegate a, String query) {
 		YoutubeHooks h = youtube;
 		if (h != null) h.searchInPanel(a, query);
+	}
+
+	/** See {@link YoutubeHooks#pageCaptions}; null without the YouTube addon or the app's window. */
+	@Nullable
+	public static String[] youtubePageCaptions(String videoId, String lang, boolean allowGenerated) {
+		YoutubeHooks h = youtube;
+		MainActivityDelegate a = playbackActivity();
+		return ((h == null) || (a == null)) ? null : h.pageCaptions(a, videoId, lang, allowGenerated);
 	}
 
 	/** See {@link YoutubeHooks#playVideoInPlace}; false without the YouTube addon. */

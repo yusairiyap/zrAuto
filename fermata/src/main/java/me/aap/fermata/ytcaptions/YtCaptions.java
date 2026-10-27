@@ -121,6 +121,43 @@ public final class YtCaptions {
 
 	static final Result NONE = new Result(null, Collections.emptyList());
 
+	/** Apps YouTube asked to sign in, and until when they are not asked again (uptime). */
+	private static final java.util.Map<String, Long> signInUntil = new java.util.concurrent.ConcurrentHashMap<>();
+	private static final long SIGN_IN_SKIP_MS = 30 * 60_000L;
+
+	/**
+	 * The captions of {@code videoId} from the YouTube page playing it (see MusicPlayer#youtubePageCaptions), or null
+	 * when the page is not playing it, has none or could not fetch them.
+	 */
+	@Nullable
+	private static Result fromPage(String videoId, String want, boolean allowGenerated) {
+		String[] got;
+		try {
+			got = me.aap.fermata.addon.music.MusicPlayer.youtubePageCaptions(videoId, want, allowGenerated);
+		} catch (Throwable ex) {
+			DiagnosticLog.log("CAPTIONS", "PAGE", videoId, "failed", ex);
+			return null;
+		}
+		if (got == null) return null;
+		if ((got[0] == null) || got[0].trim().isEmpty()) {
+			DiagnosticLog.log("CAPTIONS", "PAGE", videoId, "empty track", got[1]);
+			return null;
+		}
+		try {
+			List<Cue> cues = parse(got[0]);
+			if (cues.isEmpty()) {
+				DiagnosticLog.log("CAPTIONS", "PAGE", videoId, "no lines", got[1]);
+				return null;
+			}
+			boolean asr = "1".equals(got[2]);
+			DiagnosticLog.log("CAPTIONS", "PAGE", videoId, got[1], asr ? "auto" : "manual", cues.size(), "lines");
+			return new Result(new Track(got[1], got[1], asr, ""), cues);
+		} catch (IOException ex) {
+			DiagnosticLog.log("CAPTIONS", "PAGE", videoId, "unreadable", ex);
+			return null;
+		}
+	}
+
 	/**
 	 * @param lang         the language to prefer, a code like "en" (empty: the phone's)
 	 * @param allowGenerated whether captions written by speech recognition may be used when there are
@@ -131,9 +168,15 @@ public final class YtCaptions {
 			throws IOException {
 		String want = ((lang == null) || lang.trim().isEmpty()) ?
 				Locale.getDefault().getLanguage() : lang.trim().toLowerCase(Locale.ROOT);
+		// First the YouTube page itself, when it is the video it plays: it is a signed-in browser session with
+		// everything YouTube asks for, where the apps below are more and more often asked to sign in.
+		Result fromPage = fromPage(videoId, want, allowGenerated);
+		if (fromPage != null) return fromPage;
 		IOException last = null;
 		boolean answered = false;
 		for (Client c : CLIENTS) {
+			Long skip = signInUntil.get(c.name);
+			if ((skip != null) && (android.os.SystemClock.uptimeMillis() < skip)) continue;
 			try {
 				List<Track> tracks = tracks(c, videoId);
 				if (tracks.isEmpty()) {
@@ -157,6 +200,11 @@ public final class YtCaptions {
 			} catch (IOException ex) {
 				DiagnosticLog.log("CAPTIONS", c.name, videoId, "failed", ex);
 				last = ex;
+				// Asked to sign in: it will be asked again for every video for a while (YouTube decides that per
+				// connection), so this app is left out for a while instead of costing a request per song.
+				if (String.valueOf(ex.getMessage()).contains("sign in")) {
+					signInUntil.put(c.name, android.os.SystemClock.uptimeMillis() + SIGN_IN_SKIP_MS);
+				}
 				// Too many requests: the next app would only be refused too, and every further request
 				// keeps the limit on for longer (and takes from the bandwidth the song plays on).
 				if (String.valueOf(ex.getMessage()).contains("HTTP 429")) break;

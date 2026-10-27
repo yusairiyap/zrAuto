@@ -284,6 +284,94 @@ public class YoutubeAddon extends WebBrowserAddon
 			YoutubeAddon.this.setQueueItem(item);
 		}
 
+		@Nullable
+		@Override
+		public String[] pageCaptions(MainActivityDelegate a, String videoId, String lang, boolean allowGenerated) {
+			if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return null;
+			YoutubeWebView web = onMain(a, () -> (a.getFragment(getFragmentId()) instanceof YoutubeFragment f) ?
+					f.getWebView() : null);
+			if (web == null) return null;
+			String started = evaluate(a, web, YoutubeWebView.pageCaptionsStartJs(videoId, lang, allowGenerated));
+			if ("\"other\"".equals(started) || (started == null)) return null;
+			if ("\"none\"".equals(started)) {
+				me.aap.fermata.util.DiagnosticLog.log("CAPTIONS", "PAGE", videoId, "no tracks");
+				return null;
+			}
+			// The fetch runs in the page: its state is looked at a few times a second, for a few seconds at most.
+			for (int i = 0; i < 24; i++) {
+				try {
+					Thread.sleep(250);
+				} catch (InterruptedException ex) {
+					Thread.currentThread().interrupt();
+					return null;
+				}
+				String r = evaluate(a, web, YoutubeWebView.pageCaptionsResultJs(videoId));
+				if ((r == null) || "null".equals(r)) continue;
+				try {
+					org.json.JSONObject o = new org.json.JSONObject(r);
+					String state = o.optString("state");
+					if ("loading".equals(state)) continue;
+					if (!"done".equals(state)) {
+						me.aap.fermata.util.DiagnosticLog.log("CAPTIONS", "PAGE", videoId, "fetch failed", o.optString("error"));
+						return null;
+					}
+					return new String[]{o.optString("body"), o.optString("lang"), o.optString("asr")};
+				} catch (org.json.JSONException ex) {
+					return null;
+				}
+			}
+			me.aap.fermata.util.DiagnosticLog.log("CAPTIONS", "PAGE", videoId, "timed out");
+			return null;
+		}
+
+		/** Runs {@code s} on the main thread and waits (2 s at most) for its answer. */
+		@Nullable
+		private <T> T onMain(MainActivityDelegate a, java.util.function.Supplier<T> s) {
+			Object[] out = {null};
+			java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+			a.getHandler().post(() -> {
+				try {
+					out[0] = s.get();
+				} catch (Throwable ex) {
+					me.aap.utils.log.Log.e(ex, "Page captions");
+				} finally {
+					done.countDown();
+				}
+			});
+			try {
+				if (!done.await(2, java.util.concurrent.TimeUnit.SECONDS)) return null;
+			} catch (InterruptedException ex) {
+				Thread.currentThread().interrupt();
+				return null;
+			}
+			@SuppressWarnings("unchecked") T t = (T) out[0];
+			return t;
+		}
+
+		/** Evaluates {@code js} in the page on the main thread and waits (2 s at most) for its JSON answer. */
+		@Nullable
+		private String evaluate(MainActivityDelegate a, YoutubeWebView web, String js) {
+			String[] out = {null};
+			java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+			a.getHandler().post(() -> {
+				try {
+					web.evaluateJavascript(js, r -> {
+						out[0] = r;
+						done.countDown();
+					});
+				} catch (Throwable ex) {
+					done.countDown();
+				}
+			});
+			try {
+				if (!done.await(2, java.util.concurrent.TimeUnit.SECONDS)) return null;
+			} catch (InterruptedException ex) {
+				Thread.currentThread().interrupt();
+				return null;
+			}
+			return out[0];
+		}
+
 		@Override
 		public void applyQuality(MainActivityDelegate a, @Nullable MediaEngine eng) {
 			if (eng instanceof YoutubeMediaEngine yt) {

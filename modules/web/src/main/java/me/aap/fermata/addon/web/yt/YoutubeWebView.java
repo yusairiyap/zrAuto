@@ -912,6 +912,56 @@ public class YoutubeWebView extends FermataWebView {
 				getAddon().startGate() + ", traceEvent: " + JS_AUDIO_TRACE + "});", null);
 	}
 
+	/**
+	 * Starts fetching the caption track of {@code videoId} inside the page (see YoutubeAddon's MusicHooks#pageCaptions):
+	 * from the player's own response, so only for the video it has. Evaluates to "started", "busy" (already fetching or
+	 * fetched), "other" (not the page's video) or "none" (no usable track).
+	 */
+	static String pageCaptionsStartJs(String videoId, String lang, boolean allowGenerated) {
+		return """
+				(function(id, lang, auto) {
+				  var key = '__fermataCap_' + id;
+				  var cur = window[key];
+				  if (cur && (cur.state !== 'error')) return 'busy';
+				  var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+				  var pr = null;
+				  try { pr = (p && p.getPlayerResponse) ? p.getPlayerResponse() : null; } catch (e) {}
+				  if (!pr || !pr.videoDetails || (pr.videoDetails.videoId !== id)) {
+				    var init = window.ytInitialPlayerResponse;
+				    pr = (init && init.videoDetails && (init.videoDetails.videoId === id)) ? init : null;
+				  }
+				  if (!pr) return 'other';
+				  var tr = (((pr.captions || {}).playerCaptionsTracklistRenderer || {}).captionTracks) || [];
+				  if (!tr.length) return 'none';
+				  var lc = function(t) { return (t.languageCode || '').toLowerCase(); };
+				  var man = function(t) { return t.kind !== 'asr'; };
+				  var pick = function(f) { for (var i = 0; i < tr.length; i++) if (f(tr[i])) return tr[i]; return null; };
+				  var t = pick(function(t) { return man(t) && (lc(t).indexOf(lang) === 0); }) ||
+				    pick(function(t) { return man(t) && (lc(t).indexOf('en') === 0); }) || pick(man);
+				  if (!t && auto) t = pick(function(t) { return lc(t).indexOf(lang) === 0; }) || tr[0];
+				  if (!t || !t.baseUrl) return 'none';
+				  var url = t.baseUrl.replace(/[&?]fmt=[^&]*/g, '') + '&fmt=json3';
+				  window[key] = {state: 'loading'};
+				  fetch(url, {credentials: 'include'}).then(function(r) { return r.text(); }).then(function(tx) {
+				    window[key] = {state: 'done', body: tx, lang: t.languageCode || '', asr: (t.kind === 'asr') ? '1' : '0'};
+				  }).catch(function(e) { window[key] = {state: 'error', error: String(e)}; });
+				  return 'started';
+				})(%s, %s, %s)""".formatted(org.json.JSONObject.quote(videoId), org.json.JSONObject.quote(lang),
+				allowGenerated ? "true" : "false");
+	}
+
+	/** What {@link #pageCaptionsStartJs} came to: the state object (taken once it is done), or null. */
+	static String pageCaptionsResultJs(String videoId) {
+		return """
+				(function(id) {
+				  var key = '__fermataCap_' + id;
+				  var v = window[key];
+				  if (!v) return null;
+				  if (v.state !== 'loading') delete window[key];
+				  return v;
+				})(%s)""".formatted(org.json.JSONObject.quote(videoId));
+	}
+
 	private void injectFade() {
 		String script = YoutubeFadeScript.getScript(getContext());
 		if (script.isEmpty()) return;

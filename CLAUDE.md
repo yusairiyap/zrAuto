@@ -1467,6 +1467,16 @@ now also writes `pause` / `play` events and progress gaps over 400 ms.
   the page's engine still gets the new quality policy, so a sound-only download watched streamed gets the preferred quality, not
   music mode's 144p. Back to music from it: the file starts at the video's position first, music mode follows 1 s later
   (switched while the page still played, its quality reload handed the song to the file from 0:00).
+- **Captions are not asked for over and over** (`CaptionsHub#failedAt`): a video whose captions could not be had is not asked
+  again for 5 minutes (the buttons' `isDimmed` asked on every redraw and a failure was never kept, so the same four requests went
+  out every ~1.5 s); an app YouTube asks to sign in is left out for 30 minutes (`YtCaptions#signInUntil`). **The YouTube page is
+  asked first** (`YtCaptions#fromPage` -> `MusicPlayer.youtubePageCaptions` -> `YoutubeHooks#pageCaptions`): when the page has that
+  video, its player response's caption tracks are read and the json3 fetched inside the page with its cookies
+  (`YoutubeWebView#pageCaptionsStartJs` / `pageCaptionsResultJs`, polled 4x/s for up to 6 s). `CAPTIONS PAGE` lines say what it got;
+  if they say `empty track`, YouTube wants its proof-of-origin token on the request too (not done).
+- **A stale "the app paused it"** (`YoutubeMediaEngine#appRequestedPause`) is cleared when the page pauses while another engine owns
+  the session (the pause that silenced it) and when a switch starts: left set, a pause the page made during a song switch after
+  coming back to the app counted as the app's, `isSwitchPause` let it through and the session paused (silence until play was pressed).
 - **The keyboard lift ends where the animation left the keyboard** (`ImeFollower#onEnd`, `lastIme`), not on the window insets, which can
   still report the keyboard right at the end of a Back-swipe hide (the flicker).
 
