@@ -562,6 +562,9 @@ public class YoutubeWebView extends FermataWebView {
 	private static String traceMediaJs() {
 		return "if (!window.__fermataTracer) {\n" +
 				"  window.__fermataTracer = true;\n" +
+				// A page that has just loaded (the first song after the app starts, a song started on the page) is traced too,
+				// not only a switch in the player: its first start is where a stutter was heard after an app start.
+				"  window.__fermataTraceUntil = Math.max(window.__fermataTraceUntil || 0, Date.now() + 15000);\n" +
 				"  var trLastT = -1, trLastWall = 0, trPlayT = -1, trPlayWall = 0, trStatsGen = 0;\n" +
 				"  var trace = function(msg) {\n" +
 				"    if (Date.now() < (window.__fermataTraceUntil || 0)) " + JS_EVENT + "(" + JS_AUDIO_TRACE +

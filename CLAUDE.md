@@ -1163,7 +1163,8 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
 - Known open items: a YouTube hand-over
   whose page never starts leaves the local engine muted with no error.
   **Open: an occasional micro stutter at the start of a YouTube song on the Music tab** (play, tiny
-  pause, play; never seen in fullscreen video, seeking is fine). Already ruled out or fixed: router
+  pause, play; never seen in fullscreen video, seeking is fine; see open issue 6 for the latest lead: the media
+  clock running ~80 ms ahead in the first second, i.e. the WebView's sound output starting late). Already ruled out or fixed: router
   navigation (Music swaps in the player), quality switched while the song starts (now set before the
   swap; `YT media quality` lines log any switch), the fade holding the start silent, Web Audio when no
   effect is on. Still possible: YouTube's own player or the WebView's audio start (the log once showed
@@ -1513,13 +1514,23 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
    (Android 11+), with settle checks for when no animation is reported; `HOME keyboard lift` lines say what it computed.
 4. ~~**Media card art looks blocky on One UI**~~ **Resolved: not seen any more on the device.**
 5. **A YouTube hand-over whose page never starts leaves the local engine muted with no error.**
-6. **A micro-stutter at the start of a YouTube song on the Music tab** (play, tiny pause, play). See the "Open" note in the playback section.
-   Being tried: the YouTube start gate (see "YouTube start gate" above). If the stutter is gone, mark this resolved; if starts hang or
-   the stutter stays, the `start gate:` trace lines say how long each start was held and how much was buffered.
-   Ruled out on the device (Oct 28): the app's own work (`STATE start load` all small), seeks, pauses and waits after `playing` (none
-   traced), and the new-song fade (still heard with it switched off, a test setting since removed). What is left is inside the WebView / YouTube's player
-   starting its sound. `YT media 1 s after playing: t=..` says whether the clock ran ahead of the sound (t above ~1.05 = the start was
-   skipped). Next idea: compare the same skips in Chrome on m.youtube.com; if it stutters there too, it cannot be fixed from the app.
+6. **A micro-stutter at the start of a YouTube song** (play, tiny pause, play; also on the very first play after an app start). Not solved;
+   the best lead so far, from the device log of Oct 28:
+   - **Ruled out**: the app's own work (`STATE start load` small: main thread late at most ~20 ms, no blocking GC; the one bad case,
+     66 ms / 3 GCs, was the first play right after an app start), seeks, pauses and waits after `playing` (none traced), the new-song
+     fade (heard with it switched off, a test setting since removed; its trace shows even 10 ms steps), the start gate (never engaged),
+     YouTube pausing the start (never happened), Web Audio (`fade=element`, not in the path).
+   - **Seen with a stutter**: `YT media 1 s after playing: t=1.08 in 1.01 s`, i.e. the song's clock ran ~70-80 ms ahead of the wall
+     clock in its first second. Chromium's audio renderer drives the media clock; a jump forward like that is what it does when the sound
+     output starts late (or under-runs) and it skips ahead to catch up, which is heard exactly as a tiny gap. So the likely cause is the
+     WebView's audio output starting (each `loadVideoById` / new source makes a new audio renderer and output stream), not the app.
+   - **To confirm**: compare the `1 s after playing` line of songs that stuttered with ones that did not (clean = about 1.00). A page
+     that has just loaded is traced now too (15 s from the tracer's injection), so the first play after an app start shows up as well.
+   - **Ideas not tried** (each a guess, keep them reversible): keep the page's audio output warm with a silent Web Audio context while
+     music plays (if the WebView reuses the open output for the next renderer); compare the same skips in Chrome on m.youtube.com (if it
+     stutters there too, it cannot be fixed from the app); check whether it happens more with Bluetooth output than the speaker.
+   - Diagnostic lines to ask for: `YT media` (playing / waiting / seeking / `start fade:` / `1 s after playing:`), `STATE start load`,
+     `YT seek while starting`.
 7. ~~**Back with YouTube comments open pauses the video**~~ **Resolved: tested OK on device.**
 8. ~~**Rapid edit-mode toggling crashed on Android Auto**~~ **Resolved: tested OK on device.**
 9. **A song sometimes does not continue to the next one** (fourteenth round). Needs TRANSPORT and YT lines around the end of the song.
