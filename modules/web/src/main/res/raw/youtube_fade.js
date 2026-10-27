@@ -280,7 +280,7 @@
         // at 0, so the curve starts from START_LEVEL as it would have without one.
         if (v.paused || v.seeking || (v.readyState < 3)) return;
         clearTimers(s);
-        ramp(v, 1, START_FADE_S * 1000, null, (warm === 1) ? (f, to, k) => rise(START_LEVEL, to, k) : rise);
+        ramp(v, 1, START_FADE_S * 1000, null, (gainSilenced || (warm === 1)) ? (f, to, k) => rise(START_LEVEL, to, k) : rise);
         return;
       }
       if (p && !gainSilenced) silenceGain(p);
@@ -289,8 +289,18 @@
       if (t0 < 0) {
         if (!(t > 0) && (v.readyState < 3)) return; // nothing playing yet
         t0 = Math.max(0, t - 0.05);
-        // Where this video starts: 0:00 for a new song (a few hundredths in is still the start), else where it resumes.
-        if (warm === 0) startAt = (t < 0.3) ? 0 : t0;
+        // Only a song starting at 0:00 warms up (a few hundredths in is still the start). Anywhere else it is YouTube
+        // reloading the stream mid-song (a quality change, a stall) or a resume: the listener already heard a gap there, and
+        // 0.6 s more of silence on top only made it longer, so it just fades in.
+        if (warm === 0) {
+          if (t < 0.3) {
+            startAt = 0;
+          } else {
+            warm = -1;
+            trace('start warm-up skipped: began at ' + t.toFixed(2));
+            if (p) return; // the gain branch above fades it in on the next step
+          }
+        }
       }
       if (warm === 0) {
         if (t - t0 < WARM_S) return; // silent while the sound output gets going
