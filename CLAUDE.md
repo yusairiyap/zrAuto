@@ -1519,6 +1519,10 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
 6. **A micro-stutter at the start of a YouTube song on the Music tab** (play, tiny pause, play). See the "Open" note in the playback section.
    Being tried: the YouTube start gate (see "YouTube start gate" above). If the stutter is gone, mark this resolved; if starts hang or
    the stutter stays, the `start gate:` trace lines say how long each start was held and how much was buffered.
+   Ruled out on the device (Oct 28): the app's own work (`STATE start load` all small), seeks, pauses and waits after `playing` (none
+   traced), and the new-song fade (still heard with "Fade in each new song" off). What is left is inside the WebView / YouTube's player
+   starting its sound. `YT media 1 s after playing: t=..` says whether the clock ran ahead of the sound (t above ~1.05 = the start was
+   skipped). Next idea: compare the same skips in Chrome on m.youtube.com; if it stutters there too, it cannot be fixed from the app.
 7. ~~**Back with YouTube comments open pauses the video**~~ **Resolved: tested OK on device.**
 8. ~~**Rapid edit-mode toggling crashed on Android Auto**~~ **Resolved: tested OK on device.**
 9. **A song sometimes does not continue to the next one** (fourteenth round). Needs TRANSPORT and YT lines around the end of the song.
