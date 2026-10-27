@@ -1538,6 +1538,11 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
      The effects path (Web Audio, `gainParam`) is held at 0 too (`silenceGain`, set directly: `ramp()` would clear the warm-up's own timer
      when the equalizer takes the element over mid-way), and its curve then starts from `START_LEVEL` as without a warm-up. Trace: `start warm-up: 0.6xs played silently, back to 0.00`.
      If it works, mark this item resolved; if the stutter moves to after the warm-up (see the `start clock` line), it is not the output's start.
+     First device log (Oct 28): the hiccups now land inside the silent part (`start clock ... 143 5 ...`, `... 145 0 171 ...` before the
+     seek's `-5xx`), and the clock after the seek runs evenly (sums to 1.50 in 1.5 s). Not covered: the first song after an app start, which
+     the page starts before the fade script is injected (`pageLoaded`), so no `startFade` runs for it; its clock read `58 90 21 161 9 0 24 0 31`
+     (~0.5 s of stalls). The warm-up's seek no longer reports `waiting` to the app (`__fermataWarmSeekAt`), which flashed the spinner and
+     re-published the metadata and cover on every song.
      To take it out: the setting, or the `warm` lines in `startFade`, the pref, its two strings and the `warmup` in both `configure` calls.
    - Diagnostic lines to ask for: `YT media` (playing / waiting / seeking / `start fade:` / `start clock per 100 ms:`), `STATE start load`,
      `YT seek while starting`.

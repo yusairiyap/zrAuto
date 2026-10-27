@@ -295,6 +295,8 @@
         if (t - t0 < WARM_S) return; // silent while the sound output gets going
         warm = 1;
         trace('start warm-up: ' + (t - t0).toFixed(2) + 's played silently, back to ' + startAt.toFixed(2));
+        // Marked so the 'waiting' this seek may cause is not reported as buffering (YoutubeWebView#attachListeners).
+        v.__fermataWarmSeekAt = Date.now();
         try {
           v.currentTime = startAt;
         } catch (err) { /* element gone */ }

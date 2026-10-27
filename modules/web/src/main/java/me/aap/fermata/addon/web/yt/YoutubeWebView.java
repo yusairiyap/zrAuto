@@ -514,6 +514,9 @@ public class YoutubeWebView extends FermataWebView {
 				// Buffering: stalled for data. Resolved by the next 'playing' -- see
 				// YoutubeMediaEngine#waiting(), which tells a long stall (the network) apart.
 				"  v.addEventListener('waiting', function(e) {\n" +
+				// The sound warm-up's own seek back to the start (youtube_fade.js) is not buffering: reporting it made the app
+				// show the spinner and publish the song's metadata and cover again on every song.
+				"    if (Date.now() - (v.__fermataWarmSeekAt || 0) < 1500) return;\n" +
 				"    " + JS_EVENT + "(" + JS_VIDEO_WAITING +
 				", (window.__fermataPageHidden && window.__fermataPageHidden()) ? 'hidden' : 'shown');\n" +
 				"    endCheck();\n" +
