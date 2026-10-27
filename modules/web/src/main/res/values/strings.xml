@@ -20,8 +20,6 @@
     <string name="video_quality_highest">Highest available</string>
     <string name="try_to_skip_ad">Try to skip advertising</string>
     <string name="yt_start_gate">Wait for a song to buffer before it starts</string>
-    <string name="yt_start_fade">Fade in each new song</string>
-    <string name="yt_start_fade_sub">A new video starts quietly and rises to full volume in half a second. Off: it starts at full volume</string>
     <string name="yt_start_gate_sub">Starts a new video a moment later, once a little of it is loaded, so its first seconds do not stutter</string>
     <string name="sponsorblock" translatable="false">SponsorBlock</string>
     <string name="sponsorblock_sub">Skip crowd-sourced segments while watching YouTube.</string>

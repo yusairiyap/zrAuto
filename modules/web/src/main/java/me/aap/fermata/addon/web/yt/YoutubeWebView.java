@@ -918,8 +918,7 @@ public class YoutubeWebView extends FermataWebView {
 
 	private void configureStartGate() {
 		evaluateJavascript("if (window.FermataStartGate) window.FermataStartGate.configure({on: " +
-				getAddon().startGate() + ", traceEvent: " + JS_AUDIO_TRACE + "});" +
-				"if (window.FermataFade) window.FermataFade.configure({startFade: " + getAddon().startFade() + "});", null);
+				getAddon().startGate() + ", traceEvent: " + JS_AUDIO_TRACE + "});", null);
 	}
 
 	/**
@@ -977,7 +976,7 @@ public class YoutubeWebView extends FermataWebView {
 		if (script.isEmpty()) return;
 		evaluateJavascript(script, result -> evaluateJavascript(
 				"if (window.FermataFade) window.FermataFade.configure({endingEvent: " + JS_VIDEO_ENDING +
-						", startFade: " + getAddon().startFade() + "});", null));
+						"});", null));
 	}
 
 	private void injectEqualizer() {

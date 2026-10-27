@@ -1423,11 +1423,8 @@ pause source.
   (`httpLoads`), and a maxresdefault.jpg that does not decode falls back to hqdefault.jpg. Home logs `ART no cover for Home` if it still gets none.
 - **Seeks while a song starts are traced**: the page's `YT media seeking t=` (where it went) and `YT seek while starting` with the two
   callers when the app asks for it; a start that took long is traced for 5 s after its `playing`.
-- **The new-song fade-in can be switched off** (YouTube setting "Fade in each new song", `YT_START_FADE`, default on; `FermataFade`
-  `cfg.startFade`): off, a new video starts at full volume. It is there to tell a stutter the fade makes from one the player makes; the
-  fade's evenness is traced (`YT media start fade: N steps, longest gap ..ms, biggest step ..%`): its 10 ms ticks are delayed while the page
-  is busy starting the video, and the level then sits low and jumps. Element events, seeks and the app's main thread were all clean around
-  the stutters logged so far.
+- **The new-song fade-in's evenness is traced** (`YT media start fade: N steps, longest gap ..ms, biggest step ..%`). A switch to start
+  songs at full volume was tried and removed: the stutter stayed with it off, and a full-volume start makes the clipped first moment heard.
 - **Home's media card asks the player for its position every 3 s**, not every 500 ms tick (for YouTube each ask is a script in the
   playing page); in between it counts on from the last answer, and asks again after a seek or a play/pause change.
 - **Its title ends in an ellipsis** unless the card's "Scroll a long title" option (`marquee`) is on: a scrolling title redraws every
@@ -1520,7 +1517,7 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
    Being tried: the YouTube start gate (see "YouTube start gate" above). If the stutter is gone, mark this resolved; if starts hang or
    the stutter stays, the `start gate:` trace lines say how long each start was held and how much was buffered.
    Ruled out on the device (Oct 28): the app's own work (`STATE start load` all small), seeks, pauses and waits after `playing` (none
-   traced), and the new-song fade (still heard with "Fade in each new song" off). What is left is inside the WebView / YouTube's player
+   traced), and the new-song fade (still heard with it switched off, a test setting since removed). What is left is inside the WebView / YouTube's player
    starting its sound. `YT media 1 s after playing: t=..` says whether the clock ran ahead of the sound (t above ~1.05 = the start was
    skipped). Next idea: compare the same skips in Chrome on m.youtube.com; if it stutters there too, it cannot be fixed from the app.
 7. ~~**Back with YouTube comments open pauses the video**~~ **Resolved: tested OK on device.**

@@ -42,9 +42,7 @@
   const MIN_ELEMENT_VOLUME = 0.001;
   const STEP_MS = 10;
 
-  // startFade: false starts a new video at full volume (YouTube setting "Fade in each new song"), to tell a stutter
-  // the fade-in makes from one the player makes.
-  const cfg = {endingEvent: 0, startFade: true};
+  const cfg = {endingEvent: 0};
 
   function trace(msg) {
     try {
@@ -227,7 +225,7 @@
     const s = state(v);
     clearTimers(s);
     s.pausing = false;
-    if (pageHidden() || !cfg.startFade) {
+    if (pageHidden()) {
       ramp(v, 1, 0); // throttled timers: a few coarse jumps would be worse than none
       return;
     }
