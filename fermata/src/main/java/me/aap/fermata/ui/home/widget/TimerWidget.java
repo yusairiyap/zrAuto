@@ -1,5 +1,6 @@
 package me.aap.fermata.ui.home.widget;
 
+import android.content.Context;
 import android.text.format.DateUtils;
 import android.view.Gravity;
 import android.view.View;
@@ -8,12 +9,21 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+
 import me.aap.fermata.R;
 import me.aap.fermata.action.Action;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.home.HomeHost;
+import me.aap.fermata.ui.home.HomeModal;
+import me.aap.fermata.ui.home.HomeOption;
 import me.aap.fermata.ui.home.HomeWidgetType;
 import me.aap.fermata.ui.home.HomeWidgetView;
+import me.aap.fermata.ui.view.ChipFlowLayout;
 import me.aap.fermata.ui.view.TopToast;
 
 /**
@@ -23,6 +33,8 @@ import me.aap.fermata.ui.view.TopToast;
  */
 final class TimerWidget extends HomeWidgetView {
 	private static final int[] PRESETS = {5, 15, 30, 45, 60, 90};
+	/** The pick that shows the lengths started most, in place of the picked ones. */
+	private static final String RECOMMENDED = "rec";
 
 	private LinearLayout column;
 	private View headerRow;
@@ -159,7 +171,7 @@ final class TimerWidget extends HomeWidgetView {
 			return;
 		}
 		if (strip) {
-			chips.addView(presetChip(30), chipLp(false));
+			for (int m : minutesToShow(1)) chips.addView(presetChip(m), chipLp(false));
 			return;
 		}
 		int n = presetCount();
@@ -168,13 +180,137 @@ final class TimerWidget extends HomeWidgetView {
 			chips.addView(offChip(), chipLp(false));
 			shown++;
 		}
-		// The usual lengths, thinned out evenly when there are fewer places than lengths.
-		int slots = Math.max(1, n - shown);
-		for (int i = 0; i < slots; i++) {
-			int idx = (slots >= PRESETS.length) ? i : Math.round(i * (PRESETS.length - 1f) / Math.max(1, slots - 1));
-			if (slots == 1) idx = 2;
-			chips.addView(presetChip(PRESETS[idx]), chipLp(chips.getChildCount() > 0));
+		for (int m : minutesToShow(Math.max(1, n - shown))) chips.addView(presetChip(m), chipLp(chips.getChildCount() > 0));
+	}
+
+	/** The picked keys: the lengths in minutes, {@link #RECOMMENDED}, or nothing (an empty set means the default: all of them). */
+	private Set<String> pickedKeys() {
+		Set<String> keys = new LinkedHashSet<>();
+		String s = optString("items", "");
+		if (s.isEmpty()) return null;
+		if (!"-".equals(s)) keys.addAll(Arrays.asList(s.split(",")));
+		return keys;
+	}
+
+	/**
+	 * The lengths the chips show, in order, thinned out evenly when there are fewer places than lengths. The default is every
+	 * length; the picks show theirs, and the recommended pick shows the lengths started most.
+	 */
+	private int[] minutesToShow(int slots) {
+		int[] pool = poolMinutes();
+		if (pool.length <= slots) return pool;
+		if (slots == 1) return new int[]{pool[Math.min(pool.length - 1, pool.length == PRESETS.length ? 2 : 0)]};
+		int[] out = new int[slots];
+		for (int i = 0; i < slots; i++) out[i] = pool[Math.round(i * (pool.length - 1f) / (slots - 1))];
+		return out;
+	}
+
+	private int[] poolMinutes() {
+		Set<String> keys = pickedKeys();
+		if (keys == null) return PRESETS;
+		if (keys.contains(RECOMMENDED)) return ranked();
+		List<Integer> l = new ArrayList<>();
+		for (int m : PRESETS) if (keys.contains(String.valueOf(m))) l.add(m);
+		return l.stream().mapToInt(Integer::intValue).toArray();
+	}
+
+	/** Every length, the most started first (ties keep the usual order). */
+	private int[] ranked() {
+		java.util.Map<Integer, Integer> uses = uses();
+		List<Integer> l = new ArrayList<>();
+		for (int m : PRESETS) l.add(m);
+		l.sort((a, b) -> Integer.compare(uses.getOrDefault(b, 0), uses.getOrDefault(a, 0)));
+		return l.stream().mapToInt(Integer::intValue).toArray();
+	}
+
+	/** How many times each length was started, kept with the widget. */
+	private java.util.Map<Integer, Integer> uses() {
+		java.util.Map<Integer, Integer> m = new java.util.HashMap<>();
+		for (String pair : optString("uses", "").split(",")) {
+			String[] kv = pair.split(":");
+			if (kv.length != 2) continue;
+			try {
+				m.put(Integer.parseInt(kv[0]), Integer.parseInt(kv[1]));
+			} catch (NumberFormatException ignored) {
+			}
 		}
+		return m;
+	}
+
+	private void countUse(int m) {
+		java.util.Map<Integer, Integer> uses = uses();
+		uses.merge(m, 1, Integer::sum);
+		StringBuilder s = new StringBuilder();
+		for (java.util.Map.Entry<Integer, Integer> e : uses.entrySet()) {
+			if (s.length() > 0) s.append(',');
+			s.append(e.getKey()).append(':').append(e.getValue());
+		}
+		setOpt("uses", s.toString());
+	}
+
+	@Override
+	protected List<HomeOption> getOptions() {
+		List<HomeOption> l = new ArrayList<>();
+		l.add(HomeOption.button(ctx.getString(R.string.home_opt_pick_items), this::pickItems));
+		return l;
+	}
+
+	/** The lengths to show as chips: a tap picks or drops one; recommended replaces the rest. A card of chips, like All in One's. */
+	private void pickItems() {
+		Set<String> chosen = new LinkedHashSet<>();
+		Set<String> picked = pickedKeys();
+		if (picked == null) {
+			for (int m : PRESETS) chosen.add(String.valueOf(m));
+		} else {
+			chosen.addAll(picked);
+		}
+		Context pc = host.palette().ctx;
+		LinearLayout box = new LinearLayout(pc);
+		box.setOrientation(LinearLayout.VERTICAL);
+		TextView hint = new TextView(pc);
+		hint.setText(R.string.home_timer_pick_hint);
+		hint.setTextColor(host.palette().textSecondary);
+		hint.setTextSize(13);
+		box.addView(hint);
+		ChipFlowLayout flow = new ChipFlowLayout(pc);
+		flow.setPadding(0, px(12), 0, px(4));
+		box.addView(flow);
+		fillPicker(flow, chosen);
+		HomeModal.show(host, ctx.getString(R.string.home_opt_pick_items), R.drawable.home_add, box, null);
+	}
+
+	private void fillPicker(ChipFlowLayout flow, Set<String> chosen) {
+		flow.removeAllViews();
+		Context pc = host.palette().ctx;
+		List<String> keys = new ArrayList<>();
+		keys.add(RECOMMENDED);
+		for (int m : PRESETS) keys.add(String.valueOf(m));
+		for (String k : keys) {
+			CharSequence label = RECOMMENDED.equals(k) ? ctx.getString(R.string.home_timer_recommended) :
+					minutes(Integer.parseInt(k));
+			flow.addView(ChipFlowLayout.chip(pc, 0, label, chosen.contains(k), () -> {
+				// Recommended stands alone: picking it drops the lengths, and a length drops it.
+				if (!chosen.remove(k)) {
+					if (RECOMMENDED.equals(k)) chosen.clear();
+					else chosen.remove(RECOMMENDED);
+					chosen.add(k);
+				}
+				saveItems(chosen);
+				fillPicker(flow, chosen);
+			}));
+		}
+	}
+
+	/** Stores the picks; the default (every length) is stored as nothing, so it stays the default. */
+	private void saveItems(Set<String> chosen) {
+		Set<String> all = new LinkedHashSet<>();
+		for (int m : PRESETS) all.add(String.valueOf(m));
+		String v;
+		if (chosen.isEmpty()) v = "-";
+		else if (chosen.equals(all)) v = "";
+		else v = String.join(",", chosen);
+		setOpt("items", v);
+		rebuildChips();
 	}
 
 	private LinearLayout.LayoutParams chipLp(boolean margin) {
@@ -199,6 +335,7 @@ final class TimerWidget extends HomeWidgetView {
 
 	private void start(int m) {
 		total = m * 60;
+		countUse(m);
 		cb().setPlaybackTimer(total, false);
 		TopToast.show(R.drawable.timer, ctx.getString(R.string.music_timer_set, minutes(m)));
 	}

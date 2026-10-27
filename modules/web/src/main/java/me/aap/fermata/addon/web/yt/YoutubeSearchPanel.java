@@ -95,7 +95,7 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 	private static final int MAX_RESULTS = 25;
 	/** Results shown before "Show more" in the single-column (phone) layout. */
 	private static final int COLLAPSED_RESULTS = 3;
-	private static final long SLIDE_MS = 240;
+	static final long SLIDE_MS = 240;
 	/** Shared: one search at a time is plenty, and a panel recreated with its fragment reuses it. */
 	private static final ExecutorService executor = Executors.newSingleThreadExecutor();
 	private static final int TYPE_HEADER = 0;

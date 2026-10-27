@@ -1211,11 +1211,13 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	static void searchFor(Context ctx, String query) {
 		MainActivityDelegate.getActivityDelegate(ctx).onSuccess(a -> {
 			if (!(a.showFragment(me.aap.fermata.R.id.youtube_fragment) instanceof YoutubeFragment f)) return;
-			FermataWebView v = f.getWebView();
-			FermataChromeClient chrome = (v != null) ? v.getWebChromeClient() : null;
-			if ((chrome != null) && chrome.isFullScreen()) chrome.exitFullScreen();
-			// The tab fades in first; the search starts once it is up, not on top of its transition.
-			a.postDelayed(() -> f.search(query), f.getFadeInDelayMillis() + f.getFadeInMillis());
+			// As the search button does it: once the tab has faded in, the panel opens (leaving fullscreen, so a video
+			// playing as music or fullscreen is not what stays on screen), and the query runs only when the panel has
+			// slid down, not while it moves.
+			a.postDelayed(() -> {
+				f.startSearch(false);
+				a.postDelayed(() -> f.search(query), YoutubeSearchPanel.SLIDE_MS);
+			}, f.getFadeInDelayMillis() + f.getFadeInMillis());
 		});
 	}
 

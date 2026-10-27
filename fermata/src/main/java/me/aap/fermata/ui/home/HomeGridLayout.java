@@ -55,6 +55,11 @@ final class HomeGridLayout extends ViewGroup {
 	private HomeModel model;
 	private boolean vertical = true;
 	private int cross = 4;
+	/**
+	 * How many lanes fit across the scrolling direction at the cards' size: the columns (scrolling down) or rows (sideways).
+	 * It is the count the settings give at 100%, and more lanes as the cards are made smaller (see onMeasure).
+	 */
+	private int lanes = 4;
 	private int gap;
 	private int unit = 100;
 	/** The cards' size as a fraction of the normal one; Freeflow scales its places with it. */
@@ -67,6 +72,9 @@ final class HomeGridLayout extends ViewGroup {
 	private boolean snap;
 	private final Paint gridPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 	private static final int FREE_UNIT_DP = 90;
+	/** The smallest a card gets when the scale makes the lanes many: below this a lane is not worth the room. */
+	private static final int MIN_UNIT_DP = 40;
+	private static final int MAX_LANES = 12;
 	/** Sideways: the width of the page it sits in, so cards that do not fill it are centred (0 = no such room). */
 	private int viewportW;
 	/** Sideways: where the middle of the cards should be (in this view's own coordinates), NaN for the middle of the page. */
@@ -186,6 +194,7 @@ final class HomeGridLayout extends ViewGroup {
 		if ((this.vertical == vertical) && (this.cross == cross) && (gap == gapPx)) return;
 		this.vertical = vertical;
 		this.cross = Math.max(1, cross);
+		this.lanes = this.cross;
 		this.gap = gapPx;
 		lastCross = 0; // A new arrangement: everything jumps to its place.
 		arrange();
@@ -293,8 +302,8 @@ final class HomeGridLayout extends ViewGroup {
 		for (HomeCellView v : order) {
 			int w = v.cell.w;
 			int h = v.cell.h;
-			if (vertical) w = Math.min(w, cross);
-			else h = Math.min(h, cross);
+			if (vertical) w = Math.min(w, lanes);
+			else h = Math.min(h, lanes);
 			v.setEffectiveSize(Math.max(1, w), Math.max(1, h));
 		}
 	}
@@ -502,10 +511,10 @@ final class HomeGridLayout extends ViewGroup {
 		for (HomeCellView c : order) {
 			int sc = vertical ? c.cw : c.ch;
 			int sm = vertical ? c.ch : c.cw;
-			sc = Math.max(1, Math.min(sc, cross));
+			sc = Math.max(1, Math.min(sc, lanes));
 			int[] at = null;
 			for (int m = 0; at == null; m++) {
-				for (int cc = 0; (cc + sc) <= cross; cc++) {
+				for (int cc = 0; (cc + sc) <= lanes; cc++) {
 					if (fits(m, cc, sm, sc)) {
 						at = new int[]{m, cc};
 						break;
@@ -521,7 +530,7 @@ final class HomeGridLayout extends ViewGroup {
 	}
 
 	private boolean[] row(int m) {
-		while (occupied.size() <= m) occupied.add(new boolean[cross]);
+		while (occupied.size() <= m) occupied.add(new boolean[lanes]);
 		return occupied.get(m);
 	}
 
@@ -548,19 +557,20 @@ final class HomeGridLayout extends ViewGroup {
 			measureFree(w, padW, padH);
 			return;
 		}
-		// A scale above 100% cannot make the page's columns or rows bigger than they fit.
-		float shrink = Math.min(1f, scale);
+		// The cards' size follows the scale; as many lanes as fit at that size are used, so a smaller scale fits more
+		// columns (or rows) in the page instead of leaving room around the same cards. The leftover is centred.
 		colLead = 0;
-		if (vertical) {
-			int fit = Math.max(1, (w - padW - gap * (cross - 1)) / cross);
-			unit = Math.max(1, Math.round(fit * shrink));
-			colLead = Math.max(0, (w - padW - (cross * unit + gap * (cross - 1))) / 2);
-		} else if (hMode == MeasureSpec.UNSPECIFIED) {
-			unit = Math.max(1, Math.round(HomeUi.dp(getContext(), 110) * shrink));
+		if (vertical || (hMode != MeasureSpec.UNSPECIFIED)) {
+			int avail = vertical ? (w - padW) : (h - padH);
+			int base = Math.max(1, (avail - gap * (cross - 1)) / cross);
+			unit = Math.max(HomeUi.dp(getContext(), MIN_UNIT_DP), Math.round(base * scale));
+			lanes = Math.max(1, Math.min(MAX_LANES, (avail + gap) / (unit + gap)));
+			if (vertical) colLead = Math.max(0, (avail - (lanes * unit + gap * (lanes - 1))) / 2);
 		} else {
-			int fit = Math.max(1, (h - padH - gap * (cross - 1)) / cross);
-			unit = Math.max(1, Math.round(fit * shrink));
+			unit = Math.max(1, Math.round(HomeUi.dp(getContext(), 110) * scale));
+			lanes = cross;
 		}
+		arrange();
 		pack();
 		int main = 0;
 		for (int i = 0; i < order.size(); i++) {
@@ -579,7 +589,7 @@ final class HomeGridLayout extends ViewGroup {
 			float want = Float.isNaN(centreX) ? (total - natural) / 2f : (centreX - extent / 2f - getPaddingLeft());
 			lead = Math.max(0, Math.min(total - natural, Math.round(want)));
 			setMeasuredDimension(total, (hMode == MeasureSpec.UNSPECIFIED) ?
-					cross * unit + (cross - 1) * gap + padH : h);
+					lanes * unit + (lanes - 1) * gap + padH : h);
 		}
 	}
 
@@ -935,8 +945,8 @@ final class HomeGridLayout extends ViewGroup {
 		nh = Math.max(c.minH(), Math.min(nh, c.maxH()));
 		wantCw = Math.max(1, nw);
 		wantCh = Math.max(1, nh);
-		if (vertical) nw = Math.min(nw, cross);
-		else nh = Math.min(nh, cross);
+		if (vertical) nw = Math.min(nw, lanes);
+		else nh = Math.min(nh, lanes);
 		nw = Math.max(1, nw);
 		nh = Math.max(1, nh);
 		if ((nw == hintCw) && (nh == hintCh)) return;
@@ -1038,6 +1048,17 @@ final class HomeGridLayout extends ViewGroup {
 			changed();
 			model.save();
 		});
+	}
+
+	HomeModel model() {
+		return model;
+	}
+
+	/** The stack was changed in its manage window: the cards are made again and the layout saved. */
+	void stackEdited() {
+		sync();
+		changed();
+		model.save();
 	}
 
 	void unstack(HomeCellView c, HomeWidgetView w) {

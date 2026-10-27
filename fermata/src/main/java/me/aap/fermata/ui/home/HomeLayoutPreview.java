@@ -199,8 +199,15 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 			n = Math.max(2, Math.min(5, n));
 			cell = (h - top - 8f - (n - 1) * gap) / n;
 		}
-		// The same as the grid: Freeflow scales its places, the others only shrink to fit, and a block narrower than the page is centred.
-		cell *= (shown == FREE) ? scale : Math.min(1f, scale);
+		// The same as the grid: the cards' size follows the scale and as many lanes fit at that size (Freeflow scales its
+		// places instead); a block narrower than the page is centred.
+		if (shown == FREE) {
+			cell *= scale;
+		} else {
+			float avail = down ? (w - 2 * side) : (h - top - 8f);
+			cell = Math.max(1f, cell * scale);
+			n = Math.max(1, Math.min(12, (int) ((avail + gap) / (cell + gap))));
+		}
 		float lead = down ? Math.max(0f, (w - 2 * side - (n * cell + (n - 1) * gap)) / 2f) : 0f;
 
 		float[][] next = new float[N][5];

@@ -17,6 +17,12 @@
     <string name="home_options">Options</string>
     <string name="home_resize">Resize</string>
     <string name="home_unstack">Take out of the stack</string>
+    <string name="home_manage_stack">Manage stack</string>
+    <string name="home_stack_hint">Drag the handle to change the order; the top one shows when the stack is not turning. The minus takes a widget off the screen, and Undo brings it back.</string>
+    <string name="home_stack_add">Add a widget to this stack</string>
+    <string name="home_stack_drag">Drag to reorder</string>
+    <string name="home_timer_pick_hint">The lengths that show as chips. Recommended shows the lengths you start most.</string>
+    <string name="home_timer_recommended">Recommended</string>
     <string name="home_stack_pin">Keep this stack still</string>
     <string name="home_stacked">Stacked, %1$d widgets. Swipe it sideways to switch.</string>
     <string name="home_stack_prev">Previous widget</string>

@@ -110,6 +110,10 @@ final class HomeOptionsPanel {
 				close.run();
 				grid.unstack(cell, w);
 			}));
+			rows.addView(buttonRow(p, ctx.getString(R.string.home_manage_stack), R.drawable.view_list, () -> {
+				close.run();
+				HomeStackManager.show(host, grid, cell.cell);
+			}));
 		}
 		rows.addView(buttonRow(p, ctx.getString(R.string.home_remove), R.drawable.delete, () -> {
 			close.run();

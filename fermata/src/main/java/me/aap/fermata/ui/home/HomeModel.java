@@ -256,6 +256,22 @@ public final class HomeModel {
 		cells.remove(src);
 	}
 
+	/** Puts a new widget of type {@code t} on top of {@code c}'s stack. */
+	public Item addToStack(Cell c, HomeWidgetType t) {
+		Item it = newItem(t);
+		c.items.add(it);
+		c.top = c.items.size() - 1;
+		return it;
+	}
+
+	/** Moves the widget at {@code from} in {@code c}'s stack to {@code to}; the one on top stays on top. */
+	public void moveInStack(Cell c, int from, int to) {
+		Item top = c.topItem();
+		Item it = c.items.remove(from);
+		c.items.add(to, it);
+		if (top != null) c.top = c.items.indexOf(top);
+	}
+
 	/** Takes {@code it} out of its stack into a cell of its own right after it. */
 	public Cell unstack(Cell c, Item it) {
 		int at = c.items.indexOf(it);

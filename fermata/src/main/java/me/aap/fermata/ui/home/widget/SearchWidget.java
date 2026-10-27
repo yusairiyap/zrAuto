@@ -1,5 +1,6 @@
 package me.aap.fermata.ui.home.widget;
 
+import android.graphics.Rect;
 import android.graphics.drawable.GradientDrawable;
 import android.text.Editable;
 import android.text.InputType;
@@ -44,6 +45,12 @@ final class SearchWidget extends HomeWidgetView {
 	private static final long TYPE_DELAY_MS = 250;
 	/** Room the chips need for two wrapped rows, below which they go in one scrolling row. */
 	private static final int TWO_ROWS_DP = 80;
+	/** Narrower than this, the card is only the search icon (the smallest size on a phone is wider). */
+	private static final int ICON_BELOW_DP = 150;
+	/** One unit high, the chips fit under the input from this width. */
+	private static final int CHIPS_IN_STRIP_DP = 260;
+	/** The keyboard takes a moment to come up and resize the window; then the card is scrolled into view. */
+	private static final long KEYBOARD_REVEAL_MS = 350;
 
 	private LinearLayout column;
 	private LinearLayout header;
@@ -105,6 +112,10 @@ final class SearchWidget extends HomeWidgetView {
 		// On the car screen the field cannot be typed in: a tap goes straight to the panel's search field.
 		field.setOnClickListener(v -> {
 			if (host.isCar()) openPanel();
+		});
+		// The keyboard comes up over the bottom of the screen: once it is, the card is scrolled above it.
+		field.setOnFocusChangeListener((v, focused) -> {
+			if (focused) postDelayed(this::revealField, KEYBOARD_REVEAL_MS);
 		});
 		field.addTextChangedListener(new TextWatcher() {
 			@Override
@@ -195,14 +206,22 @@ final class SearchWidget extends HomeWidgetView {
 		if (column != null) applyLayout();
 	}
 
+	/** The card's width in dp, which is what the room for the input and the chips is judged by (it differs by screen density). */
+	private int widthDp() {
+		return Math.round(widthPx() / ctx.getResources().getDisplayMetrics().density);
+	}
+
 	/** The room the chips get below the header and the input, from the card's height in pixels. */
 	private int chipRoom() {
 		return heightPx() - px(34) - px(46) - px(24);
 	}
 
 	private void applyLayout() {
-		boolean icon = isCompact();
-		boolean strip = !icon && (getCellsH() == 1);
+		// Before the card is measured its width is unknown: the full layout until it is.
+		boolean measured = widthPx() > 0;
+		boolean icon = measured && (widthDp() < ICON_BELOW_DP);
+		// One unit high: the input alone, plus the chips in one row when the card is wide enough for them.
+		boolean strip = getCellsH() == 1;
 		column.setVisibility(icon ? GONE : VISIBLE);
 		bigIcon.setVisibility(icon ? VISIBLE : GONE);
 		header.setVisibility(strip ? GONE : VISIBLE);
@@ -210,12 +229,17 @@ final class SearchWidget extends HomeWidgetView {
 		boolean car = host.isCar();
 		field.setFocusable(!car);
 		field.setFocusableInTouchMode(!car);
-		chipsShown = !icon && !strip;
-		oneRow = chipRoom() < px(TWO_ROWS_DP);
+		chipsShown = !icon && (!strip || (measured && (widthDp() >= CHIPS_IN_STRIP_DP)));
+		oneRow = strip || (chipRoom() < px(TWO_ROWS_DP));
 		wrap.setVisibility((chipsShown && !oneRow) ? VISIBLE : GONE);
 		row.setVisibility((chipsShown && oneRow) ? VISIBLE : GONE);
 		fillChips();
 		if (chipsShown && shownQueries.isEmpty() && fieldText().isEmpty()) showHistory();
+	}
+
+	/** Typing into the field on a phone: the keyboard covers the bottom of the screen, so the card is scrolled above it. */
+	private void revealField() {
+		requestRectangleOnScreen(new Rect(0, 0, getWidth(), getHeight()), true);
 	}
 
 	@Override
@@ -274,9 +298,11 @@ final class SearchWidget extends HomeWidgetView {
 		forget(rowChips);
 		wrapChips.removeAllViews();
 		rowChips.removeAllViews();
-		caption.setVisibility((chipsShown && !shownPredictions && !shownQueries.isEmpty()) ? VISIBLE : GONE);
+		boolean strip = getCellsH() == 1;
+		caption.setVisibility((chipsShown && !strip && !shownPredictions && !shownQueries.isEmpty()) ? VISIBLE : GONE);
 		for (String q : shownQueries) {
-			TextView c = chip(shownPredictions ? R.drawable.search : 0, q, () -> submitQuery(q));
+			// Predictions and past searches are the same chips (no glyph), so they space alike.
+			TextView c = chip(0, q, () -> submitQuery(q));
 			if (!shownPredictions) {
 				c.setOnLongClickListener(v -> {
 					MusicPlayer.removeYoutubeSearchHistory(q);
