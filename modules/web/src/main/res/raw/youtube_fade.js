@@ -419,6 +419,8 @@
       const finish = () => {
         try {
           if (stop) v.currentTime = 0;
+          // The app's own pause: youtube_startgate.js never undoes it.
+          v.__fermataAppPauseAt = Date.now();
           v.pause();
         } catch (err) { /* element gone */ }
         restoreSilently(v);

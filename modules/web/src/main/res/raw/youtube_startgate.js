@@ -103,6 +103,59 @@
     return gate;
   };
 
+  // The other half: YouTube's own player sometimes pauses the element a moment after a new video starts
+  // (its layout or state settling), and the app only heard of it through the bridge, then asked it to play
+  // again: the "play, tiny pause, play". Within RESUME_WINDOW_MS of a video's first 'playing', a pause nobody
+  // asked for (not the app's: FermataFade.pause marks those; not a tap: no user activation) is undone right
+  // here, in the same task, and its 'pause' and the 'play' that follows never reach the app or the fade. At
+  // most MAX_RESUMES per video, so a pause YouTube really insists on still goes through to the app's own
+  // handling (YoutubeMediaEngine#paused).
+  const RESUME_WINDOW_MS = 1500;
+  const MAX_RESUMES = 2;
+
+  window.addEventListener('loadstart', function(e) {
+    const v = e.target;
+    if (!v || (v.tagName !== 'VIDEO')) return;
+    v.__fermataFirstPlayingAt = 0;
+    v.__fermataResumes = 0;
+    v.__fermataStarting = true;
+  }, true);
+
+  window.addEventListener('playing', function(e) {
+    const v = e.target;
+    if (!v || (v.tagName !== 'VIDEO') || !v.__fermataStarting) return;
+    v.__fermataStarting = false;
+    v.__fermataFirstPlayingAt = Date.now();
+  }, true);
+
+  window.addEventListener('pause', function(e) {
+    const v = e.target;
+    if (!cfg.on || !v || (v.tagName !== 'VIDEO') || v.ended || window.__fermataAdShowing) return;
+    const now = Date.now();
+    const started = v.__fermataFirstPlayingAt || 0;
+    if (!started || (now - started > RESUME_WINDOW_MS)) return;
+    if (now - (v.__fermataAppPauseAt || 0) < 2000) return;
+    if (navigator.userActivation && navigator.userActivation.isActive) return;
+    if ((v.__fermataResumes || 0) >= MAX_RESUMES) return;
+    v.__fermataResumes = (v.__fermataResumes || 0) + 1;
+    e.stopImmediatePropagation();
+    v.__fermataQuietPlay = true;
+    trace('the page paused the start, played on at once (' + v.__fermataResumes + ') t=' + v.currentTime.toFixed(2));
+    try {
+      const p = origPlay.call(v);
+      if (p && p.catch) p.catch(function() { v.__fermataQuietPlay = false; });
+    } catch (err) {
+      v.__fermataQuietPlay = false;
+    }
+  }, true);
+
+  window.addEventListener('play', function(e) {
+    const v = e.target;
+    if (!v || (v.tagName !== 'VIDEO') || !v.__fermataQuietPlay) return;
+    v.__fermataQuietPlay = false;
+    e.stopImmediatePropagation();
+  }, true);
+
   window.FermataStartGate = {
     configure(c) {
       Object.assign(cfg, c || {});

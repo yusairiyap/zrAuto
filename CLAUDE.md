@@ -1446,6 +1446,22 @@ element alone (`__fermataGate`: not "loaded but left paused"). The `YT media` tr
 for the first 8 s after a switch. **To turn it off**: the setting. **To take it out**: delete the script, `YoutubeStartGateScript`, the
 `injectStartGate` call and the one `__fermataGate` check in `youtube_fade.js` (all in one commit). If a start ever hangs, look there first.
 
+What the first device log showed: YouTube's player does not start a queued video through `play()` on the element (`loadVideoById`
+starts it inside), so the held `play()` never engaged on a skip. The likely stutter is another thing: **YouTube's player pauses the
+element a moment after a new video starts**, and the app heard of it over the bridge and played again (`YoutubeMediaEngine#paused`'s
+retry, now logged as `YT page paused right after play: play again`; when the retry did not stick it showed "Window too small to play
+video"). The same script now undoes such a pause in the page itself, in the same task: within 1.5 s of a video's first `playing`, a pause
+that is not the app's (`FermataFade.pause` marks `__fermataAppPauseAt`) and not a tap (`navigator.userActivation`) is followed by `play()`
+at once, and that `pause` and the `play` after it are stopped at the window (capture) so neither the app nor the fade nor YouTube's own
+listeners see them (at most 2 per video). Trace line: `start gate: the page paused the start, played on at once`. The `YT media` trace
+now also writes `pause` / `play` events and progress gaps over 400 ms.
+- **Forced streams are respected by the YouTube engine**: `YoutubeMediaEngine#playing` sends a downloaded video to its file only when
+  `YtOffline.useLocal` says so (a sound-only download watched streamed changed quality and was sent back to the file, then refused:
+  "Not downloaded, and there is no connection"); a stall of a forced stream clears it and plays the file. Watching a sound-only download
+  turns music mode off before the page sets the video up, so it gets the usual quality, not 144p.
+- **The keyboard lift ends where the animation left the keyboard** (`ImeFollower#onEnd`, `lastIme`), not on the window insets, which can
+  still report the keyboard right at the end of a Back-swipe hide (the flicker).
+
 ## Open issues (handover list)
 
 These are the open items to take up next, in a new session or on a new branch. Each is a prompt: the first line says what is wrong.

@@ -971,6 +971,9 @@ public final class MusicPlayer {
 				eng.getPosition().main().onSuccess(pos -> {
 					if (cb.getEngine() != eng) return;
 					YtOffline.forceStream(t.getVideoId());
+					// Out of music mode before the page sets the video up: the quality is chosen then, and is
+					// never switched on a playing video (it stayed at the lowest, 144p).
+					setYoutubeAudioMode(false);
 					startTrack(a, t, pos, true);
 				});
 				return;

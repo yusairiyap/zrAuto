@@ -567,7 +567,7 @@ public class YoutubeWebView extends FermataWebView {
 				"    if (Date.now() < (window.__fermataTraceUntil || 0)) " + JS_EVENT + "(" + JS_AUDIO_TRACE +
 				", msg);\n" +
 				"  };\n" +
-				"  ['playing', 'waiting', 'stalled', 'loadstart', 'emptied', 'seeking'].forEach(function(n) {\n" +
+				"  ['playing', 'waiting', 'stalled', 'loadstart', 'emptied', 'seeking', 'pause', 'play'].forEach(function(n) {\n" +
 				"    document.addEventListener(n, function(e) {\n" +
 				"      var v = e.target;\n" +
 				"      if (!v || (v.tagName !== 'VIDEO')) return;\n" +
@@ -593,7 +593,7 @@ public class YoutubeWebView extends FermataWebView {
 				"        } catch (x) {}\n" +
 				"      }\n" +
 				// Only what tells of a hitch is written; the others just reset the progress watch.
-				"      if ((n === 'playing') || (n === 'waiting') || (n === 'stalled'))\n" +
+				"      if ((n === 'playing') || (n === 'waiting') || (n === 'stalled') || (n === 'pause') || (n === 'play'))\n" +
 				"        trace(n + ' t=' + v.currentTime.toFixed(2) + ' vol=' + v.volume.toFixed(2) + " +
 				"' ready=' + v.readyState + fade);\n" +
 				"    }, true);\n" +
@@ -603,7 +603,7 @@ public class YoutubeWebView extends FermataWebView {
 				"    if (!v || (v.tagName !== 'VIDEO') || v.paused) return;\n" +
 				"    var now = Date.now(), t = v.currentTime;\n" +
 				"    if ((trLastT >= 0) && (t < trLastT - 0.25)) trace('time back ' + trLastT.toFixed(2) + ' -> ' + t.toFixed(2));\n" +
-				"    if ((trLastT >= 0) && trLastWall && (now - trLastWall > 700)) trace('no progress for ' + " +
+				"    if ((trLastT >= 0) && trLastWall && (now - trLastWall > 400)) trace('no progress for ' + " +
 				"(now - trLastWall) + 'ms at t=' + t.toFixed(2));\n" +
 
 				"    trLastT = t;\n" +

@@ -1159,6 +1159,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	private View keyboardTarget;
 	private int keyboardLift;
 	private boolean imeAnimating;
+	/** The keyboard's height in the last frame of its animation (see ImeFollower). */
+	private int lastIme;
 	private boolean imeCallbackSet;
 	@Nullable
 	private ValueAnimator keyboardAnim;
@@ -1252,7 +1254,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			if (!imeAnimating) return insets;
 			// The target keeps its place in the page while the keyboard goes down (the field lost the focus
 			// already), so the lift shrinks with the keyboard.
-			setKeyboardLift(liftFor(insets.getInsets(android.view.WindowInsets.Type.ime()).bottom));
+			lastIme = insets.getInsets(android.view.WindowInsets.Type.ime()).bottom;
+			setKeyboardLift(liftFor(lastIme));
 			return insets;
 		}
 
@@ -1260,7 +1263,13 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		public void onEnd(android.view.WindowInsetsAnimation an) {
 			if (!isIme(an)) return;
 			imeAnimating = false;
-			settleKeyboardLift();
+			// Where the animation left the keyboard, not the window's insets: right at the end of a hide (a Back
+			// swipe) those can still report the keyboard for a moment, which lifted the page back up for a frame.
+			int lift = liftFor(lastIme);
+			if (lastIme == 0) keyboardTarget = null;
+			if (keyboardAnim != null) keyboardAnim.cancel();
+			keyboardAnim = null;
+			setKeyboardLift(lift);
 		}
 	}
 

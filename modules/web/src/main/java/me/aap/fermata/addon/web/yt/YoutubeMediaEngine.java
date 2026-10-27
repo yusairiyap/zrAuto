@@ -264,7 +264,9 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		String id = currentVideoId;
 
 		// Downloaded: carries on from the file, from the very same spot -- no popup needed.
-		if ((id != null) && YtDownloads.get().isDownloaded(id)) {
+		if ((id != null) && YtOffline.hasCopy(id)) {
+			// Streamed on purpose (forceStream) but the connection gave out: the file after all.
+			if (YtOffline.isForcedStream(id)) YtOffline.clearForcedStream();
 			PlayableItem item = currentAsItem(a, id);
 			web.getPosition().main().onCompletion((pos, err) -> {
 				if (cb.getEngine() != this) return;
@@ -408,8 +410,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				!jsVideoId.isEmpty() ? jsVideoId : YoutubeVideoItem.extractVideoId(web.getUrl());
 		YoutubeAddon addon = web.getAddon();
 
-		// A downloaded video never streams: the file plays instead, from where the page just started.
-		if ((actualId != null) && YtDownloads.get().isDownloaded(actualId) && (cb.getEngine() == this)) {
+		// A downloaded video never streams: the file plays instead, from where the page just started. Unless it is
+		// streamed on purpose (YtOffline#forceStream: a sound-only download watched, the current video picked in
+		// the alternatives); a quality change used to send it back to the file here, and the file was refused.
+		if ((actualId != null) && YtOffline.useLocal(actualId) && (cb.getEngine() == this)) {
 			switchPageToDownload(actualId);
 			return;
 		}
@@ -953,6 +957,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				(playRetries < MAX_PLAY_RETRIES) && (now - lastActivePlayTime < PLAY_RETRY_GRACE_MS)) {
 			playRetries++;
 			Log.i("YoutubeMediaEngine.paused(): retrying play(), attempt ", playRetries);
+			DiagnosticLog.log("YT", "page paused right after play: play again", "attempt=" + playRetries,
+					"id=" + currentVideoId, "size=" + web.getWidth() + 'x' + web.getHeight());
 			web.play();
 			return;
 		}
