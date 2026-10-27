@@ -351,6 +351,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 
 	public void onDestroyView() {
 		if (live == this) live = null;
+		resetKeyboardLift();
 		nowBg.stop();
 		if (bgFade != null) bgFade.cancel();
 		prefs.removeBroadcastListener(this);
@@ -425,6 +426,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		if (!shown) return;
 		shown = false;
 		if (editing) setEditing(false);
+		resetKeyboardLift();
 		model.save();
 		HomeModal.dismissNow();
 		nowBg.stop();
@@ -966,6 +968,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	private void buildScroller(boolean down) {
 		Context ctx = palette.ctx;
 		if (scroller != null) {
+			resetKeyboardLift();
 			stopInsets();
 			root.removeView(fade);
 			if (grid.getParent() instanceof ViewGroup p) p.removeView(grid);
@@ -1095,6 +1098,129 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	}
 
 	private int insetTarget;
+
+	// ---------------------------------------------------------------------------------------------
+	// Keyboard
+
+	/** Checks after the keyboard was asked for, for when its animation is not reported (animations off, older Android). */
+	private static final long[] KEYBOARD_SETTLE_MS = {150, 450, 900};
+	@Nullable
+	private View keyboardTarget;
+	private int keyboardLift;
+	private boolean imeAnimating;
+	private boolean imeCallbackSet;
+	@Nullable
+	private ValueAnimator keyboardAnim;
+	private final int[] keyboardLoc = new int[2];
+	private final Runnable settleKeyboard = this::settleKeyboardLift;
+
+	@Override
+	public void followKeyboard(View target) {
+		if (car()) return;
+		keyboardTarget = target;
+		if ((android.os.Build.VERSION.SDK_INT >= 30) && !imeCallbackSet) {
+			imeCallbackSet = true;
+			root.setWindowInsetsAnimationCallback(new ImeFollower());
+		}
+		root.removeCallbacks(settleKeyboard);
+		for (long ms : KEYBOARD_SETTLE_MS) root.postDelayed(settleKeyboard, ms);
+	}
+
+	/** How far the page must be lifted for the target's bottom to clear a keyboard {@code ime} pixels high. */
+	private int liftFor(int ime) {
+		View t = keyboardTarget;
+		if ((t == null) || (ime <= 0) || !t.isAttachedToWindow() || (fade == null)) return 0;
+		t.getLocationInWindow(keyboardLoc);
+		// Where the card sits without the lift.
+		int top = keyboardLoc[1] + keyboardLift;
+		int bottom = top + t.getHeight();
+		int keyboardTop = root.getRootView().getHeight() - ime;
+		int lift = Math.max(0, bottom + HomeUi.dp(palette.ctx, 16) - keyboardTop);
+		// Never past the top of the window: a card taller than the room left keeps its top in view.
+		return Math.max(0, Math.min(lift, top - HomeUi.dp(palette.ctx, 8)));
+	}
+
+	private void setKeyboardLift(int lift) {
+		keyboardLift = lift;
+		if (fade != null) fade.setTranslationY(-lift);
+	}
+
+	private int imeHeight() {
+		if (android.os.Build.VERSION.SDK_INT >= 30) {
+			android.view.WindowInsets wi = root.getRootWindowInsets();
+			return (wi == null) ? 0 : wi.getInsets(android.view.WindowInsets.Type.ime()).bottom;
+		}
+		android.graphics.Rect r = new android.graphics.Rect();
+		View rv = root.getRootView();
+		rv.getWindowVisibleDisplayFrame(r);
+		int h = rv.getHeight() - r.bottom;
+		// Anything smaller is the system navigation bar, not a keyboard.
+		return (h > rv.getHeight() * 0.15f) ? h : 0;
+	}
+
+	/** Brings the lift to where the keyboard is now, gliding, unless the keyboard's own animation is driving it. */
+	private void settleKeyboardLift() {
+		if (imeAnimating) return;
+		int ime = imeHeight();
+		int want = liftFor(ime);
+		if (ime == 0) keyboardTarget = null;
+		if (keyboardAnim != null) keyboardAnim.cancel();
+		keyboardAnim = null;
+		if (want == keyboardLift) return;
+		DiagnosticLog.log("HOME", "keyboard lift", "ime=" + ime, "lift=" + want);
+		ValueAnimator va = ValueAnimator.ofInt(keyboardLift, want);
+		va.setDuration(220);
+		va.setInterpolator(new DecelerateInterpolator());
+		va.addUpdateListener(an -> setKeyboardLift((Integer) an.getAnimatedValue()));
+		keyboardAnim = va;
+		va.start();
+	}
+
+	/** Follows the keyboard frame by frame as it slides in and out (Android 11+), so the page moves with it. */
+	@androidx.annotation.RequiresApi(30)
+	private final class ImeFollower extends android.view.WindowInsetsAnimation.Callback {
+		ImeFollower() {
+			super(DISPATCH_MODE_CONTINUE_ON_SUBTREE);
+		}
+
+		private boolean isIme(android.view.WindowInsetsAnimation an) {
+			return (an.getTypeMask() & android.view.WindowInsets.Type.ime()) != 0;
+		}
+
+		@Override
+		public void onPrepare(android.view.WindowInsetsAnimation an) {
+			if (!isIme(an)) return;
+			imeAnimating = true;
+			if (keyboardAnim != null) keyboardAnim.cancel();
+			keyboardAnim = null;
+		}
+
+		@Override
+		public android.view.WindowInsets onProgress(android.view.WindowInsets insets,
+																								List<android.view.WindowInsetsAnimation> running) {
+			if (!imeAnimating) return insets;
+			// The target keeps its place in the page while the keyboard goes down (the field lost the focus
+			// already), so the lift shrinks with the keyboard.
+			setKeyboardLift(liftFor(insets.getInsets(android.view.WindowInsets.Type.ime()).bottom));
+			return insets;
+		}
+
+		@Override
+		public void onEnd(android.view.WindowInsetsAnimation an) {
+			if (!isIme(an)) return;
+			imeAnimating = false;
+			settleKeyboardLift();
+		}
+	}
+
+	/** Drops the lift at once (the tab is going, or the page is built again). */
+	private void resetKeyboardLift() {
+		root.removeCallbacks(settleKeyboard);
+		if (keyboardAnim != null) keyboardAnim.cancel();
+		keyboardAnim = null;
+		keyboardTarget = null;
+		setKeyboardLift(0);
+	}
 
 	private void applyGreeting() {
 		boolean show = prefs.getBooleanPref(car() ? MainActivityPrefs.HOME_GREETING_AA : MainActivityPrefs.HOME_GREETING);

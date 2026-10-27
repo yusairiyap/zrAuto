@@ -45,4 +45,11 @@ public interface HomeHost {
 																	me.aap.fermata.ui.view.GlassLens[] slot) {
 		return false;
 	}
+
+	/**
+	 * A text field in {@code target} took the focus: while the soft keyboard is up, the whole page glides up with it
+	 * so the card stays above the keyboard (the window is not resized for it), and back down as it goes.
+	 */
+	default void followKeyboard(android.view.View target) {
+	}
 }

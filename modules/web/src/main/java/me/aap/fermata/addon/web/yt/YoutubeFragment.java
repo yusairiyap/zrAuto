@@ -850,6 +850,10 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	/** Shows what this tab's page is playing as fullscreen video (the Music tab's "Video"). */
 	void enterVideoFullScreen() {
 		if (isHidden() || MusicPlayer.isYoutubeAudioMode()) return;
+		if (holdsFullScreen()) {
+			DiagnosticLog.log("YT", "fullscreen held: search panel open");
+			return;
+		}
 		FermataWebView v = getWebView();
 		FermataChromeClient chrome = (v != null) ? v.getWebChromeClient() : null;
 		if ((chrome != null) && !DEFAULT_URLS.contains(getUrl())) chrome.enterFullScreen();
@@ -869,6 +873,10 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 
 			FermataChromeClient chrome = v.getWebChromeClient();
 			if (chrome == null) return;
+			if (holdsFullScreen()) {
+				DiagnosticLog.log("YT", "fullscreen held: search panel open");
+				return;
+			}
 
 			if (!DEFAULT_URLS.contains(getUrl())) chrome.enterFullScreen();
 		} else if (YoutubeMediaEngine.isYoutubeItem(oldItem)) {
@@ -1200,6 +1208,8 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		// and the field starts empty rather than holding the last query or a stale title.
 		clearSearch();
 		showSearchPanel();
+		// The open panel holds fullscreen off from here (and a result tapped in it may go fullscreen).
+		searchPendingUntil = 0;
 		MainActivityDelegate a = MainActivityDelegate.get(requireContext());
 		a.post(() -> YoutubeToolBarMediator.getInstance().focusSearchField(a, keyboard));
 	}
@@ -1208,16 +1218,34 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	 * A search asked for from elsewhere (Home's search widget): the YouTube tab comes up with the results in its search panel,
 	 * dropping out of fullscreen as the search button does. The page keeps playing inline.
 	 */
+	/** How long a search asked for from elsewhere keeps the page out of fullscreen while the tab comes up. */
+	private static final long SEARCH_HOLD_MS = 4000;
+	/** The extra wait before the panel opens on a tab that was only just made (see searchFor). */
+	private static final long FRESH_TAB_DELAY_MS = 350;
+	/** Until then (uptime) the page is not put in fullscreen by itself: a search is on its way to the panel. */
+	long searchPendingUntil;
+
+	/** Whether the search panel is open or about to be: no automatic fullscreen over it. */
+	private boolean holdsFullScreen() {
+		return isSearchPanelShown() || (android.os.SystemClock.uptimeMillis() < searchPendingUntil);
+	}
+
 	static void searchFor(Context ctx, String query) {
 		MainActivityDelegate.getActivityDelegate(ctx).onSuccess(a -> {
+			// The first time, the tab (and its WebView) is made now: that takes a moment, so the panel waits a little
+			// longer before it slides down, or both animations stutter.
+			boolean fresh = !(a.getFragment(me.aap.fermata.R.id.youtube_fragment) instanceof YoutubeFragment);
 			if (!(a.showFragment(me.aap.fermata.R.id.youtube_fragment) instanceof YoutubeFragment f)) return;
+			// Until the panel is down, nothing may put the page in fullscreen over it: a freshly made tab restores the
+			// last video, and its playable change used to bring the fullscreen video up instead of the results.
+			f.searchPendingUntil = android.os.SystemClock.uptimeMillis() + SEARCH_HOLD_MS;
 			// As the search button does it: once the tab has faded in, the panel opens (leaving fullscreen, so a video
 			// playing as music or fullscreen is not what stays on screen), and the query runs only when the panel has
 			// slid down, not while it moves.
 			a.postDelayed(() -> {
 				f.startSearch(false);
 				a.postDelayed(() -> f.search(query), YoutubeSearchPanel.SLIDE_MS);
-			}, f.getFadeInDelayMillis() + f.getFadeInMillis());
+			}, f.getFadeInDelayMillis() + f.getFadeInMillis() + (fresh ? FRESH_TAB_DELAY_MS : 0));
 		});
 	}
 

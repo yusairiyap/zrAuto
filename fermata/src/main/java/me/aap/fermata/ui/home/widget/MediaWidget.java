@@ -221,9 +221,7 @@ final class MediaWidget extends HomeWidgetView {
 		texts.setOrientation(LinearLayout.VERTICAL);
 		title = text(ROLE_PRIMARY, 17, true);
 		title.setSingleLine(true);
-		title.setEllipsize(android.text.TextUtils.TruncateAt.MARQUEE);
-		title.setMarqueeRepeatLimit(2);
-		title.setHorizontallyScrolling(true);
+		applyTitleScroll();
 		artist = text(ROLE_SECONDARY, 13.5f, false);
 		artist.setSingleLine(true);
 		artist.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -317,8 +315,11 @@ final class MediaWidget extends HomeWidgetView {
 		wash.setVisibility(ownBackground() ? VISIBLE : GONE);
 		boolean dark = lightText();
 		badge.setBackground(HomeUi.round(dark ? 0x88000000 : 0x26000000, px(10)));
+		// The eye beside it wears the very same fill, so the two read as a pair.
 		chip.setBackground(HomeUi.pressable(dark ? 0x33FFFFFF : host.palette().chipRipple,
 				dark ? 0x44000000 : host.palette().chipFill, px(17)));
+		eye.setBackground(HomeUi.pressable(dark ? 0x33FFFFFF : host.palette().chipRipple,
+				dark ? 0x44000000 : host.palette().chipFill, px(18)));
 		if (mode >= 0) scrim.setBackground(scrimFor(mode));
 		seek.invalidate();
 		invalidate();
@@ -331,7 +332,27 @@ final class MediaWidget extends HomeWidgetView {
 		l.add(HomeOption.sw("seek", ctx.getString(R.string.home_opt_seek), true));
 		l.add(HomeOption.sw("chip", ctx.getString(R.string.home_opt_video_chip), true));
 		l.add(HomeOption.sw("eye", ctx.getString(R.string.home_opt_cover_chip), true));
+		l.add(HomeOption.sw("marquee", ctx.getString(R.string.home_opt_title_scroll), false));
 		return l;
+	}
+
+	/**
+	 * A long title ends in an ellipsis unless "Scroll a long title" is on: a scrolling title redraws the screen every
+	 * frame while it moves, which at a high refresh rate is a real cost on Home (the Music tab holds 60 Hz for that).
+	 */
+	private void applyTitleScroll() {
+		boolean scroll = optBool("marquee", false);
+		if (title.getEllipsize() != null && scroll == (title.getEllipsize() == android.text.TextUtils.TruncateAt.MARQUEE)) return;
+		if (scroll) {
+			title.setEllipsize(android.text.TextUtils.TruncateAt.MARQUEE);
+			title.setMarqueeRepeatLimit(2);
+			title.setHorizontallyScrolling(true);
+			title.setSelected(true);
+		} else {
+			title.setSelected(false);
+			title.setHorizontallyScrolling(false);
+			title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+		}
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -373,6 +394,7 @@ final class MediaWidget extends HomeWidgetView {
 		// The hide / show covers button, and the card without its cover while covers are hidden.
 		boolean showEye = !strip && optBool("eye", true);
 		boolean hid = layoutHidden;
+		applyTitleScroll();
 		int pad = px(14);
 
 		// The cover is a square that keeps its shape at any size, dissolving into the blurred wash
@@ -574,6 +596,7 @@ final class MediaWidget extends HomeWidgetView {
 
 	@Override
 	protected void onBind() {
+		if (title != null) applyTitleScroll();
 		if (mode >= 0) applyMode();
 	}
 
@@ -614,7 +637,7 @@ final class MediaWidget extends HomeWidgetView {
 		enginePos = -1;
 		swap(title, pi.getName());
 		swap(artist, pi instanceof MusicTrackItem t && t.getArtistName() != null ? t.getArtistName() : "");
-		title.setSelected(true);
+		if (title.getEllipsize() == android.text.TextUtils.TruncateAt.MARQUEE) title.setSelected(true);
 		setBusy(true);
 		pi.getMediaData().main().onCompletion((md, err) -> {
 			if (gen != generation) return;
