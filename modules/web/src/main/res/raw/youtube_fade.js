@@ -236,7 +236,22 @@
       return;
     }
     // -1: no warm-up; 0: warming up (silent); 1: done (went back to the start).
-    let warm = (cfg.warmup && !isAd() && !gainParam(v)) ? 0 : -1; // the effects path keeps its own fade
+    let warm = (cfg.warmup && !isAd()) ? 0 : -1;
+    // The effects path (the equalizer's gain stage) is held at 0 the same way; set here, not through ramp(), which would clear
+    // this very timer when the equalizer takes the element over in the middle of the warm-up.
+    let gainSilenced = false;
+    const silenceGain = (p) => {
+      try {
+        p.gain.cancelScheduledValues(0);
+        p.gain.setValueAtTime(0, p.ctx.currentTime);
+      } catch (err) { /* context gone */ }
+      if (s.usedElement) {
+        s.usedElement = false;
+        try { v.volume = s.base; } catch (err) { /* ignore */ }
+      }
+      s.level = 0;
+      gainSilenced = true;
+    };
     let startAt = 0;
     ramp(v, (warm === 0) ? 0 : START_LEVEL, 0);
     let t0 = -1;
@@ -258,13 +273,16 @@
       } else {
         pausedSince = 0;
       }
-      if (gainParam(v)) {
-        // The equalizer took over: once the sound flows, one sample-accurate curve on its gain.
-        if (v.paused || (v.readyState < 3)) return;
+      const p = gainParam(v);
+      if (p && (warm !== 0)) {
+        // The equalizer took over: once the sound flows, one sample-accurate curve on its gain. After a warm-up the gain sits
+        // at 0, so the curve starts from START_LEVEL as it would have without one.
+        if (v.paused || v.seeking || (v.readyState < 3)) return;
         clearTimers(s);
-        ramp(v, 1, START_FADE_S * 1000, null, rise);
+        ramp(v, 1, START_FADE_S * 1000, null, (warm === 1) ? (f, to, k) => rise(START_LEVEL, to, k) : rise);
         return;
       }
+      if (p && !gainSilenced) silenceGain(p);
       if (v.paused || v.seeking) return;
       const t = v.currentTime;
       if (t0 < 0) {

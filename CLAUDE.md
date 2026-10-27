@@ -1535,7 +1535,8 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
      `FermataFade` `cfg.warmup`, `WARM_S` 0.6 in `youtube_fade.js#startFade`): a new video plays its first 0.6 s of playback time at
      volume 0, then goes back to where it started (`v.currentTime = startAt`: 0:00, or the resume point) and the usual fade-in runs from
      there. Seeks were never heard to stutter, so the sound output's start-up hiccup happens while silent; the cost is a ~0.6 s later start.
-     Element-volume path only (the effects path, `gainParam`, keeps its own fade). Trace: `start warm-up: 0.6xs played silently, back to 0.00`.
+     The effects path (Web Audio, `gainParam`) is held at 0 too (`silenceGain`, set directly: `ramp()` would clear the warm-up's own timer
+     when the equalizer takes the element over mid-way), and its curve then starts from `START_LEVEL` as without a warm-up. Trace: `start warm-up: 0.6xs played silently, back to 0.00`.
      If it works, mark this item resolved; if the stutter moves to after the warm-up (see the `start clock` line), it is not the output's start.
      To take it out: the setting, or the `warm` lines in `startFade`, the pref, its two strings and the `warmup` in both `configure` calls.
    - Diagnostic lines to ask for: `YT media` (playing / waiting / seeking / `start fade:` / `start clock per 100 ms:`), `STATE start load`,
