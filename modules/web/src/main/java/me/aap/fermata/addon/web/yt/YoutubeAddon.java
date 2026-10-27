@@ -75,8 +75,6 @@ public class YoutubeAddon extends WebBrowserAddon
 	private static final String[] QUALITY_LABELS = {null, null, "2160p", "1440p", "1080p", "720p",
 			"480p", "360p", "240p", "144p"};
 	private static final Pref<BooleanSupplier> YT_SKIP_ADD = Pref.b("YT_SKIP_ADD", true);
-	/** A new video starts only once a little of it is buffered (youtube_startgate.js). */
-	private static final Pref<BooleanSupplier> YT_START_GATE = Pref.b("YT_START_GATE", true);
 	private static final Pref<BooleanSupplier> YT_START_WARMUP = Pref.b("YT_START_WARMUP", true);
 	/** How many of the videos on the user's YouTube feed float around on the suggestions tab. */
 	static final Pref<IntSupplier> BUBBLES_COUNT = Pref.i("YT_BUBBLES_COUNT", 12);
@@ -710,16 +708,12 @@ public class YoutubeAddon extends WebBrowserAddon
 		return prefs.contains(YT_SKIP_ADD);
 	}
 
-	boolean startGate() {
-		return getPreferenceStore().getBooleanPref(YT_START_GATE);
-	}
-
 	boolean startWarmup() {
 		return getPreferenceStore().getBooleanPref(YT_START_WARMUP);
 	}
 
-	boolean startGateChanged(List<Pref<?>> prefs) {
-		return prefs.contains(YT_START_GATE) || prefs.contains(YT_START_WARMUP);
+	boolean warmupChanged(List<Pref<?>> prefs) {
+		return prefs.contains(YT_START_WARMUP);
 	}
 
 	@NonNull
@@ -915,14 +909,6 @@ public class YoutubeAddon extends WebBrowserAddon
 			o.store = getPreferenceStore();
 			o.pref = YT_SKIP_ADD;
 			o.title = R.string.try_to_skip_ad;
-			o.visibility = visibility;
-		});
-
-		set.addBooleanPref(o -> {
-			o.store = getPreferenceStore();
-			o.pref = YT_START_GATE;
-			o.title = R.string.yt_start_gate;
-			o.subtitle = R.string.yt_start_gate_sub;
 			o.visibility = visibility;
 		});
 

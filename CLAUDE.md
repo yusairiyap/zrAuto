@@ -1451,33 +1451,19 @@ pause source.
   `YtOffline.forceStream` + `startTrack(.., watch)`); Play as music goes back to the file from the video's position
   (`playCurrentAsMusic`, `YtOffline#isForcedStream`, `clearForcedStream`).
 
-### YouTube start gate (against the stutter at a song's start; easy to take out)
+### YouTube start-up (the stutter at a song's start)
 
-`modules/web/src/main/res/raw/youtube_startgate.js`, injected first by `YoutubeWebView#injectStartGate`, YouTube setting "Wait for a song to
-buffer before it starts" (`YT_START_GATE`, on by default). It wraps `HTMLMediaElement.prototype.play`: the first `play()` of a video after
-its `loadstart` is held (the promise stays pending; nothing is paused, no event is made up) until 2 s are buffered ahead of the playback
-point, or 1 s with `readyState` 4, or 3 s have passed. A resume, a seek or a later play is never held. `youtube_fade.js` leaves a held
-element alone (`__fermataGate`: not "loaded but left paused"). The `YT media` trace has `start gate: holding / open after N ms` lines
-for the first 8 s after a switch. **To turn it off**: the setting. **To take it out**: delete the script, `YoutubeStartGateScript`, the
-`injectStartGate` call and the one `__fermataGate` check in `youtube_fade.js` (all in one commit). If a start ever hangs, look there first.
-
-What the first device log showed: YouTube's player does not start a queued video through `play()` on the element (`loadVideoById`
-starts it inside), so the held `play()` never engaged on a skip. The likely stutter is another thing: **YouTube's player pauses the
-element a moment after a new video starts**, and the app heard of it over the bridge and played again (`YoutubeMediaEngine#paused`'s
-retry, now logged as `YT page paused right after play: play again`; when the retry did not stick it showed "Window too small to play
-video"). The same script now undoes such a pause in the page itself, in the same task: within 1.5 s of a video's first `playing`, a pause
-that is not the app's (`FermataFade.pause` marks `__fermataAppPauseAt`) and not a tap (`navigator.userActivation`) is followed by `play()`
-at once, and that `pause` and the `play` after it are stopped at the window (capture) so neither the app nor the fade nor YouTube's own
-listeners see them (at most 2 per video). Trace line: `start gate: the page paused the start, played on at once`. The `YT media` trace
-now also writes `pause` / `play` events and progress gaps over 400 ms.
+A "start gate" script (`youtube_startgate.js`, setting "Wait for a song to buffer before it starts") was tried and **removed**: in every
+device log it never held a song (`open at once`, 14 to 28 s already buffered; YouTube starts a queued video inside `loadVideoById`, not
+through the element's `play()`), and its two safety nets (undoing a pause YouTube makes in the first 1.5 s, nudging a start that says
+`playing` but does not move) never fired. If "Window too small to play video" or a song held at 0:00 after `playing` comes back, those are
+the two cases it handled; `YoutubeMediaEngine#paused` still retries a page pause right after a start (`YT page paused right after play`).
+The stutter turned out to be the sound output starting up; see open issue 6 (the silent warm-up).
 - **Forced streams are respected by the YouTube engine**: `YoutubeMediaEngine#playing` sends a downloaded video to its file only when
   `YtOffline.useLocal` says so (a sound-only download watched streamed changed quality and was sent back to the file, then refused:
   "Not downloaded, and there is no connection"); a stall of a forced stream clears it and plays the file. Watching a sound-only download
   turns music mode off before the page sets the video up, so it gets the usual quality, not 144p.
-- **A start that says `playing` but does not move** (a device log: a song held at 0:00 for 5 s after `playing`, then `waiting`
-  and a second start): `youtube_startgate.js#watchStart` watches the clock (not `timeupdate`, which stops while stuck) for 8 s
-  after a video's first `playing`; stuck 700 ms with data buffered, it seeks to where it is (at most twice, setting on), else
-  only traces `start gate: no progress at t=`. The `YT media` trace now also writes `loadstart` and `emptied` (a reload).
+- The `YT media` trace writes `loadstart`, `emptied`, `play`, `pause`, `seeking` and progress gaps over 400 ms in the first seconds of a song.
 - **Music mode reaches the page while a file plays** (`YoutubeHooks#applyQuality(a, eng)`): with a downloaded file as the player,
   the page's engine still gets the new quality policy, so a sound-only download watched streamed gets the preferred quality, not
   music mode's 144p. Back to music from it: the file starts at the video's position first, music mode follows 1 s later
@@ -1518,7 +1504,7 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
    the best lead so far, from the device log of Oct 28:
    - **Ruled out**: the app's own work (`STATE start load` small: main thread late at most ~20 ms, no blocking GC; the one bad case,
      66 ms / 3 GCs, was the first play right after an app start), seeks, pauses and waits after `playing` (none traced), the new-song
-     fade (heard with it switched off, a test setting since removed; its trace shows even 10 ms steps), the start gate (never engaged),
+     fade (heard with it switched off, a test setting since removed; its trace shows even 10 ms steps), the start gate (never engaged, since removed),
      YouTube pausing the start (never happened), Web Audio (`fade=element`, not in the path).
    - **Seen with a stutter**: the song's clock 1 s after `playing` was 1.08 (ran ~80 ms ahead) for one stuttered song, but 1.00 for
      another ("iPod Touch") whose fade trace had one 28% step in a 16 ms tick, i.e. the clock jumped ~100 ms inside the first 0.5 s

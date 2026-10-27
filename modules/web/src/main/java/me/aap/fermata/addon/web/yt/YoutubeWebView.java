@@ -190,7 +190,7 @@ public class YoutubeWebView extends FermataWebView {
 		if (YoutubeSponsorBlock.isPreferenceChanged(prefs)) injectSponsorBlock();
 		if (getAddon().eqPrefsChanged(prefs)) configureEqualizer();
 		if (getAddon().skipAdChanged(prefs)) attachAdObserver();
-		if (getAddon().startGateChanged(prefs)) configureStartGate();
+		if (getAddon().warmupChanged(prefs)) configureWarmup();
 	}
 
 	@Override
@@ -208,7 +208,6 @@ public class YoutubeWebView extends FermataWebView {
 
 	@Override
 	protected void pageLoaded(String uri) {
-		injectStartGate();
 		injectFade();
 		injectScrollWatch();
 		pinPageBars();
@@ -918,20 +917,8 @@ public class YoutubeWebView extends FermataWebView {
 				YoutubeSponsorBlock.getConfigJson(getAddon().getPreferenceStore()) + ");", null);
 	}
 
-	/**
-	 * A new video starts only once a little of it is buffered (youtube_startgate.js, YouTube setting "Wait for a song to
-	 * buffer before it starts"): against the stall right after a song's start. Self-contained; delete this call and the
-	 * script to take it out.
-	 */
-	private void injectStartGate() {
-		String script = YoutubeStartGateScript.getScript(getContext());
-		if (!script.isEmpty()) evaluateJavascript(script, result -> configureStartGate());
-	}
-
-	private void configureStartGate() {
-		evaluateJavascript("if (window.FermataStartGate) window.FermataStartGate.configure({on: " +
-				getAddon().startGate() + ", traceEvent: " + JS_AUDIO_TRACE + "});" +
-				"if (window.FermataFade) window.FermataFade.configure({warmup: " + getAddon().startWarmup() + "});", null);
+	private void configureWarmup() {
+		evaluateJavascript("if (window.FermataFade) window.FermataFade.configure({warmup: " + getAddon().startWarmup() + "});", null);
 	}
 
 	/**

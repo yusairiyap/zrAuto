@@ -262,8 +262,7 @@
     s.timer = setInterval(() => {
       // Loaded but left paused (a cued video, a reload while paused): stop and put the volume back
       // rather than tick on, holding it at START_LEVEL; 'playing' starts the fade again if it comes.
-      // (Not while the start gate holds its first play(), youtube_startgate.js: it is about to play.)
-      if (v.paused && (v.readyState >= 2) && !v.__fermataGate) {
+      if (v.paused && (v.readyState >= 2)) {
         if (!pausedSince) pausedSince = Date.now();
         else if (Date.now() - pausedSince > 1000) {
           clearTimers(s);
@@ -479,8 +478,6 @@
       const finish = () => {
         try {
           if (stop) v.currentTime = 0;
-          // The app's own pause: youtube_startgate.js never undoes it.
-          v.__fermataAppPauseAt = Date.now();
           v.pause();
         } catch (err) { /* element gone */ }
         restoreSilently(v);

@@ -19,10 +19,8 @@
     <string name="preferred_video_quality">Preferred video quality</string>
     <string name="video_quality_highest">Highest available</string>
     <string name="try_to_skip_ad">Try to skip advertising</string>
-    <string name="yt_start_gate">Wait for a song to buffer before it starts</string>
     <string name="yt_start_warmup">Warm up the sound before a song starts</string>
     <string name="yt_start_warmup_sub">Each new video plays its first moment silently and starts again from the beginning, so the hiccup of the sound starting up is not heard. Songs start about half a second later</string>
-    <string name="yt_start_gate_sub">Starts a new video a moment later, once a little of it is loaded, so its first seconds do not stutter</string>
     <string name="sponsorblock" translatable="false">SponsorBlock</string>
     <string name="sponsorblock_sub">Skip crowd-sourced segments while watching YouTube.</string>
     <string name="sponsorblock_enable">Enable SponsorBlock</string>
