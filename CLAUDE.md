@@ -1371,3 +1371,55 @@ pause source.
   "restored, the app closes" message the wizard goes to a page of its own (`restoredPage`, shown alone: `restored` makes `active()` return only
   it) saying the app has to restart; its button calls `Utils.restartApp` (starts the launch intent with NEW_TASK|CLEAR_TASK, then ends the
   process 300 ms later). Not run on a device. Back does nothing there. The file-picker route (no system picker) keeps the old message and exit.
+
+## Home: comments, search, stack manager, timer picks, widget scale
+
+- **YouTube comments widget** (`ui/home/widget/CommentsWidget`): the top (or Newest) comments of the playing video, from `YtComments`.
+  `YtComments.firstPage(videoId, newest)` is the one first-page path: the comments card's Newest is the same request (load, then the
+  `sortNew` token). The header or a row opens `YoutubeCommentsView.showForCurrent`. Options: "Which comments", "Profile pictures".
+- **YouTube search widget** (`ui/home/widget/SearchWidget`): typed text gets `YoutubeSearch.suggest` chips, an empty field gets the past
+  searches (`MusicPlayer.youtubeSearchHistory`, which follows "Remember searches"; a long press removes one). Enter, the button or a chip
+  calls `MusicPlayer.searchYoutube` -> `YoutubeFragment.searchFor`: the tab fades in, `startSearch(false)` opens the panel the way the search
+  button does, and the query runs `YoutubeSearchPanel.SLIDE_MS` later. The layout follows the card's width in dp (`ICON_BELOW_DP`,
+  `CHIPS_IN_STRIP_DP`) and height (`chipRoom`): one unit high = input plus one row of chips; two rows fit = wrapped, else one scrolling row.
+  On the car screen the field is not focusable; a tap opens the panel. **Keyboard: the card does not yet move above the keyboard (open, see
+  the list below).** `revealField` uses the IME inset and logs `HOME keyboard reveal`.
+- **Widget size and space** (per screen, Settings > Home): `HOME_SCALE` (40-150%) and `HOME_PADDING` (-1 = automatic, else dp, both sides, centred).
+  `HomeGridLayout#setScale` and `onMeasure`: the card size is `base * scale` and the lanes (columns, or rows sideways) are as many as fit at
+  that size (`lanes`, capped by `MAX_LANES`); `colLead` centres the leftover when scrolling down. Freeflow scales its places
+  (`placeFree`/`dropFree` store positions at scale 1). `HomeLayoutPreview` mirrors the same rule. `arrange()` clamps spans to `lanes`.
+- **Sleep timer picks** (`TimerWidget`): option "Pick the items" (a chip card): the lengths shown, or "Recommended" (`RECOMMENDED`),
+  which ranks lengths by how often each was started (`uses`, counted per widget). `minutesToShow` thins the pool to the slots that fit.
+- **Stack manager** (`ui/home/HomeStackManager`): card menu > "Manage stack" (below "Take out of the stack"). A `RecyclerView` in a
+  `HomeModal`: `ItemTouchHelper` drag by the handle (lifted, rows move; `HomeModel#moveInStack` keeps the top item on top), the minus removes
+  one with Undo (`HomeModel#remove`/`restore`), and "Add a widget to this stack" opens `HomePickers.showAdd` (the Home add picker), then the
+  window reopens. Each change calls `HomeGridLayout#stackEdited` (sync, changed, save).
+- **Library back navigation** (`LibraryWidget#backOut`): the rows and the back chip change only while the list is hidden; the chip collapses
+  without an animation (`showBack(on, false)`), so the list does not slide as it fades back in.
+- **Diagnostics**: the comments loader no longer logs (the old COMMENTS/YTCOMMENTS lines were removed). Keyboard reveal logs `HOME keyboard reveal`.
+- **Device status**: tested on the tablet and working: the comments widget, the search widget (except the keyboard, open below), the timer chips,
+  widget size and space around widgets. Not run on a device yet: the stack manager and the add picker, the UI style on the car screen.
+
+## Open issues (handover list)
+
+These are the open items to take up next, in a new session or on a new branch. Each is a prompt: the first line says what is wrong.
+
+1. **Next plays the downloaded copy and the queue collapses to one track.** On a Favorites or playlist entry, Next hands a downloaded next
+   track to the UI (`MediaSessionCallback.handOverYoutube` -> `YtOffline.tryPlayLocal` -> `MusicPlayer.play(a, item, true)`), and that
+   path can replace the queue with that single track. Also check the "playing the downloaded copy" branch in `YoutubeMediaEngine#prepare`.
+   Reproduce with a playlist whose next track is downloaded, and read the TRANSPORT, YTDL and MUSIC lines around one Next press.
+2. **The YouTube page reports `ended` about 10 s into a song, right after the app paused it.** The log shows `YT paused (app asked)` and then
+   `YT video ended` with no `stuck` tag, so it is the page's own `ended` (`YoutubeWebView#interceptEndedJs`), not the end check. A guard
+   that ignored it was tried and reverted; find what fires the event instead.
+3. **The search widget does not move above the keyboard.** When the field gets focus the card stays under the keyboard
+   (`SearchWidget#revealField`). Read the `HOME keyboard reveal` lines (bottom, keyboardTop, over, scroller) from one attempt first.
+4. **Media card art looks blocky on One UI** (1280x720 art).
+5. **A YouTube hand-over whose page never starts leaves the local engine muted with no error.**
+6. **A micro-stutter at the start of a YouTube song on the Music tab** (play, tiny pause, play). See the "Open" note in the playback section.
+7. **Back with YouTube comments open pauses the video** (the "Open issue" section above). Needs the BACK, VIDEO and YT lines around one Back press.
+8. **Rapid edit-mode toggling crashed on Android Auto** (fourteenth round). No stack trace yet; read the crash from the Diagnostic log.
+9. **A song sometimes does not continue to the next one** (fourteenth round). Needs TRANSPORT and YT lines around the end of the song.
+10. **Ambience audio focus on the car screen is unconfirmed** (ninth round).
+11. **Never run on a device** (listed in the sections above): Ambience (synth, weather, recorded loops), the glass blur and UI style, the
+    power tracker, Share (NSD), YouTube comments and captions against live YouTube, the lyrics page, the welcome wizard's restore, the Home
+    layout on the car screen, and the stack manager, timer picks and widget size on Android Auto.
