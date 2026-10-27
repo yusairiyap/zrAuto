@@ -160,6 +160,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	// MediaSessionCallback#onPause()), as opposed to the page pausing on its own. Consumed by
 	// paused() below, which is reached either way, to tell those two apart.
 	private boolean appRequestedPause;
+	/** When the app last asked the page to pause (see {@link #ended()}). */
+	private long appPauseAt;
+	/** A page's 'ended' this soon after the app paused, well before the end, is not the end. */
+	private static final long APP_PAUSE_END_MS = 1500;
 	// SystemClock.elapsedRealtime() of the last pause the page reported that the app never asked for
 	// -- what an Android Auto host interruption (a reversing/360 camera or the car's own system
 	// taking the projected screen) looks like from here: the page stops playing on its own, with no
@@ -712,6 +716,12 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	void ended() {
+		// The page's own 'ended' can arrive right after the app asked for a pause, ten seconds into a song (seen in the Diagnostic
+		// log, with no stuck check involved). A real end while paused is still caught by stuckAtEnd(), so it is not taken here.
+		if ((System.currentTimeMillis() - appPauseAt) < APP_PAUSE_END_MS) {
+			DiagnosticLog.log("YT", "video ended ignored: right after the app paused", "id=" + currentVideoId);
+			return;
+		}
 		// Repeat One loops whatever video is currently playing, regardless of whether it's part of a
 		// Favorites/Playlist queue (see YoutubeAddon#isRepeatOneEnabled()) -- handled here directly,
 		// short-circuiting before current becomes end/cb.onEngineEnded() runs, so it works the exact
@@ -1288,6 +1298,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// the app asking the page to pause, which is exactly what lastExternalPauseTime must not count.
 		if (!ignorePause) {
 			appRequestedPause = true;
+			appPauseAt = System.currentTimeMillis();
 			web.pause();
 		}
 	}

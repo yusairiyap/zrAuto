@@ -49,8 +49,10 @@ final class SearchWidget extends HomeWidgetView {
 	private static final int ICON_BELOW_DP = 150;
 	/** One unit high, the chips fit under the input from this width. */
 	private static final int CHIPS_IN_STRIP_DP = 260;
-	/** The keyboard takes a moment to come up and resize the window; then the card is scrolled into view. */
-	private static final long KEYBOARD_REVEAL_MS = 350;
+	/** The keyboard takes a moment to come up and resize the window: the card is checked again as it does. */
+	private static final long[] KEYBOARD_REVEAL_MS = {250, 600, 1000};
+	/** The room between the chips and the input. */
+	private static final int CHIPS_GAP_DP = 10;
 
 	private LinearLayout column;
 	private LinearLayout header;
@@ -115,7 +117,9 @@ final class SearchWidget extends HomeWidgetView {
 		});
 		// The keyboard comes up over the bottom of the screen: once it is, the card is scrolled above it.
 		field.setOnFocusChangeListener((v, focused) -> {
-			if (focused) postDelayed(this::revealField, KEYBOARD_REVEAL_MS);
+			if (!focused) return;
+			// The window shrinks as the keyboard comes up, a little after; the card is checked again as it does.
+			for (long ms : KEYBOARD_REVEAL_MS) postDelayed(this::revealField, ms);
 		});
 		field.addTextChangedListener(new TextWatcher() {
 			@Override
@@ -157,7 +161,9 @@ final class SearchWidget extends HomeWidgetView {
 		wrap.setVerticalScrollBarEnabled(false);
 		wrap.addView(wrapChips, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
 				ViewGroup.LayoutParams.WRAP_CONTENT));
-		body.addView(wrap, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+		LinearLayout.LayoutParams wlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+		wlp.topMargin = px(CHIPS_GAP_DP);
+		body.addView(wrap, wlp);
 
 		rowChips = new ChipFlowLayout(ctx);
 		rowChips.setOneRow(true);
@@ -165,7 +171,9 @@ final class SearchWidget extends HomeWidgetView {
 		row.setHorizontalScrollBarEnabled(false);
 		row.addView(rowChips, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
 				ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
-		body.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+		LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+		rlp.topMargin = px(CHIPS_GAP_DP);
+		body.addView(row, rlp);
 		column.addView(body, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 		content.addView(column, new FrameLayout.LayoutParams(-1, -1));
 
@@ -237,9 +245,21 @@ final class SearchWidget extends HomeWidgetView {
 		if (chipsShown && shownQueries.isEmpty() && fieldText().isEmpty()) showHistory();
 	}
 
-	/** Typing into the field on a phone: the keyboard covers the bottom of the screen, so the card is scrolled above it. */
+	/**
+	 * Typing into the field on a phone: the window is resized above the keyboard, so if the card reaches below its bottom edge,
+	 * the scroller it sits in is moved up by that much (the whole layout moves, the card with it).
+	 */
 	private void revealField() {
-		requestRectangleOnScreen(new Rect(0, 0, getWidth(), getHeight()), true);
+		if (!field.hasFocus()) return;
+		Rect visible = new Rect();
+		getWindowVisibleDisplayFrame(visible);
+		int[] loc = new int[2];
+		getLocationOnScreen(loc);
+		int over = loc[1] + getHeight() - visible.bottom + px(16);
+		if (over <= 0) return;
+		android.view.ViewParent p = getParent();
+		while ((p != null) && !(p instanceof ScrollView)) p = p.getParent();
+		if (p instanceof ScrollView sv) sv.smoothScrollBy(0, over);
 	}
 
 	@Override
