@@ -1310,7 +1310,7 @@ and the start log is gone. The lesson: a string-array pref read can be null; nev
 future's completion handler is silent: if a start path shows nothing, look for an exception swallowed there first (the temporary
 fix for that was a log written to a file a file manager can reach, e.g. via MediaStore Downloads).
 
-## Open issue: Back closes the YouTube comments, but the video pauses (not solved)
+## Back closes the YouTube comments, but the video pauses (tested OK on device)
 
 Status: the page-side consume (the first hide returning early, and its time guard) was reverted, so Back with
 the comments open once again leaves fullscreen (and the column closes with it); the comment view's own Back
@@ -1403,6 +1403,7 @@ pause source.
 ## Open issues (handover list)
 
 These are the open items to take up next, in a new session or on a new branch. Each is a prompt: the first line says what is wrong.
+Items marked resolved were tested OK on the device; the numbers are kept so references stay stable.
 
 1. **Next plays the downloaded copy and the queue collapses to one track.** On a Favorites or playlist entry, Next hands a downloaded next
    track to the UI (`MediaSessionCallback.handOverYoutube` -> `YtOffline.tryPlayLocal` -> `MusicPlayer.play(a, item, true)`), and that
@@ -1416,10 +1417,10 @@ These are the open items to take up next, in a new session or on a new branch. E
 4. **Media card art looks blocky on One UI** (1280x720 art).
 5. **A YouTube hand-over whose page never starts leaves the local engine muted with no error.**
 6. **A micro-stutter at the start of a YouTube song on the Music tab** (play, tiny pause, play). See the "Open" note in the playback section.
-7. **Back with YouTube comments open pauses the video** (the "Open issue" section above). Needs the BACK, VIDEO and YT lines around one Back press.
-8. **Rapid edit-mode toggling crashed on Android Auto** (fourteenth round). No stack trace yet; read the crash from the Diagnostic log.
+7. ~~**Back with YouTube comments open pauses the video**~~ **Resolved: tested OK on device.**
+8. ~~**Rapid edit-mode toggling crashed on Android Auto**~~ **Resolved: tested OK on device.**
 9. **A song sometimes does not continue to the next one** (fourteenth round). Needs TRANSPORT and YT lines around the end of the song.
-10. **Ambience audio focus on the car screen is unconfirmed** (ninth round).
-11. **Never run on a device** (listed in the sections above): Ambience (synth, weather, recorded loops), the glass blur and UI style, the
-    power tracker, Share (NSD), YouTube comments and captions against live YouTube, the lyrics page, the welcome wizard's restore, the Home
-    layout on the car screen, and the stack manager, timer picks and widget size on Android Auto.
+10. ~~**Ambience audio focus on the car screen is unconfirmed**~~ **Resolved: tested OK on device.**
+11. ~~**Never run on a device**~~ **Resolved: the items listed as never run on a device (Ambience, the glass blur and UI style, the power
+    tracker, Share, YouTube comments and captions, the lyrics page, the welcome wizard's restore, the Home layout on the car screen, and the
+    stack manager, timer picks and widget size on Android Auto) were tested OK by the user.**
