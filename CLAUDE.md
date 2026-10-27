@@ -1459,6 +1459,14 @@ now also writes `pause` / `play` events and progress gaps over 400 ms.
   `YtOffline.useLocal` says so (a sound-only download watched streamed changed quality and was sent back to the file, then refused:
   "Not downloaded, and there is no connection"); a stall of a forced stream clears it and plays the file. Watching a sound-only download
   turns music mode off before the page sets the video up, so it gets the usual quality, not 144p.
+- **A start that says `playing` but does not move** (a device log: a song held at 0:00 for 5 s after `playing`, then `waiting`
+  and a second start): `youtube_startgate.js#watchStart` watches the clock (not `timeupdate`, which stops while stuck) for 8 s
+  after a video's first `playing`; stuck 700 ms with data buffered, it seeks to where it is (at most twice, setting on), else
+  only traces `start gate: no progress at t=`. The `YT media` trace now also writes `loadstart` and `emptied` (a reload).
+- **Music mode reaches the page while a file plays** (`YoutubeHooks#applyQuality(a, eng)`): with a downloaded file as the player,
+  the page's engine still gets the new quality policy, so a sound-only download watched streamed gets the preferred quality, not
+  music mode's 144p. Back to music from it: the file starts at the video's position first, music mode follows 1 s later
+  (switched while the page still played, its quality reload handed the song to the file from 0:00).
 - **The keyboard lift ends where the animation left the keyboard** (`ImeFollower#onEnd`, `lastIme`), not on the window insets, which can
   still report the keyboard right at the end of a Back-swipe hide (the flicker).
 

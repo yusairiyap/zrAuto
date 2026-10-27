@@ -285,8 +285,19 @@ public class YoutubeAddon extends WebBrowserAddon
 		}
 
 		@Override
-		public void applyQuality(@Nullable MediaEngine eng) {
-			if (eng instanceof YoutubeMediaEngine yt) yt.applyQuality();
+		public void applyQuality(MainActivityDelegate a, @Nullable MediaEngine eng) {
+			if (eng instanceof YoutubeMediaEngine yt) {
+				yt.applyQuality();
+				return;
+			}
+			// A downloaded file plays (a sound-only download about to be watched streamed): the page is not the player,
+			// but the video it loads next must get the quality of the mode asked for. Left as it was, it kept music
+			// mode's lowest (144p) now and then.
+			MainActivityDelegate p = a.getPlaybackDelegate();
+			if (!(p.getFragment(getFragmentId()) instanceof YoutubeFragment f)) return;
+			YoutubeWebView web = f.getWebView();
+			YoutubeMediaEngine e = (web == null) ? null : web.getEngine();
+			if (e != null) e.applyQuality();
 		}
 
 		@Override

@@ -126,7 +126,62 @@
     if (!v || (v.tagName !== 'VIDEO') || !v.__fermataStarting) return;
     v.__fermataStarting = false;
     v.__fermataFirstPlayingAt = Date.now();
+    watchStart(v);
   }, true);
+
+  // A start that says 'playing' but does not move: seen in a log, a song held at 0:00 for 5 s after 'playing' (the
+  // element thought it had plenty buffered), then a wait and a second start, heard as a stutter. 'timeupdate' does not
+  // fire while it is stuck, so this watches the clock: for the first WATCH_MS of a video, when the time has not moved
+  // for STUCK_MS while it should be playing with data there, the pipeline is nudged with a seek to where it is (the
+  // usual cure for a media pipeline stuck at its start), at most twice. Without data it is only traced (the network).
+  const WATCH_MS = 8000;
+  const STUCK_MS = 700;
+  const MAX_NUDGES = 2;
+
+  function watchStart(v) {
+    if (v.__fermataWatch) clearInterval(v.__fermataWatch);
+    const src = v.currentSrc;
+    const t0 = Date.now();
+    let lastT = v.currentTime;
+    let movedAt = Date.now();
+    let nudges = 0;
+    let traced = false;
+    v.__fermataWatch = setInterval(function() {
+      const now = Date.now();
+      if ((now - t0 > WATCH_MS) || (v.currentSrc !== src) || v.ended) {
+        clearInterval(v.__fermataWatch);
+        v.__fermataWatch = 0;
+        return;
+      }
+      if (v.paused || v.seeking) {
+        lastT = v.currentTime;
+        movedAt = now;
+        return;
+      }
+      const t = v.currentTime;
+      if (Math.abs(t - lastT) > 0.01) {
+        lastT = t;
+        movedAt = now;
+        traced = false;
+        return;
+      }
+      if (now - movedAt < STUCK_MS) return;
+      const a = ahead(v);
+      if (cfg.on && (v.readyState >= 3) && (a > 0.3) && (nudges < MAX_NUDGES)) {
+        nudges++;
+        trace('stuck at t=' + t.toFixed(2) + ' for ' + (now - movedAt) + 'ms with ' + a.toFixed(1) +
+          's buffered: nudged (' + nudges + ')');
+        try {
+          v.currentTime = t;
+        } catch (err) { /* element gone */ }
+        movedAt = now;
+      } else if (!traced) {
+        traced = true;
+        trace('no progress at t=' + t.toFixed(2) + ' for ' + (now - movedAt) + 'ms, ready=' + v.readyState +
+          ' ahead=' + a.toFixed(1) + (cfg.on ? '' : ' (start gate off)'));
+      }
+    }, 150);
+  }
 
   window.addEventListener('pause', function(e) {
     const v = e.target;

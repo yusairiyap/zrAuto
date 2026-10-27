@@ -91,7 +91,11 @@ public final class MusicPlayer {
 		 * Applies {@link #isYoutubeAudioMode()} to {@code eng}'s video quality, if {@code eng} is the
 		 * YouTube player: the lowest while playing as music, the usual one otherwise.
 		 */
-		void applyQuality(@Nullable MediaEngine eng);
+		/**
+		 * Music mode changed: the YouTube page's quality follows. {@code eng} is the engine playing; when it is not the
+		 * page's (a downloaded file plays), the page is set for the video it loads next.
+		 */
+		void applyQuality(MainActivityDelegate a, @Nullable MediaEngine eng);
 
 		/**
 		 * Shows the YouTube tab's search / Up next panel over whatever is playing, without
@@ -249,7 +253,7 @@ public final class MusicPlayer {
 		DiagnosticLog.log(TAG, "YouTube " + (on ? "music mode (lowest video quality)" : "video mode"));
 		MainActivityDelegate a = activity.get();
 		YoutubeHooks h = youtube;
-		if ((h != null) && (a != null)) h.applyQuality(a.getMediaSessionCallback().getEngine());
+		if ((h != null) && (a != null)) h.applyQuality(a, a.getMediaSessionCallback().getEngine());
 	}
 
 	/**
@@ -828,12 +832,19 @@ public final class MusicPlayer {
 				// again, from where the video is.
 				if (yt && (playing != null) && YtOffline.isForcedStream(playing.getVideoId()) &&
 						playing.isAudioOnlyDownload()) {
-					DiagnosticLog.log(TAG, "back to music: the downloaded copy", "id=" + playing.getVideoId());
-					YtOffline.clearForcedStream();
-					setYoutubeAudioMode(true);
 					open(a);
 					eng.getPosition().main().onSuccess(pos -> {
-						if (cb.getEngine() == eng) startTrack(a, playing, pos, false);
+						if (cb.getEngine() != eng) return;
+						long at = (pos == null) ? 0 : pos;
+						DiagnosticLog.log(TAG, "back to music: the downloaded copy", "id=" + playing.getVideoId(),
+								"pos=" + (at / 1000) + 's');
+						YtOffline.clearForcedStream();
+						playing.getPrefs().setPositionPref(at);
+						startTrack(a, playing, at, false);
+						// Music mode (the page's lowest quality) only once the file is the player: switched while the page
+						// still played, the page reloaded its video for the new quality, saw it was downloaded now and handed
+						// it to the file from where the reload started (the song began again).
+						a.getHandler().postDelayed(() -> setYoutubeAudioMode(true), 1000);
 					});
 					return;
 				}

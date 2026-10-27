@@ -593,7 +593,7 @@ public class YoutubeWebView extends FermataWebView {
 				"        } catch (x) {}\n" +
 				"      }\n" +
 				// Only what tells of a hitch is written; the others just reset the progress watch.
-				"      if ((n === 'playing') || (n === 'waiting') || (n === 'stalled') || (n === 'pause') || (n === 'play'))\n" +
+				"      if ((n !== 'seeking'))\n" +
 				"        trace(n + ' t=' + v.currentTime.toFixed(2) + ' vol=' + v.volume.toFixed(2) + " +
 				"' ready=' + v.readyState + fade);\n" +
 				"    }, true);\n" +
