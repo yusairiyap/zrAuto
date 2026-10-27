@@ -77,6 +77,7 @@ public class YoutubeAddon extends WebBrowserAddon
 	private static final Pref<BooleanSupplier> YT_SKIP_ADD = Pref.b("YT_SKIP_ADD", true);
 	/** A new video starts only once a little of it is buffered (youtube_startgate.js). */
 	private static final Pref<BooleanSupplier> YT_START_GATE = Pref.b("YT_START_GATE", true);
+	private static final Pref<BooleanSupplier> YT_START_FADE = Pref.b("YT_START_FADE", true);
 	/** How many of the videos on the user's YouTube feed float around on the suggestions tab. */
 	static final Pref<IntSupplier> BUBBLES_COUNT = Pref.i("YT_BUBBLES_COUNT", 12);
 	static final int BUBBLES_TAP_AUTO = 0;
@@ -713,8 +714,12 @@ public class YoutubeAddon extends WebBrowserAddon
 		return getPreferenceStore().getBooleanPref(YT_START_GATE);
 	}
 
+	boolean startFade() {
+		return getPreferenceStore().getBooleanPref(YT_START_FADE);
+	}
+
 	boolean startGateChanged(List<Pref<?>> prefs) {
-		return prefs.contains(YT_START_GATE);
+		return prefs.contains(YT_START_GATE) || prefs.contains(YT_START_FADE);
 	}
 
 	@NonNull
@@ -918,6 +923,14 @@ public class YoutubeAddon extends WebBrowserAddon
 			o.pref = YT_START_GATE;
 			o.title = R.string.yt_start_gate;
 			o.subtitle = R.string.yt_start_gate_sub;
+			o.visibility = visibility;
+		});
+
+		set.addBooleanPref(o -> {
+			o.store = getPreferenceStore();
+			o.pref = YT_START_FADE;
+			o.title = R.string.yt_start_fade;
+			o.subtitle = R.string.yt_start_fade_sub;
 			o.visibility = visibility;
 		});
 

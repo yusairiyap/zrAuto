@@ -42,7 +42,15 @@
   const MIN_ELEMENT_VOLUME = 0.001;
   const STEP_MS = 10;
 
-  const cfg = {endingEvent: 0};
+  // startFade: false starts a new video at full volume (YouTube setting "Fade in each new song"), to tell a stutter
+  // the fade-in makes from one the player makes.
+  const cfg = {endingEvent: 0, startFade: true};
+
+  function trace(msg) {
+    try {
+      if (window.__fermataTrace) window.__fermataTrace(msg);
+    } catch (err) { /* no tracer */ }
+  }
 
   function isAd() {
     return !!window.__fermataAdShowing;
@@ -219,13 +227,16 @@
     const s = state(v);
     clearTimers(s);
     s.pausing = false;
-    if (pageHidden()) {
+    if (pageHidden() || !cfg.startFade) {
       ramp(v, 1, 0); // throttled timers: a few coarse jumps would be worse than none
       return;
     }
     ramp(v, START_LEVEL, 0);
     let t0 = -1;
     let pausedSince = 0;
+    // How evenly the fade ran: a page busy starting the video delays these 10 ms ticks, and the level then
+    // stays low and jumps (heard as a dip). Traced once the fade is done.
+    let ticks = 0, lastTick = 0, maxGap = 0, maxJump = 0;
     s.timer = setInterval(() => {
       // Loaded but left paused (a cued video, a reload while paused): stop and put the volume back
       // rather than tick on, holding it at START_LEVEL; 'playing' starts the fade again if it comes.
@@ -254,8 +265,18 @@
         t0 = Math.max(0, t - 0.05);
       }
       const k = Math.min(1, Math.max(0, (t - t0) / START_FADE_S));
+      const now = performance.now();
+      if (lastTick) maxGap = Math.max(maxGap, now - lastTick);
+      lastTick = now;
+      ticks++;
+      const before = s.level;
       applyElementLevel(v, s, rise(START_LEVEL, 1, k));
-      if (k >= 1) clearTimers(s);
+      maxJump = Math.max(maxJump, s.level - before);
+      if (k >= 1) {
+        clearTimers(s);
+        trace('start fade: ' + ticks + ' steps, longest gap ' + Math.round(maxGap) + 'ms, biggest step ' +
+          Math.round(maxJump * 100) + '%');
+      }
     }, STEP_MS);
   }
 

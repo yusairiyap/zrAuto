@@ -567,6 +567,8 @@ public class YoutubeWebView extends FermataWebView {
 				"    if (Date.now() < (window.__fermataTraceUntil || 0)) " + JS_EVENT + "(" + JS_AUDIO_TRACE +
 				", msg);\n" +
 				"  };\n" +
+				// For the other scripts (youtube_fade.js: how evenly a new song's fade-in ran).
+				"  window.__fermataTrace = trace;\n" +
 				"  ['playing', 'waiting', 'stalled', 'loadstart', 'emptied', 'seeking', 'pause', 'play'].forEach(function(n) {\n" +
 				"    document.addEventListener(n, function(e) {\n" +
 				"      var v = e.target;\n" +
@@ -911,7 +913,8 @@ public class YoutubeWebView extends FermataWebView {
 
 	private void configureStartGate() {
 		evaluateJavascript("if (window.FermataStartGate) window.FermataStartGate.configure({on: " +
-				getAddon().startGate() + ", traceEvent: " + JS_AUDIO_TRACE + "});", null);
+				getAddon().startGate() + ", traceEvent: " + JS_AUDIO_TRACE + "});" +
+				"if (window.FermataFade) window.FermataFade.configure({startFade: " + getAddon().startFade() + "});", null);
 	}
 
 	/**
@@ -969,7 +972,7 @@ public class YoutubeWebView extends FermataWebView {
 		if (script.isEmpty()) return;
 		evaluateJavascript(script, result -> evaluateJavascript(
 				"if (window.FermataFade) window.FermataFade.configure({endingEvent: " + JS_VIDEO_ENDING +
-						"});", null));
+						", startFade: " + getAddon().startFade() + "});", null));
 	}
 
 	private void injectEqualizer() {
