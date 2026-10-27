@@ -575,6 +575,9 @@ public class YoutubeWebView extends FermataWebView {
 				"      var fade = '';\n" +
 				"      if (n === 'playing') {\n" +
 				"        trPlayT = v.currentTime; trPlayWall = Date.now();\n" +
+				// A start that took long (seconds of buffering) is still traced for its first seconds of sound.
+				"        if (Date.now() < (window.__fermataTraceUntil || 0)) window.__fermataTraceUntil = " +
+				"Math.max(window.__fermataTraceUntil, Date.now() + 5000);\n" +
 				"        try {\n" +
 				"          var eq = window.FermataEqualizer, g = eq && eq.fadeParam && eq.fadeParam(v);\n" +
 				"          fade = ' fade=' + (g ? 'gain' : 'element');\n" +
@@ -592,9 +595,8 @@ public class YoutubeWebView extends FermataWebView {
 				"          }\n" +
 				"        } catch (x) {}\n" +
 				"      }\n" +
-				// Only what tells of a hitch is written; the others just reset the progress watch.
-				"      if ((n !== 'seeking'))\n" +
-				"        trace(n + ' t=' + v.currentTime.toFixed(2) + ' vol=' + v.volume.toFixed(2) + " +
+				// A seek is written too, with where it went: one at a song's start is heard as a stutter.
+				"      trace(n + ' t=' + v.currentTime.toFixed(2) + ' vol=' + v.volume.toFixed(2) + " +
 				"' ready=' + v.readyState + fade);\n" +
 				"    }, true);\n" +
 				"  });\n" +

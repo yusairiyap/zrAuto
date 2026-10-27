@@ -1417,6 +1417,12 @@ pause source.
   react to a new song (never fullscreen video). The current song's captions wait until it is steady too (3.5 s at most). Every song start
   writes `STATE start load: main late max=..ms over50=.. gc=+.. blocking=+.. (..ms)`: how late a 100 ms main-thread tick came at worst
   and the garbage collections in its first 3 s. A stutter with big numbers there is the app's own work; with small ones, the page.
+- **A cover missing on Home's card while the Music tab had it** (videos with no maxresdefault.jpg, the 480x270 ones): the session, Home and
+  the Music tab downloaded the same picture into the same file at once, and the one that found YouTube's grey placeholder deleted the file
+  while another still read it; that one failed with no fallback. `BitmapCache#loadHttpBitmap` now shares a download under way
+  (`httpLoads`), and a maxresdefault.jpg that does not decode falls back to hqdefault.jpg. Home logs `ART no cover for Home` if it still gets none.
+- **Seeks while a song starts are traced**: the page's `YT media seeking t=` (where it went) and `YT seek while starting` with the two
+  callers when the app asks for it; a start that took long is traced for 5 s after its `playing`.
 - **Home's media card asks the player for its position every 3 s**, not every 500 ms tick (for YouTube each ask is a script in the
   playing page); in between it counts on from the last answer, and asks again after a seek or a play/pause change.
 - **Its title ends in an ellipsis** unless the card's "Scroll a long title" option (`marquee`) is on: a scrolling title redraws every

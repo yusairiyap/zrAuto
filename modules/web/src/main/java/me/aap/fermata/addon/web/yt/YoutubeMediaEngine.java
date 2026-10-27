@@ -1379,6 +1379,12 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	@Override
 	public void setPosition(long position) {
+		// Which part of the app seeks, for a seek heard as a stutter at a song's start (the page's trace shows the seek itself).
+		if (!me.aap.fermata.util.PlaybackCalm.isSteady()) {
+			StackTraceElement[] st = new Throwable().getStackTrace();
+			DiagnosticLog.log("YT", "seek while starting", "pos=" + position, (st.length > 1) ? st[1] : null,
+					(st.length > 2) ? st[2] : null);
+		}
 		web.setPosition(position);
 	}
 

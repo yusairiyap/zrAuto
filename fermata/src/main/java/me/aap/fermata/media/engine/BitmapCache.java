@@ -366,8 +366,27 @@ public class BitmapCache {
 		}
 	}
 
-	@SuppressWarnings("ResultOfMethodCallIgnored")
+	/**
+	 * Picture downloads under way, by address, cache key and size. The session's metadata, Home's card and the Music tab
+	 * all ask for a new song's cover at the same moment; each used to download it into the same file, and when YouTube
+	 * had no maxresdefault.jpg one of them deleted that file (the grey placeholder) while another was still reading it,
+	 * which then failed with no fallback: the card stayed without a cover. Now the later callers share the first download.
+	 */
+	private final Map<String, FutureSupplier<Bitmap>> httpLoads = new ConcurrentHashMap<>();
+
 	private FutureSupplier<Bitmap> loadHttpBitmap(String uri, String cacheUri, int size) {
+		String key = uri + '\n' + cacheUri + '\n' + size;
+		FutureSupplier<Bitmap> running = httpLoads.get(key);
+		if (running != null) return running;
+		FutureSupplier<Bitmap> f = loadHttpBitmap0(uri, cacheUri, size);
+		if (f.isDone()) return f;
+		httpLoads.put(key, f);
+		f.onCompletion((bm, err) -> httpLoads.remove(key, f));
+		return f;
+	}
+
+	@SuppressWarnings("ResultOfMethodCallIgnored")
+	private FutureSupplier<Bitmap> loadHttpBitmap0(String uri, String cacheUri, int size) {
 		String ytFallback = youtubeFallback(uri);
 		FutureSupplier<Status> download = downloadImage(uri);
 		// A failed maxresdefault.jpg is no reason to go without a thumbnail: hqdefault.jpg is tried.
@@ -393,6 +412,8 @@ public class BitmapCache {
 					File f = s.getLocalFile();
 					if (f != null) f.delete();
 					markInvalid(uri);
+					// An unreadable maxresdefault.jpg (cut short, or deleted under us): hqdefault.jpg still does.
+					if (ytFallback != null) return loadHttpBitmap(ytFallback, cacheUri, size);
 					return failed(new IOException("Failed to decode image: " + uri));
 				} else {
 					if (isLetterboxedYoutube(uri)) bm = cropLetterbox(bm);
@@ -406,6 +427,7 @@ public class BitmapCache {
 				}
 			} catch (Exception ex) {
 				markInvalid(uri);
+				if (ytFallback != null) return loadHttpBitmap(ytFallback, cacheUri, size);
 				return failed(ex);
 			}
 		});
