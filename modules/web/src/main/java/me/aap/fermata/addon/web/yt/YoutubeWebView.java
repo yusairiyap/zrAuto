@@ -577,6 +577,11 @@ public class YoutubeWebView extends FermataWebView {
 				"      var fade = '';\n" +
 				"      if (n === 'playing') {\n" +
 				"        trPlayT = v.currentTime; trPlayWall = Date.now();\n" +
+				// Where the song's clock is 1 s after 'playing': more than ~1.05 s means the first moment of sound was skipped
+				// (the clock ran before the sound came out), less means it was held.
+				"        (function(pv, t0, w0) { setTimeout(function() { if (!pv.paused) trace('1 s after playing: t=' + " +
+				"(pv.currentTime - t0).toFixed(2) + ' in ' + ((Date.now() - w0) / 1000).toFixed(2) + ' s'); }, 1000); })" +
+				"(v, v.currentTime, Date.now());\n" +
 				// A start that took long (seconds of buffering) is still traced for its first seconds of sound.
 				"        if (Date.now() < (window.__fermataTraceUntil || 0)) window.__fermataTraceUntil = " +
 				"Math.max(window.__fermataTraceUntil, Date.now() + 5000);\n" +
