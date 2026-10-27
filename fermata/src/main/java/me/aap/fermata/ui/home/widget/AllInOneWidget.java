@@ -41,11 +41,23 @@ final class AllInOneWidget extends TileWidget {
 	protected List<Pick> candidates() {
 		MainActivityDelegate a = host.activity();
 		List<Pick> l = new ArrayList<>();
-		for (Action action : AllInOneMenu.getItems(a)) {
+		for (Action action : actions(a)) {
 			l.add(new Pick(action.name(), ActionFabMediator.iconFor(a, action),
 					ctx.getString(ActionFabMediator.labelFor(a, action))));
 		}
 		return l;
+	}
+
+	/** The card's own actions, then the All in One chip itself (it opens the card, so it is off until picked). */
+	private static List<Action> actions(MainActivityDelegate a) {
+		List<Action> l = new ArrayList<>(AllInOneMenu.getItems(a));
+		l.add(Action.ALL_IN_ONE);
+		return l;
+	}
+
+	@Override
+	protected boolean defaultPicked(String key) {
+		return !Action.ALL_IN_ONE.name().equals(key);
 	}
 
 	@Override
@@ -63,7 +75,7 @@ final class AllInOneWidget extends TileWidget {
 		MainActivityDelegate a = host.activity();
 		boolean colour = optBool("colour", true);
 		int i = 0;
-		for (Action action : AllInOneMenu.getItems(a)) {
+		for (Action action : actions(a)) {
 			if (!isPicked(action.name())) continue;
 			int tint = colour ? hue(i++) : color(ROLE_ICON);
 			flow.addView(tile(ActionFabMediator.iconFor(a, action),

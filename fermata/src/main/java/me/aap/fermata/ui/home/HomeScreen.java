@@ -645,6 +645,8 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		if (changed.contains(MainActivityPrefs.HOME_ARRANGE) || changed.contains(MainActivityPrefs.HOME_COLUMNS) ||
 				changed.contains(MainActivityPrefs.HOME_GAP) || changed.contains(MainActivityPrefs.HOME_ARRANGE_AA) ||
 				changed.contains(MainActivityPrefs.HOME_COLUMNS_AA) || changed.contains(MainActivityPrefs.HOME_GAP_AA) ||
+				changed.contains(MainActivityPrefs.HOME_SCALE) || changed.contains(MainActivityPrefs.HOME_SCALE_AA) ||
+				changed.contains(MainActivityPrefs.HOME_PADDING) || changed.contains(MainActivityPrefs.HOME_PADDING_AA) ||
 				changed.contains(MainActivityPrefs.HOME_SNAP_GRID) || changed.contains(MainActivityPrefs.HOME_SNAP_GRID_AA)) {
 			applyArrangement();
 		}
@@ -837,12 +839,17 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		int gap = HomeUi.dp(ctx, Math.max(4, Math.min(20,
 				prefs.getIntPref(car() ? MainActivityPrefs.HOME_GAP_AA : MainActivityPrefs.HOME_GAP))));
 		if ((scroller == null) || (down != vertical)) buildScroller(down);
-		int side = HomeUi.dp(ctx, 12);
+		// The room outside the cards: the automatic one, or the one the user set (on both sides, so it stays centred).
+		int override = prefs.getIntPref(car() ? MainActivityPrefs.HOME_PADDING_AA : MainActivityPrefs.HOME_PADDING);
+		boolean auto = override < 0;
+		int side = HomeUi.dp(ctx, auto ? 12 : override);
+		int bottom = HomeUi.dp(ctx, auto ? 16 : override);
 		measureSideExtras(down);
-		if (vertical) grid.setPadding(side + extraLeft, 0, side + extraRight, HomeUi.dp(ctx, 16));
-		else grid.setPadding(side, HomeUi.dp(ctx, 58), side, HomeUi.dp(ctx, 8));
+		if (vertical) grid.setPadding(side + extraLeft, 0, side + extraRight, bottom);
+		else grid.setPadding(side, HomeUi.dp(ctx, 58), side, auto ? HomeUi.dp(ctx, 8) : bottom);
 		grid.setViewportWidth(vertical ? 0 : w, vertical ? Float.NaN : sidewaysCentre());
 		grid.setArrangement(vertical, count, gap);
+		grid.setScale(prefs.getIntPref(car() ? MainActivityPrefs.HOME_SCALE_AA : MainActivityPrefs.HOME_SCALE) / 100f);
 		grid.setFreeform(mode == 3);
 		// Each arrangement keeps its own sizes, places and order (see HomeModel#switchLayout).
 		// Portrait and landscape keep their own arrangements, each with its own sizes, places and order.

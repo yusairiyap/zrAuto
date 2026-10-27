@@ -701,8 +701,11 @@ abstract class LibraryWidget extends HomeWidgetView {
 		listView.animate().cancel();
 		listView.animate().alpha(0f).setDuration(120).withEndAction(() -> {
 			backing = false;
+			// The rows and the chip change while the list is hidden; the chip collapses without an animation, which would
+			// slide the list while it fades back in.
+			render();
 			// Something opened again meanwhile (a card made again reopening its playlist): its chip stays.
-			showBack(drillSource != null);
+			showBack(drillSource != null, false);
 			if (!loading) showRowsAgain();
 		}).start();
 		refresh(true);
@@ -723,7 +726,11 @@ abstract class LibraryWidget extends HomeWidgetView {
 	}
 
 	private void showBack(boolean on) {
-		if (host.animate() && isShown()) {
+		showBack(on, true);
+	}
+
+	private void showBack(boolean on, boolean animate) {
+		if (animate && host.animate() && isShown()) {
 			android.transition.AutoTransition t = new android.transition.AutoTransition();
 			t.setDuration(240);
 			android.transition.TransitionManager.beginDelayedTransition(column, t);
@@ -762,7 +769,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 			loadedAt = SystemClock.uptimeMillis();
 			rows = r;
 			total = n;
-			render();
+			// Going back: the rows are set once the list has faded out (see backOut), never while it is still visible.
+			if (!backing) render();
 			// Back to the playlists: once they are read and the list is hidden, it fades in.
 			if (!backing && (listView.getAlpha() < 1f)) showRowsAgain();
 		});

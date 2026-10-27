@@ -578,6 +578,8 @@ public class SettingsFragment extends MainActivityFragment
 				addNavTabsPrefs(a, aaSet);
 				addUpNextPrefs(a, aaSet);
 				addAAInterface(a, aaSet);
+				// The same UI style as the phone's: the glass look is one setting, kept on the car screen too.
+				addGlassPrefs(a, aaSet);
 				aaInterfaceSet = aaSet;
 			}
 			addGlassPrefs(a, sub1);

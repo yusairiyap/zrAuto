@@ -127,12 +127,18 @@ public interface MainActivityPrefs
 	/** Widgets across (down, when arranged sideways); 0 to fit the screen. */
 	Pref<IntSupplier> HOME_COLUMNS = Pref.i("HOME_COLUMNS", 0);
 	Pref<IntSupplier> HOME_GAP = Pref.i("HOME_GAP", 10);
+	/** How big the widgets are, in percent of their normal size; the places of Freeflow scale with them. */
+	Pref<IntSupplier> HOME_SCALE = Pref.i("HOME_SCALE", 100);
+	/** The room outside the widgets, in dp; -1 keeps the automatic one. */
+	Pref<IntSupplier> HOME_PADDING = Pref.i("HOME_PADDING", -1);
 	Pref<BooleanSupplier> HOME_GREETING = Pref.b("HOME_GREETING", true);
 	/** The car screen's own arrangement, spacing and greeting switch (its widgets are HOME_LAYOUT_AA). */
 	Pref<IntSupplier> HOME_ARRANGE_AA = Pref.i("HOME_ARRANGE_AA", 0);
 	Pref<BooleanSupplier> HOME_SNAP_GRID_AA = Pref.b("HOME_SNAP_GRID_AA", false);
 	Pref<IntSupplier> HOME_COLUMNS_AA = Pref.i("HOME_COLUMNS_AA", 0);
 	Pref<IntSupplier> HOME_GAP_AA = Pref.i("HOME_GAP_AA", 10);
+	Pref<IntSupplier> HOME_SCALE_AA = Pref.i("HOME_SCALE_AA", 100);
+	Pref<IntSupplier> HOME_PADDING_AA = Pref.i("HOME_PADDING_AA", -1);
 	Pref<BooleanSupplier> HOME_GREETING_AA = Pref.b("HOME_GREETING_AA", true);
 	/** What the greeting says in the morning, afternoon, evening and night; empty keeps the built-in words. */
 	Pref<Supplier<String>> HOME_GREET_MORNING = Pref.s("HOME_GREET_MORNING", (String) null);

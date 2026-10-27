@@ -293,6 +293,21 @@ public class YoutubeAddon extends WebBrowserAddon
 		}
 
 		@Override
+		public List<String> searchHistory() {
+			return getSearchHistory();
+		}
+
+		@Override
+		public void removeSearchHistory(String query) {
+			YoutubeAddon.this.removeSearchHistory(query);
+		}
+
+		@Override
+		public void searchInPanel(MainActivityDelegate a, String query) {
+			YoutubeFragment.searchFor(a.getContext(), query);
+		}
+
+		@Override
 		public boolean playVideoInPlace(MainActivityDelegate a, String videoId, @Nullable String title) {
 			if (!(a.getFragment(getFragmentId()) instanceof YoutubeFragment f)) return false;
 			YoutubeWebView web = f.getWebView();

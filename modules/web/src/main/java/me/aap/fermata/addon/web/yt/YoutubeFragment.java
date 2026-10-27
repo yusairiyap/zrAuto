@@ -1204,6 +1204,23 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		a.post(() -> YoutubeToolBarMediator.getInstance().focusSearchField(a, keyboard));
 	}
 
+	/**
+	 * A search asked for from elsewhere (Home's search widget): the YouTube tab comes up with the results in its search panel,
+	 * dropping out of fullscreen as the search button does. The page keeps playing inline.
+	 */
+	static void searchFor(Context ctx, String query) {
+		MainActivityDelegate.getActivityDelegate(ctx).onSuccess(a -> {
+			if (!(a.showFragment(me.aap.fermata.R.id.youtube_fragment) instanceof YoutubeFragment f)) return;
+			// As the search button does it: once the tab has faded in, the panel opens (leaving fullscreen, so a video
+			// playing as music or fullscreen is not what stays on screen), and the query runs only when the panel has
+			// slid down, not while it moves.
+			a.postDelayed(() -> {
+				f.startSearch(false);
+				a.postDelayed(() -> f.search(query), YoutubeSearchPanel.SLIDE_MS);
+			}, f.getFadeInDelayMillis() + f.getFadeInMillis());
+		});
+	}
+
 	/** See {@link #startSearch()}; {@code upNextOnly} just shows the panel. */
 	static void openSearch(Context ctx, boolean upNextOnly) {
 		// From a steering wheel key in car mode: no keyboard while driving, the chips are picked with

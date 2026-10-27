@@ -192,7 +192,6 @@ public final class YtComments {
 		}
 		p.views = views(watch);
 		p.likes = likes(watch);
-		me.aap.fermata.util.DiagnosticLog.log("COMMENTS", videoId, "views=" + p.views, "likes=" + p.likes);
 		return p;
 	}
 
@@ -296,6 +295,16 @@ public final class YtComments {
 				String.valueOf((long) Math.floor(v));
 		if (num.endsWith(".0")) num = num.substring(0, num.length() - 2);
 		return num + units[u];
+	}
+
+	/**
+	 * The first page of a video's comments as the comments card shows it: Top, or Newest, which is the page of the sort
+	 * token the first page carries (no token, no Newest, as the card's sort row is then hidden).
+	 */
+	public static Page firstPage(String videoId, boolean newest) throws IOException {
+		Page p = load(videoId);
+		if (newest && !p.disabled && (p.sortNew != null)) p = more(p.sortNew);
+		return p;
 	}
 
 	/**
@@ -619,10 +628,6 @@ public final class YtComments {
 					break;
 				}
 			}
-		}
-		if (replyParams == null) {
-			me.aap.fermata.util.DiagnosticLog.log("YTCOMMENTS", "no reply params", id,
-					"vm=" + vm.names(), "holder=" + holder.names());
 		}
 
 		return new Comment(id, (author == null) ? "" : author.optString("displayName"), avatar, text,

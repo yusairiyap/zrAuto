@@ -48,6 +48,12 @@ public final class HomeWidgets {
 			HomeWidgetType.builder("youtube", R.string.home_w_youtube, R.string.home_w_youtube_d,
 							R.drawable.youtube, 0xFFFF4E45, YoutubeWidget::new)
 					.sizes(2, 1, 4, 2, 8, 6).available(MusicPlayer::hasYoutube).build(),
+			HomeWidgetType.builder("comments", R.string.home_w_comments, R.string.home_w_comments_d,
+							R.drawable.comments, 0xFF4FC3F7, CommentsWidget::new)
+					.sizes(2, 1, 4, 3, 8, 6).available(MusicPlayer::hasYoutube).build(),
+			HomeWidgetType.builder("search", R.string.home_w_search, R.string.home_w_search_d,
+							R.drawable.search, 0xFFFF7043, SearchWidget::new)
+					.sizes(2, 1, 4, 2, 8, 3).available(MusicPlayer::hasYoutube).build(),
 			HomeWidgetType.builder("aio", R.string.home_w_aio, R.string.home_w_aio_d,
 							R.drawable.view_grid, 0xFF7FD6C8, AllInOneWidget::new)
 					.sizes(2, 1, 4, 1, 8, 4).build(),
