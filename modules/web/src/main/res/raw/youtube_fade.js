@@ -49,6 +49,11 @@
   // happens while the song is still silent. The cost: each song is heard about WARM_S later.
   const cfg = {endingEvent: 0, warmup: true};
   const WARM_S = 0.6;
+  // The first song of a freshly loaded page (a YouTube song after a local one, the first after an app start) warms up longer:
+  // there the sound output was still settling just after a 0.6 s warm-up (its reported latency changed between the
+  // two 'playing' events and the clock jumped ~70 ms right after the jump back).
+  const WARM_FIRST_S = 1.0;
+  let pageFirstStart = true;
 
   function trace(msg) {
     try {
@@ -239,6 +244,11 @@
     const hidden = pageHidden();
     // -1: no warm-up; 0: warming up (silent); 1: done (went back to the start).
     let warm = (cfg.warmup && !isAd()) ? 0 : -1;
+    let warmS = WARM_S;
+    if (warm === 0) {
+      if (pageFirstStart) warmS = WARM_FIRST_S;
+      pageFirstStart = false;
+    }
     // The effects path (the equalizer's gain stage) is held at 0 the same way; set here, not through ramp(), which would clear
     // this very timer when the equalizer takes the element over in the middle of the warm-up.
     let gainSilenced = false;
@@ -303,7 +313,7 @@
         }
       }
       if (warm === 0) {
-        if (t - t0 < WARM_S) return; // silent while the sound output gets going
+        if (t - t0 < warmS) return; // silent while the sound output gets going
         warm = 1;
         trace('start warm-up: ' + (t - t0).toFixed(2) + 's played silently, back to ' + startAt.toFixed(2) +
           (hidden ? ' (page hidden)' : ''));

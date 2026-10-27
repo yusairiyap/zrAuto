@@ -1537,6 +1537,8 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
      **A page loaded anew** (a YouTube song after a local one, the first song after an app start) is now covered: the fade script is
      also a document-start script (`YoutubeWebView#ensureEarlyFade`, `WebViewCompat.addDocumentStartJavaScript`, re-added when the
      warm-up setting changes), so it is in the page before its video autoplays; `pageLoaded` still injects it where that feature is missing.
+     The first song of a freshly loaded page warms up for 1 s (`WARM_FIRST_S`): after a local track the output was still settling just
+     after 0.6 s (`out=24ms` then `40ms` on the two `playing` lines, and a ~70 ms jump in the clock right after the jump back).
      A hidden page (the Music tab playing YouTube) used to skip `startFade` altogether (no warm-up, no fade); it now warms up too
      (`(page hidden)` on the trace line), its steps also driven from `timeupdate` in case the page's timers are held back, and the
      effects path's gain curves run whatever the page's visibility (they are sample-accurate in the audio renderer).
