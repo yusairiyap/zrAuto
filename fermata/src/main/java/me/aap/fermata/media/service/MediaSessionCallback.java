@@ -137,6 +137,7 @@ import me.aap.fermata.media.sub.SubGrid;
 import me.aap.fermata.media.sub.Subtitles;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.PlaybackCalm;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.fermata.ytdl.YtOffline;
 import me.aap.utils.async.FutureSupplier;
@@ -1973,6 +1974,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		}
 		currentState = state;
 		int st = state.getState();
+		PlaybackCalm.onState(st);
 		// Paused, stopped, an error...: whatever was stalled isn't anymore. Not on the way to the next
 		// item (skipping, connecting): its loading circle stays until it plays.
 		if ((st != STATE_PLAYING) && (st != STATE_BUFFERING) && (st != STATE_SKIPPING_TO_NEXT) &&

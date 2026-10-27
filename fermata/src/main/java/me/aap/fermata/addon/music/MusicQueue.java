@@ -420,6 +420,7 @@ public class MusicQueue extends ExtRoot {
 		if (missing.isEmpty()) return;
 
 		Thread th = new Thread(() -> {
+			android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
 			Handler main = new Handler(Looper.getMainLooper());
 			for (MusicTrackItem t : missing) {
 				String vid = t.getVideoId();
@@ -431,6 +432,8 @@ public class MusicQueue extends ExtRoot {
 					break;
 				}
 				if (channel == null) {
+					// A network look-up for a row's subtitle: after the song has started cleanly.
+					me.aap.fermata.util.PlaybackCalm.awaitSteady(10000);
 					me.aap.fermata.spotify.SpotifyImportModel.Video v = me.aap.fermata.spotify.YoutubeSearch.lookUpById(vid);
 					if (v != null) channel = v.channel;
 				}

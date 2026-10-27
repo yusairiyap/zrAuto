@@ -94,6 +94,14 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	/** The first screen since the app started: it stays invisible while the bars settle, then fades in once (like the Music tab). */
 	private boolean quiet;
 	private static final long QUIET_MS = 500;
+	/** After the page faded in, how long before the widgets read their lists (the start's last layout and binds). */
+	private static final long SETTLE_MS = 400;
+	/** Between two waiting widgets reading their lists, so their rows and pictures don't all land in one frame. */
+	private static final long SETTLE_STEP_MS = 70;
+	/** Process-wide: once the app has started, it stays started (Home made again later reads at once). */
+	private static boolean settled;
+	private static final java.util.ArrayDeque<Runnable> afterSettle = new java.util.ArrayDeque<>();
+	private static boolean settling;
 	private boolean entered;
 	private boolean barsApplied;
 	@Nullable
@@ -410,8 +418,10 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 					if (shown) enter.run();
 				}, QUIET_MS);
 			}
+			settleAfter(QUIET_MS + 350 + SETTLE_MS);
 		} else {
 			root.post(enter);
+			settleAfter(SETTLE_MS);
 		}
 		entered = true;
 		if (editOnShow) {
@@ -419,6 +429,42 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 			root.postDelayed(() -> {
 				if (shown) setEditing(true);
 			}, 500);
+		}
+	}
+
+	@Override
+	public boolean isSettled() {
+		return settled;
+	}
+
+	@Override
+	public void whenSettled(Runnable r) {
+		if (settled && afterSettle.isEmpty() && !settling) r.run();
+		else afterSettle.add(r);
+	}
+
+	/** Declares the start over {@code ms} from now, once the main thread is idle, and lets the widgets read in turn. */
+	private void settleAfter(long ms) {
+		if (settled || settling) return;
+		settling = true;
+		App.get().getHandler().postDelayed(() -> android.os.Looper.myQueue().addIdleHandler(() -> {
+			settled = true;
+			DiagnosticLog.log("STATE", "home settled", "waiting=" + afterSettle.size());
+			runNextSettled();
+			return false;
+		}), ms);
+	}
+
+	private static void runNextSettled() {
+		Runnable r = afterSettle.poll();
+		if (r == null) {
+			settling = false;
+			return;
+		}
+		try {
+			r.run();
+		} finally {
+			App.get().getHandler().postDelayed(HomeScreen::runNextSettled, SETTLE_STEP_MS);
 		}
 	}
 

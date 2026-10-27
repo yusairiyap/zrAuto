@@ -159,7 +159,11 @@ final class YoutubeWidget extends HomeWidgetView {
 	@Override
 	protected void onActive() {
 		host.activity().getMediaServiceBinder().addBroadcastListener(itemListener);
-		load(false);
+		// Right after the app starts, the network read waits until the start is over (see HomeHost#isSettled).
+		if (!host.isSettled()) host.whenSettled(() -> {
+			if (isActive()) load(false);
+		});
+		else load(false);
 	}
 
 	@Override

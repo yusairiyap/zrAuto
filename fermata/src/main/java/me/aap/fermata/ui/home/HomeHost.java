@@ -52,4 +52,17 @@ public interface HomeHost {
 	 */
 	default void followKeyboard(android.view.View target) {
 	}
+
+	/**
+	 * Whether the app's start is over: Home has faded in and the first burst of work is done. Until then widgets show
+	 * placeholders and leave reading the library (lists, pictures) for {@link #whenSettled}.
+	 */
+	default boolean isSettled() {
+		return true;
+	}
+
+	/** Runs {@code r} once the start is over (at once when it is), one waiting widget at a time. */
+	default void whenSettled(Runnable r) {
+		r.run();
+	}
 }

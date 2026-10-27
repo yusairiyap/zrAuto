@@ -80,6 +80,10 @@ final class MediaWidget extends HomeWidgetView {
 	private static final int LARGE_WIDE = 3;
 	private static final int LARGE_TALL = 4;
 	private static final long TICK_MS = 500;
+	/** How often the player itself is asked where it is while playing. */
+	private static final long ENGINE_POLL_MS = 3000;
+	/** How long its answer is counted on from (a bit over two asks, so a late answer does not drop back to the session's). */
+	private static final long ENGINE_TRUST_MS = 7000;
 
 	private Fader wash;
 	private Fader art;
@@ -807,7 +811,13 @@ final class MediaWidget extends HomeWidgetView {
 		MediaSessionCallback cb = a.getMediaSessionCallback();
 		PlaybackStateCompat st = cb.getPlaybackState();
 		int s = st.getState();
-		playing = (s == PlaybackStateCompat.STATE_PLAYING) || (s == PlaybackStateCompat.STATE_BUFFERING);
+		boolean nowPlaying = (s == PlaybackStateCompat.STATE_PLAYING) || (s == PlaybackStateCompat.STATE_BUFFERING);
+		if (nowPlaying != playing) {
+			// Counted on from the player's last answer only while it plays on: asked again after a pause or a start.
+			enginePos = -1;
+			enginePosAt = 0;
+		}
+		playing = nowPlaying;
 		play.setImageResource((s == PlaybackStateCompat.STATE_PLAYING) ? R.drawable.pause : R.drawable.play);
 		// Also while playing but stalled for data, and right after a skip until the next song has started.
 		// A start from nothing is over once the session plays.
@@ -1019,7 +1029,9 @@ final class MediaWidget extends HomeWidgetView {
 			if (Math.abs(reported - seekPos) > 2500) return Math.max(0, seekPos + (playing ? since : 0));
 		}
 		long now = SystemClock.elapsedRealtime();
-		if ((enginePos >= 0) && ((now - enginePosAt) < 1500)) return enginePos + (playing ? (now - enginePosAt) : 0);
+		if ((enginePos >= 0) && ((now - enginePosAt) < ENGINE_TRUST_MS)) {
+			return enginePos + (playing ? (now - enginePosAt) : 0);
+		}
 		long pos = st.getPosition();
 		if (st.getState() == PlaybackStateCompat.STATE_PLAYING) {
 			pos += (long) ((now - st.getLastPositionUpdateTime()) * st.getPlaybackSpeed());
@@ -1036,7 +1048,9 @@ final class MediaWidget extends HomeWidgetView {
 		MediaEngine eng = act().getMediaSessionCallback().getEngine();
 		PlayableItem pi = shown;
 		if ((eng == null) || (pi == null)) return;
-		if (playing) {
+		// For YouTube each ask is a script run in the page while it plays: asked every few seconds, not every tick (the
+		// position in between is counted on from the last answer).
+		if (playing && ((SystemClock.elapsedRealtime() - enginePosAt) >= ENGINE_POLL_MS)) {
 			eng.getPosition().main().onSuccess(p -> {
 				if ((p != null) && (p >= 0) && HomeArt.same(pi, shown)) {
 					enginePos = p;
@@ -1334,6 +1348,9 @@ final class MediaWidget extends HomeWidgetView {
 					setFraction(f);
 					seekPos = (long) (f * duration);
 					seekAt = SystemClock.elapsedRealtime();
+					// The player's last answer is from before the seek: asked again on the next tick.
+					enginePos = -1;
+					enginePosAt = 0;
 					act().getMediaSessionCallback().onSeekTo(seekPos);
 					timeNow.setText(DateUtils.formatElapsedTime(seekPos / 1000));
 					post(ticker);

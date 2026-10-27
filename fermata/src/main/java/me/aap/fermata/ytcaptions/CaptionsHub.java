@@ -70,7 +70,11 @@ public final class CaptionsHub {
 	}
 
 	private final Handler handler = new Handler(Looper.getMainLooper());
-	private final ExecutorService executor = Executors.newSingleThreadExecutor();
+	/** Background priority: a captions request must never take CPU time from the audio or the UI. */
+	private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> new Thread(() -> {
+		android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+		r.run();
+	}, "Captions"));
 	private final LruCache<String, YtCaptions.Result> cache = new LruCache<>(8);
 	private final List<Listener> listeners = new ArrayList<>();
 	private final Runnable tick = this::tick;
@@ -269,6 +273,8 @@ public final class CaptionsHub {
 			executor.execute(() -> {
 				YtCaptions.Result res = null;
 				try {
+					// The next song's are not needed for a while: they wait until the playing one has started cleanly.
+					if (!current) me.aap.fermata.util.PlaybackCalm.awaitSteady(15000);
 					res = YtCaptions.load(id, lang, auto);
 				} catch (Exception ex) {
 					Log.e(ex, "Failed to load the captions of ", id);
@@ -421,6 +427,8 @@ public final class CaptionsHub {
 
 	private void loadNow(int gen, String id, String lang, boolean auto) {
 		try {
+			// Shown with the song, so only a short wait: the song's own start (its stream) goes first.
+			me.aap.fermata.util.PlaybackCalm.awaitSteady(2500);
 			YtCaptions.Result r = YtCaptions.load(id, lang, auto);
 			handler.post(() -> {
 				prefetching.remove(id);

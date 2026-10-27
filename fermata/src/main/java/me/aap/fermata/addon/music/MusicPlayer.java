@@ -1080,11 +1080,29 @@ public final class MusicPlayer {
 		});
 	}
 
+	/**
+	 * Where {@code i} is in its own list. By id first; then by the original id and the YouTube video id, because a
+	 * Favorites / playlist entry that plays from its downloaded copy points at the file by then, and its id no longer
+	 * matched: the queue was then made of that one song alone, and Next had nowhere to go.
+	 */
 	private static int indexOfSame(List<? extends PlayableItem> list, PlayableItem i) {
 		String id = i.getId();
 		for (int n = 0; n < list.size(); n++) {
 			if (id.equals(list.get(n).getId())) return n;
 		}
+		String orig = i.getOrigId();
+		if (orig != null) {
+			for (int n = 0; n < list.size(); n++) {
+				if (orig.equals(list.get(n).getOrigId())) return n;
+			}
+		}
+		String vid = me.aap.fermata.ytdl.YtDownloads.videoIdOf(i);
+		if (vid != null) {
+			for (int n = 0; n < list.size(); n++) {
+				if (vid.equals(me.aap.fermata.ytdl.YtDownloads.videoIdOf(list.get(n)))) return n;
+			}
+		}
+		DiagnosticLog.log(TAG, "item not found in its list: a queue of one", "item=" + i, "list=" + list.size());
 		return -1;
 	}
 }

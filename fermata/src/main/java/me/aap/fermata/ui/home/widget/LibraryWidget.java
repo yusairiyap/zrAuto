@@ -750,7 +750,22 @@ abstract class LibraryWidget extends HomeWidgetView {
 		render();
 	}
 
+	/** A read held back until the app's start is over (see HomeHost#isSettled); placeholders show meanwhile. */
+	private boolean awaitingStart;
+
 	protected final void refresh(boolean force) {
+		if (!host.isSettled()) {
+			if (awaitingStart) return;
+			awaitingStart = true;
+			loading = true;
+			if (built) updateBusy();
+			host.whenSettled(() -> {
+				awaitingStart = false;
+				loading = false;
+				if (built && isAttachedToWindow()) refresh(true);
+			});
+			return;
+		}
 		if (loading && !force) return;
 		if (!force && ((SystemClock.uptimeMillis() - loadedAt) < STALE_MS)) return;
 		loading = true;
@@ -827,7 +842,13 @@ abstract class LibraryWidget extends HomeWidgetView {
 		count.setText(total > 0 ? String.valueOf(total) : "");
 		emptyText.setVisibility(none && !isCompact() && !loading ? VISIBLE : GONE);
 		boolean listShown = !(none || isCompact());
+		// The rows take the placeholders' place with a short fade, not a cut.
+		boolean arriving = listShown && (listView.getVisibility() != VISIBLE) && host.animate() && !backing;
 		listView.setVisibility(listShown ? VISIBLE : GONE);
+		if (arriving) {
+			listView.setAlpha(0f);
+			listView.animate().alpha(1f).setDuration(220).start();
+		}
 		firstLine.setVisibility((!none && isCompact()) ? VISIBLE : GONE);
 		if (none) {
 			adapter.set(new ArrayList<>(), true);

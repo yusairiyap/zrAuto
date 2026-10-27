@@ -152,7 +152,11 @@ public class BitmapCache {
 	 * The frame captures, one at a time on their own thread: a capture is slow and its network reads can hang, so it must not
 	 * take one of the app's few pool threads.
 	 */
-	private static final ExecutorService frameExecutor = Executors.newSingleThreadExecutor();
+	/** Background priority: a capture must never take CPU time from the audio or the UI. */
+	private static final ExecutorService frameExecutor = Executors.newSingleThreadExecutor(r -> new Thread(() -> {
+		android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+		r.run();
+	}, "VideoFrames"));
 	private final PromiseQueue frameQueue = new PromiseQueue(frameExecutor);
 
 	public BitmapCache() {
@@ -565,6 +569,8 @@ public class BitmapCache {
 		}
 
 		if (isInvalid(uri)) return null;
+		// A capture reads a 4K stream: never while the song is starting (see PlaybackCalm), the balanced cover shows meanwhile.
+		me.aap.fermata.util.PlaybackCalm.awaitSteady(20000);
 		Bitmap bm = YtFrames.middleFrame(videoId);
 		if (bm == null) {
 			markInvalid(uri);

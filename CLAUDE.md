@@ -1160,7 +1160,7 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   which also restarted that marquee each second (`fixCountdownWidth`).
 - **Grid vs list** for media lists comes from the grid preference, never from `isGridView()` (which
   asks the active tab and is wrong while tabs switch).
-- Known open items: media card art can look blocky on One UI (1280x720 art); a YouTube hand-over
+- Known open items: a YouTube hand-over
   whose page never starts leaves the local engine muted with no error.
   **Open: an occasional micro stutter at the start of a YouTube song on the Music tab** (play, tiny
   pause, play; never seen in fullscreen video, seeking is fine). Already ruled out or fixed: router
@@ -1400,21 +1400,44 @@ pause source.
 - **Device status**: tested on the tablet and working: the comments widget, the search widget (except the keyboard, open below), the timer chips,
   widget size and space around widgets. Not run on a device yet: the stack manager and the add picker, the UI style on the car screen.
 
+## Start-up quiet, playback calm, search from Home
+
+- **Home's widgets read the library only after the start** (`HomeHost#isSettled` / `whenSettled`, `HomeScreen#settleAfter`): the
+  start counts as over when Home has faded in, 400 ms later and once the main thread is idle (`STATE home settled`); then the waiting
+  widgets read one at a time, 70 ms apart. Until then `LibraryWidget#refresh` only shows its skeleton (`awaitingStart`), and the
+  Comments and YouTube suggestions widgets hold their network reads. The rows replace the skeleton with a short fade. Process-wide:
+  once settled, Home made again later reads at once. A new widget that reads lists or the network at bind should do the same.
+- **`util/PlaybackCalm`** (fed by `MediaSessionCallback#setPlaybackState`): steady = the song has played 3 s without a buffering
+  or skipping state. Background work that only makes things nicer waits for it on its own thread (`awaitSteady`, never on the main
+  thread): the video-frame capture (`BitmapCache#readOrCaptureFrame`, its thread at background priority), captions (the next song's
+  fully, the playing song's at most 2.5 s; `CaptionsHub`'s thread at background priority) and the queue's channel look-ups.
+- **Home's media card asks the player for its position every 3 s**, not every 500 ms tick (for YouTube each ask is a script in the
+  playing page); in between it counts on from the last answer, and asks again after a seek or a play/pause change.
+- **Its title ends in an ellipsis** unless the card's "Scroll a long title" option (`marquee`) is on: a scrolling title redraws every
+  frame at Home's high refresh rate. The eye (hide cover) button takes the same fill as the Watch / Fullscreen chip in `applyLook`.
+- **A search from Home never lands in fullscreen** (`YoutubeFragment#searchPendingUntil`, `holdsFullScreen`): a freshly made YouTube tab
+  restores the last video, and its playable change put the page in fullscreen over the panel. While the panel is open, or for up to 4 s
+  until it opens, `onPlayableChanged` and `enterVideoFullScreen` do not go fullscreen (`YT fullscreen held`); a freshly made tab also
+  waits 350 ms more before the panel slides down, so the WebView's set-up and the slide don't stutter together.
+
 ## Open issues (handover list)
 
 These are the open items to take up next, in a new session or on a new branch. Each is a prompt: the first line says what is wrong.
 Items marked resolved were tested OK on the device; the numbers are kept so references stay stable.
 
-1. **Next plays the downloaded copy and the queue collapses to one track.** On a Favorites or playlist entry, Next hands a downloaded next
-   track to the UI (`MediaSessionCallback.handOverYoutube` -> `YtOffline.tryPlayLocal` -> `MusicPlayer.play(a, item, true)`), and that
-   path can replace the queue with that single track. Also check the "playing the downloaded copy" branch in `YoutubeMediaEngine#prepare`.
-   Reproduce with a playlist whose next track is downloaded, and read the TRANSPORT, YTDL and MUSIC lines around one Next press.
+1. **Next plays the downloaded copy and the queue collapses to one track** (rare now). Likely cause fixed: `MusicPlayer#indexOfSame`
+   matched only by id, and a Favorites / playlist entry playing from its downloaded copy points at the file by then, so it was not
+   found in its own list and the queue was made of that one song. It now also matches by `getOrigId()` and the YouTube video id, and
+   logs `MUSIC item not found in its list: a queue of one` when it still falls back. If it happens again, read that line and the
+   TRANSPORT / YTDL lines around the Next press.
 2. **The YouTube page reports `ended` about 10 s into a song, right after the app paused it.** The log shows `YT paused (app asked)` and then
    `YT video ended` with no `stuck` tag, so it is the page's own `ended` (`YoutubeWebView#interceptEndedJs`), not the end check. A guard
    that ignored it was tried and reverted; find what fires the event instead.
-3. **The search widget does not move above the keyboard.** When the field gets focus the card stays under the keyboard
-   (`SearchWidget#revealField`). Read the `HOME keyboard reveal` lines (bottom, keyboardTop, over, scroller) from one attempt first.
-4. **Media card art looks blocky on One UI** (1280x720 art).
+3. **The search widget and the keyboard**: reworked, not yet confirmed on a device. The window is not resized for the keyboard, and
+   scrolling the page could not lift a card at the very bottom. Now `SearchWidget` calls `HomeHost#followKeyboard` on focus and
+   `HomeScreen` translates the page layer (`fade`) up with the keyboard, frame by frame from a `WindowInsetsAnimation.Callback`
+   (Android 11+), with settle checks for when no animation is reported; `HOME keyboard lift` lines say what it computed.
+4. ~~**Media card art looks blocky on One UI**~~ **Resolved: not seen any more on the device.**
 5. **A YouTube hand-over whose page never starts leaves the local engine muted with no error.**
 6. **A micro-stutter at the start of a YouTube song on the Music tab** (play, tiny pause, play). See the "Open" note in the playback section.
 7. ~~**Back with YouTube comments open pauses the video**~~ **Resolved: tested OK on device.**
