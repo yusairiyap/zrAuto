@@ -1402,7 +1402,7 @@ pause source.
 - **Library back navigation** (`LibraryWidget#backOut`): the rows and the back chip change only while the list is hidden; the chip collapses
   without an animation (`showBack(on, false)`), so the list does not slide as it fades back in.
 - **Diagnostics**: the comments loader no longer logs (the old COMMENTS/YTCOMMENTS lines were removed). The keyboard lift logs `HOME keyboard lift`.
-- **Device status**: tested on the tablet and working: the comments widget, the search widget (except the keyboard, open below), the timer chips,
+- **Device status**: tested on the tablet and working: the comments widget, the search widget (keyboard lift included), the timer chips,
   widget size and space around widgets. Not run on a device yet: the stack manager and the add picker, the UI style on the car screen.
 
 ## Start-up quiet, playback calm, search from Home
@@ -1498,10 +1498,8 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
 2. **The YouTube page reports `ended` about 10 s into a song, right after the app paused it.** The log shows `YT paused (app asked)` and then
    `YT video ended` with no `stuck` tag, so it is the page's own `ended` (`YoutubeWebView#interceptEndedJs`), not the end check. A guard
    that ignored it was tried and reverted; find what fires the event instead.
-3. **The search widget and the keyboard**: reworked, not yet confirmed on a device. The window is not resized for the keyboard, and
-   scrolling the page could not lift a card at the very bottom. Now `SearchWidget` calls `HomeHost#followKeyboard` on focus and
-   `HomeScreen` translates the page layer (`fade`) up with the keyboard, frame by frame from a `WindowInsetsAnimation.Callback`
-   (Android 11+), with settle checks for when no animation is reported; `HOME keyboard lift` lines say what it computed.
+3. ~~**The search widget and the keyboard**~~ **Resolved: tested OK on device** (`HomeHost#followKeyboard` lifts the page layer with the keyboard;
+   `HOME keyboard lift` lines say what it computed).
 4. ~~**Media card art looks blocky on One UI**~~ **Resolved: not seen any more on the device.**
 5. **A YouTube hand-over whose page never starts leaves the local engine muted with no error.**
 6. **A micro-stutter at the start of a YouTube song** (play, tiny pause, play; also on the very first play after an app start). Not solved;
