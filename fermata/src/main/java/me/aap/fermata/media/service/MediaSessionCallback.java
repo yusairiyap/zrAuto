@@ -1813,7 +1813,31 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		}
 	}
 
+	// Counts playItem() calls, so a tapped item waiting for the sound to go out is dropped when another comes.
+	private int playItemGen;
+
 	public void playItem(PlayableItem i, long pos) {
+		playerTask.cancel();
+		int gen = ++playItemGen;
+		MediaEngine eng = getEngine();
+		// Another item while a local player plays (a tapped row, a queue track): its sound goes out first, as it does
+		// for Next (skipWithFade); it used to be cut off. YouTube's page fades its own switch.
+		if ((eng != null) && isPlaying() && (eng.getId() != MediaPrefs.MEDIA_ENG_YT) && (eng.getSource() != i)) {
+			PlayableItem was = eng.getSource();
+			eng.fadeOut(() -> {
+				if ((gen != playItemGen) || (getEngine() != eng)) return;
+				playItemNow(i, pos);
+				// The new item never took over (it failed to prepare): the old one plays on, so its sound comes back.
+				me.aap.utils.app.App.get().getHandler().postDelayed(() -> {
+					if ((getEngine() == eng) && (eng.getSource() == was) && isPlaying()) eng.restoreVolume();
+				}, 3000);
+			});
+			return;
+		}
+		playItemNow(i, pos);
+	}
+
+	private void playItemNow(PlayableItem i, long pos) {
 		playerTask.cancel();
 		setLastPlayed(i, pos);
 		PlaybackStateCompat state = new PlaybackStateCompat.Builder().setActions(SUPPORTED_ACTIONS)

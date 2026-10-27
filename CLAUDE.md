@@ -1175,6 +1175,10 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   last seconds (at most 1 s between looks, 150 ms near the end); the control panel's and the Music
   tab's progress polls skip their work while their window isn't visible (for YouTube each tick is a
   script run in the page). Keep new periodic work off when nothing is on screen.
+- **Local engines fade like YouTube's page** (`MediaEngineBase`, the same constants and curves as `youtube_fade.js`): a new track
+  from 25% evenly in dB over 500 ms, a resume eased from silence over 700 ms, pause/skip eased out over 350 ms plus 80 ms held
+  silent. `MediaSessionCallback#playItem` fades a playing local engine out before the item it was asked for starts (a tapped row, a
+  queue track), as Next does; the last request wins.
 - **A local engine replacing YouTube** must silence the page (`MediaSessionCallback#playPreparedItem`
   calls `yieldToLocal()`; the page's `close()` is inert on purpose). After that the page may not take
   the session back on its own (`YoutubeMediaEngine#yielded`, checked in `playing()`): only a video the
@@ -1529,6 +1533,9 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
      the page starts before the fade script is injected (`pageLoaded`), so no `startFade` runs for it; its clock read `58 90 21 161 9 0 24 0 31`
      (~0.5 s of stalls). The warm-up's seek no longer reports `waiting` to the app (`__fermataWarmSeekAt`), which flashed the spinner and
      re-published the metadata and cover on every song.
+     A hidden page (the Music tab playing YouTube) used to skip `startFade` altogether (no warm-up, no fade); it now warms up too
+     (`(page hidden)` on the trace line), its steps also driven from `timeupdate` in case the page's timers are held back, and the
+     effects path's gain curves run whatever the page's visibility (they are sample-accurate in the audio renderer).
      To take it out: the setting, or the `warm` lines in `startFade`, the pref, its two strings and the `warmup` in both `configure` calls.
    - Diagnostic lines to ask for: `YT media` (playing / waiting / seeking / `start fade:` / `start clock per 100 ms:`), `STATE start load`,
      `YT seek while starting`.
