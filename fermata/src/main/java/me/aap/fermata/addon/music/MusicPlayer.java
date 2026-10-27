@@ -824,6 +824,19 @@ public final class MusicPlayer {
 				// whatever was queued in the video player since goes in right after it.
 				if (playing != null) moveUpNextIntoQueue(q, eng, playing);
 				boolean yt = (eng.getId() == MediaPrefs.MEDIA_ENG_YT);
+				// A song downloaded as sound only, watched streamed (switchToVideo): back to music it plays the file
+				// again, from where the video is.
+				if (yt && (playing != null) && YtOffline.isForcedStream(playing.getVideoId()) &&
+						playing.isAudioOnlyDownload()) {
+					DiagnosticLog.log(TAG, "back to music: the downloaded copy", "id=" + playing.getVideoId());
+					YtOffline.clearForcedStream();
+					setYoutubeAudioMode(true);
+					open(a);
+					eng.getPosition().main().onSuccess(pos -> {
+						if (cb.getEngine() == eng) startTrack(a, playing, pos, false);
+					});
+					return;
+				}
 				boolean local = !yt && (playing != null) && playing.isDownloaded();
 				setYoutubeAudioMode(yt || local);
 				if (local) watchingLocal = false;
@@ -916,7 +929,7 @@ public final class MusicPlayer {
 	public static boolean canSwitchToVideo(MediaSessionCallback cb) {
 		if (!isPlayingAsMusic(cb)) return false;
 		MusicTrackItem t = getCurrentTrack(cb);
-		return (t == null) || t.hasVideo();
+		return (t == null) || t.hasVideo() || t.isAudioOnlyDownload();
 	}
 
 	/**
@@ -950,8 +963,19 @@ public final class MusicPlayer {
 		if ((t == null) && !(yt && youtubeAudioMode)) return;
 
 		if ((t != null) && (t.getVideoId() != null) && !yt) {
+			// Downloaded as sound only: the video is streamed from YouTube (at the usual quality) from where the song
+			// is; going back to music plays the file again (playCurrentAsMusic).
+			if (!t.hasVideo()) {
+				if (!t.isAudioOnlyDownload()) return;
+				DiagnosticLog.log(TAG, "switch to video (streamed: the download is sound only)", "id=" + t.getVideoId());
+				eng.getPosition().main().onSuccess(pos -> {
+					if (cb.getEngine() != eng) return;
+					YtOffline.forceStream(t.getVideoId());
+					startTrack(a, t, pos, true);
+				});
+				return;
+			}
 			// A downloaded video: its file has the picture, on the very same engine.
-			if (!t.hasVideo()) return;
 			DiagnosticLog.log(TAG, "switch to video (downloaded)", "id=" + t.getVideoId());
 			watchingLocal = true;
 			// Out of the Music tab, which keeps the floating buttons and the control panel away: the

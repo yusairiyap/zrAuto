@@ -109,8 +109,11 @@ final class SearchWidget extends HomeWidgetView {
 			return false;
 		});
 		// On the car screen the field cannot be typed in: a tap goes straight to the panel's search field.
+		// A tap on a field that kept the focus (the keyboard was closed with Back) brings the keyboard back with no focus
+		// change, so the page is lifted from the tap too.
 		field.setOnClickListener(v -> {
 			if (host.isCar()) openPanel();
+			else host.followKeyboard(this);
 		});
 		// The keyboard comes up over the bottom of the screen without resizing the window: the page glides up with it.
 		field.setOnFocusChangeListener((v, focused) -> {

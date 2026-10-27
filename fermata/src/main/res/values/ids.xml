@@ -100,6 +100,7 @@
     <item name="nav_got_to_current" type="id" />
     <item name="nav_donate" type="id" />
     <item name="nav_about" type="id" />
+    <item name="nav_share_app" type="id" />
     <item name="nav_exit" type="id" />
     <item name="nav_select" type="id" />
     <item name="nav_open_on_start" type="id" />

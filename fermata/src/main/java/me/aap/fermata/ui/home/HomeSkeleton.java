@@ -63,7 +63,8 @@ public final class HomeSkeleton extends View {
 			anim.setInterpolator(new LinearInterpolator());
 			anim.addUpdateListener(a -> {
 				phase = (float) a.getAnimatedValue();
-				invalidate();
+				// Held still under a finger: a swipe over a stack of loading cards must not redraw them every frame.
+				if (!me.aap.fermata.util.TouchState.isBusy()) invalidate();
 			});
 			anim.start();
 		} else if (!visible && (anim != null)) {

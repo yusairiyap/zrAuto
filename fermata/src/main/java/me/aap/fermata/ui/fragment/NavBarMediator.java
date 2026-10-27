@@ -307,6 +307,8 @@ public class NavBarMediator extends PrefNavBarMediator
 			ActivityFragment f = a.getActiveFragment();
 			if (f instanceof MainActivityFragment) ((MainActivityFragment) f).contributeToNavBarMenu(b);
 
+			// Sending zrAuto itself to a phone nearby (as Settings > Other does); not on the car screen.
+			if (!a.isCarActivityNotMirror()) b.addItem(R.id.nav_share_app, R.drawable.share, R.string.share_app);
 			b.addItem(R.id.nav_about, R.drawable.about, R.string.about);
 			b.addItem(R.id.settings_fragment, R.drawable.settings, R.string.settings);
 			b.addItem(R.id.nav_exit, R.drawable.exit, a.isCarActivityNotMirror() ? R.string.restart : R.string.exit);
@@ -318,6 +320,12 @@ public class NavBarMediator extends PrefNavBarMediator
 		int itemId = item.getItemId();
 		if (itemId == R.id.nav_got_to_current) {
 			MainActivityDelegate.get(item.getContext()).goToCurrent();
+			return true;
+		} else if (itemId == R.id.nav_share_app) {
+			MainActivityDelegate a = MainActivityDelegate.get(item.getContext());
+			me.aap.fermata.share.ShareOffer offer = me.aap.fermata.share.ShareSource.createApp(a.getContext());
+			if (offer.entries.isEmpty()) me.aap.fermata.ui.view.TopToast.show(R.drawable.share, R.string.share_app_split);
+			else me.aap.fermata.ui.view.ShareSheet.show(a, offer);
 			return true;
 		} else if (itemId == R.id.nav_about) {
 			MainActivityDelegate a = MainActivityDelegate.get(item.getContext());

@@ -816,6 +816,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 
 	private void render() {
 		if (!built) return;
+		// Only the very first rows, taking the placeholders' place, fade in: opening and going back have their own fades.
+		boolean fromSkeleton = skeleton.getVisibility() == VISIBLE;
 		updateBusy();
 		boolean none = rows.isEmpty();
 		// Wide cards split their rows into two columns, unless the card asks for full-width rows.
@@ -843,7 +845,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 		emptyText.setVisibility(none && !isCompact() && !loading ? VISIBLE : GONE);
 		boolean listShown = !(none || isCompact());
 		// The rows take the placeholders' place with a short fade, not a cut.
-		boolean arriving = listShown && (listView.getVisibility() != VISIBLE) && host.animate() && !backing;
+		boolean arriving = fromSkeleton && listShown && (drillSource == null) && !backing && host.animate() &&
+				(listView.getVisibility() != VISIBLE) && (listView.getAlpha() >= 1f);
 		listView.setVisibility(listShown ? VISIBLE : GONE);
 		if (arriving) {
 			listView.setAlpha(0f);

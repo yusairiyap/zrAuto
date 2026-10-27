@@ -456,6 +456,11 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	}
 
 	private static void runNextSettled() {
+		// A finger on the screen (a stack being swiped, a fling): the next read waits until it is off.
+		if (me.aap.fermata.util.TouchState.isBusy() && !afterSettle.isEmpty()) {
+			App.get().getHandler().postDelayed(HomeScreen::runNextSettled, SETTLE_STEP_MS);
+			return;
+		}
 		Runnable r = afterSettle.poll();
 		if (r == null) {
 			settling = false;

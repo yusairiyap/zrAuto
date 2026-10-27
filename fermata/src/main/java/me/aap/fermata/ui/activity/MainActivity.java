@@ -232,6 +232,7 @@ public class MainActivity extends SplitCompatActivityBase
 		int action = ev.getActionMasked();
 		// Where the finger is, for a menu opened by a long press (MenuStyle): the tab, the nav bar, anything.
 		me.aap.fermata.ui.view.MenuStyle.recordTouch(ev);
+		me.aap.fermata.util.TouchState.onEvent(ev);
 		if (action == MotionEvent.ACTION_DOWN) {
 			View focus = getCurrentFocus();
 			outsideTap = null;

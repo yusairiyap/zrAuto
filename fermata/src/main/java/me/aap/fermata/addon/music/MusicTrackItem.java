@@ -280,6 +280,14 @@ public class MusicTrackItem extends ExtPlayable {
 		return YtOffline.useLocal(videoId);
 	}
 
+	/**
+	 * A YouTube song downloaded as sound only: it plays from its file as music, and its video can still be watched,
+	 * streamed from YouTube at the usual quality (see MusicPlayer#switchToVideo).
+	 */
+	public boolean isAudioOnlyDownload() {
+		return (videoId != null) && YtOffline.hasCopy(videoId) && !hasDownloadedVideo();
+	}
+
 	/** Whether the file on the phone has the picture too, not just the sound. */
 	private boolean hasDownloadedVideo() {
 		return YtDownloads.get().isVideoDownloaded(videoId);

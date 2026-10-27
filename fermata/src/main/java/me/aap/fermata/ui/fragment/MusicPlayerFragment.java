@@ -1165,7 +1165,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	@Nullable
 	private MusicTrackItem idleVideoTrack() {
 		if (getActivityDelegate().getMediaSessionCallback().getCurrentItem() != null) return null;
-		return ((shownItem instanceof MusicTrackItem t) && t.hasVideo()) ? t : null;
+		return ((shownItem instanceof MusicTrackItem t) && (t.hasVideo() || t.isAudioOnlyDownload())) ? t : null;
 	}
 
 	private void updateVideoButton(@Nullable PlayableItem i) {
@@ -1174,7 +1174,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		if (isLoading() && (videoButton.getVisibility() == View.VISIBLE)) return;
 		MusicTrackItem t = currentTrack();
 
-		if ((playingAsMusic() && ((t == null) || t.hasVideo())) || (idleVideoTrack() != null)) {
+		if ((playingAsMusic() && ((t == null) || t.hasVideo() || t.isAudioOnlyDownload())) || (idleVideoTrack() != null)) {
 			setVideoButton(R.string.video, R.drawable.video);
 		} else if ((i != null) && isPlayingVideo() && !isYoutubeEngine()) {
 			// A local video plays on in the background: "Video" brings its picture back, here as

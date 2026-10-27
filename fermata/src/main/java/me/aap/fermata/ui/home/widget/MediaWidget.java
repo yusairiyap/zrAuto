@@ -80,6 +80,11 @@ final class MediaWidget extends HomeWidgetView {
 	private static final int LARGE_WIDE = 3;
 	private static final int LARGE_TALL = 4;
 	private static final long TICK_MS = 500;
+	/** Room beside the cover below which a wide card is laid out tight (see applyMode). */
+	private static final int TIGHT_DP = 300;
+	/** The card is tight: the chip shows only its icon. */
+	private boolean narrowChip;
+
 	/** How often the player itself is asked where it is while playing. */
 	private static final long ENGINE_POLL_MS = 3000;
 	/** How long its answer is counted on from (a bit over two asks, so a late answer does not drop back to the session's). */
@@ -405,6 +410,11 @@ final class MediaWidget extends HomeWidgetView {
 		// beside or below it (a stretched or cropped cover looked wrong at some sizes).
 		int artSide = (mode == LARGE_WIDE) ? Math.min(h, (int) (w * 0.58f)) : Math.min(w, (int) (h * 0.6f));
 		int left = (mode == LARGE_WIDE) ? (hid ? pad : Math.max((int) (artSide * 0.86f), (int) (w * 0.38f))) : 0;
+		// A wide card that is short on room beside the cover (4x2 on a phone, ~380 x 185dp): the words and controls start
+		// further left over the cover's fading side, and the chip is only its icon, or the name had ~30dp left.
+		boolean tight = (mode == LARGE_WIDE) && !hid && ((w - left) < px(TIGHT_DP));
+		if (tight) left = Math.min(left, (int) (w * 0.30f));
+		narrowChip = tight;
 
 		// Shuffle and repeat: around the play button when the width allows, else under the seek bar. A wide card
 		// has the controls in the middle of the right half, as large as that half allows.
@@ -640,7 +650,7 @@ final class MediaWidget extends HomeWidgetView {
 		duration = 0;
 		enginePos = -1;
 		swap(title, pi.getName());
-		swap(artist, pi instanceof MusicTrackItem t && t.getArtistName() != null ? t.getArtistName() : "");
+		swap(artist, pi instanceof MusicTrackItem t && t.getArtistName() != null ? MusicTrackItem.cleanArtist(t.getArtistName()) : "");
 		if (title.getEllipsize() == android.text.TextUtils.TruncateAt.MARQUEE) title.setSelected(true);
 		setBusy(true);
 		pi.getMediaData().main().onCompletion((md, err) -> {
@@ -667,10 +677,11 @@ final class MediaWidget extends HomeWidgetView {
 		String ar = md.getString(METADATA_KEY_ARTIST);
 		if ((ar == null) || ar.isEmpty()) ar = md.getString(METADATA_KEY_ALBUM_ARTIST);
 		if ((ar == null) || ar.isEmpty()) ar = md.getString(METADATA_KEY_ALBUM);
-		if ((ar != null) && !ar.isEmpty()) return ar;
+		// "Artist - Topic" shows as "Artist", as on the Music tab and in the Home lists.
+		if ((ar != null) && !ar.isEmpty()) return MusicTrackItem.cleanArtist(ar);
 		if (pi instanceof MusicTrackItem t) {
 			String name = t.getArtistName();
-			if ((name != null) && !name.isEmpty()) return name;
+			if ((name != null) && !name.isEmpty()) return MusicTrackItem.cleanArtist(name);
 			if (t.getVideoId() != null) return "YouTube";
 		}
 		MediaEngine eng = act().getMediaSessionCallback().getEngine();
@@ -913,7 +924,7 @@ final class MediaWidget extends HomeWidgetView {
 
 	/** Low density (the car screen's) makes the chip's words as big as the card's title: only its icon shows there. */
 	private boolean chipIconOnly() {
-		return host.isCar() || (ctx.getResources().getDisplayMetrics().density < 1.5f);
+		return narrowChip || host.isCar() || (ctx.getResources().getDisplayMetrics().density < 1.5f);
 	}
 
 	private void setChip(int icon, int label, Runnable action) {
