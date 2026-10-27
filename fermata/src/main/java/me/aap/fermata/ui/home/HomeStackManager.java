@@ -28,10 +28,8 @@ import me.aap.fermata.ui.view.TopToast;
  */
 final class HomeStackManager {
 	private static final int ROW_DP = 56;
-	private static final int LIST_DP = 420;
 	private static final int TYPE_ITEM = 0;
 	private static final int TYPE_ADD = 1;
-	private static final int TYPE_PICKER = 2;
 
 	private final HomeHost host;
 	private final HomeGridLayout grid;
@@ -41,8 +39,6 @@ final class HomeStackManager {
 	private final Adapter adapter = new Adapter();
 	private RecyclerView list;
 	private ItemTouchHelper touch;
-	/** The add row is open: the widgets that can be added are listed under it. */
-	private boolean adding;
 
 	private HomeStackManager(HomeHost host, HomeGridLayout grid, HomeModel.Cell cell) {
 		this.host = host;
@@ -81,7 +77,9 @@ final class HomeStackManager {
 		list.setItemAnimator(ia);
 		touch = new ItemTouchHelper(new Reorder());
 		touch.attachToRecyclerView(list);
-		int h = Math.min(px(LIST_DP), (int) (ctx.getResources().getDisplayMetrics().heightPixels * 0.6f));
+		// The rows and the add row, but never more than half the screen: the window stays a window, not the whole screen.
+		int rows = (cell.items.size() + 1) * px(ROW_DP);
+		int h = Math.min(rows, (int) (ctx.getResources().getDisplayMetrics().heightPixels * 0.5f));
 		body.addView(list, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, h));
 
 		HomeModal.show(host, ctx.getString(R.string.home_manage_stack), R.drawable.view_grid, body, null);
@@ -140,22 +138,18 @@ final class HomeStackManager {
 	private final class Adapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
 		@Override
 		public int getItemCount() {
-			return cell.items.size() + 1 + (adding ? 1 : 0);
+			return cell.items.size() + 1;
 		}
 
 		@Override
 		public int getItemViewType(int position) {
-			int n = cell.items.size();
-			if (position < n) return TYPE_ITEM;
-			return (position == n) ? TYPE_ADD : TYPE_PICKER;
+			return (position < cell.items.size()) ? TYPE_ITEM : TYPE_ADD;
 		}
 
 		@NonNull
 		@Override
 		public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
-			if (type == TYPE_ITEM) return new ItemHolder();
-			if (type == TYPE_ADD) return new AddHolder();
-			return new PickerHolder();
+			return (type == TYPE_ITEM) ? new ItemHolder() : new AddHolder();
 		}
 
 		@Override
@@ -251,47 +245,17 @@ final class HomeStackManager {
 		t.setClickable(true);
 		t.setFocusable(true);
 		t.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-		t.setOnClickListener(v -> toggleAdding());
+		t.setOnClickListener(v -> openAdd());
 		return t;
 	}
 
-	private void toggleAdding() {
-		int picker = cell.items.size() + 1;
-		if (adding) {
-			adding = false;
-			adapter.notifyItemRemoved(picker);
-		} else {
-			adding = true;
-			adapter.notifyItemInserted(picker);
-		}
-	}
-
-	/** The widgets that can be put on the stack, as chips. */
-	private final class PickerHolder extends RecyclerView.ViewHolder {
-		PickerHolder() {
-			super(pickerChips());
-		}
-	}
-
-	private ChipFlowLayout pickerChips() {
-		ChipFlowLayout flow = new ChipFlowLayout(ctx);
-		flow.setPadding(px(12), px(4), px(12), px(8));
-		for (HomeWidgetType t : HomeWidgets.all()) {
-			if (!t.isAvailable()) continue;
-			flow.addView(ChipFlowLayout.chip(ctx, t.icon, ctx.getString(t.name), false, () -> addWidget(t)));
-		}
-		return flow;
-	}
-
-	private void addWidget(HomeWidgetType t) {
-		model.addToStack(cell, t);
-		int added = cell.items.size() - 1;
-		adding = false;
-		adapter.notifyItemInserted(added);
-		// The remove buttons come up once there is more than one widget.
-		if (cell.items.size() == 2) adapter.notifyItemRangeChanged(0, 2);
-		adapter.notifyItemRemoved(cell.items.size() + 1);
-		grid.stackEdited();
+	/** The add-widget picker Home itself uses; a pick puts the widget on this stack and the window comes back. */
+	private void openAdd() {
+		HomePickers.showAdd(host, t -> {
+			model.addToStack(cell, t);
+			grid.stackEdited();
+			show(host, grid, cell);
+		});
 	}
 
 	/** Takes the widget at {@code pos} off the screen, with Undo; the stack is laid out again at once. */

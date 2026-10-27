@@ -1,6 +1,7 @@
 package me.aap.fermata.ui.home.widget;
 
 import android.graphics.Rect;
+import android.os.Build;
 import android.graphics.drawable.GradientDrawable;
 import android.text.Editable;
 import android.text.InputType;
@@ -29,6 +30,7 @@ import me.aap.fermata.ui.home.HomeHost;
 import me.aap.fermata.ui.home.HomeOption;
 import me.aap.fermata.ui.home.HomeWidgetType;
 import me.aap.fermata.ui.home.HomeWidgetView;
+import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.ui.view.ChipFlowLayout;
 import me.aap.utils.app.App;
 
@@ -246,20 +248,37 @@ final class SearchWidget extends HomeWidgetView {
 	}
 
 	/**
-	 * Typing into the field on a phone: the window is resized above the keyboard, so if the card reaches below its bottom edge,
-	 * the scroller it sits in is moved up by that much (the whole layout moves, the card with it).
+	 * Typing into the field on a phone: the keyboard covers the bottom of the screen, so if the card reaches below the keyboard's
+	 * top edge, the scroller it sits in is moved up by that much (the whole layout moves, the card with it). The keyboard's top is
+	 * taken from the window insets where the system reports them, else from the visible window; what was measured is logged
+	 * (HOME, keyboard reveal) so a miss can be read from the Diagnostic log.
 	 */
 	private void revealField() {
 		if (!field.hasFocus()) return;
-		Rect visible = new Rect();
-		getWindowVisibleDisplayFrame(visible);
 		int[] loc = new int[2];
 		getLocationOnScreen(loc);
-		int over = loc[1] + getHeight() - visible.bottom + px(16);
-		if (over <= 0) return;
+		int bottom = loc[1] + getHeight();
+		int keyboardTop = keyboardTop();
+		int over = bottom - keyboardTop + px(16);
 		android.view.ViewParent p = getParent();
 		while ((p != null) && !(p instanceof ScrollView)) p = p.getParent();
-		if (p instanceof ScrollView sv) sv.smoothScrollBy(0, over);
+		DiagnosticLog.log("HOME", "keyboard reveal", "bottom=" + bottom, "keyboardTop=" + keyboardTop, "over=" + over,
+				"scroller=" + (p != null));
+		if ((over > 0) && (p instanceof ScrollView sv)) sv.smoothScrollBy(0, over);
+	}
+
+	/** The top edge of the keyboard on screen, or the bottom of the visible window when no keyboard inset is reported. */
+	private int keyboardTop() {
+		if (Build.VERSION.SDK_INT >= 30) {
+			android.view.WindowInsets insets = getRootWindowInsets();
+			if (insets != null) {
+				int ime = insets.getInsets(android.view.WindowInsets.Type.ime()).bottom;
+				if (ime > 0) return ctx.getResources().getDisplayMetrics().heightPixels - ime;
+			}
+		}
+		Rect visible = new Rect();
+		getWindowVisibleDisplayFrame(visible);
+		return visible.bottom;
 	}
 
 	@Override
