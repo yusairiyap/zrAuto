@@ -1531,9 +1531,13 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
    - **Ideas not tried** (each a guess, keep them reversible): keep the page's audio output warm with a silent Web Audio context while
      music plays (if the WebView reuses the open output for the next renderer); compare the same skips in Chrome on m.youtube.com (if it
      stutters there too, it cannot be fixed from the app); check whether it happens more with Bluetooth output than the speaker.
-   - **Next fix to try once the stall's time is known**: a silent warm-up. Start each new song at volume 0, let it play for a little longer
-     than where the stall shows up, seek back to 0:00 and fade in; seeks were never heard to stutter, so the output starting would be heard
-     only as a slightly later start. Behind a YouTube setting, off by default.
+   - **Being tried: the silent warm-up** (YouTube setting "Warm up the sound before a song starts", `YT_START_WARMUP`, on by default;
+     `FermataFade` `cfg.warmup`, `WARM_S` 0.6 in `youtube_fade.js#startFade`): a new video plays its first 0.6 s of playback time at
+     volume 0, then goes back to where it started (`v.currentTime = startAt`: 0:00, or the resume point) and the usual fade-in runs from
+     there. Seeks were never heard to stutter, so the sound output's start-up hiccup happens while silent; the cost is a ~0.6 s later start.
+     Element-volume path only (the effects path, `gainParam`, keeps its own fade). Trace: `start warm-up: 0.6xs played silently, back to 0.00`.
+     If it works, mark this item resolved; if the stutter moves to after the warm-up (see the `start clock` line), it is not the output's start.
+     To take it out: the setting, or the `warm` lines in `startFade`, the pref, its two strings and the `warmup` in both `configure` calls.
    - Diagnostic lines to ask for: `YT media` (playing / waiting / seeking / `start fade:` / `start clock per 100 ms:`), `STATE start load`,
      `YT seek while starting`.
 7. ~~**Back with YouTube comments open pauses the video**~~ **Resolved: tested OK on device.**

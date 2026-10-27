@@ -42,7 +42,13 @@
   const MIN_ELEMENT_VOLUME = 0.001;
   const STEP_MS = 10;
 
-  const cfg = {endingEvent: 0};
+  // warmup: a new video plays its first WARM_S silently, then goes back to where it started and fades in from there
+  // (YouTube setting "Warm up the sound before a song starts"). The stutter at a song's start was traced to the
+  // sound output starting: in the first half second the song's clock stalls ~100 ms and then jumps to catch up
+  // (or just jumps ahead). A seek was never heard to stutter (the output is already running then), so the hiccup
+  // happens while the song is still silent. The cost: each song is heard about WARM_S later.
+  const cfg = {endingEvent: 0, warmup: true};
+  const WARM_S = 0.6;
 
   function trace(msg) {
     try {
@@ -229,7 +235,10 @@
       ramp(v, 1, 0); // throttled timers: a few coarse jumps would be worse than none
       return;
     }
-    ramp(v, START_LEVEL, 0);
+    // -1: no warm-up; 0: warming up (silent); 1: done (went back to the start).
+    let warm = (cfg.warmup && !isAd() && !gainParam(v)) ? 0 : -1; // the effects path keeps its own fade
+    let startAt = 0;
+    ramp(v, (warm === 0) ? 0 : START_LEVEL, 0);
     let t0 = -1;
     let pausedSince = 0;
     // How evenly the fade ran: a page busy starting the video delays these 10 ms ticks, and the level then
@@ -256,11 +265,23 @@
         ramp(v, 1, START_FADE_S * 1000, null, rise);
         return;
       }
-      if (v.paused) return;
+      if (v.paused || v.seeking) return;
       const t = v.currentTime;
       if (t0 < 0) {
         if (!(t > 0) && (v.readyState < 3)) return; // nothing playing yet
         t0 = Math.max(0, t - 0.05);
+        // Where this video starts: 0:00 for a new song (a few hundredths in is still the start), else where it resumes.
+        if (warm === 0) startAt = (t < 0.3) ? 0 : t0;
+      }
+      if (warm === 0) {
+        if (t - t0 < WARM_S) return; // silent while the sound output gets going
+        warm = 1;
+        trace('start warm-up: ' + (t - t0).toFixed(2) + 's played silently, back to ' + startAt.toFixed(2));
+        try {
+          v.currentTime = startAt;
+        } catch (err) { /* element gone */ }
+        t0 = -1; // the fade starts once the clock moves again from there
+        return;
       }
       const k = Math.min(1, Math.max(0, (t - t0) / START_FADE_S));
       const now = performance.now();
