@@ -551,10 +551,28 @@ public class YoutubeWebView extends FermataWebView {
 				"        if (p && (typeof p.getPlayerState === 'function')) ps = p.getPlayerState();\n" +
 				"      } catch (x) {}\n" +
 				"      if (ps === 0) { " + JS_EVENT + "(" + JS_VIDEO_ENDED + ", 'stuck:state'); return; }\n" +
-				"      if (!nearEnd || (v.currentSrc !== src) || (Math.abs(v.currentTime - t) > 0.5)) return;\n" +
+				// Put back to the start by YouTube's player in other states too (the end screen, a video it cued up): the
+				// song was in its last seconds a moment ago and now sits near 0:00, not playing.
+				"      if (!nearEnd) {\n" +
+				// The same video (not a new song the app loaded, which has another id and is not paused at the start), or one
+				// YouTube cued up by itself (state 5).
+				"        var same = fermataCurrentVideoId() === v.__fermataNearEndId;\n" +
+				"        if ((Date.now() - (v.__fermataNearEndAt || 0) < 10000) && (v.currentTime < 2) && (same || (ps === 5))) " +
+				JS_EVENT + "(" + JS_VIDEO_ENDED + ", 'stuck:reset ps=' + ps);\n" +
+				"        return;\n" +
+				"      }\n" +
+				"      if ((v.currentSrc !== src) || (Math.abs(v.currentTime - t) > 0.5)) return;\n" +
 				"      if (v.duration - v.currentTime <= 1.5) " + JS_EVENT + "(" + JS_VIDEO_ENDED + ", 'stuck:time');\n" +
 				"    }, 2000);\n" +
 				"  };\n" +
+				// When the song was last seen in its last 5 s (see endCheck: a pause right after, back at 0:00, is its end).
+				"  v.addEventListener('timeupdate', function() {\n" +
+				"    var l = v.duration - v.currentTime;\n" +
+				"    if (isFinite(l) && (l >= 0) && (l <= 5) && !v.paused) {\n" +
+				"      v.__fermataNearEndAt = Date.now();\n" +
+				"      v.__fermataNearEndId = fermataCurrentVideoId();\n" +
+				"    }\n" +
+				"  });\n" +
 				"  v.addEventListener('pause', function(e) {\n" +
 				"    " + JS_EVENT + "(" + JS_VIDEO_PAUSED + ", v.currentSrc);\n" +
 				"    endCheck();\n" +

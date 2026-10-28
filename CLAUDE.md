@@ -902,6 +902,9 @@ what each widget shows is set on the widget (edit mode > its gear).
   (`CarNav.selectFirst`), short keys walk the rows, long Next = `performClick` on the row (opens a playlist at the top level, plays inside it / in Queue / Favorites),
   long Previous = `carBack` (up out of an opened list, else `releaseCarKeys` -> `CarNav.release`, the keys return to the user's bindings). Only the row's main view is a stop
   (the play, remove and drag buttons are tagged `CarNav.skip`). After an open/back the outline goes to the first row of the new list (`carReselect`). Released in `onInactive`. Never run on a car.
+  When the card plays something and "Show the queue when playing" turns its stack to the Queue (`LibraryWidget#queueOnPlay`), the Queue takes
+  the keys with the outline on the playing song (`carToPlaying`). A touch on any other card gives the keys back (`HomeWidgetView#dispatchTouchEvent`,
+  `setCarKeysHolder` / `dropCarKeys`).
 - **Pinned playlists** (`HomePins`, pref `PINNED_PLAYLISTS`, the row menu's "Pin to top" / "Unpin" for a playlist opened from a Home card): `PlaylistsWidget#pinnedFirst` puts them first,
   newest pin on top; the list refresh (DiffUtil) moves the rows.
 - **Hide downloaded icon** option on every Library card (`hideDownloaded`, bit 16 of `rowMode`).
@@ -1209,6 +1212,9 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   rewinds a video stopped within 1.5 s of its end. A third form: YouTube's player ends it itself, back to 0:00 under its
   replay button (player state 0) with no `ended`; `endCheck` reports that state at any position (`stuck:state`), and
   `play()` restarts it through the player API (`seekTo(0)` + `playVideo()`), since the element's `play()` just waits there. Before, Repeat One stopped there and play only buffered until the stall fallback.
+  A fourth form (seen on Android Auto): YouTube pauses the song at its end and puts it back to 0:00 in another player state (not 0), so the
+  position is no longer near the end; `endCheck` reports it as `stuck:reset ps=..` when the same video was in its last 5 s under 10 s before
+  (`__fermataNearEndAt` / `__fermataNearEndId`, kept by a `timeupdate` listener), or YouTube cued a video by itself (state 5).
 - **A page restored after the app was killed** (the fragment's saved `url`, with YouTube not playing then) is kept
   quiet until asked (`YoutubeMediaEngine#quietRestoredPage`): its autoplay used to start the old song on app open.
 - **Previous / Next go nowhere past the ends of a list**: on the first / last song of the Music queue (its

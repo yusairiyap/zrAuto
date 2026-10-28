@@ -477,6 +477,32 @@ public abstract class HomeWidgetView extends FrameLayout {
 		return (getParent() instanceof HomeStackView st) && st.showType(typeKey);
 	}
 
+	/** The widgets of the stack this one is in (just this one when it is not in a stack). */
+	protected final List<HomeWidgetView> stackMates() {
+		return (getParent() instanceof HomeStackView st) ? st.getWidgets() : java.util.Collections.singletonList(this);
+	}
+
+	/** The card the car keys are on (car screen, "Control with car keys"): a touch on any other card takes them back. */
+	@Nullable
+	private static HomeWidgetView carKeysHolder;
+
+	protected static void setCarKeysHolder(@Nullable HomeWidgetView w) {
+		carKeysHolder = w;
+	}
+
+	/** Gives the car keys back to the user's own bindings (see {@link #setCarKeysHolder}). */
+	protected void dropCarKeys() {
+	}
+
+	@Override
+	public boolean dispatchTouchEvent(android.view.MotionEvent e) {
+		if (e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) {
+			HomeWidgetView h = carKeysHolder;
+			if ((h != null) && (h != this)) h.dropCarKeys();
+		}
+		return super.dispatchTouchEvent(e);
+	}
+
 	/** {@code argb} with its alpha scaled to {@code pct} of 100 (an opaque colour is opaque at 100). */
 	private static int alphaOf(int argb, int pct) {
 		int a = (argb >>> 24) == 0 ? 255 : (argb >>> 24);
