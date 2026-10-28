@@ -54,12 +54,15 @@ public class SleepAddon implements FermataFragmentAddon {
 	@Override
 	public void start() {
 		SleepTracker.get();
+		SleepReminder.reschedule();
 	}
 
 	@Override
 	public void stop() {
 		SleepTracker t = SleepTracker.get();
 		if (t.isActive()) t.stop();
+		// The addon is off by now: this cancels the alarm.
+		SleepReminder.reschedule();
 	}
 
 	/** Under Settings > Addons > Sleep: a door to the Sleep settings page. */

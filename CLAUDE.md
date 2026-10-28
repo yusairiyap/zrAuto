@@ -1348,8 +1348,12 @@ Built into `fermata` like Ambience (order 10, `hasSettings`), package `addon/sle
   goes with the best ones.
 - **Settings** (`SleepSettingsFragment`, a `ReorderListFragment` with no rows like Power settings): a live `SleepScoreView` of a made-up night
   (`SleepAnalyzer#sample`) that moves as the goal and the weights change.
-- **Actions** `SLEEP` and `SLEEP_TOGGLE` are at the end of the enum (FAB list and Tools group, All in One, key bindings). Not done: a Home widget, Health
-  Connect import, a bedtime reminder.
+- **Home widget** (`ui/home/widget/SleepWidget`, key `sleep`, only with the addon on): last night's score and length, the last week as little bars (from 3 cells
+  wide), a bar against the goal while a session runs, and a Start / Stop button (`Action.SLEEP_TOGGLE`); the header opens the tab.
+- **Bedtime reminder** (`SleepReminder`, `SleepReminderReceiver`, Settings > Sleep > Reminder, off by default): one inexact `RTC_WAKEUP` alarm for the usual bedtime less the
+  lead, set again from each run, at boot and whenever the bedtime or the reminder settings change; it posts a notification with a Start sleep button (nothing while a session
+  runs). Needs notifications allowed; the alarm is only set while the addon is on.
+- **Actions** `SLEEP` and `SLEEP_TOGGLE` are at the end of the enum (FAB list and Tools group, All in One, key bindings). Not done: Health Connect import.
 
 ## When in doubt, ask
 

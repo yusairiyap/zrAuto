@@ -17,6 +17,7 @@ import me.aap.fermata.addon.ambience.AmbienceAddon;
 import me.aap.fermata.addon.sleep.SleepAnalyzer;
 import me.aap.fermata.addon.sleep.SleepInsights;
 import me.aap.fermata.addon.sleep.SleepPrefs;
+import me.aap.fermata.addon.sleep.SleepReminder;
 import me.aap.fermata.addon.sleep.SleepTracker;
 import me.aap.fermata.ui.view.SleepScoreView;
 import me.aap.fermata.ui.view.SettingsStyle;
@@ -86,11 +87,14 @@ public class SleepSettingsFragment extends ReorderListFragment {
 			e.removePref(SleepPrefs.MODE);
 			e.removePref(SleepPrefs.SENSITIVITY);
 			e.removePref(SleepPrefs.AUTO_STOP_H);
+			e.removePref(SleepPrefs.REMINDER);
+			e.removePref(SleepPrefs.REMINDER_LEAD);
 			e.removePref(SleepPrefs.AMBIENCE_START);
 			e.removePref(SleepPrefs.AMBIENCE_MIN);
 			e.removePref(SleepPrefs.AMBIENCE_STOP);
 			e.removePref(SleepPrefs.ANIMATE);
 		}
+		SleepReminder.reschedule();
 		for (Runnable r : syncers) r.run();
 	}
 
@@ -150,7 +154,10 @@ public class SleepSettingsFragment extends ReorderListFragment {
 				() -> p.getIntPref(SleepPrefs.GOAL_MIN) / 30, v -> p.applyIntPref(SleepPrefs.GOAL_MIN, v * 30),
 				v -> SleepInsights.duration(v * 30 * 60_000L), null);
 		addValueSliderRow(box, R.string.sleep_set_bed, R.string.sleep_set_bed_sub, 0, 95,
-				() -> p.getIntPref(SleepPrefs.BED_MIN) / 15, v -> p.applyIntPref(SleepPrefs.BED_MIN, v * 15),
+				() -> p.getIntPref(SleepPrefs.BED_MIN) / 15, v -> {
+					p.applyIntPref(SleepPrefs.BED_MIN, v * 15);
+					SleepReminder.reschedule();
+				},
 				v -> SleepInsights.minuteOfDay(requireContext(), v * 15), null);
 		addValueSliderRow(box, R.string.sleep_set_wake, R.string.sleep_set_wake_sub, 0, 95,
 				() -> p.getIntPref(SleepPrefs.WAKE_MIN) / 15, v -> p.applyIntPref(SleepPrefs.WAKE_MIN, v * 15),
@@ -173,6 +180,21 @@ public class SleepSettingsFragment extends ReorderListFragment {
 		addValueSliderRow(box, R.string.sleep_set_auto_stop, R.string.sleep_set_auto_stop_sub, 4, 16,
 				() -> p.getIntPref(SleepPrefs.AUTO_STOP_H), v -> p.applyIntPref(SleepPrefs.AUTO_STOP_H, v),
 				v -> getString(R.string.sleep_hours, v), null);
+
+		section(box, R.string.sleep_section_reminder);
+		addSwitchRow(box, R.string.sleep_set_reminder, R.string.sleep_set_reminder_sub,
+				() -> p.getBooleanPref(SleepPrefs.REMINDER), on -> {
+					p.applyBooleanPref(SleepPrefs.REMINDER, on);
+					SleepReminder.reschedule();
+				}, null);
+		addValueSliderRow(box, R.string.sleep_set_lead, R.string.sleep_set_lead_sub, 0, 12,
+				() -> p.getIntPref(SleepPrefs.REMINDER_LEAD) / 5, v -> {
+					p.applyIntPref(SleepPrefs.REMINDER_LEAD, v * 5);
+					SleepReminder.reschedule();
+				}, v -> getString(R.string.sleep_lead_at, v * 5,
+						SleepInsights.minuteOfDay(requireContext(),
+								Math.floorMod(p.getIntPref(SleepPrefs.BED_MIN) - v * 5, 1440))),
+				() -> p.getBooleanPref(SleepPrefs.REMINDER));
 
 		section(box, R.string.sleep_section_ambience);
 		java.util.function.BooleanSupplier ambienceOn = AmbienceAddon::isEnabled;

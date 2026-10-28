@@ -134,4 +134,16 @@
     <string name="sleep_set_clear_sub">Removes the history, not the settings</string>
     <string name="sleep_clear_question">Every recorded night is deleted. This cannot be undone.</string>
     <string name="sleep_cleared">Sleep history deleted</string>
+
+    <!-- The bedtime reminder -->
+    <string name="sleep_reminder_channel">Sleep reminder</string>
+    <string name="sleep_reminder_title">Time to wind down</string>
+    <string name="sleep_reminder_text">Your bedtime is in %1$d minutes (%2$s). Tap Start sleep when you lie down.</string>
+    <string name="sleep_reminder_text_now">It is your bedtime (%1$s). Tap Start sleep when you lie down.</string>
+    <string name="sleep_section_reminder">Reminder</string>
+    <string name="sleep_set_reminder">Bedtime reminder</string>
+    <string name="sleep_set_reminder_sub">A notification before your usual bedtime, with a Start sleep button. Needs notifications allowed for the app.</string>
+    <string name="sleep_set_lead">Remind me</string>
+    <string name="sleep_set_lead_sub">How long before your usual bedtime</string>
+    <string name="sleep_lead_at">%1$d min before, at %2$s</string>
 </resources>

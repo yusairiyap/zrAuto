@@ -35,6 +35,9 @@ public final class SleepPrefs {
 	/** Stopping the session also stops the ambience. */
 	public static final Pref<BooleanSupplier> AMBIENCE_STOP = Pref.b("SLEEP_AMBIENCE_STOP", true);
 	public static final Pref<BooleanSupplier> ANIMATE = Pref.b("SLEEP_ANIMATE", true);
+	/** A reminder before the usual bedtime: on, and how many minutes before. */
+	public static final Pref<BooleanSupplier> REMINDER = Pref.b("SLEEP_REMINDER", false);
+	public static final Pref<IntSupplier> REMINDER_LEAD = Pref.i("SLEEP_REMINDER_LEAD", 30);
 	/** The start of the session that is running (0 = none): how a killed app finds out it had one. */
 	public static final Pref<LongSupplier> ACTIVE_START = Pref.l("SLEEP_ACTIVE_START", 0L);
 

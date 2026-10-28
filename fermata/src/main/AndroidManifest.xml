@@ -950,6 +950,14 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name=".addon.sleep.SleepReminderReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="me.aap.fermata.provider.FermataContentProvider"
             android:authorities="${applicationId}"
