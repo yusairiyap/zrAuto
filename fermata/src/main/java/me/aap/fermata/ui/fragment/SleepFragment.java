@@ -97,7 +97,7 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 	private TextView sessionStatus;
 	private TextView sessionSub;
 	private TextView awakeChip;
-	private TextView mixLine;
+	private LinearLayout buttonRow;
 	// Night card
 	private TextView nightTitle;
 	private TextView nightEstimate;
@@ -230,8 +230,25 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 		if (AmbienceAddon.isEnabled()) AmbienceEngine.get().addListener(ambienceChanged);
 		syncAmbience();
 		syncSession();
+		// The room under the tool bar is worked out from where it is: coming from a tab that had hidden it (Home) it can
+		// still be on its way back, so ask again once it has settled.
+		refreshInsets();
 		handler.removeCallbacks(clockTick);
 		if (tracker.isActive()) handler.postDelayed(clockTick, 1000);
+	}
+
+	private void refreshInsets() {
+		if (scroll == null) return;
+		MainActivityDelegate a = getActivityDelegate();
+		scroll.post(a::refreshContentInsets);
+		scroll.postDelayed(a::refreshContentInsets, 250);
+		scroll.postDelayed(a::refreshContentInsets, 700);
+	}
+
+	@Override
+	public void onHiddenChanged(boolean hidden) {
+		super.onHiddenChanged(hidden);
+		if (!hidden) refreshInsets();
 	}
 
 	@Override
@@ -257,7 +274,8 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 
 	private void addPart(LinearLayout parent, View v) {
 		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		lp.topMargin = px(14);
+		// The first card of the first column starts at the top; the column beside it too (updateSplit).
+		lp.topMargin = ((parent == colA) && (parent.getChildCount() == 0)) ? 0 : px(14);
 		parent.addView(v, lp);
 		parts.add(v);
 	}
@@ -353,26 +371,30 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 
 		startButton = text("", 16, c.onAccent, true);
 		startButton.setGravity(Gravity.CENTER);
-		startButton.setPadding(px(16), px(14), px(16), px(14));
+		startButton.setPadding(px(16), 0, px(16), 0);
 		startButton.setClickable(true);
 		startButton.setFocusable(true);
 		startButton.setOnClickListener(v -> toggleSession());
-		LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		blp.topMargin = px(14);
-		card.addView(startButton, blp);
 
 		awakeChip = ChipFlowLayout.chip(palette, R.drawable.sleep, R.string.sleep_i_am_awake, false, () -> {
 			tracker.markAwake();
 			TopToast.show(R.drawable.sleep, R.string.sleep_marked_awake);
 		});
-		LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(WRAP_CONTENT, px(40));
-		alp.topMargin = px(10);
-		alp.gravity = Gravity.CENTER_HORIZONTAL;
-		card.addView(awakeChip, alp);
+		awakeChip.setGravity(Gravity.CENTER);
 
-		mixLine = text("", 12.5f, c.textSecondary, false);
-		mixLine.setPadding(0, px(12), 0, 0);
-		card.addView(mixLine);
+		// Stop and "I'm awake" side by side, the same height; one under the other, as wide, when they do not fit.
+		buttonRow = new LinearLayout(palette);
+		buttonRow.setOrientation(LinearLayout.HORIZONTAL);
+		buttonRow.addView(startButton, new LinearLayout.LayoutParams(0, px(48), 1f));
+		LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(WRAP_CONTENT, px(48));
+		alp.setMarginStart(px(10));
+		buttonRow.addView(awakeChip, alp);
+		LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		rlp.topMargin = px(14);
+		card.addView(buttonRow, rlp);
+		buttonRow.addOnLayoutChangeListener((v, l, t, r, bt, ol, ot, or, ob) -> {
+			if ((r - l) != (or - ol)) v.post(this::fitButtons);
+		});
 		return card;
 	}
 
@@ -492,6 +514,7 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 		startButton.setTextColor(on ? 0xFF1C1B1F : c.onAccent);
 		startButton.setText(on ? R.string.sleep_stop : R.string.sleep_start);
 		awakeChip.setVisibility(on ? View.VISIBLE : View.GONE);
+		if (buttonRow != null) buttonRow.post(this::fitButtons);
 		if (on) {
 			long elapsed = System.currentTimeMillis() - tracker.getStart();
 			sessionStatus.setText(getString(R.string.sleep_recording, SleepInsights.duration(elapsed)));
@@ -510,21 +533,25 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 			sessionStatus.setText(R.string.sleep_ready);
 			sessionSub.setText(R.string.sleep_ready_sub);
 		}
-		String mix = "";
-		if (AmbienceAddon.isEnabled()) {
-			mix = AmbienceEngine.get().describe(getContext());
-		}
-		boolean link = SleepPrefs.store().getBooleanPref(SleepPrefs.AMBIENCE_START) && AmbienceAddon.isEnabled();
-		if (link && !on) {
-			int min = SleepPrefs.store().getIntPref(SleepPrefs.AMBIENCE_MIN);
-			mixLine.setVisibility(View.VISIBLE);
-			mixLine.setText(min > 0 ? getString(R.string.sleep_link_with_timer, min) : getString(R.string.sleep_link));
-		} else if (on && !mix.isEmpty()) {
-			mixLine.setVisibility(View.VISIBLE);
-			mixLine.setText(getString(R.string.sleep_link_playing, mix));
-		} else {
-			mixLine.setVisibility(View.GONE);
-		}
+	}
+
+	/** Stop and "I'm awake" next to each other when the card is wide enough for both, else one under the other. */
+	private void fitButtons() {
+		if ((buttonRow == null) || (startButton == null) || (awakeChip == null)) return;
+		boolean both = awakeChip.getVisibility() == View.VISIBLE;
+		boolean stack = both && (buttonRow.getWidth() < px(330));
+		int orientation = stack ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL;
+		if (buttonRow.getOrientation() == orientation) return;
+		buttonRow.setOrientation(orientation);
+		LinearLayout.LayoutParams slp = (LinearLayout.LayoutParams) startButton.getLayoutParams();
+		LinearLayout.LayoutParams alp = (LinearLayout.LayoutParams) awakeChip.getLayoutParams();
+		slp.width = stack ? MATCH_PARENT : 0;
+		slp.weight = stack ? 0f : 1f;
+		alp.width = stack ? MATCH_PARENT : WRAP_CONTENT;
+		alp.setMarginStart(stack ? 0 : px(10));
+		alp.topMargin = stack ? px(10) : 0;
+		startButton.setLayoutParams(slp);
+		awakeChip.setLayoutParams(alp);
 	}
 
 	// ---- The night ----
