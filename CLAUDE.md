@@ -1219,6 +1219,10 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   button at 0:00 only ~30 s in (paused by the page, no `ended`, no end-check line), and stayed there. When the check finds no end it now
   writes `YT media end check: not the end, ps=.. t=.. paused=.. ready=.. lastSecondsAgo=.. sameVideo=..` (or `an ad is showing`): ask for
   that line to see what the player reported.
+- **YouTube's "Continue watching?" prompt is answered** (`YoutubeWebView#hideAppPromoBanners`): `ytm-you-there-renderer` used to be only
+  hidden, so YouTube paused under an invisible question (in the background, after a while with no touch on the page), and the pause retry
+  then toasted "Window too small" at full size. Its button is pressed now (`YT media you-there prompt answered:` in the log), `_lact` is
+  refreshed every minute, and the size toast only shows when the page is under ~240 dp (`YoutubeMediaEngine#isPageSmall`). Not run on a device.
 - **A page restored after the app was killed** (the fragment's saved `url`, with YouTube not playing then) is kept
   quiet until asked (`YoutubeMediaEngine#quietRestoredPage`): its autoplay used to start the old song on app open.
 - **Previous / Next go nowhere past the ends of a list**: on the first / last song of the Music queue (its

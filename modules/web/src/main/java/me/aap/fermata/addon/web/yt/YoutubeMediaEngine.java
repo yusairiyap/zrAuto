@@ -972,8 +972,11 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			return;
 		}
 
+		// Only a page that is really small: YouTube's player pauses under ~200 CSS px. A big page that pauses again
+		// right after the retry has another reason (its "Continue watching?" prompt, see YoutubeWebView
+		// #hideAppPromoBanners), and the toast blamed the window size for it.
 		if (!stillBlocked && !ignorePause && (lastActivePlayTime != 0) &&
-				(playRetries >= MAX_PLAY_RETRIES) && !YoutubeFragment.isInPictureInPicture()) {
+				(playRetries >= MAX_PLAY_RETRIES) && !YoutubeFragment.isInPictureInPicture() && isPageSmall()) {
 			// The retry just above didn't stick -- assume the current size is the reason and stop
 			// asking the page to play at it until it grows (see playing() above) or the user
 			// explicitly taps play again (see start() below).
@@ -1001,6 +1004,13 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		ignorePause = true;
 		cb.onPause();
 		ignorePause = false;
+	}
+
+	/** The page is under YouTube's minimum player size (200 CSS px, with some room). */
+	private boolean isPageSmall() {
+		float density = web.getResources().getDisplayMetrics().density;
+		int min = Math.min(web.getWidth(), web.getHeight());
+		return (min > 0) && (min / density < 240f);
 	}
 
 	/**

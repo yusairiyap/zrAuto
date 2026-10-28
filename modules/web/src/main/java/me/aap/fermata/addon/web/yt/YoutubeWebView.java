@@ -1086,6 +1086,14 @@ public class YoutubeWebView extends FermataWebView {
 				""", null);
 	}
 
+	/**
+	 * Hides YouTube's app promos, and answers its "Video paused. Continue watching?" prompt
+	 * ({@code ytm-you-there-renderer}). That prompt used to be only hidden: YouTube paused the video
+	 * under it (in the background, after a while with no touch on the page; a pause the app then
+	 * mistook for a window too small) and nobody could see the question. Its button is pressed now,
+	 * which plays on, and {@code _lact} (the page's "last activity" clock that decides when to ask)
+	 * is kept fresh so it is asked less. Each prompt is logged (YT media you-there).
+	 */
 	private void hideAppPromoBanners() {
 		loadUrl("javascript:\n" +
 				"function fermataHideBanners() {\n" +
@@ -1093,11 +1101,27 @@ public class YoutubeWebView extends FermataWebView {
 				".forEach(function(t) {\n" +
 				"    document.querySelectorAll(t).forEach(function(el) { el.style.display = 'none'; });\n" +
 				"  });\n" +
+				"  document.querySelectorAll('ytm-you-there-renderer').forEach(function(el) {\n" +
+				"    if (el.__fermataAnswered) return;\n" +
+				"    var b = el.querySelector('button');\n" +
+				"    if (!b) return;\n" +
+				"    el.__fermataAnswered = true;\n" +
+				"    var v = document.querySelector('video');\n" +
+				"    " + JS_EVENT + "(" + JS_AUDIO_TRACE + ", 'you-there prompt answered: ' + " +
+				"(el.textContent || '').replace(/\\s+/g, ' ').trim().substring(0, 60) + " +
+				"(v ? ' paused=' + v.paused + ' t=' + v.currentTime.toFixed(1) : ''));\n" +
+				"    b.click();\n" +
+				"  });\n" +
 				"}\n" +
 				"fermataHideBanners();\n" +
 				"if (!window.__fermataBannerObserver) {\n" +
 				"  window.__fermataBannerObserver = new MutationObserver(fermataHideBanners);\n" +
 				"  window.__fermataBannerObserver.observe(document.body, {childList: true, subtree: true});\n" +
+				"}\n" +
+				"if (!window.__fermataLact) {\n" +
+				"  window.__fermataLact = setInterval(function() {\n" +
+				"    if (typeof window._lact === 'number') window._lact = Date.now();\n" +
+				"  }, 60000);\n" +
 				"}");
 	}
 
