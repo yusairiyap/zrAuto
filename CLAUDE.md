@@ -1337,6 +1337,10 @@ Built into `fermata` like Ambience (order 10, `hasSettings`), package `addon/sle
   The night is saved to `sleep_nights.txt` (`SleepStore`, JSON lines, 3 years) and a draft every 5 minutes; a night whose app was killed is finished at the
   next start (`recoverDraft`). Under 20 minutes is not a night. Settings are `SleepPrefs` (the same preference store as the Power settings). The movement scale
   and thresholds (`MOVE_SCALE`, `THRESHOLD` in `SleepAnalyzer`) are first guesses that need real nights to tune.
+- **Battery cost of a night**: every epoch the session reads the battery current (`PowerUsageTracker#readNowMa`, with the unit and sign the Power tab learned) and the level;
+  a night keeps the average draw while not charging, the level at start and end and how many readings were taken while charging (`SleepNight#percentPerHour` is -1 when it
+  was mostly on a charger). The night card shows it, the insights average it over nights, and a tip suggests a charger or a lighter mode above 1.5 %/h. The Power tab's own
+  history does not count the night: it only samples while the app is open, playing or in a car.
 - **Analysis** (`SleepAnalyzer`, pure): sleep/wake from smoothed movement (or from "I'm awake" taps), onset = first 5 minutes asleep, awakenings = 1.5 minutes awake,
   stages **estimated** from a 90 minute cycle shaped by stillness (always labelled so; leave it replaceable for imported data later). Score 0..100 =
   duration, regular times, time to fall asleep and interruptions, weighted by the settings. The stored night has only raw epochs, so a better analysis

@@ -93,6 +93,7 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 	private TextView nightEstimate;
 	private SleepScoreView scoreView;
 	private TextView statAsleep, statBed, statLatency, statAwake;
+	private TextView batteryLine;
 	private View prevNight, nextNight;
 	// Stage card
 	private SleepHypnogramView hypno;
@@ -419,6 +420,15 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 		LinearLayout.LayoutParams stp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
 		stp.topMargin = px(10);
 		card.addView(stats, stp);
+
+		batteryLine = text("", 12.5f, c.textSecondary, false);
+		batteryLine.setGravity(Gravity.CENTER);
+		batteryLine.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.power_usage, 0, 0, 0);
+		batteryLine.setCompoundDrawableTintList(ColorStateList.valueOf(c.accent));
+		batteryLine.setCompoundDrawablePadding(px(6));
+		LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		blp.topMargin = px(12);
+		card.addView(batteryLine, blp);
 		return card;
 	}
 
@@ -644,6 +654,24 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 		bars.replay();
 	}
 
+	/** What the night cost the battery: the average current and the percent per hour, or that it was charging. */
+	private void showBattery(SleepNight n) {
+		float pph = n.percentPerHour();
+		if (n.hasBattery() && (pph >= 0f)) {
+			batteryLine.setVisibility(View.VISIBLE);
+			batteryLine.setText(getString(R.string.sleep_battery_used, Math.round(n.drawMa()), n.levelStart - n.levelEnd,
+					String.format(Locale.getDefault(), "%.1f", pph)));
+		} else if (n.hasBattery()) {
+			batteryLine.setVisibility(View.VISIBLE);
+			batteryLine.setText(getString(R.string.sleep_battery_mixed, Math.round(n.drawMa())));
+		} else if (n.chargeSamples > 0) {
+			batteryLine.setVisibility(View.VISIBLE);
+			batteryLine.setText(R.string.sleep_battery_charging);
+		} else {
+			batteryLine.setVisibility(View.GONE);
+		}
+	}
+
 	/** The night picked: its score, figures and stages. */
 	private void showSelected(boolean animate) {
 		int i = results.isEmpty() ? -1 : selectedIndex();
@@ -658,6 +686,7 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 			statBed.setText("-");
 			statLatency.setText("-");
 			statAwake.setText("-");
+			batteryLine.setVisibility(View.GONE);
 			hypno.setResult(null);
 			for (TextView t : legend) if (t != null) t.setAlpha(0.5f);
 			return;
@@ -671,6 +700,7 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 		statBed.setText(SleepInsights.clock(ctx, r.bedTime()) + "–" + SleepInsights.clock(ctx, r.wakeTime()));
 		statLatency.setText(getString(R.string.sleep_minutes, r.latencyMs / 60_000L));
 		statAwake.setText(String.valueOf(r.awakenings));
+		showBattery(r.night);
 		hypno.setResult(r);
 		long[] ms = new long[4];
 		ms[SleepAnalyzer.REM] = r.remMs;

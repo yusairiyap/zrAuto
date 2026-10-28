@@ -83,6 +83,11 @@ public final class SleepTracker implements SensorEventListener {
 	private float lastMag;
 	private boolean haveLast;
 	private long nextTick;
+	// Battery use through the night: the sum of the currents read while drawing, and how many readings.
+	private float drawSum;
+	private int drawN;
+	private int chargeN;
+	private int levelStart = -1;
 
 	private SleepTracker() {
 	}
@@ -151,6 +156,11 @@ public final class SleepTracker implements SensorEventListener {
 		if (useMove) n.move = Arrays.copyOf(moveBuf, count);
 		if (useNoise) n.noise = Arrays.copyOf(noiseBuf, count);
 		n.flags = Arrays.copyOf(flagBuf, count);
+		n.levelStart = levelStart;
+		n.levelEnd = batteryLevel();
+		n.drawSamples = drawN;
+		n.chargeSamples = chargeN;
+		n.drawMa10 = (drawN == 0) ? 0 : Math.round(drawSum / drawN * 10f);
 		return n;
 	}
 
@@ -184,6 +194,10 @@ public final class SleepTracker implements SensorEventListener {
 			liveNoise = 0;
 			accum = 0;
 			haveLast = false;
+			drawSum = 0;
+			drawN = 0;
+			chargeN = 0;
+			levelStart = batteryLevel();
 			p.applyLongPref(SleepPrefs.ACTIVE_START, night.start);
 			thread = new HandlerThread("sleep-tracker");
 			thread.start();
@@ -249,7 +263,9 @@ public final class SleepTracker implements SensorEventListener {
 		DiagnosticLog.log(LogCat.SLEEP, "session ended", "minutes=" + done.durationMs() / 60_000L,
 				"asleepMinutes=" + r.asleepMs / 60_000L, "latencyMinutes=" + r.latencyMs / 60_000L,
 				"awakenings=" + r.awakenings, "score=" + r.score, "epochs=" + done.epochs(),
-				"mix=" + (done.mix.isEmpty() ? "-" : done.mix));
+				"mix=" + (done.mix.isEmpty() ? "-" : done.mix), "avgMa=" + done.drawMa(),
+				"levelStart=" + done.levelStart, "levelEnd=" + done.levelEnd,
+				"drawReadings=" + done.drawSamples, "chargeReadings=" + done.chargeSamples);
 		changed();
 		return done;
 	}
@@ -320,6 +336,7 @@ public final class SleepTracker implements SensorEventListener {
 		if (useNoise) noise = sampleNoise();
 		boolean awake = pendingAwake;
 		pendingAwake = false;
+		float ma = me.aap.fermata.addon.power.PowerUsageTracker.get().readNowMa();
 		boolean full;
 		synchronized (this) {
 			if (night == null) return;
@@ -331,6 +348,14 @@ public final class SleepTracker implements SensorEventListener {
 			}
 			liveMove = move;
 			liveNoise = noise;
+			if (!Float.isNaN(ma)) {
+				if (ma < -1f) {
+					drawSum += -ma;
+					drawN++;
+				} else if (ma > 1f) {
+					chargeN++;
+				}
+			}
 			full = (count >= MAX_EPOCHS) ||
 					(System.currentTimeMillis() - night.start >=
 							SleepPrefs.store().getIntPref(SleepPrefs.AUTO_STOP_H) * 3600_000L);
@@ -350,6 +375,16 @@ public final class SleepTracker implements SensorEventListener {
 		long now = SystemClock.uptimeMillis();
 		if (nextTick < now) nextTick = now + 1000;
 		w.postAtTime(this::tick, null, nextTick);
+	}
+
+	/** The battery level in percent, or -1. */
+	private static int batteryLevel() {
+		android.content.Intent i = FermataApplication.get().registerReceiver(null,
+				new android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED));
+		if (i == null) return -1;
+		int level = i.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1);
+		int scale = i.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1);
+		return ((level >= 0) && (scale > 0)) ? Math.round(level * 100f / scale) : -1;
 	}
 
 	/** One second of the room's sound, only its loudness: 0 (silent) to 255. The audio itself is dropped at once. */

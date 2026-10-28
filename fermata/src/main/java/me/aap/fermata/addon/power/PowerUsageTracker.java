@@ -297,6 +297,19 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 	// ---------------------------------------------------------------------------------------------
 	// Reading
 
+	/**
+	 * One reading of the battery current in mA, charging positive, or NaN when the phone does not report it. For a caller that
+	 * takes its own samples (the Sleep addon, once an epoch through the night, when this tracker is not running), using the
+	 * unit and sign this one has learned.
+	 */
+	public float readNowMa() {
+		BatteryManager bm = (BatteryManager) FermataApplication.get().getSystemService(Context.BATTERY_SERVICE);
+		int raw = (bm == null) ? Integer.MIN_VALUE : bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW);
+		if ((raw == Integer.MIN_VALUE) || (raw == 0)) return Float.NaN;
+		readBattery();
+		return toMilliAmps(raw);
+	}
+
 	/** Whether the phone reports the battery current at all. */
 	public boolean isSupported() {
 		return supported;

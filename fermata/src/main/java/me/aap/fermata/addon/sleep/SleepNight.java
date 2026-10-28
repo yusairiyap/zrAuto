@@ -38,6 +38,14 @@ public final class SleepNight {
 	/** The ambience sounds that were on at some time during the night, as their keys, comma separated. */
 	@NonNull
 	public String mix = "";
+	/** The battery level (percent) when the session began and when it ended, -1 when not known. */
+	public int levelStart = -1;
+	public int levelEnd = -1;
+	/** The average current drawn from the battery while it was not charging, in tenths of a mA (0 = none measured). */
+	public int drawMa10;
+	/** How many readings (one per epoch) were taken while drawing from the battery and while charging. */
+	public int drawSamples;
+	public int chargeSamples;
 	/** Whether the session was cut short by the app being killed (the end is the last time it saved). */
 	public boolean recovered;
 
@@ -63,6 +71,23 @@ public final class SleepNight {
 		return (noise != null) && (noise.length > 0);
 	}
 
+	/** Whether the battery was measured while it was being drawn from. */
+	public boolean hasBattery() {
+		return (drawSamples >= 4) && (drawMa10 > 0);
+	}
+
+	/** The average current drawn, in mA (0 when it was not measured). */
+	public float drawMa() {
+		return drawMa10 / 10f;
+	}
+
+	/** Percent of the battery used per hour of the night, or -1 when the level was not known or the phone was mostly charging. */
+	public float percentPerHour() {
+		if ((levelStart < 0) || (levelEnd < 0) || (durationMs() < 30 * 60_000L)) return -1f;
+		if (chargeSamples * 2 > drawSamples + chargeSamples) return -1f;
+		return Math.max(0, levelStart - levelEnd) / (durationMs() / 3_600_000f);
+	}
+
 	public boolean usedAmbience() {
 		return !mix.isEmpty();
 	}
@@ -81,6 +106,11 @@ public final class SleepNight {
 		n.flags = (flags == null) ? null : Arrays.copyOf(flags, flags.length);
 		n.mix = mix;
 		n.recovered = recovered;
+		n.levelStart = levelStart;
+		n.levelEnd = levelEnd;
+		n.drawMa10 = drawMa10;
+		n.drawSamples = drawSamples;
+		n.chargeSamples = chargeSamples;
 		return n;
 	}
 
@@ -93,6 +123,13 @@ public final class SleepNight {
 		if (flags != null) o.put("f", Base64.encodeToString(flags, Base64.NO_WRAP));
 		if (!mix.isEmpty()) o.put("x", mix);
 		if (recovered) o.put("r", true);
+		if (levelStart >= 0) o.put("l0", levelStart);
+		if (levelEnd >= 0) o.put("l1", levelEnd);
+		if (drawSamples > 0) {
+			o.put("bd", drawMa10);
+			o.put("bn", drawSamples);
+		}
+		if (chargeSamples > 0) o.put("bc", chargeSamples);
 		return o;
 	}
 
@@ -104,6 +141,11 @@ public final class SleepNight {
 		if (o.has("f")) n.flags = Base64.decode(o.getString("f"), Base64.NO_WRAP);
 		n.mix = o.optString("x", "");
 		n.recovered = o.optBoolean("r", false);
+		n.levelStart = o.optInt("l0", -1);
+		n.levelEnd = o.optInt("l1", -1);
+		n.drawMa10 = o.optInt("bd", 0);
+		n.drawSamples = o.optInt("bn", 0);
+		n.chargeSamples = o.optInt("bc", 0);
 		return n;
 	}
 }

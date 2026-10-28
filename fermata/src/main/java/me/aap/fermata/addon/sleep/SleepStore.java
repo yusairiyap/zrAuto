@@ -76,7 +76,7 @@ public final class SleepStore {
 		}
 	}
 
-	synchronized void clear() {
+	public synchronized void clear() {
 		nights.clear();
 		dirty = true;
 		scheduleSave();

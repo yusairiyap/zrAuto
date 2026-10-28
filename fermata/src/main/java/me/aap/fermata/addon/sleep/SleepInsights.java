@@ -147,6 +147,23 @@ public final class SleepInsights {
 			if (fx != null) out.add(ctx.getString(R.string.sleep_insight_amb_best, ctx.getString(fx.name), Math.round(bestGain)));
 		}
 
+		// What recording costs the battery, from the nights it was measured on.
+		float pphSum = 0;
+		float maSum = 0;
+		int pphN = 0;
+		for (SleepAnalyzer.Result r : results) {
+			float pph = r.night.percentPerHour();
+			if (r.night.hasBattery() && (pph >= 0f)) {
+				pphSum += pph;
+				maSum += r.night.drawMa();
+				pphN++;
+			}
+		}
+		if (pphN >= 2) {
+			out.add(ctx.getString(R.string.sleep_insight_battery, String.format(Locale.getDefault(), "%.1f", pphSum / pphN),
+					Math.round(maSum / pphN), pphN));
+		}
+
 		// Tips from the pattern.
 		int tips = 0;
 		boolean usedAmbience = false;
@@ -171,6 +188,10 @@ public final class SleepInsights {
 		}
 		if ((asleep / n < st.goalMin * 60_000L * 0.85) && (tips < 3)) {
 			out.add(ctx.getString(R.string.sleep_tip_earlier, minuteOfDay(ctx, Math.floorMod(st.bedMin - 30, 1440))));
+			tips++;
+		}
+		if ((pphN >= 2) && (pphSum / pphN >= 1.5f) && (tips < 3)) {
+			out.add(ctx.getString(R.string.sleep_tip_battery));
 			tips++;
 		}
 		if (tips == 0 && n >= 3) out.add(ctx.getString(R.string.sleep_tip_none));

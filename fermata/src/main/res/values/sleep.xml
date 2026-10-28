@@ -146,4 +146,11 @@
     <string name="sleep_set_lead">Remind me</string>
     <string name="sleep_set_lead_sub">How long before your usual bedtime</string>
     <string name="sleep_lead_at">%1$d min before, at %2$s</string>
+
+    <!-- Battery use of a night -->
+    <string name="sleep_battery_used">Battery: %1$d mA on average, %2$d%% used (%3$s%% an hour)</string>
+    <string name="sleep_battery_mixed">Battery: %1$d mA on average while it was not charging</string>
+    <string name="sleep_battery_charging">Battery: on the charger</string>
+    <string name="sleep_insight_battery">Recording costs about %1$s%% of the battery an hour (%2$d mA), measured over %3$d nights on battery power.</string>
+    <string name="sleep_tip_battery">Recording is heavy on your battery. Charge the phone overnight, or switch to Movement without sound, or to Times only, in the Sleep settings.</string>
 </resources>
