@@ -45,4 +45,24 @@ public interface HomeHost {
 																	me.aap.fermata.ui.view.GlassLens[] slot) {
 		return false;
 	}
+
+	/**
+	 * A text field in {@code target} took the focus: while the soft keyboard is up, the whole page glides up with it
+	 * so the card stays above the keyboard (the window is not resized for it), and back down as it goes.
+	 */
+	default void followKeyboard(android.view.View target) {
+	}
+
+	/**
+	 * Whether the app's start is over: Home has faded in and the first burst of work is done. Until then widgets show
+	 * placeholders and leave reading the library (lists, pictures) for {@link #whenSettled}.
+	 */
+	default boolean isSettled() {
+		return true;
+	}
+
+	/** Runs {@code r} once the start is over (at once when it is), one waiting widget at a time. */
+	default void whenSettled(Runnable r) {
+		r.run();
+	}
 }

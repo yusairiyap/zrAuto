@@ -56,9 +56,17 @@ public abstract class MediaEngineBase implements MediaEngine {
 	// Volume fades: the sound comes in when playback starts and goes out before it pauses or skips,
 	// as YouTube's does (youtube_fade.js), for every engine that can set its volume.
 
-	private static final long FADE_IN_MS = 450;
-	private static final long FADE_OUT_MS = 250;
-	private static final long FADE_STEP_MS = 25;
+	// The same curves as youtube_fade.js, so a local song sounds like a YouTube one coming and going. A new track
+	// comes in from START_LEVEL (never silence, which cut its first moment off: the sound may already flow before
+	// the fade's first step) evenly in loudness (`rise`) over START_FADE_MS; a resume eases in from silence over
+	// FADE_IN_MS; a pause or skip eases out over FADE_OUT_MS and stays silent PAUSE_HOLD_MS more, so what the output
+	// still had buffered drains out at zero instead of being cut mid-waveform.
+	private static final float START_LEVEL = 0.25f;
+	private static final long START_FADE_MS = 500;
+	private static final long FADE_IN_MS = 700;
+	private static final long FADE_OUT_MS = 350;
+	private static final long PAUSE_HOLD_MS = 80;
+	private static final long FADE_STEP_MS = 10;
 	// The level a fade ends at: 1, or 0 while muted.
 	private float volumeTarget = 1f;
 	private float volumeNow = 1f;
@@ -159,14 +167,14 @@ public abstract class MediaEngineBase implements MediaEngine {
 							(d >= END_FADE_MIN_DURATION_MS)) {
 						endFaded = true;
 						long ms = Math.max(100, left - 50);
-						if (volumeTarget > 0f) fadeTo(0f, ms, null, false);
+						if (volumeTarget > 0f) fadeTo(0f, ms, null, false, false);
 						// The picture goes to black with the sound, as YouTube's does (its videoEnding()).
 						VideoView v = videoView;
 						if ((v != null) && isVideoWithRepeatOff()) v.fadeToBlack(ms);
 					} else if (endFaded && (left > END_FADE_MS + 1000)) {
 						// Back from the end (repeat, a seek): the sound and the picture with it.
 						endFaded = false;
-						fadeTo(volumeTarget, FADE_IN_MS, null, false);
+						fadeTo(volumeTarget, FADE_IN_MS, null, false, false);
 						VideoView v = videoView;
 						if (v != null) v.liftBlack(FADE_IN_MS);
 					}
@@ -222,9 +230,15 @@ public abstract class MediaEngineBase implements MediaEngine {
 			fadeDone = null;
 			fadeDoneIsPause = false;
 		}
+		boolean resume = isPaused();
 		cancelFade();
-		applyVolume(0f);
-		fadeTo(volumeTarget, FADE_IN_MS, null, false);
+		if (resume) {
+			applyVolume(0f);
+			fadeTo(volumeTarget, FADE_IN_MS, null, false, false);
+		} else {
+			applyVolume(START_LEVEL * volumeTarget);
+			fadeTo(volumeTarget, START_FADE_MS, null, false, true);
+		}
 	}
 
 	/**
@@ -248,7 +262,7 @@ public abstract class MediaEngineBase implements MediaEngine {
 			pause.run();
 			return;
 		}
-		fadeTo(0f, FADE_OUT_MS, pause, true);
+		fadeTo(0f, FADE_OUT_MS, pause, true, false);
 	}
 
 	@Override
@@ -260,7 +274,7 @@ public abstract class MediaEngineBase implements MediaEngine {
 		}
 		// Not brought back up afterwards: what plays next sets its own volume (and this engine is
 		// closed or restarted by then); see restoreVolume() for a skip that came to nothing.
-		fadeTo(0f, FADE_OUT_MS, then, false);
+		fadeTo(0f, FADE_OUT_MS, then, false, false);
 	}
 
 	@Override
@@ -270,7 +284,7 @@ public abstract class MediaEngineBase implements MediaEngine {
 			then.run();
 			return;
 		}
-		fadeTo(0f, ms, then, false);
+		fadeTo(0f, ms, then, false, false);
 	}
 
 	@Override
@@ -279,10 +293,14 @@ public abstract class MediaEngineBase implements MediaEngine {
 		applyVolume(volumeTarget);
 	}
 
-	/** Ramps the volume to {@code to} over {@code ms}, then runs {@code done}. */
-	private void fadeTo(float to, long ms, @Nullable Runnable done, boolean isPause) {
+	/**
+	 * Ramps the volume to {@code to} over {@code ms}, then runs {@code done} (after PAUSE_HOLD_MS of silence when it
+	 * went out). {@code even}: equal steps in loudness (dB), as a new track comes in; else a smoothstep.
+	 */
+	private void fadeTo(float to, long ms, @Nullable Runnable done, boolean isPause, boolean even) {
 		float from = volumeNow;
 		long t0 = SystemClock.uptimeMillis();
+		long hold = ((to <= 0f) && (done != null)) ? PAUSE_HOLD_MS : 0;
 		Handler h = fadeHandler();
 		fadeDone = done;
 		fadeDoneIsPause = isPause;
@@ -290,10 +308,13 @@ public abstract class MediaEngineBase implements MediaEngine {
 			@Override
 			public void run() {
 				if (fade != this) return;
-				float k = Math.min(1f, (SystemClock.uptimeMillis() - t0) / (float) ms);
-				applyVolume(from + (to - from) * k);
+				long el = SystemClock.uptimeMillis() - t0;
+				float k = Math.min(1f, el / (float) ms);
+				applyVolume(even ? rise(from, to, k) : ease(from, to, k));
 				if (k < 1f) {
 					h.postDelayed(this, FADE_STEP_MS);
+				} else if (el < ms + hold) {
+					h.postDelayed(this, ms + hold - el);
 				} else {
 					fade = null;
 					Runnable d = fadeDone;
@@ -305,6 +326,17 @@ public abstract class MediaEngineBase implements MediaEngine {
 		};
 		fade = step;
 		h.post(step);
+	}
+
+	// Smoothstep: eases in and out, so neither end of a fade has an audible corner.
+	private static float ease(float from, float to, float t) {
+		return from + (to - from) * (t * t * (3f - 2f * t));
+	}
+
+	// Even in loudness: equal steps in dB from `from` to `to` (both above zero, else a smoothstep).
+	private static float rise(float from, float to, float t) {
+		if ((from < 0.01f) || (to < 0.01f)) return ease(from, to, t);
+		return (float) (from * Math.pow(to / from, t));
 	}
 
 	@CallSuper

@@ -26,15 +26,23 @@ import android.util.AttributeSet;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.graphics.ColorUtils;
+import androidx.webkit.ScriptHandler;
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
 
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import me.aap.fermata.media.engine.stage.SoundStage;
 import me.aap.fermata.BuildConfig;
 import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.web.FermataChromeClient;
 import me.aap.fermata.addon.web.FermataJsInterface;
+import me.aap.fermata.addon.web.FermataWebClient;
 import me.aap.fermata.addon.web.FermataWebView;
+import me.aap.fermata.addon.web.WebBrowserAddon;
 import me.aap.fermata.addon.web.WebToolBarMediator;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -168,6 +176,7 @@ public class YoutubeWebView extends FermataWebView {
 	protected void onAttachedToWindow() {
 		super.onAttachedToWindow();
 		SoundStage.get().addListener(soundStageListener);
+		ensureEarlyFade();
 	}
 
 	@Override
@@ -190,12 +199,59 @@ public class YoutubeWebView extends FermataWebView {
 		if (YoutubeSponsorBlock.isPreferenceChanged(prefs)) injectSponsorBlock();
 		if (getAddon().eqPrefsChanged(prefs)) configureEqualizer();
 		if (getAddon().skipAdChanged(prefs)) attachAdObserver();
+		if (getAddon().warmupChanged(prefs)) configureWarmup();
+	}
+
+	@Override
+	public void init(WebBrowserAddon addon, FermataWebClient webClient, FermataChromeClient chromeClient) {
+		super.init(addon, webClient, chromeClient);
+		// Before any page loads, a restored one included.
+		ensureEarlyFade();
 	}
 
 	@Override
 	public void loadUrl(@NonNull String url) {
 		Log.d("Loading URL: " + url);
+		ensureEarlyFade();
 		super.loadUrl(url);
+	}
+
+	// The fade script (with its warm-up) as a document-start script: a page that is loaded anew (a YouTube song after a
+	// local one, the first song after the app starts) plays its video before pageLoaded() injects anything, so that song
+	// had no warm-up and no fade, and stuttered. pageLoaded() still injects it for WebViews without the feature; the
+	// script guards against running twice in a page.
+	private static final Set<String> FADE_ORIGINS = new HashSet<>(Arrays.asList(
+			"https://m.youtube.com", "https://www.youtube.com", "https://youtube.com"));
+	@Nullable
+	private ScriptHandler earlyFade;
+	private boolean earlyFadeWarmup;
+
+	private void ensureEarlyFade() {
+		if (getAddon() == null) return; // not set up yet: init() comes first for every page load
+		boolean warmup = getAddon().startWarmup();
+		if ((earlyFade != null) && (earlyFadeWarmup == warmup)) return;
+		if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return;
+		String script = YoutubeFadeScript.getScript(getContext());
+		if (script.isEmpty()) return;
+		try {
+			if (earlyFade != null) earlyFade.remove();
+			earlyFade = WebViewCompat.addDocumentStartJavaScript(this, script + '\n' + fadeConfigJs(), FADE_ORIGINS);
+			earlyFadeWarmup = warmup;
+		} catch (RuntimeException ex) {
+			Log.e(ex, "Failed to add the fade script at document start");
+			earlyFade = null;
+		}
+	}
+
+	private String fadeConfigJs() {
+		return "if (window.FermataFade) window.FermataFade.configure({endingEvent: " + JS_VIDEO_ENDING +
+				", warmup: " + getAddon().startWarmup() + ", audioOnly: " + MusicPlayer.isYoutubeAudioMode() + "});";
+	}
+
+	/** Music mode on or off: the page warms a new song up only while its video is not watched (youtube_fade.js startFade). */
+	void syncFadeAudioOnly() {
+		evaluateJavascript("if (window.FermataFade) window.FermataFade.configure({audioOnly: " +
+				MusicPlayer.isYoutubeAudioMode() + "});", null);
 	}
 
 	@Override
@@ -493,18 +549,48 @@ public class YoutubeWebView extends FermataWebView {
 				"    var nearEnd = isFinite(left) && (left <= 5);\n" +
 				"    var gen = v.__fermataEndGen = (v.__fermataEndGen || 0) + 1;\n" +
 				"    setTimeout(function() {\n" +
-				"      if ((gen !== v.__fermataEndGen) || v.ended || (!v.paused && (v.readyState >= 3)) ||\n" +
-				"          window.__fermataAdShowing) return;\n" +
-				"      var ps = -1;\n" +
+				"      if ((gen !== v.__fermataEndGen) || v.ended || (!v.paused && (v.readyState >= 3))) return;\n" +
+				"      if (window.__fermataAdShowing) { " + JS_EVENT + "(" + JS_AUDIO_TRACE + ", 'end check: an ad is showing'); return; }\n" +
+				"      var ps = -1, endScreen = false;\n" +
 				"      try {\n" +
 				"        var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
 				"        if (p && (typeof p.getPlayerState === 'function')) ps = p.getPlayerState();\n" +
+				// YouTube's replay screen, whatever state the player API reports.
+				"        endScreen = !!(p && p.classList && p.classList.contains('ended-mode'));\n" +
 				"      } catch (x) {}\n" +
-				"      if (ps === 0) { " + JS_EVENT + "(" + JS_VIDEO_ENDED + ", 'stuck:state'); return; }\n" +
-				"      if (!nearEnd || (v.currentSrc !== src) || (Math.abs(v.currentTime - t) > 0.5)) return;\n" +
+				"      if ((ps === 0) || endScreen) { " + JS_EVENT + "(" + JS_VIDEO_ENDED + ", 'stuck:state' + (endScreen ? ' end screen' : '')); return; }\n" +
+				// Why it stays put: in the Diagnostic log (YT media), for a song that stopped where it should not have.
+				"      " + JS_EVENT + "(" + JS_AUDIO_TRACE + ", 'end check: not the end, ps=' + ps + ' t=' + v.currentTime.toFixed(1) + '/' +\n" +
+				"        (isFinite(v.duration) ? v.duration.toFixed(0) : '?') + ' paused=' + v.paused + ' ready=' + v.readyState +\n" +
+				"        ' lastSecondsAgo=' + (v.__fermataNearEndAt ? Math.round((Date.now() - v.__fermataNearEndAt) / 1000) + 's' : 'never') +\n" +
+				"        ' sameVideo=' + (fermataCurrentVideoId() === v.__fermataNearEndId));\n" +
+				// Put back to the start by YouTube's player in other states too (the end screen, a video it cued up): the
+				// song was in its last seconds a moment ago and now sits near 0:00, not playing.
+				"      if (!nearEnd) {\n" +
+				// The same video (not a new song the app loaded, which has another id and is not paused at the start), or one
+				// YouTube cued up by itself (state 5).
+				"        var same = fermataCurrentVideoId() === v.__fermataNearEndId;\n" +
+				"        if ((Date.now() - (v.__fermataNearEndAt || 0) < 10000) && (v.currentTime < 2) && (same || (ps === 5))) " +
+				JS_EVENT + "(" + JS_VIDEO_ENDED + ", 'stuck:reset ps=' + ps);\n" +
+				"        return;\n" +
+				"      }\n" +
+				"      if ((v.currentSrc !== src) || (Math.abs(v.currentTime - t) > 0.5)) return;\n" +
 				"      if (v.duration - v.currentTime <= 1.5) " + JS_EVENT + "(" + JS_VIDEO_ENDED + ", 'stuck:time');\n" +
 				"    }, 2000);\n" +
 				"  };\n" +
+				// When the song was last seen in its last 5 s (see endCheck: a pause right after, back at 0:00, is its end).
+				// Never an ad's last seconds (Oct 29: a 6 s ad ended, the song started at 0:00 and was taken for its end):
+				// not while an ad shows (the app's flag or the player's own ad classes), nor for anything under 30 s.
+				"  v.addEventListener('timeupdate', function() {\n" +
+				"    var l = v.duration - v.currentTime;\n" +
+				"    var mp = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
+				"    var ad = window.__fermataAdShowing || (mp && mp.classList && (mp.classList.contains('ad-showing') ||" +
+				" mp.classList.contains('ad-interrupting')));\n" +
+				"    if (!ad && (v.duration >= 30) && isFinite(l) && (l >= 0) && (l <= 5) && !v.paused) {\n" +
+				"      v.__fermataNearEndAt = Date.now();\n" +
+				"      v.__fermataNearEndId = fermataCurrentVideoId();\n" +
+				"    }\n" +
+				"  });\n" +
 				"  v.addEventListener('pause', function(e) {\n" +
 				"    " + JS_EVENT + "(" + JS_VIDEO_PAUSED + ", v.currentSrc);\n" +
 				"    endCheck();\n" +
@@ -512,6 +598,9 @@ public class YoutubeWebView extends FermataWebView {
 				// Buffering: stalled for data. Resolved by the next 'playing' -- see
 				// YoutubeMediaEngine#waiting(), which tells a long stall (the network) apart.
 				"  v.addEventListener('waiting', function(e) {\n" +
+				// The sound warm-up's own seek back to the start (youtube_fade.js) is not buffering: reporting it made the app
+				// show the spinner and publish the song's metadata and cover again on every song.
+				"    if (Date.now() - (v.__fermataWarmSeekAt || 0) < 1500) return;\n" +
 				"    " + JS_EVENT + "(" + JS_VIDEO_WAITING +
 				", (window.__fermataPageHidden && window.__fermataPageHidden()) ? 'hidden' : 'shown');\n" +
 				"    endCheck();\n" +
@@ -560,12 +649,17 @@ public class YoutubeWebView extends FermataWebView {
 	private static String traceMediaJs() {
 		return "if (!window.__fermataTracer) {\n" +
 				"  window.__fermataTracer = true;\n" +
+				// A page that has just loaded (the first song after the app starts, a song started on the page) is traced too,
+				// not only a switch in the player: its first start is where a stutter was heard after an app start.
+				"  window.__fermataTraceUntil = Math.max(window.__fermataTraceUntil || 0, Date.now() + 15000);\n" +
 				"  var trLastT = -1, trLastWall = 0, trPlayT = -1, trPlayWall = 0, trStatsGen = 0;\n" +
 				"  var trace = function(msg) {\n" +
 				"    if (Date.now() < (window.__fermataTraceUntil || 0)) " + JS_EVENT + "(" + JS_AUDIO_TRACE +
 				", msg);\n" +
 				"  };\n" +
-				"  ['playing', 'waiting', 'stalled', 'loadstart', 'emptied', 'seeking'].forEach(function(n) {\n" +
+				// For the other scripts (youtube_fade.js: how evenly a new song's fade-in ran).
+				"  window.__fermataTrace = trace;\n" +
+				"  ['playing', 'waiting', 'stalled', 'loadstart', 'emptied', 'seeking', 'pause', 'play'].forEach(function(n) {\n" +
 				"    document.addEventListener(n, function(e) {\n" +
 				"      var v = e.target;\n" +
 				"      if (!v || (v.tagName !== 'VIDEO')) return;\n" +
@@ -573,6 +667,20 @@ public class YoutubeWebView extends FermataWebView {
 				"      var fade = '';\n" +
 				"      if (n === 'playing') {\n" +
 				"        trPlayT = v.currentTime; trPlayWall = Date.now();\n" +
+				// The song's clock in its first 1.5 s, one line: how far it moved in each 100 ms of wall time. A clean start reads
+				// 100s all along; a stall reads 0 (or a small number) and the catch-up after it a big one (a skip). The fade's own
+				// trace (biggest step) and the clock 1 s in only showed that something happened, not when.
+				"        (function(pv) { var last = pv.currentTime, lw = performance.now(), n = 0, out = [];\n" +
+				"          var iv = setInterval(function() {\n" +
+				"            var now = performance.now(), t = pv.currentTime;\n" +
+				"            out.push(Math.round((t - last) * 1000) + (Math.abs(now - lw - 100) > 30 ? '@' + Math.round(now - lw) : ''));\n" +
+				"            last = t; lw = now;\n" +
+				"            if ((++n >= 15) || pv.paused) { clearInterval(iv); trace('start clock per 100 ms: ' + out.join(' ') +" +
+				" ' (t=' + t.toFixed(2) + ')'); }\n" +
+				"          }, 100); })(v);\n" +
+				// A start that took long (seconds of buffering) is still traced for its first seconds of sound.
+				"        if (Date.now() < (window.__fermataTraceUntil || 0)) window.__fermataTraceUntil = " +
+				"Math.max(window.__fermataTraceUntil, Date.now() + 5000);\n" +
 				"        try {\n" +
 				"          var eq = window.FermataEqualizer, g = eq && eq.fadeParam && eq.fadeParam(v);\n" +
 				"          fade = ' fade=' + (g ? 'gain' : 'element');\n" +
@@ -590,9 +698,8 @@ public class YoutubeWebView extends FermataWebView {
 				"          }\n" +
 				"        } catch (x) {}\n" +
 				"      }\n" +
-				// Only what tells of a hitch is written; the others just reset the progress watch.
-				"      if ((n === 'playing') || (n === 'waiting') || (n === 'stalled'))\n" +
-				"        trace(n + ' t=' + v.currentTime.toFixed(2) + ' vol=' + v.volume.toFixed(2) + " +
+				// A seek is written too, with where it went: one at a song's start is heard as a stutter.
+				"      trace(n + ' t=' + v.currentTime.toFixed(2) + ' vol=' + v.volume.toFixed(2) + " +
 				"' ready=' + v.readyState + fade);\n" +
 				"    }, true);\n" +
 				"  });\n" +
@@ -601,7 +708,7 @@ public class YoutubeWebView extends FermataWebView {
 				"    if (!v || (v.tagName !== 'VIDEO') || v.paused) return;\n" +
 				"    var now = Date.now(), t = v.currentTime;\n" +
 				"    if ((trLastT >= 0) && (t < trLastT - 0.25)) trace('time back ' + trLastT.toFixed(2) + ' -> ' + t.toFixed(2));\n" +
-				"    if ((trLastT >= 0) && trLastWall && (now - trLastWall > 700)) trace('no progress for ' + " +
+				"    if ((trLastT >= 0) && trLastWall && (now - trLastWall > 400)) trace('no progress for ' + " +
 				"(now - trLastWall) + 'ms at t=' + t.toFixed(2));\n" +
 
 				"    trLastT = t;\n" +
@@ -618,7 +725,15 @@ public class YoutubeWebView extends FermataWebView {
 				"      e.stopImmediatePropagation();\n" +
 				// A real 'ended': the stuck-at-the-end check (endCheck in attachListeners()) stands down.
 				"      e.target.__fermataEndGen = (e.target.__fermataEndGen || 0) + 1;\n" +
-				"      " + JS_EVENT + "(" + JS_VIDEO_ENDED + ", null);\n" +
+				// Ended well before the song's length (YouTube's player still knows it when the stream was cut short, seen
+				// signed out: "ended" ~30 s into a 3 min song): reported as early, so the app resumes it there (endedEarly).
+				"      var ev = e.target, et = ev.currentTime, ed = ev.duration, pd = 0;\n" +
+				"      try { var ep = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
+				"        if (ep && ep.getDuration) pd = ep.getDuration(); } catch (x) {}\n" +
+				"      var len = (pd > 0) ? pd : ed;\n" +
+				"      var ead = ep && ep.classList && (ep.classList.contains('ad-showing') || ep.classList.contains('ad-interrupting'));\n" +
+				"      var early = !window.__fermataAdShowing && !ead && isFinite(len) && (len > 30) && (et < len - 10);\n" +
+				"      " + JS_EVENT + "(" + JS_VIDEO_ENDED + ", early ? ('early:' + et.toFixed(1) + '/' + len.toFixed(1)) : null);\n" +
 				"    }\n" +
 				"  }, true);\n" +
 				"}\n";
@@ -895,12 +1010,65 @@ public class YoutubeWebView extends FermataWebView {
 				YoutubeSponsorBlock.getConfigJson(getAddon().getPreferenceStore()) + ");", null);
 	}
 
+	private void configureWarmup() {
+		ensureEarlyFade();
+		evaluateJavascript("if (window.FermataFade) window.FermataFade.configure({warmup: " + getAddon().startWarmup() + "});", null);
+	}
+
+	/**
+	 * Starts fetching the caption track of {@code videoId} inside the page (see YoutubeAddon's MusicHooks#pageCaptions):
+	 * from the player's own response, so only for the video it has. Evaluates to "started", "busy" (already fetching or
+	 * fetched), "other" (not the page's video) or "none" (no usable track).
+	 */
+	static String pageCaptionsStartJs(String videoId, String lang, boolean allowGenerated) {
+		return """
+				(function(id, lang, auto) {
+				  var key = '__fermataCap_' + id;
+				  var cur = window[key];
+				  if (cur && (cur.state !== 'error')) return 'busy';
+				  var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');
+				  var pr = null;
+				  try { pr = (p && p.getPlayerResponse) ? p.getPlayerResponse() : null; } catch (e) {}
+				  if (!pr || !pr.videoDetails || (pr.videoDetails.videoId !== id)) {
+				    var init = window.ytInitialPlayerResponse;
+				    pr = (init && init.videoDetails && (init.videoDetails.videoId === id)) ? init : null;
+				  }
+				  if (!pr) return 'other';
+				  var tr = (((pr.captions || {}).playerCaptionsTracklistRenderer || {}).captionTracks) || [];
+				  if (!tr.length) return 'none';
+				  var lc = function(t) { return (t.languageCode || '').toLowerCase(); };
+				  var man = function(t) { return t.kind !== 'asr'; };
+				  var pick = function(f) { for (var i = 0; i < tr.length; i++) if (f(tr[i])) return tr[i]; return null; };
+				  var t = pick(function(t) { return man(t) && (lc(t).indexOf(lang) === 0); }) ||
+				    pick(function(t) { return man(t) && (lc(t).indexOf('en') === 0); }) || pick(man);
+				  if (!t && auto) t = pick(function(t) { return lc(t).indexOf(lang) === 0; }) || tr[0];
+				  if (!t || !t.baseUrl) return 'none';
+				  var url = t.baseUrl.replace(/[&?]fmt=[^&]*/g, '') + '&fmt=json3';
+				  window[key] = {state: 'loading'};
+				  fetch(url, {credentials: 'include'}).then(function(r) { return r.text(); }).then(function(tx) {
+				    window[key] = {state: 'done', body: tx, lang: t.languageCode || '', asr: (t.kind === 'asr') ? '1' : '0'};
+				  }).catch(function(e) { window[key] = {state: 'error', error: String(e)}; });
+				  return 'started';
+				})(%s, %s, %s)""".formatted(org.json.JSONObject.quote(videoId), org.json.JSONObject.quote(lang),
+				allowGenerated ? "true" : "false");
+	}
+
+	/** What {@link #pageCaptionsStartJs} came to: the state object (taken once it is done), or null. */
+	static String pageCaptionsResultJs(String videoId) {
+		return """
+				(function(id) {
+				  var key = '__fermataCap_' + id;
+				  var v = window[key];
+				  if (!v) return null;
+				  if (v.state !== 'loading') delete window[key];
+				  return v;
+				})(%s)""".formatted(org.json.JSONObject.quote(videoId));
+	}
+
 	private void injectFade() {
 		String script = YoutubeFadeScript.getScript(getContext());
 		if (script.isEmpty()) return;
-		evaluateJavascript(script, result -> evaluateJavascript(
-				"if (window.FermataFade) window.FermataFade.configure({endingEvent: " + JS_VIDEO_ENDING +
-						"});", null));
+		evaluateJavascript(script, result -> evaluateJavascript(fadeConfigJs(), null));
 	}
 
 	private void injectEqualizer() {
@@ -932,6 +1100,14 @@ public class YoutubeWebView extends FermataWebView {
 				""", null);
 	}
 
+	/**
+	 * Hides YouTube's app promos, and answers its "Video paused. Continue watching?" prompt
+	 * ({@code ytm-you-there-renderer}). That prompt used to be only hidden: YouTube paused the video
+	 * under it (in the background, after a while with no touch on the page; a pause the app then
+	 * mistook for a window too small) and nobody could see the question. Its button is pressed now,
+	 * which plays on, and {@code _lact} (the page's "last activity" clock that decides when to ask)
+	 * is kept fresh so it is asked less. Each prompt is logged (YT media you-there).
+	 */
 	private void hideAppPromoBanners() {
 		loadUrl("javascript:\n" +
 				"function fermataHideBanners() {\n" +
@@ -939,11 +1115,27 @@ public class YoutubeWebView extends FermataWebView {
 				".forEach(function(t) {\n" +
 				"    document.querySelectorAll(t).forEach(function(el) { el.style.display = 'none'; });\n" +
 				"  });\n" +
+				"  document.querySelectorAll('ytm-you-there-renderer').forEach(function(el) {\n" +
+				"    if (el.__fermataAnswered) return;\n" +
+				"    var b = el.querySelector('button');\n" +
+				"    if (!b) return;\n" +
+				"    el.__fermataAnswered = true;\n" +
+				"    var v = document.querySelector('video');\n" +
+				"    " + JS_EVENT + "(" + JS_AUDIO_TRACE + ", 'you-there prompt answered: ' + " +
+				"(el.textContent || '').replace(/\\s+/g, ' ').trim().substring(0, 60) + " +
+				"(v ? ' paused=' + v.paused + ' t=' + v.currentTime.toFixed(1) : ''));\n" +
+				"    b.click();\n" +
+				"  });\n" +
 				"}\n" +
 				"fermataHideBanners();\n" +
 				"if (!window.__fermataBannerObserver) {\n" +
 				"  window.__fermataBannerObserver = new MutationObserver(fermataHideBanners);\n" +
 				"  window.__fermataBannerObserver.observe(document.body, {childList: true, subtree: true});\n" +
+				"}\n" +
+				"if (!window.__fermataLact) {\n" +
+				"  window.__fermataLact = setInterval(function() {\n" +
+				"    if (typeof window._lact === 'number') window._lact = Date.now();\n" +
+				"  }, 60000);\n" +
 				"}");
 	}
 
@@ -1369,16 +1561,22 @@ public class YoutubeWebView extends FermataWebView {
 		// Playing as music (the page isn't looked at): the player swaps the video itself, see
 		// navigateToVideoJs().
 		boolean inPlayer = MusicPlayer.isYoutubeAudioMode();
+		syncFadeAudioOnly();
 		evaluateJavascript(navigateToVideoJs(videoId, fromStart, inPlayer), result -> {
 			me.aap.fermata.util.DiagnosticLog.log("YT", "switch", "id=" + videoId,
 					"\"swap\"".equals(result) ? "in the player" : "true".equals(result) ? "page navigation" :
 							"\"reload\"".equals(result) ? "page load (effects off, leaving Web Audio)" :
 									"page load");
 			if ("\"swap\"".equals(result)) return;
+			// A router navigation: the next song's sound output settles later, so it warms up longer (youtube_fade.js
+			// longWarm). Runs before the new video's loadstart, which comes a few hundred ms after the navigation.
+			if ("true".equals(result)) {
+				evaluateJavascript("if (window.FermataFade && window.FermataFade.longWarm) window.FermataFade.longWarm();", null);
+				return;
+			}
 			// Only reached if the script itself couldn't run at all (no document body yet, an
 			// exception) -- a plain page load is the last resort either way.
-			if (!"true".equals(result))
-				loadUrl(YoutubeVideoItem.watchUrl(videoId) + (fromStart ? "&t=0s" : ""));
+			loadUrl(YoutubeVideoItem.watchUrl(videoId) + (fromStart ? "&t=0s" : ""));
 		});
 	}
 

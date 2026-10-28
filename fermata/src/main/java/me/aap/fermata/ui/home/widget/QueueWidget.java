@@ -29,7 +29,7 @@ final class QueueWidget extends LibraryWidget {
 	private final FermataServiceUiBinder.Listener itemListener = new FermataServiceUiBinder.Listener() {
 		@Override
 		public void onPlayableChanged(PlayableItem oldItem, PlayableItem newItem) {
-			post(() -> refresh(true));
+			post(() -> me.aap.fermata.util.PlaybackCalm.afterStart(() -> refresh(true)));
 		}
 	};
 

@@ -80,6 +80,17 @@ final class MediaWidget extends HomeWidgetView {
 	private static final int LARGE_WIDE = 3;
 	private static final int LARGE_TALL = 4;
 	private static final long TICK_MS = 500;
+	/** Room beside the cover below which a wide card is laid out tight (see applyMode). */
+	private static final int TIGHT_DP = 300;
+	/** The name and artist lines of a wide card, at the top (20sp + 14sp). */
+	private static final int TEXTS_DP = 46;
+	/** The card is tight: the chip shows only its icon. */
+	private boolean narrowChip;
+
+	/** How often the player itself is asked where it is while playing. */
+	private static final long ENGINE_POLL_MS = 3000;
+	/** How long its answer is counted on from (a bit over two asks, so a late answer does not drop back to the session's). */
+	private static final long ENGINE_TRUST_MS = 7000;
 
 	private Fader wash;
 	private Fader art;
@@ -221,9 +232,7 @@ final class MediaWidget extends HomeWidgetView {
 		texts.setOrientation(LinearLayout.VERTICAL);
 		title = text(ROLE_PRIMARY, 17, true);
 		title.setSingleLine(true);
-		title.setEllipsize(android.text.TextUtils.TruncateAt.MARQUEE);
-		title.setMarqueeRepeatLimit(2);
-		title.setHorizontallyScrolling(true);
+		applyTitleScroll();
 		artist = text(ROLE_SECONDARY, 13.5f, false);
 		artist.setSingleLine(true);
 		artist.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -317,8 +326,11 @@ final class MediaWidget extends HomeWidgetView {
 		wash.setVisibility(ownBackground() ? VISIBLE : GONE);
 		boolean dark = lightText();
 		badge.setBackground(HomeUi.round(dark ? 0x88000000 : 0x26000000, px(10)));
+		// The eye beside it wears the very same fill, so the two read as a pair.
 		chip.setBackground(HomeUi.pressable(dark ? 0x33FFFFFF : host.palette().chipRipple,
 				dark ? 0x44000000 : host.palette().chipFill, px(17)));
+		eye.setBackground(HomeUi.pressable(dark ? 0x33FFFFFF : host.palette().chipRipple,
+				dark ? 0x44000000 : host.palette().chipFill, px(18)));
 		if (mode >= 0) scrim.setBackground(scrimFor(mode));
 		seek.invalidate();
 		invalidate();
@@ -331,7 +343,27 @@ final class MediaWidget extends HomeWidgetView {
 		l.add(HomeOption.sw("seek", ctx.getString(R.string.home_opt_seek), true));
 		l.add(HomeOption.sw("chip", ctx.getString(R.string.home_opt_video_chip), true));
 		l.add(HomeOption.sw("eye", ctx.getString(R.string.home_opt_cover_chip), true));
+		l.add(HomeOption.sw("marquee", ctx.getString(R.string.home_opt_title_scroll), false));
 		return l;
+	}
+
+	/**
+	 * A long title ends in an ellipsis unless "Scroll a long title" is on: a scrolling title redraws the screen every
+	 * frame while it moves, which at a high refresh rate is a real cost on Home (the Music tab holds 60 Hz for that).
+	 */
+	private void applyTitleScroll() {
+		boolean scroll = optBool("marquee", false);
+		if (title.getEllipsize() != null && scroll == (title.getEllipsize() == android.text.TextUtils.TruncateAt.MARQUEE)) return;
+		if (scroll) {
+			title.setEllipsize(android.text.TextUtils.TruncateAt.MARQUEE);
+			title.setMarqueeRepeatLimit(2);
+			title.setHorizontallyScrolling(true);
+			title.setSelected(true);
+		} else {
+			title.setSelected(false);
+			title.setHorizontallyScrolling(false);
+			title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+		}
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -373,12 +405,18 @@ final class MediaWidget extends HomeWidgetView {
 		// The hide / show covers button, and the card without its cover while covers are hidden.
 		boolean showEye = !strip && optBool("eye", true);
 		boolean hid = layoutHidden;
+		applyTitleScroll();
 		int pad = px(14);
 
 		// The cover is a square that keeps its shape at any size, dissolving into the blurred wash
 		// beside or below it (a stretched or cropped cover looked wrong at some sizes).
 		int artSide = (mode == LARGE_WIDE) ? Math.min(h, (int) (w * 0.58f)) : Math.min(w, (int) (h * 0.6f));
 		int left = (mode == LARGE_WIDE) ? (hid ? pad : Math.max((int) (artSide * 0.86f), (int) (w * 0.38f))) : 0;
+		// A wide card that is short on room beside the cover (4x2 on a phone, ~380 x 185dp): the words and controls start
+		// further left over the cover's fading side, and the chip is only its icon, or the name had ~30dp left.
+		boolean tight = (mode == LARGE_WIDE) && !hid && ((w - left) < px(TIGHT_DP));
+		if (tight) left = Math.min(left, (int) (w * 0.30f));
+		narrowChip = tight;
 
 		// Shuffle and repeat: around the play button when the width allows, else under the seek bar. A wide card
 		// has the controls in the middle of the right half, as large as that half allows.
@@ -397,11 +435,35 @@ final class MediaWidget extends HomeWidgetView {
 				pl = 56;
 			}
 		}
-		extraDp = ex;
+		// A narrow wide card (a phone at a larger display size: ~208dp beside the cover) shrinks the round buttons a
+		// little so shuffle and repeat still fit beside play, rather than going under the seek bar, which made that
+		// block taller and put it under the play button.
+		if ((mode == LARGE_WIDE) && (px(ex * 2 + sk * 2 + pl) > zone)) {
+			float f = Math.max(0.78f, zone / (float) px(ex * 2 + sk * 2 + pl));
+			ex = Math.round(ex * f);
+			sk = Math.round(sk * f);
+			pl = Math.round(pl * f);
+		}
 		int controlsNeed = px(ex) * 2 + px(sk) * 2 + px(pl);
 		if (!large) extrasAt = 0;
 		else if (zone >= controlsNeed) extrasAt = 1;
 		else extrasAt = showSeek ? 2 : 0;
+		// Wide: the controls sit between the name (top) and the seek block (bottom), never over either; on a short card
+		// they shrink to the room left between them.
+		int wideTop = pad + px(4) + px(TEXTS_DP);
+		// (The seek row is 34dp with the bar in its middle: the controls may come into its empty top part.)
+		int wideBottom = px(12) + (showSeek ? px(26) + ((extrasAt == 2) ? px(ex) : px(18)) : 0);
+		if (mode == LARGE_WIDE) {
+			int room = h - wideTop - wideBottom;
+			if ((room > 0) && (px(pl) > room)) {
+				float f = Math.max(0.7f, room / (float) px(pl));
+				ex = Math.round(ex * f);
+				sk = Math.round(sk * f);
+				pl = Math.round(pl * f);
+				controlsNeed = px(ex) * 2 + px(sk) * 2 + px(pl);
+			}
+		}
+		extraDp = ex;
 		sizeControls(ex, sk, pl);
 		placeExtras();
 
@@ -460,7 +522,11 @@ final class MediaWidget extends HomeWidgetView {
 				seekBlock.setLayoutParams(lp(-1, -2, Gravity.BOTTOM, left, 0, pad, px(12)));
 				int cw = (extrasAt == 1) ? controlsNeed : (px(sk) * 2 + px(pl));
 				int cx = left + Math.max(0, (zone - cw) / 2);
-				controls.setLayoutParams(lp(-2, -2, Gravity.CENTER_VERTICAL | Gravity.START, cx, px(10), 0, px(14)));
+				// Centred in the room between the name and the seek block (the whole card's middle overlapped the
+				// seek bar on a phone).
+				int top = wideTop + badgeRoom;
+				int bottom = Math.min(wideBottom, Math.max(0, h - top - px(pl)));
+				controls.setLayoutParams(lp(-2, -2, Gravity.CENTER_VERTICAL | Gravity.START, cx, top, 0, bottom));
 				topRight.setLayoutParams(lp(-2, px(36), Gravity.TOP | Gravity.END, 0, pad, pad, 0));
 				badge.setLayoutParams(lp(-2, -2, Gravity.TOP | Gravity.START, pad, pad, 0, 0));
 			}
@@ -574,6 +640,7 @@ final class MediaWidget extends HomeWidgetView {
 
 	@Override
 	protected void onBind() {
+		if (title != null) applyTitleScroll();
 		if (mode >= 0) applyMode();
 	}
 
@@ -613,8 +680,8 @@ final class MediaWidget extends HomeWidgetView {
 		duration = 0;
 		enginePos = -1;
 		swap(title, pi.getName());
-		swap(artist, pi instanceof MusicTrackItem t && t.getArtistName() != null ? t.getArtistName() : "");
-		title.setSelected(true);
+		swap(artist, pi instanceof MusicTrackItem t && t.getArtistName() != null ? MusicTrackItem.cleanArtist(t.getArtistName()) : "");
+		if (title.getEllipsize() == android.text.TextUtils.TruncateAt.MARQUEE) title.setSelected(true);
 		setBusy(true);
 		pi.getMediaData().main().onCompletion((md, err) -> {
 			if (gen != generation) return;
@@ -627,8 +694,12 @@ final class MediaWidget extends HomeWidgetView {
 			if ((t != null) && !t.isEmpty()) swap(title, t);
 			swap(artist, artistOf(pi, md));
 			duration = md.getLong(METADATA_KEY_DURATION);
-			HomeArt.cover(act(), pi, md, () -> gen == generation, bm -> {
-				if (gen == generation) setArt(bm);
+			// The cover (decoded, blurred, cross-faded) waits for the song's first moment to pass (PlaybackCalm#afterStart).
+			me.aap.fermata.util.PlaybackCalm.afterStart(() -> {
+				if (gen != generation) return;
+				HomeArt.cover(act(), pi, md, () -> gen == generation, bm -> {
+					if (gen == generation) setArt(bm);
+				});
 			});
 			syncState();
 		});
@@ -640,10 +711,11 @@ final class MediaWidget extends HomeWidgetView {
 		String ar = md.getString(METADATA_KEY_ARTIST);
 		if ((ar == null) || ar.isEmpty()) ar = md.getString(METADATA_KEY_ALBUM_ARTIST);
 		if ((ar == null) || ar.isEmpty()) ar = md.getString(METADATA_KEY_ALBUM);
-		if ((ar != null) && !ar.isEmpty()) return ar;
+		// "Artist - Topic" shows as "Artist", as on the Music tab and in the Home lists.
+		if ((ar != null) && !ar.isEmpty()) return MusicTrackItem.cleanArtist(ar);
 		if (pi instanceof MusicTrackItem t) {
 			String name = t.getArtistName();
-			if ((name != null) && !name.isEmpty()) return name;
+			if ((name != null) && !name.isEmpty()) return MusicTrackItem.cleanArtist(name);
 			if (t.getVideoId() != null) return "YouTube";
 		}
 		MediaEngine eng = act().getMediaSessionCallback().getEngine();
@@ -784,7 +856,13 @@ final class MediaWidget extends HomeWidgetView {
 		MediaSessionCallback cb = a.getMediaSessionCallback();
 		PlaybackStateCompat st = cb.getPlaybackState();
 		int s = st.getState();
-		playing = (s == PlaybackStateCompat.STATE_PLAYING) || (s == PlaybackStateCompat.STATE_BUFFERING);
+		boolean nowPlaying = (s == PlaybackStateCompat.STATE_PLAYING) || (s == PlaybackStateCompat.STATE_BUFFERING);
+		if (nowPlaying != playing) {
+			// Counted on from the player's last answer only while it plays on: asked again after a pause or a start.
+			enginePos = -1;
+			enginePosAt = 0;
+		}
+		playing = nowPlaying;
 		play.setImageResource((s == PlaybackStateCompat.STATE_PLAYING) ? R.drawable.pause : R.drawable.play);
 		// Also while playing but stalled for data, and right after a skip until the next song has started.
 		// A start from nothing is over once the session plays.
@@ -880,7 +958,7 @@ final class MediaWidget extends HomeWidgetView {
 
 	/** Low density (the car screen's) makes the chip's words as big as the card's title: only its icon shows there. */
 	private boolean chipIconOnly() {
-		return host.isCar() || (ctx.getResources().getDisplayMetrics().density < 1.5f);
+		return narrowChip || host.isCar() || (ctx.getResources().getDisplayMetrics().density < 1.5f);
 	}
 
 	private void setChip(int icon, int label, Runnable action) {
@@ -996,7 +1074,9 @@ final class MediaWidget extends HomeWidgetView {
 			if (Math.abs(reported - seekPos) > 2500) return Math.max(0, seekPos + (playing ? since : 0));
 		}
 		long now = SystemClock.elapsedRealtime();
-		if ((enginePos >= 0) && ((now - enginePosAt) < 1500)) return enginePos + (playing ? (now - enginePosAt) : 0);
+		if ((enginePos >= 0) && ((now - enginePosAt) < ENGINE_TRUST_MS)) {
+			return enginePos + (playing ? (now - enginePosAt) : 0);
+		}
 		long pos = st.getPosition();
 		if (st.getState() == PlaybackStateCompat.STATE_PLAYING) {
 			pos += (long) ((now - st.getLastPositionUpdateTime()) * st.getPlaybackSpeed());
@@ -1013,7 +1093,9 @@ final class MediaWidget extends HomeWidgetView {
 		MediaEngine eng = act().getMediaSessionCallback().getEngine();
 		PlayableItem pi = shown;
 		if ((eng == null) || (pi == null)) return;
-		if (playing) {
+		// For YouTube each ask is a script run in the page while it plays: asked every few seconds, not every tick (the
+		// position in between is counted on from the last answer).
+		if (playing && ((SystemClock.elapsedRealtime() - enginePosAt) >= ENGINE_POLL_MS)) {
 			eng.getPosition().main().onSuccess(p -> {
 				if ((p != null) && (p >= 0) && HomeArt.same(pi, shown)) {
 					enginePos = p;
@@ -1311,6 +1393,9 @@ final class MediaWidget extends HomeWidgetView {
 					setFraction(f);
 					seekPos = (long) (f * duration);
 					seekAt = SystemClock.elapsedRealtime();
+					// The player's last answer is from before the seek: asked again on the next tick.
+					enginePos = -1;
+					enginePosAt = 0;
 					act().getMediaSessionCallback().onSeekTo(seekPos);
 					timeNow.setText(DateUtils.formatElapsedTime(seekPos / 1000));
 					post(ticker);

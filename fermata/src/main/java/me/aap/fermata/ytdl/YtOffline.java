@@ -49,6 +49,17 @@ public final class YtOffline {
 		forcedStreamId = null;
 	}
 
+	/** Whether {@code videoId} is being streamed although it is downloaded (see {@link #forceStream}). */
+	public static boolean isForcedStream(@Nullable String videoId) {
+		return (videoId != null) && videoId.equals(forcedStreamId) &&
+				(android.os.SystemClock.uptimeMillis() < forcedStreamUntil);
+	}
+
+	/** Whether {@code videoId} has a downloaded file, whether or not it is streamed right now. */
+	public static boolean hasCopy(@Nullable String videoId) {
+		return YtDownloads.get().isDownloaded(videoId) && (YtDownloads.get().getFile(videoId) != null);
+	}
+
 	/**
 	 * Whether {@code videoId} plays from its downloaded copy: always when there is one, so a video
 	 * that was downloaded never uses the internet again -- the point of downloading it.

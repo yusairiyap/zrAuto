@@ -137,6 +137,7 @@ import me.aap.fermata.media.sub.SubGrid;
 import me.aap.fermata.media.sub.Subtitles;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.PlaybackCalm;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.fermata.ytdl.YtOffline;
 import me.aap.utils.async.FutureSupplier;
@@ -1526,6 +1527,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			// than moving on to the next track.
 			playbackTimerWaitingForTrackEnd = false;
 			playbackTimerFinishTrack = false;
+			DiagnosticLog.log("TIMER", "song ended: playback stopped", "item=" + engine.getSource());
 			PlayableItem i = engine.getSource();
 			if (i != null) setLastPlayed(i, 0);
 			playerTask = onStop(false);
@@ -1812,7 +1814,31 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		}
 	}
 
+	// Counts playItem() calls, so a tapped item waiting for the sound to go out is dropped when another comes.
+	private int playItemGen;
+
 	public void playItem(PlayableItem i, long pos) {
+		playerTask.cancel();
+		int gen = ++playItemGen;
+		MediaEngine eng = getEngine();
+		// Another item while a local player plays (a tapped row, a queue track): its sound goes out first, as it does
+		// for Next (skipWithFade); it used to be cut off. YouTube's page fades its own switch.
+		if ((eng != null) && isPlaying() && (eng.getId() != MediaPrefs.MEDIA_ENG_YT) && (eng.getSource() != i)) {
+			PlayableItem was = eng.getSource();
+			eng.fadeOut(() -> {
+				if ((gen != playItemGen) || (getEngine() != eng)) return;
+				playItemNow(i, pos);
+				// The new item never took over (it failed to prepare): the old one plays on, so its sound comes back.
+				me.aap.utils.app.App.get().getHandler().postDelayed(() -> {
+					if ((getEngine() == eng) && (eng.getSource() == was) && isPlaying()) eng.restoreVolume();
+				}, 3000);
+			});
+			return;
+		}
+		playItemNow(i, pos);
+	}
+
+	private void playItemNow(PlayableItem i, long pos) {
 		playerTask.cancel();
 		setLastPlayed(i, pos);
 		PlaybackStateCompat state = new PlaybackStateCompat.Builder().setActions(SUPPORTED_ACTIONS)
@@ -1973,6 +1999,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		}
 		currentState = state;
 		int st = state.getState();
+		PlaybackCalm.onState(st);
 		// Paused, stopped, an error...: whatever was stalled isn't anymore. Not on the way to the next
 		// item (skipping, connecting): its loading circle stays until it plays.
 		if ((st != STATE_PLAYING) && (st != STATE_BUFFERING) && (st != STATE_SKIPPING_TO_NEXT) &&
@@ -2382,6 +2409,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	private void fadeOutAndPause() {
 		MediaEngine eng = getEngine();
 		if ((eng == null) || !isPlaying()) {
+			DiagnosticLog.log("TIMER", "stopped (nothing was playing)");
 			onStop(true);
 			return;
 		}
@@ -2389,7 +2417,12 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		eng.fadeOut(TIMER_FADE_MS, () -> {
 			if (timerFadeEngine != eng) return;
 			timerFadeEngine = null;
-			if (getEngine() == eng) doPause();
+			if (getEngine() == eng) {
+				DiagnosticLog.log("TIMER", "paused playback", "item=" + playingItemName());
+				doPause();
+			} else {
+				DiagnosticLog.log("TIMER", "fade done, but another player took over: nothing paused");
+			}
 		});
 	}
 
@@ -2439,8 +2472,11 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		}
 
 		if (time == 0) {
+			if (playbackTimer != null) DiagnosticLog.log("TIMER", "cancelled", "left=" + getPlaybackTimer() + "s");
 			playbackTimer = null;
 		} else {
+			DiagnosticLog.log("TIMER", "set", "min=" + (time / 60.0f), "finishTrack=" + playbackTimerFinishTrack,
+					"item=" + playingItemName());
 			int delay = time * 1000;
 			PlaybackTimer timer =
 					this.playbackTimer = new PlaybackTimer(delay + System.currentTimeMillis());
@@ -2448,6 +2484,13 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		}
 
 		fireBroadcastEvent(l -> l.onPlaybackTimerChanged(this));
+	}
+
+	/** The playing item, for the TIMER lines of the Diagnostic log. */
+	private String playingItemName() {
+		MediaEngine eng = getEngine();
+		PlayableItem i = (eng == null) ? null : eng.getSource();
+		return (i == null) ? "none" : String.valueOf(i);
 	}
 
 	public void cancelPlaybackTimer() {
@@ -2467,8 +2510,10 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			playbackTimer = null;
 
 			if (playbackTimerFinishTrack && isPlaying()) {
+				DiagnosticLog.log("TIMER", "ran out: waiting for the song to end", "item=" + playingItemName());
 				playbackTimerWaitingForTrackEnd = true;
 			} else {
+				DiagnosticLog.log("TIMER", "ran out: fading out", "playing=" + isPlaying(), "item=" + playingItemName());
 				playbackTimerFinishTrack = false;
 				fadeOutAndPause();
 			}

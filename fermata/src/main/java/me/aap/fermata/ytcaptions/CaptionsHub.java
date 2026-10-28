@@ -70,7 +70,11 @@ public final class CaptionsHub {
 	}
 
 	private final Handler handler = new Handler(Looper.getMainLooper());
-	private final ExecutorService executor = Executors.newSingleThreadExecutor();
+	/** Background priority: a captions request must never take CPU time from the audio or the UI. */
+	private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> new Thread(() -> {
+		android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
+		r.run();
+	}, "Captions"));
 	private final LruCache<String, YtCaptions.Result> cache = new LruCache<>(8);
 	private final List<Listener> listeners = new ArrayList<>();
 	private final Runnable tick = this::tick;
@@ -210,7 +214,7 @@ public final class CaptionsHub {
 		if (id == null) return true;
 		YtCaptions.Result r = cache.get(id);
 		if (r != null) return r.isEmpty();
-		prefetch(a, id);
+		if (!recentlyFailed(id)) prefetch(a, id);
 		return true;
 	}
 
@@ -249,7 +253,27 @@ public final class CaptionsHub {
 	}
 
 	/** {@code current}: for the playing video, dropped if it is skipped before the fetch goes out. */
+	/**
+	 * Videos whose captions could not be had (every way of asking failed), and when: not asked again for a while. The
+	 * buttons ask whether there are captions each time they are drawn, and a failure used to be asked again at once,
+	 * every second or so for as long as the song played (the CAPTIONS lines filling the Diagnostic log).
+	 */
+	private final java.util.Map<String, Long> failedAt = new java.util.HashMap<>();
+	private static final long FAIL_RETRY_MS = 5 * 60_000L;
+
+	private boolean recentlyFailed(String id) {
+		Long t = failedAt.get(id);
+		if (t == null) return false;
+		if (android.os.SystemClock.uptimeMillis() - t < FAIL_RETRY_MS) return true;
+		failedAt.remove(id);
+		return false;
+	}
+
 	private void prefetch(MainActivityDelegate a, String id, boolean current) {
+		if (recentlyFailed(id)) {
+			knew(id);
+			return;
+		}
 		// The tick's own load of this video counts: its result lands in the cache too.
 		if (prefetching.contains(id) || (id.equals(videoId) && (state == State.LOADING))) {
 			return;
@@ -269,6 +293,8 @@ public final class CaptionsHub {
 			executor.execute(() -> {
 				YtCaptions.Result res = null;
 				try {
+					// The next song's are not needed for a while: they wait until the playing one has started cleanly.
+					if (!current) me.aap.fermata.util.PlaybackCalm.awaitSteady(15000);
 					res = YtCaptions.load(id, lang, auto);
 				} catch (Exception ex) {
 					Log.e(ex, "Failed to load the captions of ", id);
@@ -277,6 +303,7 @@ public final class CaptionsHub {
 				handler.post(() -> {
 					prefetching.remove(id);
 					if (done != null) cache.put(id, done);
+					else failedAt.put(id, android.os.SystemClock.uptimeMillis());
 					knew(id);
 				});
 			});
@@ -293,6 +320,7 @@ public final class CaptionsHub {
 	/** Forgets what was fetched and loads again, e.g. after the language was changed. */
 	public void invalidate() {
 		cache.evictAll();
+		failedAt.clear();
 		videoId = null;
 		if (ticking && (activity != null)) handler.post(tick);
 	}
@@ -387,6 +415,10 @@ public final class CaptionsHub {
 			apply(cached);
 			return;
 		}
+		if (recentlyFailed(id)) {
+			setState(State.FAILED);
+			return;
+		}
 		setState(State.LOADING);
 		if (prefetching.contains(id)) {
 			// Already on its way (the dimmed buttons asked first): its answer is this load's too. Two
@@ -421,6 +453,9 @@ public final class CaptionsHub {
 
 	private void loadNow(int gen, String id, String lang, boolean auto) {
 		try {
+			// Shown with the song, so only a short wait, but past its start: the stream goes first, and asking the page for its
+			// captions runs a script in the very page that is starting the song.
+			me.aap.fermata.util.PlaybackCalm.awaitSteady(3500);
 			YtCaptions.Result r = YtCaptions.load(id, lang, auto);
 			handler.post(() -> {
 				prefetching.remove(id);
@@ -434,6 +469,7 @@ public final class CaptionsHub {
 			DiagnosticLog.log("CAPTIONS", id, "load failed", ex);
 			handler.post(() -> {
 				prefetching.remove(id);
+				failedAt.put(id, android.os.SystemClock.uptimeMillis());
 				if (gen == generation) setState(State.FAILED);
 				List<Runnable> w = waiting.remove(id);
 				if (w != null) for (Runnable run : w) run.run();

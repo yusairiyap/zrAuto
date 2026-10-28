@@ -91,7 +91,20 @@ public final class MusicPlayer {
 		 * Applies {@link #isYoutubeAudioMode()} to {@code eng}'s video quality, if {@code eng} is the
 		 * YouTube player: the lowest while playing as music, the usual one otherwise.
 		 */
-		void applyQuality(@Nullable MediaEngine eng);
+		/**
+		 * Music mode changed: the YouTube page's quality follows. {@code eng} is the engine playing; when it is not the
+		 * page's (a downloaded file plays), the page is set for the video it loads next.
+		 */
+		void applyQuality(MainActivityDelegate a, @Nullable MediaEngine eng);
+
+		/**
+		 * The caption track of {@code videoId} from the YouTube page, when that is the video it has: {body (json3),
+		 * language, "1" if generated}, or null. Blocks for a few seconds at most; never call it on the main thread.
+		 */
+		@Nullable
+		default String[] pageCaptions(MainActivityDelegate a, String videoId, String lang, boolean allowGenerated) {
+			return null;
+		}
 
 		/**
 		 * Shows the YouTube tab's search / Up next panel over whatever is playing, without
@@ -177,6 +190,14 @@ public final class MusicPlayer {
 		if (h != null) h.searchInPanel(a, query);
 	}
 
+	/** See {@link YoutubeHooks#pageCaptions}; null without the YouTube addon or the app's window. */
+	@Nullable
+	public static String[] youtubePageCaptions(String videoId, String lang, boolean allowGenerated) {
+		YoutubeHooks h = youtube;
+		MainActivityDelegate a = playbackActivity();
+		return ((h == null) || (a == null)) ? null : h.pageCaptions(a, videoId, lang, allowGenerated);
+	}
+
 	/** See {@link YoutubeHooks#playVideoInPlace}; false without the YouTube addon. */
 	public static boolean playYoutubeInPlace(MainActivityDelegate from, String videoId,
 																					 @Nullable String title) {
@@ -249,7 +270,7 @@ public final class MusicPlayer {
 		DiagnosticLog.log(TAG, "YouTube " + (on ? "music mode (lowest video quality)" : "video mode"));
 		MainActivityDelegate a = activity.get();
 		YoutubeHooks h = youtube;
-		if ((h != null) && (a != null)) h.applyQuality(a.getMediaSessionCallback().getEngine());
+		if ((h != null) && (a != null)) h.applyQuality(a, a.getMediaSessionCallback().getEngine());
 	}
 
 	/**
@@ -824,6 +845,26 @@ public final class MusicPlayer {
 				// whatever was queued in the video player since goes in right after it.
 				if (playing != null) moveUpNextIntoQueue(q, eng, playing);
 				boolean yt = (eng.getId() == MediaPrefs.MEDIA_ENG_YT);
+				// A song downloaded as sound only, watched streamed (switchToVideo): back to music it plays the file
+				// again, from where the video is.
+				if (yt && (playing != null) && YtOffline.isForcedStream(playing.getVideoId()) &&
+						playing.isAudioOnlyDownload()) {
+					open(a);
+					eng.getPosition().main().onSuccess(pos -> {
+						if (cb.getEngine() != eng) return;
+						long at = (pos == null) ? 0 : pos;
+						DiagnosticLog.log(TAG, "back to music: the downloaded copy", "id=" + playing.getVideoId(),
+								"pos=" + (at / 1000) + 's');
+						YtOffline.clearForcedStream();
+						playing.getPrefs().setPositionPref(at);
+						startTrack(a, playing, at, false);
+						// Music mode (the page's lowest quality) only once the file is the player: switched while the page
+						// still played, the page reloaded its video for the new quality, saw it was downloaded now and handed
+						// it to the file from where the reload started (the song began again).
+						a.getHandler().postDelayed(() -> setYoutubeAudioMode(true), 1000);
+					});
+					return;
+				}
 				boolean local = !yt && (playing != null) && playing.isDownloaded();
 				setYoutubeAudioMode(yt || local);
 				if (local) watchingLocal = false;
@@ -916,7 +957,7 @@ public final class MusicPlayer {
 	public static boolean canSwitchToVideo(MediaSessionCallback cb) {
 		if (!isPlayingAsMusic(cb)) return false;
 		MusicTrackItem t = getCurrentTrack(cb);
-		return (t == null) || t.hasVideo();
+		return (t == null) || t.hasVideo() || t.isAudioOnlyDownload();
 	}
 
 	/**
@@ -950,8 +991,22 @@ public final class MusicPlayer {
 		if ((t == null) && !(yt && youtubeAudioMode)) return;
 
 		if ((t != null) && (t.getVideoId() != null) && !yt) {
+			// Downloaded as sound only: the video is streamed from YouTube (at the usual quality) from where the song
+			// is; going back to music plays the file again (playCurrentAsMusic).
+			if (!t.hasVideo()) {
+				if (!t.isAudioOnlyDownload()) return;
+				DiagnosticLog.log(TAG, "switch to video (streamed: the download is sound only)", "id=" + t.getVideoId());
+				eng.getPosition().main().onSuccess(pos -> {
+					if (cb.getEngine() != eng) return;
+					YtOffline.forceStream(t.getVideoId());
+					// Out of music mode before the page sets the video up: the quality is chosen then, and is
+					// never switched on a playing video (it stayed at the lowest, 144p).
+					setYoutubeAudioMode(false);
+					startTrack(a, t, pos, true);
+				});
+				return;
+			}
 			// A downloaded video: its file has the picture, on the very same engine.
-			if (!t.hasVideo()) return;
 			DiagnosticLog.log(TAG, "switch to video (downloaded)", "id=" + t.getVideoId());
 			watchingLocal = true;
 			// Out of the Music tab, which keeps the floating buttons and the control panel away: the
@@ -1080,11 +1135,29 @@ public final class MusicPlayer {
 		});
 	}
 
+	/**
+	 * Where {@code i} is in its own list. By id first; then by the original id and the YouTube video id, because a
+	 * Favorites / playlist entry that plays from its downloaded copy points at the file by then, and its id no longer
+	 * matched: the queue was then made of that one song alone, and Next had nowhere to go.
+	 */
 	private static int indexOfSame(List<? extends PlayableItem> list, PlayableItem i) {
 		String id = i.getId();
 		for (int n = 0; n < list.size(); n++) {
 			if (id.equals(list.get(n).getId())) return n;
 		}
+		String orig = i.getOrigId();
+		if (orig != null) {
+			for (int n = 0; n < list.size(); n++) {
+				if (orig.equals(list.get(n).getOrigId())) return n;
+			}
+		}
+		String vid = me.aap.fermata.ytdl.YtDownloads.videoIdOf(i);
+		if (vid != null) {
+			for (int n = 0; n < list.size(); n++) {
+				if (vid.equals(me.aap.fermata.ytdl.YtDownloads.videoIdOf(list.get(n)))) return n;
+			}
+		}
+		DiagnosticLog.log(TAG, "item not found in its list: a queue of one", "item=" + i, "list=" + list.size());
 		return -1;
 	}
 }

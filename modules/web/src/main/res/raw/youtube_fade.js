@@ -42,7 +42,26 @@
   const MIN_ELEMENT_VOLUME = 0.001;
   const STEP_MS = 10;
 
-  const cfg = {endingEvent: 0};
+  // warmup: a new video plays its first WARM_S silently, then goes back to where it started and fades in from there
+  // (YouTube setting "Warm up the sound before a song starts"). The stutter at a song's start was traced to the
+  // sound output starting: in the first half second the song's clock stalls ~100 ms and then jumps to catch up
+  // (or just jumps ahead). A seek was never heard to stutter (the output is already running then), so the hiccup
+  // happens while the song is still silent. The cost: each song is heard about WARM_S later.
+  const cfg = {endingEvent: 0, warmup: true, audioOnly: false};
+  const WARM_S = 0.6;
+  // The first song of a freshly loaded page (a YouTube song after a local one, the first after an app start) warms up longer:
+  // there the sound output was still settling just after a 0.6 s warm-up (its reported latency changed between the
+  // two 'playing' events and the clock jumped ~70 ms right after the jump back).
+  // A switch through YouTube's router (YoutubeWebView#loadVideo, "page navigation") counts as a first start too (longWarm):
+  // after a 0.6 s warm-up there the clock ran evenly for 0.4 s and then jumped ~57 ms (Oct 29 log), which a 1 s one did not.
+  const WARM_FIRST_S = 1.0;
+  let pageFirstStart = true;
+
+  function trace(msg) {
+    try {
+      if (window.__fermataTrace) window.__fermataTrace(msg);
+    } catch (err) { /* no tracer */ }
+  }
 
   function isAd() {
     return !!window.__fermataAdShowing;
@@ -76,6 +95,7 @@
       clearInterval(s.timer);
       s.timer = 0;
     }
+    s.startStep = null;
     if (s.doneTimer) {
       clearTimeout(s.doneTimer);
       s.doneTimer = 0;
@@ -132,10 +152,11 @@
     const curveOf = shape || ease;
     const s = state(v);
     clearTimers(s);
-    // A hidden page has its timers throttled to about once a second -- a stepped fade there would
-    // just be a few coarse jumps, so go straight to the target instead.
-    if (pageHidden()) ms = 0;
     const p = gainParam(v);
+    // A hidden page may have its timers throttled to about once a second -- a stepped element fade there would
+    // just be a few coarse jumps, so go straight to the target instead. The effects path's gain curve runs in the
+    // audio renderer, sample-accurate whatever the timers do, so it keeps its fade.
+    if (pageHidden() && !p) ms = 0;
 
     if (p) {
       // The equalizer took this element over while an element-volume fade had it lowered --
@@ -219,14 +240,41 @@
     const s = state(v);
     clearTimers(s);
     s.pausing = false;
-    if (pageHidden()) {
-      ramp(v, 1, 0); // throttled timers: a few coarse jumps would be worse than none
-      return;
+    // Only while the video is not watched: a hidden page (the Music tab playing YouTube, the screen off) or music mode
+    // (cfg.audioOnly, set by the app). That is where the stutter was heard (never in fullscreen video), and a watched
+    // video would show its first moment playing and jumping back, which no way of hiding the picture covered reliably.
+    // Its steps are also driven by 'timeupdate' (below), so a page whose timers are held back still leaves the silent part.
+    const hidden = pageHidden();
+    // -1: no warm-up; 0: warming up (silent); 1: done (went back to the start).
+    let warm = (cfg.warmup && (hidden || cfg.audioOnly) && !isAd()) ? 0 : -1;
+    let warmS = WARM_S;
+    if (warm === 0) {
+      if (pageFirstStart) warmS = WARM_FIRST_S;
+      pageFirstStart = false;
     }
-    ramp(v, START_LEVEL, 0);
+    // The effects path (the equalizer's gain stage) is held at 0 the same way; set here, not through ramp(), which would clear
+    // this very timer when the equalizer takes the element over in the middle of the warm-up.
+    let gainSilenced = false;
+    const silenceGain = (p) => {
+      try {
+        p.gain.cancelScheduledValues(0);
+        p.gain.setValueAtTime(0, p.ctx.currentTime);
+      } catch (err) { /* context gone */ }
+      if (s.usedElement) {
+        s.usedElement = false;
+        try { v.volume = s.base; } catch (err) { /* ignore */ }
+      }
+      s.level = 0;
+      gainSilenced = true;
+    };
+    let startAt = 0;
+    ramp(v, (warm === 0) ? 0 : START_LEVEL, 0);
     let t0 = -1;
     let pausedSince = 0;
-    s.timer = setInterval(() => {
+    // How evenly the fade ran: a page busy starting the video delays these 10 ms ticks, and the level then
+    // stays low and jumps (heard as a dip). Traced once the fade is done.
+    let ticks = 0, lastTick = 0, maxGap = 0, maxJump = 0;
+    const step = () => {
       // Loaded but left paused (a cued video, a reload while paused): stop and put the volume back
       // rather than tick on, holding it at START_LEVEL; 'playing' starts the fade again if it comes.
       if (v.paused && (v.readyState >= 2)) {
@@ -239,23 +287,63 @@
       } else {
         pausedSince = 0;
       }
-      if (gainParam(v)) {
-        // The equalizer took over: once the sound flows, one sample-accurate curve on its gain.
-        if (v.paused || (v.readyState < 3)) return;
+      const p = gainParam(v);
+      if (p && (warm !== 0)) {
+        // The equalizer took over: once the sound flows, one sample-accurate curve on its gain. After a warm-up the gain sits
+        // at 0, so the curve starts from START_LEVEL as it would have without one.
+        if (v.paused || v.seeking || (v.readyState < 3)) return;
         clearTimers(s);
-        ramp(v, 1, START_FADE_S * 1000, null, rise);
+        ramp(v, 1, START_FADE_S * 1000, null, (gainSilenced || (warm === 1)) ? (f, to, k) => rise(START_LEVEL, to, k) : rise);
         return;
       }
-      if (v.paused) return;
+      if (p && !gainSilenced) silenceGain(p);
+      if (v.paused || v.seeking) return;
       const t = v.currentTime;
       if (t0 < 0) {
         if (!(t > 0) && (v.readyState < 3)) return; // nothing playing yet
         t0 = Math.max(0, t - 0.05);
+        // Only a song starting at 0:00 warms up (a few hundredths in is still the start). Anywhere else it is YouTube
+        // reloading the stream mid-song (a quality change, a stall) or a resume: the listener already heard a gap there, and
+        // 0.6 s more of silence on top only made it longer, so it just fades in.
+        if (warm === 0) {
+          if (t < 0.3) {
+            startAt = 0;
+          } else {
+            warm = -1;
+            trace('start warm-up skipped: began at ' + t.toFixed(2));
+            if (p) return; // the gain branch above fades it in on the next step
+          }
+        }
+      }
+      if (warm === 0) {
+        if (t - t0 < warmS) return; // silent while the sound output gets going
+        warm = 1;
+        trace('start warm-up: ' + (t - t0).toFixed(2) + 's played silently, back to ' + startAt.toFixed(2) +
+          (hidden ? ' (page hidden)' : ''));
+        // Marked so the 'waiting' this seek may cause is not reported as buffering (YoutubeWebView#attachListeners).
+        v.__fermataWarmSeekAt = Date.now();
+        try {
+          v.currentTime = startAt;
+        } catch (err) { /* element gone */ }
+        t0 = -1; // the fade starts once the clock moves again from there
+        return;
       }
       const k = Math.min(1, Math.max(0, (t - t0) / START_FADE_S));
+      const now = performance.now();
+      if (lastTick) maxGap = Math.max(maxGap, now - lastTick);
+      lastTick = now;
+      ticks++;
+      const before = s.level;
       applyElementLevel(v, s, rise(START_LEVEL, 1, k));
-      if (k >= 1) clearTimers(s);
-    }, STEP_MS);
+      maxJump = Math.max(maxJump, s.level - before);
+      if (k >= 1) {
+        clearTimers(s);
+        trace('start fade: ' + ticks + ' steps, longest gap ' + Math.round(maxGap) + 'ms, biggest step ' +
+          Math.round(maxJump * 100) + '%');
+      }
+    };
+    s.timer = setInterval(step, STEP_MS);
+    s.startStep = step;
   }
 
   function silence(v) {
@@ -376,6 +464,7 @@
     const v = e.target;
     if (!v || (v.tagName !== 'VIDEO') || v.paused || isAd()) return;
     const s = state(v);
+    if (s.startStep) s.startStep(); // a new video's warm-up and fade, when the page's timers lag
     if (s.ending || s.pausing) return;
     const rem = remaining(v);
     if ((rem > END_FADE_S) || (rem <= 0)) return;
@@ -408,6 +497,11 @@
   window.FermataFade = {
     configure(c) {
       Object.assign(cfg, c || {});
+    },
+
+    // The next new video warms up as long as the first one of a fresh page (see WARM_FIRST_S).
+    longWarm() {
+      pageFirstStart = true;
     },
 
     // Fades out and then pauses (and rewinds to the start if `stop`). Returns immediately; the

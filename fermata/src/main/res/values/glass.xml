@@ -9,6 +9,7 @@
     <string name="cover_chip_pref">Hide cover button</string>
     <string name="cover_chip_pref_sub">An eye button on the cover that hides covers (only their colours show) or shows them again</string>
     <string name="home_opt_cover_chip">Hide cover button</string>
+    <string name="home_opt_title_scroll">Scroll a long title</string>
 
     <!-- UI style, glass (Glass, GlassSettingsFragment) -->
     <string name="glass_settings">UI style</string>

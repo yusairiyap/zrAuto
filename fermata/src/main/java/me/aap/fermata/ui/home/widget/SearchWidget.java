@@ -1,7 +1,5 @@
 package me.aap.fermata.ui.home.widget;
 
-import android.graphics.Rect;
-import android.os.Build;
 import android.graphics.drawable.GradientDrawable;
 import android.text.Editable;
 import android.text.InputType;
@@ -30,7 +28,6 @@ import me.aap.fermata.ui.home.HomeHost;
 import me.aap.fermata.ui.home.HomeOption;
 import me.aap.fermata.ui.home.HomeWidgetType;
 import me.aap.fermata.ui.home.HomeWidgetView;
-import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.ui.view.ChipFlowLayout;
 import me.aap.utils.app.App;
 
@@ -51,8 +48,6 @@ final class SearchWidget extends HomeWidgetView {
 	private static final int ICON_BELOW_DP = 150;
 	/** One unit high, the chips fit under the input from this width. */
 	private static final int CHIPS_IN_STRIP_DP = 260;
-	/** The keyboard takes a moment to come up and resize the window: the card is checked again as it does. */
-	private static final long[] KEYBOARD_REVEAL_MS = {250, 600, 1000};
 	/** The room between the chips and the input. */
 	private static final int CHIPS_GAP_DP = 10;
 
@@ -114,14 +109,15 @@ final class SearchWidget extends HomeWidgetView {
 			return false;
 		});
 		// On the car screen the field cannot be typed in: a tap goes straight to the panel's search field.
+		// A tap on a field that kept the focus (the keyboard was closed with Back) brings the keyboard back with no focus
+		// change, so the page is lifted from the tap too.
 		field.setOnClickListener(v -> {
 			if (host.isCar()) openPanel();
+			else host.followKeyboard(this);
 		});
-		// The keyboard comes up over the bottom of the screen: once it is, the card is scrolled above it.
+		// The keyboard comes up over the bottom of the screen without resizing the window: the page glides up with it.
 		field.setOnFocusChangeListener((v, focused) -> {
-			if (!focused) return;
-			// The window shrinks as the keyboard comes up, a little after; the card is checked again as it does.
-			for (long ms : KEYBOARD_REVEAL_MS) postDelayed(this::revealField, ms);
+			if (focused) host.followKeyboard(this);
 		});
 		field.addTextChangedListener(new TextWatcher() {
 			@Override
@@ -245,40 +241,6 @@ final class SearchWidget extends HomeWidgetView {
 		row.setVisibility((chipsShown && oneRow) ? VISIBLE : GONE);
 		fillChips();
 		if (chipsShown && shownQueries.isEmpty() && fieldText().isEmpty()) showHistory();
-	}
-
-	/**
-	 * Typing into the field on a phone: the keyboard covers the bottom of the screen, so if the card reaches below the keyboard's
-	 * top edge, the scroller it sits in is moved up by that much (the whole layout moves, the card with it). The keyboard's top is
-	 * taken from the window insets where the system reports them, else from the visible window; what was measured is logged
-	 * (HOME, keyboard reveal) so a miss can be read from the Diagnostic log.
-	 */
-	private void revealField() {
-		if (!field.hasFocus()) return;
-		int[] loc = new int[2];
-		getLocationOnScreen(loc);
-		int bottom = loc[1] + getHeight();
-		int keyboardTop = keyboardTop();
-		int over = bottom - keyboardTop + px(16);
-		android.view.ViewParent p = getParent();
-		while ((p != null) && !(p instanceof ScrollView)) p = p.getParent();
-		DiagnosticLog.log("HOME", "keyboard reveal", "bottom=" + bottom, "keyboardTop=" + keyboardTop, "over=" + over,
-				"scroller=" + (p != null));
-		if ((over > 0) && (p instanceof ScrollView sv)) sv.smoothScrollBy(0, over);
-	}
-
-	/** The top edge of the keyboard on screen, or the bottom of the visible window when no keyboard inset is reported. */
-	private int keyboardTop() {
-		if (Build.VERSION.SDK_INT >= 30) {
-			android.view.WindowInsets insets = getRootWindowInsets();
-			if (insets != null) {
-				int ime = insets.getInsets(android.view.WindowInsets.Type.ime()).bottom;
-				if (ime > 0) return ctx.getResources().getDisplayMetrics().heightPixels - ime;
-			}
-		}
-		Rect visible = new Rect();
-		getWindowVisibleDisplayFrame(visible);
-		return visible.bottom;
 	}
 
 	@Override

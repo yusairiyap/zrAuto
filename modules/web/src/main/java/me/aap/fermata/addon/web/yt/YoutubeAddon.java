@@ -75,6 +75,7 @@ public class YoutubeAddon extends WebBrowserAddon
 	private static final String[] QUALITY_LABELS = {null, null, "2160p", "1440p", "1080p", "720p",
 			"480p", "360p", "240p", "144p"};
 	private static final Pref<BooleanSupplier> YT_SKIP_ADD = Pref.b("YT_SKIP_ADD", true);
+	private static final Pref<BooleanSupplier> YT_START_WARMUP = Pref.b("YT_START_WARMUP", true);
 	/** How many of the videos on the user's YouTube feed float around on the suggestions tab. */
 	static final Pref<IntSupplier> BUBBLES_COUNT = Pref.i("YT_BUBBLES_COUNT", 12);
 	static final int BUBBLES_TAP_AUTO = 0;
@@ -282,9 +283,108 @@ public class YoutubeAddon extends WebBrowserAddon
 			YoutubeAddon.this.setQueueItem(item);
 		}
 
+		@Nullable
 		@Override
-		public void applyQuality(@Nullable MediaEngine eng) {
-			if (eng instanceof YoutubeMediaEngine yt) yt.applyQuality();
+		public String[] pageCaptions(MainActivityDelegate a, String videoId, String lang, boolean allowGenerated) {
+			if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return null;
+			YoutubeWebView web = onMain(a, () -> (a.getFragment(getFragmentId()) instanceof YoutubeFragment f) ?
+					f.getWebView() : null);
+			if (web == null) return null;
+			String started = evaluate(a, web, YoutubeWebView.pageCaptionsStartJs(videoId, lang, allowGenerated));
+			if ("\"other\"".equals(started) || (started == null)) return null;
+			if ("\"none\"".equals(started)) {
+				me.aap.fermata.util.DiagnosticLog.log("CAPTIONS", "PAGE", videoId, "no tracks");
+				return null;
+			}
+			// The fetch runs in the page: its state is looked at a few times a second, for a few seconds at most.
+			for (int i = 0; i < 24; i++) {
+				try {
+					Thread.sleep(250);
+				} catch (InterruptedException ex) {
+					Thread.currentThread().interrupt();
+					return null;
+				}
+				String r = evaluate(a, web, YoutubeWebView.pageCaptionsResultJs(videoId));
+				if ((r == null) || "null".equals(r)) continue;
+				try {
+					org.json.JSONObject o = new org.json.JSONObject(r);
+					String state = o.optString("state");
+					if ("loading".equals(state)) continue;
+					if (!"done".equals(state)) {
+						me.aap.fermata.util.DiagnosticLog.log("CAPTIONS", "PAGE", videoId, "fetch failed", o.optString("error"));
+						return null;
+					}
+					return new String[]{o.optString("body"), o.optString("lang"), o.optString("asr")};
+				} catch (org.json.JSONException ex) {
+					return null;
+				}
+			}
+			me.aap.fermata.util.DiagnosticLog.log("CAPTIONS", "PAGE", videoId, "timed out");
+			return null;
+		}
+
+		/** Runs {@code s} on the main thread and waits (2 s at most) for its answer. */
+		@Nullable
+		private <T> T onMain(MainActivityDelegate a, java.util.function.Supplier<T> s) {
+			Object[] out = {null};
+			java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+			a.getHandler().post(() -> {
+				try {
+					out[0] = s.get();
+				} catch (Throwable ex) {
+					me.aap.utils.log.Log.e(ex, "Page captions");
+				} finally {
+					done.countDown();
+				}
+			});
+			try {
+				if (!done.await(2, java.util.concurrent.TimeUnit.SECONDS)) return null;
+			} catch (InterruptedException ex) {
+				Thread.currentThread().interrupt();
+				return null;
+			}
+			@SuppressWarnings("unchecked") T t = (T) out[0];
+			return t;
+		}
+
+		/** Evaluates {@code js} in the page on the main thread and waits (2 s at most) for its JSON answer. */
+		@Nullable
+		private String evaluate(MainActivityDelegate a, YoutubeWebView web, String js) {
+			String[] out = {null};
+			java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+			a.getHandler().post(() -> {
+				try {
+					web.evaluateJavascript(js, r -> {
+						out[0] = r;
+						done.countDown();
+					});
+				} catch (Throwable ex) {
+					done.countDown();
+				}
+			});
+			try {
+				if (!done.await(2, java.util.concurrent.TimeUnit.SECONDS)) return null;
+			} catch (InterruptedException ex) {
+				Thread.currentThread().interrupt();
+				return null;
+			}
+			return out[0];
+		}
+
+		@Override
+		public void applyQuality(MainActivityDelegate a, @Nullable MediaEngine eng) {
+			if (eng instanceof YoutubeMediaEngine yt) {
+				yt.applyQuality();
+				return;
+			}
+			// A downloaded file plays (a sound-only download about to be watched streamed): the page is not the player,
+			// but the video it loads next must get the quality of the mode asked for. Left as it was, it kept music
+			// mode's lowest (144p) now and then.
+			MainActivityDelegate p = a.getPlaybackDelegate();
+			if (!(p.getFragment(getFragmentId()) instanceof YoutubeFragment f)) return;
+			YoutubeWebView web = f.getWebView();
+			YoutubeMediaEngine e = (web == null) ? null : web.getEngine();
+			if (e != null) e.applyQuality();
 		}
 
 		@Override
@@ -608,6 +708,14 @@ public class YoutubeAddon extends WebBrowserAddon
 		return prefs.contains(YT_SKIP_ADD);
 	}
 
+	boolean startWarmup() {
+		return getPreferenceStore().getBooleanPref(YT_START_WARMUP);
+	}
+
+	boolean warmupChanged(List<Pref<?>> prefs) {
+		return prefs.contains(YT_START_WARMUP);
+	}
+
 	@NonNull
 	String getVideoTitle(String videoId) {
 		String[] p = getPreferenceStore().getStringArrayPref(YT_VIDEO_TITLES);
@@ -801,6 +909,14 @@ public class YoutubeAddon extends WebBrowserAddon
 			o.store = getPreferenceStore();
 			o.pref = YT_SKIP_ADD;
 			o.title = R.string.try_to_skip_ad;
+			o.visibility = visibility;
+		});
+
+		set.addBooleanPref(o -> {
+			o.store = getPreferenceStore();
+			o.pref = YT_START_WARMUP;
+			o.title = R.string.yt_start_warmup;
+			o.subtitle = R.string.yt_start_warmup_sub;
 			o.visibility = visibility;
 		});
 

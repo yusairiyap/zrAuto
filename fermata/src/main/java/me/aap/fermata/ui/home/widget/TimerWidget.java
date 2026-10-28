@@ -335,9 +335,11 @@ final class TimerWidget extends HomeWidgetView {
 
 	private void start(int m) {
 		total = m * 60;
-		countUse(m);
 		cb().setPlaybackTimer(total, false);
 		TopToast.show(R.drawable.timer, ctx.getString(R.string.music_timer_set, minutes(m)));
+		// After the timer is set: counting the use saves an option, which binds the card again (the chip row is rebuilt
+		// under the finger), and nothing in that may keep the timer from starting.
+		post(() -> countUse(m));
 	}
 
 	private void refresh() {

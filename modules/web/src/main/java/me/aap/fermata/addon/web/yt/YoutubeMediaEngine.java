@@ -264,7 +264,9 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		String id = currentVideoId;
 
 		// Downloaded: carries on from the file, from the very same spot -- no popup needed.
-		if ((id != null) && YtDownloads.get().isDownloaded(id)) {
+		if ((id != null) && YtOffline.hasCopy(id)) {
+			// Streamed on purpose (forceStream) but the connection gave out: the file after all.
+			if (YtOffline.isForcedStream(id)) YtOffline.clearForcedStream();
 			PlayableItem item = currentAsItem(a, id);
 			web.getPosition().main().onCompletion((pos, err) -> {
 				if (cb.getEngine() != this) return;
@@ -408,8 +410,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				!jsVideoId.isEmpty() ? jsVideoId : YoutubeVideoItem.extractVideoId(web.getUrl());
 		YoutubeAddon addon = web.getAddon();
 
-		// A downloaded video never streams: the file plays instead, from where the page just started.
-		if ((actualId != null) && YtDownloads.get().isDownloaded(actualId) && (cb.getEngine() == this)) {
+		// A downloaded video never streams: the file plays instead, from where the page just started. Unless it is
+		// streamed on purpose (YtOffline#forceStream: a sound-only download watched, the current video picked in
+		// the alternatives); a quality change used to send it back to the file here, and the file was refused.
+		if ((actualId != null) && YtOffline.useLocal(actualId) && (cb.getEngine() == this)) {
 			switchPageToDownload(actualId);
 			return;
 		}
@@ -673,6 +677,54 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 * this very track, see prepare()). A navigation to the video the page is already on does
 	 * nothing at all, which left music mode's Repeat One stuck on the ended video.
 	 */
+	// See endedEarly(): which video was resumed, and how often.
+	@Nullable
+	private String earlyEndId;
+	private int earlyEndResumes;
+
+	/**
+	 * The page's video fired "ended" well before the song's length ({@code data} = "time/length", see
+	 * YoutubeWebView#interceptEndedJs): YouTube cut the stream short (seen signed out, ~30 s into a song). It is
+	 * loaded again where it stopped, at most twice per video; after that, or when it cannot be, it counts as ended.
+	 */
+	void endedEarly(String data) {
+		String id = currentVideoId;
+		double at = 0;
+		try {
+			at = Double.parseDouble(data.substring(0, data.indexOf('/')));
+		} catch (RuntimeException ignore) {
+		}
+		if ((id == null) || (at <= 0)) {
+			ended();
+			return;
+		}
+		if (!id.equals(earlyEndId)) {
+			earlyEndId = id;
+			earlyEndResumes = 0;
+		}
+		if (++earlyEndResumes > 2) {
+			DiagnosticLog.log("YT", "video ended early again: going on", "id=" + id, "at=" + data);
+			ended();
+			return;
+		}
+		DiagnosticLog.log("YT", "video ended early: resuming", "id=" + id, "at=" + data, "try=" + earlyEndResumes);
+		lastActivePlayTime = System.currentTimeMillis();
+		lastPausedTime = 0;
+		playRetries = 0;
+		web.getAddon().setPendingVideoId(id);
+		pendingCorrections = 0;
+		String js = "(function() { var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
+				"  if (!p || !p.loadVideoById) return false;\n" +
+				"  p.loadVideoById({videoId: '" + id.replace("'", "") + "', startSeconds: " + at + "});\n" +
+				"  return true; })()";
+		web.evaluateJavascript(js, r -> {
+			if (!"true".equals(r)) {
+				DiagnosticLog.log("YT", "video ended early: no player to resume in", "id=" + id);
+				ended();
+			}
+		});
+	}
+
 	private void replayCurrent() {
 		lastActivePlayTime = System.currentTimeMillis();
 		lastPausedTime = 0;
@@ -775,6 +827,9 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	private void transitioning() {
 		switching = true;
 		switchStartedAt = SystemClock.elapsedRealtime();
+		// A new video is asked for: any pause the app asked for before is over (see isSwitchPause, which a stale one
+		// turned off, so a pause during this switch paused the session).
+		appRequestedPause = false;
 		YoutubeVideoView v = getFullScreenView();
 		if (v != null) v.showTransitionOverlay(false);
 		// The next video is loading: the play/pause button gives way to the loading circle, as for a
@@ -924,7 +979,13 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	void paused() {
 		// Silenced because another engine took over (see acceptQueueResolved() and the Music tab's
 		// MusicPlayer#playTrack()): that pause must not pause the engine that's playing now.
-		if (cb.getEngine() != this) return;
+		if (cb.getEngine() != this) {
+			// The app's own pause of a page that gave way (silenced it) is used up here: left set, it made the next
+			// pause the page made by itself (one during a song switch, back on YouTube) count as the app's, and the
+			// session paused there (a song that stopped after coming back to the app until play was pressed).
+			appRequestedPause = false;
+			return;
+		}
 		lastPauseAsked = appRequestedPause;
 		if (isSwitchPause()) {
 			DiagnosticLog.log("YT", "page paused during a switch: ignored", "id=" + currentVideoId);
@@ -953,12 +1014,17 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				(playRetries < MAX_PLAY_RETRIES) && (now - lastActivePlayTime < PLAY_RETRY_GRACE_MS)) {
 			playRetries++;
 			Log.i("YoutubeMediaEngine.paused(): retrying play(), attempt ", playRetries);
+			DiagnosticLog.log("YT", "page paused right after play: play again", "attempt=" + playRetries,
+					"id=" + currentVideoId, "size=" + web.getWidth() + 'x' + web.getHeight());
 			web.play();
 			return;
 		}
 
+		// Only a page that is really small: YouTube's player pauses under ~200 CSS px. A big page that pauses again
+		// right after the retry has another reason (its "Continue watching?" prompt, see YoutubeWebView
+		// #hideAppPromoBanners), and the toast blamed the window size for it.
 		if (!stillBlocked && !ignorePause && (lastActivePlayTime != 0) &&
-				(playRetries >= MAX_PLAY_RETRIES) && !YoutubeFragment.isInPictureInPicture()) {
+				(playRetries >= MAX_PLAY_RETRIES) && !YoutubeFragment.isInPictureInPicture() && isPageSmall()) {
 			// The retry just above didn't stick -- assume the current size is the reason and stop
 			// asking the page to play at it until it grows (see playing() above) or the user
 			// explicitly taps play again (see start() below).
@@ -986,6 +1052,13 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		ignorePause = true;
 		cb.onPause();
 		ignorePause = false;
+	}
+
+	/** The page is under YouTube's minimum player size (200 CSS px, with some room). */
+	private boolean isPageSmall() {
+		float density = web.getResources().getDisplayMetrics().density;
+		int min = Math.min(web.getWidth(), web.getHeight());
+		return (min > 0) && (min / density < 240f);
 	}
 
 	/**
@@ -1220,6 +1293,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		qualityUrl = null;
 		manualQualityVideoId = null;
 		String preferred = web.getAddon().preferredQuality();
+		web.syncFadeAudioOnly();
 		// Switched by the user (into music or back to video): at once, the song playing too.
 		if (MusicPlayer.isYoutubeAudioMode()) web.applyQualityPolicy("lowest");
 		else if (preferred != null) web.applyQualityPolicy(preferred);
@@ -1364,6 +1438,12 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	@Override
 	public void setPosition(long position) {
+		// Which part of the app seeks, for a seek heard as a stutter at a song's start (the page's trace shows the seek itself).
+		if (!me.aap.fermata.util.PlaybackCalm.isSteady()) {
+			StackTraceElement[] st = new Throwable().getStackTrace();
+			DiagnosticLog.log("YT", "seek while starting", "pos=" + position, (st.length > 1) ? st[1] : null,
+					(st.length > 2) ? st[2] : null);
+		}
 		web.setPosition(position);
 	}
 

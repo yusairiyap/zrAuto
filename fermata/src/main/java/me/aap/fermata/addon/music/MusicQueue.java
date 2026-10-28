@@ -32,6 +32,7 @@ import me.aap.fermata.media.lib.MediaLib.Item;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.BrowsableItemPrefs;
 import me.aap.utils.async.FutureSupplier;
+import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.log.Log;
 
 /**
@@ -65,10 +66,18 @@ public class MusicQueue extends ExtRoot {
 	private MusicTrackItem insertAfterLast;
 	private long serial;
 
+	// Shuffle turned on or off, from anywhere (the Music tab, Home's card, the session, Android Auto): the play order
+	// changes, so the listeners are told, as for any other change. Only the setting changed before, and the Queue card,
+	// which only follows the listeners, kept the old order. Kept in a field: the prefs hold their listeners weakly.
+	private final PreferenceStore.Listener shuffleListener = (s, prefs) -> {
+		if ((s == this) && prefs.contains(BrowsableItemPrefs.SHUFFLE)) changed();
+	};
+
 	MusicQueue(MediaLib lib) {
 		super(ID, lib);
 		store = lib.getContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 		load();
+		addBroadcastListener(shuffleListener);
 	}
 
 	public interface Listener {
@@ -420,6 +429,7 @@ public class MusicQueue extends ExtRoot {
 		if (missing.isEmpty()) return;
 
 		Thread th = new Thread(() -> {
+			android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
 			Handler main = new Handler(Looper.getMainLooper());
 			for (MusicTrackItem t : missing) {
 				String vid = t.getVideoId();
@@ -431,6 +441,8 @@ public class MusicQueue extends ExtRoot {
 					break;
 				}
 				if (channel == null) {
+					// A network look-up for a row's subtitle: after the song has started cleanly.
+					me.aap.fermata.util.PlaybackCalm.awaitSteady(10000);
 					me.aap.fermata.spotify.SpotifyImportModel.Video v = me.aap.fermata.spotify.YoutubeSearch.lookUpById(vid);
 					if (v != null) channel = v.channel;
 				}

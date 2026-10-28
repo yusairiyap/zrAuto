@@ -106,9 +106,10 @@ abstract class LibraryWidget extends HomeWidgetView {
 	private final FermataServiceUiBinder.Listener playingListener = new FermataServiceUiBinder.Listener() {
 		@Override
 		public void onPlayableChanged(PlayableItem oldItem, PlayableItem newItem) {
-			post(() -> {
+			// Marked once the song's first moment has passed (PlaybackCalm#afterStart): a list read then competes with its start.
+			post(() -> me.aap.fermata.util.PlaybackCalm.afterStart(() -> {
 				if ((drillSource != null) || marksPlayingOnTop()) refresh(true);
-			});
+			}));
 		}
 	};
 	/** Favorites, a playlist or the list of playlists changed (from a menu, a tab, anywhere): the rows are read again at once. */
@@ -188,6 +189,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 	private static LibraryWidget carFocused;
 	/** The list was replaced (opened a playlist, went back): the outline goes to its first row once it is in. */
 	private boolean carReselect;
+	/** The keys were handed over by a card that played something (see queueOnPlay): the outline goes to the playing row. */
+	private boolean carToPlaying;
 
 	@Override
 	public boolean dispatchTouchEvent(android.view.MotionEvent e) {
@@ -202,9 +205,16 @@ abstract class LibraryWidget extends HomeWidgetView {
 		if (carFocused == this) return;
 		if (carFocused != null) carFocused.releaseCarKeys();
 		carFocused = this;
+		setCarKeysHolder(this);
 		me.aap.fermata.action.CarNav.markModalScope(listView, this::carBack);
 		listView.post(() -> {
-			if (carFocused == this) me.aap.fermata.action.CarNav.selectFirst(act(), listView);
+			if (carFocused != this) return;
+			if (carToPlaying && (focusRow >= 0) && (focusRow < rows.size())) {
+				carToPlaying = false;
+				me.aap.fermata.action.CarNav.highlightRow(act(), listView, focusRow);
+			} else {
+				me.aap.fermata.action.CarNav.selectFirst(act(), listView);
+			}
 		});
 	}
 
@@ -217,9 +227,18 @@ abstract class LibraryWidget extends HomeWidgetView {
 		releaseCarKeys();
 	}
 
+	@Override
+	protected void dropCarKeys() {
+		releaseCarKeys();
+	}
+
 	private void releaseCarKeys() {
-		if (carFocused == this) carFocused = null;
+		if (carFocused == this) {
+			carFocused = null;
+			setCarKeysHolder(null);
+		}
 		carReselect = false;
+		carToPlaying = false;
 		if (listView != null) me.aap.fermata.action.CarNav.release(listView);
 	}
 
@@ -258,9 +277,26 @@ abstract class LibraryWidget extends HomeWidgetView {
 		return false;
 	}
 
-	/** After something is played from the card: the Queue of its stack comes to the top, if the option says so. */
+	/**
+	 * After something is played from the card: the Queue of its stack comes to the top, if the option says so. On the car screen,
+	 * when this card had the car keys, the Queue takes them, with the outline on the playing song.
+	 */
 	protected final void queueOnPlay() {
-		if (supportsQueueOnPlay() && optBool("queueOnPlay", false)) bringStackTo("queue");
+		if (!supportsQueueOnPlay() || !optBool("queueOnPlay", false)) return;
+		boolean hadKeys = carFocused == this;
+		if (!bringStackTo("queue") || !hadKeys) return;
+		for (HomeWidgetView w : stackMates()) {
+			if (!(w instanceof QueueWidget)) continue;
+			LibraryWidget q = (LibraryWidget) w;
+			if (!q.carKeysOn()) break;
+			// Once the stack has turned and the queue has its rows.
+			q.postDelayed(() -> {
+				if (!q.built || (q.listView == null) || !me.aap.fermata.action.CarNav.isEnabled()) return;
+				q.carToPlaying = true;
+				q.takeCarKeys();
+			}, 450);
+			break;
+		}
 	}
 
 	/** Whether the card can show its rows one per line across its whole width (an option). */
@@ -750,7 +786,22 @@ abstract class LibraryWidget extends HomeWidgetView {
 		render();
 	}
 
+	/** A read held back until the app's start is over (see HomeHost#isSettled); placeholders show meanwhile. */
+	private boolean awaitingStart;
+
 	protected final void refresh(boolean force) {
+		if (!host.isSettled()) {
+			if (awaitingStart) return;
+			awaitingStart = true;
+			loading = true;
+			if (built) updateBusy();
+			host.whenSettled(() -> {
+				awaitingStart = false;
+				loading = false;
+				if (built && isAttachedToWindow()) refresh(true);
+			});
+			return;
+		}
 		if (loading && !force) return;
 		if (!force && ((SystemClock.uptimeMillis() - loadedAt) < STALE_MS)) return;
 		loading = true;
@@ -801,6 +852,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 
 	private void render() {
 		if (!built) return;
+		// Only the very first rows, taking the placeholders' place, fade in: opening and going back have their own fades.
+		boolean fromSkeleton = skeleton.getVisibility() == VISIBLE;
 		updateBusy();
 		boolean none = rows.isEmpty();
 		// Wide cards split their rows into two columns, unless the card asks for full-width rows.
@@ -827,7 +880,14 @@ abstract class LibraryWidget extends HomeWidgetView {
 		count.setText(total > 0 ? String.valueOf(total) : "");
 		emptyText.setVisibility(none && !isCompact() && !loading ? VISIBLE : GONE);
 		boolean listShown = !(none || isCompact());
+		// The rows take the placeholders' place with a short fade, not a cut.
+		boolean arriving = fromSkeleton && listShown && (drillSource == null) && !backing && host.animate() &&
+				(listView.getVisibility() != VISIBLE) && (listView.getAlpha() >= 1f);
 		listView.setVisibility(listShown ? VISIBLE : GONE);
+		if (arriving) {
+			listView.setAlpha(0f);
+			listView.animate().alpha(1f).setDuration(220).start();
+		}
 		firstLine.setVisibility((!none && isCompact()) ? VISIBLE : GONE);
 		if (none) {
 			adapter.set(new ArrayList<>(), true);
@@ -866,6 +926,14 @@ abstract class LibraryWidget extends HomeWidgetView {
 	/** Brings the playing row into view, once per song: never while the finger is on the list. */
 	private void scrollToPlaying() {
 		if ((focusRow < 0) || (focusRow >= rows.size())) return;
+		// The queue just took the car keys from the card that played (see queueOnPlay), before its playing row was marked.
+		if (carToPlaying && (carFocused == this)) {
+			carToPlaying = false;
+			int pos = focusRow;
+			listView.post(() -> {
+				if (carFocused == this) me.aap.fermata.action.CarNav.highlightRow(act(), listView, pos);
+			});
+		}
 		Object key = rows.get(focusRow).key();
 		if (key.equals(lastFocusKey)) return;
 		lastFocusKey = key;

@@ -254,6 +254,7 @@ public final class HomeArt {
 					if (frameDone.get() && wanted.getAsBoolean()) out.accept(null);
 					return;
 				}
+				DiagnosticLog.log("ART", "no cover for Home", uri, err);
 				out.accept(null);
 				return;
 			}

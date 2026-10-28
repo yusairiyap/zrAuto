@@ -181,8 +181,8 @@ public class MusicTrackItem extends ExtPlayable {
 	 * A YouTube video's title as it should be shown next to its channel: without the channel's
 	 * name in front ({@code "Madeon - Dancing On Your Grave"} by Madeon shows as
 	 * {@code "Dancing On Your Grave"}), which would only repeat the artist line right under it.
-	 * The name has to be followed by a separator ({@code - – — : | ~ •}) or a space; the title is
-	 * left as it is if nothing would remain. Case-insensitive, and {@code "<artist> - Topic"}
+	 * The name has to be followed by a separator ({@code - – — : | ~ •}) or a space, but not a space and then a word that
+	 * joins names ({@code &}, {@code x}, {@code feat.} ...); the title is left as it is if nothing would remain. Case-insensitive, and {@code "<artist> - Topic"}
 	 * channels count as just the artist.
 	 */
 	public static String titleWithoutArtist(@Nullable String title, @Nullable String artist) {
@@ -194,11 +194,24 @@ public class MusicTrackItem extends ExtPlayable {
 		char c = t.charAt(n);
 		if (!Character.isWhitespace(c) && (SEPARATORS.indexOf(c) < 0)) return title;
 		int i = n;
+		boolean sep = false;
 		while ((i < t.length()) &&
 				(Character.isWhitespace(t.charAt(i)) || (SEPARATORS.indexOf(t.charAt(i)) >= 0))) {
+			if (!Character.isWhitespace(t.charAt(i))) sep = true;
 			i++;
 		}
+		// The name followed only by a space is the start of a longer name ("Stariah & Valkyr - Xenos" by Stariah, "Zedd x Foxes"),
+		// not the artist in front of the title: left as it is.
+		if (!sep && (i < t.length()) && joinsNames(t.substring(i))) return title;
 		return (i < t.length()) ? t.substring(i) : title;
+	}
+
+	private static boolean joinsNames(String rest) {
+		char c = rest.charAt(0);
+		if ((c == '&') || (c == ',') || (c == '+') || (c == '×') || (c == '/')) return true;
+		String w = rest.split("\\s+", 2)[0].toLowerCase(java.util.Locale.ROOT);
+		return w.equals("x") || w.equals("and") || w.equals("with") || w.equals("feat") || w.equals("feat.") ||
+				w.equals("ft") || w.equals("ft.") || w.equals("vs") || w.equals("vs.") || w.equals("featuring");
 	}
 
 	private static final String SEPARATORS = "-–—:|~•·";
@@ -278,6 +291,14 @@ public class MusicTrackItem extends ExtPlayable {
 	/** Whether this is a YouTube video that's on the phone, so it plays from the file. */
 	public boolean isDownloaded() {
 		return YtOffline.useLocal(videoId);
+	}
+
+	/**
+	 * A YouTube song downloaded as sound only: it plays from its file as music, and its video can still be watched,
+	 * streamed from YouTube at the usual quality (see MusicPlayer#switchToVideo).
+	 */
+	public boolean isAudioOnlyDownload() {
+		return (videoId != null) && YtOffline.hasCopy(videoId) && !hasDownloadedVideo();
 	}
 
 	/** Whether the file on the phone has the picture too, not just the sound. */

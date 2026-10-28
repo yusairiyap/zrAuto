@@ -902,6 +902,9 @@ what each widget shows is set on the widget (edit mode > its gear).
   (`CarNav.selectFirst`), short keys walk the rows, long Next = `performClick` on the row (opens a playlist at the top level, plays inside it / in Queue / Favorites),
   long Previous = `carBack` (up out of an opened list, else `releaseCarKeys` -> `CarNav.release`, the keys return to the user's bindings). Only the row's main view is a stop
   (the play, remove and drag buttons are tagged `CarNav.skip`). After an open/back the outline goes to the first row of the new list (`carReselect`). Released in `onInactive`. Never run on a car.
+  When the card plays something and "Show the queue when playing" turns its stack to the Queue (`LibraryWidget#queueOnPlay`), the Queue takes
+  the keys with the outline on the playing song (`carToPlaying`). A touch on any other card gives the keys back (`HomeWidgetView#dispatchTouchEvent`,
+  `setCarKeysHolder` / `dropCarKeys`).
 - **Pinned playlists** (`HomePins`, pref `PINNED_PLAYLISTS`, the row menu's "Pin to top" / "Unpin" for a playlist opened from a Home card): `PlaylistsWidget#pinnedFirst` puts them first,
   newest pin on top; the list refresh (DiffUtil) moves the rows.
 - **Hide downloaded icon** option on every Library card (`hideDownloaded`, bit 16 of `rowMode`).
@@ -1160,10 +1163,11 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   which also restarted that marquee each second (`fixCountdownWidth`).
 - **Grid vs list** for media lists comes from the grid preference, never from `isGridView()` (which
   asks the active tab and is wrong while tabs switch).
-- Known open items: media card art can look blocky on One UI (1280x720 art); a YouTube hand-over
+- Known open items: a YouTube hand-over
   whose page never starts leaves the local engine muted with no error.
   **Open: an occasional micro stutter at the start of a YouTube song on the Music tab** (play, tiny
-  pause, play; never seen in fullscreen video, seeking is fine). Already ruled out or fixed: router
+  pause, play; never seen in fullscreen video, seeking is fine; see open issue 6 for the latest lead: the media
+  clock running ~80 ms ahead in the first second, i.e. the WebView's sound output starting late). Already ruled out or fixed: router
   navigation (Music swaps in the player), quality switched while the song starts (now set before the
   swap; `YT media quality` lines log any switch), the fade holding the start silent, Web Audio when no
   effect is on. Still possible: YouTube's own player or the WebView's audio start (the log once showed
@@ -1174,6 +1178,10 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   last seconds (at most 1 s between looks, 150 ms near the end); the control panel's and the Music
   tab's progress polls skip their work while their window isn't visible (for YouTube each tick is a
   script run in the page). Keep new periodic work off when nothing is on screen.
+- **Local engines fade like YouTube's page** (`MediaEngineBase`, the same constants and curves as `youtube_fade.js`): a new track
+  from 25% evenly in dB over 500 ms, a resume eased from silence over 700 ms, pause/skip eased out over 350 ms plus 80 ms held
+  silent. `MediaSessionCallback#playItem` fades a playing local engine out before the item it was asked for starts (a tapped row, a
+  queue track), as Next does; the last request wins.
 - **A local engine replacing YouTube** must silence the page (`MediaSessionCallback#playPreparedItem`
   calls `yieldToLocal()`; the page's `close()` is inert on purpose). After that the page may not take
   the session back on its own (`YoutubeMediaEngine#yielded`, checked in `playing()`): only a video the
@@ -1204,6 +1212,25 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   rewinds a video stopped within 1.5 s of its end. A third form: YouTube's player ends it itself, back to 0:00 under its
   replay button (player state 0) with no `ended`; `endCheck` reports that state at any position (`stuck:state`), and
   `play()` restarts it through the player API (`seekTo(0)` + `playVideo()`), since the element's `play()` just waits there. Before, Repeat One stopped there and play only buffered until the stall fallback.
+  A fourth form (seen on Android Auto): YouTube pauses the song at its end and puts it back to 0:00 in another player state (not 0), so the
+  position is no longer near the end; `endCheck` reports it as `stuck:reset ps=..` when the same video was in its last 5 s under 10 s before
+  (`__fermataNearEndAt` / `__fermataNearEndId`, kept by a `timeupdate` listener), or YouTube cued a video by itself (state 5).
+  YouTube's replay screen (the player's `ended-mode` class) counts like state 0. **Open (Oct 28, Android Auto)**: a song showed the replay
+  button at 0:00 only ~30 s in (paused by the page, no `ended`, no end-check line), and stayed there. When the check finds no end it now
+  writes `YT media end check: not the end, ps=.. t=.. paused=.. ready=.. lastSecondsAgo=.. sameVideo=..` (or `an ad is showing`): ask for
+  that line to see what the player reported.
+  **An ad's last seconds never count** for the `stuck:reset` memory (`__fermataAdShowing` or the player's `ad-showing` / `ad-interrupting`
+  class, and nothing under 30 s): a 6 s ad ended, the song began at 0:00 and was taken for its end (skipped right after the ad).
+  **A song YouTube ends early is resumed** (seen signed out / Private Mode, Oct 29: the page's own `ended` ~31 s into a 3 min song, likely a stream
+  YouTube cut short): `interceptEndedJs` reports `early:t/len` when the player's `getDuration()` says more than 10 s were left, and
+  `YoutubeMediaEngine#endedEarly` loads the same video again at that time (`loadVideoById` with `startSeconds`), at most twice per video, then
+  goes on as for a real end. Log: `YT video ended early: resuming at=..`. Not run on a device.
+- **YouTube's "Continue watching?" prompt is answered** (`YoutubeWebView#hideAppPromoBanners`): `ytm-you-there-renderer` used to be only
+  hidden, so YouTube paused under an invisible question (in the background, after a while with no touch on the page), and the pause retry
+  then toasted "Window too small" at full size. Its button is pressed now (`YT media you-there prompt answered:` in the log), `_lact` is
+  refreshed every minute, and the size toast only shows when the page is under ~240 dp (`YoutubeMediaEngine#isPageSmall`). Not run on a device.
+- **Shuffle changes reach the queue's listeners** (`MusicQueue#shuffleListener`, on its own prefs' `SHUFFLE`): the play order changes, but only the
+  setting used to change, so the Home Queue card (which only follows `MusicQueue.Listener`) kept the old order after Shuffle on Home's card.
 - **A page restored after the app was killed** (the fragment's saved `url`, with YouTube not playing then) is kept
   quiet until asked (`YoutubeMediaEngine#quietRestoredPage`): its autoplay used to start the old song on app open.
 - **Previous / Next go nowhere past the ends of a list**: on the first / last song of the Music queue (its
@@ -1382,8 +1409,8 @@ pause source.
   calls `MusicPlayer.searchYoutube` -> `YoutubeFragment.searchFor`: the tab fades in, `startSearch(false)` opens the panel the way the search
   button does, and the query runs `YoutubeSearchPanel.SLIDE_MS` later. The layout follows the card's width in dp (`ICON_BELOW_DP`,
   `CHIPS_IN_STRIP_DP`) and height (`chipRoom`): one unit high = input plus one row of chips; two rows fit = wrapped, else one scrolling row.
-  On the car screen the field is not focusable; a tap opens the panel. **Keyboard: the card does not yet move above the keyboard (open, see
-  the list below).** `revealField` uses the IME inset and logs `HOME keyboard reveal`.
+  On the car screen the field is not focusable; a tap opens the panel. **Keyboard**: the page glides up with it (`HomeHost#followKeyboard`, see
+  "Start-up quiet, playback calm, search from Home" and item 3 of the list below).
 - **Widget size and space** (per screen, Settings > Home): `HOME_SCALE` (40-150%) and `HOME_PADDING` (-1 = automatic, else dp, both sides, centred).
   `HomeGridLayout#setScale` and `onMeasure`: the card size is `base * scale` and the lanes (columns, or rows sideways) are as many as fit at
   that size (`lanes`, capped by `MAX_LANES`); `colLead` centres the leftover when scrolling down. Freeflow scales its places
@@ -1396,27 +1423,154 @@ pause source.
   window reopens. Each change calls `HomeGridLayout#stackEdited` (sync, changed, save).
 - **Library back navigation** (`LibraryWidget#backOut`): the rows and the back chip change only while the list is hidden; the chip collapses
   without an animation (`showBack(on, false)`), so the list does not slide as it fades back in.
-- **Diagnostics**: the comments loader no longer logs (the old COMMENTS/YTCOMMENTS lines were removed). Keyboard reveal logs `HOME keyboard reveal`.
-- **Device status**: tested on the tablet and working: the comments widget, the search widget (except the keyboard, open below), the timer chips,
+- **Diagnostics**: the comments loader no longer logs (the old COMMENTS/YTCOMMENTS lines were removed). The keyboard lift logs `HOME keyboard lift`.
+- **Device status**: tested on the tablet and working: the comments widget, the search widget (keyboard lift included), the timer chips,
   widget size and space around widgets. Not run on a device yet: the stack manager and the add picker, the UI style on the car screen.
+
+## Start-up quiet, playback calm, search from Home
+
+- **Home's widgets read the library only after the start** (`HomeHost#isSettled` / `whenSettled`, `HomeScreen#settleAfter`): the
+  start counts as over when Home has faded in, 400 ms later and once the main thread is idle (`STATE home settled`); then the waiting
+  widgets read one at a time, 70 ms apart. Until then `LibraryWidget#refresh` only shows its skeleton (`awaitingStart`), and the
+  Comments and YouTube suggestions widgets hold their network reads. The rows replace the skeleton with a short fade. Process-wide:
+  once settled, Home made again later reads at once. A new widget that reads lists or the network at bind should do the same.
+- **`util/PlaybackCalm`** (fed by `MediaSessionCallback#setPlaybackState`): steady = the song has played 3 s without a buffering
+  or skipping state. Background work that only makes things nicer waits for it on its own thread (`awaitSteady`, never on the main
+  thread): the video-frame capture (`BitmapCache#readOrCaptureFrame`, its thread at background priority), captions (the next song's
+  fully, the playing song's at most 2.5 s; `CaptionsHub`'s thread at background priority) and the queue's channel look-ups.
+- **Home waits 1.5 s into a song before reacting to it** (`PlaybackCalm#afterStart`, `START_QUIET_MS`; 0 takes it out): the media card's
+  cover, the "cover of what plays" background and the lists marking the playing song (Library widgets, Queue). The title and artist change
+  at once. That decode/blur/cross-fade burst landed on the song's first moment, the only place the stutter is heard and only on screens that
+  react to a new song (never fullscreen video). The current song's captions wait until it is steady too (3.5 s at most). Every song start
+  writes `STATE start load: main late max=..ms over50=.. gc=+.. blocking=+.. (..ms)`: how late a 100 ms main-thread tick came at worst
+  and the garbage collections in its first 3 s. A stutter with big numbers there is the app's own work; with small ones, the page.
+- **A cover missing on Home's card while the Music tab had it** (videos with no maxresdefault.jpg, the 480x270 ones): the session, Home and
+  the Music tab downloaded the same picture into the same file at once, and the one that found YouTube's grey placeholder deleted the file
+  while another still read it; that one failed with no fallback. `BitmapCache#loadHttpBitmap` now shares a download under way
+  (`httpLoads`), and a maxresdefault.jpg that does not decode falls back to hqdefault.jpg. Home logs `ART no cover for Home` if it still gets none.
+- **Seeks while a song starts are traced**: the page's `YT media seeking t=` (where it went) and `YT seek while starting` with the two
+  callers when the app asks for it; a start that took long is traced for 5 s after its `playing`.
+- **The new-song fade-in's evenness is traced** (`YT media start fade: N steps, longest gap ..ms, biggest step ..%`). A switch to start
+  songs at full volume was tried and removed: the stutter stayed with it off, and a full-volume start makes the clipped first moment heard.
+- **Home's media card asks the player for its position every 3 s**, not every 500 ms tick (for YouTube each ask is a script in the
+  playing page); in between it counts on from the last answer, and asks again after a seek or a play/pause change.
+- **Its title ends in an ellipsis** unless the card's "Scroll a long title" option (`marquee`) is on: a scrolling title redraws every
+  frame at Home's high refresh rate. The eye (hide cover) button takes the same fill as the Watch / Fullscreen chip in `applyLook`.
+- **A search from Home never lands in fullscreen** (`YoutubeFragment#searchPendingUntil`, `holdsFullScreen`): a freshly made YouTube tab
+  restores the last video, and its playable change put the page in fullscreen over the panel. While the panel is open, or for up to 4 s
+  until it opens, `onPlayableChanged` and `enterVideoFullScreen` do not go fullscreen (`YT fullscreen held`); a freshly made tab also
+  waits 350 ms more before the panel slides down, so the WebView's set-up and the slide don't stutter together.
+
+### Second round (after the first device test)
+
+- **The keyboard lift works every time**: a field that kept the focus after the keyboard was closed with Back gets no focus change on
+  the next tap, so `SearchWidget`'s click calls `followKeyboard` too.
+- **Only the first rows fade in over the placeholders** (`LibraryWidget#render`, `fromSkeleton`; never while drilled in or backing out),
+  so opening and going back keep their own fades. `util/TouchState` (fed by `MainActivity#dispatchTouchEvent`) says a finger is down (or
+  lifted under 350 ms ago): the start's queued reads wait (`HomeScreen#runNextSettled`) and `HomeSkeleton` stops redrawing its shimmer.
+- **The media card**: the artist line goes through `MusicTrackItem#cleanArtist` (no " - Topic"); a wide card with under 300dp beside the
+  cover (`TIGHT_DP`, the phone's 4x2) starts its words and controls at 30% of the width over the cover's fading side and shows the chip
+  as its icon only (`narrowChip`), so the title, the controls (shuffle and repeat beside them) and the seek bar fit.
+- **Share zrAuto** is also in the main menu, above About (`NavBarMediator`, `R.id.nav_share_app`; not on the car screen).
+- **A song downloaded as sound only can still be watched** (`MusicTrackItem#isAudioOnlyDownload`): the Music tab's Video button, the
+  Watch chip and Play as video stream it from YouTube at the usual quality from where it is (`MusicPlayer#switchToVideo` ->
+  `YtOffline.forceStream` + `startTrack(.., watch)`); Play as music goes back to the file from the video's position
+  (`playCurrentAsMusic`, `YtOffline#isForcedStream`, `clearForcedStream`).
+
+### YouTube start-up (the stutter at a song's start)
+
+A "start gate" script (`youtube_startgate.js`, setting "Wait for a song to buffer before it starts") was tried and **removed**: in every
+device log it never held a song (`open at once`, 14 to 28 s already buffered; YouTube starts a queued video inside `loadVideoById`, not
+through the element's `play()`), and its two safety nets (undoing a pause YouTube makes in the first 1.5 s, nudging a start that says
+`playing` but does not move) never fired. If "Window too small to play video" or a song held at 0:00 after `playing` comes back, those are
+the two cases it handled; `YoutubeMediaEngine#paused` still retries a page pause right after a start (`YT page paused right after play`).
+The stutter turned out to be the sound output starting up; see open issue 6 (the silent warm-up).
+- **Forced streams are respected by the YouTube engine**: `YoutubeMediaEngine#playing` sends a downloaded video to its file only when
+  `YtOffline.useLocal` says so (a sound-only download watched streamed changed quality and was sent back to the file, then refused:
+  "Not downloaded, and there is no connection"); a stall of a forced stream clears it and plays the file. Watching a sound-only download
+  turns music mode off before the page sets the video up, so it gets the usual quality, not 144p.
+- The `YT media` trace writes `loadstart`, `emptied`, `play`, `pause`, `seeking` and progress gaps over 400 ms in the first seconds of a song.
+- **Music mode reaches the page while a file plays** (`YoutubeHooks#applyQuality(a, eng)`): with a downloaded file as the player,
+  the page's engine still gets the new quality policy, so a sound-only download watched streamed gets the preferred quality, not
+  music mode's 144p. Back to music from it: the file starts at the video's position first, music mode follows 1 s later
+  (switched while the page still played, its quality reload handed the song to the file from 0:00).
+- **Captions are not asked for over and over** (`CaptionsHub#failedAt`): a video whose captions could not be had is not asked
+  again for 5 minutes (the buttons' `isDimmed` asked on every redraw and a failure was never kept, so the same four requests went
+  out every ~1.5 s); an app YouTube asks to sign in is left out for 30 minutes (`YtCaptions#signInUntil`). **The YouTube page is
+  asked first** (`YtCaptions#fromPage` -> `MusicPlayer.youtubePageCaptions` -> `YoutubeHooks#pageCaptions`): when the page has that
+  video, its player response's caption tracks are read and the json3 fetched inside the page with its cookies
+  (`YoutubeWebView#pageCaptionsStartJs` / `pageCaptionsResultJs`, polled 4x/s for up to 6 s). `CAPTIONS PAGE` lines say what it got;
+  if they say `empty track`, YouTube wants its proof-of-origin token on the request too (not done).
+- **A stale "the app paused it"** (`YoutubeMediaEngine#appRequestedPause`) is cleared when the page pauses while another engine owns
+  the session (the pause that silenced it) and when a switch starts: left set, a pause the page made during a song switch after
+  coming back to the app counted as the app's, `isSwitchPause` let it through and the session paused (silence until play was pressed).
+- **The keyboard lift ends where the animation left the keyboard** (`ImeFollower#onEnd`, `lastIme`), not on the window insets, which can
+  still report the keyboard right at the end of a Back-swipe hide (the flicker).
 
 ## Open issues (handover list)
 
 These are the open items to take up next, in a new session or on a new branch. Each is a prompt: the first line says what is wrong.
 Items marked resolved were tested OK on the device; the numbers are kept so references stay stable.
 
-1. **Next plays the downloaded copy and the queue collapses to one track.** On a Favorites or playlist entry, Next hands a downloaded next
-   track to the UI (`MediaSessionCallback.handOverYoutube` -> `YtOffline.tryPlayLocal` -> `MusicPlayer.play(a, item, true)`), and that
-   path can replace the queue with that single track. Also check the "playing the downloaded copy" branch in `YoutubeMediaEngine#prepare`.
-   Reproduce with a playlist whose next track is downloaded, and read the TRANSPORT, YTDL and MUSIC lines around one Next press.
+1. **Next plays the downloaded copy and the queue collapses to one track** (rare now). Likely cause fixed: `MusicPlayer#indexOfSame`
+   matched only by id, and a Favorites / playlist entry playing from its downloaded copy points at the file by then, so it was not
+   found in its own list and the queue was made of that one song. It now also matches by `getOrigId()` and the YouTube video id, and
+   logs `MUSIC item not found in its list: a queue of one` when it still falls back. If it happens again, read that line and the
+   TRANSPORT / YTDL lines around the Next press.
 2. **The YouTube page reports `ended` about 10 s into a song, right after the app paused it.** The log shows `YT paused (app asked)` and then
    `YT video ended` with no `stuck` tag, so it is the page's own `ended` (`YoutubeWebView#interceptEndedJs`), not the end check. A guard
    that ignored it was tried and reverted; find what fires the event instead.
-3. **The search widget does not move above the keyboard.** When the field gets focus the card stays under the keyboard
-   (`SearchWidget#revealField`). Read the `HOME keyboard reveal` lines (bottom, keyboardTop, over, scroller) from one attempt first.
-4. **Media card art looks blocky on One UI** (1280x720 art).
+3. ~~**The search widget and the keyboard**~~ **Resolved: tested OK on device** (`HomeHost#followKeyboard` lifts the page layer with the keyboard;
+   `HOME keyboard lift` lines say what it computed).
+4. ~~**Media card art looks blocky on One UI**~~ **Resolved: not seen any more on the device.**
 5. **A YouTube hand-over whose page never starts leaves the local engine muted with no error.**
-6. **A micro-stutter at the start of a YouTube song on the Music tab** (play, tiny pause, play). See the "Open" note in the playback section.
+6. **A micro-stutter at the start of a YouTube song** (play, tiny pause, play; also on the very first play after an app start). Not solved;
+   the best lead so far, from the device log of Oct 28:
+   - **Ruled out**: the app's own work (`STATE start load` small: main thread late at most ~20 ms, no blocking GC; the one bad case,
+     66 ms / 3 GCs, was the first play right after an app start), seeks, pauses and waits after `playing` (none traced), the new-song
+     fade (heard with it switched off, a test setting since removed; its trace shows even 10 ms steps), the start gate (never engaged, since removed),
+     YouTube pausing the start (never happened), Web Audio (`fade=element`, not in the path).
+   - **Seen with a stutter**: the song's clock 1 s after `playing` was 1.08 (ran ~80 ms ahead) for one stuttered song, but 1.00 for
+     another ("iPod Touch") whose fade trace had one 28% step in a 16 ms tick, i.e. the clock jumped ~100 ms inside the first 0.5 s
+     after a stall of about the same length (a pause, then a catch-up). Both point at the sound output in the first half second. Chromium's audio renderer drives the media clock; a jump forward like that is what it does when the sound
+     output starts late (or under-runs) and it skips ahead to catch up, which is heard exactly as a tiny gap. So the likely cause is the
+     WebView's audio output starting (each `loadVideoById` / new source makes a new audio renderer and output stream), not the app.
+   - **To confirm**: `YT media start clock per 100 ms: 100 100 0 210 ...` (how far the clock moved in each 100 ms of the first
+     1.5 s; `@N` marks a tick that came N ms late). Clean = 100s all along; a stall = a 0 or small number, a skip = a big one after it. A page
+     that has just loaded is traced now too (15 s from the tracer's injection), so the first play after an app start shows up as well.
+   - **Ideas not tried** (each a guess, keep them reversible): keep the page's audio output warm with a silent Web Audio context while
+     music plays (if the WebView reuses the open output for the next renderer); compare the same skips in Chrome on m.youtube.com (if it
+     stutters there too, it cannot be fixed from the app); check whether it happens more with Bluetooth output than the speaker.
+   - **Being tried: the silent warm-up** (YouTube setting "Warm up the sound before a song starts", `YT_START_WARMUP`, on by default;
+     `FermataFade` `cfg.warmup`, `WARM_S` 0.6 in `youtube_fade.js#startFade`): a new video plays its first 0.6 s of playback time at
+     volume 0, then goes back to 0:00 (`v.currentTime = startAt`) and the usual fade-in runs from there. Only a video that starts at
+     0:00 warms up: a stream YouTube reloads mid-song (quality change, stall) or a resume just fades in (`start warm-up skipped: began at`),
+     since 0.6 s more silence there only lengthened a gap the listener already heard. Seeks were never heard to stutter, so the sound output's start-up hiccup happens while silent; the cost is a ~0.6 s later start.
+     The effects path (Web Audio, `gainParam`) is held at 0 too (`silenceGain`, set directly: `ramp()` would clear the warm-up's own timer
+     when the equalizer takes the element over mid-way), and its curve then starts from `START_LEVEL` as without a warm-up. Trace: `start warm-up: 0.6xs played silently, back to 0.00`.
+     If it works, mark this item resolved; if the stutter moves to after the warm-up (see the `start clock` line), it is not the output's start.
+     First device log (Oct 28): the hiccups now land inside the silent part (`start clock ... 143 5 ...`, `... 145 0 171 ...` before the
+     seek's `-5xx`), and the clock after the seek runs evenly (sums to 1.50 in 1.5 s). Not covered: the first song after an app start, which
+     the page starts before the fade script is injected (`pageLoaded`), so no `startFade` runs for it; its clock read `58 90 21 161 9 0 24 0 31`
+     (~0.5 s of stalls). The warm-up's seek no longer reports `waiting` to the app (`__fermataWarmSeekAt`), which flashed the spinner and
+     re-published the metadata and cover on every song.
+     **A page loaded anew** (a YouTube song after a local one, the first song after an app start) is now covered: the fade script is
+     also a document-start script (`YoutubeWebView#ensureEarlyFade`, `WebViewCompat.addDocumentStartJavaScript`, re-added when the
+     warm-up setting changes), so it is in the page before its video autoplays; `pageLoaded` still injects it where that feature is missing.
+     The first song of a freshly loaded page warms up for 1 s (`WARM_FIRST_S`): after a local track the output was still settling just
+     after 0.6 s (`out=24ms` then `40ms` on the two `playing` lines, and a ~70 ms jump in the clock right after the jump back).
+     A hidden page (the Music tab playing YouTube) used to skip `startFade` altogether (no warm-up, no fade); it now warms up too
+     (`(page hidden)` on the trace line), its steps also driven from `timeupdate` in case the page's timers are held back, and the
+     effects path's gain curves run whatever the page's visibility (they are sample-accurate in the audio renderer).
+     **Only while the video is not watched** (`startFade`: `pageHidden()` or `cfg.audioOnly`, music mode, sent by `fadeConfigJs` and
+     `YoutubeWebView#syncFadeAudioOnly` from `loadVideo` and `YoutubeMediaEngine#applyQuality`): the stutter was only ever heard there, and a
+     watched video showed its first moment playing and jumping back. Hiding the picture was tried five ways and dropped (the `<video>`'s opacity,
+     a black box in its container, the fullscreen cover held through the warm-up and lifted by page events, asked for again when a tapped video went
+     fullscreen, a failsafe): in fullscreen the video is drawn outside the page, and the start still showed. **Do not try hiding the picture again.**
+     A switch through YouTube's router ("page navigation") warms up for 1 s like a fresh page (`FermataFade.longWarm`, from `YoutubeWebView#loadVideo`).
+     To take it out: the setting, or the `warm` lines in `startFade`, the pref, its two strings and the `warmup` in both `configure` calls.
+   - Diagnostic lines to ask for: `YT media` (playing / waiting / seeking / `start fade:` / `start clock per 100 ms:`), `STATE start load`,
+     `YT seek while starting`.
 7. ~~**Back with YouTube comments open pauses the video**~~ **Resolved: tested OK on device.**
 8. ~~**Rapid edit-mode toggling crashed on Android Auto**~~ **Resolved: tested OK on device.**
 9. **A song sometimes does not continue to the next one** (fourteenth round). Needs TRANSPORT and YT lines around the end of the song.
