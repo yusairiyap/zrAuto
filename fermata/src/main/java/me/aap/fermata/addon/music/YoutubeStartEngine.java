@@ -13,6 +13,7 @@ import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.async.FutureSupplier;
 
 /**
@@ -55,7 +56,7 @@ final class YoutubeStartEngine implements MediaEngine {
 	}
 
 	private void fail(String msg) {
-		DiagnosticLog.log("MUSIC", "YouTube track didn't start", "id=" + track.getVideoId(), msg);
+		DiagnosticLog.w(LogCat.MUSIC, "YouTube track didn't start", "id=" + track.getVideoId(), "reason=" + msg);
 		listener.onEngineError(this, new MediaEngineException("YouTube: " + msg));
 	}
 

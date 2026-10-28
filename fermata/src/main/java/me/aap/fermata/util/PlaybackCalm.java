@@ -134,8 +134,7 @@ public final class PlaybackCalm {
 			long gc1 = gcStat("art.gc.gc-count");
 			long bc1 = gcStat("art.gc.blocking-gc-count");
 			long bt1 = gcStat("art.gc.blocking-gc-time");
-			DiagnosticLog.log("STATE", "start load", "main late max=" + late[0] + "ms over50=" + late[1],
-					"gc=+" + diff(gc0, gc1) + " blocking=+" + diff(bc0, bc1) + " (" + diff(bt0, bt1) + "ms)");
+			DiagnosticLog.log(LogCat.STATE, "start load", "mainLateMax=" + late[0] + "ms", "over50=" + late[1], "gc=" + diff(gc0, gc1), "blockingGc=" + diff(bc0, bc1), "blockingMs=" + diff(bt0, bt1));
 		};
 		MAIN.postDelayed(tick[0], LOAD_PING_MS);
 	}

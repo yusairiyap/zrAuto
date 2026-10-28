@@ -20,6 +20,7 @@ import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.fermata.ytcaptions.YtCaptions.Cue;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.utils.log.Log;
@@ -466,7 +467,7 @@ public final class CaptionsHub {
 			});
 		} catch (Exception ex) {
 			Log.e(ex, "Failed to load the captions of ", id);
-			DiagnosticLog.log("CAPTIONS", id, "load failed", ex);
+			DiagnosticLog.w(LogCat.CAPTIONS, "load failed", "id=" + id, ex);
 			handler.post(() -> {
 				prefetching.remove(id);
 				failedAt.put(id, android.os.SystemClock.uptimeMillis());

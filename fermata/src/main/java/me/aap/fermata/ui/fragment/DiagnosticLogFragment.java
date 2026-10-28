@@ -1,53 +1,143 @@
 package me.aap.fermata.ui.fragment;
 
+import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
+import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
+
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.text.Editable;
+import android.text.Spannable;
+import android.text.SpannableString;
+import android.text.TextWatcher;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.StyleSpan;
+import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
-import android.widget.ScrollView;
+import android.view.inputmethod.EditorInfo;
+import android.widget.EditText;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.StringRes;
+import androidx.appcompat.widget.SwitchCompat;
+import androidx.core.graphics.ColorUtils;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+
 import me.aap.fermata.R;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.fermata.ui.view.ChipFlowLayout;
+import me.aap.fermata.ui.view.EffectsUi;
+import me.aap.fermata.ui.view.SwitchStyle;
+import me.aap.fermata.ui.view.TopToast;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.DiagnosticLog.Entry;
+import me.aap.fermata.util.DiagnosticLog.Level;
 import me.aap.utils.log.Log;
 import me.aap.utils.ui.UiUtils;
 
 /**
- * Reads back what {@link DiagnosticLog} recorded, so a trace captured in the car can be reviewed,
- * copied or shared without adb. Reachable from Settings &gt; Other &gt; Diagnostics; not a nav-bar
- * tab, since it only exists while someone is actively chasing a bug.
+ * Reads back what {@link DiagnosticLog} recorded, so a trace captured in the car can be reviewed, filtered, copied or
+ * shared without adb. Reachable from Settings &gt; Other &gt; Diagnostics, and from the main menu when that is switched
+ * on there; not a nav-bar tab, since it only exists while someone is actively chasing a bug.
+ * <p>
+ * One list: the first item is the header (the build's version, the recording switch, the buttons, the search box, the
+ * level and the category filters), the rest are the lines, each a card with a bar in its level's colour, the time, a
+ * pill in its category's colour, the message and its {@code key=value} details. What Copy and Share produce is what the
+ * filters leave, oldest first, under a header that names the build.
  *
  * @see DiagnosticLog
  */
 public class DiagnosticLogFragment extends MainActivityFragment {
 	/**
-	 * A share intent's payload crosses a Binder transaction, which is hard-capped around 1MB for
-	 * the whole transaction -- exceeding it throws rather than truncating. The log's own entry cap
-	 * keeps it well under this in practice; this is the backstop for the pathological case, and
-	 * keeps the newest (most relevant) end.
+	 * A share intent's payload crosses a Binder transaction, which is hard-capped around 1MB for the whole transaction;
+	 * exceeding it throws rather than truncating. The log's own entry cap keeps it well under this in practice; this is
+	 * the backstop for the pathological case, and keeps the newest (most relevant) end.
 	 */
 	private static final int MAX_SHARE_CHARS = 200_000;
+	private static final long LIVE_MS = 1000;
+	private static final long SEARCH_DELAY_MS = 250;
+	private static final int TYPE_HEADER = 0;
+	private static final int TYPE_ROW = 1;
+	private static final int TYPE_EMPTY = 2;
+
+	// The filters outlive the screen (it is rebuilt each time it is opened), not the process.
+	private static Level minLevel = Level.DEBUG;
+	private static final Set<String> hidden = new HashSet<>();
+	private static String query = "";
+	private static boolean newestFirst = true;
+	private static boolean live;
+
+	private final Handler handler = new Handler(Looper.getMainLooper());
+	private final List<Entry> filtered = new ArrayList<>();
+	private final List<Entry> shown = new ArrayList<>();
+	private final Adapter adapter = new Adapter();
+	private List<Entry> all = Collections.emptyList();
+	private TreeMap<String, Integer> counts = new TreeMap<>();
 	@Nullable
-	private TextView text;
+	private RecyclerView list;
 	@Nullable
 	private ViewTreeObserver.OnPreDrawListener preDraw;
 	@Nullable
-	private ScrollView preDrawView;
+	private RecyclerView preDrawView;
 	private boolean topShown;
+	private boolean resumed;
+	private Context palette;
+	private float density;
+	private int textPrimary;
+	private int textSecondary;
+	private int tileFill;
+	private int ripple;
+	private int accent;
+	private int onAccent;
+	private boolean lightTheme;
+
+	// The header's parts that change.
+	private LinearLayout header;
+	private TextView countView;
+	private TextView recordingSub;
+	private SwitchCompat recordingSwitch;
+	private boolean syncingSwitch;
+	private LinearLayout levelRow;
+	private ChipFlowLayout categoryChips;
+	private ChipFlowLayout viewChips;
+	private TextView resetChip;
+	private Runnable searchRun;
+	@Nullable
+	private EditText searchEdit;
+	private int lastCount = -1;
+	@Nullable
+	private Entry lastEntry;
 
 	@Override
 	public boolean isSettingsPage() {
@@ -74,11 +164,25 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 	@Override
 	public void onViewCreated(@NonNull View view, @Nullable Bundle state) {
 		super.onViewCreated(view, state);
-		text = view.findViewById(R.id.diagnostic_log_text);
-		// The ScrollView gets the padding that keeps the first and last line clear of the
-		// translucent bars while the log scrolls under them (and lets the bars collapse on scroll).
-		// See the layout's own comment.
-		ScrollView sv = view.findViewById(R.id.diagnostic_log_scroll);
+		Context ctx = view.getContext();
+		palette = EffectsUi.palette(ctx);
+		density = ctx.getResources().getDisplayMetrics().density;
+		textPrimary = color(R.attr.musicTextPrimary);
+		textSecondary = color(R.attr.musicTextSecondary);
+		tileFill = color(R.attr.musicChipFill);
+		ripple = color(R.attr.musicChipRipple);
+		accent = EffectsUi.accent(ctx);
+		onAccent = EffectsUi.onAccent(accent);
+		lightTheme = ColorUtils.calculateLuminance(textPrimary | 0xFF000000) < 0.5;
+
+		RecyclerView rv = view.findViewById(R.id.diagnostic_log_list);
+		list = rv;
+		rv.setLayoutManager(new LinearLayoutManager(ctx));
+		rv.setPadding(dp(16), dp(8), dp(16), dp(16));
+		rv.setItemAnimator(null);
+		rv.setAdapter(adapter);
+		header = buildHeader();
+
 		FloatingActionButton top = view.findViewById(R.id.diagnostic_log_top);
 		// The same soft shadow and no ripple wash as the app's own floating buttons.
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -86,47 +190,64 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 			top.setOutlineSpotShadowColor(Color.BLACK);
 		}
 		top.setRippleColor(ColorStateList.valueOf(Color.TRANSPARENT));
-		MainActivityDelegate.getActivityDelegate(view.getContext()).onSuccess(a -> {
-			a.insetScrollableContent(sv);
-			// Just above the back button, wherever it is now: the bottom bars' room, the button's own
-			// margin and size, a gap, and whatever it's moved by (it follows the bars as they slide
-			// away). By translation, so nothing is relaid out; only touched when the value changes.
+		MainActivityDelegate.getActivityDelegate(ctx).onSuccess(a -> {
+			a.insetScrollableContent(rv);
+			// Just above the back button, wherever it is now: the bottom bars' room, the button's own margin and size, a
+			// gap, and whatever it's moved by (it follows the bars as they slide away). By translation, so nothing is
+			// relaid out; only touched when the value changes.
 			float lift = UiUtils.toPx(a.getContext(), 15 + 56 + 12);
 			preDraw = () -> {
-				float dy = -(sv.getPaddingBottom() + lift) + a.getFloatingButton().getTranslationY();
+				float dy = -(rv.getPaddingBottom() + lift) + a.getFloatingButton().getTranslationY();
 				if (top.getTranslationY() != dy) top.setTranslationY(dy);
 				return true;
 			};
-			sv.getViewTreeObserver().addOnPreDrawListener(preDraw);
-			preDrawView = sv;
+			rv.getViewTreeObserver().addOnPreDrawListener(preDraw);
+			preDrawView = rv;
 		});
-		top.setOnClickListener(v -> sv.smoothScrollTo(0, 0));
-		// Shown only once scrolled away from the newest entries at the top.
-		sv.setOnScrollChangeListener((v, x, y, ox, oy) -> {
-			boolean away = y > UiUtils.toPx(v.getContext(), 24);
-			if (away == topShown) return;
-			topShown = away;
-			if (away) top.show();
-			else top.hide();
+		top.setOnClickListener(v -> rv.smoothScrollToPosition(0));
+		// Shown only once scrolled away from the top.
+		rv.addOnScrollListener(new RecyclerView.OnScrollListener() {
+			@Override
+			public void onScrolled(@NonNull RecyclerView r, int dx, int dy) {
+				boolean away = r.computeVerticalScrollOffset() > UiUtils.toPx(r.getContext(), 24);
+				if (away == topShown) return;
+				topShown = away;
+				if (away) top.show();
+				else top.hide();
+			}
 		});
-		view.findViewById(R.id.diagnostic_log_copy).setOnClickListener(v -> copy());
-		view.findViewById(R.id.diagnostic_log_share).setOnClickListener(v -> share());
-		view.findViewById(R.id.diagnostic_log_refresh).setOnClickListener(v -> refresh());
-		view.findViewById(R.id.diagnostic_log_clear).setOnClickListener(v -> {
-			DiagnosticLog.clear();
-			refresh();
-		});
-		refresh();
+		refresh(true);
 	}
 
 	@Override
 	public void onResume() {
 		super.onResume();
-		refresh();
+		resumed = true;
+		refresh(false);
+		startLive();
+	}
+
+	@Override
+	public void onPause() {
+		resumed = false;
+		handler.removeCallbacksAndMessages(null);
+		super.onPause();
+	}
+
+	@Override
+	public void onHiddenChanged(boolean hidden) {
+		super.onHiddenChanged(hidden);
+		if (hidden) {
+			handler.removeCallbacksAndMessages(null);
+		} else if (list != null) {
+			refresh(false);
+			startLive();
+		}
 	}
 
 	@Override
 	public void onDestroyView() {
+		handler.removeCallbacksAndMessages(null);
 		if ((preDraw != null) && (preDrawView != null)) {
 			ViewTreeObserver o = preDrawView.getViewTreeObserver();
 			if (o.isAlive()) o.removeOnPreDrawListener(preDraw);
@@ -134,92 +255,700 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		preDraw = null;
 		preDrawView = null;
 		topShown = false;
-		text = null;
+		list = null;
+		header = null;
+		searchEdit = null;
+		lastCount = -1;
+		lastEntry = null;
 		super.onDestroyView();
 	}
 
+	// ---------------------------------------------------------------------------------------------
+	// Data
+
 	/**
-	 * Shows the log, newest entry first, and always from the top: the newest are what anyone
-	 * opening or refreshing this wants, and setting the text of a selectable TextView can
-	 * otherwise leave the page scrolled down to wherever its selection ended.
+	 * Reads the log again and applies the filters.
+	 *
+	 * @param toTop whether to go back to the top of the list (a filter changed, or the user asked): the newest entries
+	 *              are what anyone opening or refreshing this wants
 	 */
-	private void refresh() {
-		TextView t = text;
-		if (t == null) return;
-		String dump = DiagnosticLog.dump();
-		if (dump.isEmpty()) {
-			t.setText(DiagnosticLog.isEnabled() ? R.string.diagnostic_log_empty :
-					R.string.diagnostic_log_disabled);
-		} else {
-			t.setText(newestFirst(dump));
+	private void refresh(boolean toTop) {
+		if (list == null) return;
+		all = DiagnosticLog.snapshot();
+		Entry last = all.isEmpty() ? null : all.get(all.size() - 1);
+		boolean same = (all.size() == lastCount) && (last == lastEntry);
+		lastCount = all.size();
+		lastEntry = last;
+		if (same && !toTop) {
+			syncHeader();
+			return;
 		}
-		View v = getView();
-		ScrollView sv = (v == null) ? null : v.findViewById(R.id.diagnostic_log_scroll);
-		if (sv == null) return;
-		// After the new text is laid out, and once more a moment later: the selectable text can move
-		// the scroll position again as it settles.
-		sv.post(() -> sv.scrollTo(0, 0));
-		sv.postDelayed(() -> sv.scrollTo(0, 0), 100);
+		TreeMap<String, Integer> now = DiagnosticLog.countByCategory(all);
+		boolean categoriesChanged = !now.equals(counts);
+		counts = now;
+		applyFilter();
+		if (categoriesChanged) buildCategoryChips();
+		syncHeader();
+		adapter.notifyDataSetChanged();
+		if (toTop && (list != null)) list.scrollToPosition(0);
 	}
 
-	/** {@link DiagnosticLog#dump()} is oldest first; this screen shows the newest on top. */
-	private static String newestFirst(String dump) {
-		String[] lines = dump.split("\n");
-		StringBuilder sb = new StringBuilder(dump.length());
-		for (int i = lines.length - 1; i >= 0; i--) sb.append(lines[i]).append('\n');
+	private void applyFilter() {
+		filtered.clear();
+		String needle = query.trim().toLowerCase(Locale.ROOT);
+		for (Entry e : all) {
+			if (e.level.ordinal() < minLevel.ordinal()) continue;
+			if (hidden.contains(e.category)) continue;
+			if (!needle.isEmpty() && !e.matches(needle)) continue;
+			filtered.add(e);
+		}
+		shown.clear();
+		shown.addAll(filtered);
+		if (newestFirst) Collections.reverse(shown);
+	}
+
+	private boolean filtersActive() {
+		return (minLevel != Level.DEBUG) || !hidden.isEmpty() || !query.trim().isEmpty();
+	}
+
+	private String filterText() {
+		StringBuilder sb = new StringBuilder("level>=").append(minLevel.name());
+		if (!hidden.isEmpty()) {
+			List<String> h = new ArrayList<>(hidden);
+			Collections.sort(h);
+			sb.append(" hidden=").append(String.join(",", h));
+		}
+		if (!query.trim().isEmpty()) sb.append(" search=\"").append(query.trim()).append('"');
 		return sb.toString();
 	}
 
+	private void startLive() {
+		handler.removeCallbacks(liveTick);
+		if (live && resumed) handler.postDelayed(liveTick, LIVE_MS);
+	}
+
+	private final Runnable liveTick = new Runnable() {
+		@Override
+		public void run() {
+			if (!live || !resumed || (list == null)) return;
+			refresh(false);
+			handler.postDelayed(this, LIVE_MS);
+		}
+	};
+
+	// ---------------------------------------------------------------------------------------------
+	// The header
+
+	private LinearLayout buildHeader() {
+		LinearLayout h = new LinearLayout(palette);
+		h.setOrientation(LinearLayout.VERTICAL);
+		h.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+
+		// The card: what build this is, the count, the recording switch.
+		LinearLayout card = new LinearLayout(palette);
+		card.setOrientation(LinearLayout.VERTICAL);
+		card.setPadding(dp(16), dp(14), dp(16), dp(12));
+		card.setBackground(rounded(tileFill, 16));
+		LinearLayout top = new LinearLayout(palette);
+		top.setOrientation(LinearLayout.HORIZONTAL);
+		top.setGravity(Gravity.CENTER_VERTICAL);
+		ImageView icon = new ImageView(palette);
+		icon.setImageResource(R.drawable.diagnostic_log);
+		icon.setImageTintList(ColorStateList.valueOf(accent));
+		top.addView(icon, new LinearLayout.LayoutParams(dp(28), dp(28)));
+		LinearLayout names = new LinearLayout(palette);
+		names.setOrientation(LinearLayout.VERTICAL);
+		names.setPadding(dp(14), 0, 0, 0);
+		names.addView(text(getString(R.string.diagnostic_log), 18, textPrimary, true));
+		TextView version = text(DiagnosticLog.appVersion(), 12.5f, textSecondary, false);
+		version.setTextIsSelectable(true);
+		names.addView(version);
+		top.addView(names, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		card.addView(top);
+
+		countView = text("", 13, accent, true);
+		countView.setPadding(0, dp(10), 0, dp(2));
+		card.addView(countView);
+
+		LinearLayout rec = new LinearLayout(palette);
+		rec.setOrientation(LinearLayout.HORIZONTAL);
+		rec.setGravity(Gravity.CENTER_VERTICAL);
+		rec.setPadding(0, dp(6), 0, 0);
+		LinearLayout labels = new LinearLayout(palette);
+		labels.setOrientation(LinearLayout.VERTICAL);
+		labels.addView(text(getString(R.string.diag_recording), 15, textPrimary, true));
+		recordingSub = text("", 12.5f, textSecondary, false);
+		labels.addView(recordingSub);
+		rec.addView(labels, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		recordingSwitch = new SwitchCompat(palette);
+		SwitchStyle.apply(recordingSwitch, palette);
+		rec.addView(recordingSwitch);
+		recordingSwitch.setOnCheckedChangeListener((b, on) -> {
+			if (syncingSwitch) return;
+			getActivityDelegate().getPrefs().applyBooleanPref(MainActivityPrefs.DEBUG_LOG_ENABLED, on);
+			recordingSub.setText(on ? R.string.diag_recording_on : R.string.diag_recording_off);
+			// Turning it on loads the previous run's lines a moment later.
+			handler.postDelayed(() -> refresh(false), 600);
+		});
+		rec.setOnClickListener(v -> recordingSwitch.toggle());
+		card.addView(rec);
+		h.addView(card, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+
+		// The buttons.
+		ChipFlowLayout actions = new ChipFlowLayout(palette);
+		actions.addView(ChipFlowLayout.chip(palette, R.drawable.copy, R.string.diagnostic_log_copy, true, this::copy));
+		actions.addView(ChipFlowLayout.chip(palette, R.drawable.share, R.string.diagnostic_log_share, false, this::share));
+		actions.addView(ChipFlowLayout.chip(palette, R.drawable.refresh, R.string.diagnostic_log_refresh, false,
+				() -> refresh(true)));
+		actions.addView(ChipFlowLayout.chip(palette, R.drawable.delete, R.string.diagnostic_log_clear, false, this::clear));
+		addBlock(h, actions, 12);
+
+		// Search (not on the car screen, where there is no keyboard).
+		if (!getActivityDelegate().isCarActivity()) addBlock(h, buildSearch(), 12);
+
+		// Level.
+		section(h, R.string.diag_section_level);
+		levelRow = new LinearLayout(palette);
+		levelRow.setOrientation(LinearLayout.HORIZONTAL);
+		int[] names2 = {R.string.diag_level_all, R.string.diag_level_info, R.string.diag_level_warn,
+				R.string.diag_level_error};
+		Level[] levels = Level.values();
+		for (int i = 0; i < levels.length; i++) {
+			int fi = i;
+			TextView t = text(getString(names2[i]), 13.5f, textPrimary, true);
+			t.setGravity(Gravity.CENTER);
+			t.setSingleLine(true);
+			t.setPadding(dp(6), dp(10), dp(6), dp(10));
+			GradientDrawable fill = rounded(0x1F808080, 14);
+			t.setTag(R.id.settings_row_tag, fill);
+			t.setBackground(pressable(fill));
+			t.setClickable(true);
+			t.setFocusable(true);
+			t.setOnClickListener(v -> {
+				minLevel = levels[fi];
+				syncLevel();
+				refresh(true);
+			});
+			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f);
+			lp.setMargins((i == 0) ? 0 : dp(3), 0, (i == levels.length - 1) ? 0 : dp(3), 0);
+			levelRow.addView(t, lp);
+		}
+		LinearLayout levelCard = new LinearLayout(palette);
+		levelCard.setPadding(dp(10), dp(10), dp(10), dp(10));
+		levelCard.setBackground(rounded(tileFill, 16));
+		levelCard.addView(levelRow, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		h.addView(levelCard, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+
+		// Categories.
+		section(h, R.string.diag_section_categories);
+		LinearLayout catCard = new LinearLayout(palette);
+		catCard.setOrientation(LinearLayout.VERTICAL);
+		catCard.setPadding(dp(12), dp(12), dp(12), dp(12));
+		catCard.setBackground(rounded(tileFill, 16));
+		categoryChips = new ChipFlowLayout(palette);
+		catCard.addView(categoryChips, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		TextView hint = text(getString(R.string.diag_cat_hint), 12, textSecondary, false);
+		hint.setPadding(dp(2), dp(10), 0, 0);
+		catCard.addView(hint);
+		h.addView(catCard, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+
+		// How it is shown.
+		section(h, R.string.diag_section_view);
+		viewChips = new ChipFlowLayout(palette);
+		LinearLayout viewCard = new LinearLayout(palette);
+		viewCard.setPadding(dp(12), dp(12), dp(12), dp(12));
+		viewCard.setBackground(rounded(tileFill, 16));
+		viewCard.addView(viewChips, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		h.addView(viewCard, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		buildViewChips();
+
+		View space = new View(palette);
+		h.addView(space, new LinearLayout.LayoutParams(MATCH_PARENT, dp(6)));
+		syncLevel();
+		return h;
+	}
+
+	private View buildSearch() {
+		LinearLayout box = new LinearLayout(palette);
+		box.setOrientation(LinearLayout.HORIZONTAL);
+		box.setGravity(Gravity.CENTER_VERTICAL);
+		box.setPadding(dp(14), 0, dp(6), 0);
+		box.setBackground(rounded(tileFill, 16));
+		ImageView icon = new ImageView(palette);
+		icon.setImageResource(R.drawable.search);
+		icon.setImageTintList(ColorStateList.valueOf(textSecondary));
+		box.addView(icon, new LinearLayout.LayoutParams(dp(20), dp(20)));
+		EditText edit = new EditText(palette);
+		searchEdit = edit;
+		edit.setBackground(null);
+		edit.setHint(R.string.diag_search_hint);
+		edit.setHintTextColor(ColorUtils.setAlphaComponent(textSecondary, 0xAA));
+		edit.setTextColor(textPrimary);
+		edit.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+		edit.setSingleLine(true);
+		edit.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
+		edit.setText(query);
+		edit.setPadding(dp(10), dp(12), dp(6), dp(12));
+		box.addView(edit, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		ImageView clear = new ImageView(palette);
+		clear.setImageResource(R.drawable.close_small);
+		clear.setImageTintList(ColorStateList.valueOf(textSecondary));
+		clear.setPadding(dp(8), dp(8), dp(8), dp(8));
+		clear.setBackground(pressable(rounded(0, 20)));
+		clear.setVisibility(query.isEmpty() ? View.GONE : View.VISIBLE);
+		clear.setOnClickListener(v -> edit.setText(""));
+		box.addView(clear, new LinearLayout.LayoutParams(dp(40), dp(40)));
+		edit.addTextChangedListener(new TextWatcher() {
+			@Override
+			public void beforeTextChanged(CharSequence s, int a, int b, int c) {
+			}
+
+			@Override
+			public void onTextChanged(CharSequence s, int a, int b, int c) {
+			}
+
+			@Override
+			public void afterTextChanged(Editable s) {
+				query = s.toString();
+				clear.setVisibility(query.isEmpty() ? View.GONE : View.VISIBLE);
+				if (searchRun != null) handler.removeCallbacks(searchRun);
+				searchRun = () -> refresh(true);
+				handler.postDelayed(searchRun, SEARCH_DELAY_MS);
+			}
+		});
+		edit.setOnEditorActionListener((v, action, ev) -> {
+			if (action != EditorInfo.IME_ACTION_SEARCH) return false;
+			android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager)
+					v.getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+			if (imm != null) imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+			v.clearFocus();
+			return true;
+		});
+		return box;
+	}
+
+	private void buildViewChips() {
+		viewChips.removeAllViews();
+		viewChips.addView(toggleChip(getString(R.string.diag_newest_first), newestFirst, () -> {
+			newestFirst = !newestFirst;
+			buildViewChips();
+			applyFilter();
+			adapter.notifyDataSetChanged();
+			if (list != null) list.scrollToPosition(0);
+		}));
+		viewChips.addView(toggleChip(getString(R.string.diag_live), live, () -> {
+			live = !live;
+			buildViewChips();
+			startLive();
+		}));
+	}
+
+	private void buildCategoryChips() {
+		categoryChips.removeAllViews();
+		categoryChips.addView(ChipFlowLayout.chip(palette, 0, R.string.diag_cat_all, false, () -> {
+			hidden.clear();
+			refresh(true);
+			buildCategoryChips();
+		}));
+		categoryChips.addView(ChipFlowLayout.chip(palette, 0, R.string.diag_cat_none, false, () -> {
+			hidden.addAll(counts.keySet());
+			refresh(true);
+			buildCategoryChips();
+		}));
+		for (Map.Entry<String, Integer> e : counts.entrySet()) {
+			String cat = e.getKey();
+			boolean on = !hidden.contains(cat);
+			String label = "● " + cat + "  " + e.getValue();
+			TextView chip = toggleChip(label, on, () -> {
+				if (!hidden.remove(cat)) hidden.add(cat);
+				refresh(true);
+				buildCategoryChips();
+			});
+			// Hold: only this one.
+			chip.setOnLongClickListener(v -> {
+				hidden.clear();
+				hidden.addAll(counts.keySet());
+				hidden.remove(cat);
+				refresh(true);
+				buildCategoryChips();
+				return true;
+			});
+			// The dot is the category's colour, as on its lines.
+			SpannableString s = new SpannableString(label);
+			s.setSpan(new ForegroundColorSpan(on ? onAccent : categoryColor(cat)), 0, 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+			chip.setText(s);
+			categoryChips.addView(chip);
+		}
+	}
+
+	/** A chip that is filled with the accent while on. */
+	private TextView toggleChip(String label, boolean on, Runnable click) {
+		TextView t = ChipFlowLayout.chip(palette, 0, label, on, click);
+		t.setTypeface(t.getTypeface(), on ? Typeface.BOLD : Typeface.NORMAL);
+		return t;
+	}
+
+	private void syncHeader() {
+		if (header == null) return;
+		countView.setText(getString(R.string.diag_shown_count, filtered.size(), all.size()));
+		boolean on = DiagnosticLog.isEnabled();
+		recordingSub.setText(on ? R.string.diag_recording_on : R.string.diag_recording_off);
+		if (recordingSwitch.isChecked() != on) {
+			syncingSwitch = true;
+			recordingSwitch.setChecked(on);
+			syncingSwitch = false;
+		}
+		syncLevel();
+	}
+
+	private void syncLevel() {
+		Level[] levels = Level.values();
+		for (int i = 0; i < levelRow.getChildCount(); i++) {
+			TextView t = (TextView) levelRow.getChildAt(i);
+			boolean on = levels[i] == minLevel;
+			t.setTextColor(on ? onAccent : textPrimary);
+			((GradientDrawable) t.getTag(R.id.settings_row_tag)).setColor(on ? accent : 0x1F808080);
+		}
+	}
+
+	private void addBlock(LinearLayout parent, View v, int topDp) {
+		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		lp.topMargin = dp(topDp);
+		parent.addView(v, lp);
+	}
+
+	private void section(LinearLayout parent, @StringRes int title) {
+		TextView t = text(getString(title), 13, accent, true);
+		t.setAllCaps(true);
+		t.setLetterSpacing(0.08f);
+		t.setPadding(dp(4), dp(20), 0, dp(6));
+		parent.addView(t);
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// The lines
+
+	private final class Adapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+		@Override
+		public int getItemViewType(int position) {
+			if (position == 0) return TYPE_HEADER;
+			return shown.isEmpty() ? TYPE_EMPTY : TYPE_ROW;
+		}
+
+		@Override
+		public int getItemCount() {
+			return 1 + (shown.isEmpty() ? 1 : shown.size());
+		}
+
+		@NonNull
+		@Override
+		public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+			if (viewType == TYPE_HEADER) {
+				// The header is built once; detach it from the old parent if the list asks again.
+				if (header.getParent() instanceof ViewGroup g) g.removeView(header);
+				return new RecyclerView.ViewHolder(header) {
+				};
+			}
+			if (viewType == TYPE_EMPTY) return new RecyclerView.ViewHolder(emptyView()) {
+			};
+			return new RowHolder();
+		}
+
+		@Override
+		public void onBindViewHolder(@NonNull RecyclerView.ViewHolder h, int position) {
+			if (h instanceof RowHolder r) r.bind(shown.get(position - 1));
+			else if (getItemViewType(position) == TYPE_EMPTY) bindEmpty(h.itemView);
+		}
+	}
+
+	private View emptyView() {
+		LinearLayout box = new LinearLayout(palette);
+		box.setOrientation(LinearLayout.VERTICAL);
+		box.setGravity(Gravity.CENTER_HORIZONTAL);
+		box.setPadding(dp(16), dp(28), dp(16), dp(28));
+		box.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		TextView t = text("", 14, textSecondary, false);
+		t.setGravity(Gravity.CENTER);
+		t.setTag("text");
+		box.addView(t);
+		TextView reset = ChipFlowLayout.chip(palette, 0, R.string.diag_reset_filters, false, () -> {
+			minLevel = Level.DEBUG;
+			hidden.clear();
+			query = "";
+			if (searchEdit != null) searchEdit.setText("");
+			buildCategoryChips();
+			refresh(true);
+		});
+		resetChip = reset;
+		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+		lp.topMargin = dp(14);
+		box.addView(reset, lp);
+		return box;
+	}
+
+	private void bindEmpty(View v) {
+		TextView t = v.findViewWithTag("text");
+		if (t == null) return;
+		if (all.isEmpty()) {
+			t.setText(DiagnosticLog.isEnabled() ? R.string.diagnostic_log_empty : R.string.diagnostic_log_disabled);
+			if (resetChip != null) resetChip.setVisibility(View.GONE);
+		} else {
+			t.setText(R.string.diag_nothing_matches);
+			if (resetChip != null) resetChip.setVisibility(filtersActive() ? View.VISIBLE : View.GONE);
+		}
+	}
+
+	private final class RowHolder extends RecyclerView.ViewHolder {
+		private final View bar;
+		private final TextView time;
+		private final TextView cat;
+		private final TextView level;
+		private final TextView message;
+		private final TextView details;
+		private final TextView stack;
+		private Entry entry;
+
+		RowHolder() {
+			super(new LinearLayout(palette));
+			LinearLayout row = (LinearLayout) itemView;
+			row.setOrientation(LinearLayout.HORIZONTAL);
+			RecyclerView.LayoutParams rlp = new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+			rlp.topMargin = dp(6);
+			row.setLayoutParams(rlp);
+			row.setBackground(pressable(rounded(tileFill, 12)));
+			row.setClickable(true);
+			row.setFocusable(true);
+			bar = new View(palette);
+			LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(dp(4), MATCH_PARENT);
+			blp.setMargins(dp(6), dp(6), 0, dp(6));
+			row.addView(bar, blp);
+
+			LinearLayout body = new LinearLayout(palette);
+			body.setOrientation(LinearLayout.VERTICAL);
+			body.setPadding(dp(10), dp(8), dp(12), dp(9));
+			LinearLayout top = new LinearLayout(palette);
+			top.setOrientation(LinearLayout.HORIZONTAL);
+			top.setGravity(Gravity.CENTER_VERTICAL);
+			time = text("", 11, textSecondary, false);
+			time.setTypeface(Typeface.MONOSPACE);
+			top.addView(time);
+			cat = text("", 10.5f, textPrimary, true);
+			cat.setPadding(dp(7), dp(1), dp(7), dp(1));
+			LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+			clp.setMarginStart(dp(8));
+			top.addView(cat, clp);
+			level = text("", 10.5f, textPrimary, true);
+			LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+			llp.setMarginStart(dp(8));
+			top.addView(level, llp);
+			body.addView(top);
+			message = text("", 14, textPrimary, true);
+			message.setPadding(0, dp(3), 0, 0);
+			body.addView(message);
+			details = text("", 12, textSecondary, false);
+			details.setTypeface(Typeface.MONOSPACE);
+			details.setPadding(0, dp(2), 0, 0);
+			body.addView(details);
+			stack = text("", 11, textSecondary, false);
+			stack.setTypeface(Typeface.MONOSPACE);
+			stack.setPadding(0, dp(4), 0, 0);
+			body.addView(stack);
+			row.addView(body, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+
+			// Hold a line to copy just that one.
+			row.setOnLongClickListener(v -> {
+				if (entry != null) copyText(entry.toLine(), R.string.diag_line_copied);
+				return true;
+			});
+			row.setOnClickListener(v -> {
+				// A tap spreads or folds a long line.
+				boolean fold = message.getMaxLines() != Integer.MAX_VALUE;
+				message.setMaxLines(fold ? Integer.MAX_VALUE : 3);
+				details.setMaxLines(fold ? Integer.MAX_VALUE : 4);
+			});
+		}
+
+		void bind(Entry e) {
+			entry = e;
+			int levelColor = levelColor(e.level);
+			GradientDrawable b = rounded(levelColor, 2);
+			bar.setBackground(b);
+			time.setText(e.clock());
+			int cc = categoryColor(e.category);
+			cat.setText(e.category);
+			cat.setTextColor(cc);
+			cat.setBackground(rounded(ColorUtils.setAlphaComponent(cc, 0x2B), 6));
+			if (e.level == Level.WARN || e.level == Level.ERROR) {
+				level.setVisibility(View.VISIBLE);
+				level.setText(e.level == Level.ERROR ? "ERROR" : "WARN");
+				level.setTextColor(levelColor);
+			} else {
+				level.setVisibility(View.GONE);
+			}
+			message.setMaxLines(3);
+			message.setEllipsize(android.text.TextUtils.TruncateAt.END);
+			message.setText(e.message);
+			details.setMaxLines(4);
+			details.setEllipsize(android.text.TextUtils.TruncateAt.END);
+			if (e.details.isEmpty()) {
+				details.setVisibility(View.GONE);
+			} else {
+				details.setVisibility(View.VISIBLE);
+				details.setText(highlightKeys(e.details));
+			}
+			if (e.extra.isEmpty()) {
+				stack.setVisibility(View.GONE);
+			} else {
+				stack.setVisibility(View.VISIBLE);
+				stack.setText(e.extra);
+			}
+		}
+	}
+
+	/** The {@code key=} of every {@code key=value} in the accent, so the facts stand out from their values. */
+	private CharSequence highlightKeys(String details) {
+		SpannableString s = new SpannableString(details);
+		int i = 0;
+		int n = details.length();
+		boolean inQuote = false;
+		int tokenStart = 0;
+		boolean atStart = true;
+		for (; i < n; i++) {
+			char c = details.charAt(i);
+			if (c == '"') inQuote = !inQuote;
+			if (atStart) {
+				tokenStart = i;
+				atStart = false;
+			}
+			if (!inQuote && c == '=') {
+				// A key: from the token's start to here (only before its first '=').
+				if (isKey(details, tokenStart, i)) {
+					s.setSpan(new ForegroundColorSpan(accent), tokenStart, i + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+					s.setSpan(new StyleSpan(Typeface.BOLD), tokenStart, i + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+				}
+			}
+			if (!inQuote && c == ' ') atStart = true;
+		}
+		return s;
+	}
+
+	private static boolean isKey(String s, int from, int to) {
+		if (to <= from) return false;
+		for (int i = from; i < to; i++) {
+			char c = s.charAt(i);
+			if (!(Character.isLetterOrDigit(c) || c == '_' || c == '.')) return false;
+		}
+		return true;
+	}
+
+	private int levelColor(Level l) {
+		return switch (l) {
+			case DEBUG -> ColorUtils.setAlphaComponent(textSecondary, 0xAA);
+			case INFO -> accent;
+			case WARN -> 0xFFFFA000;
+			case ERROR -> 0xFFE53935;
+		};
+	}
+
+	/** The same colour for the same category every time, light enough on the dark themes and deep enough on the light. */
+	private int categoryColor(String category) {
+		int hue = Math.abs(category.hashCode() * 31) % 360;
+		return Color.HSVToColor(new float[]{hue, lightTheme ? 0.75f : 0.5f, lightTheme ? 0.62f : 0.98f});
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// The buttons
+
+	private String exportText() {
+		return DiagnosticLog.export(filtered, all.size(), filterText());
+	}
+
 	private void copy() {
-		String dump = DiagnosticLog.dump();
-		if (dump.isEmpty()) return;
-		// getActivityDelegate().getContext() rather than this Fragment's own getContext(): every
-		// other working call site of UiUtils.showInfo()/showAlert() in this app (e.g. SettingsFragment's
-		// "Clear browsing data") goes through the delegate's own resolved Context, not the plain
-		// Fragment one -- this app's Activity/Fragment glue is custom enough (MainCarActivity isn't
-		// even a real Activity subclass) that the two aren't guaranteed to be interchangeable.
+		if (filtered.isEmpty()) return;
+		copyText(exportText(), R.string.diagnostic_log_copied);
+	}
+
+	private void copyText(String text, @StringRes int done) {
+		// getActivityDelegate().getContext() rather than this Fragment's own getContext(): this app's Activity/Fragment
+		// glue is custom enough (MainCarActivity isn't even a real Activity subclass) that the two aren't guaranteed to
+		// be interchangeable.
 		Context ctx = getActivityDelegate().getContext();
 		boolean copied;
 		try {
 			ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
 			if (cm == null) return;
-			cm.setPrimaryClip(ClipData.newPlainText(getString(R.string.diagnostic_log), dump));
+			cm.setPrimaryClip(ClipData.newPlainText(getString(R.string.diagnostic_log), text));
 			copied = true;
 		} catch (Exception err) {
-			// A payload this large is exactly what can trip TransactionTooLargeException crossing
-			// the Binder call into the system clipboard service.
+			// A payload this large is exactly what can trip TransactionTooLargeException crossing the Binder call into
+			// the system clipboard service.
 			Log.e(err, "Failed to copy the diagnostic log");
 			copied = false;
 		}
-		// Deliberately a separate try/catch from the one above: if this dialog call is itself what's
-		// failing (e.g. a WindowManager.BadTokenException because the host is already finishing by
-		// the time this runs), reusing the same catch block would repeat the exact same failing call
-		// as its own error path, crashing instead of just silently failing to show the confirmation.
-		try {
-			if (copied) UiUtils.showInfo(ctx, R.string.diagnostic_log_copied);
-			else UiUtils.showAlert(ctx, R.string.diagnostic_log_copy_failed);
-		} catch (Exception err) {
-			Log.e(err, "Failed to show the copy result dialog");
-		}
+		if (copied) TopToast.show(R.drawable.copy, done);
+		else TopToast.show(R.drawable.copy, R.string.diagnostic_log_copy_failed);
 	}
 
 	private void share() {
-		String dump = DiagnosticLog.dump();
-		if (dump.isEmpty()) return;
-		if (dump.length() > MAX_SHARE_CHARS) dump = dump.substring(dump.length() - MAX_SHARE_CHARS);
+		if (filtered.isEmpty()) return;
+		String text = exportText();
+		if (text.length() > MAX_SHARE_CHARS) text = text.substring(text.length() - MAX_SHARE_CHARS);
 		try {
-			// EXTRA_TEXT rather than a file + FileProvider: the provider is only declared in the Auto
-			// build's manifest, and the payload is small enough that a plain text share works from
-			// every build and needs no grant plumbing.
+			// EXTRA_TEXT rather than a file + FileProvider: the provider is only declared in the Auto build's manifest,
+			// and the payload is small enough that a plain text share works from every build and needs no grant
+			// plumbing.
 			Intent i = new Intent(Intent.ACTION_SEND);
 			i.setType("text/plain");
-			i.putExtra(Intent.EXTRA_SUBJECT, getString(R.string.diagnostic_log));
-			i.putExtra(Intent.EXTRA_TEXT, dump);
+			i.putExtra(Intent.EXTRA_SUBJECT, getString(R.string.diagnostic_log) + " " + DiagnosticLog.appVersion());
+			i.putExtra(Intent.EXTRA_TEXT, text);
 			startActivity(Intent.createChooser(i, getString(R.string.diagnostic_log_share)));
 		} catch (Exception err) {
 			Log.e(err, "Failed to share the diagnostic log");
-			UiUtils.showAlert(getActivityDelegate().getContext(),
-					String.valueOf(err.getLocalizedMessage()));
+			UiUtils.showAlert(getActivityDelegate().getContext(), String.valueOf(err.getLocalizedMessage()));
 		}
+	}
+
+	private void clear() {
+		UiUtils.showQuestion(getActivityDelegate().getContext(), R.string.diag_clear_title, R.string.diag_clear_question,
+				R.drawable.delete).onSuccess(v -> {
+			DiagnosticLog.clear();
+			refresh(true);
+		});
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Helpers
+
+	private int color(int attr) {
+		TypedValue tv = new TypedValue();
+		palette.getTheme().resolveAttribute(attr, tv, true);
+		return tv.data;
+	}
+
+	private int dp(float v) {
+		return Math.round(v * density);
+	}
+
+	private TextView text(CharSequence s, float sp, int color, boolean bold) {
+		TextView t = new TextView(palette);
+		t.setText(s);
+		t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+		t.setTextColor(color);
+		if (bold) t.setTypeface(Typeface.DEFAULT_BOLD);
+		return t;
+	}
+
+	private GradientDrawable rounded(int color, float radiusDp) {
+		GradientDrawable d = new GradientDrawable();
+		d.setColor(color);
+		d.setCornerRadius(dp(radiusDp));
+		return d;
+	}
+
+	private RippleDrawable pressable(GradientDrawable fill) {
+		GradientDrawable mask = new GradientDrawable();
+		mask.setColor(0xFF000000);
+		mask.setCornerRadius(fill.getCornerRadius());
+		return new RippleDrawable(ColorStateList.valueOf(ripple), fill, mask);
 	}
 }

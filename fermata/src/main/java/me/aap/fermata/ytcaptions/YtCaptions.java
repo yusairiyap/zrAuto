@@ -16,6 +16,7 @@ import java.util.Map;
 
 import me.aap.fermata.spotify.Http;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 
 /**
  * The captions (subtitles) of a YouTube video, as a list of timed lines: what the Music tab shows
@@ -135,25 +136,25 @@ public final class YtCaptions {
 		try {
 			got = me.aap.fermata.addon.music.MusicPlayer.youtubePageCaptions(videoId, want, allowGenerated);
 		} catch (Throwable ex) {
-			DiagnosticLog.log("CAPTIONS", "PAGE", videoId, "failed", ex);
+			DiagnosticLog.w(LogCat.CAPTIONS, "page captions failed", "id=" + videoId, ex);
 			return null;
 		}
 		if (got == null) return null;
 		if ((got[0] == null) || got[0].trim().isEmpty()) {
-			DiagnosticLog.log("CAPTIONS", "PAGE", videoId, "empty track", got[1]);
+			DiagnosticLog.log(LogCat.CAPTIONS, "page captions: empty track", "id=" + videoId, "detail=" + got[1]);
 			return null;
 		}
 		try {
 			List<Cue> cues = parse(got[0]);
 			if (cues.isEmpty()) {
-				DiagnosticLog.log("CAPTIONS", "PAGE", videoId, "no lines", got[1]);
+				DiagnosticLog.log(LogCat.CAPTIONS, "page captions: no lines", "id=" + videoId, "detail=" + got[1]);
 				return null;
 			}
 			boolean asr = "1".equals(got[2]);
-			DiagnosticLog.log("CAPTIONS", "PAGE", videoId, got[1], asr ? "auto" : "manual", cues.size(), "lines");
+			DiagnosticLog.log(LogCat.CAPTIONS, "page captions loaded", "id=" + videoId, "detail=" + got[1], "kind=" + (asr ? "auto" : "manual"), "lines=" + cues.size());
 			return new Result(new Track(got[1], got[1], asr, ""), cues);
 		} catch (IOException ex) {
-			DiagnosticLog.log("CAPTIONS", "PAGE", videoId, "unreadable", ex);
+			DiagnosticLog.w(LogCat.CAPTIONS, "page captions unreadable", "id=" + videoId, ex);
 			return null;
 		}
 	}
@@ -180,25 +181,24 @@ public final class YtCaptions {
 			try {
 				List<Track> tracks = tracks(c, videoId);
 				if (tracks.isEmpty()) {
-					DiagnosticLog.log("CAPTIONS", c.name, videoId, "no tracks");
+					DiagnosticLog.log(LogCat.CAPTIONS, "no tracks", "client=" + c.name, "id=" + videoId);
 					continue;
 				}
 				answered = true;
 				Track t = choose(tracks, want, allowGenerated);
 				if (t == null) {
-					DiagnosticLog.log("CAPTIONS", c.name, videoId, "no usable track of", tracks.size());
+					DiagnosticLog.log(LogCat.CAPTIONS, "no usable track", "client=" + c.name, "id=" + videoId, "tracks=" + tracks.size());
 					continue;
 				}
 				List<Cue> cues = fetch(c, t);
 				if (cues.isEmpty()) {
-					DiagnosticLog.log("CAPTIONS", c.name, videoId, "empty track", t.language);
+					DiagnosticLog.log(LogCat.CAPTIONS, "empty track", "client=" + c.name, "id=" + videoId, "lang=" + t.language);
 					continue;
 				}
-				DiagnosticLog.log("CAPTIONS", c.name, videoId, t.language, t.generated ? "auto" : "manual",
-						cues.size(), "lines");
+				DiagnosticLog.log(LogCat.CAPTIONS, "captions loaded", "client=" + c.name, "id=" + videoId, "lang=" + t.language, "kind=" + (t.generated ? "auto" : "manual"), "lines=" + cues.size());
 				return new Result(t, cues);
 			} catch (IOException ex) {
-				DiagnosticLog.log("CAPTIONS", c.name, videoId, "failed", ex);
+				DiagnosticLog.w(LogCat.CAPTIONS, "captions failed", "client=" + c.name, "id=" + videoId, ex);
 				last = ex;
 				// Asked to sign in: it will be asked again for every video for a while (YouTube decides that per
 				// connection), so this app is left out for a while instead of costing a request per song.
@@ -228,12 +228,12 @@ public final class YtCaptions {
 				JSONObject r = (sb == null) ? null : sb.optJSONObject("playerStoryboardSpecRenderer");
 				String spec = (r == null) ? null : r.optString("spec", "");
 				if ((spec != null) && !spec.isEmpty()) {
-					DiagnosticLog.log("SEEK", c.name, videoId, "storyboard found");
+					DiagnosticLog.log(LogCat.SEEK, "storyboard found", "client=" + c.name, "id=" + videoId);
 					return spec;
 				}
-				DiagnosticLog.log("SEEK", c.name, videoId, "no storyboard");
+				DiagnosticLog.log(LogCat.SEEK, "no storyboard", "client=" + c.name, "id=" + videoId);
 			} catch (IOException ex) {
-				DiagnosticLog.log("SEEK", c.name, videoId, "storyboard failed", ex);
+				DiagnosticLog.w(LogCat.SEEK, "storyboard failed", "client=" + c.name, "id=" + videoId, ex);
 				if (String.valueOf(ex.getMessage()).contains("HTTP 429")) break;
 			}
 		}

@@ -53,6 +53,7 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.fragment.ActionFabMediator;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.log.Log;
 import me.aap.utils.text.TextUtils;
 
@@ -366,7 +367,7 @@ public final class AllInOneMenu {
 		if ((src != null) && (eng.supportsAudioEffects() || eng.supportsSoundStage())) {
 			a.showFragment(R.id.audio_effects_fragment);
 		} else if ((src != null) && eng.showOwnAudioEffects()) {
-			DiagnosticLog.log("AIO", "effects: engine's own (in-page equalizer)", "engine=" + eng);
+			DiagnosticLog.d(LogCat.AIO, "effects: engine's own (in-page equalizer)", "engine=" + eng);
 		} else {
 			TopToast.show(R.drawable.equalizer, (src == null) ? R.string.music_effects_play_first :
 					R.string.music_effects_unavailable);
@@ -980,7 +981,7 @@ public final class AllInOneMenu {
 			});
 			return;
 		}
-		DiagnosticLog.log("AIO", "run", action);
+		DiagnosticLog.d(LogCat.AIO, "run", "action=" + action);
 		// What opens another screen or a picker leaves at once (the picker comes up on its own); the
 		// rest slide away.
 		if (opensSomething(action)) dismissNow();
@@ -1122,7 +1123,7 @@ public final class AllInOneMenu {
 		t.setFocusable(true);
 		t.setContentDescription(q.label);
 		t.setOnClickListener(v -> {
-			DiagnosticLog.log("AIO", "quality", q.label);
+			DiagnosticLog.d(LogCat.AIO, "quality", "label=" + q.label);
 			eng.setVideoQuality(q);
 			// The Quality tiles and buttons say so at once.
 			QualityIcon.setLabel(q.label);

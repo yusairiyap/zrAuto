@@ -189,6 +189,6 @@ final class WebNav {
 		int c = EffectsUi.accent(w.getContext());
 		String color = String.format(Locale.ROOT, "#%06X", c & 0xFFFFFF);
 		w.evaluateJavascript(SCRIPT + "('" + cmd + "','" + color + "');",
-				r -> me.aap.fermata.util.DiagnosticLog.log("CARNAV", "web " + cmd, r));
+				r -> me.aap.fermata.util.DiagnosticLog.d(me.aap.fermata.util.LogCat.CARNAV, "web command", "cmd=" + cmd, "result=" + r));
 	}
 }

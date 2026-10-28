@@ -23,6 +23,7 @@ import me.aap.fermata.addon.music.MusicQueue;
 import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.media.engine.BitmapCache;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -220,12 +221,12 @@ public final class HomeArt {
 			cache.getVideoFrame(uri, wanted).main().onCompletion((f, err) -> {
 				frameDone.set(true);
 				if (!wanted.getAsBoolean()) {
-					DiagnosticLog.log("ART", "frame not shown: the song changed", uri);
+					DiagnosticLog.log(LogCat.ART, "frame not shown: the song changed", "uri=" + uri);
 					return;
 				}
 				if (f != null) {
 					framed.set(true);
-					DiagnosticLog.log("ART", "frame shown on Home", uri);
+					DiagnosticLog.log(LogCat.ART, "frame shown on Home", "uri=" + uri);
 					markFrame(f);
 					out.accept(f);
 				} else if (noBalanced.get()) {
@@ -254,7 +255,7 @@ public final class HomeArt {
 					if (frameDone.get() && wanted.getAsBoolean()) out.accept(null);
 					return;
 				}
-				DiagnosticLog.log("ART", "no cover for Home", uri, err);
+				DiagnosticLog.w(LogCat.ART, "no cover for Home", "uri=" + uri, err);
 				out.accept(null);
 				return;
 			}

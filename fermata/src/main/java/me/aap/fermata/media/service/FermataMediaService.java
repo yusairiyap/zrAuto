@@ -374,9 +374,7 @@ public class FermataMediaService extends MediaBrowserServiceCompat {
 			String notifKey = st + "|" + description.getTitle();
 			if (!notifKey.equals(lastNotifLog)) {
 				lastNotifLog = notifKey;
-				me.aap.fermata.util.DiagnosticLog.log("NOTIF", "built", "state=" + st,
-						"title=" + description.getTitle(), "subtitle=" + description.getSubtitle(),
-						"icon=" + ((description.getIconBitmap() == null) ? null :
+				me.aap.fermata.util.DiagnosticLog.log(me.aap.fermata.util.LogCat.NOTIF, "built", "state=" + st, "title=" + description.getTitle(), "subtitle=" + description.getSubtitle(), "icon=" + ((description.getIconBitmap() == null) ? null :
 								description.getIconBitmap().getWidth() + "x" + description.getIconBitmap().getHeight()));
 			}
 

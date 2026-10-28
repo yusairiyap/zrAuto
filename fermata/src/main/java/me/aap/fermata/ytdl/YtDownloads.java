@@ -41,6 +41,7 @@ import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.log.Log;
 
 /**
@@ -585,7 +586,7 @@ public final class YtDownloads {
 	}
 
 	private void process(Entry e) {
-		DiagnosticLog.log("YTDL", "start", "id=" + e.videoId, "height=" + e.height);
+		DiagnosticLog.log(LogCat.YTDL, "start", "id=" + e.videoId, "height=" + e.height);
 		IOException failure = null;
 
 		for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -640,7 +641,7 @@ public final class YtDownloads {
 			stop = STOP_NONE;
 			saveLocked();
 		}
-		DiagnosticLog.log("YTDL", "end", "id=" + e.videoId, "state=" + state, "error=" + error);
+		DiagnosticLog.log(LogCat.YTDL, "end", "id=" + e.videoId, "state=" + state, "error=" + error);
 		changed(true);
 		if ((state == State.DONE) || (state == State.FAILED)) notifyEnded(e, state == State.DONE);
 	}
@@ -734,8 +735,7 @@ public final class YtDownloads {
 					}
 					break resolving;
 				} catch (RefusedException ex) {
-					DiagnosticLog.log("YTDL", "stream refused", "id=" + e.videoId, "client=" + r.client,
-							"combined=" + combined, "height=" + e.gotHeight);
+					DiagnosticLog.w(LogCat.YTDL, "stream refused", "id=" + e.videoId, "client=" + r.client, "combined=" + combined, "height=" + e.gotHeight);
 					if (!retriedSame && ((audioPart.length() > 0) || (videoPart.length() > 0))) {
 						retriedSame = true;
 						client = r.client;
@@ -939,8 +939,7 @@ public final class YtDownloads {
 				int code = c.getResponseCode();
 				if ((code == 403) || (code == 410)) {
 					// What the server said, for the diagnostic log (never the address: it carries tokens).
-					DiagnosticLog.log("YTDL", "stream HTTP " + code, "id=" + e.videoId,
-							"host=" + new URL(s.url).getHost(), "len=" + s.length, "from=" + have);
+					DiagnosticLog.w(LogCat.YTDL, "stream HTTP error", "code=" + code, "id=" + e.videoId, "host=" + new URL(s.url).getHost(), "len=" + s.length, "from=" + have);
 					throw new RefusedException();
 				}
 				// 200: the server ignored the range and sends it all, fine from the start.

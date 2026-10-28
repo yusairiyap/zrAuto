@@ -20,6 +20,7 @@ import java.util.WeakHashMap;
 
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 
 /**
  * The glass over a web page (the YouTube tab, the browser) with the experimental blur on ({@link Glass#webBlur}).
@@ -165,7 +166,7 @@ public final class PageBlur {
 					if (!ok.equals(was)) Glass.invalidateSurfaces();
 				});
 			} catch (Throwable ex) {
-				DiagnosticLog.log("BODY", "page blur failed", ex.toString());
+				DiagnosticLog.w(LogCat.BODY, "page blur failed", ex);
 			}
 		}
 		// While boxes are up, look again now and then: a surface hidden without a redraw, a page loaded anew.

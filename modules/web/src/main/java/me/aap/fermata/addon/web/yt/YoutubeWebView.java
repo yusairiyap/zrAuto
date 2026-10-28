@@ -1563,10 +1563,10 @@ public class YoutubeWebView extends FermataWebView {
 		boolean inPlayer = MusicPlayer.isYoutubeAudioMode();
 		syncFadeAudioOnly();
 		evaluateJavascript(navigateToVideoJs(videoId, fromStart, inPlayer), result -> {
-			me.aap.fermata.util.DiagnosticLog.log("YT", "switch", "id=" + videoId,
-					"\"swap\"".equals(result) ? "in the player" : "true".equals(result) ? "page navigation" :
+			me.aap.fermata.util.DiagnosticLog.log(me.aap.fermata.util.LogCat.YT, "video switch", "id=" + videoId,
+					"how=" + ("\"swap\"".equals(result) ? "in the player" : "true".equals(result) ? "page navigation" :
 							"\"reload\"".equals(result) ? "page load (effects off, leaving Web Audio)" :
-									"page load");
+									"page load"));
 			if ("\"swap\"".equals(result)) return;
 			// A router navigation: the next song's sound output settles later, so it warms up longer (youtube_fade.js
 			// longWarm). Runs before the new video's loadstart, which comes a few hundred ms after the navigation.

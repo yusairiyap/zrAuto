@@ -34,6 +34,7 @@ import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.fermata.ytcaptions.YtStoryboard;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.fermata.ytdl.YtOffline;
@@ -208,7 +209,7 @@ public final class SeekPreview {
 			Uri u = r.getRid().toAndroidUri();
 			if ((u != null) && "content".equals(u.getScheme())) return u;
 		} catch (Exception ex) {
-			DiagnosticLog.log("SEEK", "no local source", ex);
+			DiagnosticLog.w(LogCat.SEEK, "no local source", ex);
 		}
 		return null;
 	}
@@ -337,7 +338,7 @@ public final class SeekPreview {
 				bm = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) ?
 						r.getScaledFrameAtTime(us, opt, w, h) : r.getFrameAtTime(us, opt);
 			} catch (Exception ex) {
-				DiagnosticLog.log("SEEK", "frame failed", ex);
+				DiagnosticLog.w(LogCat.SEEK, "frame failed", ex);
 			}
 			Bitmap frame = bm;
 			main.post(() -> {

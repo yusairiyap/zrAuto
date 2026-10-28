@@ -672,7 +672,7 @@ final class MediaWidget extends HomeWidgetView {
 			syncState();
 			return;
 		}
-		me.aap.fermata.util.DiagnosticLog.log("MUSIC", "home media: new item", "from=" + shown, "to=" + pi);
+		me.aap.fermata.util.DiagnosticLog.log(me.aap.fermata.util.LogCat.MUSIC, "home media: new item", "from=" + shown, "to=" + pi);
 		shown = pi;
 		// The new song is up: the spinner after a skip is the session's to show from here.
 		if (cbState() == PlaybackStateCompat.STATE_PLAYING) skipUntil = 0;

@@ -1082,7 +1082,7 @@ public final class YoutubeCommentsView {
 		Row target = replyTo;
 		String params = (target != null) ? target.c.replyParams : createParams;
 		if (params == null) {
-			me.aap.fermata.util.DiagnosticLog.log("YTCOMMENTS", "no params to post with", (target == null) ? "comment" : target.c.id);
+			me.aap.fermata.util.DiagnosticLog.w(me.aap.fermata.util.LogCat.YT, "no params to post with", "target=" + ((target == null) ? "comment" : target.c.id));
 			TopToast.show(R.drawable.comments, R.string.yt_comments_no_reply);
 			return;
 		}

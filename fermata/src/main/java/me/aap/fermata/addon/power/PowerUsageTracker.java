@@ -31,6 +31,7 @@ import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.app.App;
 import me.aap.utils.function.IntSupplier;
 import me.aap.utils.function.LongSupplier;
@@ -310,7 +311,7 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 		BatteryManager bm = (BatteryManager) FermataApplication.get().getSystemService(Context.BATTERY_SERVICE);
 		int raw = (bm == null) ? Integer.MIN_VALUE : bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW);
 		if (raw == Integer.MIN_VALUE) {
-			if (supported) DiagnosticLog.log("POWER", "current not reported by this phone");
+			if (supported) DiagnosticLog.log(LogCat.POWER, "current not reported by this phone");
 			supported = false;
 			return;
 		}
@@ -408,7 +409,7 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 				}
 				if (learned != 0) {
 					ps.applyIntPref(LEARNED_DIV, learned);
-					DiagnosticLog.log("POWER", "current unit", (learned == 1000) ? "uA" : "mA", "raw=" + raw);
+					DiagnosticLog.log(LogCat.POWER, "current unit learned", "unit=" + ((learned == 1000) ? "uA" : "mA"), "raw=" + raw);
 				}
 			}
 			div = (learned != 0) ? learned : (Math.abs(raw) >= 20_000 ? 1000f : 1f);
@@ -438,7 +439,7 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 			}
 			if (signVotes >= 3) {
 				ps.applyIntPref(LEARNED_SIGN, vote);
-				DiagnosticLog.log("POWER", "charging reads", (vote == 1) ? "positive" : "negative");
+				DiagnosticLog.log(LogCat.POWER, "charging sign learned", "charging=" + ((vote == 1) ? "positive" : "negative"));
 				learned = vote;
 			}
 		}

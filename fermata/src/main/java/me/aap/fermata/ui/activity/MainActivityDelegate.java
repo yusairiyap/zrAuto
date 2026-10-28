@@ -193,6 +193,7 @@ import me.aap.fermata.ui.view.SecondaryFloatingButton;
 import me.aap.fermata.ui.view.TertiaryFloatingButton;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.app.App;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.async.Promise;
@@ -1148,9 +1149,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (!videoMode) {
 			// Who took the fullscreen away (the comment column's log says whether it was open).
 			StackTraceElement[] st = new Throwable().getStackTrace();
-			DiagnosticLog.log("VIDEO", "left fullscreen", "comments open=" +
-					me.aap.fermata.ui.view.YoutubeCommentsView.isOpen(),
-					(st.length > 2) ? ("from " + st[1] + " via " + st[2]) : "");
+			DiagnosticLog.log(LogCat.VIDEO, "left fullscreen", "commentsOpen=" + me.aap.fermata.ui.view.YoutubeCommentsView.isOpen(), "from=" + ((st.length > 2) ? (st[1] + " via " + st[2]) : "-"));
 		}
 		ControlPanelView cp = getControlPanel();
 		videoBarsShown = false;
@@ -2270,7 +2269,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	public void keepScreenOn(boolean on) {
-		DiagnosticLog.log("STATE", "keep screen on", String.valueOf(on));
+		DiagnosticLog.log(LogCat.STATE, "keep screen on", "on=" + on);
 		if (on) getWindow().addFlags(FLAG_KEEP_SCREEN_ON);
 		else getWindow().clearFlags(FLAG_KEEP_SCREEN_ON);
 	}
@@ -2734,7 +2733,7 @@ public class MainActivityDelegate extends ActivityDelegate
 				// specific to this one dialog, calling showAlert() from this catch block would repeat
 				// the identical failure as its own error path. UiUtils.showToast() is a plain
 				// android.widget.Toast, entirely outside that machinery, so it's used here instead.
-				DiagnosticLog.log("DIALOG", "failed to show playlist dialog:", err);
+				DiagnosticLog.w(LogCat.UI, "failed to show playlist dialog", err);
 				Log.e(err, "Failed to show the playlist dialog");
 				UiUtils.showToast(ctx, R.string.playlist_add_failed);
 			}
@@ -2893,8 +2892,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Override
 	public void onBackPressed() {
 		if (isVideoMode()) {
-			DiagnosticLog.log("BACK", "in fullscreen video",
-					"comments open=" + me.aap.fermata.ui.view.YoutubeCommentsView.isOpen());
+			DiagnosticLog.log(LogCat.BACK, "back in fullscreen video", "commentsOpen=" + me.aap.fermata.ui.view.YoutubeCommentsView.isOpen());
 		}
 		if (me.aap.fermata.ui.welcome.WelcomeWizard.onBack()) return;
 		if (me.aap.fermata.ui.home.HomeModal.dismissOpen()) return;
@@ -3339,7 +3337,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (keepsOverlaysAway(getActiveFragment()) || isVideoMode() || pipSuppressed) return;
 		ControlPanelView cp = getControlPanel();
 		if ((cp != null) && cp.isSuppressed()) {
-			DiagnosticLog.log("STATE", "control panel still suppressed after a tab switch: restored");
+			DiagnosticLog.log(LogCat.STATE, "control panel still suppressed after a tab switch: restored");
 		}
 		setOverlaysSuppressed(false);
 		getMediaServiceBinder().resyncControlPanel();

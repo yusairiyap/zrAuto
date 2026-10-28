@@ -322,6 +322,8 @@ public interface MainActivityPrefs
 	// while the user is actively investigating something they can only reproduce in the car.
 	Pref<BooleanSupplier> DEBUG_LOG_ENABLED = Pref.b("DEBUG_LOG_ENABLED", false);
 	Pref<BooleanSupplier> DEBUG_LOG_TOASTS = Pref.b("DEBUG_LOG_TOASTS", false);
+	// Diagnostic log as an item of the main menu (below Share zrAuto app), for reaching it without Settings.
+	Pref<BooleanSupplier> DEBUG_LOG_MENU = Pref.b("DEBUG_LOG_MENU", false);
 	Pref<BooleanSupplier> VOICE_CONTROl_ENABLED = Pref.b("VOICE_CONTROl_ENABLED", false);
 	Pref<BooleanSupplier> VOICE_CONTROl_FB = Pref.b("VOICE_CONTROl_FB", false);
 	Pref<Supplier<String>> VOICE_CONTROL_SUBST = Pref.s("VOICE_CONTROL_SUBST", "");

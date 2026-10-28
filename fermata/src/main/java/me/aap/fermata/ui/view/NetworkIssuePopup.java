@@ -34,6 +34,7 @@ import me.aap.fermata.R;
 import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.fermata.ytdl.YtOffline;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.fragment.ActivityFragment;
@@ -90,8 +91,7 @@ public final class NetworkIssuePopup {
 		Context ctx = a.getContext();
 		boolean online = isOnline(ctx);
 		boolean offlineTracks = MusicPlayer.hasOfflineTrack(a);
-		DiagnosticLog.log("NETWORK", online ? "playback stalled (slow network)" :
-				"playback stalled (no connection)", "offlineTracks=" + offlineTracks);
+		DiagnosticLog.w(LogCat.NETWORK, "playback stalled", "network=" + (online ? "slow" : "none"), "offlineTracks=" + offlineTracks);
 
 		View b = LayoutInflater.from(ctx).inflate(R.layout.data_usage_banner, null, false);
 		b.setElevation(UiUtils.toIntPx(ctx, 8));

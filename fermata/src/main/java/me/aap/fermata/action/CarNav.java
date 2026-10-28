@@ -46,6 +46,7 @@ import me.aap.fermata.ui.fragment.SettingsFragment;
 import me.aap.fermata.ui.fragment.AudioEffectsFragment;
 import me.aap.fermata.ui.view.EffectsUi;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.ui.fragment.ActivityFragment;
 import me.aap.utils.ui.menu.OverlayMenuView;
 
@@ -291,14 +292,14 @@ public final class CarNav {
 		boolean next = downCode == KEYCODE_MEDIA_NEXT;
 		WebView web = (downWeb == null) ? null : downWeb.get();
 		if (web != null) {
-			DiagnosticLog.log(TAG, next ? "long next" : "long previous", "web page");
+			DiagnosticLog.d(LogCat.CARNAV, "long press", "direction=" + (next ? "next" : "previous"), "target=web page");
 			if (next) WebNav.activate(web);
 			else webBack();
 			return;
 		}
 		Scope s = downScope;
 		if (s == null) return;
-		DiagnosticLog.log(TAG, next ? "long next" : "long previous", "scope=" + s);
+		DiagnosticLog.d(LogCat.CARNAV, "long press", "direction=" + (next ? "next" : "previous"), "scope=" + s);
 		if (next) activate(s);
 		else back(s);
 	}
@@ -356,7 +357,7 @@ public final class CarNav {
 		if (a == null) return;
 		ActivityFragment f = a.getActiveFragment();
 		if ((f != null) && f.isRootPage()) {
-			DiagnosticLog.log(TAG, "web back: at the first page");
+			DiagnosticLog.d(LogCat.CARNAV, "web back: at the first page");
 			return;
 		}
 		WebView web = (downWeb == null) ? null : downWeb.get();
@@ -451,7 +452,7 @@ public final class CarNav {
 			scope = s;
 			return;
 		}
-		DiagnosticLog.log(TAG, "scope", s);
+		DiagnosticLog.d(LogCat.CARNAV, "scope changed", "scope=" + s);
 		clear();
 		scope = s;
 	}
@@ -554,7 +555,7 @@ public final class CarNav {
 			step(s, 1); // Nothing selected yet: select, don't guess what to tap.
 			return;
 		}
-		DiagnosticLog.log(TAG, "activate", v.getClass().getSimpleName());
+		DiagnosticLog.d(LogCat.CARNAV, "activate", "view=" + v.getClass().getSimpleName());
 		// A slider: hold next grabs it (previous/next then move it), hold again lets go.
 		if (v instanceof AbsSeekBar) {
 			setAdjusting(!adjusting);

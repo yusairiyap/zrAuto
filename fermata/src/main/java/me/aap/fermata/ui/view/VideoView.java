@@ -69,6 +69,7 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.async.Promise;
 import me.aap.utils.function.BiConsumer;
@@ -202,7 +203,7 @@ public class VideoView extends FrameLayout
 		if (!(getChildAt(0) instanceof SurfaceView old) || !(getChildAt(1) instanceof SurfaceView oldSub)) {
 			return;
 		}
-		DiagnosticLog.log("BODY", "video surfaces made anew");
+		DiagnosticLog.d(LogCat.BODY, "video surfaces made anew");
 		old.getHolder().removeCallback(this);
 		oldSub.getHolder().removeCallback(this);
 		if (createSurface.isDone()) createSurface = new Promise<>();
@@ -825,8 +826,7 @@ public class VideoView extends FrameLayout
 	@Override
 	public void surfaceCreated(@NonNull SurfaceHolder holder) {
 		if (!isCurrent(holder)) return;
-		DiagnosticLog.log("BODY", "video surface created",
-				"valid=" + getVideoSurface().getHolder().getSurface().isValid());
+		DiagnosticLog.d(LogCat.BODY, "video surface created", "valid=" + getVideoSurface().getHolder().getSurface().isValid());
 		if (!getVideoSurface().getHolder().getSurface().isValid()) return;
 		SurfaceView s = getSubtitleSurface();
 		if ((s != null) && !s.getHolder().getSurface().isValid()) return;
@@ -841,7 +841,7 @@ public class VideoView extends FrameLayout
 	@Override
 	public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
 		if (!isCurrent(holder)) return;
-		DiagnosticLog.log("BODY", "video surface destroyed");
+		DiagnosticLog.d(LogCat.BODY, "video surface destroyed");
 		// A wait already pending (see onSurfaceCreated) is kept, not dropped with a new promise.
 		if (createSurface.isDone()) createSurface = new Promise<>();
 		getActivity().onSuccess(a -> a.getMediaSessionCallback().removeVideoView(this));

@@ -10,6 +10,7 @@ import java.util.Collections;
 import java.util.Locale;
 
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 
 /**
  * A still picture of a YouTube video taken from the video itself, for the album art when High quality is chosen: YouTube's
@@ -44,10 +45,9 @@ public final class YtFrames {
 		long start = System.currentTimeMillis();
 		try {
 			YtStreamResolver.Frames f = YtStreamResolver.frames(videoId, MAX_HEIGHT);
-			DiagnosticLog.log("ART", "frame streams listed", videoId, "ms=" + (System.currentTimeMillis() - start),
-					"count=" + f.streams.size());
+			DiagnosticLog.log(LogCat.ART, "frame streams listed", "id=" + videoId, "ms=" + (System.currentTimeMillis() - start), "count=" + f.streams.size());
 			if ((f.durationMs <= 0) || f.streams.isEmpty()) {
-				DiagnosticLog.log("ART", "frame: no stream", videoId, "height=" + MAX_HEIGHT);
+				DiagnosticLog.log(LogCat.ART, "frame: no stream", "id=" + videoId, "height=" + MAX_HEIGHT);
 				return null;
 			}
 			int tries = 0;
@@ -55,15 +55,14 @@ public final class YtFrames {
 				if (tries++ == MAX_TRIES) break;
 				Bitmap bm = grab(s, f);
 				if (bm != null) {
-					DiagnosticLog.log("ART", "frame taken", videoId, "height=" + s.height,
-							bm.getWidth() + "x" + bm.getHeight(), "ms=" + (System.currentTimeMillis() - start));
+					DiagnosticLog.log(LogCat.ART, "frame taken", "id=" + videoId, "height=" + s.height, "size=" + bm.getWidth() + "x" + bm.getHeight(), "ms=" + (System.currentTimeMillis() - start));
 					return bm;
 				}
-				DiagnosticLog.log("ART", "frame: stream failed, trying a lower one", videoId, "height=" + s.height);
+				DiagnosticLog.w(LogCat.ART, "frame: stream failed, trying a lower one", "id=" + videoId, "height=" + s.height);
 			}
 			return null;
 		} catch (IOException | RuntimeException ex) {
-			DiagnosticLog.log("ART", "frame failed", videoId, String.valueOf(ex));
+			DiagnosticLog.w(LogCat.ART, "frame failed", "id=" + videoId, ex);
 			return null;
 		}
 	}
@@ -81,8 +80,7 @@ public final class YtFrames {
 				Bitmap bm = mmr.getFrameAtTime(f.durationMs * share, MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
 				if (bm == null) continue;
 				double score = score(bm);
-				DiagnosticLog.log("ART", "still candidate", "share=" + share,
-						"score=" + String.format(Locale.ROOT, "%.1f", score));
+				DiagnosticLog.log(LogCat.ART, "still candidate", "share=" + share, "score=" + String.format(Locale.ROOT, "%.1f", score));
 				if (score > bestScore) {
 					if (best != null) best.recycle();
 					best = bm;
@@ -93,7 +91,7 @@ public final class YtFrames {
 			}
 			return best;
 		} catch (RuntimeException ex) {
-			DiagnosticLog.log("ART", "frame decode error", String.valueOf(ex));
+			DiagnosticLog.w(LogCat.ART, "frame decode error", ex);
 			return best;
 		} finally {
 			try {

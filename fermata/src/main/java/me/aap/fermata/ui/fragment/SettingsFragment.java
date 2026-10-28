@@ -1372,6 +1372,12 @@ public class SettingsFragment extends MainActivityFragment
 			o.subtitle = R.string.debug_log_toasts_sub;
 			o.visibility = loggingOn.copy();
 		});
+		sub.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.DEBUG_LOG_MENU;
+			o.title = R.string.debug_log_menu;
+			o.subtitle = R.string.debug_log_menu_sub;
+		});
 		sub.addButton(o -> {
 			o.title = R.string.diagnostic_log_view;
 			o.subtitle = R.string.diagnostic_log_view_sub;

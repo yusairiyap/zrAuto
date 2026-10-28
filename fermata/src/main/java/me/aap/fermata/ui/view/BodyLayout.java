@@ -39,6 +39,7 @@ import android.support.v4.media.session.PlaybackStateCompat;
 
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.fermata.ui.activity.ScrollBarsController;
@@ -315,7 +316,7 @@ public class BodyLayout extends SplitLayout
 		String kind = (why == null) ? null : why.replaceAll("[0-9.]+", "#");
 		if (java.util.Objects.equals(kind, topFadeOffReason)) return;
 		topFadeOffReason = kind;
-		DiagnosticLog.log("BODY", (why == null) ? "top fade on" : ("top fade off: " + why));
+		DiagnosticLog.d(LogCat.BODY, "top fade", "state=" + ((why == null) ? "on" : "off"), "why=" + why);
 	}
 
 	private String whyNoTopFade() {
@@ -412,15 +413,14 @@ public class BodyLayout extends SplitLayout
 		// The Music tab has no video mode: the fullscreen pane over it is a blank page with the video's
 		// control panel on it. Whatever asks for it, the tab stays as it is.
 		if ((mode == Mode.VIDEO) && isMusicTabActive()) {
-			DiagnosticLog.log("BODY", "video mode refused over the Music tab");
+			DiagnosticLog.w(LogCat.BODY, "video mode refused over the Music tab");
 			mode = Mode.FRAME;
 		}
 		Mode oldMode = this.mode;
 		if (oldMode != mode) {
 			MainActivityDelegate act = MainActivityDelegate.getActivityDelegate(getContext()).peek();
 			ActivityFragment shown = (act == null) ? null : act.getActiveFragment();
-			DiagnosticLog.log("BODY", "mode " + oldMode + " -> " + mode,
-					"fragment=" + ((shown == null) ? null : shown.getClass().getSimpleName()));
+			DiagnosticLog.log(LogCat.BODY, "mode changed", "from=" + oldMode, "to=" + mode, "fragment=" + ((shown == null) ? null : shown.getClass().getSimpleName()));
 		}
 		this.mode = mode;
 		Guideline gl = getGuideline();
@@ -681,7 +681,7 @@ public class BodyLayout extends SplitLayout
 		// is still shown by the Music tab: its own screen, never the Subtitles tab, which with
 		// nothing to show is the blank page with the control panel in front.
 		if ((info != null) && ((i instanceof MusicTrackItem) || isMusicTabActive())) {
-			DiagnosticLog.log("BODY", "subtitle stream on a Music tab track: Subtitles tab not shown");
+			DiagnosticLog.log(LogCat.BODY, "subtitle stream on a Music tab track: Subtitles tab not shown");
 			return;
 		}
 		if (info == null) {

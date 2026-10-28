@@ -59,6 +59,7 @@ import me.aap.fermata.ui.activity.MainActivityListener;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.fragment.MusicPlayerFragment;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.fermata.ytcomments.YtStats;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.utils.async.FutureSupplier;
@@ -1034,8 +1035,7 @@ public class ControlPanelView extends ConstraintLayout
 		seekStreakSeconds += DOUBLE_TAP_SEEK_SEC;
 		seekStreakUntil = SystemClock.uptimeMillis() + SEEK_STREAK_MS;
 		pendingSeekSec += ff ? DOUBLE_TAP_SEEK_SEC : -DOUBLE_TAP_SEEK_SEC;
-		DiagnosticLog.log("TRANSPORT", "double tap seek", "ff=" + ff, "streak=" + seekStreakSeconds,
-				"state=" + b.getMediaSessionCallback().getPlaybackState().getState());
+		DiagnosticLog.log(LogCat.TRANSPORT, "double tap seek", "ff=" + ff, "streak=" + seekStreakSeconds, "state=" + b.getMediaSessionCallback().getPlaybackState().getState());
 		removeCallbacks(applySeekTask);
 		postDelayed(applySeekTask, SEEK_APPLY_DELAY_MS);
 		// Nothing but the seek feedback, as YouTube does: the controls (and an Info Overlay shown only
@@ -1104,8 +1104,7 @@ public class ControlPanelView extends ConstraintLayout
 		pendingSeekSec = 0;
 		if (sec == 0) return;
 		MediaSessionCallback cb = getActivity().getMediaSessionCallback();
-		DiagnosticLog.log("TRANSPORT", "double tap seek applied", "sec=" + sec,
-				"state=" + cb.getPlaybackState().getState());
+		DiagnosticLog.log(LogCat.TRANSPORT, "double tap seek applied", "sec=" + sec, "state=" + cb.getPlaybackState().getState());
 		cb.rewindFastForward(sec > 0, Math.abs(sec), PlaybackControlPrefs.TIME_UNIT_SECOND, 1);
 	}
 

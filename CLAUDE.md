@@ -101,6 +101,9 @@ Conventions worth knowing:
   `UiUtils.showToast` / `Toast.makeText` for these in new code; a toast looks out of place, and on the
   car screen it's easy to miss. Older code still has some toasts (about 40 calls), so convert them when
   you're already working in that spot.
+- **Menus use the same row size everywhere** (`MenuStyle#styleItem`: 15sp text, 22dp icons, whatever the screen). The menu's own
+  size is scaled by the interface's text and icon size, which made Android Auto's context menus far bigger than the phone's; only
+  the least row height differs on the car screen (48dp against 44dp).
 - **Asking before something destructive** (reset, clear, delete): `UiUtils.showQuestion(ctx, title,
   message, icon).onSuccess(v -> ...)`, the app's own dialog view (works on the car screen, where
   Android Auto allows no real dialog windows).
@@ -1247,9 +1250,35 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
 
 **Note: the user currently has no adb access.** Their only window into a running app is the in-app
 **Diagnostic log** (`fermata/.../util/DiagnosticLog.java`, shared from the app). So when you need
-runtime evidence, add `DiagnosticLog.log(...)` lines for exactly what you need (under an existing
-category such as STATE/TRANSPORT/ENGINE/BODY/MUSIC), push, and ask the user to reproduce and paste the
-Diagnostic log; don't hand them adb commands. The adb examples below only apply if that changes.
+runtime evidence, add `DiagnosticLog` lines for exactly what you need, push, and ask the user to
+reproduce and paste the Diagnostic log (its Copy button exports what the filters leave, under a header with the
+build's version); don't hand them adb commands. The adb examples below only apply if that changes.
+
+**Every log line has one format, and every new call must follow it** (details in the `DiagnosticLog` class comment):
+
+```
+MM-dd HH:mm:ss.SSS L/CATEGORY message | key=value key=value
+10-28 14:03:22.123 I/YT playing | id=dQw4w9WgXcQ title="Never Gonna Give You Up"
+```
+
+- `DiagnosticLog.log(LogCat.X, "message", "k=" + v, ...)` is information; `.d` debug (noisy detail), `.w` warning
+  (went wrong, handled or retried), `.e` error (did not work). A `Throwable` as a detail becomes `error=Class: message`.
+- The **category is a `LogCat` constant**, never a literal; add a constant (and its line in the `LogCat` table) rather than
+  inventing one at a call site. The Diagnostic log screen lists the categories that have lines, to filter by.
+- The **message is a short, fixed phrase** with no data in it (no ids, positions, names): the same event always has the same
+  message, so it can be searched and counted. Everything that varies goes in a `key=value` detail (camelCase key; a value with
+  spaces is quoted for you). A detail that is not `key=value` is kept as `note=...`, but do not rely on that.
+- The page's free-text traces (`YoutubeJsInterface`, `JS_AUDIO_TRACE`) are logged as `YT media <head>` with `trace=<rest>`.
+- Because the line format changed, the old shapes quoted in this file (`YT media ...`, `STATE start load: main late max=..`) now
+  read as the same words in this format: `STATE start load | mainLateMax=..ms over50=.. gc=.. blockingGc=.. blockingMs=..`.
+
+**The screen** (`ui/fragment/DiagnosticLogFragment`, Settings > Other > Diagnostics > View, or the main menu item below
+Share zrAuto app when Settings > Diagnostics > "Show the log in the main menu" (`DEBUG_LOG_MENU`, off by default) is on): the header
+card shows the running version (`DiagnosticLog#appVersion`, also the first lines of an export), the recording switch and how
+many entries the filters leave; then Copy / Share / Refresh / Clear, a search box (not on the car screen), a minimum level, the
+categories as chips (tap hides or shows, hold shows only that one), Newest first and Live. Filters live in statics of the
+fragment, so they survive reopening it but not an app restart. Rows are cards with a level-coloured bar, the time, a
+category-coloured pill, the message and the details with their keys in the accent; tap spreads a long one, hold copies the line.
 
 This session cannot run the app, attach a debugger, or capture logcat — there's no device/emulator
 and no adb here. If an investigation is dragging on (a bug can't be root-caused from reading code

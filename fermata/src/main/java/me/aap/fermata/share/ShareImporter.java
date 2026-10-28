@@ -204,7 +204,7 @@ final class ShareImporter {
 	static void offerInstall(File apk) {
 		MainActivityDelegate a = MainActivityDelegate.getUiDelegate();
 		Context c = me.aap.fermata.FermataApplication.get();
-		me.aap.fermata.util.DiagnosticLog.log("SHARE", "app received:", apk, apk.length());
+		me.aap.fermata.util.DiagnosticLog.log(me.aap.fermata.util.LogCat.SHARE, "app received", "file=" + apk, "size=" + apk.length());
 		if ((a == null) || a.isCarActivityNotMirror()) return;
 		me.aap.fermata.ui.view.TopConfirm.show(a, R.drawable.share, c.getString(R.string.share_app_install_title),
 				c.getString(R.string.share_app_install_text, apk.getName(), apk.getParent()),

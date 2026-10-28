@@ -19,6 +19,7 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.TopConfirm;
 import me.aap.fermata.ui.view.TopToast;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.fermata.ytdl.OfflineFallback;
 import me.aap.utils.function.BooleanSupplier;
 import me.aap.utils.function.IntSupplier;
@@ -141,8 +142,7 @@ public final class DataSessionLimit {
 			e.setLongPref(USED, 0);
 			e.setBooleanPref(ALERTED, false);
 		}
-		DiagnosticLog.log("DATA", want ? "session started" : "session ended",
-				"limit=" + (getLimit() / MB) + "MB");
+		DiagnosticLog.log(LogCat.DATA, "session changed", "state=" + (want ? "started" : "ended"), "limit=" + (getLimit() / MB) + "MB");
 		if (want) announce(true);
 		notifyListeners();
 		return true;
@@ -162,7 +162,7 @@ public final class DataSessionLimit {
 		if ((used >= getLimit()) && !prefs().getBooleanPref(ALERTED)) {
 			prefs().applyBooleanPref(ALERTED, true);
 			prefs().applyLongPref(USED, used);
-			DiagnosticLog.log("DATA", "session limit reached", "used=" + used);
+			DiagnosticLog.log(LogCat.DATA, "session limit reached", "used=" + used);
 			MainActivityDelegate a = MainActivityDelegate.getUiDelegate();
 			if (a != null) showLimitReached(a);
 		}

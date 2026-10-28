@@ -293,7 +293,7 @@ public class YoutubeAddon extends WebBrowserAddon
 			String started = evaluate(a, web, YoutubeWebView.pageCaptionsStartJs(videoId, lang, allowGenerated));
 			if ("\"other\"".equals(started) || (started == null)) return null;
 			if ("\"none\"".equals(started)) {
-				me.aap.fermata.util.DiagnosticLog.log("CAPTIONS", "PAGE", videoId, "no tracks");
+				me.aap.fermata.util.DiagnosticLog.log(me.aap.fermata.util.LogCat.CAPTIONS, "page captions: no tracks", "id=" + videoId);
 				return null;
 			}
 			// The fetch runs in the page: its state is looked at a few times a second, for a few seconds at most.
@@ -311,7 +311,7 @@ public class YoutubeAddon extends WebBrowserAddon
 					String state = o.optString("state");
 					if ("loading".equals(state)) continue;
 					if (!"done".equals(state)) {
-						me.aap.fermata.util.DiagnosticLog.log("CAPTIONS", "PAGE", videoId, "fetch failed", o.optString("error"));
+						me.aap.fermata.util.DiagnosticLog.w(me.aap.fermata.util.LogCat.CAPTIONS, "page captions: fetch failed", "id=" + videoId, "error=" + o.optString("error"));
 						return null;
 					}
 					return new String[]{o.optString("body"), o.optString("lang"), o.optString("asr")};
@@ -319,7 +319,7 @@ public class YoutubeAddon extends WebBrowserAddon
 					return null;
 				}
 			}
-			me.aap.fermata.util.DiagnosticLog.log("CAPTIONS", "PAGE", videoId, "timed out");
+			me.aap.fermata.util.DiagnosticLog.log(me.aap.fermata.util.LogCat.CAPTIONS, "page captions: timed out", "id=" + videoId);
 			return null;
 		}
 

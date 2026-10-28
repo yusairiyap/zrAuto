@@ -22,6 +22,7 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.fermata.ytdl.YtOffline;
 import me.aap.utils.async.FutureSupplier;
@@ -257,7 +258,7 @@ public final class MusicPlayer {
 		if (r == null) return;
 		startRequest = null;
 		if (!r.track.equals(t)) {
-			DiagnosticLog.log(TAG, "start request dropped", "for=" + r.track, "starting=" + t);
+			DiagnosticLog.log(LogCat.MUSIC, "start request dropped", "for=" + r.track, "starting=" + t);
 			return;
 		}
 		watchRequested = r.watch;
@@ -267,7 +268,7 @@ public final class MusicPlayer {
 	public static void setYoutubeAudioMode(boolean on) {
 		if (youtubeAudioMode == on) return;
 		youtubeAudioMode = on;
-		DiagnosticLog.log(TAG, "YouTube " + (on ? "music mode (lowest video quality)" : "video mode"));
+		DiagnosticLog.log(LogCat.MUSIC, "YouTube quality mode", "mode=" + (on ? "music (lowest video quality)" : "video"));
 		MainActivityDelegate a = activity.get();
 		YoutubeHooks h = youtube;
 		if ((h != null) && (a != null)) h.applyQuality(a, a.getMediaSessionCallback().getEngine());
@@ -342,7 +343,7 @@ public final class MusicPlayer {
 		// same page again, which is what left next/previous unable to get out of a start that stalled.
 		if ((current != null) && (current.getId() == MediaPrefs.MEDIA_ENG_YT) &&
 				!(current instanceof YoutubeStartEngine) && !t.hasStartPosition()) {
-			DiagnosticLog.log(TAG, "YouTube track on the playing YouTube player", "id=" + t.getVideoId());
+			DiagnosticLog.log(LogCat.MUSIC, "YouTube track on the playing YouTube player", "id=" + t.getVideoId());
 			MainActivityDelegate a = playbackActivity();
 			if (watchRequested && (a != null)) a.post(() -> a.showFragment(R.id.youtube_fragment));
 			watchRequested = false;
@@ -380,8 +381,7 @@ public final class MusicPlayer {
 			// A video was watched (YouTube's, or a downloaded one fullscreen) and this track has only
 			// its sound: the Music tab, as for any track played as music. Left to itself, the watched
 			// page's fullscreen just went away and the YouTube tab's page was what stayed on screen.
-			DiagnosticLog.log(TAG, "sound-only track after a watched video: to the Music tab",
-					"item=" + t);
+			DiagnosticLog.log(LogCat.MUSIC, "sound-only track after a watched video: to the Music tab", "item=" + t);
 			setYoutubeAudioMode(true);
 			MainActivityDelegate a = act;
 			if (a != null) a.post(() -> open(a));
@@ -435,8 +435,7 @@ public final class MusicPlayer {
 		if ((h == null) || (a == null)) return false;
 		pendingVideoId = t.getVideoId();
 		pendingVideoPos = pos;
-		DiagnosticLog.log(TAG, "YouTube track: starting in the YouTube player", "id=" + t.getVideoId(),
-				"pos=" + (pos / 1000) + 's');
+		DiagnosticLog.log(LogCat.MUSIC, "YouTube track: starting in the YouTube player", "id=" + t.getVideoId(), "pos=" + (pos / 1000) + 's');
 		boolean watch = watchRequested;
 		watchRequested = false;
 		// Through black from a video on screen, so neither the page loading nor the app's bars and
@@ -537,7 +536,7 @@ public final class MusicPlayer {
 				idx = 0;
 			}
 			MusicTrackItem t = q.replace(items, idx).get(idx);
-			DiagnosticLog.log(TAG, "play last item as music", "item=" + item, "pos=" + (pos / 1000) + 's');
+			DiagnosticLog.log(LogCat.MUSIC, "play last item as music", "item=" + item, "pos=" + (pos / 1000) + 's');
 			playTrack(a, t, pos);
 		});
 	}
@@ -590,7 +589,7 @@ public final class MusicPlayer {
 			return;
 		}
 
-		DiagnosticLog.log(TAG, "play downloaded videos", "first=" + t, "count=" + items.size());
+		DiagnosticLog.log(LogCat.MUSIC, "play downloaded videos", "first=" + t, "count=" + items.size());
 		// Fullscreen first, and once: the engine is given the picture's surface only if it is there
 		// when the engine is created (see BodyLayout#playLocalVideo).
 		if (!b.isVideoMode()) {
@@ -747,8 +746,7 @@ public final class MusicPlayer {
 			if ((i.getVideoId() == null) || YtDownloads.get().isDownloaded(i.getVideoId())) offline.add(i);
 		}
 		int start = Math.max(0, offline.indexOf(t));
-		DiagnosticLog.log(TAG, "playing offline: queue cut to offline tracks", "track=" + t,
-				"kept=" + offline.size(), "of=" + q.size());
+		DiagnosticLog.log(LogCat.MUSIC, "playing offline: queue cut to offline tracks", "track=" + t, "kept=" + offline.size(), "of=" + q.size());
 		play(a, offline, start);
 		return true;
 	}
@@ -811,8 +809,7 @@ public final class MusicPlayer {
 	private static void startTrack(MainActivityDelegate a, MusicTrackItem t, long pos, boolean watch) {
 		MediaSessionCallback cb = a.getMediaSessionCallback();
 		MediaEngine eng = cb.getEngine();
-		DiagnosticLog.log(TAG, "play", "track=" + t, "id=" + t.getSourceId(),
-				"pos=" + (pos / 1000) + 's', "watch=" + watch);
+		DiagnosticLog.log(LogCat.MUSIC, "play", "track=" + t, "id=" + t.getSourceId(), "pos=" + (pos / 1000) + 's', "watch=" + watch);
 		// The YouTube player's close() is deliberately inert: a local track taking over from it has
 		// to silence its page explicitly.
 		if ((t.getVideoId() == null) && (eng != null) && (eng.getId() == MediaPrefs.MEDIA_ENG_YT)) {
@@ -853,8 +850,7 @@ public final class MusicPlayer {
 					eng.getPosition().main().onSuccess(pos -> {
 						if (cb.getEngine() != eng) return;
 						long at = (pos == null) ? 0 : pos;
-						DiagnosticLog.log(TAG, "back to music: the downloaded copy", "id=" + playing.getVideoId(),
-								"pos=" + (at / 1000) + 's');
+						DiagnosticLog.log(LogCat.MUSIC, "back to music: the downloaded copy", "id=" + playing.getVideoId(), "pos=" + (at / 1000) + 's');
 						YtOffline.clearForcedStream();
 						playing.getPrefs().setPositionPref(at);
 						startTrack(a, playing, at, false);
@@ -995,7 +991,7 @@ public final class MusicPlayer {
 			// is; going back to music plays the file again (playCurrentAsMusic).
 			if (!t.hasVideo()) {
 				if (!t.isAudioOnlyDownload()) return;
-				DiagnosticLog.log(TAG, "switch to video (streamed: the download is sound only)", "id=" + t.getVideoId());
+				DiagnosticLog.log(LogCat.MUSIC, "switch to video (streamed: the download is sound only)", "id=" + t.getVideoId());
 				eng.getPosition().main().onSuccess(pos -> {
 					if (cb.getEngine() != eng) return;
 					YtOffline.forceStream(t.getVideoId());
@@ -1007,7 +1003,7 @@ public final class MusicPlayer {
 				return;
 			}
 			// A downloaded video: its file has the picture, on the very same engine.
-			DiagnosticLog.log(TAG, "switch to video (downloaded)", "id=" + t.getVideoId());
+			DiagnosticLog.log(LogCat.MUSIC, "switch to video (downloaded)", "id=" + t.getVideoId());
 			watchingLocal = true;
 			// Out of the Music tab, which keeps the floating buttons and the control panel away: the
 			// downloads list is where the picture is shown from, and where leaving fullscreen returns.
@@ -1045,7 +1041,7 @@ public final class MusicPlayer {
 		}
 
 		if ((t == null) || (t.getVideoId() != null)) {
-			DiagnosticLog.log(TAG, "switch to video", "id=" + ((t != null) ? t.getVideoId() : "?"));
+			DiagnosticLog.log(LogCat.MUSIC, "switch to video", "id=" + ((t != null) ? t.getVideoId() : "?"));
 			setYoutubeAudioMode(false);
 			YoutubeHooks h = youtube;
 			if (h != null) h.showVideo(a);
@@ -1076,7 +1072,7 @@ public final class MusicPlayer {
 		MainActivityDelegate a = from.getPlaybackDelegate(); // See switchToVideo().
 		MusicQueue q = getQueue(a);
 		long pos = ((q != null) && t.equals(q.getSavedCurrent())) ? q.getSavedPosition() : 0;
-		DiagnosticLog.log(TAG, "watch", "track=" + t, "pos=" + (pos / 1000) + 's');
+		DiagnosticLog.log(LogCat.MUSIC, "watch", "track=" + t, "pos=" + (pos / 1000) + 's');
 
 		if (t.getVideoId() != null) {
 			startTrack(a, t, pos, true);
@@ -1104,7 +1100,7 @@ public final class MusicPlayer {
 			YoutubeHooks h = youtube;
 			if (h != null) h.setQueueItem(t);
 			setYoutubeAudioMode(true);
-			DiagnosticLog.log(TAG, "YouTube video continues as music", "id=" + t.getVideoId());
+			DiagnosticLog.log(LogCat.MUSIC, "YouTube video continues as music", "id=" + t.getVideoId());
 			return;
 		}
 
@@ -1157,7 +1153,7 @@ public final class MusicPlayer {
 				if (vid.equals(me.aap.fermata.ytdl.YtDownloads.videoIdOf(list.get(n)))) return n;
 			}
 		}
-		DiagnosticLog.log(TAG, "item not found in its list: a queue of one", "item=" + i, "list=" + list.size());
+		DiagnosticLog.log(LogCat.MUSIC, "item not found in its list: a queue of one", "item=" + i, "list=" + list.size());
 		return -1;
 	}
 }

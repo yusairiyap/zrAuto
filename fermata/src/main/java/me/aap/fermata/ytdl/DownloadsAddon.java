@@ -59,7 +59,7 @@ public class DownloadsAddon implements FermataFragmentAddon {
 				try {
 					s = YtStreamResolver.estimate(id, QUALITIES);
 				} catch (Exception ex) {
-					me.aap.fermata.util.DiagnosticLog.log("YTDL", "size estimate failed", id, ex);
+					me.aap.fermata.util.DiagnosticLog.w(me.aap.fermata.util.LogCat.YTDL, "size estimate failed", "id=" + id, ex);
 					return null;
 				}
 				for (int i = 0; i < total.length; i++) {

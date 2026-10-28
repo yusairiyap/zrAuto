@@ -16,6 +16,7 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.fragment.DataUsageFragment;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.log.Log;
 import me.aap.utils.misc.ChangeableCondition;
 import me.aap.utils.pref.PrefCondition;
@@ -187,7 +188,7 @@ public class DataUsageAddon implements FermataFragmentAddon, FermataActivityAddo
 				} catch (Exception err) {
 					// A dialog that fails to inflate (see Theme.Utils.Base.AlertDialog) must not take the
 					// whole app down with it, least of all while driving: log it and say so instead.
-					DiagnosticLog.log("DIALOG", "failed to show data usage reset dialog:", err);
+					DiagnosticLog.w(LogCat.UI, "failed to show data usage reset dialog", err);
 					Log.e(err, "Failed to show the data usage reset dialog");
 					UiUtils.showToast(ctx, R.string.data_usage_reset_failed);
 				}

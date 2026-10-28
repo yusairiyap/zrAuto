@@ -14,6 +14,7 @@ import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.vfs.VirtualResource;
 import me.aap.utils.vfs.local.LocalFileSystem;
@@ -89,7 +90,7 @@ public final class YtOffline {
 		String id = YtDownloads.videoIdOf(item);
 		if (!useLocal(id)) return false;
 		YtDownloads.Entry e = YtDownloads.get().getEntry(id);
-		DiagnosticLog.log("YTDL", "playing the downloaded copy", "id=" + id, "pos=" + pos);
+		DiagnosticLog.log(LogCat.YTDL, "playing the downloaded copy", "id=" + id, "pos=" + pos);
 		silenceYoutubePage(a);
 		if (pos > 0) item.getPrefs().setPositionPref(pos);
 
@@ -138,7 +139,7 @@ public final class YtOffline {
 	public static boolean playAllDownloaded(MainActivityDelegate a) {
 		List<YtDownloads.Entry> list = YtDownloads.get().getDownloaded();
 		if (list.isEmpty()) return false;
-		DiagnosticLog.log("YTDL", "playing all downloads", "count=" + list.size());
+		DiagnosticLog.log(LogCat.YTDL, "playing all downloads", "count=" + list.size());
 
 		List<PlayableItem> items = new ArrayList<>(list.size());
 		resolve(a, list, 0, items);

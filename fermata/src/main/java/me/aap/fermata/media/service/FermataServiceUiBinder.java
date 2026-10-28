@@ -33,6 +33,7 @@ import me.aap.fermata.media.lib.MediaLib.StreamItem;
 import me.aap.fermata.media.pref.PlaybackControlPrefs;
 import me.aap.fermata.ui.view.ControlPanelView;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.app.App;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.event.BasicEventBroadcaster;
@@ -560,7 +561,7 @@ public class FermataServiceUiBinder extends BasicEventBroadcaster<FermataService
 								// (e.g. a manual pause tap) forces a clean, uncontested call" bug. A stale
 								// result has nothing correct left to say about the current state, so it
 								// says nothing instead -- just a trace in case this theory is incomplete.
-								DiagnosticLog.log("SEEKBAR", "stale playPause() discarded, item=" + i);
+								DiagnosticLog.log(LogCat.SEEK, "stale playPause() discarded", "item=" + i);
 							}
 						});
 					}
