@@ -35,6 +35,8 @@ public class YoutubeJsInterface extends FermataJsInterface {
 	public static final int JS_VIDEO_QUEUE = JS_LAST + 14;
 	/** What the video element did in the seconds after a switch (data = a short line), for the log. */
 	public static final int JS_AUDIO_TRACE = JS_LAST + 15;
+	/** A new video's silent warm-up began (youtube_fade.js hidePicture): its picture must not be seen until it is back at 0:00. */
+	public static final int JS_PICTURE_HIDDEN = JS_LAST + 16;
 	private final YoutubeMediaEngine engine;
 	private Promise<String> result;
 
@@ -104,6 +106,9 @@ public class YoutubeJsInterface extends FermataJsInterface {
 				break;
 			case JS_VIDEO_WAITING:
 				engine.waiting(data);
+				break;
+			case JS_PICTURE_HIDDEN:
+				engine.pictureHidden();
 				break;
 			case JS_AUDIO_TRACE:
 				me.aap.fermata.util.DiagnosticLog.log("YT", "media", data);

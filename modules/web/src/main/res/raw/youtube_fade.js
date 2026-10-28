@@ -120,6 +120,9 @@
       }
     } catch (err) { /* no box, the opacity still applies */ }
     try {
+      v.dispatchEvent(new Event('fermatapicturehidden'));
+    } catch (err) { /* ignore */ }
+    try {
       trace('start picture hidden: opacity=' + getComputedStyle(v).opacity + ' box=' + (box ? 'yes' : 'no') +
         ' videos=' + document.querySelectorAll('video').length);
     } catch (err) { /* ignore */ }

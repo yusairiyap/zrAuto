@@ -1223,6 +1223,8 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   hidden, so YouTube paused under an invisible question (in the background, after a while with no touch on the page), and the pause retry
   then toasted "Window too small" at full size. Its button is pressed now (`YT media you-there prompt answered:` in the log), `_lact` is
   refreshed every minute, and the size toast only shows when the page is under ~240 dp (`YoutubeMediaEngine#isPageSmall`). Not run on a device.
+- **Shuffle changes reach the queue's listeners** (`MusicQueue#shuffleListener`, on its own prefs' `SHUFFLE`): the play order changes, but only the
+  setting used to change, so the Home Queue card (which only follows `MusicQueue.Listener`) kept the old order after Shuffle on Home's card.
 - **A page restored after the app was killed** (the fragment's saved `url`, with YouTube not playing then) is kept
   quiet until asked (`YoutubeMediaEngine#quietRestoredPage`): its autoplay used to start the old song on app open.
 - **Previous / Next go nowhere past the ends of a list**: on the first / last song of the Music queue (its
@@ -1565,6 +1567,9 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
      On the page itself the opacity alone did not hide the start (a tapped video still showed it playing and jumping back), so `hidePicture` also puts a
      black box (`s.pictureBox`) over the video in its own container, faded out with it. `YT media start picture hidden: opacity=.. box=.. videos=..` and
      `start picture shown after ..ms` say what happened.
+     A video tapped on the page goes fullscreen ~250 ms into its warm-up, and in fullscreen the video is drawn outside the page (neither the
+     box nor the opacity reaches it), so `hidePicture` also fires `fermatapicturehidden` -> `JS_PICTURE_HIDDEN` -> `YoutubeMediaEngine#pictureHidden`,
+     which puts the fullscreen cover up (retried for 1 s while fullscreen comes up; `YT warm-up cover up`) unless a switch's cover already is.
      To take it out: the setting, or the `warm` lines in `startFade`, the pref, its two strings and the `warmup` in both `configure` calls.
    - Diagnostic lines to ask for: `YT media` (playing / waiting / seeking / `start fade:` / `start clock per 100 ms:`), `STATE start load`,
      `YT seek while starting`.

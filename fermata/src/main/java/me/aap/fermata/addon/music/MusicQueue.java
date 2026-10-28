@@ -32,6 +32,7 @@ import me.aap.fermata.media.lib.MediaLib.Item;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.BrowsableItemPrefs;
 import me.aap.utils.async.FutureSupplier;
+import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.log.Log;
 
 /**
@@ -65,10 +66,18 @@ public class MusicQueue extends ExtRoot {
 	private MusicTrackItem insertAfterLast;
 	private long serial;
 
+	// Shuffle turned on or off, from anywhere (the Music tab, Home's card, the session, Android Auto): the play order
+	// changes, so the listeners are told, as for any other change. Only the setting changed before, and the Queue card,
+	// which only follows the listeners, kept the old order. Kept in a field: the prefs hold their listeners weakly.
+	private final PreferenceStore.Listener shuffleListener = (s, prefs) -> {
+		if ((s == this) && prefs.contains(BrowsableItemPrefs.SHUFFLE)) changed();
+	};
+
 	MusicQueue(MediaLib lib) {
 		super(ID, lib);
 		store = lib.getContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 		load();
+		addBroadcastListener(shuffleListener);
 	}
 
 	public interface Listener {

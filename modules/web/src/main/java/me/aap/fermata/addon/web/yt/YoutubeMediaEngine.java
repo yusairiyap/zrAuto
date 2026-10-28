@@ -799,7 +799,37 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 * YoutubeWebView}'s {@code JS_CONTENT_PLAYING}. Hides whichever of {@link #transitioning()}/
 	 * {@link #adShowing()} is currently covering the screen; a no-op if neither is.
 	 */
+	// A new video warms up silently with its picture hidden (youtube_fade.js); on the page a black box hides it, but in
+	// fullscreen the video is drawn outside the page, so the fullscreen cover hides it there. A video tapped on the page
+	// goes fullscreen a moment after its warm-up began, so the cover is tried again for a second. Lifted by contentPlaying(),
+	// which the page sends when the picture comes back.
+	private boolean warmingCover;
+	private int warmCoverTries;
+	private final Runnable warmCoverTask = this::coverWarmUp;
+
+	void pictureHidden() {
+		warmingCover = true;
+		warmCoverTries = 0;
+		web.removeCallbacks(warmCoverTask);
+		web.post(warmCoverTask);
+	}
+
+	private void coverWarmUp() {
+		if (!warmingCover || adActive) return;
+		YoutubeVideoView v = getFullScreenView();
+		if (v == null) {
+			if (++warmCoverTries < 10) web.postDelayed(warmCoverTask, 100);
+			return;
+		}
+		if (v.isTransitionCoverShowing()) return; // a switch the app asked for: its cover is already up
+		v.showTransitionOverlay(false, 0);
+		v.quietCoverSpinner(); // the song is playing under it, silently
+		DiagnosticLog.log("YT", "warm-up cover up", "id=" + currentVideoId);
+	}
+
 	void contentPlaying() {
+		warmingCover = false;
+		web.removeCallbacks(warmCoverTask);
 		switching = false;
 		YoutubeVideoView v = getFullScreenView();
 		if (v != null) v.hideTransitionOverlay();

@@ -5,6 +5,7 @@ import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_AUDIO_TRACE;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_AD_SHOWING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_CONTENT_PLAYING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_ERR;
+import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_PICTURE_HIDDEN;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_EVENT;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_SKIP_PREV_NEXT;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_USER_PICKED_VIDEO;
@@ -521,6 +522,9 @@ public class YoutubeWebView extends FermataWebView {
 				"  }\n" +
 				// While a new song warms up silently (youtube_fade.js) its 'playing' leaves the fullscreen cover
 				// up: under it the first moment plays and jumps back to the start. The picture coming back lifts it.
+				"  v.addEventListener('fermatapicturehidden', function(e) {\n" +
+				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_PICTURE_HIDDEN + ", null);\n" +
+				"  });\n" +
 				"  v.addEventListener('fermatapictureshown', function(e) {\n" +
 				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
 				"  });\n" +
