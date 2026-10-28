@@ -1562,6 +1562,9 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
      The cover's own spinner is stopped once the page plays (`YoutubeVideoView#quietCoverSpinner` from `YoutubeMediaEngine#playing`, not during an ad):
      held through the warm-up, it showed behind the controls' pause button. A switch through YouTube's router ("page navigation") warms up
      for 1 s like a fresh page (`FermataFade.longWarm`, called from `YoutubeWebView#loadVideo`): after 0.6 s there the clock jumped ~57 ms 0.5 s after the jump back.
+     On the page itself the opacity alone did not hide the start (a tapped video still showed it playing and jumping back), so `hidePicture` also puts a
+     black box (`s.pictureBox`) over the video in its own container, faded out with it. `YT media start picture hidden: opacity=.. box=.. videos=..` and
+     `start picture shown after ..ms` say what happened.
      To take it out: the setting, or the `warm` lines in `startFade`, the pref, its two strings and the `warmup` in both `configure` calls.
    - Diagnostic lines to ask for: `YT media` (playing / waiting / seeking / `start fade:` / `start clock per 100 ms:`), `STATE start load`,
      `YT seek while starting`.

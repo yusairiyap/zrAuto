@@ -100,10 +100,29 @@
     s.pictureHidden = true;
     s.pictureGen = (s.pictureGen || 0) + 1;
     s.pictureEl = v;
+    s.pictureAt = Date.now();
     s.pictureOpacity = v.style.getPropertyValue('opacity');
     v.__fermataWarming = true;
     v.style.setProperty('transition', 'none', 'important');
     v.style.setProperty('opacity', '0', 'important');
+    // A black box over the video too: the opacity alone did not hide it on the page (Oct 29: the start was still
+    // seen playing and jumping back after a tap on a video). The box is in the video's own container, over it.
+    let box = null;
+    try {
+      const host = v.parentElement;
+      if (host) {
+        if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+        box = s.pictureBox || document.createElement('div');
+        box.style.cssText = 'position:absolute;left:0;top:0;right:0;bottom:0;background:#000;opacity:1;' +
+          'pointer-events:none;z-index:2147483647;transition:none';
+        if (box.parentElement !== host) host.appendChild(box);
+        s.pictureBox = box;
+      }
+    } catch (err) { /* no box, the opacity still applies */ }
+    try {
+      trace('start picture hidden: opacity=' + getComputedStyle(v).opacity + ' box=' + (box ? 'yes' : 'no') +
+        ' videos=' + document.querySelectorAll('video').length);
+    } catch (err) { /* ignore */ }
   }
 
   function showPicture(s) {
@@ -114,9 +133,17 @@
     v.style.setProperty('transition', 'opacity 0.25s ease-out', 'important');
     if (s.pictureOpacity) v.style.setProperty('opacity', s.pictureOpacity);
     else v.style.removeProperty('opacity');
+    const box = s.pictureBox;
+    if (box) {
+      box.style.transition = 'opacity 0.25s ease-out';
+      box.style.opacity = '0';
+    }
     setTimeout(() => {
-      if (!s.pictureHidden) v.style.removeProperty('transition');
+      if (s.pictureHidden) return;
+      v.style.removeProperty('transition');
+      if (box && box.parentElement) box.parentElement.removeChild(box);
     }, 400);
+    trace('start picture shown after ' + (Date.now() - (s.pictureAt || Date.now())) + 'ms t=' + v.currentTime.toFixed(2));
     try {
       v.dispatchEvent(new Event('fermatapictureshown'));
     } catch (err) { /* ignore */ }
