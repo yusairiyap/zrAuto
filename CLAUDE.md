@@ -1559,6 +1559,9 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
      That alone did not hide it in fullscreen: there the app's black transition cover came down on the page's first `playing`, the start of
      the warm-up. Now `playing` leaves the cover up while `v.__fermataWarming` is set, and `showPicture` fires `fermatapictureshown` on the
      element, whose listener (`YoutubeWebView#attachListeners`) sends `JS_CONTENT_PLAYING` to lift it.
+     The cover's own spinner is stopped once the page plays (`YoutubeVideoView#quietCoverSpinner` from `YoutubeMediaEngine#playing`, not during an ad):
+     held through the warm-up, it showed behind the controls' pause button. A switch through YouTube's router ("page navigation") warms up
+     for 1 s like a fresh page (`FermataFade.longWarm`, called from `YoutubeWebView#loadVideo`): after 0.6 s there the clock jumped ~57 ms 0.5 s after the jump back.
      To take it out: the setting, or the `warm` lines in `startFade`, the pref, its two strings and the `warmup` in both `configure` calls.
    - Diagnostic lines to ask for: `YT media` (playing / waiting / seeking / `start fade:` / `start clock per 100 ms:`), `STATE start load`,
      `YT seek while starting`.

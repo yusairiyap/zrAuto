@@ -367,6 +367,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		lastPauseAsked = false;
 		boolean wasBuffering = waitingSince != 0;
 		clearStall();
+		// The page plays: a switch cover still up (held through the silent warm-up, see youtube_fade.js) shows no
+		// spinner, which sat behind the controls' pause button.
+		YoutubeVideoView cover = getFullScreenView();
+		if ((cover != null) && !adActive) cover.quietCoverSpinner();
 		// Every confirmed-playing moment re-arms the retry guard in paused() below -- not just an
 		// explicit native start() -- since a page-reported pause can also follow a resize-triggered
 		// player restart the app never asked for (confirmed on-device: a window resize alone, with

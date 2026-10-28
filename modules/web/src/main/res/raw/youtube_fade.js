@@ -52,6 +52,8 @@
   // The first song of a freshly loaded page (a YouTube song after a local one, the first after an app start) warms up longer:
   // there the sound output was still settling just after a 0.6 s warm-up (its reported latency changed between the
   // two 'playing' events and the clock jumped ~70 ms right after the jump back).
+  // A switch through YouTube's router (YoutubeWebView#loadVideo, "page navigation") counts as a first start too (longWarm):
+  // after a 0.6 s warm-up there the clock ran evenly for 0.4 s and then jumped ~57 ms (Oct 29 log), which a 1 s one did not.
   const WARM_FIRST_S = 1.0;
   let pageFirstStart = true;
 
@@ -536,6 +538,11 @@
   window.FermataFade = {
     configure(c) {
       Object.assign(cfg, c || {});
+    },
+
+    // The next new video warms up as long as the first one of a fresh page (see WARM_FIRST_S).
+    longWarm() {
+      pageFirstStart = true;
     },
 
     // Fades out and then pauses (and rewinds to the start if `stop`). Returns immediately; the

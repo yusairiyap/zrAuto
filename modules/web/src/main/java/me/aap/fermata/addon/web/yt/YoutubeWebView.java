@@ -1553,10 +1553,15 @@ public class YoutubeWebView extends FermataWebView {
 							"\"reload\"".equals(result) ? "page load (effects off, leaving Web Audio)" :
 									"page load");
 			if ("\"swap\"".equals(result)) return;
+			// A router navigation: the next song's sound output settles later, so it warms up longer (youtube_fade.js
+			// longWarm). Runs before the new video's loadstart, which comes a few hundred ms after the navigation.
+			if ("true".equals(result)) {
+				evaluateJavascript("if (window.FermataFade && window.FermataFade.longWarm) window.FermataFade.longWarm();", null);
+				return;
+			}
 			// Only reached if the script itself couldn't run at all (no document body yet, an
 			// exception) -- a plain page load is the last resort either way.
-			if (!"true".equals(result))
-				loadUrl(YoutubeVideoItem.watchUrl(videoId) + (fromStart ? "&t=0s" : ""));
+			loadUrl(YoutubeVideoItem.watchUrl(videoId) + (fromStart ? "&t=0s" : ""));
 		});
 	}
 
