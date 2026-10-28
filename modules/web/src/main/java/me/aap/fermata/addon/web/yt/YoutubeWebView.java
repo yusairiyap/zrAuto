@@ -543,14 +543,21 @@ public class YoutubeWebView extends FermataWebView {
 				"    var nearEnd = isFinite(left) && (left <= 5);\n" +
 				"    var gen = v.__fermataEndGen = (v.__fermataEndGen || 0) + 1;\n" +
 				"    setTimeout(function() {\n" +
-				"      if ((gen !== v.__fermataEndGen) || v.ended || (!v.paused && (v.readyState >= 3)) ||\n" +
-				"          window.__fermataAdShowing) return;\n" +
-				"      var ps = -1;\n" +
+				"      if ((gen !== v.__fermataEndGen) || v.ended || (!v.paused && (v.readyState >= 3))) return;\n" +
+				"      if (window.__fermataAdShowing) { " + JS_EVENT + "(" + JS_AUDIO_TRACE + ", 'end check: an ad is showing'); return; }\n" +
+				"      var ps = -1, endScreen = false;\n" +
 				"      try {\n" +
 				"        var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
 				"        if (p && (typeof p.getPlayerState === 'function')) ps = p.getPlayerState();\n" +
+				// YouTube's replay screen, whatever state the player API reports.
+				"        endScreen = !!(p && p.classList && p.classList.contains('ended-mode'));\n" +
 				"      } catch (x) {}\n" +
-				"      if (ps === 0) { " + JS_EVENT + "(" + JS_VIDEO_ENDED + ", 'stuck:state'); return; }\n" +
+				"      if ((ps === 0) || endScreen) { " + JS_EVENT + "(" + JS_VIDEO_ENDED + ", 'stuck:state' + (endScreen ? ' end screen' : '')); return; }\n" +
+				// Why it stays put: in the Diagnostic log (YT media), for a song that stopped where it should not have.
+				"      " + JS_EVENT + "(" + JS_AUDIO_TRACE + ", 'end check: not the end, ps=' + ps + ' t=' + v.currentTime.toFixed(1) + '/' +\n" +
+				"        (isFinite(v.duration) ? v.duration.toFixed(0) : '?') + ' paused=' + v.paused + ' ready=' + v.readyState +\n" +
+				"        ' lastSecondsAgo=' + (v.__fermataNearEndAt ? Math.round((Date.now() - v.__fermataNearEndAt) / 1000) + 's' : 'never') +\n" +
+				"        ' sameVideo=' + (fermataCurrentVideoId() === v.__fermataNearEndId));\n" +
 				// Put back to the start by YouTube's player in other states too (the end screen, a video it cued up): the
 				// song was in its last seconds a moment ago and now sits near 0:00, not playing.
 				"      if (!nearEnd) {\n" +

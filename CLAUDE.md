@@ -1215,6 +1215,10 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   A fourth form (seen on Android Auto): YouTube pauses the song at its end and puts it back to 0:00 in another player state (not 0), so the
   position is no longer near the end; `endCheck` reports it as `stuck:reset ps=..` when the same video was in its last 5 s under 10 s before
   (`__fermataNearEndAt` / `__fermataNearEndId`, kept by a `timeupdate` listener), or YouTube cued a video by itself (state 5).
+  YouTube's replay screen (the player's `ended-mode` class) counts like state 0. **Open (Oct 28, Android Auto)**: a song showed the replay
+  button at 0:00 only ~30 s in (paused by the page, no `ended`, no end-check line), and stayed there. When the check finds no end it now
+  writes `YT media end check: not the end, ps=.. t=.. paused=.. ready=.. lastSecondsAgo=.. sameVideo=..` (or `an ad is showing`): ask for
+  that line to see what the player reported.
 - **A page restored after the app was killed** (the fragment's saved `url`, with YouTube not playing then) is kept
   quiet until asked (`YoutubeMediaEngine#quietRestoredPage`): its autoplay used to start the old song on app open.
 - **Previous / Next go nowhere past the ends of a list**: on the first / last song of the Music queue (its
