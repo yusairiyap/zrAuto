@@ -148,6 +148,12 @@ public final class SleepAnalyzer {
 		} else {
 			int lead = (int) Math.min(n - 1, ASSUMED_LATENCY_MS / SleepNight.EPOCH_MS);
 			for (int i = 0; i < lead; i++) awake[i] = true;
+			// The screen was on, or "I'm awake" was pressed: that counts without any sensor.
+			if (night.flags != null) {
+				for (int i = 0; (i < n) && (i < night.flags.length); i++) {
+					if ((night.flags[i] & SleepNight.FLAG_AWAKE) != 0) awake[i] = true;
+				}
+			}
 		}
 
 		// Sleep begins with the first run of SETTLE epochs asleep and ends where the last such run ends.

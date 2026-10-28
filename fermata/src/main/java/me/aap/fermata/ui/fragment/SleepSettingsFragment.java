@@ -86,6 +86,7 @@ public class SleepSettingsFragment extends ReorderListFragment {
 			e.removePref(SleepPrefs.W_INTERRUPTIONS);
 			e.removePref(SleepPrefs.MODE);
 			e.removePref(SleepPrefs.SENSITIVITY);
+			e.removePref(SleepPrefs.SCREEN_AWAKE);
 			e.removePref(SleepPrefs.AUTO_STOP_H);
 			e.removePref(SleepPrefs.REMINDER);
 			e.removePref(SleepPrefs.REMINDER_LEAD);
@@ -171,12 +172,16 @@ public class SleepSettingsFragment extends ReorderListFragment {
 
 		section(box, R.string.sleep_section_record);
 		addChoiceRow(box, R.string.sleep_set_mode, R.string.sleep_set_mode_sub,
-				new int[]{R.string.sleep_mode_times_only, R.string.sleep_mode_movement, R.string.sleep_mode_sound},
+				new int[]{R.string.sleep_mode_times_only, R.string.sleep_mode_movement, R.string.sleep_mode_sound,
+						R.string.sleep_mode_stand},
 				() -> p.getIntPref(SleepPrefs.MODE), i -> p.applyIntPref(SleepPrefs.MODE, i));
 		addChoiceRow(box, R.string.sleep_set_sensitivity, R.string.sleep_set_sensitivity_sub,
 				new int[]{R.string.sleep_sens_low, R.string.sleep_sens_normal, R.string.sleep_sens_high},
 				() -> p.getIntPref(SleepPrefs.SENSITIVITY), i -> p.applyIntPref(SleepPrefs.SENSITIVITY, i),
 				() -> p.getIntPref(SleepPrefs.MODE) != SleepPrefs.MODE_TIMES);
+		addSwitchRow(box, R.string.sleep_set_screen, R.string.sleep_set_screen_sub,
+				() -> p.getBooleanPref(SleepPrefs.SCREEN_AWAKE),
+				on -> p.applyBooleanPref(SleepPrefs.SCREEN_AWAKE, on), null);
 		addValueSliderRow(box, R.string.sleep_set_auto_stop, R.string.sleep_set_auto_stop_sub, 4, 16,
 				() -> p.getIntPref(SleepPrefs.AUTO_STOP_H), v -> p.applyIntPref(SleepPrefs.AUTO_STOP_H, v),
 				v -> getString(R.string.sleep_hours, v), null);

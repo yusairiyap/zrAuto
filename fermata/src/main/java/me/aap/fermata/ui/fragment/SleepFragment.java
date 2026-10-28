@@ -341,7 +341,9 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 			sessionStatus.setText(getString(R.string.sleep_recording, SleepInsights.duration(elapsed)));
 			StringBuilder sb = new StringBuilder();
 			sb.append(getString(R.string.sleep_since, SleepInsights.clock(getContext(), tracker.getStart())));
-			if (tracker.isRecordingMovement()) {
+			if (tracker.isStandMode()) {
+				sb.append(" · ").append(getString(R.string.sleep_live_stand, Math.round(tracker.getLiveMovement() / 2.55f)));
+			} else if (tracker.isRecordingMovement()) {
 				sb.append(" · ").append(getString(R.string.sleep_live_move, Math.round(tracker.getLiveMovement() / 2.55f)));
 			} else {
 				sb.append(" · ").append(getString(R.string.sleep_times_only));
@@ -693,8 +695,9 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 		}
 		Context ctx = requireContext();
 		nightTitle.setText(DateFormat.format("EEE d MMM", new Date(r.wakeTime())));
-		nightEstimate.setText(r.fromSensors ? (r.night.recovered ? getString(R.string.sleep_recovered) :
-				getString(R.string.sleep_from_sensors)) : getString(R.string.sleep_from_times));
+		nightEstimate.setText(r.night.recovered ? getString(R.string.sleep_recovered) :
+				r.night.stand ? getString(R.string.sleep_from_sound) :
+						r.fromSensors ? getString(R.string.sleep_from_sensors) : getString(R.string.sleep_from_times));
 		scoreView.setResult(r, null);
 		statAsleep.setText(SleepInsights.duration(r.asleepMs));
 		statBed.setText(SleepInsights.clock(ctx, r.bedTime()) + "–" + SleepInsights.clock(ctx, r.wakeTime()));

@@ -111,7 +111,7 @@
     <string name="sleep_set_wake_sub">The same for waking up</string>
     <string name="sleep_set_weight_sub">How much it counts, against the other three</string>
     <string name="sleep_set_mode">How the night is recorded</string>
-    <string name="sleep_set_mode_sub">Times only is the lightest. Movement uses the motion sensor. Movement and sound also measures how loud the room is; the sound itself is never stored.</string>
+    <string name="sleep_set_mode_sub">Times only is the lightest. Movement uses the motion sensor, for a phone on the bed. Move + sound also measures how loud the room is. On a stand is for a tablet that does not move with you: the room\'s sound stands in for movement. The sound itself is never stored.</string>
     <string name="sleep_mode_times_only">Times only</string>
     <string name="sleep_mode_movement">Movement</string>
     <string name="sleep_mode_sound">Move + sound</string>
@@ -153,4 +153,10 @@
     <string name="sleep_battery_charging">Battery: on the charger</string>
     <string name="sleep_insight_battery">Recording costs about %1$s%% of the battery an hour (%2$d mA), measured over %3$d nights on battery power.</string>
     <string name="sleep_tip_battery">Recording is heavy on your battery. Charge the phone overnight, or switch to Movement without sound, or to Times only, in the Sleep settings.</string>
+
+    <string name="sleep_mode_stand">On a stand</string>
+    <string name="sleep_live_stand">sound activity %1$d%%</string>
+    <string name="sleep_from_sound">Estimated from the room\'s sound, the screen and your taps</string>
+    <string name="sleep_set_screen">Screen on counts as awake</string>
+    <string name="sleep_set_screen_sub">Looking at the phone or tablet in the night marks you awake, which a device that does not move with you could not tell otherwise.</string>
 </resources>

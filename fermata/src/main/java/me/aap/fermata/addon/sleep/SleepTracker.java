@@ -74,6 +74,19 @@ public final class SleepTracker implements SensorEventListener {
 	private byte[] flagBuf = new byte[0];
 	private int count;
 	private boolean useMove;
+	private boolean useAccel;
+	private boolean useStand;
+	private boolean countScreen;
+	private boolean screenRegistered;
+	private volatile boolean screenSeen;
+	private boolean standInit;
+	private float standBase;
+	private final android.content.BroadcastReceiver screenReceiver = new android.content.BroadcastReceiver() {
+		@Override
+		public void onReceive(Context c, android.content.Intent i) {
+			screenSeen = true;
+		}
+	};
 	private boolean useNoise;
 	private volatile boolean pendingAwake;
 	private volatile int liveMove;
@@ -129,6 +142,10 @@ public final class SleepTracker implements SensorEventListener {
 		return useMove;
 	}
 
+	public synchronized boolean isStandMode() {
+		return useStand;
+	}
+
 	public synchronized boolean isRecordingSound() {
 		return useNoise;
 	}
@@ -181,9 +198,16 @@ public final class SleepTracker implements SensorEventListener {
 			int mode = p.getIntPref(SleepPrefs.MODE);
 			sensors = (SensorManager) ctx.getSystemService(Context.SENSOR_SERVICE);
 			Sensor acc = (sensors == null) ? null : sensors.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-			useMove = (mode >= SleepPrefs.MODE_MOVEMENT) && (acc != null);
-			useNoise = useMove && (mode >= SleepPrefs.MODE_MOVEMENT_SOUND) && hasMicPermission();
+			boolean mic = hasMicPermission();
+			useAccel = ((mode == SleepPrefs.MODE_MOVEMENT) || (mode == SleepPrefs.MODE_MOVEMENT_SOUND)) && (acc != null);
+			// On a stand nothing moves with the sleeper: the room's sound stands in for movement.
+			useStand = (mode == SleepPrefs.MODE_STAND) && mic;
+			useMove = useAccel || useStand;
+			useNoise = (useAccel && (mode == SleepPrefs.MODE_MOVEMENT_SOUND) && mic) || useStand;
+			standInit = false;
+			screenSeen = false;
 			night = new SleepNight(System.currentTimeMillis());
+			night.stand = useStand;
 			moveBuf = new byte[MAX_EPOCHS];
 			noiseBuf = new byte[MAX_EPOCHS];
 			flagBuf = new byte[MAX_EPOCHS];
@@ -211,11 +235,20 @@ public final class SleepTracker implements SensorEventListener {
 			} catch (Exception ex) {
 				DiagnosticLog.w(LogCat.SLEEP, "wake lock not taken", ex);
 			}
-			if (useMove) sensors.registerListener(this, acc, SensorManager.SENSOR_DELAY_NORMAL, work);
+			if (useAccel) sensors.registerListener(this, acc, SensorManager.SENSOR_DELAY_NORMAL, work);
+			countScreen = p.getBooleanPref(SleepPrefs.SCREEN_AWAKE);
+			if (countScreen) {
+				try {
+					ctx.registerReceiver(screenReceiver, new android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_ON));
+					screenRegistered = true;
+				} catch (Exception ex) {
+					DiagnosticLog.w(LogCat.SLEEP, "screen receiver not registered", ex);
+				}
+			}
 			nextTick = SystemClock.uptimeMillis() + SleepNight.EPOCH_MS;
 			work.postAtTime(this::tick, null, nextTick);
 			DiagnosticLog.log(LogCat.SLEEP, "session started", "mode=" + mode, "movement=" + useMove,
-					"sound=" + useNoise, "sensitivity=" + p.getIntPref(SleepPrefs.SENSITIVITY));
+					"sound=" + useNoise, "stand=" + useStand, "screen=" + countScreen, "sensitivity=" + p.getIntPref(SleepPrefs.SENSITIVITY));
 		}
 		SleepService.start(ctx);
 		linkAmbience(p);
@@ -232,6 +265,14 @@ public final class SleepTracker implements SensorEventListener {
 			if (night == null) return null;
 			if (work != null) work.removeCallbacksAndMessages(null);
 			if (sensors != null) sensors.unregisterListener(this);
+			if (screenRegistered) {
+				try {
+					ctx.unregisterReceiver(screenReceiver);
+				} catch (Exception ex) {
+					DiagnosticLog.w(LogCat.SLEEP, "screen receiver not removed", ex);
+				}
+				screenRegistered = false;
+			}
 			if (thread != null) thread.quitSafely();
 			thread = null;
 			work = null;
@@ -334,7 +375,8 @@ public final class SleepTracker implements SensorEventListener {
 		accum = 0;
 		int noise = 0;
 		if (useNoise) noise = sampleNoise();
-		boolean awake = pendingAwake;
+		if (useStand) move = standActivity(noise);
+		boolean awake = pendingAwake || screenWasOn();
 		pendingAwake = false;
 		float ma = me.aap.fermata.addon.power.PowerUsageTracker.get().readNowMa();
 		boolean full;
@@ -375,6 +417,30 @@ public final class SleepTracker implements SensorEventListener {
 		long now = SystemClock.uptimeMillis();
 		if (nextTick < now) nextTick = now + 1000;
 		w.postAtTime(this::tick, null, nextTick);
+	}
+
+	/** Whether the screen went on, or is on, since the last epoch: looking at the phone in the night is being awake. */
+	private boolean screenWasOn() {
+		if (!countScreen) return false;
+		boolean seen = screenSeen;
+		screenSeen = false;
+		if (seen) return true;
+		PowerManager pm = (PowerManager) FermataApplication.get().getSystemService(Context.POWER_SERVICE);
+		return (pm != null) && pm.isInteractive();
+	}
+
+	/**
+	 * What the room's loudness says about the sleeper on a stand: how far this epoch is above the quietest the room has been
+	 * (a slow floor that follows the night), so a turn over, a cough or talking show and the steady hum of the room does not.
+	 */
+	private int standActivity(int noise) {
+		if (!standInit) {
+			standBase = noise;
+			standInit = true;
+		}
+		if (noise < standBase) standBase = noise;
+		else standBase += (noise - standBase) * 0.02f;
+		return Math.min(255, Math.round(Math.max(0f, noise - standBase) * 3f));
 	}
 
 	/** The battery level in percent, or -1. */

@@ -1341,6 +1341,10 @@ Built into `fermata` like Ambience (order 10, `hasSettings`), package `addon/sle
   a night keeps the average draw while not charging, the level at start and end and how many readings were taken while charging (`SleepNight#percentPerHour` is -1 when it
   was mostly on a charger). The night card shows it, the insights average it over nights, and a tip suggests a charger or a lighter mode above 1.5 %/h. The Power tab's own
   history does not count the night: it only samples while the app is open, playing or in a car.
+- **A tablet on a stand** (`MODE_STAND`, Settings > Sleep > Recording > On a stand): nothing moves with the sleeper, so the accelerometer is not used; the room's sound per epoch
+  stands in for movement (`SleepTracker#standActivity`: how far it is above a slow floor, times 3, stored as the movement), and the night is marked `stand`. It is rougher than a phone on the bed and
+  needs the microphone allowed (without it the night is times only plus the screen). **The screen being on counts as awake** in every mode (`SCREEN_AWAKE`, default on): an `ACTION_SCREEN_ON`
+  receiver and `isInteractive()` set the epoch's awake flag, which the analysis honours even with no sensor data. First guesses, not tuned on a device.
 - **Analysis** (`SleepAnalyzer`, pure): sleep/wake from smoothed movement (or from "I'm awake" taps), onset = first 5 minutes asleep, awakenings = 1.5 minutes awake,
   stages **estimated** from a 90 minute cycle shaped by stillness (always labelled so; leave it replaceable for imported data later). Score 0..100 =
   duration, regular times, time to fall asleep and interruptions, weighted by the settings. The stored night has only raw epochs, so a better analysis

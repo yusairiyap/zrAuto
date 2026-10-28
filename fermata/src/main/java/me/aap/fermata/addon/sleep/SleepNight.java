@@ -46,6 +46,8 @@ public final class SleepNight {
 	/** How many readings (one per epoch) were taken while drawing from the battery and while charging. */
 	public int drawSamples;
 	public int chargeSamples;
+	/** Whether the room's sound stood in for movement (a tablet on a stand). */
+	public boolean stand;
 	/** Whether the session was cut short by the app being killed (the end is the last time it saved). */
 	public boolean recovered;
 
@@ -106,6 +108,7 @@ public final class SleepNight {
 		n.flags = (flags == null) ? null : Arrays.copyOf(flags, flags.length);
 		n.mix = mix;
 		n.recovered = recovered;
+		n.stand = stand;
 		n.levelStart = levelStart;
 		n.levelEnd = levelEnd;
 		n.drawMa10 = drawMa10;
@@ -123,6 +126,7 @@ public final class SleepNight {
 		if (flags != null) o.put("f", Base64.encodeToString(flags, Base64.NO_WRAP));
 		if (!mix.isEmpty()) o.put("x", mix);
 		if (recovered) o.put("r", true);
+		if (stand) o.put("sd", true);
 		if (levelStart >= 0) o.put("l0", levelStart);
 		if (levelEnd >= 0) o.put("l1", levelEnd);
 		if (drawSamples > 0) {
@@ -141,6 +145,7 @@ public final class SleepNight {
 		if (o.has("f")) n.flags = Base64.decode(o.getString("f"), Base64.NO_WRAP);
 		n.mix = o.optString("x", "");
 		n.recovered = o.optBoolean("r", false);
+		n.stand = o.optBoolean("sd", false);
 		n.levelStart = o.optInt("l0", -1);
 		n.levelEnd = o.optInt("l1", -1);
 		n.drawMa10 = o.optInt("bd", 0);

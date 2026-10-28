@@ -13,6 +13,8 @@ public final class SleepPrefs {
 	public static final int MODE_TIMES = 0;
 	public static final int MODE_MOVEMENT = 1;
 	public static final int MODE_MOVEMENT_SOUND = 2;
+	/** A tablet on a stand: the room's sound stands in for movement, since nothing moves with the sleeper. */
+	public static final int MODE_STAND = 3;
 
 	/** How long the user wants to sleep, in minutes. */
 	public static final Pref<IntSupplier> GOAL_MIN = Pref.i("SLEEP_GOAL_MIN", 8 * 60);
@@ -26,6 +28,8 @@ public final class SleepPrefs {
 	public static final Pref<IntSupplier> W_INTERRUPTIONS = Pref.i("SLEEP_W_INTERRUPTIONS", 20);
 	public static final Pref<IntSupplier> MODE = Pref.i("SLEEP_MODE", MODE_MOVEMENT);
 	/** 0 = low, 1 = normal, 2 = high: how easily movement counts as being awake. */
+	/** The screen being on counts as being awake (glancing at the phone at night). */
+	public static final Pref<BooleanSupplier> SCREEN_AWAKE = Pref.b("SLEEP_SCREEN_AWAKE", true);
 	public static final Pref<IntSupplier> SENSITIVITY = Pref.i("SLEEP_SENSITIVITY", 1);
 	/** A session ends by itself after this many hours. */
 	public static final Pref<IntSupplier> AUTO_STOP_H = Pref.i("SLEEP_AUTO_STOP_H", 12);
