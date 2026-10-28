@@ -95,10 +95,21 @@
   // 'important', so a style YouTube's player writes meanwhile does not bring it back. In fullscreen the app's black cover
   // is what hides it: the page's 'playing' does not lift that cover while __fermataWarming is set, and showing the picture
   // sends 'fermatapictureshown', which lifts it (YoutubeWebView#attachListeners).
+  // One box for the whole page, not one per element: a navigation can start a load on one <video> and then go on in
+  // another, and the first one's box was left over the new video (a blank picture with the sound playing). Any element
+  // still hidden when another one starts is shown again, and a picture is never kept hidden longer than PICTURE_MAX_MS.
+  const PICTURE_MAX_MS = 4000;
+  let pictureBox = null;
+
   function hidePicture(v, s) {
     if (s.pictureHidden) return;
+    try {
+      document.querySelectorAll('video').forEach((o) => {
+        if (o !== v) showPicture(state(o), true);
+      });
+    } catch (err) { /* ignore */ }
     s.pictureHidden = true;
-    s.pictureGen = (s.pictureGen || 0) + 1;
+    const gen = s.pictureGen = (s.pictureGen || 0) + 1;
     s.pictureEl = v;
     s.pictureAt = Date.now();
     s.pictureOpacity = v.style.getPropertyValue('opacity');
@@ -112,13 +123,20 @@
       const host = v.parentElement;
       if (host) {
         if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
-        box = s.pictureBox || document.createElement('div');
+        box = pictureBox || document.createElement('div');
+        box.className = '__fermata_warm_box';
         box.style.cssText = 'position:absolute;left:0;top:0;right:0;bottom:0;background:#000;opacity:1;' +
           'pointer-events:none;z-index:2147483647;transition:none';
         if (box.parentElement !== host) host.appendChild(box);
-        s.pictureBox = box;
+        pictureBox = box;
       }
     } catch (err) { /* no box, the opacity still applies */ }
+    setTimeout(() => {
+      if (s.pictureHidden && (s.pictureGen === gen)) {
+        trace('start picture shown by the failsafe');
+        showPicture(s);
+      }
+    }, PICTURE_MAX_MS);
     try {
       v.dispatchEvent(new Event('fermatapicturehidden'));
     } catch (err) { /* ignore */ }
@@ -128,7 +146,9 @@
     } catch (err) { /* ignore */ }
   }
 
-  function showPicture(s) {
+  // quiet: another element is starting (see hidePicture), so no trace and no 'fermatapictureshown' (it would lift the
+  // fullscreen cover the new start needs).
+  function showPicture(s, quiet) {
     const v = s.pictureEl;
     if (!s.pictureHidden || !v) return;
     s.pictureHidden = false;
@@ -136,16 +156,19 @@
     v.style.setProperty('transition', 'opacity 0.25s ease-out', 'important');
     if (s.pictureOpacity) v.style.setProperty('opacity', s.pictureOpacity);
     else v.style.removeProperty('opacity');
-    const box = s.pictureBox;
+    setTimeout(() => {
+      if (!s.pictureHidden) v.style.removeProperty('transition');
+    }, 400);
+    if (quiet) return;
+    const box = pictureBox;
     if (box) {
       box.style.transition = 'opacity 0.25s ease-out';
       box.style.opacity = '0';
+      setTimeout(() => {
+        if ((box.style.opacity === '0') && box.parentElement) box.parentElement.removeChild(box);
+        if ((pictureBox === box) && !box.parentElement) pictureBox = null;
+      }, 400);
     }
-    setTimeout(() => {
-      if (s.pictureHidden) return;
-      v.style.removeProperty('transition');
-      if (box && box.parentElement) box.parentElement.removeChild(box);
-    }, 400);
     trace('start picture shown after ' + (Date.now() - (s.pictureAt || Date.now())) + 'ms t=' + v.currentTime.toFixed(2));
     try {
       v.dispatchEvent(new Event('fermatapictureshown'));

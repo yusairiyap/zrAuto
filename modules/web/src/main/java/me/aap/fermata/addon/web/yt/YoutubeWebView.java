@@ -723,7 +723,14 @@ public class YoutubeWebView extends FermataWebView {
 				"      e.stopImmediatePropagation();\n" +
 				// A real 'ended': the stuck-at-the-end check (endCheck in attachListeners()) stands down.
 				"      e.target.__fermataEndGen = (e.target.__fermataEndGen || 0) + 1;\n" +
-				"      " + JS_EVENT + "(" + JS_VIDEO_ENDED + ", null);\n" +
+				// Ended well before the song's length (YouTube's player still knows it when the stream was cut short, seen
+				// signed out: "ended" ~30 s into a 3 min song): reported as early, so the app resumes it there (endedEarly).
+				"      var ev = e.target, et = ev.currentTime, ed = ev.duration, pd = 0;\n" +
+				"      try { var ep = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
+				"        if (ep && ep.getDuration) pd = ep.getDuration(); } catch (x) {}\n" +
+				"      var len = (pd > 0) ? pd : ed;\n" +
+				"      var early = !window.__fermataAdShowing && isFinite(len) && (len > 30) && (et < len - 10);\n" +
+				"      " + JS_EVENT + "(" + JS_VIDEO_ENDED + ", early ? ('early:' + et.toFixed(1) + '/' + len.toFixed(1)) : null);\n" +
 				"    }\n" +
 				"  }, true);\n" +
 				"}\n";

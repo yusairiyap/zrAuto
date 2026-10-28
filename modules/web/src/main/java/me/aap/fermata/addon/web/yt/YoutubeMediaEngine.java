@@ -681,6 +681,54 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 * this very track, see prepare()). A navigation to the video the page is already on does
 	 * nothing at all, which left music mode's Repeat One stuck on the ended video.
 	 */
+	// See endedEarly(): which video was resumed, and how often.
+	@Nullable
+	private String earlyEndId;
+	private int earlyEndResumes;
+
+	/**
+	 * The page's video fired "ended" well before the song's length ({@code data} = "time/length", see
+	 * YoutubeWebView#interceptEndedJs): YouTube cut the stream short (seen signed out, ~30 s into a song). It is
+	 * loaded again where it stopped, at most twice per video; after that, or when it cannot be, it counts as ended.
+	 */
+	void endedEarly(String data) {
+		String id = currentVideoId;
+		double at = 0;
+		try {
+			at = Double.parseDouble(data.substring(0, data.indexOf('/')));
+		} catch (RuntimeException ignore) {
+		}
+		if ((id == null) || (at <= 0)) {
+			ended();
+			return;
+		}
+		if (!id.equals(earlyEndId)) {
+			earlyEndId = id;
+			earlyEndResumes = 0;
+		}
+		if (++earlyEndResumes > 2) {
+			DiagnosticLog.log("YT", "video ended early again: going on", "id=" + id, "at=" + data);
+			ended();
+			return;
+		}
+		DiagnosticLog.log("YT", "video ended early: resuming", "id=" + id, "at=" + data, "try=" + earlyEndResumes);
+		lastActivePlayTime = System.currentTimeMillis();
+		lastPausedTime = 0;
+		playRetries = 0;
+		web.getAddon().setPendingVideoId(id);
+		pendingCorrections = 0;
+		String js = "(function() { var p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
+				"  if (!p || !p.loadVideoById) return false;\n" +
+				"  p.loadVideoById({videoId: '" + id.replace("'", "") + "', startSeconds: " + at + "});\n" +
+				"  return true; })()";
+		web.evaluateJavascript(js, r -> {
+			if (!"true".equals(r)) {
+				DiagnosticLog.log("YT", "video ended early: no player to resume in", "id=" + id);
+				ended();
+			}
+		});
+	}
+
 	private void replayCurrent() {
 		lastActivePlayTime = System.currentTimeMillis();
 		lastPausedTime = 0;

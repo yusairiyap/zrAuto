@@ -1219,6 +1219,10 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   button at 0:00 only ~30 s in (paused by the page, no `ended`, no end-check line), and stayed there. When the check finds no end it now
   writes `YT media end check: not the end, ps=.. t=.. paused=.. ready=.. lastSecondsAgo=.. sameVideo=..` (or `an ad is showing`): ask for
   that line to see what the player reported.
+  **A song YouTube ends early is resumed** (seen signed out / Private Mode, Oct 29: the page's own `ended` ~31 s into a 3 min song, likely a stream
+  YouTube cut short): `interceptEndedJs` reports `early:t/len` when the player's `getDuration()` says more than 10 s were left, and
+  `YoutubeMediaEngine#endedEarly` loads the same video again at that time (`loadVideoById` with `startSeconds`), at most twice per video, then
+  goes on as for a real end. Log: `YT video ended early: resuming at=..`. Not run on a device.
 - **YouTube's "Continue watching?" prompt is answered** (`YoutubeWebView#hideAppPromoBanners`): `ytm-you-there-renderer` used to be only
   hidden, so YouTube paused under an invisible question (in the background, after a while with no touch on the page), and the pause retry
   then toasted "Window too small" at full size. Its button is pressed now (`YT media you-there prompt answered:` in the log), `_lact` is
@@ -1570,6 +1574,9 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
      A video tapped on the page goes fullscreen ~250 ms into its warm-up, and in fullscreen the video is drawn outside the page (neither the
      box nor the opacity reaches it), so `hidePicture` also fires `fermatapicturehidden` -> `JS_PICTURE_HIDDEN` -> `YoutubeMediaEngine#pictureHidden`,
      which puts the fullscreen cover up (retried for 1 s while fullscreen comes up; `YT warm-up cover up`) unless a switch's cover already is.
+     The box is one for the whole page (`pictureBox`, moved to the new video's container): a navigation can start a load on one `<video>` and go on in
+     another, and a per-element box was left over the new video (video mode blank, sound playing). Any other element still hidden is shown again
+     (quietly) when one starts, and nothing stays hidden past `PICTURE_MAX_MS` (4 s, `start picture shown by the failsafe`).
      To take it out: the setting, or the `warm` lines in `startFade`, the pref, its two strings and the `warmup` in both `configure` calls.
    - Diagnostic lines to ask for: `YT media` (playing / waiting / seeking / `start fade:` / `start clock per 100 ms:`), `STATE start load`,
      `YT seek while starting`.
