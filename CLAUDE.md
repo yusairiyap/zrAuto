@@ -1324,6 +1324,10 @@ How to test, Checklist, Related issues, Screenshots; modelled on the gitmore.io 
 - Follow the template's headings; delete a section only if it truly does not apply. Say plainly what was not
   run (this cloud session cannot run the app) rather than ticking "verified on a device".
 
+## On hold: Sleep addon
+
+The user paused the Sleep addon. The full plan and decisions are in `docs/SLEEP_ADDON_PLAN.md`; do not start it unless asked.
+
 ## When in doubt, ask
 
 This is someone's personal Android project (not a work codebase) with real users on the release
