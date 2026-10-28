@@ -137,6 +137,9 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 
 	// The header's parts that change.
 	private LinearLayout header;
+	@Nullable
+	private LinearLayout sticky;
+	private View spacer;
 	private TextView countView;
 	private TextView recordingSub;
 	private SwitchCompat recordingSwitch;
@@ -197,6 +200,17 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		header = buildHeader();
 
 		FloatingActionButton top = view.findViewById(R.id.diagnostic_log_top);
+		sticky = buildSticky();
+		FrameLayout.LayoutParams stlp = new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.TOP);
+		stlp.setMargins(dp(12), 0, dp(12), 0);
+		((FrameLayout) view).addView(sticky, stlp);
+		// The header's room for it follows its height (the buttons wrap on a narrow screen).
+		sticky.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+			if ((b - t) == (ob - ot) || (spacer == null)) return;
+			ViewGroup.LayoutParams sl = spacer.getLayoutParams();
+			sl.height = (b - t) + dp(10);
+			spacer.setLayoutParams(sl);
+		});
 		selectBar = buildSelectBar();
 		FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT,
 				Gravity.BOTTOM | Gravity.START);
@@ -217,6 +231,20 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 			preDraw = () -> {
 				float dy = -(rv.getPaddingBottom() + lift) + a.getFloatingButton().getTranslationY();
 				if (top.getTranslationY() != dy) top.setTranslationY(dy);
+				// The buttons and search stay under the tool bar, and rise to the status bar with it when it slides away.
+				if (sticky != null) {
+					float rest = rv.getPaddingTop() + dp(4);
+					float ty = rest;
+					me.aap.utils.ui.view.ToolBarView tb = a.getToolBar();
+					me.aap.fermata.ui.activity.ScrollBarsController sbc = a.getScrollBars();
+					float hiddenBar = ((tb == null) || (tb.getVisibility() != View.VISIBLE)) ? 1f :
+							(sbc != null) ? Math.max(0f, Math.min(1f, sbc.getToolBarHidden())) : 0f;
+					if (hiddenBar > 0f) {
+						float topLimit = Math.min(rest, statusBarBottom(rv) + dp(4));
+						ty = rest + (topLimit - rest) * hiddenBar;
+					}
+					if (sticky.getTranslationY() != ty) sticky.setTranslationY(ty);
+				}
 				// The picking bar sits just above the bottom bars, clear of the back button's column.
 				float sy = -rv.getPaddingBottom();
 				if ((selectBar != null) && (selectBar.getTranslationY() != sy)) selectBar.setTranslationY(sy);
@@ -279,11 +307,24 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		list = null;
 		selectBar = null;
 		selectCount = null;
+		sticky = null;
+		spacer = null;
 		header = null;
 		searchEdit = null;
 		lastCount = -1;
 		lastEntry = null;
 		super.onDestroyView();
+	}
+
+	/** How far down the status bar (and a cut-out) reaches, in {@code v}'s own coordinates. */
+	private static float statusBarBottom(View v) {
+		androidx.core.view.WindowInsetsCompat i = androidx.core.view.ViewCompat.getRootWindowInsets(v);
+		if (i == null) return 0f;
+		int top = i.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() |
+				androidx.core.view.WindowInsetsCompat.Type.displayCutout()).top;
+		int[] loc = new int[2];
+		v.getLocationOnScreen(loc);
+		return Math.max(0, top - loc[1]);
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -419,17 +460,9 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		card.addView(prefSwitch(R.string.debug_log_menu, R.string.debug_log_menu_sub, MainActivityPrefs.DEBUG_LOG_MENU));
 		h.addView(card, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
-		// The buttons.
-		ChipFlowLayout actions = new ChipFlowLayout(palette);
-		actions.addView(ChipFlowLayout.chip(palette, R.drawable.copy, R.string.diagnostic_log_copy, true, this::copy));
-		actions.addView(ChipFlowLayout.chip(palette, R.drawable.share, R.string.diagnostic_log_share, false, this::share));
-		actions.addView(ChipFlowLayout.chip(palette, R.drawable.refresh, R.string.diagnostic_log_refresh, false,
-				() -> refresh(true)));
-		actions.addView(ChipFlowLayout.chip(palette, R.drawable.delete, R.string.diagnostic_log_clear, false, this::clear));
-		addBlock(h, actions, 12);
-
-		// Search (not on the car screen, where there is no keyboard).
-		if (!getActivityDelegate().isCarActivity()) addBlock(h, buildSearch(), 12);
+		// Room at the top for the buttons and the search box, which float over the list (buildSticky) and stay put.
+		spacer = new View(palette);
+		h.addView(spacer, 0, new LinearLayout.LayoutParams(MATCH_PARENT, dp(112)));
 
 		// Level.
 		section(h, R.string.diag_section_level);
@@ -512,6 +545,33 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		row.addView(sw);
 		row.setOnClickListener(v -> sw.toggle());
 		return row;
+	}
+
+	/**
+	 * The buttons and the search box: one card over the list, so they stay in reach however far the log is scrolled, and
+	 * the search box keeps the keyboard while the list under it changes.
+	 */
+	private LinearLayout buildSticky() {
+		LinearLayout bar = new LinearLayout(palette);
+		bar.setOrientation(LinearLayout.VERTICAL);
+		bar.setPadding(dp(10), dp(8), dp(10), dp(8));
+		GradientDrawable bg = rounded(ColorUtils.setAlphaComponent(MenuStyle.panelColor(palette), 0xF2), 22);
+		bar.setBackground(bg);
+		bar.setElevation(dp(6));
+		ChipFlowLayout actions = new ChipFlowLayout(palette);
+		actions.addView(ChipFlowLayout.chip(palette, R.drawable.copy, R.string.diagnostic_log_copy, true, this::copy));
+		actions.addView(ChipFlowLayout.chip(palette, R.drawable.share, R.string.diagnostic_log_share, false, this::share));
+		actions.addView(ChipFlowLayout.chip(palette, R.drawable.refresh, R.string.diagnostic_log_refresh, false,
+				() -> refresh(true)));
+		actions.addView(ChipFlowLayout.chip(palette, R.drawable.delete, R.string.diagnostic_log_clear, false, this::clear));
+		bar.addView(actions, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		// Not on the car screen, where there is no keyboard.
+		if (!getActivityDelegate().isCarActivity()) {
+			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+			lp.topMargin = dp(8);
+			bar.addView(buildSearch(), lp);
+		}
+		return bar;
 	}
 
 	private View buildSearch() {
