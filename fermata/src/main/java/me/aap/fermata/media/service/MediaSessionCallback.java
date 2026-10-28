@@ -1527,6 +1527,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			// than moving on to the next track.
 			playbackTimerWaitingForTrackEnd = false;
 			playbackTimerFinishTrack = false;
+			DiagnosticLog.log("TIMER", "song ended: playback stopped", "item=" + engine.getSource());
 			PlayableItem i = engine.getSource();
 			if (i != null) setLastPlayed(i, 0);
 			playerTask = onStop(false);
@@ -2408,6 +2409,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	private void fadeOutAndPause() {
 		MediaEngine eng = getEngine();
 		if ((eng == null) || !isPlaying()) {
+			DiagnosticLog.log("TIMER", "stopped (nothing was playing)");
 			onStop(true);
 			return;
 		}
@@ -2415,7 +2417,12 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		eng.fadeOut(TIMER_FADE_MS, () -> {
 			if (timerFadeEngine != eng) return;
 			timerFadeEngine = null;
-			if (getEngine() == eng) doPause();
+			if (getEngine() == eng) {
+				DiagnosticLog.log("TIMER", "paused playback", "item=" + playingItemName());
+				doPause();
+			} else {
+				DiagnosticLog.log("TIMER", "fade done, but another player took over: nothing paused");
+			}
 		});
 	}
 
@@ -2465,8 +2472,11 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		}
 
 		if (time == 0) {
+			if (playbackTimer != null) DiagnosticLog.log("TIMER", "cancelled", "left=" + getPlaybackTimer() + "s");
 			playbackTimer = null;
 		} else {
+			DiagnosticLog.log("TIMER", "set", "min=" + (time / 60.0f), "finishTrack=" + playbackTimerFinishTrack,
+					"item=" + playingItemName());
 			int delay = time * 1000;
 			PlaybackTimer timer =
 					this.playbackTimer = new PlaybackTimer(delay + System.currentTimeMillis());
@@ -2474,6 +2484,13 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		}
 
 		fireBroadcastEvent(l -> l.onPlaybackTimerChanged(this));
+	}
+
+	/** The playing item, for the TIMER lines of the Diagnostic log. */
+	private String playingItemName() {
+		MediaEngine eng = getEngine();
+		PlayableItem i = (eng == null) ? null : eng.getSource();
+		return (i == null) ? "none" : String.valueOf(i);
 	}
 
 	public void cancelPlaybackTimer() {
@@ -2493,8 +2510,10 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			playbackTimer = null;
 
 			if (playbackTimerFinishTrack && isPlaying()) {
+				DiagnosticLog.log("TIMER", "ran out: waiting for the song to end", "item=" + playingItemName());
 				playbackTimerWaitingForTrackEnd = true;
 			} else {
+				DiagnosticLog.log("TIMER", "ran out: fading out", "playing=" + isPlaying(), "item=" + playingItemName());
 				playbackTimerFinishTrack = false;
 				fadeOutAndPause();
 			}
