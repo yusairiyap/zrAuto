@@ -47,7 +47,7 @@
   // sound output starting: in the first half second the song's clock stalls ~100 ms and then jumps to catch up
   // (or just jumps ahead). A seek was never heard to stutter (the output is already running then), so the hiccup
   // happens while the song is still silent. The cost: each song is heard about WARM_S later.
-  const cfg = {endingEvent: 0, warmup: true};
+  const cfg = {endingEvent: 0, warmup: true, audioOnly: false};
   const WARM_S = 0.6;
   // The first song of a freshly loaded page (a YouTube song after a local one, the first after an app start) warms up longer:
   // there the sound output was still settling just after a 0.6 s warm-up (its reported latency changed between the
@@ -90,98 +90,12 @@
     }
   }
 
-  // The picture is hidden while a new video warms up (see startFade): it played its first moment and then visibly jumped
-  // back to the start. Shown again, faded in, once the jump back is done; whatever ends the start shows it too (clearTimers).
-  // 'important', so a style YouTube's player writes meanwhile does not bring it back. In fullscreen the app's black cover
-  // is what hides it: the page's 'playing' does not lift that cover while __fermataWarming is set, and showing the picture
-  // sends 'fermatapictureshown', which lifts it (YoutubeWebView#attachListeners).
-  // One box for the whole page, not one per element: a navigation can start a load on one <video> and then go on in
-  // another, and the first one's box was left over the new video (a blank picture with the sound playing). Any element
-  // still hidden when another one starts is shown again, and a picture is never kept hidden longer than PICTURE_MAX_MS.
-  const PICTURE_MAX_MS = 4000;
-  let pictureBox = null;
-
-  function hidePicture(v, s) {
-    if (s.pictureHidden) return;
-    try {
-      document.querySelectorAll('video').forEach((o) => {
-        if (o !== v) showPicture(state(o), true);
-      });
-    } catch (err) { /* ignore */ }
-    s.pictureHidden = true;
-    const gen = s.pictureGen = (s.pictureGen || 0) + 1;
-    s.pictureEl = v;
-    s.pictureAt = Date.now();
-    s.pictureOpacity = v.style.getPropertyValue('opacity');
-    v.__fermataWarming = true;
-    v.style.setProperty('transition', 'none', 'important');
-    v.style.setProperty('opacity', '0', 'important');
-    // A black box over the video too: the opacity alone did not hide it on the page (Oct 29: the start was still
-    // seen playing and jumping back after a tap on a video). The box is in the video's own container, over it.
-    let box = null;
-    try {
-      const host = v.parentElement;
-      if (host) {
-        if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
-        box = pictureBox || document.createElement('div');
-        box.className = '__fermata_warm_box';
-        box.style.cssText = 'position:absolute;left:0;top:0;right:0;bottom:0;background:#000;opacity:1;' +
-          'pointer-events:none;z-index:2147483647;transition:none';
-        if (box.parentElement !== host) host.appendChild(box);
-        pictureBox = box;
-      }
-    } catch (err) { /* no box, the opacity still applies */ }
-    setTimeout(() => {
-      if (s.pictureHidden && (s.pictureGen === gen)) {
-        trace('start picture shown by the failsafe');
-        showPicture(s);
-      }
-    }, PICTURE_MAX_MS);
-    try {
-      v.dispatchEvent(new Event('fermatapicturehidden'));
-    } catch (err) { /* ignore */ }
-    try {
-      trace('start picture hidden: opacity=' + getComputedStyle(v).opacity + ' box=' + (box ? 'yes' : 'no') +
-        ' videos=' + document.querySelectorAll('video').length);
-    } catch (err) { /* ignore */ }
-  }
-
-  // quiet: another element is starting (see hidePicture), so no trace and no 'fermatapictureshown' (it would lift the
-  // fullscreen cover the new start needs).
-  function showPicture(s, quiet) {
-    const v = s.pictureEl;
-    if (!s.pictureHidden || !v) return;
-    s.pictureHidden = false;
-    v.__fermataWarming = false;
-    v.style.setProperty('transition', 'opacity 0.25s ease-out', 'important');
-    if (s.pictureOpacity) v.style.setProperty('opacity', s.pictureOpacity);
-    else v.style.removeProperty('opacity');
-    setTimeout(() => {
-      if (!s.pictureHidden) v.style.removeProperty('transition');
-    }, 400);
-    if (quiet) return;
-    const box = pictureBox;
-    if (box) {
-      box.style.transition = 'opacity 0.25s ease-out';
-      box.style.opacity = '0';
-      setTimeout(() => {
-        if ((box.style.opacity === '0') && box.parentElement) box.parentElement.removeChild(box);
-        if ((pictureBox === box) && !box.parentElement) pictureBox = null;
-      }, 400);
-    }
-    trace('start picture shown after ' + (Date.now() - (s.pictureAt || Date.now())) + 'ms t=' + v.currentTime.toFixed(2));
-    try {
-      v.dispatchEvent(new Event('fermatapictureshown'));
-    } catch (err) { /* ignore */ }
-  }
-
   function clearTimers(s) {
     if (s.timer) {
       clearInterval(s.timer);
       s.timer = 0;
     }
     s.startStep = null;
-    showPicture(s);
     if (s.doneTimer) {
       clearTimeout(s.doneTimer);
       s.doneTimer = 0;
@@ -326,12 +240,13 @@
     const s = state(v);
     clearTimers(s);
     s.pausing = false;
-    // A hidden page (the Music tab playing YouTube, the screen off) gets the warm-up too: the stutter is the sound output
-    // starting, which happens all the same. Its steps are also driven by 'timeupdate' (below), so a page whose timers are
-    // held back still leaves the silent part.
+    // Only while the video is not watched: a hidden page (the Music tab playing YouTube, the screen off) or music mode
+    // (cfg.audioOnly, set by the app). That is where the stutter was heard (never in fullscreen video), and a watched
+    // video would show its first moment playing and jumping back, which no way of hiding the picture covered reliably.
+    // Its steps are also driven by 'timeupdate' (below), so a page whose timers are held back still leaves the silent part.
     const hidden = pageHidden();
     // -1: no warm-up; 0: warming up (silent); 1: done (went back to the start).
-    let warm = (cfg.warmup && !isAd()) ? 0 : -1;
+    let warm = (cfg.warmup && (hidden || cfg.audioOnly) && !isAd()) ? 0 : -1;
     let warmS = WARM_S;
     if (warm === 0) {
       if (pageFirstStart) warmS = WARM_FIRST_S;
@@ -354,7 +269,6 @@
     };
     let startAt = 0;
     ramp(v, (warm === 0) ? 0 : START_LEVEL, 0);
-    if (warm === 0) hidePicture(v, s);
     let t0 = -1;
     let pausedSince = 0;
     // How evenly the fade ran: a page busy starting the video delays these 10 ms ticks, and the level then
@@ -396,7 +310,6 @@
             startAt = 0;
           } else {
             warm = -1;
-            showPicture(s);
             trace('start warm-up skipped: began at ' + t.toFixed(2));
             if (p) return; // the gain branch above fades it in on the next step
           }
@@ -409,13 +322,6 @@
           (hidden ? ' (page hidden)' : ''));
         // Marked so the 'waiting' this seek may cause is not reported as buffering (YoutubeWebView#attachListeners).
         v.__fermataWarmSeekAt = Date.now();
-        // Only this start's picture: a song skipped meanwhile has hidden its own.
-        const gen = s.pictureGen;
-        const show = () => {
-          if (s.pictureGen === gen) showPicture(s);
-        };
-        v.addEventListener('seeked', show, {once: true});
-        setTimeout(show, 1500); // no 'seeked' (element replaced, seek refused)
         try {
           v.currentTime = startAt;
         } catch (err) { /* element gone */ }

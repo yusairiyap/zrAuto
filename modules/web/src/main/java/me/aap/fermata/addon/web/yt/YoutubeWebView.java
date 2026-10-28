@@ -5,7 +5,6 @@ import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_AUDIO_TRACE;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_AD_SHOWING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_CONTENT_PLAYING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_ERR;
-import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_PICTURE_HIDDEN;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_EVENT;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_SKIP_PREV_NEXT;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_USER_PICKED_VIDEO;
@@ -246,7 +245,13 @@ public class YoutubeWebView extends FermataWebView {
 
 	private String fadeConfigJs() {
 		return "if (window.FermataFade) window.FermataFade.configure({endingEvent: " + JS_VIDEO_ENDING +
-				", warmup: " + getAddon().startWarmup() + "});";
+				", warmup: " + getAddon().startWarmup() + ", audioOnly: " + MusicPlayer.isYoutubeAudioMode() + "});";
+	}
+
+	/** Music mode on or off: the page warms a new song up only while its video is not watched (youtube_fade.js startFade). */
+	void syncFadeAudioOnly() {
+		evaluateJavascript("if (window.FermataFade) window.FermataFade.configure({audioOnly: " +
+				MusicPlayer.isYoutubeAudioMode() + "});", null);
 	}
 
 	@Override
@@ -515,22 +520,14 @@ public class YoutubeWebView extends FermataWebView {
 				"  v.style.objectFit = '" + scale + "';\n" + debug +
 				"  if ((v.currentTime > 0) && !v.paused && !v.ended) {\n" +
 				"    if (typeof fermataAdCheck === 'function') fermataAdCheck();\n" +
-				"    if (!window.__fermataAdShowing && !v.__fermataWarming) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
+				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
 				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", fermataCurrentVideoId() + '|' + " +
 				"(fermataRecentLinkClick() ? '1' : '0') + '|' + fermataCurrentVideoTitle() + '|' + " +
 				"fermataCurrentVideoAuthor() + '|' + v.currentSrc);\n" +
 				"  }\n" +
-				// While a new song warms up silently (youtube_fade.js) its 'playing' leaves the fullscreen cover
-				// up: under it the first moment plays and jumps back to the start. The picture coming back lifts it.
-				"  v.addEventListener('fermatapicturehidden', function(e) {\n" +
-				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_PICTURE_HIDDEN + ", null);\n" +
-				"  });\n" +
-				"  v.addEventListener('fermatapictureshown', function(e) {\n" +
-				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
-				"  });\n" +
 				"  v.addEventListener('playing', function(e) {\n" +
 				"    if (typeof fermataAdCheck === 'function') fermataAdCheck();\n" +
-				"    if (!window.__fermataAdShowing && !v.__fermataWarming) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
+				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
 				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", fermataCurrentVideoId() + '|' + " +
 				"(fermataRecentLinkClick() ? '1' : '0') + '|' + fermataCurrentVideoTitle() + '|' + " +
 				"fermataCurrentVideoAuthor() + '|' + v.currentSrc);\n" +
@@ -582,9 +579,14 @@ public class YoutubeWebView extends FermataWebView {
 				"    }, 2000);\n" +
 				"  };\n" +
 				// When the song was last seen in its last 5 s (see endCheck: a pause right after, back at 0:00, is its end).
+				// Never an ad's last seconds (Oct 29: a 6 s ad ended, the song started at 0:00 and was taken for its end):
+				// not while an ad shows (the app's flag or the player's own ad classes), nor for anything under 30 s.
 				"  v.addEventListener('timeupdate', function() {\n" +
 				"    var l = v.duration - v.currentTime;\n" +
-				"    if (isFinite(l) && (l >= 0) && (l <= 5) && !v.paused) {\n" +
+				"    var mp = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
+				"    var ad = window.__fermataAdShowing || (mp && mp.classList && (mp.classList.contains('ad-showing') ||" +
+				" mp.classList.contains('ad-interrupting')));\n" +
+				"    if (!ad && (v.duration >= 30) && isFinite(l) && (l >= 0) && (l <= 5) && !v.paused) {\n" +
 				"      v.__fermataNearEndAt = Date.now();\n" +
 				"      v.__fermataNearEndId = fermataCurrentVideoId();\n" +
 				"    }\n" +
@@ -729,7 +731,8 @@ public class YoutubeWebView extends FermataWebView {
 				"      try { var ep = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
 				"        if (ep && ep.getDuration) pd = ep.getDuration(); } catch (x) {}\n" +
 				"      var len = (pd > 0) ? pd : ed;\n" +
-				"      var early = !window.__fermataAdShowing && isFinite(len) && (len > 30) && (et < len - 10);\n" +
+				"      var ead = ep && ep.classList && (ep.classList.contains('ad-showing') || ep.classList.contains('ad-interrupting'));\n" +
+				"      var early = !window.__fermataAdShowing && !ead && isFinite(len) && (len > 30) && (et < len - 10);\n" +
 				"      " + JS_EVENT + "(" + JS_VIDEO_ENDED + ", early ? ('early:' + et.toFixed(1) + '/' + len.toFixed(1)) : null);\n" +
 				"    }\n" +
 				"  }, true);\n" +
@@ -1558,6 +1561,7 @@ public class YoutubeWebView extends FermataWebView {
 		// Playing as music (the page isn't looked at): the player swaps the video itself, see
 		// navigateToVideoJs().
 		boolean inPlayer = MusicPlayer.isYoutubeAudioMode();
+		syncFadeAudioOnly();
 		evaluateJavascript(navigateToVideoJs(videoId, fromStart, inPlayer), result -> {
 			me.aap.fermata.util.DiagnosticLog.log("YT", "switch", "id=" + videoId,
 					"\"swap\"".equals(result) ? "in the player" : "true".equals(result) ? "page navigation" :

@@ -211,13 +211,6 @@ public class YoutubeVideoView extends VideoView {
 		transitionSpinner.setLoading(true);
 	}
 
-	/** The cover stays (if up) but its spinner goes: the video is already playing under it. */
-	void quietCoverSpinner() {
-		if (transitionSpinner == null) return;
-		transitionSpinner.removeCallbacks(showSpinnerTask);
-		transitionSpinner.setLoading(false);
-	}
-
 	/** See {@code YoutubeMediaEngine#adEnded()}/{@code #contentPlaying()}. */
 	void hideTransitionOverlay() {
 		if (transitionOverlay == null) return;

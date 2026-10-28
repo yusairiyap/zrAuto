@@ -1219,6 +1219,8 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
   button at 0:00 only ~30 s in (paused by the page, no `ended`, no end-check line), and stayed there. When the check finds no end it now
   writes `YT media end check: not the end, ps=.. t=.. paused=.. ready=.. lastSecondsAgo=.. sameVideo=..` (or `an ad is showing`): ask for
   that line to see what the player reported.
+  **An ad's last seconds never count** for the `stuck:reset` memory (`__fermataAdShowing` or the player's `ad-showing` / `ad-interrupting`
+  class, and nothing under 30 s): a 6 s ad ended, the song began at 0:00 and was taken for its end (skipped right after the ad).
   **A song YouTube ends early is resumed** (seen signed out / Private Mode, Oct 29: the page's own `ended` ~31 s into a 3 min song, likely a stream
   YouTube cut short): `interceptEndedJs` reports `early:t/len` when the player's `getDuration()` says more than 10 s were left, and
   `YoutubeMediaEngine#endedEarly` loads the same video again at that time (`loadVideoById` with `startSeconds`), at most twice per video, then
@@ -1560,23 +1562,12 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
      A hidden page (the Music tab playing YouTube) used to skip `startFade` altogether (no warm-up, no fade); it now warms up too
      (`(page hidden)` on the trace line), its steps also driven from `timeupdate` in case the page's timers are held back, and the
      effects path's gain curves run whatever the page's visibility (they are sample-accurate in the audio renderer).
-     The picture is hidden during the warm-up (`hidePicture`, the `<video>`'s opacity 0) and faded in on the jump back's `seeked`
-     (`showPicture`, also from `clearTimers` and a 1.5 s fallback): in fullscreen video the first 0.6 s was seen playing and jumping back.
-     That alone did not hide it in fullscreen: there the app's black transition cover came down on the page's first `playing`, the start of
-     the warm-up. Now `playing` leaves the cover up while `v.__fermataWarming` is set, and `showPicture` fires `fermatapictureshown` on the
-     element, whose listener (`YoutubeWebView#attachListeners`) sends `JS_CONTENT_PLAYING` to lift it.
-     The cover's own spinner is stopped once the page plays (`YoutubeVideoView#quietCoverSpinner` from `YoutubeMediaEngine#playing`, not during an ad):
-     held through the warm-up, it showed behind the controls' pause button. A switch through YouTube's router ("page navigation") warms up
-     for 1 s like a fresh page (`FermataFade.longWarm`, called from `YoutubeWebView#loadVideo`): after 0.6 s there the clock jumped ~57 ms 0.5 s after the jump back.
-     On the page itself the opacity alone did not hide the start (a tapped video still showed it playing and jumping back), so `hidePicture` also puts a
-     black box (`s.pictureBox`) over the video in its own container, faded out with it. `YT media start picture hidden: opacity=.. box=.. videos=..` and
-     `start picture shown after ..ms` say what happened.
-     A video tapped on the page goes fullscreen ~250 ms into its warm-up, and in fullscreen the video is drawn outside the page (neither the
-     box nor the opacity reaches it), so `hidePicture` also fires `fermatapicturehidden` -> `JS_PICTURE_HIDDEN` -> `YoutubeMediaEngine#pictureHidden`,
-     which puts the fullscreen cover up (retried for 1 s while fullscreen comes up; `YT warm-up cover up`) unless a switch's cover already is.
-     The box is one for the whole page (`pictureBox`, moved to the new video's container): a navigation can start a load on one `<video>` and go on in
-     another, and a per-element box was left over the new video (video mode blank, sound playing). Any other element still hidden is shown again
-     (quietly) when one starts, and nothing stays hidden past `PICTURE_MAX_MS` (4 s, `start picture shown by the failsafe`).
+     **Only while the video is not watched** (`startFade`: `pageHidden()` or `cfg.audioOnly`, music mode, sent by `fadeConfigJs` and
+     `YoutubeWebView#syncFadeAudioOnly` from `loadVideo` and `YoutubeMediaEngine#applyQuality`): the stutter was only ever heard there, and a
+     watched video showed its first moment playing and jumping back. Hiding the picture was tried five ways and dropped (the `<video>`'s opacity,
+     a black box in its container, the fullscreen cover held through the warm-up and lifted by page events, asked for again when a tapped video went
+     fullscreen, a failsafe): in fullscreen the video is drawn outside the page, and the start still showed. **Do not try hiding the picture again.**
+     A switch through YouTube's router ("page navigation") warms up for 1 s like a fresh page (`FermataFade.longWarm`, from `YoutubeWebView#loadVideo`).
      To take it out: the setting, or the `warm` lines in `startFade`, the pref, its two strings and the `warmup` in both `configure` calls.
    - Diagnostic lines to ask for: `YT media` (playing / waiting / seeking / `start fade:` / `start clock per 100 ms:`), `STATE start load`,
      `YT seek while starting`.
