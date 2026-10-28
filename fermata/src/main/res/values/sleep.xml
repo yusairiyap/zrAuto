@@ -159,4 +159,56 @@
     <string name="sleep_from_sound">Estimated from the room\'s sound, the screen and your taps</string>
     <string name="sleep_set_screen">Screen on counts as awake</string>
     <string name="sleep_set_screen_sub">Looking at the phone or tablet in the night marks you awake, which a device that does not move with you could not tell otherwise.</string>
+
+    <!-- Score presets and explanation -->
+    <string name="sleep_score_explain">Every night gets a score out of 100, made of four parts: how long you slept against your goal, how regular your bed and wake times are, how quickly you fell asleep, and how few times you woke. The preset says which of them matters most to you.</string>
+    <string name="sleep_set_preset">What matters most</string>
+    <string name="sleep_set_preset_sub">Pick the one that fits you; the preview above shows what it does</string>
+    <string name="sleep_preset_balanced">Balanced</string>
+    <string name="sleep_preset_long">Long sleep</string>
+    <string name="sleep_preset_routine">Routine</string>
+    <string name="sleep_preset_calm">Unbroken</string>
+    <string name="sleep_preset_balanced_d">Balanced: the length of the night counts most, then regular times, interruptions and falling asleep.</string>
+    <string name="sleep_preset_long_d">Long sleep: for catching up. Sleeping as long as your goal counts most.</string>
+    <string name="sleep_preset_routine_d">Routine: for a steady schedule. Going to bed and waking at the same times counts most.</string>
+    <string name="sleep_preset_calm_d">Unbroken: for light sleepers. Few and short awakenings count most.</string>
+    <string name="sleep_preset_custom_d">Your own mix of the four parts, set below.</string>
+    <string name="sleep_set_advanced">Set the four parts yourself</string>
+    <string name="sleep_set_advanced_sub">Show or hide the sliders for the points each part is worth</string>
+    <string name="sleep_set_w_duration">Sleeping as long as your goal</string>
+    <string name="sleep_set_w_regular">Going to bed and waking at about the same times as the nights before</string>
+    <string name="sleep_set_w_latency">Falling asleep within about 15 minutes of lying down</string>
+    <string name="sleep_set_w_interruptions">Few and short awakenings in the night</string>
+
+    <!-- Automatic recording -->
+    <string name="sleep_set_auto">Record by itself</string>
+    <string name="sleep_set_auto_sub">Starts at your usual bedtime once the screen is off, and ends in the morning when you switch the screen on. No button needed. Needs the Sleep addon on.</string>
+    <string name="sleep_notif_auto">Started by itself at bedtime (%1$s). It ends when you switch the screen on in the morning.</string>
+
+    <!-- The tab: ambience card and help -->
+    <string name="sleep_amb_title">Ambience</string>
+    <string name="sleep_amb_off">Off</string>
+    <string name="sleep_amb_with">Start with the session</string>
+    <string name="sleep_amb_sounds">Sounds</string>
+    <string name="sleep_help">How it works</string>
+    <string name="sleep_set_guide">Show the guide</string>
+    <string name="sleep_set_guide_sub">The short tour of how sleep tracking works</string>
+    <string name="sleep_section_help">Help</string>
+
+    <!-- The guide -->
+    <string name="sleep_guide_skip">Skip</string>
+    <string name="sleep_guide_back">Back</string>
+    <string name="sleep_guide_next">Next</string>
+    <string name="sleep_guide_done">Got it</string>
+    <string name="sleep_guide_asleep">Asleep</string>
+    <string name="sleep_guide_1_title">Phone on the bed, on charge</string>
+    <string name="sleep_guide_1_body">Leave the phone on the mattress next to you, screen down and plugged in. Its motion sensor feels when you turn over. On a tablet on a stand, pick \"On a stand\" in the Sleep settings: it listens to the room instead (never recording sound).</string>
+    <string name="sleep_guide_2_title">Still means asleep</string>
+    <string name="sleep_guide_2_body">The app adds up how much the phone moves every half minute. Quiet stretches are sleep, bigger movements or the screen turning on are being awake. Nothing leaves your phone.</string>
+    <string name="sleep_guide_3_title">One score out of 100</string>
+    <string name="sleep_guide_3_body">The score has four parts: how long you slept, how regular your times are, how fast you fell asleep and how few times you woke. In the Sleep settings pick what matters most to you.</string>
+    <string name="sleep_guide_4_title">Stages and wake-ups</string>
+    <string name="sleep_guide_4_body">Each night is drawn across the screen. Orange is awake, so a wake-up in the middle of the night shows. Deep, light and REM are only an estimate from the shape of the night; drag a finger over the chart to read it.</string>
+    <string name="sleep_guide_5_title">Sounds, and nothing to press</string>
+    <string name="sleep_guide_5_body">It can start by itself at your bedtime and end when you pick up the phone, and play your Ambience mix that fades out. After a few nights the tab tells you whether the sounds help. Change all of it in the Sleep settings.</string>
 </resources>

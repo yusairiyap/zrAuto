@@ -103,7 +103,8 @@ public class SleepService extends Service {
 		return new NotificationCompat.Builder(this, CHANNEL_ID)
 				.setSmallIcon(R.drawable.sleep)
 				.setContentTitle(getString(R.string.sleep_title))
-				.setContentText(getString(R.string.sleep_notif_text, time))
+				.setContentText(SleepTracker.get().isAutoStarted() ? getString(R.string.sleep_notif_auto, time) :
+						getString(R.string.sleep_notif_text, time))
 				.setOngoing(true)
 				.setOnlyAlertOnce(true)
 				.setSilent(true)

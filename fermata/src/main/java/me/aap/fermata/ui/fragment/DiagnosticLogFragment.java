@@ -337,13 +337,26 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 	 *              are what anyone opening or refreshing this wants
 	 */
 	private void refresh(boolean toTop) {
+		refresh(toTop, toTop ? SCROLL_TOP : SCROLL_NONE);
+	}
+
+	/** A search changed the lines: show them where they are, straight under the buttons, scrolling there smoothly. */
+	private void refreshForSearch() {
+		refresh(true, SCROLL_RESULTS);
+	}
+
+	private static final int SCROLL_NONE = 0;
+	private static final int SCROLL_TOP = 1;
+	private static final int SCROLL_RESULTS = 2;
+
+	private void refresh(boolean force, int scroll) {
 		if (list == null) return;
 		all = DiagnosticLog.snapshot();
 		Entry last = all.isEmpty() ? null : all.get(all.size() - 1);
 		boolean same = (all.size() == lastCount) && (last == lastEntry);
 		lastCount = all.size();
 		lastEntry = last;
-		if (same && !toTop) {
+		if (same && !force) {
 			syncHeader();
 			return;
 		}
@@ -354,7 +367,30 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		if (categoriesChanged) buildCategoryChips();
 		syncHeader();
 		adapter.notifyDataSetChanged();
-		if (toTop && (list != null)) list.scrollToPosition(0);
+		if (list == null) return;
+		if (scroll == SCROLL_TOP) list.scrollToPosition(0);
+		else if (scroll == SCROLL_RESULTS) scrollToResults();
+	}
+
+	/** Brings the first line to just under the floating buttons and search box. */
+	private void scrollToResults() {
+		RecyclerView rv = list;
+		if ((rv == null) || !(rv.getLayoutManager() instanceof LinearLayoutManager lm)) return;
+		int offset = ((sticky == null) ? 0 : sticky.getHeight()) + dp(10);
+		androidx.recyclerview.widget.LinearSmoothScroller s = new androidx.recyclerview.widget.LinearSmoothScroller(
+				rv.getContext()) {
+			@Override
+			protected int getVerticalSnapPreference() {
+				return SNAP_TO_START;
+			}
+
+			@Override
+			public int calculateDyToMakeVisible(View view, int snapPreference) {
+				return super.calculateDyToMakeVisible(view, snapPreference) + offset;
+			}
+		};
+		s.setTargetPosition(1);
+		rv.post(() -> lm.startSmoothScroll(s));
 	}
 
 	private void applyFilter() {
@@ -618,7 +654,7 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 				query = s.toString();
 				clear.setVisibility(query.isEmpty() ? View.GONE : View.VISIBLE);
 				if (searchRun != null) handler.removeCallbacks(searchRun);
-				searchRun = () -> refresh(true);
+				searchRun = this::refreshForSearch;
 				handler.postDelayed(searchRun, SEARCH_DELAY_MS);
 			}
 		});

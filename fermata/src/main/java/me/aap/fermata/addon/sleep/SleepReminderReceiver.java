@@ -13,6 +13,8 @@ public class SleepReminderReceiver extends BroadcastReceiver {
 		Context app = ctx.getApplicationContext();
 		if (SleepReminder.ACTION_REMIND.equals(action)) {
 			SleepReminder.remind(app);
+		} else if (SleepReminder.ACTION_AUTO.equals(action)) {
+			SleepReminder.auto(app);
 		} else if (SleepReminder.ACTION_START.equals(action)) {
 			SleepReminder.startFromNotification(app);
 		} else if (Intent.ACTION_BOOT_COMPLETED.equals(action)) {

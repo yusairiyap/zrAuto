@@ -80,11 +80,13 @@ public final class SleepTracker implements SensorEventListener {
 	private boolean screenRegistered;
 	private volatile boolean screenSeen;
 	private boolean standInit;
+	private boolean autoStarted;
 	private float standBase;
 	private final android.content.BroadcastReceiver screenReceiver = new android.content.BroadcastReceiver() {
 		@Override
 		public void onReceive(Context c, android.content.Intent i) {
 			screenSeen = true;
+			if (autoStarted) maybeMorningStop();
 		}
 	};
 	private boolean useNoise;
@@ -206,7 +208,10 @@ public final class SleepTracker implements SensorEventListener {
 			useNoise = (useAccel && (mode == SleepPrefs.MODE_MOVEMENT_SOUND) && mic) || useStand;
 			standInit = false;
 			screenSeen = false;
+			autoStarted = false;
 			night = new SleepNight(System.currentTimeMillis());
+			// One session for a bedtime: the automatic start leaves it alone from now on.
+			p.applyLongPref(SleepPrefs.LAST_AUTO, SleepReminder.lastBedtime(p, night.start));
 			night.stand = useStand;
 			moveBuf = new byte[MAX_EPOCHS];
 			noiseBuf = new byte[MAX_EPOCHS];
@@ -237,7 +242,7 @@ public final class SleepTracker implements SensorEventListener {
 			}
 			if (useAccel) sensors.registerListener(this, acc, SensorManager.SENSOR_DELAY_NORMAL, work);
 			countScreen = p.getBooleanPref(SleepPrefs.SCREEN_AWAKE);
-			if (countScreen) {
+			if (countScreen || p.getBooleanPref(SleepPrefs.AUTO)) {
 				try {
 					ctx.registerReceiver(screenReceiver, new android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_ON));
 					screenRegistered = true;
@@ -248,11 +253,44 @@ public final class SleepTracker implements SensorEventListener {
 			nextTick = SystemClock.uptimeMillis() + SleepNight.EPOCH_MS;
 			work.postAtTime(this::tick, null, nextTick);
 			DiagnosticLog.log(LogCat.SLEEP, "session started", "mode=" + mode, "movement=" + useMove,
-					"sound=" + useNoise, "stand=" + useStand, "screen=" + countScreen, "sensitivity=" + p.getIntPref(SleepPrefs.SENSITIVITY));
+					"sound=" + useNoise, "stand=" + useStand, "auto=" + autoStarted, "screen=" + countScreen, "sensitivity=" + p.getIntPref(SleepPrefs.SENSITIVITY));
 		}
 		SleepService.start(ctx);
 		linkAmbience(p);
 		changed();
+	}
+
+	/** Starts a session for the automatic start (it also ends by itself in the morning, when the screen is switched on). */
+	public void startAuto() {
+		start();
+		synchronized (this) {
+			if (night != null) autoStarted = true;
+		}
+		changed();
+	}
+
+	public synchronized boolean isAutoStarted() {
+		return (night != null) && autoStarted;
+	}
+
+	/**
+	 * A session the app started by itself ends when the screen is switched on after the usual wake time less an hour and a half
+	 * (and within five hours after it), once it has run three hours: picking up the phone in the morning is the end of the night.
+	 */
+	private void maybeMorningStop() {
+		long start;
+		synchronized (this) {
+			if (night == null) return;
+			start = night.start;
+		}
+		long now = System.currentTimeMillis();
+		if (now - start < 3 * 3600_000L) return;
+		int wake = SleepPrefs.store().getIntPref(SleepPrefs.WAKE_MIN);
+		int rel = Math.floorMod(SleepAnalyzer.minuteOfDay(now) - (wake - 90), 1440);
+		if (rel <= 390) {
+			DiagnosticLog.log(LogCat.SLEEP, "automatic stop in the morning");
+			main.post(this::stop);
+		}
 	}
 
 	/** Ends the session and keeps the night; returns it, or null when none ran or it was too short. */

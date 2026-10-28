@@ -2900,6 +2900,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (me.aap.fermata.ui.home.HomeModal.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.ShareSheet.dismissOpen()) return;
 		if (PlaylistPicker.dismissOpen()) return;
+		if (me.aap.fermata.ui.view.SleepGuide.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.YoutubeAlternativesPicker.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.YoutubeCommentsView.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.LyricsCard.dismissOpen()) return;

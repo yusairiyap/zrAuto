@@ -43,6 +43,7 @@ public final class SleepScoreView extends View {
 	@Nullable
 	private ValueAnimator anim;
 	private boolean empty = true;
+	private boolean compact;
 
 	public SleepScoreView(Context ctx, SettingsStyle.Colors colors) {
 		super(ctx);
@@ -95,6 +96,12 @@ public final class SleepScoreView extends View {
 		anim.start();
 	}
 
+	/** A shorter ring and thinner bars, for the card that floats over the settings. */
+	public void setCompact(boolean compact) {
+		this.compact = compact;
+		requestLayout();
+	}
+
 	/** Replays the fill from empty (the tab was just opened). */
 	public void replay() {
 		fromScore = 0;
@@ -136,7 +143,7 @@ public final class SleepScoreView extends View {
 
 	@Override
 	protected void onMeasure(int w, int h) {
-		setMeasuredDimension(resolveSize(c.dp(300), w), c.dp(150));
+		setMeasuredDimension(resolveSize(c.dp(300), w), c.dp(compact ? 104 : 150));
 	}
 
 	private float sp(float v) {
@@ -171,13 +178,13 @@ public final class SleepScoreView extends View {
 		paint.setTextAlign(Paint.Align.CENTER);
 		paint.setColor(c.textPrimary);
 		paint.setTypeface(Typeface.DEFAULT_BOLD);
-		paint.setTextSize(sp(empty ? 26 : 34));
-		canvas.drawText(empty ? "--" : String.valueOf(Math.round(score)), cx, cy + sp(empty ? 8 : 10), paint);
+		paint.setTextSize(sp(compact ? 24 : (empty ? 26 : 34)));
+		canvas.drawText(empty ? "--" : String.valueOf(Math.round(score)), cx, cy + sp(compact ? 7 : (empty ? 8 : 10)), paint);
 		paint.setTypeface(Typeface.DEFAULT);
 		paint.setTextSize(sp(11));
 		paint.setColor(c.textSecondary);
 		String label = (caption != null) ? caption : gradeLabel < 0 ? "" : getResources().getStringArray(R.array.sleep_grades)[gradeLabel];
-		if (!label.isEmpty()) canvas.drawText(label, cx, cy + sp(10) + sp(16), paint);
+		if (!label.isEmpty()) canvas.drawText(label, cx, cy + sp(compact ? 7 : 10) + sp(compact ? 12 : 16), paint);
 
 		// The parts.
 		float left = c.dp(8) + ring + c.dp(20);
@@ -187,16 +194,17 @@ public final class SleepScoreView extends View {
 		for (int i = 0; i < PARTS; i++) {
 			float top = c.dp(10) + i * rowH;
 			paint.setTypeface(Typeface.DEFAULT);
-			paint.setTextSize(sp(12));
+			float ts = compact ? 11 : 12;
+			paint.setTextSize(sp(ts));
 			paint.setColor(c.textPrimary);
-			canvas.drawText(names[i], left, top + sp(12), paint);
+			canvas.drawText(names[i], left, top + sp(ts), paint);
 			paint.setTextAlign(Paint.Align.RIGHT);
 			paint.setColor(c.textSecondary);
 			String pts = empty ? "" : String.format(Locale.getDefault(), "%d/%d", Math.round(gotPts[i]), Math.round(maxPts[i]));
-			canvas.drawText(pts, right, top + sp(12), paint);
+			canvas.drawText(pts, right, top + sp(ts), paint);
 			paint.setTextAlign(Paint.Align.LEFT);
-			float barTop = top + sp(12) + c.dp(6);
-			float bh = c.dp(6);
+			float barTop = top + sp(ts) + c.dp(compact ? 3 : 6);
+			float bh = c.dp(compact ? 4 : 6);
 			paint.setColor((c.textSecondary & 0xFFFFFF) | 0x26000000);
 			rect.set(left, barTop, right, barTop + bh);
 			canvas.drawRoundRect(rect, bh / 2, bh / 2, paint);

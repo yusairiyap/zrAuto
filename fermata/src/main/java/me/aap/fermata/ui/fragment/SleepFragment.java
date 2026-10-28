@@ -47,6 +47,7 @@ import me.aap.fermata.ui.view.EffectsUi;
 import me.aap.fermata.ui.view.SettingsStyle;
 import me.aap.fermata.ui.view.SleepBarsView;
 import me.aap.fermata.ui.view.SleepHypnogramView;
+import me.aap.fermata.ui.view.SleepGuide;
 import me.aap.fermata.ui.view.SleepScoreView;
 import me.aap.fermata.ui.view.TopToast;
 import me.aap.utils.ui.view.ToolBarView;
@@ -82,6 +83,15 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 	private float dp;
 	private NestedScrollView scroll;
 	private LinearLayout content;
+	private LinearLayout cols, colA, colB;
+	private View settingsRow;
+	// Ambience card
+	private View ambienceCard;
+	private TextView ambienceSub;
+	private androidx.appcompat.widget.SwitchCompat ambienceSwitch;
+	private androidx.appcompat.widget.SwitchCompat ambienceLinkSwitch;
+	private boolean syncingAmbience;
+	private final Runnable ambienceChanged = this::syncAmbience;
 	// Session card
 	private TextView startButton;
 	private TextView sessionStatus;
@@ -150,13 +160,29 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 		content.setPadding(px(16), px(12), px(16), px(104));
 		scroll.addView(content, new ViewGroup.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
+		// Two columns side by side where there is room (updateSplit), else one under the other.
+		cols = new LinearLayout(palette);
+		cols.setOrientation(LinearLayout.VERTICAL);
+		cols.setClipChildren(false);
+		colA = new LinearLayout(palette);
+		colA.setOrientation(LinearLayout.VERTICAL);
+		colA.setClipChildren(false);
+		colB = new LinearLayout(palette);
+		colB.setOrientation(LinearLayout.VERTICAL);
+		colB.setClipChildren(false);
+		cols.addView(colA, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		cols.addView(colB, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		content.addView(cols, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+
 		parts.clear();
-		addPart(buildSessionCard());
-		addPart(buildNightCard());
-		addPart(buildStagesCard());
-		addPart(buildTrendsCard());
-		addPart(buildInsightsCard());
-		addPart(buildSettingsRow());
+		addPart(colA, buildSessionCard());
+		addPart(colA, buildAmbienceCard());
+		addPart(colA, buildNightCard());
+		addPart(colB, buildStagesCard());
+		addPart(colB, buildTrendsCard());
+		addPart(colB, buildInsightsCard());
+		settingsRow = buildSettingsRow();
+		addPart(content, settingsRow);
 		return scroll;
 	}
 
@@ -166,6 +192,17 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 		MainActivityDelegate a = getActivityDelegate();
 		// tool_bar/nav_bar are drawn over the fragment: the content has to keep clear of them itself.
 		a.insetScrollableContent(scroll);
+		// Not during layout: switching the columns' layout requests another one.
+		scroll.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+			if (((r - l) != (or - ol)) || ((b - t) != (ob - ot))) v.post(() -> {
+				updateSplit(v);
+				updateSettingsChip();
+			});
+		});
+		scroll.post(() -> {
+			updateSplit(scroll);
+			updateSettingsChip();
+		});
 		refresh();
 		for (View v : parts) {
 			v.setAlpha(0f);
@@ -180,6 +217,8 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 			scoreView.replay();
 			hypno.replay();
 			bars.replay();
+			// The first time the tab is opened: a short tour, which Settings > Sleep > Help brings back.
+			if (!SleepPrefs.store().getBooleanPref(SleepPrefs.GUIDE_DONE)) SleepGuide.show(a);
 		});
 	}
 
@@ -188,6 +227,8 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 		super.onResume();
 		resumed = true;
 		tracker.addListener(changed);
+		if (AmbienceAddon.isEnabled()) AmbienceEngine.get().addListener(ambienceChanged);
+		syncAmbience();
 		syncSession();
 		handler.removeCallbacks(clockTick);
 		if (tracker.isActive()) handler.postDelayed(clockTick, 1000);
@@ -197,6 +238,7 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 	public void onPause() {
 		resumed = false;
 		tracker.removeListener(changed);
+		AmbienceEngine.get().removeListener(ambienceChanged);
 		handler.removeCallbacksAndMessages(null);
 		super.onPause();
 	}
@@ -204,16 +246,53 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 	@Override
 	public void onDestroyView() {
 		tracker.removeListener(changed);
+		AmbienceEngine.get().removeListener(ambienceChanged);
 		handler.removeCallbacksAndMessages(null);
+		ambienceCard = null;
+		settingsRow = null;
+		cols = null;
 		parts.clear();
 		super.onDestroyView();
 	}
 
-	private void addPart(View v) {
+	private void addPart(LinearLayout parent, View v) {
 		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
 		lp.topMargin = px(14);
-		content.addView(v, lp);
+		parent.addView(v, lp);
 		parts.add(v);
+	}
+
+	/**
+	 * Side by side (the night and the session on the left, the charts and the tips on the right) wherever there is room for two
+	 * columns: on the car screen, in landscape, and on large screens in either orientation, as the Power and Data usage tabs do.
+	 */
+	private void updateSplit(View root) {
+		int w = root.getWidth();
+		if ((w == 0) || (getContext() == null) || (cols == null)) return;
+		float dpw = w / getResources().getDisplayMetrics().density;
+		boolean split = getActivityDelegate().isCarActivity() || (dpw >= 720) ||
+				((w > root.getHeight()) && (dpw >= 560));
+		int orientation = split ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL;
+		if (cols.getOrientation() == orientation) return;
+		cols.setOrientation(orientation);
+		LinearLayout.LayoutParams alp = (LinearLayout.LayoutParams) colA.getLayoutParams();
+		LinearLayout.LayoutParams blp = (LinearLayout.LayoutParams) colB.getLayoutParams();
+		alp.width = blp.width = split ? 0 : MATCH_PARENT;
+		alp.weight = blp.weight = split ? 1f : 0f;
+		blp.setMarginStart(split ? px(16) : 0);
+		colA.setLayoutParams(alp);
+		colB.setLayoutParams(blp);
+		// Side by side, the two columns start level with each other.
+		if (colB.getChildCount() > 0) {
+			ViewGroup.MarginLayoutParams first = (ViewGroup.MarginLayoutParams) colB.getChildAt(0).getLayoutParams();
+			first.topMargin = split ? 0 : px(14);
+			colB.getChildAt(0).setLayoutParams(first);
+		}
+	}
+
+	/** The settings chip: in the title bar in landscape and on the car screen, else in the tab. */
+	private void updateSettingsChip() {
+		ToolBarChip.update(this, R.id.sleep_toolbar_chip, settingsRow);
 	}
 
 	private LinearLayout card() {
@@ -262,6 +341,14 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 		names.addView(sessionStatus);
 		names.addView(sessionSub);
 		top.addView(names, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		ImageView help = new ImageView(palette);
+		help.setImageResource(R.drawable.about);
+		help.setImageTintList(ColorStateList.valueOf(c.textSecondary));
+		help.setContentDescription(getString(R.string.sleep_help));
+		help.setPadding(px(8), px(8), px(8), px(8));
+		help.setBackground(c.pressable(c.rounded(0, 20)));
+		help.setOnClickListener(v -> SleepGuide.show(getActivityDelegate()));
+		top.addView(help, new LinearLayout.LayoutParams(px(40), px(40)));
 		card.addView(top);
 
 		startButton = text("", 16, c.onAccent, true);
@@ -287,6 +374,75 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 		mixLine.setPadding(0, px(12), 0, 0);
 		card.addView(mixLine);
 		return card;
+	}
+
+	// ---- Ambience, one tap away ----
+
+	private View buildAmbienceCard() {
+		LinearLayout card = card();
+		LinearLayout row = new LinearLayout(palette);
+		row.setGravity(Gravity.CENTER_VERTICAL);
+		ImageView icon = new ImageView(palette);
+		icon.setImageResource(R.drawable.ambience);
+		icon.setImageTintList(ColorStateList.valueOf(c.accent));
+		row.addView(icon, new LinearLayout.LayoutParams(px(26), px(26)));
+		LinearLayout names = new LinearLayout(palette);
+		names.setOrientation(LinearLayout.VERTICAL);
+		names.setPadding(px(12), 0, px(8), 0);
+		names.addView(text(getString(R.string.sleep_amb_title), 16, c.textPrimary, true));
+		ambienceSub = text("", 12.5f, c.textSecondary, false);
+		names.addView(ambienceSub);
+		row.addView(names, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		ambienceSwitch = new androidx.appcompat.widget.SwitchCompat(palette);
+		me.aap.fermata.ui.view.SwitchStyle.apply(ambienceSwitch, palette);
+		ambienceSwitch.setOnCheckedChangeListener((b, on) -> {
+			if (syncingAmbience || !AmbienceAddon.isEnabled()) return;
+			AmbienceEngine e = AmbienceEngine.get();
+			if (on && !e.anyOn()) e.resumeLast();
+			else if (!on && e.anyOn()) e.stopAll();
+		});
+		row.addView(ambienceSwitch);
+		card.addView(row);
+
+		LinearLayout link = new LinearLayout(palette);
+		link.setGravity(Gravity.CENTER_VERTICAL);
+		TextView lt = text(getString(R.string.sleep_amb_with), 13.5f, c.textPrimary, false);
+		link.addView(lt, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		ambienceLinkSwitch = new androidx.appcompat.widget.SwitchCompat(palette);
+		me.aap.fermata.ui.view.SwitchStyle.apply(ambienceLinkSwitch, palette);
+		ambienceLinkSwitch.setOnCheckedChangeListener((b, on) -> {
+			if (syncingAmbience) return;
+			SleepPrefs.store().applyBooleanPref(SleepPrefs.AMBIENCE_START, on);
+			syncSession();
+		});
+		link.addView(ambienceLinkSwitch);
+		LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		llp.topMargin = px(10);
+		card.addView(link, llp);
+
+		TextView sounds = ChipFlowLayout.chip(palette, R.drawable.ambience, R.string.sleep_amb_sounds, false,
+				() -> getActivityDelegate().showFragment(R.id.ambience_addon));
+		LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(WRAP_CONTENT, px(40));
+		slp.topMargin = px(10);
+		card.addView(sounds, slp);
+		ambienceCard = card;
+		return card;
+	}
+
+	/** The ambience card follows what plays; it is not there without the Ambience addon. */
+	private void syncAmbience() {
+		if (ambienceCard == null) return;
+		boolean on = AmbienceAddon.isEnabled();
+		ambienceCard.setVisibility(on ? View.VISIBLE : View.GONE);
+		if (!on) return;
+		AmbienceEngine e = AmbienceEngine.get();
+		syncingAmbience = true;
+		ambienceSwitch.setChecked(e.anyOn());
+		ambienceLinkSwitch.setChecked(SleepPrefs.store().getBooleanPref(SleepPrefs.AMBIENCE_START));
+		syncingAmbience = false;
+		String d = e.describe(requireContext());
+		ambienceSub.setText(e.anyOn() && !d.isEmpty() ? d : getString(R.string.sleep_amb_off));
+		syncSession();
 	}
 
 	private void toggleSession() {

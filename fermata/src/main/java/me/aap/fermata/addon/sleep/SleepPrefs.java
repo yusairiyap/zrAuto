@@ -42,6 +42,12 @@ public final class SleepPrefs {
 	/** A reminder before the usual bedtime: on, and how many minutes before. */
 	public static final Pref<BooleanSupplier> REMINDER = Pref.b("SLEEP_REMINDER", false);
 	public static final Pref<IntSupplier> REMINDER_LEAD = Pref.i("SLEEP_REMINDER_LEAD", 30);
+	/** The session starts by itself at the usual bedtime (once the screen is off) and ends in the morning, no button needed. */
+	public static final Pref<BooleanSupplier> AUTO = Pref.b("SLEEP_AUTO", true);
+	/** The bedtime (a time in ms) the automatic start last dealt with, so one night starts once. */
+	public static final Pref<LongSupplier> LAST_AUTO = Pref.l("SLEEP_LAST_AUTO", 0L);
+	/** The first-visit guide has been shown. */
+	public static final Pref<BooleanSupplier> GUIDE_DONE = Pref.b("SLEEP_GUIDE_DONE", false);
 	/** The start of the session that is running (0 = none): how a killed app finds out it had one. */
 	public static final Pref<LongSupplier> ACTIVE_START = Pref.l("SLEEP_ACTIVE_START", 0L);
 

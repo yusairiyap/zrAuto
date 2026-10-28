@@ -1361,6 +1361,14 @@ Built into `fermata` like Ambience (order 10, `hasSettings`), package `addon/sle
 - **Bedtime reminder** (`SleepReminder`, `SleepReminderReceiver`, Settings > Sleep > Reminder, off by default): one inexact `RTC_WAKEUP` alarm for the usual bedtime less the
   lead, set again from each run, at boot and whenever the bedtime or the reminder settings change; it posts a notification with a Start sleep button (nothing while a session
   runs). Needs notifications allowed; the alarm is only set while the addon is on.
+- **Recording by itself** (`SleepPrefs.AUTO`, on by default; `SleepReminder#scheduleAuto/auto`): an inexact alarm at the usual bedtime, then every 10 minutes for 2 hours until the screen is
+  off, starts a session (`SleepTracker#startAuto`); one session per bedtime (`LAST_AUTO`, also set by a manual start). A session the app started ends by itself when the screen is switched
+  on in the morning (after 3 h, between wake time less 90 min and 5 h after it). A foreground notification always says so.
+- **Guide and help**: `ui/view/SleepGuide` is a five page card over the app (its pictures are drawn in `Art`, looping) shown on the first visit (`GUIDE_DONE`) and from the "?" in the session
+  card and Settings > Sleep > Help; Back closes it (`MainActivityDelegate#onBackPressed`). **Presets**: Settings > Sleep > The score picks the weights (Balanced 40/25/15/20, Long sleep,
+  Routine, Unbroken); the four sliders are under "Set the four parts yourself". `ReorderListFragment#createStickyTop` floats a card over the page (the Sleep settings' live preview).
+- **The tab is split** like Power and Data usage (`SleepFragment#updateSplit`: session, Ambience card and night on the left, charts and tips on the right, from 720dp or landscape); the settings
+  chip is the title bar's when wide and the tab's own when narrow (`ToolBarChip.update`), never both.
 - **Actions** `SLEEP` and `SLEEP_TOGGLE` are at the end of the enum (FAB list and Tools group, All in One, key bindings). Not done: Health Connect import.
 
 ## When in doubt, ask
