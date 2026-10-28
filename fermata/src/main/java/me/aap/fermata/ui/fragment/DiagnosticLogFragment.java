@@ -142,7 +142,6 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 	@Nullable
 	private TextView stickyCount;
 	private View spacer;
-	private TextView countView;
 	private TextView recordingSub;
 	private SwitchCompat recordingSwitch;
 	private boolean syncingSwitch;
@@ -469,9 +468,6 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		top.addView(names, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
 		card.addView(top);
 
-		countView = text("", 13, accent, true);
-		countView.setPadding(0, dp(10), 0, dp(2));
-		card.addView(countView);
 
 		LinearLayout rec = new LinearLayout(palette);
 		rec.setOrientation(LinearLayout.HORIZONTAL);
@@ -753,7 +749,6 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 
 	private void syncHeader() {
 		if (header == null) return;
-		countView.setText(getString(R.string.diag_shown_count, filtered.size(), all.size()));
 		if (stickyCount != null) stickyCount.setText(getString(R.string.diag_count_short, filtered.size(), all.size()));
 		boolean on = DiagnosticLog.isEnabled();
 		recordingSub.setText(on ? R.string.diag_recording_on : R.string.diag_recording_off);
