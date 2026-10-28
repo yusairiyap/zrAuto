@@ -206,7 +206,10 @@ public final class SleepTracker implements SensorEventListener {
 			useStand = (mode == SleepPrefs.MODE_STAND) && mic;
 			useMove = useAccel || useStand;
 			useNoise = (useAccel && (mode == SleepPrefs.MODE_MOVEMENT_SOUND) && mic) || useStand;
-			standInit = false;
+			standCount = 0;
+			standHold = 0;
+			standAmbience = AmbienceAddon.isEnabled() ? AmbienceEngine.get().getActive().size() : 0;
+			ambienceCount = standAmbience;
 			screenSeen = false;
 			autoStarted = false;
 			night = new SleepNight(System.currentTimeMillis());
@@ -381,6 +384,7 @@ public final class SleepTracker implements SensorEventListener {
 		synchronized (this) {
 			if (night == null) return;
 			for (AmbienceEffect fx : AmbienceEngine.get().getActive()) mix.add(fx.key);
+			ambienceCount = AmbienceEngine.get().getActive().size();
 			night.mix = String.join(",", mix);
 		}
 	}
@@ -468,17 +472,32 @@ public final class SleepTracker implements SensorEventListener {
 	}
 
 	/**
-	 * What the room's loudness says about the sleeper on a stand: how far this epoch is above the quietest the room has been
-	 * (a slow floor that follows the night), so a turn over, a cough or talking show and the steady hum of the room does not.
+	 * What the room's loudness says about the sleeper on a stand: how far this epoch is above what the room has been like over
+	 * the last few minutes (the median of the last ten epochs), so a turn over, a cough or talking show and a steady sound does
+	 * not, however loud: the ambience mix, music, a fan. A sound that starts, stops or changes by the app's own doing (the mix
+	 * switched on or fading, a timer) is held back for a few epochs, until the median has caught up with it.
 	 */
 	private int standActivity(int noise) {
-		if (!standInit) {
-			standBase = noise;
-			standInit = true;
+		int n = Math.min(standCount, standWindow.length);
+		float med = noise;
+		if (n >= 3) {
+			float[] copy = Arrays.copyOf(standWindow, n);
+			Arrays.sort(copy);
+			med = copy[n / 2];
 		}
-		if (noise < standBase) standBase = noise;
-		else standBase += (noise - standBase) * 0.02f;
-		return Math.min(255, Math.round(Math.max(0f, noise - standBase) * 3f));
+		standWindow[standCount % standWindow.length] = noise;
+		standCount++;
+		int amb = ambienceCount;
+		if (amb != standAmbience) {
+			standAmbience = amb;
+			standHold = 4;
+		}
+		if (standHold > 0) {
+			standHold--;
+			return 0;
+		}
+		if (n < 3) return 0;
+		return Math.min(255, Math.round(Math.max(0f, noise - med) * 3f));
 	}
 
 	/** The battery level in percent, or -1. */
