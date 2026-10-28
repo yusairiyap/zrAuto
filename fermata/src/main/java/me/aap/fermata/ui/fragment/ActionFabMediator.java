@@ -46,7 +46,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 			Action.DOWNLOADS_PAUSE_RESUME, Action.ALL_IN_ONE, Action.AUDIO_EFFECTS, Action.SLEEP_TIMER,
 			Action.QUALITY, Action.YOUTUBE_ALTERNATIVES, Action.YOUTUBE_COMMENTS, Action.LYRICS,
 			Action.POWER_USAGE, Action.POWER_SAVER, Action.AMBIENCE, Action.AMBIENCE_TOGGLE,
-			Action.SETTINGS, Action.SHARE_VIDEO, Action.COVER_HIDE);
+			Action.SETTINGS, Action.SHARE_VIDEO, Action.COVER_HIDE, Action.SLEEP, Action.SLEEP_TOGGLE);
 
 	private final Pref<IntSupplier> actionPref;
 	@Nullable
@@ -172,6 +172,11 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 			dimmed = !me.aap.fermata.addon.ambience.AmbienceAddon.isEnabled() ||
 					!me.aap.fermata.addon.ambience.AmbienceEngine.get().anyOn();
 		}
+		// The sleep start / stop button is dimmed while no session runs.
+		if (action == Action.SLEEP_TOGGLE) {
+			dimmed = !me.aap.fermata.addon.sleep.SleepAddon.isEnabled() ||
+					!me.aap.fermata.addon.sleep.SleepTracker.get().isActive();
+		}
 		fb.setImageAlpha(dimmed ? 100 : 255);
 	}
 
@@ -203,6 +208,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		if (action == Action.COVER_HIDE) return me.aap.fermata.ui.view.CoverHide.isOn() ?
 				R.drawable.cover_hidden : R.drawable.visibility;
 		if ((action == Action.AMBIENCE) || (action == Action.AMBIENCE_TOGGLE)) return R.drawable.ambience;
+		if ((action == Action.SLEEP) || (action == Action.SLEEP_TOGGLE)) return R.drawable.sleep;
 		if (action == Action.OPEN_HOME) return R.drawable.home_page;
 		if (action == Action.OPEN_FAVORITES) return R.drawable.favorite_filled;
 		if (action == Action.OPEN_PLAYLISTS) return R.drawable.playlist;
@@ -320,6 +326,10 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 						if (me.aap.fermata.addon.ambience.AmbienceAddon.isEnabled()) {
 							addAction(a, fb, sb, Action.AMBIENCE, 4);
 							addAction(a, fb, sb, Action.AMBIENCE_TOGGLE, 5);
+						}
+						if (me.aap.fermata.addon.sleep.SleepAddon.isEnabled()) {
+							addAction(a, fb, sb, Action.SLEEP, 6);
+							addAction(a, fb, sb, Action.SLEEP_TOGGLE, 7);
 						}
 					});
 			addSettings(a, b, R.id.fab_settings, R.drawable.fab, R.string.fab_settings,

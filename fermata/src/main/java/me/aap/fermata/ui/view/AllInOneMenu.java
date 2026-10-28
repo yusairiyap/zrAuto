@@ -846,6 +846,13 @@ public final class AllInOneMenu {
 			// What is on, as the hint.
 			title = ctx.getString(R.string.action_ambience);
 			hint = me.aap.fermata.addon.ambience.AmbienceEngine.get().describe(ctx);
+		} else if (action == Action.SLEEP) {
+			title = ctx.getString(R.string.action_sleep);
+			hint = "";
+		} else if (action == Action.SLEEP_TOGGLE) {
+			title = ctx.getString(R.string.action_sleep_toggle);
+			hint = ctx.getString(me.aap.fermata.addon.sleep.SleepTracker.get().isActive() ?
+					R.string.state_on : R.string.state_off);
 		} else if (action == Action.AMBIENCE_TOGGLE) {
 			title = ctx.getString(R.string.action_ambience_toggle);
 			hint = ctx.getString(me.aap.fermata.addon.ambience.AmbienceEngine.get().anyOn() ?
@@ -994,7 +1001,7 @@ public final class AllInOneMenu {
 		return switch (action) {
 			case AUDIO_EFFECTS, PLAYLIST_ADD, OPEN_HOME, OPEN_FAVORITES, OPEN_PLAYLISTS, OPEN_DOWNLOADS, MENU,
 					CP_MENU, YOUTUBE_SEARCH, YOUTUBE_UP_NEXT, YOUTUBE_ALTERNATIVES, YOUTUBE_COMMENTS, LYRICS, SETTINGS, REFUEL, DOWNLOAD_CURRENT, PLAY_AS_MUSIC, SHARE_VIDEO,
-					POWER_USAGE, AMBIENCE,
+					POWER_USAGE, AMBIENCE, SLEEP,
 					BACK_OR_EXIT, EXIT -> true;
 			default -> false;
 		};

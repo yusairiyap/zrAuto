@@ -1,6 +1,6 @@
 # Sleep addon: plan for a future session (ON HOLD)
 
-Status: **not started.** The user wants this kept for later. Read `CLAUDE.md` first (adding a nav-bar tab, `insetScrollableContent`,
+Status: **first version built** (see the Sleep addon section of CLAUDE.md); this file keeps the research and the reasoning. Read `CLAUDE.md` first (adding a nav-bar tab, `insetScrollableContent`,
 `TopToast`, the Diagnostic log line format with `LogCat`, and the fact that this cloud session cannot build or run the app).
 
 ## Decisions already made with the user

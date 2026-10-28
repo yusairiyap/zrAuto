@@ -1272,13 +1272,15 @@ MM-dd HH:mm:ss.SSS L/CATEGORY message | key=value key=value
 - Because the line format changed, the old shapes quoted in this file (`YT media ...`, `STATE start load: main late max=..`) now
   read as the same words in this format: `STATE start load | mainLateMax=..ms over50=.. gc=.. blockingGc=.. blockingMs=..`.
 
-**The screen** (`ui/fragment/DiagnosticLogFragment`, Settings > Other > Diagnostics > View, or the main menu item below
-Share zrAuto app when Settings > Diagnostics > "Show the log in the main menu" (`DEBUG_LOG_MENU`, off by default) is on): the header
-card shows the running version (`DiagnosticLog#appVersion`, also the first lines of an export), the recording switch and how
-many entries the filters leave; then Copy / Share / Refresh / Clear, a search box (not on the car screen), a minimum level, the
+**The screen** (`ui/fragment/DiagnosticLogFragment`, opened by Settings > Diagnostics, which is now just a button to it, or by the
+main menu item below Share zrAuto app when its "Show the log in the main menu" switch (`DEBUG_LOG_MENU`, off by default) is on): the
+header card shows the running version (`DiagnosticLog#appVersion`, also the first lines of an export), the three diagnostics switches
+(recording, events on screen, main menu item; they live here, not in Settings) and how many entries the filters leave; then Copy / Share / Refresh / Clear, a search box (not on the car screen), a minimum level, the
 categories as chips (tap hides or shows, hold shows only that one), Newest first and Live. Filters live in statics of the
 fragment, so they survive reopening it but not an app restart. Rows are cards with a level-coloured bar, the time, a
-category-coloured pill, the message and the details with their keys in the accent; tap spreads a long one, hold copies the line.
+category-coloured pill, the message and the details with their keys in the accent; tap spreads a long one. **Classic** shows the filtered lines
+as one block of selectable plain text (as the screen used to). **Select** (or holding a line) picks lines (tap to pick or drop, Back leaves
+the mode); a bar over the list copies or shares just the picked lines (`DiagnosticLog#export`, header included), oldest first.
 
 This session cannot run the app, attach a debugger, or capture logcat — there's no device/emulator
 and no adb here. If an investigation is dragging on (a bug can't be root-caused from reading code
@@ -1324,9 +1326,30 @@ How to test, Checklist, Related issues, Screenshots; modelled on the gitmore.io 
 - Follow the template's headings; delete a section only if it truly does not apply. Say plainly what was not
   run (this cloud session cannot run the app) rather than ticking "verified on a device".
 
-## On hold: Sleep addon
+## Sleep addon (tab, recording, score, settings)
 
-The user paused the Sleep addon. The full plan and decisions are in `docs/SLEEP_ADDON_PLAN.md`; do not start it unless asked.
+Built into `fermata` like Ambience (order 10, `hasSettings`), package `addon/sleep`; the plan and the reasons are in `docs/SLEEP_ADDON_PLAN.md`.
+**Never run on a device or compiled in the cloud session; read the `SLEEP` lines of the Diagnostic log first.**
+
+- **Recording** (`SleepTracker`, foreground `SleepService`, partial wake lock): "Start sleep" on the tab, the `SLEEP_TOGGLE` action or a floating button
+  begins a session. The accelerometer is summed per 30 s epoch (`SleepNight.EPOCH_SEC`; differences under a dead zone are ignored; 0..255), and with the
+  microphone allowed (Settings > Sleep > Move + sound) one half second a epoch is measured for loudness only: **no audio is ever stored**.
+  The night is saved to `sleep_nights.txt` (`SleepStore`, JSON lines, 3 years) and a draft every 5 minutes; a night whose app was killed is finished at the
+  next start (`recoverDraft`). Under 20 minutes is not a night. Settings are `SleepPrefs` (the same preference store as the Power settings). The movement scale
+  and thresholds (`MOVE_SCALE`, `THRESHOLD` in `SleepAnalyzer`) are first guesses that need real nights to tune.
+- **Analysis** (`SleepAnalyzer`, pure): sleep/wake from smoothed movement (or from "I'm awake" taps), onset = first 5 minutes asleep, awakenings = 1.5 minutes awake,
+  stages **estimated** from a 90 minute cycle shaped by stillness (always labelled so; leave it replaceable for imported data later). Score 0..100 =
+  duration, regular times, time to fall asleep and interruptions, weighted by the settings. The stored night has only raw epochs, so a better analysis
+  re-scores old nights.
+- **Tab** (`ui/fragment/SleepFragment`, built in code, Music palette): session card, night card (`SleepScoreView`: ring + four bars, prev/next night),
+  stages (`SleepHypnogramView`, drag to read), last 7/30 nights as bars (`SleepBarsView`: how long, or when), insights (`SleepInsights`). Charts draw in
+  when `SLEEP_ANIMATE` is on. **Ambience link**: the session can start the last mix with a length (`AmbienceEngine#resumeLast/setLengthMinutes`), notes which
+  sounds played (`SleepNight#mix`), and the insights compare nights with and without sounds (only with 7+ nights and 3+ of each) and name the sound that
+  goes with the best ones.
+- **Settings** (`SleepSettingsFragment`, a `ReorderListFragment` with no rows like Power settings): a live `SleepScoreView` of a made-up night
+  (`SleepAnalyzer#sample`) that moves as the goal and the weights change.
+- **Actions** `SLEEP` and `SLEEP_TOGGLE` are at the end of the enum (FAB list and Tools group, All in One, key bindings). Not done: a Home widget, Health
+  Connect import, a bedtime reminder.
 
 ## When in doubt, ask
 

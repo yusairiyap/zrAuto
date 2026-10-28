@@ -214,6 +214,30 @@ public enum Action {
 	// Covers blurred to their colours only, or shown again (see CoverHide). Persisted by ordinal: new
 	// actions only ever go at the end.
 	COVER_HIDE(R.string.action_cover_hide, a(me.aap.fermata.ui.view.CoverHide::toggle)),
+	// The Sleep tab, and the sleep session started or stopped; both need the Sleep addon. Persisted by ordinal: new
+	// actions only ever go at the end.
+	SLEEP(R.string.action_sleep, a(a -> {
+		if (!me.aap.fermata.addon.sleep.SleepAddon.isEnabled()) {
+			me.aap.fermata.ui.view.TopToast.show(R.drawable.sleep, R.string.sleep_addon_off);
+			return;
+		}
+		a.exitVideoMode();
+		a.showFragment(R.id.sleep_addon);
+	})),
+	SLEEP_TOGGLE(R.string.action_sleep_toggle, a(a -> {
+		if (!me.aap.fermata.addon.sleep.SleepAddon.isEnabled()) {
+			me.aap.fermata.ui.view.TopToast.show(R.drawable.sleep, R.string.sleep_addon_off);
+			return;
+		}
+		var t = me.aap.fermata.addon.sleep.SleepTracker.get();
+		if (t.isActive()) {
+			var n = t.stop();
+			me.aap.fermata.ui.view.TopToast.show(R.drawable.sleep, (n == null) ? R.string.sleep_too_short : R.string.sleep_saved);
+		} else {
+			t.start();
+			me.aap.fermata.ui.view.TopToast.show(R.drawable.sleep, R.string.sleep_started);
+		}
+	})),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

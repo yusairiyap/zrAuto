@@ -100,7 +100,7 @@ public final class MenuStyle implements OverlayMenuView.Styler {
 	}
 
 	/** The menus' and dialogs' card colour (the Music palette's panel). */
-	static int panelColor(Context ctx) {
+	public static int panelColor(Context ctx) {
 		Context pc = EffectsUi.palette(ctx);
 		TypedValue tv = new TypedValue();
 		pc.getTheme().resolveAttribute(R.attr.musicPanelFill, tv, true);

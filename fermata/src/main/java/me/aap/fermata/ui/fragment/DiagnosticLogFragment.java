@@ -30,6 +30,7 @@ import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -47,6 +48,7 @@ import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -58,6 +60,7 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.view.ChipFlowLayout;
 import me.aap.fermata.ui.view.EffectsUi;
+import me.aap.fermata.ui.view.MenuStyle;
 import me.aap.fermata.ui.view.SwitchStyle;
 import me.aap.fermata.ui.view.TopToast;
 import me.aap.fermata.util.DiagnosticLog;
@@ -90,6 +93,7 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 	private static final int TYPE_HEADER = 0;
 	private static final int TYPE_ROW = 1;
 	private static final int TYPE_EMPTY = 2;
+	private static final int TYPE_CLASSIC = 3;
 
 	// The filters outlive the screen (it is rebuilt each time it is opened), not the process.
 	private static Level minLevel = Level.DEBUG;
@@ -97,6 +101,8 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 	private static String query = "";
 	private static boolean newestFirst = true;
 	private static boolean live;
+	/** The old look: every line as one block of plain text, to select and copy by hand. */
+	private static boolean classic;
 
 	private final Handler handler = new Handler(Looper.getMainLooper());
 	private final List<Entry> filtered = new ArrayList<>();
@@ -111,6 +117,13 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 	@Nullable
 	private RecyclerView preDrawView;
 	private boolean topShown;
+	/** Lines picked to copy or share; the pick is by line, not by position, so it survives a refresh. */
+	private final Set<Entry> picked = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+	private boolean selectMode;
+	@Nullable
+	private LinearLayout selectBar;
+	@Nullable
+	private TextView selectCount;
 	private boolean resumed;
 	private Context palette;
 	private float density;
@@ -184,6 +197,11 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		header = buildHeader();
 
 		FloatingActionButton top = view.findViewById(R.id.diagnostic_log_top);
+		selectBar = buildSelectBar();
+		FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT,
+				Gravity.BOTTOM | Gravity.START);
+		slp.setMargins(dp(16), 0, dp(16), dp(8));
+		((FrameLayout) view).addView(selectBar, slp);
 		// The same soft shadow and no ripple wash as the app's own floating buttons.
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
 			top.setOutlineAmbientShadowColor(Color.BLACK);
@@ -199,6 +217,9 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 			preDraw = () -> {
 				float dy = -(rv.getPaddingBottom() + lift) + a.getFloatingButton().getTranslationY();
 				if (top.getTranslationY() != dy) top.setTranslationY(dy);
+				// The picking bar sits just above the bottom bars, clear of the back button's column.
+				float sy = -rv.getPaddingBottom();
+				if ((selectBar != null) && (selectBar.getTranslationY() != sy)) selectBar.setTranslationY(sy);
 				return true;
 			};
 			rv.getViewTreeObserver().addOnPreDrawListener(preDraw);
@@ -256,6 +277,8 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		preDrawView = null;
 		topShown = false;
 		list = null;
+		selectBar = null;
+		selectCount = null;
 		header = null;
 		searchEdit = null;
 		lastCount = -1;
@@ -392,6 +415,8 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		});
 		rec.setOnClickListener(v -> recordingSwitch.toggle());
 		card.addView(rec);
+		card.addView(prefSwitch(R.string.debug_log_toasts, R.string.debug_log_toasts_sub, MainActivityPrefs.DEBUG_LOG_TOASTS));
+		card.addView(prefSwitch(R.string.debug_log_menu, R.string.debug_log_menu_sub, MainActivityPrefs.DEBUG_LOG_MENU));
 		h.addView(card, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
 		// The buttons.
@@ -468,6 +493,27 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		return h;
 	}
 
+	/** A row with a switch that is one of the diagnostics settings (they live here, not in Settings). */
+	private View prefSwitch(@StringRes int title, @StringRes int sub,
+													me.aap.utils.pref.PreferenceStore.Pref<me.aap.utils.function.BooleanSupplier> pref) {
+		LinearLayout row = new LinearLayout(palette);
+		row.setOrientation(LinearLayout.HORIZONTAL);
+		row.setGravity(Gravity.CENTER_VERTICAL);
+		row.setPadding(0, dp(10), 0, 0);
+		LinearLayout labels = new LinearLayout(palette);
+		labels.setOrientation(LinearLayout.VERTICAL);
+		labels.addView(text(getString(title), 15, textPrimary, true));
+		labels.addView(text(getString(sub), 12.5f, textSecondary, false));
+		row.addView(labels, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		SwitchCompat sw = new SwitchCompat(palette);
+		SwitchStyle.apply(sw, palette);
+		sw.setChecked(getActivityDelegate().getPrefs().getBooleanPref(pref));
+		sw.setOnCheckedChangeListener((b, on) -> getActivityDelegate().getPrefs().applyBooleanPref(pref, on));
+		row.addView(sw);
+		row.setOnClickListener(v -> sw.toggle());
+		return row;
+	}
+
 	private View buildSearch() {
 		LinearLayout box = new LinearLayout(palette);
 		box.setOrientation(LinearLayout.HORIZONTAL);
@@ -540,6 +586,16 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 			live = !live;
 			buildViewChips();
 			startLive();
+		}));
+		viewChips.addView(toggleChip(getString(R.string.diag_classic), classic, () -> {
+			classic = !classic;
+			buildViewChips();
+			adapter.notifyDataSetChanged();
+			if (list != null) list.scrollToPosition(0);
+		}));
+		viewChips.addView(toggleChip(getString(R.string.diag_select), selectMode, () -> {
+			setSelectMode(!selectMode);
+			buildViewChips();
 		}));
 	}
 
@@ -632,12 +688,13 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		@Override
 		public int getItemViewType(int position) {
 			if (position == 0) return TYPE_HEADER;
-			return shown.isEmpty() ? TYPE_EMPTY : TYPE_ROW;
+			if (shown.isEmpty()) return TYPE_EMPTY;
+			return classic ? TYPE_CLASSIC : TYPE_ROW;
 		}
 
 		@Override
 		public int getItemCount() {
-			return 1 + (shown.isEmpty() ? 1 : shown.size());
+			return 1 + ((shown.isEmpty() || classic) ? 1 : shown.size());
 		}
 
 		@NonNull
@@ -651,6 +708,8 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 			}
 			if (viewType == TYPE_EMPTY) return new RecyclerView.ViewHolder(emptyView()) {
 			};
+			if (viewType == TYPE_CLASSIC) return new RecyclerView.ViewHolder(classicView()) {
+			};
 			return new RowHolder();
 		}
 
@@ -658,7 +717,24 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		public void onBindViewHolder(@NonNull RecyclerView.ViewHolder h, int position) {
 			if (h instanceof RowHolder r) r.bind(shown.get(position - 1));
 			else if (getItemViewType(position) == TYPE_EMPTY) bindEmpty(h.itemView);
+			else if (getItemViewType(position) == TYPE_CLASSIC) bindClassic((TextView) h.itemView);
 		}
+	}
+
+	/** The classic look: one block of text, as it was before, that can be selected and copied by hand. */
+	private View classicView() {
+		TextView t = text("", 12, textSecondary, false);
+		t.setTypeface(Typeface.MONOSPACE);
+		t.setTextIsSelectable(true);
+		t.setPadding(dp(4), dp(10), dp(4), dp(10));
+		t.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		return t;
+	}
+
+	private void bindClassic(TextView t) {
+		StringBuilder sb = new StringBuilder(shown.size() * 80);
+		for (Entry e : shown) sb.append(e.toLine()).append('\n');
+		t.setText(sb);
 	}
 
 	private View emptyView() {
@@ -755,12 +831,18 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 			body.addView(stack);
 			row.addView(body, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
 
-			// Hold a line to copy just that one.
 			row.setOnLongClickListener(v -> {
-				if (entry != null) copyText(entry.toLine(), R.string.diag_line_copied);
+				// Hold a line to start picking lines; hold again to pick or drop one.
+				if (entry == null) return true;
+				if (!selectMode) setSelectMode(true);
+				toggle(entry, this);
 				return true;
 			});
 			row.setOnClickListener(v -> {
+				if (selectMode) {
+					if (entry != null) toggle(entry, this);
+					return;
+				}
 				// A tap spreads or folds a long line.
 				boolean fold = message.getMaxLines() != Integer.MAX_VALUE;
 				message.setMaxLines(fold ? Integer.MAX_VALUE : 3);
@@ -770,6 +852,10 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 
 		void bind(Entry e) {
 			entry = e;
+			GradientDrawable rowFill = picked.contains(e) ? rounded(ColorUtils.setAlphaComponent(accent, 0x30), 12) :
+					rounded(tileFill, 12);
+			if (picked.contains(e)) rowFill.setStroke(dp(2), accent);
+			itemView.setBackground(pressable(rowFill));
 			int levelColor = levelColor(e.level);
 			GradientDrawable b = rounded(levelColor, 2);
 			bar.setBackground(b);
@@ -803,6 +889,85 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 				stack.setText(e.extra);
 			}
 		}
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// Picking lines
+
+	private void setSelectMode(boolean on) {
+		selectMode = on;
+		if (!on) picked.clear();
+		syncSelection();
+		adapter.notifyDataSetChanged();
+	}
+
+	private void toggle(Entry e, RowHolder h) {
+		if (!picked.remove(e)) picked.add(e);
+		syncSelection();
+		int pos = h.getBindingAdapterPosition();
+		if (pos != RecyclerView.NO_POSITION) adapter.notifyItemChanged(pos);
+	}
+
+	private void syncSelection() {
+		if (selectBar == null) return;
+		selectBar.setVisibility(selectMode ? View.VISIBLE : View.GONE);
+		if (selectCount != null) selectCount.setText(getString(R.string.diag_selected_count, picked.size()));
+		if ((header != null) && (viewChips != null)) buildViewChips();
+	}
+
+	/** The picked lines, oldest first. */
+	private List<Entry> pickedLines() {
+		List<Entry> out = new ArrayList<>();
+		for (Entry e : all) if (picked.contains(e)) out.add(e);
+		return out;
+	}
+
+	private void copyPicked() {
+		List<Entry> l = pickedLines();
+		if (l.isEmpty()) return;
+		copyText(DiagnosticLog.export(l, all.size(), "picked lines"), R.string.diag_picked_copied);
+	}
+
+	private void sharePicked() {
+		List<Entry> l = pickedLines();
+		if (l.isEmpty()) return;
+		shareText(DiagnosticLog.export(l, all.size(), "picked lines"));
+	}
+
+	/** The bar that holds the picking buttons, floating over the list. */
+	private LinearLayout buildSelectBar() {
+		LinearLayout bar = new LinearLayout(palette);
+		bar.setOrientation(LinearLayout.HORIZONTAL);
+		bar.setGravity(Gravity.CENTER_VERTICAL);
+		bar.setPadding(dp(14), dp(8), dp(10), dp(8));
+		GradientDrawable bg = rounded(MenuStyle.panelColor(palette), 24);
+		bar.setBackground(bg);
+		bar.setElevation(dp(8));
+		selectCount = text("", 14, textPrimary, true);
+		bar.addView(selectCount);
+		ChipFlowLayout chips = new ChipFlowLayout(palette);
+		chips.addView(ChipFlowLayout.chip(palette, R.drawable.copy, R.string.diagnostic_log_copy, true, this::copyPicked));
+		chips.addView(ChipFlowLayout.chip(palette, R.drawable.share, R.string.diagnostic_log_share, false, this::sharePicked));
+		chips.addView(ChipFlowLayout.chip(palette, 0, R.string.diag_select_all, false, () -> {
+			picked.addAll(shown);
+			syncSelection();
+			adapter.notifyDataSetChanged();
+		}));
+		chips.addView(ChipFlowLayout.chip(palette, 0, R.string.diag_select_done, false, () -> setSelectMode(false)));
+		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+		lp.setMarginStart(dp(12));
+		bar.addView(chips, lp);
+		bar.setVisibility(View.GONE);
+		return bar;
+	}
+
+	@Override
+	public boolean onBackPressed() {
+		if (selectMode) {
+			setSelectMode(false);
+			return true;
+		}
+		return super.onBackPressed();
 	}
 
 	/** The {@code key=} of every {@code key=value} in the accent, so the facts stand out from their values. */
@@ -891,7 +1056,10 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 
 	private void share() {
 		if (filtered.isEmpty()) return;
-		String text = exportText();
+		shareText(exportText());
+	}
+
+	private void shareText(String text) {
 		if (text.length() > MAX_SHARE_CHARS) text = text.substring(text.length() - MAX_SHARE_CHARS);
 		try {
 			// EXTRA_TEXT rather than a file + FileProvider: the provider is only declared in the Auto build's manifest,

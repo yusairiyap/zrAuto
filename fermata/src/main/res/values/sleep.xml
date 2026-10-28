@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The Sleep addon: tab, settings, notification and the words of its insights. -->
+    <string name="addon_name_sleep">Sleep</string>
+    <string name="sleep_title">Sleep</string>
+    <string name="action_sleep">Sleep</string>
+    <string name="action_sleep_toggle">Sleep start / stop</string>
+    <string name="sleep_addon_off">Switch on Sleep under Settings > Addons first</string>
+
+    <string-array name="sleep_stages">
+        <item>Awake</item>
+        <item>REM</item>
+        <item>Light</item>
+        <item>Deep</item>
+    </string-array>
+    <string-array name="sleep_grades">
+        <item>Poor</item>
+        <item>Fair</item>
+        <item>Good</item>
+        <item>Excellent</item>
+    </string-array>
+
+    <!-- Session card -->
+    <string name="sleep_start">Start sleep</string>
+    <string name="sleep_stop">Stop and save</string>
+    <string name="sleep_ready">Ready for tonight</string>
+    <string name="sleep_ready_sub">Put the phone on the bed, on charge, and press Start when you lie down.</string>
+    <string name="sleep_recording">Recording · %1$s</string>
+    <string name="sleep_since">Since %1$s</string>
+    <string name="sleep_live_move">movement %1$d%%</string>
+    <string name="sleep_live_sound">sound on</string>
+    <string name="sleep_times_only">times only</string>
+    <string name="sleep_i_am_awake">I\'m awake</string>
+    <string name="sleep_marked_awake">Marked as awake</string>
+    <string name="sleep_started">Recording your sleep. Good night!</string>
+    <string name="sleep_saved">Night saved</string>
+    <string name="sleep_too_short">Under 20 minutes, so it was not kept as a night.</string>
+    <string name="sleep_link">Starts your last ambience mix with the session.</string>
+    <string name="sleep_link_with_timer">Starts your last ambience mix with the session, fading out after %1$d min.</string>
+    <string name="sleep_link_playing">Ambience: %1$s</string>
+    <string name="sleep_notif_text">Recording your sleep since %1$s</string>
+
+    <!-- The night -->
+    <string name="sleep_no_night">No night recorded yet</string>
+    <string name="sleep_no_night_title">No nights yet</string>
+    <string name="sleep_no_night_sub">Your first night shows up here in the morning.</string>
+    <string name="sleep_from_sensors">Measured with the phone\'s motion sensor</string>
+    <string name="sleep_from_times">From bed and wake times only</string>
+    <string name="sleep_recovered">Saved when the app was closed in the night</string>
+    <string name="sleep_part_duration">Duration</string>
+    <string name="sleep_part_regular">Regular times</string>
+    <string name="sleep_part_latency">Falling asleep</string>
+    <string name="sleep_part_interruptions">Interruptions</string>
+    <string name="sleep_stat_asleep">Asleep</string>
+    <string name="sleep_stat_in_bed">In bed</string>
+    <string name="sleep_stat_latency">To fall asleep</string>
+    <string name="sleep_stat_awake">Awakenings</string>
+    <string name="sleep_minutes">%1$d min</string>
+    <string name="sleep_minutes_short">%1$d min</string>
+    <string name="sleep_hours">%1$d h</string>
+    <string name="sleep_no_limit">Until I stop it</string>
+    <string name="sleep_movement">Movement</string>
+    <string name="sleep_stages_title">Sleep stages</string>
+    <string name="sleep_stages_sub">Estimated: a phone on the bed can tell asleep from awake, but only guesses REM, light and deep from the shape of the night.</string>
+
+    <!-- Trends and insights -->
+    <string name="sleep_trends_title">Last nights</string>
+    <string name="sleep_range_7">7 nights</string>
+    <string name="sleep_range_30">30 nights</string>
+    <string name="sleep_mode_duration">How long</string>
+    <string name="sleep_mode_times">When</string>
+    <string name="sleep_no_trends">The last nights show here once you have recorded one.</string>
+    <string name="sleep_trend_summary">%1$d nights: %2$s asleep on average, score %3$d.</string>
+    <string name="sleep_insights_title">Insights and tips</string>
+    <string name="sleep_insights_empty">Record a few nights and what they say shows up here, with tips that use your Ambience sounds.</string>
+    <string name="sleep_insight_week">You averaged %1$s asleep over the last %2$d nights (goal %3$s).</string>
+    <string name="sleep_insight_debt">Sleep debt this week: %1$s below your goal. One longer night or an earlier bedtime pays part of it back.</string>
+    <string name="sleep_insight_best">Best night this week scored %1$d (%2$s), the lowest %3$d.</string>
+    <string name="sleep_insight_amb_better">Nights with Ambience sounds scored %1$d points higher (%2$d nights with them).</string>
+    <string name="sleep_insight_amb_worse">Nights with Ambience sounds scored %1$d points lower (%2$d nights with them). Try a lower volume or another sound.</string>
+    <string name="sleep_insight_amb_same">Ambience sounds make no clear difference yet (%1$d nights with them, %2$d without).</string>
+    <string name="sleep_insight_amb_best">%1$s goes with your best nights: %2$d points above your average.</string>
+    <string name="sleep_tip_latency_amb">It takes about %1$d minutes to fall asleep, even with sounds on. Try a calmer sound, a dimmer screen before bed, and a fixed wind-down time.</string>
+    <string name="sleep_tip_latency_try_amb">It takes about %1$d minutes to fall asleep. Try the Ambience tab: rain or ocean with a 30 minute timer, started together with the session.</string>
+    <string name="sleep_tip_awakenings">You woke up three or more times a night on average. A cooler, darker, quieter room helps, and so does leaving caffeine out of the afternoon.</string>
+    <string name="sleep_tip_noise">Your room was loud on most nights. A steady Ambience sound can cover sudden noises.</string>
+    <string name="sleep_tip_regular">Your bed and wake times vary by about %1$d minutes. A fixed time, even on weekends, is one of the best things for sleep.</string>
+    <string name="sleep_tip_earlier">You are sleeping less than your goal. Try going to bed around %1$s.</string>
+    <string name="sleep_tip_none">Nothing to fix: your sleep looks steady. Keep your times.</string>
+
+    <!-- Preview and settings -->
+    <string name="sleep_settings">Sleep settings</string>
+    <string name="sleep_settings_sub">Goal, score, recording and the link to Ambience</string>
+    <string name="sleep_settings_hint">What a good night is for you, how the score is made and how the night is recorded.</string>
+    <string name="sleep_settings_reset">Reset sleep settings</string>
+    <string name="sleep_settings_reset_question">Put every sleep setting back to how it was? The recorded nights stay.</string>
+    <string name="sleep_preview_title">Preview</string>
+    <string name="sleep_preview_sub">A made-up night: 6 h 40 m asleep, 25 minutes to fall asleep, 2 awakenings, a bedtime 40 minutes off.</string>
+    <string name="sleep_preview_caption">Sample</string>
+    <string name="sleep_section_goal">Your sleep</string>
+    <string name="sleep_section_weights">The score</string>
+    <string name="sleep_section_record">Recording</string>
+    <string name="sleep_section_ambience">Ambience</string>
+    <string name="sleep_section_look">Look</string>
+    <string name="sleep_section_history">History</string>
+    <string name="sleep_set_goal">Sleep goal</string>
+    <string name="sleep_set_goal_sub">How long you want to sleep</string>
+    <string name="sleep_set_bed">Usual bedtime</string>
+    <string name="sleep_set_bed_sub">What regular times are measured against until there are a few nights</string>
+    <string name="sleep_set_wake">Usual wake time</string>
+    <string name="sleep_set_wake_sub">The same for waking up</string>
+    <string name="sleep_set_weight_sub">How much it counts, against the other three</string>
+    <string name="sleep_set_mode">How the night is recorded</string>
+    <string name="sleep_set_mode_sub">Times only is the lightest. Movement uses the motion sensor. Movement and sound also measures how loud the room is; the sound itself is never stored.</string>
+    <string name="sleep_mode_times_only">Times only</string>
+    <string name="sleep_mode_movement">Movement</string>
+    <string name="sleep_mode_sound">Move + sound</string>
+    <string name="sleep_set_sensitivity">Sensitivity</string>
+    <string name="sleep_set_sensitivity_sub">How easily movement counts as being awake. Higher if you sleep lightly, lower if a partner moves the bed.</string>
+    <string name="sleep_sens_low">Low</string>
+    <string name="sleep_sens_normal">Normal</string>
+    <string name="sleep_sens_high">High</string>
+    <string name="sleep_set_auto_stop">Stop by itself after</string>
+    <string name="sleep_set_auto_stop_sub">In case you forget to stop it in the morning</string>
+    <string name="sleep_set_amb_start">Start my ambience mix with the session</string>
+    <string name="sleep_set_amb_start_sub">Needs the Ambience addon. Brings back the last mix you used.</string>
+    <string name="sleep_set_amb_min">Fade the sounds out after</string>
+    <string name="sleep_set_amb_min_sub">The sounds fade away by themselves while the recording goes on</string>
+    <string name="sleep_set_amb_stop">Stop the sounds when I stop</string>
+    <string name="sleep_set_amb_stop_sub">When you end the session in the morning</string>
+    <string name="sleep_set_animate">Animate the charts</string>
+    <string name="sleep_set_animate_sub">The ring fills in, the stages and bars draw themselves</string>
+    <string name="sleep_set_clear">Delete all recorded nights</string>
+    <string name="sleep_set_clear_sub">Removes the history, not the settings</string>
+    <string name="sleep_clear_question">Every recorded night is deleted. This cannot be undone.</string>
+    <string name="sleep_cleared">Sleep history deleted</string>
+</resources>

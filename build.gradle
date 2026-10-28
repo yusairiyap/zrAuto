@@ -86,6 +86,16 @@ ext {
                     order      : 9,
                     hasSettings: true
             ],
+            [
+                    // Records the night with the phone on the bed (its motion, optionally the room's
+                    // loudness), scores it, draws the stages and gives tips that use the Ambience sounds.
+                    // Right after the ambience tab.
+                    name       : 'sleep',
+                    icon       : 'sleep',
+                    class      : 'me.aap.fermata.addon.sleep.SleepAddon',
+                    order      : 10,
+                    hasSettings: true
+            ],
     ]
 }
 

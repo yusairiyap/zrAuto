@@ -75,6 +75,9 @@
     <item name="settings_row_tag" type="id" />
     <item name="ambience_addon" type="id" />
     <item name="ambience_toolbar_chip" type="id" />
+    <item name="sleep_addon" type="id" />
+    <item name="sleep_toolbar_chip" type="id" />
+    <item name="sleep_settings_fragment" type="id" />
     <item name="fuel_log_toolbar_chip" type="id" />
     <item name="music_play" type="id" />
     <item name="item_play" type="id" />

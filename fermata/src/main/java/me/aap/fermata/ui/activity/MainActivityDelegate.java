@@ -2403,6 +2403,8 @@ public class MainActivityDelegate extends ActivityDelegate
 			return new me.aap.fermata.ui.fragment.AllInOneFragment();
 		} else if (id == R.id.fab_settings_fragment) {
 			return new me.aap.fermata.ui.fragment.FabSettingsFragment();
+		} else if (id == R.id.sleep_settings_fragment) {
+			return new me.aap.fermata.ui.fragment.SleepSettingsFragment();
 		} else if (id == R.id.power_settings_fragment) {
 			return new me.aap.fermata.ui.fragment.PowerSettingsFragment();
 		} else if (id == R.id.home_settings_fragment) {

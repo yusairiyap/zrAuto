@@ -945,6 +945,12 @@
     <string name="diag_search_hint">Search the log</string>
     <string name="diag_newest_first">Newest first</string>
     <string name="diag_live">Live</string>
+    <string name="diag_classic">Classic</string>
+    <string name="diag_select">Select</string>
+    <string name="diag_selected_count">%1$d selected</string>
+    <string name="diag_picked_copied">Selected lines copied</string>
+    <string name="diag_select_all">All</string>
+    <string name="diag_select_done">Done</string>
     <string name="diag_clear_title">Clear the log?</string>
     <string name="diag_clear_question">This deletes every recorded entry.</string>
     <string name="diag_line_copied">Line copied</string>

@@ -40,6 +40,7 @@ package me.aap.fermata.util;
  * <tr><td>{@link #SHARE}</td><td>sharing over Wi-Fi</td></tr>
  * <tr><td>{@link #BACKUP}</td><td>backup and restore</td></tr>
  * <tr><td>{@link #UI}</td><td>dialogs and other view failures</td></tr>
+ * <tr><td>{@link #SLEEP}</td><td>the Sleep addon: sessions, epochs, scores</td></tr>
  * </table>
  * <p>
  * Every category the user ever sees comes from here, but the filter only lists the ones that have lines.
@@ -77,6 +78,7 @@ public final class LogCat {
 	public static final String SHARE = "SHARE";
 	public static final String BACKUP = "BACKUP";
 	public static final String UI = "UI";
+	public static final String SLEEP = "SLEEP";
 
 	private LogCat() {
 	}
