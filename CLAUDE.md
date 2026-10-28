@@ -1552,6 +1552,9 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
      effects path's gain curves run whatever the page's visibility (they are sample-accurate in the audio renderer).
      The picture is hidden during the warm-up (`hidePicture`, the `<video>`'s opacity 0) and faded in on the jump back's `seeked`
      (`showPicture`, also from `clearTimers` and a 1.5 s fallback): in fullscreen video the first 0.6 s was seen playing and jumping back.
+     That alone did not hide it in fullscreen: there the app's black transition cover came down on the page's first `playing`, the start of
+     the warm-up. Now `playing` leaves the cover up while `v.__fermataWarming` is set, and `showPicture` fires `fermatapictureshown` on the
+     element, whose listener (`YoutubeWebView#attachListeners`) sends `JS_CONTENT_PLAYING` to lift it.
      To take it out: the setting, or the `warm` lines in `startFade`, the pref, its two strings and the `warmup` in both `configure` calls.
    - Diagnostic lines to ask for: `YT media` (playing / waiting / seeking / `start fade:` / `start clock per 100 ms:`), `STATE start load`,
      `YT seek while starting`.

@@ -90,25 +90,34 @@
 
   // The picture is hidden while a new video warms up (see startFade): it played its first moment and then visibly jumped
   // back to the start. Shown again, faded in, once the jump back is done; whatever ends the start shows it too (clearTimers).
+  // 'important', so a style YouTube's player writes meanwhile does not bring it back. In fullscreen the app's black cover
+  // is what hides it: the page's 'playing' does not lift that cover while __fermataWarming is set, and showing the picture
+  // sends 'fermatapictureshown', which lifts it (YoutubeWebView#attachListeners).
   function hidePicture(v, s) {
     if (s.pictureHidden) return;
     s.pictureHidden = true;
     s.pictureGen = (s.pictureGen || 0) + 1;
     s.pictureEl = v;
-    s.pictureOpacity = v.style.opacity;
-    v.style.transition = 'none';
-    v.style.opacity = '0';
+    s.pictureOpacity = v.style.getPropertyValue('opacity');
+    v.__fermataWarming = true;
+    v.style.setProperty('transition', 'none', 'important');
+    v.style.setProperty('opacity', '0', 'important');
   }
 
   function showPicture(s) {
     const v = s.pictureEl;
     if (!s.pictureHidden || !v) return;
     s.pictureHidden = false;
-    v.style.transition = 'opacity 0.25s ease-out';
-    v.style.opacity = s.pictureOpacity || '';
+    v.__fermataWarming = false;
+    v.style.setProperty('transition', 'opacity 0.25s ease-out', 'important');
+    if (s.pictureOpacity) v.style.setProperty('opacity', s.pictureOpacity);
+    else v.style.removeProperty('opacity');
     setTimeout(() => {
-      if (!s.pictureHidden) v.style.transition = '';
+      if (!s.pictureHidden) v.style.removeProperty('transition');
     }, 400);
+    try {
+      v.dispatchEvent(new Event('fermatapictureshown'));
+    } catch (err) { /* ignore */ }
   }
 
   function clearTimers(s) {

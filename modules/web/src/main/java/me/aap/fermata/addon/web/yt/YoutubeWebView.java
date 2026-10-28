@@ -514,14 +514,19 @@ public class YoutubeWebView extends FermataWebView {
 				"  v.style.objectFit = '" + scale + "';\n" + debug +
 				"  if ((v.currentTime > 0) && !v.paused && !v.ended) {\n" +
 				"    if (typeof fermataAdCheck === 'function') fermataAdCheck();\n" +
-				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
+				"    if (!window.__fermataAdShowing && !v.__fermataWarming) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
 				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", fermataCurrentVideoId() + '|' + " +
 				"(fermataRecentLinkClick() ? '1' : '0') + '|' + fermataCurrentVideoTitle() + '|' + " +
 				"fermataCurrentVideoAuthor() + '|' + v.currentSrc);\n" +
 				"  }\n" +
+				// While a new song warms up silently (youtube_fade.js) its 'playing' leaves the fullscreen cover
+				// up: under it the first moment plays and jumps back to the start. The picture coming back lifts it.
+				"  v.addEventListener('fermatapictureshown', function(e) {\n" +
+				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
+				"  });\n" +
 				"  v.addEventListener('playing', function(e) {\n" +
 				"    if (typeof fermataAdCheck === 'function') fermataAdCheck();\n" +
-				"    if (!window.__fermataAdShowing) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
+				"    if (!window.__fermataAdShowing && !v.__fermataWarming) " + JS_EVENT + "(" + JS_CONTENT_PLAYING + ", null);\n" +
 				"    " + JS_EVENT + "(" + JS_VIDEO_PLAYING + ", fermataCurrentVideoId() + '|' + " +
 				"(fermataRecentLinkClick() ? '1' : '0') + '|' + fermataCurrentVideoTitle() + '|' + " +
 				"fermataCurrentVideoAuthor() + '|' + v.currentSrc);\n" +
