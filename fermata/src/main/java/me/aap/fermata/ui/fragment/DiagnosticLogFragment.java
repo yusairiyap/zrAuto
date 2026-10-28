@@ -139,6 +139,8 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 	private LinearLayout header;
 	@Nullable
 	private LinearLayout sticky;
+	@Nullable
+	private TextView stickyCount;
 	private View spacer;
 	private TextView countView;
 	private TextView recordingSub;
@@ -308,6 +310,7 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		selectBar = null;
 		selectCount = null;
 		sticky = null;
+		stickyCount = null;
 		spacer = null;
 		header = null;
 		searchEdit = null;
@@ -600,7 +603,15 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		actions.addView(ChipFlowLayout.chip(palette, R.drawable.refresh, R.string.diagnostic_log_refresh, false,
 				() -> refresh(true)));
 		actions.addView(ChipFlowLayout.chip(palette, R.drawable.delete, R.string.diagnostic_log_clear, false, this::clear));
-		bar.addView(actions, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		// The buttons on the left, and at the top right how many lines the filters leave.
+		LinearLayout top = new LinearLayout(palette);
+		top.setOrientation(LinearLayout.HORIZONTAL);
+		top.addView(actions, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		stickyCount = text("", 12.5f, accent, true);
+		stickyCount.setGravity(Gravity.END | Gravity.TOP);
+		stickyCount.setPadding(dp(8), dp(10), dp(6), 0);
+		top.addView(stickyCount, new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
+		bar.addView(top, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 		// Not on the car screen, where there is no keyboard.
 		if (!getActivityDelegate().isCarActivity()) {
 			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
@@ -743,6 +754,7 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 	private void syncHeader() {
 		if (header == null) return;
 		countView.setText(getString(R.string.diag_shown_count, filtered.size(), all.size()));
+		if (stickyCount != null) stickyCount.setText(getString(R.string.diag_count_short, filtered.size(), all.size()));
 		boolean on = DiagnosticLog.isEnabled();
 		recordingSub.setText(on ? R.string.diag_recording_on : R.string.diag_recording_off);
 		if (recordingSwitch.isChecked() != on) {

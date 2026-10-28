@@ -931,6 +931,7 @@
     <string name="diag_recording">Recording</string>
     <string name="diag_recording_on">New events are being recorded</string>
     <string name="diag_recording_off">Not recording. Switch it on to record events.</string>
+    <string name="diag_count_short">%1$d of %2$d</string>
     <string name="diag_shown_count">%1$d of %2$d entries shown</string>
     <string name="diag_section_level">Level</string>
     <string name="diag_section_categories">Categories</string>
