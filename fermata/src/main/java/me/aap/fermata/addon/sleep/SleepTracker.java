@@ -79,9 +79,13 @@ public final class SleepTracker implements SensorEventListener {
 	private boolean countScreen;
 	private boolean screenRegistered;
 	private volatile boolean screenSeen;
-	private boolean standInit;
 	private boolean autoStarted;
-	private float standBase;
+	private final float[] standWindow = new float[10];
+	private int standCount;
+	private int standHold;
+	private int standAmbience;
+	/** How many ambience sounds were on at the last look (see noteMix). */
+	private volatile int ambienceCount;
 	private final android.content.BroadcastReceiver screenReceiver = new android.content.BroadcastReceiver() {
 		@Override
 		public void onReceive(Context c, android.content.Intent i) {
