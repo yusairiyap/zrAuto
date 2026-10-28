@@ -184,7 +184,7 @@ public class SleepSettingsFragment extends ReorderListFragment {
 				new int[]{R.string.sleep_preset_balanced, R.string.sleep_preset_long, R.string.sleep_preset_routine,
 						R.string.sleep_preset_calm},
 				SleepSettingsFragment::presetIndex, SleepSettingsFragment::applyPreset);
-		TextView presetText = text("", 12.5f, textSecondary, false);
+		TextView presetText = text(0, 12.5f, textSecondary, false);
 		presetText.setPadding(dp(8), dp(8), dp(8), 0);
 		box.addView(presetText);
 		syncers.add(() -> presetText.setText(PRESET_TEXTS[presetIndex() < 0 ? PRESET_TEXTS.length - 1 : presetIndex()]));

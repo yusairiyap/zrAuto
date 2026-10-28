@@ -661,7 +661,7 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 				query = s.toString();
 				clear.setVisibility(query.isEmpty() ? View.GONE : View.VISIBLE);
 				if (searchRun != null) handler.removeCallbacks(searchRun);
-				searchRun = this::refreshForSearch;
+				searchRun = DiagnosticLogFragment.this::refreshForSearch;
 				handler.postDelayed(searchRun, SEARCH_DELAY_MS);
 			}
 		});
