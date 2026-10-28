@@ -88,12 +88,36 @@
     }
   }
 
+  // The picture is hidden while a new video warms up (see startFade): it played its first moment and then visibly jumped
+  // back to the start. Shown again, faded in, once the jump back is done; whatever ends the start shows it too (clearTimers).
+  function hidePicture(v, s) {
+    if (s.pictureHidden) return;
+    s.pictureHidden = true;
+    s.pictureGen = (s.pictureGen || 0) + 1;
+    s.pictureEl = v;
+    s.pictureOpacity = v.style.opacity;
+    v.style.transition = 'none';
+    v.style.opacity = '0';
+  }
+
+  function showPicture(s) {
+    const v = s.pictureEl;
+    if (!s.pictureHidden || !v) return;
+    s.pictureHidden = false;
+    v.style.transition = 'opacity 0.25s ease-out';
+    v.style.opacity = s.pictureOpacity || '';
+    setTimeout(() => {
+      if (!s.pictureHidden) v.style.transition = '';
+    }, 400);
+  }
+
   function clearTimers(s) {
     if (s.timer) {
       clearInterval(s.timer);
       s.timer = 0;
     }
     s.startStep = null;
+    showPicture(s);
     if (s.doneTimer) {
       clearTimeout(s.doneTimer);
       s.doneTimer = 0;
@@ -266,6 +290,7 @@
     };
     let startAt = 0;
     ramp(v, (warm === 0) ? 0 : START_LEVEL, 0);
+    if (warm === 0) hidePicture(v, s);
     let t0 = -1;
     let pausedSince = 0;
     // How evenly the fade ran: a page busy starting the video delays these 10 ms ticks, and the level then
@@ -307,6 +332,7 @@
             startAt = 0;
           } else {
             warm = -1;
+            showPicture(s);
             trace('start warm-up skipped: began at ' + t.toFixed(2));
             if (p) return; // the gain branch above fades it in on the next step
           }
@@ -319,6 +345,13 @@
           (hidden ? ' (page hidden)' : ''));
         // Marked so the 'waiting' this seek may cause is not reported as buffering (YoutubeWebView#attachListeners).
         v.__fermataWarmSeekAt = Date.now();
+        // Only this start's picture: a song skipped meanwhile has hidden its own.
+        const gen = s.pictureGen;
+        const show = () => {
+          if (s.pictureGen === gen) showPicture(s);
+        };
+        v.addEventListener('seeked', show, {once: true});
+        setTimeout(show, 1500); // no 'seeked' (element replaced, seek refused)
         try {
           v.currentTime = startAt;
         } catch (err) { /* element gone */ }

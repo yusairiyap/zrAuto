@@ -1550,6 +1550,8 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
      A hidden page (the Music tab playing YouTube) used to skip `startFade` altogether (no warm-up, no fade); it now warms up too
      (`(page hidden)` on the trace line), its steps also driven from `timeupdate` in case the page's timers are held back, and the
      effects path's gain curves run whatever the page's visibility (they are sample-accurate in the audio renderer).
+     The picture is hidden during the warm-up (`hidePicture`, the `<video>`'s opacity 0) and faded in on the jump back's `seeked`
+     (`showPicture`, also from `clearTimers` and a 1.5 s fallback): in fullscreen video the first 0.6 s was seen playing and jumping back.
      To take it out: the setting, or the `warm` lines in `startFade`, the pref, its two strings and the `warmup` in both `configure` calls.
    - Diagnostic lines to ask for: `YT media` (playing / waiting / seeking / `start fade:` / `start clock per 100 ms:`), `STATE start load`,
      `YT seek while starting`.
