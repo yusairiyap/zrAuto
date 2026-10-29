@@ -68,6 +68,7 @@ import me.aap.fermata.ui.view.TopToast;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.util.DiagnosticLog.Entry;
 import me.aap.fermata.util.DiagnosticLog.Level;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.log.Log;
 import me.aap.utils.ui.UiUtils;
 
@@ -193,6 +194,7 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 	public void onViewCreated(@NonNull View view, @Nullable Bundle state) {
 		super.onViewCreated(view, state);
 		Context ctx = view.getContext();
+		loadView();
 		palette = EffectsUi.palette(ctx);
 		density = ctx.getResources().getDisplayMetrics().density;
 		textPrimary = color(R.attr.musicTextPrimary);
@@ -290,8 +292,44 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		startLive();
 	}
 
+	private static final String VIEW_PREFS = "diagnostic_log_view";
+	private static boolean viewLoaded;
+
+	/** What the screen shows (level, hidden categories, order, live, classic) is kept across app starts. */
+	private void loadView() {
+		if (viewLoaded) return;
+		viewLoaded = true;
+		try {
+			android.content.SharedPreferences sp = requireContext().getApplicationContext()
+					.getSharedPreferences(VIEW_PREFS, Context.MODE_PRIVATE);
+			try {
+				minLevel = Level.valueOf(sp.getString("level", Level.DEBUG.name()));
+			} catch (IllegalArgumentException ignore) {
+				minLevel = Level.DEBUG;
+			}
+			newestFirst = sp.getBoolean("newest", true);
+			live = sp.getBoolean("live", false);
+			classic = sp.getBoolean("classic", false);
+			hidden.clear();
+			hidden.addAll(sp.getStringSet("hidden", Collections.emptySet()));
+		} catch (Exception ex) {
+			DiagnosticLog.w(LogCat.UI, "log view not read", ex);
+		}
+	}
+
+	private void saveView() {
+		try {
+			requireContext().getApplicationContext().getSharedPreferences(VIEW_PREFS, Context.MODE_PRIVATE).edit()
+					.putString("level", minLevel.name()).putBoolean("newest", newestFirst).putBoolean("live", live)
+					.putBoolean("classic", classic).putStringSet("hidden", new HashSet<>(hidden)).apply();
+		} catch (Exception ex) {
+			DiagnosticLog.w(LogCat.UI, "log view not saved", ex);
+		}
+	}
+
 	@Override
 	public void onPause() {
+		saveView();
 		resumed = false;
 		handler.removeCallbacksAndMessages(null);
 		super.onPause();
@@ -556,12 +594,27 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		GradientDrawable bg = rounded(ColorUtils.setAlphaComponent(MenuStyle.panelColor(palette), 0xF2), 22);
 		bar.setBackground(bg);
 		bar.setElevation(dp(6));
-		ChipFlowLayout actions = new ChipFlowLayout(palette);
-		actions.addView(ChipFlowLayout.chip(palette, R.drawable.copy, R.string.diagnostic_log_copy, true, this::copy));
-		actions.addView(ChipFlowLayout.chip(palette, R.drawable.share, R.string.diagnostic_log_share, false, this::share));
-		actions.addView(ChipFlowLayout.chip(palette, R.drawable.refresh, R.string.diagnostic_log_refresh, false,
-				() -> refresh(true)));
-		actions.addView(ChipFlowLayout.chip(palette, R.drawable.delete, R.string.diagnostic_log_clear, false, this::clear));
+		// On a phone the four buttons are icons in one line; a wide screen keeps their names.
+		boolean compact = getResources().getConfiguration().screenWidthDp < 600;
+		ViewGroup actions;
+		if (compact) {
+			LinearLayout row = new LinearLayout(palette);
+			row.setOrientation(LinearLayout.HORIZONTAL);
+			row.setGravity(Gravity.CENTER_VERTICAL);
+			addIconButton(row, R.drawable.copy, R.string.diagnostic_log_copy, true, this::copy);
+			addIconButton(row, R.drawable.share, R.string.diagnostic_log_share, false, this::share);
+			addIconButton(row, R.drawable.refresh, R.string.diagnostic_log_refresh, false, () -> refresh(true));
+			addIconButton(row, R.drawable.delete, R.string.diagnostic_log_clear, false, this::clear);
+			actions = row;
+		} else {
+			ChipFlowLayout flow = new ChipFlowLayout(palette);
+			flow.addView(ChipFlowLayout.chip(palette, R.drawable.copy, R.string.diagnostic_log_copy, true, this::copy));
+			flow.addView(ChipFlowLayout.chip(palette, R.drawable.share, R.string.diagnostic_log_share, false, this::share));
+			flow.addView(ChipFlowLayout.chip(palette, R.drawable.refresh, R.string.diagnostic_log_refresh, false,
+					() -> refresh(true)));
+			flow.addView(ChipFlowLayout.chip(palette, R.drawable.delete, R.string.diagnostic_log_clear, false, this::clear));
+			actions = flow;
+		}
 		// The buttons on the left, and at the top right how many lines the filters leave.
 		LinearLayout top = new LinearLayout(palette);
 		top.setOrientation(LinearLayout.HORIZONTAL);
@@ -970,6 +1023,21 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 				b.setPadding(dp(16), 0, dp(16), 0);
 			}
 		});
+	}
+
+	private void addIconButton(LinearLayout row, @DrawableRes int icon, @StringRes int name, boolean primary, Runnable click) {
+		ImageView b = new ImageView(palette);
+		b.setImageResource(icon);
+		b.setImageTintList(ColorStateList.valueOf(primary ? onAccent : textPrimary));
+		b.setPadding(dp(10), dp(10), dp(10), dp(10));
+		b.setBackground(pressable(rounded(primary ? accent : 0x1F808080, 20)));
+		b.setContentDescription(getString(name));
+		b.setClickable(true);
+		b.setFocusable(true);
+		b.setOnClickListener(v -> click.run());
+		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(42), dp(40));
+		lp.setMarginEnd(dp(6));
+		row.addView(b, lp);
 	}
 
 	private View buildSearch() {

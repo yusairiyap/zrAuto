@@ -1395,6 +1395,8 @@ Built into `fermata` like Ambience (order 10, `hasSettings`), package `addon/sle
   under the quick row (`animateRow`: height + alpha 220 ms, the list's spacer follows once at the end). Chip rows scroll sideways inside
   `HomeFadeLayout` (edge fade, no built-in fading edge). The Time group (not on the car screen: it uses real dialogs) is presets plus From / To
   pickers (`fromMs/toMs`, statics like the other filters); lines without a date are dropped while a time limit is on. A toggle is filled when its filter changes the lines.
+- **The screen remembers its view** (`DiagnosticLogFragment#loadView/saveView`, shared prefs `diagnostic_log_view`, saved in `onPause`): level, hidden categories, Newest first, Live and Classic survive an app restart; the search text and the time range do not. On a window under 600dp wide the four action buttons are icons in one line (`addIconButton`).
+- **A new category on `PowerUsageStore` must be added to every per-category array**: `PowerWidget#CAT_NAMES/CAT_COLORS` still had three entries when `CATS` became 4, which crashed Home (the start page) at launch, so the app would not start.
 - **Log retention**: 1000 entries in memory (`MAX_ENTRIES`); `zrauto-diagnostics.log` mirrors them and is rewritten to the newest 500 once past
   ~250 KB; no age limit; Clear deletes both; the file is reloaded when recording is switched on.
 
