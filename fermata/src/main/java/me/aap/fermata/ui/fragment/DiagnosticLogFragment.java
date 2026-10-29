@@ -35,6 +35,8 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import android.animation.ValueAnimator;
+import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
@@ -100,6 +102,9 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 	private static final Set<String> hidden = new HashSet<>();
 	private static String query = "";
 	private static boolean newestFirst = true;
+	/** The time range the lines are limited to, in ms since the epoch; 0 = open ended. */
+	private static long fromMs;
+	private static long toMs;
 	private static boolean live;
 	/** The old look: every line as one block of plain text, to select and copy by hand. */
 	private static boolean classic;
@@ -146,8 +151,14 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 	private SwitchCompat recordingSwitch;
 	private boolean syncingSwitch;
 	private LinearLayout levelRow;
-	private ChipFlowLayout categoryChips;
-	private ChipFlowLayout viewChips;
+	private LinearLayout categoryChips;
+	private LinearLayout viewChips;
+	private LinearLayout dateChips;
+	/** The row under the search box with one toggle per group of filters (levels, time, categories, view). */
+	private LinearLayout quick;
+	private final Group[] groups = new Group[4];
+	private int fitState = -1;
+	private int rowAnims;
 	private TextView resetChip;
 	private Runnable searchRun;
 	@Nullable
@@ -207,7 +218,9 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		((FrameLayout) view).addView(sticky, stlp);
 		// The header's room for it follows its height (the buttons wrap on a narrow screen).
 		sticky.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
-			if ((b - t) == (ob - ot) || (spacer == null)) return;
+			// Which groups of filters fit beside each other depends on the width (after the layout, never in it).
+			if ((r - l) != (or - ol)) sticky.post(this::fitQuick);
+			if ((b - t) == (ob - ot) || (spacer == null) || (rowAnims > 0)) return;
 			ViewGroup.LayoutParams sl = spacer.getLayoutParams();
 			sl.height = (b - t) + dp(10);
 			spacer.setLayoutParams(sl);
@@ -401,6 +414,8 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		for (Entry e : all) {
 			if (e.level.ordinal() < minLevel.ordinal()) continue;
 			if (hidden.contains(e.category)) continue;
+			if ((fromMs > 0) && (e.time < fromMs)) continue;
+			if ((toMs > 0) && ((e.time == 0) || (e.time > toMs))) continue;
 			if (!needle.isEmpty() && !e.matches(needle)) continue;
 			filtered.add(e);
 		}
@@ -410,7 +425,7 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 	}
 
 	private boolean filtersActive() {
-		return (minLevel != Level.DEBUG) || !hidden.isEmpty() || !query.trim().isEmpty();
+		return (minLevel != Level.DEBUG) || !hidden.isEmpty() || !query.trim().isEmpty() || (fromMs > 0) || (toMs > 0);
 	}
 
 	private String filterText() {
@@ -420,6 +435,8 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 			Collections.sort(h);
 			sb.append(" hidden=").append(String.join(",", h));
 		}
+		if (fromMs > 0) sb.append(" from=").append(stamp(fromMs));
+		if (toMs > 0) sb.append(" to=").append(stamp(toMs));
 		if (!query.trim().isEmpty()) sb.append(" search=\"").append(query.trim()).append('"');
 		return sb.toString();
 	}
@@ -491,6 +508,9 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		});
 		rec.setOnClickListener(v -> recordingSwitch.toggle());
 		card.addView(rec);
+		TextView keeps = text(getString(R.string.diag_retention), 12, textSecondary, false);
+		keeps.setPadding(0, dp(2), 0, dp(6));
+		card.addView(keeps);
 		card.addView(prefSwitch(R.string.debug_log_toasts, R.string.debug_log_toasts_sub, MainActivityPrefs.DEBUG_LOG_TOASTS));
 		card.addView(prefSwitch(R.string.debug_log_menu, R.string.debug_log_menu_sub, MainActivityPrefs.DEBUG_LOG_MENU));
 		h.addView(card, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
@@ -499,65 +519,8 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		spacer = new View(palette);
 		h.addView(spacer, 0, new LinearLayout.LayoutParams(MATCH_PARENT, dp(112)));
 
-		// Level.
-		section(h, R.string.diag_section_level);
-		levelRow = new LinearLayout(palette);
-		levelRow.setOrientation(LinearLayout.HORIZONTAL);
-		int[] names2 = {R.string.diag_level_all, R.string.diag_level_info, R.string.diag_level_warn,
-				R.string.diag_level_error};
-		Level[] levels = Level.values();
-		for (int i = 0; i < levels.length; i++) {
-			int fi = i;
-			TextView t = text(getString(names2[i]), 13.5f, textPrimary, true);
-			t.setGravity(Gravity.CENTER);
-			t.setSingleLine(true);
-			t.setPadding(dp(6), dp(10), dp(6), dp(10));
-			GradientDrawable fill = rounded(0x1F808080, 14);
-			t.setTag(R.id.settings_row_tag, fill);
-			t.setBackground(pressable(fill));
-			t.setClickable(true);
-			t.setFocusable(true);
-			t.setOnClickListener(v -> {
-				minLevel = levels[fi];
-				syncLevel();
-				refresh(true);
-			});
-			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f);
-			lp.setMargins((i == 0) ? 0 : dp(3), 0, (i == levels.length - 1) ? 0 : dp(3), 0);
-			levelRow.addView(t, lp);
-		}
-		LinearLayout levelCard = new LinearLayout(palette);
-		levelCard.setPadding(dp(10), dp(10), dp(10), dp(10));
-		levelCard.setBackground(rounded(tileFill, 16));
-		levelCard.addView(levelRow, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-		h.addView(levelCard, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-
-		// Categories.
-		section(h, R.string.diag_section_categories);
-		LinearLayout catCard = new LinearLayout(palette);
-		catCard.setOrientation(LinearLayout.VERTICAL);
-		catCard.setPadding(dp(12), dp(12), dp(12), dp(12));
-		catCard.setBackground(rounded(tileFill, 16));
-		categoryChips = new ChipFlowLayout(palette);
-		catCard.addView(categoryChips, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-		TextView hint = text(getString(R.string.diag_cat_hint), 12, textSecondary, false);
-		hint.setPadding(dp(2), dp(10), 0, 0);
-		catCard.addView(hint);
-		h.addView(catCard, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-
-		// How it is shown.
-		section(h, R.string.diag_section_view);
-		viewChips = new ChipFlowLayout(palette);
-		LinearLayout viewCard = new LinearLayout(palette);
-		viewCard.setPadding(dp(12), dp(12), dp(12), dp(12));
-		viewCard.setBackground(rounded(tileFill, 16));
-		viewCard.addView(viewChips, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-		h.addView(viewCard, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-		buildViewChips();
-
 		View space = new View(palette);
 		h.addView(space, new LinearLayout.LayoutParams(MATCH_PARENT, dp(6)));
-		syncLevel();
 		return h;
 	}
 
@@ -614,7 +577,379 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 			lp.topMargin = dp(8);
 			bar.addView(buildSearch(), lp);
 		}
+		bar.addView(buildFilters(), new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 		return bar;
+	}
+
+	// ---------------------------------------------------------------------------------------------
+	// The filters in the floating panel
+
+	private static final int G_LEVELS = 0;
+	private static final int G_TIME = 1;
+	private static final int G_CATS = 2;
+	private static final int G_VIEW = 3;
+
+	/** One group of filters: its toggle in the quick row (an icon, with the name when there is room) and the row it opens. */
+	private final class Group {
+		final LinearLayout toggle;
+		final ImageView icon;
+		final TextView label;
+		final LinearLayout row;
+		final GradientDrawable fill = rounded(0x1F808080, 20);
+		boolean open;
+		/** Levels only: shown right in the quick row instead of behind the toggle. */
+		boolean inline;
+		@Nullable
+		ValueAnimator anim;
+
+		Group(@DrawableRes int iconRes, @StringRes int name, Runnable click) {
+			toggle = new LinearLayout(palette);
+			toggle.setOrientation(LinearLayout.HORIZONTAL);
+			toggle.setGravity(Gravity.CENTER);
+			toggle.setPadding(dp(10), 0, dp(10), 0);
+			toggle.setMinimumHeight(dp(40));
+			toggle.setBackground(pressable(fill));
+			toggle.setClickable(true);
+			toggle.setFocusable(true);
+			toggle.setOnClickListener(v -> click.run());
+			toggle.setContentDescription(getString(name));
+			icon = new ImageView(palette);
+			icon.setImageResource(iconRes);
+			toggle.addView(icon, new LinearLayout.LayoutParams(dp(20), dp(20)));
+			label = text(getString(name), 13.5f, textPrimary, true);
+			label.setSingleLine(true);
+			label.setPadding(dp(6), 0, 0, 0);
+			label.setVisibility(View.GONE);
+			toggle.addView(label);
+			row = new LinearLayout(palette);
+			row.setOrientation(LinearLayout.HORIZONTAL);
+			row.setPadding(0, dp(8), 0, 0);
+			row.setVisibility(View.GONE);
+			row.setAlpha(0f);
+		}
+	}
+
+	private View buildFilters() {
+		LinearLayout all = new LinearLayout(palette);
+		all.setOrientation(LinearLayout.VERTICAL);
+		quick = new LinearLayout(palette);
+		quick.setOrientation(LinearLayout.HORIZONTAL);
+		quick.setGravity(Gravity.CENTER_VERTICAL);
+		LinearLayout.LayoutParams qlp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		qlp.topMargin = dp(8);
+
+		buildLevelRow();
+		categoryChips = new LinearLayout(palette);
+		viewChips = new LinearLayout(palette);
+		dateChips = new LinearLayout(palette);
+		groups[G_LEVELS] = new Group(R.drawable.diag_levels, R.string.diag_filter_levels, () -> toggleGroup(G_LEVELS));
+		groups[G_TIME] = new Group(R.drawable.diag_calendar, R.string.diag_filter_time, () -> toggleGroup(G_TIME));
+		groups[G_CATS] = new Group(R.drawable.diag_tag, R.string.diag_filter_categories, () -> toggleGroup(G_CATS));
+		groups[G_VIEW] = new Group(R.drawable.visibility, R.string.diag_filter_view, () -> toggleGroup(G_VIEW));
+		groups[G_LEVELS].row.addView(levelRow);
+		groups[G_TIME].row.addView(fadeScroller(dateChips), new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		groups[G_CATS].row.addView(fadeScroller(categoryChips), new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		groups[G_VIEW].row.addView(fadeScroller(viewChips), new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		boolean car = getActivityDelegate().isCarActivity();
+		for (int g = 0; g < groups.length; g++) {
+			// The pickers are real dialogs, which the car screen does not allow.
+			if (car && (g == G_TIME)) continue;
+			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WRAP_CONTENT, dp(40));
+			lp.setMarginEnd(dp(6));
+			quick.addView(groups[g].toggle, lp);
+		}
+		all.addView(quick, qlp);
+		for (int g = 0; g < groups.length; g++) {
+			if (car && (g == G_TIME)) continue;
+			all.addView(groups[g].row, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		}
+		buildDateChips();
+		buildViewChips();
+		syncToggles();
+		return all;
+	}
+
+	/** A row of chips that scrolls sideways and melts away at the edge it can still scroll to. */
+	private View fadeScroller(LinearLayout content) {
+		android.widget.HorizontalScrollView hsv = new android.widget.HorizontalScrollView(palette);
+		hsv.setHorizontalScrollBarEnabled(false);
+		hsv.setOverScrollMode(View.OVER_SCROLL_NEVER);
+		hsv.setFillViewport(false);
+		content.setOrientation(LinearLayout.HORIZONTAL);
+		content.setGravity(Gravity.CENTER_VERTICAL);
+		hsv.addView(content, new android.widget.FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
+		me.aap.fermata.ui.home.HomeFadeLayout fade = new me.aap.fermata.ui.home.HomeFadeLayout(palette);
+		fade.addView(hsv, new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		fade.follow(hsv, null);
+		return fade;
+	}
+
+	private void addChip(LinearLayout parent, View chip) {
+		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+		lp.setMarginEnd(dp(6));
+		parent.addView(chip, lp);
+	}
+
+	private void buildLevelRow() {
+		levelRow = new LinearLayout(palette);
+		levelRow.setOrientation(LinearLayout.HORIZONTAL);
+		int[] names = {R.string.diag_level_all, R.string.diag_level_info, R.string.diag_level_warn, R.string.diag_level_error};
+		Level[] levels = Level.values();
+		for (int i = 0; i < levels.length; i++) {
+			int fi = i;
+			TextView t = text(getString(names[i]), 13.5f, textPrimary, true);
+			t.setGravity(Gravity.CENTER);
+			t.setSingleLine(true);
+			t.setPadding(dp(12), 0, dp(12), 0);
+			GradientDrawable fill = rounded(0x1F808080, 20);
+			t.setTag(R.id.settings_row_tag, fill);
+			t.setBackground(pressable(fill));
+			t.setClickable(true);
+			t.setFocusable(true);
+			t.setOnClickListener(v -> {
+				minLevel = levels[fi];
+				syncLevel();
+				syncToggles();
+				refresh(true);
+			});
+			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WRAP_CONTENT, dp(40));
+			lp.setMarginEnd(dp(4));
+			levelRow.addView(t, lp);
+		}
+		syncLevel();
+	}
+
+	/**
+	 * Which groups show their name (and the levels their chips) in the quick row: the levels first, then the time range, the
+	 * categories and the view, each only while the width still holds it; the rest are an icon, and a tap on one opens its row
+	 * under the others.
+	 */
+	private void fitQuick() {
+		if ((quick == null) || (groups[G_LEVELS] == null)) return;
+		int avail = quick.getWidth() - quick.getPaddingLeft() - quick.getPaddingRight();
+		if (avail <= 0) return;
+		boolean car = getActivityDelegate().isCarActivity();
+		int icon = dp(40);
+		int gap = dp(6);
+		int used = 0;
+		int[] order = {G_LEVELS, G_TIME, G_CATS, G_VIEW};
+		for (int g : order) if (!(car && (g == G_TIME))) used += icon + gap;
+		int state = 0;
+		for (int g : order) {
+			if (car && (g == G_TIME)) continue;
+			int wide;
+			if (g == G_LEVELS) {
+				levelRow.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
+				wide = levelRow.getMeasuredWidth() + gap - dp(4);
+			} else {
+				Group x = groups[g];
+				x.label.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
+				wide = icon + x.label.getMeasuredWidth() + dp(6);
+			}
+			int delta = wide - icon;
+			if (used + delta <= avail) {
+				used += delta;
+				state |= 1 << g;
+			}
+		}
+		if (state == fitState) return;
+		fitState = state;
+		// The levels: in the quick row, or in their own row behind the toggle.
+		Group lv = groups[G_LEVELS];
+		boolean inline = (state & 1) != 0;
+		if (inline != lv.inline) {
+			lv.inline = inline;
+			if (lv.anim != null) lv.anim.cancel();
+			lv.open = false;
+			lv.row.setVisibility(View.GONE);
+			lv.row.setAlpha(0f);
+			lv.row.getLayoutParams().height = WRAP_CONTENT;
+			ViewGroup from = (ViewGroup) levelRow.getParent();
+			if (from != null) from.removeView(levelRow);
+			if (inline) {
+				LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WRAP_CONTENT, dp(40));
+				lp.setMarginEnd(dp(2));
+				quick.addView(levelRow, 0, lp);
+			} else {
+				lv.row.addView(levelRow);
+			}
+			lv.toggle.setVisibility(inline ? View.GONE : View.VISIBLE);
+		}
+		for (int g : order) {
+			if (g == G_LEVELS) continue;
+			groups[g].label.setVisibility(((state & (1 << g)) != 0) ? View.VISIBLE : View.GONE);
+		}
+		syncToggles();
+	}
+
+	private boolean groupActive(int g) {
+		switch (g) {
+			case G_LEVELS:
+				return minLevel != Level.DEBUG;
+			case G_TIME:
+				return (fromMs > 0) || (toMs > 0);
+			case G_CATS:
+				return !hidden.isEmpty();
+			default:
+				return classic || live || selectMode || !newestFirst;
+		}
+	}
+
+	/** A toggle is filled with the accent while its filter changes the lines, outlined while its row is open. */
+	private void syncToggles() {
+		for (int g = 0; g < groups.length; g++) {
+			Group x = groups[g];
+			if (x == null) continue;
+			boolean active = groupActive(g);
+			x.fill.setColor(active ? accent : 0x1F808080);
+			x.fill.setStroke(x.open ? dp(2) : 0, x.open ? (active ? onAccent : accent) : 0);
+			int fg = active ? onAccent : textPrimary;
+			x.label.setTextColor(fg);
+			x.icon.setImageTintList(ColorStateList.valueOf(active ? onAccent : accent));
+		}
+	}
+
+	private void toggleGroup(int g) {
+		Group x = groups[g];
+		x.open = !x.open;
+		animateRow(x, x.open);
+		syncToggles();
+	}
+
+	/** The row grows from nothing to its height, fading in (and back), with the panel following. */
+	private void animateRow(Group x, boolean show) {
+		if (x.anim != null) x.anim.cancel();
+		LinearLayout row = x.row;
+		ViewGroup.LayoutParams lp = row.getLayoutParams();
+		int target;
+		if (show) {
+			row.setVisibility(View.VISIBLE);
+			row.measure(View.MeasureSpec.makeMeasureSpec(Math.max(1, quick.getWidth()), View.MeasureSpec.EXACTLY),
+					View.MeasureSpec.UNSPECIFIED);
+			target = row.getMeasuredHeight();
+		} else {
+			target = 0;
+		}
+		int from = (lp.height > 0) ? lp.height : row.getHeight();
+		float alphaFrom = row.getAlpha();
+		rowAnims++;
+		ValueAnimator a = ValueAnimator.ofFloat(0f, 1f);
+		a.setDuration(220);
+		a.setInterpolator(new android.view.animation.DecelerateInterpolator());
+		a.addUpdateListener(v -> {
+			float f = (float) v.getAnimatedValue();
+			lp.height = Math.round(from + (target - from) * f);
+			row.setLayoutParams(lp);
+			row.setAlpha(alphaFrom + ((show ? 1f : 0f) - alphaFrom) * f);
+		});
+		final boolean[] done = new boolean[1];
+		Runnable end = () -> {
+			if (done[0]) return;
+			done[0] = true;
+			rowAnims--;
+			if (x.anim == a) x.anim = null;
+		};
+		a.addListener(new android.animation.AnimatorListenerAdapter() {
+			@Override
+			public void onAnimationCancel(android.animation.Animator an) {
+				end.run();
+			}
+
+			@Override
+			public void onAnimationEnd(android.animation.Animator an) {
+				if (!show && !x.open) row.setVisibility(View.GONE);
+				if (!done[0]) {
+					lp.height = WRAP_CONTENT;
+					row.setLayoutParams(lp);
+				}
+				end.run();
+				// The list's room under the panel catches up once, not on every frame.
+				if ((rowAnims == 0) && (spacer != null) && (sticky != null)) {
+					ViewGroup.LayoutParams sl = spacer.getLayoutParams();
+					sl.height = sticky.getHeight() + dp(10);
+					spacer.setLayoutParams(sl);
+				}
+			}
+		});
+		x.anim = a;
+		a.start();
+	}
+
+	// ---- time range
+
+	private static String stamp(long ms) {
+		return new java.text.SimpleDateFormat("MM-dd HH:mm", Locale.US).format(new java.util.Date(ms));
+	}
+
+	private void timeChanged() {
+		buildDateChips();
+		syncToggles();
+		refresh(true, SCROLL_RESULTS);
+	}
+
+	private void buildDateChips() {
+		dateChips.removeAllViews();
+		long now = System.currentTimeMillis();
+		addChip(dateChips, ChipFlowLayout.chip(palette, 0, R.string.diag_time_last_hour, false, () -> {
+			fromMs = System.currentTimeMillis() - 3600_000L;
+			toMs = 0;
+			timeChanged();
+		}));
+		addChip(dateChips, ChipFlowLayout.chip(palette, 0, R.string.diag_time_last_6h, false, () -> {
+			fromMs = System.currentTimeMillis() - 6 * 3600_000L;
+			toMs = 0;
+			timeChanged();
+		}));
+		addChip(dateChips, ChipFlowLayout.chip(palette, 0, R.string.diag_time_today, false, () -> {
+			java.util.Calendar c = java.util.Calendar.getInstance();
+			c.set(java.util.Calendar.HOUR_OF_DAY, 0);
+			c.set(java.util.Calendar.MINUTE, 0);
+			c.set(java.util.Calendar.SECOND, 0);
+			c.set(java.util.Calendar.MILLISECOND, 0);
+			fromMs = c.getTimeInMillis();
+			toMs = 0;
+			timeChanged();
+		}));
+		java.text.DateFormat df = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT);
+		String from = (fromMs > 0) ? getString(R.string.diag_time_from, df.format(new java.util.Date(fromMs))) :
+				getString(R.string.diag_time_from_any);
+		String to = (toMs > 0) ? getString(R.string.diag_time_to, df.format(new java.util.Date(toMs))) :
+				getString(R.string.diag_time_to_any);
+		addChip(dateChips, toggleChip(from, fromMs > 0, () -> pickTime(true)));
+		addChip(dateChips, toggleChip(to, toMs > 0, () -> pickTime(false)));
+		if ((fromMs > 0) || (toMs > 0)) {
+			addChip(dateChips, ChipFlowLayout.chip(palette, R.drawable.close_small, R.string.diag_time_clear, false, () -> {
+				fromMs = 0;
+				toMs = 0;
+				timeChanged();
+			}));
+		}
+		// Room for the last chip to scroll clear of the fade.
+		dateChips.addView(new View(palette), new LinearLayout.LayoutParams(dp(24), 1));
+	}
+
+	/** The date, then the time, of one end of the range. */
+	private void pickTime(boolean isFrom) {
+		Context ctx = requireContext();
+		java.util.Calendar c = java.util.Calendar.getInstance();
+		long cur = isFrom ? fromMs : toMs;
+		if (cur > 0) c.setTimeInMillis(cur);
+		new android.app.DatePickerDialog(ctx, (dv, y, m, d) -> {
+			new android.app.TimePickerDialog(ctx, (tv, h, mi) -> {
+				java.util.Calendar r = java.util.Calendar.getInstance();
+				r.set(y, m, d, h, mi, isFrom ? 0 : 59);
+				r.set(java.util.Calendar.MILLISECOND, isFrom ? 0 : 999);
+				if (isFrom) fromMs = r.getTimeInMillis();
+				else toMs = r.getTimeInMillis();
+				if ((fromMs > 0) && (toMs > 0) && (fromMs > toMs)) {
+					long t = fromMs;
+					fromMs = toMs;
+					toMs = t;
+				}
+				timeChanged();
+			}, c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE),
+					android.text.format.DateFormat.is24HourFormat(ctx)).show();
+		}, c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.MONTH), c.get(java.util.Calendar.DAY_OF_MONTH)).show();
 	}
 
 	private View buildSearch() {
@@ -678,38 +1013,40 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 
 	private void buildViewChips() {
 		viewChips.removeAllViews();
-		viewChips.addView(toggleChip(getString(R.string.diag_newest_first), newestFirst, () -> {
+		addChip(viewChips, toggleChip(getString(R.string.diag_newest_first), newestFirst, () -> {
 			newestFirst = !newestFirst;
 			buildViewChips();
 			applyFilter();
 			adapter.notifyDataSetChanged();
 			if (list != null) list.scrollToPosition(0);
 		}));
-		viewChips.addView(toggleChip(getString(R.string.diag_live), live, () -> {
+		addChip(viewChips, toggleChip(getString(R.string.diag_live), live, () -> {
 			live = !live;
 			buildViewChips();
 			startLive();
 		}));
-		viewChips.addView(toggleChip(getString(R.string.diag_classic), classic, () -> {
+		addChip(viewChips, toggleChip(getString(R.string.diag_classic), classic, () -> {
 			classic = !classic;
 			buildViewChips();
 			adapter.notifyDataSetChanged();
 			if (list != null) list.scrollToPosition(0);
 		}));
-		viewChips.addView(toggleChip(getString(R.string.diag_select), selectMode, () -> {
+		addChip(viewChips, toggleChip(getString(R.string.diag_select), selectMode, () -> {
 			setSelectMode(!selectMode);
 			buildViewChips();
 		}));
+		viewChips.addView(new View(palette), new LinearLayout.LayoutParams(dp(24), 1));
+		syncToggles();
 	}
 
 	private void buildCategoryChips() {
 		categoryChips.removeAllViews();
-		categoryChips.addView(ChipFlowLayout.chip(palette, 0, R.string.diag_cat_all, false, () -> {
+		addChip(categoryChips, ChipFlowLayout.chip(palette, 0, R.string.diag_cat_all, false, () -> {
 			hidden.clear();
 			refresh(true);
 			buildCategoryChips();
 		}));
-		categoryChips.addView(ChipFlowLayout.chip(palette, 0, R.string.diag_cat_none, false, () -> {
+		addChip(categoryChips, ChipFlowLayout.chip(palette, 0, R.string.diag_cat_none, false, () -> {
 			hidden.addAll(counts.keySet());
 			refresh(true);
 			buildCategoryChips();
@@ -733,11 +1070,13 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 				return true;
 			});
 			// The dot is the category's colour, as on its lines.
-			SpannableString s = new SpannableString(label);
-			s.setSpan(new ForegroundColorSpan(on ? onAccent : categoryColor(cat)), 0, 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-			chip.setText(s);
-			categoryChips.addView(chip);
+			SpannableString sp = new SpannableString(label);
+			sp.setSpan(new ForegroundColorSpan(on ? onAccent : categoryColor(cat)), 0, 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+			chip.setText(sp);
+			addChip(categoryChips, chip);
 		}
+		categoryChips.addView(new View(palette), new LinearLayout.LayoutParams(dp(24), 1));
+		syncToggles();
 	}
 
 	/** A chip that is filled with the accent while on. */
@@ -761,6 +1100,7 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 	}
 
 	private void syncLevel() {
+		if (levelRow == null) return;
 		Level[] levels = Level.values();
 		for (int i = 0; i < levelRow.getChildCount(); i++) {
 			TextView t = (TextView) levelRow.getChildAt(i);

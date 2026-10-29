@@ -24,6 +24,10 @@
     <string name="sleep_start">Start sleep</string>
     <string name="sleep_stop">Stop and save</string>
     <string name="sleep_ready">Ready for tonight</string>
+    <string name="sleep_ready_auto">Recording starts by itself at %1$s</string>
+    <string name="sleep_ready_auto_sub">In %1$s. Leave the phone or tablet on charge where you sleep; you can also press Start now.</string>
+    <string name="sleep_ready_auto_now">Waiting for you to settle</string>
+    <string name="sleep_ready_auto_now_sub">It is your usual bedtime. Recording starts by itself when the screen goes off, or press Start now.</string>
     <string name="sleep_ready_sub">Put the phone on the bed, on charge, and press Start when you lie down.</string>
     <string name="sleep_recording">Recording · %1$s</string>
     <string name="sleep_since">Since %1$s</string>
@@ -148,8 +152,15 @@
     <string name="sleep_lead_at">%1$d min before, at %2$s</string>
 
     <!-- Battery use of a night -->
+    <string name="sleep_set_stop_playback">Stop what plays too</string>
+    <string name="sleep_set_stop_playback_sub">Sets the app\'s sleep timer to the same length, so music or video stops with the sounds.</string>
     <string name="sleep_battery_used">Battery: %1$d mA on average, %2$d%% used (%3$s%% an hour)</string>
     <string name="sleep_battery_mixed">Battery: %1$d mA on average while it was not charging</string>
+    <string name="sleep_power_screen">Screen on</string>
+    <string name="sleep_power_ambience">Ambience playing</string>
+    <string name="sleep_power_quiet">Quiet, screen off</string>
+    <string name="sleep_power_unit">mA, hour by hour</string>
+    <string name="sleep_power_charging">Charging for %1$s, left out of the figures above</string>
     <string name="sleep_battery_charging">Battery: on the charger</string>
     <string name="sleep_insight_battery">Recording costs about %1$s%% of the battery an hour (%2$d mA), measured over %3$d nights on battery power.</string>
     <string name="sleep_tip_battery">Recording is heavy on your battery. Charge the phone overnight, or switch to Movement without sound, or to Times only, in the Sleep settings.</string>
@@ -187,6 +198,9 @@
 
     <!-- The tab: ambience card and help -->
     <string name="sleep_amb_title">Ambience</string>
+    <string name="sleep_wind_down">Wind down</string>
+    <string name="sleep_wind_down_set">Sounds and sleep timer set for %1$d min</string>
+    <string name="sleep_wind_down_none">Pick a length in Settings > Sleep first</string>
     <string name="sleep_amb_off">Off</string>
     <string name="sleep_amb_with">Start with the session</string>
     <string name="sleep_amb_sounds">Sounds</string>

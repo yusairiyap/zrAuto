@@ -259,19 +259,18 @@ public final class SleepHypnogramView extends View {
 			float frac = (touchX - left) / plotW;
 			int e = Math.max(0, Math.min(n - 1, (int) (frac * n)));
 			long t = r.night.start + e * SleepNight.EPOCH_MS;
-			paint.setColor(c.textPrimary);
-			paint.setAlpha(150);
+			paint.setColor(c.accent);
 			canvas.drawRect(touchX - c.dp(0.75f), top, touchX + c.dp(0.75f), bottom, paint);
 			String label = DateFormat.getTimeFormat(getContext()).format(new Date(t)) + "  " + stageNames[r.stage[e]];
 			paint.setTextSize(sp(12));
 			paint.setTypeface(Typeface.DEFAULT_BOLD);
 			float tw = paint.measureText(label) + c.dp(16);
 			float bx = Math.max(left, Math.min(right - tw, touchX - tw / 2f));
-			paint.setColor(c.textPrimary);
-			paint.setAlpha(235);
+			// The accent with its own contrasting text reads in every theme (the tile fill is see-through).
+			paint.setColor(c.accent | 0xFF000000);
 			rect.set(bx, top - c.dp(2), bx + tw, top + c.dp(24));
 			canvas.drawRoundRect(rect, c.dp(8), c.dp(8), paint);
-			paint.setColor(c.tileFill | 0xFF000000);
+			paint.setColor(c.onAccent | 0xFF000000);
 			paint.setTextAlign(Paint.Align.LEFT);
 			canvas.drawText(label, bx + c.dp(8), top + c.dp(15), paint);
 			paint.setTypeface(Typeface.DEFAULT);

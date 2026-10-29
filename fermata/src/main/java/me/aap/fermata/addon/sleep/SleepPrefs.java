@@ -37,6 +37,8 @@ public final class SleepPrefs {
 	public static final Pref<BooleanSupplier> AMBIENCE_START = Pref.b("SLEEP_AMBIENCE_START", true);
 	public static final Pref<IntSupplier> AMBIENCE_MIN = Pref.i("SLEEP_AMBIENCE_MIN", 30);
 	/** Stopping the session also stops the ambience. */
+	/** The same length is also set as the app's playback sleep timer, so whatever plays stops with the ambience. */
+	public static final Pref<BooleanSupplier> STOP_PLAYBACK = Pref.b("SLEEP_STOP_PLAYBACK", true);
 	public static final Pref<BooleanSupplier> AMBIENCE_STOP = Pref.b("SLEEP_AMBIENCE_STOP", true);
 	public static final Pref<BooleanSupplier> ANIMATE = Pref.b("SLEEP_ANIMATE", true);
 	/** A reminder before the usual bedtime: on, and how many minutes before. */

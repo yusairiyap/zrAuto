@@ -47,6 +47,7 @@ import me.aap.fermata.ui.view.EffectsUi;
 import me.aap.fermata.ui.view.SettingsStyle;
 import me.aap.fermata.ui.view.SleepBarsView;
 import me.aap.fermata.ui.view.SleepHypnogramView;
+import me.aap.fermata.ui.view.SleepPowerView;
 import me.aap.fermata.ui.view.SleepGuide;
 import me.aap.fermata.ui.view.SleepScoreView;
 import me.aap.fermata.ui.view.TopToast;
@@ -104,6 +105,7 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 	private SleepScoreView scoreView;
 	private TextView statAsleep, statBed, statLatency, statAwake;
 	private TextView batteryLine;
+	private SleepPowerView powerView;
 	private View prevNight, nextNight;
 	// Stage card
 	private SleepHypnogramView hypno;
@@ -444,9 +446,21 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 
 		TextView sounds = ChipFlowLayout.chip(palette, R.drawable.ambience, R.string.sleep_amb_sounds, false,
 				() -> getActivityDelegate().showFragment(R.id.ambience_addon));
-		LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(WRAP_CONTENT, px(40));
+		TextView wind = ChipFlowLayout.chip(palette, R.drawable.timer, R.string.sleep_wind_down, true, () -> {
+			int min = tracker.windDown();
+			if (min > 0) TopToast.show(R.drawable.timer, getString(R.string.sleep_wind_down_set, min));
+			else TopToast.show(R.drawable.timer, getString(R.string.sleep_wind_down_none));
+			syncAmbience();
+		});
+		LinearLayout chips = new LinearLayout(palette);
+		LinearLayout.LayoutParams c1 = new LinearLayout.LayoutParams(WRAP_CONTENT, px(40));
+		chips.addView(wind, c1);
+		LinearLayout.LayoutParams c2 = new LinearLayout.LayoutParams(WRAP_CONTENT, px(40));
+		c2.setMarginStart(px(8));
+		chips.addView(sounds, c2);
+		LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
 		slp.topMargin = px(10);
-		card.addView(sounds, slp);
+		card.addView(chips, slp);
 		ambienceCard = card;
 		return card;
 	}
@@ -530,8 +544,21 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 			if (tracker.isRecordingSound()) sb.append(" · ").append(getString(R.string.sleep_live_sound));
 			sessionSub.setText(sb);
 		} else {
-			sessionStatus.setText(R.string.sleep_ready);
-			sessionSub.setText(R.string.sleep_ready_sub);
+			long auto = me.aap.fermata.addon.sleep.SleepReminder.nextAutoStart();
+			if (auto < 0) {
+				sessionStatus.setText(R.string.sleep_ready);
+				sessionSub.setText(R.string.sleep_ready_sub);
+			} else {
+				long wait = auto - System.currentTimeMillis();
+				String at = DateFormat.getTimeFormat(requireContext()).format(new Date(auto));
+				if (wait < 60_000L) {
+					sessionStatus.setText(R.string.sleep_ready_auto_now);
+					sessionSub.setText(R.string.sleep_ready_auto_now_sub);
+				} else {
+					sessionStatus.setText(getString(R.string.sleep_ready_auto, at));
+					sessionSub.setText(getString(R.string.sleep_ready_auto_sub, SleepInsights.duration(wait)));
+				}
+			}
 		}
 	}
 
@@ -614,6 +641,11 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 		LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
 		blp.topMargin = px(12);
 		card.addView(batteryLine, blp);
+		powerView = new SleepPowerView(palette, c);
+		powerView.setVisibility(View.GONE);
+		LinearLayout.LayoutParams pvp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		pvp.topMargin = px(8);
+		card.addView(powerView, pvp);
 		return card;
 	}
 
@@ -841,6 +873,8 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 
 	/** What the night cost the battery: the average current and the percent per hour, or that it was charging. */
 	private void showBattery(SleepNight n) {
+		boolean graph = powerView.setNight(n, true);
+		powerView.setVisibility(graph ? View.VISIBLE : View.GONE);
 		float pph = n.percentPerHour();
 		if (n.hasBattery() && (pph >= 0f)) {
 			batteryLine.setVisibility(View.VISIBLE);
@@ -872,6 +906,8 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 			statLatency.setText("-");
 			statAwake.setText("-");
 			batteryLine.setVisibility(View.GONE);
+			powerView.setNight(null, false);
+			powerView.setVisibility(View.GONE);
 			hypno.setResult(null);
 			for (TextView t : legend) if (t != null) t.setAlpha(0.5f);
 			return;

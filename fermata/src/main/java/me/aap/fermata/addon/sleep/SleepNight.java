@@ -22,6 +22,12 @@ public final class SleepNight {
 	public static final long EPOCH_MS = EPOCH_SEC * 1000L;
 	/** {@link #flags} bit: the user tapped "I'm awake" during this epoch. */
 	public static final byte FLAG_AWAKE = 1;
+	/** {@link #flags} bit: an ambience sound was playing during this epoch. */
+	public static final byte FLAG_AMBIENCE = 2;
+	/** {@link #flags} bit: the screen was on during this epoch. */
+	public static final byte FLAG_SCREEN = 4;
+	/** {@link #power} value of an epoch spent charging; 0 is not measured, 1..250 the current drawn in 10 mA steps. */
+	public static final int POWER_CHARGING = 255;
 
 	/** Start of the session (it is also the night's id). */
 	public final long start;
@@ -35,6 +41,9 @@ public final class SleepNight {
 	/** Per epoch flags ({@code FLAG_*}); null when none was set. */
 	@Nullable
 	public byte[] flags;
+	/** The battery per epoch: 0 not measured, 1..250 the current drawn in 10 mA steps, {@link #POWER_CHARGING}; null when none. */
+	@Nullable
+	public byte[] power;
 	/** The ambience sounds that were on at some time during the night, as their keys, comma separated. */
 	@NonNull
 	public String mix = "";
@@ -99,6 +108,57 @@ public final class SleepNight {
 		return false;
 	}
 
+	/** Sessions that start less than this after the previous one ended are one night (a stop and start in the middle of it). */
+	public static final long MERGE_GAP_MS = 2 * 3600_000L;
+
+	/** Whether {@code next} began soon enough after {@code prev} ended to be the same night. */
+	public static boolean sameNight(SleepNight prev, SleepNight next) {
+		long gap = next.start - prev.end;
+		return (gap < MERGE_GAP_MS) && (next.start > prev.start);
+	}
+
+	/** One night made of two sessions; the time between them counts as awake. */
+	public static SleepNight merge(SleepNight a, SleepNight b) {
+		SleepNight n = new SleepNight(a.start);
+		n.end = Math.max(a.end, b.end);
+		int na = a.epochs();
+		int nb = b.epochs();
+		int gap = (int) Math.max(0, (b.start - a.end) / EPOCH_MS);
+		if (a.hasMovement() || b.hasMovement()) n.move = join(a.move, na, b.move, nb, gap, (byte) 0);
+		if (a.hasNoise() || b.hasNoise()) n.noise = join(a.noise, na, b.noise, nb, gap, (byte) 0);
+		if ((a.flags != null) || (b.flags != null) || (gap > 0)) n.flags = join(a.flags, na, b.flags, nb, gap, FLAG_AWAKE);
+		if ((a.power != null) || (b.power != null)) n.power = join(a.power, na, b.power, nb, gap, (byte) 0);
+		StringBuilder mx = new StringBuilder(a.mix);
+		for (String k : b.mix.split(",")) {
+			if (!k.isEmpty() && !a.hasSound(k)) mx.append((mx.length() == 0) ? "" : ",").append(k);
+		}
+		n.mix = mx.toString();
+		n.levelStart = (a.levelStart >= 0) ? a.levelStart : b.levelStart;
+		n.levelEnd = (b.levelEnd >= 0) ? b.levelEnd : a.levelEnd;
+		int samples = a.drawSamples + b.drawSamples;
+		if (samples > 0) {
+			n.drawMa10 = (int) (((long) a.drawMa10 * a.drawSamples + (long) b.drawMa10 * b.drawSamples) / samples);
+		}
+		n.drawSamples = samples;
+		n.chargeSamples = a.chargeSamples + b.chargeSamples;
+		n.stand = a.stand || b.stand;
+		n.recovered = b.recovered;
+		return n;
+	}
+
+	private static byte[] join(@Nullable byte[] x, int nx, @Nullable byte[] y, int ny, int gap, byte gapValue) {
+		byte[] r = new byte[nx + gap + ny];
+		if (x != null) System.arraycopy(x, 0, r, 0, Math.min(nx, x.length));
+		if (gapValue != 0) Arrays.fill(r, nx, nx + gap, gapValue);
+		if (y != null) System.arraycopy(y, 0, r, nx + gap, Math.min(ny, y.length));
+		return r;
+	}
+
+	/** Whether the night has the battery per epoch for a breakdown. */
+	public boolean hasPowerSeries() {
+		return (power != null) && (power.length > 0) && hasBattery();
+	}
+
 	/** A copy that can be changed while this one is still being recorded. */
 	public SleepNight copy() {
 		SleepNight n = new SleepNight(start);
@@ -106,6 +166,7 @@ public final class SleepNight {
 		n.move = (move == null) ? null : Arrays.copyOf(move, move.length);
 		n.noise = (noise == null) ? null : Arrays.copyOf(noise, noise.length);
 		n.flags = (flags == null) ? null : Arrays.copyOf(flags, flags.length);
+		n.power = (power == null) ? null : Arrays.copyOf(power, power.length);
 		n.mix = mix;
 		n.recovered = recovered;
 		n.stand = stand;
@@ -124,6 +185,7 @@ public final class SleepNight {
 		if (hasMovement()) o.put("m", Base64.encodeToString(move, Base64.NO_WRAP));
 		if (hasNoise()) o.put("n", Base64.encodeToString(noise, Base64.NO_WRAP));
 		if (flags != null) o.put("f", Base64.encodeToString(flags, Base64.NO_WRAP));
+		if (power != null) o.put("p", Base64.encodeToString(power, Base64.NO_WRAP));
 		if (!mix.isEmpty()) o.put("x", mix);
 		if (recovered) o.put("r", true);
 		if (stand) o.put("sd", true);
@@ -143,6 +205,7 @@ public final class SleepNight {
 		if (o.has("m")) n.move = Base64.decode(o.getString("m"), Base64.NO_WRAP);
 		if (o.has("n")) n.noise = Base64.decode(o.getString("n"), Base64.NO_WRAP);
 		if (o.has("f")) n.flags = Base64.decode(o.getString("f"), Base64.NO_WRAP);
+		if (o.has("p")) n.power = Base64.decode(o.getString("p"), Base64.NO_WRAP);
 		n.mix = o.optString("x", "");
 		n.recovered = o.optBoolean("r", false);
 		n.stand = o.optBoolean("sd", false);

@@ -1371,6 +1371,30 @@ Built into `fermata` like Ambience (order 10, `hasSettings`), package `addon/sle
   chip is the title bar's when wide and the tab's own when narrow (`ToolBarChip.update`), never both.
 - **Actions** `SLEEP` and `SLEEP_TOGGLE` are at the end of the enum (FAB list and Tools group, All in One, key bindings). Not done: Health Connect import.
 
+## Sleep and Diagnostic log: second round
+
+- **One night, however many sessions** (`SleepNight#sameNight/merge`, `SleepStore#mergeNeighbours`): a session that starts less than 2 h
+  (`MERGE_GAP_MS`) after the previous one ended is joined to it, on save and on load (so already stored pairs are joined at the next start);
+  the gap counts as awake (`FLAG_AWAKE` epochs), battery figures are weighted, mixes united. A short session (under 20 min) that
+  joins the last night is kept instead of dropped (`SleepStore#joinsLast`). Log: `SLEEP sessions joined into one night`.
+- **Hypnogram tooltip** is the accent with its own contrasting text (`SettingsStyle.Colors#onAccent`); the tile fill is see-through
+  and was forced opaque, which made bubble and text near-equal in some themes. Custom views must not use `tileFill | 0xFF000000`.
+- **Battery per epoch** (`SleepNight#power`: 0 unknown, 1..250 = current drawn in 10 mA steps, 255 charging; flags `FLAG_SCREEN`,
+  `FLAG_AMBIENCE` beside `FLAG_AWAKE`, always test bits) feeds `ui/view/SleepPowerView` on the night card: bars per hour (an hour mostly on the
+  charger is an outline) and a breakdown screen on / ambience playing / quiet with share, average mA and time. Older nights have no series and show only the line.
+- **Wind down and playback timer**: the Ambience card has a Wind down chip (`SleepTracker#windDown`: last mix + chosen length + the app's
+  sleep timer for the same minutes). Starting a session does the timer part too (`SleepPrefs.STOP_PLAYBACK`, on by default) and a session's
+  Stop takes back a timer it set. Needs the UI delegate (`MainActivityDelegate.getUiDelegate()`); with none the timer is skipped and logged.
+- **Ready card** says when recording starts by itself (`SleepReminder#nextAutoStart`).
+- **Diagnostic log filters live in the floating panel** (`DiagnosticLogFragment#buildFilters`): a quick row with one toggle per group
+  (Levels, Time, Categories, View). `fitQuick` (post-layout, only when the width changes, never inside a layout callback) lets the groups show
+  their full form in priority order while the width holds: levels as inline chips, then a name beside each icon; the rest stay icons whose tap opens a row
+  under the quick row (`animateRow`: height + alpha 220 ms, the list's spacer follows once at the end). Chip rows scroll sideways inside
+  `HomeFadeLayout` (edge fade, no built-in fading edge). The Time group (not on the car screen: it uses real dialogs) is presets plus From / To
+  pickers (`fromMs/toMs`, statics like the other filters); lines without a date are dropped while a time limit is on. A toggle is filled when its filter changes the lines.
+- **Log retention**: 1000 entries in memory (`MAX_ENTRIES`); `zrauto-diagnostics.log` mirrors them and is rewritten to the newest 500 once past
+  ~250 KB; no age limit; Clear deletes both; the file is reloaded when recording is switched on.
+
 ## When in doubt, ask
 
 This is someone's personal Android project (not a work codebase) with real users on the release

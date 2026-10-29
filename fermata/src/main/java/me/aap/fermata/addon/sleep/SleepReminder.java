@@ -124,6 +124,19 @@ public final class SleepReminder {
 		}
 	}
 
+	/**
+	 * When the automatic recording will start next: the usual bedtime, or now while its window is open and no session has
+	 * run for it; -1 when automatic recording is off or the addon is.
+	 */
+	public static long nextAutoStart() {
+		PreferenceStore p = SleepPrefs.store();
+		if (!p.getBooleanPref(SleepPrefs.AUTO) || !SleepAddon.isEnabled()) return -1L;
+		long now = System.currentTimeMillis();
+		long last = lastBedtime(p, now);
+		boolean waiting = (now < last + AUTO_WINDOW_MS) && (p.getLongPref(SleepPrefs.LAST_AUTO) < last);
+		return waiting ? now : nextBedtime(p, now);
+	}
+
 	private static long nextBedtime(PreferenceStore p, long now) {
 		long last = lastBedtime(p, now);
 		Calendar c = Calendar.getInstance();

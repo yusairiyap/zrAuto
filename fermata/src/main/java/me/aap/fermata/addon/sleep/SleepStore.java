@@ -59,14 +59,46 @@ public final class SleepStore {
 		return nights.isEmpty() ? null : nights.get(nights.size() - 1);
 	}
 
-	synchronized void add(SleepNight n) {
+	/** Whether a session that ended now, started at {@code start}, would join the last night. */
+	synchronized boolean joinsLast(long start) {
+		SleepNight l = last();
+		return (l != null) && (start - l.end < SleepNight.MERGE_GAP_MS) && (start > l.start);
+	}
+
+	/** Keeps a night; a session that began soon after another ended is joined to it. Returns the night as kept. */
+	synchronized SleepNight add(SleepNight n) {
 		nights.removeIf(o -> o.start == n.start);
 		nights.add(n);
 		nights.sort((a, b) -> Long.compare(a.start, b.start));
+		SleepNight kept = n;
+		if (mergeNeighbours()) {
+			for (SleepNight o : nights) if ((o.start <= n.start) && (o.end >= n.end)) kept = o;
+		}
 		long limit = System.currentTimeMillis() - KEEP_MS;
 		nights.removeIf(o -> o.start < limit);
 		dirty = true;
 		scheduleSave();
+		return kept;
+	}
+
+	/** Joins nights that are one night cut in two (a stop and a start soon after). Returns whether any were. */
+	private boolean mergeNeighbours() {
+		boolean any = false;
+		for (int i = 1; i < nights.size(); ) {
+			SleepNight a = nights.get(i - 1);
+			SleepNight b = nights.get(i);
+			if (SleepNight.sameNight(a, b)) {
+				DiagnosticLog.log(LogCat.SLEEP, "sessions joined into one night",
+						"gapMinutes=" + Math.max(0, b.start - a.end) / 60_000L, "firstMinutes=" + a.durationMs() / 60_000L,
+						"secondMinutes=" + b.durationMs() / 60_000L);
+				nights.set(i - 1, SleepNight.merge(a, b));
+				nights.remove(i);
+				any = true;
+			} else {
+				i++;
+			}
+		}
+		return any;
 	}
 
 	synchronized void remove(SleepNight n) {
@@ -141,6 +173,10 @@ public final class SleepStore {
 			Log.e(ex, "Failed to read the sleep record");
 		}
 		nights.sort((a, b) -> Long.compare(a.start, b.start));
+		if (mergeNeighbours()) {
+			dirty = true;
+			scheduleSave();
+		}
 	}
 
 	private void scheduleSave() {

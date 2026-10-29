@@ -95,6 +95,7 @@ public class SleepSettingsFragment extends ReorderListFragment {
 			e.removePref(SleepPrefs.REMINDER_LEAD);
 			e.removePref(SleepPrefs.AMBIENCE_START);
 			e.removePref(SleepPrefs.AMBIENCE_MIN);
+			e.removePref(SleepPrefs.STOP_PLAYBACK);
 			e.removePref(SleepPrefs.AMBIENCE_STOP);
 			e.removePref(SleepPrefs.ANIMATE);
 		}
@@ -244,6 +245,10 @@ public class SleepSettingsFragment extends ReorderListFragment {
 				() -> p.getIntPref(SleepPrefs.AMBIENCE_MIN) / 5, v -> p.applyIntPref(SleepPrefs.AMBIENCE_MIN, v * 5),
 				v -> (v == 0) ? getString(R.string.sleep_no_limit) : getString(R.string.sleep_minutes_short, v * 5),
 				() -> ambienceOn.getAsBoolean() && p.getBooleanPref(SleepPrefs.AMBIENCE_START));
+		addSwitchRow(box, R.string.sleep_set_stop_playback, R.string.sleep_set_stop_playback_sub,
+				() -> p.getBooleanPref(SleepPrefs.STOP_PLAYBACK),
+				on -> p.applyBooleanPref(SleepPrefs.STOP_PLAYBACK, on),
+				() -> p.getIntPref(SleepPrefs.AMBIENCE_MIN) > 0);
 		addSwitchRow(box, R.string.sleep_set_amb_stop, R.string.sleep_set_amb_stop_sub,
 				() -> p.getBooleanPref(SleepPrefs.AMBIENCE_STOP),
 				on -> p.applyBooleanPref(SleepPrefs.AMBIENCE_STOP, on), ambienceOn);

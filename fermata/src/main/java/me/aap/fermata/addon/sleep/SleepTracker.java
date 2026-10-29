@@ -72,6 +72,7 @@ public final class SleepTracker implements SensorEventListener {
 	private byte[] moveBuf = new byte[0];
 	private byte[] noiseBuf = new byte[0];
 	private byte[] flagBuf = new byte[0];
+	private byte[] powerBuf = new byte[0];
 	private int count;
 	private boolean useMove;
 	private boolean useAccel;
@@ -179,6 +180,7 @@ public final class SleepTracker implements SensorEventListener {
 		if (useMove) n.move = Arrays.copyOf(moveBuf, count);
 		if (useNoise) n.noise = Arrays.copyOf(noiseBuf, count);
 		n.flags = Arrays.copyOf(flagBuf, count);
+		n.power = Arrays.copyOf(powerBuf, count);
 		n.levelStart = levelStart;
 		n.levelEnd = batteryLevel();
 		n.drawSamples = drawN;
@@ -223,6 +225,7 @@ public final class SleepTracker implements SensorEventListener {
 			moveBuf = new byte[MAX_EPOCHS];
 			noiseBuf = new byte[MAX_EPOCHS];
 			flagBuf = new byte[MAX_EPOCHS];
+			powerBuf = new byte[MAX_EPOCHS];
 			count = 0;
 			mix.clear();
 			pendingAwake = false;
@@ -264,7 +267,32 @@ public final class SleepTracker implements SensorEventListener {
 		}
 		SleepService.start(ctx);
 		linkAmbience(p);
+		linkPlaybackTimer(p);
 		changed();
+	}
+
+	/** Whether the playback sleep timer running now was set by a session (and is taken away with it). */
+	private boolean timerFromSession;
+
+	/** The ambience's length is also the app's sleep timer, so the music or video that plays stops with the sounds. */
+	private void linkPlaybackTimer(PreferenceStore p) {
+		int min = p.getIntPref(SleepPrefs.AMBIENCE_MIN);
+		if (!p.getBooleanPref(SleepPrefs.STOP_PLAYBACK) || (min <= 0)) return;
+		me.aap.fermata.ui.activity.MainActivityDelegate a = me.aap.fermata.ui.activity.MainActivityDelegate.getUiDelegate();
+		if (a == null) {
+			DiagnosticLog.w(LogCat.SLEEP, "playback timer not set", "reason=no screen");
+			return;
+		}
+		a.getMediaSessionCallback().setPlaybackTimer(min * 60, false);
+		timerFromSession = true;
+		DiagnosticLog.log(LogCat.SLEEP, "playback timer set with the session", "minutes=" + min);
+	}
+
+	private void unlinkPlaybackTimer() {
+		if (!timerFromSession) return;
+		timerFromSession = false;
+		me.aap.fermata.ui.activity.MainActivityDelegate a = me.aap.fermata.ui.activity.MainActivityDelegate.getUiDelegate();
+		if ((a != null) && a.getMediaSessionCallback().hasPlaybackTimer()) a.getMediaSessionCallback().cancelPlaybackTimer();
 	}
 
 	/** Starts a session for the automatic start (it also ends by itself in the morning, when the screen is switched on). */
@@ -334,17 +362,18 @@ public final class SleepTracker implements SensorEventListener {
 		}
 		store.deleteDraft();
 		SleepService.stop(ctx);
+		unlinkPlaybackTimer();
 		if (p.getBooleanPref(SleepPrefs.AMBIENCE_STOP) && AmbienceAddon.isEnabled()) {
 			AmbienceEngine e = AmbienceEngine.get();
 			if (e.anyOn()) e.stopAll();
 		}
-		if ((done == null) || (done.durationMs() < MIN_NIGHT_MS)) {
+		if ((done == null) || ((done.durationMs() < MIN_NIGHT_MS) && !store.joinsLast(done.start))) {
 			DiagnosticLog.log(LogCat.SLEEP, "session too short, not kept",
 					"minutes=" + ((done == null) ? 0 : done.durationMs() / 60_000L));
 			changed();
 			return null;
 		}
-		store.add(done);
+		done = store.add(done);
 		SleepAnalyzer.Result r = SleepAnalyzer.analyze(done, store.all(), SleepAnalyzer.Settings.fromPrefs());
 		DiagnosticLog.log(LogCat.SLEEP, "session ended", "minutes=" + done.durationMs() / 60_000L,
 				"asleepMinutes=" + r.asleepMs / 60_000L, "latencyMinutes=" + r.latencyMs / 60_000L,
@@ -365,7 +394,30 @@ public final class SleepTracker implements SensorEventListener {
 
 	/** Brings the last mix of the Ambience tab back for the session, fading out after the chosen length. */
 	private void linkAmbience(PreferenceStore p) {
-		if (!p.getBooleanPref(SleepPrefs.AMBIENCE_START) || !AmbienceAddon.isEnabled()) return;
+		if (!p.getBooleanPref(SleepPrefs.AMBIENCE_START)) return;
+		startAmbience(p);
+	}
+
+	/**
+	 * "Wind down": the last ambience mix with the chosen length, and the app's sleep timer for the same time, without a recording.
+	 * Returns the minutes, or 0 when no length is set or the ambience is not there.
+	 */
+	public int windDown() {
+		PreferenceStore p = SleepPrefs.store();
+		int min = p.getIntPref(SleepPrefs.AMBIENCE_MIN);
+		if (min <= 0) return 0;
+		startAmbience(p);
+		if (p.getBooleanPref(SleepPrefs.STOP_PLAYBACK)) {
+			boolean mine = timerFromSession;
+			linkPlaybackTimer(p);
+			timerFromSession = mine;
+		}
+		DiagnosticLog.log(LogCat.SLEEP, "wind down started", "minutes=" + min);
+		return min;
+	}
+
+	private void startAmbience(PreferenceStore p) {
+		if (!AmbienceAddon.isEnabled()) return;
 		try {
 			AmbienceEngine e = AmbienceEngine.get();
 			if (!e.anyOn()) e.resumeLast();
@@ -422,7 +474,8 @@ public final class SleepTracker implements SensorEventListener {
 		int noise = 0;
 		if (useNoise) noise = sampleNoise();
 		if (useStand) move = standActivity(noise);
-		boolean awake = pendingAwake || screenWasOn();
+		boolean screen = screenWasOn();
+		boolean awake = pendingAwake || screen;
 		pendingAwake = false;
 		float ma = me.aap.fermata.addon.power.PowerUsageTracker.get().readNowMa();
 		boolean full;
@@ -431,7 +484,14 @@ public final class SleepTracker implements SensorEventListener {
 			if (count < MAX_EPOCHS) {
 				moveBuf[count] = (byte) move;
 				noiseBuf[count] = (byte) noise;
-				flagBuf[count] = (byte) (awake ? SleepNight.FLAG_AWAKE : 0);
+				flagBuf[count] = (byte) ((awake ? SleepNight.FLAG_AWAKE : 0) | (screen ? SleepNight.FLAG_SCREEN : 0) |
+						((ambienceCount > 0) ? SleepNight.FLAG_AMBIENCE : 0));
+				int pw = 0;
+				if (!Float.isNaN(ma)) {
+					if (ma < -1f) pw = Math.max(1, Math.min(250, Math.round(-ma / 10f)));
+					else if (ma > 1f) pw = SleepNight.POWER_CHARGING;
+				}
+				powerBuf[count] = (byte) pw;
 				count++;
 			}
 			liveMove = move;
