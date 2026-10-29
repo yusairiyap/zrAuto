@@ -1380,8 +1380,10 @@ Built into `fermata` like Ambience (order 10, `hasSettings`), package `addon/sle
 - **Hypnogram tooltip** is the accent with its own contrasting text (`SettingsStyle.Colors#onAccent`); the tile fill is see-through
   and was forced opaque, which made bubble and text near-equal in some themes. Custom views must not use `tileFill | 0xFF000000`.
 - **Battery per epoch** (`SleepNight#power`: 0 unknown, 1..250 = current drawn in 10 mA steps, 255 charging; flags `FLAG_SCREEN`,
-  `FLAG_AMBIENCE` beside `FLAG_AWAKE`, always test bits) feeds `ui/view/SleepPowerView` on the night card: bars per hour (an hour mostly on the
-  charger is an outline) and a breakdown screen on / ambience playing / quiet with share, average mA and time. Older nights have no series and show only the line.
+  `FLAG_AMBIENCE` beside `FLAG_AWAKE`, always test bits) is kept per night, but there is no chart for it on the Sleep tab: the night's cost is the
+  Power usage tab's "Where it went" row **Recording a night** (`PowerUsageStore.CAT_SLEEP`, `CATS` is 4; files written with 3 are read and remapped in
+  `load`). `SleepTracker#bookPower` books every epoch into that store (also with the screen off, when the Power tab's own sampling is asleep), and
+  `PowerUsageTracker` books nothing while a session runs, so nothing is counted twice.
 - **Ambience card holds the length and the timer switch**: "Fade the sounds out after" as chips (`AMBIENCE_MIN`, same pref as before) and "Stop what plays too"
   (`STOP_PLAYBACK`), no longer in Settings; there is no Wind down chip. Starting a session sets the app's sleep timer to that length (`SleepPrefs.STOP_PLAYBACK`, on by default) and a session's
   Stop takes back a timer it set. Needs the UI delegate (`MainActivityDelegate.getUiDelegate()`); with none the timer is skipped and logged.

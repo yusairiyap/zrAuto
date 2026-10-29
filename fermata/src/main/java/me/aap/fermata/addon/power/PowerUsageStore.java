@@ -37,7 +37,10 @@ public final class PowerUsageStore {
 	public static final int CAT_MUSIC = 1;
 	/** The app open or connected to a car, but nothing playing. */
 	public static final int CAT_IDLE = 2;
-	public static final int CATS = 3;
+	/** A night being recorded by the Sleep addon (the phone sits there with the screen off). */
+	public static final int CAT_SLEEP = 3;
+	public static final int CATS = 4;
+	private static final int OLD_CATS = 3;
 	/** On the phone alone. */
 	public static final int CTX_PHONE = 0;
 	/** While connected to Android Auto. */
@@ -70,7 +73,7 @@ public final class PowerUsageStore {
 	 * Books a stretch of {@code ms} milliseconds at {@code time} during which the battery gave
 	 * {@code microAh} (positive) or took {@code -microAh} (charging).
 	 */
-	synchronized void add(long time, int cat, int ctx, long microAh, long ms, boolean charging) {
+	public synchronized void add(long time, int cat, int ctx, long microAh, long ms, boolean charging) {
 		if (ms <= 0) return;
 		Calendar c = Calendar.getInstance();
 		c.setTimeInMillis(time);
@@ -210,11 +213,23 @@ public final class PowerUsageStore {
 				StandardCharsets.UTF_8))) {
 			for (String line = r.readLine(); line != null; line = r.readLine()) {
 				String[] f = line.trim().split(" ");
-				if (f.length != BUCKET + 2) continue;
+				int oldBucket = 2 * OLD_CATS * CTXS + 2;
+				if ((f.length != BUCKET + 2) && (f.length != oldBucket + 2)) continue;
 				TreeMap<Long, long[]> m = "H".equals(f[0]) ? hours : "D".equals(f[0]) ? days : null;
 				if (m == null) continue;
 				long[] b = new long[BUCKET];
-				for (int i = 0; i < BUCKET; i++) b[i] = Long.parseLong(f[i + 2]);
+				if (f.length == oldBucket + 2) {
+					// Written before the Sleep category: the used and time sections grew by its two slots each.
+					int oldSlots = OLD_CATS * CTXS;
+					for (int i = 0; i < oldSlots; i++) {
+						b[B_USED + i] = Long.parseLong(f[i + 2]);
+						b[B_TIME + i] = Long.parseLong(f[oldSlots + i + 2]);
+					}
+					b[B_CHARGED] = Long.parseLong(f[2 * oldSlots + 2]);
+					b[B_CHARGE_TIME] = Long.parseLong(f[2 * oldSlots + 3]);
+				} else {
+					for (int i = 0; i < BUCKET; i++) b[i] = Long.parseLong(f[i + 2]);
+				}
 				m.put(Long.parseLong(f[1]), b);
 			}
 		} catch (java.io.FileNotFoundException ignore) {
@@ -225,7 +240,7 @@ public final class PowerUsageStore {
 	}
 
 	/** Writes the record out in the background, if anything changed since it was last saved. */
-	void saveAsync() {
+	public void saveAsync() {
 		synchronized (this) {
 			if (!dirty || saving) return;
 			saving = true;

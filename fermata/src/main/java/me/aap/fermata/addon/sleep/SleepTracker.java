@@ -479,6 +479,7 @@ public final class SleepTracker implements SensorEventListener {
 			liveMove = move;
 			liveNoise = noise;
 			if (!Float.isNaN(ma)) {
+				bookPower(ma);
 				if (ma < -1f) {
 					drawSum += -ma;
 					drawN++;
@@ -505,6 +506,21 @@ public final class SleepTracker implements SensorEventListener {
 		long now = SystemClock.uptimeMillis();
 		if (nextTick < now) nextTick = now + 1000;
 		w.postAtTime(this::tick, null, nextTick);
+	}
+
+	/** The epoch's charge goes to the Power usage record as "Sleeping", which the Power tab's own sampling leaves alone meanwhile. */
+	private void bookPower(float ma) {
+		try {
+			me.aap.fermata.addon.power.PowerUsageStore ps = me.aap.fermata.addon.power.PowerUsageTracker.get().getStore();
+			long microAh = Math.round(Math.abs(ma) * SleepNight.EPOCH_MS / 3600.0);
+			int ctx = me.aap.fermata.addon.data.DataSessionLimit.isCarConnected() ? me.aap.fermata.addon.power.PowerUsageStore.CTX_CAR :
+					me.aap.fermata.addon.power.PowerUsageStore.CTX_PHONE;
+			ps.add(System.currentTimeMillis(), me.aap.fermata.addon.power.PowerUsageStore.CAT_SLEEP, ctx, microAh,
+					SleepNight.EPOCH_MS, ma > 0f);
+			if (count % DRAFT_EVERY == 0) ps.saveAsync();
+		} catch (Exception ex) {
+			DiagnosticLog.w(LogCat.SLEEP, "power not booked", ex);
+		}
 	}
 
 	/** Whether the screen went on, or is on, since the last epoch: looking at the phone in the night is being awake. */

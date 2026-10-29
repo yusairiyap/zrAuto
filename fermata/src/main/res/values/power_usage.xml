@@ -70,6 +70,7 @@
     <string name="power_cat_video">Playing video</string>
     <string name="power_cat_music">Playing music</string>
     <string name="power_cat_idle">App open, nothing playing</string>
+    <string name="power_cat_sleep">Recording a night</string>
     <string name="power_cat_car">Connected to Android Auto</string>
     <string name="power_cat_phone">On the phone alone</string>
     <string name="power_row_time">%1$s · about %2$s on average</string>

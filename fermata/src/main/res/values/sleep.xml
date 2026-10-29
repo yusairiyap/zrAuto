@@ -156,11 +156,6 @@
     <string name="sleep_set_stop_playback_sub">Sets the app\'s sleep timer to the same length, so music or video stops with the sounds.</string>
     <string name="sleep_battery_used">Battery: %1$d mA on average, %2$d%% used (%3$s%% an hour)</string>
     <string name="sleep_battery_mixed">Battery: %1$d mA on average while it was not charging</string>
-    <string name="sleep_power_screen">Screen on</string>
-    <string name="sleep_power_ambience">Ambience playing</string>
-    <string name="sleep_power_quiet">Quiet, screen off</string>
-    <string name="sleep_power_unit">mA, hour by hour</string>
-    <string name="sleep_power_charging">Charging for %1$s, left out of the figures above</string>
     <string name="sleep_battery_charging">Battery: on the charger</string>
     <string name="sleep_insight_battery">Recording costs about %1$s%% of the battery an hour (%2$d mA), measured over %3$d nights on battery power.</string>
     <string name="sleep_tip_battery">Recording is heavy on your battery. Charge the phone overnight, or switch to Movement without sound, or to Times only, in the Sleep settings.</string>

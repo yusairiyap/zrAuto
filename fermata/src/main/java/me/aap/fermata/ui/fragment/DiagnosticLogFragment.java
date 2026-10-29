@@ -934,8 +934,8 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		java.util.Calendar c = java.util.Calendar.getInstance();
 		long cur = isFrom ? fromMs : toMs;
 		if (cur > 0) c.setTimeInMillis(cur);
-		new android.app.DatePickerDialog(ctx, (dv, y, m, d) -> {
-			new android.app.TimePickerDialog(ctx, (tv, h, mi) -> {
+		android.app.DatePickerDialog dd = new android.app.DatePickerDialog(ctx, (dv, y, m, d) -> {
+			android.app.TimePickerDialog td = new android.app.TimePickerDialog(ctx, (tv, h, mi) -> {
 				java.util.Calendar r = java.util.Calendar.getInstance();
 				r.set(y, m, d, h, mi, isFrom ? 0 : 59);
 				r.set(java.util.Calendar.MILLISECOND, isFrom ? 0 : 999);
@@ -948,8 +948,28 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 				}
 				timeChanged();
 			}, c.get(java.util.Calendar.HOUR_OF_DAY), c.get(java.util.Calendar.MINUTE),
-					android.text.format.DateFormat.is24HourFormat(ctx)).show();
-		}, c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.MONTH), c.get(java.util.Calendar.DAY_OF_MONTH)).show();
+					android.text.format.DateFormat.is24HourFormat(ctx));
+			styleDialog(td);
+			td.show();
+		}, c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.MONTH), c.get(java.util.Calendar.DAY_OF_MONTH));
+		styleDialog(dd);
+		dd.show();
+	}
+
+	/** The system pickers' OK and Cancel took a text colour that is the dialog's own dark: they get the accent. */
+	private void styleDialog(android.app.AlertDialog d) {
+		d.setOnShowListener(x -> {
+			for (int which : new int[]{android.app.AlertDialog.BUTTON_POSITIVE, android.app.AlertDialog.BUTTON_NEGATIVE}) {
+				TextView b = d.getButton(which);
+				if (b == null) continue;
+				b.setTextColor(accent);
+				b.setAllCaps(false);
+				b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+				b.setTypeface(b.getTypeface(), Typeface.BOLD);
+				b.setMinHeight(dp(44));
+				b.setPadding(dp(16), 0, dp(16), 0);
+			}
+		});
 	}
 
 	private View buildSearch() {

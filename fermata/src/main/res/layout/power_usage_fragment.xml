@@ -571,6 +571,10 @@
                     android:id="@+id/power_row_idle"
                     layout="@layout/data_usage_row" />
 
+                <include
+                    android:id="@+id/power_row_sleep"
+                    layout="@layout/data_usage_row" />
+
                 <TextView
                     android:id="@+id/power_car_insight"
                     android:layout_width="match_parent"

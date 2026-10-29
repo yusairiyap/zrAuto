@@ -371,7 +371,8 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 
 		// Book the stretch since the last reading, unless the phone slept through it.
 		long maxGap = Math.max(5000, 3 * (isLive() ? liveInterval() : backgroundInterval()));
-		if ((dt > 0) && (dt <= maxGap)) {
+		// A night being recorded books its own readings (SleepTracker), also with the screen off.
+		if ((dt > 0) && (dt <= maxGap) && !me.aap.fermata.addon.sleep.SleepTracker.get().isActive()) {
 			long microAh = Math.round(Math.abs(ma) * dt / 3600.0);
 			boolean drawing = ma < 0;
 			store.add(System.currentTimeMillis(), lastCat, lastCtx, microAh, dt, !drawing);

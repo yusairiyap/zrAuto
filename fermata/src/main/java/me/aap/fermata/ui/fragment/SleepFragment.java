@@ -47,7 +47,6 @@ import me.aap.fermata.ui.view.EffectsUi;
 import me.aap.fermata.ui.view.SettingsStyle;
 import me.aap.fermata.ui.view.SleepBarsView;
 import me.aap.fermata.ui.view.SleepHypnogramView;
-import me.aap.fermata.ui.view.SleepPowerView;
 import me.aap.fermata.ui.view.SleepGuide;
 import me.aap.fermata.ui.view.SleepScoreView;
 import me.aap.fermata.ui.view.TopToast;
@@ -105,7 +104,6 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 	private SleepScoreView scoreView;
 	private TextView statAsleep, statBed, statLatency, statAwake;
 	private TextView batteryLine;
-	private SleepPowerView powerView;
 	private ChipFlowLayout lengthChips;
 	private androidx.appcompat.widget.SwitchCompat stopPlaybackSwitch;
 	private View prevNight, nextNight;
@@ -684,11 +682,6 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 		LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
 		blp.topMargin = px(12);
 		card.addView(batteryLine, blp);
-		powerView = new SleepPowerView(palette, c);
-		powerView.setVisibility(View.GONE);
-		LinearLayout.LayoutParams pvp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		pvp.topMargin = px(8);
-		card.addView(powerView, pvp);
 		return card;
 	}
 
@@ -916,8 +909,6 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 
 	/** What the night cost the battery: the average current and the percent per hour, or that it was charging. */
 	private void showBattery(SleepNight n) {
-		boolean graph = powerView.setNight(n, true);
-		powerView.setVisibility(graph ? View.VISIBLE : View.GONE);
 		float pph = n.percentPerHour();
 		if (n.hasBattery() && (pph >= 0f)) {
 			batteryLine.setVisibility(View.VISIBLE);
@@ -949,8 +940,6 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 			statLatency.setText("-");
 			statAwake.setText("-");
 			batteryLine.setVisibility(View.GONE);
-			powerView.setNight(null, false);
-			powerView.setVisibility(View.GONE);
 			hypno.setResult(null);
 			for (TextView t : legend) if (t != null) t.setAlpha(0.5f);
 			return;
