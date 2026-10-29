@@ -130,8 +130,8 @@
     <string name="sleep_set_amb_start_sub">Needs the Ambience addon. Brings back the last mix you used.</string>
     <string name="sleep_set_amb_min">Fade the sounds out after</string>
     <string name="sleep_set_amb_min_sub">The sounds fade away by themselves while the recording goes on</string>
-    <string name="sleep_set_amb_stop">Stop the sounds when I stop</string>
-    <string name="sleep_set_amb_stop_sub">When you end the session in the morning</string>
+    <string name="sleep_set_amb_stop">Turn the sounds off when the session ends</string>
+    <string name="sleep_set_amb_stop_sub">If any sounds are still playing when the recording stops (you press Stop, or it ends by itself in the morning), they are switched off. Not needed when they already faded out.</string>
     <string name="sleep_set_animate">Animate the charts</string>
     <string name="sleep_set_animate_sub">The ring fills in, the stages and bars draw themselves</string>
     <string name="sleep_set_clear">Delete all recorded nights</string>
