@@ -367,7 +367,7 @@ public final class SleepTracker implements SensorEventListener {
 			AmbienceEngine e = AmbienceEngine.get();
 			if (e.anyOn()) e.stopAll();
 		}
-		if ((done == null) || ((done.durationMs() < MIN_NIGHT_MS) && !store.joinsLast(done.start))) {
+		if ((done == null) || (done.durationMs() < MIN_NIGHT_MS)) {
 			DiagnosticLog.log(LogCat.SLEEP, "session too short, not kept",
 					"minutes=" + ((done == null) ? 0 : done.durationMs() / 60_000L));
 			changed();
@@ -396,24 +396,6 @@ public final class SleepTracker implements SensorEventListener {
 	private void linkAmbience(PreferenceStore p) {
 		if (!p.getBooleanPref(SleepPrefs.AMBIENCE_START)) return;
 		startAmbience(p);
-	}
-
-	/**
-	 * "Wind down": the last ambience mix with the chosen length, and the app's sleep timer for the same time, without a recording.
-	 * Returns the minutes, or 0 when no length is set or the ambience is not there.
-	 */
-	public int windDown() {
-		PreferenceStore p = SleepPrefs.store();
-		int min = p.getIntPref(SleepPrefs.AMBIENCE_MIN);
-		if (min <= 0) return 0;
-		startAmbience(p);
-		if (p.getBooleanPref(SleepPrefs.STOP_PLAYBACK)) {
-			boolean mine = timerFromSession;
-			linkPlaybackTimer(p);
-			timerFromSession = mine;
-		}
-		DiagnosticLog.log(LogCat.SLEEP, "wind down started", "minutes=" + min);
-		return min;
 	}
 
 	private void startAmbience(PreferenceStore p) {

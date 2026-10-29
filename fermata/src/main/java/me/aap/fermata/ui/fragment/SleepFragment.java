@@ -106,6 +106,8 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 	private TextView statAsleep, statBed, statLatency, statAwake;
 	private TextView batteryLine;
 	private SleepPowerView powerView;
+	private ChipFlowLayout lengthChips;
+	private androidx.appcompat.widget.SwitchCompat stopPlaybackSwitch;
 	private View prevNight, nextNight;
 	// Stage card
 	private SleepHypnogramView hypno;
@@ -444,25 +446,64 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 		llp.topMargin = px(10);
 		card.addView(link, llp);
 
+		// How long the sounds play: chips like the timer's; the same length is the app's sleep timer.
+		TextView lenLabel = text(getString(R.string.sleep_amb_fade), 13.5f, c.textPrimary, false);
+		LinearLayout.LayoutParams lblp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		lblp.topMargin = px(12);
+		card.addView(lenLabel, lblp);
+		lengthChips = new ChipFlowLayout(palette);
+		LinearLayout.LayoutParams lcp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		lcp.topMargin = px(6);
+		card.addView(lengthChips, lcp);
+		buildLengthChips();
+
+		LinearLayout stop = new LinearLayout(palette);
+		stop.setGravity(Gravity.CENTER_VERTICAL);
+		TextView st = text(getString(R.string.sleep_set_stop_playback), 13.5f, c.textPrimary, false);
+		stop.addView(st, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		stopPlaybackSwitch = new androidx.appcompat.widget.SwitchCompat(palette);
+		me.aap.fermata.ui.view.SwitchStyle.apply(stopPlaybackSwitch, palette);
+		stopPlaybackSwitch.setChecked(SleepPrefs.store().getBooleanPref(SleepPrefs.STOP_PLAYBACK));
+		stopPlaybackSwitch.setOnCheckedChangeListener((b, on) -> {
+			if (syncingAmbience) return;
+			SleepPrefs.store().applyBooleanPref(SleepPrefs.STOP_PLAYBACK, on);
+		});
+		stop.addView(stopPlaybackSwitch);
+		LinearLayout.LayoutParams stp2 = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		stp2.topMargin = px(10);
+		card.addView(stop, stp2);
+
 		TextView sounds = ChipFlowLayout.chip(palette, R.drawable.ambience, R.string.sleep_amb_sounds, false,
 				() -> getActivityDelegate().showFragment(R.id.ambience_addon));
-		TextView wind = ChipFlowLayout.chip(palette, R.drawable.timer, R.string.sleep_wind_down, true, () -> {
-			int min = tracker.windDown();
-			if (min > 0) TopToast.show(R.drawable.timer, getString(R.string.sleep_wind_down_set, min));
-			else TopToast.show(R.drawable.timer, getString(R.string.sleep_wind_down_none));
-			syncAmbience();
-		});
-		LinearLayout chips = new LinearLayout(palette);
-		LinearLayout.LayoutParams c1 = new LinearLayout.LayoutParams(WRAP_CONTENT, px(40));
-		chips.addView(wind, c1);
-		LinearLayout.LayoutParams c2 = new LinearLayout.LayoutParams(WRAP_CONTENT, px(40));
-		c2.setMarginStart(px(8));
-		chips.addView(sounds, c2);
-		LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+		LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(WRAP_CONTENT, px(40));
 		slp.topMargin = px(10);
-		card.addView(chips, slp);
+		card.addView(sounds, slp);
 		ambienceCard = card;
 		return card;
+	}
+
+	private int lengthShown = -1;
+
+	private void buildLengthChips() {
+		int cur = SleepPrefs.store().getIntPref(SleepPrefs.AMBIENCE_MIN);
+		if (cur == lengthShown) return;
+		lengthShown = cur;
+		lengthChips.removeAllViews();
+		int[] mins = {0, 15, 30, 45, 60, 90, 120};
+		boolean known = false;
+		for (int m : mins) known |= (m == cur);
+		if (!known) {
+			lengthChips.addView(lengthChip(cur, true));
+		}
+		for (int m : mins) lengthChips.addView(lengthChip(m, m == cur));
+	}
+
+	private TextView lengthChip(int m, boolean on) {
+		String label = (m == 0) ? getString(R.string.sleep_no_limit) : getString(R.string.sleep_minutes_short, m);
+		return ChipFlowLayout.chip(palette, 0, label, on, () -> {
+			SleepPrefs.store().applyIntPref(SleepPrefs.AMBIENCE_MIN, m);
+			buildLengthChips();
+		});
 	}
 
 	/** The ambience card follows what plays; it is not there without the Ambience addon. */
@@ -475,6 +516,8 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 		syncingAmbience = true;
 		ambienceSwitch.setChecked(e.anyOn());
 		ambienceLinkSwitch.setChecked(SleepPrefs.store().getBooleanPref(SleepPrefs.AMBIENCE_START));
+		stopPlaybackSwitch.setChecked(SleepPrefs.store().getBooleanPref(SleepPrefs.STOP_PLAYBACK));
+		buildLengthChips();
 		syncingAmbience = false;
 		String d = e.describe(requireContext());
 		ambienceSub.setText(e.anyOn() && !d.isEmpty() ? d : getString(R.string.sleep_amb_off));

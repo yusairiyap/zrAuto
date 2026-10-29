@@ -154,6 +154,31 @@ public final class SleepNight {
 		return r;
 	}
 
+	/**
+	 * Cuts off a long stretch of "awake" at the very end (a session joined to a misclick later in the day, or a screen left on): what
+	 * is kept is the last epoch that was not marked awake plus {@code graceEpochs}. Returns whether anything was cut.
+	 */
+	public boolean trimTrailingAwake(int graceEpochs) {
+		if ((flags == null) || (flags.length == 0)) return false;
+		int n = (move != null) ? Math.min(move.length, flags.length) : flags.length;
+		int last = -1;
+		for (int i = n - 1; i >= 0; i--) {
+			if ((flags[i] & FLAG_AWAKE) == 0) {
+				last = i;
+				break;
+			}
+		}
+		if (last < 0) return false;
+		int keep = Math.min(n, last + 1 + graceEpochs);
+		if (n - keep <= graceEpochs) return false;
+		if (move != null) move = Arrays.copyOf(move, keep);
+		if (noise != null) noise = Arrays.copyOf(noise, Math.min(keep, noise.length));
+		flags = Arrays.copyOf(flags, keep);
+		if (power != null) power = Arrays.copyOf(power, Math.min(keep, power.length));
+		end = Math.min(end, start + keep * EPOCH_MS);
+		return true;
+	}
+
 	/** Whether the night has the battery per epoch for a breakdown. */
 	public boolean hasPowerSeries() {
 		return (power != null) && (power.length > 0) && hasBattery();

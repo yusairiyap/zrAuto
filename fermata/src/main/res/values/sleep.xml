@@ -25,10 +25,10 @@
     <string name="sleep_stop">Stop and save</string>
     <string name="sleep_ready">Ready for tonight</string>
     <string name="sleep_ready_auto">Recording starts by itself at %1$s</string>
-    <string name="sleep_ready_auto_sub">In %1$s. Leave the phone or tablet on charge where you sleep; you can also press Start now.</string>
+    <string name="sleep_ready_auto_sub">In %1$s. Leave the phone or tablet where you sleep; you can also press Start now.</string>
     <string name="sleep_ready_auto_now">Waiting for you to settle</string>
     <string name="sleep_ready_auto_now_sub">It is your usual bedtime. Recording starts by itself when the screen goes off, or press Start now.</string>
-    <string name="sleep_ready_sub">Put the phone on the bed, on charge, and press Start when you lie down.</string>
+    <string name="sleep_ready_sub">Put the phone on the bed and press Start when you lie down.</string>
     <string name="sleep_recording">Recording · %1$s</string>
     <string name="sleep_since">Since %1$s</string>
     <string name="sleep_live_move">movement %1$d%%</string>
@@ -198,6 +198,7 @@
 
     <!-- The tab: ambience card and help -->
     <string name="sleep_amb_title">Ambience</string>
+    <string name="sleep_amb_fade">Fade the sounds out after</string>
     <string name="sleep_wind_down">Wind down</string>
     <string name="sleep_wind_down_set">Sounds and sleep timer set for %1$d min</string>
     <string name="sleep_wind_down_none">Pick a length in Settings > Sleep first</string>
@@ -215,8 +216,8 @@
     <string name="sleep_guide_next">Next</string>
     <string name="sleep_guide_done">Got it</string>
     <string name="sleep_guide_asleep">Asleep</string>
-    <string name="sleep_guide_1_title">Phone on the bed, on charge</string>
-    <string name="sleep_guide_1_body">Leave the phone on the mattress next to you, screen down and plugged in. Its motion sensor feels when you turn over. On a tablet on a stand, pick \"On a stand\" in the Sleep settings: it listens to the room instead (never recording sound).</string>
+    <string name="sleep_guide_1_title">Phone on the bed</string>
+    <string name="sleep_guide_1_body">Leave the phone on the mattress next to you, screen down. Its motion sensor feels when you turn over. On a tablet on a stand, pick \"On a stand\" in the Sleep settings: it listens to the room instead (never recording sound).</string>
     <string name="sleep_guide_2_title">Still means asleep</string>
     <string name="sleep_guide_2_body">The app adds up how much the phone moves every half minute. Quiet stretches are sleep, bigger movements or the screen turning on are being awake. Nothing leaves your phone.</string>
     <string name="sleep_guide_3_title">One score out of 100</string>

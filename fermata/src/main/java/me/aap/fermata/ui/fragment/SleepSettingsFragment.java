@@ -241,14 +241,6 @@ public class SleepSettingsFragment extends ReorderListFragment {
 		addSwitchRow(box, R.string.sleep_set_amb_start, R.string.sleep_set_amb_start_sub,
 				() -> p.getBooleanPref(SleepPrefs.AMBIENCE_START),
 				on -> p.applyBooleanPref(SleepPrefs.AMBIENCE_START, on), ambienceOn);
-		addValueSliderRow(box, R.string.sleep_set_amb_min, R.string.sleep_set_amb_min_sub, 0, 12,
-				() -> p.getIntPref(SleepPrefs.AMBIENCE_MIN) / 5, v -> p.applyIntPref(SleepPrefs.AMBIENCE_MIN, v * 5),
-				v -> (v == 0) ? getString(R.string.sleep_no_limit) : getString(R.string.sleep_minutes_short, v * 5),
-				() -> ambienceOn.getAsBoolean() && p.getBooleanPref(SleepPrefs.AMBIENCE_START));
-		addSwitchRow(box, R.string.sleep_set_stop_playback, R.string.sleep_set_stop_playback_sub,
-				() -> p.getBooleanPref(SleepPrefs.STOP_PLAYBACK),
-				on -> p.applyBooleanPref(SleepPrefs.STOP_PLAYBACK, on),
-				() -> p.getIntPref(SleepPrefs.AMBIENCE_MIN) > 0);
 		addSwitchRow(box, R.string.sleep_set_amb_stop, R.string.sleep_set_amb_stop_sub,
 				() -> p.getBooleanPref(SleepPrefs.AMBIENCE_STOP),
 				on -> p.applyBooleanPref(SleepPrefs.AMBIENCE_STOP, on), ambienceOn);

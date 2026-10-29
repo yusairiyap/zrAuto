@@ -59,12 +59,6 @@ public final class SleepStore {
 		return nights.isEmpty() ? null : nights.get(nights.size() - 1);
 	}
 
-	/** Whether a session that ended now, started at {@code start}, would join the last night. */
-	synchronized boolean joinsLast(long start) {
-		SleepNight l = last();
-		return (l != null) && (start - l.end < SleepNight.MERGE_GAP_MS) && (start > l.start);
-	}
-
 	/** Keeps a night; a session that began soon after another ended is joined to it. Returns the night as kept. */
 	synchronized SleepNight add(SleepNight n) {
 		nights.removeIf(o -> o.start == n.start);
@@ -173,7 +167,16 @@ public final class SleepStore {
 			Log.e(ex, "Failed to read the sleep record");
 		}
 		nights.sort((a, b) -> Long.compare(a.start, b.start));
-		if (mergeNeighbours()) {
+		boolean changed = mergeNeighbours();
+		// A long "awake" tail is a night joined to a misclick, or a screen left on: the night ended when the sleeper woke.
+		for (SleepNight n : nights) {
+			long before = n.durationMs();
+			if (n.trimTrailingAwake(10)) {
+				DiagnosticLog.log(LogCat.SLEEP, "awake tail cut off a night", "cutMinutes=" + (before - n.durationMs()) / 60_000L);
+				changed = true;
+			}
+		}
+		if (changed) {
 			dirty = true;
 			scheduleSave();
 		}

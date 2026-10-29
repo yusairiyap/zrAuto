@@ -1376,15 +1376,16 @@ Built into `fermata` like Ambience (order 10, `hasSettings`), package `addon/sle
 - **One night, however many sessions** (`SleepNight#sameNight/merge`, `SleepStore#mergeNeighbours`): a session that starts less than 2 h
   (`MERGE_GAP_MS`) after the previous one ended is joined to it, on save and on load (so already stored pairs are joined at the next start);
   the gap counts as awake (`FLAG_AWAKE` epochs), battery figures are weighted, mixes united. A short session (under 20 min) that
-  joins the last night is kept instead of dropped (`SleepStore#joinsLast`). Log: `SLEEP sessions joined into one night`.
+  joins the last night is NOT kept (a 2 s misclick joined to the night made a long "awake" tail; `SleepNight#trimTrailingAwake` now also cuts such a tail, awake epochs past 5 min at the end, when nights load). Log: `SLEEP sessions joined into one night`.
 - **Hypnogram tooltip** is the accent with its own contrasting text (`SettingsStyle.Colors#onAccent`); the tile fill is see-through
   and was forced opaque, which made bubble and text near-equal in some themes. Custom views must not use `tileFill | 0xFF000000`.
 - **Battery per epoch** (`SleepNight#power`: 0 unknown, 1..250 = current drawn in 10 mA steps, 255 charging; flags `FLAG_SCREEN`,
   `FLAG_AMBIENCE` beside `FLAG_AWAKE`, always test bits) feeds `ui/view/SleepPowerView` on the night card: bars per hour (an hour mostly on the
   charger is an outline) and a breakdown screen on / ambience playing / quiet with share, average mA and time. Older nights have no series and show only the line.
-- **Wind down and playback timer**: the Ambience card has a Wind down chip (`SleepTracker#windDown`: last mix + chosen length + the app's
-  sleep timer for the same minutes). Starting a session does the timer part too (`SleepPrefs.STOP_PLAYBACK`, on by default) and a session's
+- **Ambience card holds the length and the timer switch**: "Fade the sounds out after" as chips (`AMBIENCE_MIN`, same pref as before) and "Stop what plays too"
+  (`STOP_PLAYBACK`), no longer in Settings; there is no Wind down chip. Starting a session sets the app's sleep timer to that length (`SleepPrefs.STOP_PLAYBACK`, on by default) and a session's
   Stop takes back a timer it set. Needs the UI delegate (`MainActivityDelegate.getUiDelegate()`); with none the timer is skipped and logged.
+- **The guide's pages follow the finger** (`SleepGuide#swipe/follow/finish`): words and picture slide and fade with the drag, a quarter of the width or a fling turns the page; no wording about charging anywhere (not recommended).
 - **Ready card** says when recording starts by itself (`SleepReminder#nextAutoStart`).
 - **Diagnostic log filters live in the floating panel** (`DiagnosticLogFragment#buildFilters`): a quick row with one toggle per group
   (Levels, Time, Categories, View). `fitQuick` (post-layout, only when the width changes, never inside a layout callback) lets the groups show

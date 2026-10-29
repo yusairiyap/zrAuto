@@ -57,6 +57,7 @@ public final class SleepGuide {
 	private FrameLayout card;
 	private Art art;
 	private Dots dots;
+	private LinearLayout texts;
 	private TextView title;
 	private TextView body;
 	private TextView back;
@@ -116,7 +117,7 @@ public final class SleepGuide {
 		art = new Art(ctx);
 		root.addView(art, new LinearLayout.LayoutParams(MATCH_PARENT, dp(190)));
 
-		LinearLayout texts = new LinearLayout(ctx);
+		texts = new LinearLayout(ctx);
 		texts.setOrientation(LinearLayout.VERTICAL);
 		texts.setPadding(dp(24), dp(18), dp(24), 0);
 		title = text(18.5f, c.textPrimary, true);
@@ -160,19 +161,12 @@ public final class SleepGuide {
 		});
 		card.setElevation(dp(12));
 		card.addView(root, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
-		// Swipe left or right for the next or the previous page.
-		GestureDetector gd = new GestureDetector(ctx, new GestureDetector.SimpleOnGestureListener() {
-			@Override
-			public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
-				if (e1 == null) return false;
-				float dx = e2.getX() - e1.getX();
-				if ((Math.abs(dx) < dp(60)) || (Math.abs(dx) < Math.abs(e2.getY() - e1.getY()))) return false;
-				go((dx < 0) ? page + 1 : page - 1);
-				return true;
-			}
+		// The page follows the finger; letting go past a quarter of the width, or with a fling, turns it.
+		root.setOnTouchListener((v, ev) -> swipe(ev));
+		art.setOnTouchListener((v, ev) -> {
+			swipe(ev);
+			return true;
 		});
-		root.setOnTouchListener((v, ev) -> gd.onTouchEvent(ev));
-		art.setOnTouchListener((v, ev) -> gd.onTouchEvent(ev) || true);
 
 		FrameLayout.LayoutParams lp = OverlayCard.params(a, host, dp(190 + 18 + 24 + 8 + 110 + 22 + 66 + 20));
 		overlay.addView(card, lp);
@@ -206,6 +200,91 @@ public final class SleepGuide {
 		mask.setCornerRadius(dp(23));
 		t.setBackground(new RippleDrawable(ColorStateList.valueOf(c.ripple), fill, mask));
 		return t;
+	}
+
+	private float downX;
+	private float downY;
+	private boolean dragging;
+	private boolean settling;
+	private android.view.VelocityTracker velocity;
+
+	/** One touch of a swipe: true while it is ours. */
+	private boolean swipe(MotionEvent e) {
+		if (settling || dismissing) return false;
+		int slop = android.view.ViewConfiguration.get(ctx).getScaledTouchSlop();
+		int w = Math.max(1, card.getWidth());
+		switch (e.getActionMasked()) {
+			case MotionEvent.ACTION_DOWN -> {
+				downX = e.getRawX();
+				downY = e.getRawY();
+				dragging = false;
+				if (velocity != null) velocity.recycle();
+				velocity = android.view.VelocityTracker.obtain();
+				velocity.addMovement(e);
+				return true;
+			}
+			case MotionEvent.ACTION_MOVE -> {
+				if (velocity == null) return false;
+				velocity.addMovement(e);
+				float dx = e.getRawX() - downX;
+				if (!dragging && (Math.abs(dx) > slop) && (Math.abs(dx) > Math.abs(e.getRawY() - downY) * 1.3f)) {
+					dragging = true;
+					card.getParent().requestDisallowInterceptTouchEvent(true);
+				}
+				if (dragging) follow(dx, w);
+				return true;
+			}
+			case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+				if (velocity == null) return false;
+				velocity.addMovement(e);
+				velocity.computeCurrentVelocity(1000);
+				float vx = velocity.getXVelocity();
+				velocity.recycle();
+				velocity = null;
+				if (!dragging) return true;
+				dragging = false;
+				float dx = e.getRawX() - downX;
+				int to = page + ((dx < 0) ? 1 : -1);
+				boolean can = (to >= 0) && (to < PAGES);
+				boolean flung = (Math.abs(vx) > 900) && (Math.signum(vx) == Math.signum(dx));
+				boolean commit = can && (e.getActionMasked() == MotionEvent.ACTION_UP) && ((Math.abs(dx) > w * 0.25f) || flung);
+				finish(dx, w, to, commit);
+				return true;
+			}
+		}
+		return true;
+	}
+
+	/** The words and the picture move with the finger and fade as they go; past the first or last page they give only a little. */
+	private void follow(float dx, int w) {
+		int to = page + ((dx < 0) ? 1 : -1);
+		boolean can = (to >= 0) && (to < PAGES);
+		float tx = can ? dx : dx * 0.22f;
+		float fade = Math.max(0f, 1f - Math.abs(tx) / (w * 0.7f));
+		texts.setTranslationX(tx);
+		texts.setAlpha(fade);
+		art.setTranslationX(tx * 0.45f);
+		art.setAlpha(Math.max(0.25f, fade));
+	}
+
+	private void finish(float dx, int w, int to, boolean commit) {
+		settling = true;
+		float sign = (dx < 0) ? 1f : -1f;
+		if (!commit) {
+			texts.animate().translationX(0f).alpha(1f).setDuration(200).setInterpolator(new DecelerateInterpolator(1.6f)).start();
+			art.animate().translationX(0f).alpha(1f).setDuration(200).setInterpolator(new DecelerateInterpolator(1.6f))
+					.withEndAction(() -> settling = false).start();
+			return;
+		}
+		texts.animate().translationX(-sign * w * 0.5f).alpha(0f).setDuration(130).start();
+		art.animate().translationX(-sign * w * 0.25f).alpha(0.25f).setDuration(130).withEndAction(() -> {
+			showPage(to, false);
+			texts.setTranslationX(sign * w * 0.35f);
+			art.setTranslationX(sign * w * 0.2f);
+			texts.animate().translationX(0f).alpha(1f).setDuration(230).setInterpolator(new DecelerateInterpolator(1.8f)).start();
+			art.animate().translationX(0f).alpha(1f).setDuration(230).setInterpolator(new DecelerateInterpolator(1.8f))
+					.withEndAction(() -> settling = false).start();
+		}).start();
 	}
 
 	private void go(int to) {
