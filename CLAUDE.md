@@ -1384,7 +1384,7 @@ Built into `fermata` like Ambience (order 10, `hasSettings`), package `addon/sle
   Power usage tab's "Where it went" row **Recording a night** (`PowerUsageStore.CAT_SLEEP`, `CATS` is 4; files written with 3 are read and remapped in
   `load`). `SleepTracker#bookPower` books every epoch into that store (also with the screen off, when the Power tab's own sampling is asleep), and
   `PowerUsageTracker` books nothing while a session runs, so nothing is counted twice.
-- **Ambience card holds the length and the timer switch**: "Fade the sounds out after" as chips (`AMBIENCE_MIN`, same pref as before) and "Stop what plays too"
+- **Ambience card holds the length and the timer switch**: "Fade the sounds out after" as a - 30 min + stepper in five minute steps (`AMBIENCE_MIN`, same pref as before, 0 = until stopped) and "Stop what plays too"
   (`STOP_PLAYBACK`), no longer in Settings; there is no Wind down chip. Starting a session sets the app's sleep timer to that length (`SleepPrefs.STOP_PLAYBACK`, on by default) and a session's
   Stop takes back a timer it set. Needs the UI delegate (`MainActivityDelegate.getUiDelegate()`); with none the timer is skipped and logged.
 - **The guide's pages follow the finger** (`SleepGuide#swipe/follow/finish`): words and picture slide and fade with the drag, a quarter of the width or a fling turns the page; no wording about charging anywhere (not recommended).
@@ -1396,6 +1396,8 @@ Built into `fermata` like Ambience (order 10, `hasSettings`), package `addon/sle
   `HomeFadeLayout` (edge fade, no built-in fading edge). The Time group (not on the car screen: it uses real dialogs) is presets plus From / To
   pickers (`fromMs/toMs`, statics like the other filters); lines without a date are dropped while a time limit is on. A toggle is filled when its filter changes the lines.
 - **The screen remembers its view** (`DiagnosticLogFragment#loadView/saveView`, shared prefs `diagnostic_log_view`, saved in `onPause`): level, hidden categories, Newest first, Live and Classic survive an app restart; the search text and the time range do not. On a window under 600dp wide the four action buttons are icons in one line (`addIconButton`).
+- **Content padding under the tool bar after Home** (`MainActivityDelegate#computeContentInsets`): the bar's room is its resting place, so the whole `translationY` of the bar is taken off (not only the scroll slide), and `HomeFragment#switchingTo` asks `refreshContentInsets` again 120/400/900 ms later; Sleep, Power usage and Data usage sometimes stayed flush under the bar when entered from Home otherwise.
+- **Classic view keeps its selection**: a live refresh does not redraw the block while something is selected or a finger is down (`classicText`, `TouchState.isBusy`), and the same text is not set again. Live is now remembered across starts, which made the selection vanish every second.
 - **A new category on `PowerUsageStore` must be added to every per-category array**: `PowerWidget#CAT_NAMES/CAT_COLORS` still had three entries when `CATS` became 4, which crashed Home (the start page) at launch, so the app would not start.
 - **Log retention**: 1000 entries in memory (`MAX_ENTRIES`); `zrauto-diagnostics.log` mirrors them and is rewritten to the newest 500 once past
   ~250 KB; no age limit; Clear deletes both; the file is reloaded when recording is switched on.

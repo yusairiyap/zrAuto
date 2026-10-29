@@ -193,6 +193,8 @@
 
     <!-- The tab: ambience card and help -->
     <string name="sleep_amb_title">Ambience</string>
+    <string name="sleep_length_less">Five minutes less</string>
+    <string name="sleep_length_more">Five minutes more</string>
     <string name="sleep_amb_fade">Fade the sounds out after</string>
     <string name="sleep_wind_down">Wind down</string>
     <string name="sleep_wind_down_set">Sounds and sleep timer set for %1$d min</string>

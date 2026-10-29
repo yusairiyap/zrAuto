@@ -126,6 +126,7 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 	/** Lines picked to copy or share; the pick is by line, not by position, so it survives a refresh. */
 	private final Set<Entry> picked = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
 	private boolean selectMode;
+	private TextView classicText;
 	@Nullable
 	private LinearLayout selectBar;
 	@Nullable
@@ -488,7 +489,10 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		@Override
 		public void run() {
 			if (!live || !resumed || (list == null)) return;
-			refresh(false);
+			// Redrawing the one block of text while a finger is on it, or something in it is selected, drops the selection.
+			boolean holding = classic && ((classicText != null) && (classicText.hasSelection() ||
+					me.aap.fermata.util.TouchState.isBusy()));
+			if (!holding) refresh(false);
 			handler.postDelayed(this, LIVE_MS);
 		}
 	};
@@ -1259,13 +1263,15 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		t.setTextIsSelectable(true);
 		t.setPadding(dp(4), dp(10), dp(4), dp(10));
 		t.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		classicText = t;
 		return t;
 	}
 
 	private void bindClassic(TextView t) {
 		StringBuilder sb = new StringBuilder(shown.size() * 80);
 		for (Entry e : shown) sb.append(e.toLine()).append('\n');
-		t.setText(sb);
+		// The same text again is left alone, so a selection in it stays.
+		if (!sb.toString().contentEquals(t.getText())) t.setText(sb);
 	}
 
 	private View emptyView() {

@@ -2082,7 +2082,9 @@ public class MainActivityDelegate extends ActivityDelegate
 			// Where the tool bar sits in full, even while it's scrolled away (see ScrollBarsController,
 			// which shrinks it toward its own top, so only its slide moves that): the content is
 			// always back at its top -- and the bars in full -- before this room is needed.
-			int tbTop = insetLoc1[1] - ((scrollBars != null) ? Math.round(scrollBars.getToolBarDy()) : 0);
+			// Its whole translation is taken off (the scroll slide, and any slide in or out another animation gives it),
+			// so a bar that is still sliding in when this is asked leaves the room it will have, not the one it has now.
+			int tbTop = insetLoc1[1] - Math.round(toolBar.getTranslationY());
 			// A little room below the floating tool bar pill, so the first item doesn't sit against it.
 			top = Math.max(0, (tbTop + toolBar.getHeight() + toIntPx(getContext(), 6)) -
 					contentTop);
