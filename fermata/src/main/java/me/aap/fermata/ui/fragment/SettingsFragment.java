@@ -1017,7 +1017,7 @@ public class SettingsFragment extends MainActivityFragment
 			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.SIDE_PANEL_EFFECTS_PERCENT;
 			o.title = R.string.side_panel_effects_width;
-			o.seekMin = 20;
+			o.seekMin = 8;
 			o.seekMax = 60;
 			o.seekScale = 2;
 			o.visibility = PrefCondition.create(a.getPrefs(), MainActivityPrefs.SIDE_PANEL_EFFECTS);
@@ -1032,7 +1032,7 @@ public class SettingsFragment extends MainActivityFragment
 			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.SIDE_PANEL_YOUTUBE_PERCENT;
 			o.title = R.string.side_panel_youtube_width;
-			o.seekMin = 20;
+			o.seekMin = 8;
 			o.seekMax = 60;
 			o.seekScale = 2;
 			o.visibility = PrefCondition.create(a.getPrefs(), MainActivityPrefs.SIDE_PANEL_YOUTUBE);
@@ -1047,7 +1047,7 @@ public class SettingsFragment extends MainActivityFragment
 			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.SIDE_PANEL_CAPTIONS_PERCENT;
 			o.title = R.string.side_panel_captions_width;
-			o.seekMin = 20;
+			o.seekMin = 8;
 			o.seekMax = 60;
 			o.seekScale = 2;
 			o.visibility = PrefCondition.create(a.getPrefs(), MainActivityPrefs.SIDE_PANEL_CAPTIONS);

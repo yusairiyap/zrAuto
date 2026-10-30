@@ -235,13 +235,13 @@ public final class SidePanel {
 
 	private void layoutCard() {
 		int[] in = systemInsets();
-		int pct = Math.max(20, Math.min(60, a.getPrefs().getIntPref(widthPref)));
+		int pct = Math.max(8, Math.min(60, a.getPrefs().getIntPref(widthPref)));
 		if (docked) {
 			dockEnd = in[2] + dp(10);
 			int top = in[1] + dp(10);
 			int bottom = in[3] + dp(10);
 			int max = Math.round(host.getWidth() * 0.6f);
-			dockW = Math.max(Math.min(dp(260), max), Math.min(Math.round(host.getWidth() * pct / 100f), max));
+			dockW = Math.max(Math.min(dp(120), max), Math.min(Math.round(host.getWidth() * pct / 100f), max));
 			cardLp = new FrameLayout.LayoutParams(dockW, Math.max(dp(160), host.getHeight() - top - bottom),
 					Gravity.END | Gravity.TOP);
 			cardLp.topMargin = top;
@@ -278,13 +278,13 @@ public final class SidePanel {
 				}
 				case android.view.MotionEvent.ACTION_MOVE -> {
 					int max = Math.round(host.getWidth() * 0.6f);
-					setDockWidth(Math.max(Math.min(dp(260), max), Math.min(stripW - Math.round(e.getRawX() - stripX), max)));
+					setDockWidth(Math.max(Math.min(dp(120), max), Math.min(stripW - Math.round(e.getRawX() - stripX), max)));
 					return true;
 				}
 				case android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
 					pd.setColor((secondary & 0x00FFFFFF) | 0x77000000);
 					int pct = Math.round(dockW * 100f / Math.max(1, host.getWidth()));
-					a.getPrefs().applyIntPref(widthPref, Math.max(20, Math.min(60, pct)));
+					a.getPrefs().applyIntPref(widthPref, Math.max(8, Math.min(60, pct)));
 					return true;
 				}
 				default -> {
@@ -488,6 +488,19 @@ public final class SidePanel {
 
 	public int dp(float v) {
 		return Math.round(v * density);
+	}
+
+	/**
+	 * Car mode: outlines {@code v} (or the scope's first item) once the panel is up, so the steering wheel starts from there. The panel's own
+	 * keys are walked from that item.
+	 */
+	public void carSelect(@Nullable View v) {
+		if (!CarNav.isEnabled()) return;
+		overlay.postDelayed(() -> {
+			if (overlay.getParent() == null) return;
+			if ((v != null) && v.isAttachedToWindow()) CarNav.selectView(a, overlay, v);
+			else CarNav.selectFirst(a, overlay);
+		}, 450);
 	}
 
 	public MainActivityDelegate activity() {

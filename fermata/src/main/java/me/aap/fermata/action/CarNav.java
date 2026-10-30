@@ -180,6 +180,17 @@ public final class CarNav {
 		step(s, 1);
 	}
 
+	/** Car mode only: selects and outlines {@code v}, a button or chip in the open scope {@code root} (a panel that opens on one of its chips). */
+	public static void selectView(@NonNull MainActivityDelegate a, @NonNull View root, @NonNull View v) {
+		if (!isEnabled() || !root.isAttachedToWindow() || !v.isAttachedToWindow()) return;
+		Scope s = findScope(a, true);
+		if ((s == null) || (s.root != root)) return;
+		clear();
+		enterScope(s);
+		fresh = false;
+		select(new Sel(v), v);
+	}
+
 	/**
 	 * Takes {@code root} out of the scopes again (a Home widget that had the keys): the keys go back to the user's own bindings,
 	 * and the outline comes down if it was on this scope.
