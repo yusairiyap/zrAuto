@@ -1099,7 +1099,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		long now = SystemClock.elapsedRealtime();
 		if (now - lastPauseProbeAt < 3000) return;
 		lastPauseProbeAt = now;
-		final String id = currentVideoId;
+		probePageAfter(currentVideoId, 500, 0);
+	}
+
+	private void probePageAfter(final String id, long delayMs, final int attempt) {
 		web.postDelayed(() -> {
 			if ((cb.getEngine() != this) || !Objects.equals(id, currentVideoId)) return;
 			String js = "(function() { try {\n" +
@@ -1116,7 +1119,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			web.evaluateJavascript(js, r -> {
 				String s = (r == null) ? "" : r.replace("\"", "");
 				String[] a = s.split("\\|");
-				boolean end = false;
+				boolean end = false, justEnded = false;
 				if (a.length >= 9) {
 					try {
 						int ps = Integer.parseInt(a[0]);
@@ -1124,8 +1127,11 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 						double t = Double.parseDouble(a[4]);
 						int len = Integer.parseInt(a[5]), near = Integer.parseInt(a[6]);
 						boolean same = "1".equals(a[7]);
-						end = !ad && paused && ((ps == 0) || endScreen || ((len > 30) && (len - t <= 3)) ||
-								((near >= 0) && (near <= 20) && (t < 2) && same));
+						// The song was in its last seconds a moment ago on this video and is back at the start: the end, ad flag or
+						// not (that memory is never taken while an ad shows; Oct 30: replay screen up with the ad flag set, ad=1 end=false,
+						// no next song). The weaker signs still need no ad.
+						justEnded = (near >= 0) && (near <= 20) && (t < 2) && same;
+						end = paused && (justEnded || (!ad && ((ps == 0) || endScreen || ((len > 30) && (len - t <= 3)))));
 					} catch (RuntimeException ignore) {
 					}
 				}
@@ -1133,8 +1139,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 						"size=" + web.getWidth() + 'x' + web.getHeight(), "shown=" + web.isShown(),
 						"front=" + isPageInFront(), "music=" + MusicPlayer.isYoutubeAudioMode());
 				if (end) stuckAtEnd("page pause probe");
+				// The replay screen can come a moment after the pause: one more look when the song had just ended.
+				else if (justEnded && (attempt == 0)) probePageAfter(id, 1500, 1);
 			});
-		}, 1200);
+		}, delayMs);
 	}
 
 	/** The page is under YouTube's minimum player size (200 CSS px, with some room). */

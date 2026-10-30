@@ -1704,3 +1704,10 @@ Android Auto, never on the tablet" (suspected: page size or visibility). Ask for
 `PLAY page paused by itself | page=ps|endScreen|ad|paused|t|len|nearEndAgo|sameVideo|hidden end=..`; when the page is paused and at its end
 (player state 0, the replay screen, within 3 s of the length, or in the last seconds a moment ago and back at the start, never with an ad showing) it goes on as
 `stuckAtEnd("page pause probe")`. Not run on a device. If a song still stops, the `PLAY page paused by itself` line says which condition the page was in.
+
+**Second Oct 30 log:** the first fix worked (probe `end=true`, next song after ~6 s: 1.2 s probe wait plus the page's own switch, whose first try resumed the old video's saved position
+and was paused as "during a switch" until the watchdog retried 5 s later; left alone on purpose, the warm-up seek and switch handling are delicate). A later song ended with the replay screen up but
+the ad flag set (`page=1|1|1|1|0.0|190|2|1|0 end=false`), and the ad guard blocked the end. Now the "was in its last seconds a moment ago, same video, back near 0:00, paused" memory counts
+with or without the ad flag (it is never recorded while an ad shows); the weaker signs still need no ad. The probe waits 0.5 s (was 1.2) and looks once more 1.5 s later when the song had just ended but
+the page did not read as ended yet.
+
