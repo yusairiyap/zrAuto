@@ -307,6 +307,9 @@ public final class YtCaptions {
 	/** The video's captions translated by YouTube into {@code lang}, null when that cannot be had. */
 	@Nullable
 	private static List<Cue> translationCues(String videoId, String lang) {
+		// The page first (it is signed in like the browser): asked for that language, it gives the track in it or YouTube's translation.
+		Result page = fromPage(videoId, lang, true);
+		if ((page != null) && !page.cues.isEmpty()) return page.cues;
 		for (Client c : CLIENTS) {
 			Long skip = signInUntil.get(c.name);
 			if ((skip != null) && (android.os.SystemClock.uptimeMillis() < skip)) continue;

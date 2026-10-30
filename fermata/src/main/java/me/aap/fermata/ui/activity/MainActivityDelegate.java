@@ -3017,7 +3017,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		});
 		// Views made later (a tab opened, a list scrolled) are looked at too while a cover colour is in use.
 		getWindow().getDecorView().getViewTreeObserver().addOnGlobalLayoutListener(() -> {
-			if (me.aap.fermata.ui.view.ArtAccent.isActive()) scheduleArtRecolor(400);
+			if (me.aap.fermata.ui.view.ArtAccent.isActive()) scheduleArtRecolor(300);
 		});
 	}
 
@@ -3029,7 +3029,10 @@ public class MainActivityDelegate extends ActivityDelegate
 		artRecolorPending = true;
 		getWindow().getDecorView().postDelayed(() -> {
 			artRecolorPending = false;
+			int v = me.aap.fermata.ui.view.ArtAccent.getVersion();
 			me.aap.fermata.ui.view.ArtAccent.recolor(getWindow().getDecorView());
+			// The colour moved while this ran (a glide is under way): once more, so the last step is never left out.
+			if (v != me.aap.fermata.ui.view.ArtAccent.getVersion()) scheduleArtRecolor(60);
 		}, delayMs);
 	}
 

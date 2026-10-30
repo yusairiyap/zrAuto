@@ -666,6 +666,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 		YtDownloads.get().addListener(downloadsListener);
 		if (followsLibrary()) me.aap.fermata.media.lib.ItemContainer.addContentListener(libraryListener);
 		if (watchesPlaying()) act().getMediaServiceBinder().addBroadcastListener(playingListener);
+		me.aap.fermata.ui.view.ArtAccent.addListener(artRows);
 		// Back on screen: the playing song is brought into view again.
 		lastFocusKey = null;
 		render();
@@ -685,6 +686,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 		removeCallbacks(readAgain);
 		removeCallbacks(refreshBadges);
 		removeCallbacks(revealStep);
+		me.aap.fermata.ui.view.ArtAccent.removeListener(artRows);
 		if (watchesPlaying()) act().getMediaServiceBinder().removeBroadcastListener(playingListener);
 	}
 
@@ -996,6 +998,13 @@ abstract class LibraryWidget extends HomeWidgetView {
 		if (now.size() > old) adapter.notifyItemRangeInserted(old, now.size() - old);
 	}
 
+	private final Runnable artRows = () -> {
+		if (!built) return;
+		for (int i = 0, n = listView.getChildCount(); i < n; i++) {
+			if (listView.getChildViewHolder(listView.getChildAt(i)) instanceof RowHolder h) h.recolorCurrent();
+		}
+	};
+
 	private final Runnable revealStep = () -> {
 		if (!built || !isAttachedToWindow() || (revealLimit >= rows.size())) return;
 		// Never while a finger is on the page or a list is moving: the next step waits.
@@ -1148,7 +1157,17 @@ abstract class LibraryWidget extends HomeWidgetView {
 		private final ImageView pinBadge;
 		@Nullable
 		private Row row;
+		private boolean currentRow;
 		private int paintedEpoch = -1;
+
+		/** The playing row's fill takes the cover's colour as it glides. */
+		void recolorCurrent() {
+			if (!currentRow) return;
+			if ((main.getBackground() instanceof android.graphics.drawable.RippleDrawable rd) && (rd.getNumberOfLayers() > 0) &&
+					(rd.getDrawable(0) instanceof android.graphics.drawable.GradientDrawable g)) {
+				g.setColor(HomeUi.alpha(me.aap.fermata.ui.view.ArtAccent.accentOr(color(ROLE_ACCENT)), 0.28f));
+			}
+		}
 		private boolean paintedCurrent;
 
 		RowHolder() {
@@ -1271,8 +1290,9 @@ abstract class LibraryWidget extends HomeWidgetView {
 				paintedEpoch = styleEpoch;
 				paintedCurrent = r.current();
 				// The playing song is filled with the card's accent, softly, instead of carrying a marker.
-				int fill = r.current() ? HomeUi.alpha(color(ROLE_ACCENT), 0.28f) : 0;
+				int fill = r.current() ? HomeUi.alpha(me.aap.fermata.ui.view.ArtAccent.accentOr(color(ROLE_ACCENT)), 0.28f) : 0;
 				main.setBackground(HomeUi.pressable(ripple(), fill, px(14)));
+				currentRow = r.current();
 				thumb.setBackground(HomeUi.round(softFill(), px(10)));
 				badge.setImageTintList(android.content.res.ColorStateList.valueOf(color(ROLE_SECONDARY)));
 				pinBadge.setImageTintList(android.content.res.ColorStateList.valueOf(color(ROLE_SECONDARY)));

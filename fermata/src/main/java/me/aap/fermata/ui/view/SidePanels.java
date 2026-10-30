@@ -17,6 +17,8 @@ import me.aap.fermata.R;
 import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.media.engine.EffectsControls;
 import me.aap.fermata.media.engine.MediaEngine;
+import me.aap.fermata.media.lib.MediaLib.PlayableItem;
+import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
@@ -37,6 +39,30 @@ public final class SidePanels {
 		boolean panel = SidePanel.isVideoUp(a) && a.getPrefs().getBooleanPref(MainActivityPrefs.SIDE_PANEL_EFFECTS);
 		if (!panel) {
 			AllInOneMenu.openEffects(a);
+			return;
+		}
+		MediaEngine eng = a.getMediaSessionCallback().getEngine();
+		PlayableItem src = (eng == null) ? null : eng.getSource();
+		// The same screen as the full page (equalizer, bass, virtualizer, the 3D sound stage, presets in a menu), in the panel.
+		if ((src != null) && (eng.supportsAudioEffects() || eng.supportsSoundStage())) {
+			SidePanel.toggle(a, "effects", R.drawable.equalizer, R.string.action_audio_effects, new SidePanel.Body() {
+				private AudioEffectsView view;
+
+				@Override
+				public View create(SidePanel p) {
+					view = new AudioEffectsView(a.getContext());
+					MediaSessionCallback cb = a.getMediaServiceBinder().getMediaSessionCallback();
+					view.init(cb, eng.supportsAudioEffects() ? eng.ensureAudioEffects() : null, src);
+					return view;
+				}
+
+				@Override
+				public void onClosed() {
+					if (view == null) return;
+					view.apply(a.getMediaServiceBinder().getMediaSessionCallback());
+					view.cleanup();
+				}
+			});
 			return;
 		}
 		if (effectsOf(a) == null) {
@@ -191,18 +217,28 @@ public final class SidePanels {
 		// Which language is shown now, and the others to pick from.
 		col.addView(p.heading(p.ctx.getString(R.string.captions_lang)));
 		String lang = prefs.getStringPref(MainActivityPrefs.CAPTIONS_LANG);
+		java.util.List<TextView> marks = new java.util.ArrayList<>();
 		for (String code : CaptionLang.CODES) {
-			boolean cur = code.equals(lang);
-			LinearLayout row = p.row(CaptionLang.name(p.ctx, code), cur ? "✓" : null, () -> {
+			LinearLayout row = p.row(CaptionLang.name(p.ctx, code), code.equals(lang) ? "✓" : "", null);
+			TextView mark = (TextView) row.getChildAt(1);
+			mark.setTag(code);
+			marks.add(mark);
+			row.setOnClickListener(v -> {
 				CaptionLang.setLanguage(code);
-				// Drawn again with the mark moved.
-				col.post(() -> { /* the next open shows it; the choice is already applied */ });
+				for (TextView m : marks) m.setText(code.equals(m.getTag()) ? "✓" : "");
 			});
 			col.addView(row);
 		}
 		col.addView(p.heading(p.ctx.getString(R.string.captions_translation)));
-		col.addView(p.row(p.ctx.getString(R.string.captions_translation), CaptionLang.current(p.ctx),
-				() -> CaptionLang.showMenu(a, null)));
+		String trNow = prefs.getStringPref(MainActivityPrefs.CAPTIONS_TRANSLATION);
+		LinearLayout trRow = p.row(p.ctx.getString(R.string.captions_translation),
+				trNow.isEmpty() ? p.ctx.getString(R.string.captions_translation_off) : CaptionLang.name(p.ctx, trNow), null);
+		TextView trValue = (TextView) trRow.getChildAt(1);
+		trRow.setOnClickListener(v -> CaptionLang.showTranslationMenu(a, () -> trValue.postDelayed(() -> {
+			String t = prefs.getStringPref(MainActivityPrefs.CAPTIONS_TRANSLATION);
+			trValue.setText(t.isEmpty() ? p.ctx.getString(R.string.captions_translation_off) : CaptionLang.name(p.ctx, t));
+		}, 300)));
+		col.addView(trRow);
 
 		col.addView(p.heading(p.ctx.getString(R.string.caption_size)));
 		StepSeekBar size = (StepSeekBar) slider(p, 0, v -> prefs.applyIntPref(MainActivityPrefs.CAPTION_SIZE, 50 + v * 250 / 100));

@@ -37,12 +37,18 @@ public final class ArtAccent {
 		float t = an.getAnimatedFraction();
 		ArtAccent.hue = ArtAccent.lerpHue(ArtAccent.fromHue, ArtAccent.toHue, t);
 		ArtAccent.sat = ArtAccent.fromSat + (ArtAccent.toSat - ArtAccent.fromSat) * t;
+		ArtAccent.amount = ArtAccent.fromAmount + (ArtAccent.toAmount - ArtAccent.fromAmount) * t;
+		ArtAccent.version++;
 		fire();
 	};
 	/** The hue (0..360) and saturation (0..1) now shown; sat 0 = no colour found yet, so nothing is remapped. */
 	private static volatile float hue;
 	private static volatile float sat;
-	private static float fromHue, toHue, fromSat, toSat;
+	private static float fromHue, toHue, fromSat, toSat, fromAmount, toAmount;
+	/** How much of the way to the cover's colour the blues are (0 = the theme's own, 1 = fully the cover's): it glides, so on and off are smooth. */
+	private static volatile float amount;
+	/** Counts every step, so a recolour that ran mid-glide knows it has to run again. */
+	private static volatile int version;
 	@Nullable
 	private static ValueAnimator anim;
 	@Nullable
@@ -78,7 +84,7 @@ public final class ArtAccent {
 		if (!isOn()) {
 			generation++;
 			shownItem = null;
-			glideTo(0f, 0f);
+			glideTo(hue, sat, 0f);
 			return;
 		}
 		shownItem = null;
@@ -97,17 +103,33 @@ public final class ArtAccent {
 		for (Runnable r : listeners) r.run();
 	}
 
-	/** {@code color}, with a blue turned into the cover's colour while the switch is on. */
+	/** {@code color}, with a blue turned into the cover's colour (as far as {@link #amount} says) while the switch is on. */
 	public static int map(int color) {
 		float s = sat;
-		if (s <= 0.01f) return color;
+		float a = amount;
+		if ((s <= 0.01f) || (a <= 0.01f)) return color;
 		float[] hsl = new float[3];
 		ColorUtils.colorToHSL(color, hsl);
 		if ((hsl[0] < 185f) || (hsl[0] > 270f) || (hsl[1] < 0.12f)) return color;
 		hsl[0] = hue;
 		// Keeps how strong the original blue was against the cover's own strength, so a pale tint stays pale.
 		hsl[1] = Math.min(1f, Math.max(0.25f, hsl[1] * (0.55f + 0.45f * s) + 0.1f * s));
-		return ColorUtils.setAlphaComponent(ColorUtils.HSLToColor(hsl), Color.alpha(color));
+		int mapped = ColorUtils.setAlphaComponent(ColorUtils.HSLToColor(hsl), Color.alpha(color));
+		return (a >= 0.99f) ? mapped : ColorUtils.blendARGB(color, mapped, a);
+	}
+
+	/** The cover's colour itself, for things that are filled with the accent (the playing row); {@code fallback} while off. */
+	public static int accentOr(int fallback) {
+		float s = sat;
+		float a = amount;
+		if ((s <= 0.01f) || (a <= 0.01f)) return fallback;
+		int c = ColorUtils.HSLToColor(new float[]{hue, Math.max(0.45f, s), 0.58f});
+		return ColorUtils.blendARGB(fallback, c, a);
+	}
+
+	/** Bumped on every step of a glide. */
+	public static int getVersion() {
+		return version;
 	}
 
 	private static final int[][] STATES = {{android.R.attr.state_pressed}, {android.R.attr.state_focused},
@@ -117,7 +139,7 @@ public final class ArtAccent {
 	/** {@code list} with each state's colour mapped (the same list when nothing is blue), for a view's tint or text. */
 	@Nullable
 	public static android.content.res.ColorStateList mapList(@Nullable android.content.res.ColorStateList list) {
-		if ((list == null) || (sat <= 0.01f)) return list;
+		if ((list == null) || !isActive()) return list;
 		int def = list.getDefaultColor();
 		int[] cols = new int[STATES.length];
 		boolean changed = false;
@@ -131,7 +153,7 @@ public final class ArtAccent {
 
 	/** Whether a colour from the cover is in use (so views that were recoloured must be looked at again). */
 	public static boolean isActive() {
-		return sat > 0.01f;
+		return (sat > 0.01f) && (amount > 0.01f);
 	}
 
 	/** What a view had before it was recoloured, and what it was given, to tell its own later changes from ours. */
@@ -186,8 +208,99 @@ public final class ArtAccent {
 				}
 			}
 		}
+		if (v instanceof android.widget.ProgressBar pb) {
+			// Every slider has the same bead and the same colours, whoever made it.
+			if (pb instanceof android.widget.SeekBar sb) Glass.knob(sb);
+			android.content.res.ColorStateList cur = pb.getProgressTintList();
+			if (cur != null) {
+				Orig o = (Orig) pb.getTag(R.id.art_orig_progress);
+				if (o == null) {
+					o = new Orig();
+					o.orig = cur;
+					pb.setTag(R.id.art_orig_progress, o);
+				} else if (cur != o.applied) {
+					o.orig = cur;
+				}
+				android.content.res.ColorStateList m = mapList(o.orig);
+				if (m == o.orig) {
+					if ((o.applied != null) && (cur == o.applied)) pb.setProgressTintList(o.orig);
+					o.applied = null;
+				} else {
+					pb.setProgressTintList(m);
+					o.applied = m;
+				}
+			}
+			recolorDrawable(pb.getProgressDrawable());
+		}
+		if (v instanceof android.widget.TextView t) {
+			android.content.res.ColorStateList cur = t.getCompoundDrawableTintList();
+			if (cur != null) {
+				Orig o = (Orig) t.getTag(R.id.art_orig_compound);
+				if (o == null) {
+					o = new Orig();
+					o.orig = cur;
+					t.setTag(R.id.art_orig_compound, o);
+				} else if (cur != o.applied) {
+					o.orig = cur;
+				}
+				android.content.res.ColorStateList m = mapList(o.orig);
+				if (m == o.orig) {
+					if ((o.applied != null) && (cur == o.applied)) t.setCompoundDrawableTintList(o.orig);
+					o.applied = null;
+				} else {
+					t.setCompoundDrawableTintList(m);
+					o.applied = m;
+				}
+			}
+		}
+		// Chips, discs, tiles and the rest that are a blue shape: their fill takes the cover's colour too.
+		if (!(v instanceof android.widget.ProgressBar)) recolorDrawable(v.getBackground());
 		if (v instanceof android.view.ViewGroup g) {
 			for (int k = 0, n = g.getChildCount(); k < n; k++) recolor(g.getChildAt(k));
+		}
+	}
+
+	private static final java.util.WeakHashMap<android.graphics.drawable.GradientDrawable, Orig> shapes =
+			new java.util.WeakHashMap<>();
+
+	/** A shape drawable's plain fill (also inside layers, clips and ripples), mapped; each drawable is made its own first so no shared one changes. */
+	private static void recolorDrawable(@Nullable android.graphics.drawable.Drawable d) {
+		if (d == null) return;
+		if (d instanceof android.graphics.drawable.GradientDrawable g) {
+			Orig o = shapes.get(g);
+			android.content.res.ColorStateList cur = g.getColor();
+			if (cur == null) return;
+			if (o == null) {
+				// Only a drawable with a blue in it is taken over (and made its own); the others are left alone.
+				if (!isActive() || (mapList(cur) == cur)) return;
+				g.mutate();
+				o = new Orig();
+				o.orig = cur;
+				shapes.put(g, o);
+				cur = g.getColor();
+			} else if ((cur != o.applied) && !cur.equals(o.applied)) {
+				o.orig = cur;
+			}
+			android.content.res.ColorStateList m = mapList(o.orig);
+			if (m == o.orig) {
+				if ((o.applied != null) && cur.equals(o.applied)) g.setColor(o.orig);
+				o.applied = null;
+			} else {
+				g.setColor(m);
+				o.applied = g.getColor();
+			}
+			return;
+		}
+		if (d instanceof android.graphics.drawable.LayerDrawable l) {
+			for (int i = 0, n = l.getNumberOfLayers(); i < n; i++) recolorDrawable(l.getDrawable(i));
+		} else if (d instanceof android.graphics.drawable.ClipDrawable c) {
+			recolorDrawable(c.getDrawable());
+		} else if (d instanceof android.graphics.drawable.InsetDrawable c) {
+			recolorDrawable(c.getDrawable());
+		} else if (d instanceof android.graphics.drawable.ScaleDrawable c) {
+			recolorDrawable(c.getDrawable());
+		} else if (d instanceof android.graphics.drawable.RotateDrawable c) {
+			recolorDrawable(c.getDrawable());
 		}
 	}
 
@@ -206,20 +319,25 @@ public final class ArtAccent {
 					if ((gen != generation) || (c == null)) return;
 					float[] hsl = new float[3];
 					ColorUtils.colorToHSL(c, hsl);
-					glideTo(hsl[0], Math.max(0.35f, hsl[1]));
+					glideTo(hsl[0], Math.max(0.35f, hsl[1]), 1f);
 				});
 			});
 		});
 	}
 
-	private static void glideTo(float h, float s) {
+	private static void glideTo(float h, float s, float a) {
 		if (anim != null) anim.cancel();
 		fromHue = hue;
 		fromSat = sat;
-		toHue = (s <= 0f) ? fromHue : h;
+		fromAmount = amount;
+		toHue = h;
 		toSat = s;
-		// From nothing, the first colour appears at its own hue, not swept over from 0.
-		if (fromSat <= 0.01f) fromHue = toHue;
+		toAmount = a;
+		// Coming in from the theme's own colours, the cover's colour is there from the start and only its strength glides.
+		if (fromAmount <= 0.01f) {
+			fromHue = toHue;
+			fromSat = toSat;
+		}
 		anim = ValueAnimator.ofFloat(0f, 1f);
 		anim.setDuration(GLIDE_MS);
 		anim.setInterpolator(new DecelerateInterpolator(1.4f));

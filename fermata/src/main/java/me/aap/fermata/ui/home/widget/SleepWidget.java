@@ -118,6 +118,20 @@ final class SleepWidget extends HomeWidgetView {
 		removeCallbacks(tick);
 	}
 
+	/** The faint picture ends where the button begins, so nothing shows through or behind it. */
+	private void keepBackdropOffButton() {
+		if ((backdrop == null) || (button == null)) return;
+		post(() -> {
+			boolean strip = getCellsH() == 1;
+			FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) backdrop.getLayoutParams();
+			int end = (strip && (button.getWidth() > 0)) ? button.getWidth() + px(20) : 0;
+			if ((lp != null) && (lp.rightMargin != end)) {
+				lp.rightMargin = end;
+				backdrop.setLayoutParams(lp);
+			}
+		});
+	}
+
 	private void layoutFor() {
 		boolean strip = getCellsH() == 1;
 		headerRow.setVisibility(strip ? GONE : VISIBLE);
@@ -127,6 +141,7 @@ final class SleepWidget extends HomeWidgetView {
 		sub.setSingleLine(strip);
 		sub.setEllipsize(strip ? android.text.TextUtils.TruncateAt.END : null);
 		backdrop.setVisibility(strip ? VISIBLE : GONE);
+		keepBackdropOffButton();
 		value.setTextSize(strip ? 22 : (getCellsH() >= 3 ? 44 : 34));
 		week.setVisibility((!strip && getCellsW() >= 3) ? VISIBLE : GONE);
 		if (strip) {
@@ -175,10 +190,12 @@ final class SleepWidget extends HomeWidgetView {
 		int[] scores = new int[Math.min(7, rs.size())];
 		for (int i = 0; i < scores.length; i++) scores[i] = rs.get(rs.size() - scores.length + i).score;
 		week.setScores(scores);
+		// The last nights as bars behind the words, in the room the button leaves.
 		float[] bars = new float[7];
 		java.util.Arrays.fill(bars, -1f);
 		for (int i = 0; i < scores.length; i++) bars[7 - scores.length + i] = scores[i] / 100f;
 		backdrop.setBars(bars);
+		keepBackdropOffButton();
 	}
 
 	/** The last nights as little bars, each in its score's colour. */

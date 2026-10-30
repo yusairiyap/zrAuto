@@ -25,6 +25,7 @@ import me.aap.fermata.ytcaptions.CaptionsHub;
 final class LyricsWidget extends HomeWidgetView {
 	private FrameLayout holder;
 	private LyricsView lyrics;
+	private android.widget.TextView langChip;
 
 	LyricsWidget(HomeHost host, HomeWidgetType type) {
 		super(host, type);
@@ -54,10 +55,14 @@ final class LyricsWidget extends HomeWidgetView {
 		lyrics.setInteractive(scrubbing());
 		holder.addView(lyrics, new FrameLayout.LayoutParams(-1, -1));
 		// The language, the Latin letters and the translation, switched here on the spot.
-		android.widget.ImageView lang = iconButton(R.drawable.captions, 30, ROLE_SECONDARY,
-				R.string.captions_language_button, () -> me.aap.fermata.ui.view.CaptionLang.showMenu(host.activity(), null));
-		lang.setLayoutParams(new FrameLayout.LayoutParams(px(30), px(30), android.view.Gravity.END | android.view.Gravity.TOP));
-		holder.addView(lang);
+		langChip = chip(R.drawable.captions, me.aap.fermata.ui.view.CaptionLang.shortLabel(), () ->
+				me.aap.fermata.ui.view.CaptionLang.showMenu(host.activity(), () ->
+						postDelayed(() -> langChip.setText(me.aap.fermata.ui.view.CaptionLang.shortLabel()), 1500)));
+		langChip.setPadding(px(12), 0, px(12), 0);
+		FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(34),
+				android.view.Gravity.END | android.view.Gravity.TOP);
+		clp.topMargin = px(2);
+		holder.addView(langChip, clp);
 	}
 
 	/** Whether a drag scrubs through the lines and a tap on one seeks to it (else the page scrolls over the card). */

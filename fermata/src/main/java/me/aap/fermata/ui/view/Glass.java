@@ -866,7 +866,7 @@ public final class Glass {
 			paint.setStyle(Paint.Style.FILL);
 			paint.setShader(null);
 			if (g < 1f) {
-				paint.setColor(accent);
+				paint.setColor(ArtAccent.map(accent));
 				paint.setAlpha(Math.round(255 * a * (1f - g)));
 				c.drawCircle(cx, cy, r, paint);
 			}

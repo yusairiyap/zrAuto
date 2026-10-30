@@ -71,12 +71,51 @@ public final class CaptionLang {
 		CaptionsHub.get().invalidate();
 	}
 
+	/** A short word for the chip: the language shown now, e.g. "EN" or "KO". */
+	public static String shortLabel() {
+		YtCaptions.Track t = CaptionsHub.get().getTrack();
+		String c = (t != null) ? t.language : MainActivityPrefs.get().getStringPref(MainActivityPrefs.CAPTIONS_LANG);
+		c = c.split("-")[0];
+		return c.isEmpty() ? "CC" : c.toUpperCase(Locale.ROOT);
+	}
+
+	/** Only the translated second line's languages: opened from the captions panel, which lists the main language itself. */
+	public static void showTranslationMenu(MainActivityDelegate a, @Nullable Runnable after) {
+		Context ctx = a.getContext();
+		String tr = a.getPrefs().getStringPref(MainActivityPrefs.CAPTIONS_TRANSLATION);
+		raise(a);
+		a.getContextMenu().showFuture(b -> {
+			b.setTitle(R.string.captions_translation);
+			b.addItem(R.id.caption_menu_item, (tr.isEmpty() ? "✓  " : "") + ctx.getString(R.string.captions_translation_off))
+					.setHandler(i -> {
+						setTranslation("");
+						if (after != null) after.run();
+						return true;
+					});
+			for (String c : CODES) {
+				if (c.isEmpty()) continue;
+				b.addItem(R.id.caption_menu_item, (c.equals(tr) ? "✓  " : "") + name(ctx, c)).setHandler(i -> {
+					setTranslation(c);
+					if (after != null) after.run();
+					return true;
+				});
+			}
+			return completedVoid();
+		});
+	}
+
+	/** The context menu is under a modal card (30dp) by default: this one is drawn over it. */
+	private static void raise(MainActivityDelegate a) {
+		if (a.getContextMenu() instanceof android.view.View v) v.setElevation(40f * v.getResources().getDisplayMetrics().density);
+	}
+
 	/** The menu: language, Latin letters, translation. {@code after} runs when something was changed. */
 	public static void showMenu(MainActivityDelegate a, @Nullable Runnable after) {
 		Context ctx = a.getContext();
 		MainActivityPrefs p = a.getPrefs();
 		String lang = p.getStringPref(MainActivityPrefs.CAPTIONS_LANG);
 		String tr = p.getStringPref(MainActivityPrefs.CAPTIONS_TRANSLATION);
+		raise(a);
 		a.getContextMenu().showFuture(b -> {
 			b.setTitle(current(ctx));
 			b.addItem(R.id.caption_menu_lang, R.drawable.captions, ctx.getString(R.string.captions_lang)).setSubmenu(s -> {
