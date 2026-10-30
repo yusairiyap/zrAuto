@@ -1711,3 +1711,7 @@ the ad flag set (`page=1|1|1|1|0.0|190|2|1|0 end=false`), and the ad guard block
 with or without the ad flag (it is never recorded while an ad shows); the weaker signs still need no ad. The probe waits 0.5 s (was 1.2) and looks once more 1.5 s later when the song had just ended but
 the page did not read as ended yet.
 
+**Third Oct 30 log (a song seeked forward, then let end):** the page paused itself at the end, and by the 0.5 s probe it had already gone on by itself (`page=1|0|1|0|15.0|186|1|1|0`: playing, ad flag set,
+clock 15 s, last seconds 1 s ago), so "paused near 0:00" did not hold and the song was not taken as ended. The just-ended memory (last 5 s seen within 20 s, same video) now also counts when
+the clock is under 2 s, the ad flag is set, or the clock is within 3 s of the length, paused or not.
+

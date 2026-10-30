@@ -1130,8 +1130,12 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 						// The song was in its last seconds a moment ago on this video and is back at the start: the end, ad flag or
 						// not (that memory is never taken while an ad shows; Oct 30: replay screen up with the ad flag set, ad=1 end=false,
 						// no next song). The weaker signs still need no ad.
-						justEnded = (near >= 0) && (near <= 20) && (t < 2) && same;
-						end = paused && (justEnded || (!ad && ((ps == 0) || endScreen || ((len > 30) && (len - t <= 3)))));
+						justEnded = (near >= 0) && (near <= 20) && same;
+						// Oct 30, third song: the page had already gone on by itself (ad flag set, playing, clock at 15 s) when it was
+						// looked at 0.5 s after the pause, so "paused near 0:00" never held. Seen in its last seconds a moment ago on this
+						// video and then pausing itself, with the page back near the start, at its end again, or showing an ad: its end.
+						end = (justEnded && ((t < 2) || ad || ((len > 30) && (len - t <= 3)))) ||
+								(paused && !ad && ((ps == 0) || endScreen || ((len > 30) && (len - t <= 3))));
 					} catch (RuntimeException ignore) {
 					}
 				}
