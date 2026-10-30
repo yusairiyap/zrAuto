@@ -283,4 +283,6 @@
     <item name="caption_menu_romaji" type="id" />
     <item name="caption_menu_translation" type="id" />
     <item name="caption_menu_item" type="id" />
+    <item name="art_orig_text" type="id" />
+    <item name="art_orig_tint" type="id" />
 </resources>

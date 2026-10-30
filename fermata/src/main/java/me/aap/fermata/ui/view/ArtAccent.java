@@ -11,6 +11,7 @@ import androidx.core.graphics.ColorUtils;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+import me.aap.fermata.R;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.service.FermataServiceUiBinder;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -109,13 +110,85 @@ public final class ArtAccent {
 		return ColorUtils.setAlphaComponent(ColorUtils.HSLToColor(hsl), Color.alpha(color));
 	}
 
-	/** {@code list} with its colour mapped (the same list when nothing changes), for a view's tint. */
+	private static final int[][] STATES = {{android.R.attr.state_pressed}, {android.R.attr.state_focused},
+			{android.R.attr.state_selected}, {android.R.attr.state_activated}, {android.R.attr.state_checked},
+			{-android.R.attr.state_enabled}, {}};
+
+	/** {@code list} with each state's colour mapped (the same list when nothing is blue), for a view's tint or text. */
 	@Nullable
 	public static android.content.res.ColorStateList mapList(@Nullable android.content.res.ColorStateList list) {
 		if ((list == null) || (sat <= 0.01f)) return list;
-		int c = list.getDefaultColor();
-		int m = map(c);
-		return (m == c) ? list : android.content.res.ColorStateList.valueOf(m);
+		int def = list.getDefaultColor();
+		int[] cols = new int[STATES.length];
+		boolean changed = false;
+		for (int i = 0; i < cols.length; i++) {
+			int c = (STATES[i].length == 0) ? def : list.getColorForState(STATES[i], def);
+			cols[i] = map(c);
+			changed |= (cols[i] != c);
+		}
+		return changed ? new android.content.res.ColorStateList(STATES, cols) : list;
+	}
+
+	/** Whether a colour from the cover is in use (so views that were recoloured must be looked at again). */
+	public static boolean isActive() {
+		return sat > 0.01f;
+	}
+
+	/** What a view had before it was recoloured, and what it was given, to tell its own later changes from ours. */
+	private static final class Orig {
+		android.content.res.ColorStateList orig;
+		android.content.res.ColorStateList applied;
+	}
+
+	/**
+	 * Recolours every text and tinted icon under {@code v} whose colour is a blue: the rest of the app's blue (list text,
+	 * chips, icons, whatever the themes tint through XML) that has no code of its own to ask {@link #map}. Each view keeps
+	 * its original colour in a tag, so the next song starts from the theme's and not from the last song's.
+	 */
+	public static void recolor(android.view.View v) {
+		if (v instanceof android.widget.TextView t) {
+			Orig o = (Orig) t.getTag(R.id.art_orig_text);
+			android.content.res.ColorStateList cur = t.getTextColors();
+			if (o == null) {
+				o = new Orig();
+				o.orig = cur;
+				t.setTag(R.id.art_orig_text, o);
+			} else if (cur != o.applied) {
+				o.orig = cur;
+			}
+			android.content.res.ColorStateList m = mapList(o.orig);
+			if (m == o.orig) {
+				if ((o.applied != null) && (cur == o.applied)) t.setTextColor(o.orig);
+				o.applied = null;
+			} else {
+				t.setTextColor(m);
+				o.applied = t.getTextColors();
+			}
+		}
+		if (v instanceof android.widget.ImageView i) {
+			android.content.res.ColorStateList cur = androidx.core.widget.ImageViewCompat.getImageTintList(i);
+			if (cur != null) {
+				Orig o = (Orig) i.getTag(R.id.art_orig_tint);
+				if (o == null) {
+					o = new Orig();
+					o.orig = cur;
+					i.setTag(R.id.art_orig_tint, o);
+				} else if (cur != o.applied) {
+					o.orig = cur;
+				}
+				android.content.res.ColorStateList m = mapList(o.orig);
+				if (m == o.orig) {
+					if ((o.applied != null) && (cur == o.applied)) androidx.core.widget.ImageViewCompat.setImageTintList(i, o.orig);
+					o.applied = null;
+				} else {
+					androidx.core.widget.ImageViewCompat.setImageTintList(i, m);
+					o.applied = m;
+				}
+			}
+		}
+		if (v instanceof android.view.ViewGroup g) {
+			for (int k = 0, n = g.getChildCount(); k < n; k++) recolor(g.getChildAt(k));
+		}
 	}
 
 	private static void refresh() {

@@ -3013,7 +3013,24 @@ public class MainActivityDelegate extends ActivityDelegate
 			if (toolBar != null) toolBar.invalidate();
 			View d = getWindow().getDecorView();
 			d.invalidate();
+			scheduleArtRecolor(60);
 		});
+		// Views made later (a tab opened, a list scrolled) are looked at too while a cover colour is in use.
+		getWindow().getDecorView().getViewTreeObserver().addOnGlobalLayoutListener(() -> {
+			if (me.aap.fermata.ui.view.ArtAccent.isActive()) scheduleArtRecolor(400);
+		});
+	}
+
+	private boolean artRecolorPending;
+
+	/** Recolours the blue text and icons of the whole window (see ArtAccent#recolor), at most once per {@code delayMs}. */
+	private void scheduleArtRecolor(long delayMs) {
+		if (artRecolorPending) return;
+		artRecolorPending = true;
+		getWindow().getDecorView().postDelayed(() -> {
+			artRecolorPending = false;
+			me.aap.fermata.ui.view.ArtAccent.recolor(getWindow().getDecorView());
+		}, delayMs);
 	}
 
 	/**
