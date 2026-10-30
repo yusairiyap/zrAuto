@@ -1685,3 +1685,33 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
 11. ~~**Never run on a device**~~ **Resolved: the items listed as never run on a device (Ambience, the glass blur and UI style, the power
     tracker, Share, YouTube comments and captions, the lyrics page, the welcome wizard's restore, the Home layout on the car screen, and the
     stack manager, timer picks and widget size on Android Auto) were tested OK by the user.**
+
+## PLAY log: a song ending and what follows (`util/PlayLog`, category `PLAY`)
+
+One trail for "a song ended, what played next", one `seq` per transition and `after=` ms since the end on every line:
+`song ended` (how, engine, id, page `size`, `shown`, `front`, `music`, `ad`) -> `resolving next` -> `next resolved` -> `next started`, or
+`stopped after the song` (`why=`) when nothing follows on purpose. `PlayLog.begin` is called by `YoutubeMediaEngine#beginEnd` (page `ended`,
+`stuck:*`, an autonav jump) and `MediaSessionCallback#onEngineEnded` (local engines; a second report within 3 s joins the same seq). A transition
+still open after 8 s writes the warning `next did not start`, and the YouTube engine adds `page state while waiting for the next song`
+(player state, `ended-mode` replay screen, ad classes, video paused/ready, page size). `MediaSessionCallback#onEngineStarted` closes it.
+Steps outside an open transition are ignored, so ordinary plays leave no PLAY lines. New playback steps go through `PlayLog.step/warn`, not new
+wordings in TRANSPORT/YT. Not run on a device; this was added to find the cause of "natural end does not start the next song on phone and
+Android Auto, never on the tablet" (suspected: page size or visibility). Ask for the PLAY lines around a stuck song.
+
+**Oct 30 log (phone, Home tab, music mode): the song ended, the page paused itself at 0:00 (`YT paused by=PAGE`, position 0, then buffering), no
+`ended` event and the in-page end check (`endCheck`, a timer re-armed by every pause/wait) reported nothing, so there was no next song and no PLAY line at all.**
+`YoutubeMediaEngine#probePagePause` now looks at the page 1.2 s after any pause the page made by itself (at most every 3 s) and writes
+`PLAY page paused by itself | page=ps|endScreen|ad|paused|t|len|nearEndAgo|sameVideo|hidden end=..`; when the page is paused and at its end
+(player state 0, the replay screen, within 3 s of the length, or in the last seconds a moment ago and back at the start, never with an ad showing) it goes on as
+`stuckAtEnd("page pause probe")`. Not run on a device. If a song still stops, the `PLAY page paused by itself` line says which condition the page was in.
+
+**Second Oct 30 log:** the first fix worked (probe `end=true`, next song after ~6 s: 1.2 s probe wait plus the page's own switch, whose first try resumed the old video's saved position
+and was paused as "during a switch" until the watchdog retried 5 s later; left alone on purpose, the warm-up seek and switch handling are delicate). A later song ended with the replay screen up but
+the ad flag set (`page=1|1|1|1|0.0|190|2|1|0 end=false`), and the ad guard blocked the end. Now the "was in its last seconds a moment ago, same video, back near 0:00, paused" memory counts
+with or without the ad flag (it is never recorded while an ad shows); the weaker signs still need no ad. The probe waits 0.5 s (was 1.2) and looks once more 1.5 s later when the song had just ended but
+the page did not read as ended yet.
+
+**Third Oct 30 log (a song seeked forward, then let end):** the page paused itself at the end, and by the 0.5 s probe it had already gone on by itself (`page=1|0|1|0|15.0|186|1|1|0`: playing, ad flag set,
+clock 15 s, last seconds 1 s ago), so "paused near 0:00" did not hold and the song was not taken as ended. The just-ended memory (last 5 s seen within 20 s, same video) now also counts when
+the clock is under 2 s, the ad flag is set, or the clock is within 3 s of the length, paused or not.
+

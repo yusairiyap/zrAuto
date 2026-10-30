@@ -14,6 +14,7 @@ package me.aap.fermata.util;
  * <tr><td>{@link #HOST}</td><td>Android Auto host: car activity and car service lifecycle</td></tr>
  * <tr><td>{@link #TRANSPORT}</td><td>play, pause, next, previous, a song ending, double tap seeks</td></tr>
  * <tr><td>{@link #ENGINE}</td><td>the local players (ExoPlayer), stalls and their recovery</td></tr>
+ * <tr><td>{@link #PLAY}</td><td>what happens between a song ending and the next one playing (see {@link PlayLog}), one {@code seq} per transition</td></tr>
  * <tr><td>{@link #YT}</td><td>the YouTube page and its engine (including the page's own trace and comments)</td></tr>
  * <tr><td>{@link #YTDL}</td><td>YouTube downloads and the offline copy</td></tr>
  * <tr><td>{@link #MUSIC}</td><td>the Music tab's player and queue</td></tr>
@@ -52,6 +53,7 @@ public final class LogCat {
 	public static final String HOST = "HOST";
 	public static final String TRANSPORT = "TRANSPORT";
 	public static final String ENGINE = "ENGINE";
+	public static final String PLAY = "PLAY";
 	public static final String YT = "YT";
 	public static final String YTDL = "YTDL";
 	public static final String MUSIC = "MUSIC";

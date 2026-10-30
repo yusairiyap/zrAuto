@@ -50,6 +50,7 @@ import me.aap.fermata.ui.view.NetworkIssuePopup;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.util.LogCat;
+import me.aap.fermata.util.PlayLog;
 import me.aap.fermata.ytdl.YtDownloadMenu;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.fermata.ytdl.YtOffline;
@@ -556,6 +557,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				// autonav moves again before prepare() re-takes control, that further move is compared
 				// against this actualId (the true current state) rather than the now-stale currentVideoId
 				// this transition was itself detected from.
+				beginEnd("autonav jumped ahead", currentVideoId);
 				currentVideoId = actualId;
 				queueTransitionPending = true;
 				toEnd();
@@ -703,7 +705,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		}
 		if (++earlyEndResumes > 2) {
 			DiagnosticLog.log(LogCat.YT, "video ended early again: going on", "id=" + id, "at=" + data);
-			ended();
+			ended("early, resumed twice already");
 			return;
 		}
 		DiagnosticLog.log(LogCat.YT, "video ended early: resuming", "id=" + id, "at=" + data, "try=" + earlyEndResumes);
@@ -758,10 +760,43 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		if (!stalled && lastPauseAsked) return;
 		DiagnosticLog.log(LogCat.YT, "stopped at the end with no 'ended': treated as ended", "id=" + currentVideoId, "how=" + how, "state=" + (stalled ? "waiting" : "paused"));
 		clearStall();
-		ended();
+		ended("stuck " + how);
 	}
 
 	void ended() {
+		ended("page");
+	}
+
+	/**
+	 * Opens the PLAY trail for this end, with what decides whether the next song can start on this page: its size and
+	 * whether it is on screen (the phone and the car screen give the page much less room than the tablet), and, a few
+	 * seconds later if nothing started, what the player says (see {@link #probePage}).
+	 */
+	private void beginEnd(String how, @Nullable String id) {
+		int n = PlayLog.begin(how, "id=" + id, "size=" + web.getWidth() + 'x' + web.getHeight(),
+				"shown=" + web.isShown(), "front=" + isPageInFront(), "music=" + MusicPlayer.isYoutubeAudioMode(),
+				"ad=" + adActive, "queueItem=" + (web.getAddon().getQueueItem() != null));
+		web.postDelayed(() -> {
+			if (PlayLog.isOpen() && (PlayLog.current() == n)) probePage();
+		}, PlayLog.WATCH_MS - 500);
+	}
+
+	/** What the page's player looks like now, for a song that ended and nothing followed: one PLAY line. */
+	private void probePage() {
+		String js = "(function() { try {\n" +
+				"  var v = document.querySelector('video'), p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
+				"  var c = function(n) { return !!(p && p.classList && p.classList.contains(n)); };\n" +
+				"  return JSON.stringify({ps: (p && p.getPlayerState) ? p.getPlayerState() : -1, endScreen: c('ended-mode'),\n" +
+				"    ad: c('ad-showing') || c('ad-interrupting'), paused: v ? v.paused : null, ready: v ? v.readyState : null,\n" +
+				"    t: v ? +v.currentTime.toFixed(1) : null, len: (v && isFinite(v.duration)) ? Math.round(v.duration) : null,\n" +
+				"    hidden: document.hidden, vw: window.innerWidth, vh: window.innerHeight, page: location.pathname + location.search.slice(0, 40)});\n" +
+				"} catch (x) { return 'error ' + x; } })()";
+		web.evaluateJavascript(js, r -> PlayLog.warn("page state while waiting for the next song", "page=" + r,
+				"id=" + currentVideoId, "switching=" + switching, "expectingNav=" + expectingPageNav,
+				"pending=" + web.getAddon().getPendingVideoId(), "size=" + web.getWidth() + 'x' + web.getHeight()));
+	}
+
+	void ended(String how) {
 		// Repeat One loops whatever video is currently playing, regardless of whether it's part of a
 		// Favorites/Playlist queue (see YoutubeAddon#isRepeatOneEnabled()) -- handled here directly,
 		// short-circuiting before current becomes end/cb.onEngineEnded() runs, so it works the exact
@@ -779,7 +814,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			return;
 		}
 
-		DiagnosticLog.log(LogCat.YT, "video ended", "id=" + currentVideoId);
+		beginEnd(how, currentVideoId);
 		toEnd();
 		qualityUrl = null;
 		// Same reasoning as the unexpected-transition handoff in playing() above: whatever comes next
@@ -1042,11 +1077,76 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			lastExternalPauseTime = 0;
 		} else {
 			lastExternalPauseTime = SystemClock.elapsedRealtime();
+			probePagePause();
 		}
 
 		ignorePause = true;
 		cb.onPause();
 		ignorePause = false;
+	}
+
+	// When the page's own pause was last looked into (SystemClock#elapsedRealtime()), see probePagePause().
+	private long lastPauseProbeAt;
+
+	/**
+	 * The page paused itself (nothing on the app side asked for it). One of the ways a song ends: YouTube puts it back to
+	 * 0:00 under its replay button, or starts its own next video behind an ad, without an 'ended' event, and on a page that
+	 * is not on screen (the Home and Music tabs) the in-page end check, a timer re-armed by every pause and wait event, did
+	 * not report it (Oct 30: a song ended, the page paused by itself, position 0, nothing played next). So the app looks at
+	 * the page itself, a moment after the pause, and writes what it finds to the PLAY log either way.
+	 */
+	private void probePagePause() {
+		long now = SystemClock.elapsedRealtime();
+		if (now - lastPauseProbeAt < 3000) return;
+		lastPauseProbeAt = now;
+		probePageAfter(currentVideoId, 500, 0);
+	}
+
+	private void probePageAfter(final String id, long delayMs, final int attempt) {
+		web.postDelayed(() -> {
+			if ((cb.getEngine() != this) || !Objects.equals(id, currentVideoId)) return;
+			String js = "(function() { try {\n" +
+					"  var v = document.querySelector('video'), p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
+					"  var c = function(n) { return !!(p && p.classList && p.classList.contains(n)); };\n" +
+					"  var ps = (p && p.getPlayerState) ? p.getPlayerState() : -1;\n" +
+					"  var near = (v && v.__fermataNearEndAt) ? Math.round((Date.now() - v.__fermataNearEndAt) / 1000) : -1;\n" +
+					"  var same = (v && (typeof fermataCurrentVideoId === 'function')) ? (fermataCurrentVideoId() === v.__fermataNearEndId) : false;\n" +
+					"  var d = (p && p.getDuration) ? p.getDuration() : (v ? v.duration : 0);\n" +
+					"  return [ps, c('ended-mode') ? 1 : 0, (window.__fermataAdShowing || c('ad-showing') || c('ad-interrupting')) ? 1 : 0,\n" +
+					"    v ? (v.paused ? 1 : 0) : -1, v ? v.currentTime.toFixed(1) : -1, isFinite(d) ? Math.round(d) : 0, near, same ? 1 : 0,\n" +
+					"    document.hidden ? 1 : 0].join('|');\n" +
+					"} catch (x) { return 'error ' + x; } })()";
+			web.evaluateJavascript(js, r -> {
+				String s = (r == null) ? "" : r.replace("\"", "");
+				String[] a = s.split("\\|");
+				boolean end = false, justEnded = false;
+				if (a.length >= 9) {
+					try {
+						int ps = Integer.parseInt(a[0]);
+						boolean endScreen = "1".equals(a[1]), ad = "1".equals(a[2]), paused = "1".equals(a[3]);
+						double t = Double.parseDouble(a[4]);
+						int len = Integer.parseInt(a[5]), near = Integer.parseInt(a[6]);
+						boolean same = "1".equals(a[7]);
+						// The song was in its last seconds a moment ago on this video and is back at the start: the end, ad flag or
+						// not (that memory is never taken while an ad shows; Oct 30: replay screen up with the ad flag set, ad=1 end=false,
+						// no next song). The weaker signs still need no ad.
+						justEnded = (near >= 0) && (near <= 20) && same;
+						// Oct 30, third song: the page had already gone on by itself (ad flag set, playing, clock at 15 s) when it was
+						// looked at 0.5 s after the pause, so "paused near 0:00" never held. Seen in its last seconds a moment ago on this
+						// video and then pausing itself, with the page back near the start, at its end again, or showing an ad: its end.
+						end = (justEnded && ((t < 2) || ad || ((len > 30) && (len - t <= 3)))) ||
+								(paused && !ad && ((ps == 0) || endScreen || ((len > 30) && (len - t <= 3))));
+					} catch (RuntimeException ignore) {
+					}
+				}
+				DiagnosticLog.log(LogCat.PLAY, "page paused by itself", "id=" + id, "page=" + s, "end=" + end,
+						"size=" + web.getWidth() + 'x' + web.getHeight(), "shown=" + web.isShown(),
+						"front=" + isPageInFront(), "music=" + MusicPlayer.isYoutubeAudioMode());
+				if (end) stuckAtEnd("page pause probe");
+				// The replay screen can come a moment after the pause: one more look when the song had just ended.
+				else if (justEnded && (attempt == 0)) probePageAfter(id, 1500, 1);
+			});
+		}, delayMs);
 	}
 
 	/** The page is under YouTube's minimum player size (200 CSS px, with some room). */
