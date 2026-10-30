@@ -1105,6 +1105,8 @@ public final class CarNav {
 			float cy = rect.centerY();
 			c.save();
 			c.scale(scale, scale, cx, cy);
+			// The ring follows the album art's colour as it glides.
+			int accent = me.aap.fermata.ui.view.ArtAccent.map(this.accent);
 			fill.setColor(withAlpha(accent, ((strong ? 0.32f : 0.16f) + 0.30f * flash) * alpha));
 			stroke.setStrokeWidth(strong ? strokeW * 1.8f : strokeW);
 			c.drawRoundRect(rect, radius, radius, fill);

@@ -252,7 +252,7 @@ public final class GlassStylePreview extends View implements PreferenceStore.Lis
 		float nd = nb.height() * 0.14f;
 		for (int i = 0; i < 5; i++) {
 			float cx = nb.left + nb.width() * (i + 0.5f) / 5f;
-			paint.setColor((i == 0) ? EffectsUi.accent(getContext()) : fg);
+			paint.setColor((i == 0) ? ArtAccent.map(EffectsUi.accent(getContext())) : fg);
 			c.drawCircle(cx, nb.centerY(), nd, paint);
 		}
 	}

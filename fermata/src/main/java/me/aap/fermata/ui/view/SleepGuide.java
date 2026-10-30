@@ -369,7 +369,7 @@ public final class SleepGuide {
 			for (int i = 0; i < PAGES; i++) {
 				float near = Math.max(0f, 1f - Math.abs(pos - i));
 				float w = d + (wide - d) * near;
-				paint.setColor(c.accent);
+				paint.setColor(ArtAccent.map(c.accent));
 				paint.setAlpha(Math.round(90 + 165 * near));
 				rect.set(x, y - d / 2f, x + w, y + d / 2f);
 				canvas.drawRoundRect(rect, d / 2f, d / 2f, paint);

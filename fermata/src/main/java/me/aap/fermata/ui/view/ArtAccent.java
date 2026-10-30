@@ -344,6 +344,8 @@ public final class ArtAccent {
 		}
 		// Chips, discs, tiles and the rest that are a blue shape: their fill takes the cover's colour too.
 		if (!(v instanceof android.widget.ProgressBar)) recolorDrawable(v.getBackground());
+		// The tint over a card while it is selected or its menu is open (a foreground, not a background).
+		recolorDrawable(v.getForeground());
 		if (v instanceof android.view.ViewGroup g) {
 			for (int k = 0, n = g.getChildCount(); k < n; k++) recolor(g.getChildAt(k));
 		}

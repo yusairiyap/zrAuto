@@ -473,7 +473,7 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		Card(Context ctx, @DrawableRes int bg, int accent, float radius) {
 			super(ctx);
 			this.radius = radius;
-			paint.setColor((accent & 0x00FFFFFF) | 0x66000000);
+			paint.setColor((me.aap.fermata.ui.view.ArtAccent.map(accent) & 0x00FFFFFF) | 0x66000000);
 			setBackground(ContextCompat.getDrawable(ctx, bg));
 			setWillNotDraw(false);
 			setClickable(true);
