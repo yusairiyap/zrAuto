@@ -202,6 +202,8 @@ public class FermataNavBarView extends NavBarView implements GestureListener {
 		return ArtAccent.map(super.getTint());
 	}
 
+	private boolean pillsRecoloured;
+
 	private final Runnable artStep = () -> {
 		int tint = getTint();
 		indicatorPaint.setColor((tint & 0x00FFFFFF) | 0x2E000000);
@@ -228,8 +230,6 @@ public class FermataNavBarView extends NavBarView implements GestureListener {
 		if (!on) pillsRecoloured = false;
 		invalidate();
 	};
-
-	private boolean pillsRecoloured;
 
 	@Override
 	protected void onAttachedToWindow() {
