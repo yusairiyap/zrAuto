@@ -1022,7 +1022,7 @@ public class YoutubeWebView extends FermataWebView {
 	 */
 	static String pageCaptionsStartJs(String videoId, String lang, boolean allowGenerated) {
 		return """
-				(function(id, lang, auto) {
+				(function(id, lang, auto, trans) {
 				  var key = '__fermataCap_' + id;
 				  var cur = window[key];
 				  if (cur && (cur.state !== 'error')) return 'busy';
@@ -1039,18 +1039,29 @@ public class YoutubeWebView extends FermataWebView {
 				  var lc = function(t) { return (t.languageCode || '').toLowerCase(); };
 				  var man = function(t) { return t.kind !== 'asr'; };
 				  var pick = function(f) { for (var i = 0; i < tr.length; i++) if (f(tr[i])) return tr[i]; return null; };
-				  var t = pick(function(t) { return man(t) && (lc(t).indexOf(lang) === 0); }) ||
-				    pick(function(t) { return man(t) && (lc(t).indexOf('en') === 0); }) || pick(man);
-				  if (!t && auto) t = pick(function(t) { return lc(t).indexOf(lang) === 0; }) || tr[0];
+				  var inLang = function(t) { return lc(t).indexOf(lang) === 0; };
+				  var t = pick(function(t) { return man(t) && inLang(t); });
+				  if (!t && auto) t = pick(inLang);
+				  var tlang = '';
+				  if (!t && trans) {
+				    var src = pick(man) || (auto ? tr[0] : null);
+				    if (src && src.isTranslatable) { t = src; tlang = '&tlang=' + encodeURIComponent(lang); }
+				  }
+				  if (!t) t = pick(function(t) { return man(t) && (lc(t).indexOf('en') === 0); });
+				  if (!t && auto) t = pick(function(t) { return lc(t).indexOf('en') === 0; });
+				  if (!t) t = pick(man);
+				  if (!t && auto) t = tr[0];
 				  if (!t || !t.baseUrl) return 'none';
-				  var url = t.baseUrl.replace(/[&?]fmt=[^&]*/g, '') + '&fmt=json3';
+				  var url = t.baseUrl.replace(/[&?]fmt=[^&]*/g, '') + tlang + '&fmt=json3';
 				  window[key] = {state: 'loading'};
 				  fetch(url, {credentials: 'include'}).then(function(r) { return r.text(); }).then(function(tx) {
-				    window[key] = {state: 'done', body: tx, lang: t.languageCode || '', asr: (t.kind === 'asr') ? '1' : '0'};
+				    window[key] = {state: 'done', body: tx, lang: tlang ? lang : (t.languageCode || ''), asr: (t.kind === 'asr') ? '1' : '0'};
 				  }).catch(function(e) { window[key] = {state: 'error', error: String(e)}; });
 				  return 'started';
-				})(%s, %s, %s)""".formatted(org.json.JSONObject.quote(videoId), org.json.JSONObject.quote(lang),
-				allowGenerated ? "true" : "false");
+				})(%s, %s, %s, %s)""".formatted(org.json.JSONObject.quote(videoId), org.json.JSONObject.quote(lang),
+				allowGenerated ? "true" : "false",
+				me.aap.fermata.ui.activity.MainActivityPrefs.get().getBooleanPref(
+						me.aap.fermata.ui.activity.MainActivityPrefs.CAPTIONS_TRANSLATE_MISSING) ? "true" : "false");
 	}
 
 	/** What {@link #pageCaptionsStartJs} came to: the state object (taken once it is done), or null. */

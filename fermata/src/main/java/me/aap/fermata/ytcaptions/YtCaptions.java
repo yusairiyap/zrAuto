@@ -15,6 +15,7 @@ import java.util.Locale;
 import java.util.Map;
 
 import me.aap.fermata.spotify.Http;
+import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.util.LogCat;
 
@@ -94,12 +95,29 @@ public final class YtCaptions {
 		/** Written by YouTube's speech recognition rather than by a person. */
 		public final boolean generated;
 		final String url;
+		/** YouTube can translate this track into other languages. */
+		final boolean translatable;
+		/** Set when the lines are YouTube's translation of another language's track. */
+		@Nullable
+		public final String translatedFrom;
 
 		Track(String language, String name, boolean generated, String url) {
+			this(language, name, generated, url, false, null);
+		}
+
+		Track(String language, String name, boolean generated, String url, boolean translatable,
+					@Nullable String translatedFrom) {
 			this.language = language;
 			this.name = name;
 			this.generated = generated;
 			this.url = url;
+			this.translatable = translatable;
+			this.translatedFrom = translatedFrom;
+		}
+
+		/** This track as YouTube translates it into {@code lang}. */
+		Track translatedTo(String lang) {
+			return new Track(lang, name, false, url + "&tlang=" + lang, false, language);
 		}
 	}
 
@@ -167,11 +185,23 @@ public final class YtCaptions {
 	 */
 	public static Result load(String videoId, @Nullable String lang, boolean allowGenerated)
 			throws IOException {
+		Result base = loadBase(videoId, lang, allowGenerated);
+		try {
+			return withExtras(videoId, base);
+		} catch (RuntimeException ex) {
+			DiagnosticLog.w(LogCat.CAPTIONS, "extra lines failed", "id=" + videoId, ex);
+			return base;
+		}
+	}
+
+	private static Result loadBase(String videoId, @Nullable String lang, boolean allowGenerated)
+			throws IOException {
 		String want = ((lang == null) || lang.trim().isEmpty()) ?
 				Locale.getDefault().getLanguage() : lang.trim().toLowerCase(Locale.ROOT);
 		// First the YouTube page itself, when it is the video it plays: it is a signed-in browser session with
 		// everything YouTube asks for, where the apps below are more and more often asked to sign in.
 		Result fromPage = fromPage(videoId, want, allowGenerated);
+		boolean tmiss = MainActivityPrefs.get().getBooleanPref(MainActivityPrefs.CAPTIONS_TRANSLATE_MISSING);
 		if (fromPage != null) return fromPage;
 		IOException last = null;
 		boolean answered = false;
@@ -185,7 +215,7 @@ public final class YtCaptions {
 					continue;
 				}
 				answered = true;
-				Track t = choose(tracks, want, allowGenerated);
+				Track t = choose(tracks, want, allowGenerated, tmiss);
 				if (t == null) {
 					DiagnosticLog.log(LogCat.CAPTIONS, "no usable track", "client=" + c.name, "id=" + videoId, "tracks=" + tracks.size());
 					continue;
@@ -240,16 +270,78 @@ public final class YtCaptions {
 		return null;
 	}
 
+	/**
+	 * The song's lines with what the settings add under each: its Latin letters (Korean and Japanese, see {@link Romanizer})
+	 * and YouTube's translation into another language. A line comes first, then its romanization, then the translation.
+	 */
+	private static Result withExtras(String videoId, Result base) {
+		MainActivityPrefs p = MainActivityPrefs.get();
+		boolean romaji = p.getBooleanPref(MainActivityPrefs.CAPTIONS_ROMAJI);
+		String target = p.getStringPref(MainActivityPrefs.CAPTIONS_TRANSLATION).trim().toLowerCase(Locale.ROOT);
+		if ((base.track == null) || base.cues.isEmpty() || (!romaji && target.isEmpty())) return base;
+		List<Cue> second = null;
+		String own = base.track.language.toLowerCase(Locale.ROOT);
+		if (!target.isEmpty() && !own.equals(target) && !own.startsWith(target + "-")) second = translationCues(videoId, target);
+		List<Cue> out = new ArrayList<>(base.cues.size());
+		int j = 0;
+		for (Cue c : base.cues) {
+			StringBuilder sb = new StringBuilder(c.text);
+			if (romaji) {
+				String r = Romanizer.romanize(c.text);
+				if (r != null) sb.append('\n').append(r);
+			}
+			if (second != null) {
+				// The translated cue that starts nearest to this one (both lists are in time order).
+				while ((j + 1 < second.size()) &&
+						(Math.abs(second.get(j + 1).start - c.start) <= Math.abs(second.get(j).start - c.start))) j++;
+				if ((j < second.size()) && (Math.abs(second.get(j).start - c.start) <= 2500)) {
+					String t = second.get(j).text;
+					if (!t.equalsIgnoreCase(c.text)) sb.append('\n').append(t);
+				}
+			}
+			out.add(new Cue(c.start, c.end, sb.toString()));
+		}
+		return new Result(base.track, out);
+	}
+
+	/** The video's captions translated by YouTube into {@code lang}, null when that cannot be had. */
+	@Nullable
+	private static List<Cue> translationCues(String videoId, String lang) {
+		for (Client c : CLIENTS) {
+			Long skip = signInUntil.get(c.name);
+			if ((skip != null) && (android.os.SystemClock.uptimeMillis() < skip)) continue;
+			try {
+				List<Track> tracks = tracks(c, videoId);
+				Track src = pick(tracks, null, false);
+				if (src == null) src = pick(tracks, null, true);
+				if ((src == null) || !src.translatable) continue;
+				List<Cue> cues = fetch(c, src.translatedTo(lang));
+				if (!cues.isEmpty()) return cues;
+			} catch (IOException ex) {
+				DiagnosticLog.w(LogCat.CAPTIONS, "translation failed", "client=" + c.name, "id=" + videoId, ex);
+				if (String.valueOf(ex.getMessage()).contains("HTTP 429")) break;
+			}
+		}
+		return null;
+	}
+
 	/** A manual track in the wanted language, else in English, else any; then the same of generated. */
 	@Nullable
-	private static Track choose(List<Track> tracks, String want, boolean allowGenerated) {
+	private static Track choose(List<Track> tracks, String want, boolean allowGenerated, boolean translateMissing) {
+		// The wanted language first, written by a person or else by speech recognition. Only then another language, and
+		// first of all that one translated by YouTube: a video with Arabic captions by hand and English ones by speech
+		// recognition used to give the Arabic, because any manual track came before any generated one.
 		Track t = pick(tracks, want, false);
+		if ((t == null) && allowGenerated) t = pick(tracks, want, true);
+		if ((t == null) && translateMissing) {
+			Track src = pick(tracks, null, false);
+			if ((src == null) && allowGenerated) src = pick(tracks, null, true);
+			if ((src != null) && src.translatable) t = src.translatedTo(want);
+		}
 		if (t == null) t = pick(tracks, "en", false);
+		if ((t == null) && allowGenerated) t = pick(tracks, "en", true);
 		if (t == null) t = pick(tracks, null, false);
-		if (!allowGenerated) return t;
-		if (t == null) t = pick(tracks, want, true);
-		if (t == null) t = pick(tracks, "en", true);
-		if (t == null) t = pick(tracks, null, true);
+		if ((t == null) && allowGenerated) t = pick(tracks, null, true);
 		return t;
 	}
 
@@ -287,7 +379,7 @@ public final class YtCaptions {
 				boolean asr = "asr".equals(o.optString("kind"));
 				JSONObject n = o.optJSONObject("name");
 				String name = (n == null) ? code : n.optString("simpleText", code);
-				l.add(new Track(code, name, asr, url));
+				l.add(new Track(code, name, asr, url, o.optBoolean("isTranslatable", false), null));
 			}
 		} catch (JSONException ex) {
 			throw new IOException("Unexpected YouTube response", ex);

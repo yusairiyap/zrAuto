@@ -245,6 +245,12 @@ public interface MainActivityPrefs
 	// when a video has no written ones.
 	Pref<Supplier<String>> CAPTIONS_LANG = Pref.s("CAPTIONS_LANG", "");
 	Pref<BooleanSupplier> CAPTIONS_AUTO = Pref.b("CAPTIONS_AUTO", true);
+	// When the video has no track in the language above, YouTube's own translation of one is used.
+	Pref<BooleanSupplier> CAPTIONS_TRANSLATE_MISSING = Pref.b("CAPTIONS_TRANSLATE_MISSING", true);
+	// Korean and Japanese lines written in Latin letters under the line (ytcaptions/Romanizer).
+	Pref<BooleanSupplier> CAPTIONS_ROMAJI = Pref.b("CAPTIONS_ROMAJI", false);
+	// A second line under each one in this language ("" = none), from YouTube's translation of the track.
+	Pref<Supplier<String>> CAPTIONS_TRANSLATION = Pref.s("CAPTIONS_TRANSLATION", "");
 	// How the lyrics look, on the Music tab's cover and in their card (see ui/view/LyricsView):
 	// text size (percent), font (CaptionStyle.FONT_NAMES), bold, italic, alignment (0 centre, 1 left),
 	// the playing line's colour (0 follows the theme, else CaptionStyle.COLORS index + 1) and how

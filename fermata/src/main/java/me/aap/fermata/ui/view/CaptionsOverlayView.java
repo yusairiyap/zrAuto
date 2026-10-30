@@ -118,7 +118,9 @@ public final class CaptionsOverlayView extends View
 				break;
 			}
 		}
-		if (prefs.contains(MainActivityPrefs.CAPTIONS_LANG) || prefs.contains(MainActivityPrefs.CAPTIONS_AUTO)) {
+		if (prefs.contains(MainActivityPrefs.CAPTIONS_LANG) || prefs.contains(MainActivityPrefs.CAPTIONS_AUTO) ||
+				prefs.contains(MainActivityPrefs.CAPTIONS_ROMAJI) || prefs.contains(MainActivityPrefs.CAPTIONS_TRANSLATION) ||
+				prefs.contains(MainActivityPrefs.CAPTIONS_TRANSLATE_MISSING)) {
 			CaptionsHub.get().invalidate();
 		}
 		if (styleChanged) {
