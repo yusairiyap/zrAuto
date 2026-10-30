@@ -36,6 +36,7 @@ final class TimerWidget extends HomeWidgetView {
 	/** The pick that shows the lengths started most, in place of the picked ones. */
 	private static final String RECOMMENDED = "rec";
 
+	private BackdropView backdrop;
 	private LinearLayout column;
 	private View headerRow;
 	private LinearLayout body;
@@ -67,6 +68,9 @@ final class TimerWidget extends HomeWidgetView {
 	@Override
 	protected void onCreate(FrameLayout content) {
 		column = new LinearLayout(ctx);
+		// Behind the words in a strip: the time left as a fill that runs out.
+		backdrop = new BackdropView(ctx);
+		content.addView(backdrop, new FrameLayout.LayoutParams(-1, -1));
 		column.setOrientation(LinearLayout.VERTICAL);
 		headerRow = header(() -> host.run(Action.SLEEP_TIMER));
 		column.addView(headerRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(34)));
@@ -97,6 +101,7 @@ final class TimerWidget extends HomeWidgetView {
 	@Override
 	protected void onStyleChanged() {
 		if (bar != null) bar.setColors(softFill(), color(ROLE_ACCENT));
+		if (backdrop != null) backdrop.setColor((color(ROLE_ACCENT) & 0x00FFFFFF) | 0x40000000);
 	}
 
 	@Override
@@ -136,7 +141,12 @@ final class TimerWidget extends HomeWidgetView {
 		bar.setVisibility(strip ? GONE : VISIBLE);
 		body.setOrientation(LinearLayout.HORIZONTAL);
 		value.setTextSize(strip ? 22 : (getCellsH() >= 3 ? 44 : 34));
-		sub.setVisibility(strip ? GONE : VISIBLE);
+		// A strip keeps the second line too, smaller and on one line: what the timer is doing and when it stops.
+		sub.setVisibility(VISIBLE);
+		sub.setTextSize(strip ? 11.5f : 13f);
+		sub.setSingleLine(strip);
+		sub.setEllipsize(strip ? android.text.TextUtils.TruncateAt.END : null);
+		backdrop.setVisibility(strip ? VISIBLE : GONE);
 		LinearLayout.LayoutParams clp = (LinearLayout.LayoutParams) chips.getLayoutParams();
 		if (strip) {
 			// Beside the time, not under it.
@@ -358,18 +368,23 @@ final class TimerWidget extends HomeWidgetView {
 			value.setText(R.string.music_timer_off);
 			sub.setText(R.string.home_timer_idle);
 			bar.setFraction(0f);
+			backdrop.setFraction(-1f);
 			return;
 		}
 		if (waiting) {
 			value.setText(DateUtils.formatElapsedTime(0));
 			sub.setText(R.string.music_timer_waiting);
 			bar.setFraction(0f);
+			backdrop.setFraction(1f);
 			return;
 		}
 		if (total < left) total = left;
 		value.setText(DateUtils.formatElapsedTime(left));
-		sub.setText(R.string.home_timer_running);
+		String stops = ctx.getString(R.string.home_timer_stops_at,
+				android.text.format.DateFormat.getTimeFormat(ctx).format(new java.util.Date(System.currentTimeMillis() + left * 1000L)));
+		sub.setText((getCellsH() == 1) ? stops : ctx.getString(R.string.home_timer_running));
 		bar.setFraction(left / (float) Math.max(1, total));
+		backdrop.setFraction(left / (float) Math.max(1, total));
 		if (isActive()) postDelayed(tick, 1000);
 	}
 }

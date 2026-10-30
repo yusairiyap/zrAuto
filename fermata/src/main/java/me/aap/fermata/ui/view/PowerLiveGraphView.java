@@ -51,6 +51,14 @@ public class PowerLiveGraphView extends View {
 		text.setTextAlign(Paint.Align.LEFT);
 	}
 
+	private boolean labels = true;
+
+	/** The axis figures (and the zero line); off for a graph that sits faintly behind a card's words. */
+	public void setLabels(boolean on) {
+		labels = on;
+		invalidate();
+	}
+
 	public void setColors(int charge, int draw, int grid, int textColor) {
 		chargeColor = charge;
 		drawColor = draw;
@@ -83,17 +91,19 @@ public class PowerLiveGraphView extends View {
 		float w = getWidth() - left - getPaddingRight();
 		float h = getHeight() - top - getPaddingBottom() - toPx(getContext(), 6);
 		if ((w <= 0) || (h <= 0)) return;
-		float labelW = text.measureText("-10000") + toPx(getContext(), 6);
+		float labelW = labels ? text.measureText("-10000") + toPx(getContext(), 6) : 0f;
 		float x0 = left + labelW;
 		float gw = w - labelW;
 		float mid = top + h / 2f;
 		float half = h / 2f;
 
-		c.drawLine(x0, mid, x0 + gw, mid, zero);
-		text.setAlpha(255);
-		c.drawText("+" + Math.round(range), left, top + text.getTextSize() * 0.8f, text);
-		c.drawText("0", left, mid + text.getTextSize() * 0.35f, text);
-		c.drawText("-" + Math.round(range), left, top + h, text);
+		if (labels) {
+			c.drawLine(x0, mid, x0 + gw, mid, zero);
+			text.setAlpha(255);
+			c.drawText("+" + Math.round(range), left, top + text.getTextSize() * 0.8f, text);
+			c.drawText("0", left, mid + text.getTextSize() * 0.35f, text);
+			c.drawText("-" + Math.round(range), left, top + h, text);
+		}
 
 		int n = values.length;
 		if (n < 2) return;

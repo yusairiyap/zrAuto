@@ -31,6 +31,7 @@ import me.aap.fermata.ui.home.HomeWidgetView;
 final class SleepWidget extends HomeWidgetView {
 	private static final long TICK_MS = 15_000;
 	private final SleepTracker tracker = SleepTracker.get();
+	private BackdropView backdrop;
 	private LinearLayout column;
 	private View headerRow;
 	private LinearLayout body;
@@ -50,6 +51,9 @@ final class SleepWidget extends HomeWidgetView {
 	@Override
 	protected void onCreate(FrameLayout content) {
 		column = new LinearLayout(ctx);
+		// Behind the words in a strip: the last nights as bars, or the night so far against the goal.
+		backdrop = new BackdropView(ctx);
+		content.addView(backdrop, new FrameLayout.LayoutParams(-1, -1));
 		column.setOrientation(LinearLayout.VERTICAL);
 		headerRow = header(() -> host.run(Action.SLEEP));
 		column.addView(headerRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(34)));
@@ -85,6 +89,7 @@ final class SleepWidget extends HomeWidgetView {
 	@Override
 	protected void onStyleChanged() {
 		if (bar != null) bar.setColors(softFill(), color(ROLE_ACCENT));
+		if (backdrop != null) backdrop.setColor((color(ROLE_ACCENT) & 0x00FFFFFF) | 0x38000000);
 		if (week != null) week.setColors(softFill());
 	}
 
@@ -117,7 +122,11 @@ final class SleepWidget extends HomeWidgetView {
 		boolean strip = getCellsH() == 1;
 		headerRow.setVisibility(strip ? GONE : VISIBLE);
 		bar.setVisibility(strip ? GONE : VISIBLE);
-		sub.setVisibility(strip ? GONE : VISIBLE);
+		sub.setVisibility(VISIBLE);
+		sub.setTextSize(strip ? 11.5f : 13f);
+		sub.setSingleLine(strip);
+		sub.setEllipsize(strip ? android.text.TextUtils.TruncateAt.END : null);
+		backdrop.setVisibility(strip ? VISIBLE : GONE);
 		value.setTextSize(strip ? 22 : (getCellsH() >= 3 ? 44 : 34));
 		week.setVisibility((!strip && getCellsW() >= 3) ? VISIBLE : GONE);
 		if (strip) {
@@ -142,6 +151,7 @@ final class SleepWidget extends HomeWidgetView {
 			value.setText(SleepInsights.duration(elapsed));
 			sub.setText(ctx.getString(R.string.sleep_since, SleepInsights.clock(ctx, tracker.getStart())));
 			bar.setFraction(elapsed / (SleepPrefs.goalMin() * 60_000f));
+			backdrop.setFraction(elapsed / (SleepPrefs.goalMin() * 60_000f));
 			week.setScores(new int[0]);
 			if (isActive()) postDelayed(tick, TICK_MS);
 			return;
@@ -151,6 +161,7 @@ final class SleepWidget extends HomeWidgetView {
 			value.setText("--");
 			sub.setText(R.string.sleep_no_night_title);
 			bar.setFraction(0f);
+			backdrop.setBars(new float[0]);
 			week.setScores(new int[0]);
 			return;
 		}
@@ -164,6 +175,10 @@ final class SleepWidget extends HomeWidgetView {
 		int[] scores = new int[Math.min(7, rs.size())];
 		for (int i = 0; i < scores.length; i++) scores[i] = rs.get(rs.size() - scores.length + i).score;
 		week.setScores(scores);
+		float[] bars = new float[7];
+		java.util.Arrays.fill(bars, -1f);
+		for (int i = 0; i < scores.length; i++) bars[7 - scores.length + i] = scores[i] / 100f;
+		backdrop.setBars(bars);
 	}
 
 	/** The last nights as little bars, each in its score's colour. */
