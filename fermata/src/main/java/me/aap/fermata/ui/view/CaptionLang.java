@@ -60,6 +60,11 @@ public final class CaptionLang {
 		CaptionsHub.get().invalidate();
 	}
 
+	public static void toggleRomajiTo(boolean on) {
+		MainActivityPrefs.get().applyBooleanPref(MainActivityPrefs.CAPTIONS_ROMAJI, on);
+		CaptionsHub.get().invalidate();
+	}
+
 	public static void toggleRomaji() {
 		MainActivityPrefs p = MainActivityPrefs.get();
 		p.applyBooleanPref(MainActivityPrefs.CAPTIONS_ROMAJI, !p.getBooleanPref(MainActivityPrefs.CAPTIONS_ROMAJI));

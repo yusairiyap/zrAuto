@@ -282,6 +282,9 @@ public interface MainActivityPrefs
 	// The comments dock beside fullscreen video on a big screen / the car screen (see
 	// YoutubeCommentsView): whether to, and how much of the width they take (percent).
 	Pref<BooleanSupplier> COMMENTS_SPLIT = Pref.b("COMMENTS_SPLIT", true);
+	// The audio effects and the captions settings open beside fullscreen video as a panel (ui/view/SidePanel).
+	Pref<BooleanSupplier> SIDE_PANEL_EFFECTS = Pref.b("SIDE_PANEL_EFFECTS", true);
+	Pref<BooleanSupplier> SIDE_PANEL_CAPTIONS = Pref.b("SIDE_PANEL_CAPTIONS", true);
 	Pref<IntSupplier> COMMENTS_SPLIT_PERCENT = Pref.i("COMMENTS_SPLIT_PERCENT", 38);
 	// How many upcoming Favorites/Playlist entries the YouTube tab's Up next list previews below the
 	// user's own queue (1..10) -- enough to see what comes after, few enough to leave room for search

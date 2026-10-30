@@ -992,6 +992,18 @@ public class SettingsFragment extends MainActivityFragment
 			o.title = R.string.comments_split;
 			o.subtitle = R.string.comments_split_sub;
 		});
+		sub1.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.SIDE_PANEL_EFFECTS;
+			o.title = R.string.side_panel_effects;
+			o.subtitle = R.string.side_panel_sub;
+		});
+		sub1.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.SIDE_PANEL_CAPTIONS;
+			o.title = R.string.side_panel_captions;
+			o.subtitle = R.string.side_panel_sub;
+		});
 		sub1.addIntPref(o -> {
 			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.COMMENTS_SPLIT_PERCENT;

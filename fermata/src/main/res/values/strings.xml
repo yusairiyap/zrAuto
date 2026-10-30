@@ -406,6 +406,12 @@
     <string name="captions_translate_missing">Translate when the language is missing</string>
     <string name="captions_translate_missing_sub">Uses YouTube\'s translation of a track instead of another language</string>
     <string name="captions_language_button">Language</string>
+    <string name="action_captions_settings">Captions settings</string>
+    <string name="captions_settings">Captions</string>
+    <string name="captions_more_settings">All captions settings</string>
+    <string name="side_panel_effects">Audio effects beside the video</string>
+    <string name="side_panel_captions">Captions settings beside the video</string>
+    <string name="side_panel_sub">A panel over fullscreen video on the car screen and wide tablets; off opens the full page</string>
     <string name="art_accent">Follow the album art</string>
     <string name="art_accent_sub">The theme's blue (bars, buttons, chips, seek bars) takes the colour of the playing cover</string>
     <string name="playlist_remove">Remove playlist</string>
