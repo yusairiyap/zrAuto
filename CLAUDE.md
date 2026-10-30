@@ -1697,3 +1697,10 @@ still open after 8 s writes the warning `next did not start`, and the YouTube en
 Steps outside an open transition are ignored, so ordinary plays leave no PLAY lines. New playback steps go through `PlayLog.step/warn`, not new
 wordings in TRANSPORT/YT. Not run on a device; this was added to find the cause of "natural end does not start the next song on phone and
 Android Auto, never on the tablet" (suspected: page size or visibility). Ask for the PLAY lines around a stuck song.
+
+**Oct 30 log (phone, Home tab, music mode): the song ended, the page paused itself at 0:00 (`YT paused by=PAGE`, position 0, then buffering), no
+`ended` event and the in-page end check (`endCheck`, a timer re-armed by every pause/wait) reported nothing, so there was no next song and no PLAY line at all.**
+`YoutubeMediaEngine#probePagePause` now looks at the page 1.2 s after any pause the page made by itself (at most every 3 s) and writes
+`PLAY page paused by itself | page=ps|endScreen|ad|paused|t|len|nearEndAgo|sameVideo|hidden end=..`; when the page is paused and at its end
+(player state 0, the replay screen, within 3 s of the length, or in the last seconds a moment ago and back at the start, never with an ad showing) it goes on as
+`stuckAtEnd("page pause probe")`. Not run on a device. If a song still stops, the `PLAY page paused by itself` line says which condition the page was in.

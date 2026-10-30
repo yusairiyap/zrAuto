@@ -1077,11 +1077,64 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			lastExternalPauseTime = 0;
 		} else {
 			lastExternalPauseTime = SystemClock.elapsedRealtime();
+			probePagePause();
 		}
 
 		ignorePause = true;
 		cb.onPause();
 		ignorePause = false;
+	}
+
+	// When the page's own pause was last looked into (SystemClock#elapsedRealtime()), see probePagePause().
+	private long lastPauseProbeAt;
+
+	/**
+	 * The page paused itself (nothing on the app side asked for it). One of the ways a song ends: YouTube puts it back to
+	 * 0:00 under its replay button, or starts its own next video behind an ad, without an 'ended' event, and on a page that
+	 * is not on screen (the Home and Music tabs) the in-page end check, a timer re-armed by every pause and wait event, did
+	 * not report it (Oct 30: a song ended, the page paused by itself, position 0, nothing played next). So the app looks at
+	 * the page itself, a moment after the pause, and writes what it finds to the PLAY log either way.
+	 */
+	private void probePagePause() {
+		long now = SystemClock.elapsedRealtime();
+		if (now - lastPauseProbeAt < 3000) return;
+		lastPauseProbeAt = now;
+		final String id = currentVideoId;
+		web.postDelayed(() -> {
+			if ((cb.getEngine() != this) || !Objects.equals(id, currentVideoId)) return;
+			String js = "(function() { try {\n" +
+					"  var v = document.querySelector('video'), p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
+					"  var c = function(n) { return !!(p && p.classList && p.classList.contains(n)); };\n" +
+					"  var ps = (p && p.getPlayerState) ? p.getPlayerState() : -1;\n" +
+					"  var near = (v && v.__fermataNearEndAt) ? Math.round((Date.now() - v.__fermataNearEndAt) / 1000) : -1;\n" +
+					"  var same = (v && (typeof fermataCurrentVideoId === 'function')) ? (fermataCurrentVideoId() === v.__fermataNearEndId) : false;\n" +
+					"  var d = (p && p.getDuration) ? p.getDuration() : (v ? v.duration : 0);\n" +
+					"  return [ps, c('ended-mode') ? 1 : 0, (window.__fermataAdShowing || c('ad-showing') || c('ad-interrupting')) ? 1 : 0,\n" +
+					"    v ? (v.paused ? 1 : 0) : -1, v ? v.currentTime.toFixed(1) : -1, isFinite(d) ? Math.round(d) : 0, near, same ? 1 : 0,\n" +
+					"    document.hidden ? 1 : 0].join('|');\n" +
+					"} catch (x) { return 'error ' + x; } })()";
+			web.evaluateJavascript(js, r -> {
+				String s = (r == null) ? "" : r.replace("\"", "");
+				String[] a = s.split("\\|");
+				boolean end = false;
+				if (a.length >= 9) {
+					try {
+						int ps = Integer.parseInt(a[0]);
+						boolean endScreen = "1".equals(a[1]), ad = "1".equals(a[2]), paused = "1".equals(a[3]);
+						double t = Double.parseDouble(a[4]);
+						int len = Integer.parseInt(a[5]), near = Integer.parseInt(a[6]);
+						boolean same = "1".equals(a[7]);
+						end = !ad && paused && ((ps == 0) || endScreen || ((len > 30) && (len - t <= 3)) ||
+								((near >= 0) && (near <= 20) && (t < 2) && same));
+					} catch (RuntimeException ignore) {
+					}
+				}
+				DiagnosticLog.log(LogCat.PLAY, "page paused by itself", "id=" + id, "page=" + s, "end=" + end,
+						"size=" + web.getWidth() + 'x' + web.getHeight(), "shown=" + web.isShown(),
+						"front=" + isPageInFront(), "music=" + MusicPlayer.isYoutubeAudioMode());
+				if (end) stuckAtEnd("page pause probe");
+			});
+		}, 1200);
 	}
 
 	/** The page is under YouTube's minimum player size (200 CSS px, with some room). */
