@@ -1290,7 +1290,12 @@ public class MainActivityDelegate extends ActivityDelegate
 		ToolBarPill.apply(tbv, (nbc[1] & 0x00FFFFFF) | 0xF2000000,
 				toIntPx(getContext(), TOOL_BAR_INNER_PAD));
 		// Its buttons in the nav bar's icon colour, so the two bars' icons match.
-		if ((nbc[0] >>> 24) != 0) tbv.setIconTint(ColorStateList.valueOf(nbc[0]));
+		if ((nbc[0] >>> 24) != 0) {
+			tbv.setIconTint(ColorStateList.valueOf(me.aap.fermata.ui.view.ArtAccent.map(nbc[0])));
+			// Follows the album art's colour as it glides (a blue only, see ArtAccent).
+			me.aap.fermata.ui.view.ArtAccent.addListener(() ->
+					tbv.setIconTint(ColorStateList.valueOf(me.aap.fermata.ui.view.ArtAccent.map(nbc[0]))));
+		}
 		enableFloatingBars();
 	}
 
