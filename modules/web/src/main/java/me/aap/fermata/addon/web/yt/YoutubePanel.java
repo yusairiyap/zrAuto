@@ -295,6 +295,8 @@ final class YoutubePanel implements SidePanel.Body {
 	private void setMode(boolean queue, boolean animate) {
 		boolean changed = (queue != queueMode) || !animate;
 		queueMode = queue;
+		p.setHeader(queue ? R.drawable.up_next : R.drawable.search,
+				queue ? R.string.action_youtube_up_next : R.string.action_youtube_search);
 		pillSearch.set(!queue, animate);
 		pillQueue.set(queue, animate);
 		input.setVisibility(queue ? View.GONE : View.VISIBLE);
@@ -352,8 +354,10 @@ final class YoutubePanel implements SidePanel.Body {
 			ring.setColor(0);
 			android.graphics.drawable.StateListDrawable states = new android.graphics.drawable.StateListDrawable();
 			states.addState(new int[]{android.R.attr.state_focused}, ring);
+				states.addState(new int[]{android.R.attr.state_activated}, ring);
 			states.addState(new int[]{}, new GradientDrawable());
 			view.setForeground(states);
+			CarNav.ringByState(view);
 		}
 
 		void set(boolean picked, boolean animate) {
@@ -521,6 +525,7 @@ final class YoutubePanel implements SidePanel.Body {
 			c.setBackground(p.pressable(p.chipFill, 17));
 			c.setClickable(true);
 			c.setFocusable(true);
+			CarNav.ringByState(c);
 			c.setOnClickListener(v -> {
 				// The chips stay as they are (all the past searches): the field is only filled in.
 				typing = t;

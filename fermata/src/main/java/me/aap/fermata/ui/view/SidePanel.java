@@ -200,10 +200,12 @@ public final class SidePanel {
 		header.setGravity(Gravity.CENTER_VERTICAL);
 		header.setPadding(dp(8), dp(2), dp(4), dp(6));
 		ImageView hi = new ImageView(ctx);
+		headerIcon = hi;
 		hi.setImageResource(icon);
 		hi.setImageTintList(ColorStateList.valueOf(accent));
 		header.addView(hi, new LinearLayout.LayoutParams(dp(26), dp(26)));
 		TextView t = text(ctx.getString(title), 18, primary, true);
+		headerTitle = t;
 		t.setPadding(dp(10), 0, 0, 0);
 		t.setSingleLine(true);
 		header.addView(t, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
@@ -230,6 +232,24 @@ public final class SidePanel {
 			overlay.animate().alpha(1f).setDuration(180).start();
 			card.setTranslationY(dp(60));
 			card.animate().translationY(0f).setDuration(240).setInterpolator(new DecelerateInterpolator(1.6f)).start();
+		}
+	}
+
+	private ImageView headerIcon;
+	private TextView headerTitle;
+
+	/** A body that changes what it is (Search to Up next): the header's icon and title follow, with a short fade. */
+	public void setHeader(@DrawableRes int icon, @StringRes int title) {
+		if ((headerIcon == null) || (headerTitle == null)) return;
+		String s = ctx.getString(title);
+		if (s.contentEquals(headerTitle.getText())) return;
+		for (View v : new View[]{headerIcon, headerTitle}) {
+			v.animate().cancel();
+			v.animate().alpha(0f).setDuration(90).withEndAction(() -> {
+				if (v == headerIcon) headerIcon.setImageResource(icon);
+				else headerTitle.setText(s);
+				v.animate().alpha(1f).setDuration(140).start();
+			}).start();
 		}
 	}
 
@@ -468,6 +488,8 @@ public final class SidePanel {
 	public Drawable pressable(int fill, float radiusDp) {
 		StateListDrawable states = new StateListDrawable();
 		states.addState(new int[]{android.R.attr.state_focused}, shape(fill, radiusDp, accent, 2));
+		// The steering wheel's selection (CarNav#ringByState): a ring that cannot be missed.
+		states.addState(new int[]{android.R.attr.state_activated}, shape(fill, radiusDp, accent, 3));
 		states.addState(new int[]{}, shape(fill, radiusDp, 0, 0));
 		return new RippleDrawable(ColorStateList.valueOf(ripple), states, shape(0xFF000000, radiusDp, 0, 0));
 	}

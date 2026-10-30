@@ -790,6 +790,7 @@ public final class MusicPlayer {
 			if ((h != null) && !isMusicModeActive(a) && (eng != null) &&
 					(eng.getId() == MediaPrefs.MEDIA_ENG_YT)) {
 				int n = h.addToVideoQueue(a, list);
+				DiagnosticLog.log(LogCat.MUSIC, "add into queue: YouTube Up next, not the Music queue", "added=" + n);
 				if (n > 0) {
 					UiUtils.showToast(ctx, ctx.getResources().getQuantityString(
 							R.plurals.video_added_to_queue, n, n));
@@ -804,6 +805,7 @@ public final class MusicPlayer {
 			MusicTrackItem cur = getCurrentTrack(a.getMediaSessionCallback());
 			if (cur == null) cur = q.getSavedCurrent();
 			q.addAfter(cur, list);
+			DiagnosticLog.log(LogCat.MUSIC, "add into queue: Music queue", "added=" + list.size(), "size=" + q.size());
 			me.aap.fermata.ui.view.TopToast.show(R.drawable.up_next, ctx.getResources().getQuantityString(R.plurals.music_added_to_queue,
 					list.size(), list.size()));
 		});

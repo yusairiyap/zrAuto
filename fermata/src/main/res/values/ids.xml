@@ -35,6 +35,7 @@
     <item name="car_nav_scope" type="id" />
     <item name="car_mode_fragment" type="id" />
     <item name="car_nav_skip" type="id" />
+    <item name="car_nav_state" type="id" />
     <item name="car_nav_modal" type="id" />
     <item name="car_nav_wrap" type="id" />
     <item name="all_in_one_fragment" type="id" />

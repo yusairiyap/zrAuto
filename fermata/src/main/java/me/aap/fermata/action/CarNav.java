@@ -207,6 +207,16 @@ public final class CarNav {
 		if ((s != null) && (s.root == root)) clear();
 	}
 
+	/** Marks {@code v} to show the car selection through its activated state as well (a ring its own drawables draw). */
+	public static void ringByState(@Nullable View v) {
+		if (v != null) v.setTag(R.id.car_nav_state, Boolean.TRUE);
+	}
+
+	/** A view marked with {@link #ringByState} shows the car selection through its own activated state too. */
+	private static void setStateRing(@Nullable View v, boolean on) {
+		if ((v != null) && (v.getTag(R.id.car_nav_state) != null)) v.setActivated(on);
+	}
+
 	/** Leaves {@code v} (and what's in it) out: a button too risky to land on, like Clear. */
 	public static void skip(@Nullable View v) {
 		if (v != null) v.setTag(R.id.car_nav_skip, Boolean.TRUE);
@@ -945,6 +955,7 @@ public final class CarNav {
 		}
 
 		private void moveTo(@Nullable View v, boolean animate) {
+			setStateRing(on, false);
 			if ((on != null) && (outline != null)) {
 				View old = on;
 				Outline o = outline;
@@ -954,6 +965,7 @@ public final class CarNav {
 			on = v;
 			outline = null;
 			if ((v == null) || faded) return;
+			setStateRing(v, true);
 			Outline o = new Outline(v);
 			o.strong = strong;
 			v.getOverlay().add(o);
@@ -976,6 +988,7 @@ public final class CarNav {
 
 		void fadeOut() {
 			faded = true;
+			setStateRing(on, false);
 			// Nothing to follow while faded: no per-frame check either (track() adds it back).
 			if (listening) {
 				ViewTreeObserver vto = root.getViewTreeObserver();
@@ -998,6 +1011,7 @@ public final class CarNav {
 				listening = false;
 			}
 			sel = null;
+			setStateRing(on, false);
 			if ((on != null) && (outline != null)) {
 				View old = on;
 				Outline o = outline;
