@@ -55,14 +55,29 @@ final class LyricsWidget extends HomeWidgetView {
 		lyrics.setInteractive(scrubbing());
 		holder.addView(lyrics, new FrameLayout.LayoutParams(-1, -1));
 		// The language, the Latin letters and the translation, switched here on the spot.
-		langChip = chip(R.drawable.captions, me.aap.fermata.ui.view.CaptionLang.shortLabel(), () ->
-				me.aap.fermata.ui.view.CaptionLang.showMenu(host.activity(), () ->
-						postDelayed(() -> langChip.setText(me.aap.fermata.ui.view.CaptionLang.shortLabel()), 1500)));
-		langChip.setPadding(px(12), 0, px(12), 0);
+		// A pill like the cover's hide button: the CC icon at a fixed size and the language beside it.
+		LinearLayout pill = new LinearLayout(ctx);
+		pill.setOrientation(LinearLayout.HORIZONTAL);
+		pill.setGravity(android.view.Gravity.CENTER);
+		pill.setPadding(px(10), 0, px(12), 0);
+		android.widget.ImageView cc = icon(R.drawable.captions, 18, ROLE_PRIMARY);
+		pill.addView(cc);
+		langChip = text(ROLE_PRIMARY, 12, true);
+		langChip.setSingleLine(true);
+		langChip.setText(me.aap.fermata.ui.view.CaptionLang.shortLabel());
+		LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+		tlp.setMarginStart(px(6));
+		pill.addView(langChip, tlp);
+		trackSoft(pill, 17);
+		pill.setClickable(true);
+		pill.setFocusable(true);
+		pill.setContentDescription(ctx.getString(R.string.captions_language_button));
+		pill.setOnClickListener(v -> me.aap.fermata.ui.view.CaptionLang.showMenu(host.activity(), () ->
+				postDelayed(() -> langChip.setText(me.aap.fermata.ui.view.CaptionLang.shortLabel()), 1500)));
 		FrameLayout.LayoutParams clp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(34),
 				android.view.Gravity.END | android.view.Gravity.TOP);
 		clp.topMargin = px(2);
-		holder.addView(langChip, clp);
+		holder.addView(pill, clp);
 	}
 
 	/** Whether a drag scrubs through the lines and a tap on one seeks to it (else the page scrolls over the card). */

@@ -270,6 +270,14 @@ public class YoutubeAddon extends WebBrowserAddon
 		}
 
 		@Override
+		public android.view.View createEffectsView(MainActivityDelegate a) {
+			YoutubeWebView web = (a.getFragment(getFragmentId()) instanceof YoutubeFragment f) ? f.getWebView() : null;
+			YoutubeEqualizerView v = new YoutubeEqualizerView(a.getContext());
+			v.init(YoutubeAddon.this, web);
+			return v;
+		}
+
+		@Override
 		public boolean showEffects(MainActivityDelegate a) {
 			// The page is there for a YouTube video; a downloaded one has none to configure.
 			YoutubeWebView web = (a.getFragment(getFragmentId()) instanceof YoutubeFragment f) ?

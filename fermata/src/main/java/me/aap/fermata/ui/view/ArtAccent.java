@@ -253,12 +253,49 @@ public final class ArtAccent {
 				}
 			}
 		}
+		if (v instanceof android.widget.CompoundButton cb) {
+			tintOf(cb, R.id.art_orig_button, androidx.core.widget.CompoundButtonCompat.getButtonTintList(cb),
+					l -> androidx.core.widget.CompoundButtonCompat.setButtonTintList(cb, l));
+		}
+		if (v instanceof androidx.appcompat.widget.SwitchCompat sw) {
+			tintOf(sw, R.id.art_orig_thumb, sw.getThumbTintList(), sw::setThumbTintList);
+			tintOf(sw, R.id.art_orig_track, sw.getTrackTintList(), sw::setTrackTintList);
+		}
+		if (v instanceof android.widget.ProgressBar pb2) {
+			// The track behind the filled part (the dimmed blue of every slider) and the buffered part.
+			tintOf(pb2, R.id.art_orig_pbg, pb2.getProgressBackgroundTintList(), pb2::setProgressBackgroundTintList);
+			tintOf(pb2, R.id.art_orig_psec, pb2.getSecondaryProgressTintList(), pb2::setSecondaryProgressTintList);
+		}
 		// Chips, discs, tiles and the rest that are a blue shape: their fill takes the cover's colour too.
 		if (!(v instanceof android.widget.ProgressBar)) recolorDrawable(v.getBackground());
 		if (v instanceof android.view.ViewGroup g) {
 			for (int k = 0, n = g.getChildCount(); k < n; k++) recolor(g.getChildAt(k));
 		}
 	}
+
+	/** One tint of a view, mapped from what it was before it was ever recoloured; {@code key} is where that is kept. */
+	private static void tintOf(android.view.View v, int key, @Nullable android.content.res.ColorStateList cur,
+														 java.util.function.Consumer<android.content.res.ColorStateList> set) {
+		if (cur == null) return;
+		Orig o = (Orig) v.getTag(key);
+		if (o == null) {
+			o = new Orig();
+			o.orig = cur;
+			v.setTag(key, o);
+		} else if (cur != o.applied) {
+			o.orig = cur;
+		}
+		android.content.res.ColorStateList m = mapList(o.orig);
+		if (m == o.orig) {
+			if ((o.applied != null) && (cur == o.applied)) set.accept(o.orig);
+			o.applied = null;
+		} else {
+			set.accept(m);
+			o.applied = m;
+		}
+	}
+
+	private static final java.util.WeakHashMap<android.graphics.drawable.Drawable, Boolean> owned = new java.util.WeakHashMap<>();
 
 	private static final java.util.WeakHashMap<android.graphics.drawable.GradientDrawable, Orig> shapes =
 			new java.util.WeakHashMap<>();
@@ -267,6 +304,8 @@ public final class ArtAccent {
 	private static void recolorDrawable(@Nullable android.graphics.drawable.Drawable d) {
 		if (d == null) return;
 		if (d instanceof android.graphics.drawable.GradientDrawable g) {
+			// Only the plain kind: the app's own subclasses (the settings tiles) look after their colours themselves.
+			if (g.getClass() != android.graphics.drawable.GradientDrawable.class) return;
 			Orig o = shapes.get(g);
 			android.content.res.ColorStateList cur = g.getColor();
 			if (cur == null) return;
@@ -288,6 +327,15 @@ public final class ArtAccent {
 			} else {
 				g.setColor(m);
 				o.applied = g.getColor();
+			}
+			return;
+		}
+		if (d instanceof android.graphics.drawable.DrawableContainer dc) {
+			// A state list (a selected tile's border, a pressed fill): made its own once, then its shapes like any other.
+			if (owned.put(d, Boolean.TRUE) == null) d.mutate();
+			if (dc.getConstantState() instanceof android.graphics.drawable.DrawableContainer.DrawableContainerState st) {
+				android.graphics.drawable.Drawable[] ch = st.getChildren();
+				for (int i = 0, n = st.getChildCount(); i < n; i++) recolorDrawable(ch[i]);
 			}
 			return;
 		}

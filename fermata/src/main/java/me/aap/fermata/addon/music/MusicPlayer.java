@@ -85,6 +85,12 @@ public final class MusicPlayer {
 		/** Shows the YouTube player's effects screen (its in-page equalizer); false if it can't. */
 		boolean showEffects(MainActivityDelegate a);
 
+		/** The YouTube page's effects screen as a view (for a panel), or null when there is none. */
+		@Nullable
+		default android.view.View createEffectsView(MainActivityDelegate a) {
+			return null;
+		}
+
 		/** Makes {@code item} the YouTube player's queue item without touching what's playing. */
 		void setQueueItem(PlayableItem item);
 
@@ -419,6 +425,13 @@ public final class MusicPlayer {
 		MediaEngine eng = a.getMediaSessionCallback().getEngine();
 		if ((h == null) || (eng == null) || (eng.getId() == MediaPrefs.MEDIA_ENG_YT)) return false;
 		return YtOffline.isDownloadedYoutube(eng.getSource()) && h.showEffects(a);
+	}
+
+	/** The YouTube page's own effects screen as a view, null when the YouTube addon is not there. */
+	@Nullable
+	public static android.view.View youtubeEffectsView(MainActivityDelegate a) {
+		YoutubeHooks h = youtube;
+		return (h == null) ? null : h.createEffectsView(a);
 	}
 
 	/** Called by {@link YoutubeStartEngine#showOwnAudioEffects}. */

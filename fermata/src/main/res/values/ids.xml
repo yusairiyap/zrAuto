@@ -287,4 +287,9 @@
     <item name="art_orig_tint" type="id" />
     <item name="art_orig_progress" type="id" />
     <item name="art_orig_compound" type="id" />
+    <item name="art_orig_button" type="id" />
+    <item name="art_orig_thumb" type="id" />
+    <item name="art_orig_track" type="id" />
+    <item name="art_orig_pbg" type="id" />
+    <item name="art_orig_psec" type="id" />
 </resources>

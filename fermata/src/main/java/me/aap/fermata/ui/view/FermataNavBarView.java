@@ -211,8 +211,25 @@ public class FermataNavBarView extends NavBarView implements GestureListener {
 						android.content.res.ColorStateList.valueOf(tint));
 			}
 		}
+		// The press / hover pill of each tab (a ripple in the theme's accent): drawn in the cover's colour, or made new when it is off.
+		boolean on = ArtAccent.isActive();
+		for (int i = 0, n = getChildCount(); i < n; i++) {
+			View c = getChildAt(i);
+			if (!(c instanceof NavButtonView)) continue;
+			if (on) {
+				if (c.getBackground() instanceof android.graphics.drawable.RippleDrawable rd) {
+					rd.setColor(android.content.res.ColorStateList.valueOf((tint & 0x00FFFFFF) | 0x59000000));
+					pillsRecoloured = true;
+				}
+			} else if (pillsRecoloured) {
+				c.setBackgroundResource(R.drawable.nav_item_pill_bg);
+			}
+		}
+		if (!on) pillsRecoloured = false;
 		invalidate();
 	};
+
+	private boolean pillsRecoloured;
 
 	@Override
 	protected void onAttachedToWindow() {

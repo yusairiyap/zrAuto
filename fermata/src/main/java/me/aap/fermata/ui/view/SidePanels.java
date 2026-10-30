@@ -53,6 +53,7 @@ public final class SidePanels {
 					view = new AudioEffectsView(a.getContext());
 					MediaSessionCallback cb = a.getMediaServiceBinder().getMediaSessionCallback();
 					view.init(cb, eng.supportsAudioEffects() ? eng.ensureAudioEffects() : null, src);
+					tidyEffects(view);
 					return view;
 				}
 
@@ -65,11 +66,37 @@ public final class SidePanels {
 			});
 			return;
 		}
+		// YouTube's page plays through Web Audio: its own effects screen (the same layout), in the panel.
+		View yt = (eng != null) ? ((eng.getId() == MediaPrefs.MEDIA_ENG_YT) ? MusicPlayer.youtubeEffectsView(a) : null) :
+				MusicPlayer.youtubeEffectsView(a);
+		if (yt != null) {
+			SidePanel.toggle(a, "effects", R.drawable.equalizer, R.string.action_audio_effects, p -> {
+				tidyEffects(yt);
+				return yt;
+			});
+			return;
+		}
 		if (effectsOf(a) == null) {
 			TopToast.show(R.drawable.equalizer, R.string.music_effects_unavailable);
 			return;
 		}
 		SidePanel.toggle(a, "effects", R.drawable.equalizer, R.string.action_audio_effects, p -> effectsBody(p));
+	}
+
+	/**
+	 * The effects screen made for a whole page sits under the bars (a big gap on top) and offers where to keep the settings:
+	 * in a panel next to the video the gap is closed and the "Apply to" part left out.
+	 */
+	private static void tidyEffects(View v) {
+		View apply = v.findViewById(R.id.apply_to);
+		if (apply != null) apply.setVisibility(View.GONE);
+		int pad = Math.round(6 * v.getResources().getDisplayMetrics().density);
+		Runnable fix = () -> {
+			if ((v.getPaddingTop() != pad) || (v.getPaddingBottom() != pad)) v.setPadding(v.getPaddingLeft(), pad, v.getPaddingRight(), pad);
+		};
+		fix.run();
+		// The bars' insets are put back on every layout: put away again.
+		v.addOnLayoutChangeListener((x, l, t, r, b, ol, ot, or, ob) -> fix.run());
 	}
 
 	/** The effects of what plays; YouTube's own for its page, none for a player without any. */
