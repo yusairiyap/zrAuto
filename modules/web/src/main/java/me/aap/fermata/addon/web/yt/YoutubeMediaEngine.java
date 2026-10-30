@@ -50,6 +50,7 @@ import me.aap.fermata.ui.view.NetworkIssuePopup;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.util.LogCat;
+import me.aap.fermata.util.PlayLog;
 import me.aap.fermata.ytdl.YtDownloadMenu;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.fermata.ytdl.YtOffline;
@@ -556,6 +557,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				// autonav moves again before prepare() re-takes control, that further move is compared
 				// against this actualId (the true current state) rather than the now-stale currentVideoId
 				// this transition was itself detected from.
+				beginEnd("autonav jumped ahead", currentVideoId);
 				currentVideoId = actualId;
 				queueTransitionPending = true;
 				toEnd();
@@ -703,7 +705,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		}
 		if (++earlyEndResumes > 2) {
 			DiagnosticLog.log(LogCat.YT, "video ended early again: going on", "id=" + id, "at=" + data);
-			ended();
+			ended("early, resumed twice already");
 			return;
 		}
 		DiagnosticLog.log(LogCat.YT, "video ended early: resuming", "id=" + id, "at=" + data, "try=" + earlyEndResumes);
@@ -758,10 +760,43 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		if (!stalled && lastPauseAsked) return;
 		DiagnosticLog.log(LogCat.YT, "stopped at the end with no 'ended': treated as ended", "id=" + currentVideoId, "how=" + how, "state=" + (stalled ? "waiting" : "paused"));
 		clearStall();
-		ended();
+		ended("stuck " + how);
 	}
 
 	void ended() {
+		ended("page");
+	}
+
+	/**
+	 * Opens the PLAY trail for this end, with what decides whether the next song can start on this page: its size and
+	 * whether it is on screen (the phone and the car screen give the page much less room than the tablet), and, a few
+	 * seconds later if nothing started, what the player says (see {@link #probePage}).
+	 */
+	private void beginEnd(String how, @Nullable String id) {
+		int n = PlayLog.begin(how, "id=" + id, "size=" + web.getWidth() + 'x' + web.getHeight(),
+				"shown=" + web.isShown(), "front=" + isPageInFront(), "music=" + MusicPlayer.isYoutubeAudioMode(),
+				"ad=" + adActive, "queueItem=" + (web.getAddon().getQueueItem() != null));
+		web.postDelayed(() -> {
+			if (PlayLog.isOpen() && (PlayLog.current() == n)) probePage();
+		}, PlayLog.WATCH_MS - 500);
+	}
+
+	/** What the page's player looks like now, for a song that ended and nothing followed: one PLAY line. */
+	private void probePage() {
+		String js = "(function() { try {\n" +
+				"  var v = document.querySelector('video'), p = document.querySelector('#movie_player') || document.querySelector('.html5-video-player');\n" +
+				"  var c = function(n) { return !!(p && p.classList && p.classList.contains(n)); };\n" +
+				"  return JSON.stringify({ps: (p && p.getPlayerState) ? p.getPlayerState() : -1, endScreen: c('ended-mode'),\n" +
+				"    ad: c('ad-showing') || c('ad-interrupting'), paused: v ? v.paused : null, ready: v ? v.readyState : null,\n" +
+				"    t: v ? +v.currentTime.toFixed(1) : null, len: (v && isFinite(v.duration)) ? Math.round(v.duration) : null,\n" +
+				"    hidden: document.hidden, vw: window.innerWidth, vh: window.innerHeight, page: location.pathname + location.search.slice(0, 40)});\n" +
+				"} catch (x) { return 'error ' + x; } })()";
+		web.evaluateJavascript(js, r -> PlayLog.warn("page state while waiting for the next song", "page=" + r,
+				"id=" + currentVideoId, "switching=" + switching, "expectingNav=" + expectingPageNav,
+				"pending=" + web.getAddon().getPendingVideoId(), "size=" + web.getWidth() + 'x' + web.getHeight()));
+	}
+
+	void ended(String how) {
 		// Repeat One loops whatever video is currently playing, regardless of whether it's part of a
 		// Favorites/Playlist queue (see YoutubeAddon#isRepeatOneEnabled()) -- handled here directly,
 		// short-circuiting before current becomes end/cb.onEngineEnded() runs, so it works the exact
@@ -779,7 +814,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			return;
 		}
 
-		DiagnosticLog.log(LogCat.YT, "video ended", "id=" + currentVideoId);
+		beginEnd(how, currentVideoId);
 		toEnd();
 		qualityUrl = null;
 		// Same reasoning as the unexpected-transition handoff in playing() above: whatever comes next

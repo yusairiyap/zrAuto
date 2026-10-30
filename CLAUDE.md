@@ -1685,3 +1685,15 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
 11. ~~**Never run on a device**~~ **Resolved: the items listed as never run on a device (Ambience, the glass blur and UI style, the power
     tracker, Share, YouTube comments and captions, the lyrics page, the welcome wizard's restore, the Home layout on the car screen, and the
     stack manager, timer picks and widget size on Android Auto) were tested OK by the user.**
+
+## PLAY log: a song ending and what follows (`util/PlayLog`, category `PLAY`)
+
+One trail for "a song ended, what played next", one `seq` per transition and `after=` ms since the end on every line:
+`song ended` (how, engine, id, page `size`, `shown`, `front`, `music`, `ad`) -> `resolving next` -> `next resolved` -> `next started`, or
+`stopped after the song` (`why=`) when nothing follows on purpose. `PlayLog.begin` is called by `YoutubeMediaEngine#beginEnd` (page `ended`,
+`stuck:*`, an autonav jump) and `MediaSessionCallback#onEngineEnded` (local engines; a second report within 3 s joins the same seq). A transition
+still open after 8 s writes the warning `next did not start`, and the YouTube engine adds `page state while waiting for the next song`
+(player state, `ended-mode` replay screen, ad classes, video paused/ready, page size). `MediaSessionCallback#onEngineStarted` closes it.
+Steps outside an open transition are ignored, so ordinary plays leave no PLAY lines. New playback steps go through `PlayLog.step/warn`, not new
+wordings in TRANSPORT/YT. Not run on a device; this was added to find the cause of "natural end does not start the next song on phone and
+Android Auto, never on the tablet" (suspected: page size or visibility). Ask for the PLAY lines around a stuck song.

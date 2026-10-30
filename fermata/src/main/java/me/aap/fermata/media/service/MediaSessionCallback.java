@@ -138,6 +138,7 @@ import me.aap.fermata.media.sub.Subtitles;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.util.LogCat;
+import me.aap.fermata.util.PlayLog;
 import me.aap.fermata.util.PlaybackCalm;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.fermata.ytdl.YtOffline;
@@ -1355,6 +1356,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	@Override
 	public void onEngineStarted(MediaEngine engine) {
+		PlayLog.started(engine.getClass().getSimpleName(), engine.getSource());
 		BufferingIndicator.setBuffering(false);
 		resumeItem = null;
 		engine.getPosition().and(engine.getSpeed()).main().onSuccess(h -> {
@@ -1513,9 +1515,11 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	public void onEngineEnded(MediaEngine engine) {
 		// A closed or replaced engine reporting late must not move the session on.
 		if (engine != getEngine()) {
-			DiagnosticLog.log(LogCat.TRANSPORT, "engine ended: ignored, not the current engine", "ended=" + engine, "current=" + getEngine());
+			PlayLog.step("end ignored, not the current engine", "ended=" + engine, "current=" + getEngine());
 			return;
 		}
+		// The page's own report already opened it; a local engine's end opens it here.
+		PlayLog.begin("engine", "engine=" + engine.getClass().getSimpleName(), "item=" + engine.getSource());
 		BufferingIndicator.setBuffering(false);
 		playerTask.cancel();
 
@@ -1525,6 +1529,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			playbackTimerWaitingForTrackEnd = false;
 			playbackTimerFinishTrack = false;
 			DiagnosticLog.log(LogCat.TIMER, "song ended: playback stopped", "item=" + engine.getSource());
+			PlayLog.finish("sleep timer");
 			PlayableItem i = engine.getSource();
 			if (i != null) setLastPlayed(i, 0);
 			playerTask = onStop(false);
@@ -1536,7 +1541,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			playerTask = engineEnded(engine);
 		} catch (RuntimeException ex) {
 			// Used to escape to the engine's callback with nothing said and nothing playing.
-			DiagnosticLog.w(LogCat.TRANSPORT, "engine ended: failed", "item=" + engine.getSource(), "cause=" + describe(ex));
+			PlayLog.warn("moving on threw", "item=" + engine.getSource(), "cause=" + describe(ex));
 			Log.e(ex, "Failed to move on after the end of a track");
 			endFailed(engine, engine.getSource(), ex);
 		}
@@ -1549,7 +1554,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	private FutureSupplier<?> engineEnded(MediaEngine engine) {
 		PlayableItem i = engine.getSource();
-		DiagnosticLog.log(LogCat.TRANSPORT, "engine ended", "engine=" + engine, "item=" + i, "playNext=" + playNextOf(i));
+		PlayLog.step("resolving next", "item=" + i, "playNext=" + playNextOf(i));
 
 		if (i != null) {
 			if (i instanceof StreamItem) {
@@ -1561,17 +1566,18 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			if (i.isVideo()) i.getPrefs().setWatchedPref(true);
 
 			if (!i.getParent().getPrefs().getPlayNextPref()) {
-				DiagnosticLog.log(LogCat.TRANSPORT, "engine ended: play next is off, stopping", "item=" + i);
+				PlayLog.finish("play next is off", "item=" + i);
 				onStop(true);
 				return completedVoid();
 			}
 
 			FutureSupplier<Void> f = getNextPlayable(i).then(this::prepareItem).then(next -> {
-				DiagnosticLog.log(LogCat.TRANSPORT, "engine ended: next", "next=" + next);
+				PlayLog.step("next resolved", "next=" + next);
 				endRetries = 0;
 				if (next != null) {
 					skipTo(true, next);
 				} else {
+					PlayLog.finish("no next song", "item=" + i);
 					onStop(false);
 					setLastPlayed(i, 0);
 				}
@@ -1584,7 +1590,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			f.onFailure(err -> endFailed(engine, i, err));
 			return f;
 		} else {
-			DiagnosticLog.log(LogCat.TRANSPORT, "engine ended with no item: stopping");
+			PlayLog.finish("engine had no item");
 			onStop(false);
 			return completedVoid();
 		}
@@ -1601,10 +1607,11 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	/** Going on after a song's end failed: said in the diagnostic log, tried again twice, then stopped cleanly. */
 	private void endFailed(MediaEngine engine, PlayableItem ended, Throwable err) {
 		if (isCancellation(err)) return;
-		DiagnosticLog.w(LogCat.TRANSPORT, "engine ended: moving on failed", "item=" + ended, "attempt=" + endRetries, "cause=" + describe(err));
+		PlayLog.warn("moving on failed", "item=" + ended, "attempt=" + endRetries, "cause=" + describe(err));
 		if ((engine != getEngine()) || (endRetries >= END_RETRIES_MAX)) {
 			if (engine == getEngine()) {
 				endRetries = 0;
+				PlayLog.finish("gave up after retries", "item=" + ended);
 				onStop(false);
 			}
 			return;
@@ -1613,7 +1620,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		handler.postDelayed(() -> {
 			// Nothing else happened meanwhile: the same song is still the one that ended.
 			if ((engine != getEngine()) || (engine.getSource() != ended)) return;
-			DiagnosticLog.log(LogCat.TRANSPORT, "engine ended: trying again", "item=" + ended, "attempt=" + endRetries);
+			PlayLog.step("trying again", "item=" + ended, "attempt=" + endRetries);
 			playerTask.cancel();
 			playerTask = engineEnded(engine);
 		}, END_RETRY_DELAY_MS);
