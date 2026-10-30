@@ -470,7 +470,7 @@ public class ControlPanelView extends ConstraintLayout
 	}
 
 	private final Runnable artStep = () -> {
-		if (videoLook || (title == null)) return;
+		if (videoLook || (this.title == null)) return;
 		int c = labelColor();
 		setIconTint(c);
 		setLabelColor(c);
