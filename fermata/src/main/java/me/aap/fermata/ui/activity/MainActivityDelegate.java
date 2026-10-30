@@ -3004,7 +3004,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		me.aap.fermata.ui.view.ArtAccent.init(this);
 		me.aap.fermata.ui.view.ArtAccent.addListener(() -> {
 			if (toolBar != null) toolBar.invalidate();
-			View d = getActivity().getWindow().getDecorView();
+			View d = getWindow().getDecorView();
 			d.invalidate();
 		});
 	}
