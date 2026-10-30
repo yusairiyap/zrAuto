@@ -1024,6 +1024,21 @@ public class SettingsFragment extends MainActivityFragment
 		});
 		panels.addBooleanPref(o -> {
 			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.SIDE_PANEL_YOUTUBE;
+			o.title = R.string.side_panel_youtube;
+			o.subtitle = R.string.side_panel_sub;
+		});
+		panels.addIntPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.SIDE_PANEL_YOUTUBE_PERCENT;
+			o.title = R.string.side_panel_youtube_width;
+			o.seekMin = 20;
+			o.seekMax = 60;
+			o.seekScale = 2;
+			o.visibility = PrefCondition.create(a.getPrefs(), MainActivityPrefs.SIDE_PANEL_YOUTUBE);
+		});
+		panels.addBooleanPref(o -> {
+			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.SIDE_PANEL_CAPTIONS;
 			o.title = R.string.side_panel_captions;
 			o.subtitle = R.string.side_panel_sub;

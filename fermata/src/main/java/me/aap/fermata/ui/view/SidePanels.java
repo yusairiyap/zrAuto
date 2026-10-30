@@ -5,6 +5,7 @@ import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
 
 import android.content.res.ColorStateList;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
@@ -90,7 +91,18 @@ public final class SidePanels {
 	private static void tidyEffects(View v) {
 		View apply = v.findViewById(R.id.apply_to);
 		if (apply != null) apply.setVisibility(View.GONE);
-		int pad = Math.round(6 * v.getResources().getDisplayMetrics().density);
+		float d = v.getResources().getDisplayMetrics().density;
+		// No grey cards in the panel: the sections sit straight on it, with less room around them.
+		if ((v instanceof ViewGroup sv) && (sv.getChildCount() > 0) && (sv.getChildAt(0) instanceof ViewGroup root)) {
+			root.setPadding(Math.round(2 * d), 0, Math.round(2 * d), Math.round(8 * d));
+			for (int i = 0, n = root.getChildCount(); i < n; i++) {
+				View c = root.getChildAt(i);
+				c.setBackground(null);
+				c.setPadding(Math.round(4 * d), Math.round(4 * d), Math.round(4 * d), Math.round(2 * d));
+				if (c.getLayoutParams() instanceof ViewGroup.MarginLayoutParams mp) mp.bottomMargin = Math.round(4 * d);
+			}
+		}
+		int pad = Math.round(4 * d);
 		Runnable fix = () -> {
 			if ((v.getPaddingTop() != pad) || (v.getPaddingBottom() != pad)) v.setPadding(v.getPaddingLeft(), pad, v.getPaddingRight(), pad);
 		};

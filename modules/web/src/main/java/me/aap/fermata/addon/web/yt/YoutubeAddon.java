@@ -397,6 +397,12 @@ public class YoutubeAddon extends WebBrowserAddon
 
 		@Override
 		public void openSearch(MainActivityDelegate a, boolean upNextOnly) {
+			// Over fullscreen video: the panel beside it (search and Up next as cards), not the YouTube tab's panel.
+			if (me.aap.fermata.ui.view.SidePanel.isVideoUp(a) &&
+					a.getPrefs().getBooleanPref(me.aap.fermata.ui.activity.MainActivityPrefs.SIDE_PANEL_YOUTUBE)) {
+				YoutubePanel.show(a, YoutubeAddon.this, upNextOnly);
+				return;
+			}
 			YoutubeFragment.openSearch(a.getContext(), upNextOnly);
 		}
 

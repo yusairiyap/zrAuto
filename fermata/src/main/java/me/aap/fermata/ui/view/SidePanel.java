@@ -65,7 +65,8 @@ public final class SidePanel {
 	public final int accent;
 	public final int onAccent;
 	private FrameLayout overlay;
-	private LinearLayout card;
+	private FrameLayout card;
+	private LinearLayout inner;
 	private FrameLayout.LayoutParams cardLp;
 	private int dockW;
 	private int dockEnd;
@@ -119,6 +120,12 @@ public final class SidePanel {
 		open = p;
 		p.build(icon, title);
 		p.armBackGuard();
+	}
+
+	/** Whether the panel {@code id} is the one open. */
+	public static boolean isOpen(String id) {
+		SidePanel p = open;
+		return isOpen() && (p != null) && p.id.equals(id) && !p.dismissing;
 	}
 
 	public static boolean isOpen() {
@@ -178,9 +185,11 @@ public final class SidePanel {
 		CarNav.markModalScope(overlay, this::dismiss);
 		overlay.setAlpha(0f);
 
-		card = new LinearLayout(ctx);
-		card.setOrientation(LinearLayout.VERTICAL);
-		card.setPadding(dp(16), dp(14), dp(16), dp(10));
+		card = new FrameLayout(ctx);
+		inner = new LinearLayout(ctx);
+		inner.setOrientation(LinearLayout.VERTICAL);
+		inner.setPadding(dp(14), dp(12), dp(10), dp(8));
+		card.addView(inner, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 		card.setClickable(true);
 		float radius = dp(docked ? 22 : 28);
 		card.setBackground(MenuStyle.panel(card, MenuStyle.panelColor(ctx), radius));
@@ -207,10 +216,10 @@ public final class SidePanel {
 		close.setFocusable(true);
 		close.setOnClickListener(v -> dismiss());
 		header.addView(close, new LinearLayout.LayoutParams(dp(44), dp(44)));
-		card.addView(header, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		inner.addView(header, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
 		View content = body.create(this);
-		card.addView(content, new LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f));
+		inner.addView(content, new LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f));
 
 		overlay.addView(card, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 		host.addView(overlay, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
@@ -254,9 +263,10 @@ public final class SidePanel {
 		pd.setColor((secondary & 0x00FFFFFF) | 0x77000000);
 		pd.setCornerRadius(dp(2));
 		pill.setBackground(pd);
-		((FrameLayout) strip).addView(pill, new FrameLayout.LayoutParams(dp(4), dp(48), Gravity.CENTER));
+		FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(dp(4), dp(48), Gravity.START | Gravity.CENTER_VERTICAL);
+		plp.setMarginStart(dp(6));
+		((FrameLayout) strip).addView(pill, plp);
 		strip.setContentDescription(ctx.getString(R.string.yt_comments_resize));
-		strip.setElevation(dp(8));
 		strip.setOnTouchListener((v, e) -> {
 			switch (e.getActionMasked()) {
 				case android.view.MotionEvent.ACTION_DOWN -> {
@@ -282,14 +292,8 @@ public final class SidePanel {
 				}
 			}
 		});
-		overlay.addView(strip, stripParams());
-	}
-
-	private FrameLayout.LayoutParams stripParams() {
-		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(dp(24), cardLp.height, Gravity.END | Gravity.TOP);
-		lp.topMargin = cardLp.topMargin;
-		lp.setMarginEnd(dockEnd + dockW - dp(12));
-		return lp;
+		// Inside the card, on its left edge, where the comments column has it.
+		card.addView(strip, new FrameLayout.LayoutParams(dp(26), MATCH_PARENT, Gravity.START));
 	}
 
 	private void setDockWidth(int w) {
@@ -297,7 +301,6 @@ public final class SidePanel {
 		dockW = w;
 		cardLp.width = w;
 		card.setLayoutParams(cardLp);
-		if (strip != null) strip.setLayoutParams(stripParams());
 		VideoView vv = splitView;
 		int hostW = host.getWidth();
 		if ((vv != null) && (hostW > 0)) vv.setSplitShare(((dockW + dockEnd + dp(10)) / (float) hostW) * progress);
@@ -332,9 +335,7 @@ public final class SidePanel {
 		va.addUpdateListener(an -> {
 			progress = (float) an.getAnimatedValue();
 			card.setTranslationX((1f - progress) * (dockW + dockEnd));
-			if (strip != null) strip.setTranslationX((1f - progress) * (dockW + dockEnd));
 			card.setAlpha(Math.min(1f, progress * 1.6f));
-			if (strip != null) strip.setAlpha(card.getAlpha());
 			VideoView vv = splitView;
 			int hostW = host.getWidth();
 			if ((vv != null) && (hostW > 0)) vv.setSplitShare(((dockW + dockEnd + dp(10)) / (float) hostW) * progress);

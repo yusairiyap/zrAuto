@@ -416,6 +416,13 @@
     <string name="in_video_panel_sub">Comments, audio effects and captions beside fullscreen video: switch each on or off and set its width</string>
     <string name="side_panel_effects_width">Audio effects width (%)</string>
     <string name="side_panel_captions_width">Captions width (%)</string>
+    <string name="side_panel_youtube">Search and Up next beside the video</string>
+    <string name="side_panel_youtube_width">Search and Up next width (%)</string>
+    <string name="yt_panel_play">Play</string>
+    <string name="yt_panel_searching">Searching…</string>
+    <string name="yt_panel_failed">The search failed. Check the connection and try again.</string>
+    <string name="yt_panel_no_results">Nothing found</string>
+    <string name="yt_panel_empty_queue">Nothing is queued in Up next</string>
     <string name="art_accent">Follow the album art</string>
     <string name="art_accent_sub">The theme\'s blue (bars, buttons, chips, seek bars) takes the colour of the playing cover</string>
     <string name="playlist_remove">Remove playlist</string>
