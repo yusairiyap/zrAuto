@@ -469,13 +469,15 @@ public class ControlPanelView extends ConstraintLayout
 		else setPadding(pillPadH, pillPadTop, pillPadH, pillPadTop);
 	}
 
-	private final Runnable artStep = () -> {
-		if (videoLook || (this.title == null)) return;
+	private final Runnable artStep = this::applyArtColor;
+
+	private void applyArtColor() {
+		if (videoLook || (title == null)) return;
 		int c = labelColor();
 		setIconTint(c);
 		setLabelColor(c);
 		setInfoColor(c);
-	};
+	}
 
 	@Override
 	protected void onAttachedToWindow() {
