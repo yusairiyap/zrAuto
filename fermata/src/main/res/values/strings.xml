@@ -396,6 +396,8 @@
     <string name="playlist_create">Create playlist</string>
     <string name="playlist_recent">Recently added</string>
     <string name="playlist_all">All playlists</string>
+    <string name="art_accent">Follow the album art</string>
+    <string name="art_accent_sub">The theme's blue (bars, buttons, chips, seek bars) takes the colour of the playing cover</string>
     <string name="playlist_remove">Remove playlist</string>
     <string name="playlist_remove_confirm">Remove the playlist \"%1$s\"? The songs stay in your library.</string>
     <string name="playlist_name">Playlist name</string>

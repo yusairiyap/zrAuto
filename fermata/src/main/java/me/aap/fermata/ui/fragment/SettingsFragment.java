@@ -1388,6 +1388,12 @@ public class SettingsFragment extends MainActivityFragment
 
 	/** Interface &gt; UI style: the glass look of the bars and Home's cards, a page of its own (GlassSettingsFragment). */
 	private static void addGlassPrefs(MainActivityDelegate a, PreferenceSet parent) {
+		parent.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.ART_ACCENT;
+			o.title = R.string.art_accent;
+			o.subtitle = R.string.art_accent_sub;
+		});
 		parent.addButton(o -> {
 			o.title = R.string.glass_settings;
 			o.subtitle = R.string.glass_settings_sub;

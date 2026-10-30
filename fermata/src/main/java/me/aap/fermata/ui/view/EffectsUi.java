@@ -42,9 +42,9 @@ public final class EffectsUi {
 		try {
 			if (ctx.getTheme().resolveAttribute(androidx.appcompat.R.attr.colorControlActivated, tv, true)) {
 				if ((tv.type >= TypedValue.TYPE_FIRST_COLOR_INT) && (tv.type <= TypedValue.TYPE_LAST_COLOR_INT)) {
-					return tv.data;
+					return ArtAccent.map(tv.data);
 				}
-				if (tv.resourceId != 0) return ContextCompat.getColor(ctx, tv.resourceId);
+				if (tv.resourceId != 0) return ArtAccent.map(ContextCompat.getColor(ctx, tv.resourceId));
 			}
 		} catch (RuntimeException ignore) {
 			// Falls through to the default below.

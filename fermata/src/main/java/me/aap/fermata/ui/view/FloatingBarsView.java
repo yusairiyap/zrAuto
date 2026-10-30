@@ -286,6 +286,7 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 	private final GlassLens[] auxLens = new GlassLens[1];
 
 	private void drawPill(Canvas canvas, RectF r, float alpha) {
+		int pillColor = ArtAccent.map(this.pillColor);
 		if (r.isEmpty() || (alpha <= 0f)) {
 			// Gone (the control panel slid away): its blur box in a web page goes with it.
 			Glass.notDrawn((r == main) ? mainLens : auxLens);

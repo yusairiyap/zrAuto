@@ -85,7 +85,7 @@ public final class ToolBarPill {
 
 	/** The pill's colour, 0 if the tool bar has none. */
 	public static int getColor(View tb) {
-		return (tb.getBackground() instanceof PillDrawable d) ? d.color : 0;
+		return (tb.getBackground() instanceof PillDrawable d) ? ArtAccent.map(d.color) : 0;
 	}
 
 	/** The pill's rectangle in the tool bar's own coordinates; false if it has none. */
@@ -127,6 +127,7 @@ public final class ToolBarPill {
 
 		@Override
 		public void draw(@NonNull Canvas canvas) {
+			int color = ArtAccent.map(this.color);
 			if (merged) {
 				Glass.notDrawn(lens);
 				return;

@@ -224,6 +224,8 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> GLASS_BARS = Pref.b("GLASS_BARS", true);
 	Pref<BooleanSupplier> GLASS_HOME = Pref.b("GLASS_HOME", true);
 	Pref<BooleanSupplier> GLASS_MENUS = Pref.b("GLASS_MENUS", true);
+	// The theme's blue follows the colour of the playing cover (ui/view/ArtAccent).
+	Pref<BooleanSupplier> ART_ACCENT = Pref.b("ART_ACCENT", false);
 	// The size the blur is rendered at (Glass.QUALITY_*): full, half (default), a quarter.
 	Pref<IntSupplier> GLASS_QUALITY = Pref.i("GLASS_QUALITY", 1);
 	// Experimental: blur over web pages too (YouTube, the browser; the page blurs itself, see PageBlur).

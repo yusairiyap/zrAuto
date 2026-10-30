@@ -36,6 +36,30 @@ public class StepSeekBar extends AppCompatSeekBar {
 		Glass.knob(this);
 	}
 
+	private android.content.res.ColorStateList artProgress;
+	private android.content.res.ColorStateList artThumb;
+	private final Runnable artStep = this::applyArt;
+
+	@Override
+	protected void onAttachedToWindow() {
+		super.onAttachedToWindow();
+		if (artProgress == null) artProgress = getProgressTintList();
+		if (artThumb == null) artThumb = getThumbTintList();
+		ArtAccent.addListener(artStep);
+		applyArt();
+	}
+
+	@Override
+	protected void onDetachedFromWindow() {
+		ArtAccent.removeListener(artStep);
+		super.onDetachedFromWindow();
+	}
+
+	/** The colours the theme gave, with its blue replaced by the cover's while "Follow the album art" is on. */
+	private void applyArt() {
+		if (artProgress != null) setProgressTintList(ArtAccent.mapList(artProgress));
+	}
+
 	@Override
 	public void setOnSeekBarChangeListener(OnSeekBarChangeListener l) {
 		listener = l;

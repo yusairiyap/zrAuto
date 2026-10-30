@@ -3001,6 +3001,12 @@ public class MainActivityDelegate extends ActivityDelegate
 			});
 		}
 		veilBars();
+		me.aap.fermata.ui.view.ArtAccent.init(this);
+		me.aap.fermata.ui.view.ArtAccent.addListener(() -> {
+			if (toolBar != null) toolBar.invalidate();
+			View d = getActivity().getWindow().getDecorView();
+			d.invalidate();
+		});
 	}
 
 	/**
@@ -3068,6 +3074,7 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	@Override
 	public void onPreferenceChanged(PreferenceStore store, List<PreferenceStore.Pref<?>> prefs) {
+		if (prefs.contains(MainActivityPrefs.ART_ACCENT)) me.aap.fermata.ui.view.ArtAccent.onSwitched();
 		if (me.aap.fermata.ui.view.Glass.touches(prefs)) {
 			// The UI style (glass): read again now, whichever listener hears of it first, and every glass
 			// surface redrawn (the tool bar's shadow goes with glass too).
