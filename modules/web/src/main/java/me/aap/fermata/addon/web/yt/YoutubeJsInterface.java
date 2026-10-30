@@ -107,7 +107,15 @@ public class YoutubeJsInterface extends FermataJsInterface {
 				engine.waiting(data);
 				break;
 			case JS_AUDIO_TRACE:
-				me.aap.fermata.util.DiagnosticLog.log("YT", "media", data);
+				// The page's trace is free text: "start fade: 12 steps ..." becomes the message "media start fade" and the rest
+				// a detail, so the same trace always has the same message.
+				int colon = (data == null) ? -1 : data.indexOf(':');
+				if ((colon > 0) && (colon <= 40)) {
+					me.aap.fermata.util.DiagnosticLog.d(me.aap.fermata.util.LogCat.YT, "media " + data.substring(0, colon).trim(),
+							"trace=" + data.substring(colon + 1).trim());
+				} else {
+					me.aap.fermata.util.DiagnosticLog.d(me.aap.fermata.util.LogCat.YT, "media trace", "trace=" + data);
+				}
 				break;
 			case JS_VIDEO_QUEUE:
 				Log.d("Video queued from the page's menu: ", data);

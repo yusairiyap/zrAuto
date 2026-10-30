@@ -51,6 +51,7 @@ import me.aap.fermata.ytdl.YtDownloadMenu;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.log.Log;
 import me.aap.utils.ui.UiUtils;
@@ -357,10 +358,10 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		if (a == null) return;
 		long now = SystemClock.elapsedRealtime();
 		if (!wasYoutubePlaying(a, now)) {
-			DiagnosticLog.log("INTERRUPT", "started, nothing to recover (YouTube not playing)");
+			DiagnosticLog.log(LogCat.INTERRUPT, "started, nothing to recover (YouTube not playing)");
 			return;
 		}
-		DiagnosticLog.log("INTERRUPT", "started, armed for resume");
+		DiagnosticLog.log(LogCat.INTERRUPT, "started, armed for resume");
 		hostInterrupted = true;
 		hostInterruptionStartedAt = now;
 		// Cancels any resume still pending from a previous interruption -- see
@@ -387,7 +388,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	@Override
 	public void onHostInterruptionEnded() {
 		if (!BuildConfig.AUTO || !hostInterrupted) return;
-		DiagnosticLog.log("INTERRUPT", "ended, resume check scheduled");
+		DiagnosticLog.log(LogCat.INTERRUPT, "ended, resume check scheduled");
 		hostInterrupted = false;
 		long startedAt = hostInterruptionStartedAt;
 		hostInterruptionStartedAt = 0;
@@ -429,17 +430,17 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	private void reconcileAfterHostInterruption(MainActivityDelegate a, long op, long startedAt,
 																							int attempt) {
 		if ((op != hostResumeOperation) || isHidden() || (getView() == null)) {
-			DiagnosticLog.log("INTERRUPT", "resume skipped: superseded or fragment gone");
+			DiagnosticLog.log(LogCat.INTERRUPT, "resume skipped: superseded or fragment gone");
 			return;
 		}
 		FermataServiceUiBinder b = a.getMediaServiceBinder();
 		if (!YoutubeMediaEngine.isYoutubeItem(b.getCurrentItem())) {
-			DiagnosticLog.log("INTERRUPT", "resume skipped: current item is not YouTube");
+			DiagnosticLog.log(LogCat.INTERRUPT, "resume skipped: current item is not YouTube");
 			return;
 		}
 		MediaSessionCallback cb = a.getMediaSessionCallback();
 		if (!(cb.getEngine() instanceof YoutubeMediaEngine eng)) {
-			DiagnosticLog.log("INTERRUPT", "resume skipped: engine is not YoutubeMediaEngine");
+			DiagnosticLog.log(LogCat.INTERRUPT, "resume skipped: engine is not YoutubeMediaEngine");
 			return;
 		}
 		// The last pass never restarts anything -- it only decides. Restarting and then, in the same
@@ -458,7 +459,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 			// The page is running: whatever this recovery was for, it is over. The session follows off
 			// the page's own "playing" event if it hasn't already.
 			if (known && !st.paused) {
-				DiagnosticLog.log("INTERRUPT", "settled: page is playing");
+				DiagnosticLog.log(LogCat.INTERRUPT, "settled: page is playing");
 				return;
 			}
 
@@ -466,8 +467,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 				long restore = positionToRestore(st);
 				if (b.isPlaying()) {
 					pageRestarts++;
-					DiagnosticLog.logAndToast("INTERRUPT", "page stalled while session says PLAYING",
-							"id=" + st.videoId, "pos=" + st.positionMs, "restorePos=" + restore);
+					DiagnosticLog.logAndToast(LogCat.INTERRUPT, "page stalled while session says PLAYING", "id=" + st.videoId, "pos=" + st.positionMs, "restorePos=" + restore);
 					eng.resumePageAfterInterruption(restore);
 				} else {
 					long pausedAt = eng.getLastExternalPauseTime();
@@ -476,14 +476,12 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 					// earlier pause the user has been sitting on, not something this interruption
 					// caused. Either way there is nothing here to recover, now or on a later pass.
 					if ((pausedAt == 0) || (pausedAt < startedAt - HOST_INTERRUPTION_PAUSE_GRACE_MS)) {
-						DiagnosticLog.log("INTERRUPT", "resume skipped: pause was not this interruption's",
-								"(pausedAt=" + pausedAt, "startedAt=" + startedAt + ')');
+						DiagnosticLog.log(LogCat.INTERRUPT, "resume skipped: pause was not this interruption's", "pausedAt=" + pausedAt, "startedAt=" + startedAt);
 						return;
 					}
 					pageRestarts++;
 					Log.i("Resuming YouTube playback paused by a host interruption");
-					DiagnosticLog.logAndToast("INTERRUPT", "resuming playback",
-							"restorePos=" + restore);
+					DiagnosticLog.logAndToast(LogCat.INTERRUPT, "resuming playback", "restorePos=" + restore);
 					// The page first and the session second, both. cb.onPlay() alone was what this
 					// used to do, and it reaches the page only as a bare play() on whatever element
 					// querySelector finds -- which after a long background is routinely one the player
@@ -508,7 +506,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 				// is the worst of the available outcomes: the controls lie, and the play button (which
 				// is showing as pause) does nothing useful. Say PAUSED, which is at least true and
 				// which makes a single tap on play work.
-				DiagnosticLog.logAndToast("INTERRUPT", "giving up -- marking playback paused");
+				DiagnosticLog.logAndToast(LogCat.INTERRUPT, "giving up, marking playback paused");
 				cb.onPause();
 			}
 		});
@@ -577,7 +575,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 			Rect hint = pipSourceRect(a);
 			if (hint != null) pb.setSourceRectHint(hint);
 			entered = act.enterPictureInPictureMode(pb.build());
-			DiagnosticLog.log("YT", "picture-in-picture", "entered=" + entered);
+			DiagnosticLog.log(LogCat.YT, "picture-in-picture", "entered=" + entered);
 		} catch (Exception ex) {
 			// Turned off for this app in the system settings, or not supported on this device.
 			Log.d(ex, "Picture-in-picture is not available");
@@ -601,7 +599,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 			if (!st.paused || st.ended) return;
 			boolean pageOwnPause = cb.isPlaying() || (eng.getLastExternalPauseTime() != 0);
 			if (!pageOwnPause) return;
-			DiagnosticLog.log("YT", "PiP: page paused on its own, resuming");
+			DiagnosticLog.log(LogCat.YT, "PiP: page paused on its own, resuming");
 			eng.resumePageAfterInterruption(-1);
 			if (!cb.isPlaying()) cb.onPlay();
 		});
@@ -851,7 +849,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 	void enterVideoFullScreen() {
 		if (isHidden() || MusicPlayer.isYoutubeAudioMode()) return;
 		if (holdsFullScreen()) {
-			DiagnosticLog.log("YT", "fullscreen held: search panel open");
+			DiagnosticLog.log(LogCat.YT, "fullscreen held: search panel open");
 			return;
 		}
 		FermataWebView v = getWebView();
@@ -874,7 +872,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 			FermataChromeClient chrome = v.getWebChromeClient();
 			if (chrome == null) return;
 			if (holdsFullScreen()) {
-				DiagnosticLog.log("YT", "fullscreen held: search panel open");
+				DiagnosticLog.log(LogCat.YT, "fullscreen held: search panel open");
 				return;
 			}
 
@@ -1326,8 +1324,7 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 			if ((title != null) && !title.isEmpty()) addon.cacheVideoTitle(videoId, title);
 			if ((a.getLib() instanceof DefaultMediaLib lib) && MusicPlayer.queueAfterCurrent(a,
 					new YoutubeVideoItem(videoId, addon.getRootItem(lib)), first)) {
-				DiagnosticLog.log("YT", "queued into the music queue", "id=" + videoId, "next=" + first,
-						"fromQueue=" + fromQueue);
+				DiagnosticLog.log(LogCat.YT, "queued into the music queue", "id=" + videoId, "next=" + first, "fromQueue=" + fromQueue);
 				String name = ((title != null) && !title.isEmpty()) ? title : addon.getDisplayTitle(videoId);
 				me.aap.fermata.ui.view.TopToast.show(me.aap.fermata.R.drawable.up_next, first ? me.aap.fermata.R.string.youtube_added_play_next :
 						me.aap.fermata.R.string.youtube_added_up_next, name);
@@ -1336,13 +1333,12 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		}
 
 		if ((eng == null) || !eng.isActive()) {
-			DiagnosticLog.log("YT", "queue request: nothing playing, playing now", "id=" + videoId);
+			DiagnosticLog.log(LogCat.YT, "queue request: nothing playing, playing now", "id=" + videoId);
 			playVideoNow(videoId, title);
 			return;
 		}
 
-		DiagnosticLog.log("YT", "queued into Up next", "id=" + videoId, "next=" + first,
-				"audioMode=" + MusicPlayer.isYoutubeAudioMode());
+		DiagnosticLog.log(LogCat.YT, "queued into Up next", "id=" + videoId, "next=" + first, "audioMode=" + MusicPlayer.isYoutubeAudioMode());
 		if (!addon.addUpNext(videoId, title, first)) {
 			me.aap.fermata.ui.view.TopToast.show(me.aap.fermata.R.drawable.up_next, me.aap.fermata.R.string.youtube_up_next_full,
 					addon.getUpNextMax());

@@ -100,7 +100,7 @@ public final class MenuStyle implements OverlayMenuView.Styler {
 	}
 
 	/** The menus' and dialogs' card colour (the Music palette's panel). */
-	static int panelColor(Context ctx) {
+	public static int panelColor(Context ctx) {
 		Context pc = EffectsUi.palette(ctx);
 		TypedValue tv = new TypedValue();
 		pc.getTheme().resolveAttribute(R.attr.musicPanelFill, tv, true);
@@ -119,22 +119,13 @@ public final class MenuStyle implements OverlayMenuView.Styler {
 		int p = c.dp(8);
 		content.setPadding(p, p, p, p);
 		content.setMinimumWidth(c.dp(car ? 300 : 248));
-		float scale = textScale(content.getContext());
 		for (int i = 0, n = content.getChildCount(); i < n; i++) {
 			View v = content.getChildAt(i);
 			if (v.getId() == me.aap.utils.R.id.overlay_menu_title) {
 				styleTitle((TextView) v, c);
 			} else if (v instanceof OverlayMenuItemView item) {
-				styleItem(item, c, scale, car);
+				styleItem(item, c, car);
 			}
-		}
-	}
-
-	private static float textScale(Context ctx) {
-		try {
-			return me.aap.utils.ui.activity.ActivityDelegate.get(ctx).getTextIconSize();
-		} catch (Throwable ex) {
-			return 1f;
 		}
 	}
 
@@ -151,31 +142,25 @@ public final class MenuStyle implements OverlayMenuView.Styler {
 		t.setPadding(c.dp(14), c.dp(10), c.dp(14), c.dp(12));
 	}
 
-	private static void styleItem(OverlayMenuItemView item, SettingsStyle.Colors c, float scale, boolean car) {
+	private static void styleItem(OverlayMenuItemView item, SettingsStyle.Colors c, boolean car) {
 		int h = c.dp(16);
-		if (car) {
-			int v = Math.round(c.dp(12) * Math.max(0.8f, scale));
-			item.setPadding(h, v, h, v);
-			item.setCompoundDrawablePadding(c.dp(16));
-			item.setMinHeight(c.dp(48));
-		} else {
-			// On the phone the rows are the size of the settings rows (15sp text, 22dp icons): the menus' own size,
-			// scaled by the interface's text and icon size, made every menu much bigger than the pages under it.
-			item.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-			item.setPadding(h, c.dp(10), h, c.dp(10));
-			item.setCompoundDrawablePadding(c.dp(14));
-			item.setMinHeight(c.dp(44));
-			Drawable[] ds = item.getCompoundDrawablesRelative();
-			int is = c.dp(22);
-			if ((ds[0] != null) && ((ds[0].getBounds().width() != is) || (ds[0].getBounds().height() != is))) {
-				ds[0].setBounds(0, 0, is, is);
-				item.setCompoundDrawablesRelative(ds[0], ds[1], ds[2], ds[3]);
-			} else if (ds[0] == null) {
-				Drawable[] ld = item.getCompoundDrawables();
-				if ((ld[0] != null) && ((ld[0].getBounds().width() != is) || (ld[0].getBounds().height() != is))) {
-					ld[0].setBounds(0, 0, is, is);
-					item.setCompoundDrawables(ld[0], ld[1], ld[2], ld[3]);
-				}
+		// The same rows on the phone, the tablet and the car screen (15sp text, 22dp icons, the settings rows' size): the
+		// menu's own size is scaled by the interface's text and icon size, which made the car's menus much bigger than
+		// the pages under them. Only the least height differs, for a bigger target in the car.
+		item.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+		item.setPadding(h, c.dp(10), h, c.dp(10));
+		item.setCompoundDrawablePadding(c.dp(14));
+		item.setMinHeight(c.dp(car ? 48 : 44));
+		Drawable[] ds = item.getCompoundDrawablesRelative();
+		int is = c.dp(22);
+		if ((ds[0] != null) && ((ds[0].getBounds().width() != is) || (ds[0].getBounds().height() != is))) {
+			ds[0].setBounds(0, 0, is, is);
+			item.setCompoundDrawablesRelative(ds[0], ds[1], ds[2], ds[3]);
+		} else if (ds[0] == null) {
+			Drawable[] ld = item.getCompoundDrawables();
+			if ((ld[0] != null) && ((ld[0].getBounds().width() != is) || (ld[0].getBounds().height() != is))) {
+				ld[0].setBounds(0, 0, is, is);
+				item.setCompoundDrawables(ld[0], ld[1], ld[2], ld[3]);
 			}
 		}
 		item.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);

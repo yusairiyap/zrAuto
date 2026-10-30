@@ -83,9 +83,9 @@ public class PowerUsageFragment extends MainActivityFragment implements ToolBarC
 	private static final int FILTER_WEEK = 2;
 	private static final int FILTER_MONTH = 3;
 	private static final Pref<IntSupplier> FILTER = Pref.i("POWER_USAGE_FILTER", FILTER_DAY);
-	private static final int[] CAT_ICONS = {R.drawable.video, R.drawable.music, R.drawable.clock};
+	private static final int[] CAT_ICONS = {R.drawable.video, R.drawable.music, R.drawable.clock, R.drawable.sleep};
 	private static final int[] CAT_NAMES = {R.string.power_cat_video, R.string.power_cat_music,
-			R.string.power_cat_idle};
+			R.string.power_cat_idle, R.string.power_cat_sleep};
 	// The period figures need no more than this often while the live ones run each second.
 	private static final long PERIOD_EVERY_MS = 5000;
 
@@ -180,7 +180,8 @@ public class PowerUsageFragment extends MainActivityFragment implements ToolBarC
 		Context ctx = requireContext();
 		catColors = new int[]{ContextCompat.getColor(ctx, R.color.data_usage_video),
 				ContextCompat.getColor(ctx, R.color.data_usage_music),
-				ContextCompat.getColor(ctx, R.color.data_usage_other)};
+				ContextCompat.getColor(ctx, R.color.data_usage_other),
+				ContextCompat.getColor(ctx, R.color.power_sleep)};
 
 		gauge = view.findViewById(R.id.power_gauge);
 		graph = view.findViewById(R.id.power_graph);
@@ -217,6 +218,7 @@ public class PowerUsageFragment extends MainActivityFragment implements ToolBarC
 		rows[CAT_VIDEO] = view.findViewById(R.id.power_row_video);
 		rows[CAT_MUSIC] = view.findViewById(R.id.power_row_music);
 		rows[CAT_IDLE] = view.findViewById(R.id.power_row_idle);
+		rows[PowerUsageStore.CAT_SLEEP] = view.findViewById(R.id.power_row_sleep);
 
 		int track = paletteColor(R.attr.musicSeekTrack);
 		int low = ContextCompat.getColor(ctx, R.color.power_low);

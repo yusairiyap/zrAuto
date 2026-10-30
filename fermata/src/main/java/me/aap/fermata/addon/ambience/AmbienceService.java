@@ -19,6 +19,7 @@ import androidx.core.app.NotificationCompat;
 
 import me.aap.fermata.R;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.log.Log;
 
 /**
@@ -42,7 +43,7 @@ public class AmbienceService extends Service {
 			running = true;
 		} catch (Exception ex) {
 			// Only possible with the app in the background and nothing else keeping it alive.
-			DiagnosticLog.log("AMBIENCE", "service not started", ex);
+			DiagnosticLog.w(LogCat.AMBIENCE, "service not started", ex);
 			Log.e(ex, "Failed to start the Ambience service");
 		}
 	}
@@ -73,7 +74,7 @@ public class AmbienceService extends Service {
 				startForeground(NOTIF_ID, buildNotification());
 			}
 		} catch (Exception ex) {
-			DiagnosticLog.log("AMBIENCE", "service not in the foreground", ex);
+			DiagnosticLog.w(LogCat.AMBIENCE, "service not in the foreground", ex);
 			Log.e(ex, "Failed to start the Ambience service in the foreground");
 		}
 		return START_NOT_STICKY;

@@ -49,6 +49,7 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.NetworkIssuePopup;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.fermata.ytdl.YtDownloadMenu;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.fermata.ytdl.YtOffline;
@@ -239,7 +240,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		if (waitingSince == 0) {
 			waitingSince = SystemClock.elapsedRealtime();
 			// Whether the page was really hidden (another tab showing) -- see attachListeners().
-			DiagnosticLog.log("YT", "buffering", "id=" + currentVideoId, "page=" + page);
+			DiagnosticLog.log(LogCat.YT, "buffering", "id=" + currentVideoId, "page=" + page);
 		}
 		web.removeCallbacks(stallCheck);
 		web.postDelayed(stallCheck, STALL_MS);
@@ -259,7 +260,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			return;
 		}
 
-		DiagnosticLog.log("YT", "stalled", "id=" + currentVideoId, "for=" + (waited / 1000) + 's');
+		DiagnosticLog.log(LogCat.YT, "stalled", "id=" + currentVideoId, "for=" + (waited / 1000) + 's');
 		MainActivityDelegate a = MainActivityDelegate.get(web.getContext());
 		String id = currentVideoId;
 
@@ -314,7 +315,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 * first seconds, when its own autoplay starts.
 	 */
 	void quietRestoredPage() {
-		DiagnosticLog.log("YT", "restored page kept quiet until asked");
+		DiagnosticLog.log(LogCat.YT, "restored page kept quiet until asked");
 		yielded = true;
 		restoredQuietUntil = SystemClock.elapsedRealtime() + RESTORED_QUIET_MS;
 	}
@@ -428,8 +429,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				(!isPageInFront() || (SystemClock.elapsedRealtime() < restoredQuietUntil))) {
 			MediaEngine owner = cb.getEngine();
 			if ((owner == null) || (owner.getId() != MEDIA_ENG_YT)) {
-				DiagnosticLog.log("YT", "page played by itself after giving way: silenced", "id=" + actualId,
-						"owner=" + ((owner == null) ? null : owner.getClass().getSimpleName()));
+				DiagnosticLog.log(LogCat.YT, "page played by itself after giving way: silenced", "id=" + actualId, "owner=" + ((owner == null) ? null : owner.getClass().getSimpleName()));
 				lastActivePlayTime = 0;
 				appRequestedPause = true;
 				web.pause();
@@ -618,8 +618,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			qualityUrl = url;
 			web.applyQualityPolicy(music ? "lowest" : preferred, false);
 		}
-		DiagnosticLog.log("YT", wasBuffering ? "playing (after buffering)" : "playing",
-				"id=" + actualId, "title=" + currentVideoTitle);
+		DiagnosticLog.log(LogCat.YT, "playing", "id=" + actualId, "title=" + currentVideoTitle, "afterBuffering=" + wasBuffering);
 		cb.setEngine(this);
 		cb.onEngineStarted(this);
 		// The black that covered the page loading after a downloaded video (see
@@ -629,7 +628,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// Reopened where it was left off (see MainActivityDelegate#resumeLastPlayed()): the video is
 		// only to be loaded, ready to play, not played.
 		if ((actualId != null) && PlaybackResume.takePauseOnStart(YoutubeVideoItem.ID_PREFIX + actualId)) {
-			DiagnosticLog.log("YT", "resumed paused", "id=" + actualId);
+			DiagnosticLog.log(LogCat.YT, "resumed paused", "id=" + actualId);
 			web.post(cb::onPause);
 		}
 	}
@@ -648,10 +647,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// injected link click can still be reported as a navigation of the page's own, e.g. once the
 		// click suppression window has closed. Not a pick: the queue and music mode carry on.
 		if (videoId.equals(web.getAddon().getPendingVideoId())) {
-			DiagnosticLog.log("YT", "ignored pick of the app's own navigation", "id=" + videoId);
+			DiagnosticLog.log(LogCat.YT, "ignored pick of the app's own navigation", "id=" + videoId);
 			return;
 		}
-		DiagnosticLog.log("YT", "user picked", "id=" + videoId);
+		DiagnosticLog.log(LogCat.YT, "user picked", "id=" + videoId);
 		// Picking a video on the page means watching it, not listening to the Music tab's queue.
 		MusicPlayer.setYoutubeAudioMode(false);
 		userPickedVideoId = videoId;
@@ -703,11 +702,11 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			earlyEndResumes = 0;
 		}
 		if (++earlyEndResumes > 2) {
-			DiagnosticLog.log("YT", "video ended early again: going on", "id=" + id, "at=" + data);
+			DiagnosticLog.log(LogCat.YT, "video ended early again: going on", "id=" + id, "at=" + data);
 			ended();
 			return;
 		}
-		DiagnosticLog.log("YT", "video ended early: resuming", "id=" + id, "at=" + data, "try=" + earlyEndResumes);
+		DiagnosticLog.log(LogCat.YT, "video ended early: resuming", "id=" + id, "at=" + data, "try=" + earlyEndResumes);
 		lastActivePlayTime = System.currentTimeMillis();
 		lastPausedTime = 0;
 		playRetries = 0;
@@ -719,7 +718,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				"  return true; })()";
 		web.evaluateJavascript(js, r -> {
 			if (!"true".equals(r)) {
-				DiagnosticLog.log("YT", "video ended early: no player to resume in", "id=" + id);
+				DiagnosticLog.log(LogCat.YT, "video ended early: no player to resume in", "id=" + id);
 				ended();
 			}
 		});
@@ -757,8 +756,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		if (switching || expectingPageNav) return;
 		boolean stalled = waitingSince != 0;
 		if (!stalled && lastPauseAsked) return;
-		DiagnosticLog.log("YT", "stopped at the end with no 'ended': treated as ended",
-				"id=" + currentVideoId, how, stalled ? "waiting" : "paused");
+		DiagnosticLog.log(LogCat.YT, "stopped at the end with no 'ended': treated as ended", "id=" + currentVideoId, "how=" + how, "state=" + (stalled ? "waiting" : "paused"));
 		clearStall();
 		ended();
 	}
@@ -781,7 +779,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			return;
 		}
 
-		DiagnosticLog.log("YT", "video ended", "id=" + currentVideoId);
+		DiagnosticLog.log(LogCat.YT, "video ended", "id=" + currentVideoId);
 		toEnd();
 		qualityUrl = null;
 		// Same reasoning as the unexpected-transition handoff in playing() above: whatever comes next
@@ -925,8 +923,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 *                          page's element currently is.
 	 */
 	void resumePageAfterInterruption(long restorePositionMs) {
-		DiagnosticLog.log("YT", "re-starting page playback", "id=" + currentVideoId,
-				"restorePos=" + restorePositionMs);
+		DiagnosticLog.log(LogCat.YT, "re-starting page playback", "id=" + currentVideoId, "restorePos=" + restorePositionMs);
 		lastActivePlayTime = System.currentTimeMillis();
 		lastPausedTime = 0;
 		playRetries = 0;
@@ -988,7 +985,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		}
 		lastPauseAsked = appRequestedPause;
 		if (isSwitchPause()) {
-			DiagnosticLog.log("YT", "page paused during a switch: ignored", "id=" + currentVideoId);
+			DiagnosticLog.log(LogCat.YT, "page paused during a switch: ignored", "id=" + currentVideoId);
 			return;
 		}
 
@@ -1014,8 +1011,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				(playRetries < MAX_PLAY_RETRIES) && (now - lastActivePlayTime < PLAY_RETRY_GRACE_MS)) {
 			playRetries++;
 			Log.i("YoutubeMediaEngine.paused(): retrying play(), attempt ", playRetries);
-			DiagnosticLog.log("YT", "page paused right after play: play again", "attempt=" + playRetries,
-					"id=" + currentVideoId, "size=" + web.getWidth() + 'x' + web.getHeight());
+			DiagnosticLog.log(LogCat.YT, "page paused right after play: play again", "attempt=" + playRetries, "id=" + currentVideoId, "size=" + web.getWidth() + 'x' + web.getHeight());
 			web.play();
 			return;
 		}
@@ -1038,8 +1034,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// see lastExternalPauseTime's declaration and YoutubeFragment#onHostInterruptionEnded().
 		// The page pausing with nothing on the app side having asked for it is the exact signature of
 		// a host takeover, so it's called out loudly in the trace rather than logged as a plain pause.
-		DiagnosticLog.logAndToast("YT", appRequestedPause ? "paused (app asked)" : "PAUSED BY PAGE",
-				"id=" + currentVideoId, "size=" + web.getWidth() + 'x' + web.getHeight());
+		DiagnosticLog.logAndToast(LogCat.YT, "paused", "by=" + (appRequestedPause ? "app" : "PAGE"), "id=" + currentVideoId, "size=" + web.getWidth() + 'x' + web.getHeight());
 		boolean stalled = waitingSince != 0;
 		clearStall();
 		if (appRequestedPause) {
@@ -1216,7 +1211,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	}
 
 	private void restartForPrevious(String why) {
-		DiagnosticLog.log("YT", "previous: this video from the start", "id=" + currentVideoId, why);
+		DiagnosticLog.log(LogCat.YT, "previous: this video from the start", "id=" + currentVideoId, "why=" + why);
 		expectingPageNav = false;
 		replayCurrent();
 		int gen = switchWatchGen;
@@ -1242,8 +1237,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		long asked = SystemClock.elapsedRealtime();
 		web.afterAudioFadeOut(() -> {
 			if (gen != switchWatchGen) return;
-			DiagnosticLog.log("YT", "queue switch after the fade", "id=" + videoId,
-					"waited=" + (SystemClock.elapsedRealtime() - asked) + "ms");
+			DiagnosticLog.log(LogCat.YT, "queue switch after the fade", "id=" + videoId, "waited=" + (SystemClock.elapsedRealtime() - asked) + "ms");
 			web.loadVideo(videoId, true);
 			watchSwitch(videoId, gen, 0);
 		});
@@ -1274,11 +1268,11 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 				return;
 			}
 			if (attempt == 0) {
-				DiagnosticLog.log("YT", "switch not started: swapping in the player", "id=" + videoId);
+				DiagnosticLog.log(LogCat.YT, "switch not started: swapping in the player", "id=" + videoId);
 				web.switchVideoInPlayer(videoId, true);
 				watchSwitch(videoId, gen, 1);
 			} else if (attempt == 1) {
-				DiagnosticLog.log("YT", "switch not started: loading the watch page", "id=" + videoId);
+				DiagnosticLog.log(LogCat.YT, "switch not started: loading the watch page", "id=" + videoId);
 				web.loadUrl(YoutubeVideoItem.watchUrl(videoId) + "&t=0s");
 			}
 		}, SWITCH_WATCH_MS);
@@ -1326,7 +1320,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	@Override
 	public void start() {
-		DiagnosticLog.log("YT", "engine start()", "id=" + currentVideoId);
+		DiagnosticLog.log(LogCat.YT, "engine start()", "id=" + currentVideoId);
 		yielded = false;
 		lastActivePlayTime = System.currentTimeMillis();
 		lastPausedTime = 0;
@@ -1340,7 +1334,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	@Override
 	public void stop() {
-		DiagnosticLog.log("YT", "engine stop()", "id=" + currentVideoId);
+		DiagnosticLog.log(LogCat.YT, "engine stop()", "id=" + currentVideoId);
 		clearStall();
 		lastActivePlayTime = 0;
 		appRequestedPause = false;
@@ -1353,8 +1347,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	@Override
 	public void pause() {
-		DiagnosticLog.log("YT", "engine pause()", "id=" + currentVideoId,
-				"reentrant=" + ignorePause);
+		DiagnosticLog.log(LogCat.YT, "engine pause()", "id=" + currentVideoId, "reentrant=" + ignorePause);
 		if (!ignorePause) clearStall();
 		lastActivePlayTime = 0;
 		// ignorePause is set only while paused() above is re-entering through
@@ -1441,8 +1434,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		// Which part of the app seeks, for a seek heard as a stutter at a song's start (the page's trace shows the seek itself).
 		if (!me.aap.fermata.util.PlaybackCalm.isSteady()) {
 			StackTraceElement[] st = new Throwable().getStackTrace();
-			DiagnosticLog.log("YT", "seek while starting", "pos=" + position, (st.length > 1) ? st[1] : null,
-					(st.length > 2) ? st[2] : null);
+			DiagnosticLog.log(LogCat.YT, "seek while starting", "pos=" + position, "caller1=" + ((st.length > 1) ? st[1] : "-"), "caller2=" + ((st.length > 2) ? st[2] : "-"));
 		}
 		web.setPosition(position);
 	}
@@ -2124,7 +2116,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 * Favorites/Playlist queue (the Up next queue stays). Used by the search panel.
 	 */
 	void playNow(String videoId) {
-		DiagnosticLog.log("YT", "play now", "id=" + videoId);
+		DiagnosticLog.log(LogCat.YT, "play now", "id=" + videoId);
 		yielded = false;
 		YoutubeAddon addon = web.getAddon();
 		MusicPlayer.setYoutubeAudioMode(false);

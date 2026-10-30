@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStream;
 
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.app.App;
 import me.aap.utils.log.Log;
 
@@ -53,7 +54,7 @@ public final class ReceivedAppCleanup {
 					if (!sameContent(apk, installed)) continue;
 					long size = apk.length();
 					if (!apk.delete()) continue;
-					DiagnosticLog.log("SHARE", "installed app file deleted:", apk, size);
+					DiagnosticLog.log(LogCat.SHARE, "installed app file deleted", "file=" + apk, "size=" + size);
 					// The share's own folder, left empty by that.
 					String[] left = dir.list();
 					//noinspection ResultOfMethodCallIgnored

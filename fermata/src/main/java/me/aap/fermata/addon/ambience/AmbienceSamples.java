@@ -25,6 +25,7 @@ import java.util.concurrent.Executors;
 
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.log.Log;
 
 /**
@@ -121,7 +122,7 @@ public final class AmbienceSamples {
 		} catch (java.io.FileNotFoundException none) {
 			// No recordings in this build.
 		} catch (Exception ex) {
-			DiagnosticLog.log("AMBIENCE", "manifest unreadable", ex);
+			DiagnosticLog.w(LogCat.AMBIENCE, "manifest unreadable", ex);
 		}
 	}
 
@@ -176,10 +177,10 @@ public final class AmbienceSamples {
 				short[] pcm = loopWindow(d, entry.frames, entry.margin);
 				entry.voice.set(pcm, d.channels, d.rate);
 				entry.state = State.READY;
-				DiagnosticLog.log("AMBIENCE", "recording ready", e.key, d.pcm.length / d.channels, "frames");
+				DiagnosticLog.log(LogCat.AMBIENCE, "recording ready", "sound=" + e.key, "frames=" + (d.pcm.length / d.channels));
 			} catch (Throwable ex) {
 				entry.state = State.FAILED;
-				DiagnosticLog.log("AMBIENCE", "recording failed", e.key, ex);
+				DiagnosticLog.w(LogCat.AMBIENCE, "recording failed", "sound=" + e.key, ex);
 				Log.e(ex, "Failed to load the ambience recording ", e.key);
 			}
 			changed();

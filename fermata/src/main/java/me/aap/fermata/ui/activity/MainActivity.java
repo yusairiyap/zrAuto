@@ -62,6 +62,7 @@ import me.aap.fermata.media.service.FermataMediaServiceConnection;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.ui.fragment.MainActivityFragment;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.app.App;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.collection.NaturalOrderComparator;
@@ -189,7 +190,7 @@ public class MainActivity extends SplitCompatActivityBase
 	protected void onResume() {
 		super.onResume();
 		activeInstance = this;
-		DiagnosticLog.log("STATE", "activity resumed");
+		DiagnosticLog.log(LogCat.STATE, "activity resumed");
 
 		// Fragment switches within the app never pause/resume the Activity -- only actually leaving
 		// it (home button, task switcher, another app taking focus) does -- so this is the signal for
@@ -207,13 +208,13 @@ public class MainActivity extends SplitCompatActivityBase
 	protected void onPause() {
 		super.onPause();
 		activeInstance = null;
-		DiagnosticLog.log("STATE", "activity paused (left the app or covered)");
+		DiagnosticLog.log(LogCat.STATE, "activity paused (left the app or covered)");
 	}
 
 	@Override
 	protected void onStop() {
 		super.onStop();
-		DiagnosticLog.log("STATE", "activity stopped (in the background)");
+		DiagnosticLog.log(LogCat.STATE, "activity stopped (in the background)");
 	}
 
 	/**

@@ -97,6 +97,14 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 	@Nullable
 	private ItemTouchHelper dragHelper;
 	private final Adapter adapter = new Adapter();
+	@Nullable
+	private View stickyView;
+	@Nullable
+	private View stickySpacer;
+	@Nullable
+	private android.view.ViewTreeObserver.OnPreDrawListener stickySync;
+	@Nullable
+	private View stickySyncView;
 	/** Bring the option rows above the list in line with their settings (after a reload or Reset). */
 	protected final List<Runnable> syncers = new ArrayList<>();
 
@@ -177,15 +185,75 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 		dragHelper.attachToRecyclerView(rv);
 		list = rv;
 		header = createHeader();
+		View st = createStickyTop();
+		if (st != null) {
+			// Room for it at the top of the list; it floats over, so it stays in view while the page scrolls.
+			stickySpacer = new View(palette);
+			((LinearLayout) header).addView(stickySpacer, 0, new LinearLayout.LayoutParams(MATCH_PARENT, dp(160)));
+		}
 		footer = createFooter();
 		reload();
-		return rv;
+		if (st == null) return rv;
+		stickyView = st;
+		FrameLayout root = new FrameLayout(ctx);
+		root.addView(rv, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.TOP);
+		slp.setMargins(dp(12), 0, dp(12), 0);
+		root.addView(st, slp);
+		st.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+			if (((b - t) == (ob - ot)) || (stickySpacer == null)) return;
+			ViewGroup.LayoutParams sl = stickySpacer.getLayoutParams();
+			sl.height = (b - t) + dp(8);
+			stickySpacer.setLayoutParams(sl);
+		});
+		return root;
+	}
+
+	/**
+	 * A card that stays at the top of the page while it scrolls (a preview of what the options do), or null for none. It rises
+	 * with the tool bar when that slides away.
+	 */
+	@Nullable
+	protected View createStickyTop() {
+		return null;
+	}
+
+	private static float statusBarBottom(View v) {
+		androidx.core.view.WindowInsetsCompat i = androidx.core.view.ViewCompat.getRootWindowInsets(v);
+		if (i == null) return 0f;
+		int top = i.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() |
+				androidx.core.view.WindowInsetsCompat.Type.displayCutout()).top;
+		int[] loc = new int[2];
+		v.getLocationOnScreen(loc);
+		return Math.max(0, top - loc[1]);
 	}
 
 	@Override
 	public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
 		super.onViewCreated(view, savedInstanceState);
-		getActivityDelegate().insetScrollableContent((ViewGroup) view);
+		MainActivityDelegate a = getActivityDelegate();
+		a.insetScrollableContent((list != null) ? list : (ViewGroup) view);
+		if ((stickyView != null) && (list != null)) {
+			RecyclerView rv = list;
+			stickySync = () -> {
+				View sv = stickyView;
+				if (sv == null) return true;
+				float rest = rv.getPaddingTop() + dp(4);
+				float ty = rest;
+				me.aap.utils.ui.view.ToolBarView tb = a.getToolBar();
+				me.aap.fermata.ui.activity.ScrollBarsController sbc = a.getScrollBars();
+				float hiddenBar = ((tb == null) || (tb.getVisibility() != View.VISIBLE)) ? 1f :
+						(sbc != null) ? Math.max(0f, Math.min(1f, sbc.getToolBarHidden())) : 0f;
+				if (hiddenBar > 0f) {
+					float limit = Math.min(rest, statusBarBottom(rv) + dp(4));
+					ty = rest + (limit - rest) * hiddenBar;
+				}
+				if (sv.getTranslationY() != ty) sv.setTranslationY(ty);
+				return true;
+			};
+			rv.getViewTreeObserver().addOnPreDrawListener(stickySync);
+			stickySyncView = rv;
+		}
 	}
 
 	@Override
@@ -197,6 +265,14 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 
 	@Override
 	public void onDestroyView() {
+		if ((stickySync != null) && (stickySyncView != null)) {
+			android.view.ViewTreeObserver o = stickySyncView.getViewTreeObserver();
+			if (o.isAlive()) o.removeOnPreDrawListener(stickySync);
+		}
+		stickySync = null;
+		stickySyncView = null;
+		stickyView = null;
+		stickySpacer = null;
 		list = null;
 		header = null;
 		footer = null;

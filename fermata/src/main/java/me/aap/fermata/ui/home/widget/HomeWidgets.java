@@ -60,6 +60,9 @@ public final class HomeWidgets {
 			HomeWidgetType.builder("ambience", R.string.home_w_ambience, R.string.home_w_ambience_d,
 							R.drawable.ambience, 0xFF5B9BFF, AmbienceWidget::new)
 					.sizes(2, 1, 4, 2, 8, 4).available(AmbienceAddon::isEnabled).build(),
+			HomeWidgetType.builder("sleep", R.string.home_w_sleep, R.string.home_w_sleep_d,
+							R.drawable.sleep, 0xFF7E8CFF, SleepWidget::new)
+					.sizes(2, 1, 2, 2, 8, 4).available(me.aap.fermata.addon.sleep.SleepAddon::isEnabled).build(),
 			HomeWidgetType.builder("queue", R.string.home_w_queue, R.string.home_w_queue_d,
 							R.drawable.queue_music, 0xFFFF8A65, QueueWidget::new)
 					.sizes(2, 2, 2, 3, 8, 6).available(MusicPlayer::isEnabled).build(),

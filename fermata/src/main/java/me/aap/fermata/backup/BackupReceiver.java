@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 
 /**
  * The scheduled backup's alarm, and the device boot (which drops every alarm), see
@@ -21,7 +22,7 @@ public class BackupReceiver extends BroadcastReceiver {
 			PendingResult res = goAsync();
 			BackupManager.runScheduled(app, "alarm", res::finish);
 		} else if (Intent.ACTION_BOOT_COMPLETED.equals(action)) {
-			DiagnosticLog.log("BACKUP", "device booted");
+			DiagnosticLog.log(LogCat.BACKUP, "device booted");
 			BackupManager.schedule(app);
 		}
 	}

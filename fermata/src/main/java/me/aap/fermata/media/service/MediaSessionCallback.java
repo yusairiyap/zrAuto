@@ -137,6 +137,7 @@ import me.aap.fermata.media.sub.SubGrid;
 import me.aap.fermata.media.sub.Subtitles;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.fermata.util.PlaybackCalm;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.fermata.ytdl.YtOffline;
@@ -269,7 +270,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			public void onReceive(Context context, Intent intent) {
 				if (ACTION_AUDIO_BECOMING_NOISY.equals(intent.getAction())) {
 					Log.i("Received ACTION_AUDIO_BECOMING_NOISY event");
-					DiagnosticLog.log("NOISY", "audio output changed, pausing", "playing=" + isPlaying());
+					DiagnosticLog.log(LogCat.FOCUS, "audio output changed, pausing", "playing=" + isPlaying());
 					onPause();
 				}
 			}
@@ -608,7 +609,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	private void setResumeState(PlayableItem i, long pos) {
 		resumeItem = i;
 		resumePos = pos;
-		DiagnosticLog.log("RESUME", "restored paused", "item=" + i, "pos=" + (pos / 1000) + 's');
+		DiagnosticLog.log(LogCat.RESUME, "restored paused", "item=" + i, "pos=" + (pos / 1000) + 's');
 		setPlaybackState(createPlayingState(i, STATE_PAUSED, 0, pos, 1f));
 		i.getMediaData().main().onSuccess(md -> {
 			if ((resumeItem == i) && (getEngine() == null)) publishMetadata(md, i);
@@ -621,7 +622,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		long pos = resumePos;
 		resumeItem = null;
 		if (i == null) return completedVoid();
-		DiagnosticLog.log("RESUME", "play", "item=" + i, "pos=" + (pos / 1000) + 's');
+		DiagnosticLog.log(LogCat.RESUME, "play", "item=" + i, "pos=" + (pos / 1000) + 's');
 
 		if (!i.isExternal()) {
 			return prepareItem(i).then(pi -> {
@@ -670,7 +671,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		if (lib.getContext().getPackageName().equals(pkg)) return false;
 		Action a = t.key.getClickAction();
 		if (a == null) return false;
-		DiagnosticLog.log("TRANSPORT", "bound command", "cmd=" + t, "action=" + a, "from=" + pkg);
+		DiagnosticLog.log(LogCat.TRANSPORT, "bound command", "cmd=" + t, "action=" + a, "from=" + pkg);
 		routingTransport = true;
 		try {
 			a.getHandler().handle(this, null, SystemClock.uptimeMillis());
@@ -683,7 +684,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	@Override
 	public void onPlay() {
 		if (interceptTransport(KeyTester.Transport.PLAY)) return;
-		DiagnosticLog.log("TRANSPORT", "onPlay", "state=" + stateName(getPlaybackState().getState()));
+		DiagnosticLog.log(LogCat.TRANSPORT, "onPlay", "state=" + stateName(getPlaybackState().getState()));
 		playerTask.cancel();
 		playerTask = play();
 	}
@@ -817,8 +818,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	}
 
 	private void doPause() {
-		DiagnosticLog.log("TRANSPORT", "onPause",
-				"state=" + stateName(getPlaybackState().getState()), "from=" + pauseSource());
+		DiagnosticLog.log(LogCat.TRANSPORT, "onPause", "state=" + stateName(getPlaybackState().getState()), "from=" + pauseSource());
 		PlayableItem i;
 		MediaEngine eng = getEngine();
 		if ((eng == null) || ((i = eng.getSource()) == null)) return;
@@ -919,7 +919,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	public void onSkipToPrevious() {
 		if (interceptTransport(KeyTester.Transport.PREV)) return;
 		if (isAtListStart()) {
-			DiagnosticLog.log("TRANSPORT", "previous ignored: first in the list");
+			DiagnosticLog.log(LogCat.TRANSPORT, "previous ignored: first in the list");
 			return;
 		}
 		skipWithFade(false);
@@ -962,7 +962,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 				// this engine) a moment later, and the sound coming back first was the stutter.
 				if (getEngine() != eng) return;
 				if (handedOverAt >= fadeStart) {
-					DiagnosticLog.log("TRANSPORT", "hand-over pending: volume stays down");
+					DiagnosticLog.log(LogCat.TRANSPORT, "hand-over pending: volume stays down");
 					return;
 				}
 				eng.restoreVolume();
@@ -1003,7 +1003,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		if (i == null) return;
 		BrowsableItemPrefs p = i.getParent().getPrefs();
 		if (i.getId().equals(p.getRepeatItemPref())) {
-			DiagnosticLog.log("TRANSPORT", "skip turns Repeat One off", "item=" + i);
+			DiagnosticLog.log(LogCat.TRANSPORT, "skip turns Repeat One off", "item=" + i);
 			p.setRepeatItemPref(null);
 		}
 	}
@@ -1017,7 +1017,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	public void onSkipToNext() {
 		if (interceptTransport(KeyTester.Transport.NEXT)) return;
 		if (isAtListEnd()) {
-			DiagnosticLog.log("TRANSPORT", "next ignored: last in the list");
+			DiagnosticLog.log(LogCat.TRANSPORT, "next ignored: last in the list");
 			return;
 		}
 		skipWithFade(true);
@@ -1100,8 +1100,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		MediaEngine eng = getEngine();
 		boolean onYoutube = (eng != null) && (eng.getId() == MediaPrefs.MEDIA_ENG_YT);
 		if (onYoutube && !YtOffline.isDownloadedYoutube(i)) return false;
-		DiagnosticLog.log("TRANSPORT", "next is a YouTube video: handed to the UI", "item=" + i,
-				"downloaded=" + YtOffline.isDownloadedYoutube(i), "fromYoutube=" + onYoutube);
+		DiagnosticLog.log(LogCat.TRANSPORT, "next is a YouTube video: handed to the UI", "item=" + i, "downloaded=" + YtOffline.isDownloadedYoutube(i), "fromYoutube=" + onYoutube);
 		return a.playExternal(i, pos);
 	}
 
@@ -1446,8 +1445,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 		PlaybackStateCompat s = createPlayingState(i, !playing, getQid.peek(0L), pos, speed);
 		publishMetadata(md, i);
-		DiagnosticLog.log("META", "session metadata", "item=" + i,
-				"title=" + md.getString(METADATA_KEY_DISPLAY_TITLE), "loaded=" + load.isDone());
+		DiagnosticLog.log(LogCat.META, "session metadata", "item=" + i, "title=" + md.getString(METADATA_KEY_DISPLAY_TITLE), "loaded=" + load.isDone());
 		setPlaybackState(s);
 	}
 
@@ -1482,7 +1480,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		if (art != null) {
 			b.putString(METADATA_KEY_ALBUM_ART_URI, null);
 			return lib.getBitmap(art).then(bm -> {
-				DiagnosticLog.log("META", "album art", "size=" + ((bm == null) ? null : bm.getWidth() + "x" + bm.getHeight()));
+				DiagnosticLog.log(LogCat.META, "album art", "size=" + ((bm == null) ? null : bm.getWidth() + "x" + bm.getHeight()));
 				String vid = (bm == null) ? YtDownloads.thumbnailVideoId(art) : null;
 				if (vid == null) {
 					b.putBitmap(METADATA_KEY_ALBUM_ART, (bm != null) ? bm : getDefaultImage());
@@ -1515,8 +1513,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	public void onEngineEnded(MediaEngine engine) {
 		// A closed or replaced engine reporting late must not move the session on.
 		if (engine != getEngine()) {
-			DiagnosticLog.log("TRANSPORT", "engine ended: ignored, not the current engine", "ended=" + engine,
-					"current=" + getEngine());
+			DiagnosticLog.log(LogCat.TRANSPORT, "engine ended: ignored, not the current engine", "ended=" + engine, "current=" + getEngine());
 			return;
 		}
 		BufferingIndicator.setBuffering(false);
@@ -1527,7 +1524,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			// than moving on to the next track.
 			playbackTimerWaitingForTrackEnd = false;
 			playbackTimerFinishTrack = false;
-			DiagnosticLog.log("TIMER", "song ended: playback stopped", "item=" + engine.getSource());
+			DiagnosticLog.log(LogCat.TIMER, "song ended: playback stopped", "item=" + engine.getSource());
 			PlayableItem i = engine.getSource();
 			if (i != null) setLastPlayed(i, 0);
 			playerTask = onStop(false);
@@ -1539,7 +1536,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			playerTask = engineEnded(engine);
 		} catch (RuntimeException ex) {
 			// Used to escape to the engine's callback with nothing said and nothing playing.
-			DiagnosticLog.log("TRANSPORT", "engine ended: failed", "item=" + engine.getSource(), "cause=" + describe(ex));
+			DiagnosticLog.w(LogCat.TRANSPORT, "engine ended: failed", "item=" + engine.getSource(), "cause=" + describe(ex));
 			Log.e(ex, "Failed to move on after the end of a track");
 			endFailed(engine, engine.getSource(), ex);
 		}
@@ -1552,8 +1549,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 
 	private FutureSupplier<?> engineEnded(MediaEngine engine) {
 		PlayableItem i = engine.getSource();
-		DiagnosticLog.log("TRANSPORT", "engine ended", "engine=" + engine, "item=" + i,
-				"playNext=" + playNextOf(i));
+		DiagnosticLog.log(LogCat.TRANSPORT, "engine ended", "engine=" + engine, "item=" + i, "playNext=" + playNextOf(i));
 
 		if (i != null) {
 			if (i instanceof StreamItem) {
@@ -1565,13 +1561,13 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			if (i.isVideo()) i.getPrefs().setWatchedPref(true);
 
 			if (!i.getParent().getPrefs().getPlayNextPref()) {
-				DiagnosticLog.log("TRANSPORT", "engine ended: play next is off, stopping", "item=" + i);
+				DiagnosticLog.log(LogCat.TRANSPORT, "engine ended: play next is off, stopping", "item=" + i);
 				onStop(true);
 				return completedVoid();
 			}
 
 			FutureSupplier<Void> f = getNextPlayable(i).then(this::prepareItem).then(next -> {
-				DiagnosticLog.log("TRANSPORT", "engine ended: next", "next=" + next);
+				DiagnosticLog.log(LogCat.TRANSPORT, "engine ended: next", "next=" + next);
 				endRetries = 0;
 				if (next != null) {
 					skipTo(true, next);
@@ -1588,7 +1584,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			f.onFailure(err -> endFailed(engine, i, err));
 			return f;
 		} else {
-			DiagnosticLog.log("TRANSPORT", "engine ended with no item: stopping");
+			DiagnosticLog.log(LogCat.TRANSPORT, "engine ended with no item: stopping");
 			onStop(false);
 			return completedVoid();
 		}
@@ -1605,8 +1601,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	/** Going on after a song's end failed: said in the diagnostic log, tried again twice, then stopped cleanly. */
 	private void endFailed(MediaEngine engine, PlayableItem ended, Throwable err) {
 		if (isCancellation(err)) return;
-		DiagnosticLog.log("TRANSPORT", "engine ended: moving on failed", "item=" + ended, "attempt=" + endRetries,
-				"cause=" + describe(err));
+		DiagnosticLog.w(LogCat.TRANSPORT, "engine ended: moving on failed", "item=" + ended, "attempt=" + endRetries, "cause=" + describe(err));
 		if ((engine != getEngine()) || (endRetries >= END_RETRIES_MAX)) {
 			if (engine == getEngine()) {
 				endRetries = 0;
@@ -1618,7 +1613,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		handler.postDelayed(() -> {
 			// Nothing else happened meanwhile: the same song is still the one that ended.
 			if ((engine != getEngine()) || (engine.getSource() != ended)) return;
-			DiagnosticLog.log("TRANSPORT", "engine ended: trying again", "item=" + ended, "attempt=" + endRetries);
+			DiagnosticLog.log(LogCat.TRANSPORT, "engine ended: trying again", "item=" + ended, "attempt=" + endRetries);
 			playerTask.cancel();
 			playerTask = engineEnded(engine);
 		}, END_RETRY_DELAY_MS);
@@ -1657,8 +1652,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		}
 
 		Log.w(ex, msg);
-		DiagnosticLog.log("ENGINE", "error", engine.getClass().getSimpleName(), "item=" + i,
-				"cause=" + describe(ex), "location=" + ((i == null) ? null : safeHost(i)));
+		DiagnosticLog.e(LogCat.ENGINE, "engine error", "engine=" + engine.getClass().getSimpleName(), "item=" + i, "cause=" + describe(ex), "location=" + ((i == null) ? null : safeHost(i)));
 
 		if (tryAnotherEngine && (engine.getSource() != null) &&
 				(engine.getId() != MediaPrefs.MEDIA_ENG_YT)) {
@@ -1759,8 +1753,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	/** Only what belongs to the item playing right now goes out: a late answer for an earlier one is dropped. */
 	private void publishMetadata(MediaMetadataCompat m, PlayableItem forItem) {
 		if (forItem != getCurrentItem()) {
-			DiagnosticLog.log("META", "stale metadata dropped", "for=" + forItem,
-					"playing=" + getCurrentItem());
+			DiagnosticLog.log(LogCat.META, "stale metadata dropped", "for=" + forItem, "playing=" + getCurrentItem());
 			return;
 		}
 		metadata = m;
@@ -1781,7 +1774,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	@Override
 	public void onAudioFocusChange(int focusChange) {
 		Log.i("Audio focus event received: ", focusChange);
-		DiagnosticLog.logAndToast("AUDIOFOCUS", focusChange, "playing=" + isPlaying());
+		DiagnosticLog.logAndToast(LogCat.FOCUS, "audio focus changed", "change=" + focusChange, "playing=" + isPlaying());
 
 		switch (focusChange) {
 			case AUDIOFOCUS_GAIN:
@@ -1994,8 +1987,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		PlaybackStateCompat state = withSkipActions(newState);
 		PlaybackStateCompat prev = currentState;
 		if ((prev == null) || (prev.getState() != state.getState())) {
-			DiagnosticLog.log("STATE", stateName(state.getState()), "pos=" + state.getPosition(),
-					"item=" + getCurrentItem());
+			DiagnosticLog.log(LogCat.STATE, "playback state", "state=" + stateName(state.getState()), "pos=" + state.getPosition(), "item=" + getCurrentItem());
 		}
 		currentState = state;
 		int st = state.getState();
@@ -2409,7 +2401,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	private void fadeOutAndPause() {
 		MediaEngine eng = getEngine();
 		if ((eng == null) || !isPlaying()) {
-			DiagnosticLog.log("TIMER", "stopped (nothing was playing)");
+			DiagnosticLog.log(LogCat.TIMER, "stopped (nothing was playing)");
 			onStop(true);
 			return;
 		}
@@ -2418,10 +2410,10 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			if (timerFadeEngine != eng) return;
 			timerFadeEngine = null;
 			if (getEngine() == eng) {
-				DiagnosticLog.log("TIMER", "paused playback", "item=" + playingItemName());
+				DiagnosticLog.log(LogCat.TIMER, "paused playback", "item=" + playingItemName());
 				doPause();
 			} else {
-				DiagnosticLog.log("TIMER", "fade done, but another player took over: nothing paused");
+				DiagnosticLog.log(LogCat.TIMER, "fade done, but another player took over: nothing paused");
 			}
 		});
 	}
@@ -2472,11 +2464,10 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 		}
 
 		if (time == 0) {
-			if (playbackTimer != null) DiagnosticLog.log("TIMER", "cancelled", "left=" + getPlaybackTimer() + "s");
+			if (playbackTimer != null) DiagnosticLog.log(LogCat.TIMER, "cancelled", "left=" + getPlaybackTimer() + "s");
 			playbackTimer = null;
 		} else {
-			DiagnosticLog.log("TIMER", "set", "min=" + (time / 60.0f), "finishTrack=" + playbackTimerFinishTrack,
-					"item=" + playingItemName());
+			DiagnosticLog.log(LogCat.TIMER, "set", "min=" + (time / 60.0f), "finishTrack=" + playbackTimerFinishTrack, "item=" + playingItemName());
 			int delay = time * 1000;
 			PlaybackTimer timer =
 					this.playbackTimer = new PlaybackTimer(delay + System.currentTimeMillis());
@@ -2510,10 +2501,10 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 			playbackTimer = null;
 
 			if (playbackTimerFinishTrack && isPlaying()) {
-				DiagnosticLog.log("TIMER", "ran out: waiting for the song to end", "item=" + playingItemName());
+				DiagnosticLog.log(LogCat.TIMER, "ran out: waiting for the song to end", "item=" + playingItemName());
 				playbackTimerWaitingForTrackEnd = true;
 			} else {
-				DiagnosticLog.log("TIMER", "ran out: fading out", "playing=" + isPlaying(), "item=" + playingItemName());
+				DiagnosticLog.log(LogCat.TIMER, "ran out: fading out", "playing=" + isPlaying(), "item=" + playingItemName());
 				playbackTimerFinishTrack = false;
 				fadeOutAndPause();
 			}

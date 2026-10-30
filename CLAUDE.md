@@ -101,6 +101,9 @@ Conventions worth knowing:
   `UiUtils.showToast` / `Toast.makeText` for these in new code; a toast looks out of place, and on the
   car screen it's easy to miss. Older code still has some toasts (about 40 calls), so convert them when
   you're already working in that spot.
+- **Menus use the same row size everywhere** (`MenuStyle#styleItem`: 15sp text, 22dp icons, whatever the screen). The menu's own
+  size is scaled by the interface's text and icon size, which made Android Auto's context menus far bigger than the phone's; only
+  the least row height differs on the car screen (48dp against 44dp).
 - **Asking before something destructive** (reset, clear, delete): `UiUtils.showQuestion(ctx, title,
   message, icon).onSuccess(v -> ...)`, the app's own dialog view (works on the car screen, where
   Android Auto allows no real dialog windows).
@@ -1247,9 +1250,37 @@ This repo builds on every push via `.github/workflows/build-apk.yml` (which fans
 
 **Note: the user currently has no adb access.** Their only window into a running app is the in-app
 **Diagnostic log** (`fermata/.../util/DiagnosticLog.java`, shared from the app). So when you need
-runtime evidence, add `DiagnosticLog.log(...)` lines for exactly what you need (under an existing
-category such as STATE/TRANSPORT/ENGINE/BODY/MUSIC), push, and ask the user to reproduce and paste the
-Diagnostic log; don't hand them adb commands. The adb examples below only apply if that changes.
+runtime evidence, add `DiagnosticLog` lines for exactly what you need, push, and ask the user to
+reproduce and paste the Diagnostic log (its Copy button exports what the filters leave, under a header with the
+build's version); don't hand them adb commands. The adb examples below only apply if that changes.
+
+**Every log line has one format, and every new call must follow it** (details in the `DiagnosticLog` class comment):
+
+```
+MM-dd HH:mm:ss.SSS L/CATEGORY message | key=value key=value
+10-28 14:03:22.123 I/YT playing | id=dQw4w9WgXcQ title="Never Gonna Give You Up"
+```
+
+- `DiagnosticLog.log(LogCat.X, "message", "k=" + v, ...)` is information; `.d` debug (noisy detail), `.w` warning
+  (went wrong, handled or retried), `.e` error (did not work). A `Throwable` as a detail becomes `error=Class: message`.
+- The **category is a `LogCat` constant**, never a literal; add a constant (and its line in the `LogCat` table) rather than
+  inventing one at a call site. The Diagnostic log screen lists the categories that have lines, to filter by.
+- The **message is a short, fixed phrase** with no data in it (no ids, positions, names): the same event always has the same
+  message, so it can be searched and counted. Everything that varies goes in a `key=value` detail (camelCase key; a value with
+  spaces is quoted for you). A detail that is not `key=value` is kept as `note=...`, but do not rely on that.
+- The page's free-text traces (`YoutubeJsInterface`, `JS_AUDIO_TRACE`) are logged as `YT media <head>` with `trace=<rest>`.
+- Because the line format changed, the old shapes quoted in this file (`YT media ...`, `STATE start load: main late max=..`) now
+  read as the same words in this format: `STATE start load | mainLateMax=..ms over50=.. gc=.. blockingGc=.. blockingMs=..`.
+
+**The screen** (`ui/fragment/DiagnosticLogFragment`, opened by Settings > Diagnostics, which is now just a button to it, or by the
+main menu item below Share zrAuto app when its "Show the log in the main menu" switch (`DEBUG_LOG_MENU`, off by default) is on): the
+header card shows the running version (`DiagnosticLog#appVersion`, also the first lines of an export), the three diagnostics switches
+(recording, events on screen, main menu item; they live here, not in Settings) and how many entries the filters leave; then Copy / Share / Refresh / Clear, a search box (not on the car screen), a minimum level, the
+categories as chips (tap hides or shows, hold shows only that one), Newest first and Live. Filters live in statics of the
+fragment, so they survive reopening it but not an app restart. Rows are cards with a level-coloured bar, the time, a
+category-coloured pill, the message and the details with their keys in the accent; tap spreads a long one. **Classic** shows the filtered lines
+as one block of selectable plain text (as the screen used to). **Select** (or holding a line) picks lines (tap to pick or drop, Back leaves
+the mode); a bar over the list copies or shares just the picked lines (`DiagnosticLog#export`, header included), oldest first.
 
 This session cannot run the app, attach a debugger, or capture logcat — there's no device/emulator
 and no adb here. If an investigation is dragging on (a bug can't be root-caused from reading code
@@ -1294,6 +1325,82 @@ How to test, Checklist, Related issues, Screenshots; modelled on the gitmore.io 
   being asked.
 - Follow the template's headings; delete a section only if it truly does not apply. Say plainly what was not
   run (this cloud session cannot run the app) rather than ticking "verified on a device".
+
+## Sleep addon (tab, recording, score, settings)
+
+Built into `fermata` like Ambience (order 10, `hasSettings`), package `addon/sleep`; the plan and the reasons are in `docs/SLEEP_ADDON_PLAN.md`.
+**Never run on a device or compiled in the cloud session; read the `SLEEP` lines of the Diagnostic log first.**
+
+- **Recording** (`SleepTracker`, foreground `SleepService`, partial wake lock): "Start sleep" on the tab, the `SLEEP_TOGGLE` action or a floating button
+  begins a session. The accelerometer is summed per 30 s epoch (`SleepNight.EPOCH_SEC`; differences under a dead zone are ignored; 0..255), and with the
+  microphone allowed (Settings > Sleep > Move + sound) one half second a epoch is measured for loudness only: **no audio is ever stored**.
+  The night is saved to `sleep_nights.txt` (`SleepStore`, JSON lines, 3 years) and a draft every 5 minutes; a night whose app was killed is finished at the
+  next start (`recoverDraft`). Under 20 minutes is not a night. Settings are `SleepPrefs` (the same preference store as the Power settings). The movement scale
+  and thresholds (`MOVE_SCALE`, `THRESHOLD` in `SleepAnalyzer`) are first guesses that need real nights to tune.
+- **Battery cost of a night**: every epoch the session reads the battery current (`PowerUsageTracker#readNowMa`, with the unit and sign the Power tab learned) and the level;
+  a night keeps the average draw while not charging, the level at start and end and how many readings were taken while charging (`SleepNight#percentPerHour` is -1 when it
+  was mostly on a charger). The night card shows it, the insights average it over nights, and a tip suggests a charger or a lighter mode above 1.5 %/h. The Power tab's own
+  history does not count the night: it only samples while the app is open, playing or in a car.
+- **A tablet on a stand** (`MODE_STAND`, Settings > Sleep > Recording > On a stand): nothing moves with the sleeper, so the accelerometer is not used; the room's sound per epoch
+  stands in for movement (`SleepTracker#standActivity`: how far it is above the median of the last ten epochs, times 3, stored as the movement; so a steady loud sound such as the ambience or music reads as nothing, and a change the app itself makes to the ambience mix is held back for four epochs), and the night is marked `stand`. It is rougher than a phone on the bed and
+  needs the microphone allowed (without it the night is times only plus the screen). **The screen being on counts as awake** in every mode (`SCREEN_AWAKE`, default on): an `ACTION_SCREEN_ON`
+  receiver and `isInteractive()` set the epoch's awake flag, which the analysis honours even with no sensor data. First guesses, not tuned on a device.
+- **Analysis** (`SleepAnalyzer`, pure): sleep/wake from smoothed movement (or from "I'm awake" taps), onset = first 5 minutes asleep, awakenings = 1.5 minutes awake,
+  stages **estimated** from a 90 minute cycle shaped by stillness (always labelled so; leave it replaceable for imported data later). Score 0..100 =
+  duration, regular times, time to fall asleep and interruptions, weighted by the settings. The stored night has only raw epochs, so a better analysis
+  re-scores old nights.
+- **Tab** (`ui/fragment/SleepFragment`, built in code, Music palette): session card, night card (`SleepScoreView`: ring + four bars, prev/next night),
+  stages (`SleepHypnogramView`, drag to read), last 7/30 nights as bars (`SleepBarsView`: how long, or when), insights (`SleepInsights`). Charts draw in
+  when `SLEEP_ANIMATE` is on. **Ambience link**: the session can start the last mix with a length (`AmbienceEngine#resumeLast/setLengthMinutes`), notes which
+  sounds played (`SleepNight#mix`), and the insights compare nights with and without sounds (only with 7+ nights and 3+ of each) and name the sound that
+  goes with the best ones.
+- **Settings** (`SleepSettingsFragment`, a `ReorderListFragment` with no rows like Power settings): a live `SleepScoreView` of a made-up night
+  (`SleepAnalyzer#sample`) that moves as the goal and the weights change.
+- **Home widget** (`ui/home/widget/SleepWidget`, key `sleep`, only with the addon on): last night's score and length, the last week as little bars (from 3 cells
+  wide), a bar against the goal while a session runs, and a Start / Stop button (`Action.SLEEP_TOGGLE`); the header opens the tab.
+- **Bedtime reminder** (`SleepReminder`, `SleepReminderReceiver`, Settings > Sleep > Reminder, off by default): one inexact `RTC_WAKEUP` alarm for the usual bedtime less the
+  lead, set again from each run, at boot and whenever the bedtime or the reminder settings change; it posts a notification with a Start sleep button (nothing while a session
+  runs). Needs notifications allowed; the alarm is only set while the addon is on.
+- **Recording by itself** (`SleepPrefs.AUTO`, on by default; `SleepReminder#scheduleAuto/auto`): an inexact alarm at the usual bedtime, then every 10 minutes for 2 hours until the screen is
+  off, starts a session (`SleepTracker#startAuto`); one session per bedtime (`LAST_AUTO`, also set by a manual start). A session the app started ends by itself when the screen is switched
+  on in the morning (after 3 h, between wake time less 90 min and 5 h after it). A foreground notification always says so.
+- **Guide and help**: `ui/view/SleepGuide` is a five page card over the app (its pictures are drawn in `Art`, looping) shown on the first visit (`GUIDE_DONE`) and from the "?" in the session
+  card and Settings > Sleep > Help; Back closes it (`MainActivityDelegate#onBackPressed`). **Presets**: Settings > Sleep > The score picks the weights (Balanced 40/25/15/20, Long sleep,
+  Routine, Unbroken); the four sliders are under "Set the four parts yourself". `ReorderListFragment#createStickyTop` floats a card over the page (the Sleep settings' live preview).
+- **The tab is split** like Power and Data usage (`SleepFragment#updateSplit`: session, Ambience card and night on the left, charts and tips on the right, from 720dp or landscape); the settings
+  chip is the title bar's when wide and the tab's own when narrow (`ToolBarChip.update`), never both.
+- **Actions** `SLEEP` and `SLEEP_TOGGLE` are at the end of the enum (FAB list and Tools group, All in One, key bindings). Not done: Health Connect import.
+
+## Sleep and Diagnostic log: second round
+
+- **One night, however many sessions** (`SleepNight#sameNight/merge`, `SleepStore#mergeNeighbours`): a session that starts less than 2 h
+  (`MERGE_GAP_MS`) after the previous one ended is joined to it, on save and on load (so already stored pairs are joined at the next start);
+  the gap counts as awake (`FLAG_AWAKE` epochs), battery figures are weighted, mixes united. A short session (under 20 min) that
+  joins the last night is NOT kept (a 2 s misclick joined to the night made a long "awake" tail; `SleepNight#trimTrailingAwake` now also cuts such a tail, awake epochs past 5 min at the end, when nights load). Log: `SLEEP sessions joined into one night`.
+- **Hypnogram tooltip** is the accent with its own contrasting text (`SettingsStyle.Colors#onAccent`); the tile fill is see-through
+  and was forced opaque, which made bubble and text near-equal in some themes. Custom views must not use `tileFill | 0xFF000000`.
+- **Battery per epoch** (`SleepNight#power`: 0 unknown, 1..250 = current drawn in 10 mA steps, 255 charging; flags `FLAG_SCREEN`,
+  `FLAG_AMBIENCE` beside `FLAG_AWAKE`, always test bits) is kept per night, but there is no chart for it on the Sleep tab: the night's cost is the
+  Power usage tab's "Where it went" row **Recording a night** (`PowerUsageStore.CAT_SLEEP`, `CATS` is 4; files written with 3 are read and remapped in
+  `load`). `SleepTracker#bookPower` books every epoch into that store (also with the screen off, when the Power tab's own sampling is asleep), and
+  `PowerUsageTracker` books nothing while a session runs, so nothing is counted twice.
+- **Ambience card holds the length and the timer switch**: "Fade the sounds out after" as a - 30 min + stepper in five minute steps (`AMBIENCE_MIN`, same pref as before, 0 = until stopped) and "Stop what plays too"
+  (`STOP_PLAYBACK`), no longer in Settings; there is no Wind down chip. Starting a session sets the app's sleep timer to that length (`SleepPrefs.STOP_PLAYBACK`, on by default) and a session's
+  Stop takes back a timer it set. Needs the UI delegate (`MainActivityDelegate.getUiDelegate()`); with none the timer is skipped and logged.
+- **The guide's pages follow the finger** (`SleepGuide#swipe/follow/finish`): words and picture slide and fade with the drag, a quarter of the width or a fling turns the page; no wording about charging anywhere (not recommended).
+- **Ready card** says when recording starts by itself (`SleepReminder#nextAutoStart`).
+- **Diagnostic log filters live in the floating panel** (`DiagnosticLogFragment#buildFilters`): a quick row with one toggle per group
+  (Levels, Time, Categories, View). `fitQuick` (post-layout, only when the width changes, never inside a layout callback) lets the groups show
+  their full form in priority order while the width holds: levels as inline chips, then a name beside each icon; the rest stay icons whose tap opens a row
+  under the quick row (`animateRow`: height + alpha 220 ms, the list's spacer follows once at the end). Chip rows scroll sideways inside
+  `HomeFadeLayout` (edge fade, no built-in fading edge). The Time group (not on the car screen: it uses real dialogs) is presets plus From / To
+  pickers (`fromMs/toMs`, statics like the other filters); lines without a date are dropped while a time limit is on. A toggle is filled when its filter changes the lines.
+- **The screen remembers its view** (`DiagnosticLogFragment#loadView/saveView`, shared prefs `diagnostic_log_view`, saved in `onPause`): level, hidden categories, Newest first, Live and Classic survive an app restart; the search text and the time range do not. On a window under 600dp wide the four action buttons are icons in one line (`addIconButton`).
+- **Content padding under the tool bar after Home** (`MainActivityDelegate#computeContentInsets`): the bar's room is its resting place, so the whole `translationY` of the bar is taken off (not only the scroll slide), and `HomeFragment#switchingTo` asks `refreshContentInsets` again 120/400/900 ms later; Sleep, Power usage and Data usage sometimes stayed flush under the bar when entered from Home otherwise.
+- **Classic view keeps its selection**: a live refresh does not redraw the block while something is selected or a finger is down (`classicText`, `TouchState.isBusy`), and the same text is not set again. Live is now remembered across starts, which made the selection vanish every second.
+- **A new category on `PowerUsageStore` must be added to every per-category array**: `PowerWidget#CAT_NAMES/CAT_COLORS` still had three entries when `CATS` became 4, which crashed Home (the start page) at launch, so the app would not start.
+- **Log retention**: 1000 entries in memory (`MAX_ENTRIES`); `zrauto-diagnostics.log` mirrors them and is rewritten to the newest 500 once past
+  ~250 KB; no age limit; Clear deletes both; the file is reloaded when recording is switched on.
 
 ## When in doubt, ask
 

@@ -193,6 +193,7 @@ import me.aap.fermata.ui.view.SecondaryFloatingButton;
 import me.aap.fermata.ui.view.TertiaryFloatingButton;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.app.App;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.async.Promise;
@@ -1148,9 +1149,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (!videoMode) {
 			// Who took the fullscreen away (the comment column's log says whether it was open).
 			StackTraceElement[] st = new Throwable().getStackTrace();
-			DiagnosticLog.log("VIDEO", "left fullscreen", "comments open=" +
-					me.aap.fermata.ui.view.YoutubeCommentsView.isOpen(),
-					(st.length > 2) ? ("from " + st[1] + " via " + st[2]) : "");
+			DiagnosticLog.log(LogCat.VIDEO, "left fullscreen", "commentsOpen=" + me.aap.fermata.ui.view.YoutubeCommentsView.isOpen(), "from=" + ((st.length > 2) ? (st[1] + " via " + st[2]) : "-"));
 		}
 		ControlPanelView cp = getControlPanel();
 		videoBarsShown = false;
@@ -2083,7 +2082,9 @@ public class MainActivityDelegate extends ActivityDelegate
 			// Where the tool bar sits in full, even while it's scrolled away (see ScrollBarsController,
 			// which shrinks it toward its own top, so only its slide moves that): the content is
 			// always back at its top -- and the bars in full -- before this room is needed.
-			int tbTop = insetLoc1[1] - ((scrollBars != null) ? Math.round(scrollBars.getToolBarDy()) : 0);
+			// Its whole translation is taken off (the scroll slide, and any slide in or out another animation gives it),
+			// so a bar that is still sliding in when this is asked leaves the room it will have, not the one it has now.
+			int tbTop = insetLoc1[1] - Math.round(toolBar.getTranslationY());
 			// A little room below the floating tool bar pill, so the first item doesn't sit against it.
 			top = Math.max(0, (tbTop + toolBar.getHeight() + toIntPx(getContext(), 6)) -
 					contentTop);
@@ -2270,7 +2271,7 @@ public class MainActivityDelegate extends ActivityDelegate
 	}
 
 	public void keepScreenOn(boolean on) {
-		DiagnosticLog.log("STATE", "keep screen on", String.valueOf(on));
+		DiagnosticLog.log(LogCat.STATE, "keep screen on", "on=" + on);
 		if (on) getWindow().addFlags(FLAG_KEEP_SCREEN_ON);
 		else getWindow().clearFlags(FLAG_KEEP_SCREEN_ON);
 	}
@@ -2404,6 +2405,8 @@ public class MainActivityDelegate extends ActivityDelegate
 			return new me.aap.fermata.ui.fragment.AllInOneFragment();
 		} else if (id == R.id.fab_settings_fragment) {
 			return new me.aap.fermata.ui.fragment.FabSettingsFragment();
+		} else if (id == R.id.sleep_settings_fragment) {
+			return new me.aap.fermata.ui.fragment.SleepSettingsFragment();
 		} else if (id == R.id.power_settings_fragment) {
 			return new me.aap.fermata.ui.fragment.PowerSettingsFragment();
 		} else if (id == R.id.home_settings_fragment) {
@@ -2734,7 +2737,7 @@ public class MainActivityDelegate extends ActivityDelegate
 				// specific to this one dialog, calling showAlert() from this catch block would repeat
 				// the identical failure as its own error path. UiUtils.showToast() is a plain
 				// android.widget.Toast, entirely outside that machinery, so it's used here instead.
-				DiagnosticLog.log("DIALOG", "failed to show playlist dialog:", err);
+				DiagnosticLog.w(LogCat.UI, "failed to show playlist dialog", err);
 				Log.e(err, "Failed to show the playlist dialog");
 				UiUtils.showToast(ctx, R.string.playlist_add_failed);
 			}
@@ -2893,13 +2896,13 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Override
 	public void onBackPressed() {
 		if (isVideoMode()) {
-			DiagnosticLog.log("BACK", "in fullscreen video",
-					"comments open=" + me.aap.fermata.ui.view.YoutubeCommentsView.isOpen());
+			DiagnosticLog.log(LogCat.BACK, "back in fullscreen video", "commentsOpen=" + me.aap.fermata.ui.view.YoutubeCommentsView.isOpen());
 		}
 		if (me.aap.fermata.ui.welcome.WelcomeWizard.onBack()) return;
 		if (me.aap.fermata.ui.home.HomeModal.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.ShareSheet.dismissOpen()) return;
 		if (PlaylistPicker.dismissOpen()) return;
+		if (me.aap.fermata.ui.view.SleepGuide.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.YoutubeAlternativesPicker.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.YoutubeCommentsView.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.LyricsCard.dismissOpen()) return;
@@ -3339,7 +3342,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (keepsOverlaysAway(getActiveFragment()) || isVideoMode() || pipSuppressed) return;
 		ControlPanelView cp = getControlPanel();
 		if ((cp != null) && cp.isSuppressed()) {
-			DiagnosticLog.log("STATE", "control panel still suppressed after a tab switch: restored");
+			DiagnosticLog.log(LogCat.STATE, "control panel still suppressed after a tab switch: restored");
 		}
 		setOverlaysSuppressed(false);
 		getMediaServiceBinder().resyncControlPanel();

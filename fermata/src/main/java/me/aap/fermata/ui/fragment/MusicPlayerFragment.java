@@ -94,6 +94,7 @@ import me.aap.fermata.ui.view.ToolBarPill;
 import me.aap.fermata.ui.view.LoadingDimView;
 import me.aap.fermata.ui.view.AllInOneMenu;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.pref.PreferenceStore;
@@ -2091,8 +2092,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		MusicTrackItem cur = queue.getSavedCurrent();
 		int idx = (cur == null) ? -1 : order.indexOf(cur);
 		int target = (idx < 0) ? (next ? 0 : n - 1) : Math.floorMod(idx + (next ? 1 : -1), n);
-		DiagnosticLog.log("MUSIC", "skip from saved queue", "next=" + next, "from=" + cur,
-				"to=" + order.get(target));
+		DiagnosticLog.log(LogCat.MUSIC, "skip from saved queue", "next=" + next, "from=" + cur, "to=" + order.get(target));
 		MusicPlayer.playTrack(getActivityDelegate(), order.get(target), 0);
 	}
 
@@ -2608,9 +2608,9 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		} else if ((src != null) && eng.showOwnAudioEffects()) {
 			// The YouTube player: its own in-page equalizer, since Android's effects can't reach a web
 			// page's audio.
-			DiagnosticLog.log("MUSIC", "effects: engine's own (in-page equalizer)", "engine=" + eng);
+			DiagnosticLog.log(LogCat.MUSIC, "effects: engine's own (in-page equalizer)", "engine=" + eng);
 		} else {
-			DiagnosticLog.log("MUSIC", "effects unavailable", "engine=" + eng, "item=" + src);
+			DiagnosticLog.w(LogCat.MUSIC, "effects unavailable", "engine=" + eng, "item=" + src);
 			showMessage(getString((src == null) ? R.string.music_effects_play_first :
 					R.string.music_effects_unavailable));
 		}

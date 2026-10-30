@@ -54,6 +54,7 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.MediaItemListView;
 import me.aap.fermata.ui.view.VideoView;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.function.Cancellable;
 import me.aap.utils.function.Supplier;
@@ -120,28 +121,28 @@ public class MainCarActivity extends CarActivity implements ZrAutoActivity {
 
 	@Override
 	public void onStart() {
-		DiagnosticLog.log("HOST", "onStart");
+		DiagnosticLog.log(LogCat.HOST, "onStart");
 		super.onStart();
 		getActivityDelegate().onSuccess(MainActivityDelegate::onActivityStart);
 	}
 
 	@Override
 	public void onResume() {
-		DiagnosticLog.log("HOST", "onResume");
+		DiagnosticLog.log(LogCat.HOST, "onResume");
 		super.onResume();
 		getActivityDelegate().onSuccess(MainActivityDelegate::onActivityResume);
 	}
 
 	@Override
 	public void onPause() {
-		DiagnosticLog.log("HOST", "onPause");
+		DiagnosticLog.log(LogCat.HOST, "onPause");
 		getActivityDelegate().onSuccess(MainActivityDelegate::onActivityPause);
 		super.onPause();
 	}
 
 	@Override
 	public void onStop() {
-		DiagnosticLog.log("HOST", "onStop");
+		DiagnosticLog.log(LogCat.HOST, "onStop");
 		getActivityDelegate().onSuccess(MainActivityDelegate::onActivityStop);
 		super.onStop();
 	}
@@ -170,7 +171,7 @@ public class MainCarActivity extends CarActivity implements ZrAutoActivity {
 		// The single most important line in the trace for a display-takeover investigation: this is
 		// the only signal such a takeover gives at all. arg2 is logged undecoded -- its meaning isn't
 		// documented anywhere reachable (see above) -- precisely so a real capture can settle that.
-		DiagnosticLog.logAndToast("FOCUS", hasFocus ? "gained" : "LOST", "(arg2=" + arg2 + ')');
+		DiagnosticLog.logAndToast(LogCat.FOCUS, "window focus changed", "hasFocus=" + hasFocus, "arg2=" + arg2);
 		super.onWindowFocusChanged(hasFocus, arg2);
 		getActivityDelegate().onSuccess(a -> a.onActivityWindowFocusChanged(hasFocus));
 	}
@@ -178,7 +179,7 @@ public class MainCarActivity extends CarActivity implements ZrAutoActivity {
 	@Override
 	@SuppressWarnings("unchecked")
 	public void onDestroy() {
-		DiagnosticLog.log("HOST", "onDestroy");
+		DiagnosticLog.log(LogCat.HOST, "onDestroy");
 		super.onDestroy();
 		getActivityDelegate().onSuccess(MainActivityDelegate::onActivityDestroy)
 				.thenRun(() -> ActivityDelegate.setContextToDelegate(null));

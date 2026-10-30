@@ -236,8 +236,7 @@ public class FloatingBarsView extends View implements ViewTreeObserver.OnPreDraw
 		String kind = (why == null) ? null : why.replaceAll("[0-9.]+", "#");
 		if (java.util.Objects.equals(kind, fadeOffReason)) return;
 		fadeOffReason = kind;
-		me.aap.fermata.util.DiagnosticLog.log("BODY",
-				(why == null) ? "bottom fade on" : ("bottom fade off: " + why));
+		me.aap.fermata.util.DiagnosticLog.d(me.aap.fermata.util.LogCat.BODY, "bottom fade", "state=" + ((why == null) ? "on" : "off"), "why=" + why);
 	}
 
 	/** How much of a bar is showing: 0 when it's gone, else its (transition) alpha. */

@@ -68,6 +68,7 @@ import me.aap.fermata.ui.view.EffectsUi;
 import me.aap.fermata.ui.view.SwitchStyle;
 import me.aap.fermata.ui.view.TopToast;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.app.App;
 import me.aap.utils.pref.PreferenceStore;
 
@@ -255,7 +256,7 @@ public final class WelcomeWizard {
 		}
 		ViewGroup host = a.findViewById(R.id.main_activity);
 		if ((host == null) || (host.getWidth() == 0)) {
-			DiagnosticLog.log("WELCOME", "no view to show the wizard over");
+			DiagnosticLog.log(LogCat.WELCOME, "no view to show the wizard over");
 			return;
 		}
 		WelcomeWizard w = new WelcomeWizard(a);
@@ -853,7 +854,7 @@ public final class WelcomeWizard {
 		closePicker();
 		if (settle != null) settle.cancel();
 		a.getPrefs().applyBooleanPref(DONE, true);
-		DiagnosticLog.log("WELCOME", finished ? "finished" : "closed", "page=" + index);
+		DiagnosticLog.log(LogCat.WELCOME, "wizard ended", "how=" + (finished ? "finished" : "closed"), "page=" + index);
 		runAfter();
 		if (hidden) {
 			// Out of sight already (a detour that did not come back): nothing to fade.
@@ -1110,7 +1111,7 @@ public final class WelcomeWizard {
 				setChoice(cards[1], !carChoice);
 				// The steps after this one come and go with the answer.
 				progress.setFraction((index + 1f) / active().size());
-				DiagnosticLog.log("WELCOME", "android auto", yes);
+				DiagnosticLog.log(LogCat.WELCOME, "android auto answered", "yes=" + yes);
 			});
 			// Both as tall as the taller one.
 			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, MATCH_PARENT, 1f);
@@ -1355,7 +1356,7 @@ public final class WelcomeWizard {
 				ps.applyIntPref((kind == 0) ? k.getActionPref() : k.getLongActionPref(), act.ordinal());
 				for (TextView c : bindingChips) updateChip(c);
 				closePicker();
-				DiagnosticLog.log("WELCOME", "key binding", k.name(), kind == 0 ? "press" : "hold", act.name());
+				DiagnosticLog.log(LogCat.WELCOME, "key binding", "key=" + k.name(), "kind=" + (kind == 0 ? "press" : "hold"), "action=" + act.name());
 			});
 			list.addView(item, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 		}

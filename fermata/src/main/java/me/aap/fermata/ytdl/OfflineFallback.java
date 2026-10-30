@@ -17,6 +17,7 @@ import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.TopToast;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.function.BooleanSupplier;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.pref.PreferenceStore.Pref;
@@ -44,7 +45,7 @@ public final class OfflineFallback {
 	 */
 	public static boolean onStall(MainActivityDelegate a) {
 		if (!prefs().getBooleanPref(ON_STALL) || !hasOffline(a)) return false;
-		DiagnosticLog.log("NETWORK", "stalled: playing downloaded by itself");
+		DiagnosticLog.log(LogCat.NETWORK, "stalled: playing downloaded by itself");
 		TopToast.show(R.drawable.network_weak, R.string.offline_on_stall_toast);
 		playDownloaded(a, null);
 		return true;
@@ -89,11 +90,10 @@ public final class OfflineFallback {
 						// Only the list's offline songs, from that one on, become the Music queue: Next
 						// never goes back to streaming.
 						List<PlayableItem> offline = offlineFrom(list, next);
-						DiagnosticLog.log("YTDL", "offline fallback: the list's downloaded songs", "first=" + next,
-								"count=" + offline.size());
+						DiagnosticLog.log(LogCat.YTDL, "offline fallback: the list's downloaded songs", "first=" + next, "count=" + offline.size());
 						MusicPlayer.play(a, offline, 0);
 					} else if (next != null) {
-						DiagnosticLog.log("YTDL", "offline fallback: next downloaded in the list", "item=" + next);
+						DiagnosticLog.log(LogCat.YTDL, "offline fallback: next downloaded in the list", "item=" + next);
 						if (!YtOffline.tryPlayLocal(a, next, 0)) a.getMediaServiceBinder().playItem(next);
 					} else {
 						playQueueOrAll(a, none);

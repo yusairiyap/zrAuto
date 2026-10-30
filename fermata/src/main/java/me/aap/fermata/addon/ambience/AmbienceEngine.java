@@ -24,6 +24,7 @@ import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
 import me.aap.fermata.ui.view.TopToast;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.function.BooleanSupplier;
 import me.aap.utils.function.IntSupplier;
 import me.aap.utils.function.Supplier;
@@ -117,7 +118,7 @@ public final class AmbienceEngine {
 		@Override
 		public void onReceive(Context ctx, Intent intent) {
 			if (prefs().getBooleanPref(NOISY) && anyOn()) {
-				DiagnosticLog.log("AMBIENCE", "output changed, fading out");
+				DiagnosticLog.log(LogCat.AMBIENCE, "output changed, fading out");
 				stopAll();
 			}
 		}
@@ -382,7 +383,7 @@ public final class AmbienceEngine {
 			unregisterNoisy();
 		}
 		if (!on) scheduleSampleRelease(e);
-		DiagnosticLog.log("AMBIENCE", e.key, on ? "on" : "off");
+		DiagnosticLog.log(LogCat.AMBIENCE, "sound switched", "sound=" + e.key, "state=" + (on ? "on" : "off"));
 		notifyChanged();
 	}
 
@@ -481,7 +482,7 @@ public final class AmbienceEngine {
 	public void setHeld(boolean h) {
 		if (held == h) return;
 		held = h;
-		DiagnosticLog.log("AMBIENCE", h ? "held back: the playback paused" : "released: the playback went on");
+		DiagnosticLog.log(LogCat.AMBIENCE, "hold changed", "held=" + h);
 		if (h) {
 			// Nothing is heard, so the timer waits too instead of running out in silence.
 			if (endAt != 0) {
@@ -542,7 +543,7 @@ public final class AmbienceEngine {
 	private void onTimerEnd() {
 		endAt = 0;
 		if (!anyOn()) return;
-		DiagnosticLog.log("AMBIENCE", "timer ended");
+		DiagnosticLog.log(LogCat.AMBIENCE, "timer ended");
 		stopAll();
 		TopToast.show(R.drawable.ambience, R.string.ambience_timer_done);
 	}
@@ -555,7 +556,7 @@ public final class AmbienceEngine {
 					ContextCompat.RECEIVER_NOT_EXPORTED);
 			noisyRegistered = true;
 		} catch (Throwable ex) {
-			DiagnosticLog.log("AMBIENCE", "noisy receiver failed", ex);
+			DiagnosticLog.w(LogCat.AMBIENCE, "noisy receiver failed", ex);
 		}
 	}
 
@@ -622,10 +623,10 @@ public final class AmbienceEngine {
 					.setOnAudioFocusChangeListener(change -> {
 					}).build();
 			int res = am.requestAudioFocus(r);
-			DiagnosticLog.log("AMBIENCE", "audio focus", "result=" + res);
+			DiagnosticLog.log(LogCat.AMBIENCE, "audio focus", "result=" + res);
 			if (res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) focus = r;
 		} catch (RuntimeException ex) {
-			DiagnosticLog.log("AMBIENCE", "audio focus failed", ex);
+			DiagnosticLog.w(LogCat.AMBIENCE, "audio focus failed", ex);
 		}
 	}
 
@@ -672,8 +673,7 @@ public final class AmbienceEngine {
 					.setTransferMode(AudioTrack.MODE_STREAM)
 					.build();
 			track.play();
-			DiagnosticLog.log("AMBIENCE", "track playing", "state=" + track.getPlayState(),
-					"device=" + ((track.getRoutedDevice() == null) ? "none" : track.getRoutedDevice().getType()));
+			DiagnosticLog.log(LogCat.AMBIENCE, "track playing", "state=" + track.getPlayState(), "device=" + ((track.getRoutedDevice() == null) ? "none" : track.getRoutedDevice().getType()));
 
 			float[] ml = new float[BLOCK], mr = new float[BLOCK];
 			float[] vl = new float[BLOCK], vr = new float[BLOCK];
@@ -752,7 +752,7 @@ public final class AmbienceEngine {
 				}
 				int w = track.write(out, 0, out.length);
 				if (w < 0) {
-					DiagnosticLog.log("AMBIENCE", "write failed", w);
+					DiagnosticLog.w(LogCat.AMBIENCE, "write failed", "result=" + w);
 					break;
 				}
 				if (audible) {
@@ -768,7 +768,7 @@ public final class AmbienceEngine {
 				}
 			}
 		} catch (Throwable ex) {
-			DiagnosticLog.log("AMBIENCE", "audio failed", ex);
+			DiagnosticLog.w(LogCat.AMBIENCE, "audio failed", ex);
 			main.post(() -> {
 				stopAll();
 				TopToast.show(R.drawable.ambience, R.string.ambience_unsupported);

@@ -128,6 +128,13 @@ public class HomeFragment extends MainActivityFragment {
 			tb.setAlpha(0f);
 			tb.setVisibility(View.INVISIBLE);
 		}
+		// The tabs that keep their padding clear of the tool bar (Sleep, Power usage, Data usage ...) can ask while the bar is
+		// still coming back, and nothing moves it again afterwards: ask once more when it has settled.
+		if (tb != null) {
+			tb.postDelayed(a::refreshContentInsets, 120);
+			tb.postDelayed(a::refreshContentInsets, 400);
+			tb.postDelayed(a::refreshContentInsets, 900);
+		}
 	}
 
 	/** True when the tab left is shown as a picture over Home (see ghostOf), which then needs no fade of its own. */

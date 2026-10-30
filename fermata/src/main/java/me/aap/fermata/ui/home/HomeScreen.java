@@ -38,6 +38,7 @@ import me.aap.fermata.action.CarNav;
 import me.aap.fermata.addon.power.PowerSaver;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.view.BehindBarsLayers;
 import me.aap.fermata.ui.view.InfoOverlayView;
@@ -413,7 +414,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 				// settled and its widgets rise with it, as the Music tab does.
 				root.postDelayed(() -> {
 					// Always faded in: if Home is not shown yet, the page must not stay blank (the bars still draw).
-					if (!shown) DiagnosticLog.log("STATE", "home quiet start", "not shown yet, faded in anyway");
+					if (!shown) DiagnosticLog.log(LogCat.STATE, "quiet start: not shown yet, faded in anyway");
 					root.animate().alpha(1f).setDuration(350).start();
 					if (shown) enter.run();
 				}, QUIET_MS);
@@ -449,7 +450,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		settling = true;
 		App.get().getHandler().postDelayed(() -> android.os.Looper.myQueue().addIdleHandler(() -> {
 			settled = true;
-			DiagnosticLog.log("STATE", "home settled", "waiting=" + afterSettle.size());
+			DiagnosticLog.log(LogCat.STATE, "home settled", "waiting=" + afterSettle.size());
 			runNextSettled();
 			return false;
 		}), ms);
@@ -750,7 +751,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 	private void setEditing(boolean on) {
 		if (editing == on) return;
 		editing = on;
-		DiagnosticLog.log("HOME", "edit mode", on ? "on" : "off");
+		DiagnosticLog.log(LogCat.HOME, "edit mode", "on=" + on);
 		grid.setEditing(on);
 		applyEditUi(true);
 		if (!on) model.save();
@@ -958,7 +959,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		// Once a second at most: while the side pill slides this changes on every frame.
 		if (((extraLeft != l) || (extraRight != r)) && (SystemClock.uptimeMillis() - sideLoggedAt > 1000)) {
 			sideLoggedAt = SystemClock.uptimeMillis();
-			DiagnosticLog.log("HOME", "side room", "left=" + l, "right=" + r, "root=" + root.getWidth());
+			DiagnosticLog.log(LogCat.HOME, "side room", "left=" + l, "right=" + r, "root=" + root.getWidth());
 		}
 		extraLeft = l;
 		extraRight = r;
@@ -1220,7 +1221,7 @@ public final class HomeScreen implements HomeHost, HomeGridLayout.Listener, Pref
 		if (keyboardAnim != null) keyboardAnim.cancel();
 		keyboardAnim = null;
 		if (want == keyboardLift) return;
-		DiagnosticLog.log("HOME", "keyboard lift", "ime=" + ime, "lift=" + want);
+		DiagnosticLog.log(LogCat.HOME, "keyboard lift", "ime=" + ime, "lift=" + want);
 		ValueAnimator va = ValueAnimator.ofInt(keyboardLift, want);
 		va.setDuration(220);
 		va.setInterpolator(new DecelerateInterpolator());

@@ -1353,28 +1353,11 @@ public class SettingsFragment extends MainActivityFragment
 	 * the problem happens, which by definition isn't next to a laptop with adb.
 	 */
 	private void addDiagnostics(MainActivityDelegate a, PreferenceSet set) {
-		PreferenceSet sub = set.subSet(o -> {
+		// The recording, event toasts and main menu switches live on the log's own screen now, with the log itself.
+		set.addButton(o -> {
 			o.title = R.string.diagnostics;
 			o.subtitle = R.string.prefs_sub_diagnostics;
-			o.icon = R.drawable.settings;
-		});
-		sub.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.DEBUG_LOG_ENABLED;
-			o.title = R.string.debug_log_enabled;
-			o.subtitle = R.string.debug_log_enabled_sub;
-		});
-		var loggingOn = PrefCondition.create(a.getPrefs(), MainActivityPrefs.DEBUG_LOG_ENABLED);
-		sub.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.DEBUG_LOG_TOASTS;
-			o.title = R.string.debug_log_toasts;
-			o.subtitle = R.string.debug_log_toasts_sub;
-			o.visibility = loggingOn.copy();
-		});
-		sub.addButton(o -> {
-			o.title = R.string.diagnostic_log_view;
-			o.subtitle = R.string.diagnostic_log_view_sub;
+			o.icon = R.drawable.diagnostic_log;
 			o.onClick = () -> a.showFragment(R.id.diagnostic_log_fragment);
 		});
 	}

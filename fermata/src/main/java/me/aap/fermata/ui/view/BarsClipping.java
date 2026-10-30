@@ -13,6 +13,7 @@ import java.util.WeakHashMap;
 
 import me.aap.fermata.R;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 
 /**
  * Lets a tab's background draw out past its own edges, under the status bar and the navigation bar, by switching
@@ -71,6 +72,6 @@ public final class BarsClipping {
 			g.setClipChildren(s.children);
 			g.setClipToPadding(s.toPadding);
 		}
-		if (states.isEmpty()) DiagnosticLog.log("BODY", "containers clipped again");
+		if (states.isEmpty()) DiagnosticLog.log(LogCat.BODY, "containers clipped again");
 	}
 }

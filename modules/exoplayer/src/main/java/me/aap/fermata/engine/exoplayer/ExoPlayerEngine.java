@@ -56,6 +56,7 @@ import me.aap.fermata.addon.SubGenAddon;
 import me.aap.fermata.addon.TranslateAddon;
 import me.aap.fermata.addon.TranslateAddon.Translator;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.fermata.media.engine.AudioEffects;
 import me.aap.fermata.media.engine.AudioStreamInfo;
 import me.aap.fermata.media.engine.MediaEngine;
@@ -184,7 +185,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		boolean musicTrack = source instanceof me.aap.fermata.addon.music.MusicTrackItem;
 		audioProc.setBypass(musicTrack);
 		if (musicTrack && source.getPrefs().getBooleanPref(me.aap.fermata.addon.SubGenAddon.ENABLED)) {
-			DiagnosticLog.log("ENGINE", "SubGen off for a Music tab track", "item=" + source);
+			DiagnosticLog.log(LogCat.ENGINE, "SubGen off for a Music tab track", "item=" + source);
 		}
 		// A downloaded YouTube video sounds as it does on YouTube: the page's equalizer applies.
 		stageProc.setFx(me.aap.fermata.ytdl.YtOffline.isDownloadedYoutube(source));
@@ -284,13 +285,8 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 					.contains(C.TRACK_TYPE_VIDEO);
 			Format a = player.getAudioFormat();
 			Format v = player.getVideoFormat();
-			DiagnosticLog.log("ENGINE", midPlay ? "no progress while playing" : "no progress after start",
-					"item=" + src, "pos=" + now, "videoOff=" + off, "screen=" + (shown != null) +
-							(((shown != null) && !hasScreen()) ? "(gone)" : ""),
-					"hiddenSurface=" + (dummySurface != null), "retried=" + stallRetried,
-					"nudged=" + stallNudged, "subGen=" + (!audioProc.isBypassed() && audioProc.isTranscribing()),
-					"audio=" + ((a == null) ? null : a.sampleMimeType + "/" + a.sampleRate + "Hz/" + a.channelCount + "ch"),
-					"video=" + ((v == null) ? null : v.sampleMimeType + "/" + v.width + "x" + v.height));
+			DiagnosticLog.w(LogCat.ENGINE, "no progress", "phase=" + (midPlay ? "playing" : "start"), "item=" + src, "pos=" + now, "videoOff=" + off, "screen=" + (shown != null) +
+							(((shown != null) && !hasScreen()) ? "(gone)" : ""), "hiddenSurface=" + (dummySurface != null), "retried=" + stallRetried, "nudged=" + stallNudged, "subGen=" + (!audioProc.isBypassed() && audioProc.isTranscribing()), "audio=" + ((a == null) ? null : a.sampleMimeType + "/" + a.sampleRate + "Hz/" + a.channelCount + "ch"), "video=" + ((v == null) ? null : v.sampleMimeType + "/" + v.width + "x" + v.height));
 			if (!audioProc.isBypassed() && audioProc.isTranscribing() && !midPlay && (shown != null) &&
 					(subGenWaits++ < 3)) {
 				// A video watched with generated subtitles waits for the first of them at its start, by
@@ -302,8 +298,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 				// Subtitle generation is what holds the sound (and with it the picture, which follows
 				// the sound's clock): off for this track, the seek's flush takes it out of the pipeline.
 				audioProc.setBypass(true);
-				DiagnosticLog.log("ENGINE", "stall: SubGen holding the sound, off for this track",
-						"item=" + src, "pos=" + now);
+				DiagnosticLog.w(LogCat.ENGINE, "stall: SubGen holding the sound, off for this track", "item=" + src, "pos=" + now);
 				player.seekTo(now);
 				checkStall(gen, src, now, midPlay, 4000);
 				return;
@@ -313,7 +308,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 				stallRetried = true;
 				String id = src.getOrigId();
 				if (id != null) keepPicture.add(id);
-				DiagnosticLog.log("ENGINE", "stall: picture switched on", "item=" + src);
+				DiagnosticLog.w(LogCat.ENGINE, "stall: picture switched on", "item=" + src);
 				setVideoTrackDisabled(false);
 				// With nowhere to show it too: what is stuck with the picture off is also stuck without a screen.
 				if ((shown == null) && (dummySurface == null)) useDummySurface();
@@ -324,7 +319,7 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 			if (!off && (shown != null) && !hasScreen() && ((sid == null) || !keepPicture.contains(sid))) {
 				// Stuck with the picture on and a screen that is gone (sent to the background): the
 				// picture goes off, the seek's flush gets the sound going again without it.
-				DiagnosticLog.log("ENGINE", "stall: screen gone, picture off", "item=" + src);
+				DiagnosticLog.w(LogCat.ENGINE, "stall: screen gone, picture off", "item=" + src);
 				setVideoTrackDisabled(true);
 				player.seekTo(now);
 				checkStall(gen, src, now, midPlay, 3000);
@@ -333,19 +328,19 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 			if (!off && !hasScreen() && (dummySurface == null) && useDummySurface()) {
 				// Stuck with the picture on but nowhere to show it: given a surface of its own, which
 				// is what a file that plays on screen but not off it needs.
-				DiagnosticLog.log("ENGINE", "stall: given a hidden surface", "item=" + src);
+				DiagnosticLog.w(LogCat.ENGINE, "stall: given a hidden surface", "item=" + src);
 				checkStall(gen, src, now, midPlay, 3000);
 				return;
 			}
 			if (midPlay && !stallNudged) {
 				// Frozen part way through: a seek to where it is restarts the decoders from a key frame.
 				stallNudged = true;
-				DiagnosticLog.log("ENGINE", "stall: seek in place", "item=" + src, "pos=" + now);
+				DiagnosticLog.w(LogCat.ENGINE, "stall: seek in place", "item=" + src, "pos=" + now);
 				player.seekTo(now);
 				checkStall(gen, src, now, true, 4000);
 				return;
 			}
-			DiagnosticLog.log("ENGINE", "stall: given up, reported as an error", "item=" + src);
+			DiagnosticLog.e(LogCat.ENGINE, "stall: given up, reported as an error", "item=" + src);
 			listener.onEngineError(this, new java.io.IOException("Playback stalled"));
 		}, delay);
 	}
@@ -504,10 +499,10 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 		if ((id != null) && keepPicture.contains(id)) {
 			if (dummySurface == null) useDummySurface();
 			else player.setVideoSurface(dummySurface);
-			DiagnosticLog.log("ENGINE", "screen gone: hidden surface for the picture", "item=" + s);
+			DiagnosticLog.log(LogCat.ENGINE, "screen gone: hidden surface for the picture", "item=" + s);
 			return;
 		}
-		DiagnosticLog.log("ENGINE", "screen gone: picture off, the sound plays on", "item=" + s);
+		DiagnosticLog.log(LogCat.ENGINE, "screen gone: picture off, the sound plays on", "item=" + s);
 		setVideoTrackDisabled(true);
 	}
 
@@ -590,11 +585,8 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 			}
 			Format f = player.getVideoFormat();
 			boolean valid = v.getVideoSurface().getHolder().getSurface().isValid();
-			DiagnosticLog.log("ENGINE", "no picture 3 s after the screen was given", "item=" + src,
-					"videoOff=" + player.getTrackSelectionParameters().disabledTrackTypes
-							.contains(C.TRACK_TYPE_VIDEO),
-					"format=" + ((f == null) ? null : f.sampleMimeType + "/" + f.width + "x" + f.height),
-					"surfaceValid=" + valid);
+			DiagnosticLog.w(LogCat.ENGINE, "no picture 3 s after the screen was given", "item=" + src, "videoOff=" + player.getTrackSelectionParameters().disabledTrackTypes
+							.contains(C.TRACK_TYPE_VIDEO), "format=" + ((f == null) ? null : f.sampleMimeType + "/" + f.width + "x" + f.height), "surfaceValid=" + valid);
 			setVideoTrackDisabled(false);
 			if (valid) {
 				player.clearVideoSurface();
@@ -815,13 +807,12 @@ public class ExoPlayerEngine extends MediaEngineBase implements Player.Listener 
 	@Override
 	public void onPlayWhenReadyChanged(boolean playWhenReady, int reason) {
 		if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) return;
-		DiagnosticLog.log("ENGINE", "exo playWhenReady=" + playWhenReady, "reason=" + reason,
-				"item=" + source);
+		DiagnosticLog.log(LogCat.ENGINE, "exo playWhenReady changed", "playWhenReady=" + playWhenReady, "reason=" + reason, "item=" + source);
 	}
 
 	@Override
 	public void onPlaybackSuppressionReasonChanged(int reason) {
-		DiagnosticLog.log("ENGINE", "exo playback suppression", "reason=" + reason, "item=" + source);
+		DiagnosticLog.log(LogCat.ENGINE, "exo playback suppression", "reason=" + reason, "item=" + source);
 	}
 
 	@Override

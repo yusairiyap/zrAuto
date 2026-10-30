@@ -29,6 +29,7 @@ import java.util.zip.ZipOutputStream;
 
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.log.Log;
 import me.aap.utils.pref.PrefUtils;
 import me.aap.utils.pref.PreferenceStore;
@@ -88,8 +89,7 @@ public final class BackupManager {
 		long due = ps.getLongPref(AUTO_BACKUP_DUE);
 		long now = System.currentTimeMillis();
 		if (ps.getBooleanPref(AUTO_BACKUP) && (due != 0) && (now >= due)) {
-			DiagnosticLog.log(TAG, "app started past the backup time, backing up now",
-					"due=" + stamp(due), "now=" + stamp(now));
+			DiagnosticLog.log(LogCat.BACKUP, "app started past the backup time, backing up now", "due=" + stamp(due), "now=" + stamp(now));
 			runScheduled(ctx, "catch-up at start", null);
 		} else {
 			schedule(ctx);
@@ -105,7 +105,7 @@ public final class BackupManager {
 	static void runScheduled(Context ctx, String why, @Nullable Runnable done) {
 		PreferenceStore ps = FermataApplication.get().getPreferenceStore();
 		if (!ps.getBooleanPref(AUTO_BACKUP)) {
-			DiagnosticLog.log(TAG, "skipped (" + why + "), automatic backup is off");
+			DiagnosticLog.log(LogCat.BACKUP, "skipped, automatic backup is off", "why=" + why);
 			if (done != null) done.run();
 			return;
 		}
@@ -115,21 +115,20 @@ public final class BackupManager {
 		long gap = INTERVAL_DAYS[clampIdx(ps.getIntPref(AUTO_BACKUP_INTERVAL), INTERVAL_DAYS.length)] *
 				24L * 3600_000L - 6L * 3600_000L;
 		if ((last != 0) && (System.currentTimeMillis() - last < gap)) {
-			DiagnosticLog.log(TAG, "skipped (" + why + "), the last backup was only " +
-					((System.currentTimeMillis() - last) / 60_000L) + " min ago");
+			DiagnosticLog.log(LogCat.BACKUP, "skipped, the last backup was recent", "why=" + why, "minutesAgo=" + ((System.currentTimeMillis() - last) / 60_000L));
 			schedule(ctx.getApplicationContext());
 			if (done != null) done.run();
 			return;
 		}
 		if (!running.compareAndSet(false, true)) {
-			DiagnosticLog.log(TAG, "skipped (" + why + "), another backup is running");
+			DiagnosticLog.log(LogCat.BACKUP, "skipped, another backup is running", "why=" + why);
 			if (done != null) done.run();
 			return;
 		}
 		Context app = ctx.getApplicationContext();
 		new Thread(() -> {
 			try {
-				DiagnosticLog.log(TAG, "starting (" + why + ")");
+				DiagnosticLog.log(LogCat.BACKUP, "starting", "why=" + why);
 				String name = runBackup(app);
 				// A failure waits for the next interval too, rather than retrying every minute.
 				if (name == null) ps.applyLongPref(AUTO_BACKUP_LAST, System.currentTimeMillis());
@@ -238,8 +237,7 @@ public final class BackupManager {
 				prune(tree, keep);
 			} else {
 				if (!dir.isEmpty()) {
-					DiagnosticLog.log(TAG, "picked folder not writable, using the app's own folder",
-							"dir=" + dir);
+					DiagnosticLog.log(LogCat.BACKUP, "picked folder not writable, using the app's own folder", "dir=" + dir);
 				}
 				File d = localDir(ctx);
 				if (d == null) return null;
@@ -255,11 +253,11 @@ public final class BackupManager {
 			}
 
 			ps.applyLongPref(AUTO_BACKUP_LAST, System.currentTimeMillis());
-			DiagnosticLog.log(TAG, "saved", name, "keep=" + keep);
+			DiagnosticLog.log(LogCat.BACKUP, "saved", "file=" + name, "keep=" + keep);
 			return name;
 		} catch (Exception ex) {
 			Log.e(ex, "Automatic backup failed");
-			DiagnosticLog.log(TAG, "failed", String.valueOf(ex));
+			DiagnosticLog.w(LogCat.BACKUP, "failed", ex);
 			return null;
 		}
 	}
@@ -307,15 +305,13 @@ public final class BackupManager {
 		if (!ps.getBooleanPref(AUTO_BACKUP)) {
 			am.cancel(pi);
 			ps.applyLongPref(AUTO_BACKUP_DUE, 0);
-			DiagnosticLog.log(TAG, "automatic backup off, alarm cancelled");
+			DiagnosticLog.log(LogCat.BACKUP, "automatic backup off, alarm cancelled");
 			return;
 		}
 
 		long at = nextRun(ps, System.currentTimeMillis());
 		ps.applyLongPref(AUTO_BACKUP_DUE, at);
-		DiagnosticLog.log(TAG, "alarm set for " + stamp(at),
-				"last=" + ((ps.getLongPref(AUTO_BACKUP_LAST) == 0) ? "never" :
-						stamp(ps.getLongPref(AUTO_BACKUP_LAST))));
+		DiagnosticLog.log(LogCat.BACKUP, "alarm set", "at=" + stamp(at), "last=" + ((ps.getLongPref(AUTO_BACKUP_LAST) == 0) ? "never" : stamp(ps.getLongPref(AUTO_BACKUP_LAST))));
 		try {
 			// Inexact: it may run a little late, which a backup doesn't mind, and needs no special
 			// permission. Not a repeating alarm: the next one is set from each run, so a change of
@@ -324,7 +320,7 @@ public final class BackupManager {
 			else am.set(AlarmManager.RTC, at, pi);
 		} catch (Exception ex) {
 			Log.e(ex, "Failed to schedule the automatic backup");
-			DiagnosticLog.log(TAG, "failed to set the alarm", String.valueOf(ex));
+			DiagnosticLog.w(LogCat.BACKUP, "failed to set the alarm", ex);
 		}
 	}
 

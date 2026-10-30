@@ -44,6 +44,7 @@ import me.aap.fermata.ui.view.ShareReceiveCard;
 import me.aap.fermata.ui.view.TopConfirm;
 import me.aap.fermata.ui.view.TopPopup;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.log.Log;
 
 /**
@@ -526,7 +527,7 @@ public final class ShareManager {
 					finish(t, State.FAILED, (ex.getMessage() != null) ? ex.getMessage() : ex.toString());
 				}
 			} else {
-				DiagnosticLog.log("SHARE", "bad incoming connection:", ex);
+				DiagnosticLog.w(LogCat.SHARE, "bad incoming connection", ex);
 			}
 			closeQuietly(s);
 		}

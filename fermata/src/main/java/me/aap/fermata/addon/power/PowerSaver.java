@@ -19,6 +19,7 @@ import me.aap.fermata.addon.data.DataSessionLimit;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.TopToast;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.utils.function.IntSupplier;
 import me.aap.utils.pref.PreferenceStore;
@@ -179,8 +180,7 @@ public final class PowerSaver {
 		}
 		active = want;
 		reason = why;
-		DiagnosticLog.log("POWER", "saver", active ? "on" : "off", "reason=" + (active ?
-				FermataApplication.get().getString(why) : "-"));
+		DiagnosticLog.log(LogCat.POWER, "saver changed", "state=" + (active ? "on" : "off"), "reason=" + (active ? FermataApplication.get().getString(why) : "-"));
 		applyAll();
 		if (changed || announce) {
 			TopToast.show(R.drawable.power_saver, active ? R.string.power_saver_on : R.string.power_saver_off);
@@ -233,7 +233,7 @@ public final class PowerSaver {
 			lp.preferredRefreshRate = rate;
 			w.setAttributes(lp);
 		} catch (Exception ex) {
-			DiagnosticLog.log("POWER", "saver could not change the window:", ex);
+			DiagnosticLog.w(LogCat.POWER, "saver could not change the window", ex);
 		}
 	}
 
@@ -250,7 +250,7 @@ public final class PowerSaver {
 				d.resumeAll();
 			}
 		} catch (Exception ex) {
-			DiagnosticLog.log("POWER", "saver could not pause the downloads:", ex);
+			DiagnosticLog.w(LogCat.POWER, "saver could not pause the downloads", ex);
 		}
 	}
 

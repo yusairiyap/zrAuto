@@ -431,7 +431,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 				postDelayed(() -> a.fireBroadcastEvent(ActivityListener.FRAGMENT_CONTENT_CHANGED), 450);
 			}).show();
 		} catch (RuntimeException ex) {
-			me.aap.fermata.util.DiagnosticLog.log("HOME", "row menu failed", String.valueOf(ex));
+			me.aap.fermata.util.DiagnosticLog.w(me.aap.fermata.util.LogCat.HOME, "row menu failed", ex);
 		}
 	}
 

@@ -164,7 +164,7 @@ public class MediaEngineManager implements PreferenceStore.Listener {
 		if ((id == MEDIA_ENG_EXO) && me.aap.fermata.ytdl.YtOffline.isDownloadedYoutube(i)) {
 			String oid = i.getOrigId();
 			if ((oid != null) && (exoPlayer != null) && freshExoTried.add(oid)) {
-				me.aap.fermata.util.DiagnosticLog.log("ENGINE", "fresh ExoPlayer for a stalled file", "item=" + i);
+				me.aap.fermata.util.DiagnosticLog.log(me.aap.fermata.util.LogCat.ENGINE, "fresh ExoPlayer for a stalled file", "item=" + i);
 				return create(exoPlayer, null, i, listener);
 			}
 			freshExoTried.remove(oid);

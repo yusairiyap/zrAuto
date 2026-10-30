@@ -35,9 +35,9 @@ final class PowerWidget extends HomeWidgetView {
 	private static final int GRAPH = 2;
 	private static final int BREAKDOWN = 3;
 	private static final int[] CAT_NAMES = {R.string.power_cat_video, R.string.power_cat_music,
-			R.string.power_cat_idle};
+			R.string.power_cat_idle, R.string.power_cat_sleep};
 	private static final int[] CAT_COLORS = {R.color.data_usage_video, R.color.data_usage_music,
-			R.color.data_usage_other};
+			R.color.data_usage_other, R.color.power_sleep};
 
 	private LinearLayout column;
 	private android.view.View headerRow;

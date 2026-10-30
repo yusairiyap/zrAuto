@@ -42,6 +42,7 @@ import me.aap.fermata.addon.AddonManager;
 import me.aap.fermata.addon.FermataAddon;
 import me.aap.fermata.addon.FermataFragmentAddon;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ui.home.HomeScreen;
 import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.ui.view.ControlPanelView;
@@ -309,6 +310,9 @@ public class NavBarMediator extends PrefNavBarMediator
 
 			// Sending zrAuto itself to a phone nearby (as Settings > Other does); not on the car screen.
 			if (!a.isCarActivityNotMirror()) b.addItem(R.id.nav_share_app, R.drawable.share, R.string.share_app);
+			// The diagnostic log, when Settings > Diagnostics asks for it here (off by default).
+			if (a.getPrefs().getBooleanPref(MainActivityPrefs.DEBUG_LOG_MENU))
+				b.addItem(R.id.nav_diagnostic_log, R.drawable.diagnostic_log, R.string.diagnostic_log);
 			b.addItem(R.id.nav_about, R.drawable.about, R.string.about);
 			b.addItem(R.id.settings_fragment, R.drawable.settings, R.string.settings);
 			b.addItem(R.id.nav_exit, R.drawable.exit, a.isCarActivityNotMirror() ? R.string.restart : R.string.exit);
@@ -326,6 +330,9 @@ public class NavBarMediator extends PrefNavBarMediator
 			me.aap.fermata.share.ShareOffer offer = me.aap.fermata.share.ShareSource.createApp(a.getContext());
 			if (offer.entries.isEmpty()) me.aap.fermata.ui.view.TopToast.show(R.drawable.share, R.string.share_app_split);
 			else me.aap.fermata.ui.view.ShareSheet.show(a, offer);
+			return true;
+		} else if (itemId == R.id.nav_diagnostic_log) {
+			MainActivityDelegate.get(item.getContext()).showFragment(R.id.diagnostic_log_fragment);
 			return true;
 		} else if (itemId == R.id.nav_about) {
 			MainActivityDelegate a = MainActivityDelegate.get(item.getContext());

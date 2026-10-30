@@ -31,6 +31,7 @@ import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.util.DiagnosticLog;
+import me.aap.fermata.util.LogCat;
 import me.aap.utils.app.App;
 import me.aap.utils.function.IntSupplier;
 import me.aap.utils.function.LongSupplier;
@@ -296,6 +297,19 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 	// ---------------------------------------------------------------------------------------------
 	// Reading
 
+	/**
+	 * One reading of the battery current in mA, charging positive, or NaN when the phone does not report it. For a caller that
+	 * takes its own samples (the Sleep addon, once an epoch through the night, when this tracker is not running), using the
+	 * unit and sign this one has learned.
+	 */
+	public float readNowMa() {
+		BatteryManager bm = (BatteryManager) FermataApplication.get().getSystemService(Context.BATTERY_SERVICE);
+		int raw = (bm == null) ? Integer.MIN_VALUE : bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW);
+		if ((raw == Integer.MIN_VALUE) || (raw == 0)) return Float.NaN;
+		readBattery();
+		return toMilliAmps(raw);
+	}
+
 	/** Whether the phone reports the battery current at all. */
 	public boolean isSupported() {
 		return supported;
@@ -310,7 +324,7 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 		BatteryManager bm = (BatteryManager) FermataApplication.get().getSystemService(Context.BATTERY_SERVICE);
 		int raw = (bm == null) ? Integer.MIN_VALUE : bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW);
 		if (raw == Integer.MIN_VALUE) {
-			if (supported) DiagnosticLog.log("POWER", "current not reported by this phone");
+			if (supported) DiagnosticLog.log(LogCat.POWER, "current not reported by this phone");
 			supported = false;
 			return;
 		}
@@ -357,7 +371,8 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 
 		// Book the stretch since the last reading, unless the phone slept through it.
 		long maxGap = Math.max(5000, 3 * (isLive() ? liveInterval() : backgroundInterval()));
-		if ((dt > 0) && (dt <= maxGap)) {
+		// A night being recorded books its own readings (SleepTracker), also with the screen off.
+		if ((dt > 0) && (dt <= maxGap) && !me.aap.fermata.addon.sleep.SleepTracker.get().isActive()) {
 			long microAh = Math.round(Math.abs(ma) * dt / 3600.0);
 			boolean drawing = ma < 0;
 			store.add(System.currentTimeMillis(), lastCat, lastCtx, microAh, dt, !drawing);
@@ -408,7 +423,7 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 				}
 				if (learned != 0) {
 					ps.applyIntPref(LEARNED_DIV, learned);
-					DiagnosticLog.log("POWER", "current unit", (learned == 1000) ? "uA" : "mA", "raw=" + raw);
+					DiagnosticLog.log(LogCat.POWER, "current unit learned", "unit=" + ((learned == 1000) ? "uA" : "mA"), "raw=" + raw);
 				}
 			}
 			div = (learned != 0) ? learned : (Math.abs(raw) >= 20_000 ? 1000f : 1f);
@@ -438,7 +453,7 @@ public final class PowerUsageTracker implements MediaSessionCallback.Listener {
 			}
 			if (signVotes >= 3) {
 				ps.applyIntPref(LEARNED_SIGN, vote);
-				DiagnosticLog.log("POWER", "charging reads", (vote == 1) ? "positive" : "negative");
+				DiagnosticLog.log(LogCat.POWER, "charging sign learned", "charging=" + ((vote == 1) ? "positive" : "negative"));
 				learned = vote;
 			}
 		}
