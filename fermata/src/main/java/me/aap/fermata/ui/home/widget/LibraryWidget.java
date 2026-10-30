@@ -1,5 +1,6 @@
 package me.aap.fermata.ui.home.widget;
 
+import me.aap.fermata.util.TouchState;
 import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.View;
@@ -395,6 +396,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 			super.onSelectedChanged(vh, state);
 			if (state == ItemTouchHelper.ACTION_STATE_DRAG) {
 				dragging = true;
+				revealAll();
 				adapter.adopt(rows);
 				listView.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
 				if (vh != null) vh.itemView.animate().scaleX(1.03f).scaleY(1.03f).setDuration(120).start();
@@ -682,6 +684,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 		me.aap.fermata.media.lib.ItemContainer.removeContentListener(libraryListener);
 		removeCallbacks(readAgain);
 		removeCallbacks(refreshBadges);
+		removeCallbacks(revealStep);
 		if (watchesPlaying()) act().getMediaServiceBinder().removeBroadcastListener(playingListener);
 	}
 
@@ -867,7 +870,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 		StringBuilder sig = new StringBuilder();
 		sig.append(total).append('|').append(isCompact()).append('|').append(newCols).append('|')
 				.append(art).append('|').append(rowMode).append('|').append(loading && none).append('|').append(drillSource != null);
-		for (Row r : rows) sig.append('|').append(r.title()).append(r.sub()).append(r.current()).append(isPinnedRow(r));
+		sig.append('|').append(rows.size());
+		for (Row r : visibleRows(rows)) sig.append('|').append(r.title()).append(r.sub()).append(r.current()).append(isPinnedRow(r));
 		String signature = sig.toString();
 		if (signature.equals(shownSignature)) {
 			// Nothing to redraw, but the adapter must hold the list the rows are now taken from: a row picked up or removed is
@@ -898,6 +902,8 @@ abstract class LibraryWidget extends HomeWidgetView {
 			return;
 		}
 		boolean wasEmpty = adapter.getItemCount() == 0;
+		// A list that starts from nothing shows its first rows now and the others a few at a time, the playing one included.
+		if (wasEmpty) revealLimit = (focusRow >= 0) ? Math.max(REVEAL_FIRST, focusRow + 12) : REVEAL_FIRST;
 		boolean full = (newCols != cols) || (art != artOn) || (rowMode != rowModeShown) || wasEmpty;
 		cols = newCols;
 		artOn = art;
@@ -921,6 +927,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 			listView.animate().alpha(1f).setDuration(220).start();
 		}
 		scrollToPlaying();
+		scheduleReveal();
 	}
 
 	/** Brings the playing row into view, once per song: never while the finger is on the list. */
@@ -936,6 +943,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 		}
 		Object key = rows.get(focusRow).key();
 		if (key.equals(lastFocusKey)) return;
+		revealTo(focusRow + 12);
 		lastFocusKey = key;
 		listView.post(() -> {
 			if (listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE) return;
@@ -954,6 +962,58 @@ abstract class LibraryWidget extends HomeWidgetView {
 			sm.setTargetPosition(target);
 			glm.startSmoothScroll(sm);
 		});
+	}
+
+	/** The first rows of a long list that are drawn at once; the rest come in small steps (see {@link #scheduleReveal}). */
+	private static final int REVEAL_FIRST = 24;
+	private static final int REVEAL_STEP = 24;
+	private static final long REVEAL_GAP_MS = 120;
+	/** How many rows the adapter holds now: a 300 row queue is handed over a few at a time, so the page stays responsive. */
+	private int revealLimit = REVEAL_FIRST;
+
+	/** The rows the adapter holds: all of them, or the first {@link #revealLimit} while the rest are still to come. */
+	private List<Row> visibleRows(List<Row> all) {
+		return (all.size() <= revealLimit) ? all : new ArrayList<>(all.subList(0, revealLimit));
+	}
+
+	/** Every row at once (a row is about to be picked up or removed, which works on the whole list). */
+	private void revealAll() {
+		if (revealLimit == Integer.MAX_VALUE) return;
+		removeCallbacks(revealStep);
+		int old = adapter.data.size();
+		revealLimit = Integer.MAX_VALUE;
+		adapter.data = rows;
+		if (rows.size() > old) adapter.notifyItemRangeInserted(old, rows.size() - old);
+	}
+
+	/** At least {@code n} rows are held (the playing song has to be in the list to be scrolled to). */
+	private void revealTo(int n) {
+		if ((n < revealLimit) || (revealLimit == Integer.MAX_VALUE)) return;
+		revealLimit = n;
+		List<Row> now = visibleRows(rows);
+		int old = adapter.data.size();
+		adapter.data = now;
+		if (now.size() > old) adapter.notifyItemRangeInserted(old, now.size() - old);
+	}
+
+	private final Runnable revealStep = () -> {
+		if (!built || !isAttachedToWindow() || (revealLimit >= rows.size())) return;
+		// Never while a finger is on the page or a list is moving: the next step waits.
+		if (TouchState.isBusy() || (listView.getScrollState() != RecyclerView.SCROLL_STATE_IDLE) || !host.isSettled()) {
+			postDelayed(revealStep0(), 260);
+			return;
+		}
+		revealTo(revealLimit + REVEAL_STEP);
+		scheduleReveal();
+	};
+
+	private Runnable revealStep0() {
+		return revealStep;
+	}
+
+	private void scheduleReveal() {
+		removeCallbacks(revealStep);
+		if (revealLimit < rows.size()) postDelayed(revealStep, REVEAL_GAP_MS);
 	}
 
 	private final class RowAdapter extends RecyclerView.Adapter<RowHolder> {
@@ -976,11 +1036,12 @@ abstract class LibraryWidget extends HomeWidgetView {
 
 		/** Takes {@code now} as the rows without telling anyone: they look the same as the ones held. */
 		void adopt(List<Row> now) {
-			data = now;
+			data = visibleRows(now);
 		}
 
 		/** The new rows; only what differs from the old ones is rebound (a full reset when {@code full}). */
-		void set(List<Row> now, boolean full) {
+		void set(List<Row> all, boolean full) {
+			List<Row> now = visibleRows(all);
 			List<Row> old = data;
 			if (full) {
 				data = now;
@@ -1109,6 +1170,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 				int pos = getAdapterPosition();
 				if ((pos == RecyclerView.NO_POSITION) || (pos >= rows.size())) return;
 				// Gone from the card at once; the real list follows when the source reports the change.
+				revealAll();
 				adapter.adopt(rows);
 				Row gone = rows.remove(pos);
 				adapter.notifyItemRemoved(pos);

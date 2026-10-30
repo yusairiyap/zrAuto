@@ -66,6 +66,7 @@ import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.pref.PreferenceStore.Pref;
 import me.aap.utils.text.TextUtils;
 import me.aap.utils.ui.UiUtils;
+import androidx.appcompat.content.res.AppCompatResources;
 import me.aap.utils.ui.fragment.ActivityFragment;
 import me.aap.utils.ui.menu.OverlayMenu;
 import me.aap.utils.ui.menu.OverlayMenuItem;
@@ -660,7 +661,11 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 					Collections.singletonList((PlayableItem) item));
 		} else if (id == R.id.playlist_remove) {
 			Playlist p = i.getData();
-			p.getParent().removeItems(Collections.singletonList(p));
+			UiUtils.showQuestion(getContext(), getContext().getString(R.string.playlist_remove),
+					getContext().getString(R.string.playlist_remove_confirm, p.getName()),
+					AppCompatResources.getDrawable(getContext(), R.drawable.playlist_remove)).onSuccess(v -> {
+				p.getParent().removeItems(Collections.singletonList(p));
+			});
 		} else if (id == R.id.youtube_refresh_thumbnail) {
 			if (item instanceof PlayableItem pi) {
 				YtThumbnails.refresh(getMainActivity(), Collections.singletonList(pi));

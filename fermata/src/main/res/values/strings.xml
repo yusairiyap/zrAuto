@@ -397,6 +397,7 @@
     <string name="playlist_recent">Recently added</string>
     <string name="playlist_all">All playlists</string>
     <string name="playlist_remove">Remove playlist</string>
+    <string name="playlist_remove_confirm">Remove the playlist \"%1$s\"? The songs stay in your library.</string>
     <string name="playlist_name">Playlist name</string>
     <string name="playlist_rename">Rename playlist</string>
     <string name="playlist_pin">Pin to top</string>
