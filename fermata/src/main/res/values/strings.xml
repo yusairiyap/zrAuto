@@ -396,6 +396,16 @@
     <string name="playlist_create">Create playlist</string>
     <string name="playlist_recent">Recently added</string>
     <string name="playlist_all">All playlists</string>
+    <string name="captions_translated">translated</string>
+    <string name="captions_auto_label">auto-generated</string>
+    <string name="captions_romaji">Latin letters under Korean and Japanese</string>
+    <string name="captions_romaji_sub">Hangul and kana written as they sound (kanji stay as they are)</string>
+    <string name="captions_romaji_short">Latin letters</string>
+    <string name="captions_translation">Translate to</string>
+    <string name="captions_translation_off">No translation</string>
+    <string name="captions_translate_missing">Translate when the language is missing</string>
+    <string name="captions_translate_missing_sub">Uses YouTube\'s translation of a track instead of another language</string>
+    <string name="captions_language_button">Language</string>
     <string name="art_accent">Follow the album art</string>
     <string name="art_accent_sub">The theme's blue (bars, buttons, chips, seek bars) takes the colour of the playing cover</string>
     <string name="playlist_remove">Remove playlist</string>

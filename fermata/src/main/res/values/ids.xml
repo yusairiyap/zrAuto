@@ -279,4 +279,8 @@
     <item name="queue_row_share" type="id" />
     <item name="queue_row_remove" type="id" />
     <item name="spotify_import_search" type="id" />
+    <item name="caption_menu_lang" type="id" />
+    <item name="caption_menu_romaji" type="id" />
+    <item name="caption_menu_translation" type="id" />
+    <item name="caption_menu_item" type="id" />
 </resources>

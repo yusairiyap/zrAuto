@@ -53,6 +53,11 @@ final class LyricsWidget extends HomeWidgetView {
 		lyrics.setLineListener(i -> CaptionsHub.get().seekTo(i));
 		lyrics.setInteractive(scrubbing());
 		holder.addView(lyrics, new FrameLayout.LayoutParams(-1, -1));
+		// The language, the Latin letters and the translation, switched here on the spot.
+		android.widget.ImageView lang = iconButton(R.drawable.captions, 30, ROLE_SECONDARY,
+				R.string.captions_language_button, () -> me.aap.fermata.ui.view.CaptionLang.showMenu(host.activity(), null));
+		lang.setLayoutParams(new FrameLayout.LayoutParams(px(30), px(30), android.view.Gravity.END | android.view.Gravity.TOP));
+		holder.addView(lang);
 	}
 
 	/** Whether a drag scrubs through the lines and a tap on one seeks to it (else the page scrolls over the card). */

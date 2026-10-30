@@ -323,6 +323,17 @@ public abstract class TextStyleFragment extends MainActivityFragment {
 		stringChipsRow(col, R.string.captions_lang, labels, list.toArray(new String[0]),
 				MainActivityPrefs.CAPTIONS_LANG);
 		switchRow(col, R.string.captions_auto, R.string.captions_auto_sub, MainActivityPrefs.CAPTIONS_AUTO);
+		switchRow(col, R.string.captions_translate_missing, R.string.captions_translate_missing_sub,
+				MainActivityPrefs.CAPTIONS_TRANSLATE_MISSING);
+		switchRow(col, R.string.captions_romaji, R.string.captions_romaji_sub, MainActivityPrefs.CAPTIONS_ROMAJI);
+		String[] tcodes = new String[codes.length];
+		String[] tlabels = new String[codes.length];
+		for (int i = 0; i < codes.length; i++) {
+			tcodes[i] = codes[i];
+			tlabels[i] = codes[i].isEmpty() ? getString(R.string.captions_translation_off) :
+					new Locale(codes[i]).getDisplayLanguage(Locale.getDefault());
+		}
+		stringChipsRow(col, R.string.captions_translation, tlabels, tcodes, MainActivityPrefs.CAPTIONS_TRANSLATION);
 	}
 
 	private String[] names(@StringRes int[] ids) {

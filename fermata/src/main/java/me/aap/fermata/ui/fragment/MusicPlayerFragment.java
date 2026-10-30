@@ -2343,6 +2343,20 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 				ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
 		nlp.setMarginStart(Math.round(10 * dp));
 		header.addView(names, nlp);
+		hint.setText(me.aap.fermata.ui.view.CaptionLang.current(ctx));
+		ImageView langBtn = new ImageView(ctx);
+		langBtn.setImageResource(R.drawable.captions);
+		langBtn.setImageTintList(ColorStateList.valueOf(0xFFFFFFFF));
+		langBtn.setScaleType(ImageView.ScaleType.CENTER);
+		langBtn.setBackground(new android.graphics.drawable.RippleDrawable(
+				ColorStateList.valueOf(0x55FFFFFF), null, null));
+		langBtn.setClickable(true);
+		langBtn.setFocusable(true);
+		langBtn.setContentDescription(getString(R.string.captions_language_button));
+		langBtn.setOnClickListener(v -> me.aap.fermata.ui.view.CaptionLang.showMenu(a,
+				() -> hint.postDelayed(() -> hint.setText(me.aap.fermata.ui.view.CaptionLang.current(ctx)), 1500)));
+		header.addView(langBtn, new android.widget.LinearLayout.LayoutParams(Math.round(40 * dp),
+				Math.round(40 * dp)));
 		ImageView close = new ImageView(ctx);
 		close.setImageResource(R.drawable.close_small);
 		close.setImageTintList(ColorStateList.valueOf(0xFFFFFFFF));
