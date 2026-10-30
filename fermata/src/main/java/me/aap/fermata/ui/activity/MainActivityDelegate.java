@@ -1293,8 +1293,16 @@ public class MainActivityDelegate extends ActivityDelegate
 		if ((nbc[0] >>> 24) != 0) {
 			tbv.setIconTint(ColorStateList.valueOf(me.aap.fermata.ui.view.ArtAccent.map(nbc[0])));
 			// Follows the album art's colour as it glides (a blue only, see ArtAccent).
-			me.aap.fermata.ui.view.ArtAccent.addListener(() ->
-					tbv.setIconTint(ColorStateList.valueOf(me.aap.fermata.ui.view.ArtAccent.map(nbc[0]))));
+			Runnable[] self = new Runnable[1];
+			self[0] = () -> {
+				try {
+					tbv.setIconTint(ColorStateList.valueOf(me.aap.fermata.ui.view.ArtAccent.map(nbc[0])));
+				} catch (RuntimeException ex) {
+					// This activity is gone (a theme change made another one).
+					me.aap.fermata.ui.view.ArtAccent.removeListener(self[0]);
+				}
+			};
+			me.aap.fermata.ui.view.ArtAccent.addListener(self[0]);
 		}
 		enableFloatingBars();
 	}
@@ -3009,16 +3017,23 @@ public class MainActivityDelegate extends ActivityDelegate
 		}
 		veilBars();
 		me.aap.fermata.ui.view.ArtAccent.init(this);
-		me.aap.fermata.ui.view.ArtAccent.addListener(() -> {
-			if (toolBar != null) toolBar.invalidate();
-			View d = getWindow().getDecorView();
-			d.invalidate();
-			scheduleArtRecolor(40);
-		});
+		Runnable[] glide = new Runnable[1];
+		glide[0] = () -> {
+			try {
+				if (toolBar != null) toolBar.invalidate();
+				View d = getWindow().getDecorView();
+				d.invalidate();
+				scheduleArtRecolor(40);
+			} catch (RuntimeException ex) {
+				// This activity is gone (a theme change made another one): its listener goes with it.
+				me.aap.fermata.ui.view.ArtAccent.removeListener(glide[0]);
+			}
+		};
+		me.aap.fermata.ui.view.ArtAccent.addListener(glide[0]);
 		// Views made later (a tab opened, a list scrolled) are looked at too while a cover colour is in use.
 		getWindow().getDecorView().getViewTreeObserver().addOnGlobalLayoutListener(() -> {
 			// Before the frame is drawn, so a view that has just come (a menu, a card, a row) never shows the theme's blue for a moment.
-			if (me.aap.fermata.ui.view.ArtAccent.isActive()) me.aap.fermata.ui.view.ArtAccent.recolor(getWindow().getDecorView());
+			if (me.aap.fermata.ui.view.ArtAccent.needsWalk()) me.aap.fermata.ui.view.ArtAccent.recolorSafe(getWindow().getDecorView());
 		});
 	}
 
@@ -3031,7 +3046,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		getWindow().getDecorView().postDelayed(() -> {
 			artRecolorPending = false;
 			int v = me.aap.fermata.ui.view.ArtAccent.getVersion();
-			me.aap.fermata.ui.view.ArtAccent.recolor(getWindow().getDecorView());
+			me.aap.fermata.ui.view.ArtAccent.recolorSafe(getWindow().getDecorView());
 			// The colour moved while this ran (a glide is under way): once more, so the last step is never left out.
 			if (v != me.aap.fermata.ui.view.ArtAccent.getVersion()) scheduleArtRecolor(40);
 		}, delayMs);
@@ -3102,7 +3117,11 @@ public class MainActivityDelegate extends ActivityDelegate
 
 	@Override
 	public void onPreferenceChanged(PreferenceStore store, List<PreferenceStore.Pref<?>> prefs) {
-		if (prefs.contains(MainActivityPrefs.ART_ACCENT)) me.aap.fermata.ui.view.ArtAccent.onSwitched();
+		if (prefs.contains(MainActivityPrefs.ART_ACCENT)) {
+			me.aap.fermata.ui.view.ArtAccent.onSwitched();
+			// The whole window is looked at at once (the settings page you are on too), then as the colour glides.
+			scheduleArtRecolor(0);
+		}
 		if (me.aap.fermata.ui.view.Glass.touches(prefs)) {
 			// The UI style (glass): read again now, whichever listener hears of it first, and every glass
 			// surface redrawn (the tool bar's shadow goes with glass too).

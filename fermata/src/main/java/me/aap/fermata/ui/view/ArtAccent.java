@@ -73,14 +73,37 @@ public final class ArtAccent {
 	/** Called once by the main activity; follows the playing song while the switch is on. */
 	public static void init(MainActivityDelegate a) {
 		if (owner == a) return;
-		if (owner != null) owner.getMediaServiceBinder().removeBroadcastListener(playing);
+		// The activity this was following may be gone (a theme change makes a new one): never let that get in the way.
+		try {
+			if (owner != null) owner.getMediaServiceBinder().removeBroadcastListener(playing);
+		} catch (RuntimeException ignore) {
+			// Already destroyed.
+		}
 		owner = a;
 		a.getMediaServiceBinder().addBroadcastListener(playing);
 		refresh();
 	}
 
 	/** The switch changed: the colour is looked for (on) or the theme's own colours come back (off). */
+	/** Until when views that were recoloured are still looked at after the switch (so each one gets its own colours back). */
+	private static long settleUntil;
+
+	/** Whether views have to be looked at: a cover colour is in use, or was just switched off. */
+	public static boolean needsWalk() {
+		return isActive() || (android.os.SystemClock.uptimeMillis() < settleUntil);
+	}
+
+	/** {@link #recolor} that can never throw into the app: a failure is logged and the view tree left as it is. */
+	public static void recolorSafe(android.view.View v) {
+		try {
+			recolor(v);
+		} catch (RuntimeException ex) {
+			me.aap.fermata.util.DiagnosticLog.w(me.aap.fermata.util.LogCat.STATE, "album art colour: recolouring failed", ex);
+		}
+	}
+
 	public static void onSwitched() {
+		settleUntil = android.os.SystemClock.uptimeMillis() + 4000;
 		if (!isOn()) {
 			generation++;
 			shownItem = null;
@@ -410,7 +433,7 @@ public final class ArtAccent {
 		rv.addOnChildAttachStateChangeListener(new androidx.recyclerview.widget.RecyclerView.OnChildAttachStateChangeListener() {
 			@Override
 			public void onChildViewAttachedToWindow(android.view.View view) {
-				if (isActive()) recolor(view);
+				if (needsWalk()) recolorSafe(view);
 			}
 
 			@Override
@@ -499,6 +522,14 @@ public final class ArtAccent {
 	}
 
 	private static void refresh() {
+		try {
+			refresh0();
+		} catch (RuntimeException ex) {
+			me.aap.fermata.util.DiagnosticLog.w(me.aap.fermata.util.LogCat.STATE, "album art colour: looking for the cover failed", ex);
+		}
+	}
+
+	private static void refresh0() {
 		MainActivityDelegate a = owner;
 		if ((a == null) || !isOn()) return;
 		PlayableItem pi = HomeArt.displayItem(a);
