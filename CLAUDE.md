@@ -1101,6 +1101,14 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
 - **Home**: `LibraryWidget` hands its adapter 24 rows and then 24 more every 120 ms while the page is idle (`revealLimit`, `revealStep`); drag/remove/playing-row scrolling reveal what they need first.
   Short (one cell high) Sleep/Timer/Power cards keep a second line and draw a faint `BackdropView` / live graph behind the words.
 - Removing a playlist from its menu asks first (`playlist_remove_confirm`); Android Auto menus use the phone's sizes (`MenuStyle`).
+- **Album art colour, how it really works** (later rounds): `EffectsUi.accent` returns the theme's *own* blue (never mapped), so every view keeps a blue "original" the colouring can map from.
+  `ArtAccent.recolor` (run right after each layout, before the frame is drawn, and every ~40 ms while the colour glides; rows of a `RecyclerView` as they attach) maps text colours, image/compound/progress/switch/check box tints,
+  `GradientDrawable`/`ColorDrawable`/state-list fills (foregrounds too), card strokes and bar ripples, each from the original kept in a view tag (`art_orig_*` ids). `amount` glides 0..1 so on/off is smooth.
+  Custom paints call `ArtAccent.map` at draw time (`Glass.Tile`, `StagePadView`, the car's `CarNav` ring, welcome art). Never `setColor(EffectsUi.accent(..))` on a one-off drawable expecting it to follow without the walk.
+  Listeners that outlive an activity must remove themselves when it throws (a theme change recreates it).
+- **In video panel** settings (Video settings): comments, audio effects, captions and YouTube search/Up next beside fullscreen video, each with its own switch and width (down to 8%); all drag by the strip inside the card's left edge.
+  `modules/web/.../YoutubePanel` is search + Up next as a `SidePanel.Body` (cards with icon chips; narrow widths show pictures only; car: keyboard on open unless opened by a steering key, then the first chip / queue item is outlined).
+  It reuses the addon's search, history, Up next and `playFromList`, and the Favorites/Playlists search (`YT_SEARCH_LIBRARY`); the tab's own `YoutubeSearchPanel` is unchanged and still used outside fullscreen video.
 
 ## This app cannot be built in this (cloud) session
 
