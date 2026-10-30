@@ -75,6 +75,7 @@ final class YoutubePanel implements SidePanel.Body {
 	private static final int T_CARD = 0;
 	private static final int T_HEADER = 1;
 	private static final int T_NOTE = 2;
+	private static final int T_SKEL = 3;
 	private static final int K_RESULT = 0;
 	private static final int K_QUEUED = 1;
 	private static final int K_LIBRARY = 2;
@@ -108,6 +109,7 @@ final class YoutubePanel implements SidePanel.Body {
 	};
 	private SidePanel p;
 	private boolean highlightFirst;
+	private boolean showingSkeleton;
 	private boolean queueMode;
 	private boolean searching;
 	private boolean failed;
@@ -144,7 +146,10 @@ final class YoutubePanel implements SidePanel.Body {
 			return;
 		}
 		// As the tab's search does: the keyboard comes up with the panel, unless it was opened by a steering wheel key.
-		boolean keyboard = !(CarNav.isEnabled() && me.aap.fermata.action.KeyEventHandler.isPerformingKeyAction());
+		// On the car screen the keyboard covers much of it: it comes up with the panel only when Settings asks (tapping the field always does).
+		boolean keyboard = !a.isCarActivity() ||
+				(MainActivityPrefs.get().getBooleanPref(MainActivityPrefs.YT_PANEL_CAR_KEYBOARD) &&
+						!(CarNav.isEnabled() && me.aap.fermata.action.KeyEventHandler.isPerformingKeyAction()));
 		YoutubePanel panel = new YoutubePanel(a, addon, queue, keyboard);
 		current = panel;
 		SidePanel.toggle(a, ID, queue ? R.drawable.up_next : R.drawable.search,
@@ -182,6 +187,10 @@ final class YoutubePanel implements SidePanel.Body {
 		LayoutTransition lt = new LayoutTransition();
 		lt.setDuration(200);
 		lt.enableTransitionType(LayoutTransition.CHANGING);
+		lt.enableTransitionType(LayoutTransition.APPEARING);
+		lt.enableTransitionType(LayoutTransition.DISAPPEARING);
+		lt.enableTransitionType(LayoutTransition.CHANGE_APPEARING);
+		lt.enableTransitionType(LayoutTransition.CHANGE_DISAPPEARING);
 		controls.setLayoutTransition(lt);
 		root.addView(controls, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
@@ -194,6 +203,7 @@ final class YoutubePanel implements SidePanel.Body {
 		input.setSingleLine(true);
 		input.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
 		input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+		CarNav.ringByState(input);
 		input.setMinHeight(p.dp(44));
 		input.setPadding(p.dp(16), 0, p.dp(16), 0);
 		input.setBackground(p.pressable(p.chipFill, 22));
@@ -316,11 +326,15 @@ final class YoutubePanel implements SidePanel.Body {
 			return;
 		}
 		// The cards fade out, the other tab's come in.
+		// The old tab's cards slip out towards where it sits (Search left, Up next right), the new one's slip in from the other side.
+		float slide = p.dp(18) * (queue ? -1 : 1);
 		list.animate().cancel();
-		list.animate().alpha(0f).setDuration(110).withEndAction(() -> {
+		list.animate().alpha(0f).translationX(slide).setDuration(130).withEndAction(() -> {
 			swap.run();
 			list.scrollToPosition(0);
-			list.animate().alpha(1f).setDuration(200).start();
+			list.setTranslationX(-slide);
+			list.animate().alpha(1f).translationX(0f).setDuration(240)
+					.setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f)).start();
 			if (CarNav.isEnabled() && !input.hasFocus()) openFocusAfterSwitch();
 		}).start();
 	}
@@ -350,7 +364,8 @@ final class YoutubePanel implements SidePanel.Body {
 			// An outline while the steering wheel (or a key) is on it.
 			GradientDrawable ring = new GradientDrawable();
 			ring.setCornerRadius(p.dp(19));
-			ring.setStroke(p.dp(2), p.accent);
+			// White-ish on the accent fill of the picked pill, accent on the grey one: visible on both.
+			ring.setStroke(p.dp(3), p.primary);
 			ring.setColor(0);
 			android.graphics.drawable.StateListDrawable states = new android.graphics.drawable.StateListDrawable();
 			states.addState(new int[]{android.R.attr.state_focused}, ring);
@@ -512,10 +527,15 @@ final class YoutubePanel implements SidePanel.Body {
 	private void fillChips(String text) {
 		if (!text.isEmpty()) return;
 		List<String> history = addon.getSearchHistory();
-		fillChips(history.subList(0, Math.min(history.size(), MAX_CHIPS)));
+		fillChips(history.subList(0, Math.min(history.size(), MAX_CHIPS)), true);
 	}
 
 	private void fillChips(List<String> texts) {
+		fillChips(texts, false);
+	}
+
+	/** @param history past searches (a long press removes one), not predictions */
+	private void fillChips(List<String> texts, boolean history) {
 		chips.removeAllViews();
 		for (String t : texts) {
 			TextView c = p.text(t, 13, p.primary, true);
@@ -526,6 +546,13 @@ final class YoutubePanel implements SidePanel.Body {
 			c.setClickable(true);
 			c.setFocusable(true);
 			CarNav.ringByState(c);
+			if (history) {
+				c.setOnLongClickListener(v -> {
+					addon.removeSearchHistory(t);
+					fillChips(addon.getSearchHistory().subList(0, Math.min(addon.getSearchHistory().size(), MAX_CHIPS)), true);
+					return true;
+				});
+			}
 			c.setOnClickListener(v -> {
 				// The chips stay as they are (all the past searches): the field is only filled in.
 				typing = t;
@@ -551,7 +578,9 @@ final class YoutubePanel implements SidePanel.Body {
 		}
 		if (searched) {
 			rows.add(Row.header(p.ctx.getString(R.string.youtube_search_results, query), null, null));
-			if (searching) rows.add(Row.note(p.ctx.getString(R.string.yt_panel_searching)));
+			if (searching) {
+				for (int i = 0; i < 5; i++) rows.add(Row.skeleton());
+			}
 			else if (failed) rows.add(Row.note(p.ctx.getString(R.string.yt_panel_failed)));
 			else if (results.isEmpty()) rows.add(Row.note(p.ctx.getString(R.string.yt_panel_no_results)));
 			for (Video v : results) {
@@ -560,7 +589,15 @@ final class YoutubePanel implements SidePanel.Body {
 				rows.add(Row.video(v.videoId, v.title, sub));
 			}
 		}
+		boolean hadSkeleton = showingSkeleton;
+		showingSkeleton = searching && searched;
 		adapter.notifyDataSetChanged();
+		if (hadSkeleton && !showingSkeleton) {
+			// The results take the placeholders' place with a fade.
+			list.animate().cancel();
+			list.setAlpha(0.15f);
+			list.animate().alpha(1f).setDuration(260).start();
+		}
 		if (highlightFirst) {
 			for (int i = 0; i < rows.size(); i++) {
 				if (rows.get(i).type != T_CARD) continue;
@@ -792,6 +829,10 @@ final class YoutubePanel implements SidePanel.Body {
 			return new Row(T_HEADER, 0, label, title, "", null, action);
 		}
 
+		static Row skeleton() {
+			return new Row(T_SKEL, 0, null, "", "", null, null);
+		}
+
 		static Row note(String text) {
 			return new Row(T_NOTE, 0, null, text, "", null, null);
 		}
@@ -820,6 +861,66 @@ final class YoutubePanel implements SidePanel.Body {
 		Holder(View v) {
 			super(v);
 		}
+	}
+
+	/** A card-shaped placeholder that pulses while the results are on their way. */
+	private Holder skeletonHolder() {
+		LinearLayout card = new LinearLayout(p.ctx);
+		card.setOrientation(LinearLayout.HORIZONTAL);
+		card.setGravity(Gravity.CENTER_VERTICAL);
+		card.setPadding(p.dp(10), p.dp(10), p.dp(12), p.dp(10));
+		card.setBackground(p.pressable(p.chipFill, 18));
+		RecyclerView.LayoutParams clp = new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		clp.bottomMargin = p.dp(8);
+		card.setLayoutParams(clp);
+		int block = (p.primary & 0x00FFFFFF) | 0x26000000;
+		View pic = new View(p.ctx);
+		pic.setBackground(skeletonBlock(block, 10));
+		card.addView(pic, new LinearLayout.LayoutParams(p.dp(112), p.dp(63)));
+		LinearLayout lines = new LinearLayout(p.ctx);
+		lines.setOrientation(LinearLayout.VERTICAL);
+		lines.setPadding(p.dp(10), 0, 0, 0);
+		View l1 = new View(p.ctx);
+		l1.setBackground(skeletonBlock(block, 5));
+		View l2 = new View(p.ctx);
+		l2.setBackground(skeletonBlock(block, 5));
+		View l3 = new View(p.ctx);
+		l3.setBackground(skeletonBlock(block, 5));
+		lines.addView(l1, new LinearLayout.LayoutParams(MATCH_PARENT, p.dp(12)));
+		LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(p.dp(110), p.dp(12));
+		lp2.topMargin = p.dp(8);
+		lines.addView(l2, lp2);
+		LinearLayout.LayoutParams lp3 = new LinearLayout.LayoutParams(p.dp(70), p.dp(10));
+		lp3.topMargin = p.dp(14);
+		lines.addView(l3, lp3);
+		card.addView(lines, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		Holder h = new Holder(card);
+		h.title = new TextView(p.ctx);
+		ValueAnimator pulse = ValueAnimator.ofFloat(0.45f, 1f);
+		pulse.setDuration(750);
+		pulse.setRepeatMode(ValueAnimator.REVERSE);
+		pulse.setRepeatCount(ValueAnimator.INFINITE);
+		pulse.addUpdateListener(an -> card.setAlpha((Float) an.getAnimatedValue()));
+		card.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+			@Override
+			public void onViewAttachedToWindow(View v) {
+				if (!pulse.isStarted()) pulse.start();
+			}
+
+			@Override
+			public void onViewDetachedFromWindow(View v) {
+				pulse.cancel();
+				card.setAlpha(1f);
+			}
+		});
+		return h;
+	}
+
+	private GradientDrawable skeletonBlock(int color, float radiusDp) {
+		GradientDrawable d = new GradientDrawable();
+		d.setColor(color);
+		d.setCornerRadius(p.dp(radiusDp));
+		return d;
 	}
 
 	/** A round chip with just an icon. */
@@ -860,6 +961,7 @@ final class YoutubePanel implements SidePanel.Body {
 				h.title = t;
 				return h;
 			}
+			if (type == T_SKEL) return skeletonHolder();
 			if (type == T_HEADER) {
 				LinearLayout row = new LinearLayout(p.ctx);
 				row.setOrientation(LinearLayout.HORIZONTAL);
@@ -930,7 +1032,7 @@ final class YoutubePanel implements SidePanel.Body {
 		public void onBindViewHolder(Holder h, int position) {
 			Row r = rows.get(position);
 			h.title.setText(r.title);
-			if (r.type == T_NOTE) return;
+			if ((r.type == T_NOTE) || (r.type == T_SKEL)) return;
 			if (r.type == T_HEADER) {
 				boolean has = (r.id != null) && (r.action != null);
 				h.action.setVisibility(has ? View.VISIBLE : View.GONE);

@@ -1492,6 +1492,12 @@ public class SettingsFragment extends MainActivityFragment
 		});
 		ps.addBooleanPref(o -> {
 			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.YT_PANEL_CAR_KEYBOARD;
+			o.title = R.string.yt_panel_car_keyboard;
+			o.subtitle = R.string.yt_panel_car_keyboard_sub;
+		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.YT_SEARCH_TAP_QUEUES;
 			o.title = R.string.yt_search_tap_queues;
 			o.subtitle = R.string.yt_search_tap_queues_sub;

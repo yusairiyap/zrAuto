@@ -303,6 +303,8 @@ public interface MainActivityPrefs
 	// row button then plays it instead.
 	// Whether a YouTube search also looks through Favorites and Playlists and lists what matches above the results (the tab's panel and the panel beside video).
 	Pref<BooleanSupplier> YT_SEARCH_LIBRARY = Pref.b("YT_SEARCH_LIBRARY", true);
+	// Whether the search panel beside the video brings up Android Auto's keyboard when it opens (tapping the field always does).
+	Pref<BooleanSupplier> YT_PANEL_CAR_KEYBOARD = Pref.b("YT_PANEL_CAR_KEYBOARD", false);
 	Pref<BooleanSupplier> YT_SEARCH_TAP_QUEUES = Pref.b("YT_SEARCH_TAP_QUEUES", false);
 	// Whether the YouTube tab's search and Up next open on their own (the search field/button shows
 	// just the search, the Up next button just the queue) rather than together.

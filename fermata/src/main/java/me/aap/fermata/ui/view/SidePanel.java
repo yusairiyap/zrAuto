@@ -498,7 +498,7 @@ public final class SidePanel {
 		GradientDrawable d = new GradientDrawable();
 		d.setColor(fill);
 		d.setCornerRadius(dp(radiusDp));
-		if (strokeDp > 0) d.setStroke(dp(strokeDp), stroke);
+		if (strokeDp > 0) d.setStroke(dp(strokeDp), ArtAccent.map(stroke));
 		return d;
 	}
 

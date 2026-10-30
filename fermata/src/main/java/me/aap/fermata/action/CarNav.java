@@ -815,6 +815,16 @@ public final class CarNav {
 		// room around it so it doesn't end up under the tool bar's edge.
 		int m = Math.round(24 * v.getResources().getDisplayMetrics().density);
 		v.requestRectangleOnScreen(new Rect(-m, -m, v.getWidth() + m, v.getHeight() + m), false);
+		// A row of chips that does not fit scrolls sideways to bring the item in, the next ones in view too.
+		for (android.view.ViewParent pp = v.getParent(); pp != null; pp = pp.getParent()) {
+			if (pp instanceof android.widget.HorizontalScrollView hs) {
+				Rect r = new Rect(0, 0, v.getWidth(), v.getHeight());
+				hs.offsetDescendantRectToMyCoords(v, r);
+				int target = r.left - (hs.getWidth() - v.getWidth()) / 2;
+				hs.smoothScrollTo(Math.max(0, target), 0);
+				break;
+			}
+		}
 	}
 
 	private static void show(Sel s) {
@@ -877,7 +887,7 @@ public final class CarNav {
 	}
 
 	private static boolean isUnit(View v) {
-		if (!v.isEnabled() || (v instanceof EditText) || (v.getWidth() <= 0) || (v.getHeight() <= 0) ||
+		if (!v.isEnabled() || ((v instanceof EditText) && (v.getTag(R.id.car_nav_state) == null)) || (v.getWidth() <= 0) || (v.getHeight() <= 0) ||
 				(v.getTag(R.id.car_nav_skip) != null)) {
 			return false;
 		}
