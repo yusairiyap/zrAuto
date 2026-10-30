@@ -3017,7 +3017,8 @@ public class MainActivityDelegate extends ActivityDelegate
 		});
 		// Views made later (a tab opened, a list scrolled) are looked at too while a cover colour is in use.
 		getWindow().getDecorView().getViewTreeObserver().addOnGlobalLayoutListener(() -> {
-			if (me.aap.fermata.ui.view.ArtAccent.isActive()) scheduleArtRecolor(300);
+			// Before the frame is drawn, so a view that has just come (a menu, a card, a row) never shows the theme's blue for a moment.
+			if (me.aap.fermata.ui.view.ArtAccent.isActive()) me.aap.fermata.ui.view.ArtAccent.recolor(getWindow().getDecorView());
 		});
 	}
 

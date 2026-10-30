@@ -132,23 +132,58 @@ public final class ArtAccent {
 		return version;
 	}
 
-	private static final int[][] STATES = {{android.R.attr.state_pressed}, {android.R.attr.state_focused},
-			{android.R.attr.state_selected}, {android.R.attr.state_activated}, {android.R.attr.state_checked},
-			{-android.R.attr.state_enabled}, {}};
+	/** The states a tint can depend on; a list is mapped for every combination of them, so a selector that names two at once is mapped too. */
+	private static final int[] FLAGS = {android.R.attr.state_enabled, android.R.attr.state_checked,
+			android.R.attr.state_pressed, android.R.attr.state_focused, android.R.attr.state_selected,
+			android.R.attr.state_activated};
+	private static final int[][] QUERIES = new int[1 << FLAGS.length][];
+	private static final int[][] SPECS = new int[(1 << FLAGS.length) + 1][];
+
+	static {
+		for (int i = 0; i < QUERIES.length; i++) {
+			int n = Integer.bitCount(i);
+			int[] q = new int[n];
+			int[] spec = new int[FLAGS.length];
+			for (int b = 0, k = 0; b < FLAGS.length; b++) {
+				boolean on = (i & (1 << b)) != 0;
+				if (on) q[k++] = FLAGS[b];
+				spec[b] = on ? FLAGS[b] : -FLAGS[b];
+			}
+			QUERIES[i] = q;
+			SPECS[i] = spec;
+		}
+		SPECS[QUERIES.length] = new int[0];
+	}
+
+	/** Lists already mapped for the colour of version {@link #mappedVersion}: a list with no blue maps to NONE. */
+	private static final java.util.WeakHashMap<android.content.res.ColorStateList, Object> mappedLists = new java.util.WeakHashMap<>();
+	private static final Object NONE = new Object();
+	private static int mappedVersion = -1;
 
 	/** {@code list} with each state's colour mapped (the same list when nothing is blue), for a view's tint or text. */
 	@Nullable
 	public static android.content.res.ColorStateList mapList(@Nullable android.content.res.ColorStateList list) {
 		if ((list == null) || !isActive()) return list;
+		int v = version;
+		if (v != mappedVersion) {
+			mappedLists.clear();
+			mappedVersion = v;
+		}
+		Object known = mappedLists.get(list);
+		if (known != null) return (known == NONE) ? list : (android.content.res.ColorStateList) known;
 		int def = list.getDefaultColor();
-		int[] cols = new int[STATES.length];
+		int[] cols = new int[SPECS.length];
 		boolean changed = false;
-		for (int i = 0; i < cols.length; i++) {
-			int c = (STATES[i].length == 0) ? def : list.getColorForState(STATES[i], def);
+		for (int i = 0; i < QUERIES.length; i++) {
+			int c = list.getColorForState(QUERIES[i], def);
 			cols[i] = map(c);
 			changed |= (cols[i] != c);
 		}
-		return changed ? new android.content.res.ColorStateList(STATES, cols) : list;
+		cols[QUERIES.length] = map(def);
+		changed |= (cols[QUERIES.length] != def);
+		android.content.res.ColorStateList m = changed ? new android.content.res.ColorStateList(SPECS, cols) : null;
+		mappedLists.put(list, (m == null) ? NONE : m);
+		return (m == null) ? list : m;
 	}
 
 	/** Whether a colour from the cover is in use (so views that were recoloured must be looked at again). */
@@ -260,6 +295,10 @@ public final class ArtAccent {
 		if (v instanceof androidx.appcompat.widget.SwitchCompat sw) {
 			tintOf(sw, R.id.art_orig_thumb, sw.getThumbTintList(), sw::setThumbTintList);
 			tintOf(sw, R.id.art_orig_track, sw.getTrackTintList(), sw::setTrackTintList);
+		}
+		if (v instanceof com.google.android.material.card.MaterialCardView card) {
+			// The outline of a selectable card (the hall quality choices): blue in the theme, the cover's colour here.
+			tintOf(card, R.id.art_orig_stroke, card.getStrokeColorStateList(), card::setStrokeColor);
 		}
 		if (v instanceof android.widget.ProgressBar pb2) {
 			// The track behind the filled part (the dimmed blue of every slider) and the buffered part.

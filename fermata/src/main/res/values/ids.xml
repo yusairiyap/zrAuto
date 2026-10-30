@@ -292,4 +292,5 @@
     <item name="art_orig_track" type="id" />
     <item name="art_orig_pbg" type="id" />
     <item name="art_orig_psec" type="id" />
+    <item name="art_orig_stroke" type="id" />
 </resources>

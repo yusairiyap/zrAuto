@@ -170,6 +170,8 @@ public class StagePadView extends View {
 			az += 2 * Math.PI * (orbit / 10.0) / 60.0 * sec;
 		}
 		double sp = Math.toRadians(spread);
+		// The speakers and the puck take the cover's colour as it glides.
+		int accent = ArtAccent.map(this.accent);
 		stroke.setColor(ColorUtils.setAlphaComponent(accent, (int) (0x66 * dim)));
 		for (int i = 0; i < 2; i++) {
 			double a = az + ((i == 0) ? -sp : sp);
