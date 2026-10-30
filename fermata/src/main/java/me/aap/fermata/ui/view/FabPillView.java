@@ -150,13 +150,20 @@ public class FabPillView extends View implements ViewTreeObserver.OnPreDrawListe
 		restyle();
 	}
 
+	private final Runnable artStep = () -> {
+		if (!videoLook) {
+			restyle();
+			invalidate();
+		}
+	};
+
 	private void restyle() {
 		for (int i = 0; i < fabs.size(); i++) {
 			FloatingButton f = fabs.get(i);
 			Look l = looks.get(i);
 
 			if (pill) {
-				int icon = videoLook ? VideoControlsOverlay.BUTTON_ICON : iconColor;
+				int icon = videoLook ? VideoControlsOverlay.BUTTON_ICON : ArtAccent.map(iconColor);
 				f.setBackgroundTintList(ColorStateList.valueOf(Color.TRANSPARENT));
 				f.setSupportImageTintList(ColorStateList.valueOf(icon));
 				f.setRippleColor(ColorStateList.valueOf((icon & 0x00FFFFFF) | 0x33000000));
@@ -215,11 +222,13 @@ public class FabPillView extends View implements ViewTreeObserver.OnPreDrawListe
 	protected void onAttachedToWindow() {
 		super.onAttachedToWindow();
 		getViewTreeObserver().addOnPreDrawListener(this);
+		ArtAccent.addListener(artStep);
 	}
 
 	@Override
 	protected void onDetachedFromWindow() {
 		getViewTreeObserver().removeOnPreDrawListener(this);
+		ArtAccent.removeListener(artStep);
 		super.onDetachedFromWindow();
 	}
 
@@ -307,13 +316,13 @@ public class FabPillView extends View implements ViewTreeObserver.OnPreDrawListe
 			if (videoLook) Glass.notDrawn(lens);
 			boolean blurred = !videoLook && Glass.realBlur() &&
 					GlassLens.behindBars(this, canvas, cur, radius, alpha, l, lens);
-			int color = videoLook ? VideoControlsOverlay.BUTTON_BG : pillColor;
+			int color = videoLook ? VideoControlsOverlay.BUTTON_BG : ArtAccent.map(pillColor);
 			Glass.paintOver(canvas, cur, radius, color, alpha, l.rimFor(Glass.RIM_FAB),
 					!videoLook && (androidx.core.graphics.ColorUtils.calculateLuminance(pillColor | 0xFF000000) > 0.5),
 					getResources().getDisplayMetrics().density, glassPaint, blurred);
 			return;
 		}
-		int color = videoLook ? VideoControlsOverlay.BUTTON_BG : pillColor;
+		int color = videoLook ? VideoControlsOverlay.BUTTON_BG : ArtAccent.map(pillColor);
 		paint.setColor(color);
 		paint.setAlpha(Math.round(Color.alpha(color) * alpha));
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {

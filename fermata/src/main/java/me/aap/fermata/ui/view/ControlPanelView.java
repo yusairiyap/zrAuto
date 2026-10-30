@@ -469,8 +469,29 @@ public class ControlPanelView extends ConstraintLayout
 		else setPadding(pillPadH, pillPadTop, pillPadH, pillPadTop);
 	}
 
+	private final Runnable artStep = () -> {
+		if (videoLook || (title == null)) return;
+		int c = labelColor();
+		setIconTint(c);
+		setLabelColor(c);
+		setInfoColor(c);
+	};
+
+	@Override
+	protected void onAttachedToWindow() {
+		super.onAttachedToWindow();
+		ArtAccent.addListener(artStep);
+		artStep.run();
+	}
+
+	@Override
+	protected void onDetachedFromWindow() {
+		ArtAccent.removeListener(artStep);
+		super.onDetachedFromWindow();
+	}
+
 	private int labelColor() {
-		return videoLook ? VIDEO_ICON_COLOR : iconColor;
+		return videoLook ? VIDEO_ICON_COLOR : ArtAccent.map(iconColor);
 	}
 
 	/** Retints the transport/menu icons, overriding the tint the theme applied at inflate time. */

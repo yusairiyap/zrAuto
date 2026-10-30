@@ -34,8 +34,8 @@ public final class ArtAccent {
 	private static final List<Runnable> listeners = new CopyOnWriteArrayList<>();
 	private static final ValueAnimator.AnimatorUpdateListener STEP = an -> {
 		float t = an.getAnimatedFraction();
-		hue = lerpHue(fromHue, toHue, t);
-		sat = fromSat + (toSat - fromSat) * t;
+		ArtAccent.hue = ArtAccent.lerpHue(ArtAccent.fromHue, ArtAccent.toHue, t);
+		ArtAccent.sat = ArtAccent.fromSat + (ArtAccent.toSat - ArtAccent.fromSat) * t;
 		fire();
 	};
 	/** The hue (0..360) and saturation (0..1) now shown; sat 0 = no colour found yet, so nothing is remapped. */
