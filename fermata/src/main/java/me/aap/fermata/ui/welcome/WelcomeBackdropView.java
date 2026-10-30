@@ -19,6 +19,8 @@ final class WelcomeBackdropView extends View {
 	private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 	private int base = 0xFF101010;
 	private int accent = 0xFF1ED760;
+	private int accentGiven = 0xFF1ED760;
+	private int secondGiven = 0xFF5B8DEF;
 	private int second = 0xFF5B8DEF;
 	private boolean running;
 	private float t;
@@ -40,6 +42,8 @@ final class WelcomeBackdropView extends View {
 
 	void setColors(int base, int accent, int second) {
 		this.base = base;
+		this.accentGiven = accent;
+		this.secondGiven = second;
 		this.accent = accent;
 		this.second = second;
 		invalidate();
@@ -60,6 +64,8 @@ final class WelcomeBackdropView extends View {
 
 	@Override
 	protected void onDraw(Canvas c) {
+		accent = me.aap.fermata.ui.view.ArtAccent.map(accentGiven);
+		second = me.aap.fermata.ui.view.ArtAccent.map(secondGiven);
 		int w = getWidth();
 		int h = getHeight();
 		if ((w == 0) || (h == 0)) return;

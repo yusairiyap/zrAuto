@@ -300,6 +300,20 @@ public final class ArtAccent {
 			// The outline of a selectable card (the hall quality choices): blue in the theme, the cover's colour here.
 			tintOf(card, R.id.art_orig_stroke, card.getStrokeColorStateList(), card::setStrokeColor);
 		}
+		if (v instanceof androidx.appcompat.widget.SwitchCompat sw2) {
+			// A switch drawn from shapes (the settings' own): its track and its disc.
+			recolorDrawable(sw2.getTrackDrawable());
+			recolorDrawable(sw2.getThumbDrawable());
+		}
+		if (v instanceof android.widget.CompoundButton cb2) {
+			recolorDrawable(androidx.core.widget.CompoundButtonCompat.getButtonDrawable(cb2));
+			// A plain check box or radio button takes its blue from the theme through its drawable, with no tint of its own: given one.
+			if ((cb2 instanceof android.widget.CheckBox) || (cb2 instanceof android.widget.RadioButton)) syntheticButtonTint(cb2);
+		}
+		if (v instanceof androidx.recyclerview.widget.RecyclerView rv) watch(rv);
+		if ((v instanceof me.aap.utils.ui.view.ToolBarView) || (v instanceof ControlPanelView)) {
+			recolorRipples((android.view.ViewGroup) v);
+		}
 		if (v instanceof android.widget.ProgressBar pb2) {
 			// The track behind the filled part (the dimmed blue of every slider) and the buffered part.
 			tintOf(pb2, R.id.art_orig_pbg, pb2.getProgressBackgroundTintList(), pb2::setProgressBackgroundTintList);
@@ -336,6 +350,76 @@ public final class ArtAccent {
 
 	private static final java.util.WeakHashMap<android.graphics.drawable.Drawable, Boolean> owned = new java.util.WeakHashMap<>();
 
+	/** The check box's own colours (checked: the theme's activated colour, else its normal one), so they can follow the cover. */
+	private static void syntheticButtonTint(android.widget.CompoundButton b) {
+		android.content.res.ColorStateList own = androidx.core.widget.CompoundButtonCompat.getButtonTintList(b);
+		Object mark = b.getTag(R.id.art_orig_button);
+		if ((own != null) && (mark == null)) return; // someone gave it a tint: the usual path maps it
+		if (!isActive()) {
+			if (mark != null) {
+				androidx.core.widget.CompoundButtonCompat.setButtonTintList(b, null);
+				b.setTag(R.id.art_orig_button, null);
+			}
+			return;
+		}
+		int on = themeColor(b, androidx.appcompat.R.attr.colorControlActivated);
+		int off = themeColor(b, androidx.appcompat.R.attr.colorControlNormal);
+		if ((map(on) == on) && (map(off) == off)) return;
+		int[][] st = {{android.R.attr.state_checked}, {}};
+		androidx.core.widget.CompoundButtonCompat.setButtonTintList(b,
+				new android.content.res.ColorStateList(st, new int[]{map(on), map(off)}));
+		b.setTag(R.id.art_orig_button, new Orig());
+	}
+
+	private static int themeColor(android.view.View v, int attr) {
+		android.util.TypedValue tv = new android.util.TypedValue();
+		if (!v.getContext().getTheme().resolveAttribute(attr, tv, true)) return 0xFF808080;
+		if (tv.resourceId != 0) return androidx.core.content.ContextCompat.getColor(v.getContext(), tv.resourceId);
+		return tv.data;
+	}
+
+	/** The ripples of a bar's buttons (the hover and press pills): the theme's ripple colour, mapped; the theme's own again when off. */
+	private static void recolorRipples(android.view.ViewGroup g) {
+		int id = g.getResources().getIdentifier("rippleColor", "attr", g.getContext().getPackageName());
+		if (id == 0) return;
+		int base = themeColor(g, id);
+		boolean on = isActive();
+		for (int i = 0, n = g.getChildCount(); i < n; i++) {
+			android.view.View c = g.getChildAt(i);
+			if (c.getBackground() instanceof android.graphics.drawable.RippleDrawable rd) {
+				Object was = c.getTag(R.id.art_orig_ripple);
+				if (on) {
+					rd.setColor(android.content.res.ColorStateList.valueOf(map(base)));
+					if (was == null) c.setTag(R.id.art_orig_ripple, Boolean.TRUE);
+				} else if (was != null) {
+					rd.setColor(android.content.res.ColorStateList.valueOf(base));
+					c.setTag(R.id.art_orig_ripple, null);
+				}
+			}
+		}
+	}
+
+	private static final java.util.WeakHashMap<androidx.recyclerview.widget.RecyclerView, Boolean> watched = new java.util.WeakHashMap<>();
+
+	/**
+	 * A list scrolls rows in without a layout pass of the window, so a row coming in would show the theme's blue until the next one:
+	 * each list tells when a row is attached, and it is recoloured before it is drawn.
+	 */
+	private static void watch(androidx.recyclerview.widget.RecyclerView rv) {
+		if (watched.put(rv, Boolean.TRUE) != null) return;
+		rv.addOnChildAttachStateChangeListener(new androidx.recyclerview.widget.RecyclerView.OnChildAttachStateChangeListener() {
+			@Override
+			public void onChildViewAttachedToWindow(android.view.View view) {
+				if (isActive()) recolor(view);
+			}
+
+			@Override
+			public void onChildViewDetachedFromWindow(android.view.View view) {
+			}
+		});
+	}
+
+	private static final java.util.WeakHashMap<android.graphics.drawable.ColorDrawable, Orig> flat = new java.util.WeakHashMap<>();
 	private static final java.util.WeakHashMap<android.graphics.drawable.GradientDrawable, Orig> shapes =
 			new java.util.WeakHashMap<>();
 
@@ -344,7 +428,8 @@ public final class ArtAccent {
 		if (d == null) return;
 		if (d instanceof android.graphics.drawable.GradientDrawable g) {
 			// Only the plain kind: the app's own subclasses (the settings tiles) look after their colours themselves.
-			if (g.getClass() != android.graphics.drawable.GradientDrawable.class) return;
+			if ((g.getClass() != android.graphics.drawable.GradientDrawable.class) &&
+					!((g instanceof Glass.Manual m) && m.hasManualColor())) return;
 			Orig o = shapes.get(g);
 			android.content.res.ColorStateList cur = g.getColor();
 			if (cur == null) return;
@@ -366,6 +451,28 @@ public final class ArtAccent {
 			} else {
 				g.setColor(m);
 				o.applied = g.getColor();
+			}
+			return;
+		}
+		if (d instanceof android.graphics.drawable.ColorDrawable cd) {
+			Orig o = flat.get(cd);
+			int cur = cd.getColor();
+			if (o == null) {
+				if (!isActive() || (map(cur) == cur)) return;
+				cd.mutate();
+				o = new Orig();
+				o.orig = android.content.res.ColorStateList.valueOf(cur);
+				flat.put(cd, o);
+			} else if ((o.applied == null) || (o.applied.getDefaultColor() != cur)) {
+				o.orig = android.content.res.ColorStateList.valueOf(cur);
+			}
+			int m = map(o.orig.getDefaultColor());
+			if (m == o.orig.getDefaultColor()) {
+				if ((o.applied != null) && (o.applied.getDefaultColor() == cur)) cd.setColor(o.orig.getDefaultColor());
+				o.applied = null;
+			} else {
+				cd.setColor(m);
+				o.applied = android.content.res.ColorStateList.valueOf(m);
 			}
 			return;
 		}

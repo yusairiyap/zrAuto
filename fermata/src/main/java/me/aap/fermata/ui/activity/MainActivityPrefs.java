@@ -285,6 +285,9 @@ public interface MainActivityPrefs
 	// The audio effects and the captions settings open beside fullscreen video as a panel (ui/view/SidePanel).
 	Pref<BooleanSupplier> SIDE_PANEL_EFFECTS = Pref.b("SIDE_PANEL_EFFECTS", true);
 	Pref<BooleanSupplier> SIDE_PANEL_CAPTIONS = Pref.b("SIDE_PANEL_CAPTIONS", true);
+	// How wide each of those panels is (the comments' is COMMENTS_SPLIT_PERCENT), in percent of the screen; dragged by the strip on its edge.
+	Pref<IntSupplier> SIDE_PANEL_EFFECTS_PERCENT = Pref.i("SIDE_PANEL_EFFECTS_PERCENT", 38);
+	Pref<IntSupplier> SIDE_PANEL_CAPTIONS_PERCENT = Pref.i("SIDE_PANEL_CAPTIONS_PERCENT", 38);
 	Pref<IntSupplier> COMMENTS_SPLIT_PERCENT = Pref.i("COMMENTS_SPLIT_PERCENT", 38);
 	// How many upcoming Favorites/Playlist entries the YouTube tab's Up next list previews below the
 	// user's own queue (1..10) -- enough to see what comes after, few enough to leave room for search

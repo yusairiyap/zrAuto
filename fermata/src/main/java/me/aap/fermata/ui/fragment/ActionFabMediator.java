@@ -168,6 +168,8 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		// Lyrics / captions: dimmed while they are off, and while what plays has none (or not known yet).
 		boolean dimmed = (action == Action.LYRICS) && (!lyricsSwitchOn(a) ||
 				me.aap.fermata.ytcaptions.CaptionsHub.get().isDimmed(a));
+		// The captions settings button is dimmed while captions are off, like the captions button.
+		if (action == Action.CAPTIONS_SETTINGS) dimmed = !a.getPrefs().getBooleanPref(MainActivityPrefs.CAPTIONS_ON);
 		// The ambience on/off button is dimmed while nothing is playing.
 		if (action == Action.AMBIENCE_TOGGLE) {
 			dimmed = !me.aap.fermata.addon.ambience.AmbienceAddon.isEnabled() ||

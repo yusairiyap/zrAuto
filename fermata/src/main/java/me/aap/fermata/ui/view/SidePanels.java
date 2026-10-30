@@ -45,7 +45,7 @@ public final class SidePanels {
 		PlayableItem src = (eng == null) ? null : eng.getSource();
 		// The same screen as the full page (equalizer, bass, virtualizer, the 3D sound stage, presets in a menu), in the panel.
 		if ((src != null) && (eng.supportsAudioEffects() || eng.supportsSoundStage())) {
-			SidePanel.toggle(a, "effects", R.drawable.equalizer, R.string.action_audio_effects, new SidePanel.Body() {
+			SidePanel.toggle(a, "effects", R.drawable.equalizer, R.string.action_audio_effects, MainActivityPrefs.SIDE_PANEL_EFFECTS_PERCENT, new SidePanel.Body() {
 				private AudioEffectsView view;
 
 				@Override
@@ -70,7 +70,7 @@ public final class SidePanels {
 		View yt = (eng != null) ? ((eng.getId() == MediaPrefs.MEDIA_ENG_YT) ? MusicPlayer.youtubeEffectsView(a) : null) :
 				MusicPlayer.youtubeEffectsView(a);
 		if (yt != null) {
-			SidePanel.toggle(a, "effects", R.drawable.equalizer, R.string.action_audio_effects, p -> {
+			SidePanel.toggle(a, "effects", R.drawable.equalizer, R.string.action_audio_effects, MainActivityPrefs.SIDE_PANEL_EFFECTS_PERCENT, p -> {
 				tidyEffects(yt);
 				return yt;
 			});
@@ -80,7 +80,7 @@ public final class SidePanels {
 			TopToast.show(R.drawable.equalizer, R.string.music_effects_unavailable);
 			return;
 		}
-		SidePanel.toggle(a, "effects", R.drawable.equalizer, R.string.action_audio_effects, p -> effectsBody(p));
+		SidePanel.toggle(a, "effects", R.drawable.equalizer, R.string.action_audio_effects, MainActivityPrefs.SIDE_PANEL_EFFECTS_PERCENT, p -> effectsBody(p));
 	}
 
 	/**
@@ -223,7 +223,7 @@ public final class SidePanels {
 			a.showFragment(R.id.captions_fragment);
 			return;
 		}
-		SidePanel.toggle(a, "captions", R.drawable.captions, R.string.captions_settings, p -> captionsBody(p));
+		SidePanel.toggle(a, "captions", R.drawable.captions, R.string.captions_settings, MainActivityPrefs.SIDE_PANEL_CAPTIONS_PERCENT, p -> captionsBody(p));
 	}
 
 	private static View captionsBody(SidePanel p) {

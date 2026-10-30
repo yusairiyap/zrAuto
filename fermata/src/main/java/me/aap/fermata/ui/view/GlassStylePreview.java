@@ -180,7 +180,7 @@ public final class GlassStylePreview extends View implements PreferenceStore.Lis
 		c.drawRect(0, 0, sw, sh, paint);
 		// The glow of a picture: three soft blobs.
 		blob(c, sw * 0.2f, sh * 0.12f, sw * 0.55f, 0xFFFF5E8A);
-		blob(c, sw * 0.85f, sh * 0.2f, sw * 0.5f, 0xFF5B8CFF);
+		blob(c, sw * 0.85f, sh * 0.2f, sw * 0.5f, ArtAccent.map(0xFF5B8CFF));
 		blob(c, sw * 0.5f, sh * 0.34f, sw * 0.45f, 0xFFFFC14D);
 		paint.setShader(null);
 		float rowH = sh * 0.085f;
@@ -188,7 +188,7 @@ public final class GlassStylePreview extends View implements PreferenceStore.Lis
 		float top = sh * 0.4f;
 		float step = rowH + gap;
 		float off = scroll % (step * 6);
-		int[] covers = {0xFFE84E6A, 0xFF4CB6FF, 0xFF7ED957, 0xFFB57CFF, 0xFFFF9F43, 0xFF2ED1C4};
+		int[] covers = {0xFFE84E6A, ArtAccent.map(0xFF4CB6FF), 0xFF7ED957, 0xFFB57CFF, 0xFFFF9F43, 0xFF2ED1C4};
 		int text = light ? 0x33000000 : 0x40FFFFFF;
 		int text2 = light ? 0x1F000000 : 0x26FFFFFF;
 		float m = sw * 0.06f;

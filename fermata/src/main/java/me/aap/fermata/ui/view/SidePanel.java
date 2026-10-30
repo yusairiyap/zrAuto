@@ -78,7 +78,14 @@ public final class SidePanel {
 	@Nullable
 	private Object backGuard;
 
-	private SidePanel(MainActivityDelegate a, ViewGroup host, String id, Body body, boolean docked) {
+	private final me.aap.utils.pref.PreferenceStore.Pref<me.aap.utils.function.IntSupplier> widthPref;
+	private View strip;
+	private float stripX;
+	private int stripW;
+
+	private SidePanel(MainActivityDelegate a, ViewGroup host, String id, Body body, boolean docked,
+								me.aap.utils.pref.PreferenceStore.Pref<me.aap.utils.function.IntSupplier> widthPref) {
+		this.widthPref = widthPref;
 		this.a = a;
 		this.ctx = EffectsUi.palette(a.getContext());
 		this.host = host;
@@ -100,14 +107,15 @@ public final class SidePanel {
 	}
 
 	/** Opens the panel {@code id}, or closes it when it is the one that is open. */
-	public static void toggle(MainActivityDelegate a, String id, @DrawableRes int icon, @StringRes int title, Body body) {
+	public static void toggle(MainActivityDelegate a, String id, @DrawableRes int icon, @StringRes int title,
+														me.aap.utils.pref.PreferenceStore.Pref<me.aap.utils.function.IntSupplier> widthPref, Body body) {
 		SidePanel o = open;
 		if ((o != null) && o.id.equals(id) && dismissOpen()) return;
 		dismissOpen();
 		YoutubeCommentsView.dismissOpen();
 		ViewGroup host = a.findViewById(R.id.main_activity);
 		if ((host == null) || (host.getWidth() == 0)) return;
-		SidePanel p = new SidePanel(a, host, id, body, shouldDock(a, host));
+		SidePanel p = new SidePanel(a, host, id, body, shouldDock(a, host), widthPref);
 		open = p;
 		p.build(icon, title);
 		p.armBackGuard();
@@ -207,6 +215,7 @@ public final class SidePanel {
 		overlay.addView(card, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 		host.addView(overlay, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 		layoutCard();
+		if (docked) addStrip();
 		if (docked) openDock();
 		else {
 			overlay.animate().alpha(1f).setDuration(180).start();
@@ -217,7 +226,7 @@ public final class SidePanel {
 
 	private void layoutCard() {
 		int[] in = systemInsets();
-		int pct = Math.max(20, Math.min(60, a.getPrefs().getIntPref(MainActivityPrefs.COMMENTS_SPLIT_PERCENT)));
+		int pct = Math.max(20, Math.min(60, a.getPrefs().getIntPref(widthPref)));
 		if (docked) {
 			dockEnd = in[2] + dp(10);
 			int top = in[1] + dp(10);
@@ -235,6 +244,63 @@ public final class SidePanel {
 			cardLp = new FrameLayout.LayoutParams(w, h, Gravity.CENTER);
 		}
 		card.setLayoutParams(cardLp);
+	}
+
+	/** The strip on the column's left edge that drags it wider or narrower, as the comments' column has; the width is kept for the next time. */
+	private void addStrip() {
+		strip = new FrameLayout(ctx);
+		View pill = new View(ctx);
+		GradientDrawable pd = new GradientDrawable();
+		pd.setColor((secondary & 0x00FFFFFF) | 0x77000000);
+		pd.setCornerRadius(dp(2));
+		pill.setBackground(pd);
+		((FrameLayout) strip).addView(pill, new FrameLayout.LayoutParams(dp(4), dp(48), Gravity.CENTER));
+		strip.setContentDescription(ctx.getString(R.string.yt_comments_resize));
+		strip.setElevation(dp(8));
+		strip.setOnTouchListener((v, e) -> {
+			switch (e.getActionMasked()) {
+				case android.view.MotionEvent.ACTION_DOWN -> {
+					stripX = e.getRawX();
+					stripW = dockW;
+					v.getParent().requestDisallowInterceptTouchEvent(true);
+					pd.setColor(accent);
+					return true;
+				}
+				case android.view.MotionEvent.ACTION_MOVE -> {
+					int max = Math.round(host.getWidth() * 0.6f);
+					setDockWidth(Math.max(Math.min(dp(260), max), Math.min(stripW - Math.round(e.getRawX() - stripX), max)));
+					return true;
+				}
+				case android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+					pd.setColor((secondary & 0x00FFFFFF) | 0x77000000);
+					int pct = Math.round(dockW * 100f / Math.max(1, host.getWidth()));
+					a.getPrefs().applyIntPref(widthPref, Math.max(20, Math.min(60, pct)));
+					return true;
+				}
+				default -> {
+					return false;
+				}
+			}
+		});
+		overlay.addView(strip, stripParams());
+	}
+
+	private FrameLayout.LayoutParams stripParams() {
+		FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(dp(24), cardLp.height, Gravity.END | Gravity.TOP);
+		lp.topMargin = cardLp.topMargin;
+		lp.setMarginEnd(dockEnd + dockW - dp(12));
+		return lp;
+	}
+
+	private void setDockWidth(int w) {
+		if ((w == dockW) || (cardLp == null)) return;
+		dockW = w;
+		cardLp.width = w;
+		card.setLayoutParams(cardLp);
+		if (strip != null) strip.setLayoutParams(stripParams());
+		VideoView vv = splitView;
+		int hostW = host.getWidth();
+		if ((vv != null) && (hostW > 0)) vv.setSplitShare(((dockW + dockEnd + dp(10)) / (float) hostW) * progress);
 	}
 
 	private int[] systemInsets() {
@@ -266,7 +332,9 @@ public final class SidePanel {
 		va.addUpdateListener(an -> {
 			progress = (float) an.getAnimatedValue();
 			card.setTranslationX((1f - progress) * (dockW + dockEnd));
+			if (strip != null) strip.setTranslationX((1f - progress) * (dockW + dockEnd));
 			card.setAlpha(Math.min(1f, progress * 1.6f));
+			if (strip != null) strip.setAlpha(card.getAlpha());
 			VideoView vv = splitView;
 			int hostW = host.getWidth();
 			if ((vv != null) && (hostW > 0)) vv.setSplitShare(((dockW + dockEnd + dp(10)) / (float) hostW) * progress);

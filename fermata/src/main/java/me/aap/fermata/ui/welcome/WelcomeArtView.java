@@ -50,6 +50,8 @@ final class WelcomeArtView extends View {
 	private final float density;
 	private int scene;
 	private int accent = 0xFF1ED760;
+	/** What the screen was given; {@link #accent} is that, in the album art's colour while it follows. */
+	private int accentGiven = 0xFF1ED760;
 	private int onAccent = 0xFF000000;
 	private int card = 0xFF222222;
 	private int text = 0xFFFFFFFF;
@@ -83,6 +85,7 @@ final class WelcomeArtView extends View {
 	}
 
 	void setColors(int accent, int onAccent, int card, int text, int textDim, int track) {
+		this.accentGiven = accent;
 		this.accent = accent;
 		this.onAccent = onAccent;
 		this.card = card;
@@ -210,6 +213,7 @@ final class WelcomeArtView extends View {
 
 	@Override
 	protected void onDraw(Canvas c) {
+		accent = me.aap.fermata.ui.view.ArtAccent.map(accentGiven);
 		int w = getWidth();
 		int h = getHeight();
 		if ((w == 0) || (h == 0)) return;
