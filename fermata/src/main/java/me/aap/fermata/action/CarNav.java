@@ -184,10 +184,15 @@ public final class CarNav {
 	public static void selectView(@NonNull MainActivityDelegate a, @NonNull View root, @NonNull View v) {
 		if (!isEnabled() || !root.isAttachedToWindow() || !v.isAttachedToWindow()) return;
 		Scope s = findScope(a, true);
-		if ((s == null) || (s.root != root)) return;
+		if ((s == null) || (s.root != root)) {
+			DiagnosticLog.d(LogCat.CARNAV, "select view: scope not found", "found=" + s);
+			return;
+		}
 		clear();
 		enterScope(s);
 		fresh = false;
+		DiagnosticLog.d(LogCat.CARNAV, "select view", "view=" + v.getClass().getSimpleName(),
+				"size=" + v.getWidth() + "x" + v.getHeight(), "shown=" + v.isShown());
 		select(new Sel(v), v);
 	}
 

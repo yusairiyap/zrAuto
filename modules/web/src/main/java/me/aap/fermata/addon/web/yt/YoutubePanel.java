@@ -107,6 +107,7 @@ final class YoutubePanel implements SidePanel.Body {
 		}
 	};
 	private SidePanel p;
+	private boolean highlightFirst;
 	private boolean queueMode;
 	private boolean searching;
 	private boolean failed;
@@ -184,7 +185,8 @@ final class YoutubePanel implements SidePanel.Body {
 		controls.setLayoutTransition(lt);
 		root.addView(controls, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
-		input = new EditText(p.ctx);
+		// On Android Auto this is the car's own text field: a tap on it (or performClick) brings the car keyboard up.
+		input = a.createEditText(p.ctx);
 		input.setHint(R.string.youtube_search_hint);
 		input.setHintTextColor(p.secondary);
 		input.setTextColor(p.primary);
@@ -259,12 +261,19 @@ final class YoutubePanel implements SidePanel.Body {
 		if (keyboard) {
 			input.requestFocus();
 			showKeyboard();
-		} else {
-			p.carSelect((chips.getChildCount() > 0) ? chips.getChildAt(0) : pillSearch.view);
 		}
+		// The steering wheel starts on the past searches (the keyboard, if up, stays until a key moves on).
+		p.carSelect((chips.getChildCount() > 0) ? chips.getChildAt(0) : pillSearch.view);
 	}
 
 	private void showKeyboard() {
+		if (a.isCarActivity()) {
+			// The car keyboard starts from the field's click, as the tab's search field does.
+			input.postDelayed(() -> {
+				if (input.isAttachedToWindow() && !a.getAppActivity().isInputActive()) input.performClick();
+			}, 300);
+			return;
+		}
 		android.view.inputmethod.InputMethodManager im =
 				(android.view.inputmethod.InputMethodManager) p.ctx.getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
 		if (im != null) input.postDelayed(() -> im.showSoftInput(input, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT), 250);
@@ -399,6 +408,8 @@ final class YoutubePanel implements SidePanel.Body {
 		libraryResults.clear();
 		addon.addSearchHistory(q);
 		hideKeyboard();
+		// Car: the outline goes to the first result as soon as there is one.
+		highlightFirst = CarNav.isEnabled();
 		rebuildSearchRows();
 		// What is already saved, found while the search runs.
 		if (MainActivityPrefs.get().getBooleanPref(MainActivityPrefs.YT_SEARCH_LIBRARY)) {
@@ -545,6 +556,18 @@ final class YoutubePanel implements SidePanel.Body {
 			}
 		}
 		adapter.notifyDataSetChanged();
+		if (highlightFirst) {
+			for (int i = 0; i < rows.size(); i++) {
+				if (rows.get(i).type != T_CARD) continue;
+				highlightFirst = false;
+				int pos = i;
+				int gen = generation;
+				handler.postDelayed(() -> {
+					if ((gen == generation) && !queueMode) CarNav.highlightRow(a, list, pos);
+				}, 250);
+				break;
+			}
+		}
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -699,6 +722,7 @@ final class YoutubePanel implements SidePanel.Body {
 	}
 
 	private void hideKeyboard() {
+		if (a.isCarActivity()) a.dismissKeyboard();
 		android.view.inputmethod.InputMethodManager im =
 				(android.view.inputmethod.InputMethodManager) p.ctx.getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
 		if ((im != null) && (input != null)) im.hideSoftInputFromWindow(input.getWindowToken(), 0);
@@ -799,8 +823,8 @@ final class YoutubePanel implements SidePanel.Body {
 		v.setImageResource(icon);
 		v.setImageTintList(ColorStateList.valueOf(filled ? p.onAccent : p.primary));
 		v.setScaleType(ImageView.ScaleType.CENTER);
-		v.setPadding(p.dp(6), p.dp(6), p.dp(6), p.dp(6));
-		v.setBackground(p.pressable(filled ? p.accent : p.chipFill, 15));
+		v.setPadding(p.dp(7), p.dp(7), p.dp(7), p.dp(7));
+		v.setBackground(p.pressable(filled ? p.accent : p.chipFill, 18));
 		v.setClickable(true);
 		v.setFocusable(true);
 		v.setContentDescription(p.ctx.getString(description));
@@ -853,8 +877,8 @@ final class YoutubePanel implements SidePanel.Body {
 			LinearLayout card = new LinearLayout(p.ctx);
 			card.setOrientation(LinearLayout.HORIZONTAL);
 			card.setGravity(Gravity.CENTER_VERTICAL);
-			card.setPadding(p.dp(8), p.dp(8), p.dp(8), p.dp(8));
-			card.setBackground(p.pressable(p.chipFill, 16));
+			card.setPadding(p.dp(10), p.dp(10), p.dp(12), p.dp(10));
+			card.setBackground(p.pressable(p.chipFill, 18));
 			card.setClickable(true);
 			card.setFocusable(true);
 			RecyclerView.LayoutParams clp = new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
@@ -891,7 +915,9 @@ final class YoutubePanel implements SidePanel.Body {
 			h.actions = new LinearLayout(p.ctx);
 			h.actions.setOrientation(LinearLayout.VERTICAL);
 			h.actions.setGravity(Gravity.CENTER);
-			card.addView(h.actions, new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
+			LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+			alp.setMarginStart(p.dp(4));
+			card.addView(h.actions, alp);
 			return h;
 		}
 
@@ -934,10 +960,10 @@ final class YoutubePanel implements SidePanel.Body {
 				else play(r);
 			});
 			h.actions.removeAllViews();
-			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(p.dp(30), p.dp(30));
+			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(p.dp(36), p.dp(36));
 			h.actions.addView(iconChip(R.drawable.play, true, R.string.youtube_play_now, () -> play(r)), lp);
-			LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(p.dp(30), p.dp(30));
-			lp2.topMargin = p.dp(4);
+			LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(p.dp(36), p.dp(36));
+			lp2.topMargin = p.dp(6);
 			if (r.kind == K_QUEUED) {
 				h.actions.addView(iconChip(R.drawable.playlist_remove, false, R.string.youtube_up_next_remove,
 						() -> addon.removeUpNext(r.id)), lp2);
