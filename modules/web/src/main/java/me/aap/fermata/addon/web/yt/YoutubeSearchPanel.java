@@ -503,6 +503,11 @@ final class YoutubeSearchPanel extends FrameLayout implements MediaSessionCallba
 	 * Lists are read one after another, stopping at {@link #MAX_LIBRARY_RESULTS}.
 	 */
 	private void searchLibrary(String q, int gen) {
+		if (!MainActivityPrefs.get().getBooleanPref(MainActivityPrefs.YT_SEARCH_LIBRARY)) {
+			libraryResults.clear();
+			refresh();
+			return;
+		}
 		MediaLib lib = MainActivityDelegate.get(getContext()).getLib();
 		String needle = q.toLowerCase(Locale.ROOT);
 		List<BrowsableItem> sources = new ArrayList<>();

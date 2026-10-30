@@ -423,6 +423,8 @@
     <string name="yt_panel_failed">The search failed. Check the connection and try again.</string>
     <string name="yt_panel_no_results">Nothing found</string>
     <string name="yt_panel_empty_queue">Nothing is queued in Up next</string>
+    <string name="yt_search_library_pref">Search Favorites and Playlists too</string>
+    <string name="yt_search_library_pref_sub">Saved videos that match are listed above the YouTube results, in the search panel and in the panel beside the video</string>
     <string name="art_accent">Follow the album art</string>
     <string name="art_accent_sub">The theme\'s blue (bars, buttons, chips, seek bars) takes the colour of the playing cover</string>
     <string name="playlist_remove">Remove playlist</string>

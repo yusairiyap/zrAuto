@@ -3,7 +3,14 @@ package me.aap.fermata.addon.web.yt;
 import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
 
+import android.animation.ArgbEvaluator;
+import android.animation.LayoutTransition;
+import android.animation.ValueAnimator;
+import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
+import android.support.v4.media.session.PlaybackStateCompat;
 import android.graphics.Outline;
 import android.os.Handler;
 import android.os.Looper;
@@ -28,13 +35,24 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
 import me.aap.fermata.action.CarNav;
+import me.aap.fermata.addon.music.MusicPlayer;
+import me.aap.fermata.addon.music.MusicQueue;
+import me.aap.fermata.addon.music.MusicTrackItem;
+import me.aap.fermata.media.lib.MediaLib;
+import me.aap.fermata.media.lib.MediaLib.BrowsableItem;
+import me.aap.fermata.media.lib.MediaLib.Item;
+import me.aap.fermata.media.lib.MediaLib.PlayableItem;
+import me.aap.fermata.media.service.MediaSessionCallback;
 import me.aap.fermata.spotify.SpotifyImportModel.Video;
 import me.aap.fermata.spotify.YoutubeSearch;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
@@ -52,7 +70,15 @@ final class YoutubePanel implements SidePanel.Body {
 	private static final String ID = "youtube";
 	private static final int MAX_RESULTS = 25;
 	private static final int MAX_CHIPS = 12;
+	private static final int MAX_LIBRARY_RESULTS = 12;
 	private static final long SUGGEST_DELAY_MS = 220;
+	private static final int T_CARD = 0;
+	private static final int T_HEADER = 1;
+	private static final int T_NOTE = 2;
+	private static final int K_RESULT = 0;
+	private static final int K_QUEUED = 1;
+	private static final int K_LIBRARY = 2;
+	private static final int K_LIST = 3;
 	@Nullable
 	private static YoutubePanel current;
 
@@ -63,22 +89,39 @@ final class YoutubePanel implements SidePanel.Body {
 	private final ExecutorService suggestExecutor = Executors.newSingleThreadExecutor();
 	private final LruCache<String, Bitmap> images = new LruCache<>(60);
 	private final List<Row> rows = new ArrayList<>();
+	private final List<Video> results = new ArrayList<>();
+	private final List<PlayableItem> libraryResults = new ArrayList<>();
+	private final List<PlayableItem> listItems = new ArrayList<>();
+	@Nullable
+	private String listName;
+	private boolean listShuffled;
+	private int listGeneration;
 	private final Runnable queueListener = () -> handler.post(this::onQueueChanged);
+	private final Runnable listReload = this::loadList;
+	private final MediaSessionCallback.Listener playbackListener = new MediaSessionCallback.Listener() {
+		@Override
+		public void onPlaybackStateChanged(MediaSessionCallback cb, PlaybackStateCompat state) {
+			// A skip reports several states in a row: looked at once, shortly after.
+			handler.removeCallbacks(listReload);
+			handler.postDelayed(listReload, 300);
+		}
+	};
 	private SidePanel p;
 	private boolean queueMode;
 	private boolean searching;
 	private boolean failed;
 	private boolean searched;
+	private String query = "";
 	private int generation;
 	private int suggestGeneration;
 	private String typing = "";
-	private TextView pillSearch;
-	private TextView pillQueue;
+	private Pill pillSearch;
+	private Pill pillQueue;
+	private LinearLayout controls;
 	private EditText input;
 	private HorizontalScrollView chipScroll;
 	private LinearLayout chips;
 	private RecyclerView list;
-	private TextView note;
 	private final Adapter adapter = new Adapter();
 	private Runnable pendingSuggest;
 
@@ -92,11 +135,8 @@ final class YoutubePanel implements SidePanel.Body {
 	static void show(MainActivityDelegate a, YoutubeAddon addon, boolean queue) {
 		YoutubePanel c = current;
 		if ((c != null) && SidePanel.isOpen(ID)) {
-			if (c.queueMode == queue) {
-				SidePanel.dismissOpen();
-			} else {
-				c.setMode(queue);
-			}
+			if (c.queueMode == queue) SidePanel.dismissOpen();
+			else c.setMode(queue, true);
 			return;
 		}
 		YoutubePanel panel = new YoutubePanel(a, addon, queue);
@@ -106,25 +146,39 @@ final class YoutubePanel implements SidePanel.Body {
 				MainActivityPrefs.SIDE_PANEL_YOUTUBE_PERCENT, panel);
 	}
 
+	private static boolean tapQueues() {
+		return MainActivityPrefs.get().getBooleanPref(MainActivityPrefs.YT_SEARCH_TAP_QUEUES);
+	}
+
 	// ---------------------------------------------------------------------------------------------
 
 	@Override
 	public View create(SidePanel panel) {
 		this.p = panel;
+		int gap = p.dp(8);
 		boolean car = a.isCarActivity();
 		LinearLayout root = new LinearLayout(p.ctx);
 		root.setOrientation(LinearLayout.VERTICAL);
 
 		LinearLayout pills = new LinearLayout(p.ctx);
 		pills.setOrientation(LinearLayout.HORIZONTAL);
-		pills.setPadding(p.dp(4), p.dp(2), p.dp(4), p.dp(6));
-		pillSearch = pill(p.ctx.getString(R.string.action_youtube_search), () -> setMode(false));
-		pillQueue = pill(p.ctx.getString(R.string.youtube_up_next), () -> setMode(true));
+		pills.setPadding(p.dp(4), 0, p.dp(4), gap);
+		pillSearch = new Pill(p.ctx.getString(R.string.action_youtube_search), () -> setMode(false, true));
+		pillQueue = new Pill(p.ctx.getString(R.string.youtube_up_next), () -> setMode(true, true));
 		LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(0, p.dp(38), 1f);
-		plp.setMarginEnd(p.dp(8));
-		pills.addView(pillSearch, plp);
-		pills.addView(pillQueue, new LinearLayout.LayoutParams(0, p.dp(38), 1f));
+		plp.setMarginEnd(gap);
+		pills.addView(pillSearch.view, plp);
+		pills.addView(pillQueue.view, new LinearLayout.LayoutParams(0, p.dp(38), 1f));
 		root.addView(pills, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+
+		// The field and the chips come and go with the tab: their room opens and closes smoothly.
+		controls = new LinearLayout(p.ctx);
+		controls.setOrientation(LinearLayout.VERTICAL);
+		LayoutTransition lt = new LayoutTransition();
+		lt.setDuration(200);
+		lt.enableTransitionType(LayoutTransition.CHANGING);
+		controls.setLayoutTransition(lt);
+		root.addView(controls, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
 		input = new EditText(p.ctx);
 		input.setHint(R.string.youtube_search_hint);
@@ -162,37 +216,34 @@ final class YoutubePanel implements SidePanel.Body {
 			}
 		});
 		LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		ilp.setMargins(p.dp(4), 0, p.dp(4), p.dp(6));
-		root.addView(input, ilp);
+		ilp.setMargins(p.dp(4), 0, p.dp(4), gap);
+		controls.addView(input, ilp);
 
 		chips = new LinearLayout(p.ctx);
 		chips.setOrientation(LinearLayout.HORIZONTAL);
-		chips.setPadding(p.dp(4), 0, p.dp(4), p.dp(6));
+		chips.setPadding(p.dp(4), 0, p.dp(4), gap);
 		chipScroll = new HorizontalScrollView(p.ctx);
 		chipScroll.setHorizontalScrollBarEnabled(false);
 		chipScroll.addView(chips, new HorizontalScrollView.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
-		root.addView(chipScroll, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-
-		note = p.text("", 14, p.secondary, false);
-		note.setGravity(Gravity.CENTER);
-		note.setPadding(p.dp(16), p.dp(24), p.dp(16), p.dp(24));
-		root.addView(note, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		controls.addView(chipScroll, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
 		list = new RecyclerView(p.ctx);
 		list.setLayoutManager(new LinearLayoutManager(p.ctx));
 		list.setAdapter(adapter);
 		list.setClipToPadding(false);
-		list.setPadding(0, 0, 0, p.dp(8));
+		list.setPadding(p.dp(4), 0, p.dp(4), gap);
 		root.addView(list, new LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f));
 
 		addon.addUpNextListener(queueListener);
-		setMode(queueMode);
+		a.getMediaSessionCallback().addBroadcastListener(playbackListener);
+		setMode(queueMode, false);
 		return root;
 	}
 
 	@Override
 	public void onClosed() {
 		addon.removeUpNextListener(queueListener);
+		a.getMediaSessionCallback().removeBroadcastListener(playbackListener);
 		executor.shutdownNow();
 		suggestExecutor.shutdownNow();
 		handler.removeCallbacksAndMessages(null);
@@ -200,41 +251,104 @@ final class YoutubePanel implements SidePanel.Body {
 	}
 
 	// ---------------------------------------------------------------------------------------------
-	// Modes
+	// Tabs
 
-	private void setMode(boolean queue) {
+	private void setMode(boolean queue, boolean animate) {
+		boolean changed = (queue != queueMode) || !animate;
 		queueMode = queue;
-		pillSearch.setBackground(p.pressable(queue ? p.chipFill : p.accent, 19));
-		pillSearch.setTextColor(queue ? p.primary : p.onAccent);
-		pillQueue.setBackground(p.pressable(queue ? p.accent : p.chipFill, 19));
-		pillQueue.setTextColor(queue ? p.onAccent : p.primary);
+		pillSearch.set(!queue, animate);
+		pillQueue.set(queue, animate);
 		input.setVisibility(queue ? View.GONE : View.VISIBLE);
-		chipScroll.setVisibility(queue ? View.GONE : View.VISIBLE);
-		if (queue) loadQueue();
-		else showSearchState();
+		chipScroll.setVisibility((queue || chips.getChildCount() == 0) ? View.GONE : View.VISIBLE);
+		if (!changed) return;
+		Runnable swap = () -> {
+			if (queue) {
+				loadQueueRows();
+				loadList();
+			} else {
+				fillChips(input.getText().toString().trim());
+				rebuildSearchRows();
+			}
+		};
+		if (!animate) {
+			swap.run();
+			return;
+		}
+		// The cards fade out, the other tab's come in.
+		list.animate().cancel();
+		list.animate().alpha(0f).setDuration(110).withEndAction(() -> {
+			swap.run();
+			list.scrollToPosition(0);
+			list.animate().alpha(1f).setDuration(200).start();
+		}).start();
 	}
 
-	private void showSearchState() {
-		fillChips(input.getText().toString().trim());
-		rebuildSearchRows();
+	/** A tab's pill: filled with the accent while picked; the fill and the text colour glide when it changes. */
+	private final class Pill {
+		final TextView view;
+		private final GradientDrawable fill = new GradientDrawable();
+		private boolean on;
+		private ValueAnimator anim;
+
+		Pill(String label, Runnable onClick) {
+			view = p.text(label, 14, p.primary, true);
+			view.setGravity(Gravity.CENTER);
+			view.setSingleLine(true);
+			view.setClickable(true);
+			view.setFocusable(true);
+			view.setOnClickListener(v -> onClick.run());
+			fill.setCornerRadius(p.dp(19));
+			fill.setColor(p.chipFill);
+			view.setBackground(new RippleDrawable(ColorStateList.valueOf(p.ripple), fill, null));
+		}
+
+		void set(boolean picked, boolean animate) {
+			int toFill = picked ? p.accent : p.chipFill;
+			int toText = picked ? p.onAccent : p.primary;
+			if (anim != null) anim.cancel();
+			if (!animate || (picked == on)) {
+				on = picked;
+				fill.setColor(toFill);
+				view.setTextColor(toText);
+				return;
+			}
+			on = picked;
+			int fromFill = ((android.graphics.drawable.GradientDrawable) fill).getColor().getDefaultColor();
+			int fromText = view.getCurrentTextColor();
+			anim = ValueAnimator.ofFloat(0f, 1f);
+			anim.setDuration(220);
+			ArgbEvaluator ev = new ArgbEvaluator();
+			anim.addUpdateListener(an -> {
+				float t = an.getAnimatedFraction();
+				fill.setColor((Integer) ev.evaluate(t, fromFill, toFill));
+				view.setTextColor((Integer) ev.evaluate(t, fromText, toText));
+			});
+			anim.start();
+		}
 	}
 
 	// ---------------------------------------------------------------------------------------------
 	// Search
 
-	private final List<Video> results = new ArrayList<>();
-
 	private void search(String q) {
 		if (q.isEmpty()) return;
+		query = q;
 		generation++;
 		int gen = generation;
 		searching = true;
 		failed = false;
 		searched = true;
 		results.clear();
+		libraryResults.clear();
 		addon.addSearchHistory(q);
 		hideKeyboard();
 		rebuildSearchRows();
+		// What is already saved, found while the search runs.
+		if (MainActivityPrefs.get().getBooleanPref(MainActivityPrefs.YT_SEARCH_LIBRARY)) {
+			handler.postDelayed(() -> {
+				if (gen == generation) searchLibrary(q, gen);
+			}, 60);
+		}
 		executor.execute(() -> {
 			List<Video> found = null;
 			try {
@@ -255,6 +369,45 @@ final class YoutubePanel implements SidePanel.Body {
 				}
 				rebuildSearchRows();
 			});
+		});
+	}
+
+	/** Favorites and Playlist entries whose title matches, read one list after the other (the tab's search panel does the same). */
+	private void searchLibrary(String q, int gen) {
+		MediaLib lib = a.getLib();
+		String needle = q.toLowerCase(Locale.ROOT);
+		List<BrowsableItem> sources = new ArrayList<>();
+		sources.add(lib.getFavorites());
+		lib.getPlaylists().getChildren().main().onCompletion((pls, err) -> {
+			if (gen != generation) return;
+			if (pls != null) {
+				for (Item i : pls) {
+					if (i instanceof BrowsableItem b) sources.add(b);
+				}
+			}
+			collectLibrary(sources, 0, needle, new ArrayList<>(), new HashSet<>(), gen);
+		});
+	}
+
+	private void collectLibrary(List<BrowsableItem> sources, int idx, String needle, List<PlayableItem> found,
+															Set<String> seen, int gen) {
+		if (gen != generation) return;
+		if ((idx >= sources.size()) || (found.size() >= MAX_LIBRARY_RESULTS)) {
+			libraryResults.clear();
+			libraryResults.addAll(found);
+			rebuildSearchRows();
+			return;
+		}
+		sources.get(idx).getPlayableChildren(false).main().onCompletion((list, err) -> {
+			if (list != null) {
+				for (PlayableItem pi : list) {
+					if (found.size() >= MAX_LIBRARY_RESULTS) break;
+					String vid = videoIdOf(pi);
+					if (!libraryTitle(pi, vid).toLowerCase(Locale.ROOT).contains(needle)) continue;
+					if (seen.add((vid != null) ? vid : pi.getId())) found.add(pi);
+				}
+			}
+			collectLibrary(sources, idx + 1, needle, found, seen, gen);
 		});
 	}
 
@@ -314,37 +467,130 @@ final class YoutubePanel implements SidePanel.Body {
 
 	private void rebuildSearchRows() {
 		rows.clear();
-		if (searching) {
-			note.setText(p.ctx.getString(R.string.yt_panel_searching));
-		} else if (failed) {
-			note.setText(R.string.yt_panel_failed);
-		} else if (searched && results.isEmpty()) {
-			note.setText(R.string.yt_panel_no_results);
-		} else {
-			note.setText("");
+		if (!libraryResults.isEmpty()) {
+			rows.add(Row.header(p.ctx.getString(R.string.youtube_search_library), null, null));
+			for (PlayableItem pi : libraryResults) {
+				String vid = videoIdOf(pi);
+				rows.add(Row.library(K_LIBRARY, pi, vid, libraryTitle(pi, vid), p.ctx.getString(R.string.youtube_from_list, parentName(pi))));
+			}
 		}
-		for (Video v : results) {
-			String sub = (v.channel == null) ? "" : v.channel;
-			if (v.durationText != null) sub = sub.isEmpty() ? v.durationText : (sub + "  ·  " + v.durationText);
-			rows.add(new Row(v.videoId, v.title, sub, false));
+		if (searched) {
+			rows.add(Row.header(p.ctx.getString(R.string.youtube_search_results, query), null, null));
+			if (searching) rows.add(Row.note(p.ctx.getString(R.string.yt_panel_searching)));
+			else if (failed) rows.add(Row.note(p.ctx.getString(R.string.yt_panel_failed)));
+			else if (results.isEmpty()) rows.add(Row.note(p.ctx.getString(R.string.yt_panel_no_results)));
+			for (Video v : results) {
+				String sub = (v.channel == null) ? "" : v.channel;
+				if (v.durationText != null) sub = sub.isEmpty() ? v.durationText : (sub + "  ·  " + v.durationText);
+				rows.add(Row.video(v.videoId, v.title, sub));
+			}
 		}
-		note.setVisibility(note.getText().length() == 0 ? View.GONE : View.VISIBLE);
 		adapter.notifyDataSetChanged();
 	}
 
 	// ---------------------------------------------------------------------------------------------
-	// Up next
+	// Up next: the queue, then what the playing Favorites / Playlist / Music queue goes on with
 
-	private void loadQueue() {
+	private void loadQueueRows() {
 		rows.clear();
-		for (String id : addon.getUpNext()) rows.add(new Row(id, addon.getDisplayTitle(id), p.ctx.getString(R.string.youtube_queued), true));
-		note.setText(rows.isEmpty() ? p.ctx.getString(R.string.yt_panel_empty_queue) : "");
-		note.setVisibility(rows.isEmpty() ? View.VISIBLE : View.GONE);
+		List<String> upNext = addon.getUpNext();
+		String title = upNext.isEmpty() ? p.ctx.getString(R.string.youtube_up_next) :
+				p.ctx.getString(R.string.youtube_up_next_count, upNext.size());
+		rows.add(Row.header(title, upNext.isEmpty() ? null : p.ctx.getString(R.string.youtube_up_next_clear), addon::clearUpNext));
+		for (String id : upNext) rows.add(Row.queued(id, addon.getDisplayTitle(id), p.ctx.getString(R.string.youtube_queued)));
+		boolean hasList = (listName != null) && (listShuffled || !listItems.isEmpty());
+		if (upNext.isEmpty() && !hasList) rows.add(Row.note(p.ctx.getString(R.string.youtube_up_next_empty)));
+		if (hasList) {
+			boolean queued = !upNext.isEmpty();
+			int label = listShuffled ?
+					(queued ? R.string.youtube_then_shuffled : R.string.youtube_playing_shuffled) :
+					(queued ? R.string.youtube_then_from : R.string.youtube_playing_from);
+			rows.add(Row.note(p.ctx.getString(label, listName)));
+			for (PlayableItem pi : listItems) {
+				String vid = videoIdOf(pi);
+				rows.add(Row.library(K_LIST, pi, vid, libraryTitle(pi, vid), listName));
+			}
+		}
 		adapter.notifyDataSetChanged();
 	}
 
 	private void onQueueChanged() {
-		if (queueMode) loadQueue();
+		if (queueMode) loadQueueRows();
+	}
+
+	/**
+	 * The next few entries of the Favorites / Playlist the playing video came from (or the Music queue, in its play order): what plays
+	 * once Up next runs dry. With Shuffle on only the list's name is shown. How many is Settings > YouTube search & Up next.
+	 */
+	private void loadList() {
+		int gen = ++listGeneration;
+		PlayableItem q = addon.getQueueItem();
+		BrowsableItem parent = (q != null) ? q.getParent() : null;
+		int max = Math.max(1, Math.min(10, MainActivityPrefs.get().getIntPref(MainActivityPrefs.UP_NEXT_LIST_PREVIEW)));
+
+		if (parent instanceof MusicQueue mq) {
+			List<MusicTrackItem> order = mq.getPlayOrder();
+			int idx = mq.indexInPlayOrder(q);
+			boolean repeat = mq.getPrefs().getRepeatPref();
+			listItems.clear();
+			listName = mq.getName();
+			listShuffled = false;
+			if (idx != -1) {
+				for (int i = 1; i <= max; i++) {
+					int j = idx + i;
+					if (j >= order.size()) {
+						if (!repeat) break;
+						j %= order.size();
+					}
+					if (j == idx) break;
+					listItems.add(order.get(j));
+				}
+			}
+			listLoaded();
+			return;
+		}
+		if ((q == null) || (parent == null) || parent.isExternal()) {
+			listItems.clear();
+			listName = null;
+			listLoaded();
+			return;
+		}
+		boolean shuffle = parent.getPrefs().getShufflePref();
+		boolean repeat = parent.getPrefs().getRepeatPref();
+		String name = parent.getName();
+		parent.getPlayableChildren(false).main().onCompletion((list, err) -> {
+			if (gen != listGeneration) return;
+			if (err != null) Log.d(err, "Failed to load the Up next list preview");
+			listItems.clear();
+			listName = name;
+			listShuffled = shuffle;
+			if ((list != null) && !shuffle) {
+				int idx = -1;
+				String id = q.getId();
+				for (int i = 0; i < list.size(); i++) {
+					if (id.equals(list.get(i).getId())) {
+						idx = i;
+						break;
+					}
+				}
+				if (idx != -1) {
+					for (int i = 1; i <= max; i++) {
+						int j = idx + i;
+						if (j >= list.size()) {
+							if (!repeat) break;
+							j %= list.size();
+						}
+						if (j == idx) break;
+						listItems.add(list.get(j));
+					}
+				}
+			}
+			listLoaded();
+		});
+	}
+
+	private void listLoaded() {
+		if (queueMode) loadQueueRows();
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -358,12 +604,34 @@ final class YoutubePanel implements SidePanel.Body {
 
 	private void play(Row r) {
 		YoutubeFragment f = fragment();
-		if (f != null) f.playVideoNow(r.id, r.title);
+		if (f == null) return;
+		if (r.item != null) f.playFromList(r.item);
+		else f.playVideoNow(r.id, r.title);
 	}
 
+	private boolean canPlayNext(Row r) {
+		if (r.item == null) return true;
+		return (r.item instanceof MusicTrackItem) || (r.id != null) || MusicPlayer.isMusicModeActive(a);
+	}
+
+	/** "Play next": into the music queue right behind the playing track when playing as music, else to the front of Up next. */
 	private void playNext(Row r) {
+		PlayableItem pi = r.item;
+		if (pi instanceof MusicTrackItem t) {
+			if (MusicPlayer.playNext(a, t)) toastNext(r.title);
+			return;
+		}
+		if ((pi != null) && MusicPlayer.isMusicModeActive(a) && MusicPlayer.queueAfterCurrent(a, pi, true)) {
+			toastNext(r.title);
+			return;
+		}
+		if (r.id == null) return;
 		YoutubeFragment f = fragment();
 		if (f != null) f.queueVideo(r.id, r.title, true);
+	}
+
+	private void toastNext(String title) {
+		me.aap.fermata.ui.view.TopToast.show(R.drawable.up_next, R.string.youtube_added_play_next, title);
 	}
 
 	private void hideKeyboard() {
@@ -372,60 +640,96 @@ final class YoutubePanel implements SidePanel.Body {
 		if ((im != null) && (input != null)) im.hideSoftInputFromWindow(input.getWindowToken(), 0);
 	}
 
+	@Nullable
+	private static String videoIdOf(PlayableItem pi) {
+		if (pi instanceof MusicTrackItem t) return t.getVideoId();
+		return YoutubeVideoItem.extractYoutubeVideoId(pi);
+	}
+
+	private String libraryTitle(PlayableItem pi, @Nullable String videoId) {
+		String name = pi.getName();
+		if ((videoId != null) && ((name == null) || name.isEmpty() || name.equals(videoId))) name = addon.getDisplayTitle(videoId);
+		return (name == null) ? "" : name;
+	}
+
+	private static String parentName(PlayableItem pi) {
+		BrowsableItem b = pi.getParent();
+		return (b == null) ? "" : b.getName();
+	}
+
 	// ---------------------------------------------------------------------------------------------
-	// The cards
-
-	private TextView pill(String label, Runnable onClick) {
-		TextView t = p.text(label, 14, p.primary, true);
-		t.setGravity(Gravity.CENTER);
-		t.setSingleLine(true);
-		t.setClickable(true);
-		t.setFocusable(true);
-		t.setOnClickListener(v -> onClick.run());
-		return t;
-	}
-
-	private TextView chip(String label, boolean filled, Runnable onClick) {
-		TextView c = p.text(label, 12.5f, filled ? p.onAccent : p.primary, true);
-		c.setSingleLine(true);
-		c.setGravity(Gravity.CENTER);
-		c.setPadding(p.dp(14), 0, p.dp(14), 0);
-		c.setBackground(p.pressable(filled ? p.accent : p.chipFill, 16));
-		c.setClickable(true);
-		c.setFocusable(true);
-		c.setOnClickListener(v -> onClick.run());
-		// The card itself is what the steering wheel walks; these are for fingers.
-		CarNav.skip(c);
-		return c;
-	}
+	// The rows
 
 	private static final class Row {
+		final int type;
+		final int kind;
+		@Nullable
 		final String id;
 		final String title;
 		final String sub;
-		final boolean queued;
+		@Nullable
+		final PlayableItem item;
+		@Nullable
+		final Runnable action;
 
-		Row(String id, String title, String sub, boolean queued) {
+		private Row(int type, int kind, @Nullable String id, String title, String sub, @Nullable PlayableItem item, @Nullable Runnable action) {
+			this.type = type;
+			this.kind = kind;
 			this.id = id;
 			this.title = (title == null) ? "" : title;
-			this.sub = sub;
-			this.queued = queued;
+			this.sub = (sub == null) ? "" : sub;
+			this.item = item;
+			this.action = action;
+		}
+
+		static Row video(String id, String title, String sub) {
+			return new Row(T_CARD, K_RESULT, id, title, sub, null, null);
+		}
+
+		static Row queued(String id, String title, String sub) {
+			return new Row(T_CARD, K_QUEUED, id, title, sub, null, null);
+		}
+
+		static Row library(int kind, PlayableItem pi, @Nullable String id, String title, String sub) {
+			return new Row(T_CARD, kind, id, title, sub, pi, null);
+		}
+
+		/** {@code label} is the little button at its end ("Clear"), {@code action} what it does. */
+		static Row header(String title, @Nullable String label, @Nullable Runnable action) {
+			return new Row(T_HEADER, 0, label, title, "", null, action);
+		}
+
+		static Row note(String text) {
+			return new Row(T_NOTE, 0, null, text, "", null, null);
 		}
 	}
 
 	private final class Holder extends RecyclerView.ViewHolder {
-		final ImageView thumb;
-		final TextView title;
-		final TextView sub;
-		final LinearLayout actions;
+		ImageView thumb;
+		TextView title;
+		TextView sub;
+		LinearLayout actions;
+		TextView action;
 
-		Holder(LinearLayout card, ImageView thumb, TextView title, TextView sub, LinearLayout actions) {
-			super(card);
-			this.thumb = thumb;
-			this.title = title;
-			this.sub = sub;
-			this.actions = actions;
+		Holder(View v) {
+			super(v);
 		}
+	}
+
+	/** A round chip with just an icon. */
+	private ImageView iconChip(int icon, boolean filled, int description, Runnable onClick) {
+		ImageView v = new ImageView(p.ctx);
+		v.setImageResource(icon);
+		v.setImageTintList(ColorStateList.valueOf(filled ? p.onAccent : p.primary));
+		v.setScaleType(ImageView.ScaleType.CENTER);
+		v.setBackground(p.pressable(filled ? p.accent : p.chipFill, 18));
+		v.setClickable(true);
+		v.setFocusable(true);
+		v.setContentDescription(p.ctx.getString(description));
+		v.setOnClickListener(x -> onClick.run());
+		// The card itself is what the steering wheel walks; these are for fingers.
+		CarNav.skip(v);
+		return v;
 	}
 
 	private final class Adapter extends RecyclerView.Adapter<Holder> {
@@ -435,9 +739,42 @@ final class YoutubePanel implements SidePanel.Body {
 		}
 
 		@Override
-		public Holder onCreateViewHolder(ViewGroup parent, int viewType) {
+		public int getItemViewType(int position) {
+			return rows.get(position).type;
+		}
+
+		@Override
+		public Holder onCreateViewHolder(ViewGroup parent, int type) {
+			if (type == T_NOTE) {
+				TextView t = p.text("", 14, p.secondary, false);
+				t.setPadding(p.dp(8), p.dp(8), p.dp(8), p.dp(12));
+				t.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+				Holder h = new Holder(t);
+				h.title = t;
+				return h;
+			}
+			if (type == T_HEADER) {
+				LinearLayout row = new LinearLayout(p.ctx);
+				row.setOrientation(LinearLayout.HORIZONTAL);
+				row.setGravity(Gravity.CENTER_VERTICAL);
+				row.setPadding(p.dp(8), p.dp(6), p.dp(4), p.dp(8));
+				row.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+				Holder h = new Holder(row);
+				h.title = p.text("", 16, p.primary, true);
+				row.addView(h.title, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+				h.action = p.text("", 13, p.primary, true);
+				h.action.setGravity(Gravity.CENTER);
+				h.action.setPadding(p.dp(14), 0, p.dp(14), 0);
+				h.action.setBackground(p.pressable(p.chipFill, 16));
+				h.action.setClickable(true);
+				h.action.setFocusable(true);
+				CarNav.skip(h.action);
+				row.addView(h.action, new LinearLayout.LayoutParams(WRAP_CONTENT, p.dp(32)));
+				return h;
+			}
 			LinearLayout card = new LinearLayout(p.ctx);
-			card.setOrientation(LinearLayout.VERTICAL);
+			card.setOrientation(LinearLayout.HORIZONTAL);
+			card.setGravity(Gravity.CENTER_VERTICAL);
 			card.setPadding(p.dp(8), p.dp(8), p.dp(8), p.dp(8));
 			card.setBackground(p.pressable(p.chipFill, 16));
 			card.setClickable(true);
@@ -445,65 +782,82 @@ final class YoutubePanel implements SidePanel.Body {
 			RecyclerView.LayoutParams clp = new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
 			clp.bottomMargin = p.dp(8);
 			card.setLayoutParams(clp);
-
-			LinearLayout top = new LinearLayout(p.ctx);
-			top.setOrientation(LinearLayout.HORIZONTAL);
-			ImageView thumb = new ImageView(p.ctx);
-			thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
-			thumb.setBackgroundColor(0x22000000);
-			thumb.setClipToOutline(true);
-			thumb.setOutlineProvider(new ViewOutlineProvider() {
+			Holder h = new Holder(card);
+			h.thumb = new ImageView(p.ctx);
+			h.thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+			h.thumb.setBackgroundColor(0x22000000);
+			h.thumb.setClipToOutline(true);
+			h.thumb.setOutlineProvider(new ViewOutlineProvider() {
 				@Override
 				public void getOutline(View v, Outline o) {
 					o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), p.dp(10));
 				}
 			});
-			top.addView(thumb, new LinearLayout.LayoutParams(p.dp(124), p.dp(70)));
+			card.addView(h.thumb, new LinearLayout.LayoutParams(p.dp(112), p.dp(63)));
 			LinearLayout texts = new LinearLayout(p.ctx);
 			texts.setOrientation(LinearLayout.VERTICAL);
-			texts.setPadding(p.dp(10), 0, 0, 0);
-			TextView title = p.text("", 14, p.primary, true);
-			title.setMaxLines(2);
-			title.setEllipsize(TextUtils.TruncateAt.END);
-			TextView sub = p.text("", 12, p.secondary, false);
-			sub.setSingleLine(true);
-			sub.setEllipsize(TextUtils.TruncateAt.END);
-			texts.addView(title, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+			texts.setPadding(p.dp(10), 0, p.dp(8), 0);
+			h.title = p.text("", 14, p.primary, true);
+			h.title.setMaxLines(2);
+			h.title.setEllipsize(TextUtils.TruncateAt.END);
+			h.sub = p.text("", 12, p.secondary, false);
+			h.sub.setSingleLine(true);
+			h.sub.setEllipsize(TextUtils.TruncateAt.END);
+			texts.addView(h.title, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 			LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
 			slp.topMargin = p.dp(4);
-			texts.addView(sub, slp);
-			top.addView(texts, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
-			card.addView(top, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-
-			LinearLayout actions = new LinearLayout(p.ctx);
-			actions.setOrientation(LinearLayout.HORIZONTAL);
-			LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(MATCH_PARENT, p.dp(34));
-			alp.topMargin = p.dp(8);
-			card.addView(actions, alp);
-			return new Holder(card, thumb, title, sub, actions);
+			texts.addView(h.sub, slp);
+			card.addView(texts, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+			// The two chips, one above the other, at the card's end.
+			h.actions = new LinearLayout(p.ctx);
+			h.actions.setOrientation(LinearLayout.VERTICAL);
+			h.actions.setGravity(Gravity.CENTER);
+			card.addView(h.actions, new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
+			return h;
 		}
 
 		@Override
 		public void onBindViewHolder(Holder h, int position) {
 			Row r = rows.get(position);
 			h.title.setText(r.title);
+			if (r.type == T_NOTE) return;
+			if (r.type == T_HEADER) {
+				boolean has = (r.id != null) && (r.action != null);
+				h.action.setVisibility(has ? View.VISIBLE : View.GONE);
+				if (has) {
+					h.action.setText(r.id);
+					h.action.setOnClickListener(v -> r.action.run());
+				}
+				return;
+			}
 			h.sub.setText(r.sub);
-			load(h.thumb, "https://i.ytimg.com/vi/" + r.id + "/mqdefault.jpg");
-			h.itemView.setOnClickListener(v -> play(r));
+			load(h.thumb, (r.id == null) ? null : "https://i.ytimg.com/vi/" + r.id + "/mqdefault.jpg");
+			boolean library = (r.item != null);
+			boolean queuesOnTap = tapQueues() && canPlayNext(r) && (r.kind != K_QUEUED);
+			h.itemView.setOnClickListener(v -> {
+				if (queuesOnTap) playNext(r);
+				else play(r);
+			});
 			h.actions.removeAllViews();
-			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WRAP_CONTENT, MATCH_PARENT);
-			lp.setMarginEnd(p.dp(8));
-			h.actions.addView(chip(p.ctx.getString(R.string.yt_panel_play), true, () -> play(r)), lp);
-			if (r.queued) {
-				h.actions.addView(chip(p.ctx.getString(R.string.youtube_up_next_remove), false, () -> addon.removeUpNext(r.id)), lp);
-			} else {
-				h.actions.addView(chip(p.ctx.getString(R.string.youtube_play_next), false, () -> playNext(r)), lp);
+			LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(p.dp(36), p.dp(36));
+			h.actions.addView(iconChip(R.drawable.play, true, R.string.youtube_play_now, () -> play(r)), lp);
+			LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(p.dp(36), p.dp(36));
+			lp2.topMargin = p.dp(6);
+			if (r.kind == K_QUEUED) {
+				h.actions.addView(iconChip(R.drawable.playlist_remove, false, R.string.youtube_up_next_remove,
+						() -> addon.removeUpNext(r.id)), lp2);
+			} else if (canPlayNext(r)) {
+				h.actions.addView(iconChip(R.drawable.playlist_add, false, R.string.youtube_play_next, () -> playNext(r)), lp2);
 			}
 		}
 	}
 
-	private void load(ImageView v, String url) {
+	private void load(ImageView v, @Nullable String url) {
 		v.setTag(url);
+		if (url == null) {
+			v.setImageDrawable(null);
+			return;
+		}
 		Bitmap cached = images.get(url);
 		if (cached != null) {
 			v.setImageBitmap(cached);
