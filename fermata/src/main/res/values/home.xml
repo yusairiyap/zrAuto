@@ -122,6 +122,7 @@
     <string name="home_overlay_none">No items are picked for the overlay</string>
     <string name="home_overlay_pick">Choose items</string>
     <string name="home_timer_idle">Stop playing after a while</string>
+    <string name="home_timer_stops_at">Stops at %1$s</string>
     <string name="home_timer_running">Playback stops then</string>
     <string name="home_effects_idle">Play something to tune the sound</string>
     <string name="home_effects_none">No equalizer for this player</string>

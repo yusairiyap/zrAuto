@@ -221,7 +221,7 @@ public final class SleepBarsView extends View {
 		paint.setStyle(Paint.Style.STROKE);
 		paint.setStrokeWidth(c.dp(1.2f));
 		paint.setPathEffect(new DashPathEffect(new float[]{c.dp(5), c.dp(4)}, 0));
-		paint.setColor(c.accent);
+		paint.setColor(ArtAccent.map(c.accent));
 		if (mode == MODE_DURATION) {
 			float y = yOf(goalMin, min, max, top, bottom);
 			canvas.drawLine(left, y, right, y, paint);

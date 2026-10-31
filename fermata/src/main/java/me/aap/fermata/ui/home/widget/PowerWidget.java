@@ -60,6 +60,7 @@ final class PowerWidget extends HomeWidgetView {
 	private final TextView[] catValues = new TextView[PowerUsageStore.CATS];
 	private final MeterBar[] catBars = new MeterBar[PowerUsageStore.CATS];
 	private TextView carLine;
+	private PowerLiveGraphView backGraph;
 	private int mode = -1;
 	/** Whether the card is narrow (two cells): the status goes under the number there, not beside it. */
 	private boolean narrow;
@@ -72,6 +73,12 @@ final class PowerWidget extends HomeWidgetView {
 	@Override
 	protected void onCreate(FrameLayout content) {
 		column = new LinearLayout(ctx);
+		// Behind the figures in a strip: the live draw as a faint graph.
+		backGraph = new PowerLiveGraphView(ctx);
+		backGraph.setAlpha(0.3f);
+		backGraph.setLabels(false);
+		backGraph.setClickable(false);
+		content.addView(backGraph, new FrameLayout.LayoutParams(-1, -1));
 		column.setOrientation(LinearLayout.VERTICAL);
 		headerRow = header(() -> open(R.id.power_usage_addon));
 		column.addView(headerRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(34)));
@@ -153,6 +160,8 @@ final class PowerWidget extends HomeWidgetView {
 				ContextCompat.getColor(ctx, R.color.power_charge));
 		graph.setColors(ContextCompat.getColor(ctx, R.color.power_charge),
 				ContextCompat.getColor(ctx, R.color.power_mid), track, color(ROLE_SECONDARY));
+		backGraph.setColors(ContextCompat.getColor(ctx, R.color.power_charge), ContextCompat.getColor(ctx, R.color.power_mid),
+				0, 0);
 		for (int i = 0; i < catBars.length; i++) {
 			catBars[i].setColors(track, ContextCompat.getColor(ctx, CAT_COLORS[i]));
 		}
@@ -327,6 +336,7 @@ final class PowerWidget extends HomeWidgetView {
 				}
 			}
 		}
+		backGraph.setVisibility((m == STRIP) ? VISIBLE : GONE);
 		value.setTextSize((m == STRIP) ? 22 : (m == GAUGE) ? 19 : 28);
 		if (m == GAUGE) sizeGauge();
 		// The strip has room for one line of figures: a small card shows the rest only when asked to.
@@ -438,6 +448,8 @@ final class PowerWidget extends HomeWidgetView {
 		stats.setText(sb);
 		stats.setVisibility((sb.isEmpty() || !statsOn) ? GONE : VISIBLE);
 		if (mode == GRAPH) graph.setData(t.getGraph());
+		backGraph.setVisibility((mode == STRIP) ? VISIBLE : GONE);
+		if (mode == STRIP) backGraph.setData(t.getGraph());
 		if (mode == BREAKDOWN) refreshBreakdown(t);
 	}
 

@@ -560,6 +560,11 @@ public final class Glass {
 	 * outline (and a tint of it in glass). A colour set on it from outside (a picked option) wins until
 	 * {@code normalFill} is set again.
 	 */
+	/** A settings tile whose fill was set by hand (a picked card, a selected pill): the album art colour may take it over. */
+	public interface Manual {
+		boolean hasManualColor();
+	}
+
 	public static GradientDrawable tile(int normalFill, float radiusPx, boolean light, boolean picked, int accent,
 																			float density) {
 		return new Tile(normalFill, radiusPx, light, picked, accent, density);
@@ -574,7 +579,7 @@ public final class Glass {
 		return d instanceof Tile;
 	}
 
-	private static final class Tile extends GradientDrawable {
+	private static final class Tile extends GradientDrawable implements Manual {
 		private final int normalFill;
 		private final boolean light;
 		private final int accent;
@@ -640,7 +645,7 @@ public final class Glass {
 		@Override
 		public void draw(Canvas c) {
 			float a = tileAmount();
-			if ((a != shownAmount) || (pick != shownPick)) apply(a, pick);
+			if ((a != shownAmount) || (pick != shownPick) || (shownArt != ArtAccent.getVersion())) apply(a, pick);
 			super.draw(c);
 			// The rim light where Settings > UI style > Rim light has it on the settings cards (off by default).
 			float rim = rim(RIM_TILES) * (1f - pick);
@@ -657,7 +662,16 @@ public final class Glass {
 			c.drawRoundRect(rimRect, r, r, rimPaint);
 		}
 
+		private int shownArt = -1;
+
+		@Override
+		public boolean hasManualColor() {
+			return hasManual;
+		}
+
 		private void apply(float a, float p) {
+			shownArt = ArtAccent.getVersion();
+			int accent = ArtAccent.map(this.accent);
 			shownAmount = a;
 			shownPick = p;
 			internal = true;
@@ -736,7 +750,7 @@ public final class Glass {
 			if (x <= b.left) return;
 			// At least a circle: a round start that grows into the pill.
 			rect.set(b.left, b.top, Math.max(x, b.left + h), b.bottom);
-			int color = (tint != null) ? tint.getColorForState(getState(), tint.getDefaultColor()) : knob.accent;
+			int color = (tint != null) ? tint.getColorForState(getState(), tint.getDefaultColor()) : ArtAccent.map(knob.accent);
 			paint.setColor(color);
 			paint.setAlpha(Math.round((color >>> 24) * (alpha / 255f) * g));
 			c.drawRoundRect(rect, h / 2f, h / 2f, paint);
@@ -866,7 +880,7 @@ public final class Glass {
 			paint.setStyle(Paint.Style.FILL);
 			paint.setShader(null);
 			if (g < 1f) {
-				paint.setColor(accent);
+				paint.setColor(ArtAccent.map(accent));
 				paint.setAlpha(Math.round(255 * a * (1f - g)));
 				c.drawCircle(cx, cy, r, paint);
 			}

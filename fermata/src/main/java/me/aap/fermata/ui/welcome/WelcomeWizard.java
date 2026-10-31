@@ -1760,7 +1760,7 @@ public final class WelcomeWizard {
 			float w = getWidth();
 			paint.setColor(alpha(textSecondary, 0.22f));
 			c.drawRoundRect(0, 0, w, h, h / 2f, h / 2f, paint);
-			paint.setColor(accent);
+			paint.setColor(me.aap.fermata.ui.view.ArtAccent.map(accent));
 			c.drawRoundRect(0, 0, Math.max(h, w * shown), h, h / 2f, h / 2f, paint);
 		}
 	}

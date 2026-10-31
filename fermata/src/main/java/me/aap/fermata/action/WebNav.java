@@ -186,7 +186,7 @@ final class WebNav {
 	}
 
 	private static void run(WebView w, String cmd) {
-		int c = EffectsUi.accent(w.getContext());
+		int c = me.aap.fermata.ui.view.ArtAccent.map(EffectsUi.accent(w.getContext()));
 		String color = String.format(Locale.ROOT, "#%06X", c & 0xFFFFFF);
 		w.evaluateJavascript(SCRIPT + "('" + cmd + "','" + color + "');",
 				r -> me.aap.fermata.util.DiagnosticLog.d(me.aap.fermata.util.LogCat.CARNAV, "web command", "cmd=" + cmd, "result=" + r));

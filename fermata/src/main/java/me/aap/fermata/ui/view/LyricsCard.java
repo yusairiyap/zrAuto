@@ -160,6 +160,16 @@ public final class LyricsCard implements CaptionsHub.Listener {
 		close.setClickable(true);
 		close.setFocusable(true);
 		close.setOnClickListener(v -> dismiss());
+		ImageView langBtn = new ImageView(ctx);
+		langBtn.setImageResource(R.drawable.captions);
+		langBtn.setImageTintList(ColorStateList.valueOf(secondary));
+		langBtn.setScaleType(ImageView.ScaleType.CENTER);
+		langBtn.setBackground(pressable(0, 22));
+		langBtn.setClickable(true);
+		langBtn.setFocusable(true);
+		langBtn.setContentDescription(ctx.getString(R.string.captions_language_button));
+		langBtn.setOnClickListener(v -> CaptionLang.showMenu(a, null));
+		header.addView(langBtn, new LinearLayout.LayoutParams(dp(44), dp(44)));
 		header.addView(close, new LinearLayout.LayoutParams(dp(44), dp(44)));
 		root.addView(header, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 

@@ -224,6 +224,8 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> GLASS_BARS = Pref.b("GLASS_BARS", true);
 	Pref<BooleanSupplier> GLASS_HOME = Pref.b("GLASS_HOME", true);
 	Pref<BooleanSupplier> GLASS_MENUS = Pref.b("GLASS_MENUS", true);
+	// The theme's blue follows the colour of the playing cover (ui/view/ArtAccent).
+	Pref<BooleanSupplier> ART_ACCENT = Pref.b("ART_ACCENT", false);
 	// The size the blur is rendered at (Glass.QUALITY_*): full, half (default), a quarter.
 	Pref<IntSupplier> GLASS_QUALITY = Pref.i("GLASS_QUALITY", 1);
 	// Experimental: blur over web pages too (YouTube, the browser; the page blurs itself, see PageBlur).
@@ -243,6 +245,12 @@ public interface MainActivityPrefs
 	// when a video has no written ones.
 	Pref<Supplier<String>> CAPTIONS_LANG = Pref.s("CAPTIONS_LANG", "");
 	Pref<BooleanSupplier> CAPTIONS_AUTO = Pref.b("CAPTIONS_AUTO", true);
+	// When the video has no track in the language above, YouTube's own translation of one is used.
+	Pref<BooleanSupplier> CAPTIONS_TRANSLATE_MISSING = Pref.b("CAPTIONS_TRANSLATE_MISSING", true);
+	// Korean and Japanese lines written in Latin letters under the line (ytcaptions/Romanizer).
+	Pref<BooleanSupplier> CAPTIONS_ROMAJI = Pref.b("CAPTIONS_ROMAJI", false);
+	// A second line under each one in this language ("" = none), from YouTube's translation of the track.
+	Pref<Supplier<String>> CAPTIONS_TRANSLATION = Pref.s("CAPTIONS_TRANSLATION", "");
 	// How the lyrics look, on the Music tab's cover and in their card (see ui/view/LyricsView):
 	// text size (percent), font (CaptionStyle.FONT_NAMES), bold, italic, alignment (0 centre, 1 left),
 	// the playing line's colour (0 follows the theme, else CaptionStyle.COLORS index + 1) and how
@@ -274,6 +282,14 @@ public interface MainActivityPrefs
 	// The comments dock beside fullscreen video on a big screen / the car screen (see
 	// YoutubeCommentsView): whether to, and how much of the width they take (percent).
 	Pref<BooleanSupplier> COMMENTS_SPLIT = Pref.b("COMMENTS_SPLIT", true);
+	// The audio effects and the captions settings open beside fullscreen video as a panel (ui/view/SidePanel).
+	Pref<BooleanSupplier> SIDE_PANEL_EFFECTS = Pref.b("SIDE_PANEL_EFFECTS", true);
+	Pref<BooleanSupplier> SIDE_PANEL_CAPTIONS = Pref.b("SIDE_PANEL_CAPTIONS", true);
+	// How wide each of those panels is (the comments' is COMMENTS_SPLIT_PERCENT), in percent of the screen; dragged by the strip on its edge.
+	Pref<BooleanSupplier> SIDE_PANEL_YOUTUBE = Pref.b("SIDE_PANEL_YOUTUBE", true);
+	Pref<IntSupplier> SIDE_PANEL_YOUTUBE_PERCENT = Pref.i("SIDE_PANEL_YOUTUBE_PERCENT", 38);
+	Pref<IntSupplier> SIDE_PANEL_EFFECTS_PERCENT = Pref.i("SIDE_PANEL_EFFECTS_PERCENT", 38);
+	Pref<IntSupplier> SIDE_PANEL_CAPTIONS_PERCENT = Pref.i("SIDE_PANEL_CAPTIONS_PERCENT", 38);
 	Pref<IntSupplier> COMMENTS_SPLIT_PERCENT = Pref.i("COMMENTS_SPLIT_PERCENT", 38);
 	// How many upcoming Favorites/Playlist entries the YouTube tab's Up next list previews below the
 	// user's own queue (1..10) -- enough to see what comes after, few enough to leave room for search
@@ -285,6 +301,10 @@ public interface MainActivityPrefs
 	Pref<BooleanSupplier> SEARCH_HISTORY_ENABLED = Pref.b("YT_SEARCH_HISTORY_ENABLED", true);
 	// Whether tapping a YouTube search result queues it (Play next) instead of playing it -- its
 	// row button then plays it instead.
+	// Whether a YouTube search also looks through Favorites and Playlists and lists what matches above the results (the tab's panel and the panel beside video).
+	Pref<BooleanSupplier> YT_SEARCH_LIBRARY = Pref.b("YT_SEARCH_LIBRARY", true);
+	// Whether the search panel beside the video brings up Android Auto's keyboard when it opens (tapping the field always does).
+	Pref<BooleanSupplier> YT_PANEL_CAR_KEYBOARD = Pref.b("YT_PANEL_CAR_KEYBOARD", false);
 	Pref<BooleanSupplier> YT_SEARCH_TAP_QUEUES = Pref.b("YT_SEARCH_TAP_QUEUES", false);
 	// Whether the YouTube tab's search and Up next open on their own (the search field/button shows
 	// just the search, the Up next button just the queue) rather than together.

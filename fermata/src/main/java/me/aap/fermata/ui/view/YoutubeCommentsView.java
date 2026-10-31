@@ -240,6 +240,7 @@ public final class YoutubeCommentsView {
 	public static void show(@NonNull MainActivityDelegate a, @NonNull String videoId,
 													@NonNull String title) {
 		dismissOpen();
+		SidePanel.dismissOpen();
 		ViewGroup host = a.findViewById(R.id.main_activity);
 		if ((host == null) || (host.getWidth() == 0)) {
 			Log.e("No view to show the comments over");

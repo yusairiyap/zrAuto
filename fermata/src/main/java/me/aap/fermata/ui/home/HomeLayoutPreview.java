@@ -402,7 +402,7 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 			r.set(scr.centerX() - w / 2f, scr.centerY() - h / 2f, scr.centerX() + w / 2f, scr.centerY() + h / 2f);
 			cv.drawBitmap(picture, null, r, null);
 		} else {
-			int top = mix(0xFF000000, c.accent, (source == 1) ? 0.55f : 0.32f);
+			int top = mix(0xFF000000, me.aap.fermata.ui.view.ArtAccent.map(c.accent), (source == 1) ? 0.55f : 0.32f);
 			fill.setShader(new LinearGradient(0, scr.top, 0, scr.bottom, top, 0xFF080A0E, Shader.TileMode.CLAMP));
 			cv.drawRect(scr, fill);
 			fill.setShader(null);
@@ -483,7 +483,7 @@ public final class HomeLayoutPreview extends View implements PreferenceStore.Lis
 	/** One sample card at {@code x, y} (dp from the screen's corner), the now-playing one in the accent. */
 	private void card(Canvas cv, RectF scr, float k, float x, float y, float w, float h, boolean media, float alpha) {
 		fill.setStyle(Paint.Style.FILL);
-		fill.setColor(media ? mix(0xFF101418, c.accent, 0.62f) : 0xFF1B2230);
+		fill.setColor(media ? mix(0xFF101418, me.aap.fermata.ui.view.ArtAccent.map(c.accent), 0.62f) : me.aap.fermata.ui.view.ArtAccent.map(0xFF1B2230));
 		fill.setAlpha(Math.round((media ? 235 : 215) * alpha));
 		r.set(scr.left + x * k, scr.top + y * k, scr.left + (x + w) * k, scr.top + (y + h) * k);
 		float rad = Math.min(14f, Math.min(w, h) * 0.22f) * k;

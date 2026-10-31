@@ -180,6 +180,22 @@ public final class CarNav {
 		step(s, 1);
 	}
 
+	/** Car mode only: selects and outlines {@code v}, a button or chip in the open scope {@code root} (a panel that opens on one of its chips). */
+	public static void selectView(@NonNull MainActivityDelegate a, @NonNull View root, @NonNull View v) {
+		if (!isEnabled() || !root.isAttachedToWindow() || !v.isAttachedToWindow()) return;
+		Scope s = findScope(a, true);
+		if ((s == null) || (s.root != root)) {
+			DiagnosticLog.d(LogCat.CARNAV, "select view: scope not found", "found=" + s);
+			return;
+		}
+		clear();
+		enterScope(s);
+		fresh = false;
+		DiagnosticLog.d(LogCat.CARNAV, "select view", "view=" + v.getClass().getSimpleName(),
+				"size=" + v.getWidth() + "x" + v.getHeight(), "shown=" + v.isShown());
+		select(new Sel(v), v);
+	}
+
 	/**
 	 * Takes {@code root} out of the scopes again (a Home widget that had the keys): the keys go back to the user's own bindings,
 	 * and the outline comes down if it was on this scope.
@@ -189,6 +205,16 @@ public final class CarNav {
 		root.setTag(R.id.car_nav_modal, null);
 		Scope s = scope;
 		if ((s != null) && (s.root == root)) clear();
+	}
+
+	/** Marks {@code v} to show the car selection through its activated state as well (a ring its own drawables draw). */
+	public static void ringByState(@Nullable View v) {
+		if (v != null) v.setTag(R.id.car_nav_state, Boolean.TRUE);
+	}
+
+	/** A view marked with {@link #ringByState} shows the car selection through its own activated state too. */
+	private static void setStateRing(@Nullable View v, boolean on) {
+		if ((v != null) && (v.getTag(R.id.car_nav_state) != null)) v.setActivated(on);
 	}
 
 	/** Leaves {@code v} (and what's in it) out: a button too risky to land on, like Clear. */
@@ -789,6 +815,16 @@ public final class CarNav {
 		// room around it so it doesn't end up under the tool bar's edge.
 		int m = Math.round(24 * v.getResources().getDisplayMetrics().density);
 		v.requestRectangleOnScreen(new Rect(-m, -m, v.getWidth() + m, v.getHeight() + m), false);
+		// A row of chips that does not fit scrolls sideways to bring the item in, the next ones in view too.
+		for (android.view.ViewParent pp = v.getParent(); pp != null; pp = pp.getParent()) {
+			if (pp instanceof android.widget.HorizontalScrollView hs) {
+				Rect r = new Rect(0, 0, v.getWidth(), v.getHeight());
+				hs.offsetDescendantRectToMyCoords(v, r);
+				int target = r.left - (hs.getWidth() - v.getWidth()) / 2;
+				hs.smoothScrollTo(Math.max(0, target), 0);
+				break;
+			}
+		}
 	}
 
 	private static void show(Sel s) {
@@ -851,7 +887,7 @@ public final class CarNav {
 	}
 
 	private static boolean isUnit(View v) {
-		if (!v.isEnabled() || (v instanceof EditText) || (v.getWidth() <= 0) || (v.getHeight() <= 0) ||
+		if (!v.isEnabled() || ((v instanceof EditText) && (v.getTag(R.id.car_nav_state) == null)) || (v.getWidth() <= 0) || (v.getHeight() <= 0) ||
 				(v.getTag(R.id.car_nav_skip) != null)) {
 			return false;
 		}
@@ -929,6 +965,7 @@ public final class CarNav {
 		}
 
 		private void moveTo(@Nullable View v, boolean animate) {
+			setStateRing(on, false);
 			if ((on != null) && (outline != null)) {
 				View old = on;
 				Outline o = outline;
@@ -938,6 +975,7 @@ public final class CarNav {
 			on = v;
 			outline = null;
 			if ((v == null) || faded) return;
+			setStateRing(v, true);
 			Outline o = new Outline(v);
 			o.strong = strong;
 			v.getOverlay().add(o);
@@ -960,6 +998,7 @@ public final class CarNav {
 
 		void fadeOut() {
 			faded = true;
+			setStateRing(on, false);
 			// Nothing to follow while faded: no per-frame check either (track() adds it back).
 			if (listening) {
 				ViewTreeObserver vto = root.getViewTreeObserver();
@@ -982,6 +1021,7 @@ public final class CarNav {
 				listening = false;
 			}
 			sel = null;
+			setStateRing(on, false);
 			if ((on != null) && (outline != null)) {
 				View old = on;
 				Outline o = outline;
@@ -1105,6 +1145,8 @@ public final class CarNav {
 			float cy = rect.centerY();
 			c.save();
 			c.scale(scale, scale, cx, cy);
+			// The ring follows the album art's colour as it glides.
+			int accent = me.aap.fermata.ui.view.ArtAccent.map(this.accent);
 			fill.setColor(withAlpha(accent, ((strong ? 0.32f : 0.16f) + 0.30f * flash) * alpha));
 			stroke.setStrokeWidth(strong ? strokeW * 1.8f : strokeW);
 			c.drawRoundRect(rect, radius, radius, fill);

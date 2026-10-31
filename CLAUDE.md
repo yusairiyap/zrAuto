@@ -1081,6 +1081,35 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
   **frosted look**: `Glass#paintOver(.., blurred=false)` = at least 45% tint plus grain, so the video reads as behind frosted glass. The
   same look covers web pages without the experimental switch, and everything below Android 12.
 
+## Side panels, caption languages, album-art accent, Home reveal (latest round)
+
+- **Side panels** (`ui/view/SidePanel`, bodies in `ui/view/SidePanels`): the audio effects (`AUDIO_EFFECTS`) and the captions settings (`CAPTIONS_SETTINGS`,
+  last in the `Action` enum; FAB list, All in One, key bindings) open as the comments' kind of column over fullscreen video (docked on the car screen and
+  landscape tablets with `COMMENTS_SPLIT`, else a centred card), sharing the comments' width and the video's `setSplitShare` transform. One panel at a time; it
+  closes the comments and vice versa; Back (overlay-priority callback), leaving fullscreen and PiP close it. Switches: `SIDE_PANEL_EFFECTS`, `SIDE_PANEL_CAPTIONS`
+  (off, or not in fullscreen video, opens the old full page). Rows are focusable/clickable and the panel is a `CarNav` modal scope. **Not done:** YouTube search and
+  Up next stay in `YoutubeSearchPanel` inside the YouTube fragment's view; docking them needs that panel re-hosted. Never run on a device.
+- **Caption/lyrics language.** Lyrics ARE the YouTube captions of the song. Wrong-language bug: `YtCaptions#choose` and the page script
+  (`YoutubeWebView#pageCaptionsStartJs`) took *any* manual track (e.g. Arabic) before a generated one in the wanted language; now wanted manual, wanted generated,
+  YouTube's translation of a track into the wanted language (`&tlang=`, `CAPTIONS_TRANSLATE_MISSING`), English, any. `ytcaptions/Romanizer` (Hangul by Revised
+  Romanization, kana by Hepburn; kanji untouched) adds a Latin line (`CAPTIONS_ROMAJI`), `CAPTIONS_TRANSLATION` adds a translated line (`YtCaptions#withExtras`,
+  cues then hold `\n`). `ui/view/CaptionLang` is the on-the-fly menu (language, Latin letters, translation) used by the lyrics page, `LyricsCard`, the lyrics widget
+  and the captions panel, and `current()` is the line saying what is shown. Changing any of these calls `CaptionsHub#invalidate`.
+- **Follow the album art** (`ui/view/ArtAccent`, `ART_ACCENT`, Settings > Interface > UI style): themes cannot change at runtime, so places that draw a theme colour call
+  `ArtAccent.map(color)`, which turns only a blue (hue 185-270) into the cover's dominant hue, keeping lightness/alpha; it glides 900 ms between songs. Hooked so far: `EffectsUi.accent`
+  (settings tiles, panels), `ToolBarPill`, `FloatingBarsView` pill, `StepSeekBar`/`ControlPanelSeekView` tints. Not hooked: XML-tinted icons/chips, status/nav bar window colours.
+- **Home**: `LibraryWidget` hands its adapter 24 rows and then 24 more every 120 ms while the page is idle (`revealLimit`, `revealStep`); drag/remove/playing-row scrolling reveal what they need first.
+  Short (one cell high) Sleep/Timer/Power cards keep a second line and draw a faint `BackdropView` / live graph behind the words.
+- Removing a playlist from its menu asks first (`playlist_remove_confirm`); Android Auto menus use the phone's sizes (`MenuStyle`).
+- **Album art colour, how it really works** (later rounds): `EffectsUi.accent` returns the theme's *own* blue (never mapped), so every view keeps a blue "original" the colouring can map from.
+  `ArtAccent.recolor` (run right after each layout, before the frame is drawn, and every ~40 ms while the colour glides; rows of a `RecyclerView` as they attach) maps text colours, image/compound/progress/switch/check box tints,
+  `GradientDrawable`/`ColorDrawable`/state-list fills (foregrounds too), card strokes and bar ripples, each from the original kept in a view tag (`art_orig_*` ids). `amount` glides 0..1 so on/off is smooth.
+  Custom paints call `ArtAccent.map` at draw time (`Glass.Tile`, `StagePadView`, the car's `CarNav` ring, welcome art). Never `setColor(EffectsUi.accent(..))` on a one-off drawable expecting it to follow without the walk.
+  Listeners that outlive an activity must remove themselves when it throws (a theme change recreates it).
+- **In video panel** settings (Video settings): comments, audio effects, captions and YouTube search/Up next beside fullscreen video, each with its own switch and width (down to 8%); all drag by the strip inside the card's left edge.
+  `modules/web/.../YoutubePanel` is search + Up next as a `SidePanel.Body` (cards with icon chips; narrow widths show pictures only; car: keyboard on open unless opened by a steering key, then the first chip / queue item is outlined).
+  It reuses the addon's search, history, Up next and `playFromList`, and the Favorites/Playlists search (`YT_SEARCH_LIBRARY`); the tab's own `YoutubeSearchPanel` is unchanged and still used outside fullscreen video.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

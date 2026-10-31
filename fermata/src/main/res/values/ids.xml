@@ -35,6 +35,7 @@
     <item name="car_nav_scope" type="id" />
     <item name="car_mode_fragment" type="id" />
     <item name="car_nav_skip" type="id" />
+    <item name="car_nav_state" type="id" />
     <item name="car_nav_modal" type="id" />
     <item name="car_nav_wrap" type="id" />
     <item name="all_in_one_fragment" type="id" />
@@ -279,4 +280,19 @@
     <item name="queue_row_share" type="id" />
     <item name="queue_row_remove" type="id" />
     <item name="spotify_import_search" type="id" />
+    <item name="caption_menu_lang" type="id" />
+    <item name="caption_menu_romaji" type="id" />
+    <item name="caption_menu_translation" type="id" />
+    <item name="caption_menu_item" type="id" />
+    <item name="art_orig_text" type="id" />
+    <item name="art_orig_tint" type="id" />
+    <item name="art_orig_progress" type="id" />
+    <item name="art_orig_compound" type="id" />
+    <item name="art_orig_button" type="id" />
+    <item name="art_orig_thumb" type="id" />
+    <item name="art_orig_track" type="id" />
+    <item name="art_orig_pbg" type="id" />
+    <item name="art_orig_psec" type="id" />
+    <item name="art_orig_stroke" type="id" />
+    <item name="art_orig_ripple" type="id" />
 </resources>

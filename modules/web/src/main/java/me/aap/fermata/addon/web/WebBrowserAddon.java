@@ -280,7 +280,10 @@ public class WebBrowserAddon implements FermataFragmentAddon, FermataActivityAdd
 		ActivityFragment f = a.getActiveFragment();
 		if (!(f instanceof WebBrowserFragment wf)) return;
 		if (hasFocus) {
-			wf.rebuildFullscreenVideoIfActive();
+			// The car keyboard (typing in a side panel) takes the window focus and gives it back; that is no display takeover, and
+			// leaving fullscreen for it closed the panel and blanked the screen.
+			boolean typing = me.aap.fermata.ui.view.SidePanel.isOpen() || a.getAppActivity().isInputActive();
+			if (!typing) wf.rebuildFullscreenVideoIfActive();
 			wf.onHostInterruptionEnded();
 		} else {
 			wf.onHostInterruptionStarted();

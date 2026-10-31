@@ -225,7 +225,7 @@ public final class SleepHypnogramView extends View {
 				int mx = 0;
 				for (int e = a; (e < b) && (e < mv.length); e++) mx = Math.max(mx, mv[e] & 0xFF);
 				float bh = (sb - st0) * Math.min(1f, mx / 160f);
-				paint.setColor(c.accent);
+				paint.setColor(ArtAccent.map(c.accent));
 				paint.setAlpha(190);
 				rect.set(left + k * bw + bw * 0.15f, sb - Math.max(bh, c.dp(1)), left + (k + 1) * bw - bw * 0.15f, sb);
 				canvas.drawRect(rect, paint);
@@ -259,7 +259,7 @@ public final class SleepHypnogramView extends View {
 			float frac = (touchX - left) / plotW;
 			int e = Math.max(0, Math.min(n - 1, (int) (frac * n)));
 			long t = r.night.start + e * SleepNight.EPOCH_MS;
-			paint.setColor(c.accent);
+			paint.setColor(ArtAccent.map(c.accent));
 			canvas.drawRect(touchX - c.dp(0.75f), top, touchX + c.dp(0.75f), bottom, paint);
 			String label = DateFormat.getTimeFormat(getContext()).format(new Date(t)) + "  " + stageNames[r.stage[e]];
 			paint.setTextSize(sp(12));
@@ -267,7 +267,7 @@ public final class SleepHypnogramView extends View {
 			float tw = paint.measureText(label) + c.dp(16);
 			float bx = Math.max(left, Math.min(right - tw, touchX - tw / 2f));
 			// The accent with its own contrasting text reads in every theme (the tile fill is see-through).
-			paint.setColor(c.accent | 0xFF000000);
+			paint.setColor(ArtAccent.map(c.accent) | 0xFF000000);
 			rect.set(bx, top - c.dp(2), bx + tw, top + c.dp(24));
 			canvas.drawRoundRect(rect, c.dp(8), c.dp(8), paint);
 			paint.setColor(c.onAccent | 0xFF000000);

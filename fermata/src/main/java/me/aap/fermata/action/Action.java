@@ -143,7 +143,7 @@ public enum Action {
 			a(a -> me.aap.fermata.ytdl.YtDownloadMenu.togglePause())),
 	// Persisted by ordinal: new actions only ever go at the end.
 	AUDIO_EFFECTS(R.string.action_audio_effects,
-			a(me.aap.fermata.ui.view.AllInOneMenu::openEffects)),
+			a(me.aap.fermata.ui.view.SidePanels::effects)),
 	SLEEP_TIMER(R.string.action_sleep_timer, a(me.aap.fermata.ui.view.AllInOneMenu::showTimer)),
 	ALL_IN_ONE(R.string.action_all_in_one, a(me.aap.fermata.ui.view.AllInOneMenu::toggle)),
 	// YouTube's video quality, picked on the All in One card's Quality page.
@@ -238,6 +238,9 @@ public enum Action {
 			me.aap.fermata.ui.view.TopToast.show(R.drawable.sleep, R.string.sleep_started);
 		}
 	})),
+	// The captions settings as a panel beside fullscreen video, else the settings page. Persisted by ordinal: new
+	// actions only ever go at the end.
+	CAPTIONS_SETTINGS(R.string.action_captions_settings, a(me.aap.fermata.ui.view.SidePanels::captions)),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

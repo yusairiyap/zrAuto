@@ -986,13 +986,19 @@ public class SettingsFragment extends MainActivityFragment
 			o.seekScale = 5;
 		});
 
-		sub1.addBooleanPref(o -> {
+		// The panels that open beside fullscreen video: each can be switched off (the full page opens then) and has its own width.
+		PreferenceSet panels = sub1.subSet(o -> {
+			o.title = R.string.in_video_panel;
+			o.subtitle = R.string.in_video_panel_sub;
+			o.icon = R.drawable.comments;
+		});
+		panels.addBooleanPref(o -> {
 			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.COMMENTS_SPLIT;
 			o.title = R.string.comments_split;
 			o.subtitle = R.string.comments_split_sub;
 		});
-		sub1.addIntPref(o -> {
+		panels.addIntPref(o -> {
 			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.COMMENTS_SPLIT_PERCENT;
 			o.title = R.string.comments_split_width;
@@ -1001,6 +1007,52 @@ public class SettingsFragment extends MainActivityFragment
 			o.seekScale = 2;
 			o.visibility = PrefCondition.create(a.getPrefs(), MainActivityPrefs.COMMENTS_SPLIT);
 		});
+		panels.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.SIDE_PANEL_EFFECTS;
+			o.title = R.string.side_panel_effects;
+			o.subtitle = R.string.side_panel_sub;
+		});
+		panels.addIntPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.SIDE_PANEL_EFFECTS_PERCENT;
+			o.title = R.string.side_panel_effects_width;
+			o.seekMin = 8;
+			o.seekMax = 60;
+			o.seekScale = 2;
+			o.visibility = PrefCondition.create(a.getPrefs(), MainActivityPrefs.SIDE_PANEL_EFFECTS);
+		});
+		panels.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.SIDE_PANEL_YOUTUBE;
+			o.title = R.string.side_panel_youtube;
+			o.subtitle = R.string.side_panel_sub;
+		});
+		panels.addIntPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.SIDE_PANEL_YOUTUBE_PERCENT;
+			o.title = R.string.side_panel_youtube_width;
+			o.seekMin = 8;
+			o.seekMax = 60;
+			o.seekScale = 2;
+			o.visibility = PrefCondition.create(a.getPrefs(), MainActivityPrefs.SIDE_PANEL_YOUTUBE);
+		});
+		panels.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.SIDE_PANEL_CAPTIONS;
+			o.title = R.string.side_panel_captions;
+			o.subtitle = R.string.side_panel_sub;
+		});
+		panels.addIntPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.SIDE_PANEL_CAPTIONS_PERCENT;
+			o.title = R.string.side_panel_captions_width;
+			o.seekMin = 8;
+			o.seekMax = 60;
+			o.seekScale = 2;
+			o.visibility = PrefCondition.create(a.getPrefs(), MainActivityPrefs.SIDE_PANEL_CAPTIONS);
+		});
+
 
 		dimSettingsSet = sub2 = sub1.subSet(o -> {
 			o.title = R.string.dim_prefs;
@@ -1434,6 +1486,18 @@ public class SettingsFragment extends MainActivityFragment
 		});
 		ps.addBooleanPref(o -> {
 			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.YT_SEARCH_LIBRARY;
+			o.title = R.string.yt_search_library_pref;
+			o.subtitle = R.string.yt_search_library_pref_sub;
+		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.YT_PANEL_CAR_KEYBOARD;
+			o.title = R.string.yt_panel_car_keyboard;
+			o.subtitle = R.string.yt_panel_car_keyboard_sub;
+		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.YT_SEARCH_TAP_QUEUES;
 			o.title = R.string.yt_search_tap_queues;
 			o.subtitle = R.string.yt_search_tap_queues_sub;
@@ -1537,6 +1601,12 @@ public class SettingsFragment extends MainActivityFragment
 			o.values = new int[]{R.string.theme_dark, R.string.theme_light, R.string.theme_system,
 					R.string.theme_black, R.string.theme_star_wars, R.string.theme_purple,
 					R.string.theme_classic, R.string.theme_dynamic};
+		});
+		ps.addBooleanPref(o -> {
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.ART_ACCENT;
+			o.title = R.string.art_accent;
+			o.subtitle = R.string.art_accent_sub;
 		});
 		ps.addBooleanPref(o -> {
 			o.store = a.getPrefs();

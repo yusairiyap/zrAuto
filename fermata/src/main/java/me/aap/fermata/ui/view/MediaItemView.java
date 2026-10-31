@@ -441,7 +441,7 @@ public class MediaItemView extends ConstraintLayout
 	private void setGlyph(ImageView icon, Item i) {
 		resetIconAnimation(icon);
 		icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-		icon.setImageTintList(iconTint);
+		icon.setImageTintList(ArtAccent.mapList(iconTint));
 		icon.setImageResource(i.getIcon());
 	}
 

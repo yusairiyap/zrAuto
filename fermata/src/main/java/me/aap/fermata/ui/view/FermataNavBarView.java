@@ -196,8 +196,51 @@ public class FermataNavBarView extends NavBarView implements GestureListener {
 		return from + (to - from) * f;
 	}
 
+	/** The icons, the selection mark and the arrow take the album art's colour while "Follow the album art" is on. */
+	@Override
+	public int getTint() {
+		return ArtAccent.map(super.getTint());
+	}
+
+	private boolean pillsRecoloured;
+
+	private final Runnable artStep = () -> {
+		int tint = getTint();
+		indicatorPaint.setColor((tint & 0x00FFFFFF) | 0x2E000000);
+		for (int i = 0, n = getChildCount(); i < n; i++) {
+			if (getChildAt(i) instanceof NavButtonView b) {
+				androidx.core.widget.ImageViewCompat.setImageTintList(b.getIcon(),
+						android.content.res.ColorStateList.valueOf(tint));
+			}
+		}
+		// The press / hover pill of each tab (a ripple in the theme's accent): drawn in the cover's colour, or made new when it is off.
+		boolean on = ArtAccent.isActive();
+		for (int i = 0, n = getChildCount(); i < n; i++) {
+			View c = getChildAt(i);
+			if (!(c instanceof NavButtonView)) continue;
+			if (on) {
+				if (c.getBackground() instanceof android.graphics.drawable.RippleDrawable rd) {
+					rd.setColor(android.content.res.ColorStateList.valueOf((tint & 0x00FFFFFF) | 0x59000000));
+					pillsRecoloured = true;
+				}
+			} else if (pillsRecoloured) {
+				c.setBackgroundResource(R.drawable.nav_item_pill_bg);
+			}
+		}
+		if (!on) pillsRecoloured = false;
+		invalidate();
+	};
+
+	@Override
+	protected void onAttachedToWindow() {
+		super.onAttachedToWindow();
+		ArtAccent.addListener(artStep);
+		artStep.run();
+	}
+
 	@Override
 	protected void onDetachedFromWindow() {
+		ArtAccent.removeListener(artStep);
 		cancelIndicatorAnim();
 		super.onDetachedFromWindow();
 	}

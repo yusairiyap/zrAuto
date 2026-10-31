@@ -71,7 +71,7 @@ public final class MenuStyle implements OverlayMenuView.Styler {
 		if (!dialog) {
 			SettingsStyle.Colors c = new SettingsStyle.Colors(ctx);
 			int panel = panelColor(ctx);
-			float radius = c.dp(car ? 20 : 24);
+			float radius = c.dp(24);
 			menu.setBackground(panel(menu, panel, radius));
 			menu.setOutlineProvider(new ViewOutlineProvider() {
 				@Override
@@ -118,7 +118,7 @@ public final class MenuStyle implements OverlayMenuView.Styler {
 	private static void styleContent(ViewGroup content, SettingsStyle.Colors c, boolean car) {
 		int p = c.dp(8);
 		content.setPadding(p, p, p, p);
-		content.setMinimumWidth(c.dp(car ? 300 : 248));
+		content.setMinimumWidth(c.dp(248));
 		for (int i = 0, n = content.getChildCount(); i < n; i++) {
 			View v = content.getChildAt(i);
 			if (v.getId() == me.aap.utils.R.id.overlay_menu_title) {
@@ -150,7 +150,7 @@ public final class MenuStyle implements OverlayMenuView.Styler {
 		item.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
 		item.setPadding(h, c.dp(10), h, c.dp(10));
 		item.setCompoundDrawablePadding(c.dp(14));
-		item.setMinHeight(c.dp(car ? 48 : 44));
+		item.setMinHeight(c.dp(44));
 		Drawable[] ds = item.getCompoundDrawablesRelative();
 		int is = c.dp(22);
 		if ((ds[0] != null) && ((ds[0].getBounds().width() != is) || (ds[0].getBounds().height() != is))) {
