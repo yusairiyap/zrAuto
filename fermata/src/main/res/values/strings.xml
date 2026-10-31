@@ -71,7 +71,7 @@
     <string name="settings_search">Search settings</string>
     <string name="settings_search_sub">Find a setting by its name and open its page</string>
     <string name="settings_search_results">Settings matching \'%1$s\'</string>
-    <string name="settings_search_hint">Type a setting's name</string>
+    <string name="settings_search_hint">Type a setting\'s name</string>
     <string name="settings_search_clear">Clear</string>
     <string name="settings_search_none">Nothing found</string>
     <string name="layout_settings">Layout and navigation</string>
