@@ -88,9 +88,8 @@ public final class NoNetworkView extends FrameLayout implements NetworkState.Lis
 		icon = new ImageView(ctx);
 		icon.setImageResource(R.drawable.network_off);
 		icon.setImageTintList(android.content.res.ColorStateList.valueOf(accent));
-		int ip = size / 3;
-		icon.setPadding(ip, ip, ip, ip);
-		art.addView(icon, new LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+		art.addView(icon, new LayoutParams(Math.round(size * 0.5f), Math.round(size * 0.5f), Gravity.CENTER));
 		col.addView(art, new LinearLayout.LayoutParams(size, size));
 
 		title = text(R.string.no_network_title, compact ? 13 : 22, compact ? secondary : primary, true);
@@ -137,19 +136,25 @@ public final class NoNetworkView extends FrameLayout implements NetworkState.Lis
 	}
 
 	@Override
-	protected void onSizeChanged(int w, int h, int ow, int oh) {
-		super.onSizeChanged(w, h, ow, oh);
-		if (!compact || (w <= 0) || (h <= 0)) return;
-		// The picture grows with the card: about half of its short side, between a small and a big placeholder.
-		int s = Math.max(dp(48), Math.min(dp(150), Math.round(Math.min(w, h) * 0.5f)));
-		ViewGroup.LayoutParams lp = art.getLayoutParams();
-		if (lp.width != s) {
-			lp.width = s;
-			lp.height = s;
-			art.setLayoutParams(lp);
-			int ip = s / 3;
-			icon.setPadding(ip, ip, ip, ip);
+	protected void onMeasure(int wSpec, int hSpec) {
+		// A card's picture is sized before the first frame, from what the card gives (not after a later layout): about half of
+		// its short side, between a small and a big placeholder. The icon is set by size, not by padding, so it never comes out tiny.
+		if (compact) {
+			int w = MeasureSpec.getSize(wSpec);
+			int h = MeasureSpec.getSize(hSpec);
+			if ((w > 0) && (h > 0)) {
+				int s = Math.max(dp(48), Math.min(dp(150), Math.round(Math.min(w, h) * 0.5f)));
+				ViewGroup.LayoutParams lp = art.getLayoutParams();
+				if (lp.width != s) {
+					lp.width = s;
+					lp.height = s;
+					art.setLayoutParams(lp);
+					FrameLayout.LayoutParams ilp = new FrameLayout.LayoutParams(Math.round(s * 0.5f), Math.round(s * 0.5f), Gravity.CENTER);
+					icon.setLayoutParams(ilp);
+				}
+			}
 		}
+		super.onMeasure(wSpec, hSpec);
 	}
 
 	/** Puts the placeholder over {@code host} (a layout that stacks its children). Shown only while there is no connection. */

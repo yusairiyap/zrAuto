@@ -667,20 +667,24 @@ public final class MusicPlayer {
 		MusicQueue q = getQueue(a);
 		if ((q == null) || items.isEmpty()) return;
 		if (!me.aap.fermata.util.NetworkState.isOnline()) {
-			// No connection: only what is stored on the phone goes into the queue, from the tapped song on.
-			PlayableItem tapped = items.get(Math.max(0, Math.min(startIdx, items.size() - 1)));
-			if (me.aap.fermata.util.NetworkState.isUnavailable(tapped)) {
-				me.aap.fermata.util.NetworkState.toastUnavailable();
-				return;
-			}
+			// No connection: only what is stored on the phone goes into the queue. It starts at the song asked for, or when that is not
+			// stored (a whole playlist played from its card), at the next downloaded one after it.
+			int want = Math.max(0, Math.min(startIdx, items.size() - 1));
 			List<PlayableItem> kept = new java.util.ArrayList<>();
-			for (PlayableItem i : items) if (me.aap.fermata.ytdl.OfflineFallback.isOffline(i)) kept.add(i);
+			PlayableItem from = null;
+			for (int i = 0; i < items.size(); i++) {
+				PlayableItem it = items.get(i);
+				if (!me.aap.fermata.ytdl.OfflineFallback.isOffline(it)) continue;
+				kept.add(it);
+				if ((from == null) && (i >= want)) from = it;
+			}
 			if (kept.isEmpty()) {
 				me.aap.fermata.util.NetworkState.toastUnavailable();
 				return;
 			}
+			if (from == null) from = kept.get(0);
 			DiagnosticLog.log(LogCat.NETWORK, "offline: queue without undownloaded", "kept=" + kept.size(), "of=" + items.size());
-			startIdx = Math.max(0, kept.indexOf(tapped));
+			startIdx = kept.indexOf(from);
 			items = kept;
 		}
 		int first = Math.max(0, Math.min(startIdx, items.size() - 1));

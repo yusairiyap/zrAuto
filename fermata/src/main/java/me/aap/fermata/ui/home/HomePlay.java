@@ -63,6 +63,19 @@ public final class HomePlay {
 			MusicPlayer.play(a, list, false);
 			return;
 		}
+		if (!NetworkState.isOnline()) {
+			// Offline: the first downloaded item of the list.
+			list.getPlayableChildren(false).main().onSuccess(l -> {
+				for (PlayableItem i : l) {
+					if (me.aap.fermata.ytdl.OfflineFallback.isOffline(i)) {
+						tapped(a, i);
+						return;
+					}
+				}
+				NetworkState.toastUnavailable();
+			});
+			return;
+		}
 		list.getFirstPlayable().main().onSuccess(first -> {
 			if (first != null) tapped(a, first);
 		});
