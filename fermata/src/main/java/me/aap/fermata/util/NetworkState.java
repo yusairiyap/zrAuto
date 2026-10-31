@@ -41,6 +41,7 @@ public final class NetworkState {
 	/** A stall put the app in offline mode: it stays at least until then, whatever a probe finds, and its popups are not doubled. */
 	private static long holdUntil;
 	private static long quietUntil;
+	private static long lastStallAt = -1_000_000;
 	private static final java.util.concurrent.ExecutorService prober = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
 		Thread t = new Thread(r, "net-probe");
 		t.setDaemon(true);
@@ -156,6 +157,14 @@ public final class NetworkState {
 		main.post(() -> {
 			long now = android.os.SystemClock.uptimeMillis();
 			quietUntil = now + 10_000;
+			// One stall on a connection that answers is the video's own trouble (a slow server, a hiccup): only a real try decides.
+			// A second one within two minutes is the connection's, and puts the app in offline mode whatever a probe says.
+			boolean repeat = (now - lastStallAt) < 120_000;
+			lastStallAt = now;
+			if (!repeat) {
+				probeNow();
+				return;
+			}
 			holdUntil = now + Math.max(30_000, OfflineFallback.startMs());
 			if (!probeDown) DiagnosticLog.log(LogCat.NETWORK, "stalled: offline mode", "holdSeconds=" + ((holdUntil - now) / 1000));
 			probeDown = true;

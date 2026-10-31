@@ -121,6 +121,34 @@ public abstract class HomeWidgetView extends FrameLayout {
 
 	@Nullable
 	private me.aap.fermata.ui.view.NoNetworkView noNet;
+	/** The title row, which stays when the card has nothing to show for want of a network. */
+	@Nullable
+	private View headerView;
+
+	/** The views that give way to the "no network" placeholder: everything beside the title row. */
+	private java.util.List<View> hiddenForNoNet() {
+		java.util.List<View> l = new java.util.ArrayList<>();
+		View hv = headerView;
+		ViewGroup col = ((hv != null) && (hv.getParent() instanceof ViewGroup g)) ? g : content;
+		for (int i = 0; i < col.getChildCount(); i++) if (col.getChildAt(i) != hv) l.add(col.getChildAt(i));
+		return l;
+	}
+
+	/** The placeholder fills the card below the title row. */
+	private void placeNoNet() {
+		View n = noNet;
+		if ((n == null) || !(n.getLayoutParams() instanceof FrameLayout.LayoutParams lp)) return;
+		int top = 0;
+		View hv = headerView;
+		if (hv != null) {
+			top = hv.getBottom();
+			for (android.view.ViewParent p = hv.getParent(); (p instanceof View pv) && (pv != this); p = pv.getParent()) top += pv.getTop();
+		}
+		if (lp.topMargin != top) {
+			lp.topMargin = top;
+			n.setLayoutParams(lp);
+		}
+	}
 
 	/** Whether the card is useless without the internet: it then shows the shared "no network" placeholder while offline. */
 	protected boolean needsNetwork() {
@@ -209,13 +237,17 @@ public abstract class HomeWidgetView extends FrameLayout {
 		this.item = item;
 		onCreate(content);
 		if (needsNetwork()) {
-			// Over the whole card, which gives up its own content meanwhile: the widget's "couldn't load" words showed through it.
+			// Fills the card below its title row, whose other content gives way meanwhile: its "couldn't load" words showed through.
 			noNet = me.aap.fermata.ui.view.NoNetworkView.compact(this, this::onNetworkBack);
 			noNet.setShownListener((shown, animate) -> {
-				content.animate().cancel();
-				if (!animate) content.setAlpha(shown ? 0f : 1f);
-				else content.animate().alpha(shown ? 0f : 1f).setDuration(shown ? 160 : 320).start();
+				placeNoNet();
+				for (View v : hiddenForNoNet()) {
+					v.animate().cancel();
+					if (!animate) v.setAlpha(shown ? 0f : 1f);
+					else v.animate().alpha(shown ? 0f : 1f).setDuration(shown ? 160 : 320).start();
+				}
 			});
+			addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> placeNoNet());
 			noNet.tint(HomeUi.alpha(color(ROLE_SECONDARY), 0.7f));
 		}
 		created = true;
@@ -724,6 +756,7 @@ public abstract class HomeWidgetView extends FrameLayout {
 	protected final LinearLayout header(@Nullable Runnable open) {
 		hasHeader = true;
 		LinearLayout row = new LinearLayout(ctx);
+		headerView = row;
 		row.setOrientation(LinearLayout.HORIZONTAL);
 		row.setGravity(Gravity.CENTER_VERTICAL);
 		FrameLayout disc = new FrameLayout(ctx);
