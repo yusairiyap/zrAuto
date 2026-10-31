@@ -87,6 +87,15 @@
     <string name="fab_more">More buttons</string>
     <string name="nav_bar_pos_hint">Which edge of the screen the navigation bar sits on</string>
     <string name="tap_action_hint">What a tap on a track does. With Opens its menu, a long press drags the track to reorder a playlist or Favorites</string>
+    <string name="privacy_settings_hint">What the app forgets, and Private Mode with its options.</string>
+    <string name="privacy_settings_reset">Reset privacy options</string>
+    <string name="privacy_settings_reset_question">Turn the Private Mode options (always on, blockers) back to their defaults?</string>
+    <string name="privacy_section_data">Browsing data</string>
+    <string name="clear_browsing_data_confirm_title">Clear browsing data?</string>
+    <string name="clear_browsing_data_confirm">This signs you out of YouTube and websites in the regular Browser and YouTube tabs and removes their cookies, cache and saved site data. It cannot be undone.</string>
+    <string name="private_mode_clear_confirm_title">Clear private browsing data?</string>
+    <string name="private_mode_clear_confirm">This removes the cookies and site data saved during Private Mode. Your regular session is not affected.</string>
+    <string name="enable_addon_sub">Turn this add-on on or off</string>
     <string name="settings_car_only">CAR SCREEN ONLY</string>
     <string name="settings_group_playback">Playback</string>
     <string name="settings_group_playback_sub">Taps and what plays next, controls and the player</string>
@@ -1574,4 +1583,12 @@
     <string name="lyrics_unavailable">No lyrics: what plays has no YouTube captions</string>
     <string name="captions_unavailable">No captions for this video</string>
     <string name="state_unavailable">Not available</string>
+    <string name="music_bg_blur_sub">Soften the picture behind the Music tab</string>
+    <string name="sub_gen_cleanup_sub">Frees space by removing models you are not using</string>
+    <string name="sub_gen_translate_sub">Also translate the generated subtitles into your language</string>
+    <string name="sub_gen_use_gpu_sub">Let the graphics chip make subtitles faster, when the phone supports it</string>
+    <string name="info_overlay_show_data_icon_sub">Put a small icon before each data figure in the info overlay</string>
+    <string name="ytdl_pref_toolbar_sub">Adds a download button to the YouTube page\'s toolbar</string>
+    <string name="data_usage_cycle_start_sub">The day your mobile data plan renews, so each month is counted from it</string>
+    <string name="music_bg_zoom_sub">How much the Music tab\'s background picture is enlarged</string>
 </resources>

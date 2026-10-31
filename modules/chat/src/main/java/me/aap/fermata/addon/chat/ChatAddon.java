@@ -96,6 +96,7 @@ public class ChatAddon implements FermataFragmentAddon {
 			o.store = store;
 			o.pref = MODEL_OTHER;
 			o.title = R.string.openai_model_other;
+			o.subtitle = R.string.openai_model_other_sub;
 			o.stringHint = "gpt-4-turbo";
 		});
 		set.addTtsLocalePref(o -> {

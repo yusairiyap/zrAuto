@@ -2,7 +2,6 @@ package me.aap.fermata.ui.view;
 
 import static me.aap.utils.ui.UiUtils.toIntPx;
 
-import android.graphics.drawable.Drawable;
 import android.view.View;
 import android.widget.ImageView;
 
@@ -13,6 +12,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import me.aap.fermata.R;
+import me.aap.fermata.action.Action;
+import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.fermata.ui.fragment.ActionFabMediator;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.utils.ui.view.FloatingButton;
 
@@ -38,8 +40,31 @@ public final class FabDock {
 	public void setShare(float share) {
 		if (this.share == share) return;
 		this.share = share;
+		watch(share > 0f);
 		// Works the visibility out again (the row's own rules), which ends in refresh().
 		a.updateExtraFabsVisibility();
+	}
+
+	private android.view.ViewTreeObserver.OnGlobalLayoutListener glue;
+	@Nullable
+	private android.view.ViewTreeObserver watched;
+
+	/**
+	 * While a panel is docked the buttons' visibility is also changed by the control panel (they hide and show with it, which would
+	 * bring back the ones taken out): every layout puts the row right again. Nothing changes when it already is, so it settles.
+	 */
+	private void watch(boolean on) {
+		FloatingButton primary = a.getFloatingButton();
+		if (primary == null) return;
+		if (on && (glue == null)) {
+			glue = this::refresh;
+			watched = primary.getViewTreeObserver();
+			watched.addOnGlobalLayoutListener(glue);
+		} else if (!on && (glue != null)) {
+			if ((watched != null) && watched.isAlive()) watched.removeOnGlobalLayoutListener(glue);
+			glue = null;
+			watched = null;
+		}
 	}
 
 	/** Lays the row out for the current share; called after the buttons' visibility was worked out. */
@@ -86,8 +111,9 @@ public final class FabDock {
 			if (!(extras.get(i) instanceof FloatingButton fb)) continue;
 			if (i < fits) {
 				last = fb;
+				if (fb.getVisibility() != View.VISIBLE) fb.setVisibility(View.VISIBLE);
 			} else {
-				fb.setVisibility(View.GONE);
+				if (fb.getVisibility() != View.GONE) fb.setVisibility(View.GONE);
 				hidden.add(fb);
 			}
 		}
@@ -129,18 +155,20 @@ public final class FabDock {
 		more.setAlpha(a.getFloatingButton().getAlpha());
 	}
 
-	/** What did not fit, as a menu: a tap does what the button would have. */
+	/** What did not fit, as a menu of what each button does: a tap does what the button would have. */
 	private void showMenu() {
 		List<FloatingButton> l = new ArrayList<>(hidden);
 		if (l.isEmpty()) return;
+		FloatingButton[] all = a.getExtraFloatingButtons();
 		a.getContextMenu().show(b -> {
 			b.setTitle(a.getContext().getString(R.string.fab_more));
 			for (FloatingButton fb : l) {
-				Drawable d = fb.getDrawable();
-				if ((d != null) && (d.getConstantState() != null)) d = d.getConstantState().newDrawable().mutate();
-				CharSequence t = fb.getContentDescription();
-				if (t == null) t = a.getContext().getString(R.string.fab_more);
-				b.addItem(View.generateViewId(), d, t).setHandler(i -> {
+				int idx = java.util.Arrays.asList(all).indexOf(fb);
+				Action act = (idx < 0) ? null :
+						Action.get(a.getPrefs().getIntPref(MainActivityPrefs.fab(a, MainActivityPrefs.fabAction(idx + 2))));
+				if (act == null) act = Action.NONE;
+				CharSequence t = a.getContext().getString(ActionFabMediator.labelFor(a, act));
+				b.addItem(View.generateViewId(), ActionFabMediator.iconFor(a, act), t).setHandler(i -> {
 					fb.performClick();
 					return true;
 				});

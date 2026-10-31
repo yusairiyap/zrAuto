@@ -69,6 +69,7 @@ public class WhisperAddon extends SubGenAddon {
 			o.store = ps;
 			o.pref = USE_GPU;
 			o.title = me.aap.fermata.R.string.sub_gen_use_gpu;
+			o.subtitle = me.aap.fermata.R.string.sub_gen_use_gpu_sub;
 			o.visibility = visibility.copy();
 		});
 	}

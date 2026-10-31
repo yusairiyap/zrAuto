@@ -495,6 +495,8 @@ public class VideoView extends FrameLayout
 
 	/** How much of the width is given to the side panel (the comments), 0 .. 0.8; 0 for none. */
 	private float splitShare;
+	private boolean parentClipSaved;
+	private boolean parentClipWas = true;
 	/** The black behind the shrunk picture, under this view in its parent (only while split). */
 	@Nullable
 	private View splitBackdrop;
@@ -516,6 +518,20 @@ public class VideoView extends FrameLayout
 		if (ad != null) {
 			ad.getControlPanel().setDockShare(share);
 			ad.getFabDock().setShare(share);
+		}
+		// A view's drawing is clipped to its own bounds when its parent clips children: the title and the Info overlay are drawn
+		// at the screen's top, outside this (shrunk) view's bounds, so the parent must not.
+		if (getParent() instanceof ViewGroup pg) {
+			if (share > 0f) {
+				if (!parentClipSaved) {
+					parentClipSaved = true;
+					parentClipWas = pg.getClipChildren();
+				}
+				pg.setClipChildren(false);
+			} else if (parentClipSaved) {
+				parentClipSaved = false;
+				pg.setClipChildren(parentClipWas);
+			}
 		}
 		if (share > 0f) {
 			ensureSplitBackdrop();

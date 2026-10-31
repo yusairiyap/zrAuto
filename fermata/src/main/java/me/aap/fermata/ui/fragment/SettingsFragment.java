@@ -136,7 +136,6 @@ public class SettingsFragment extends MainActivityFragment
 	 */
 	private boolean twoPane;
 	private PreferenceSet dimSettingsSet;
-	private PreferenceSet privateModeSettingsSet;
 	// Each addon's own settings page, by module name, see addonSettings().
 	private final java.util.Map<String, PreferenceSet> addonSettingsSets = new java.util.HashMap<>();
 	@Nullable
@@ -205,8 +204,9 @@ public class SettingsFragment extends MainActivityFragment
 	private void applyPendingInput() {
 		if ((pendingInput == SHOW_DIM_SETTINGS) && (dimSettingsSet != null)) {
 			adapter.setPreferenceSet(dimSettingsSet);
-		} else if ((pendingInput == SHOW_PRIVATE_MODE_SETTINGS) && (privateModeSettingsSet != null)) {
-			adapter.setPreferenceSet(privateModeSettingsSet);
+		} else if (pendingInput == SHOW_PRIVATE_MODE_SETTINGS) {
+			MainActivityDelegate d = MainActivityDelegate.get(requireContext());
+			d.getBody().post(() -> d.showFragment(R.id.privacy_settings_fragment));
 		} else if ((pendingInput instanceof String s) && s.startsWith(ADDON_SETTINGS)) {
 			PreferenceSet p = addonSettingsSets.get(s.substring(ADDON_SETTINGS.length()));
 			if (p != null) adapter.setPreferenceSet(p);
@@ -300,7 +300,6 @@ public class SettingsFragment extends MainActivityFragment
 
 	@Override
 	public void onDestroyView() {
-		lastRoot = null;
 		MainActivityDelegate.getActivityDelegate(requireContext()).onSuccess(this::cleanUp);
 		super.onDestroyView();
 	}
@@ -544,12 +543,6 @@ public class SettingsFragment extends MainActivityFragment
 		PreferenceSet sub1;
 		PreferenceSet sub2;
 
-		set.addButton(o -> {
-			o.title = R.string.settings_search;
-			o.subtitle = R.string.settings_search_sub;
-			o.icon = R.drawable.search;
-			o.onClick = () -> a.showFragment(R.id.search_settings_fragment);
-		});
 		addHomePrefs(a, set);
 
 		// Appearance: how the app looks. Layout and navigation is a page of its own (LayoutSettingsFragment).
@@ -1095,57 +1088,11 @@ public class SettingsFragment extends MainActivityFragment
 			o.onClick = () -> a.showFragment(R.id.lyrics_fragment);
 		});
 
-		privateModeSettingsSet = sub1 = set.subSet(o -> {
+		set.addButton(o -> {
 			o.title = R.string.private_mode_prefs;
 			o.subtitle = R.string.prefs_sub_private;
 			o.icon = R.drawable.private_mode;
-		});
-		sub1.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.PRIVATE_MODE_ENABLED;
-			o.title = R.string.private_mode;
-			o.subtitle = R.string.private_mode_sub;
-		});
-		var privateModeCond = PrefCondition.create(a.getPrefs(), MainActivityPrefs.PRIVATE_MODE_ENABLED);
-		sub1.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.PRIVATE_MODE_ALWAYS;
-			o.title = R.string.private_mode_always;
-			o.subtitle = R.string.private_mode_always_sub;
-			o.visibility = privateModeCond.copy();
-		});
-		sub1.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.PRIVATE_MODE_BLOCK_TRACKERS;
-			o.title = R.string.private_mode_block_trackers;
-			o.subtitle = R.string.private_mode_block_trackers_sub;
-			o.visibility = privateModeCond.copy();
-		});
-		sub1.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.PRIVATE_MODE_BLOCK_3RD_PARTY_COOKIES;
-			o.title = R.string.private_mode_block_3rd_party_cookies;
-			o.subtitle = R.string.private_mode_block_3rd_party_cookies_sub;
-			o.visibility = privateModeCond.copy();
-		});
-		sub1.addButton(o -> {
-			o.title = R.string.private_mode_clear_now;
-			o.subtitle = R.string.private_mode_clear_now_sub;
-			o.visibility = privateModeCond.copy();
-			o.onClick = () -> {
-				Log.i("Clear private browsing data now: button tapped");
-				a.getPrefs().requestPrivateDataClear();
-				UiUtils.showInfo(a.getContext(), R.string.private_mode_cleared);
-			};
-		});
-		sub1.addButton(o -> {
-			o.title = R.string.clear_browsing_data;
-			o.subtitle = R.string.clear_browsing_data_sub;
-			o.onClick = () -> {
-				Log.i("Clear browsing data: button tapped");
-				a.getPrefs().requestNormalDataClear();
-				UiUtils.showInfo(a.getContext(), R.string.browsing_data_cleared);
-			};
+			o.onClick = () -> a.showFragment(R.id.privacy_settings_fragment);
 		});
 
 		addAddons(set);
@@ -1193,17 +1140,24 @@ public class SettingsFragment extends MainActivityFragment
 				R.string.subtitles, R.string.captions, R.string.lyrics);
 		groupRoot(set, R.string.settings_group_controls, R.string.settings_group_controls_sub,
 				R.string.key_bindings, R.string.voice_control);
-		groupRoot(set, R.string.settings_group_library, R.string.settings_group_library_sub,
-				R.string.spotify_import, R.string.share, R.string.storage_prefs);
+		// Spotify import and Share are features like the add-ons; storage goes with backup.
+		PreferenceSet addonsSet = (PreferenceSet) findByTitle(set, R.string.addons);
+		if (addonsSet != null) {
+			List<me.aap.utils.function.Supplier<? extends PreferenceView.Opts>> feats = new java.util.ArrayList<>();
+			for (int t : new int[]{R.string.spotify_import, R.string.share}) {
+				var o = findByTitle(set, t);
+				if (o != null) feats.add(o);
+			}
+			addonsSet.adopt(feats);
+		}
 		groupRoot(set, R.string.settings_group_backup, R.string.settings_group_backup_sub,
-				R.string.backup_restore, R.string.other, R.string.diagnostics);
-		orderRoot(set, R.string.settings_search, R.string.home, R.string.appearance_prefs, R.string.layout_settings,
-				R.string.network_settings, R.string.settings_group_playback, R.string.video_settings, R.string.settings_group_subtitles,
-				R.string.settings_group_controls, R.string.settings_group_library, R.string.private_mode_prefs,
+				R.string.backup_restore, R.string.storage_prefs, R.string.other, R.string.diagnostics);
+		orderRoot(set, R.string.home, R.string.appearance_prefs, R.string.layout_settings,
+				R.string.settings_group_playback, R.string.video_settings, R.string.settings_group_subtitles,
+				R.string.settings_group_controls, R.string.network_settings, R.string.private_mode_prefs,
 				R.string.addons, R.string.settings_group_backup);
 
 		rootSet = set;
-		lastRoot = set;
 		publishNav(set, a.getContext());
 		return new PreferenceViewAdapter(set) {
 			@Override
@@ -1213,74 +1167,6 @@ public class SettingsFragment extends MainActivityFragment
 				a.fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 			}
 		};
-	}
-
-	/** One match of a search: where it is and what to do when it is picked. */
-	public record Hit(CharSequence path, CharSequence title, @Nullable CharSequence sub, int icon, Runnable open) {
-	}
-
-	/** The last tree built (Settings itself or a throwaway one), what the search page looks through. */
-	@Nullable
-	private static PreferenceSet lastRoot;
-
-	/** The tree kept for the search is dropped (its entries hold the activity). */
-	public static void clearSearchRoot() {
-		lastRoot = null;
-	}
-
-	private static PreferenceSet searchRoot(MainActivityDelegate a) {
-		PreferenceSet r = lastRoot;
-		if (r == null) {
-			try {
-				SettingsFragment f = new SettingsFragment();
-				f.createAdapter(a);
-				f.cleanUp(a);
-			} catch (RuntimeException ex) {
-				Log.e(ex, "Failed to build the settings for the search");
-			}
-			r = lastRoot;
-		}
-		return r;
-	}
-
-	/** The settings (pages and rows, in any category) whose title or line mentions {@code needle}, at most {@code max}. */
-	public static List<Hit> search(MainActivityDelegate a, String needle, int max) {
-		List<Hit> out = new java.util.ArrayList<>();
-		String n = needle.trim().toLowerCase();
-		if (n.isEmpty()) return out;
-		PreferenceSet root = searchRoot(a);
-		if (root != null) collectHits(a, root, "", n, out, max);
-		SettingsNative.collect(a, n, out, max);
-		return out;
-	}
-
-	private static void collectHits(MainActivityDelegate a, PreferenceSet set, String path, String needle,
-																	List<Hit> out, int max) {
-		Context ctx = a.getContext();
-		for (var o : set.getPreferences()) {
-			if (out.size() >= max) return;
-			try {
-				PreferenceView.Opts opts = o.get();
-				CharSequence title = (opts.ctitle != null) ? opts.ctitle : ((opts.title != ID_NULL) ? ctx.getString(opts.title) : null);
-				if (title == null) continue;
-				CharSequence sub = (opts.csubtitle != null) ? opts.csubtitle : ((opts.subtitle != ID_NULL) ? ctx.getString(opts.subtitle) : null);
-				boolean match = title.toString().toLowerCase().contains(needle) ||
-						((sub != null) && sub.toString().toLowerCase().contains(needle));
-				if (o instanceof PreferenceSet child) {
-					if (match) {
-						out.add(new Hit(path.isEmpty() ? ctx.getString(R.string.settings) : path, title, sub, opts.icon,
-								() -> a.showFragment(R.id.settings_fragment, category(child.getId()))));
-					}
-					collectHits(a, child, path.isEmpty() ? title.toString() : (path + " > " + title), needle, out, max);
-				} else if (match && (opts.title != R.string.settings_search)) {
-					Runnable open = (opts instanceof PreferenceView.ButtonOpts bo && bo.onClick != null) ?
-							() -> bo.onClick.run() : () -> a.showFragment(R.id.settings_fragment, category(set.getId()));
-					out.add(new Hit(path.isEmpty() ? ctx.getString(R.string.settings) : path, title, sub, opts.icon, open));
-				}
-			} catch (RuntimeException ex) {
-				Log.e(ex, "A settings entry could not be searched");
-			}
-		}
 	}
 
 	/** The entry titled {@code title} below {@code root}, the shallowest first. */
@@ -1847,9 +1733,12 @@ public class SettingsFragment extends MainActivityFragment
 
 			set.addBooleanPref(o -> {
 				o.title = R.string.enable;
+				o.subtitle = R.string.enable_addon_sub;
 				o.pref = info.enabledPref;
 				o.store = store;
 			});
+			// Always the first row of the page, whatever else is added.
+			set.markLastPinned();
 
 			FermataAddon a = amgr.getAddon(info.className);
 

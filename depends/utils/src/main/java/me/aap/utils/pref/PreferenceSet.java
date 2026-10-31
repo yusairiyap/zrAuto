@@ -378,6 +378,28 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 		touch();
 	}
 
+	private final java.util.Set<Object> pinned = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+
+	/** The row added last always shows first on its page (an add-on's Enable switch). */
+	public void markLastPinned() {
+		int i = preferences.size() - 1;
+		if (i >= 0) pinned.add(preferences.get(i));
+		touch();
+	}
+
+	/** Moves the given entries, wherever they are below this set, to the end of this one. */
+	public void adopt(List<? extends Supplier<? extends PreferenceView.Opts>> members) {
+		for (Supplier<? extends PreferenceView.Opts> m : members) {
+			PreferenceSet owner = ownerOf(m);
+			if ((owner == null) || (owner == this)) continue;
+			owner.preferences.remove(m);
+			owner.touch();
+			if (m instanceof PreferenceSet ps) ps.parent = this;
+			preferences.add(m);
+		}
+		touch();
+	}
+
 	private int version;
 	private int displayVersion = -1;
 	private List<Supplier<? extends PreferenceView.Opts>> display;
@@ -393,9 +415,14 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 	 */
 	public List<Supplier<? extends PreferenceView.Opts>> display() {
 		if ((display != null) && (displayVersion == version) && (display.size() == preferences.size())) return display;
+		List<Supplier<? extends PreferenceView.Opts>> top = new ArrayList<>();
 		List<Supplier<? extends PreferenceView.Opts>> nested = new ArrayList<>();
 		List<Supplier<? extends PreferenceView.Opts>> rest = new ArrayList<>();
 		for (Supplier<? extends PreferenceView.Opts> s : preferences) {
+			if (pinned.contains(s)) {
+				top.add(s);
+				continue;
+			}
 			boolean leads = s instanceof PreferenceSet;
 			if (!leads) {
 				try {
@@ -406,10 +433,11 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 			}
 			(leads ? nested : rest).add(s);
 		}
-		nested.addAll(rest);
-		display = nested;
+		top.addAll(nested);
+		top.addAll(rest);
+		display = top;
 		displayVersion = version;
-		return nested;
+		return top;
 	}
 
 	private void notifyChanged() {

@@ -78,4 +78,13 @@
     <string name="yt_bubbles_show_thumbs">Show video thumbnails</string>
     <string name="yt_bubbles_show_thumbs_sub">Off: every video is a wide one-line card with just its title.</string>
     <string name="yt_bubbles_show_text">Show titles on the bubbles</string>
+    <string name="try_to_skip_ad_sub">Presses Skip for you on ads that can be skipped</string>
+    <string name="home_bg_zoom_sub">How much the start page picture is enlarged</string>
+    <string name="home_bg_blur_sub">Soften the start page picture</string>
+    <string name="yt_bubbles_show_text_sub">Write the video\'s title inside each floating bubble</string>
+    <string name="user_agent_desktop_sub">How it introduces itself when a site is shown as a desktop page</string>
+    <string name="user_agent_sub">How the browser introduces itself to websites (the phone version)</string>
+    <string name="yt_bubbles_speed_sub">How fast the bubbles drift across the screen</string>
+    <string name="home_bg_enabled_sub">Show a picture behind the browser\'s start page</string>
+    <string name="home_bg_image_url_sub">Address of the picture shown behind the start page</string>
 </resources>

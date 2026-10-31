@@ -322,6 +322,8 @@ public class ControlPanelView extends ConstraintLayout
 		}
 		lp.rightMargin = inset;
 		lp.setMarginEnd((share <= 0f && !videoLook && (pillMargins != null)) ? pillMargins[3] : inset);
+		// With the nav bar on a side the panel ends at it, and the nav bar is gone in fullscreen video: then this margin counts.
+		lp.goneEndMargin = (share <= 0f && !videoLook && (pillMargins != null)) ? pillMargins[7] : inset;
 		setLayoutParams(lp);
 	}
 
@@ -355,6 +357,7 @@ public class ControlPanelView extends ConstraintLayout
 				int inset = dockInset();
 				lp.rightMargin = inset;
 				lp.setMarginEnd(inset);
+				lp.goneEndMargin = inset;
 			} else if (pillMargins != null) {
 				int[] m = pillMargins;
 				lp.leftMargin = m[0];

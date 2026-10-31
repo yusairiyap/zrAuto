@@ -78,3 +78,15 @@ Never built or run from the cloud session: leave CI as the first compile and ask
   every list page shows its sub-pages and buttons first (`PreferenceSet#display`) and its on/off settings as switches (`BooleanOpts.asSwitch` by default).
 - Not rebuilt as code-built pages: Playback, Video, Subtitles, Key bindings, Add-ons, Other, Backup, Library, Privacy still render through `PreferenceView` (restyled by
   `SettingsStyle`): add-ons supply their own `PreferenceSet`s and key bindings are one list per action, which a page per screen cannot hold.
+
+## Third round (device test)
+
+- Search was removed again (root button, page, index): it was not useful. `PreferenceSet#display` still sorts pages (sub-pages and buttons first) and now also honours
+  `markLastPinned` (an add-on's Enable switch is always first). Add-on rows have subtitles (`*_sub` strings next to their titles).
+- Privacy is a code-built page (`PrivacySettingsFragment`): the two clear actions come first and ask before clearing (they cannot be undone); the Private Mode options stay in
+  view, dimmed, while it is off. `SHOW_PRIVATE_MODE_SETTINGS` opens it.
+- "Library and downloads" is gone: Spotify import and Share moved under Add-ons (`PreferenceSet#adopt`), Storage under Backup and about; Network and offline sits after Controls.
+- Docked video: the video view's parent no longer clips children while split (a view's drawing is clipped to its bounds by its parent: the title and the Info overlay lie outside
+  the shrunk view's bounds); the control panel's inset also sets `goneEndMargin` (with the nav bar on a side, the nav bar is gone in fullscreen and that margin is the one used);
+  `FabDock` puts itself right again on every layout while docked and names the buttons in its "..." menu by their action.
+- `ArtAccent` recolours a MaterialButton's background tint (the dialogs' OK button).

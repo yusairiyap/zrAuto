@@ -81,6 +81,7 @@ public class MusicAddon implements MediaLibAddon, FermataActivityAddon,
 			o.store = store;
 			o.pref = BG_BLUR;
 			o.title = R.string.music_bg_blur;
+			o.subtitle = R.string.music_bg_blur_sub;
 			o.seekMin = 0;
 			o.seekMax = 100;
 			o.seekScale = 5;
@@ -91,6 +92,7 @@ public class MusicAddon implements MediaLibAddon, FermataActivityAddon,
 			o.store = store;
 			o.pref = BG_ZOOM;
 			o.title = R.string.music_bg_zoom;
+			o.subtitle = R.string.music_bg_zoom_sub;
 			o.seekMin = 100;
 			o.seekMax = 300;
 			o.seekScale = 5;

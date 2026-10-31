@@ -52,6 +52,7 @@ public class PoiAddon implements FermataAddon {
 			o.store = ps;
 			o.pref = POI_DB_URL;
 			o.title = R.string.poi_file_or_url;
+			o.subtitle = R.string.poi_file_or_url_sub;
 			o.mode = FilePickerFragment.FILE;
 			o.visibility = visibility;
 		});
