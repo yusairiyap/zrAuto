@@ -30,6 +30,12 @@ public class LayoutSettingsFragment extends ReorderListFragment {
 	private boolean car;
 	private LinearLayout carOnly;
 
+	/** The category in the list beside the page (a wide window) that this page belongs to. */
+	@Override
+	public int settingsEntryTitle() {
+		return R.string.layout_settings;
+	}
+
 	@Override
 	public int getFragmentId() {
 		return R.id.layout_settings_fragment;

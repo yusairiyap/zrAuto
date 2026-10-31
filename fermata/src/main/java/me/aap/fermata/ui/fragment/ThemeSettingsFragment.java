@@ -53,6 +53,12 @@ public class ThemeSettingsFragment extends ReorderListFragment {
 		return l;
 	}
 
+	/** The category in the list beside the page (a wide window) that this page belongs to. */
+	@Override
+	public int settingsEntryTitle() {
+		return R.string.appearance_prefs;
+	}
+
 	@Override
 	public int getFragmentId() {
 		return R.id.theme_settings_fragment;

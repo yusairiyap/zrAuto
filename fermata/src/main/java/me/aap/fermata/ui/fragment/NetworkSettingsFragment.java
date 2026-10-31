@@ -20,6 +20,12 @@ import me.aap.utils.pref.PreferenceStore;
  */
 public class NetworkSettingsFragment extends ReorderListFragment {
 
+	/** The category in the list beside the page (a wide window) that this page belongs to. */
+	@Override
+	public int settingsEntryTitle() {
+		return R.string.settings_group_playback;
+	}
+
 	@Override
 	public int getFragmentId() {
 		return R.id.network_settings_fragment;
