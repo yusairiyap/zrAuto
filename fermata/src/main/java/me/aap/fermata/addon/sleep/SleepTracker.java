@@ -401,16 +401,10 @@ public final class SleepTracker implements SensorEventListener {
 	private void startAmbience(PreferenceStore p) {
 		if (!AmbienceAddon.isEnabled()) return;
 		try {
+			// The length is the one the Ambience tab shows (the same pref), so it is not picked again here: a length
+			// that is not one of the tab's presets used to be rounded to the nearest, 20 min became 15.
 			AmbienceEngine e = AmbienceEngine.get();
 			if (!e.anyOn()) e.resumeLast();
-			int want = p.getIntPref(SleepPrefs.AMBIENCE_MIN);
-			if (want > 0) {
-				int best = AmbienceEngine.LENGTHS[1];
-				for (int l : AmbienceEngine.LENGTHS) {
-					if ((l > 0) && (Math.abs(l - want) < Math.abs(best - want))) best = l;
-				}
-				e.setLengthMinutes(best);
-			}
 			noteMix();
 		} catch (Exception ex) {
 			DiagnosticLog.w(LogCat.SLEEP, "ambience not started", ex);

@@ -49,7 +49,11 @@ import me.aap.utils.pref.PreferenceStore.Pref;
 public final class AmbienceEngine {
 	public static final Pref<IntSupplier> MASTER = Pref.i("AMBIENCE_MASTER", 70);
 	/** Minutes until everything fades away; 0 = no limit. */
-	public static final Pref<IntSupplier> LENGTH = Pref.i("AMBIENCE_LENGTH_MIN", 0);
+	/**
+	 * The one length of the sounds, in minutes (0 = no limit). The Ambience tab and the Sleep tab both show and change it, and a
+	 * sleep session's playback timer is the same number, so it keeps the key the Sleep tab always used.
+	 */
+	public static final Pref<IntSupplier> LENGTH = Pref.i("SLEEP_AMBIENCE_MIN", 30);
 	/** Seconds a sound takes to fade in or out. */
 	public static final Pref<IntSupplier> FADE = Pref.i("AMBIENCE_FADE_SEC", 3);
 	public static final Pref<BooleanSupplier> FOLLOW = Pref.b("AMBIENCE_FOLLOW", false);

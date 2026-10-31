@@ -13,7 +13,6 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
-import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
@@ -35,6 +34,7 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.AmbienceCardView;
 import me.aap.fermata.ui.view.AmbienceHeroView;
 import me.aap.fermata.ui.view.EffectsUi;
+import me.aap.fermata.ui.view.LengthStepper;
 import me.aap.fermata.ui.view.SwitchStyle;
 import me.aap.utils.ui.view.ToolBarView;
 
@@ -52,7 +52,8 @@ public class AmbienceFragment extends MainActivityFragment implements ToolBarChi
 	private static final ArgbEvaluator ARGB = new ArgbEvaluator();
 	private final AmbienceEngine engine = AmbienceEngine.get();
 	private final Runnable changed = this::syncControls;
-	private final List<TextView> chips = new ArrayList<>();
+	/** The sounds' length, as the Sleep tab's stepper: the engine's value. */
+	private LengthStepper lengthStepper;
 	private LinearLayout srcRow;
 	private TextView srcSynth, srcReal, srcHint;
 	private final List<AmbienceCardView> cards = new ArrayList<>();
@@ -219,7 +220,7 @@ public class AmbienceFragment extends MainActivityFragment implements ToolBarChi
 	public void onDestroyView() {
 		engine.removeListener(changed);
 		cards.clear();
-		chips.clear();
+		lengthStepper = null;
 		super.onDestroyView();
 	}
 
@@ -296,33 +297,12 @@ public class AmbienceFragment extends MainActivityFragment implements ToolBarChi
 		llp.topMargin = px(14);
 		card.addView(len, llp);
 
-		HorizontalScrollView hs = new HorizontalScrollView(palette);
-		hs.setHorizontalScrollBarEnabled(false);
-		hs.setClipToPadding(false);
-		LinearLayout row = new LinearLayout(palette);
-		row.setGravity(Gravity.CENTER_VERTICAL);
-		for (int minutes : AmbienceEngine.LENGTHS) {
-			TextView chip = label(0, 14, textPrimary, true);
-			chip.setText(AmbienceHeroView.lengthLabel(palette, minutes));
-			chip.setGravity(Gravity.CENTER);
-			chip.setPadding(px(16), 0, px(16), 0);
-			chip.setBackground(new GradientDrawable());
-			((GradientDrawable) chip.getBackground()).setCornerRadius(px(20));
-			chip.setClickable(true);
-			chip.setFocusable(true);
-			chip.setTag(minutes);
-			chip.setOnClickListener(v -> engine.setLengthMinutes(minutes));
-			LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
-					ViewGroup.LayoutParams.WRAP_CONTENT, px(40));
-			p.setMarginEnd(px(8));
-			row.addView(chip, p);
-			chips.add(chip);
-		}
-		hs.addView(row);
+		// - [ 30 min ] + : the same control and the same length as the Sleep tab's.
+		lengthStepper = new LengthStepper(palette, textPrimary, engine::getLengthMinutes, engine::setLengthMinutes);
 		LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(
 				ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
 		hlp.topMargin = px(10);
-		card.addView(hs, hlp);
+		card.addView(lengthStepper, hlp);
 		TextView hint = label(0, 12.5f, textSecondary, false);
 		hint.setTag("hint");
 		LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
@@ -426,7 +406,7 @@ public class AmbienceFragment extends MainActivityFragment implements ToolBarChi
 		}
 		masterValue.setText(getString(R.string.ambience_percent, m));
 		int len = engine.getLengthMinutes();
-		for (TextView chip : chips) styleChip(chip, ((Integer) chip.getTag()) == len);
+		if (lengthStepper != null) lengthStepper.refresh();
 		if (srcRow != null) {
 			boolean choice = engine.hasSourceChoice();
 			srcRow.setVisibility(choice ? View.VISIBLE : View.GONE);

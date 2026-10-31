@@ -37,6 +37,9 @@ import me.aap.fermata.ui.home.HomeWidgetView;
 import me.aap.fermata.ui.view.AmbienceHeroView;
 import me.aap.fermata.ui.view.AmbienceScene;
 import me.aap.fermata.ui.view.ChipFlowLayout;
+import me.aap.utils.ui.menu.OverlayMenuItem;
+
+import static me.aap.utils.async.Completed.completedVoid;
 
 /**
  * The Ambience tab's sky on Home: a gradient that takes the colours of whatever sounds are on, with
@@ -71,6 +74,8 @@ final class AmbienceWidget extends HomeWidgetView {
 	private TextView subtitle;
 	private ImageView action;
 	private TextView timer;
+	/** The ids of the timer chip's menu items (one per length in {@link AmbienceEngine#LENGTHS}). */
+	private static final int TIMER_MENU_ID = 4200;
 	private LinearLayout shortcuts;
 	private TextView off;
 	private LinearLayout texts;
@@ -135,7 +140,7 @@ final class AmbienceWidget extends HomeWidgetView {
 		});
 		content.addView(action);
 
-		timer = chip(R.drawable.timer, "", this::stepTimer);
+		timer = chip(R.drawable.timer, "", this::showTimerMenu);
 		content.addView(timer);
 
 		shortcuts = new LinearLayout(ctx);
@@ -302,13 +307,24 @@ final class AmbienceWidget extends HomeWidgetView {
 		}
 	}
 
-	private void stepTimer() {
+	/** The timer chip: a menu of the usual lengths, the one in use marked; a tap on a length sets it. */
+	private void showTimerMenu() {
 		if (!AmbienceAddon.isEnabled()) return;
-		int[] lens = AmbienceEngine.LENGTHS;
 		int cur = engine().getLengthMinutes();
-		int at = 0;
-		for (int i = 0; i < lens.length; i++) if (lens[i] == cur) at = i;
-		engine().setLengthMinutes(lens[(at + 1) % lens.length]);
+		host.activity().getContextMenu().showFuture(b -> {
+			b.setTitle(R.string.ambience_length);
+			int[] lens = AmbienceEngine.LENGTHS;
+			for (int i = 0; i < lens.length; i++) {
+				int m = lens[i];
+				OverlayMenuItem item = b.addItem(TIMER_MENU_ID + i, R.drawable.timer, AmbienceHeroView.lengthLabel(ctx, m));
+				if (m == cur) b.setSelectedItem(item);
+				item.setHandler(x -> {
+					engine().setLengthMinutes(m);
+					return true;
+				});
+			}
+			return completedVoid();
+		});
 	}
 
 	// ---------------------------------------------------------------------------------------------

@@ -6,17 +6,22 @@ import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Shader;
+import android.os.SystemClock;
 import android.view.View;
 
 /**
  * A faint picture behind a short card's words: a fill that runs out from the left (a timer's time left, a night's length
- * against the goal) or little bars (the last nights), in a soft colour so the text over it stays easy to read. It takes
- * no touches and draws only what it was given.
+ * against the goal) or little bars (the last nights), in a soft colour so the text over it stays easy to read. The fill
+ * eases to its new value and, while a timer runs, a band of light travels along it. It takes no touches and draws only
+ * what it was given.
  */
 final class BackdropView extends View {
 	private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
 	private final RectF rect = new RectF();
+	private final MeterGlide glide = new MeterGlide();
+	private final FillSheen sheen = new FillSheen();
 	private int color;
+	/** The fill's fraction, or -1 for no fill (bars or nothing). */
 	private float fraction = -1f;
 	private float[] bars = new float[0];
 
@@ -33,10 +38,27 @@ final class BackdropView extends View {
 		invalidate();
 	}
 
-	/** A fill from the left to this fraction of the width; below 0 draws none. */
+	/** A fill from the left to this fraction of the width, easing to it; below 0 draws none (and at once). */
 	void setFraction(float f) {
-		fraction = (f < 0f) ? -1f : Math.min(1f, f);
 		bars = new float[0];
+		if (f < 0f) {
+			fraction = -1f;
+			glide.reset();
+			invalidate();
+			return;
+		}
+		f = Math.min(1f, f);
+		long now = SystemClock.uptimeMillis();
+		if ((fraction < 0f) || !glide.isSet()) glide.jump(f);
+		else if (f != glide.target()) glide.glideTo(f, now);
+		fraction = f;
+		invalidate();
+	}
+
+	/** Whether the band of light runs along the fill (a timer is counting down). */
+	void setRunning(boolean on) {
+		if (sheen.isOn() == on) return;
+		sheen.setOn(on);
 		invalidate();
 	}
 
@@ -44,6 +66,7 @@ final class BackdropView extends View {
 	void setBars(float[] v) {
 		bars = (v == null) ? new float[0] : v;
 		fraction = -1f;
+		glide.reset();
 		invalidate();
 	}
 
@@ -54,11 +77,19 @@ final class BackdropView extends View {
 		if ((w == 0) || (h == 0)) return;
 		paint.setStyle(Paint.Style.FILL);
 		if (fraction >= 0f) {
-			// Strongest at the left, melting away at the end of the fill.
-			paint.setShader(new LinearGradient(0, 0, w * Math.max(0.05f, fraction), 0, color, color & 0x00FFFFFF,
-					Shader.TileMode.CLAMP));
-			c.drawRect(0, 0, w * fraction, h, paint);
-			paint.setShader(null);
+			long now = SystemClock.uptimeMillis();
+			float f = glide.value(now);
+			if (f > 0f) {
+				float fw = w * f;
+				// Strongest at the left, melting away at the end of the fill.
+				paint.setShader(new LinearGradient(0, 0, Math.max(fw, 1f), 0, color, color & 0x00FFFFFF,
+						Shader.TileMode.CLAMP));
+				c.drawRect(0, 0, fw, h, paint);
+				paint.setShader(null);
+				sheen.draw(c, fw, h, 0f, now);
+			}
+			if (glide.moving(now)) postInvalidateOnAnimation();
+			else if (sheen.isOn() && (f > 0f)) postInvalidateDelayed(FillSheen.FRAME_MS, 0, 0, (int) Math.ceil(w * f), h);
 			return;
 		}
 		int n = bars.length;
