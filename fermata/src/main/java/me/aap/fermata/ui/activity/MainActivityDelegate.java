@@ -2421,6 +2421,10 @@ public class MainActivityDelegate extends ActivityDelegate
 			return new me.aap.fermata.ui.fragment.SleepSettingsFragment();
 		} else if (id == R.id.power_settings_fragment) {
 			return new me.aap.fermata.ui.fragment.PowerSettingsFragment();
+		} else if (id == R.id.theme_settings_fragment) {
+			return new me.aap.fermata.ui.fragment.ThemeSettingsFragment();
+		} else if (id == R.id.network_settings_fragment) {
+			return new me.aap.fermata.ui.fragment.NetworkSettingsFragment();
 		} else if (id == R.id.home_settings_fragment) {
 			return new me.aap.fermata.ui.fragment.HomeSettingsFragment();
 		} else if (id == R.id.glass_settings_fragment) {

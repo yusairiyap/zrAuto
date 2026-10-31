@@ -5,7 +5,11 @@ category (ids kept), and `SettingsFragment#groupRoot` makes **Playback** (settin
 from the old root entries. The car screen now gets the same root as the phone (the reduced car-only Interface page is gone); settings that only do something on Android Auto
 carry a CAR SCREEN ONLY tag after their title (`Opts#carOnly`, set by `PreferenceSet#markCarOnly` / `markLastCarOnly`, drawn in `SettingsStyle#apply`): the
 Interface > Android Auto page, the car audio delay and the car video status row. Voice control, backup, the welcome wizard and Share app stay phone-only (they
-need system pickers or dialogs). Everything else below is still to do. Taken out of PR #68 to be done on its own branch.
+need system pickers or dialogs). Also built (never compiled): `NetworkSettingsFragment` (Playback > Network and offline: offline mode, play downloaded on stall, stall wait, shortcut to
+Data usage; replaces the two loose rows), `ThemeSettingsFragment` + `ThemePreviewView` (Interface > Theme: gallery of phones drawn from each theme's colours,
+Phone / Android Auto pill, colour-from-album-art; replaces the theme list row), and a **Search settings** button at the root (`SettingsFragment#searchSettings`,
+walks the PreferenceSet tree for title/subtitle matches and opens the page; no separate registry was needed). Still to do: `SettingsPage` base extraction,
+the pill on the other twin pages, the eleven-category regroup and removing the old root builder. Taken out of PR #68 to be done on its own branch.
 
 ## What was asked
 

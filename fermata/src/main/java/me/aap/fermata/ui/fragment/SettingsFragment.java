@@ -542,6 +542,12 @@ public class SettingsFragment extends MainActivityFragment
 		PreferenceSet sub1;
 		PreferenceSet sub2;
 
+		set.addButton(o -> {
+			o.title = R.string.settings_search;
+			o.subtitle = R.string.settings_search_sub;
+			o.icon = R.drawable.search;
+			o.onClick = () -> searchSettings(a, set);
+		});
 		addHomePrefs(a, set);
 
 		interfaceSet = sub1 = set.subSet(o -> {
@@ -691,19 +697,11 @@ public class SettingsFragment extends MainActivityFragment
 			o.pref = BrowsableItemPrefs.PLAY_NEXT;
 			o.title = R.string.play_next_on_completion;
 		});
-		sub1.addBooleanPref(o -> {
-			o.store = me.aap.fermata.ytdl.OfflineFallback.prefs();
-			o.pref = me.aap.fermata.ytdl.OfflineFallback.ON_STALL;
-			o.title = R.string.offline_on_stall;
-			o.subtitle = R.string.offline_on_stall_sub;
-		});
-		sub1.addIntPref(o -> {
-			o.store = me.aap.fermata.ytdl.OfflineFallback.prefs();
-			o.pref = me.aap.fermata.ytdl.OfflineFallback.STALL_SECONDS;
-			o.title = R.string.offline_stall_seconds;
-			o.subtitle = R.string.offline_stall_seconds_sub;
-			o.seekMin = 3;
-			o.seekMax = 60;
+		sub1.addButton(o -> {
+			o.title = R.string.network_settings;
+			o.subtitle = R.string.network_settings_sub;
+			o.icon = R.drawable.wifi;
+			o.onClick = () -> a.showFragment(R.id.network_settings_fragment);
 		});
 		addTapAction(a, sub1, MainActivityPrefs.TAP_ACTION);
 		if (MusicPlayer.isEnabled()) {
@@ -1238,6 +1236,59 @@ public class SettingsFragment extends MainActivityFragment
 		};
 	}
 
+	/** One match of a search: where it is and what to do when it is picked. */
+	private record Hit(String path, CharSequence title, Runnable open) {
+	}
+
+	/** Asks for a word and lists the settings (pages and rows, in any category) whose title or line mentions it. */
+	private void searchSettings(MainActivityDelegate a, PreferenceSet root) {
+		UiUtils.queryText(a.getContext(), R.string.settings_search, R.drawable.search).onSuccess(q -> {
+			String needle = (q == null) ? "" : q.trim().toLowerCase();
+			if (needle.isEmpty()) return;
+			List<Hit> hits = new java.util.ArrayList<>();
+			collectHits(a.getContext(), root, root, "", needle, hits);
+			a.getContextMenu().show(b -> {
+				b.setTitle(a.getContext().getString(R.string.settings_search_results, q.trim()));
+				if (hits.isEmpty()) {
+					b.addItem(android.view.View.generateViewId(), R.drawable.search, R.string.settings_search_none);
+					return;
+				}
+				for (Hit h : hits) {
+					b.addItem(android.view.View.generateViewId(), R.drawable.search, h.title() + "\n" + h.path())
+							.setHandler(i -> {
+								h.open().run();
+								return true;
+							});
+				}
+			});
+		});
+	}
+
+	private void collectHits(Context ctx, PreferenceSet root, PreferenceSet set, String path, String needle,
+													 List<Hit> out) {
+		for (var o : set.getPreferences()) {
+			if (out.size() >= 15) return;
+			try {
+				PreferenceView.Opts opts = o.get();
+				CharSequence title = (opts.ctitle != null) ? opts.ctitle : ((opts.title != ID_NULL) ? ctx.getString(opts.title) : null);
+				if (title == null) continue;
+				CharSequence sub = (opts.csubtitle != null) ? opts.csubtitle : ((opts.subtitle != ID_NULL) ? ctx.getString(opts.subtitle) : null);
+				boolean match = title.toString().toLowerCase().contains(needle) ||
+						((sub != null) && sub.toString().toLowerCase().contains(needle));
+				if (o instanceof PreferenceSet sub1) {
+					if (match) out.add(new Hit(path, title, () -> adapter.setPreferenceSet(sub1)));
+					collectHits(ctx, root, sub1, path.isEmpty() ? title.toString() : (path + " > " + title), needle, out);
+				} else if (match && (opts.title != R.string.settings_search)) {
+					Runnable open = (opts instanceof PreferenceView.ButtonOpts bo && bo.onClick != null) ?
+							() -> bo.onClick.run() : () -> adapter.setPreferenceSet(set);
+					out.add(new Hit(path.isEmpty() ? ctx.getString(R.string.settings) : path, title, open));
+				}
+			} catch (RuntimeException ex) {
+				Log.e(ex, "A settings entry could not be searched");
+			}
+		}
+	}
+
 	/**
 	 * Gathers the root entries whose titles are {@code titles} into one category. Nothing is changed when
 	 * fewer than two are found, so a category never wraps a single page.
@@ -1618,15 +1669,11 @@ public class SettingsFragment extends MainActivityFragment
 														Pref<IntSupplier> nbPos, Pref<DoubleSupplier> nbSize,
 														Pref<DoubleSupplier> tbSize, Pref<DoubleSupplier> cpSize,
 														Pref<DoubleSupplier> textIconSize, Pref<DoubleSupplier> iconSize) {
-		ps.addListPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = theme;
+		ps.addButton(o -> {
 			o.title = R.string.theme;
-			o.subtitle = R.string.theme_sub;
-			o.formatSubtitle = true;
-			o.values = new int[]{R.string.theme_dark, R.string.theme_light, R.string.theme_system,
-					R.string.theme_black, R.string.theme_star_wars, R.string.theme_purple,
-					R.string.theme_classic, R.string.theme_dynamic};
+			o.subtitle = R.string.theme_settings_sub;
+			o.icon = R.drawable.view_grid;
+			o.onClick = () -> a.showFragment(R.id.theme_settings_fragment);
 		});
 		ps.addBooleanPref(o -> {
 			o.store = a.getPrefs();
