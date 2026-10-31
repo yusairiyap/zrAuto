@@ -32,7 +32,7 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 	private static Locale[] ttsLocales;
 	final List<Supplier<? extends PreferenceView.Opts>> preferences = new ArrayList<>();
 	private final int id;
-	private final PreferenceSet parent;
+	private PreferenceSet parent;
 	private final Consumer<PreferenceView.Opts> builder;
 	private int idCounter = 1;
 	private PreferenceViewAdapter adapter;
@@ -225,6 +225,35 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 	public PreferenceSet subSet(Consumer<PreferenceView.Opts> builder) {
 		PreferenceSet sub = new PreferenceSet(this, builder);
 		add(sub);
+		return sub;
+	}
+
+	/**
+	 * Moves the given entries of this set (in the order given) into a new sub-set that takes the place of
+	 * the first of them. The moved sub-sets keep their ids, so saved states and deep links to them still
+	 * resolve; only their parent changes. Entries that are not direct children of this set are ignored.
+	 *
+	 * @return the new sub-set, or null when none of the entries belongs to this set
+	 */
+	@Nullable
+	public PreferenceSet group(Consumer<PreferenceView.Opts> builder,
+														 List<? extends Supplier<? extends PreferenceView.Opts>> members) {
+		int at = -1;
+		List<Supplier<? extends PreferenceView.Opts>> moved = new ArrayList<>();
+		for (Supplier<? extends PreferenceView.Opts> m : members) {
+			int i = preferences.indexOf(m);
+			if (i < 0) continue;
+			if ((at < 0) || (i < at)) at = i;
+			moved.add(m);
+		}
+		if (moved.isEmpty()) return null;
+		preferences.removeAll(moved);
+		PreferenceSet sub = new PreferenceSet(this, builder);
+		for (Supplier<? extends PreferenceView.Opts> m : moved) {
+			if (m instanceof PreferenceSet ps) ps.parent = sub;
+			sub.preferences.add(m);
+		}
+		preferences.add(Math.min(at, preferences.size()), sub);
 		return sub;
 	}
 

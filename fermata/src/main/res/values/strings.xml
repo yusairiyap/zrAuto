@@ -47,6 +47,10 @@
 
     <string name="interface_prefs">Interface</string>
     <string name="interface_prefs_aa">Android Auto</string>
+    <string name="settings_group_playback">Playback</string>
+    <string name="settings_group_playback_sub">Taps and what plays next, controls and the player</string>
+    <string name="settings_group_video">Video and subtitles</string>
+    <string name="settings_group_video_sub">Picture, subtitles, captions and lyrics</string>
     <string name="playback_settings">Playback settings</string>
     <string name="playback_control">Playback control</string>
     <string name="engine_prefs">Media engine</string>

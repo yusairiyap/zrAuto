@@ -1,6 +1,11 @@
 # Handover: header and control panel beside the in-video panels
 
-Status: not started. Taken out of the offline / effects / snap branch (PR #68) to be done on its own branch.
+Status: built, never compiled or run (cloud session). `VideoView#setSplitShare` now also calls `VideoControlsOverlay#setSplit` and
+`ControlPanelView#setDockShare`, so the three move in step with the picture, on open, close and the width drag. The overlay's title bar and middle buttons
+live in a `dock` holder that cancels the video's shrink on itself (scale 1/(1-share), same pivot) and is only `parentW * (1-share)` wide; the control panel
+gets an end margin of `share * parentW` while in its video look. The Info overlay is left as it was (scaled with the picture). Check on a device: title/buttons
+sizes, the seek-streak touch mapping in `VideoControlsOverlay#buttonTouch`, and that the bottom panel's relayout per frame is smooth.
+Originally taken out of the offline / effects / snap branch (PR #68).
 
 ## What was asked
 

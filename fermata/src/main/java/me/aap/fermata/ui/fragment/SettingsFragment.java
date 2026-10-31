@@ -1230,6 +1230,12 @@ public class SettingsFragment extends MainActivityFragment
 
 		addDiagnostics(a, set);
 
+		// The root had thirteen entries; the player's own pages share a category each (moves only, same prefs).
+		groupRoot(set, R.string.settings_group_playback, R.string.settings_group_playback_sub,
+				R.string.playback_settings, R.string.playback_control, R.string.engine_prefs);
+		groupRoot(set, R.string.settings_group_video, R.string.settings_group_video_sub,
+				R.string.video_settings, R.string.subtitles, R.string.captions, R.string.lyrics);
+
 		rootSet = set;
 		publishNav(set, a.getContext());
 		return new PreferenceViewAdapter(set) {
@@ -1240,6 +1246,35 @@ public class SettingsFragment extends MainActivityFragment
 				a.fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 			}
 		};
+	}
+
+	/**
+	 * Gathers the root entries whose titles are {@code titles} into one category. Nothing is changed when
+	 * fewer than two are found, so a category never wraps a single page.
+	 */
+	private static void groupRoot(PreferenceSet root, int title, int subtitle, int... titles) {
+		List<me.aap.utils.function.Supplier<? extends PreferenceView.Opts>> found = new java.util.ArrayList<>();
+		int icon = ID_NULL;
+		for (int t : titles) {
+			for (var o : root.getPreferences()) {
+				try {
+					PreferenceView.Opts opts = o.get();
+					if (opts.title != t) continue;
+					found.add(o);
+					if (icon == ID_NULL) icon = opts.icon;
+					break;
+				} catch (RuntimeException ex) {
+					Log.e(ex, "A settings entry could not be grouped");
+				}
+			}
+		}
+		if (found.size() < 2) return;
+		final int ic = icon;
+		root.group(o -> {
+			o.title = title;
+			o.subtitle = subtitle;
+			o.icon = ic;
+		}, found);
 	}
 
 	/**

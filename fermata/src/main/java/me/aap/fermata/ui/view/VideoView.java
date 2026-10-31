@@ -506,6 +506,9 @@ public class VideoView extends FrameLayout
 		share = Math.max(0f, Math.min(0.8f, share));
 		if (share == splitShare) return;
 		splitShare = share;
+		controls.setSplit(share, getWidth());
+		MainActivityDelegate ad = getActivity().peek();
+		if (ad != null) ad.getControlPanel().setDockShare(share);
 		if (share > 0f) {
 			ensureSplitBackdrop();
 			float s = 1f - share;
@@ -532,6 +535,7 @@ public class VideoView extends FrameLayout
 		super.onSizeChanged(w, h, oldw, oldh);
 		setPivotY(h / 2f);
 		setPivotX((splitShare > 0f) ? 0f : (w / 2f));
+		if (splitShare > 0f) controls.setSplit(splitShare, w);
 	}
 
 	private void ensureSplitBackdrop() {

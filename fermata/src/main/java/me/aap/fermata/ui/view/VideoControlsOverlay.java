@@ -54,6 +54,13 @@ public class VideoControlsOverlay extends FrameLayout {
 	static final int BUTTON_RIPPLE = 0x40FFFFFF;
 	static final int BUTTON_ICON = 0xFFFFFFFF;
 	private final View scrim;
+	/**
+	 * Holds the title bar and the middle buttons. While a panel is docked beside the video the video view
+	 * is shrunk by a transform; this holder undoes that scale on itself and is only as wide as the room the
+	 * panel leaves, so the texts and buttons keep their size and sit beside the panel (see {@link #setSplit}).
+	 */
+	private final FrameLayout dock;
+	private float splitShare;
 	private final LinearLayout titleBar;
 	private final TextView title;
 	private final TextView subtitle;
@@ -115,7 +122,10 @@ public class VideoControlsOverlay extends FrameLayout {
 		subtitle = newText(ctx, 13, 0xCCFFFFFF, false);
 		titleBar.addView(title, new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
 		titleBar.addView(subtitle, new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT));
-		addView(titleBar, new LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.TOP | Gravity.START));
+		dock = new FrameLayout(ctx);
+		dock.setClipChildren(false);
+		addView(dock, new LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		dock.addView(titleBar, new LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.TOP | Gravity.START));
 
 		center = new LinearLayout(ctx);
 		center.setOrientation(LinearLayout.HORIZONTAL);
@@ -140,7 +150,7 @@ public class VideoControlsOverlay extends FrameLayout {
 		lp = new LinearLayout.LayoutParams(small, small);
 		lp.setMarginStart(gap);
 		center.addView(next, lp);
-		addView(center, new LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER));
+		dock.addView(center, new LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER));
 		// In front of everything here, the dim and the buttons included: not darkened by them.
 		spinnerAlways = withSpinner;
 		ownSpinner = new LoadingCircleView(ctx);
@@ -172,7 +182,17 @@ public class VideoControlsOverlay extends FrameLayout {
 		if (getParent() instanceof VideoView vv) {
 			// From the button's own coordinates to this view's (the video view's).
 			MotionEvent c = MotionEvent.obtain(e);
-			c.offsetLocation(v.getLeft() + center.getLeft(), v.getTop() + center.getTop());
+			if (splitShare > 0f) {
+				// The holder is drawn unscaled over a shrunk video: go through the screen.
+				int[] a = new int[2];
+				int[] b = new int[2];
+				v.getLocationOnScreen(a);
+				vv.getLocationOnScreen(b);
+				float k = 1f - splitShare;
+				c.setLocation((a[0] - b[0] + e.getX()) / k, (a[1] - b[1] + e.getY() - (vv.getHeight() * (1f - k) / 2f)) / k);
+			} else {
+				c.offsetLocation(v.getLeft() + center.getLeft(), v.getTop() + center.getTop());
+			}
 			vv.onTouchEvent(c);
 			c.recycle();
 		}
@@ -387,6 +407,43 @@ public class VideoControlsOverlay extends FrameLayout {
 	private static float textWidth(TextView t) {
 		CharSequence s = t.getText();
 		return ((s == null) || (s.length() == 0)) ? 0f : t.getPaint().measureText(s, 0, s.length());
+	}
+
+	/**
+	 * Called by {@link VideoView#setSplitShare} while the picture is shrunk to the left
+	 * {@code 1 - share} of the screen: the holder cancels the shrink on itself (so the title, channel and
+	 * buttons keep their sizes) and is laid out in that left part only, beside the docked panel.
+	 * The video itself is untouched; this only moves the views over it.
+	 */
+	void setSplit(float share, int parentW) {
+		splitShare = share;
+		float s = 1f - share;
+		LayoutParams lp = (LayoutParams) dock.getLayoutParams();
+		int w = (share > 0f) ? Math.max(1, Math.round(parentW * s)) : MATCH_PARENT;
+		if (lp.width != w) {
+			lp.width = w;
+			dock.setLayoutParams(lp);
+		}
+		applySplitPivot();
+	}
+
+	private void applySplitPivot() {
+		if (splitShare > 0f) {
+			dock.setPivotX(0f);
+			dock.setPivotY(getHeight() / 2f);
+			float k = 1f / (1f - splitShare);
+			dock.setScaleX(k);
+			dock.setScaleY(k);
+		} else {
+			dock.setScaleX(1f);
+			dock.setScaleY(1f);
+		}
+	}
+
+	@Override
+	protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+		super.onSizeChanged(w, h, oldw, oldh);
+		if (splitShare > 0f) applySplitPivot();
 	}
 
 	/** Keeps the title clear of something on the right of the top edge (the Info Overlay). */

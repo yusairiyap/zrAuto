@@ -1,6 +1,8 @@
 # Handover: consolidate and redesign Settings
 
-Status: plan written (`docs/SETTINGS_REDESIGN_PLAN.md`), nothing built. Taken out of PR #68 to be done on its own branch.
+Status: plan written (`docs/SETTINGS_REDESIGN_PLAN.md`); only a first slice of rollout step 2 is built: `PreferenceSet#group` moves root entries into a
+category (ids kept), and `SettingsFragment#groupRoot` makes **Playback** (settings, control, engine) and **Video and subtitles** (video, subtitles, captions, lyrics)
+from the old root entries. Everything else below is still to do. Taken out of PR #68 to be done on its own branch.
 
 ## What was asked
 
