@@ -138,6 +138,11 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 	/** Where Back goes. */
 	protected abstract void goBack();
 
+	/** Whether the page ends with a "Reset" button (a page with nothing to reset says no). */
+	protected boolean hasReset() {
+		return true;
+	}
+
 	/** The page's own options above the rows (a section title and what goes with it), if any. */
 	@Nullable
 	protected View createExtraHeader() {
@@ -336,6 +341,10 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 			LinearLayout.LayoutParams elp = new LinearLayout.LayoutParams(MATCH_PARENT, dp(48));
 			elp.bottomMargin = dp(10);
 			f.addView(extra, elp);
+		}
+		if (!hasReset()) {
+			f.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+			return f;
 		}
 		TextView reset = text(resetTitle(), 15, textPrimary, true);
 		reset.setGravity(Gravity.CENTER);

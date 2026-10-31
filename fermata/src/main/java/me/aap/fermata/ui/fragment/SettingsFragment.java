@@ -1211,13 +1211,13 @@ public class SettingsFragment extends MainActivityFragment
 		String n = needle.trim().toLowerCase();
 		if (n.isEmpty()) return out;
 		PreferenceSet root = searchRoot(a);
-		if (root != null) collectHits(a, root, "", n, out, max);
+		if (root != null) collectHits(a, root, "", n, out, max, 0);
 		SettingsNative.collect(a, n, out, max);
 		return out;
 	}
 
 	private static void collectHits(MainActivityDelegate a, PreferenceSet set, String path, String needle,
-																	List<Hit> out, int max) {
+																	List<Hit> out, int max, int parentIcon) {
 		Context ctx = a.getContext();
 		for (var o : set.getPreferences()) {
 			if (out.size() >= max) return;
@@ -1226,18 +1226,23 @@ public class SettingsFragment extends MainActivityFragment
 				CharSequence title = (opts.ctitle != null) ? opts.ctitle : ((opts.title != ID_NULL) ? ctx.getString(opts.title) : null);
 				if (title == null) continue;
 				CharSequence sub = (opts.csubtitle != null) ? opts.csubtitle : ((opts.subtitle != ID_NULL) ? ctx.getString(opts.subtitle) : null);
+				// A line that is a pattern for the value picked (%1$s ...) says nothing here: left out.
+				if ((sub != null) && (sub.toString().indexOf('%') >= 0)) sub = null;
+				// A row with no picture of its own takes its page's.
+				int icon = ((opts.icon == ID_NULL) || (opts.icon == 0)) ? parentIcon : opts.icon;
 				boolean match = title.toString().toLowerCase().contains(needle) ||
 						((sub != null) && sub.toString().toLowerCase().contains(needle));
+				final CharSequence fsub = sub;
 				if (o instanceof PreferenceSet child) {
 					if (match) {
-						out.add(new Hit(path.isEmpty() ? ctx.getString(R.string.settings) : path, title, sub, opts.icon,
+						out.add(new Hit(path.isEmpty() ? ctx.getString(R.string.settings) : path, title, fsub, icon,
 								() -> a.showFragment(R.id.settings_fragment, category(child.getId()))));
 					}
-					collectHits(a, child, path.isEmpty() ? title.toString() : (path + " > " + title), needle, out, max);
-				} else if (match && (opts.title != R.string.settings_search)) {
+					collectHits(a, child, path.isEmpty() ? title.toString() : (path + " > " + title), needle, out, max, icon);
+				} else if (match) {
 					Runnable open = (opts instanceof PreferenceView.ButtonOpts bo && bo.onClick != null) ?
 							() -> bo.onClick.run() : () -> a.showFragment(R.id.settings_fragment, category(set.getId()));
-					out.add(new Hit(path.isEmpty() ? ctx.getString(R.string.settings) : path, title, sub, opts.icon, open));
+					out.add(new Hit(path.isEmpty() ? ctx.getString(R.string.settings) : path, title, fsub, icon, open));
 				}
 			} catch (RuntimeException ex) {
 				Log.e(ex, "A settings entry could not be searched");
@@ -1828,6 +1833,15 @@ public class SettingsFragment extends MainActivityFragment
 		public void accept(PreferenceView.Opts o) {
 			o.title = info.addonName;
 			o.icon = info.icon;
+			// "addon_name_tv" has "addon_sub_tv" beside it: one line on what the add-on is for.
+			try {
+				String n = buildContext.getResources().getResourceEntryName(info.addonName);
+				int sub = buildContext.getResources().getIdentifier(n.replace("addon_name_", "addon_sub_"), "string",
+						buildContext.getPackageName());
+				if (sub != 0) o.subtitle = sub;
+			} catch (RuntimeException ex) {
+				// No line for this one.
+			}
 		}
 
 		@Override

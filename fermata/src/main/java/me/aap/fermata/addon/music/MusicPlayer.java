@@ -311,6 +311,8 @@ public final class MusicPlayer {
 		MainActivityDelegate a = activity.get();
 		YoutubeHooks h = youtube;
 		if ((h != null) && (a != null)) h.applyQuality(a, a.getMediaSessionCallback().getEngine());
+		// The Quality button and tile read the new quality as soon as the page has it.
+		if (a != null) me.aap.fermata.ui.view.QualityIcon.changedSoon(a);
 	}
 
 	/**

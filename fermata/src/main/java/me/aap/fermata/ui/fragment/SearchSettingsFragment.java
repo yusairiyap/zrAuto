@@ -72,6 +72,11 @@ public class SearchSettingsFragment extends ReorderListFragment {
 	}
 
 	@Override
+	protected boolean hasReset() {
+		return false;
+	}
+
+	@Override
 	protected void onReset() {
 	}
 
@@ -149,13 +154,7 @@ public class SearchSettingsFragment extends ReorderListFragment {
 				show(s.toString());
 			}
 		});
-		// The keyboard is there at once, the way a search box should be.
-		et.post(() -> {
-			if (input == null) return;
-			et.requestFocus();
-			var imm = (android.view.inputmethod.InputMethodManager) palette.getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
-			if (imm != null) imm.showSoftInput(et, 0);
-		});
+		focusInput();
 		return box;
 	}
 
@@ -229,17 +228,41 @@ public class SearchSettingsFragment extends ReorderListFragment {
 		return sp;
 	}
 
+	/**
+	 * Puts the cursor in the box and brings the keyboard up, again a moment later and once more after that: the first ask
+	 * can come before the window takes the focus or while the page is still sliding in.
+	 */
+	private void focusInput() {
+		EditText et = input;
+		if (et == null) return;
+		for (long d : new long[]{50, 250, 600}) {
+			et.postDelayed(() -> {
+				if (input != et) return;
+				et.requestFocus();
+				var imm = (android.view.inputmethod.InputMethodManager) palette.getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+				if (imm != null) imm.showSoftInput(et, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+				androidx.core.view.WindowInsetsControllerCompat c = androidx.core.view.ViewCompat.getWindowInsetsController(et);
+				if (c != null) c.show(androidx.core.view.WindowInsetsCompat.Type.ime());
+			}, d);
+		}
+	}
+
 	@Override
 	public void onResume() {
 		super.onResume();
-		// Every time the page comes up, the keyboard with it.
-		EditText et = input;
-		if (et != null) et.postDelayed(() -> {
-			if (input != et) return;
-			et.requestFocus();
-			var imm = (android.view.inputmethod.InputMethodManager) palette.getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
-			if (imm != null) imm.showSoftInput(et, 0);
-		}, 150);
+		focusInput();
+	}
+
+	@Override
+	public void onHiddenChanged(boolean hidden) {
+		super.onHiddenChanged(hidden);
+		if (!hidden) focusInput();
+	}
+
+	@Override
+	public void setInput(Object input) {
+		super.setInput(input);
+		focusInput();
 	}
 
 	@Override

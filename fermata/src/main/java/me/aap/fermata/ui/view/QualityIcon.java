@@ -74,6 +74,18 @@ public final class QualityIcon extends Drawable {
 	}
 
 	/**
+	 * The quality policy just changed (music to video or back: 144p against the chosen one): the page takes a moment to switch, so
+	 * the player is asked again a few times, and whatever shows the icon is told when the answer differs.
+	 */
+	public static void changedSoon(@NonNull MainActivityDelegate a) {
+		expire();
+		for (long d : new long[]{250, 900, 2200, 4500}) {
+			a.postDelayed(() -> refresh(a, () -> a.fireBroadcastEvent(
+					me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED), true), d);
+		}
+	}
+
+	/**
 	 * Asks the player which quality it plays (no more often than every couple of seconds);
 	 * {@code onChange} runs if the answer differs from the label shown.
 	 */
