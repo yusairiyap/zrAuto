@@ -140,6 +140,11 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 
 	private boolean recolorPending;
 
+	/** The list's layout manager; a page can answer with one that behaves differently (the search page never scrolls to a focused row). */
+	protected RecyclerView.LayoutManager createLayoutManager(Context ctx) {
+		return new LinearLayoutManager(ctx);
+	}
+
 	/** Back to the first row (a page whose input is at the top: focusing it or a list change must not leave the page scrolled down). */
 	protected final void scrollToTop() {
 		RecyclerView rv = list;
@@ -211,7 +216,7 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 		onAccent = EffectsUi.onAccent(accent);
 
 		RecyclerView rv = new RecyclerView(palette);
-		rv.setLayoutManager(new LinearLayoutManager(palette));
+		rv.setLayoutManager(createLayoutManager(palette));
 		rv.setClipToPadding(false);
 		int pad = dp(16);
 		rv.setPadding(pad, dp(8), pad, pad);

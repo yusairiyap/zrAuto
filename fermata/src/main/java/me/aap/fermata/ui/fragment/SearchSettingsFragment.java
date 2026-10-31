@@ -192,7 +192,6 @@ public class SearchSettingsFragment extends ReorderListFragment {
 		// Fades in again on every change instead of jumping.
 		box.setAlpha(0.2f);
 		box.animate().alpha(1f).setDuration(160).start();
-		scrollToTop();
 	}
 
 	private View row(SettingsFragment.Hit h, String needle) {
@@ -242,6 +241,28 @@ public class SearchSettingsFragment extends ReorderListFragment {
 	}
 
 	/**
+	 * The list never scrolls itself to bring the focused box (or the keyboard's room) into view: the box is the first row, so the
+	 * page opens at the top and stays there, with no jump afterwards.
+	 */
+	@Override
+	protected androidx.recyclerview.widget.RecyclerView.LayoutManager createLayoutManager(android.content.Context ctx) {
+		return new androidx.recyclerview.widget.LinearLayoutManager(ctx) {
+			@Override
+			public boolean requestChildRectangleOnScreen(androidx.recyclerview.widget.RecyclerView parent, View child,
+																									 android.graphics.Rect rect, boolean immediate, boolean focusedChildVisible) {
+				return false;
+			}
+		};
+	}
+
+	@Override
+	public void onViewCreated(View view, android.os.Bundle savedInstanceState) {
+		super.onViewCreated(view, savedInstanceState);
+		// Before the first frame is drawn, so there is nothing to see move.
+		scrollToTop();
+	}
+
+	/**
 	 * Puts the cursor in the box and brings the keyboard up, again a moment later and once more after that: the first ask
 	 * can come before the window takes the focus or while the page is still sliding in.
 	 */
@@ -252,8 +273,6 @@ public class SearchSettingsFragment extends ReorderListFragment {
 			et.postDelayed(() -> {
 				if (input != et) return;
 				et.requestFocus();
-				// Focusing a field can scroll its row into view: the box is at the very top, so the page stays there.
-				scrollToTop();
 				var imm = (android.view.inputmethod.InputMethodManager) palette.getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
 				if (imm != null) imm.showSoftInput(et, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
 				androidx.core.view.WindowInsetsControllerCompat c = androidx.core.view.ViewCompat.getWindowInsetsController(et);
