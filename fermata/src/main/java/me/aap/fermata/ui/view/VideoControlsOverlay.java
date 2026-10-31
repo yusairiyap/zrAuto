@@ -104,6 +104,9 @@ public class VideoControlsOverlay extends FrameLayout {
 		super(ctx);
 		setClickable(false);
 		setFocusable(false);
+		// While a panel is docked the holder is drawn at the screen's top and bottom, which lie outside this view's own bounds
+		// once the video view is scaled down: nothing here may clip to them.
+		setClipChildren(false);
 
 		seekView = new DoubleTapSeekView(ctx);
 		addView(seekView, new LayoutParams(MATCH_PARENT, MATCH_PARENT));
@@ -212,7 +215,7 @@ public class VideoControlsOverlay extends FrameLayout {
 		return t;
 	}
 
-	private static ImageView newButton(Context ctx, int icon, int size, int pad) {
+	static ImageView newButton(Context ctx, int icon, int size, int pad) {
 		AppCompatImageView b = new AppCompatImageView(ctx);
 		b.setImageResource(icon);
 		b.setImageTintList(ColorStateList.valueOf(0xFFFFFFFF));

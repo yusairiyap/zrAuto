@@ -115,6 +115,9 @@ public class VideoView extends FrameLayout
 		// YouTube's captions in the user's style, over the picture and under the controls.
 		addView(new CaptionsOverlayView(context), new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 		// Over everything init() put in (the picture, the black fades, the dim, YouTube's cover).
+		// The picture is shrunk by a transform while a panel is docked; what is drawn over it (title, buttons, Info overlay) is
+		// drawn at full size and reaches beyond this view's own bounds in that scale, so it must not be clipped to them.
+		setClipChildren(false);
 		controls = new VideoControlsOverlay(context, !hasBufferingSpinner());
 		addView(controls, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 		getActivity().onSuccess(a -> {
@@ -510,7 +513,10 @@ public class VideoView extends FrameLayout
 		controls.setSplit(share, getWidth());
 		refreshInfoSplit();
 		MainActivityDelegate ad = getActivity().peek();
-		if (ad != null) ad.getControlPanel().setDockShare(share);
+		if (ad != null) {
+			ad.getControlPanel().setDockShare(share);
+			ad.getFabDock().setShare(share);
+		}
 		if (share > 0f) {
 			ensureSplitBackdrop();
 			float s = 1f - share;

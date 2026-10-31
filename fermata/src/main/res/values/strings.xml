@@ -82,6 +82,7 @@
     <string name="layout_section_buttons">Buttons and overlays</string>
     <string name="layout_section_lists">Lists</string>
     <string name="layout_section_car_only">Car screen only</string>
+    <string name="fab_more">More buttons</string>
     <string name="settings_car_only">CAR SCREEN ONLY</string>
     <string name="settings_group_playback">Playback</string>
     <string name="settings_group_playback_sub">Taps and what plays next, controls and the player</string>

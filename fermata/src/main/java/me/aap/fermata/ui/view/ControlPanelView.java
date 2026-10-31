@@ -311,10 +311,17 @@ public class ControlPanelView extends ConstraintLayout
 	void setDockShare(float share) {
 		if (share == dockShare) return;
 		dockShare = share;
-		if (!videoLook || !(getLayoutParams() instanceof ConstraintLayout.LayoutParams lp)) return;
-		int inset = dockInset();
+		if (!(getLayoutParams() instanceof ConstraintLayout.LayoutParams lp)) return;
+		int inset;
+		if (share > 0f) {
+			inset = dockInset();
+		} else if (videoLook || (pillMargins == null)) {
+			inset = 0;
+		} else {
+			inset = pillMargins[1];
+		}
 		lp.rightMargin = inset;
-		lp.setMarginEnd(inset);
+		lp.setMarginEnd((share <= 0f && !videoLook && (pillMargins != null)) ? pillMargins[3] : inset);
 		setLayoutParams(lp);
 	}
 

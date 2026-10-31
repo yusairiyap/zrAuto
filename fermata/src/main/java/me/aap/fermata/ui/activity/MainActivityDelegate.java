@@ -3458,6 +3458,14 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * screen (getStartDelay() == 0), and recomputing visibility here from scratch would immediately
 	 * clobber that, causing a brief flash on entry.
 	 */
+	private me.aap.fermata.ui.view.FabDock fabDock;
+
+	/** Keeps the floating buttons beside a docked video panel, with a "..." button for those that do not fit. */
+	public me.aap.fermata.ui.view.FabDock getFabDock() {
+		if (fabDock == null) fabDock = new me.aap.fermata.ui.view.FabDock(this);
+		return fabDock;
+	}
+
 	public void updateExtraFabsVisibility() {
 		FloatingButton[] fabs = getExtraFloatingButtons();
 		Pref<BooleanSupplier>[] on = extraFabEnabledPrefs();
@@ -3481,6 +3489,7 @@ public class MainActivityDelegate extends ActivityDelegate
 				fb.setVisibility(GONE);
 			}
 		}
+		if (fabDock != null) fabDock.refresh();
 	}
 
 	@SuppressWarnings("unchecked")
