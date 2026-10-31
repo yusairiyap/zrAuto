@@ -37,6 +37,9 @@ public class SearchSettingsFragment extends ReorderListFragment {
 	@Nullable
 	private EditText input;
 	private String last = "";
+	@Nullable
+	private List<SettingsFragment.Indexed> index;
+	private final Runnable pendingSearch = () -> show(input == null ? "" : input.getText().toString());
 
 	/** No Search chip on the search page itself. */
 	@Override
@@ -151,10 +154,18 @@ public class SearchSettingsFragment extends ReorderListFragment {
 			@Override
 			public void afterTextChanged(Editable s) {
 				clear.setVisibility((s.length() == 0) ? View.GONE : View.VISIBLE);
-				show(s.toString());
+				// Typing fast searches once after a short pause, not on every letter.
+				if (input != null) {
+					input.removeCallbacks(pendingSearch);
+					input.postDelayed(pendingSearch, 90);
+				}
 			}
 		});
 		focusInput();
+		// Read the settings once while the keyboard comes up, so the first letters typed find the list ready.
+		et.postDelayed(() -> {
+			if ((input == et) && (index == null)) index = SettingsFragment.buildSearchIndex(delegate());
+		}, 450);
 		return box;
 	}
 
@@ -170,7 +181,8 @@ public class SearchSettingsFragment extends ReorderListFragment {
 			box.setAlpha(1f);
 			return;
 		}
-		List<SettingsFragment.Hit> hits = SettingsFragment.search(delegate(), t, MAX);
+		if (index == null) index = SettingsFragment.buildSearchIndex(delegate());
+		List<SettingsFragment.Hit> hits = SettingsFragment.search(index, t.toLowerCase(), MAX);
 		if (hits.isEmpty()) {
 			TextView none = text(R.string.settings_search_none, 14, textSecondary, false);
 			none.setPadding(dp(16), dp(16), dp(16), dp(16));
@@ -268,6 +280,8 @@ public class SearchSettingsFragment extends ReorderListFragment {
 	@Override
 	public void onDestroyView() {
 		SettingsFragment.clearSearchRoot();
+		if (input != null) input.removeCallbacks(pendingSearch);
+		index = null;
 		results = null;
 		input = null;
 		last = "";

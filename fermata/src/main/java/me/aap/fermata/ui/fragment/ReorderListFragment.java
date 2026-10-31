@@ -138,6 +138,22 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 	/** Where Back goes. */
 	protected abstract void goBack();
 
+	private boolean recolorPending;
+
+	/**
+	 * Sets a chip's or card's fill, and has the album art colouring look at the page once more (one pass for however many fills
+	 * change together): a colour set from code lies in the theme's blue until a walk maps it, and nothing lays out on a tap.
+	 */
+	protected final void fillColor(GradientDrawable d, int color) {
+		d.setColor(color);
+		if (recolorPending || !me.aap.fermata.ui.view.ArtAccent.needsWalk() || (list == null)) return;
+		recolorPending = true;
+		list.post(() -> {
+			recolorPending = false;
+			if (list != null) me.aap.fermata.ui.view.ArtAccent.recolorSafe(list);
+		});
+	}
+
 	/** Whether the page ends with a "Reset" button (a page with nothing to reset says no). */
 	protected boolean hasReset() {
 		return true;
@@ -183,7 +199,7 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 		textSecondary = paletteColor(R.attr.musicTextSecondary);
 		tileFill = paletteColor(R.attr.musicChipFill);
 		ripple = paletteColor(R.attr.musicChipRipple);
-		accent = me.aap.fermata.ui.view.ArtAccent.map(EffectsUi.accent(ctx));
+		accent = EffectsUi.accent(ctx);
 		onAccent = EffectsUi.onAccent(accent);
 
 		RecyclerView rv = new RecyclerView(palette);
@@ -872,8 +888,7 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 			for (int i = 0; i < views.length; i++) {
 				boolean on = i == sel;
 				views[i].setTextColor(on ? onAccent : textPrimary);
-				((GradientDrawable) views[i].getTag(R.id.settings_row_tag))
-						.setColor(on ? accent : 0x1F808080);
+				fillColor((GradientDrawable) views[i].getTag(R.id.settings_row_tag), on ? accent : 0x1F808080);
 			}
 		};
 		for (int i = 0; i < labels.length; i++) {

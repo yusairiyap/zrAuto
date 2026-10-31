@@ -79,10 +79,25 @@ public final class QualityIcon extends Drawable {
 	 */
 	public static void changedSoon(@NonNull MainActivityDelegate a) {
 		expire();
-		for (long d : new long[]{250, 900, 2200, 4500}) {
-			a.postDelayed(() -> refresh(a, () -> a.fireBroadcastEvent(
-					me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED), true), d);
-		}
+		int g = ++chain;
+		step(a, g, 0);
+	}
+
+	private static int chain;
+	private static final long[] CHAIN_DELAYS = {250, 650, 1300, 2300};
+
+	/** One ask; the next only if nobody started another chain and the answer has not come out different yet. */
+	private static void step(MainActivityDelegate a, int g, int i) {
+		if (i >= CHAIN_DELAYS.length) return;
+		a.postDelayed(() -> {
+			if (g != chain) return;
+			refresh(a, () -> {
+				// Different from what was shown: that is the answer, no more asking.
+				if (g == chain) chain++;
+				a.fireBroadcastEvent(me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED);
+			}, true);
+			step(a, g, i + 1);
+		}, CHAIN_DELAYS[i]);
 	}
 
 	/**

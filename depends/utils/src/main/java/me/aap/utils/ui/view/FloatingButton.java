@@ -155,8 +155,18 @@ public class FloatingButton extends FloatingActionButton implements ActivityList
 
 	@Override
 	public void setVisibility(int visibility) {
+		int was = getVisibility();
 		if (suppressed) requestedVisibility = visibility;
 		else super.setVisibility(visibility);
+		Runnable l = visibilityListener;
+		if ((l != null) && (getVisibility() != was)) l.run();
+	}
+
+	private Runnable visibilityListener;
+
+	/** Told when this button's visibility changes (set while something has to follow it), or null. */
+	public void setVisibilityListener(Runnable l) {
+		visibilityListener = l;
 	}
 
 	@Override

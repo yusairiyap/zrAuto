@@ -220,7 +220,7 @@ public class HomeSettingsFragment extends ReorderListFragment {
 
 	private void light(TextView t, boolean on) {
 		GradientDrawable fill = (GradientDrawable) t.getTag(R.id.home_settings_fragment);
-		fill.setColor(on ? accent : tileFill);
+		fillColor(fill, on ? accent : tileFill);
 		t.setTextColor(on ? onAccent : textPrimary);
 		t.setCompoundDrawableTintList(ColorStateList.valueOf(on ? onAccent : textSecondary));
 	}
@@ -419,7 +419,7 @@ public class HomeSettingsFragment extends ReorderListFragment {
 			for (int i = 0; i < fills.length; i++) {
 				boolean on = i == sel;
 				fills[i].setStroke(on ? dp(2) : 0, accent);
-				fills[i].setColor(on ? androidx.core.graphics.ColorUtils.blendARGB(tileFill, accent, 0.14f) : tileFill);
+				fillColor(fills[i], on ? androidx.core.graphics.ColorUtils.blendARGB(tileFill, accent, 0.14f) : tileFill);
 			}
 		});
 		parent.addView(row, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));

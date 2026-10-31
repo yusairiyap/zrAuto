@@ -1205,22 +1205,44 @@ public class SettingsFragment extends MainActivityFragment
 		return r;
 	}
 
-	/** The settings (pages and rows, in any category) whose title or line mentions {@code needle}, at most {@code max}. */
-	public static List<Hit> search(MainActivityDelegate a, String needle, int max) {
-		List<Hit> out = new java.util.ArrayList<>();
-		String n = needle.trim().toLowerCase();
-		if (n.isEmpty()) return out;
+	/** One line of the search: what is shown and the lower-case text it is looked for in. */
+	public record Indexed(Hit hit, String hay) {
+	}
+
+	/**
+	 * Every setting of every page (the old list pages through their tree, the code-built ones from a table), read once with its
+	 * text made lower case: a search is then only a look through this list, whatever is typed.
+	 */
+	public static List<Indexed> buildSearchIndex(MainActivityDelegate a) {
+		List<Hit> all = new java.util.ArrayList<>();
 		PreferenceSet root = searchRoot(a);
-		if (root != null) collectHits(a, root, "", n, out, max, 0);
-		SettingsNative.collect(a, n, out, max);
+		if (root != null) collectHits(a, root, "", all, 0);
+		SettingsNative.addAll(a, all);
+		List<Indexed> out = new java.util.ArrayList<>(all.size());
+		for (Hit h : all) {
+			String hay = h.title().toString().toLowerCase();
+			if (h.sub() != null) hay = hay + '\n' + h.sub().toString().toLowerCase();
+			out.add(new Indexed(h, hay));
+		}
 		return out;
 	}
 
-	private static void collectHits(MainActivityDelegate a, PreferenceSet set, String path, String needle,
-																	List<Hit> out, int max, int parentIcon) {
+	/** The first {@code max} lines of the index that mention {@code needle} (lower case). */
+	public static List<Hit> search(List<Indexed> index, String needle, int max) {
+		List<Hit> out = new java.util.ArrayList<>();
+		if (needle.isEmpty()) return out;
+		for (Indexed i : index) {
+			if (i.hay().contains(needle)) {
+				out.add(i.hit());
+				if (out.size() >= max) break;
+			}
+		}
+		return out;
+	}
+
+	private static void collectHits(MainActivityDelegate a, PreferenceSet set, String path, List<Hit> out, int parentIcon) {
 		Context ctx = a.getContext();
 		for (var o : set.getPreferences()) {
-			if (out.size() >= max) return;
 			try {
 				PreferenceView.Opts opts = o.get();
 				CharSequence title = (opts.ctitle != null) ? opts.ctitle : ((opts.title != ID_NULL) ? ctx.getString(opts.title) : null);
@@ -1230,19 +1252,14 @@ public class SettingsFragment extends MainActivityFragment
 				if ((sub != null) && (sub.toString().indexOf('%') >= 0)) sub = null;
 				// A row with no picture of its own takes its page's.
 				int icon = ((opts.icon == ID_NULL) || (opts.icon == 0)) ? parentIcon : opts.icon;
-				boolean match = title.toString().toLowerCase().contains(needle) ||
-						((sub != null) && sub.toString().toLowerCase().contains(needle));
-				final CharSequence fsub = sub;
+				String where = path.isEmpty() ? ctx.getString(R.string.settings) : path;
 				if (o instanceof PreferenceSet child) {
-					if (match) {
-						out.add(new Hit(path.isEmpty() ? ctx.getString(R.string.settings) : path, title, fsub, icon,
-								() -> a.showFragment(R.id.settings_fragment, category(child.getId()))));
-					}
-					collectHits(a, child, path.isEmpty() ? title.toString() : (path + " > " + title), needle, out, max, icon);
-				} else if (match) {
+					out.add(new Hit(where, title, sub, icon, () -> a.showFragment(R.id.settings_fragment, category(child.getId()))));
+					collectHits(a, child, path.isEmpty() ? title.toString() : (path + " > " + title), out, icon);
+				} else {
 					Runnable open = (opts instanceof PreferenceView.ButtonOpts bo && bo.onClick != null) ?
 							() -> bo.onClick.run() : () -> a.showFragment(R.id.settings_fragment, category(set.getId()));
-					out.add(new Hit(path.isEmpty() ? ctx.getString(R.string.settings) : path, title, fsub, icon, open));
+					out.add(new Hit(where, title, sub, icon, open));
 				}
 			} catch (RuntimeException ex) {
 				Log.e(ex, "A settings entry could not be searched");

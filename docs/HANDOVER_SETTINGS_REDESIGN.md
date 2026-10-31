@@ -90,3 +90,11 @@ Never built or run from the cloud session: leave CI as the first compile and ask
   the shrunk view's bounds); the control panel's inset also sets `goneEndMargin` (with the nav bar on a side, the nav bar is gone in fullscreen and that margin is the one used);
   `FabDock` puts itself right again on every layout while docked and names the buttons in its "..." menu by their action.
 - `ArtAccent` recolours a MaterialButton's background tint (the dialogs' OK button).
+
+## Performance notes (what was made cheap on purpose)
+
+- `FabDock` reads the buttons and their widths once when the dock opens or the enabled set changes (`refresh`); each animation frame only compares the room with that cache
+  (`relayout`), and a button's visibility change is answered through `FloatingButton#setVisibilityListener` (set only while docked), not a layout listener.
+- The settings search builds its index once per page visit (`SettingsFragment#buildSearchIndex`, lower-cased text) and keystrokes search that list after a 90 ms pause.
+- `QualityIcon#changedSoon` is one chain of at most four asks (a newer chain or the first different answer ends it).
+- Selected chips and cards go through `ReorderListFragment#fillColor`, which has the album art colouring walk the page once per change (coalesced) instead of pre-mapping colours, so they glide with the cover colour like every other element.

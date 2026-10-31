@@ -338,7 +338,7 @@ public class InfoOverlayFragment extends ReorderListFragment {
 		for (TextView c : posChips) {
 			boolean sel = ((Integer) c.getTag()) == pos;
 			GradientDrawable fill = (GradientDrawable) c.getTag(R.id.info_overlay_fragment);
-			fill.setColor(sel ? accent : tileFill);
+			fillColor(fill, sel ? accent : tileFill);
 			c.setTextColor(sel ? onAccent : textPrimary);
 		}
 	}

@@ -138,7 +138,7 @@ public class LayoutSettingsFragment extends ReorderListFragment {
 				for (int i = 0; i < 2; i++) {
 					boolean on = (i == 1) == car;
 					tabs[i].setTextColor(on ? onAccent : textPrimary);
-					((GradientDrawable) tabs[i].getTag(R.id.settings_row_tag)).setColor(on ? accent : tileFill);
+					fillColor((GradientDrawable) tabs[i].getTag(R.id.settings_row_tag), on ? accent : tileFill);
 				}
 			};
 			for (int i = 0; i < 2; i++) {

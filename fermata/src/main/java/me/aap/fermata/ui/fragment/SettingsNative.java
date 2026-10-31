@@ -64,13 +64,11 @@ final class SettingsNative {
 			new Row(R.string.private_mode_block_3rd_party_cookies, R.string.private_mode_block_3rd_party_cookies_sub, R.drawable.private_mode, R.string.private_mode_prefs, PRIVACY),
 	};
 
-	static void collect(MainActivityDelegate a, String needle, List<SettingsFragment.Hit> out, int max) {
+	static void addAll(MainActivityDelegate a, List<SettingsFragment.Hit> out) {
 		Context ctx = a.getContext();
 		for (Row r : ROWS) {
-			if (out.size() >= max) return;
 			String title = ctx.getString(r.title());
 			String sub = (r.sub() == 0) ? null : ctx.getString(r.sub());
-			if (!title.toLowerCase().contains(needle) && ((sub == null) || !sub.toLowerCase().contains(needle))) continue;
 			int page = r.page();
 			out.add(new SettingsFragment.Hit(ctx.getString(r.path()), title, sub, r.icon(), () ->
 					a.showFragment(page, (page == LAYOUT) ? (Object) a.isCarActivity() : null)));

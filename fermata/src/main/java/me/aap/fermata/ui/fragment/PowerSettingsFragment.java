@@ -205,7 +205,7 @@ public class PowerSettingsFragment extends ReorderListFragment {
 
 	private void light(TextView t, boolean on) {
 		GradientDrawable fill = (GradientDrawable) t.getTag(R.id.power_settings_fragment);
-		fill.setColor(on ? accent : tileFill);
+		fillColor(fill, on ? accent : tileFill);
 		t.setTextColor(on ? onAccent : textPrimary);
 		t.setCompoundDrawableTintList(ColorStateList.valueOf(on ? onAccent : textSecondary));
 	}
