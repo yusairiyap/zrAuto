@@ -195,6 +195,12 @@ final class CommentsWidget extends HomeWidgetView {
 			showMessage(R.string.home_yt_off);
 			return;
 		}
+		// No connection: nothing to load, and no loading placeholder over the "no network" one.
+		if (!me.aap.fermata.util.NetworkState.isOnline()) {
+			loading = false;
+			skeleton.setVisibility(GONE);
+			return;
+		}
 		String id = videoId();
 		if (id.isEmpty()) {
 			comments = new ArrayList<>();
@@ -249,7 +255,7 @@ final class CommentsWidget extends HomeWidgetView {
 
 	private void render() {
 		if (column == null) return;
-		boolean wait = MusicPlayer.hasYoutube() && (stale || (loading && comments.isEmpty()));
+		boolean wait = MusicPlayer.hasYoutube() && me.aap.fermata.util.NetworkState.isOnline() && (stale || (loading && comments.isEmpty()));
 		if (wait) {
 			// Placeholder rows stand in for the comments until they are in.
 			list.removeAllViews();

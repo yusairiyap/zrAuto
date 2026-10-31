@@ -1024,6 +1024,22 @@ public final class MusicPlayer {
 	}
 
 	/** Whether {@link #toggleMusicVideo} would bring the video back (rather than play as music). */
+	/**
+	 * Whether the video of {@code t} can be shown now: with a connection always, without one only a file that has its picture
+	 * (a video downloaded as sound only would have to be streamed).
+	 */
+	public static boolean canWatchNow(@Nullable MusicTrackItem t) {
+		if (me.aap.fermata.util.NetworkState.isOnline()) return true;
+		return (t != null) && t.isDownloaded() && t.hasVideo();
+	}
+
+	/** Tells the user why the video is not offered offline; true when it is blocked. */
+	public static boolean watchBlocked(@Nullable MusicTrackItem t) {
+		if (canWatchNow(t)) return false;
+		me.aap.fermata.ui.view.TopToast.show(R.drawable.network_off, R.string.video_needs_network);
+		return true;
+	}
+
 	public static boolean canSwitchToVideo(MediaSessionCallback cb) {
 		if (!isPlayingAsMusic(cb)) return false;
 		MusicTrackItem t = getCurrentTrack(cb);
@@ -1036,6 +1052,7 @@ public final class MusicPlayer {
 	 */
 	public static void toggleMusicVideo(MainActivityDelegate a) {
 		if (canSwitchToVideo(a.getMediaSessionCallback())) {
+			if (watchBlocked(getCurrentTrack(a.getMediaSessionCallback()))) return;
 			// Into the video through black, the same fade as the Music tab's Video button.
 			a.getPlaybackDelegate().fadeToBlackForVideo();
 			switchToVideo(a);
@@ -1059,6 +1076,7 @@ public final class MusicPlayer {
 		boolean yt = (eng.getId() == MediaPrefs.MEDIA_ENG_YT);
 		// YouTube in music mode may momentarily not report its queue track: still its video to show.
 		if ((t == null) && !(yt && youtubeAudioMode)) return;
+		if (watchBlocked(t)) return;
 
 		if ((t != null) && (t.getVideoId() != null) && !yt) {
 			// Downloaded as sound only: the video is streamed from YouTube (at the usual quality) from where the song
@@ -1146,6 +1164,7 @@ public final class MusicPlayer {
 		MainActivityDelegate a = from.getPlaybackDelegate(); // See switchToVideo().
 		MusicQueue q = getQueue(a);
 		long pos = ((q != null) && t.equals(q.getSavedCurrent())) ? q.getSavedPosition() : 0;
+		if (watchBlocked(t)) return;
 		DiagnosticLog.log(LogCat.MUSIC, "watch", "track=" + t, "pos=" + (pos / 1000) + 's');
 
 		if (t.getVideoId() != null) {

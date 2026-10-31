@@ -66,6 +66,8 @@ final class YoutubeStartEngine implements MediaEngine {
 	}
 
 	private void fail(String msg) {
+		// A download watched streamed that did not start must go back to playing its file.
+		me.aap.fermata.ytdl.YtOffline.clearForcedStream();
 		DiagnosticLog.w(LogCat.MUSIC, "YouTube track didn't start", "id=" + track.getVideoId(), "reason=" + msg);
 		listener.onEngineError(this, new MediaEngineException("YouTube: " + msg));
 	}

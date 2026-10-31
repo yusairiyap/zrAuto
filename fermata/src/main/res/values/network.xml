@@ -31,4 +31,5 @@
     <string name="no_network_go_online">Go online</string>
     <string name="offline_widget_on">Only downloaded items play</string>
     <string name="offline_widget_off">Online. Tap to go offline</string>
+    <string name="video_needs_network">Watching needs a connection. This one is downloaded as sound only.</string>
 </resources>

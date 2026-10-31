@@ -352,6 +352,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		message = view.findViewById(R.id.music_message);
 		repeat = view.findViewById(R.id.music_repeat);
 		videoButton = view.findViewById(R.id.music_video_button);
+		me.aap.fermata.util.NetworkState.addListener(netListener);
 		moreButton = view.findViewById(R.id.music_more_button);
 		effectsButton = view.findViewById(R.id.music_effects_button);
 		effectsButton.setOnClickListener(v -> onEffects());
@@ -630,6 +631,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		stopProgress();
 		if (content != null) content.getViewTreeObserver().removeOnPreDrawListener(insetSync);
 		getActivityDelegate().getPrefs().removeBroadcastListener(lyricsPrefs);
+		me.aap.fermata.util.NetworkState.removeListener(netListener);
 		lyricsOverlay = null;
 		lyricsView = null;
 		lyricsPage = null;
@@ -1169,13 +1171,19 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		return ((shownItem instanceof MusicTrackItem t) && (t.hasVideo() || t.isAudioOnlyDownload())) ? t : null;
 	}
 
+	/** The Video chip follows the connection: hidden for a sound-only download while offline, back with it. */
+	private final me.aap.fermata.util.NetworkState.Listener netListener = online -> updateVideoButton(shownItem);
+
 	private void updateVideoButton(@Nullable PlayableItem i) {
 		// Left as it is while a track loads (e.g. skipping to the next one): what's playing is in
 		// flux until then, and it would only flicker.
 		if (isLoading() && (videoButton.getVisibility() == View.VISIBLE)) return;
 		MusicTrackItem t = currentTrack();
 
-		if ((playingAsMusic() && ((t == null) || t.hasVideo() || t.isAudioOnlyDownload())) || (idleVideoTrack() != null)) {
+		// Offline, a sound-only download has no picture to show: no Video chip then.
+		MusicTrackItem idleT = idleVideoTrack();
+		if (((playingAsMusic() && ((t == null) || t.hasVideo() || t.isAudioOnlyDownload())) && MusicPlayer.canWatchNow(t)) ||
+				((idleT != null) && MusicPlayer.canWatchNow(idleT))) {
 			setVideoButton(R.string.video, R.drawable.video);
 		} else if ((i != null) && isPlayingVideo() && !isYoutubeEngine()) {
 			// A local video plays on in the background: "Video" brings its picture back, here as
@@ -2618,6 +2626,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 		MainActivityDelegate a = getActivityDelegate();
 		MusicTrackItem idle = idleVideoTrack();
 		if (idle != null) MusicPlayer.watch(a, idle);
+		else if (playingAsMusic() && MusicPlayer.watchBlocked(currentTrack())) return;
 		else if (playingAsMusic()) {
 			// Into the video through black, the same fade as leaving fullscreen.
 			a.getPlaybackDelegate().fadeToBlackForVideo();

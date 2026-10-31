@@ -829,6 +829,13 @@ public final class AllInOneMenu {
 			title = ctx.getString(R.string.action_power_saver);
 			hint = ctx.getString(me.aap.fermata.addon.power.PowerSaver.get().isActive() ?
 					R.string.state_on : R.string.state_off);
+		} else if (action == Action.PLAY_AS_MUSIC) {
+			title = ctx.getString(ActionFabMediator.labelFor(activity, action));
+			hint = "";
+			// Offline, a sound-only download cannot be watched: the video side of the switch is dimmed and does nothing.
+			var cb = activity.getMediaSessionCallback();
+			unavailable = me.aap.fermata.addon.music.MusicPlayer.canSwitchToVideo(cb) &&
+					!me.aap.fermata.addon.music.MusicPlayer.canWatchNow(me.aap.fermata.addon.music.MusicPlayer.getCurrentTrack(cb));
 		} else if (action == Action.OFFLINE_TOGGLE) {
 			title = ctx.getString(R.string.action_offline_toggle);
 			hint = ctx.getString(me.aap.fermata.util.NetworkState.isForcedOffline() ? R.string.state_on : R.string.state_off);

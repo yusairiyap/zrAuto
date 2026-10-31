@@ -214,6 +214,7 @@ public final class NetworkState {
 		DiagnosticLog.log(LogCat.NETWORK, now ? "connection restored" : "connection lost");
 		// The top popup holds one card: the stall popup (which has a button) is never replaced by "No connection", and
 		// it is taken down when the connection comes back, before "Connection restored" shows.
+		if (!now) me.aap.fermata.ytdl.YtOffline.clearForcedStream();
 		boolean stallUp = me.aap.fermata.ui.view.NetworkIssuePopup.isShown();
 		if (now) {
 			if (stallUp) me.aap.fermata.ui.view.NetworkIssuePopup.dismiss();
