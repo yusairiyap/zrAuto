@@ -42,6 +42,9 @@ public final class NetworkState {
 	private static long holdUntil;
 	private static long quietUntil;
 	private static long lastStallAt = -1_000_000;
+	/** Offline mode switched on by the user: no probes, nothing is waited for. */
+	private static volatile boolean forced;
+	private static ConnectivityManager manager;
 	private static final java.util.concurrent.ExecutorService prober = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
 		Thread t = new Thread(r, "net-probe");
 		t.setDaemon(true);
@@ -63,12 +66,15 @@ public final class NetworkState {
 		try {
 			ConnectivityManager cm = ctx.getSystemService(ConnectivityManager.class);
 			if (cm == null) return;
+			manager = cm;
+			forced = OfflineFallback.prefs().getBooleanPref(OfflineFallback.FORCED);
 			callbackOnline = query(cm);
-			online = callbackOnline;
+			online = callbackOnline && !forced;
 			told = online;
 			// Android can call a network validated while nothing gets through (a Wi-Fi without internet, a dead mobile link):
 			// one real try at the start.
 			if (online) probeNow();
+			if (forced) DiagnosticLog.log(LogCat.NETWORK, "offline mode is on (by hand)");
 			cm.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
 				@Override
 				public void onAvailable(@NonNull Network n) {
@@ -113,7 +119,7 @@ public final class NetworkState {
 	}
 
 	private static void recompute() {
-		update(callbackOnline && !probeDown);
+		update(callbackOnline && !probeDown && !forced);
 	}
 
 	/**
@@ -128,6 +134,7 @@ public final class NetworkState {
 	}
 
 	private static void probeNow() {
+		if (forced) return;
 		prober.execute(() -> {
 			// How long to wait for an answer follows Settings > Playback > "Wait for a stalled connection".
 			int wait = (int) Math.max(2000, Math.min(OfflineFallback.stallMs(), 8000));
@@ -154,6 +161,7 @@ public final class NetworkState {
 	 * at least 30 s).
 	 */
 	public static void markStalled() {
+		if (forced) return;
 		main.post(() -> {
 			long now = android.os.SystemClock.uptimeMillis();
 			quietUntil = now + 10_000;
@@ -209,7 +217,7 @@ public final class NetworkState {
 		boolean stallUp = me.aap.fermata.ui.view.NetworkIssuePopup.isShown();
 		if (now) {
 			if (stallUp) me.aap.fermata.ui.view.NetworkIssuePopup.dismiss();
-			if (lostOnce) TopToast.show(R.drawable.wifi, R.string.network_restored);
+			if (lostOnce && (android.os.SystemClock.uptimeMillis() >= quietUntil)) TopToast.show(R.drawable.wifi, R.string.network_restored);
 		} else {
 			lostOnce = true;
 			// While a stream plays, the stall popup (about the same news, with the downloaded fallback) follows if it really stops:
@@ -235,6 +243,38 @@ public final class NetworkState {
 		} catch (Throwable ex) {
 			return false;
 		}
+	}
+
+	/** Offline mode switched on by hand (see {@link #setForcedOffline}). */
+	public static boolean isForcedOffline() {
+		return forced;
+	}
+
+	/**
+	 * Offline mode by hand, for a flight or anywhere with no network worth waiting for: the app behaves as with no connection
+	 * (lists grey out, network screens show their placeholder, only downloaded items play) and tries nothing on the network. Kept
+	 * across restarts. Switching it off checks the connection again.
+	 */
+	public static void setForcedOffline(boolean on) {
+		main.post(() -> {
+			if (forced == on) return;
+			forced = on;
+			OfflineFallback.prefs().applyBooleanPref(OfflineFallback.FORCED, on);
+			quietUntil = android.os.SystemClock.uptimeMillis() + 10_000;
+			DiagnosticLog.log(LogCat.NETWORK, on ? "offline mode on (by hand)" : "offline mode off (by hand)");
+			TopToast.show(on ? R.drawable.network_off : R.drawable.wifi, on ? R.string.offline_mode_on_toast : R.string.offline_mode_off_toast);
+			if (!on) {
+				// Asked again what the network says, and tried for real.
+				if (manager != null) callbackOnline = query(manager);
+				probeDown = false;
+				probeNow();
+			}
+			recompute();
+		});
+	}
+
+	public static void toggleForcedOffline() {
+		setForcedOffline(!forced);
 	}
 
 	/** Whether the internet is reachable now (the value listeners were last told, once a change has settled). */

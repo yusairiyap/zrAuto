@@ -110,6 +110,8 @@
     <string name="home_w_queue">Queue</string>
     <string name="home_w_queue_d">The music queue in play order; a tap plays a song</string>
     <string name="home_queue_empty">The queue is empty</string>
+    <string name="home_w_offline">Offline mode</string>
+    <string name="home_w_offline_d">A switch for offline mode, for a flight: only downloaded items play and nothing waits for the network</string>
     <string name="home_w_sleep">Sleep</string>
     <string name="home_w_sleep_d">Last night\'s score, the week as bars, and a button to start or stop a session</string>
     <string name="home_sleep_last">%1$s asleep · %2$s</string>

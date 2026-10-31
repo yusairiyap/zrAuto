@@ -23,4 +23,12 @@
     <string name="snapshot_open">Open</string>
     <string name="snapshot_failed">Could not grab the picture</string>
     <string name="snapshot_none">No video to grab</string>
+    <string name="action_offline_toggle">Offline mode</string>
+    <string name="offline_mode_on_toast">Offline mode on. Only downloaded items play.</string>
+    <string name="offline_mode_off_toast">Offline mode off. Checking the connection.</string>
+    <string name="no_network_offline_title">Offline mode</string>
+    <string name="no_network_offline_message">You turned offline mode on. Downloaded songs and local files still play.</string>
+    <string name="no_network_go_online">Go online</string>
+    <string name="offline_widget_on">Only downloaded items play</string>
+    <string name="offline_widget_off">Online. Tap to go offline</string>
 </resources>

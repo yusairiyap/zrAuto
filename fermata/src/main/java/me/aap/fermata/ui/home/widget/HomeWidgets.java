@@ -60,6 +60,9 @@ public final class HomeWidgets {
 			HomeWidgetType.builder("ambience", R.string.home_w_ambience, R.string.home_w_ambience_d,
 							R.drawable.ambience, 0xFF5B9BFF, AmbienceWidget::new)
 					.sizes(2, 1, 4, 2, 8, 4).available(AmbienceAddon::isEnabled).build(),
+			HomeWidgetType.builder("offline", R.string.home_w_offline, R.string.home_w_offline_d,
+							R.drawable.network_off, 0xFF90A4AE, OfflineWidget::new)
+					.sizes(1, 1, 2, 1, 4, 2).build(),
 			HomeWidgetType.builder("sleep", R.string.home_w_sleep, R.string.home_w_sleep_d,
 							R.drawable.sleep, 0xFF7E8CFF, SleepWidget::new)
 					.sizes(2, 1, 2, 2, 8, 4).available(me.aap.fermata.addon.sleep.SleepAddon::isEnabled).build(),

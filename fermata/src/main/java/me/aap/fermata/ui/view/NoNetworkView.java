@@ -45,6 +45,8 @@ public final class NoNetworkView extends FrameLayout implements NetworkState.Lis
 	private final ImageView icon;
 	private final FrameLayout art;
 	private int ringColor;
+	private TextView msgView;
+	private TextView retryBtn;
 	@Nullable
 	private ShownListener shownListener;
 
@@ -98,6 +100,7 @@ public final class NoNetworkView extends FrameLayout implements NetworkState.Lis
 
 		if (!compact) {
 			TextView msg = text(R.string.no_network_message, 14, secondary, false);
+			msgView = msg;
 			LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
 			mlp.topMargin = dp(6);
 			col.addView(msg, mlp);
@@ -114,7 +117,8 @@ public final class NoNetworkView extends FrameLayout implements NetworkState.Lis
 			buttons.setOrientation(LinearLayout.HORIZONTAL);
 			buttons.setGravity(Gravity.CENTER);
 			buttons.addView(button(R.string.no_network_settings, false, v -> openSettings()));
-			buttons.addView(button(R.string.no_network_retry, true, v -> retry(v)));
+			retryBtn = (TextView) button(R.string.no_network_retry, true, v -> retry(v));
+			buttons.addView(retryBtn);
 			LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
 			blp.topMargin = dp(22);
 			col.addView(buttons, blp);
@@ -184,7 +188,16 @@ public final class NoNetworkView extends FrameLayout implements NetworkState.Lis
 		if (online && (onRestored != null)) postDelayed(onRestored, 350);
 	}
 
+	/** Switched on by hand (a flight): says so, and the button goes online instead of asking again. */
+	private void applyMode() {
+		boolean forced = NetworkState.isForcedOffline();
+		title.setText(forced ? R.string.no_network_offline_title : R.string.no_network_title);
+		if (msgView != null) msgView.setText(forced ? R.string.no_network_offline_message : R.string.no_network_message);
+		if (retryBtn != null) retryBtn.setText(forced ? R.string.no_network_go_online : R.string.no_network_retry);
+	}
+
 	private void show(boolean on, boolean animate) {
+		applyMode();
 		if (shownListener != null) shownListener.onShown(on, animate);
 		animate().cancel();
 		if (on) {
@@ -205,6 +218,10 @@ public final class NoNetworkView extends FrameLayout implements NetworkState.Lis
 	}
 
 	private void retry(View button) {
+		if (NetworkState.isForcedOffline()) {
+			NetworkState.setForcedOffline(false);
+			return;
+		}
 		if (NetworkState.isOnline()) {
 			show(false, true);
 			if (onRestored != null) onRestored.run();

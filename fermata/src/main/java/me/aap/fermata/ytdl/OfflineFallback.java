@@ -32,6 +32,9 @@ public final class OfflineFallback {
 	/** Settings > Playback: on a stalled connection, go on with what's downloaded by itself. */
 	public static final Pref<BooleanSupplier> ON_STALL = Pref.b("OFFLINE_ON_STALL", false);
 
+	/** Offline mode switched on by hand (a flight, a tunnel): nothing is tried on the network, only downloaded items play. Kept across restarts. */
+	public static final Pref<BooleanSupplier> FORCED = Pref.b("OFFLINE_FORCED", false);
+
 	/** Settings > Playback: how many seconds of buffering or waiting count as a stall (the popup, the fallback, a track that fails to start). */
 	public static final Pref<IntSupplier> STALL_SECONDS = Pref.i("OFFLINE_STALL_SECONDS", 10);
 

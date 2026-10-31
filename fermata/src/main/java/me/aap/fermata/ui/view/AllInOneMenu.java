@@ -829,6 +829,9 @@ public final class AllInOneMenu {
 			title = ctx.getString(R.string.action_power_saver);
 			hint = ctx.getString(me.aap.fermata.addon.power.PowerSaver.get().isActive() ?
 					R.string.state_on : R.string.state_off);
+		} else if (action == Action.OFFLINE_TOGGLE) {
+			title = ctx.getString(R.string.action_offline_toggle);
+			hint = ctx.getString(me.aap.fermata.util.NetworkState.isForcedOffline() ? R.string.state_on : R.string.state_off);
 		} else if (action == Action.COVER_HIDE) {
 			title = ctx.getString(R.string.action_cover_hide);
 			hint = ctx.getString(CoverHide.isOn() ? R.string.state_on : R.string.state_off);

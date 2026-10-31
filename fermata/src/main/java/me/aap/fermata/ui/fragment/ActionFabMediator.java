@@ -47,7 +47,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 			Action.QUALITY, Action.YOUTUBE_ALTERNATIVES, Action.YOUTUBE_COMMENTS, Action.LYRICS,
 			Action.POWER_USAGE, Action.POWER_SAVER, Action.AMBIENCE, Action.AMBIENCE_TOGGLE,
 			Action.SETTINGS, Action.SHARE_VIDEO, Action.COVER_HIDE, Action.SLEEP, Action.SLEEP_TOGGLE,
-			Action.CAPTIONS_SETTINGS, Action.SNAPSHOT);
+			Action.CAPTIONS_SETTINGS, Action.SNAPSHOT, Action.OFFLINE_TOGGLE);
 
 	private final Pref<IntSupplier> actionPref;
 	@Nullable
@@ -207,6 +207,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 		if (action == Action.SETTINGS) return R.drawable.settings;
 		if (action == Action.CAPTIONS_SETTINGS) return R.drawable.captions;
 		if (action == Action.SNAPSHOT) return R.drawable.snapshot;
+		if (action == Action.OFFLINE_TOGGLE) return me.aap.fermata.util.NetworkState.isForcedOffline() ? R.drawable.network_off : R.drawable.wifi;
 		if (action == Action.POWER_USAGE) return R.drawable.power_usage;
 		if (action == Action.POWER_SAVER) return R.drawable.power_saver;
 		if (action == Action.SHARE_VIDEO) return R.drawable.share;
@@ -300,6 +301,7 @@ public abstract class ActionFabMediator implements FloatingButton.Mediator,
 								R.string.private_mode_settings, SettingsFragment.SHOW_PRIVATE_MODE_SETTINGS);
 						addAction(a, fb, sb, Action.COVER_HIDE, 2);
 						addAction(a, fb, sb, Action.SNAPSHOT, 3);
+						addAction(a, fb, sb, Action.OFFLINE_TOGGLE, 4);
 					});
 			category(a, fb, b, R.id.fab_cat_library, R.drawable.favorite, R.string.fab_cat_library,
 					sb -> {
