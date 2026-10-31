@@ -39,7 +39,7 @@ public final class SettingsStyle {
 			textSecondary = resolve(pc, R.attr.musicTextSecondary);
 			tileFill = resolve(pc, R.attr.musicChipFill);
 			ripple = resolve(pc, R.attr.musicChipRipple);
-			accent = EffectsUi.accent(ctx);
+			accent = me.aap.fermata.ui.view.ArtAccent.map(EffectsUi.accent(ctx));
 			onAccent = EffectsUi.onAccent(accent);
 			density = ctx.getResources().getDisplayMetrics().density;
 		}

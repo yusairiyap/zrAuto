@@ -202,7 +202,7 @@ public class DiagnosticLogFragment extends MainActivityFragment {
 		textSecondary = color(R.attr.musicTextSecondary);
 		tileFill = color(R.attr.musicChipFill);
 		ripple = color(R.attr.musicChipRipple);
-		accent = EffectsUi.accent(ctx);
+		accent = me.aap.fermata.ui.view.ArtAccent.map(EffectsUi.accent(ctx));
 		onAccent = EffectsUi.onAccent(accent);
 		lightTheme = ColorUtils.calculateLuminance(textPrimary | 0xFF000000) < 0.5;
 

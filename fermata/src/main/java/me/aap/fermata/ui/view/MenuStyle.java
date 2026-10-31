@@ -198,7 +198,9 @@ public final class MenuStyle implements OverlayMenuView.Styler {
 		boolean wasAnchored = menu.getTag(R.id.menu_anchored) != null;
 		// A submenu of a menu opened at the finger stays where it is, however long the first one was open.
 		boolean submenu = menu.getTag(R.id.menu_anchor) != null;
-		boolean atFinger = (menu.getId() == R.id.context_menu) || (menu.getTag(R.id.menu_at_finger) != null);
+		// The control panel's menu and the floating buttons' (they share it) open there too, over fullscreen video above all.
+		boolean atFinger = (menu.getId() == R.id.context_menu) || (menu.getId() == R.id.control_menu) ||
+				(menu.getTag(R.id.menu_at_finger) != null);
 		boolean byTouch = atFinger && !car && !dialog &&
 				(submenu || (SystemClock.uptimeMillis() - touchAt < TOUCH_MS));
 		if (!byTouch) {

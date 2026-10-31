@@ -1050,6 +1050,12 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * one over video).
 	 */
 	public List<View> getEnabledExtraFabs() {
+		List<View> l = getEnabledExtraFabsRaw();
+		return (fabDock == null) ? l : fabDock.adjust(l);
+	}
+
+	/** The same without the docked-panel changes (see FabDock): every enabled extra button. */
+	public List<View> getEnabledExtraFabsRaw() {
 		FloatingButton[] fabs = getExtraFloatingButtons();
 		Pref<BooleanSupplier>[] on = extraFabEnabledPrefs();
 		List<View> l = new ArrayList<>(fabs.length);

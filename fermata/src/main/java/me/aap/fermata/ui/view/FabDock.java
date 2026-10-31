@@ -31,6 +31,8 @@ public final class FabDock {
 	private ImageView more;
 	/** The buttons taken out of the row now, in order. */
 	private final List<FloatingButton> hidden = new ArrayList<>();
+	@Nullable
+	private View lastKept;
 
 	public FabDock(MainActivityDelegate a) {
 		this.a = a;
@@ -80,14 +82,16 @@ public final class FabDock {
 			primary.setLayoutParams(lp);
 		}
 		hidden.clear();
-		if ((share <= 0f) || (pw <= 0) || (primary.getVisibility() != View.VISIBLE)) {
-			showMore(parent, null);
+		lastKept = null;
+		if ((share <= 0f) || (pw <= 0)) {
+			showMore(parent, false);
 			return;
 		}
+		// What fits is worked out whether or not the buttons are showing now, so the "..." button is known to the fades that bring them.
 		int gap = toIntPx(a.getContext(), 24);
 		int dflt = toIntPx(a.getContext(), 56);
 		int avail = pw - inset - 2 * baseEnd;
-		List<View> extras = a.getEnabledExtraFabs();
+		List<View> extras = a.getEnabledExtraFabsRaw();
 		int used = width(primary, dflt);
 		int fits = 0;
 		for (View v : extras) {
@@ -97,7 +101,7 @@ public final class FabDock {
 			fits++;
 		}
 		if (fits == extras.size()) {
-			showMore(parent, null);
+			showMore(parent, false);
 			return;
 		}
 		// Room for the "..." button as well: one less.
@@ -106,28 +110,39 @@ public final class FabDock {
 			fits--;
 			used -= gap + width(extras.get(fits), dflt);
 		}
+		boolean shown = primary.getVisibility() == View.VISIBLE;
 		View last = primary;
 		for (int i = 0; i < extras.size(); i++) {
 			if (!(extras.get(i) instanceof FloatingButton fb)) continue;
 			if (i < fits) {
 				last = fb;
-				if (fb.getVisibility() != View.VISIBLE) fb.setVisibility(View.VISIBLE);
 			} else {
-				if (fb.getVisibility() != View.GONE) fb.setVisibility(View.GONE);
 				hidden.add(fb);
+				if (shown && (fb.getVisibility() != View.GONE)) fb.setVisibility(View.GONE);
 			}
 		}
-		showMore(parent, last);
+		lastKept = last;
+		showMore(parent, true);
+	}
+
+	/** The buttons that fade and show together, with the ones taken out of the row left out and the "..." button added. */
+	public List<View> adjust(List<View> l) {
+		if (hidden.isEmpty()) return l;
+		List<View> r = new ArrayList<>(l);
+		r.removeAll(hidden);
+		if (more != null) r.add(more);
+		return r;
 	}
 
 	private static int width(View v, int dflt) {
 		return (v.getWidth() > 0) ? v.getWidth() : dflt;
 	}
 
-	/** Shows the "..." button after {@code last}, or hides it when null. */
-	private void showMore(ConstraintLayout parent, @Nullable View last) {
-		if (last == null) {
-			if (more != null) more.setVisibility(View.GONE);
+	/** Makes the "..." button for a row that overflows (in the layout, not showing: the fades show it), or takes it out of the way. */
+	private void showMore(ConstraintLayout parent, boolean overflow) {
+		View last = lastKept;
+		if (!overflow || (last == null)) {
+			if ((more != null) && (more.getVisibility() != View.GONE)) more.setVisibility(View.GONE);
 			return;
 		}
 		if (more == null) {
@@ -137,6 +152,7 @@ public final class FabDock {
 			more.setElevation(toIntPx(a.getContext(), 10));
 			more.setContentDescription(a.getContext().getString(R.string.fab_more));
 			more.setOnClickListener(v -> showMenu());
+			more.setVisibility(a.getFloatingButton().getVisibility());
 			ConstraintLayout.LayoutParams p = new ConstraintLayout.LayoutParams(toIntPx(a.getContext(), 52),
 					toIntPx(a.getContext(), 52));
 			p.bottomToTop = R.id.control_panel;
@@ -150,9 +166,9 @@ public final class FabDock {
 				more.setLayoutParams(p);
 			}
 		}
-		more.setVisibility(View.VISIBLE);
-		// The panel's own controls hide and show with the video's; this one follows the primary button.
-		more.setAlpha(a.getFloatingButton().getAlpha());
+		// Follows the primary button's visibility (the fades of the control panel drive its alpha with the others').
+		int vis = a.getFloatingButton().getVisibility();
+		if (more.getVisibility() != vis) more.setVisibility(vis);
 	}
 
 	/** What did not fit, as a menu of what each button does: a tap does what the button would have. */

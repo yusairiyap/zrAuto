@@ -172,7 +172,7 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 		textSecondary = paletteColor(R.attr.musicTextSecondary);
 		tileFill = paletteColor(R.attr.musicChipFill);
 		ripple = paletteColor(R.attr.musicChipRipple);
-		accent = EffectsUi.accent(ctx);
+		accent = me.aap.fermata.ui.view.ArtAccent.map(EffectsUi.accent(ctx));
 		onAccent = EffectsUi.onAccent(accent);
 
 		RecyclerView rv = new RecyclerView(palette);
