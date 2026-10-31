@@ -60,8 +60,6 @@ import me.aap.utils.ui.UiUtils;
  * @author Andrey Pavlenko
  */
 public class AudioEffectsView extends ScrollView implements PreferenceStore.Listener {
-	private final Pref<BooleanSupplier> TRACK = Pref.b("TRACK", false);
-	private final Pref<BooleanSupplier> FOLDER = Pref.b("FOLDER", false);
 	@Nullable
 	private PreferenceStore store;
 	@Nullable
@@ -105,7 +103,7 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 				((engine != null) && engine.supportsSoundStage()) ? VISIBLE : GONE);
 
 		if (effects == null) {
-			hide(R.id.equalizer_header, R.id.effects_card, R.id.apply_to);
+			hide(R.id.equalizer_header, R.id.effects_card);
 			return;
 		}
 
@@ -179,31 +177,6 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 		}
 
 		createChannels(eq, virt, bass, le, reverb, pi, ctrlPrefs);
-
-		// Apply to
-		if (pi.getPrefs().getBooleanPref(AE_ENABLED)) {
-			store.applyBooleanPref(TRACK, true);
-		} else if (pi.getParent().getPrefs().getBooleanPref(AE_ENABLED)) {
-			store.applyBooleanPref(FOLDER, true);
-		}
-
-		PreferenceView pref = findViewById(R.id.track);
-		pref.setPreference(null, () -> {
-			BooleanOpts o = new BooleanOpts();
-			o.store = store;
-			o.pref = TRACK;
-			o.title = R.string.current_track;
-			return o;
-		});
-
-		pref = findViewById(R.id.folder);
-		pref.setPreference(null, () -> {
-			BooleanOpts o = new BooleanOpts();
-			o.store = store;
-			o.pref = FOLDER;
-			o.title = R.string.current_folder;
-			return o;
-		});
 	}
 
 	public void cleanup() {
@@ -219,26 +192,14 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 		if (store == null) return;
 
 		try {
+			// One setting for everything that plays: what an older version stored for this track or its folder is dropped,
+			// so it cannot override the one set here.
 			MediaEngine eng = cb.getEngine();
-
-			if (eng != null) {
-				PlayableItem pi = eng.getSource();
-
-				if (pi != null) {
-					if (store.getBooleanPref(TRACK)) {
-						apply(pi.getPrefs());
-						return;
-					} else if (store.getBooleanPref(FOLDER)) {
-						apply(pi.getParent().getPrefs());
-						clearPrefs(pi.getPrefs());
-						return;
-					} else {
-						clearPrefs(pi.getPrefs());
-						clearPrefs(pi.getParent().getPrefs());
-					}
-				}
+			PlayableItem pi = (eng == null) ? null : eng.getSource();
+			if (pi != null) {
+				clearPrefs(pi.getPrefs());
+				clearPrefs(pi.getParent().getPrefs());
 			}
-
 			apply(cb.getPlaybackControlPrefs());
 		} finally {
 			// Reconcile now rather than waiting for the next track boundary, so opening the screen
@@ -672,10 +633,6 @@ public class AudioEffectsView extends ScrollView implements PreferenceStore.List
 			AudioEffects effects = requireNonNull(this.effects);
 			Virtualizer virt = requireNonNull(effects.getVirtualizer());
 			virt.forceVirtualizationMode(store.getIntPref(MediaPrefs.VIRT_MODE));
-		} else if (prefs.contains(TRACK) && store.getBooleanPref(TRACK)) {
-			store.applyBooleanPref(FOLDER, false);
-		} else if (prefs.contains(FOLDER) && store.getBooleanPref(FOLDER)) {
-			store.applyBooleanPref(TRACK, false);
 		}
 	}
 

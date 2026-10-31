@@ -1655,9 +1655,10 @@ The stutter turned out to be the sound output starting up; see open issue 6 (the
 - **`ui/view/NoNetworkView`**: the shared placeholder (rings, big crossed signal, three hints, Network settings / Try again). `attach(host, onRestored)` covers a
   FrameLayout host (YouTube tab, browser tab, Spotify import is wrapped in a frame for it); `compact` is the Home card kind, switched on by a widget returning
   true from `HomeWidgetView#needsNetwork` (YouTube suggestions, Comments, Search) and reloading in `onNetworkBack`. New network-only screens should use it.
-- **Audio effects are one card**: every entry point ends in `SidePanels.effects` (docked beside fullscreen video, else centred). `showFragment(audio_effects_fragment)`
-  is intercepted in `MainActivityDelegate`; the old `AudioEffectsFragment`/`AudioEffectsView`/`YoutubeEqualizerView` are no longer reachable (not deleted yet).
-  The card has the equalizer, bass, virtualizer and extra rows of `EffectsControls`; the 3D sound stage and "apply to" scopes of the old page are not in it.
+- **Audio effects are a panel, never a page**: every entry point ends in `SidePanels.effects`, which puts the full screen (`AudioEffectsView` for local engines, the
+  YouTube equalizer view for YouTube and downloaded YouTube) in a `SidePanel` (docked beside fullscreen video, else a centred modal card). `AudioEffectsFragment` is deleted;
+  `showFragment(audio_effects_fragment)` is intercepted in `MainActivityDelegate`. There is **no "Apply to" (track/folder)** any more: effects are one setting for all playback
+  (`AudioEffectsView#apply` writes the control prefs and drops leftover track/folder overrides of the current item).
 - **Screen snap** (`Action.SNAPSHOT`, `ui/view/VideoSnapshot`, log category `SNAPSHOT`): YouTube page via canvas (`YoutubeWebView#captureFrame`, JPEG 95 at the stream's
   size), local/downloaded video via `MediaMetadataRetriever` at the playing position, else `PixelCopy` of the video surface. Saved to Pictures/zrAuto (MediaStore on 10+,
   the app's Pictures folder before). In the FAB list, FAB long-press Screen group, All in One and key bindings. Never run on a device.

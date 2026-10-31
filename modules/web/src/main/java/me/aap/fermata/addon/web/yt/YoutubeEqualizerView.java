@@ -115,7 +115,7 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 		this.web = web;
 		YoutubeAddon addon = this.addon = addonArg;
 		EffectsUi.inflater(getContext()).inflate(me.aap.fermata.R.layout.audio_effects, this, true);
-		hide(me.aap.fermata.R.id.apply_to, me.aap.fermata.R.id.virtualizer_mode,
+		hide(me.aap.fermata.R.id.virtualizer_mode,
 				me.aap.fermata.R.id.equalizer_preset_save, me.aap.fermata.R.id.equalizer_preset_delete);
 		addon.getPreferenceStore().addBroadcastListener(this);
 		// GenericFragment is a single instance shared by every "generic screen" caller in the app

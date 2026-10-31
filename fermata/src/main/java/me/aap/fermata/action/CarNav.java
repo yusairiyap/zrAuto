@@ -43,7 +43,6 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.fragment.DownloadsFragment;
 import me.aap.fermata.ui.fragment.MediaLibFragment;
 import me.aap.fermata.ui.fragment.SettingsFragment;
-import me.aap.fermata.ui.fragment.AudioEffectsFragment;
 import me.aap.fermata.ui.view.EffectsUi;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.util.LogCat;
@@ -453,7 +452,7 @@ public final class CarNav {
 		if (overlaysOnly) return null;
 		ActivityFragment f = a.getActiveFragment();
 		if ((f instanceof MediaLibFragment) || (f instanceof DownloadsFragment) ||
-				(f instanceof SettingsFragment) || (f instanceof AudioEffectsFragment)) {
+				(f instanceof SettingsFragment)) {
 			View v = f.getView();
 			if ((v != null) && v.isShown()) return new Scope(a, v, null, f);
 		}

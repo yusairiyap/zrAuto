@@ -1015,12 +1015,6 @@ public class SettingsFragment extends MainActivityFragment
 			o.seekScale = 2;
 			o.visibility = PrefCondition.create(a.getPrefs(), MainActivityPrefs.COMMENTS_SPLIT);
 		});
-		panels.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.SIDE_PANEL_EFFECTS;
-			o.title = R.string.side_panel_effects;
-			o.subtitle = R.string.side_panel_sub;
-		});
 		panels.addIntPref(o -> {
 			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.SIDE_PANEL_EFFECTS_PERCENT;
@@ -1028,7 +1022,6 @@ public class SettingsFragment extends MainActivityFragment
 			o.seekMin = 8;
 			o.seekMax = 60;
 			o.seekScale = 2;
-			o.visibility = PrefCondition.create(a.getPrefs(), MainActivityPrefs.SIDE_PANEL_EFFECTS);
 		});
 		panels.addBooleanPref(o -> {
 			o.store = a.getPrefs();

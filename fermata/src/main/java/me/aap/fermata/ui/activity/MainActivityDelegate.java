@@ -162,7 +162,6 @@ import me.aap.fermata.media.service.PlaybackResume;
 import me.aap.fermata.ytdl.YoutubeLink;
 import me.aap.fermata.ytdl.YtOffline;
 import me.aap.fermata.spotify.SpotifyAuth;
-import me.aap.fermata.ui.fragment.AudioEffectsFragment;
 import me.aap.fermata.ui.fragment.DiagnosticLogFragment;
 import me.aap.fermata.ui.fragment.HomeFragment;
 import me.aap.fermata.ui.fragment.KeyTesterFragment;
@@ -2404,8 +2403,6 @@ public class MainActivityDelegate extends ActivityDelegate
 			return new PlaylistsFragment();
 		} else if (id == R.id.settings_fragment) {
 			return new SettingsFragment();
-		} else if (id == R.id.audio_effects_fragment) {
-			return new AudioEffectsFragment();
 		} else if (id == R.id.subtitles_fragment) {
 			return new SubtitlesFragment();
 		} else if (id == R.id.spotify_import_fragment) {

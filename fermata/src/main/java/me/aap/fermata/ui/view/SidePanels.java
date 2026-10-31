@@ -24,6 +24,7 @@ import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ytcaptions.CaptionsHub;
+import me.aap.fermata.ytdl.YtOffline;
 
 /**
  * The audio effects and the captions settings as {@link SidePanel}s, for use without leaving fullscreen video. Outside
@@ -37,18 +38,75 @@ public final class SidePanels {
 	// Audio effects
 
 	public static void effects(MainActivityDelegate a) {
-		// One screen for every player (local files, downloads, YouTube): the card of switches and sliders, docked beside
-		// fullscreen video when there is room, else centred over whatever is showing. The old full page is gone.
+		// The full effects screen (3D speaker, equalizer with presets, bass, virtualizer ...) as a panel: docked beside fullscreen
+		// video when there is room, else a centred modal card over whatever is showing. There is no page of its own any more.
 		if (SidePanel.isOpen("effects")) {
 			SidePanel.dismissOpen();
 			return;
 		}
-		if (effectsOf(a) == null) {
-			MediaEngine eng = a.getMediaSessionCallback().getEngine();
-			TopToast.show(R.drawable.equalizer, (eng == null) ? R.string.music_effects_play_first : R.string.music_effects_unavailable);
+		MediaEngine eng = a.getMediaSessionCallback().getEngine();
+		PlayableItem src = (eng == null) ? null : eng.getSource();
+		boolean ytPage = (eng != null) && (eng.getId() == MediaPrefs.MEDIA_ENG_YT);
+		// YouTube's page, and a downloaded YouTube video played from its file, use the YouTube equalizer (the same settings,
+		// which the native player applies to the file's sound).
+		if ((eng == null) || ytPage || YtOffline.isDownloadedYoutube(src)) {
+			View yt = MusicPlayer.youtubeEffectsView(a);
+			if (yt != null) {
+				SidePanel.toggle(a, "effects", R.drawable.equalizer, R.string.action_audio_effects, MainActivityPrefs.SIDE_PANEL_EFFECTS_PERCENT, p -> {
+					tidyEffects(yt);
+					return yt;
+				});
+				return;
+			}
+		}
+		if ((src != null) && (eng.supportsAudioEffects() || eng.supportsSoundStage())) {
+			SidePanel.toggle(a, "effects", R.drawable.equalizer, R.string.action_audio_effects, MainActivityPrefs.SIDE_PANEL_EFFECTS_PERCENT, new SidePanel.Body() {
+				private AudioEffectsView view;
+
+				@Override
+				public View create(SidePanel p) {
+					view = new AudioEffectsView(a.getContext());
+					MediaSessionCallback cb = a.getMediaServiceBinder().getMediaSessionCallback();
+					view.init(cb, eng.supportsAudioEffects() ? eng.ensureAudioEffects() : null, src);
+					tidyEffects(view);
+					return view;
+				}
+
+				@Override
+				public void onClosed() {
+					if (view == null) return;
+					view.apply(a.getMediaServiceBinder().getMediaSessionCallback());
+					view.cleanup();
+				}
+			});
 			return;
 		}
-		SidePanel.toggle(a, "effects", R.drawable.equalizer, R.string.action_audio_effects, MainActivityPrefs.SIDE_PANEL_EFFECTS_PERCENT, p -> effectsBody(p));
+		TopToast.show(R.drawable.equalizer, (src == null) ? R.string.music_effects_play_first : R.string.music_effects_unavailable);
+	}
+
+	/**
+	 * The effects screen made for a whole page sits under the bars (a big gap on top) and offers where to keep the settings:
+	 * in a panel the gap is closed.
+	 */
+	private static void tidyEffects(View v) {
+		float d = v.getResources().getDisplayMetrics().density;
+		// No grey cards in the panel: the sections sit straight on it, with less room around them.
+		if ((v instanceof ViewGroup sv) && (sv.getChildCount() > 0) && (sv.getChildAt(0) instanceof ViewGroup root)) {
+			root.setPadding(Math.round(2 * d), 0, Math.round(2 * d), Math.round(8 * d));
+			for (int i = 0, n = root.getChildCount(); i < n; i++) {
+				View c = root.getChildAt(i);
+				c.setBackground(null);
+				c.setPadding(Math.round(4 * d), Math.round(4 * d), Math.round(4 * d), Math.round(2 * d));
+				if (c.getLayoutParams() instanceof ViewGroup.MarginLayoutParams mp) mp.bottomMargin = Math.round(4 * d);
+			}
+		}
+		int pad = Math.round(4 * d);
+		Runnable fix = () -> {
+			if ((v.getPaddingTop() != pad) || (v.getPaddingBottom() != pad)) v.setPadding(v.getPaddingLeft(), pad, v.getPaddingRight(), pad);
+		};
+		fix.run();
+		// The bars' insets are put back on every layout: put away again.
+		v.addOnLayoutChangeListener((x, l, t, r, b, ol, ot, or, ob) -> fix.run());
 	}
 
 	/** The effects of what plays; YouTube's own for its page, none for a player without any. */
