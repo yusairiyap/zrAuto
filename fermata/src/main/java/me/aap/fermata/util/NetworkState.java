@@ -34,6 +34,16 @@ public final class NetworkState {
 	private static final List<Listener> listeners = new CopyOnWriteArrayList<>();
 	private static final Handler main = new Handler(Looper.getMainLooper());
 	private static volatile boolean online = true;
+	/** What Android's callbacks say (a network with a validated internet connection), and what a real try says. */
+	private static volatile boolean callbackOnline = true;
+	private static volatile boolean probeDown;
+	private static long lastProbe;
+	private static final java.util.concurrent.ExecutorService prober = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+		Thread t = new Thread(r, "net-probe");
+		t.setDaemon(true);
+		t.setPriority(Thread.MIN_PRIORITY);
+		return t;
+	});
 	/** What listeners were last told; the popup follows it, not every blip. */
 	private static boolean told = true;
 	private static boolean started;
@@ -49,22 +59,26 @@ public final class NetworkState {
 		try {
 			ConnectivityManager cm = ctx.getSystemService(ConnectivityManager.class);
 			if (cm == null) return;
-			online = query(cm);
+			callbackOnline = query(cm);
+			online = callbackOnline;
 			told = online;
+			// Android can call a network validated while nothing gets through (a Wi-Fi without internet, a dead mobile link):
+			// one real try at the start.
+			if (online) probeNow();
 			cm.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
 				@Override
 				public void onAvailable(@NonNull Network n) {
-					update(query(cm));
+					callbackChanged(query(cm));
 				}
 
 				@Override
 				public void onLost(@NonNull Network n) {
-					update(query(cm));
+					callbackChanged(query(cm));
 				}
 
 				@Override
 				public void onCapabilitiesChanged(@NonNull Network n, @NonNull NetworkCapabilities c) {
-					update(has(c));
+					callbackChanged(has(c));
 				}
 			});
 		} catch (Throwable ex) {
@@ -85,6 +99,61 @@ public final class NetworkState {
 	private static boolean has(NetworkCapabilities c) {
 		return c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
 				c.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+	}
+
+	private static void callbackChanged(boolean now) {
+		callbackOnline = now;
+		// A network came back: look for real, so a stale "down" from an earlier failure clears at once.
+		if (now && probeDown) probeNow();
+		recompute();
+	}
+
+	private static void recompute() {
+		update(callbackOnline && !probeDown);
+	}
+
+	/**
+	 * Something that needs the internet just failed (a lookup, a stall, a page that would not load): checks for real whether
+	 * anything gets through, since Android's own answer can lag or be wrong. At most once every 4 s; nothing when already known down.
+	 */
+	public static void hintFailure() {
+		long now = android.os.SystemClock.uptimeMillis();
+		if (!told || (now - lastProbe < 4000)) return;
+		lastProbe = now;
+		probeNow();
+	}
+
+	private static void probeNow() {
+		prober.execute(() -> {
+			boolean ok = tcp("1.1.1.1", 443) || tcp("8.8.8.8", 53) || resolves("www.youtube.com");
+			main.post(() -> {
+				if (probeDown != !ok) DiagnosticLog.log(LogCat.NETWORK, "reachability probe", "reachable=" + ok);
+				probeDown = !ok;
+				main.removeCallbacks(reprobe);
+				// Down: tried again every few seconds until something gets through.
+				if (!ok) main.postDelayed(reprobe, 8000);
+				recompute();
+			});
+		});
+	}
+
+	private static final Runnable reprobe = NetworkState::probeNow;
+
+	private static boolean tcp(String host, int port) {
+		try (java.net.Socket sk = new java.net.Socket()) {
+			sk.connect(new java.net.InetSocketAddress(host, port), 2000);
+			return true;
+		} catch (Exception ex) {
+			return false;
+		}
+	}
+
+	private static boolean resolves(String host) {
+		try {
+			return java.net.InetAddress.getByName(host) != null;
+		} catch (Exception ex) {
+			return false;
+		}
 	}
 
 	private static void update(boolean now) {

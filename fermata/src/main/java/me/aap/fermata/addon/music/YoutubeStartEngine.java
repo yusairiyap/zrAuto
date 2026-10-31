@@ -59,6 +59,7 @@ final class YoutubeStartEngine implements MediaEngine {
 		long wait = me.aap.fermata.ytdl.OfflineFallback.startMs();
 		handler.postDelayed(() -> {
 			if (closed) return;
+			me.aap.fermata.util.NetworkState.hintFailure();
 			me.aap.fermata.ui.view.TopToast.show(me.aap.fermata.R.drawable.network_weak, me.aap.fermata.R.string.network_start_failed);
 			fail("the video didn't start within " + (wait / 1000) + 's');
 		}, wait);

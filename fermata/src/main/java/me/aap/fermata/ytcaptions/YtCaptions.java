@@ -228,6 +228,9 @@ public final class YtCaptions {
 				DiagnosticLog.log(LogCat.CAPTIONS, "captions loaded", "client=" + c.name, "id=" + videoId, "lang=" + t.language, "kind=" + (t.generated ? "auto" : "manual"), "lines=" + cues.size());
 				return new Result(t, cues);
 			} catch (IOException ex) {
+				if (ex instanceof java.net.UnknownHostException || ex instanceof java.net.ConnectException || ex instanceof java.net.SocketTimeoutException) {
+					me.aap.fermata.util.NetworkState.hintFailure();
+				}
 				DiagnosticLog.w(LogCat.CAPTIONS, "captions failed", "client=" + c.name, "id=" + videoId, ex);
 				last = ex;
 				// Asked to sign in: it will be asked again for every video for a while (YouTube decides that per

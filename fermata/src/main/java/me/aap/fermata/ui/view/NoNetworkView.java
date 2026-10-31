@@ -268,11 +268,12 @@ public final class NoNetworkView extends FrameLayout implements NetworkState.Lis
 		return tv.data;
 	}
 
-	/** Three rings that swell and fade one after the other behind the icon. Runs only while shown. */
+	/**
+	 * Three faint rings behind the icon. Drawn once and still: an animation here invalidated the view every frame, and a tab
+	 * with glass bars redraws (and blurs) its bars for each such frame, which made the app lag while offline.
+	 */
 	private final class Rings extends View {
 		private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-		private long t0;
-		private boolean running;
 
 		Rings(Context ctx) {
 			super(ctx);
@@ -281,29 +282,20 @@ public final class NoNetworkView extends FrameLayout implements NetworkState.Lis
 		}
 
 		void start() {
-			if (running) return;
-			running = true;
-			t0 = android.os.SystemClock.uptimeMillis();
-			postInvalidateOnAnimation();
 		}
 
 		void stop() {
-			running = false;
 		}
 
 		@Override
 		protected void onDraw(Canvas c) {
-			if (!running) return;
 			float cx = getWidth() / 2f;
 			float cy = getHeight() / 2f;
 			float max = Math.min(cx, cy);
-			long t = android.os.SystemClock.uptimeMillis() - t0;
 			for (int i = 0; i < 3; i++) {
-				float f = ((t + i * 1000) % 3000) / 3000f;
-				paint.setColor((ringColor & 0x00FFFFFF) | (Math.round(70 * (1f - f)) << 24));
-				c.drawCircle(cx, cy, max * (0.45f + 0.55f * f), paint);
+				paint.setColor((ringColor & 0x00FFFFFF) | ((70 - i * 20) << 24));
+				c.drawCircle(cx, cy, max * (0.5f + 0.25f * i), paint);
 			}
-			postInvalidateOnAnimation();
 		}
 	}
 }

@@ -128,6 +128,8 @@ public class FermataWebClient extends WebViewClientCompat {
 			Log.e("Web error received");
 		}
 
+		// A page that cannot be reached at all (no host, no connection): check for real whether the internet is there.
+		if (request.isForMainFrame()) me.aap.fermata.util.NetworkState.hintFailure();
 		super.onReceivedError(view, request, error);
 	}
 }
