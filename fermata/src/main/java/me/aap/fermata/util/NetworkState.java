@@ -100,11 +100,15 @@ public final class NetworkState {
 		if (now == told) return;
 		told = now;
 		DiagnosticLog.log(LogCat.NETWORK, now ? "connection restored" : "connection lost");
+		// The top popup holds one card: the stall popup (which has a button) is never replaced by "No connection", and
+		// it is taken down when the connection comes back, before "Connection restored" shows.
+		boolean stallUp = me.aap.fermata.ui.view.NetworkIssuePopup.isShown();
 		if (now) {
+			if (stallUp) me.aap.fermata.ui.view.NetworkIssuePopup.dismiss();
 			if (lostOnce) TopToast.show(R.drawable.wifi, R.string.network_restored);
 		} else {
 			lostOnce = true;
-			TopToast.show(R.drawable.network_off, R.string.network_lost_toast);
+			if (!stallUp) TopToast.show(R.drawable.network_off, R.string.network_lost_toast);
 		}
 		for (Listener l : listeners) {
 			try {
