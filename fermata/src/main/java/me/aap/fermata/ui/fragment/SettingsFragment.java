@@ -442,6 +442,7 @@ public class SettingsFragment extends MainActivityFragment
 
 		if (BuildConfig.AUTO) {
 			addDelayPrefs(set, store, MediaLibPrefs.AUDIO_DELAY_AA, R.string.audio_delay_aa, null);
+			set.markLastCarOnly();
 		}
 
 		if (!isCar) {
@@ -550,18 +551,8 @@ public class SettingsFragment extends MainActivityFragment
 		});
 		aaInterfaceSet = null;
 
-		if (BuildConfig.AUTO && a.isCarActivityNotMirror()) {
-			// The car's own floating buttons, independent of the phone's.
-			addFabSettings(a, sub1, true);
-			// The car's own All in One card.
-			addAllInOne(a, sub1, true);
-			aaInterfaceSet = sub1;
-			// Right below the floating buttons: addAAInterface() adds its items straight in here.
-			addInfoOverlayPrefs(a, sub1, true);
-			addNavTabsPrefs(a, sub1);
-			addUpNextPrefs(a, sub1);
-			addAAInterface(a, sub1);
-		} else {
+		{
+			// The car screen has the same settings as the phone; the ones that only apply to it are marked.
 			// Android Auto's own interface settings first: on a phone they're the ones most easily
 			// missed further down.
 			if (BuildConfig.AUTO) {
@@ -581,6 +572,7 @@ public class SettingsFragment extends MainActivityFragment
 				// The same UI style as the phone's: the glass look is one setting, kept on the car screen too.
 				addGlassPrefs(a, aaSet);
 				aaInterfaceSet = aaSet;
+				aaSet.markCarOnly();
 			}
 			addGlassPrefs(a, sub1);
 			addFabSettings(a, sub1, false);
@@ -713,10 +705,7 @@ public class SettingsFragment extends MainActivityFragment
 			o.seekMin = 3;
 			o.seekMax = 60;
 		});
-		// The car's own tap action stays with its Android Auto settings.
-		if (!(BuildConfig.AUTO && a.isCarActivityNotMirror())) {
-			addTapAction(a, sub1, MainActivityPrefs.TAP_ACTION);
-		}
+		addTapAction(a, sub1, MainActivityPrefs.TAP_ACTION);
 		if (MusicPlayer.isEnabled()) {
 			sub1.addListPref(o -> {
 				o.store = mediaPrefs;
@@ -831,6 +820,7 @@ public class SettingsFragment extends MainActivityFragment
 				o.pref = PlaybackControlPrefs.VIDEO_AA_SHOW_STATUS;
 				o.title = R.string.video_aa_show_status;
 			});
+			sub2.markLastCarOnly();
 		}
 
 		if (!a.isCarActivityNotMirror()) {

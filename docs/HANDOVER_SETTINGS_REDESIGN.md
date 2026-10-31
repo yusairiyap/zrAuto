@@ -2,7 +2,10 @@
 
 Status: plan written (`docs/SETTINGS_REDESIGN_PLAN.md`); only a first slice of rollout step 2 is built: `PreferenceSet#group` moves root entries into a
 category (ids kept), and `SettingsFragment#groupRoot` makes **Playback** (settings, control, engine) and **Video and subtitles** (video, subtitles, captions, lyrics)
-from the old root entries. Everything else below is still to do. Taken out of PR #68 to be done on its own branch.
+from the old root entries. The car screen now gets the same root as the phone (the reduced car-only Interface page is gone); settings that only do something on Android Auto
+carry a CAR SCREEN ONLY tag after their title (`Opts#carOnly`, set by `PreferenceSet#markCarOnly` / `markLastCarOnly`, drawn in `SettingsStyle#apply`): the
+Interface > Android Auto page, the car audio delay and the car video status row. Voice control, backup, the welcome wizard and Share app stay phone-only (they
+need system pickers or dialogs). Everything else below is still to do. Taken out of PR #68 to be done on its own branch.
 
 ## What was asked
 

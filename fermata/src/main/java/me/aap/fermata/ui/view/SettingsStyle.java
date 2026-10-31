@@ -113,6 +113,16 @@ public final class SettingsStyle {
 		sub.setTypeface(Typeface.DEFAULT);
 		sub.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f);
 		tintSliders(v, c);
+		if (o.carOnly) {
+			// "Car screen" after the title, small and in the accent: this setting only does something on Android Auto.
+			android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder(title.getText());
+			int from = sb.length() + 2;
+			sb.append("  ").append(v.getContext().getString(me.aap.fermata.R.string.settings_car_only));
+			sb.setSpan(new android.text.style.RelativeSizeSpan(0.72f), from, sb.length(), 0);
+			sb.setSpan(new android.text.style.ForegroundColorSpan(c.accent), from, sb.length(), 0);
+			sb.setSpan(new android.text.style.StyleSpan(Typeface.BOLD), from, sb.length(), 0);
+			title.setText(sb);
+		}
 
 		ImageView icon = v.getIconView();
 		if (icon.getVisibility() == android.view.View.VISIBLE) icon.setImageTintList(ColorStateList.valueOf(c.accent));

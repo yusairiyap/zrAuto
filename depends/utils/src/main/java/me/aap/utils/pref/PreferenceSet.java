@@ -36,6 +36,7 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 	private final Consumer<PreferenceView.Opts> builder;
 	private int idCounter = 1;
 	private PreferenceViewAdapter adapter;
+	private boolean carOnly;
 
 	public PreferenceSet() {
 		this(null, null);
@@ -82,6 +83,7 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 	public PreferenceView.Opts get() {
 		PreferenceView.Opts opts = new PreferenceView.Opts();
 		builder.accept(opts);
+		if (carOnly) opts.carOnly = true;
 		return opts;
 	}
 
@@ -255,6 +257,27 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 		}
 		preferences.add(Math.min(at, preferences.size()), sub);
 		return sub;
+	}
+
+	/** Marks this page's entry as applying to the car screen only. */
+	public void markCarOnly() {
+		carOnly = true;
+	}
+
+	/** Marks the row added last (not a sub-set: use {@link #markCarOnly()} on that) as applying to the car screen only. */
+	public void markLastCarOnly() {
+		int i = preferences.size() - 1;
+		if (i < 0) return;
+		Supplier<? extends PreferenceView.Opts> last = preferences.get(i);
+		if (last instanceof PreferenceSet ps) {
+			ps.carOnly = true;
+			return;
+		}
+		preferences.set(i, () -> {
+			PreferenceView.Opts o = last.get();
+			o.carOnly = true;
+			return o;
+		});
 	}
 
 	public void addToView(RecyclerView v) {
