@@ -431,10 +431,11 @@ public class VideoView extends FrameLayout
 			lp.setMargins(m, m, m, m);
 			addView(infoOverlay, lp);
 			infoOverlay.setHiddenListener(() -> {
-				if (infoResetWhenHidden && !infoAtRight) setInfoTranslation(infoOverlay, 0f);
+				if (infoResetWhenHidden && !infoAtRight) setInfoTranslation(infoOverlay, splitShiftX());
 			});
 			// Keeps it at the top right while the title is shown, however its width or place changes.
 			infoOverlay.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+				if (splitShare > 0f) refreshInfoSplit();
 				if ((l == ol) && (r == or)) return;
 				boolean right = controls.isTitleShown() && isInTitleWay((InfoOverlayView) v);
 				if (right != infoAtRight) {
@@ -507,6 +508,7 @@ public class VideoView extends FrameLayout
 		if (share == splitShare) return;
 		splitShare = share;
 		controls.setSplit(share, getWidth());
+		refreshInfoSplit();
 		MainActivityDelegate ad = getActivity().peek();
 		if (ad != null) ad.getControlPanel().setDockShare(share);
 		if (share > 0f) {
@@ -536,6 +538,49 @@ public class VideoView extends FrameLayout
 		setPivotY(h / 2f);
 		setPivotX((splitShare > 0f) ? 0f : (w / 2f));
 		if (splitShare > 0f) controls.setSplit(splitShare, w);
+		refreshInfoSplit();
+	}
+
+	/**
+	 * The Info Overlay keeps its size beside a docked panel, like the title: it cancels the picture's shrink on itself (same
+	 * pivot as the picture, scale 1/(1-share)) and sits at the end of the room the panel leaves instead of at the screen's.
+	 * {@code infoShift} is the shift on screen from where it is laid out; the translation is that over the shrink.
+	 */
+	private float infoShift;
+
+	/** How far the overlay's own place moves on screen so that it keeps to the free part of the width. */
+	private float splitShiftX() {
+		if (splitShare <= 0f) return 0f;
+		float cut = getWidth() * splitShare;
+		return switch (infoPos) {
+			case MainActivityPrefs.CLOCK_POS_RIGHT -> -cut;
+			case MainActivityPrefs.CLOCK_POS_CENTER -> -cut / 2f;
+			default -> 0f;
+		};
+	}
+
+	private void applyInfoShift(InfoOverlayView io, float shift) {
+		infoShift = shift;
+		io.setTranslationX(shift / Math.max(0.2f, 1f - splitShare));
+	}
+
+	private void refreshInfoSplit() {
+		InfoOverlayView io = infoOverlay;
+		if (io == null) return;
+		if (splitShare > 0f) {
+			float k = 1f / (1f - splitShare);
+			// The picture's pivot (left edge, middle of the height) in the overlay's own coordinates.
+			io.setPivotX(-io.getLeft());
+			io.setPivotY(getHeight() / 2f - io.getTop());
+			io.setScaleX(k);
+			io.setScaleY(k);
+		} else {
+			io.setScaleX(1f);
+			io.setScaleY(1f);
+		}
+		if (!io.isOnlyWhenControlPanelVisible() || infoAtRight || io.isShown() || (splitShare > 0f)) {
+			applyInfoShift(io, infoAtRight ? infoRightShift(io) : splitShiftX());
+		}
 	}
 
 	private void ensureSplitBackdrop() {
@@ -586,7 +631,7 @@ public class VideoView extends FrameLayout
 		if (infoPos == MainActivityPrefs.CLOCK_POS_LEFT) return true;
 		if (infoPos != MainActivityPrefs.CLOCK_POS_CENTER) return false;
 		if (!io.isLaidOut() || (io.getWidth() == 0)) return false;
-		return controls.getTitleTextEnd() + toIntPx(getContext(), 12) > io.getLeft();
+		return controls.getTitleTextEnd() + toIntPx(getContext(), 12) > io.getLeft() + splitShiftX();
 	}
 
 	private void moveInfoOverlay(boolean right, boolean animate) {
@@ -594,7 +639,7 @@ public class VideoView extends FrameLayout
 		infoAtRight = right;
 		InfoOverlayView io = infoOverlay;
 		if (io == null) return;
-		float to = right ? infoRightShift(io) : 0f;
+		float to = right ? infoRightShift(io) : splitShiftX();
 
 		if (io.isOnlyWhenControlPanelVisible()) {
 			// It fades in and out with the panel: no gliding. Shown, it's already where it goes; back
@@ -607,13 +652,13 @@ public class VideoView extends FrameLayout
 
 		if (!animate || !io.isLaidOut()) {
 			setInfoTranslation(io, to);
-		} else if (changed || (io.getTranslationX() != to)) {
+		} else if (changed || (infoShift != to)) {
 			// No gliding across the screen: it fades out, changes place while unseen, and fades back in.
 			int gen = ++infoMoveGen;
 			io.animate().cancel();
 			io.animate().alpha(0f).setDuration(INFO_FADE_MS).withEndAction(() -> {
 				if (gen != infoMoveGen) return;
-				io.setTranslationX(infoAtRight ? infoRightShift(io) : 0f);
+				applyInfoShift(io, infoAtRight ? infoRightShift(io) : splitShiftX());
 				io.animate().alpha(1f).setDuration(INFO_FADE_MS).start();
 			}).start();
 		}
@@ -634,14 +679,16 @@ public class VideoView extends FrameLayout
 			io.animate().cancel();
 			io.setAlpha(1f);
 		}
-		io.setTranslationX(x);
+		applyInfoShift(io, x);
 	}
 
 	/** How far the Info Overlay goes from its own place to the top right corner. */
 	private float infoRightShift(View io) {
 		if (!io.isLaidOut() || (getWidth() == 0)) return 0f;
 		FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) io.getLayoutParams();
-		return (getWidth() - lp.rightMargin - io.getWidth()) - io.getLeft();
+		// The room the docked panel leaves, when there is one.
+		float room = getWidth() * (1f - splitShare);
+		return (room - lp.rightMargin - io.getWidth()) - io.getLeft();
 	}
 
 	private void updateTitleInset() {
