@@ -44,7 +44,7 @@ final class SettingsNative {
 			new Row(R.string.control_panel_size, 0, R.drawable.fab, R.string.layout_settings, LAYOUT),
 			new Row(R.string.text_icon_size, 0, R.drawable.fab, R.string.layout_settings, LAYOUT),
 			new Row(R.string.icon_size, 0, R.drawable.fab, R.string.layout_settings, LAYOUT),
-			new Row(R.string.nav_bar_pos, R.string.nav_bar_pos_sub, R.drawable.fab, R.string.layout_settings, LAYOUT),
+			new Row(R.string.nav_bar_pos, R.string.nav_bar_pos_hint, R.drawable.fab, R.string.layout_settings, LAYOUT),
 			new Row(R.string.nav_bar_size, 0, R.drawable.fab, R.string.layout_settings, LAYOUT),
 			new Row(R.string.show_track_icons, 0, R.drawable.fab, R.string.layout_settings, LAYOUT),
 			new Row(R.string.up_next_prefs, 0, R.drawable.up_next, R.string.layout_settings, LAYOUT),

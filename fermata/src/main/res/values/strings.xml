@@ -85,6 +85,8 @@
     <string name="layout_section_lists">Lists</string>
     <string name="layout_section_car_only">Car screen only</string>
     <string name="fab_more">More buttons</string>
+    <string name="nav_bar_pos_hint">Which edge of the screen the navigation bar sits on</string>
+    <string name="tap_action_hint">What a tap on a track does. With Opens its menu, a long press drags the track to reorder a playlist or Favorites</string>
     <string name="settings_car_only">CAR SCREEN ONLY</string>
     <string name="settings_group_playback">Playback</string>
     <string name="settings_group_playback_sub">Taps and what plays next, controls and the player</string>

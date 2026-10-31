@@ -197,7 +197,7 @@ public class LayoutSettingsFragment extends ReorderListFragment {
 		size(box, R.string.icon_size, MainActivityPrefs.ICON_SIZE, MainActivityPrefs.ICON_SIZE_AA);
 
 		section(box, R.string.nav_bar_nav);
-		addChoiceRow(box, R.string.nav_bar_pos, R.string.nav_bar_pos_sub,
+		addChoiceRow(box, R.string.nav_bar_pos, R.string.nav_bar_pos_hint,
 				new int[]{R.string.nav_bar_pos_bottom, R.string.nav_bar_pos_left, R.string.nav_bar_pos_right},
 				() -> p.getIntPref(pick(MainActivityPrefs.NAV_BAR_POS, MainActivityPrefs.NAV_BAR_POS_AA)),
 				v -> p.applyIntPref(pick(MainActivityPrefs.NAV_BAR_POS, MainActivityPrefs.NAV_BAR_POS_AA), v));
@@ -227,7 +227,7 @@ public class LayoutSettingsFragment extends ReorderListFragment {
 			carOnly = new LinearLayout(palette);
 			carOnly.setOrientation(LinearLayout.VERTICAL);
 			section(carOnly, R.string.layout_section_car_only);
-			addChoiceRow(carOnly, R.string.tap_action, R.string.tap_action_sub,
+			addChoiceRow(carOnly, R.string.tap_action, R.string.tap_action_hint,
 					new int[]{R.string.tap_action_play, R.string.tap_action_menu},
 					() -> p.getIntPref(MainActivityPrefs.TAP_ACTION_AA),
 					v -> p.applyIntPref(MainActivityPrefs.TAP_ACTION_AA, v));
