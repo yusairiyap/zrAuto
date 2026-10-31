@@ -181,6 +181,8 @@ public class ControlPanelView extends ConstraintLayout
 	/** The pill look's margins (see MainActivityDelegate#enableFloatingBars) while in the video look. */
 	@Nullable
 	private int[] pillMargins;
+	/** Share of the width a panel docked beside the fullscreen video takes (0 .. 0.8); the panel keeps to the rest. */
+	private float dockShare;
 	/** The video view whose middle buttons/title (see {@link VideoControlsOverlay}) were shown last. */
 	@Nullable
 	private VideoView controlsHost;
@@ -296,6 +298,35 @@ public class ControlPanelView extends ConstraintLayout
 		return new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, stops);
 	}
 
+	private int dockInset() {
+		View p = (View) getParent();
+		return ((dockShare <= 0f) || (p == null)) ? 0 : Math.round(p.getWidth() * dockShare);
+	}
+
+	/**
+	 * Keeps the fullscreen video look of the panel to the left of a docked side panel (comments, effects, ...):
+	 * only its end margin follows the panel, so nothing shrinks and the video is not touched. Called from
+	 * {@link VideoView#setSplitShare}, i.e. in step with the picture, and 0 puts it back.
+	 */
+	void setDockShare(float share) {
+		if (share == dockShare) return;
+		dockShare = share;
+		if (!(getLayoutParams() instanceof ConstraintLayout.LayoutParams lp)) return;
+		int inset;
+		if (share > 0f) {
+			inset = dockInset();
+		} else if (videoLook || (pillMargins == null)) {
+			inset = 0;
+		} else {
+			inset = pillMargins[1];
+		}
+		lp.rightMargin = inset;
+		lp.setMarginEnd((share <= 0f && !videoLook && (pillMargins != null)) ? pillMargins[3] : inset);
+		// With the nav bar on a side the panel ends at it, and the nav bar is gone in fullscreen video: then this margin counts.
+		lp.goneEndMargin = (share <= 0f && !videoLook && (pillMargins != null)) ? pillMargins[7] : inset;
+		setLayoutParams(lp);
+	}
+
 	public boolean isVideoLook() {
 		return videoLook;
 	}
@@ -323,6 +354,10 @@ public class ControlPanelView extends ConstraintLayout
 				lp.setMarginStart(0);
 				lp.setMarginEnd(0);
 				lp.goneBottomMargin = lp.goneStartMargin = lp.goneEndMargin = 0;
+				int inset = dockInset();
+				lp.rightMargin = inset;
+				lp.setMarginEnd(inset);
+				lp.goneEndMargin = inset;
 			} else if (pillMargins != null) {
 				int[] m = pillMargins;
 				lp.leftMargin = m[0];

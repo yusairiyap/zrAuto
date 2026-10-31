@@ -18,6 +18,11 @@ import me.aap.fermata.ui.activity.MainActivityPrefs;
 public class NavTabsFragment extends ReorderListFragment {
 
 	@Override
+	public int settingsEntryTitle() {
+		return R.string.layout_settings;
+	}
+
+	@Override
 	public int getFragmentId() {
 		return R.id.nav_tabs_fragment;
 	}
@@ -108,7 +113,6 @@ public class NavTabsFragment extends ReorderListFragment {
 	@Override
 	protected void goBack() {
 		MainActivityDelegate a = delegate();
-		a.showFragment(R.id.settings_fragment, a.isCarActivity() ? SettingsFragment.SHOW_AA_INTERFACE :
-				SettingsFragment.SHOW_INTERFACE);
+		a.showFragment(R.id.layout_settings_fragment, a.isCarActivity());
 	}
 }

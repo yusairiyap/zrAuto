@@ -927,6 +927,7 @@ public class YoutubeAddon extends WebBrowserAddon
 			o.store = getPreferenceStore();
 			o.pref = YT_SKIP_ADD;
 			o.title = R.string.try_to_skip_ad;
+			o.subtitle = R.string.try_to_skip_ad_sub;
 			o.visibility = visibility;
 		});
 

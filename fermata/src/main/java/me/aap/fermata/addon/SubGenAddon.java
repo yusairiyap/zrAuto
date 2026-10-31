@@ -85,6 +85,7 @@ public class SubGenAddon implements FermataAddon {
 			o.store = mps;
 			o.pref = TRANSLATE;
 			o.title = me.aap.fermata.R.string.sub_gen_translate;
+			o.subtitle = me.aap.fermata.R.string.sub_gen_translate_sub;
 			o.visibility = visibility.copy();
 		});
 		set.addListPref(o -> {
@@ -129,6 +130,7 @@ public class SubGenAddon implements FermataAddon {
 		});
 		set.addButton(o -> {
 			o.title = me.aap.fermata.R.string.sub_gen_cleanup;
+			o.subtitle = me.aap.fermata.R.string.sub_gen_cleanup_sub;
 			o.onClick = () -> {
 				var tr = TranslateAddon.get();
 				var deleted = new ArrayList<>(cleanUp(ctx, mps));

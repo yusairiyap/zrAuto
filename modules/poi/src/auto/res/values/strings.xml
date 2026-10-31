@@ -7,4 +7,5 @@
     <string name="speed_limit_i">The speed limit is ${speed_limit} ${speed_unit}</string>
     <string name="speed_limit_a">In ${distance} ${distance_unit} the speed limit is ${speed_limit} ${speed_unit}</string>
     <string name="speed_limit_w">Your speed ${speed} ${speed_unit} exceeds the maximum allowed speed of ${speed_limit} ${speed_unit}!</string>
+    <string name="poi_file_or_url_sub">A file or web address with the points of interest to show</string>
 </resources>

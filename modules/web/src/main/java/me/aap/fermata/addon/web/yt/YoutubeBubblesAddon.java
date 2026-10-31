@@ -56,6 +56,7 @@ public class YoutubeBubblesAddon implements FermataFragmentAddon {
 			o.store = ys;
 			o.pref = YoutubeAddon.BUBBLES_TEXT;
 			o.title = R.string.yt_bubbles_show_text;
+			o.subtitle = R.string.yt_bubbles_show_text_sub;
 			o.visibility = visibility.copy();
 		});
 		set.addIntPref(o -> {
@@ -82,6 +83,7 @@ public class YoutubeBubblesAddon implements FermataFragmentAddon {
 			o.store = ys;
 			o.pref = YoutubeAddon.BUBBLES_SPEED;
 			o.title = R.string.yt_bubbles_speed;
+			o.subtitle = R.string.yt_bubbles_speed_sub;
 			o.seekMin = 25;
 			o.seekMax = 300;
 			o.seekScale = 5;

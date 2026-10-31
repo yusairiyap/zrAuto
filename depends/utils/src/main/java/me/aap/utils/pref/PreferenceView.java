@@ -756,6 +756,8 @@ public class PreferenceView extends ConstraintLayout {
 		public ChangeableCondition visibility;
 		/** Shown but greyed out and not tappable while false (e.g. an option another one rules out). */
 		public ChangeableCondition enabled;
+		/** Applies to the Android Auto screen only: the row is marked as such (see PreferenceSet#markCarOnly). */
+		public boolean carOnly;
 	}
 
 	public static class PrefOpts<S> extends Opts {

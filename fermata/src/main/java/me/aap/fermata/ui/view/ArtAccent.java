@@ -323,6 +323,10 @@ public final class ArtAccent {
 			// The outline of a selectable card (the hall quality choices): blue in the theme, the cover's colour here.
 			tintOf(card, R.id.art_orig_stroke, card.getStrokeColorStateList(), card::setStrokeColor);
 		}
+		if (v instanceof com.google.android.material.button.MaterialButton mb) {
+			// A filled button (the dialogs' main button): its fill is a tint, which no drawable walk reaches.
+			tintOf(mb, R.id.art_orig_bgtint, mb.getBackgroundTintList(), mb::setBackgroundTintList);
+		}
 		if (v instanceof androidx.appcompat.widget.SwitchCompat sw2) {
 			// A switch drawn from shapes (the settings' own): its track and its disc.
 			recolorDrawable(sw2.getTrackDrawable());

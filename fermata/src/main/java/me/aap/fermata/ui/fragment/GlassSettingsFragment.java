@@ -285,7 +285,7 @@ public class GlassSettingsFragment extends ReorderListFragment {
 		syncers.add(() -> {
 			int sel = p.getIntPref(MainActivityPrefs.GLASS_STYLE);
 			for (int i = 0; i < fills.length; i++) {
-				fills[i].setColor((i == sel) ? accent : tileFill);
+				fillColor(fills[i], (i == sel) ? accent : tileFill);
 				names[i].setTextColor((i == sel) ? onAccent : textPrimary);
 			}
 		});

@@ -64,6 +64,12 @@
     <item name="power_usage_addon" type="id" />
     <item name="power_usage_toolbar_chip" type="id" />
     <item name="power_settings_fragment" type="id" />
+    <item name="network_settings_fragment" type="id" />
+    <item name="privacy_settings_fragment" type="id" />
+    <item name="theme_settings_fragment" type="id" />
+    <item name="layout_settings_fragment" type="id" />
+    <item name="search_settings_fragment" type="id" />
+    <item name="settings_search_chip" type="id" />
     <item name="home_settings_fragment" type="id" />
     <item name="glass_settings_fragment" type="id" />
     <item name="menu_anchor" type="id" />
@@ -294,5 +300,6 @@
     <item name="art_orig_pbg" type="id" />
     <item name="art_orig_psec" type="id" />
     <item name="art_orig_stroke" type="id" />
+    <item name="art_orig_bgtint" type="id" />
     <item name="art_orig_ripple" type="id" />
 </resources>

@@ -74,6 +74,33 @@ public final class QualityIcon extends Drawable {
 	}
 
 	/**
+	 * The quality policy just changed (music to video or back: 144p against the chosen one): the page takes a moment to switch, so
+	 * the player is asked again a few times, and whatever shows the icon is told when the answer differs.
+	 */
+	public static void changedSoon(@NonNull MainActivityDelegate a) {
+		expire();
+		int g = ++chain;
+		step(a, g, 0);
+	}
+
+	private static int chain;
+	private static final long[] CHAIN_DELAYS = {250, 650, 1300, 2300};
+
+	/** One ask; the next only if nobody started another chain and the answer has not come out different yet. */
+	private static void step(MainActivityDelegate a, int g, int i) {
+		if (i >= CHAIN_DELAYS.length) return;
+		a.postDelayed(() -> {
+			if (g != chain) return;
+			refresh(a, () -> {
+				// Different from what was shown: that is the answer, no more asking.
+				if (g == chain) chain++;
+				a.fireBroadcastEvent(me.aap.utils.ui.activity.ActivityListener.FRAGMENT_CONTENT_CHANGED);
+			}, true);
+			step(a, g, i + 1);
+		}, CHAIN_DELAYS[i]);
+	}
+
+	/**
 	 * Asks the player which quality it plays (no more often than every couple of seconds);
 	 * {@code onChange} runs if the answer differs from the label shown.
 	 */

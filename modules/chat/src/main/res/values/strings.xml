@@ -4,4 +4,5 @@
     <string name="openai_key_sub">Get your personal key: &lt;a href="%1$s"&gt;%1$s&lt;a&gt;</string>
     <string name="openai_model">Model</string>
     <string name="openai_model_other">Other model</string>
+    <string name="openai_model_other_sub">Type the name of a model that is not in the list</string>
 </resources>

@@ -39,6 +39,11 @@ public class InfoOverlayFragment extends ReorderListFragment {
 	private final List<TextView> posChips = new ArrayList<>();
 
 	@Override
+	public int settingsEntryTitle() {
+		return R.string.layout_settings;
+	}
+
+	@Override
 	public int getFragmentId() {
 		return R.id.info_overlay_fragment;
 	}
@@ -261,8 +266,7 @@ public class InfoOverlayFragment extends ReorderListFragment {
 	@Override
 	protected void goBack() {
 		MainActivityDelegate a = delegate();
-		a.showFragment(R.id.settings_fragment, (a.isCarActivity() || aa) ?
-				SettingsFragment.SHOW_AA_INTERFACE : SettingsFragment.SHOW_INTERFACE);
+		a.showFragment(R.id.layout_settings_fragment, a.isCarActivity() || aa);
 	}
 
 	@Override
@@ -334,7 +338,7 @@ public class InfoOverlayFragment extends ReorderListFragment {
 		for (TextView c : posChips) {
 			boolean sel = ((Integer) c.getTag()) == pos;
 			GradientDrawable fill = (GradientDrawable) c.getTag(R.id.info_overlay_fragment);
-			fill.setColor(sel ? accent : tileFill);
+			fillColor(fill, sel ? accent : tileFill);
 			c.setTextColor(sel ? onAccent : textPrimary);
 		}
 	}

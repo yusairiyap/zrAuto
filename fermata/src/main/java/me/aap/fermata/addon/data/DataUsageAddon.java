@@ -144,6 +144,7 @@ public class DataUsageAddon implements FermataFragmentAddon, FermataActivityAddo
 			o.store = ps;
 			o.pref = DataUsageTracker.CYCLE_START;
 			o.title = R.string.data_usage_cycle_start;
+			o.subtitle = R.string.data_usage_cycle_start_sub;
 			o.seekMin = 1;
 			o.seekMax = 28;
 			o.visibility = visibility.copy().and(new PrefCondition<>(ps, DataUsageTracker.CYCLE,
@@ -171,6 +172,7 @@ public class DataUsageAddon implements FermataFragmentAddon, FermataActivityAddo
 			o.store = mp;
 			o.pref = MainActivityPrefs.INFO_OVERLAY_SHOW_DATA_ICON;
 			o.title = R.string.info_overlay_show_data_icon;
+			o.subtitle = R.string.info_overlay_show_data_icon_sub;
 			o.visibility = visibility.copy();
 		});
 

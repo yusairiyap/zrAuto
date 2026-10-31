@@ -1050,6 +1050,12 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * one over video).
 	 */
 	public List<View> getEnabledExtraFabs() {
+		List<View> l = getEnabledExtraFabsRaw();
+		return (fabDock == null) ? l : fabDock.adjust(l);
+	}
+
+	/** The same without the docked-panel changes (see FabDock): every enabled extra button. */
+	public List<View> getEnabledExtraFabsRaw() {
 		FloatingButton[] fabs = getExtraFloatingButtons();
 		Pref<BooleanSupplier>[] on = extraFabEnabledPrefs();
 		List<View> l = new ArrayList<>(fabs.length);
@@ -2421,6 +2427,16 @@ public class MainActivityDelegate extends ActivityDelegate
 			return new me.aap.fermata.ui.fragment.SleepSettingsFragment();
 		} else if (id == R.id.power_settings_fragment) {
 			return new me.aap.fermata.ui.fragment.PowerSettingsFragment();
+		} else if (id == R.id.search_settings_fragment) {
+			return new me.aap.fermata.ui.fragment.SearchSettingsFragment();
+		} else if (id == R.id.privacy_settings_fragment) {
+			return new me.aap.fermata.ui.fragment.PrivacySettingsFragment();
+		} else if (id == R.id.layout_settings_fragment) {
+			return new me.aap.fermata.ui.fragment.LayoutSettingsFragment();
+		} else if (id == R.id.theme_settings_fragment) {
+			return new me.aap.fermata.ui.fragment.ThemeSettingsFragment();
+		} else if (id == R.id.network_settings_fragment) {
+			return new me.aap.fermata.ui.fragment.NetworkSettingsFragment();
 		} else if (id == R.id.home_settings_fragment) {
 			return new me.aap.fermata.ui.fragment.HomeSettingsFragment();
 		} else if (id == R.id.glass_settings_fragment) {
@@ -3452,6 +3468,14 @@ public class MainActivityDelegate extends ActivityDelegate
 	 * screen (getStartDelay() == 0), and recomputing visibility here from scratch would immediately
 	 * clobber that, causing a brief flash on entry.
 	 */
+	private me.aap.fermata.ui.view.FabDock fabDock;
+
+	/** Keeps the floating buttons beside a docked video panel, with a "..." button for those that do not fit. */
+	public me.aap.fermata.ui.view.FabDock getFabDock() {
+		if (fabDock == null) fabDock = new me.aap.fermata.ui.view.FabDock(this);
+		return fabDock;
+	}
+
 	public void updateExtraFabsVisibility() {
 		FloatingButton[] fabs = getExtraFloatingButtons();
 		Pref<BooleanSupplier>[] on = extraFabEnabledPrefs();
@@ -3475,6 +3499,7 @@ public class MainActivityDelegate extends ActivityDelegate
 				fb.setVisibility(GONE);
 			}
 		}
+		if (fabDock != null) fabDock.refresh();
 	}
 
 	@SuppressWarnings("unchecked")

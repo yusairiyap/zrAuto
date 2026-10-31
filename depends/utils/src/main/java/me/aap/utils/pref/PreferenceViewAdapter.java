@@ -52,7 +52,7 @@ public class PreferenceViewAdapter extends RecyclerView.Adapter<PreferenceViewAd
 
 	@Override
 	public void onBindViewHolder(@NonNull PrefViewHolder holder, int position) {
-		holder.getPreferenceView().setPreference(this, set.preferences.get(position));
+		holder.getPreferenceView().setPreference(this, set.display().get(position));
 	}
 
 	@Override
@@ -73,7 +73,7 @@ public class PreferenceViewAdapter extends RecyclerView.Adapter<PreferenceViewAd
 
 	@Override
 	public int getItemCount() {
-		return set.preferences.size();
+		return set.display().size();
 	}
 
 	public void setPreferenceSet(PreferenceSet set) {
@@ -95,7 +95,7 @@ public class PreferenceViewAdapter extends RecyclerView.Adapter<PreferenceViewAd
 		notifyDataSetChanged();
 
 		if ((old != null) && (recyclerView != null)) {
-			int idx = set.getPreferences().indexOf(old);
+			int idx = set.display().indexOf(old);
 
 			if (idx != -1) {
 				App.get().getHandler().post(() -> {

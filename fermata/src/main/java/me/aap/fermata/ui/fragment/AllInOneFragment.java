@@ -105,6 +105,11 @@ public class AllInOneFragment extends MainActivityFragment {
 	}
 
 	@Override
+	public int settingsEntryTitle() {
+		return R.string.layout_settings;
+	}
+
+	@Override
 	public int getFragmentId() {
 		return R.id.all_in_one_fragment;
 	}
@@ -202,8 +207,7 @@ public class AllInOneFragment extends MainActivityFragment {
 
 	@Override
 	public boolean onBackPressed() {
-		getActivityDelegate().showFragment(R.id.settings_fragment,
-				aa ? SettingsFragment.SHOW_AA_INTERFACE : SettingsFragment.SHOW_INTERFACE);
+		getActivityDelegate().showFragment(R.id.layout_settings_fragment, aa);
 		return true;
 	}
 

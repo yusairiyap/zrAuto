@@ -123,7 +123,16 @@ public final class SettingsSplit {
 		boolean want = page && !SettingsNav.entries().isEmpty() &&
 				(a.getActiveFragment() instanceof MainActivityFragment f) && f.isSettingsPage();
 		if (want && (a.getActiveFragment() instanceof MainActivityFragment f) && (f.settingsEntryTitle() != 0)) {
-			SettingsNav.select("btn:" + a.getContext().getString(f.settingsEntryTitle()));
+			// The entry the page belongs to: a category (Network belongs to Playback) or a button, found by its title.
+			String title = a.getContext().getString(f.settingsEntryTitle());
+			String key = "btn:" + title;
+			for (SettingsNav.Entry e : SettingsNav.entries()) {
+				if (title.contentEquals(e.title)) {
+					key = e.key;
+					break;
+				}
+			}
+			SettingsNav.select(key);
 		}
 		if (want) show(a);
 		else hide();

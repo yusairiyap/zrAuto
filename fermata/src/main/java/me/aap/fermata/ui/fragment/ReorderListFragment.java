@@ -138,6 +138,40 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 	/** Where Back goes. */
 	protected abstract void goBack();
 
+	private boolean recolorPending;
+
+	/** The list's layout manager; a page can answer with one that behaves differently (the search page never scrolls to a focused row). */
+	protected RecyclerView.LayoutManager createLayoutManager(Context ctx) {
+		return new LinearLayoutManager(ctx);
+	}
+
+	/** Back to the first row (a page whose input is at the top: focusing it or a list change must not leave the page scrolled down). */
+	protected final void scrollToTop() {
+		RecyclerView rv = list;
+		if (rv == null) return;
+		rv.stopScroll();
+		rv.scrollToPosition(0);
+	}
+
+	/**
+	 * Sets a chip's or card's fill, and has the album art colouring look at the page once more (one pass for however many fills
+	 * change together): a colour set from code lies in the theme's blue until a walk maps it, and nothing lays out on a tap.
+	 */
+	protected final void fillColor(GradientDrawable d, int color) {
+		d.setColor(color);
+		if (recolorPending || !me.aap.fermata.ui.view.ArtAccent.needsWalk() || (list == null)) return;
+		recolorPending = true;
+		list.post(() -> {
+			recolorPending = false;
+			if (list != null) me.aap.fermata.ui.view.ArtAccent.recolorSafe(list);
+		});
+	}
+
+	/** Whether the page ends with a "Reset" button (a page with nothing to reset says no). */
+	protected boolean hasReset() {
+		return true;
+	}
+
 	/** The page's own options above the rows (a section title and what goes with it), if any. */
 	@Nullable
 	protected View createExtraHeader() {
@@ -153,6 +187,12 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 	@Override
 	public boolean isSettingsPage() {
 		return true;
+	}
+
+	/** The title bar carries a Search chip on every settings page. */
+	@Override
+	public me.aap.utils.ui.view.ToolBarView.Mediator getToolBarMediator() {
+		return SettingsSearchChip.MEDIATOR;
 	}
 
 	/** The rows stay put under a drag: the bars never move away under them. */
@@ -176,7 +216,7 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 		onAccent = EffectsUi.onAccent(accent);
 
 		RecyclerView rv = new RecyclerView(palette);
-		rv.setLayoutManager(new LinearLayoutManager(palette));
+		rv.setLayoutManager(createLayoutManager(palette));
 		rv.setClipToPadding(false);
 		int pad = dp(16);
 		rv.setPadding(pad, dp(8), pad, pad);
@@ -330,6 +370,10 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 			LinearLayout.LayoutParams elp = new LinearLayout.LayoutParams(MATCH_PARENT, dp(48));
 			elp.bottomMargin = dp(10);
 			f.addView(extra, elp);
+		}
+		if (!hasReset()) {
+			f.setLayoutParams(new RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+			return f;
 		}
 		TextView reset = text(resetTitle(), 15, textPrimary, true);
 		reset.setGravity(Gravity.CENTER);
@@ -857,8 +901,7 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 			for (int i = 0; i < views.length; i++) {
 				boolean on = i == sel;
 				views[i].setTextColor(on ? onAccent : textPrimary);
-				((GradientDrawable) views[i].getTag(R.id.settings_row_tag))
-						.setColor(on ? accent : 0x1F808080);
+				fillColor((GradientDrawable) views[i].getTag(R.id.settings_row_tag), on ? accent : 0x1F808080);
 			}
 		};
 		for (int i = 0; i < labels.length; i++) {

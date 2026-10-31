@@ -106,6 +106,7 @@ public class DownloadsAddon implements FermataFragmentAddon {
 			o.store = store;
 			o.pref = YT_TOOLBAR;
 			o.title = R.string.ytdl_pref_toolbar;
+			o.subtitle = R.string.ytdl_pref_toolbar_sub;
 			o.visibility = visibility;
 		});
 	}

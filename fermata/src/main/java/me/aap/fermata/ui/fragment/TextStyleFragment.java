@@ -115,7 +115,7 @@ public abstract class TextStyleFragment extends MainActivityFragment {
 		tileFill = color(R.attr.musicChipFill);
 		panelFill = color(R.attr.musicPanelFill);
 		ripple = color(R.attr.musicChipRipple);
-		accent = EffectsUi.accent(ctx);
+		accent = me.aap.fermata.ui.view.ArtAccent.map(EffectsUi.accent(ctx));
 		onAccent = EffectsUi.onAccent(accent);
 		syncers.clear();
 		resetters.clear();

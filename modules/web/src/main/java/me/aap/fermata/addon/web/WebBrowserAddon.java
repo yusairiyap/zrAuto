@@ -319,12 +319,14 @@ public class WebBrowserAddon implements FermataFragmentAddon, FermataActivityAdd
 				o.store = getPreferenceStore();
 				o.pref = HOME_BG_ENABLED;
 				o.title = R.string.home_bg_enabled;
+				o.subtitle = R.string.home_bg_enabled_sub;
 				o.visibility = visibility.copy();
 			});
 			set.addIntPref(o -> {
 				o.store = getPreferenceStore();
 				o.pref = HOME_BG_BLUR;
 				o.title = R.string.home_bg_blur;
+				o.subtitle = R.string.home_bg_blur_sub;
 				o.seekMin = 0;
 				o.seekMax = 100;
 				o.seekScale = 5;
@@ -335,6 +337,7 @@ public class WebBrowserAddon implements FermataFragmentAddon, FermataActivityAdd
 				o.store = getPreferenceStore();
 				o.pref = HOME_BG_ZOOM;
 				o.title = R.string.home_bg_zoom;
+				o.subtitle = R.string.home_bg_zoom_sub;
 				o.seekMin = 100;
 				o.seekMax = 300;
 				o.seekScale = 5;
@@ -355,6 +358,7 @@ public class WebBrowserAddon implements FermataFragmentAddon, FermataActivityAdd
 				o.store = getPreferenceStore();
 				o.pref = HOME_BG_IMAGE_URL;
 				o.title = R.string.home_bg_image_url;
+				o.subtitle = R.string.home_bg_image_url_sub;
 				o.stringHint = "https://";
 				o.visibility = visibility.copy();
 			});
@@ -362,6 +366,7 @@ public class WebBrowserAddon implements FermataFragmentAddon, FermataActivityAdd
 				o.store = getPreferenceStore();
 				o.pref = getUserAgentPref();
 				o.title = R.string.user_agent;
+				o.subtitle = R.string.user_agent_sub;
 				o.stringHint = o.pref.getDefaultValue().get();
 				o.visibility = visibility;
 				o.maxLines = 3;
@@ -370,6 +375,7 @@ public class WebBrowserAddon implements FermataFragmentAddon, FermataActivityAdd
 				o.store = getPreferenceStore();
 				o.pref = getUserAgentDesktopPref();
 				o.title = R.string.user_agent_desktop;
+				o.subtitle = R.string.user_agent_desktop_sub;
 				o.stringHint = o.pref.getDefaultValue().get();
 				o.visibility = visibility;
 				o.maxLines = 3;

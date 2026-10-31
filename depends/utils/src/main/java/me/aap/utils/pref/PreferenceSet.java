@@ -32,10 +32,11 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 	private static Locale[] ttsLocales;
 	final List<Supplier<? extends PreferenceView.Opts>> preferences = new ArrayList<>();
 	private final int id;
-	private final PreferenceSet parent;
+	private PreferenceSet parent;
 	private final Consumer<PreferenceView.Opts> builder;
 	private int idCounter = 1;
 	private PreferenceViewAdapter adapter;
+	private boolean carOnly;
 
 	public PreferenceSet() {
 		this(null, null);
@@ -82,12 +83,15 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 	public PreferenceView.Opts get() {
 		PreferenceView.Opts opts = new PreferenceView.Opts();
 		builder.accept(opts);
+		if (carOnly) opts.carOnly = true;
 		return opts;
 	}
 
 	public void addBooleanPref(Consumer<PreferenceView.BooleanOpts> builder) {
 		add(() -> {
 			PreferenceView.BooleanOpts o = new PreferenceView.BooleanOpts();
+			// Every on/off setting is a switch, as on the code-built pages.
+			o.asSwitch = true;
 			builder.accept(o);
 			return o;
 		});
@@ -228,6 +232,74 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 		return sub;
 	}
 
+	/** The set among this one and its descendants that has {@code m} as a direct entry. */
+	@Nullable
+	private PreferenceSet ownerOf(Supplier<? extends PreferenceView.Opts> m) {
+		if (preferences.contains(m)) return this;
+		for (Supplier<? extends PreferenceView.Opts> s : preferences) {
+			if (s instanceof PreferenceSet ps) {
+				PreferenceSet o = ps.ownerOf(m);
+				if (o != null) return o;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Moves the given entries, wherever they are below this set, into a new sub-set of this one (in the order given),
+	 * which takes the place of the first of them that was a direct entry (else it goes last). The moved sub-sets keep
+	 * their ids, so saved states and deep links to them still resolve; only their parent changes.
+	 *
+	 * @return the new sub-set, or null when none of the entries was found
+	 */
+	@Nullable
+	public PreferenceSet group(Consumer<PreferenceView.Opts> builder,
+														 List<? extends Supplier<? extends PreferenceView.Opts>> members) {
+		int at = -1;
+		List<Supplier<? extends PreferenceView.Opts>> moved = new ArrayList<>();
+		for (Supplier<? extends PreferenceView.Opts> m : members) {
+			PreferenceSet owner = ownerOf(m);
+			if (owner == null) continue;
+			if (owner == this) {
+				int i = preferences.indexOf(m);
+				if ((at < 0) || (i < at)) at = i;
+			}
+			owner.preferences.remove(m);
+			owner.touch();
+			moved.add(m);
+		}
+		if (moved.isEmpty()) return null;
+		PreferenceSet sub = new PreferenceSet(this, builder);
+		for (Supplier<? extends PreferenceView.Opts> m : moved) {
+			if (m instanceof PreferenceSet ps) ps.parent = sub;
+			sub.preferences.add(m);
+		}
+		preferences.add((at < 0) ? preferences.size() : Math.min(at, preferences.size()), sub);
+		touch();
+		return sub;
+	}
+
+	/** Marks this page's entry as applying to the car screen only. */
+	public void markCarOnly() {
+		carOnly = true;
+	}
+
+	/** Marks the row added last (not a sub-set: use {@link #markCarOnly()} on that) as applying to the car screen only. */
+	public void markLastCarOnly() {
+		int i = preferences.size() - 1;
+		if (i < 0) return;
+		Supplier<? extends PreferenceView.Opts> last = preferences.get(i);
+		if (last instanceof PreferenceSet ps) {
+			ps.carOnly = true;
+			return;
+		}
+		preferences.set(i, () -> {
+			PreferenceView.Opts o = last.get();
+			o.carOnly = true;
+			return o;
+		});
+	}
+
 	public void addToView(RecyclerView v) {
 		v.setHasFixedSize(true);
 		v.setLayoutManager(new LinearLayoutManager(v.getContext()));
@@ -303,6 +375,69 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 
 	private void add(Supplier<? extends PreferenceView.Opts> supplier) {
 		preferences.add(supplier);
+		touch();
+	}
+
+	private final java.util.Set<Object> pinned = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+
+	/** The row added last always shows first on its page (an add-on's Enable switch). */
+	public void markLastPinned() {
+		int i = preferences.size() - 1;
+		if (i >= 0) pinned.add(preferences.get(i));
+		touch();
+	}
+
+	/** Moves the given entries, wherever they are below this set, to the end of this one. */
+	public void adopt(List<? extends Supplier<? extends PreferenceView.Opts>> members) {
+		for (Supplier<? extends PreferenceView.Opts> m : members) {
+			PreferenceSet owner = ownerOf(m);
+			if ((owner == null) || (owner == this)) continue;
+			owner.preferences.remove(m);
+			owner.touch();
+			if (m instanceof PreferenceSet ps) ps.parent = this;
+			preferences.add(m);
+		}
+		touch();
+	}
+
+	private int version;
+	private int displayVersion = -1;
+	private List<Supplier<? extends PreferenceView.Opts>> display;
+
+	/** The entries changed order or content behind {@link #getPreferences()}'s back: {@link #display()} is made again. */
+	public void touch() {
+		version++;
+	}
+
+	/**
+	 * The entries as a page shows them: the ones that lead somewhere (sub-pages, buttons) first, then the settings
+	 * themselves (switches, sliders, choices), each group in the order it was added.
+	 */
+	public List<Supplier<? extends PreferenceView.Opts>> display() {
+		if ((display != null) && (displayVersion == version) && (display.size() == preferences.size())) return display;
+		List<Supplier<? extends PreferenceView.Opts>> top = new ArrayList<>();
+		List<Supplier<? extends PreferenceView.Opts>> nested = new ArrayList<>();
+		List<Supplier<? extends PreferenceView.Opts>> rest = new ArrayList<>();
+		for (Supplier<? extends PreferenceView.Opts> s : preferences) {
+			if (pinned.contains(s)) {
+				top.add(s);
+				continue;
+			}
+			boolean leads = s instanceof PreferenceSet;
+			if (!leads) {
+				try {
+					leads = s.get() instanceof PreferenceView.ButtonOpts;
+				} catch (RuntimeException ex) {
+					// Kept where it was added.
+				}
+			}
+			(leads ? nested : rest).add(s);
+		}
+		top.addAll(nested);
+		top.addAll(rest);
+		display = top;
+		displayVersion = version;
+		return top;
 	}
 
 	private void notifyChanged() {
