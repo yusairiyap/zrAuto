@@ -8,8 +8,14 @@ Interface > Android Auto page, the car audio delay and the car video status row.
 need system pickers or dialogs). Also built (never compiled): `NetworkSettingsFragment` (Playback > Network and offline: offline mode, play downloaded on stall, stall wait, shortcut to
 Data usage; replaces the two loose rows), `ThemeSettingsFragment` + `ThemePreviewView` (Interface > Theme: gallery of phones drawn from each theme's colours,
 Phone / Android Auto pill, colour-from-album-art; replaces the theme list row), and a **Search settings** button at the root (`SettingsFragment#searchSettings`,
-walks the PreferenceSet tree for title/subtitle matches and opens the page; no separate registry was needed). Still to do: `SettingsPage` base extraction,
-the pill on the other twin pages, the eleven-category regroup and removing the old root builder. Taken out of PR #68 to be done on its own branch.
+walks the PreferenceSet tree for title/subtitle matches and opens the page; no separate registry was needed). Then the regroup was finished: **Layout and navigation** is a native page (`LayoutSettingsFragment`, Phone / Android Auto pill, rows for bars, sizes,
+nav bar, tabs, floating buttons, All in One, Info overlay, lists and Up next/search, with a car-only section); **Appearance** (theme, UI style, album-art colour,
+language) is a small page; the root is now: Search, Home, Appearance, Layout and navigation, Playback, Video settings, Subtitles/captions/lyrics, Controls,
+Library and downloads, Privacy, Add-ons, Backup and about. `PreferenceSet#group` takes entries from anywhere below the set, `SettingsFragment#groupRoot` finds them
+by title and `orderRoot` sorts the root. The old `addInterface`/`addAAInterface`/`addFabSettings`/`addAllInOne`/`addNavTabsPrefs`/`addInfoOverlayPrefs`/`addUpNextPrefs`
+builders and the Interface/Android Auto lists are gone (`SHOW_INTERFACE` / `SHOW_AA_INTERFACE` now open the layout page on the right side). The `SettingsPage`
+extraction was not done: `ReorderListFragment` already is that base, a rename would be churn. The remaining `PreferenceSet` pages (Playback, Video, Subtitles, Key
+bindings, Add-ons, Other) keep the tile look through `SettingsStyle` and the CAR SCREEN ONLY tag for their few car twins. Taken out of PR #68 to be done on its own branch.
 
 ## What was asked
 

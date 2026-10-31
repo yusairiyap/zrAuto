@@ -230,12 +230,25 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 		return sub;
 	}
 
+	/** The set among this one and its descendants that has {@code m} as a direct entry. */
+	@Nullable
+	private PreferenceSet ownerOf(Supplier<? extends PreferenceView.Opts> m) {
+		if (preferences.contains(m)) return this;
+		for (Supplier<? extends PreferenceView.Opts> s : preferences) {
+			if (s instanceof PreferenceSet ps) {
+				PreferenceSet o = ps.ownerOf(m);
+				if (o != null) return o;
+			}
+		}
+		return null;
+	}
+
 	/**
-	 * Moves the given entries of this set (in the order given) into a new sub-set that takes the place of
-	 * the first of them. The moved sub-sets keep their ids, so saved states and deep links to them still
-	 * resolve; only their parent changes. Entries that are not direct children of this set are ignored.
+	 * Moves the given entries, wherever they are below this set, into a new sub-set of this one (in the order given),
+	 * which takes the place of the first of them that was a direct entry (else it goes last). The moved sub-sets keep
+	 * their ids, so saved states and deep links to them still resolve; only their parent changes.
 	 *
-	 * @return the new sub-set, or null when none of the entries belongs to this set
+	 * @return the new sub-set, or null when none of the entries was found
 	 */
 	@Nullable
 	public PreferenceSet group(Consumer<PreferenceView.Opts> builder,
@@ -243,19 +256,22 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 		int at = -1;
 		List<Supplier<? extends PreferenceView.Opts>> moved = new ArrayList<>();
 		for (Supplier<? extends PreferenceView.Opts> m : members) {
-			int i = preferences.indexOf(m);
-			if (i < 0) continue;
-			if ((at < 0) || (i < at)) at = i;
+			PreferenceSet owner = ownerOf(m);
+			if (owner == null) continue;
+			if (owner == this) {
+				int i = preferences.indexOf(m);
+				if ((at < 0) || (i < at)) at = i;
+			}
+			owner.preferences.remove(m);
 			moved.add(m);
 		}
 		if (moved.isEmpty()) return null;
-		preferences.removeAll(moved);
 		PreferenceSet sub = new PreferenceSet(this, builder);
 		for (Supplier<? extends PreferenceView.Opts> m : moved) {
 			if (m instanceof PreferenceSet ps) ps.parent = sub;
 			sub.preferences.add(m);
 		}
-		preferences.add(Math.min(at, preferences.size()), sub);
+		preferences.add((at < 0) ? preferences.size() : Math.min(at, preferences.size()), sub);
 		return sub;
 	}
 

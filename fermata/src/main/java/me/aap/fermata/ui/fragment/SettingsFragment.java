@@ -142,9 +142,8 @@ public class SettingsFragment extends MainActivityFragment
 	@Nullable
 	private PreferenceSet keyBindingsSet;
 	@Nullable
-	private PreferenceSet interfaceSet;
+	private PreferenceSet appearanceSet;
 	@Nullable
-	private PreferenceSet aaInterfaceSet;
 	// Each key's own bindings page, by Key name, see keySettings().
 	private final java.util.Map<String, PreferenceSet> keySettingsSets = new java.util.HashMap<>();
 	// The key page opened from the key simulator: Back from it goes back there.
@@ -213,10 +212,10 @@ public class SettingsFragment extends MainActivityFragment
 			if (p != null) adapter.setPreferenceSet(p);
 		} else if ((pendingInput == SHOW_KEY_BINDINGS) && (keyBindingsSet != null)) {
 			adapter.setPreferenceSet(keyBindingsSet);
-		} else if ((pendingInput == SHOW_INTERFACE) && (interfaceSet != null)) {
-			adapter.setPreferenceSet(interfaceSet);
-		} else if ((pendingInput == SHOW_AA_INTERFACE) && (aaInterfaceSet != null)) {
-			adapter.setPreferenceSet(aaInterfaceSet);
+		} else if ((pendingInput == SHOW_INTERFACE) || (pendingInput == SHOW_AA_INTERFACE)) {
+			// The old Interface lists became the Layout and navigation page.
+			MainActivityDelegate.get(requireContext()).showFragment(R.id.layout_settings_fragment,
+					pendingInput == SHOW_AA_INTERFACE);
 		} else if ((pendingInput instanceof String cs) && cs.startsWith(CATEGORY)) {
 			try {
 				showCategory(Integer.parseInt(cs.substring(CATEGORY.length())));
@@ -550,60 +549,25 @@ public class SettingsFragment extends MainActivityFragment
 		});
 		addHomePrefs(a, set);
 
-		interfaceSet = sub1 = set.subSet(o -> {
-			o.title = R.string.interface_prefs;
-			o.subtitle = R.string.prefs_sub_interface;
+		// Appearance: how the app looks. Layout and navigation is a page of its own (LayoutSettingsFragment).
+		sub1 = set.subSet(o -> {
+			o.title = R.string.appearance_prefs;
+			o.subtitle = R.string.appearance_prefs_sub;
 			o.icon = R.drawable.view_grid;
 		});
-		aaInterfaceSet = null;
-
-		{
-			// The car screen has the same settings as the phone; the ones that only apply to it are marked.
-			// Android Auto's own interface settings first: on a phone they're the ones most easily
-			// missed further down.
-			if (BuildConfig.AUTO) {
-				PreferenceSet aaSet = sub1.subSet(o -> {
-					o.title = R.string.interface_prefs_aa;
-					o.subtitle = R.string.prefs_sub_aa;
-					o.icon = R.drawable.tv;
-				});
-				// Android Auto's floating buttons are set up separately from the phone's.
-				addFabSettings(a, aaSet, true);
-				addAllInOne(a, aaSet, true);
-				// Shared with the phone's, here too so they're found from the car's own settings.
-				addInfoOverlayPrefs(a, aaSet, true);
-				addNavTabsPrefs(a, aaSet);
-				addUpNextPrefs(a, aaSet);
-				addAAInterface(a, aaSet);
-				// The same UI style as the phone's: the glass look is one setting, kept on the car screen too.
-				addGlassPrefs(a, aaSet);
-				aaInterfaceSet = aaSet;
-				aaSet.markCarOnly();
-			}
-			addGlassPrefs(a, sub1);
-			addFabSettings(a, sub1, false);
-			addAllInOne(a, sub1, false);
-			addInfoOverlayPrefs(a, sub1, false);
-			addNavTabsPrefs(a, sub1);
-			addUpNextPrefs(a, sub1);
-			addInterface(a, sub1, MainActivityPrefs.THEME_MAIN, MainActivityPrefs.HIDE_BARS,
-					MainActivityPrefs.FULLSCREEN, MainActivityPrefs.SHOW_PG_UP_DOWN,
-					null, null,
-					MainActivityPrefs.NAV_BAR_POS, MainActivityPrefs.NAV_BAR_SIZE,
-					MainActivityPrefs.TOOL_BAR_SIZE, MainActivityPrefs.CONTROL_PANEL_SIZE,
-					MainActivityPrefs.TEXT_ICON_SIZE, MainActivityPrefs.ICON_SIZE);
-			sub1.addBooleanPref(o -> {
-				o.store = a.getPrefs();
-				o.pref = MainActivityPrefs.SCROLL_HIDE_BARS;
-				o.title = R.string.scroll_hide_bars;
-				o.subtitle = R.string.scroll_hide_bars_sub;
-			});
-		}
-
+		appearanceSet = sub1;
+		sub1.addButton(o -> {
+			o.title = R.string.theme;
+			o.subtitle = R.string.theme_settings_sub;
+			o.icon = R.drawable.view_grid;
+			o.onClick = () -> a.showFragment(R.id.theme_settings_fragment);
+		});
+		addGlassPrefs(a, sub1);
 		sub1.addBooleanPref(o -> {
-			o.store = mediaPrefs;
-			o.pref = BrowsableItemPrefs.SHOW_TRACK_ICONS;
-			o.title = R.string.show_track_icons;
+			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.ART_ACCENT;
+			o.title = R.string.art_accent;
+			o.subtitle = R.string.art_accent_sub;
 		});
 		sub1.addListPref(o -> {
 			o.store = a.getPrefs();
@@ -615,6 +579,13 @@ public class SettingsFragment extends MainActivityFragment
 			o.cmp = String::compareTo;
 			o.stringValues = CollectionUtils.mapToArray(MainActivityPrefs.Lang.getValues(),
 					v -> v.locale.getDisplayName(), String[]::new);
+		});
+
+		set.addButton(o -> {
+			o.title = R.string.layout_settings;
+			o.subtitle = R.string.layout_settings_sub;
+			o.icon = R.drawable.fab;
+			o.onClick = () -> a.showFragment(R.id.layout_settings_fragment, a.isCarActivity());
 		});
 
 		keyBindingsSet = sub1 = set.subSet(o -> {
@@ -1218,11 +1189,21 @@ public class SettingsFragment extends MainActivityFragment
 
 		addDiagnostics(a, set);
 
-		// The root had thirteen entries; the player's own pages share a category each (moves only, same prefs).
+		// The eleven categories (moves only, same prefs): entries are found by title wherever they were built.
 		groupRoot(set, R.string.settings_group_playback, R.string.settings_group_playback_sub,
 				R.string.playback_settings, R.string.playback_control, R.string.engine_prefs);
-		groupRoot(set, R.string.settings_group_video, R.string.settings_group_video_sub,
-				R.string.video_settings, R.string.subtitles, R.string.captions, R.string.lyrics);
+		groupRoot(set, R.string.settings_group_subtitles, R.string.settings_group_subtitles_sub,
+				R.string.subtitles, R.string.captions, R.string.lyrics);
+		groupRoot(set, R.string.settings_group_controls, R.string.settings_group_controls_sub,
+				R.string.key_bindings, R.string.voice_control);
+		groupRoot(set, R.string.settings_group_library, R.string.settings_group_library_sub,
+				R.string.spotify_import, R.string.share, R.string.storage_prefs);
+		groupRoot(set, R.string.settings_group_backup, R.string.settings_group_backup_sub,
+				R.string.backup_restore, R.string.other, R.string.diagnostics);
+		orderRoot(set, R.string.settings_search, R.string.home, R.string.appearance_prefs, R.string.layout_settings,
+				R.string.settings_group_playback, R.string.video_settings, R.string.settings_group_subtitles,
+				R.string.settings_group_controls, R.string.settings_group_library, R.string.private_mode_prefs,
+				R.string.addons, R.string.settings_group_backup);
 
 		rootSet = set;
 		publishNav(set, a.getContext());
@@ -1293,17 +1274,57 @@ public class SettingsFragment extends MainActivityFragment
 	 * Gathers the root entries whose titles are {@code titles} into one category. Nothing is changed when
 	 * fewer than two are found, so a category never wraps a single page.
 	 */
+	/** The entry titled {@code title} below {@code root}, the shallowest first. */
+	@Nullable
+	private static me.aap.utils.function.Supplier<? extends PreferenceView.Opts> findByTitle(PreferenceSet root, int title) {
+		java.util.ArrayDeque<PreferenceSet> queue = new java.util.ArrayDeque<>();
+		queue.add(root);
+		while (!queue.isEmpty()) {
+			PreferenceSet cur = queue.poll();
+			for (var o : cur.getPreferences()) {
+				try {
+					if (o.get().title == title) return o;
+				} catch (RuntimeException ex) {
+					Log.e(ex, "A settings entry could not be read");
+				}
+				if (o instanceof PreferenceSet ps) queue.add(ps);
+			}
+		}
+		return null;
+	}
+
+	/** Puts the root's entries in the order of {@code titles}; any other goes last, in its place. */
+	private static void orderRoot(PreferenceSet root, int... titles) {
+		var list = root.getPreferences();
+		java.util.Map<Object, Integer> rank = new java.util.IdentityHashMap<>();
+		for (var o : list) {
+			int r = titles.length;
+			try {
+				int t = o.get().title;
+				for (int i = 0; i < titles.length; i++) {
+					if (titles[i] == t) {
+						r = i;
+						break;
+					}
+				}
+			} catch (RuntimeException ex) {
+				Log.e(ex, "A settings entry could not be ordered");
+			}
+			rank.put(o, r);
+		}
+		list.sort((x, y) -> Integer.compare(rank.get(x), rank.get(y)));
+	}
+
 	private static void groupRoot(PreferenceSet root, int title, int subtitle, int... titles) {
 		List<me.aap.utils.function.Supplier<? extends PreferenceView.Opts>> found = new java.util.ArrayList<>();
 		int icon = ID_NULL;
 		for (int t : titles) {
-			for (var o : root.getPreferences()) {
+			var o = findByTitle(root, t);
+			if (o == null) continue;
+			found.add(o);
+			if (icon == ID_NULL) {
 				try {
-					PreferenceView.Opts opts = o.get();
-					if (opts.title != t) continue;
-					found.add(o);
-					if (icon == ID_NULL) icon = opts.icon;
-					break;
+					icon = o.get().icon;
 				} catch (RuntimeException ex) {
 					Log.e(ex, "A settings entry could not be grouped");
 				}
@@ -1525,84 +1546,6 @@ public class SettingsFragment extends MainActivityFragment
 		});
 	}
 
-	private static void addNavTabsPrefs(MainActivityDelegate a, PreferenceSet parent) {
-		parent.addButton(o -> {
-			o.title = R.string.nav_tabs_prefs;
-			o.subtitle = R.string.prefs_sub_nav_tabs;
-			o.icon = R.drawable.view_grid;
-			o.onClick = () -> a.showFragment(R.id.nav_tabs_fragment);
-		});
-	}
-
-	/**
-	 * Interface &gt; Info overlay (clock, battery, temperature, distance, data) shown over fullscreen
-	 * video and on the Music tab: its own page, see {@link InfoOverlayFragment}.
-	 */
-	private static void addInfoOverlayPrefs(MainActivityDelegate a, PreferenceSet parent,
-																				boolean aa) {
-		parent.addButton(o -> {
-			o.title = R.string.info_overlay_prefs;
-			o.subtitle = R.string.prefs_sub_info_overlay;
-			o.icon = R.drawable.about;
-			o.onClick = () -> a.showFragment(R.id.info_overlay_fragment, aa);
-		});
-	}
-
-	/** The YouTube tab's Up next queue and the list preview below it, as their own section. */
-	private static void addUpNextPrefs(MainActivityDelegate a, PreferenceSet parent) {
-		PreferenceSet ps = parent.subSet(o -> {
-			o.title = R.string.up_next_prefs;
-			o.subtitle = R.string.prefs_sub_up_next;
-			o.icon = R.drawable.up_next;
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.SEARCH_HISTORY_ENABLED;
-			o.title = R.string.search_history;
-			o.subtitle = R.string.search_history_sub;
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.YT_SEARCH_LIBRARY;
-			o.title = R.string.yt_search_library_pref;
-			o.subtitle = R.string.yt_search_library_pref_sub;
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.YT_PANEL_CAR_KEYBOARD;
-			o.title = R.string.yt_panel_car_keyboard;
-			o.subtitle = R.string.yt_panel_car_keyboard_sub;
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.YT_SEARCH_TAP_QUEUES;
-			o.title = R.string.yt_search_tap_queues;
-			o.subtitle = R.string.yt_search_tap_queues_sub;
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.YT_SEPARATE_PANELS;
-			o.title = R.string.yt_separate_panels;
-			o.subtitle = R.string.yt_separate_panels_sub;
-		});
-		ps.addIntPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.UP_NEXT_MAX;
-			o.title = R.string.up_next_max;
-			o.subtitle = R.string.up_next_max_sub;
-			o.seekMin = 1;
-			o.seekMax = 50;
-		});
-		ps.addIntPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.UP_NEXT_LIST_PREVIEW;
-			o.title = R.string.up_next_list_preview;
-			o.subtitle = R.string.up_next_list_preview_sub;
-			o.seekMin = 1;
-			o.seekMax = 10;
-		});
-	}
-
 	/** What tapping a track does: plays it, or opens its menu. */
 	private static void addTapAction(MainActivityDelegate a, PreferenceSet ps,
 																	 me.aap.utils.pref.PreferenceStore.Pref<me.aap.utils.function.IntSupplier> tapAction) {
@@ -1616,147 +1559,8 @@ public class SettingsFragment extends MainActivityFragment
 		});
 	}
 
-	/** Interface &gt; Floating Action Button: its own page, the car screen's buttons if {@code aa}. */
-	private static void addFabSettings(MainActivityDelegate a, PreferenceSet ps, boolean aa) {
-		ps.addButton(o -> {
-			o.title = R.string.secondary_fab_prefs;
-			o.subtitle = R.string.prefs_sub_fab;
-			o.icon = R.drawable.fab;
-			o.onClick = () -> a.showFragment(R.id.fab_settings_fragment, aa);
-		});
-	}
-
-	/** Interface &gt; All in One: its own page, the car screen's card if {@code aa}. */
-	private static void addAllInOne(MainActivityDelegate a, PreferenceSet ps, boolean aa) {
-		ps.addButton(o -> {
-			o.title = R.string.all_in_one;
-			o.icon = R.drawable.view_grid;
-			o.subtitle = aa ? R.string.all_in_one_aa_sub : R.string.all_in_one_sub;
-			o.onClick = () -> a.showFragment(R.id.all_in_one_fragment, aa);
-		});
-	}
-
 	/** The Android Auto twin of a phone floating button pref if {@code aa}, else the pref itself. */
 	@SuppressWarnings("unchecked")
-	private static <S> Pref<S> fabPref(boolean aa, Pref<S> p) {
-		if (!aa) return p;
-		Pref<?> twin = MainActivityPrefs.fabAA(p);
-		return (twin == null) ? p : (Pref<S>) twin;
-	}
-
-	/** One extra floating button's switch, and its tap action (shown while it's on). */
-	private void addAAInterface(MainActivityDelegate a, PreferenceSet ps) {
-		if (BuildConfig.AUTO) {
-			addInterface(a, ps, MainActivityPrefs.THEME_AA, MainActivityPrefs.HIDE_BARS_AA,
-					MainActivityPrefs.FULLSCREEN_AA, MainActivityPrefs.SHOW_PG_UP_DOWN_AA,
-					MainActivityPrefs.TAP_ACTION_AA, MainActivityPrefs.USE_DPAD_CURSOR, MainActivityPrefs.NAV_BAR_POS_AA,
-					MainActivityPrefs.NAV_BAR_SIZE_AA, MainActivityPrefs.TOOL_BAR_SIZE_AA,
-					MainActivityPrefs.CONTROL_PANEL_SIZE_AA, MainActivityPrefs.TEXT_ICON_SIZE_AA,
-					MainActivityPrefs.ICON_SIZE_AA);
-			ps.addBooleanPref(o -> {
-				o.store = a.getPrefs();
-				o.pref = MainActivityPrefs.SCROLL_HIDE_BARS_AA;
-				o.title = R.string.scroll_hide_bars;
-				o.subtitle = R.string.scroll_hide_bars_sub;
-			});
-		}
-	}
-
-	private void addInterface(MainActivityDelegate a, PreferenceSet ps, Pref<IntSupplier> theme,
-														Pref<BooleanSupplier> hideBars, Pref<BooleanSupplier> fullScreen,
-														Pref<BooleanSupplier> pgUpDown, Pref<IntSupplier> tapAction,
-														Pref<BooleanSupplier> dpadCursor,
-														Pref<IntSupplier> nbPos, Pref<DoubleSupplier> nbSize,
-														Pref<DoubleSupplier> tbSize, Pref<DoubleSupplier> cpSize,
-														Pref<DoubleSupplier> textIconSize, Pref<DoubleSupplier> iconSize) {
-		ps.addButton(o -> {
-			o.title = R.string.theme;
-			o.subtitle = R.string.theme_settings_sub;
-			o.icon = R.drawable.view_grid;
-			o.onClick = () -> a.showFragment(R.id.theme_settings_fragment);
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.ART_ACCENT;
-			o.title = R.string.art_accent;
-			o.subtitle = R.string.art_accent_sub;
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = hideBars;
-			o.title = R.string.hide_bars;
-			o.subtitle = R.string.hide_bars_sub;
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = fullScreen;
-			o.title = R.string.fullscreen_mode;
-		});
-		ps.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = pgUpDown;
-			o.title = R.string.show_pg_up_down;
-		});
-		if (tapAction != null) addTapAction(a, ps, tapAction);
-		if (dpadCursor != null) {
-			ps.addBooleanPref(o -> {
-				o.store = a.getPrefs();
-				o.pref = dpadCursor;
-				o.title = R.string.use_dpad_cursor;
-			});
-		}
-		ps.addListPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = nbPos;
-			o.title = R.string.nav_bar_pos;
-			o.subtitle = R.string.nav_bar_pos_sub;
-			o.formatSubtitle = true;
-			o.values = new int[]{R.string.nav_bar_pos_bottom, R.string.nav_bar_pos_left,
-					R.string.nav_bar_pos_right};
-		});
-		ps.addFloatPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = nbSize;
-			o.title = R.string.nav_bar_size;
-			o.scale = 0.05f;
-			o.seekMin = 10;
-			o.seekMax = 40;
-		});
-		ps.addFloatPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = tbSize;
-			o.title = R.string.tool_bar_size;
-			o.scale = 0.05f;
-			o.seekMin = 10;
-			o.seekMax = 40;
-		});
-		ps.addFloatPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = cpSize;
-			o.title = R.string.control_panel_size;
-			o.scale = 0.05f;
-			o.seekMin = 10;
-			o.seekMax = 40;
-		});
-		ps.addFloatPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = textIconSize;
-			o.title = R.string.text_icon_size;
-			o.scale = 0.05f;
-			o.seekMin = 10;
-			o.seekMax = 40;
-		});
-		ps.addFloatPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = iconSize;
-			o.title = R.string.icon_size;
-			o.scale = 0.05f;
-			o.seekMin = 10;
-			o.seekMax = 40;
-		});
-
-	}
-
 	private void addAddons(PreferenceSet set) {
 		AddonManager amgr = FermataApplication.get().getAddonManager();
 		PreferenceSet sub = set.subSet(o -> {
