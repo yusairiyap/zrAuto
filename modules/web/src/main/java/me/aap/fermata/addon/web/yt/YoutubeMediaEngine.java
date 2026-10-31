@@ -260,7 +260,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		}
 
 		DiagnosticLog.log(LogCat.YT, "stalled", "id=" + currentVideoId, "for=" + (waited / 1000) + 's');
-		me.aap.fermata.util.NetworkState.hintFailure();
+		me.aap.fermata.util.NetworkState.markStalled();
 		MainActivityDelegate a = MainActivityDelegate.get(web.getContext());
 		String id = currentVideoId;
 

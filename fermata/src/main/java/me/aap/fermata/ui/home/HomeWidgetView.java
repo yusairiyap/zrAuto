@@ -209,7 +209,13 @@ public abstract class HomeWidgetView extends FrameLayout {
 		this.item = item;
 		onCreate(content);
 		if (needsNetwork()) {
-			noNet = me.aap.fermata.ui.view.NoNetworkView.compact(content, this::onNetworkBack);
+			// Over the whole card, which gives up its own content meanwhile: the widget's "couldn't load" words showed through it.
+			noNet = me.aap.fermata.ui.view.NoNetworkView.compact(this, this::onNetworkBack);
+			noNet.setShownListener((shown, animate) -> {
+				content.animate().cancel();
+				if (!animate) content.setAlpha(shown ? 0f : 1f);
+				else content.animate().alpha(shown ? 0f : 1f).setDuration(shown ? 160 : 320).start();
+			});
 			noNet.tint(HomeUi.alpha(color(ROLE_SECONDARY), 0.7f));
 		}
 		created = true;

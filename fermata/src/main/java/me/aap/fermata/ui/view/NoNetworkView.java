@@ -45,6 +45,18 @@ public final class NoNetworkView extends FrameLayout implements NetworkState.Lis
 	private final ImageView icon;
 	private final FrameLayout art;
 	private int ringColor;
+	@Nullable
+	private ShownListener shownListener;
+
+	/** Told when the placeholder goes up or down ({@code animate}: a change now, not the first state). */
+	public interface ShownListener {
+		void onShown(boolean shown, boolean animate);
+	}
+
+	public void setShownListener(@Nullable ShownListener l) {
+		shownListener = l;
+		if (l != null) l.onShown(!NetworkState.isOnline(), false);
+	}
 
 	private NoNetworkView(Context ctx, boolean compact, @Nullable Runnable onRestored) {
 		super(ctx);
@@ -173,6 +185,7 @@ public final class NoNetworkView extends FrameLayout implements NetworkState.Lis
 	}
 
 	private void show(boolean on, boolean animate) {
+		if (shownListener != null) shownListener.onShown(on, animate);
 		animate().cancel();
 		if (on) {
 			setVisibility(VISIBLE);

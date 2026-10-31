@@ -38,6 +38,9 @@ public final class NetworkState {
 	private static volatile boolean callbackOnline = true;
 	private static volatile boolean probeDown;
 	private static long lastProbe;
+	/** A stall put the app in offline mode: it stays at least until then, whatever a probe finds, and its popups are not doubled. */
+	private static long holdUntil;
+	private static long quietUntil;
 	private static final java.util.concurrent.ExecutorService prober = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
 		Thread t = new Thread(r, "net-probe");
 		t.setDaemon(true);
@@ -125,13 +128,17 @@ public final class NetworkState {
 
 	private static void probeNow() {
 		prober.execute(() -> {
-			boolean ok = tcp("1.1.1.1", 443) || tcp("8.8.8.8", 53) || resolves("www.youtube.com");
+			// How long to wait for an answer follows Settings > Playback > "Wait for a stalled connection".
+			int wait = (int) Math.max(2000, Math.min(OfflineFallback.stallMs(), 8000));
+			boolean ok = tcp("1.1.1.1", 443, wait) || tcp("8.8.8.8", 53, wait) || resolves("www.youtube.com");
 			main.post(() -> {
-				if (probeDown != !ok) DiagnosticLog.log(LogCat.NETWORK, "reachability probe", "reachable=" + ok);
-				probeDown = !ok;
+				long now = android.os.SystemClock.uptimeMillis();
+				boolean held = ok && (now < holdUntil);
+				if (probeDown != (!ok || held)) DiagnosticLog.log(LogCat.NETWORK, "reachability probe", "reachable=" + ok, "held=" + held);
+				probeDown = !ok || held;
 				main.removeCallbacks(reprobe);
-				// Down: tried again every few seconds until something gets through.
-				if (!ok) main.postDelayed(reprobe, 8000);
+				// Down: tried again every few seconds until something gets through (and the hold after a stall is over).
+				if (probeDown) main.postDelayed(reprobe, held ? Math.max(1000, holdUntil - now) : 8000);
 				recompute();
 			});
 		});
@@ -139,9 +146,28 @@ public final class NetworkState {
 
 	private static final Runnable reprobe = NetworkState::probeNow;
 
-	private static boolean tcp(String host, int port) {
+	/**
+	 * A stream stalled (buffering for the whole stall wait, or a song that would not start): the app goes into offline mode at
+	 * once, the same state as no connection, so lists grey out, the placeholders show and downloaded items are what can be
+	 * played, whether or not anything is playing. It ends when a probe gets through after the hold (three times the stall wait,
+	 * at least 30 s).
+	 */
+	public static void markStalled() {
+		main.post(() -> {
+			long now = android.os.SystemClock.uptimeMillis();
+			quietUntil = now + 10_000;
+			holdUntil = now + Math.max(30_000, OfflineFallback.startMs());
+			if (!probeDown) DiagnosticLog.log(LogCat.NETWORK, "stalled: offline mode", "holdSeconds=" + ((holdUntil - now) / 1000));
+			probeDown = true;
+			main.removeCallbacks(reprobe);
+			main.postDelayed(reprobe, holdUntil - now);
+			recompute();
+		});
+	}
+
+	private static boolean tcp(String host, int port, int wait) {
 		try (java.net.Socket sk = new java.net.Socket()) {
-			sk.connect(new java.net.InetSocketAddress(host, port), 2000);
+			sk.connect(new java.net.InetSocketAddress(host, port), wait);
 			return true;
 		} catch (Exception ex) {
 			return false;
@@ -179,7 +205,7 @@ public final class NetworkState {
 			lostOnce = true;
 			// While a stream plays, the stall popup (about the same news, with the downloaded fallback) follows if it really stops:
 			// two cards for one event were noise. The toast is for when nothing streams.
-			if (!stallUp && !streamPlaying()) TopToast.show(R.drawable.network_off, R.string.network_lost_toast);
+			if (!stallUp && !streamPlaying() && (android.os.SystemClock.uptimeMillis() >= quietUntil)) TopToast.show(R.drawable.network_off, R.string.network_lost_toast);
 		}
 		for (Listener l : listeners) {
 			try {
