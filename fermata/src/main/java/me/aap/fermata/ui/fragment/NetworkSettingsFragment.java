@@ -23,7 +23,7 @@ public class NetworkSettingsFragment extends ReorderListFragment {
 	/** The category in the list beside the page (a wide window) that this page belongs to. */
 	@Override
 	public int settingsEntryTitle() {
-		return R.string.settings_group_playback;
+		return R.string.network_settings;
 	}
 
 	@Override
@@ -60,6 +60,48 @@ public class NetworkSettingsFragment extends ReorderListFragment {
 			e.removePref(OfflineFallback.ON_STALL);
 			e.removePref(OfflineFallback.STALL_SECONDS);
 		}
+		for (Runnable r : syncers) r.run();
+	}
+
+	@Override
+	protected int resetTitle() {
+		return R.string.network_settings_reset;
+	}
+
+	@Override
+	protected int resetQuestion() {
+		return R.string.network_settings_reset_question;
+	}
+
+	@Override
+	protected int hintRes() {
+		return R.string.network_settings_hint;
+	}
+
+	@Override
+	protected void goBack() {
+		delegate().showFragment(R.id.settings_fragment);
+	}
+
+	@Override
+	protected View createExtraHeader() {
+		LinearLayout box = new LinearLayout(palette);
+		box.setOrientation(LinearLayout.VERTICAL);
+		PreferenceStore p = OfflineFallback.prefs();
+
+		section(box, R.string.network_section_mode);
+		addSwitchRow(box, R.string.network_offline_mode, R.string.network_offline_mode_sub,
+				NetworkState::isForcedOffline, NetworkState::setForcedOffline, null);
+
+		section(box, R.string.network_section_stall);
+		addSwitchRow(box, R.string.offline_on_stall, R.string.offline_on_stall_sub,
+				() -> p.getBooleanPref(OfflineFallback.ON_STALL),
+				on -> p.applyBooleanPref(OfflineFallback.ON_STALL, on), null);
+		addValueSliderRow(box, R.string.offline_stall_seconds, R.string.offline_stall_seconds_sub, 3, 60,
+				() -> p.getIntPref(OfflineFallback.STALL_SECONDS),
+				v -> p.applyIntPref(OfflineFallback.STALL_SECONDS, v),
+				v -> getString(R.string.network_seconds, v), null);
+
 		for (Runnable r : syncers) r.run();
 	}
 

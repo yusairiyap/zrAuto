@@ -66,3 +66,15 @@ Should the car screen keep a reduced settings root (Home, Layout, Playback, Cont
 5. Remove the old root builder once every row is on a page.
 
 Never built or run from the cloud session: leave CI as the first compile and ask for device checks page by page.
+
+
+## Round after the first device test
+
+- Docked video panel: the title/Info overlay were clipped (`clipChildren` on `VideoView` / `VideoControlsOverlay`; the screen's top is outside the scaled view's bounds), the control
+  panel inset now applies whatever its look, and `ui/view/FabDock` moves the floating buttons to the video's width and puts what does not fit behind a "..." button (menu).
+- Settings: Appearance no longer repeats the album-art switch; Network and offline is a root category; Search is a page (`SearchSettingsFragment`) with a live text box and
+  highlighted matches, indexing the old tree plus `SettingsNative` (a hand list of the code-built pages' rows: add a line there when a row is added); Back from Nav tabs / FAB /
+  All in One / Info overlay goes straight to the Layout page (the detour through Settings' pending input left the bars half set up); "Show track icons" reads "Show video thumbnail";
+  every list page shows its sub-pages and buttons first (`PreferenceSet#display`) and its on/off settings as switches (`BooleanOpts.asSwitch` by default).
+- Not rebuilt as code-built pages: Playback, Video, Subtitles, Key bindings, Add-ons, Other, Backup, Library, Privacy still render through `PreferenceView` (restyled by
+  `SettingsStyle`): add-ons supply their own `PreferenceSet`s and key bindings are one list per action, which a page per screen cannot hold.

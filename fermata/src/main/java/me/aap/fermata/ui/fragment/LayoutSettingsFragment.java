@@ -166,6 +166,16 @@ public class LayoutSettingsFragment extends ReorderListFragment {
 			box.addView(pills, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 		}
 
+		section(box, R.string.layout_section_pages);
+		addActionRow(box, R.string.nav_tabs_prefs, R.string.prefs_sub_nav_tabs, R.drawable.view_grid,
+				() -> delegate().showFragment(R.id.nav_tabs_fragment));
+		addActionRow(box, R.string.secondary_fab_prefs, R.string.prefs_sub_fab, R.drawable.fab,
+				() -> delegate().showFragment(R.id.fab_settings_fragment, car));
+		addActionRow(box, R.string.all_in_one, R.string.all_in_one_sub, R.drawable.view_grid,
+				() -> delegate().showFragment(R.id.all_in_one_fragment, car));
+		addActionRow(box, R.string.info_overlay_prefs, R.string.prefs_sub_info_overlay, R.drawable.about,
+				() -> delegate().showFragment(R.id.info_overlay_fragment, car));
+
 		section(box, R.string.layout_section_bars);
 		addSwitchRow(box, R.string.hide_bars, R.string.hide_bars_sub,
 				() -> p.getBooleanPref(pick(MainActivityPrefs.HIDE_BARS, MainActivityPrefs.HIDE_BARS_AA)),
@@ -192,16 +202,6 @@ public class LayoutSettingsFragment extends ReorderListFragment {
 				() -> p.getIntPref(pick(MainActivityPrefs.NAV_BAR_POS, MainActivityPrefs.NAV_BAR_POS_AA)),
 				v -> p.applyIntPref(pick(MainActivityPrefs.NAV_BAR_POS, MainActivityPrefs.NAV_BAR_POS_AA), v));
 		size(box, R.string.nav_bar_size, MainActivityPrefs.NAV_BAR_SIZE, MainActivityPrefs.NAV_BAR_SIZE_AA);
-		addActionRow(box, R.string.nav_tabs_prefs, R.string.prefs_sub_nav_tabs, R.drawable.view_grid,
-				() -> delegate().showFragment(R.id.nav_tabs_fragment));
-
-		section(box, R.string.layout_section_buttons);
-		addActionRow(box, R.string.secondary_fab_prefs, R.string.prefs_sub_fab, R.drawable.fab,
-				() -> delegate().showFragment(R.id.fab_settings_fragment, car));
-		addActionRow(box, R.string.all_in_one, R.string.all_in_one_sub, R.drawable.view_grid,
-				() -> delegate().showFragment(R.id.all_in_one_fragment, car));
-		addActionRow(box, R.string.info_overlay_prefs, R.string.prefs_sub_info_overlay, R.drawable.about,
-				() -> delegate().showFragment(R.id.info_overlay_fragment, car));
 
 		section(box, R.string.layout_section_lists);
 		var media = delegate().getMediaServiceBinder().getLib().getPrefs();

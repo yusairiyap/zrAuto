@@ -90,6 +90,8 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 	public void addBooleanPref(Consumer<PreferenceView.BooleanOpts> builder) {
 		add(() -> {
 			PreferenceView.BooleanOpts o = new PreferenceView.BooleanOpts();
+			// Every on/off setting is a switch, as on the code-built pages.
+			o.asSwitch = true;
 			builder.accept(o);
 			return o;
 		});
@@ -263,6 +265,7 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 				if ((at < 0) || (i < at)) at = i;
 			}
 			owner.preferences.remove(m);
+			owner.touch();
 			moved.add(m);
 		}
 		if (moved.isEmpty()) return null;
@@ -272,6 +275,7 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 			sub.preferences.add(m);
 		}
 		preferences.add((at < 0) ? preferences.size() : Math.min(at, preferences.size()), sub);
+		touch();
 		return sub;
 	}
 
@@ -371,6 +375,41 @@ public class PreferenceSet implements Supplier<PreferenceView.Opts> {
 
 	private void add(Supplier<? extends PreferenceView.Opts> supplier) {
 		preferences.add(supplier);
+		touch();
+	}
+
+	private int version;
+	private int displayVersion = -1;
+	private List<Supplier<? extends PreferenceView.Opts>> display;
+
+	/** The entries changed order or content behind {@link #getPreferences()}'s back: {@link #display()} is made again. */
+	public void touch() {
+		version++;
+	}
+
+	/**
+	 * The entries as a page shows them: the ones that lead somewhere (sub-pages, buttons) first, then the settings
+	 * themselves (switches, sliders, choices), each group in the order it was added.
+	 */
+	public List<Supplier<? extends PreferenceView.Opts>> display() {
+		if ((display != null) && (displayVersion == version) && (display.size() == preferences.size())) return display;
+		List<Supplier<? extends PreferenceView.Opts>> nested = new ArrayList<>();
+		List<Supplier<? extends PreferenceView.Opts>> rest = new ArrayList<>();
+		for (Supplier<? extends PreferenceView.Opts> s : preferences) {
+			boolean leads = s instanceof PreferenceSet;
+			if (!leads) {
+				try {
+					leads = s.get() instanceof PreferenceView.ButtonOpts;
+				} catch (RuntimeException ex) {
+					// Kept where it was added.
+				}
+			}
+			(leads ? nested : rest).add(s);
+		}
+		nested.addAll(rest);
+		display = nested;
+		displayVersion = version;
+		return nested;
 	}
 
 	private void notifyChanged() {

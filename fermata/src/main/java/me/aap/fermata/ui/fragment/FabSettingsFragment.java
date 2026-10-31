@@ -41,6 +41,11 @@ public class FabSettingsFragment extends ReorderListFragment {
 	private boolean aa;
 
 	@Override
+	public int settingsEntryTitle() {
+		return R.string.layout_settings;
+	}
+
+	@Override
 	public int getFragmentId() {
 		return R.id.fab_settings_fragment;
 	}
@@ -277,8 +282,7 @@ public class FabSettingsFragment extends ReorderListFragment {
 
 	@Override
 	protected void goBack() {
-		delegate().showFragment(R.id.settings_fragment,
-				aa ? SettingsFragment.SHOW_AA_INTERFACE : SettingsFragment.SHOW_INTERFACE);
+		delegate().showFragment(R.id.layout_settings_fragment, aa);
 	}
 
 	// ---- Options above the rows ----

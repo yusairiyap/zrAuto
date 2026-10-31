@@ -214,8 +214,10 @@ public class SettingsFragment extends MainActivityFragment
 			adapter.setPreferenceSet(keyBindingsSet);
 		} else if ((pendingInput == SHOW_INTERFACE) || (pendingInput == SHOW_AA_INTERFACE)) {
 			// The old Interface lists became the Layout and navigation page.
-			MainActivityDelegate.get(requireContext()).showFragment(R.id.layout_settings_fragment,
-					pendingInput == SHOW_AA_INTERFACE);
+			boolean aa = pendingInput == SHOW_AA_INTERFACE;
+			MainActivityDelegate d = MainActivityDelegate.get(requireContext());
+			// Not inside this fragment's own creation: a second switch started from here leaves the bars half set up.
+			d.getBody().post(() -> d.showFragment(R.id.layout_settings_fragment, aa));
 		} else if ((pendingInput instanceof String cs) && cs.startsWith(CATEGORY)) {
 			try {
 				showCategory(Integer.parseInt(cs.substring(CATEGORY.length())));
@@ -298,6 +300,7 @@ public class SettingsFragment extends MainActivityFragment
 
 	@Override
 	public void onDestroyView() {
+		lastRoot = null;
 		MainActivityDelegate.getActivityDelegate(requireContext()).onSuccess(this::cleanUp);
 		super.onDestroyView();
 	}
@@ -545,7 +548,7 @@ public class SettingsFragment extends MainActivityFragment
 			o.title = R.string.settings_search;
 			o.subtitle = R.string.settings_search_sub;
 			o.icon = R.drawable.search;
-			o.onClick = () -> searchSettings(a, set);
+			o.onClick = () -> a.showFragment(R.id.search_settings_fragment);
 		});
 		addHomePrefs(a, set);
 
@@ -563,12 +566,6 @@ public class SettingsFragment extends MainActivityFragment
 			o.onClick = () -> a.showFragment(R.id.theme_settings_fragment);
 		});
 		addGlassPrefs(a, sub1);
-		sub1.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.ART_ACCENT;
-			o.title = R.string.art_accent;
-			o.subtitle = R.string.art_accent_sub;
-		});
 		sub1.addListPref(o -> {
 			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.LOCALE;
@@ -581,6 +578,12 @@ public class SettingsFragment extends MainActivityFragment
 					v -> v.locale.getDisplayName(), String[]::new);
 		});
 
+		set.addButton(o -> {
+			o.title = R.string.network_settings;
+			o.subtitle = R.string.network_settings_sub;
+			o.icon = R.drawable.wifi;
+			o.onClick = () -> a.showFragment(R.id.network_settings_fragment);
+		});
 		set.addButton(o -> {
 			o.title = R.string.layout_settings;
 			o.subtitle = R.string.layout_settings_sub;
@@ -667,12 +670,6 @@ public class SettingsFragment extends MainActivityFragment
 			o.store = mediaPrefs;
 			o.pref = BrowsableItemPrefs.PLAY_NEXT;
 			o.title = R.string.play_next_on_completion;
-		});
-		sub1.addButton(o -> {
-			o.title = R.string.network_settings;
-			o.subtitle = R.string.network_settings_sub;
-			o.icon = R.drawable.wifi;
-			o.onClick = () -> a.showFragment(R.id.network_settings_fragment);
 		});
 		addTapAction(a, sub1, MainActivityPrefs.TAP_ACTION);
 		if (MusicPlayer.isEnabled()) {
@@ -1201,11 +1198,12 @@ public class SettingsFragment extends MainActivityFragment
 		groupRoot(set, R.string.settings_group_backup, R.string.settings_group_backup_sub,
 				R.string.backup_restore, R.string.other, R.string.diagnostics);
 		orderRoot(set, R.string.settings_search, R.string.home, R.string.appearance_prefs, R.string.layout_settings,
-				R.string.settings_group_playback, R.string.video_settings, R.string.settings_group_subtitles,
+				R.string.network_settings, R.string.settings_group_playback, R.string.video_settings, R.string.settings_group_subtitles,
 				R.string.settings_group_controls, R.string.settings_group_library, R.string.private_mode_prefs,
 				R.string.addons, R.string.settings_group_backup);
 
 		rootSet = set;
+		lastRoot = set;
 		publishNav(set, a.getContext());
 		return new PreferenceViewAdapter(set) {
 			@Override
@@ -1218,37 +1216,49 @@ public class SettingsFragment extends MainActivityFragment
 	}
 
 	/** One match of a search: where it is and what to do when it is picked. */
-	private record Hit(String path, CharSequence title, Runnable open) {
+	public record Hit(CharSequence path, CharSequence title, @Nullable CharSequence sub, int icon, Runnable open) {
 	}
 
-	/** Asks for a word and lists the settings (pages and rows, in any category) whose title or line mentions it. */
-	private void searchSettings(MainActivityDelegate a, PreferenceSet root) {
-		UiUtils.queryText(a.getContext(), R.string.settings_search, R.drawable.search).onSuccess(q -> {
-			String needle = (q == null) ? "" : q.trim().toLowerCase();
-			if (needle.isEmpty()) return;
-			List<Hit> hits = new java.util.ArrayList<>();
-			collectHits(a.getContext(), root, root, "", needle, hits);
-			a.getContextMenu().show(b -> {
-				b.setTitle(a.getContext().getString(R.string.settings_search_results, q.trim()));
-				if (hits.isEmpty()) {
-					b.addItem(android.view.View.generateViewId(), R.drawable.search, R.string.settings_search_none);
-					return;
-				}
-				for (Hit h : hits) {
-					b.addItem(android.view.View.generateViewId(), R.drawable.search, h.title() + "\n" + h.path())
-							.setHandler(i -> {
-								h.open().run();
-								return true;
-							});
-				}
-			});
-		});
+	/** The last tree built (Settings itself or a throwaway one), what the search page looks through. */
+	@Nullable
+	private static PreferenceSet lastRoot;
+
+	/** The tree kept for the search is dropped (its entries hold the activity). */
+	public static void clearSearchRoot() {
+		lastRoot = null;
 	}
 
-	private void collectHits(Context ctx, PreferenceSet root, PreferenceSet set, String path, String needle,
-													 List<Hit> out) {
+	private static PreferenceSet searchRoot(MainActivityDelegate a) {
+		PreferenceSet r = lastRoot;
+		if (r == null) {
+			try {
+				SettingsFragment f = new SettingsFragment();
+				f.createAdapter(a);
+				f.cleanUp(a);
+			} catch (RuntimeException ex) {
+				Log.e(ex, "Failed to build the settings for the search");
+			}
+			r = lastRoot;
+		}
+		return r;
+	}
+
+	/** The settings (pages and rows, in any category) whose title or line mentions {@code needle}, at most {@code max}. */
+	public static List<Hit> search(MainActivityDelegate a, String needle, int max) {
+		List<Hit> out = new java.util.ArrayList<>();
+		String n = needle.trim().toLowerCase();
+		if (n.isEmpty()) return out;
+		PreferenceSet root = searchRoot(a);
+		if (root != null) collectHits(a, root, "", n, out, max);
+		SettingsNative.collect(a, n, out, max);
+		return out;
+	}
+
+	private static void collectHits(MainActivityDelegate a, PreferenceSet set, String path, String needle,
+																	List<Hit> out, int max) {
+		Context ctx = a.getContext();
 		for (var o : set.getPreferences()) {
-			if (out.size() >= 15) return;
+			if (out.size() >= max) return;
 			try {
 				PreferenceView.Opts opts = o.get();
 				CharSequence title = (opts.ctitle != null) ? opts.ctitle : ((opts.title != ID_NULL) ? ctx.getString(opts.title) : null);
@@ -1256,13 +1266,16 @@ public class SettingsFragment extends MainActivityFragment
 				CharSequence sub = (opts.csubtitle != null) ? opts.csubtitle : ((opts.subtitle != ID_NULL) ? ctx.getString(opts.subtitle) : null);
 				boolean match = title.toString().toLowerCase().contains(needle) ||
 						((sub != null) && sub.toString().toLowerCase().contains(needle));
-				if (o instanceof PreferenceSet sub1) {
-					if (match) out.add(new Hit(path, title, () -> adapter.setPreferenceSet(sub1)));
-					collectHits(ctx, root, sub1, path.isEmpty() ? title.toString() : (path + " > " + title), needle, out);
+				if (o instanceof PreferenceSet child) {
+					if (match) {
+						out.add(new Hit(path.isEmpty() ? ctx.getString(R.string.settings) : path, title, sub, opts.icon,
+								() -> a.showFragment(R.id.settings_fragment, category(child.getId()))));
+					}
+					collectHits(a, child, path.isEmpty() ? title.toString() : (path + " > " + title), needle, out, max);
 				} else if (match && (opts.title != R.string.settings_search)) {
 					Runnable open = (opts instanceof PreferenceView.ButtonOpts bo && bo.onClick != null) ?
-							() -> bo.onClick.run() : () -> adapter.setPreferenceSet(set);
-					out.add(new Hit(path.isEmpty() ? ctx.getString(R.string.settings) : path, title, open));
+							() -> bo.onClick.run() : () -> a.showFragment(R.id.settings_fragment, category(set.getId()));
+					out.add(new Hit(path.isEmpty() ? ctx.getString(R.string.settings) : path, title, sub, opts.icon, open));
 				}
 			} catch (RuntimeException ex) {
 				Log.e(ex, "A settings entry could not be searched");
@@ -1270,10 +1283,6 @@ public class SettingsFragment extends MainActivityFragment
 		}
 	}
 
-	/**
-	 * Gathers the root entries whose titles are {@code titles} into one category. Nothing is changed when
-	 * fewer than two are found, so a category never wraps a single page.
-	 */
 	/** The entry titled {@code title} below {@code root}, the shallowest first. */
 	@Nullable
 	private static me.aap.utils.function.Supplier<? extends PreferenceView.Opts> findByTitle(PreferenceSet root, int title) {
@@ -1313,6 +1322,7 @@ public class SettingsFragment extends MainActivityFragment
 			rank.put(o, r);
 		}
 		list.sort((x, y) -> Integer.compare(rank.get(x), rank.get(y)));
+		root.touch();
 	}
 
 	private static void groupRoot(PreferenceSet root, int title, int subtitle, int... titles) {

@@ -69,8 +69,10 @@
     <string name="theme_settings_reset">Reset the theme</string>
     <string name="theme_settings_reset_question">Go back to the default themes for the phone and the car screen?</string>
     <string name="settings_search">Search settings</string>
-    <string name="settings_search_sub">Find a setting by its name</string>
+    <string name="settings_search_sub">Find a setting by its name and open its page</string>
     <string name="settings_search_results">Settings matching \'%1$s\'</string>
+    <string name="settings_search_hint">Type a setting's name</string>
+    <string name="settings_search_clear">Clear</string>
     <string name="settings_search_none">Nothing found</string>
     <string name="layout_settings">Layout and navigation</string>
     <string name="layout_settings_sub">Bars, sizes, navigation, floating buttons and lists</string>
@@ -79,7 +81,7 @@
     <string name="layout_settings_reset_question">Put the bars, sizes and navigation back to their defaults on both screens?</string>
     <string name="layout_section_bars">Bars and sizes</string>
     <string name="nav_bar_nav">Navigation</string>
-    <string name="layout_section_buttons">Buttons and overlays</string>
+    <string name="layout_section_pages">Pages</string>
     <string name="layout_section_lists">Lists</string>
     <string name="layout_section_car_only">Car screen only</string>
     <string name="fab_more">More buttons</string>
@@ -95,7 +97,7 @@
     <string name="settings_group_backup">Backup and about</string>
     <string name="settings_group_backup_sub">Backup, updates, welcome guide and logs</string>
     <string name="appearance_prefs">Appearance</string>
-    <string name="appearance_prefs_sub">Theme, UI style, colour from the cover and language</string>
+    <string name="appearance_prefs_sub">Theme, UI style and language</string>
     <string name="playback_settings">Playback settings</string>
     <string name="playback_control">Playback control</string>
     <string name="engine_prefs">Media engine</string>
@@ -117,7 +119,7 @@
     <string name="nav_bar_pos_left">Left</string>
     <string name="nav_bar_pos_right">Right</string>
 
-    <string name="show_track_icons">Show track icons</string>
+    <string name="show_track_icons">Show video thumbnail</string>
     <string name="lang">Language</string>
     <string name="trans_lang">Translation language</string>
     <string name="hide_bars">Hide bars</string>
