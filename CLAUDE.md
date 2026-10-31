@@ -1668,7 +1668,8 @@ The stutter turned out to be the sound output starting up; see open issue 6 (the
   no waiting; FAB list / FAB Screen group, All in One tile, key bindings and the Home "Offline mode" widget (`OfflineWidget`). `NoNetworkView` then says "Offline mode" and its button goes online.
   A stall (`NetworkState.markStalled`) is automatic offline mode: a second stall within 2 minutes, or a failed reachability probe, holds it for at least 30 s; one stall on a connection that answers only probes.
   `hintFailure` starts a probe after a real failure (never periodically).
-- The settings redesign is a plan only: `docs/SETTINGS_REDESIGN_PLAN.md`.
+- Not built, handed over for their own branches: the settings redesign (`docs/SETTINGS_REDESIGN_PLAN.md`, `docs/HANDOVER_SETTINGS_REDESIGN.md`) and the
+  header / control panel that move beside the docked in-video panels (`docs/HANDOVER_VIDEO_PANEL_HEADER.md`).
 
 ## Open issues (handover list)
 
