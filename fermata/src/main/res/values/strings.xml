@@ -96,6 +96,7 @@
     <string name="private_mode_clear_confirm_title">Clear private browsing data?</string>
     <string name="private_mode_clear_confirm">This removes the cookies and site data saved during Private Mode. Your regular session is not affected.</string>
     <string name="enable_addon_sub">Turn this add-on on or off</string>
+    <string name="settings_search_chip">Search</string>
     <string name="settings_car_only">CAR SCREEN ONLY</string>
     <string name="settings_group_playback">Playback</string>
     <string name="settings_group_playback_sub">Taps and what plays next, controls and the player</string>

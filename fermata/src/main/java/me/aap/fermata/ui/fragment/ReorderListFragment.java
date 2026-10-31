@@ -155,6 +155,12 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 		return true;
 	}
 
+	/** The title bar carries a Search chip on every settings page. */
+	@Override
+	public me.aap.utils.ui.view.ToolBarView.Mediator getToolBarMediator() {
+		return SettingsSearchChip.MEDIATOR;
+	}
+
 	/** The rows stay put under a drag: the bars never move away under them. */
 	@Override
 	public boolean collapsesBarsOnScroll() {

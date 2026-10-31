@@ -68,6 +68,8 @@
     <item name="privacy_settings_fragment" type="id" />
     <item name="theme_settings_fragment" type="id" />
     <item name="layout_settings_fragment" type="id" />
+    <item name="search_settings_fragment" type="id" />
+    <item name="settings_search_chip" type="id" />
     <item name="home_settings_fragment" type="id" />
     <item name="glass_settings_fragment" type="id" />
     <item name="menu_anchor" type="id" />

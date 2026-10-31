@@ -81,7 +81,7 @@ Never built or run from the cloud session: leave CI as the first compile and ask
 
 ## Third round (device test)
 
-- Search was removed again (root button, page, index): it was not useful. `PreferenceSet#display` still sorts pages (sub-pages and buttons first) and now also honours
+- Search is back as a page (`SearchSettingsFragment`, live text box, highlighted matches) opened from a **Search chip in the title bar of every settings page** (`SettingsSearchChip`, the mediator of `ReorderListFragment` and `SettingsFragment`); the redundant "Search settings" entry in the root list stays gone. `PreferenceSet#display` still sorts pages (sub-pages and buttons first) and now also honours
   `markLastPinned` (an add-on's Enable switch is always first). Add-on rows have subtitles (`*_sub` strings next to their titles).
 - Privacy is a code-built page (`PrivacySettingsFragment`): the two clear actions come first and ask before clearing (they cannot be undone); the Private Mode options stay in
   view, dimmed, while it is off. `SHOW_PRIVATE_MODE_SETTINGS` opens it.

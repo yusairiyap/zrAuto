@@ -173,6 +173,12 @@ public class SettingsFragment extends MainActivityFragment
 		return true;
 	}
 
+	/** The title bar carries a Search chip on every settings page. */
+	@Override
+	public me.aap.utils.ui.view.ToolBarView.Mediator getToolBarMediator() {
+		return SettingsSearchChip.MEDIATOR;
+	}
+
 	/**
 	 * Same as {@link #SHOW_DIM_SETTINGS}, but for an addon's own settings page (Settings > Addons >
 	 * the addon), by the addon's module name.
@@ -300,6 +306,7 @@ public class SettingsFragment extends MainActivityFragment
 
 	@Override
 	public void onDestroyView() {
+		lastRoot = null;
 		MainActivityDelegate.getActivityDelegate(requireContext()).onSuccess(this::cleanUp);
 		super.onDestroyView();
 	}
@@ -1158,6 +1165,7 @@ public class SettingsFragment extends MainActivityFragment
 				R.string.addons, R.string.settings_group_backup);
 
 		rootSet = set;
+		lastRoot = set;
 		publishNav(set, a.getContext());
 		return new PreferenceViewAdapter(set) {
 			@Override
@@ -1167,6 +1175,74 @@ public class SettingsFragment extends MainActivityFragment
 				a.fireBroadcastEvent(FRAGMENT_CONTENT_CHANGED);
 			}
 		};
+	}
+
+	/** One match of a search: where it is and what to do when it is picked. */
+	public record Hit(CharSequence path, CharSequence title, @Nullable CharSequence sub, int icon, Runnable open) {
+	}
+
+	/** The last tree built (Settings itself or a throwaway one), what the search page looks through. */
+	@Nullable
+	private static PreferenceSet lastRoot;
+
+	/** The tree kept for the search is dropped (its entries hold the activity). */
+	public static void clearSearchRoot() {
+		lastRoot = null;
+	}
+
+	private static PreferenceSet searchRoot(MainActivityDelegate a) {
+		PreferenceSet r = lastRoot;
+		if (r == null) {
+			try {
+				SettingsFragment f = new SettingsFragment();
+				f.createAdapter(a);
+				f.cleanUp(a);
+			} catch (RuntimeException ex) {
+				Log.e(ex, "Failed to build the settings for the search");
+			}
+			r = lastRoot;
+		}
+		return r;
+	}
+
+	/** The settings (pages and rows, in any category) whose title or line mentions {@code needle}, at most {@code max}. */
+	public static List<Hit> search(MainActivityDelegate a, String needle, int max) {
+		List<Hit> out = new java.util.ArrayList<>();
+		String n = needle.trim().toLowerCase();
+		if (n.isEmpty()) return out;
+		PreferenceSet root = searchRoot(a);
+		if (root != null) collectHits(a, root, "", n, out, max);
+		SettingsNative.collect(a, n, out, max);
+		return out;
+	}
+
+	private static void collectHits(MainActivityDelegate a, PreferenceSet set, String path, String needle,
+																	List<Hit> out, int max) {
+		Context ctx = a.getContext();
+		for (var o : set.getPreferences()) {
+			if (out.size() >= max) return;
+			try {
+				PreferenceView.Opts opts = o.get();
+				CharSequence title = (opts.ctitle != null) ? opts.ctitle : ((opts.title != ID_NULL) ? ctx.getString(opts.title) : null);
+				if (title == null) continue;
+				CharSequence sub = (opts.csubtitle != null) ? opts.csubtitle : ((opts.subtitle != ID_NULL) ? ctx.getString(opts.subtitle) : null);
+				boolean match = title.toString().toLowerCase().contains(needle) ||
+						((sub != null) && sub.toString().toLowerCase().contains(needle));
+				if (o instanceof PreferenceSet child) {
+					if (match) {
+						out.add(new Hit(path.isEmpty() ? ctx.getString(R.string.settings) : path, title, sub, opts.icon,
+								() -> a.showFragment(R.id.settings_fragment, category(child.getId()))));
+					}
+					collectHits(a, child, path.isEmpty() ? title.toString() : (path + " > " + title), needle, out, max);
+				} else if (match && (opts.title != R.string.settings_search)) {
+					Runnable open = (opts instanceof PreferenceView.ButtonOpts bo && bo.onClick != null) ?
+							() -> bo.onClick.run() : () -> a.showFragment(R.id.settings_fragment, category(set.getId()));
+					out.add(new Hit(path.isEmpty() ? ctx.getString(R.string.settings) : path, title, sub, opts.icon, open));
+				}
+			} catch (RuntimeException ex) {
+				Log.e(ex, "A settings entry could not be searched");
+			}
+		}
 	}
 
 	/** The entry titled {@code title} below {@code root}, the shallowest first. */
