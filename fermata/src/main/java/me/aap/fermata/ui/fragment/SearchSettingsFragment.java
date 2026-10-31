@@ -192,6 +192,7 @@ public class SearchSettingsFragment extends ReorderListFragment {
 		// Fades in again on every change instead of jumping.
 		box.setAlpha(0.2f);
 		box.animate().alpha(1f).setDuration(160).start();
+		scrollToTop();
 	}
 
 	private View row(SettingsFragment.Hit h, String needle) {
@@ -251,6 +252,8 @@ public class SearchSettingsFragment extends ReorderListFragment {
 			et.postDelayed(() -> {
 				if (input != et) return;
 				et.requestFocus();
+				// Focusing a field can scroll its row into view: the box is at the very top, so the page stays there.
+				scrollToTop();
 				var imm = (android.view.inputmethod.InputMethodManager) palette.getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
 				if (imm != null) imm.showSoftInput(et, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
 				androidx.core.view.WindowInsetsControllerCompat c = androidx.core.view.ViewCompat.getWindowInsetsController(et);

@@ -140,6 +140,14 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 
 	private boolean recolorPending;
 
+	/** Back to the first row (a page whose input is at the top: focusing it or a list change must not leave the page scrolled down). */
+	protected final void scrollToTop() {
+		RecyclerView rv = list;
+		if (rv == null) return;
+		rv.stopScroll();
+		rv.scrollToPosition(0);
+	}
+
 	/**
 	 * Sets a chip's or card's fill, and has the album art colouring look at the page once more (one pass for however many fills
 	 * change together): a colour set from code lies in the theme's blue until a walk maps it, and nothing lays out on a tap.
