@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="offline_stall_seconds">Wait for a stalled connection</string>
-    <string name="offline_stall_seconds_sub">Seconds of buffering before the connection counts as stalled. Then the app goes into offline mode (lists grey out for songs that are not downloaded, network screens show their placeholder) and the popup, or the downloaded fallback, appears. A single stall on a connection that still answers only runs a check; a second one within two minutes, or a failed check, switches it on. It ends by itself once the connection answers again, after at least 30 seconds. A video that is starting, or an ad, waits three times as long.</string>
+    <string name="offline_stall_seconds_sub">Seconds of buffering before the connection counts as stalled and the app goes offline</string>
     <string name="network_restored">Connection restored</string>
     <string name="network_lost_toast">No connection. Downloaded items still play.</string>
     <string name="network_item_unavailable">No connection, and this one is not downloaded.</string>
