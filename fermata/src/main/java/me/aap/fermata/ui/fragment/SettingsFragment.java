@@ -705,6 +705,14 @@ public class SettingsFragment extends MainActivityFragment
 			o.title = R.string.offline_on_stall;
 			o.subtitle = R.string.offline_on_stall_sub;
 		});
+		sub1.addIntPref(o -> {
+			o.store = me.aap.fermata.ytdl.OfflineFallback.prefs();
+			o.pref = me.aap.fermata.ytdl.OfflineFallback.STALL_SECONDS;
+			o.title = R.string.offline_stall_seconds;
+			o.subtitle = R.string.offline_stall_seconds_sub;
+			o.seekMin = 3;
+			o.seekMax = 60;
+		});
 		// The car's own tap action stays with its Android Auto settings.
 		if (!(BuildConfig.AUTO && a.isCarActivityNotMirror())) {
 			addTapAction(a, sub1, MainActivityPrefs.TAP_ACTION);
@@ -1007,12 +1015,6 @@ public class SettingsFragment extends MainActivityFragment
 			o.seekScale = 2;
 			o.visibility = PrefCondition.create(a.getPrefs(), MainActivityPrefs.COMMENTS_SPLIT);
 		});
-		panels.addBooleanPref(o -> {
-			o.store = a.getPrefs();
-			o.pref = MainActivityPrefs.SIDE_PANEL_EFFECTS;
-			o.title = R.string.side_panel_effects;
-			o.subtitle = R.string.side_panel_sub;
-		});
 		panels.addIntPref(o -> {
 			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.SIDE_PANEL_EFFECTS_PERCENT;
@@ -1020,7 +1022,6 @@ public class SettingsFragment extends MainActivityFragment
 			o.seekMin = 8;
 			o.seekMax = 60;
 			o.seekScale = 2;
-			o.visibility = PrefCondition.create(a.getPrefs(), MainActivityPrefs.SIDE_PANEL_EFFECTS);
 		});
 		panels.addBooleanPref(o -> {
 			o.store = a.getPrefs();

@@ -201,43 +201,4 @@
             android:layout_marginTop="6dp"
             android:orientation="vertical" />
     </LinearLayout>
-
-    <!-- ====================== Apply to ====================== -->
-    <LinearLayout
-        android:id="@+id/apply_to"
-        style="@style/DataUsageCard">
-
-        <TextView
-            android:id="@+id/apply_to_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="36dp"
-            android:gravity="center_vertical"
-            android:text="@string/apply_to"
-            android:textColor="?attr/musicTextPrimary"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <me.aap.utils.pref.PreferenceView
-            android:id="@+id/track"
-            style="?attr/appEqualizerStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:background="@drawable/focusable_shape_transparent"
-            android:focusable="true"
-            android:paddingStart="5dp"
-            tools:ignore="RtlSymmetry" />
-
-        <me.aap.utils.pref.PreferenceView
-            android:id="@+id/folder"
-            style="?attr/appEqualizerStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:background="@drawable/focusable_shape_transparent"
-            android:focusable="true"
-            android:paddingStart="5dp"
-            tools:ignore="RtlSymmetry" />
-    </LinearLayout>
 </LinearLayout>

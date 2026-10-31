@@ -24,6 +24,7 @@ import me.aap.fermata.media.pref.MediaPrefs;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
 import me.aap.fermata.ytcaptions.CaptionsHub;
+import me.aap.fermata.ytdl.YtOffline;
 
 /**
  * The audio effects and the captions settings as {@link SidePanel}s, for use without leaving fullscreen video. Outside
@@ -37,14 +38,27 @@ public final class SidePanels {
 	// Audio effects
 
 	public static void effects(MainActivityDelegate a) {
-		boolean panel = SidePanel.isVideoUp(a) && a.getPrefs().getBooleanPref(MainActivityPrefs.SIDE_PANEL_EFFECTS);
-		if (!panel) {
-			AllInOneMenu.openEffects(a);
+		// The full effects screen (3D speaker, equalizer with presets, bass, virtualizer ...) as a panel: docked beside fullscreen
+		// video when there is room, else a centred modal card over whatever is showing. There is no page of its own any more.
+		if (SidePanel.isOpen("effects")) {
+			SidePanel.dismissOpen();
 			return;
 		}
 		MediaEngine eng = a.getMediaSessionCallback().getEngine();
 		PlayableItem src = (eng == null) ? null : eng.getSource();
-		// The same screen as the full page (equalizer, bass, virtualizer, the 3D sound stage, presets in a menu), in the panel.
+		boolean ytPage = (eng != null) && (eng.getId() == MediaPrefs.MEDIA_ENG_YT);
+		// YouTube's page, and a downloaded YouTube video played from its file, use the YouTube equalizer (the same settings,
+		// which the native player applies to the file's sound).
+		if ((eng == null) || ytPage || YtOffline.isDownloadedYoutube(src)) {
+			View yt = MusicPlayer.youtubeEffectsView(a);
+			if (yt != null) {
+				SidePanel.toggle(a, "effects", R.drawable.equalizer, R.string.action_audio_effects, MainActivityPrefs.SIDE_PANEL_EFFECTS_PERCENT, p -> {
+					tidyEffects(yt);
+					return yt;
+				});
+				return;
+			}
+		}
 		if ((src != null) && (eng.supportsAudioEffects() || eng.supportsSoundStage())) {
 			SidePanel.toggle(a, "effects", R.drawable.equalizer, R.string.action_audio_effects, MainActivityPrefs.SIDE_PANEL_EFFECTS_PERCENT, new SidePanel.Body() {
 				private AudioEffectsView view;
@@ -67,30 +81,14 @@ public final class SidePanels {
 			});
 			return;
 		}
-		// YouTube's page plays through Web Audio: its own effects screen (the same layout), in the panel.
-		View yt = (eng != null) ? ((eng.getId() == MediaPrefs.MEDIA_ENG_YT) ? MusicPlayer.youtubeEffectsView(a) : null) :
-				MusicPlayer.youtubeEffectsView(a);
-		if (yt != null) {
-			SidePanel.toggle(a, "effects", R.drawable.equalizer, R.string.action_audio_effects, MainActivityPrefs.SIDE_PANEL_EFFECTS_PERCENT, p -> {
-				tidyEffects(yt);
-				return yt;
-			});
-			return;
-		}
-		if (effectsOf(a) == null) {
-			TopToast.show(R.drawable.equalizer, R.string.music_effects_unavailable);
-			return;
-		}
-		SidePanel.toggle(a, "effects", R.drawable.equalizer, R.string.action_audio_effects, MainActivityPrefs.SIDE_PANEL_EFFECTS_PERCENT, p -> effectsBody(p));
+		TopToast.show(R.drawable.equalizer, (src == null) ? R.string.music_effects_play_first : R.string.music_effects_unavailable);
 	}
 
 	/**
 	 * The effects screen made for a whole page sits under the bars (a big gap on top) and offers where to keep the settings:
-	 * in a panel next to the video the gap is closed and the "Apply to" part left out.
+	 * in a panel the gap is closed.
 	 */
 	private static void tidyEffects(View v) {
-		View apply = v.findViewById(R.id.apply_to);
-		if (apply != null) apply.setVisibility(View.GONE);
 		float d = v.getResources().getDisplayMetrics().density;
 		// No grey cards in the panel: the sections sit straight on it, with less room around them.
 		if ((v instanceof ViewGroup sv) && (sv.getChildCount() > 0) && (sv.getChildAt(0) instanceof ViewGroup root)) {

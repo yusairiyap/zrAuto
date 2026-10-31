@@ -23,7 +23,6 @@ import me.aap.utils.async.FutureSupplier;
  * session over by itself (as it does for any video it plays), which closes this one.
  */
 final class YoutubeStartEngine implements MediaEngine {
-	private static final long START_TIMEOUT = 45_000L;
 	private MusicTrackItem track;
 	private final Listener listener;
 	private final Handler handler = new Handler(Looper.getMainLooper());
@@ -45,17 +44,30 @@ final class YoutubeStartEngine implements MediaEngine {
 		if (source instanceof MusicTrackItem t) track = t;
 		// The page has a video to load first: the loading circle until it plays (the YouTube player
 		// takes it down, see YoutubeMediaEngine#playing()).
+		// No connection and nothing stored for it: no point waiting at all.
+		if (me.aap.fermata.util.NetworkState.isUnavailable(track)) {
+			me.aap.fermata.util.NetworkState.toastUnavailable();
+			fail("no network and not downloaded");
+			return;
+		}
 		me.aap.fermata.media.engine.BufferingIndicator.setBuffering(true);
 		if (!MusicPlayer.startYoutube(track, source.getPrefs().getPositionPref())) {
 			fail("the YouTube addon is disabled");
 			return;
 		}
+		// The same patience as Settings > Playback > "Wait for a stalled connection" (three times it, for a start).
+		long wait = me.aap.fermata.ytdl.OfflineFallback.startMs();
 		handler.postDelayed(() -> {
-			if (!closed) fail("the video didn't start within " + (START_TIMEOUT / 1000) + 's');
-		}, START_TIMEOUT);
+			if (closed) return;
+			me.aap.fermata.util.NetworkState.markStalled();
+			me.aap.fermata.ui.view.TopToast.show(me.aap.fermata.R.drawable.network_weak, me.aap.fermata.R.string.network_start_failed);
+			fail("the video didn't start within " + (wait / 1000) + 's');
+		}, wait);
 	}
 
 	private void fail(String msg) {
+		// A download watched streamed that did not start must go back to playing its file.
+		me.aap.fermata.ytdl.YtOffline.clearForcedStream();
 		DiagnosticLog.w(LogCat.MUSIC, "YouTube track didn't start", "id=" + track.getVideoId(), "reason=" + msg);
 		listener.onEngineError(this, new MediaEngineException("YouTube: " + msg));
 	}

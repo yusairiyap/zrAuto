@@ -249,6 +249,24 @@ public class MainActivity extends SplitCompatActivityBase
 			}
 		}
 
+		// A menu is open and the finger lands outside it: it closes, wherever that is. The views of the tabs and bars did this
+		// for themselves (ActivityDelegate#interceptTouchEvent), but a modal card (effects, lyrics, playlists) over them never did.
+		if (action == MotionEvent.ACTION_DOWN) {
+			MainActivityDelegate a = getActivityDelegate().peek();
+			if ((a != null) && (a.getActiveMenu() instanceof View mv) && mv.isShown()) {
+				Rect r = new Rect();
+				if (!mv.getGlobalVisibleRect(r) || !r.contains((int) ev.getRawX(), (int) ev.getRawY())) {
+					a.hideActiveMenu();
+					menuTapSwallowed = true;
+					return true;
+				}
+			}
+		}
+		if (menuTapSwallowed) {
+			if ((action == MotionEvent.ACTION_UP) || (action == MotionEvent.ACTION_CANCEL)) menuTapSwallowed = false;
+			return true;
+		}
+
 		boolean handled = super.dispatchTouchEvent(ev);
 
 		if ((action == MotionEvent.ACTION_UP) || (action == MotionEvent.ACTION_CANCEL)) {
@@ -268,6 +286,9 @@ public class MainActivity extends SplitCompatActivityBase
 
 		return handled;
 	}
+
+	/** The touch that closed a menu is not given to anything else. */
+	private boolean menuTapSwallowed;
 
 	/** The focused text field a touch went down outside of -- see {@link #dispatchTouchEvent}. */
 	@Nullable

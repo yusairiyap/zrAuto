@@ -26,6 +26,7 @@ package me.aap.fermata.util;
  * <tr><td>{@link #TIMER}</td><td>the sleep timer</td></tr>
  * <tr><td>{@link #NETWORK}</td><td>stalls on a slow or lost connection, the offline fallback</td></tr>
  * <tr><td>{@link #CAPTIONS}</td><td>captions and lyrics look-ups</td></tr>
+ * <tr><td>{@link #SNAPSHOT}</td><td>screen snaps of the playing video</td></tr>
  * <tr><td>{@link #SEEK}</td><td>seek previews and the seek bar</td></tr>
  * <tr><td>{@link #ART}</td><td>covers and video frames</td></tr>
  * <tr><td>{@link #BODY}</td><td>the body layout: modes, edge fades, video surfaces, page blur</td></tr>
@@ -66,6 +67,7 @@ public final class LogCat {
 	public static final String NETWORK = "NETWORK";
 	public static final String CAPTIONS = "CAPTIONS";
 	public static final String SEEK = "SEEK";
+	public static final String SNAPSHOT = "SNAPSHOT";
 	public static final String ART = "ART";
 	public static final String BODY = "BODY";
 	public static final String VIDEO = "VIDEO";

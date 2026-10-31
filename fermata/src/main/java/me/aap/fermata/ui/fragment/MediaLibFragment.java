@@ -138,12 +138,20 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 			a.getToolBar().addBroadcastListener(this);
 			b.getLib().getPrefs().addBroadcastListener(this);
 			b.addBroadcastListener(this);
+			me.aap.fermata.util.NetworkState.addListener(netListener);
 			Log.d("MediaLibFragment view created: ", this);
 		});
 	}
 
+	/** Rows of songs that are not on the phone grey out without a connection and come back with it. */
+	private final me.aap.fermata.util.NetworkState.Listener netListener = online -> {
+		MediaItemListView v = getListView();
+		if (v != null) v.refreshState();
+	};
+
 	@Override
 	public void onDestroyView() {
+		me.aap.fermata.util.NetworkState.removeListener(netListener);
 		saveListState();
 		scrollPosition = -1;
 		cleanUp(getMainActivity());
@@ -963,6 +971,11 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 		 * "Play as video", which plays it normally even while music mode is on.
 		 */
 		public void playTapped(PlayableItem i, boolean allowMusic) {
+			// No connection and not on the phone: say so at once instead of waiting for it to time out.
+			if (me.aap.fermata.util.NetworkState.isUnavailable(i)) {
+				me.aap.fermata.util.NetworkState.toastUnavailable();
+				return;
+			}
 			var a = getMainActivity();
 			boolean asMusic = allowMusic && playsAsMusicInMusicMode() && !(i instanceof StreamItem) &&
 					MusicPlayer.tapPlaysAsMusic(a);

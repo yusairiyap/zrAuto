@@ -241,6 +241,10 @@ public enum Action {
 	// The captions settings as a panel beside fullscreen video, else the settings page. Persisted by ordinal: new
 	// actions only ever go at the end.
 	CAPTIONS_SETTINGS(R.string.action_captions_settings, a(me.aap.fermata.ui.view.SidePanels::captions)),
+	// The picture on screen of the playing video, saved to Pictures/zrAuto at the video's own resolution.
+	SNAPSHOT(R.string.action_snapshot, a(me.aap.fermata.ui.view.VideoSnapshot::take)),
+	// Offline mode by hand (a flight): only downloaded items play and nothing waits for the network.
+	OFFLINE_TOGGLE(R.string.action_offline_toggle, a(a -> me.aap.fermata.util.NetworkState.toggleForcedOffline())),
 	;
 
 	private static final List<Action> all = unmodifiableList(asList(values()));

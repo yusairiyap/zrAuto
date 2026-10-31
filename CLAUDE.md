@@ -1643,6 +1643,34 @@ The stutter turned out to be the sound output starting up; see open issue 6 (the
 - **The keyboard lift ends where the animation left the keyboard** (`ImeFollower#onEnd`, `lastIme`), not on the window insets, which can
   still report the keyboard right at the end of a Back-swipe hide (the flicker).
 
+## Offline mode, shared effects card, screen snap, Home auto music (latest round)
+
+- **`util/NetworkState`** is the one source for "is the internet reachable" (default-network callback, INTERNET + VALIDATED, a change must hold 1.5 s):
+  `isOnline()`, `addListener`, `isUnavailable(item)` (offline and not stored on the phone, via `OfflineFallback.isOffline`). It tells the user once
+  (`network_lost_toast`, `network_restored`). Greyed rows: `MediaItemView#applyOffline` (tabs), `LibraryWidget.RowHolder#greyOut` (Home); both refresh from
+  a listener and fade back. Taps on an unavailable row toast at once (`MediaLibFragment#playTapped`, `HomePlay`, the Home row click). `MusicPlayer.play(list)`
+  drops every non-downloaded item from the queue while offline (from the tapped song on).
+- **Stall wait** (`OfflineFallback.STALL_SECONDS`, Settings > Playback, 3 to 60 s, default 10): `stallMs()` replaced the YouTube engine's fixed 10 s, `startMs()`
+  (3x) replaced its 30 s switch/ad wait and `YoutubeStartEngine`'s 45 s start timeout (which was the "tap waits 45 s offline" bug; offline it now fails at once).
+- **`ui/view/NoNetworkView`**: the shared placeholder (rings, big crossed signal, three hints, Network settings / Try again). `attach(host, onRestored)` covers a
+  FrameLayout host (YouTube tab, browser tab, Spotify import is wrapped in a frame for it); `compact` is the Home card kind, switched on by a widget returning
+  true from `HomeWidgetView#needsNetwork` (YouTube suggestions, Comments, Search) and reloading in `onNetworkBack`. New network-only screens should use it.
+- **Audio effects are a panel, never a page**: every entry point ends in `SidePanels.effects`, which puts the full screen (`AudioEffectsView` for local engines, the
+  YouTube equalizer view for YouTube and downloaded YouTube) in a `SidePanel` (docked beside fullscreen video, else a centred modal card). `AudioEffectsFragment` is deleted;
+  `showFragment(audio_effects_fragment)` is intercepted in `MainActivityDelegate`. There is **no "Apply to" (track/folder)** any more: effects are one setting for all playback
+  (`AudioEffectsView#apply` writes the control prefs and drops leftover track/folder overrides of the current item).
+- **Screen snap** (`Action.SNAPSHOT`, `ui/view/VideoSnapshot`, log category `SNAPSHOT`): YouTube page via canvas (`YoutubeWebView#captureFrame`, JPEG 95 at the stream's
+  size), local/downloaded video via `MediaMetadataRetriever` at the playing position, else `PixelCopy` of the video surface. Saved to Pictures/zrAuto (MediaStore on 10+,
+  the app's Pictures folder before). In the FAB list, FAB long-press Screen group, All in One and key bindings. Never run on a device.
+- **Home > "Switch to music when on Home"** (`HOME_AUTO_MUSIC`, off by default): `HomeFragment#enter` calls `MusicPlayer.switchToMusicQuietly` (YouTube video playing as
+  video goes to music mode, lowest quality, `open()` suppressed for 3 s so the screen stays on Home).
+- **Offline mode by hand** (`Action.OFFLINE_TOGGLE`, `NetworkState.setForcedOffline`, pref `OfflineFallback.FORCED`, kept across restarts): the same state as no connection, with no probes and
+  no waiting; FAB list / FAB Screen group, All in One tile, key bindings and the Home "Offline mode" widget (`OfflineWidget`). `NoNetworkView` then says "Offline mode" and its button goes online.
+  A stall (`NetworkState.markStalled`) is automatic offline mode: a second stall within 2 minutes, or a failed reachability probe, holds it for at least 30 s; one stall on a connection that answers only probes.
+  `hintFailure` starts a probe after a real failure (never periodically).
+- Not built, handed over for their own branches: the settings redesign (`docs/SETTINGS_REDESIGN_PLAN.md`, `docs/HANDOVER_SETTINGS_REDESIGN.md`) and the
+  header / control panel that move beside the docked in-video panels (`docs/HANDOVER_VIDEO_PANEL_HEADER.md`).
+
 ## Open issues (handover list)
 
 These are the open items to take up next, in a new session or on a new branch. Each is a prompt: the first line says what is wrong.

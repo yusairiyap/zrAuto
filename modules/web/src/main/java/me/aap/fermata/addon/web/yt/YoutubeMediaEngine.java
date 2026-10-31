@@ -187,12 +187,10 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 * is blamed out loud (see {@link #waiting()}). Long enough that a seek, the start of a video or
 	 * an ordinary hiccup never gets there.
 	 */
-	private static final long STALL_MS = 10_000L;
 	/**
 	 * The same for an ad or a switch to the next video, which load on their own schedule and
 	 * shouldn't be blamed on the network right away.
 	 */
-	private static final long SWITCH_STALL_MS = 30_000L;
 	// An ad is on the page / the app asked for another video and it hasn't started yet.
 	private boolean adActive;
 	private boolean switching;
@@ -233,7 +231,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 
 	/**
 	 * The page's video stopped to wait for data. Mostly a beat at a seek or a video's start; when it
-	 * lasts (see {@link #STALL_MS}) while playback is supposed to be going, the connection is lost or
+	 * lasts (see {@code OfflineFallback#stallMs}) while playback is supposed to be going, the connection is lost or
 	 * too slow, and the driver is told so rather than left with silence -- see NetworkIssuePopup.
 	 */
 	void waiting(@Nullable String page) {
@@ -244,7 +242,7 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 			DiagnosticLog.log(LogCat.YT, "buffering", "id=" + currentVideoId, "page=" + page);
 		}
 		web.removeCallbacks(stallCheck);
-		web.postDelayed(stallCheck, STALL_MS);
+		web.postDelayed(stallCheck, me.aap.fermata.ytdl.OfflineFallback.stallMs());
 		// The spinners (Music tab's play button, the video's own), not the session's state.
 		BufferingIndicator.setBuffering(true);
 	}
@@ -256,12 +254,13 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 		boolean loadingOther = adActive || switching || expectingPageNav ||
 				(web.getAddon().getPendingVideoId() != null);
 		// Loading the next video or an ad: only blamed on the network once it drags on.
-		if (loadingOther && (waited < SWITCH_STALL_MS)) {
-			web.postDelayed(stallCheck, SWITCH_STALL_MS - waited);
+		if (loadingOther && (waited < me.aap.fermata.ytdl.OfflineFallback.startMs())) {
+			web.postDelayed(stallCheck, me.aap.fermata.ytdl.OfflineFallback.startMs() - waited);
 			return;
 		}
 
 		DiagnosticLog.log(LogCat.YT, "stalled", "id=" + currentVideoId, "for=" + (waited / 1000) + 's');
+		me.aap.fermata.util.NetworkState.markStalled();
 		MainActivityDelegate a = MainActivityDelegate.get(web.getContext());
 		String id = currentVideoId;
 
@@ -1756,7 +1755,8 @@ class YoutubeMediaEngine implements MediaEngine, OverlayMenu.SelectionHandler {
 	 * there instead of crashing.
 	 */
 	private boolean showEqualizer() {
-		YoutubeEqualizerView.show(web);
+		// The shared effects card (switches and sliders), not the equalizer page.
+		MainActivityDelegate.getActivityDelegate(web.getContext()).main().onSuccess(me.aap.fermata.ui.view.SidePanels::effects);
 		return true;
 	}
 

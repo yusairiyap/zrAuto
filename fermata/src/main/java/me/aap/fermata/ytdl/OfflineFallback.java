@@ -19,6 +19,7 @@ import me.aap.fermata.ui.view.TopToast;
 import me.aap.fermata.util.DiagnosticLog;
 import me.aap.fermata.util.LogCat;
 import me.aap.utils.function.BooleanSupplier;
+import me.aap.utils.function.IntSupplier;
 import me.aap.utils.pref.PreferenceStore;
 import me.aap.utils.pref.PreferenceStore.Pref;
 
@@ -31,7 +32,23 @@ public final class OfflineFallback {
 	/** Settings > Playback: on a stalled connection, go on with what's downloaded by itself. */
 	public static final Pref<BooleanSupplier> ON_STALL = Pref.b("OFFLINE_ON_STALL", false);
 
+	/** Offline mode switched on by hand (a flight, a tunnel): nothing is tried on the network, only downloaded items play. Kept across restarts. */
+	public static final Pref<BooleanSupplier> FORCED = Pref.b("OFFLINE_FORCED", false);
+
+	/** Settings > Playback: how many seconds of buffering or waiting count as a stall (the popup, the fallback, a track that fails to start). */
+	public static final Pref<IntSupplier> STALL_SECONDS = Pref.i("OFFLINE_STALL_SECONDS", 10);
+
 	private OfflineFallback() {
+	}
+
+	/** How long a video may sit buffering before the connection is blamed. */
+	public static long stallMs() {
+		return Math.max(3, prefs().getIntPref(STALL_SECONDS)) * 1000L;
+	}
+
+	/** An ad, a switch to the next video or a track that is starting: three times as patient (30 s by default). */
+	public static long startMs() {
+		return stallMs() * 3;
 	}
 
 	public static PreferenceStore prefs() {

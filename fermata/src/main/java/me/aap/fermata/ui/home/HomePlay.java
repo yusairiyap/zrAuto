@@ -6,6 +6,7 @@ import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
+import me.aap.fermata.util.NetworkState;
 
 /**
  * Plays what a Home card shows as music (the list becomes the Music queue, from that song, so the
@@ -18,6 +19,10 @@ public final class HomePlay {
 
 	/** A song or video tapped in a list of {@code Favorites}, a playlist or the like. */
 	public static void tapped(MainActivityDelegate a, PlayableItem pi) {
+		if (NetworkState.isUnavailable(pi)) {
+			NetworkState.toastUnavailable();
+			return;
+		}
 		boolean asMusic = !(pi instanceof MediaLib.StreamItem) && MusicPlayer.isEnabled();
 		// From now on the mode in use carries on; the default only decides the first start.
 		MusicPlayer.markStarted();
@@ -38,6 +43,10 @@ public final class HomePlay {
 	 * does), and the video goes fullscreen as it does there, instead of staying a hidden session under Home.
 	 */
 	public static void asVideo(MainActivityDelegate a, PlayableItem pi) {
+		if (NetworkState.isUnavailable(pi)) {
+			NetworkState.toastUnavailable();
+			return;
+		}
 		MusicPlayer.markStarted();
 		if (pi instanceof MediaLib.ExternallyPlayableItem ext) {
 			a.playExternally(ext, pi);
@@ -52,6 +61,19 @@ public final class HomePlay {
 		if (MusicPlayer.isEnabled()) {
 			MusicPlayer.markStarted();
 			MusicPlayer.play(a, list, false);
+			return;
+		}
+		if (!NetworkState.isOnline()) {
+			// Offline: the first downloaded item of the list.
+			list.getPlayableChildren(false).main().onSuccess(l -> {
+				for (PlayableItem i : l) {
+					if (me.aap.fermata.ytdl.OfflineFallback.isOffline(i)) {
+						tapped(a, i);
+						return;
+					}
+				}
+				NetworkState.toastUnavailable();
+			});
 			return;
 		}
 		list.getFirstPlayable().main().onSuccess(first -> {

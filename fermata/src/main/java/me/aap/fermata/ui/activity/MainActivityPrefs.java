@@ -103,6 +103,8 @@ public interface MainActivityPrefs
 	/** The car screen's own set of widgets (sizes, order, which ones), in the same JSON; null until changed there. */
 	Pref<Supplier<String>> HOME_LAYOUT_AA = Pref.s("HOME_LAYOUT_AA", (String) null);
 	Pref<BooleanSupplier> HOME_OPEN_ON_START = Pref.b("HOME_OPEN_ON_START", true);
+	/** Coming to Home while a YouTube video plays: go on as music (lowest video quality) to save data. */
+	Pref<BooleanSupplier> HOME_AUTO_MUSIC = Pref.b("HOME_AUTO_MUSIC", false);
 	Pref<IntSupplier> HOME_BG_VERSION = Pref.i("HOME_BG_VERSION", 0);
 	Pref<IntSupplier> HOME_BG_DIM = Pref.i("HOME_BG_DIM", 35);
 	Pref<IntSupplier> HOME_BG_BLUR = Pref.i("HOME_BG_BLUR", 0);
@@ -283,7 +285,6 @@ public interface MainActivityPrefs
 	// YoutubeCommentsView): whether to, and how much of the width they take (percent).
 	Pref<BooleanSupplier> COMMENTS_SPLIT = Pref.b("COMMENTS_SPLIT", true);
 	// The audio effects and the captions settings open beside fullscreen video as a panel (ui/view/SidePanel).
-	Pref<BooleanSupplier> SIDE_PANEL_EFFECTS = Pref.b("SIDE_PANEL_EFFECTS", true);
 	Pref<BooleanSupplier> SIDE_PANEL_CAPTIONS = Pref.b("SIDE_PANEL_CAPTIONS", true);
 	// How wide each of those panels is (the comments' is COMMENTS_SPLIT_PERCENT), in percent of the screen; dragged by the strip on its edge.
 	Pref<BooleanSupplier> SIDE_PANEL_YOUTUBE = Pref.b("SIDE_PANEL_YOUTUBE", true);

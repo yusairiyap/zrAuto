@@ -1068,6 +1068,27 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	}
 
 	private void skipTo(boolean next, PlayableItem i) {
+		// No connection and the next one is not on the phone: it would load for ever. With "play downloaded when the connection
+		// stalls" on, the list goes on with its next downloaded item; otherwise the song carries on and the user is told.
+		if (me.aap.fermata.util.NetworkState.isUnavailable(i)) {
+			var ui = me.aap.fermata.ui.activity.MainActivityDelegate.getUiDelegate();
+			BufferingIndicator.setBuffering(false);
+			if ((ui != null) && me.aap.fermata.ytdl.OfflineFallback.prefs().getBooleanPref(me.aap.fermata.ytdl.OfflineFallback.ON_STALL) &&
+					me.aap.fermata.ytdl.OfflineFallback.hasOffline(ui)) {
+				DiagnosticLog.log(LogCat.NETWORK, "next not downloaded while offline: playing downloaded");
+				PlayLog.finish("offline: downloaded played instead");
+				me.aap.fermata.ui.view.TopToast.show(me.aap.fermata.R.drawable.network_weak, me.aap.fermata.R.string.offline_on_stall_toast);
+				me.aap.fermata.ytdl.OfflineFallback.playDownloaded(ui, null);
+				return;
+			}
+			DiagnosticLog.log(LogCat.NETWORK, "next not downloaded while offline: staying on this song");
+			// Also reached from a song's natural end: the PLAY trail is closed with the reason, not left to warn "next did not start".
+			PlayLog.finish("offline: next is not downloaded");
+			me.aap.fermata.util.NetworkState.toastUnavailable();
+			MediaEngine e = getEngine();
+			if (e != null) e.restoreVolume();
+			return;
+		}
 		long pos = i.getPrefs().getPositionPref();
 		// Handed to the UI before the state says "skipping": it may come to nothing, and the session
 		// must not be left in that state with the old engine untouched.

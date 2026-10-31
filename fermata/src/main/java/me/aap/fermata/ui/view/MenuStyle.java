@@ -67,6 +67,8 @@ public final class MenuStyle implements OverlayMenuView.Styler {
 		Context ctx = menu.getContext();
 		MainActivityDelegate a = MainActivityDelegate.getActivityDelegate(ctx).peek();
 		boolean car = (a != null) && a.isCarActivity();
+		// Every menu is drawn over the modal cards (effects, lyrics, playlists ... at 30dp), whichever opened it.
+		menu.setElevation(40f * ctx.getResources().getDisplayMetrics().density);
 		boolean dialog = hasDialog(content);
 		if (!dialog) {
 			SettingsStyle.Colors c = new SettingsStyle.Colors(ctx);

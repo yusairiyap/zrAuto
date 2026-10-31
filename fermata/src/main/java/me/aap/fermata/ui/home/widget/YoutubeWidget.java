@@ -125,6 +125,16 @@ final class YoutubeWidget extends HomeWidgetView {
 	}
 
 	@Override
+	protected boolean needsNetwork() {
+		return true;
+	}
+
+	@Override
+	protected void onNetworkBack() {
+		load(true);
+	}
+
+	@Override
 	protected void onStyleChanged() {
 		if (skeleton != null) skeleton.setColor(softFill());
 	}
@@ -194,6 +204,12 @@ final class YoutubeWidget extends HomeWidgetView {
 			showMessage(R.string.home_yt_off);
 			return;
 		}
+		// No connection: nothing to load, and no loading placeholder over the "no network" one.
+		if (!me.aap.fermata.util.NetworkState.isOnline()) {
+			loading = false;
+			skeleton.setVisibility(GONE);
+			return;
+		}
 		String q = query();
 		boolean fresh = q.equals(lastQuery) && ((SystemClock.uptimeMillis() - loadedAt) < FRESH_MS);
 		if (loading || (!force && fresh && !videos.isEmpty())) {
@@ -242,7 +258,7 @@ final class YoutubeWidget extends HomeWidgetView {
 
 	private void render() {
 		if (column == null) return;
-		boolean wait = MusicPlayer.hasYoutube() && (stale || (loading && videos.isEmpty()));
+		boolean wait = MusicPlayer.hasYoutube() && me.aap.fermata.util.NetworkState.isOnline() && (stale || (loading && videos.isEmpty()));
 		if (wait) {
 			// Placeholder rows (a spinner in a strip) stand in for the list until the search is in.
 			list.removeAllViews();

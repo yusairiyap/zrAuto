@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="offline_stall_seconds">Wait for a stalled connection</string>
+    <string name="offline_stall_seconds_sub">Seconds of buffering before the connection counts as stalled and the app goes offline</string>
+    <string name="network_restored">Connection restored</string>
+    <string name="network_lost_toast">No connection. Downloaded items still play.</string>
+    <string name="network_item_unavailable">No connection, and this one is not downloaded.</string>
+    <string name="network_start_failed">The video did not start. The connection may be too slow.</string>
+    <string name="no_network_title">No connection</string>
+    <string name="no_network_message">This needs the internet. Downloaded songs and local files still play.</string>
+    <string name="no_network_hint_wifi">Check that Wi-Fi or mobile data is on</string>
+    <string name="no_network_hint_airplane">Make sure airplane mode is off</string>
+    <string name="no_network_hint_signal">Move to a place with a better signal, or try another network</string>
+    <string name="no_network_settings">Network settings</string>
+    <string name="no_network_retry">Try again</string>
+    <string name="no_network_checking">Still no connection</string>
+    <string name="home_pref_auto_music">Switch to music when on Home</string>
+    <string name="home_pref_auto_music_sub">A YouTube video that is playing goes on as music (lowest video quality) when you come to Home, to save data. Switch back to video from the player.</string>
+    <string name="home_auto_music_toast">Playing as music to save data</string>
+    <string name="action_snapshot">Screen snap</string>
+    <string name="snapshot_saved">Snap saved</string>
+    <string name="snapshot_saved_to">Pictures/zrAuto</string>
+    <string name="snapshot_open">Open</string>
+    <string name="snapshot_failed">Could not grab the picture</string>
+    <string name="snapshot_none">No video to grab</string>
+    <string name="action_offline_toggle">Offline mode</string>
+    <string name="offline_mode_on_toast">Offline mode on. Only downloaded items play.</string>
+    <string name="offline_mode_off_toast">Offline mode off. Checking the connection.</string>
+    <string name="no_network_offline_title">Offline mode</string>
+    <string name="no_network_offline_message">You turned offline mode on. Downloaded songs and local files still play.</string>
+    <string name="no_network_go_online">Go online</string>
+    <string name="offline_widget_on">Only downloaded items play</string>
+    <string name="offline_widget_off">Online. Tap to go offline</string>
+    <string name="video_needs_network">Watching needs a connection. This one is downloaded as sound only.</string>
+</resources>

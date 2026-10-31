@@ -191,6 +191,16 @@ final class SearchWidget extends HomeWidgetView {
 	}
 
 	@Override
+	protected boolean needsNetwork() {
+		return true;
+	}
+
+	@Override
+	protected void onNetworkBack() {
+		fetchSuggestions();
+	}
+
+	@Override
 	protected void onStyleChanged() {
 		pillFill.setColor(softFill());
 		if (field != null) field.setHintTextColor(color(ROLE_SECONDARY));

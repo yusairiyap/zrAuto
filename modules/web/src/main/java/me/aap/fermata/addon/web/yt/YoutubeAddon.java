@@ -278,11 +278,15 @@ public class YoutubeAddon extends WebBrowserAddon
 		}
 
 		@Override
+		public void captureFrame(MainActivityDelegate a, java.util.function.Consumer<byte[]> done) {
+			YoutubeWebView web = (a.getFragment(getFragmentId()) instanceof YoutubeFragment f) ? f.getWebView() : null;
+			if (web == null) done.accept(null);
+			else web.captureFrame(done);
+		}
+
+		@Override
 		public boolean showEffects(MainActivityDelegate a) {
-			// The page is there for a YouTube video; a downloaded one has none to configure.
-			YoutubeWebView web = (a.getFragment(getFragmentId()) instanceof YoutubeFragment f) ?
-					f.getWebView() : null;
-			YoutubeEqualizerView.show(a, YoutubeAddon.this, web);
+			me.aap.fermata.ui.view.SidePanels.effects(a);
 			return true;
 		}
 

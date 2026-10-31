@@ -361,17 +361,7 @@ public final class AllInOneMenu {
 	 * equalizer, or a note saying why there's none.
 	 */
 	public static void openEffects(@NonNull MainActivityDelegate a) {
-		MediaEngine eng = a.getMediaSessionCallback().getEngine();
-		PlayableItem src = (eng == null) ? null : eng.getSource();
-
-		if ((src != null) && (eng.supportsAudioEffects() || eng.supportsSoundStage())) {
-			a.showFragment(R.id.audio_effects_fragment);
-		} else if ((src != null) && eng.showOwnAudioEffects()) {
-			DiagnosticLog.d(LogCat.AIO, "effects: engine's own (in-page equalizer)", "engine=" + eng);
-		} else {
-			TopToast.show(R.drawable.equalizer, (src == null) ? R.string.music_effects_play_first :
-					R.string.music_effects_unavailable);
-		}
+		SidePanels.effects(a);
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -839,6 +829,16 @@ public final class AllInOneMenu {
 			title = ctx.getString(R.string.action_power_saver);
 			hint = ctx.getString(me.aap.fermata.addon.power.PowerSaver.get().isActive() ?
 					R.string.state_on : R.string.state_off);
+		} else if (action == Action.PLAY_AS_MUSIC) {
+			title = ctx.getString(ActionFabMediator.labelFor(activity, action));
+			hint = "";
+			// Offline, a sound-only download cannot be watched: the video side of the switch is dimmed and does nothing.
+			var cb = activity.getMediaSessionCallback();
+			unavailable = me.aap.fermata.addon.music.MusicPlayer.canSwitchToVideo(cb) &&
+					!me.aap.fermata.addon.music.MusicPlayer.canWatchNow(me.aap.fermata.addon.music.MusicPlayer.getCurrentTrack(cb));
+		} else if (action == Action.OFFLINE_TOGGLE) {
+			title = ctx.getString(R.string.action_offline_toggle);
+			hint = ctx.getString(me.aap.fermata.util.NetworkState.isForcedOffline() ? R.string.state_on : R.string.state_off);
 		} else if (action == Action.COVER_HIDE) {
 			title = ctx.getString(R.string.action_cover_hide);
 			hint = ctx.getString(CoverHide.isOn() ? R.string.state_on : R.string.state_off);

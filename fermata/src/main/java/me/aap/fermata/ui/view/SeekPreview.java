@@ -201,7 +201,7 @@ public final class SeekPreview {
 	}
 
 	@Nullable
-	private static Object localSourceOf(PlayableItem item) {
+	static Object localSourceOf(PlayableItem item) {
 		try {
 			VirtualResource r = item.getResource();
 			File f = r.getLocalFile();
