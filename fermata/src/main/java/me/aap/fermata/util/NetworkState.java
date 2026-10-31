@@ -108,7 +108,9 @@ public final class NetworkState {
 			if (lostOnce) TopToast.show(R.drawable.wifi, R.string.network_restored);
 		} else {
 			lostOnce = true;
-			if (!stallUp) TopToast.show(R.drawable.network_off, R.string.network_lost_toast);
+			// While a stream plays, the stall popup (about the same news, with the downloaded fallback) follows if it really stops:
+			// two cards for one event were noise. The toast is for when nothing streams.
+			if (!stallUp && !streamPlaying()) TopToast.show(R.drawable.network_off, R.string.network_lost_toast);
 		}
 		for (Listener l : listeners) {
 			try {
@@ -118,6 +120,18 @@ public final class NetworkState {
 			}
 		}
 	};
+
+	private static boolean streamPlaying() {
+		try {
+			var a = me.aap.fermata.ui.activity.MainActivityDelegate.getUiDelegate();
+			if (a == null) return false;
+			var cb = a.getMediaSessionCallback();
+			var eng = cb.getEngine();
+			return cb.isPlaying() && (eng != null) && !OfflineFallback.isOffline(eng.getSource());
+		} catch (Throwable ex) {
+			return false;
+		}
+	}
 
 	/** Whether the internet is reachable now (the value listeners were last told, once a change has settled). */
 	public static boolean isOnline() {

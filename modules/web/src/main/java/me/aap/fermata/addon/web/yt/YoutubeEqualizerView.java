@@ -217,6 +217,12 @@ final class YoutubeEqualizerView extends android.widget.ScrollView implements Pr
 
 		MaterialCardView smoothCard = ch.findViewById(me.aap.fermata.R.id.eq_quality_smooth_card);
 		MaterialCardView richCard = ch.findViewById(me.aap.fermata.R.id.eq_quality_rich_card);
+		// See-through like the rest of the screen, not a white or black fill that depends on the theme.
+		for (MaterialCardView c : new MaterialCardView[]{smoothCard, richCard}) {
+			c.setCardBackgroundColor(android.graphics.Color.TRANSPARENT);
+			c.setCardElevation(0f);
+			c.setUseCompatPadding(false);
+		}
 		MaterialRadioButton smoothRadio = ch.findViewById(me.aap.fermata.R.id.eq_quality_smooth_radio);
 		MaterialRadioButton richRadio = ch.findViewById(me.aap.fermata.R.id.eq_quality_rich_radio);
 

@@ -179,6 +179,8 @@ public final class SidePanel {
 		} else {
 			overlay.setClickable(true);
 			overlay.setElevation(dp(30));
+			// Menus opened from the panel (a preset list, a language) are 10dp and would sit behind its card.
+			raiseMenus();
 			overlay.setBackgroundColor(0x55000000);
 			overlay.setOnClickListener(v -> dismiss());
 		}
@@ -407,7 +409,30 @@ public final class SidePanel {
 		overlay.animate().alpha(0f).setDuration(140).withEndAction(this::remove).start();
 	}
 
+	private static final int[] MENU_IDS = {R.id.tool_menu, R.id.context_menu, R.id.control_menu, R.id.nav_menu_view};
+	private float[] menuElevation;
+
+	private void raiseMenus() {
+		menuElevation = new float[MENU_IDS.length];
+		for (int i = 0; i < MENU_IDS.length; i++) {
+			View m = host.findViewById(MENU_IDS[i]);
+			if (m == null) continue;
+			menuElevation[i] = m.getElevation();
+			m.setElevation(dp(40));
+		}
+	}
+
+	private void restoreMenus() {
+		if (menuElevation == null) return;
+		for (int i = 0; i < MENU_IDS.length; i++) {
+			View m = host.findViewById(MENU_IDS[i]);
+			if (m != null) m.setElevation(menuElevation[i]);
+		}
+		menuElevation = null;
+	}
+
 	private void remove() {
+		restoreMenus();
 		if (splitView != null) splitView.setSplitShare(0f);
 		splitView = null;
 		host.removeView(overlay);

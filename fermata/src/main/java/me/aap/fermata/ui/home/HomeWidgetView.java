@@ -119,6 +119,9 @@ public abstract class HomeWidgetView extends FrameLayout {
 	/** Builds the views, once. {@code content} is the padded area inside the card. */
 	protected abstract void onCreate(FrameLayout content);
 
+	@Nullable
+	private me.aap.fermata.ui.view.NoNetworkView noNet;
+
 	/** Whether the card is useless without the internet: it then shows the shared "no network" placeholder while offline. */
 	protected boolean needsNetwork() {
 		return false;
@@ -205,7 +208,10 @@ public abstract class HomeWidgetView extends FrameLayout {
 	final void init(HomeModel.Item item) {
 		this.item = item;
 		onCreate(content);
-		if (needsNetwork()) me.aap.fermata.ui.view.NoNetworkView.compact(content, this::onNetworkBack);
+		if (needsNetwork()) {
+			noNet = me.aap.fermata.ui.view.NoNetworkView.compact(content, this::onNetworkBack);
+			noNet.tint(HomeUi.alpha(color(ROLE_SECONDARY), 0.7f));
+		}
 		created = true;
 		applyStyle(false);
 		onResized(cw, ch);
@@ -571,6 +577,7 @@ public abstract class HomeWidgetView extends FrameLayout {
 		// What is not a colour glides is set at once: the faint fills, and whatever the widget tints itself.
 		for (Soft so : softs) paintSoft(so);
 		if (created) onStyleChanged();
+		if (noNet != null) noNet.tint(HomeUi.alpha(color(ROLE_SECONDARY), 0.7f));
 		if (!animate || (cardNow1 == 0)) {
 			paintStyle(1f, o1, o2, stroke, o1, o2, stroke);
 			return;

@@ -41,37 +41,37 @@ public final class NoNetworkView extends FrameLayout implements NetworkState.Lis
 	private final int primary;
 	private final int secondary;
 	private final int accent;
+	private final android.widget.TextView title;
+	private final ImageView icon;
+	private final FrameLayout art;
+	private int ringColor;
 
 	private NoNetworkView(Context ctx, boolean compact, @Nullable Runnable onRestored) {
 		super(ctx);
 		this.compact = compact;
 		this.onRestored = onRestored;
-		primary = color(R.attr.musicTextPrimary);
-		secondary = color(R.attr.musicTextSecondary);
+		// The window theme's own text colours: the Music palette attributes are not set on every tab (the YouTube tab drew
+		// its words in the background's colour).
+		primary = color(android.R.attr.textColorPrimary);
+		secondary = color(android.R.attr.textColorSecondary);
 		accent = EffectsUi.accent(ctx);
+		ringColor = accent;
 		setClickable(true);
 		setFocusable(false);
 		// Opaque enough to hide the empty screen behind, but the theme's own background shows through the edges.
-		if (!compact) {
-			setBackgroundColor(color(android.R.attr.colorBackground));
-		} else {
-			// Over a Home card: hides what the card could not load, in the card's own rounded shape.
-			GradientDrawable g = new GradientDrawable();
-			g.setColor(color(android.R.attr.colorBackground));
-			g.setCornerRadius(dp(18));
-			setBackground(g);
-		}
+		// On a card the card's own look shows through (no fill of its own); a whole screen gets the theme's background.
+		if (!compact) setBackgroundColor(color(android.R.attr.colorBackground));
 		LinearLayout col = new LinearLayout(ctx);
 		col.setOrientation(LinearLayout.VERTICAL);
 		col.setGravity(Gravity.CENTER_HORIZONTAL);
 		int pad = dp(compact ? 8 : 24);
 		col.setPadding(pad, pad, pad, pad);
 
-		int size = dp(compact ? 44 : 150);
-		FrameLayout art = new FrameLayout(ctx);
+		int size = dp(compact ? 72 : 150);
+		art = new FrameLayout(ctx);
 		rings = new Rings(ctx);
 		art.addView(rings, new LayoutParams(MATCH_PARENT, MATCH_PARENT));
-		ImageView icon = new ImageView(ctx);
+		icon = new ImageView(ctx);
 		icon.setImageResource(R.drawable.network_off);
 		icon.setImageTintList(android.content.res.ColorStateList.valueOf(accent));
 		int ip = size / 3;
@@ -79,7 +79,7 @@ public final class NoNetworkView extends FrameLayout implements NetworkState.Lis
 		art.addView(icon, new LayoutParams(MATCH_PARENT, MATCH_PARENT));
 		col.addView(art, new LinearLayout.LayoutParams(size, size));
 
-		TextView title = text(R.string.no_network_title, compact ? 15 : 22, primary, true);
+		title = text(R.string.no_network_title, compact ? 13 : 22, compact ? secondary : primary, true);
 		LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
 		tlp.topMargin = dp(compact ? 4 : 16);
 		col.addView(title, tlp);
@@ -110,6 +110,30 @@ public final class NoNetworkView extends FrameLayout implements NetworkState.Lis
 		addView(col, new LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER));
 		setVisibility(NetworkState.isOnline() ? GONE : VISIBLE);
 		setAlpha(NetworkState.isOnline() ? 0f : 1f);
+	}
+
+	/** A card's own colour for the quiet look: grey words and a faint picture, so it does not shout over the widgets. */
+	public void tint(int fg) {
+		title.setTextColor(fg);
+		icon.setImageTintList(android.content.res.ColorStateList.valueOf(fg));
+		ringColor = fg;
+		rings.invalidate();
+	}
+
+	@Override
+	protected void onSizeChanged(int w, int h, int ow, int oh) {
+		super.onSizeChanged(w, h, ow, oh);
+		if (!compact || (w <= 0) || (h <= 0)) return;
+		// The picture grows with the card: about half of its short side, between a small and a big placeholder.
+		int s = Math.max(dp(48), Math.min(dp(150), Math.round(Math.min(w, h) * 0.5f)));
+		ViewGroup.LayoutParams lp = art.getLayoutParams();
+		if (lp.width != s) {
+			lp.width = s;
+			lp.height = s;
+			art.setLayoutParams(lp);
+			int ip = s / 3;
+			icon.setPadding(ip, ip, ip, ip);
+		}
 	}
 
 	/** Puts the placeholder over {@code host} (a layout that stacks its children). Shown only while there is no connection. */
@@ -276,7 +300,7 @@ public final class NoNetworkView extends FrameLayout implements NetworkState.Lis
 			long t = android.os.SystemClock.uptimeMillis() - t0;
 			for (int i = 0; i < 3; i++) {
 				float f = ((t + i * 1000) % 3000) / 3000f;
-				paint.setColor((accent & 0x00FFFFFF) | (Math.round(70 * (1f - f)) << 24));
+				paint.setColor((ringColor & 0x00FFFFFF) | (Math.round(70 * (1f - f)) << 24));
 				c.drawCircle(cx, cy, max * (0.45f + 0.55f * f), paint);
 			}
 			postInvalidateOnAnimation();
