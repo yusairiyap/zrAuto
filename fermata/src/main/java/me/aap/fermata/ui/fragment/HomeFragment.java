@@ -17,6 +17,8 @@ import androidx.annotation.Nullable;
 import me.aap.fermata.R;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.activity.MainActivityPrefs;
+import me.aap.fermata.ui.view.TopToast;
+import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.ui.home.HomeScreen;
 import me.aap.utils.ui.fragment.ActivityFragment;
 import me.aap.utils.ui.view.ToolBarView;
@@ -263,8 +265,12 @@ public class HomeFragment extends MainActivityFragment {
 	private static final long BAR_GHOST_MS = 90L;
 
 	private void enter() {
-		putBarsAway(getActivityDelegate());
+		MainActivityDelegate a = getActivityDelegate();
+		putBarsAway(a);
 		if (screen != null) screen.onShown();
+		if (a.getPrefs().getBooleanPref(MainActivityPrefs.HOME_AUTO_MUSIC) && MusicPlayer.switchToMusicQuietly(a)) {
+			TopToast.show(R.drawable.music, R.string.home_auto_music_toast);
+		}
 	}
 
 	private void leave() {

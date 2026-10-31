@@ -2611,23 +2611,7 @@ public class MusicPlayerFragment extends MainActivityFragment implements
 	}
 
 	private void onEffects() {
-		MainActivityDelegate a = getActivityDelegate();
-		MediaEngine eng = a.getMediaSessionCallback().getEngine();
-		PlayableItem src = (eng == null) ? null : eng.getSource();
-
-		// The effects screen works on the live engine's effects: with nothing playing (or an engine
-		// without effects support) it would just close itself again straight away.
-		if ((src != null) && (eng.supportsAudioEffects() || eng.supportsSoundStage())) {
-			a.showFragment(R.id.audio_effects_fragment);
-		} else if ((src != null) && eng.showOwnAudioEffects()) {
-			// The YouTube player: its own in-page equalizer, since Android's effects can't reach a web
-			// page's audio.
-			DiagnosticLog.log(LogCat.MUSIC, "effects: engine's own (in-page equalizer)", "engine=" + eng);
-		} else {
-			DiagnosticLog.w(LogCat.MUSIC, "effects unavailable", "engine=" + eng, "item=" + src);
-			showMessage(getString((src == null) ? R.string.music_effects_play_first :
-					R.string.music_effects_unavailable));
-		}
+		me.aap.fermata.ui.view.SidePanels.effects(getActivityDelegate());
 	}
 
 	private void onVideo() {

@@ -2206,4 +2206,35 @@ public class YoutubeWebView extends FermataWebView {
 				"document.querySelectorAll('video')" +
 				".forEach(v=> v.style.objectFit = '" + p + "');");
 	}
+
+	/**
+	 * The picture the page's {@code <video>} shows now, drawn on a canvas at the video's own size and handed back as a
+	 * JPEG (quality 95). {@code done} runs on the main thread with null when there is no picture or the page refuses.
+	 */
+	public void captureFrame(java.util.function.Consumer<byte[]> done) {
+		String js = "(function(){try{var v=document.querySelector('video');if(!v||!v.videoWidth||v.readyState<2)return '';"
+				+ "var c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;"
+				+ "c.getContext('2d').drawImage(v,0,0,c.width,c.height);return c.toDataURL('image/jpeg',0.95);}"
+				+ "catch(e){return 'ERR:'+e;}})()";
+		evaluateJavascript(js, r -> {
+			if ((r == null) || (r.length() < 40)) {
+				me.aap.fermata.util.DiagnosticLog.w(me.aap.fermata.util.LogCat.YT, "snapshot: no picture", "result=" + r);
+				done.accept(null);
+				return;
+			}
+			// The long data URL is decoded off the main thread.
+			new Thread(() -> {
+				byte[] jpeg = null;
+				try {
+					String d = r.replace("\\/", "/");
+					int comma = d.indexOf(',');
+					jpeg = android.util.Base64.decode(d.substring(comma + 1).replace("\"", ""), android.util.Base64.DEFAULT);
+				} catch (Exception ex) {
+					me.aap.fermata.util.DiagnosticLog.w(me.aap.fermata.util.LogCat.YT, "snapshot: bad picture data", ex);
+				}
+				byte[] out = jpeg;
+				post(() -> done.accept(out));
+			}, "yt-snapshot").start();
+		});
+	}
 }

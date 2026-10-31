@@ -662,9 +662,20 @@ public class MediaItemView extends ConstraintLayout
 		refreshState(item);
 	}
 
+	/** Greys out the text of a song that cannot play now: no connection, and it is not stored on the phone. */
+	private void applyOffline(Item item) {
+		boolean off = me.aap.fermata.util.NetworkState.isUnavailable(item);
+		float al = off ? 0.4f : 1f;
+		TextView t = getTitle();
+		if (t.getAlpha() == al) return;
+		t.setAlpha(al);
+		getSubtitle().setAlpha(al);
+	}
+
 	private void refreshState(Item item) {
 		MainActivityDelegate a = getMainActivity();
 		refreshCheckbox();
+		applyOffline(item);
 
 		if (item instanceof EpgItem) {
 			EpgItem e = (EpgItem) item;

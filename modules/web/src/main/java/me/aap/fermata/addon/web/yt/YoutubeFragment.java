@@ -171,6 +171,14 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 			quiet = false;
 		}
 
+		// Without a connection the page would only show its error; the shared placeholder covers it and reloads it on return.
+		if (view instanceof ViewGroup g) {
+			me.aap.fermata.ui.view.NoNetworkView.attach(g, () -> {
+				YoutubeWebView w = getWebView();
+				MainActivityDelegate d = MainActivityDelegate.getActivityDelegate(view.getContext()).peek();
+				if ((w != null) && (d != null) && !d.getMediaSessionCallback().isPlaying()) w.reload();
+			});
+		}
 		MainActivityDelegate.getActivityDelegate(view.getContext()).onSuccess(a -> {
 			YoutubeWebView webView = a.findViewById(R.id.ytWebView);
 			initWebView(webView, addon, view);

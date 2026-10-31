@@ -75,6 +75,11 @@ abstract class LibraryWidget extends HomeWidgetView {
 	private RecyclerView listView;
 	private GridLayoutManager glm;
 	private final RowAdapter adapter = new RowAdapter();
+	/** Rows of songs that are not on the phone grey out while there is no connection, and come back with it. */
+	private final me.aap.fermata.util.NetworkState.Listener netListener = online -> {
+		adapter.notifyItemRangeChanged(0, adapter.getItemCount());
+		if (online) refresh(false);
+	};
 	private int cols = 1;
 	private boolean artOn = true;
 	private int rowModeShown;
@@ -664,6 +669,9 @@ abstract class LibraryWidget extends HomeWidgetView {
 	protected void onActive() {
 		act().addBroadcastListener(contentListener, ActivityListener.FRAGMENT_CONTENT_CHANGED);
 		YtDownloads.get().addListener(downloadsListener);
+		me.aap.fermata.util.NetworkState.addListener(netListener);
+		// It may have changed while Home was away.
+		adapter.notifyItemRangeChanged(0, adapter.getItemCount());
 		if (followsLibrary()) me.aap.fermata.media.lib.ItemContainer.addContentListener(libraryListener);
 		if (watchesPlaying()) act().getMediaServiceBinder().addBroadcastListener(playingListener);
 		me.aap.fermata.ui.view.ArtAccent.addListener(artRows);
@@ -682,6 +690,7 @@ abstract class LibraryWidget extends HomeWidgetView {
 		releaseCarKeys();
 		act().removeBroadcastListener(contentListener);
 		YtDownloads.get().removeListener(downloadsListener);
+		me.aap.fermata.util.NetworkState.removeListener(netListener);
 		me.aap.fermata.media.lib.ItemContainer.removeContentListener(libraryListener);
 		removeCallbacks(readAgain);
 		removeCallbacks(refreshBadges);
@@ -1169,6 +1178,9 @@ abstract class LibraryWidget extends HomeWidgetView {
 			}
 		}
 		private boolean paintedCurrent;
+		/** Whether the row is shown greyed out for want of a connection; null before the first bind. */
+		@Nullable
+		private Boolean shownOff;
 
 		RowHolder() {
 			super(new LinearLayout(ctx));
@@ -1183,7 +1195,13 @@ abstract class LibraryWidget extends HomeWidgetView {
 			main.setClickable(true);
 			main.setFocusable(true);
 			main.setOnClickListener(v -> {
-				if (row != null) row.click().run();
+				if (row == null) return;
+				// Offline and not downloaded: it says so instead of waiting for a video that cannot come.
+				if (me.aap.fermata.util.NetworkState.isUnavailable(row.art())) {
+					me.aap.fermata.util.NetworkState.toastUnavailable();
+					return;
+				}
+				row.click().run();
 			});
 			removeBtn = iconButton(R.drawable.home_row_remove, 32, ROLE_SECONDARY, R.string.home_row_remove, () -> {
 				int pos = getAdapterPosition();
@@ -1340,8 +1358,23 @@ abstract class LibraryWidget extends HomeWidgetView {
 			} else {
 				sub.setVisibility(GONE);
 			}
-			playBtn.setVisibility((r.play() != null) ? VISIBLE : GONE);
+			boolean off = me.aap.fermata.util.NetworkState.isUnavailable(r.art());
+			playBtn.setVisibility(((r.play() != null) && !off) ? VISIBLE : GONE);
+			greyOut(off);
 			updateBadge();
+		}
+
+		/** Text, picture and badge fade to grey when there is no connection and the song is not stored on the phone. */
+		private void greyOut(boolean off) {
+			boolean first = (shownOff == null);
+			if (!first && (shownOff == off)) return;
+			shownOff = off;
+			float a = off ? 0.38f : 1f;
+			for (View v : new View[]{title, sub, thumb, badge}) {
+				v.animate().cancel();
+				if (first || !itemView.isAttachedToWindow()) v.setAlpha(a);
+				else v.animate().alpha(a).setDuration(300).start();
+			}
 		}
 
 		/** Shown when the row's song is on the phone, at the end of the row itself (so the playing row's fill runs under it). */

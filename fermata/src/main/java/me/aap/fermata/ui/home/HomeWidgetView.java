@@ -119,6 +119,15 @@ public abstract class HomeWidgetView extends FrameLayout {
 	/** Builds the views, once. {@code content} is the padded area inside the card. */
 	protected abstract void onCreate(FrameLayout content);
 
+	/** Whether the card is useless without the internet: it then shows the shared "no network" placeholder while offline. */
+	protected boolean needsNetwork() {
+		return false;
+	}
+
+	/** The connection is back (the placeholder has gone): load again. */
+	protected void onNetworkBack() {
+	}
+
 	/** Fills the views in: after creation, and whenever an option changed. */
 	protected void onBind() {
 	}
@@ -196,6 +205,7 @@ public abstract class HomeWidgetView extends FrameLayout {
 	final void init(HomeModel.Item item) {
 		this.item = item;
 		onCreate(content);
+		if (needsNetwork()) me.aap.fermata.ui.view.NoNetworkView.compact(content, this::onNetworkBack);
 		created = true;
 		applyStyle(false);
 		onResized(cw, ch);

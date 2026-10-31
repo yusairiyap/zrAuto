@@ -134,6 +134,14 @@ public final class MusicPlayer {
 		boolean playVideoInPlace(MainActivityDelegate a, String videoId, @Nullable String title);
 
 		/**
+		 * The picture the YouTube page shows now, as a JPEG at the video's own resolution; {@code done} gets null when
+		 * there is none (no video, or the page refuses to hand it over). Called on the main thread.
+		 */
+		default void captureFrame(MainActivityDelegate a, java.util.function.Consumer<byte[]> done) {
+			done.accept(null);
+		}
+
+		/**
 		 * Plays {@code videoId} without leaving the screen it is asked from: swapped in the page that is
 		 * playing, or loaded into the YouTube page without showing its tab (as music or as video the way
 		 * the player is set). False if it can't.
@@ -232,6 +240,13 @@ public final class MusicPlayer {
 		return (h != null) && h.playVideoQuietly(from.getPlaybackDelegate(), videoId, title);
 	}
 
+	/** The YouTube page's current picture as a JPEG (see {@link YoutubeHooks#captureFrame}); null without the addon. */
+	public static void youtubeFrame(MainActivityDelegate from, java.util.function.Consumer<byte[]> done) {
+		YoutubeHooks h = youtube;
+		if (h == null) done.accept(null);
+		else h.captureFrame(from.getPlaybackDelegate(), done);
+	}
+
 	/** Shows the YouTube tab with its video fullscreen (a no-op without the YouTube addon). */
 	public static void showYoutubeVideo(MainActivityDelegate from) {
 		MainActivityDelegate a = from.getPlaybackDelegate(); // The car's while Android Auto is on.
@@ -269,6 +284,24 @@ public final class MusicPlayer {
 		}
 		watchRequested = r.watch;
 		watchingLocal = r.watch;
+	}
+
+	// While set (uptime ms), open() does not bring the Music tab up.
+	private static long stayUntil;
+
+	/**
+	 * Settings > Home > "Switch to music when on Home": a YouTube video playing as video goes on as music (its video at the
+	 * lowest quality, which saves data) without leaving Home. True when it switched.
+	 */
+	public static boolean switchToMusicQuietly(MainActivityDelegate a) {
+		if (!isEnabled() || (getQueue(a) == null)) return false;
+		MediaSessionCallback cb = a.getMediaSessionCallback();
+		MediaEngine eng = cb.getEngine();
+		if ((eng == null) || (eng.getId() != MediaPrefs.MEDIA_ENG_YT) || youtubeAudioMode || !cb.isPlaying()) return false;
+		DiagnosticLog.log(LogCat.MUSIC, "home: video switched to music to save data");
+		stayUntil = android.os.SystemClock.uptimeMillis() + 3000;
+		playCurrentAsMusic(a);
+		return true;
 	}
 
 	public static void setYoutubeAudioMode(boolean on) {
@@ -424,7 +457,9 @@ public final class MusicPlayer {
 		YoutubeHooks h = youtube;
 		MediaEngine eng = a.getMediaSessionCallback().getEngine();
 		if ((h == null) || (eng == null) || (eng.getId() == MediaPrefs.MEDIA_ENG_YT)) return false;
-		return YtOffline.isDownloadedYoutube(eng.getSource()) && h.showEffects(a);
+		if (!YtOffline.isDownloadedYoutube(eng.getSource())) return false;
+		me.aap.fermata.ui.view.SidePanels.effects(a);
+		return true;
 	}
 
 	/** The YouTube page's own effects screen as a view, null when the YouTube addon is not there. */
@@ -436,9 +471,10 @@ public final class MusicPlayer {
 
 	/** Called by {@link YoutubeStartEngine#showOwnAudioEffects}. */
 	static boolean showYoutubeEffects() {
-		YoutubeHooks h = youtube;
 		MainActivityDelegate a = activity.get();
-		return (h != null) && (a != null) && h.showEffects(a);
+		if (a == null) return false;
+		me.aap.fermata.ui.view.SidePanels.effects(a);
+		return true;
 	}
 
 	/** Called by {@link YoutubeStartEngine#prepare}. */
@@ -492,6 +528,8 @@ public final class MusicPlayer {
 
 	/** Shows the Music tab, leaving any video mode first. */
 	public static void open(MainActivityDelegate a) {
+		// Switching to music from Home on purpose (Settings > Home): the screen stays where it is.
+		if (android.os.SystemClock.uptimeMillis() < stayUntil) return;
 		a.exitVideoMode();
 		a.showFragment(R.id.music_addon);
 		BodyLayout b = a.getBody();
@@ -628,6 +666,23 @@ public final class MusicPlayer {
 		markStarted();
 		MusicQueue q = getQueue(a);
 		if ((q == null) || items.isEmpty()) return;
+		if (!me.aap.fermata.util.NetworkState.isOnline()) {
+			// No connection: only what is stored on the phone goes into the queue, from the tapped song on.
+			PlayableItem tapped = items.get(Math.max(0, Math.min(startIdx, items.size() - 1)));
+			if (me.aap.fermata.util.NetworkState.isUnavailable(tapped)) {
+				me.aap.fermata.util.NetworkState.toastUnavailable();
+				return;
+			}
+			List<PlayableItem> kept = new java.util.ArrayList<>();
+			for (PlayableItem i : items) if (me.aap.fermata.ytdl.OfflineFallback.isOffline(i)) kept.add(i);
+			if (kept.isEmpty()) {
+				me.aap.fermata.util.NetworkState.toastUnavailable();
+				return;
+			}
+			DiagnosticLog.log(LogCat.NETWORK, "offline: queue without undownloaded", "kept=" + kept.size(), "of=" + items.size());
+			startIdx = Math.max(0, kept.indexOf(tapped));
+			items = kept;
+		}
 		int first = Math.max(0, Math.min(startIdx, items.size() - 1));
 		MusicTrackItem t = q.replace(items, first).get(first);
 		if (show) open(a);

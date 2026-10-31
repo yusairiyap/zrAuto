@@ -103,6 +103,8 @@ public interface MainActivityPrefs
 	/** The car screen's own set of widgets (sizes, order, which ones), in the same JSON; null until changed there. */
 	Pref<Supplier<String>> HOME_LAYOUT_AA = Pref.s("HOME_LAYOUT_AA", (String) null);
 	Pref<BooleanSupplier> HOME_OPEN_ON_START = Pref.b("HOME_OPEN_ON_START", true);
+	/** Coming to Home while a YouTube video plays: go on as music (lowest video quality) to save data. */
+	Pref<BooleanSupplier> HOME_AUTO_MUSIC = Pref.b("HOME_AUTO_MUSIC", false);
 	Pref<IntSupplier> HOME_BG_VERSION = Pref.i("HOME_BG_VERSION", 0);
 	Pref<IntSupplier> HOME_BG_DIM = Pref.i("HOME_BG_DIM", 35);
 	Pref<IntSupplier> HOME_BG_BLUR = Pref.i("HOME_BG_BLUR", 0);

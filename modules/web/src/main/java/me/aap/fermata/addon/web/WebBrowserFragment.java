@@ -117,6 +117,13 @@ public class WebBrowserFragment extends MainActivityFragment
 		Context ctx = view.getContext();
 		FermataWebView webView = view.findViewById(R.id.browserWebView);
 		initWebView(webView, addon, view);
+		if (view instanceof ViewGroup g) {
+			// The shared "no network" placeholder over the pages; the page loads again when the connection is back.
+			me.aap.fermata.ui.view.NoNetworkView.attach(g, () -> {
+				FermataWebView w = view.findViewById(R.id.browserWebView);
+				if (w != null) w.reload();
+			});
+		}
 		MainActivityDelegate.getActivityDelegate(ctx).onSuccess(a -> {
 			FrameLayout root = view.findViewById(R.id.browserRoot);
 			FrameLayout host = view.findViewById(R.id.browserTabHost);

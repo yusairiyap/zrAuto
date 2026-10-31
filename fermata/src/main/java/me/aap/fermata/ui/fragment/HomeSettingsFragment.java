@@ -103,6 +103,7 @@ public class HomeSettingsFragment extends ReorderListFragment {
 	protected void onReset() {
 		try (var e = ps().editPreferenceStore()) {
 			e.removePref(MainActivityPrefs.HOME_OPEN_ON_START);
+			e.removePref(MainActivityPrefs.HOME_AUTO_MUSIC);
 			e.removePref(MainActivityPrefs.HOME_ANIMATE);
 			for (boolean car : new boolean[]{false, true}) {
 				e.removePref(HomeBgPrefs.source(car));
@@ -240,6 +241,9 @@ public class HomeSettingsFragment extends ReorderListFragment {
 		addSwitchRow(box, R.string.home_pref_open_on_start, R.string.home_pref_open_on_start_sub,
 				() -> p.getBooleanPref(MainActivityPrefs.HOME_OPEN_ON_START),
 				on -> p.applyBooleanPref(MainActivityPrefs.HOME_OPEN_ON_START, on), null);
+		addSwitchRow(box, R.string.home_pref_auto_music, R.string.home_pref_auto_music_sub,
+				() -> p.getBooleanPref(MainActivityPrefs.HOME_AUTO_MUSIC),
+				on -> p.applyBooleanPref(MainActivityPrefs.HOME_AUTO_MUSIC, on), null);
 		addSwitchRow(box, R.string.home_pref_animate, R.string.home_pref_animate_sub,
 				() -> p.getBooleanPref(MainActivityPrefs.HOME_ANIMATE),
 				on -> p.applyBooleanPref(MainActivityPrefs.HOME_ANIMATE, on), null);

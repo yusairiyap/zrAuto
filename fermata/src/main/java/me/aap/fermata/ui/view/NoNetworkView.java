@@ -1,0 +1,285 @@
+package me.aap.fermata.ui.view;
+
+import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
+import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
+
+import android.content.Context;
+import android.content.Intent;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.drawable.GradientDrawable;
+import android.provider.Settings;
+import android.util.TypedValue;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
+import androidx.annotation.AttrRes;
+import androidx.annotation.Nullable;
+
+import me.aap.fermata.R;
+import me.aap.fermata.util.NetworkState;
+
+/**
+ * The one "no network" placeholder: a big crossed-out signal over soft pulsing rings, what is wrong, three things to check and
+ * two buttons. Every screen that needs the internet (YouTube tab, browser tab, Spotify import, the Home cards that read the
+ * network) shows this same view, so they look alike. It covers its host while the connection is down, fades in and out by
+ * itself with {@link NetworkState}, and runs {@code onRestored} when the connection comes back so the screen can load again.
+ * <p>
+ * {@link #attach} adds it to a host that stacks its children ({@link FrameLayout} and the like); {@link #compact} is the same
+ * thing for a Home card, with the graphic smaller and the hints left out.
+ */
+public final class NoNetworkView extends FrameLayout implements NetworkState.Listener {
+	private final boolean compact;
+	@Nullable
+	private final Runnable onRestored;
+	private final Rings rings;
+	private final int primary;
+	private final int secondary;
+	private final int accent;
+
+	private NoNetworkView(Context ctx, boolean compact, @Nullable Runnable onRestored) {
+		super(ctx);
+		this.compact = compact;
+		this.onRestored = onRestored;
+		primary = color(R.attr.musicTextPrimary);
+		secondary = color(R.attr.musicTextSecondary);
+		accent = EffectsUi.accent(ctx);
+		setClickable(true);
+		setFocusable(false);
+		// Opaque enough to hide the empty screen behind, but the theme's own background shows through the edges.
+		if (!compact) {
+			setBackgroundColor(color(android.R.attr.colorBackground));
+		} else {
+			// Over a Home card: hides what the card could not load, in the card's own rounded shape.
+			GradientDrawable g = new GradientDrawable();
+			g.setColor(color(android.R.attr.colorBackground));
+			g.setCornerRadius(dp(18));
+			setBackground(g);
+		}
+		LinearLayout col = new LinearLayout(ctx);
+		col.setOrientation(LinearLayout.VERTICAL);
+		col.setGravity(Gravity.CENTER_HORIZONTAL);
+		int pad = dp(compact ? 8 : 24);
+		col.setPadding(pad, pad, pad, pad);
+
+		int size = dp(compact ? 44 : 150);
+		FrameLayout art = new FrameLayout(ctx);
+		rings = new Rings(ctx);
+		art.addView(rings, new LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		ImageView icon = new ImageView(ctx);
+		icon.setImageResource(R.drawable.network_off);
+		icon.setImageTintList(android.content.res.ColorStateList.valueOf(accent));
+		int ip = size / 3;
+		icon.setPadding(ip, ip, ip, ip);
+		art.addView(icon, new LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		col.addView(art, new LinearLayout.LayoutParams(size, size));
+
+		TextView title = text(R.string.no_network_title, compact ? 15 : 22, primary, true);
+		LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+		tlp.topMargin = dp(compact ? 4 : 16);
+		col.addView(title, tlp);
+
+		if (!compact) {
+			TextView msg = text(R.string.no_network_message, 14, secondary, false);
+			LinearLayout.LayoutParams mlp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+			mlp.topMargin = dp(6);
+			col.addView(msg, mlp);
+			LinearLayout hints = new LinearLayout(ctx);
+			hints.setOrientation(LinearLayout.VERTICAL);
+			hints.addView(hint(R.drawable.wifi, R.string.no_network_hint_wifi));
+			hints.addView(hint(R.drawable.network_off, R.string.no_network_hint_airplane));
+			hints.addView(hint(R.drawable.network_weak, R.string.no_network_hint_signal));
+			LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+			hlp.topMargin = dp(18);
+			col.addView(hints, hlp);
+
+			LinearLayout buttons = new LinearLayout(ctx);
+			buttons.setOrientation(LinearLayout.HORIZONTAL);
+			buttons.setGravity(Gravity.CENTER);
+			buttons.addView(button(R.string.no_network_settings, false, v -> openSettings()));
+			buttons.addView(button(R.string.no_network_retry, true, v -> retry(v)));
+			LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+			blp.topMargin = dp(22);
+			col.addView(buttons, blp);
+		}
+		addView(col, new LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER));
+		setVisibility(NetworkState.isOnline() ? GONE : VISIBLE);
+		setAlpha(NetworkState.isOnline() ? 0f : 1f);
+	}
+
+	/** Puts the placeholder over {@code host} (a layout that stacks its children). Shown only while there is no connection. */
+	public static NoNetworkView attach(ViewGroup host, @Nullable Runnable onRestored) {
+		NoNetworkView v = new NoNetworkView(host.getContext(), false, onRestored);
+		host.addView(v, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		v.setElevation(host.getContext().getResources().getDisplayMetrics().density * 6);
+		return v;
+	}
+
+	/** The small kind for a Home card: icon, title, no hints. */
+	public static NoNetworkView compact(ViewGroup host, @Nullable Runnable onRestored) {
+		NoNetworkView v = new NoNetworkView(host.getContext(), true, onRestored);
+		host.addView(v, new ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		return v;
+	}
+
+	@Override
+	protected void onAttachedToWindow() {
+		super.onAttachedToWindow();
+		NetworkState.addListener(this);
+		// The state may have moved while this was away.
+		show(!NetworkState.isOnline(), false);
+	}
+
+	@Override
+	protected void onDetachedFromWindow() {
+		super.onDetachedFromWindow();
+		NetworkState.removeListener(this);
+		rings.stop();
+	}
+
+	@Override
+	public void onNetworkChanged(boolean online) {
+		show(!online, true);
+		if (online && (onRestored != null)) postDelayed(onRestored, 350);
+	}
+
+	private void show(boolean on, boolean animate) {
+		animate().cancel();
+		if (on) {
+			setVisibility(VISIBLE);
+			rings.start();
+			if (animate) animate().alpha(1f).setDuration(220).start();
+			else setAlpha(1f);
+		} else if (animate) {
+			animate().alpha(0f).setDuration(320).withEndAction(() -> {
+				setVisibility(GONE);
+				rings.stop();
+			}).start();
+		} else {
+			setAlpha(0f);
+			setVisibility(GONE);
+			rings.stop();
+		}
+	}
+
+	private void retry(View button) {
+		if (NetworkState.isOnline()) {
+			show(false, true);
+			if (onRestored != null) onRestored.run();
+			return;
+		}
+		me.aap.fermata.ui.view.TopToast.show(R.drawable.network_off, R.string.no_network_checking);
+	}
+
+	private void openSettings() {
+		try {
+			Intent i = new Intent(Settings.ACTION_WIRELESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+			getContext().startActivity(i);
+		} catch (Exception ex) {
+			try {
+				getContext().startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+			} catch (Exception ignore) {
+			}
+		}
+	}
+
+	private View hint(int icon, int text) {
+		LinearLayout r = new LinearLayout(getContext());
+		r.setOrientation(LinearLayout.HORIZONTAL);
+		r.setGravity(Gravity.CENTER_VERTICAL);
+		ImageView i = new ImageView(getContext());
+		i.setImageResource(icon);
+		i.setImageTintList(android.content.res.ColorStateList.valueOf(accent));
+		r.addView(i, new LinearLayout.LayoutParams(dp(20), dp(20)));
+		TextView t = text(text, 13.5f, secondary, false);
+		t.setGravity(Gravity.START);
+		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+		lp.setMarginStart(dp(10));
+		r.addView(t, lp);
+		r.setPadding(0, dp(4), 0, dp(4));
+		return r;
+	}
+
+	private View button(int text, boolean filled, OnClickListener l) {
+		TextView b = text(text, 14, filled ? EffectsUi.onAccent(accent) : primary, true);
+		b.setMinHeight(dp(44));
+		b.setGravity(Gravity.CENTER);
+		b.setPadding(dp(20), 0, dp(20), 0);
+		GradientDrawable bg = new GradientDrawable();
+		bg.setCornerRadius(dp(22));
+		if (filled) bg.setColor(accent);
+		else bg.setStroke(dp(1), (secondary & 0x00FFFFFF) | 0x66000000);
+		b.setBackground(bg);
+		b.setClickable(true);
+		b.setFocusable(true);
+		b.setOnClickListener(l);
+		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+		lp.setMargins(dp(6), 0, dp(6), 0);
+		b.setLayoutParams(lp);
+		return b;
+	}
+
+	private TextView text(int res, float sp, int color, boolean bold) {
+		TextView t = new TextView(getContext());
+		t.setText(res);
+		t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+		t.setTextColor(color);
+		t.setGravity(Gravity.CENTER);
+		if (bold) t.setTypeface(t.getTypeface(), android.graphics.Typeface.BOLD);
+		return t;
+	}
+
+	private int dp(float v) {
+		return Math.round(v * getResources().getDisplayMetrics().density);
+	}
+
+	private int color(@AttrRes int attr) {
+		TypedValue tv = new TypedValue();
+		getContext().getTheme().resolveAttribute(attr, tv, true);
+		return tv.data;
+	}
+
+	/** Three rings that swell and fade one after the other behind the icon. Runs only while shown. */
+	private final class Rings extends View {
+		private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+		private long t0;
+		private boolean running;
+
+		Rings(Context ctx) {
+			super(ctx);
+			paint.setStyle(Paint.Style.STROKE);
+			paint.setStrokeWidth(dp(2));
+		}
+
+		void start() {
+			if (running) return;
+			running = true;
+			t0 = android.os.SystemClock.uptimeMillis();
+			postInvalidateOnAnimation();
+		}
+
+		void stop() {
+			running = false;
+		}
+
+		@Override
+		protected void onDraw(Canvas c) {
+			if (!running) return;
+			float cx = getWidth() / 2f;
+			float cy = getHeight() / 2f;
+			float max = Math.min(cx, cy);
+			long t = android.os.SystemClock.uptimeMillis() - t0;
+			for (int i = 0; i < 3; i++) {
+				float f = ((t + i * 1000) % 3000) / 3000f;
+				paint.setColor((accent & 0x00FFFFFF) | (Math.round(70 * (1f - f)) << 24));
+				c.drawCircle(cx, cy, max * (0.45f + 0.55f * f), paint);
+			}
+			postInvalidateOnAnimation();
+		}
+	}
+}

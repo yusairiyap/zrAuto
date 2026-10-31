@@ -122,6 +122,16 @@ final class CommentsWidget extends HomeWidgetView {
 	}
 
 	@Override
+	protected boolean needsNetwork() {
+		return true;
+	}
+
+	@Override
+	protected void onNetworkBack() {
+		load(true);
+	}
+
+	@Override
 	protected void onStyleChanged() {
 		if (skeleton != null) skeleton.setColor(softFill());
 	}

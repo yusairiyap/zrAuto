@@ -2365,8 +2365,9 @@ public class MainActivityDelegate extends ActivityDelegate
 	@Nullable
 	@Override
 	public ActivityFragment showFragment(int id, Object input) {
-		// A downloaded YouTube video's effects are the YouTube equalizer's, on their own screen.
-		if ((id == R.id.audio_effects_fragment) && MusicPlayer.showDownloadedEffects(this)) {
+		// Audio effects are one card for every player (SidePanels), not a page of their own any more.
+		if (id == R.id.audio_effects_fragment) {
+			me.aap.fermata.ui.view.SidePanels.effects(this);
 			return getActiveFragment();
 		}
 		// A WebView-hosted player's (YouTube's) native fullscreen is drawn as its own overlay on

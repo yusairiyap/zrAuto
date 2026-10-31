@@ -37,78 +37,18 @@ public final class SidePanels {
 	// Audio effects
 
 	public static void effects(MainActivityDelegate a) {
-		boolean panel = SidePanel.isVideoUp(a) && a.getPrefs().getBooleanPref(MainActivityPrefs.SIDE_PANEL_EFFECTS);
-		if (!panel) {
-			AllInOneMenu.openEffects(a);
-			return;
-		}
-		MediaEngine eng = a.getMediaSessionCallback().getEngine();
-		PlayableItem src = (eng == null) ? null : eng.getSource();
-		// The same screen as the full page (equalizer, bass, virtualizer, the 3D sound stage, presets in a menu), in the panel.
-		if ((src != null) && (eng.supportsAudioEffects() || eng.supportsSoundStage())) {
-			SidePanel.toggle(a, "effects", R.drawable.equalizer, R.string.action_audio_effects, MainActivityPrefs.SIDE_PANEL_EFFECTS_PERCENT, new SidePanel.Body() {
-				private AudioEffectsView view;
-
-				@Override
-				public View create(SidePanel p) {
-					view = new AudioEffectsView(a.getContext());
-					MediaSessionCallback cb = a.getMediaServiceBinder().getMediaSessionCallback();
-					view.init(cb, eng.supportsAudioEffects() ? eng.ensureAudioEffects() : null, src);
-					tidyEffects(view);
-					return view;
-				}
-
-				@Override
-				public void onClosed() {
-					if (view == null) return;
-					view.apply(a.getMediaServiceBinder().getMediaSessionCallback());
-					view.cleanup();
-				}
-			});
-			return;
-		}
-		// YouTube's page plays through Web Audio: its own effects screen (the same layout), in the panel.
-		View yt = (eng != null) ? ((eng.getId() == MediaPrefs.MEDIA_ENG_YT) ? MusicPlayer.youtubeEffectsView(a) : null) :
-				MusicPlayer.youtubeEffectsView(a);
-		if (yt != null) {
-			SidePanel.toggle(a, "effects", R.drawable.equalizer, R.string.action_audio_effects, MainActivityPrefs.SIDE_PANEL_EFFECTS_PERCENT, p -> {
-				tidyEffects(yt);
-				return yt;
-			});
+		// One screen for every player (local files, downloads, YouTube): the card of switches and sliders, docked beside
+		// fullscreen video when there is room, else centred over whatever is showing. The old full page is gone.
+		if (SidePanel.isOpen("effects")) {
+			SidePanel.dismissOpen();
 			return;
 		}
 		if (effectsOf(a) == null) {
-			TopToast.show(R.drawable.equalizer, R.string.music_effects_unavailable);
+			MediaEngine eng = a.getMediaSessionCallback().getEngine();
+			TopToast.show(R.drawable.equalizer, (eng == null) ? R.string.music_effects_play_first : R.string.music_effects_unavailable);
 			return;
 		}
 		SidePanel.toggle(a, "effects", R.drawable.equalizer, R.string.action_audio_effects, MainActivityPrefs.SIDE_PANEL_EFFECTS_PERCENT, p -> effectsBody(p));
-	}
-
-	/**
-	 * The effects screen made for a whole page sits under the bars (a big gap on top) and offers where to keep the settings:
-	 * in a panel next to the video the gap is closed and the "Apply to" part left out.
-	 */
-	private static void tidyEffects(View v) {
-		View apply = v.findViewById(R.id.apply_to);
-		if (apply != null) apply.setVisibility(View.GONE);
-		float d = v.getResources().getDisplayMetrics().density;
-		// No grey cards in the panel: the sections sit straight on it, with less room around them.
-		if ((v instanceof ViewGroup sv) && (sv.getChildCount() > 0) && (sv.getChildAt(0) instanceof ViewGroup root)) {
-			root.setPadding(Math.round(2 * d), 0, Math.round(2 * d), Math.round(8 * d));
-			for (int i = 0, n = root.getChildCount(); i < n; i++) {
-				View c = root.getChildAt(i);
-				c.setBackground(null);
-				c.setPadding(Math.round(4 * d), Math.round(4 * d), Math.round(4 * d), Math.round(2 * d));
-				if (c.getLayoutParams() instanceof ViewGroup.MarginLayoutParams mp) mp.bottomMargin = Math.round(4 * d);
-			}
-		}
-		int pad = Math.round(4 * d);
-		Runnable fix = () -> {
-			if ((v.getPaddingTop() != pad) || (v.getPaddingBottom() != pad)) v.setPadding(v.getPaddingLeft(), pad, v.getPaddingRight(), pad);
-		};
-		fix.run();
-		// The bars' insets are put back on every layout: put away again.
-		v.addOnLayoutChangeListener((x, l, t, r, b, ol, ot, or, ob) -> fix.run());
 	}
 
 	/** The effects of what plays; YouTube's own for its page, none for a player without any. */

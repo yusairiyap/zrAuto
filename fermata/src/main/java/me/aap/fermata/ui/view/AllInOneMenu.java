@@ -361,17 +361,7 @@ public final class AllInOneMenu {
 	 * equalizer, or a note saying why there's none.
 	 */
 	public static void openEffects(@NonNull MainActivityDelegate a) {
-		MediaEngine eng = a.getMediaSessionCallback().getEngine();
-		PlayableItem src = (eng == null) ? null : eng.getSource();
-
-		if ((src != null) && (eng.supportsAudioEffects() || eng.supportsSoundStage())) {
-			a.showFragment(R.id.audio_effects_fragment);
-		} else if ((src != null) && eng.showOwnAudioEffects()) {
-			DiagnosticLog.d(LogCat.AIO, "effects: engine's own (in-page equalizer)", "engine=" + eng);
-		} else {
-			TopToast.show(R.drawable.equalizer, (src == null) ? R.string.music_effects_play_first :
-					R.string.music_effects_unavailable);
-		}
+		SidePanels.effects(a);
 	}
 
 	// ---------------------------------------------------------------------------------------------

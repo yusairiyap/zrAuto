@@ -358,14 +358,18 @@ public class SpotifyImportFragment extends MainActivityFragment {
 	@Override
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
 													 @Nullable Bundle savedInstanceState) {
-		return inflater.inflate(R.layout.spotify_import_fragment, container, false);
+		// The list sits in a frame so the shared "no network" placeholder can cover it (Spotify needs the internet).
+		android.widget.FrameLayout frame = new android.widget.FrameLayout(inflater.getContext());
+		frame.addView(inflater.inflate(R.layout.spotify_import_fragment, frame, false));
+		me.aap.fermata.ui.view.NoNetworkView.attach(frame, null);
+		return frame;
 	}
 
 	@Override
 	public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
 		super.onViewCreated(view, savedInstanceState);
 		MainActivityDelegate a = getActivityDelegate();
-		list = (RecyclerView) view;
+		list = (RecyclerView) ((ViewGroup) view).getChildAt(0);
 		adapter = new Adapter();
 		adapter.setHasStableIds(true);
 		list.setAdapter(adapter);
