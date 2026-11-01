@@ -1145,7 +1145,9 @@ public class SettingsFragment extends MainActivityFragment
 				R.string.playback_settings, R.string.playback_control, R.string.engine_prefs);
 		groupRoot(set, R.string.settings_group_subtitles, R.string.settings_group_subtitles_sub,
 				R.string.subtitles, R.string.captions, R.string.lyrics);
-		groupRoot(set, 1, R.string.settings_group_controls, R.string.settings_group_controls_sub,
+		// The car has no voice control, so its Controls subtitle leaves it out.
+		groupRoot(set, 1, R.string.settings_group_controls,
+				isCar ? R.string.settings_group_controls_car_sub : R.string.settings_group_controls_sub,
 				R.string.key_bindings, R.string.voice_control);
 		// Spotify import and Share are features like the add-ons; storage goes with backup.
 		PreferenceSet addonsSet = (PreferenceSet) findByTitle(set, R.string.addons);
