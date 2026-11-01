@@ -1145,7 +1145,7 @@ public class SettingsFragment extends MainActivityFragment
 				R.string.playback_settings, R.string.playback_control, R.string.engine_prefs);
 		groupRoot(set, R.string.settings_group_subtitles, R.string.settings_group_subtitles_sub,
 				R.string.subtitles, R.string.captions, R.string.lyrics);
-		groupRoot(set, R.string.settings_group_controls, R.string.settings_group_controls_sub,
+		groupRoot(set, 1, R.string.settings_group_controls, R.string.settings_group_controls_sub,
 				R.string.key_bindings, R.string.voice_control);
 		// Spotify import and Share are features like the add-ons; storage goes with backup.
 		PreferenceSet addonsSet = (PreferenceSet) findByTitle(set, R.string.addons);
@@ -1310,6 +1310,14 @@ public class SettingsFragment extends MainActivityFragment
 	}
 
 	private static void groupRoot(PreferenceSet root, int title, int subtitle, int... titles) {
+		groupRoot(root, 2, title, subtitle, titles);
+	}
+
+	/**
+	 * Groups the entries found by title. {@code minimum} is how many must be there: Controls on the car screen has only Key
+	 * bindings (Voice control is phone only), and it is still one "Controls" entry in the same place as on the phone.
+	 */
+	private static void groupRoot(PreferenceSet root, int minimum, int title, int subtitle, int... titles) {
 		List<me.aap.utils.function.Supplier<? extends PreferenceView.Opts>> found = new java.util.ArrayList<>();
 		int icon = ID_NULL;
 		for (int t : titles) {
@@ -1324,7 +1332,7 @@ public class SettingsFragment extends MainActivityFragment
 				}
 			}
 		}
-		if (found.size() < 2) return;
+		if (found.size() < minimum) return;
 		final int ic = icon;
 		root.group(o -> {
 			o.title = title;
