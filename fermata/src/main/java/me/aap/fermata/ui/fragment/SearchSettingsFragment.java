@@ -281,7 +281,9 @@ public class SearchSettingsFragment extends ReorderListFragment {
 		if (et == null) return;
 		if (delegate().isCarActivity()) {
 			// The car keyboard starts from the field's own click, as on the other car text fields.
-			et.postDelayed(() -> openCarKeyboard(et, 0), 300);
+			et.postDelayed(() -> {
+				if ((input == et) && et.isAttachedToWindow() && !delegate().getAppActivity().isInputActive()) et.performClick();
+			}, 300);
 			return;
 		}
 		for (long d : new long[]{50, 250, 600}) {
@@ -294,17 +296,6 @@ public class SearchSettingsFragment extends ReorderListFragment {
 				if (c != null) c.show(androidx.core.view.WindowInsetsCompat.Type.ime());
 			}, d);
 		}
-	}
-
-	/**
-	 * Taps the field until the car reports its keyboard is up: the first click can come while the page is still settling
-	 * or before the car takes it, so it is tried again a few times (not after that, and never over a keyboard already up).
-	 */
-	private void openCarKeyboard(EditText et, int tries) {
-		if ((input != et) || !et.isAttachedToWindow()) return;
-		if (delegate().getAppActivity().isInputActive()) return;
-		et.performClick();
-		if (tries < 6) et.postDelayed(() -> openCarKeyboard(et, tries + 1), 250);
 	}
 
 	@Override
