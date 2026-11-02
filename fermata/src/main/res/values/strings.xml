@@ -128,6 +128,7 @@
     <string name="settings_group_subtitles_sub">Subtitles, auto subtitles, captions and lyrics</string>
     <string name="settings_group_controls">Controls</string>
     <string name="settings_group_controls_sub">Key bindings, steering wheel and voice</string>
+    <string name="settings_group_controls_car_sub">Key bindings and the steering wheel</string>
     <string name="settings_group_library">Library and downloads</string>
     <string name="settings_group_library_sub">Spotify import, Share and storage</string>
     <string name="settings_group_backup">Backup and about</string>

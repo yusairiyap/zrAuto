@@ -118,7 +118,10 @@ public class SearchSettingsFragment extends ReorderListFragment {
 		icon.setImageResource(R.drawable.search);
 		icon.setImageTintList(android.content.res.ColorStateList.valueOf(accent));
 		field.addView(icon, new LinearLayout.LayoutParams(dp(22), dp(22)));
-		EditText et = new EditText(palette);
+		// On Android Auto the car's own text field: a tap on it brings up the car keyboard popup (the phone's soft keyboard
+		// does not show there).
+		boolean car = delegate().isCarActivity();
+		EditText et = car ? delegate().createEditText(palette) : new EditText(palette);
 		et.setBackground(null);
 		et.setSingleLine();
 		et.setHint(R.string.settings_search_hint);
@@ -128,6 +131,13 @@ public class SearchSettingsFragment extends ReorderListFragment {
 		et.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
 		et.setPadding(dp(12), dp(12), dp(8), dp(12));
 		field.addView(et, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		if (car) {
+			// The car keyboard's Search / Done key closes it; the results are already live.
+			et.setOnEditorActionListener((v, id, e) -> {
+				delegate().getAppActivity().stopInput();
+				return true;
+			});
+		}
 		TextView clear = text(R.string.settings_search_clear, 13, accent, true);
 		clear.setPadding(dp(12), dp(10), dp(12), dp(10));
 		clear.setVisibility(View.GONE);
@@ -269,6 +279,13 @@ public class SearchSettingsFragment extends ReorderListFragment {
 	private void focusInput() {
 		EditText et = input;
 		if (et == null) return;
+		if (delegate().isCarActivity()) {
+			// The car keyboard starts from the field's own click, as on the other car text fields.
+			et.postDelayed(() -> {
+				if ((input == et) && et.isAttachedToWindow() && !delegate().getAppActivity().isInputActive()) et.performClick();
+			}, 300);
+			return;
+		}
 		for (long d : new long[]{50, 250, 600}) {
 			et.postDelayed(() -> {
 				if (input != et) return;

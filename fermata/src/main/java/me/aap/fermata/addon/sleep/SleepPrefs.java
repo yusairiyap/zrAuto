@@ -35,7 +35,8 @@ public final class SleepPrefs {
 	public static final Pref<IntSupplier> AUTO_STOP_H = Pref.i("SLEEP_AUTO_STOP_H", 12);
 	/** Starting a session also starts the last ambience mix, which fades out after {@link #AMBIENCE_MIN} minutes. */
 	public static final Pref<BooleanSupplier> AMBIENCE_START = Pref.b("SLEEP_AMBIENCE_START", true);
-	public static final Pref<IntSupplier> AMBIENCE_MIN = Pref.i("SLEEP_AMBIENCE_MIN", 30);
+	/** The same length as the Ambience tab's ({@link me.aap.fermata.addon.ambience.AmbienceEngine#LENGTH}). */
+	public static final Pref<IntSupplier> AMBIENCE_MIN = me.aap.fermata.addon.ambience.AmbienceEngine.LENGTH;
 	/** Stopping the session also stops the ambience. */
 	/** The same length is also set as the app's playback sleep timer, so whatever plays stops with the ambience. */
 	public static final Pref<BooleanSupplier> STOP_PLAYBACK = Pref.b("SLEEP_STOP_PLAYBACK", true);

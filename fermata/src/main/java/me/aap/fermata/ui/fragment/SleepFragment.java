@@ -44,6 +44,7 @@ import me.aap.fermata.addon.sleep.SleepTracker;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.ChipFlowLayout;
 import me.aap.fermata.ui.view.EffectsUi;
+import me.aap.fermata.ui.view.LengthStepper;
 import me.aap.fermata.ui.view.SettingsStyle;
 import me.aap.fermata.ui.view.SleepBarsView;
 import me.aap.fermata.ui.view.SleepHypnogramView;
@@ -104,7 +105,7 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 	private SleepScoreView scoreView;
 	private TextView statAsleep, statBed, statLatency, statAwake;
 	private TextView batteryLine;
-	private TextView lengthText;
+	private LengthStepper lengthStepper;
 	private androidx.appcompat.widget.SwitchCompat stopPlaybackSwitch;
 	private View prevNight, nextNight;
 	// Stage card
@@ -449,26 +450,12 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 		LinearLayout.LayoutParams lblp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
 		lblp.topMargin = px(12);
 		card.addView(lenLabel, lblp);
-		// - [ 30 min ] + : any length in steps of five minutes, as the sleep timer's page does.
-		LinearLayout stepper = new LinearLayout(palette);
-		stepper.setGravity(Gravity.CENTER_VERTICAL);
-		TextView minus = ChipFlowLayout.chip(palette, 0, "−", false, () -> stepLength(-1));
-		minus.setGravity(Gravity.CENTER);
-		minus.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 22);
-		minus.setContentDescription(getString(R.string.sleep_length_less));
-		lengthText = text("", 17, c.textPrimary, true);
-		lengthText.setGravity(Gravity.CENTER);
-		TextView plus = ChipFlowLayout.chip(palette, 0, "+", false, () -> stepLength(1));
-		plus.setGravity(Gravity.CENTER);
-		plus.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 22);
-		plus.setContentDescription(getString(R.string.sleep_length_more));
-		stepper.addView(minus, new LinearLayout.LayoutParams(px(64), px(44)));
-		stepper.addView(lengthText, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
-		stepper.addView(plus, new LinearLayout.LayoutParams(px(64), px(44)));
+		// - [ 30 min ] + : any length in steps of five minutes. The Ambience tab has the same control for the same length.
+		lengthStepper = new LengthStepper(palette, c.textPrimary,
+				() -> SleepPrefs.store().getIntPref(SleepPrefs.AMBIENCE_MIN), this::setAmbienceLength);
 		LinearLayout.LayoutParams lcp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
 		lcp.topMargin = px(6);
-		card.addView(stepper, lcp);
-		showLength();
+		card.addView(lengthStepper, lcp);
 
 		LinearLayout stop = new LinearLayout(palette);
 		stop.setGravity(Gravity.CENTER_VERTICAL);
@@ -495,18 +482,14 @@ public class SleepFragment extends MainActivityFragment implements ToolBarChip.H
 		return card;
 	}
 
-	private void stepLength(int dir) {
-		int cur = SleepPrefs.store().getIntPref(SleepPrefs.AMBIENCE_MIN);
-		int next = (dir < 0) ? ((cur % 5 == 0) ? cur - 5 : cur - (cur % 5)) : cur + 5 - (cur % 5);
-		next = Math.max(0, Math.min(480, next));
-		SleepPrefs.store().applyIntPref(SleepPrefs.AMBIENCE_MIN, next);
-		showLength();
+	/** The engine stores it and reschedules a running timer; without the addon the preference alone is kept. */
+	private void setAmbienceLength(int minutes) {
+		if (AmbienceAddon.isEnabled()) AmbienceEngine.get().setLengthMinutes(minutes);
+		else SleepPrefs.store().applyIntPref(SleepPrefs.AMBIENCE_MIN, minutes);
 	}
 
 	private void showLength() {
-		if (lengthText == null) return;
-		int cur = SleepPrefs.store().getIntPref(SleepPrefs.AMBIENCE_MIN);
-		lengthText.setText((cur == 0) ? getString(R.string.sleep_no_limit) : getString(R.string.sleep_minutes_short, cur));
+		if (lengthStepper != null) lengthStepper.refresh();
 	}
 
 	/** The ambience card follows what plays; it is not there without the Ambience addon. */

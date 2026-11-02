@@ -68,9 +68,10 @@ final class TimerWidget extends HomeWidgetView {
 	@Override
 	protected void onCreate(FrameLayout content) {
 		column = new LinearLayout(ctx);
-		// Behind the words in a strip: the time left as a fill that runs out.
+		// Behind the words in a strip: the time left as a fill that runs out. Over the whole card (not the padded
+		// area), so its edges are the card's own rounded ones and it blends into the glass.
 		backdrop = new BackdropView(ctx);
-		content.addView(backdrop, new FrameLayout.LayoutParams(-1, -1));
+		addUnderContent(backdrop);
 		column.setOrientation(LinearLayout.VERTICAL);
 		headerRow = header(() -> host.run(Action.SLEEP_TIMER));
 		column.addView(headerRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(34)));
@@ -133,6 +134,8 @@ final class TimerWidget extends HomeWidgetView {
 	protected void onInactive() {
 		cb().removeBroadcastListener(listener);
 		removeCallbacks(tick);
+		// Off screen the band of light stops asking for frames; onActive's refresh starts it again.
+		setRunning(false);
 	}
 
 	private void layoutFor() {
@@ -367,6 +370,7 @@ final class TimerWidget extends HomeWidgetView {
 			total = 0;
 			value.setText(R.string.music_timer_off);
 			sub.setText(R.string.home_timer_idle);
+			setRunning(false);
 			bar.setFraction(0f);
 			backdrop.setFraction(-1f);
 			return;
@@ -374,6 +378,7 @@ final class TimerWidget extends HomeWidgetView {
 		if (waiting) {
 			value.setText(DateUtils.formatElapsedTime(0));
 			sub.setText(R.string.music_timer_waiting);
+			setRunning(false);
 			bar.setFraction(0f);
 			backdrop.setFraction(1f);
 			return;
@@ -383,8 +388,16 @@ final class TimerWidget extends HomeWidgetView {
 		String stops = ctx.getString(R.string.home_timer_stops_at,
 				android.text.format.DateFormat.getTimeFormat(ctx).format(new java.util.Date(System.currentTimeMillis() + left * 1000L)));
 		sub.setText((getCellsH() == 1) ? stops : ctx.getString(R.string.home_timer_running));
+		setRunning(true);
 		bar.setFraction(left / (float) Math.max(1, total));
 		backdrop.setFraction(left / (float) Math.max(1, total));
 		if (isActive()) postDelayed(tick, 1000);
+	}
+
+	/** The light band runs along the bar and the backdrop only while the countdown runs. */
+	private void setRunning(boolean on) {
+		if ((bar == null) || (backdrop == null)) return;
+		bar.setRunning(on);
+		backdrop.setRunning(on);
 	}
 }

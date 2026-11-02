@@ -113,6 +113,14 @@ public abstract class HomeWidgetView extends FrameLayout {
 		addView(content, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 	}
 
+	/**
+	 * Adds a view under the padded content, over the whole card: it is clipped to the card's rounded corners and is not
+	 * inset by the content's padding, so a picture behind the words (a backdrop) blends into the card's edges.
+	 */
+	protected final void addUnderContent(View v) {
+		addView(v, 0, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+	}
+
 	// ---------------------------------------------------------------------------------------------
 	// What a widget implements
 
