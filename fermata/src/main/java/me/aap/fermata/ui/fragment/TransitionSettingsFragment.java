@@ -13,7 +13,7 @@ import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
-import android.widget.SwitchCompat;
+import androidx.appcompat.widget.SwitchCompat;
 import android.widget.TextView;
 
 import androidx.annotation.DrawableRes;
