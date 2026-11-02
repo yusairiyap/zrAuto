@@ -35,6 +35,7 @@ import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.transition.TransitionConfig;
 import me.aap.fermata.ui.transition.TransitionConfig.Element;
 import me.aap.fermata.ui.transition.TransitionController;
+import me.aap.fermata.ui.transition.TransitionDemos;
 import me.aap.fermata.ui.transition.TransitionView;
 import me.aap.fermata.ui.view.ChipFlowLayout;
 import me.aap.fermata.ui.view.SwitchStyle;
