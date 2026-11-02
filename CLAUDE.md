@@ -1124,10 +1124,19 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
   *fractions of the screen* (centre x/y, width, text height as a fraction of screen height), so the preview and any screen agree. Each element has font, bold,
   italic, align, colour, fill (none/solid/glass), corner radius, padding, edge line, its own entrance/exit animation, durations and delay. Element ids are
   saved: never renumber. The picked picture is `files/transition_bg[_aa].jpg` (not in backups).
-- **Preview is the editor**: `TransitionView#setEditor` makes the same view editable: tap picks, drag moves (snaps to the centre lines), the corner handle
-  sets the width, a pinch sets the text size (art width). The page keeps it as the sticky top card; the option rows (built in code, own helpers with
-  `setSync`/`panelSync` lists, the picked element's rows are rebuilt on every pick) save on each change. "Glass" is a frosted look (blurred cover + pale veil
-  + rim), not a live blur of the app behind: nothing can read a WebView / fullscreen video (see the UI style notes). **Never run on a device.**
+- **Preview is the editor, full page**: `TransitionSettingsFragment` (a `ReorderListFragment` only for its palette, `initPalette`; it builds its own root) shows the
+  screen as large as the room allows (`Stage`, the screen's own aspect) with the real now-playing title/channel/playlist/cover on it
+  (`TransitionController#loadInto`; samples when nothing plays). `TransitionView#setEditor` makes it editable: tap picks, drag moves (snaps to the centre
+  lines), the corner handle sets the width, a pinch sets the text size (art width). Chips over it: Phone / Android Auto (top left), Play preview, add, gear (top right).
+  The options are one card (`buildPanel`: chips to pick Screen / each element / add, then the rows): on a wide window (>= 720dp or the car screen) it is a permanent
+  column on the right that cross-slides on every pick; on a phone it is a bottom sheet over the preview (58% of the height, Back closes it). The card is a `CarNav`
+  scope and its chips pick elements, so the steering wheel can do everything. Choices with a picture are tiles (`tilesRow` + `TransitionDemos`): the animation
+  tiles loop the real animation (only while visible), backgrounds, fills, fonts and alignments are drawn as they will look. Rows have their own helpers and one
+  `sync` list that is rebuilt with each card. "Glass" is a frosted look (blurred cover + pale veil + rim), not a live blur of the app behind (nothing can read a
+  WebView / fullscreen video). **Never run on a device.**
+- **Why it did not show at first**: `onEngineStarted` can come before the engine's source is set (YouTube), so `TransitionController#onTrackStarted(engine)` asks for it again
+  up to 4 times 400 ms apart, then takes the item the UI says plays; a song is one key by its YouTube video id (else its item id). Every skip is in the Diagnostic log
+  (`MUSIC transition screen ...`: skipped / no song to show / no screen registered / shown).
 - **YouTube sign-in** (YouTube tab's nav bar menu > Sign in to YouTube): "In a window over the app" opens `ui/view/WebLoginCard`, a plain `WebView` in a
   modal card that shares the app's cookie jar (so the YouTube tab's account is the one signed in; hidden in Private Mode, whose profile has its own jar) and
   closes itself when the page returns to youtube.com after the Google sign-in pages, then reloads the tab; "In this tab" loads the sign-in URL in the tab.

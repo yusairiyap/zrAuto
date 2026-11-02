@@ -60,19 +60,6 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 	private int selectedId;
 	@Nullable
 	private TransitionView preview;
-	@Nullable
-	private LinearLayout box;
-	@Nullable
-	private LinearLayout panel;
-	@Nullable
-	private ChipFlowLayout elementChips;
-	@Nullable
-	private TextView phoneTab;
-	@Nullable
-	private TextView carTab;
-	/** Brings the rows of the set in line with it; the picked element's rows have their own list (they are made again). */
-	private final List<Runnable> setSync = new ArrayList<>();
-	private final List<Runnable> panelSync = new ArrayList<>();
 	private boolean playing;
 
 	@Override
@@ -88,8 +75,8 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 	@Override
 	public void setInput(Object input) {
 		carInput = Boolean.TRUE.equals(input);
-		car = carInput;
-		if (getView() != null) switchSet(car);
+		if (getView() == null) car = carInput;
+		else switchSet(carInput);
 	}
 
 	// ---- No rows ----
@@ -119,9 +106,11 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		cfg = TransitionConfig.load(car);
 		if (preview != null) {
 			preview.setConfig(cfg);
+			preview.setSelected(0);
 			preview.setPicture(null);
 		}
-		buildAll();
+		if (wide) openPanel(P_GENERAL);
+		else closeSheet();
 	}
 
 	@Override
@@ -144,13 +133,29 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		delegate().showFragment(R.id.settings_fragment);
 	}
 
-	// ---- The preview, always in view ----
+	// ---- The page: a full preview, and the options beside it (wide) or in a sheet over it (phone) ----
 
-	/** Keeps the shape of the screen shown: as wide as fits, no taller than {@code maxH}. */
-	private final class PreviewFrame extends FrameLayout {
+	private static final int P_GENERAL = 0, P_ELEMENT = 1, P_ADD = 2;
+	private boolean wide;
+	private int panelMode = P_GENERAL;
+	private boolean sheetOpen;
+	@Nullable
+	private FrameLayout root;
+	@Nullable
+	private Stage stage;
+	@Nullable
+	private FrameLayout sidePanel;
+	@Nullable
+	private FrameLayout sheet;
+	@Nullable
+	private LinearLayout panelCard;
+	private final List<Runnable> sync = new ArrayList<>();
+
+	/** Keeps the shape of the screen shown, as large as the room allows, between the chips and the hint. */
+	private final class Stage extends FrameLayout {
 		private float aspect = 16f / 9f;
 
-		PreviewFrame(Context c) {
+		Stage(Context c) {
 			super(c);
 		}
 
@@ -161,31 +166,35 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 
 		@Override
 		protected void onMeasure(int wSpec, int hSpec) {
-			int avail = MeasureSpec.getSize(wSpec);
-			int maxH = dp(190);
-			int w = Math.min(avail, Math.round(maxH * aspect));
-			int h = Math.round(w / aspect);
-			setMeasuredDimension(avail, h);
+			int w = MeasureSpec.getSize(wSpec);
+			int h = MeasureSpec.getSize(hSpec);
+			setMeasuredDimension(w, h);
+			int fw = Math.min(w - dp(24), Math.round((h - dp(64 + 34)) * aspect));
+			fw = Math.max(dp(80), fw);
+			int fh = Math.round(fw / aspect);
 			for (int i = 0; i < getChildCount(); i++) {
-				View c = getChildAt(i);
-				c.measure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY));
+				getChildAt(i).measure(MeasureSpec.makeMeasureSpec(fw, MeasureSpec.EXACTLY),
+						MeasureSpec.makeMeasureSpec(fh, MeasureSpec.EXACTLY));
 			}
 		}
 
 		@Override
 		protected void onLayout(boolean changed, int l, int t, int r, int b) {
+			int w = r - l;
+			int h = b - t;
 			for (int i = 0; i < getChildCount(); i++) {
 				View c = getChildAt(i);
 				int cw = c.getMeasuredWidth();
-				int left = ((r - l) - cw) / 2;
-				c.layout(left, 0, left + cw, c.getMeasuredHeight());
+				int ch = c.getMeasuredHeight();
+				int left = (w - cw) / 2;
+				int room = h - dp(64 + 34);
+				int top = dp(64) + Math.max(0, (room - ch) / 2);
+				c.layout(left, top, left + cw, top + ch);
 			}
 		}
 	}
 
-	private PreviewFrame frame;
-
-	/** The set being edited, loaded on first use (the page builds its options before its preview). */
+	/** The set being edited, loaded on first use. */
 	private void ensureCfg() {
 		if (cfg != null) return;
 		if (!carInput) {
@@ -197,53 +206,112 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 
 	@Nullable
 	@Override
-	protected View createStickyTop() {
+	public View onCreateView(@NonNull android.view.LayoutInflater inflater, @Nullable android.view.ViewGroup container,
+													 @Nullable android.os.Bundle state) {
+		Context ctx = inflater.getContext();
+		initPalette(ctx);
 		ensureCfg();
-		LinearLayout card = new LinearLayout(palette);
-		card.setOrientation(LinearLayout.VERTICAL);
-		card.setPadding(dp(10), dp(10), dp(10), dp(8));
-		GradientDrawable bg = new GradientDrawable();
-		bg.setColor(tileFill | 0xFF000000);
-		bg.setCornerRadius(dp(20));
-		bg.setStroke(dp(1), 0x33808080);
-		card.setBackground(bg);
+		MainActivityDelegate d = getActivityDelegate();
+		wide = (ctx.getResources().getConfiguration().screenWidthDp >= 720) || ((d != null) && d.isCarActivity());
 
-		frame = new PreviewFrame(palette);
-		// A stand-in for the app behind it, so a clear or dim screen can be told from a solid one.
-		GradientDrawable scene = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-				new int[]{0xFF2B5876, 0xFF4E4376});
-		scene.setCornerRadius(dp(12));
-		FrameLayout stage = new FrameLayout(palette);
-		stage.setBackground(scene);
-		stage.setClipToOutline(true);
-		stage.setOutlineProvider(android.view.ViewOutlineProvider.BACKGROUND);
+		root = new FrameLayout(palette);
+		LinearLayout row = new LinearLayout(palette);
+		row.setOrientation(LinearLayout.HORIZONTAL);
+		root.addView(row, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+
+		stage = new Stage(palette);
+		FrameLayout scene = new FrameLayout(palette);
+		// A stand-in for the app behind the screen, so a clear or dim one can be told from a solid one.
+		GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0xFF2B5876, 0xFF4E4376});
+		bg.setCornerRadius(dp(14));
+		scene.setBackground(bg);
+		scene.setClipToOutline(true);
+		scene.setOutlineProvider(android.view.ViewOutlineProvider.BACKGROUND);
 		preview = new TransitionView(palette, cfg);
 		preview.setSample(true);
 		preview.setEditor(this);
-		stage.addView(preview, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
-		frame.addView(stage, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
-		card.addView(frame, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		preview.setPicture((cfg.bg == TransitionConfig.BG_PICTURE) ? TransitionController.loadPicture(car) : null);
+		scene.addView(preview, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		stage.addView(scene, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+		row.addView(stage, new LinearLayout.LayoutParams(0, MATCH_PARENT, 1f));
 		updateAspect();
 
-		LinearLayout buttons = new LinearLayout(palette);
-		buttons.setGravity(Gravity.CENTER);
-		buttons.addView(pill(getString(R.string.tr_play), R.drawable.play, true, this::playPreview),
-				new LinearLayout.LayoutParams(0, dp(40), 1f));
-		LinearLayout.LayoutParams second = new LinearLayout.LayoutParams(0, dp(40), 1f);
-		second.setMarginStart(dp(8));
-		buttons.addView(pill(getString(R.string.tr_edit_hint), 0, false, null), second);
-		LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		blp.topMargin = dp(8);
-		card.addView(buttons, blp);
-		return card;
+		TextView hint = text(R.string.tr_edit_hint, 12.5f, textSecondary, false);
+		hint.setGravity(Gravity.CENTER);
+		FrameLayout.LayoutParams hlp = new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.BOTTOM);
+		hlp.bottomMargin = dp(8);
+		hlp.setMarginEnd(wide ? dp(380) : 0);
+		root.addView(hint, hlp);
+
+		if (wide) {
+			sidePanel = new FrameLayout(palette);
+			LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(dp(380), MATCH_PARENT);
+			slp.setMargins(0, dp(4), dp(8), dp(8));
+			row.addView(sidePanel, slp);
+		} else {
+			sheet = new FrameLayout(palette);
+			sheet.setVisibility(View.GONE);
+			FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(MATCH_PARENT, dp(300), Gravity.BOTTOM);
+			slp.setMargins(dp(8), 0, dp(8), dp(8));
+			root.addView(sheet, slp);
+			root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+				if (sheet == null) return;
+				int h = Math.round((b - t) * 0.58f);
+				android.view.ViewGroup.LayoutParams lp = sheet.getLayoutParams();
+				if (lp.height != h) {
+					lp.height = h;
+					sheet.setLayoutParams(lp);
+				}
+			});
+		}
+
+		// The set, and the preview's own chips: settings, add, play.
+		LinearLayout left = new LinearLayout(palette);
+		left.addView(ChipFlowLayout.chip(palette, R.drawable.home_page, getString(R.string.home_settings_tab_phone), !car,
+				() -> switchSet(false)));
+		LinearLayout.LayoutParams gap = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+		gap.setMarginStart(dp(6));
+		left.addView(ChipFlowLayout.chip(palette, R.drawable.car, getString(R.string.home_settings_tab_aa), car,
+				() -> switchSet(true)), gap);
+		FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP | Gravity.START);
+		llp.setMargins(dp(8), dp(8), 0, 0);
+		root.addView(left, llp);
+		setChips = left;
+
+		LinearLayout right = new LinearLayout(palette);
+		right.addView(ChipFlowLayout.chip(palette, R.drawable.play, getString(R.string.tr_play), true, this::playPreview));
+		LinearLayout.LayoutParams g2 = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+		g2.setMarginStart(dp(6));
+		right.addView(ChipFlowLayout.chip(palette, R.drawable.home_add, "", false, () -> openPanel(P_ADD)), g2);
+		right.addView(ChipFlowLayout.chip(palette, R.drawable.settings, "", false, () -> {
+			selectedId = 0;
+			if (preview != null) preview.setSelected(0);
+			openPanel(P_GENERAL);
+		}), g2);
+		FrameLayout.LayoutParams rlp = new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP | Gravity.END);
+		rlp.setMargins(0, dp(8), wide ? dp(388) : dp(8), 0);
+		root.addView(right, rlp);
+
+		// What plays now is on the preview, with its cover (nothing playing: the samples).
+		if (d != null) {
+			me.aap.fermata.media.lib.MediaLib.PlayableItem pi = me.aap.fermata.ui.home.HomeArt.displayItem(d);
+			if (pi != null) TransitionController.loadInto(d, pi, preview);
+		}
+
+		if (wide) openPanel(P_GENERAL);
+		return root;
 	}
 
+	@Nullable
+	private LinearLayout setChips;
+
 	private void updateAspect() {
-		if (frame == null) return;
+		Stage st = stage;
+		if (st == null) return;
 		android.util.DisplayMetrics dm = palette.getResources().getDisplayMetrics();
 		float screen = (float) Math.max(dm.widthPixels, dm.heightPixels) / Math.min(dm.widthPixels, dm.heightPixels);
 		// The car screen is wide; the phone's own is taken as it is held now.
-		frame.setAspect(car ? 16f / 9f : (dm.widthPixels < dm.heightPixels ? 1f / screen : screen));
+		st.setAspect(car ? 16f / 9f : (dm.widthPixels < dm.heightPixels ? 1f / screen : screen));
 	}
 
 	private void playPreview() {
@@ -259,63 +327,8 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		}), stay);
 	}
 
-	// ---- The options ----
-
-	@Override
-	protected View createExtraHeader() {
-		ensureCfg();
-		LinearLayout h = new LinearLayout(palette);
-		h.setOrientation(LinearLayout.VERTICAL);
-		LinearLayout tabs = new LinearLayout(palette);
-		phoneTab = tab(R.string.home_settings_tab_phone, R.drawable.home_page, false);
-		carTab = tab(R.string.home_settings_tab_aa, R.drawable.car, true);
-		LinearLayout.LayoutParams l1 = new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f);
-		l1.setMarginEnd(dp(4));
-		LinearLayout.LayoutParams l2 = new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f);
-		l2.setMarginStart(dp(4));
-		tabs.addView(phoneTab, l1);
-		tabs.addView(carTab, l2);
-		LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		tlp.topMargin = dp(6);
-		h.addView(tabs, tlp);
-		box = new LinearLayout(palette);
-		box.setOrientation(LinearLayout.VERTICAL);
-		h.addView(box, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-		lightTabs();
-		buildAll();
-		return h;
-	}
-
-	private TextView tab(@StringRes int label, @DrawableRes int icon, boolean forCar) {
-		TextView t = text(label, 14, textPrimary, true);
-		t.setGravity(Gravity.CENTER);
-		t.setSingleLine(true);
-		t.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, 0, 0, 0);
-		t.setCompoundDrawablePadding(dp(8));
-		t.setPadding(dp(12), dp(13), dp(12), dp(13));
-		GradientDrawable fill = rounded(tileFill, 16);
-		t.setTag(R.id.transition_settings_fragment, fill);
-		t.setBackground(pressable(fill));
-		t.setClickable(true);
-		t.setFocusable(true);
-		t.setOnClickListener(v -> switchSet(forCar));
-		return t;
-	}
-
-	private void lightTabs() {
-		light(phoneTab, !car);
-		light(carTab, car);
-	}
-
-	private void light(@Nullable TextView t, boolean on) {
-		if (t == null) return;
-		GradientDrawable fill = (GradientDrawable) t.getTag(R.id.transition_settings_fragment);
-		fillColor(fill, on ? accent : tileFill);
-		t.setTextColor(on ? onAccent : textPrimary);
-		t.setCompoundDrawableTintList(ColorStateList.valueOf(on ? onAccent : textSecondary));
-	}
-
 	private void switchSet(boolean forCar) {
+		if (forCar == car) return;
 		car = forCar;
 		selectedId = 0;
 		cfg = TransitionConfig.load(car);
@@ -324,35 +337,269 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			preview.setSelected(0);
 			preview.setPicture(cfg.bg == TransitionConfig.BG_PICTURE ? TransitionController.loadPicture(car) : null);
 		}
+		LinearLayout sc = setChips;
+		if ((sc != null) && (sc.getChildCount() == 2)) {
+			// Light the picked one.
+			sc.removeAllViews();
+			sc.addView(ChipFlowLayout.chip(palette, R.drawable.home_page, getString(R.string.home_settings_tab_phone), !car,
+					() -> switchSet(false)));
+			LinearLayout.LayoutParams gap = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+			gap.setMarginStart(dp(6));
+			sc.addView(ChipFlowLayout.chip(palette, R.drawable.car, getString(R.string.home_settings_tab_aa), car,
+					() -> switchSet(true)), gap);
+		}
 		updateAspect();
-		lightTabs();
-		buildAll();
+		closeSheet();
+		if (wide) openPanel(P_GENERAL);
+	}
+
+	@Override
+	public boolean onBackPressed() {
+		if (sheetOpen) {
+			closeSheet();
+			return true;
+		}
+		return super.onBackPressed();
 	}
 
 	@Override
 	public void onDestroyView() {
 		cfg = null;
 		preview = null;
-		box = null;
-		panel = null;
-		elementChips = null;
-		phoneTab = null;
-		carTab = null;
-		frame = null;
-		setSync.clear();
-		panelSync.clear();
+		root = null;
+		stage = null;
+		sidePanel = null;
+		sheet = null;
+		panelCard = null;
+		setChips = null;
+		sync.clear();
+		sheetOpen = false;
 		super.onDestroyView();
 	}
 
-	/** Makes every row of the set again (the set changed, or was reset). */
-	private void buildAll() {
-		LinearLayout b = box;
-		if (b == null) return;
-		b.removeAllViews();
-		setSync.clear();
-		panelSync.clear();
-		List<Runnable> s = setSync;
+	// ---- The panel ----
 
+	/** Shows the panel for {@code mode}: in the side column (wide), or as a sheet over the preview (phone). */
+	private void openPanel(int mode) {
+		panelMode = mode;
+		LinearLayout card = buildPanel();
+		panelCard = card;
+		if (wide) {
+			FrameLayout host = sidePanel;
+			if (host == null) return;
+			host.removeAllViews();
+			host.addView(card, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+			card.setAlpha(0f);
+			card.setTranslationX(dp(28));
+			card.animate().alpha(1f).translationX(0f).setDuration(200).setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f)).start();
+		} else {
+			FrameLayout host = sheet;
+			if (host == null) return;
+			boolean wasOpen = sheetOpen;
+			host.removeAllViews();
+			host.addView(card, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+			host.setVisibility(View.VISIBLE);
+			sheetOpen = true;
+			if (!wasOpen) {
+				host.setTranslationY(dp(220));
+				host.setAlpha(0f);
+				host.animate().translationY(0f).alpha(1f).setDuration(240)
+						.setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f)).start();
+			} else {
+				card.setAlpha(0f);
+				card.animate().alpha(1f).setDuration(150).start();
+			}
+		}
+	}
+
+	private void closeSheet() {
+		FrameLayout host = sheet;
+		if ((host == null) || !sheetOpen) return;
+		sheetOpen = false;
+		host.animate().translationY(dp(220)).alpha(0f).setDuration(200)
+				.setInterpolator(new android.view.animation.AccelerateInterpolator(1.3f))
+				.withEndAction(() -> {
+					host.setVisibility(View.GONE);
+					host.removeAllViews();
+				}).start();
+		selectedId = 0;
+		if (preview != null) preview.setSelected(0);
+	}
+
+	/** A card: the chips that pick what to edit, a title, and the options. */
+	private LinearLayout buildPanel() {
+		sync.clear();
+		LinearLayout card = new LinearLayout(palette);
+		card.setOrientation(LinearLayout.VERTICAL);
+		card.setClickable(true);
+		card.setElevation(dp(8));
+		card.setBackground(me.aap.fermata.ui.view.MenuStyle.panel(card, paletteColor(R.attr.musicPanelFill), dp(24)));
+		card.setPadding(dp(10), dp(10), dp(10), dp(8));
+
+		// What to edit: the screen's own settings, each element, add. (Also how a steering wheel picks one.)
+		LinearLayout head = new LinearLayout(palette);
+		head.setGravity(Gravity.CENTER_VERTICAL);
+		android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(palette);
+		hs.setHorizontalScrollBarEnabled(false);
+		ChipFlowLayout chips = new ChipFlowLayout(palette);
+		chips.setOneRow(true);
+		chips.addView(ChipFlowLayout.chip(palette, R.drawable.settings, getString(R.string.tr_general),
+				panelMode == P_GENERAL, () -> {
+			selectedId = 0;
+			if (preview != null) preview.setSelected(0);
+			openPanel(P_GENERAL);
+		}));
+		for (Element e : cfg.elements) {
+			TextView c = ChipFlowLayout.chip(palette, iconOf(e.type), nameOf(e), (panelMode == P_ELEMENT) && (e.id == selectedId),
+					() -> pick(e.id));
+			c.setAlpha(e.visible ? 1f : 0.5f);
+			chips.addView(c);
+		}
+		chips.addView(ChipFlowLayout.chip(palette, R.drawable.home_add, "", panelMode == P_ADD, () -> openPanel(P_ADD)));
+		hs.addView(chips);
+		head.addView(hs, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		android.widget.ImageButton close = new android.widget.ImageButton(palette);
+		close.setImageResource(me.aap.utils.R.drawable.close);
+		close.setImageTintList(ColorStateList.valueOf(textPrimary));
+		GradientDrawable cb = new GradientDrawable();
+		cb.setShape(GradientDrawable.OVAL);
+		cb.setColor(0x1F808080);
+		close.setBackground(cb);
+		close.setContentDescription(getString(R.string.close));
+		close.setOnClickListener(v -> {
+			if (wide) {
+				selectedId = 0;
+				if (preview != null) preview.setSelected(0);
+				openPanel(P_GENERAL);
+			} else {
+				closeSheet();
+			}
+		});
+		LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(dp(38), dp(38));
+		clp.setMarginStart(dp(6));
+		head.addView(close, clp);
+		card.addView(head, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+
+		android.widget.ScrollView scroll = new android.widget.ScrollView(palette);
+		scroll.setVerticalScrollBarEnabled(false);
+		LinearLayout body = new LinearLayout(palette);
+		body.setOrientation(LinearLayout.VERTICAL);
+		body.setPadding(0, 0, 0, dp(12));
+		scroll.addView(body, new android.view.ViewGroup.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		card.addView(scroll, new LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f));
+
+		switch (panelMode) {
+			case P_ELEMENT -> {
+				if (selected() == null) buildGeneral(body);
+				else buildElement(body, selected());
+			}
+			case P_ADD -> buildAdd(body);
+			default -> buildGeneral(body);
+		}
+		runSync();
+		me.aap.fermata.action.CarNav.markScope(card, wide ? null : this::closeSheet);
+		return card;
+	}
+
+	private void pick(int id) {
+		selectedId = id;
+		if (preview != null) preview.setSelected(id);
+		if (id == 0) {
+			if (wide) openPanel(P_GENERAL);
+			else closeSheet();
+			return;
+		}
+		openPanel(P_ELEMENT);
+	}
+
+	// ---- Editing in the preview ----
+
+	@Override
+	public void onPicked(int id) {
+		pick(id);
+	}
+
+	@Override
+	public void onEdited(Element e, boolean done) {
+		if (panelMode == P_ELEMENT) runSync();
+		if (done) cfg.save(car);
+	}
+
+	@Nullable
+	private Element selected() {
+		return (selectedId == 0) ? null : cfg.find(selectedId);
+	}
+
+	private String nameOf(Element e) {
+		String n = getString(TransitionConfig.nameRes(e.type));
+		int same = 0;
+		int index = 0;
+		for (Element o : cfg.elements) {
+			if (o.type == e.type) {
+				same++;
+				if (o == e) index = same;
+			}
+		}
+		return (same > 1) ? n + " " + index : n;
+	}
+
+	@DrawableRes
+	private static int iconOf(int type) {
+		return switch (type) {
+			case TransitionConfig.T_ART -> R.drawable.home_image;
+			case TransitionConfig.T_PLAYLIST -> R.drawable.playlist;
+			case TransitionConfig.T_CHANNEL -> R.drawable.account;
+			default -> R.drawable.title;
+		};
+	}
+
+	private String[] strings(@StringRes int... ids) {
+		String[] out = new String[ids.length];
+		for (int i = 0; i < ids.length; i++) out[i] = getString(ids[i]);
+		return out;
+	}
+
+	private void changed() {
+		cfg.save(car);
+		if (preview != null) preview.refresh();
+		runSync();
+	}
+
+	private void elementChanged() {
+		changed();
+	}
+
+	private void runSync() {
+		for (Runnable r : new ArrayList<>(sync)) r.run();
+	}
+
+	// ---- What the panel holds ----
+
+	private void buildAdd(LinearLayout p) {
+		section(p, R.string.tr_section_elements);
+		TextView hint = text(R.string.tr_elements_hint, 12.5f, textSecondary, false);
+		hint.setPadding(dp(4), 0, dp(4), dp(6));
+		p.addView(hint);
+		int[] kinds = {TransitionConfig.T_TITLE, TransitionConfig.T_CHANNEL, TransitionConfig.T_ART,
+				TransitionConfig.T_PLAYLIST, TransitionConfig.T_TEXT};
+		for (int kind : kinds) {
+			actionRow(p, getString(R.string.tr_add_fmt, getString(TransitionConfig.nameRes(kind))), null, iconOf(kind), () -> {
+				Element e = cfg.add(kind);
+				e.y = 0.5f;
+				if (kind == TransitionConfig.T_TEXT) e.text = getString(R.string.tr_sample_text);
+				cfg.save(car);
+				if (preview != null) {
+					preview.refresh();
+					preview.setSelected(e.id);
+				}
+				selectedId = e.id;
+				openPanel(P_ELEMENT);
+			});
+		}
+	}
+
+	private void buildGeneral(LinearLayout b) {
+		List<Runnable> s = sync;
 		section(b, R.string.tr_section_when);
 		switchRow(b, getString(R.string.tr_on), getString(R.string.tr_on_sub), () -> cfg.on, on -> {
 			cfg.on = on;
@@ -377,14 +624,15 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		}, s);
 
 		section(b, R.string.tr_section_bg);
-		flowRow(b, getString(R.string.tr_bg), null, strings(R.string.tr_bg_clear, R.string.tr_bg_dim, R.string.tr_bg_cover,
-				R.string.tr_bg_picture, R.string.tr_bg_glass), () -> cfg.bg, i -> {
-			cfg.bg = i;
-			if (preview != null) {
-				preview.setPicture(i == TransitionConfig.BG_PICTURE ? TransitionController.loadPicture(car) : null);
-			}
-			changed();
-		}, s);
+		tilesRow(b, getString(R.string.tr_bg), strings(R.string.tr_bg_clear, R.string.tr_bg_dim, R.string.tr_bg_cover,
+				R.string.tr_bg_picture, R.string.tr_bg_glass), i -> TransitionDemos.background(palette, i),
+				() -> cfg.bg, i -> {
+					cfg.bg = i;
+					if (preview != null) {
+						preview.setPicture(i == TransitionConfig.BG_PICTURE ? TransitionController.loadPicture(car) : null);
+					}
+					changed();
+				}, s);
 		sliderRow(b, getString(R.string.tr_dim), 0, 100, () -> cfg.dim, v -> {
 			cfg.dim = v;
 			changed();
@@ -399,161 +647,38 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			if (preview != null) preview.setPicture(null);
 			TopToast.show(R.drawable.transition, R.string.tr_unpicked);
 		});
-		flowRow(b, getString(R.string.tr_screen_in), null, animNames(), () -> cfg.inAnim, i -> {
-			cfg.inAnim = i;
-			changed();
-		}, s);
+
+		section(b, R.string.tr_section_anim);
+		tilesRow(b, getString(R.string.tr_screen_in), animNames(), i -> TransitionDemos.anim(palette, i, true, accent),
+				() -> cfg.inAnim, i -> {
+					cfg.inAnim = i;
+					changed();
+				}, s);
 		sliderRow(b, getString(R.string.tr_screen_in_ms), 0, 2000, () -> cfg.inMs, v -> {
 			cfg.inMs = v;
 			changed();
 		}, v -> v + " ms", s);
-		flowRow(b, getString(R.string.tr_screen_out), null, animNames(), () -> cfg.outAnim, i -> {
-			cfg.outAnim = i;
-			changed();
-		}, s);
+		tilesRow(b, getString(R.string.tr_screen_out), animNames(), i -> TransitionDemos.anim(palette, i, false, accent),
+				() -> cfg.outAnim, i -> {
+					cfg.outAnim = i;
+					changed();
+				}, s);
 		sliderRow(b, getString(R.string.tr_screen_out_ms), 0, 2000, () -> cfg.outMs, v -> {
 			cfg.outMs = v;
 			changed();
 		}, v -> v + " ms", s);
 
-		section(b, R.string.tr_section_elements);
-		TextView hint = text(R.string.tr_elements_hint, 12.5f, textSecondary, false);
-		hint.setPadding(dp(4), 0, dp(4), dp(6));
-		b.addView(hint);
-		elementChips = new ChipFlowLayout(palette);
-		b.addView(elementChips, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-		ChipFlowLayout add = new ChipFlowLayout(palette);
-		int[] kinds = {TransitionConfig.T_TITLE, TransitionConfig.T_CHANNEL, TransitionConfig.T_ART,
-				TransitionConfig.T_PLAYLIST, TransitionConfig.T_TEXT};
-		for (int kind : kinds) {
-			add.addView(ChipFlowLayout.chip(palette, R.drawable.home_add, getString(R.string.tr_add_fmt,
-					getString(TransitionConfig.nameRes(kind))), false, () -> {
-				Element e = cfg.add(kind);
-				e.y = 0.5f;
-				if (kind == TransitionConfig.T_TEXT) e.text = getString(R.string.tr_sample_text);
-				selectedId = e.id;
-				cfg.save(car);
-				if (preview != null) preview.refresh();
-				pick(e.id);
-			}));
-		}
-		LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		alp.topMargin = dp(6);
-		b.addView(add, alp);
-
-		panel = new LinearLayout(palette);
-		panel.setOrientation(LinearLayout.VERTICAL);
-		b.addView(panel, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-		refreshElementChips();
-		buildPanel();
-		runSync();
+		actionRow(b, getString(R.string.tr_reset), getString(R.string.tr_reset_sub), R.drawable.refresh, () ->
+				UiUtils.showQuestion(requireContext(), R.string.tr_reset, R.string.tr_reset_question, R.drawable.refresh)
+						.onSuccess(ok -> onReset()));
 	}
 
-	private String[] strings(@StringRes int... ids) {
-		String[] out = new String[ids.length];
-		for (int i = 0; i < ids.length; i++) out[i] = getString(ids[i]);
-		return out;
-	}
-
-	private String[] animNames() {
-		return strings(R.string.tr_anim_none, R.string.tr_anim_fade, R.string.tr_anim_rise, R.string.tr_anim_drop,
-				R.string.tr_anim_from_right, R.string.tr_anim_from_left, R.string.tr_anim_zoom_in, R.string.tr_anim_zoom_out);
-	}
-
-	private void changed() {
-		cfg.save(car);
-		if (preview != null) preview.refresh();
-		runSync();
-	}
-
-	private void runSync() {
-		for (Runnable r : new ArrayList<>(setSync)) r.run();
-		for (Runnable r : new ArrayList<>(panelSync)) r.run();
-	}
-
-	// ---- Editing in the preview ----
-
-	@Override
-	public void onPicked(int id) {
-		pick(id);
-	}
-
-	@Override
-	public void onEdited(Element e, boolean done) {
-		for (Runnable r : new ArrayList<>(panelSync)) r.run();
-		if (done) cfg.save(car);
-	}
-
-	private void pick(int id) {
-		selectedId = id;
-		if (preview != null) preview.setSelected(id);
-		refreshElementChips();
-		buildPanel();
-	}
-
-	@Nullable
-	private Element selected() {
-		return (selectedId == 0) ? null : cfg.find(selectedId);
-	}
-
-	private String nameOf(Element e) {
-		String n = getString(TransitionConfig.nameRes(e.type));
-		int same = 0;
-		int index = 0;
-		for (Element o : cfg.elements) {
-			if (o.type == e.type) {
-				same++;
-				if (o == e) index = same;
-			}
-		}
-		return (same > 1) ? n + " " + index : n;
-	}
-
-	private void refreshElementChips() {
-		ChipFlowLayout c = elementChips;
-		if (c == null) return;
-		c.removeAllViews();
-		for (Element e : cfg.elements) {
-			TextView t = ChipFlowLayout.chip(palette, iconOf(e.type), nameOf(e), e.id == selectedId, () -> pick(e.id));
-			t.setAlpha(e.visible ? 1f : 0.5f);
-			c.addView(t);
-		}
-	}
-
-	@DrawableRes
-	private static int iconOf(int type) {
-		return switch (type) {
-			case TransitionConfig.T_ART -> R.drawable.home_image;
-			case TransitionConfig.T_PLAYLIST -> R.drawable.playlist;
-			case TransitionConfig.T_CHANNEL -> R.drawable.account;
-			default -> R.drawable.title;
-		};
-	}
-
-	/** The rows of the picked element. */
-	private void buildPanel() {
-		LinearLayout p = panel;
-		if (p == null) return;
-		p.removeAllViews();
-		panelSync.clear();
-		Element e = selected();
-		if (e == null) {
-			TextView none = text(R.string.tr_pick_element, 13.5f, textSecondary, false);
-			none.setPadding(dp(4), dp(14), dp(4), dp(4));
-			p.addView(none);
-			return;
-		}
-		List<Runnable> s = panelSync;
+	private void buildElement(LinearLayout p, Element e) {
+		List<Runnable> s = sync;
 		section(p, R.string.tr_section_element);
-		TextView name = text(0, 17, textPrimary, true);
-		name.setText(nameOf(e));
-		name.setPadding(dp(4), 0, 0, dp(2));
-		p.addView(name);
-
 		switchRow(p, getString(R.string.tr_show), null, () -> e.visible, on -> {
 			e.visible = on;
 			elementChanged();
-			refreshElementChips();
 		}, s);
 		if (e.type == TransitionConfig.T_TEXT) {
 			valueRow(p, getString(R.string.tr_text), () -> e.text, () -> UiUtils.queryText(requireContext(), R.string.tr_text,
@@ -583,12 +708,14 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		}, v -> v + "%", s);
 
 		if (e.isText()) {
-			flowRow(p, getString(R.string.tr_font), null, strings(R.string.tr_font_sans, R.string.tr_font_light,
+			section(p, R.string.tr_section_text);
+			tilesRow(p, getString(R.string.tr_font), strings(R.string.tr_font_sans, R.string.tr_font_light,
 					R.string.tr_font_condensed, R.string.tr_font_medium, R.string.tr_font_serif, R.string.tr_font_mono,
-					R.string.tr_font_script, R.string.tr_font_casual), () -> e.font, i -> {
-				e.font = i;
-				elementChanged();
-			}, s);
+					R.string.tr_font_script, R.string.tr_font_casual), i -> TransitionDemos.font(palette, i, textPrimary),
+					() -> e.font, i -> {
+						e.font = i;
+						elementChanged();
+					}, s);
 			switchRow(p, getString(R.string.tr_bold), null, () -> e.bold, on -> {
 				e.bold = on;
 				elementChanged();
@@ -597,8 +724,8 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 				e.italic = on;
 				elementChanged();
 			}, s);
-			flowRow(p, getString(R.string.tr_align), null, strings(R.string.tr_align_left, R.string.tr_align_center,
-					R.string.tr_align_right), () -> e.align, i -> {
+			tilesRow(p, getString(R.string.tr_align), strings(R.string.tr_align_left, R.string.tr_align_center,
+					R.string.tr_align_right), i -> TransitionDemos.align(palette, i, textPrimary), () -> e.align, i -> {
 				e.align = i;
 				elementChanged();
 			}, s);
@@ -608,11 +735,12 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			}, s);
 		}
 
-		flowRow(p, getString(R.string.tr_fill), null, strings(R.string.tr_fill_none, R.string.tr_fill_solid,
-				R.string.tr_fill_glass), () -> e.fill, i -> {
-			e.fill = i;
-			elementChanged();
-		}, s);
+		section(p, R.string.tr_section_look);
+		tilesRow(p, getString(R.string.tr_fill), strings(R.string.tr_fill_none, R.string.tr_fill_solid, R.string.tr_fill_glass),
+				i -> TransitionDemos.fill(palette, i, accent), () -> e.fill, i -> {
+					e.fill = i;
+					elementChanged();
+				}, s);
 		swatchRow(p, getString(R.string.tr_fill_color), () -> e.fillColor, c -> {
 			e.fillColor = c;
 			elementChanged();
@@ -638,11 +766,13 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			elementChanged();
 		}, s);
 
-		flowRow(p, getString(R.string.tr_in), null, animNames(), () -> e.inAnim, i -> {
-			e.inAnim = i;
-			elementChanged();
-			previewOne();
-		}, s);
+		section(p, R.string.tr_section_motion);
+		tilesRow(p, getString(R.string.tr_in), animNames(), i -> TransitionDemos.anim(palette, i, true, accent),
+				() -> e.inAnim, i -> {
+					e.inAnim = i;
+					elementChanged();
+					playPreview();
+				}, s);
 		sliderRow(p, getString(R.string.tr_in_ms), 0, 3000, () -> e.inMs, v -> {
 			e.inMs = v;
 			elementChanged();
@@ -651,38 +781,78 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			e.delay = v;
 			elementChanged();
 		}, v -> v + " ms", s);
-		flowRow(p, getString(R.string.tr_out), null, animNames(), () -> e.outAnim, i -> {
-			e.outAnim = i;
-			elementChanged();
-		}, s);
+		tilesRow(p, getString(R.string.tr_out), animNames(), i -> TransitionDemos.anim(palette, i, false, accent),
+				() -> e.outAnim, i -> {
+					e.outAnim = i;
+					elementChanged();
+				}, s);
 		sliderRow(p, getString(R.string.tr_out_ms), 0, 3000, () -> e.outMs, v -> {
 			e.outMs = v;
 			elementChanged();
 		}, v -> v + " ms", s);
 
 		actionRow(p, getString(R.string.tr_remove), getString(R.string.tr_remove_sub), R.drawable.delete, () ->
-				UiUtils.showQuestion(requireContext(), R.string.tr_remove, R.string.tr_remove_question, R.drawable.delete).onSuccess(ok -> {
-					cfg.remove(e);
-					selectedId = 0;
-					cfg.save(car);
-					if (preview != null) {
-						preview.setSelected(0);
-						preview.refresh();
-					}
-					refreshElementChips();
-					buildPanel();
-				}));
+				UiUtils.showQuestion(requireContext(), R.string.tr_remove, R.string.tr_remove_question, R.drawable.delete)
+						.onSuccess(ok -> {
+							cfg.remove(e);
+							selectedId = 0;
+							cfg.save(car);
+							if (preview != null) {
+								preview.setSelected(0);
+								preview.refresh();
+							}
+							if (wide) openPanel(P_GENERAL);
+							else closeSheet();
+						}));
 	}
 
-	private void elementChanged() {
-		cfg.save(car);
-		if (preview != null) preview.refresh();
-		for (Runnable r : new ArrayList<>(panelSync)) r.run();
+	private String[] animNames() {
+		return strings(R.string.tr_anim_none, R.string.tr_anim_fade, R.string.tr_anim_rise, R.string.tr_anim_drop,
+				R.string.tr_anim_from_right, R.string.tr_anim_from_left, R.string.tr_anim_zoom_in, R.string.tr_anim_zoom_out);
 	}
 
-	/** Shows the entrance of the whole screen once, after an animation was picked. */
-	private void previewOne() {
-		playPreview();
+	/** Tiles with a small picture each (animations that play, backgrounds, fonts), the picked one outlined in the accent. */
+	private void tilesRow(LinearLayout parent, String title, String[] labels, IntFunction<View> demo, IntSupplier get,
+												IntConsumer set, List<Runnable> sync) {
+		LinearLayout row = tileRow(parent, false);
+		row.addView(label(title, 15, textPrimary, true));
+		ChipFlowLayout flow = new ChipFlowLayout(palette);
+		LinearLayout[] tiles = new LinearLayout[labels.length];
+		for (int i = 0; i < labels.length; i++) {
+			int fi = i;
+			LinearLayout tile = new LinearLayout(palette);
+			tile.setOrientation(LinearLayout.VERTICAL);
+			tile.setGravity(Gravity.CENTER_HORIZONTAL);
+			tile.setPadding(dp(6), dp(6), dp(6), dp(6));
+			GradientDrawable fill = rounded(0x1F808080, 14);
+			tile.setTag(R.id.settings_row_tag, fill);
+			tile.setBackground(pressable(fill));
+			tile.setClickable(true);
+			tile.setFocusable(true);
+			tile.setOnClickListener(v -> set.accept(fi));
+			View d = demo.apply(i);
+			tile.addView(d, new LinearLayout.LayoutParams(dp(76), dp(54)));
+			TextView t = label(labels[i], 11.5f, textPrimary, true);
+			t.setGravity(Gravity.CENTER);
+			t.setSingleLine(true);
+			t.setEllipsize(android.text.TextUtils.TruncateAt.END);
+			t.setPadding(0, dp(4), 0, 0);
+			tile.addView(t, new LinearLayout.LayoutParams(dp(76), WRAP_CONTENT));
+			tiles[i] = tile;
+			flow.addView(tile, new android.view.ViewGroup.MarginLayoutParams(dp(88), WRAP_CONTENT));
+		}
+		LinearLayout.LayoutParams flp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
+		flp.topMargin = dp(8);
+		row.addView(flow, flp);
+		sync.add(() -> {
+			int sel = get.getAsInt();
+			for (int i = 0; i < tiles.length; i++) {
+				boolean on = i == sel;
+				GradientDrawable f = (GradientDrawable) tiles[i].getTag(R.id.settings_row_tag);
+				fillColor(f, on ? androidx.core.graphics.ColorUtils.blendARGB(0x1F808080, accent, 0.22f) : 0x1F808080);
+				f.setStroke(on ? dp(2) : 0, accent);
+			}
+		});
 	}
 
 	// ---- Picking a picture ----

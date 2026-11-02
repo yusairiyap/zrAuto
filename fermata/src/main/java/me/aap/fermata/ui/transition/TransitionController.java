@@ -16,6 +16,9 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import me.aap.fermata.FermataApplication;
+import me.aap.fermata.action.Action;
+import me.aap.fermata.media.engine.MediaEngine;
+import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.fermata.R;
 import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
@@ -96,30 +99,83 @@ public final class TransitionController {
 		return true;
 	}
 
-	/** A song started playing (any thread). */
-	public static void onTrackStarted(@Nullable PlayableItem pi) {
-		if (pi == null) return;
-		main.post(() -> start(pi));
+	/**
+	 * An engine started a song (any thread). The engine's source can still be empty at that moment (the YouTube page
+	 * sets it a little later), so it is asked again a few times, then the item the UI says is playing is taken.
+	 */
+	public static void onTrackStarted(@Nullable MediaEngine engine) {
+		main.post(() -> resolve(engine, 0));
+	}
+
+	private static void resolve(@Nullable MediaEngine engine, int tries) {
+		PlayableItem pi = (engine == null) ? null : engine.getSource();
+		if (pi == null) {
+			MainActivityDelegate ui = MainActivityDelegate.getUiDelegate();
+			if (ui != null) pi = Action.getFavoritableItem(ui);
+		}
+		if (pi != null) {
+			start(pi);
+			return;
+		}
+		if (tries < 4) {
+			main.postDelayed(() -> resolve(engine, tries + 1), 400);
+		} else {
+			DiagnosticLog.w(LogCat.MUSIC, "transition screen: no song to show", "engine=" + engine);
+		}
+	}
+
+	/** The same song is one key whatever object the player hands out for it: its video id, else its id. */
+	private static String keyOf(PlayableItem pi) {
+		String v = YtDownloads.videoIdOf(pi);
+		return ((v != null) && !v.isEmpty()) ? "yt:" + v : pi.getId();
 	}
 
 	private static void start(PlayableItem pi) {
-		String id = pi.getId();
+		String key = keyOf(pi);
 		boolean first = lastId == null;
-		boolean same = id.equals(lastId);
-		lastId = id;
+		boolean same = key.equals(lastId);
+		lastId = key;
 		if (same) return;
 
+		if (delegates.isEmpty()) {
+			DiagnosticLog.w(LogCat.MUSIC, "transition screen: no screen registered", "key=" + key);
+			return;
+		}
 		for (MainActivityDelegate a : delegates) {
 			boolean car = a.getAppActivity().isCarActivity();
 			TransitionConfig c = TransitionConfig.load(car);
-			if (!c.on || (first && !c.firstSong)) continue;
+			if (!c.on || (first && !c.firstSong)) {
+				DiagnosticLog.d(LogCat.MUSIC, "transition screen skipped", "car=" + car, "on=" + c.on, "first=" + first);
+				continue;
+			}
 			boolean video = a.isVideoMode();
 			if ((c.where == TransitionConfig.WHERE_FULLSCREEN && !video) ||
 					(c.where == TransitionConfig.WHERE_OUTSIDE && video)) {
+				DiagnosticLog.d(LogCat.MUSIC, "transition screen skipped", "car=" + car, "where=" + c.where, "video=" + video);
 				continue;
 			}
 			show(a, pi, c, car);
 		}
+	}
+
+	/** Fills {@code v} with what {@code pi} is: its title, channel, playlist and cover (the preview in the settings). */
+	public static void loadInto(MainActivityDelegate a, PlayableItem pi, TransitionView v) {
+		pi.getMediaData().main().onCompletion((md, err) -> {
+			v.setData(titleOf(pi, md), channelOf(pi, md), playlistOf(pi));
+			HomeArt.cover(a, pi, md, () -> true, bm -> {
+				if (bm != null) v.setArt(bm);
+			});
+		});
+	}
+
+	private static String titleOf(PlayableItem pi, @Nullable MediaMetadataCompat md) {
+		String title = pi.getName();
+		if (md != null) {
+			String t = md.getString(METADATA_KEY_TITLE);
+			if ((t == null) || t.isEmpty()) t = md.getString(METADATA_KEY_DISPLAY_TITLE);
+			if ((t != null) && !t.isEmpty()) title = t;
+		}
+		return title;
 	}
 
 	private static void show(MainActivityDelegate a, PlayableItem pi, TransitionConfig c, boolean car) {
@@ -129,12 +185,7 @@ public final class TransitionController {
 		if (old != null) old.discard();
 
 		pi.getMediaData().main().onCompletion((md, err) -> {
-			String title = pi.getName();
-			if (md != null) {
-				String t = md.getString(METADATA_KEY_TITLE);
-				if ((t == null) || t.isEmpty()) t = md.getString(METADATA_KEY_DISPLAY_TITLE);
-				if ((t != null) && !t.isEmpty()) title = t;
-			}
+			String title = titleOf(pi, md);
 			String channel = channelOf(pi, md);
 			String playlist = playlistOf(pi);
 			String shownTitle = title;

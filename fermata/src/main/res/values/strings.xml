@@ -1629,7 +1629,7 @@
     <string name="tr_reset">Reset the transition screen</string>
     <string name="tr_reset_question">Put this screen back to the defaults (and switch it off)?</string>
     <string name="tr_play">Play preview</string>
-    <string name="tr_edit_hint">Tap, drag, pinch</string>
+    <string name="tr_edit_hint">Tap an element to edit it · drag to move · drag the corner or pinch to size</string>
     <string name="tr_section_when">When</string>
     <string name="tr_on">Show a transition screen</string>
     <string name="tr_on_sub">When the next song starts playing</string>
@@ -1728,4 +1728,10 @@
     <string name="tr_sample_channel">Channel or artist</string>
     <string name="tr_sample_playlist">My playlist</string>
     <string name="tr_sample_text">Your text</string>
+    <string name="tr_general">Screen</string>
+    <string name="tr_section_anim">Screen animation</string>
+    <string name="tr_section_text">Text</string>
+    <string name="tr_section_look">Look</string>
+    <string name="tr_section_motion">Coming in and going out</string>
+    <string name="tr_reset_sub">Back to the defaults for this screen</string>
 </resources>
