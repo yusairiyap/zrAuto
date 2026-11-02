@@ -672,6 +672,13 @@ public class SettingsFragment extends MainActivityFragment
 			o.title = R.string.play_next_on_completion;
 		});
 		addTapAction(a, sub1, MainActivityPrefs.TAP_ACTION);
+		// The screen that comes over the app for a moment when a new song starts.
+		sub1.addButton(o -> {
+			o.title = R.string.tr_settings;
+			o.subtitle = R.string.tr_settings_sub;
+			o.icon = R.drawable.transition;
+			o.onClick = () -> a.showFragment(R.id.transition_settings_fragment, a.isCarActivity());
+		});
 		if (MusicPlayer.isEnabled()) {
 			sub1.addListPref(o -> {
 				o.store = mediaPrefs;

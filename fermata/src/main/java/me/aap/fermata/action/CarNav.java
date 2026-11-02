@@ -451,8 +451,11 @@ public final class CarNav {
 
 		if (overlaysOnly) return null;
 		ActivityFragment f = a.getActiveFragment();
+		// Every page of the settings family (the pages built in code too: Home, Power, Sleep, the Transition
+		// screen, Captions, UI style ...) walks like Settings itself.
 		if ((f instanceof MediaLibFragment) || (f instanceof DownloadsFragment) ||
-				(f instanceof SettingsFragment)) {
+				(f instanceof SettingsFragment) ||
+				((f instanceof me.aap.fermata.ui.fragment.MainActivityFragment mf) && mf.isSettingsPage())) {
 			View v = f.getView();
 			if ((v != null) && v.isShown()) return new Scope(a, v, null, f);
 		}
@@ -615,7 +618,9 @@ public final class CarNav {
 		fresh = true;
 		// Up a folder / a settings page; a screen opened over a tab (Audio effects, Settings from the
 		// menu) back to that tab; only at the top of a tab itself, to what's playing.
-		if ((f != null) && (!f.isRootPage() || (f.getFragmentId() != s.activity.getActiveNavItemId()))) {
+		boolean settingsPage = (f instanceof me.aap.fermata.ui.fragment.MainActivityFragment mf) && mf.isSettingsPage() &&
+				!(f instanceof SettingsFragment);
+		if ((f != null) && (settingsPage || !f.isRootPage() || (f.getFragmentId() != s.activity.getActiveNavItemId()))) {
 			s.activity.onBackPressed();
 			return;
 		}

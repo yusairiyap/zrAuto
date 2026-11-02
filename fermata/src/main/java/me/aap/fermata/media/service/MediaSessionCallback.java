@@ -1378,6 +1378,7 @@ public class MediaSessionCallback extends MediaSessionCompat.Callback
 	@Override
 	public void onEngineStarted(MediaEngine engine) {
 		PlayLog.started(engine.getClass().getSimpleName(), engine.getSource());
+		me.aap.fermata.ui.transition.TransitionController.onTrackStarted(engine.getSource());
 		BufferingIndicator.setBuffering(false);
 		resumeItem = null;
 		engine.getPosition().and(engine.getSpeed()).main().onSuccess(h -> {

@@ -64,6 +64,7 @@
     <item name="power_usage_addon" type="id" />
     <item name="power_usage_toolbar_chip" type="id" />
     <item name="power_settings_fragment" type="id" />
+    <item name="transition_settings_fragment" type="id" />
     <item name="network_settings_fragment" type="id" />
     <item name="privacy_settings_fragment" type="id" />
     <item name="theme_settings_fragment" type="id" />
@@ -249,6 +250,9 @@
     <item name="youtube_up_next" type="id" />
     <item name="youtube_up_next_clear" type="id" />
     <item name="youtube_play_now" type="id" />
+    <item name="youtube_sign_in" type="id" />
+    <item name="youtube_sign_in_window" type="id" />
+    <item name="youtube_sign_in_tab" type="id" />
     <item name="youtube_play_next" type="id" />
     <item name="youtube_add_to_up_next" type="id" />
     <item name="fuel_range_7_days" type="id" />

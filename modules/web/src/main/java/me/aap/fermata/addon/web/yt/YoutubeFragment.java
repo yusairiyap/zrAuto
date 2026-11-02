@@ -1454,6 +1454,41 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		b.addItem(me.aap.fermata.R.id.playlists, me.aap.fermata.R.drawable.playlist,
 				me.aap.fermata.R.string.playlists)
 				.setFutureSubmenu(sb -> playlistsMenu(sb, lib, current));
+
+		// Signing in: in a window over the app (the account is the one this tab then uses), or in the tab itself.
+		boolean priv = me.aap.fermata.ui.activity.MainActivityPrefs.get().isPrivateModeEnabled();
+		b.addItem(me.aap.fermata.R.id.youtube_sign_in, me.aap.fermata.R.drawable.account,
+				me.aap.fermata.R.string.youtube_sign_in).setSubmenu(sb -> {
+			if (!priv) {
+				sb.addItem(me.aap.fermata.R.id.youtube_sign_in_window, me.aap.fermata.R.drawable.account,
+						me.aap.fermata.R.string.youtube_sign_in_window).setHandler(i -> {
+					signInInWindow();
+					return true;
+				});
+			}
+			sb.addItem(me.aap.fermata.R.id.youtube_sign_in_tab, me.aap.fermata.R.drawable.youtube,
+					me.aap.fermata.R.string.youtube_sign_in_tab).setHandler(i -> {
+				loadUrl(SIGN_IN_URL);
+				return true;
+			});
+		});
+	}
+
+	private static final String SIGN_IN_URL = "https://accounts.google.com/ServiceLogin?service=youtube&hl=en&continue="
+			+ Uri.encode("https://m.youtube.com/?app=m");
+
+	/** The sign-in page in a card over the app; it closes by itself once YouTube is back, and the tab reloads. */
+	void signInInWindow() {
+		Context ctx = getContext();
+		if (ctx == null) return;
+		YoutubeWebView w = getWebView();
+		String ua = (w != null) ? w.getSettings().getUserAgentString() : null;
+		me.aap.fermata.ui.view.WebLoginCard.show(MainActivityDelegate.get(ctx),
+				ctx.getString(me.aap.fermata.R.string.youtube_sign_in_title), me.aap.fermata.R.drawable.account,
+				SIGN_IN_URL, "youtube.com", ua, () -> {
+					YoutubeWebView v = getWebView();
+					if (v != null) v.reload();
+				});
 	}
 
 	void showFavoritesMenu() {

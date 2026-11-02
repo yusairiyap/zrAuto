@@ -1110,6 +1110,36 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
   `modules/web/.../YoutubePanel` is search + Up next as a `SidePanel.Body` (cards with icon chips; narrow widths show pictures only; car: keyboard on open unless opened by a steering key, then the first chip / queue item is outlined).
   It reuses the addon's search, history, Up next and `playFromList`, and the Favorites/Playlists search (`YT_SEARCH_LIBRARY`); the tab's own `YoutubeSearchPanel` is unchanged and still used outside fullscreen video.
 
+## Transition screen, YouTube sign-in window, hotspot Share, car keys on settings pages
+
+- **Transition screen** (`ui/transition/`, page `ui/fragment/TransitionSettingsFragment`, Settings > Playback > Transition screen): a full-window
+  `TransitionView` over `R.id.main_activity` (elevation 18dp) shown when a new song starts. `TransitionController#onTrackStarted` is called from
+  `MediaSessionCallback#onEngineStarted`; it is shown on every registered `MainActivityDelegate` (phone and car each have their own set and their own
+  switch, `TransitionConfig.load(car)`; registered in `onActivityCreate`/`onActivityDestroy`), only when the song differs from the last one
+  (`firstSong` also allows the first after app start), by "Where" (fullscreen video / outside / everywhere). It waits up to 1 s for the cover
+  (`HomeArt.cover`) and puts a late one in. Back (`dismissOpen(this)` in `MainActivityDelegate#onBackPressed`) and a tap (option) close it.
+  Data: title (media data), channel (`MusicTrackItem.cleanArtist`), playlist (parent when a `Playlist`/`Favorites`), art.
+- **Model**: `TransitionConfig` is one JSON per screen (`TRANSITION_PHONE`/`TRANSITION_CAR` prefs): screen options (background Clear/Dim/Album art/Picture/Glass,
+  darkness, softness, hold, in/out animation + ms) and a list of `Element`s (title, channel, album art, playlist, custom text). Positions and sizes are
+  *fractions of the screen* (centre x/y, width, text height as a fraction of screen height), so the preview and any screen agree. Each element has font, bold,
+  italic, align, colour, fill (none/solid/glass), corner radius, padding, edge line, its own entrance/exit animation, durations and delay. Element ids are
+  saved: never renumber. The picked picture is `files/transition_bg[_aa].jpg` (not in backups).
+- **Preview is the editor**: `TransitionView#setEditor` makes the same view editable: tap picks, drag moves (snaps to the centre lines), the corner handle
+  sets the width, a pinch sets the text size (art width). The page keeps it as the sticky top card; the option rows (built in code, own helpers with
+  `setSync`/`panelSync` lists, the picked element's rows are rebuilt on every pick) save on each change. "Glass" is a frosted look (blurred cover + pale veil
+  + rim), not a live blur of the app behind: nothing can read a WebView / fullscreen video (see the UI style notes). **Never run on a device.**
+- **YouTube sign-in** (YouTube tab's nav bar menu > Sign in to YouTube): "In a window over the app" opens `ui/view/WebLoginCard`, a plain `WebView` in a
+  modal card that shares the app's cookie jar (so the YouTube tab's account is the one signed in; hidden in Private Mode, whose profile has its own jar) and
+  closes itself when the page returns to youtube.com after the Google sign-in pages, then reloads the tab; "In this tab" loads the sign-in URL in the tab.
+- **Share over a hotspot** (`ShareManager`): mDNS (NSD) is unreliable across a phone's hotspot and needs a router, so the receiver also listens on the fixed
+  port `SHARE_PORT` (47653, any port if taken) and answers a `ZRPROBE1` hello with its id and name; while the Share window is open the sender tries that
+  port on the /24 of every Wi-Fi / hotspot / USB-tether interface (`wlan*`, `ap*`, `swlan*`, `softap*`, `rndis*`, ... never the mobile network), every 7 s,
+  and lists what answers next to the NSD finds (`scan:` service names; a scan-found phone that stops answering is dropped). So one phone's hotspot and the
+  other phone joined to it, with no internet, is enough. Not run on a device: look for `SHARE found by address` in the Diagnostic log.
+- **Car keys on settings pages**: `CarNav#findScope` only walked `MediaLibFragment`, `DownloadsFragment` and `SettingsFragment`, so every page built in code
+  (`ReorderListFragment` pages: Home, Power, Sleep, Transition, ...; Captions/Lyrics, UI style, All in One) could not be walked on the car screen. Every
+  `MainActivityFragment` that says `isSettingsPage()` is a scope now, and long Previous on such a page (not Settings itself) is always "up" (`onBackPressed`).
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,
