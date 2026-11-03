@@ -1747,4 +1747,18 @@
     <string name="tr_ellipsis_sub">Off simply cuts the text where the box ends</string>
     <string name="tr_fit">Fit the size to the box</string>
     <string name="tr_fit_sub">Makes the text smaller until it all fits the width and height you set</string>
+    <string name="tr_zoom">Zoom</string>
+    <string name="tr_caps">Capital letters</string>
+    <string name="tr_spacing">Letter spacing</string>
+    <string name="tr_move_panel">Move the options</string>
+    <string name="tr_font_bebas">Bebas</string>
+    <string name="tr_font_pacifico">Pacifico</string>
+    <string name="tr_font_orbitron">Orbitron</string>
+    <string name="tr_font_marker">Marker</string>
+    <string name="tr_font_righteous">Righteous</string>
+    <string name="tr_font_pixel">Pixel</string>
+    <string name="tr_font_abril">Abril</string>
+    <string name="tr_font_monoton">Monoton</string>
+    <string name="tr_font_bungee">Bungee</string>
+    <string name="tr_font_cinzel">Cinzel</string>
 </resources>

@@ -166,6 +166,21 @@ public final class TransitionController {
 		}
 	}
 
+	/**
+	 * Where the screen is drawn: the window's own top view, so it covers the status bar and the navigation bar as the Home and Music
+	 * tabs' backgrounds do ({@code main_activity} stops below the system bars). Falls back to {@code main_activity}.
+	 */
+	@Nullable
+	public static ViewGroup overlayHost(MainActivityDelegate a) {
+		try {
+			View d = a.getAppActivity().getWindow().getDecorView();
+			if (d instanceof ViewGroup g) return g;
+		} catch (RuntimeException ignore) {
+			// Falls back below.
+		}
+		return a.findViewById(R.id.main_activity);
+	}
+
 	/** Fills {@code v} with what {@code pi} is: its title, channel, playlist and cover (the preview in the settings). */
 	public static void loadInto(MainActivityDelegate a, PlayableItem pi, TransitionView v) {
 		// A later call (the next song) makes this one's answers stale.
@@ -193,7 +208,7 @@ public final class TransitionController {
 	}
 
 	private static void show(MainActivityDelegate a, PlayableItem pi, TransitionConfig c, boolean car) {
-		ViewGroup host = a.findViewById(R.id.main_activity);
+		ViewGroup host = overlayHost(a);
 		if (host == null) return;
 		Shown old = shownBy.get(a);
 		if (old != null) old.discard();

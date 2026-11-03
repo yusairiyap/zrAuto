@@ -102,6 +102,10 @@ public final class TransitionConfig {
 		public boolean autoFit;
 		public int lines = 2;
 		public int font;
+		/** Letter spacing in hundredths of an em (-5 to 40). */
+		public int spacing;
+		/** Text: all capital letters. */
+		public boolean caps;
 		public boolean bold;
 		public boolean italic;
 		public int align = ALIGN_CENTER;
@@ -145,6 +149,8 @@ public final class TransitionConfig {
 			e.autoFit = autoFit;
 			e.lines = lines;
 			e.font = font;
+			e.spacing = spacing;
+			e.caps = caps;
 			e.bold = bold;
 			e.italic = italic;
 			e.align = align;
@@ -169,7 +175,7 @@ public final class TransitionConfig {
 			JSONObject o = new JSONObject();
 			o.put("id", id).put("type", type).put("vis", visible).put("x", x).put("y", y).put("w", w)
 					.put("size", size).put("h", h).put("wrap", wrap).put("ell", ellipsis).put("fit", autoFit)
-					.put("lines", lines).put("font", font).put("bold", bold).put("italic", italic).put("align", align)
+					.put("lines", lines).put("font", font).put("sp", spacing).put("caps", caps).put("bold", bold).put("italic", italic).put("align", align)
 					.put("color", color).put("fill", fill).put("fillColor", fillColor).put("fillAlpha", fillAlpha)
 					.put("radius", radius).put("pad", pad).put("edge", edge).put("edgeColor", edgeColor)
 					.put("in", inAnim).put("out", outAnim).put("inMs", inMs).put("outMs", outMs).put("delay", delay)
@@ -192,6 +198,8 @@ public final class TransitionConfig {
 			e.autoFit = o.optBoolean("fit", false);
 			e.lines = o.optInt("lines", (e.type == T_TITLE) ? 3 : 2);
 			e.font = o.optInt("font");
+			e.spacing = o.optInt("sp");
+			e.caps = o.optBoolean("caps");
 			e.bold = o.optBoolean("bold");
 			e.italic = o.optBoolean("italic");
 			e.align = o.optInt("align", ALIGN_CENTER);
@@ -214,13 +222,15 @@ public final class TransitionConfig {
 		}
 
 		public void clamp() {
-			x = Math.max(0f, Math.min(1f, x));
-			y = Math.max(0f, Math.min(1f, y));
-			w = Math.max(0.06f, Math.min(1f, w));
+			x = Math.max(-0.5f, Math.min(1.5f, x));
+			y = Math.max(-0.5f, Math.min(1.5f, y));
+			// A cover may be larger than the screen.
+			w = Math.max(0.06f, Math.min(isText() ? 1f : 3f, w));
+			spacing = Math.max(-5, Math.min(40, spacing));
 			size = Math.max(0.015f, Math.min(0.25f, size));
 			h = (h < 0.03f) ? 0f : Math.min(1f, h);
 			lines = Math.max(1, Math.min(8, lines));
-			font = Math.max(0, Math.min(FONT_FAMILIES.length - 1, font));
+			font = Math.max(0, Math.min(TransitionFonts.count() - 1, font));
 			fillAlpha = Math.max(0, Math.min(100, fillAlpha));
 			radius = Math.max(0, Math.min(50, radius));
 			pad = Math.max(0, Math.min(48, pad));
@@ -239,6 +249,8 @@ public final class TransitionConfig {
 	public int dim = 45;
 	/** How soft the cover/picture is, 0 to 100. */
 	public int blur = 55;
+	/** How much the cover or picture behind is enlarged (100 = fills the screen, up to 300). */
+	public int zoom = 100;
 	/** How long it stays, in tenths of a second. */
 	public int holdTenths = 15;
 	public int inAnim = ANIM_FADE;
@@ -360,7 +372,7 @@ public final class TransitionConfig {
 
 	JSONObject toJson() throws JSONException {
 		JSONObject o = new JSONObject();
-		o.put("on", on).put("bg", bg).put("dim", dim).put("blur", blur).put("hold", holdTenths)
+		o.put("on", on).put("bg", bg).put("dim", dim).put("blur", blur).put("zoom", zoom).put("hold", holdTenths)
 				.put("in", inAnim).put("out", outAnim).put("inMs", inMs).put("outMs", outMs)
 				.put("where", where).put("tap", tapToDismiss).put("first", firstSong).put("next", nextId);
 		JSONArray a = new JSONArray();
@@ -375,6 +387,7 @@ public final class TransitionConfig {
 		c.bg = o.optInt("bg", BG_ART);
 		c.dim = o.optInt("dim", 45);
 		c.blur = o.optInt("blur", 55);
+		c.zoom = Math.max(100, Math.min(300, o.optInt("zoom", 100)));
 		c.holdTenths = Math.max(10, Math.min(150, o.optInt("hold", 15)));
 		c.inAnim = o.optInt("in", ANIM_FADE);
 		c.outAnim = o.optInt("out", ANIM_FADE);

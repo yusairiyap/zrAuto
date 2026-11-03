@@ -1158,6 +1158,14 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
 - **Background fade**: the background never moves or scales by much (6%/5% drift, 0.94 or 1.06 scale) and always fades with its animation; sliding it a whole screen showed its hard edges.
 - **Keys over fullscreen video**: Settings > Video "Keep video clean on media keys" (`KEYS_HIDE_VIDEO_UI`) makes `ControlPanelView#showKeyFeedback` skip the controls/title for
   play/pause/next/previous/stop keys (the seek bubble of FF/RW stays).
+- **Over the status and navigation bars**: the screen is added to the window's top view (`TransitionController#overlayHost`: `getAppActivity().getWindow().getDecorView()`), not to
+  `main_activity`, which stops below the system bars; the settings preview takes that view's shape too.
+- **Options card**: a grip at its top moves it (`PanelDrag`, kept inside the page; a tap on the grip puts it back, a hard pull down closes the phone's sheet); the parents do not clip
+  children so it can leave its slot. Header chips have equal padding and the picked chip is only scrolled into view when it was not wholly visible.
+- **Bigger than the screen**: a cover's width goes up to 300% of the screen's and positions from -50% to 150% (`Element#clamp`); the overlay clips to the screen. The background has a **Zoom**
+  (100 to 300%, `TransitionConfig#zoom`, applied in `TransitionView.Bg`) like Home's.
+- **Fonts**: `TransitionFonts` (the 8 system families first, then ten bundled OFL fonts in `res/font/tr_*.ttf`: Bebas, Pacifico, Orbitron, Marker, Righteous, Pixel, Abril, Monoton,
+  Bungee, Cinzel; the index is saved, new fonts only at the end), plus Capital letters and Letter spacing (`spacing` in hundredths of an em).
 - **Why it did not show at first**: `onEngineStarted` can come before the engine's source is set (YouTube), so `TransitionController#onTrackStarted(engine)` asks for it again
   up to 4 times 400 ms apart, then takes the item the UI says plays; a song is one key by its YouTube video id (else its item id). Every skip is in the Diagnostic log
   (`MUSIC transition screen ...`: skipped / no song to show / no screen registered / shown). The real cause was the YouTube engine's `getSource()`: one placeholder item with a constant id, so every song after the first looked like the same one; the controller keys songs by `engine.getFavoritableItem()` (the real video item).

@@ -249,7 +249,9 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		panelW = Math.min(dp(380), Math.round(ctx.getResources().getDisplayMetrics().widthPixels * 0.40f));
 
 		root = new FrameLayout(palette);
+		root.setClipChildren(false);
 		LinearLayout row = new LinearLayout(palette);
+		row.setClipChildren(false);
 		row.setOrientation(LinearLayout.HORIZONTAL);
 		root.addView(row, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 
@@ -322,11 +324,13 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 
 		if (wide) {
 			sidePanel = new FrameLayout(palette);
+			sidePanel.setClipChildren(false);
 			LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(panelW, MATCH_PARENT);
 			slp.setMargins(0, dp(4), dp(8), dp(8));
 			row.addView(sidePanel, slp);
 		} else {
 			sheet = new FrameLayout(palette);
+			sheet.setClipChildren(false);
 			sheet.setVisibility(View.GONE);
 			FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(MATCH_PARENT, dp(260), Gravity.BOTTOM);
 			slp.setMargins(dp(8), 0, dp(8), dp(6));
@@ -435,7 +439,13 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		t.setSingleLine(true);
 		t.setGravity(Gravity.CENTER_VERTICAL);
 		t.setMinHeight(dp(34));
-		t.setPadding(dp(10), 0, dp(label.length() == 0 ? 10 : 12), 0);
+		// The same room either side (an icon-only chip is a circle).
+		int pd = dp(label.length() == 0 ? 10 : 12);
+		t.setPadding(pd, 0, pd, 0);
+		if (label.length() == 0) {
+			t.setMinWidth(dp(34));
+			t.setGravity(Gravity.CENTER);
+		}
 		android.graphics.drawable.Drawable ic = androidx.appcompat.content.res.AppCompatResources.getDrawable(palette, icon);
 		if (ic != null) {
 			ic = ic.mutate();
@@ -508,7 +518,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			return;
 		}
 		MainActivityDelegate d = getActivityDelegate();
-		View host = (d == null) ? null : d.findViewById(R.id.main_activity);
+		View host = (d == null) ? null : TransitionController.overlayHost(d);
 		if ((host != null) && (host.getWidth() > 0) && (host.getHeight() > 0)) {
 			st.setAspect((float) host.getWidth() / host.getHeight());
 			return;
@@ -672,6 +682,65 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		updateSelBar();
 	}
 
+	/** Moves the options card with a finger on its grip; never off the page. */
+	private final class PanelDrag implements View.OnTouchListener {
+		private final View card;
+		private float downX, downY, startTx, startTy, minTx, maxTx, minTy, maxTy;
+		private boolean moved;
+
+		PanelDrag(View card) {
+			this.card = card;
+		}
+
+		@Override
+		public boolean onTouch(View v, android.view.MotionEvent e) {
+			switch (e.getActionMasked()) {
+				case android.view.MotionEvent.ACTION_DOWN -> {
+					v.getParent().requestDisallowInterceptTouchEvent(true);
+					downX = e.getRawX();
+					downY = e.getRawY();
+					startTx = card.getTranslationX();
+					startTy = card.getTranslationY();
+					moved = false;
+					View r = root;
+					if (r == null) return true;
+					int[] rl = new int[2];
+					int[] cl = new int[2];
+					r.getLocationOnScreen(rl);
+					card.getLocationOnScreen(cl);
+					float left = cl[0] - rl[0] - startTx;
+					float top = cl[1] - rl[1] - startTy;
+					minTx = -left - card.getWidth() + dp(90);
+					maxTx = r.getWidth() - left - dp(90);
+					minTy = -top;
+					maxTy = r.getHeight() - top - dp(48);
+					return true;
+				}
+				case android.view.MotionEvent.ACTION_MOVE -> {
+					float dx = e.getRawX() - downX;
+					float dy = e.getRawY() - downY;
+					if (!moved && (Math.hypot(dx, dy) < dp(6))) return true;
+					moved = true;
+					card.setTranslationX(Math.max(minTx, Math.min(maxTx, startTx + dx)));
+					card.setTranslationY(Math.max(minTy, Math.min(maxTy, startTy + dy)));
+					return true;
+				}
+				case android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+					if (!moved) {
+						card.animate().translationX(0f).translationY(0f).setDuration(180).start();
+					} else if (!wide && (e.getActionMasked() == android.view.MotionEvent.ACTION_UP) &&
+							((card.getTranslationY() - startTy) > dp(150))) {
+						closeSheet();
+					}
+					return true;
+				}
+				default -> {
+					return true;
+				}
+			}
+		}
+	}
+
 	/** The card itself: a header of chips (what to edit) with a close button, and a scrolling body. Made once; its content is refreshed in place. */
 	private LinearLayout createPanelCard() {
 		LinearLayout card = new LinearLayout(palette);
@@ -687,6 +756,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		panelChipScroll.setHorizontalScrollBarEnabled(false);
 		panelChips = new ChipFlowLayout(palette);
 		panelChips.setOneRow(true);
+		panelChips.setPadding(dp(2), dp(2), dp(2), dp(2));
 		panelChipScroll.addView(panelChips);
 		head.addView(panelChipScroll, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
 		android.widget.ImageButton close = new android.widget.ImageButton(palette);
@@ -707,8 +777,20 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			}
 		});
 		LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(dp(34), dp(34));
-		clp.setMarginStart(dp(6));
+		clp.setMarginStart(dp(8));
 		head.addView(close, clp);
+
+		// A grip to move the card around by (a tap on it puts the card back; a hard pull down closes the sheet on a phone).
+		FrameLayout gripBox = new FrameLayout(palette);
+		View grip = new View(palette);
+		GradientDrawable gd = new GradientDrawable();
+		gd.setColor(0x66808080);
+		gd.setCornerRadius(dp(2));
+		grip.setBackground(gd);
+		gripBox.addView(grip, new FrameLayout.LayoutParams(dp(40), dp(4), Gravity.CENTER));
+		gripBox.setContentDescription(getString(R.string.tr_move_panel));
+		gripBox.setOnTouchListener(new PanelDrag(card));
+		card.addView(gripBox, new LinearLayout.LayoutParams(MATCH_PARENT, dp(18)));
 		card.addView(head, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
 		panelScroll = new android.widget.ScrollView(palette);
@@ -753,8 +835,16 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			chips.getChildAt(i).setLayoutParams(new android.view.ViewGroup.MarginLayoutParams(WRAP_CONTENT, WRAP_CONTENT));
 		}
 		TextView pk = picked;
-		if ((pk != null) && (panelChipScroll != null)) {
-			panelChipScroll.post(() -> panelChipScroll.smoothScrollTo(Math.max(0, pk.getLeft() - dp(24)), 0));
+		android.widget.HorizontalScrollView hsv = panelChipScroll;
+		if ((pk != null) && (hsv != null)) {
+			// Only when the picked chip is not wholly in view, and then to its edge (never leaving it cut off).
+			hsv.post(() -> {
+				int l = pk.getLeft();
+				int r = pk.getRight();
+				int sx = hsv.getScrollX();
+				if (l < sx) hsv.smoothScrollTo(Math.max(0, l - dp(4)), 0);
+				else if (r > sx + hsv.getWidth()) hsv.smoothScrollTo(r - hsv.getWidth() + dp(4), 0);
+			});
 		}
 
 		// The body fades its content over (about 120 ms) instead of a card sliding in.
@@ -966,6 +1056,10 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			cfg.blur = v;
 			changed();
 		}, v -> v + "%", s);
+		sliderRow(b, getString(R.string.tr_zoom), 100, 300, () -> cfg.zoom, v -> {
+			cfg.zoom = v;
+			changed();
+		}, v -> v + "%", s);
 		actionRow(b, getString(R.string.tr_pick), getString(R.string.tr_pick_sub), R.drawable.home_image, this::pickPicture);
 		actionRow(b, getString(R.string.tr_unpick), null, R.drawable.delete, () -> {
 			TransitionController.pictureFile(car).delete();
@@ -1020,7 +1114,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 				elementChanged();
 			}, v -> String.format(java.util.Locale.getDefault(), "%.1f%%", v / 10f), s);
 		}
-		sliderRow(p, getString(e.isText() ? R.string.tr_width : R.string.tr_cover_size), 6, 100, () -> Math.round(e.w * 100), v -> {
+		sliderRow(p, getString(e.isText() ? R.string.tr_width : R.string.tr_cover_size), 6, e.isText() ? 100 : 300, () -> Math.round(e.w * 100), v -> {
 			e.w = v / 100f;
 			elementChanged();
 		}, v -> v + "%", s);
@@ -1030,11 +1124,11 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 				elementChanged();
 			}, v -> (v < 3) ? getString(R.string.tr_auto) : v + "%", s);
 		}
-		sliderRow(p, getString(R.string.tr_pos_x), 0, 100, () -> Math.round(e.x * 100), v -> {
+		sliderRow(p, getString(R.string.tr_pos_x), -50, 150, () -> Math.round(e.x * 100), v -> {
 			e.x = v / 100f;
 			elementChanged();
 		}, v -> v + "%", s);
-		sliderRow(p, getString(R.string.tr_pos_y), 0, 100, () -> Math.round(e.y * 100), v -> {
+		sliderRow(p, getString(R.string.tr_pos_y), -50, 150, () -> Math.round(e.y * 100), v -> {
 			e.y = v / 100f;
 			elementChanged();
 		}, v -> v + "%", s);
@@ -1057,13 +1151,19 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 				e.autoFit = on;
 				elementChanged();
 			}, s);
-			tilesRow(p, getString(R.string.tr_font), strings(R.string.tr_font_sans, R.string.tr_font_light,
-					R.string.tr_font_condensed, R.string.tr_font_medium, R.string.tr_font_serif, R.string.tr_font_mono,
-					R.string.tr_font_script, R.string.tr_font_casual), i -> TransitionDemos.font(palette, i, textPrimary),
+			tilesRow(p, getString(R.string.tr_font), fontNames(), i -> TransitionDemos.font(palette, i, textPrimary),
 					() -> e.font, i -> {
 						e.font = i;
 						elementChanged();
 					}, s);
+			switchRow(p, getString(R.string.tr_caps), null, () -> e.caps, on -> {
+				e.caps = on;
+				elementChanged();
+			}, s);
+			sliderRow(p, getString(R.string.tr_spacing), -5, 40, () -> e.spacing, v -> {
+				e.spacing = v;
+				elementChanged();
+			}, v -> String.valueOf(v), s);
 			switchRow(p, getString(R.string.tr_bold), null, () -> e.bold, on -> {
 				e.bold = on;
 				elementChanged();
@@ -1142,6 +1242,16 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		actionRow(top, getString(R.string.tr_remove), getString(R.string.tr_remove_sub), R.drawable.delete, () ->
 				UiUtils.showQuestion(requireContext(), R.string.tr_remove, R.string.tr_remove_question, R.drawable.delete)
 						.onSuccess(ok -> removeSelected()));
+	}
+
+	private String[] fontNames() {
+		String[] out = new String[me.aap.fermata.ui.transition.TransitionFonts.count()];
+		int[] system = {R.string.tr_font_sans, R.string.tr_font_light, R.string.tr_font_condensed, R.string.tr_font_medium,
+				R.string.tr_font_serif, R.string.tr_font_mono, R.string.tr_font_script, R.string.tr_font_casual};
+		for (int i = 0; i < out.length; i++) {
+			out[i] = getString((i < system.length) ? system[i] : me.aap.fermata.ui.transition.TransitionFonts.nameOf(i));
+		}
+		return out;
 	}
 
 	private String[] animNames() {

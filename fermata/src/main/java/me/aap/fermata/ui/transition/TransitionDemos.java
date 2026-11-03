@@ -46,7 +46,7 @@ public final class TransitionDemos {
 		t.setTextSize(24);
 		t.setTextColor(color);
 		t.setGravity(android.view.Gravity.CENTER);
-		t.setTypeface(Typeface.create(TransitionConfig.FONT_FAMILIES[font], Typeface.NORMAL));
+		t.setTypeface(TransitionFonts.get(c, font, false, false));
 		return t;
 	}
 

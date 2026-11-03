@@ -98,7 +98,6 @@ public final class TransitionView extends FrameLayout {
 		slop = android.view.ViewConfiguration.get(ctx).getScaledTouchSlop();
 		this.config = config;
 		setWillNotDraw(false);
-		setClipChildren(false);
 		bg = new Bg(ctx);
 		addView(bg, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
 		guidePaint.setColor(0xCC4FC3F7);
@@ -455,11 +454,11 @@ public final class TransitionView extends FrameLayout {
 				guideX = false;
 				guideY = false;
 				if (mode == M_DRAG) {
-					e.x = Math.max(0f, Math.min(1f, snap(startX + (x - downX) / getWidth(), true)));
-					e.y = Math.max(0f, Math.min(1f, snap(startY + (y - downY) / getHeight(), false)));
+					e.x = Math.max(-0.5f, Math.min(1.5f, snap(startX + (x - downX) / getWidth(), true)));
+					e.y = Math.max(-0.5f, Math.min(1.5f, snap(startY + (y - downY) / getHeight(), false)));
 				} else {
 					if ((mode == M_SIZE) || (mode == M_W)) {
-						e.w = Math.max(0.06f, Math.min(1f, 2f * (x - e.x * getWidth()) / getWidth()));
+						e.w = Math.max(0.06f, Math.min(e.isText() ? 1f : 3f, 2f * (x - e.x * getWidth()) / getWidth()));
 					}
 					if (e.isText() && ((mode == M_SIZE) || (mode == M_H))) {
 						e.h = Math.max(0.03f, Math.min(1f, 2f * (y - e.y * getHeight()) / getHeight()));
@@ -561,7 +560,7 @@ public final class TransitionView extends FrameLayout {
 				c.drawRect(0, 0, w, h, paint);
 				paint.setShader(null);
 			} else {
-				float s = Math.max(w / (float) b.getWidth(), h / (float) b.getHeight());
+				float s = Math.max(w / (float) b.getWidth(), h / (float) b.getHeight()) * (config.zoom / 100f);
 				m.setScale(s, s);
 				m.postTranslate((w - b.getWidth() * s) / 2f, (h - b.getHeight() * s) / 2f);
 				c.drawBitmap(b, m, paint);
@@ -656,7 +655,6 @@ public final class TransitionView extends FrameLayout {
 			int boxH;
 			if (el.type == TransitionConfig.T_ART) {
 				if ((data.art == null) && !sample) empty = true;
-				boxW = Math.min(boxW, Math.round(H * 0.95f));
 				boxH = boxW;
 			} else {
 				String s = content();
@@ -671,7 +669,9 @@ public final class TransitionView extends FrameLayout {
 					int innerH = fixedH ? Math.max(1, fixedBox - 2 * pad) : Integer.MAX_VALUE;
 					int style = (el.bold ? Typeface.BOLD : 0) | (el.italic ? Typeface.ITALIC : 0);
 					tp.setColor(el.color);
-					tp.setTypeface(Typeface.create(Typeface.create(TransitionConfig.FONT_FAMILIES[el.font], Typeface.NORMAL), style));
+					tp.setTypeface(TransitionFonts.get(getContext(), el.font, el.bold, el.italic));
+					tp.setLetterSpacing(el.spacing / 100f);
+					if (el.caps) s = s.toUpperCase();
 					int maxLines = el.wrap ? Math.max(1, el.lines) : 1;
 					float base = el.size * H;
 					float size = base;
