@@ -1738,6 +1738,8 @@
     <string name="tr_add_title">Add an element</string>
     <string name="keys_hide_video_ui">Keep video clean on media keys</string>
     <string name="keys_hide_video_ui_sub">A steering wheel or media key over fullscreen video does not bring up the controls, title and buttons.</string>
+    <string name="skip_hide_video_ui">Hide controls after Next / Previous</string>
+    <string name="skip_hide_video_ui_sub">Tapping Next or Previous (or swiping) over fullscreen video takes the controls away at once, so the new song starts on a clean screen.</string>
     <string name="tr_height">Height</string>
     <string name="tr_auto">Auto</string>
     <string name="tr_wrap">Wrap lines</string>
@@ -1750,6 +1752,7 @@
     <string name="tr_zoom">Zoom</string>
     <string name="tr_caps">Capital letters</string>
     <string name="tr_spacing">Letter spacing</string>
+    <string name="tr_resize_panel">Drag to resize the options</string>
     <string name="tr_move_panel">Move the options</string>
     <string name="tr_font_bebas">Bebas</string>
     <string name="tr_font_pacifico">Pacifico</string>

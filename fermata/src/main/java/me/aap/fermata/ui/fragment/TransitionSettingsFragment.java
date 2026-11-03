@@ -6,6 +6,8 @@ import static android.view.ViewGroup.LayoutParams.WRAP_CONTENT;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.ColorStateList;
+import android.annotation.SuppressLint;
+import me.aap.fermata.ui.activity.MainActivityPrefs;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.view.Gravity;
@@ -153,6 +155,9 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 	private final List<Runnable> sync = new ArrayList<>();
 	private boolean onCar;
 	private int panelW;
+	private View stripView, rightHolder;
+	private FrameLayout.LayoutParams hintLp, selLp, rightLp, stripLp;
+	private LinearLayout.LayoutParams sideLp;
 	@Nullable
 	private android.widget.ImageButton playBtn;
 	@Nullable
@@ -245,8 +250,10 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		MainActivityDelegate d = getActivityDelegate();
 		onCar = (d != null) && d.isCarActivity();
 		wide = (ctx.getResources().getConfiguration().screenWidthDp >= 720) || onCar;
-		// The column beside the preview: up to 380dp, but never more than 40% of the screen (a car screen is not wide).
-		panelW = Math.min(dp(380), Math.round(ctx.getResources().getDisplayMetrics().widthPixels * 0.40f));
+		// The column beside the preview: a share of the screen's width, dragged by the strip on its edge.
+		int scrW = ctx.getResources().getDisplayMetrics().widthPixels;
+		int pct = (d == null) ? 40 : d.getPrefs().getIntPref(MainActivityPrefs.TRANSITION_PANEL_PERCENT);
+		panelW = clampPanel(Math.round(scrW * pct / 100f), scrW);
 
 		root = new FrameLayout(palette);
 		root.setClipChildren(false);
@@ -282,6 +289,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		hlp.setMarginStart(dp(12));
 		// Room for the app's own floating button at the right on a phone.
 		hlp.setMarginEnd(wide ? panelW + dp(12) : dp(84));
+		hintLp = hlp;
 		root.addView(hint, hlp);
 
 		// What is picked: a small bar in the same place, so tapping an element never covers the preview.
@@ -320,6 +328,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		blp.bottomMargin = dp(6);
 		blp.setMarginStart(dp(8));
 		blp.setMarginEnd(wide ? panelW + dp(8) : dp(84));
+		selLp = blp;
 		root.addView(selBar, blp);
 
 		if (wide) {
@@ -327,6 +336,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			sidePanel.setClipChildren(false);
 			LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(panelW, MATCH_PARENT);
 			slp.setMargins(0, dp(4), dp(8), dp(8));
+			sideLp = slp;
 			row.addView(sidePanel, slp);
 		} else {
 			sheet = new FrameLayout(palette);
@@ -367,7 +377,10 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		}), chipLp(true));
 		FrameLayout.LayoutParams rlp = new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP | Gravity.END);
 		rlp.setMargins(0, dp(6), wide ? panelW + dp(8) : dp(8), 0);
+		rightLp = rlp;
+		rightHolder = right;
 		root.addView(right, rlp);
+		if (wide) addPanelStrip(d);
 
 		// What plays now is on the preview, with its cover (nothing playing: the samples), and follows the song.
 		refreshSong();
@@ -609,6 +622,8 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		root = null;
 		stage = null;
 		sidePanel = null;
+		stripView = null;
+		rightHolder = null;
 		sheet = null;
 		panelCard = null;
 		setChips = null;
@@ -680,6 +695,78 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 				}).start();
 		animateInset(0);
 		updateSelBar();
+	}
+
+	private int clampPanel(int w, int scrW) {
+		return Math.max(Math.round(scrW * 0.22f), Math.min(Math.round(scrW * 0.65f), w));
+	}
+
+	private void setPanelW(int w) {
+		if (w == panelW) return;
+		panelW = w;
+		if (sideLp != null) {
+			sideLp.width = w;
+			if (sidePanel != null) sidePanel.setLayoutParams(sideLp);
+		}
+		if (hintLp != null) hintLp.setMarginEnd(w + dp(12));
+		if (selLp != null) selLp.setMarginEnd(w + dp(8));
+		if (rightLp != null) rightLp.setMarginEnd(w + dp(8));
+		if (stripLp != null) stripLp.setMarginEnd(w + dp(8) - dp(9));
+		if (hintView != null) hintView.setLayoutParams(hintLp);
+		if (selBar != null) selBar.setLayoutParams(selLp);
+		if (stripView != null) stripView.setLayoutParams(stripLp);
+		View r = (rightLp == null) ? null : (View) rightHolder;
+		if (r != null) r.setLayoutParams(rightLp);
+	}
+
+	/** A strip on the options column's left edge: drag it to make the column wider or narrower (like the comments column). */
+	@SuppressLint("ClickableViewAccessibility")
+	private void addPanelStrip(@Nullable MainActivityDelegate d) {
+		FrameLayout strip = new FrameLayout(palette);
+		View bar = new View(palette);
+		GradientDrawable gd = new GradientDrawable();
+		gd.setColor(0x66808080);
+		gd.setCornerRadius(dp(2));
+		bar.setBackground(gd);
+		strip.addView(bar, new FrameLayout.LayoutParams(dp(4), dp(48), Gravity.CENTER));
+		strip.setContentDescription(getString(R.string.tr_resize_panel));
+		stripLp = new FrameLayout.LayoutParams(dp(18), MATCH_PARENT, Gravity.END);
+		stripLp.setMargins(0, dp(60), panelW + dp(8) - dp(9), dp(12));
+		stripView = strip;
+		strip.setOnTouchListener(new View.OnTouchListener() {
+			private float startX;
+			private int startW;
+
+			@Override
+			public boolean onTouch(View v, android.view.MotionEvent e) {
+				int scrW = v.getResources().getDisplayMetrics().widthPixels;
+				switch (e.getActionMasked()) {
+					case android.view.MotionEvent.ACTION_DOWN -> {
+						startX = e.getRawX();
+						startW = panelW;
+						v.getParent().requestDisallowInterceptTouchEvent(true);
+						gd.setColor(0xCC808080);
+						return true;
+					}
+					case android.view.MotionEvent.ACTION_MOVE -> {
+						setPanelW(clampPanel(startW - Math.round(e.getRawX() - startX), scrW));
+						return true;
+					}
+					case android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+						gd.setColor(0x66808080);
+						if (d != null) {
+							d.getPrefs().applyIntPref(MainActivityPrefs.TRANSITION_PANEL_PERCENT,
+									Math.round(panelW * 100f / Math.max(1, scrW)));
+						}
+						return true;
+					}
+					default -> {
+						return false;
+					}
+				}
+			}
+		});
+		root.addView(strip, stripLp);
 	}
 
 	/** Moves the options card with a finger on its grip; never off the page. */
@@ -790,7 +877,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		gripBox.addView(grip, new FrameLayout.LayoutParams(dp(40), dp(4), Gravity.CENTER));
 		gripBox.setContentDescription(getString(R.string.tr_move_panel));
 		gripBox.setOnTouchListener(new PanelDrag(card));
-		card.addView(gripBox, new LinearLayout.LayoutParams(MATCH_PARENT, dp(18)));
+		if (!wide) card.addView(gripBox, new LinearLayout.LayoutParams(MATCH_PARENT, dp(18)));
 		card.addView(head, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
 		panelScroll = new android.widget.ScrollView(palette);

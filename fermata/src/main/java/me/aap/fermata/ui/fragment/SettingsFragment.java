@@ -928,6 +928,12 @@ public class SettingsFragment extends MainActivityFragment
 		});
 		sub1.addBooleanPref(o -> {
 			o.store = a.getPrefs();
+			o.pref = MainActivityPrefs.SKIP_HIDE_VIDEO_UI;
+			o.title = R.string.skip_hide_video_ui;
+			o.subtitle = R.string.skip_hide_video_ui_sub;
+		});
+		sub1.addBooleanPref(o -> {
+			o.store = a.getPrefs();
 			o.pref = MainActivityPrefs.LANDSCAPE_VIDEO;
 			o.title = R.string.play_video_landscape;
 		});
