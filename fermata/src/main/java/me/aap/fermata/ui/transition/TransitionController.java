@@ -108,7 +108,13 @@ public final class TransitionController {
 	}
 
 	private static void resolve(@Nullable MediaEngine engine, int tries) {
-		PlayableItem pi = (engine == null) ? null : engine.getSource();
+		// The favoritable item, not getSource(): the YouTube engine's source is one placeholder ("current") whose id is the
+		// same for every video, so every song after the first looked like the one already shown.
+		PlayableItem pi = (engine == null) ? null : engine.getFavoritableItem();
+		if (pi instanceof MusicTrackItem t) {
+			PlayableItem f = t.getFavoritableItem();
+			if (f != null) pi = f;
+		}
 		if (pi == null) {
 			MainActivityDelegate ui = MainActivityDelegate.getUiDelegate();
 			if (ui != null) pi = Action.getFavoritableItem(ui);
@@ -135,6 +141,7 @@ public final class TransitionController {
 		boolean first = lastId == null;
 		boolean same = key.equals(lastId);
 		lastId = key;
+		DiagnosticLog.d(LogCat.MUSIC, "transition screen: song started", "key=" + key, "same=" + same, "first=" + first);
 		if (same) return;
 
 		if (delegates.isEmpty()) {
