@@ -151,13 +151,29 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 	@Nullable
 	private LinearLayout panelCard;
 	private final List<Runnable> sync = new ArrayList<>();
+	@Nullable
+	private TextView hintView;
+	@Nullable
+	private LinearLayout selBar;
+	@Nullable
+	private TextView selName;
+	@Nullable
+	private android.animation.ValueAnimator insetAnim;
 
 	/** Keeps the shape of the screen shown, as large as the room allows, between the chips and the hint. */
 	private final class Stage extends FrameLayout {
 		private float aspect = 16f / 9f;
+		/** Room taken at the bottom by the open sheet, px. */
+		int inset;
 
 		Stage(Context c) {
 			super(c);
+		}
+
+		void setInset(int px) {
+			if (inset == px) return;
+			inset = px;
+			requestLayout();
 		}
 
 		void setAspect(float a) {
@@ -170,7 +186,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			int w = MeasureSpec.getSize(wSpec);
 			int h = MeasureSpec.getSize(hSpec);
 			setMeasuredDimension(w, h);
-			int fw = Math.min(w - dp(24), Math.round((h - dp(64 + 34)) * aspect));
+			int fw = Math.min(w - dp(24), Math.round((h - dp(52 + 52) - inset) * aspect));
 			fw = Math.max(dp(80), fw);
 			int fh = Math.round(fw / aspect);
 			for (int i = 0; i < getChildCount(); i++) {
@@ -188,8 +204,8 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 				int cw = c.getMeasuredWidth();
 				int ch = c.getMeasuredHeight();
 				int left = (w - cw) / 2;
-				int room = h - dp(64 + 34);
-				int top = dp(64) + Math.max(0, (room - ch) / 2);
+				int room = h - dp(52 + 52) - inset;
+				int top = dp(52) + Math.max(0, (room - ch) / 2);
 				c.layout(left, top, left + cw, top + ch);
 			}
 		}
@@ -237,12 +253,55 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		row.addView(stage, new LinearLayout.LayoutParams(0, MATCH_PARENT, 1f));
 		updateAspect();
 
-		TextView hint = text(R.string.tr_edit_hint, 12.5f, textSecondary, false);
-		hint.setGravity(Gravity.CENTER);
-		FrameLayout.LayoutParams hlp = new FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.BOTTOM);
-		hlp.bottomMargin = dp(8);
-		hlp.setMarginEnd(wide ? dp(380) : 0);
+		TextView hint = text(R.string.tr_edit_hint, 12f, textSecondary, false);
+		hint.setGravity(Gravity.CENTER_VERTICAL);
+		hint.setSingleLine(true);
+		hint.setEllipsize(android.text.TextUtils.TruncateAt.END);
+		hintView = hint;
+		FrameLayout.LayoutParams hlp = new FrameLayout.LayoutParams(MATCH_PARENT, dp(40), Gravity.BOTTOM);
+		hlp.bottomMargin = dp(6);
+		hlp.setMarginStart(dp(12));
+		// Room for the app's own floating button at the right on a phone.
+		hlp.setMarginEnd(wide ? dp(392) : dp(84));
 		root.addView(hint, hlp);
+
+		// What is picked: a small bar in the same place, so tapping an element never covers the preview.
+		selBar = new LinearLayout(palette);
+		selBar.setGravity(Gravity.CENTER_VERTICAL);
+		selBar.setPadding(dp(12), 0, dp(4), 0);
+		selBar.setElevation(dp(4));
+		selBar.setBackground(me.aap.fermata.ui.view.MenuStyle.panel(selBar, paletteColor(R.attr.musicPanelFill), dp(22)));
+		selName = text(0, 14, textPrimary, true);
+		selName.setSingleLine(true);
+		selName.setEllipsize(android.text.TextUtils.TruncateAt.END);
+		selBar.addView(selName, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		selBar.addView(barButton(R.drawable.settings, R.string.tr_edit, () -> {
+			if (selected() != null) openPanel(P_ELEMENT);
+		}));
+		selBar.addView(barButton(R.drawable.cover_hidden, R.string.tr_show, () -> {
+			Element e = selected();
+			if (e == null) return;
+			e.visible = !e.visible;
+			changed();
+			updateSelBar();
+		}));
+		selBar.addView(barButton(R.drawable.delete, R.string.tr_remove, () -> {
+			if (selected() == null) return;
+			UiUtils.showQuestion(requireContext(), R.string.tr_remove, R.string.tr_remove_question, R.drawable.delete)
+					.onSuccess(ok -> removeSelected());
+		}));
+		selBar.addView(barButton(me.aap.utils.R.drawable.close, R.string.close, () -> {
+			if (sheetOpen) closeSheet();
+			selectedId = 0;
+			if (preview != null) preview.setSelected(0);
+			updateSelBar();
+		}));
+		selBar.setVisibility(View.GONE);
+		FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(MATCH_PARENT, dp(44), Gravity.BOTTOM);
+		blp.bottomMargin = dp(6);
+		blp.setMarginStart(dp(8));
+		blp.setMarginEnd(wide ? dp(388) : dp(84));
+		root.addView(selBar, blp);
 
 		if (wide) {
 			sidePanel = new FrameLayout(palette);
@@ -252,45 +311,43 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		} else {
 			sheet = new FrameLayout(palette);
 			sheet.setVisibility(View.GONE);
-			FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(MATCH_PARENT, dp(300), Gravity.BOTTOM);
-			slp.setMargins(dp(8), 0, dp(8), dp(8));
+			FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(MATCH_PARENT, dp(260), Gravity.BOTTOM);
+			slp.setMargins(dp(8), 0, dp(8), dp(6));
 			root.addView(sheet, slp);
 			root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
 				if (sheet == null) return;
-				int h = Math.round((b - t) * 0.58f);
+				int h = Math.round((b - t) * 0.46f);
 				android.view.ViewGroup.LayoutParams lp = sheet.getLayoutParams();
 				if (lp.height != h) {
 					lp.height = h;
 					sheet.setLayoutParams(lp);
+					if (sheetOpen && (stage != null)) stage.setInset(h + dp(6));
 				}
 			});
 		}
 
-		// The set, and the preview's own chips: settings, add, play.
+		// The set, and the preview's own buttons: small round chips, so nothing is cut off on a phone.
 		LinearLayout left = new LinearLayout(palette);
-		left.addView(ChipFlowLayout.chip(palette, R.drawable.home_page, getString(R.string.home_settings_tab_phone), !car,
-				() -> switchSet(false)));
-		LinearLayout.LayoutParams gap = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
-		gap.setMarginStart(dp(6));
-		left.addView(ChipFlowLayout.chip(palette, R.drawable.car, getString(R.string.home_settings_tab_aa), car,
-				() -> switchSet(true)), gap);
-		FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP | Gravity.START);
-		llp.setMargins(dp(8), dp(8), 0, 0);
-		root.addView(left, llp);
 		setChips = left;
+		fillSetChips();
+		FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP | Gravity.START);
+		llp.setMargins(dp(8), dp(6), 0, 0);
+		root.addView(left, llp);
 
 		LinearLayout right = new LinearLayout(palette);
-		right.addView(ChipFlowLayout.chip(palette, R.drawable.play, getString(R.string.tr_play), true, this::playPreview));
+		right.addView(ChipFlowLayout.chip(palette, R.drawable.play, wide ? getString(R.string.tr_play) : "", true,
+				this::playPreview));
 		LinearLayout.LayoutParams g2 = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
 		g2.setMarginStart(dp(6));
 		right.addView(ChipFlowLayout.chip(palette, R.drawable.home_add, "", false, () -> openPanel(P_ADD)), g2);
 		right.addView(ChipFlowLayout.chip(palette, R.drawable.settings, "", false, () -> {
 			selectedId = 0;
 			if (preview != null) preview.setSelected(0);
+			updateSelBar();
 			openPanel(P_GENERAL);
 		}), g2);
 		FrameLayout.LayoutParams rlp = new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP | Gravity.END);
-		rlp.setMargins(0, dp(8), wide ? dp(388) : dp(8), 0);
+		rlp.setMargins(0, dp(6), wide ? dp(388) : dp(8), 0);
 		root.addView(right, rlp);
 
 		// What plays now is on the preview, with its cover (nothing playing: the samples).
@@ -305,6 +362,65 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 
 	@Nullable
 	private LinearLayout setChips;
+
+	/** The Phone / Android Auto toggle: icons only on a phone (names beside them when there is room). */
+	private void fillSetChips() {
+		LinearLayout l = setChips;
+		if (l == null) return;
+		l.removeAllViews();
+		l.addView(ChipFlowLayout.chip(palette, R.drawable.home_page, wide ? getString(R.string.home_settings_tab_phone) : "",
+				!car, () -> switchSet(false)));
+		LinearLayout.LayoutParams gap = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+		gap.setMarginStart(dp(6));
+		l.addView(ChipFlowLayout.chip(palette, R.drawable.car, wide ? getString(R.string.home_settings_tab_aa) : "",
+				car, () -> switchSet(true)), gap);
+	}
+
+	private android.widget.ImageButton barButton(@DrawableRes int icon, @StringRes int desc, Runnable click) {
+		android.widget.ImageButton b = new android.widget.ImageButton(palette);
+		b.setImageResource(icon);
+		b.setImageTintList(ColorStateList.valueOf(textPrimary));
+		b.setBackground(pressable(rounded(0x00000000, 18)));
+		b.setContentDescription(getString(desc));
+		b.setOnClickListener(v -> click.run());
+		b.setLayoutParams(new LinearLayout.LayoutParams(dp(40), dp(40)));
+		return b;
+	}
+
+	/** Shows the small bar for the picked element (phone), or the hint when nothing is picked. */
+	private void updateSelBar() {
+		if (wide || (selBar == null) || (hintView == null)) return;
+		Element e = selected();
+		boolean on = (e != null) && !sheetOpen;
+		selBar.setVisibility(on ? View.VISIBLE : View.GONE);
+		hintView.setVisibility((e == null) && !sheetOpen ? View.VISIBLE : View.GONE);
+		if ((e != null) && (selName != null)) selName.setText(nameOf(e));
+	}
+
+	private void removeSelected() {
+		Element e = selected();
+		if (e == null) return;
+		cfg.remove(e);
+		selectedId = 0;
+		cfg.save(car);
+		if (preview != null) {
+			preview.setSelected(0);
+			preview.refresh();
+		}
+		if (wide) openPanel(P_GENERAL);
+		else closeSheet();
+		updateSelBar();
+	}
+
+	private void animateInset(int to) {
+		Stage st = stage;
+		if (st == null) return;
+		if (insetAnim != null) insetAnim.cancel();
+		insetAnim = android.animation.ValueAnimator.ofInt(st.inset, to);
+		insetAnim.setDuration(220);
+		insetAnim.addUpdateListener(a -> st.setInset((int) a.getAnimatedValue()));
+		insetAnim.start();
+	}
 
 	private void updateAspect() {
 		Stage st = stage;
@@ -338,18 +454,9 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			preview.setSelected(0);
 			preview.setPicture(cfg.bg == TransitionConfig.BG_PICTURE ? TransitionController.loadPicture(car) : null);
 		}
-		LinearLayout sc = setChips;
-		if ((sc != null) && (sc.getChildCount() == 2)) {
-			// Light the picked one.
-			sc.removeAllViews();
-			sc.addView(ChipFlowLayout.chip(palette, R.drawable.home_page, getString(R.string.home_settings_tab_phone), !car,
-					() -> switchSet(false)));
-			LinearLayout.LayoutParams gap = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
-			gap.setMarginStart(dp(6));
-			sc.addView(ChipFlowLayout.chip(palette, R.drawable.car, getString(R.string.home_settings_tab_aa), car,
-					() -> switchSet(true)), gap);
-		}
+		fillSetChips();
 		updateAspect();
+		updateSelBar();
 		closeSheet();
 		if (wide) openPanel(P_GENERAL);
 	}
@@ -358,6 +465,12 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 	public boolean onBackPressed() {
 		if (sheetOpen) {
 			closeSheet();
+			return true;
+		}
+		if (!wide && (selectedId != 0)) {
+			selectedId = 0;
+			if (preview != null) preview.setSelected(0);
+			updateSelBar();
 			return true;
 		}
 		return super.onBackPressed();
@@ -373,6 +486,11 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		sheet = null;
 		panelCard = null;
 		setChips = null;
+		hintView = null;
+		selBar = null;
+		selName = null;
+		if (insetAnim != null) insetAnim.cancel();
+		insetAnim = null;
 		sync.clear();
 		sheetOpen = false;
 		super.onDestroyView();
@@ -401,6 +519,8 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			host.addView(card, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 			host.setVisibility(View.VISIBLE);
 			sheetOpen = true;
+			updateSelBar();
+			animateInset(host.getLayoutParams().height + dp(6));
 			if (!wasOpen) {
 				host.setTranslationY(dp(220));
 				host.setAlpha(0f);
@@ -423,8 +543,8 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 					host.setVisibility(View.GONE);
 					host.removeAllViews();
 				}).start();
-		selectedId = 0;
-		if (preview != null) preview.setSelected(0);
+		animateInset(0);
+		updateSelBar();
 	}
 
 	/** A card: the chips that pick what to edit, a title, and the options. */
@@ -517,7 +637,24 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 
 	@Override
 	public void onPicked(int id) {
-		pick(id);
+		if (wide) {
+			pick(id);
+			return;
+		}
+		// A phone: a touch only picks (so it can be dragged at once); the options open on a second tap or Edit.
+		selectedId = id;
+		if (preview != null) preview.setSelected(id);
+		if (id == 0) {
+			if (sheetOpen) closeSheet();
+		} else if (sheetOpen) {
+			openPanel(P_ELEMENT);
+		}
+		updateSelBar();
+	}
+
+	@Override
+	public void onTapSelected(int id) {
+		if (!wide && (selected() != null)) openPanel(P_ELEMENT);
 	}
 
 	@Override
@@ -576,6 +713,39 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 
 	// ---- What the panel holds ----
 
+	private boolean compact() {
+		return !wide;
+	}
+
+	/** A section the user can fold: its title with a chevron, and the rows under it (open at first only when there is room). */
+	private LinearLayout group(LinearLayout parent, @StringRes int title, boolean open) {
+		LinearLayout head = new LinearLayout(palette);
+		head.setGravity(Gravity.CENTER_VERTICAL);
+		head.setPadding(dp(4), dp(compact() ? 10 : 14), dp(4), dp(compact() ? 4 : 6));
+		head.setClickable(true);
+		head.setFocusable(true);
+		TextView t = text(title, 12.5f, accent, true);
+		t.setAllCaps(true);
+		t.setLetterSpacing(0.08f);
+		head.addView(t, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		android.widget.ImageView chev = new android.widget.ImageView(palette);
+		chev.setImageResource(me.aap.utils.R.drawable.chevron_right);
+		chev.setImageTintList(ColorStateList.valueOf(accent));
+		chev.setRotation(open ? 90f : 0f);
+		head.addView(chev, new LinearLayout.LayoutParams(dp(22), dp(22)));
+		LinearLayout content = new LinearLayout(palette);
+		content.setOrientation(LinearLayout.VERTICAL);
+		content.setVisibility(open ? View.VISIBLE : View.GONE);
+		head.setOnClickListener(v -> {
+			boolean show = content.getVisibility() != View.VISIBLE;
+			content.setVisibility(show ? View.VISIBLE : View.GONE);
+			chev.animate().rotation(show ? 90f : 0f).setDuration(150).start();
+		});
+		parent.addView(head);
+		parent.addView(content, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		return content;
+	}
+
 	private void buildAdd(LinearLayout p) {
 		section(p, R.string.tr_section_elements);
 		TextView hint = text(R.string.tr_elements_hint, 12.5f, textSecondary, false);
@@ -601,7 +771,8 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 
 	private void buildGeneral(LinearLayout b) {
 		List<Runnable> s = sync;
-		section(b, R.string.tr_section_when);
+		LinearLayout top = b;
+		b = group(top, R.string.tr_section_when, true);
 		switchRow(b, getString(R.string.tr_on), getString(R.string.tr_on_sub), () -> cfg.on, on -> {
 			cfg.on = on;
 			changed();
@@ -624,7 +795,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			changed();
 		}, s);
 
-		section(b, R.string.tr_section_bg);
+		b = group(top, R.string.tr_section_bg, wide);
 		tilesRow(b, getString(R.string.tr_bg), strings(R.string.tr_bg_clear, R.string.tr_bg_dim, R.string.tr_bg_cover,
 				R.string.tr_bg_picture, R.string.tr_bg_glass), i -> TransitionDemos.background(palette, i),
 				() -> cfg.bg, i -> {
@@ -649,7 +820,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			TopToast.show(R.drawable.transition, R.string.tr_unpicked);
 		});
 
-		section(b, R.string.tr_section_anim);
+		b = group(top, R.string.tr_section_anim, wide);
 		tilesRow(b, getString(R.string.tr_screen_in), animNames(), i -> TransitionDemos.anim(palette, i, true, accent),
 				() -> cfg.inAnim, i -> {
 					cfg.inAnim = i;
@@ -669,14 +840,15 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			changed();
 		}, v -> v + " ms", s);
 
-		actionRow(b, getString(R.string.tr_reset), getString(R.string.tr_reset_sub), R.drawable.refresh, () ->
+		actionRow(top, getString(R.string.tr_reset), getString(R.string.tr_reset_sub), R.drawable.refresh, () ->
 				UiUtils.showQuestion(requireContext(), R.string.tr_reset, R.string.tr_reset_question, R.drawable.refresh)
 						.onSuccess(ok -> onReset()));
 	}
 
 	private void buildElement(LinearLayout p, Element e) {
 		List<Runnable> s = sync;
-		section(p, R.string.tr_section_element);
+		LinearLayout top = p;
+		p = group(top, R.string.tr_section_element, true);
 		switchRow(p, getString(R.string.tr_show), null, () -> e.visible, on -> {
 			e.visible = on;
 			elementChanged();
@@ -709,7 +881,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		}, v -> v + "%", s);
 
 		if (e.isText()) {
-			section(p, R.string.tr_section_text);
+			p = group(top, R.string.tr_section_text, wide);
 			tilesRow(p, getString(R.string.tr_font), strings(R.string.tr_font_sans, R.string.tr_font_light,
 					R.string.tr_font_condensed, R.string.tr_font_medium, R.string.tr_font_serif, R.string.tr_font_mono,
 					R.string.tr_font_script, R.string.tr_font_casual), i -> TransitionDemos.font(palette, i, textPrimary),
@@ -736,7 +908,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			}, s);
 		}
 
-		section(p, R.string.tr_section_look);
+		p = group(top, R.string.tr_section_look, wide);
 		tilesRow(p, getString(R.string.tr_fill), strings(R.string.tr_fill_none, R.string.tr_fill_solid, R.string.tr_fill_glass),
 				i -> TransitionDemos.fill(palette, i, accent), () -> e.fill, i -> {
 					e.fill = i;
@@ -767,7 +939,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			elementChanged();
 		}, s);
 
-		section(p, R.string.tr_section_motion);
+		p = group(top, R.string.tr_section_motion, wide);
 		tilesRow(p, getString(R.string.tr_in), animNames(), i -> TransitionDemos.anim(palette, i, true, accent),
 				() -> e.inAnim, i -> {
 					e.inAnim = i;
@@ -792,19 +964,9 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			elementChanged();
 		}, v -> v + " ms", s);
 
-		actionRow(p, getString(R.string.tr_remove), getString(R.string.tr_remove_sub), R.drawable.delete, () ->
+		actionRow(top, getString(R.string.tr_remove), getString(R.string.tr_remove_sub), R.drawable.delete, () ->
 				UiUtils.showQuestion(requireContext(), R.string.tr_remove, R.string.tr_remove_question, R.drawable.delete)
-						.onSuccess(ok -> {
-							cfg.remove(e);
-							selectedId = 0;
-							cfg.save(car);
-							if (preview != null) {
-								preview.setSelected(0);
-								preview.refresh();
-							}
-							if (wide) openPanel(P_GENERAL);
-							else closeSheet();
-						}));
+						.onSuccess(ok -> removeSelected()));
 	}
 
 	private String[] animNames() {
@@ -824,7 +986,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			LinearLayout tile = new LinearLayout(palette);
 			tile.setOrientation(LinearLayout.VERTICAL);
 			tile.setGravity(Gravity.CENTER_HORIZONTAL);
-			tile.setPadding(dp(6), dp(6), dp(6), dp(6));
+			tile.setPadding(dp(5), dp(5), dp(5), dp(5));
 			GradientDrawable fill = rounded(0x1F808080, 14);
 			tile.setTag(R.id.settings_row_tag, fill);
 			tile.setBackground(pressable(fill));
@@ -832,15 +994,15 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			tile.setFocusable(true);
 			tile.setOnClickListener(v -> set.accept(fi));
 			View d = demo.apply(i);
-			tile.addView(d, new LinearLayout.LayoutParams(dp(76), dp(54)));
+			tile.addView(d, new LinearLayout.LayoutParams(dp(compact() ? 62 : 76), dp(compact() ? 42 : 54)));
 			TextView t = label(labels[i], 11.5f, textPrimary, true);
 			t.setGravity(Gravity.CENTER);
 			t.setSingleLine(true);
 			t.setEllipsize(android.text.TextUtils.TruncateAt.END);
 			t.setPadding(0, dp(4), 0, 0);
-			tile.addView(t, new LinearLayout.LayoutParams(dp(76), WRAP_CONTENT));
+			tile.addView(t, new LinearLayout.LayoutParams(dp(compact() ? 62 : 76), WRAP_CONTENT));
 			tiles[i] = tile;
-			flow.addView(tile, new android.view.ViewGroup.MarginLayoutParams(dp(88), WRAP_CONTENT));
+			flow.addView(tile, new android.view.ViewGroup.MarginLayoutParams(dp(compact() ? 74 : 88), WRAP_CONTENT));
 		}
 		LinearLayout.LayoutParams flp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
 		flp.topMargin = dp(8);
@@ -898,10 +1060,10 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 	private LinearLayout tileRow(LinearLayout parent, boolean clickable) {
 		LinearLayout row = new LinearLayout(palette);
 		row.setOrientation(LinearLayout.VERTICAL);
-		row.setPadding(dp(16), dp(12), dp(16), dp(12));
+		row.setPadding(dp(compact() ? 12 : 16), dp(compact() ? 8 : 12), dp(compact() ? 12 : 16), dp(compact() ? 8 : 12));
 		row.setBackground(clickable ? pressable(rounded(tileFill, 16)) : rounded(tileFill, 16));
 		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
-		lp.topMargin = dp(10);
+		lp.topMargin = dp(compact() ? 6 : 10);
 		parent.addView(row, lp);
 		return row;
 	}
@@ -942,7 +1104,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 	private void sliderRow(LinearLayout parent, String title, int min, int max, IntSupplier get, IntConsumer set,
 												 IntFunction<String> format, List<Runnable> sync) {
 		LinearLayout row = tileRow(parent, false);
-		row.setPadding(dp(16), dp(10), dp(16), dp(4));
+		row.setPadding(dp(compact() ? 12 : 16), dp(compact() ? 6 : 10), dp(compact() ? 12 : 16), dp(2));
 		LinearLayout top = new LinearLayout(palette);
 		top.addView(label(title, 15, textPrimary, true), new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
 		TextView value = label("", 14, textSecondary, true);
@@ -966,7 +1128,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			public void onStopTrackingTouch(SeekBar s) {
 			}
 		});
-		row.addView(bar, new LinearLayout.LayoutParams(MATCH_PARENT, dp(36)));
+		row.addView(bar, new LinearLayout.LayoutParams(MATCH_PARENT, dp(compact() ? 30 : 36)));
 		sync.add(() -> {
 			int progress = Math.max(0, Math.min(max - min, get.getAsInt() - min));
 			syncing[0] = true;
@@ -989,7 +1151,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			TextView t = label(labels[i], 13.5f, textPrimary, true);
 			t.setGravity(Gravity.CENTER);
 			t.setSingleLine(true);
-			t.setPadding(dp(14), dp(9), dp(14), dp(9));
+			t.setPadding(dp(compact() ? 11 : 14), dp(compact() ? 7 : 9), dp(compact() ? 11 : 14), dp(compact() ? 7 : 9));
 			GradientDrawable fill = rounded(0x1F808080, 14);
 			t.setTag(R.id.settings_row_tag, fill);
 			t.setBackground(pressable(fill));
@@ -1029,7 +1191,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			v.setFocusable(true);
 			v.setOnClickListener(x -> set.accept(c));
 			views[i] = v;
-			flow.addView(v, new android.view.ViewGroup.MarginLayoutParams(dp(34), dp(34)));
+			flow.addView(v, new android.view.ViewGroup.MarginLayoutParams(dp(compact() ? 30 : 34), dp(compact() ? 30 : 34)));
 		}
 		LinearLayout.LayoutParams flp = new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT);
 		flp.topMargin = dp(8);

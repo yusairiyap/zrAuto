@@ -56,6 +56,10 @@ public final class TransitionView extends FrameLayout {
 
 		/** An element was moved or sized; {@code done} once the finger lifts. */
 		void onEdited(Element e, boolean done);
+
+		/** A plain tap (no drag) on the element that was already picked. */
+		default void onTapSelected(int elementId) {
+		}
 	}
 
 	private static final float SNAP = 0.02f;
@@ -84,10 +88,14 @@ public final class TransitionView extends FrameLayout {
 	private ElementView grabbed;
 	private float downX, downY, startX, startY;
 	private boolean pinching;
+	private boolean wasSelected;
+	private boolean moved;
+	private final int slop;
 
 	public TransitionView(@NonNull Context ctx, @NonNull TransitionConfig config) {
 		super(ctx);
 		density = ctx.getResources().getDisplayMetrics().density;
+		slop = android.view.ViewConfiguration.get(ctx).getScaledTouchSlop();
 		this.config = config;
 		setWillNotDraw(false);
 		setClipChildren(false);
@@ -366,6 +374,8 @@ public final class TransitionView extends FrameLayout {
 			case MotionEvent.ACTION_DOWN -> {
 				getParent().requestDisallowInterceptTouchEvent(true);
 				pinching = false;
+				moved = false;
+				wasSelected = false;
 				ElementView sel = selectedView();
 				if ((sel != null) && sel.shown() && onHandle(sel, x, y)) {
 					grabbed = sel;
@@ -375,6 +385,7 @@ public final class TransitionView extends FrameLayout {
 					grabbed = h;
 					mode = (h == null) ? M_NONE : M_DRAG;
 					int id = (h == null) ? 0 : h.el.id;
+					wasSelected = (id != 0) && (id == selectedId);
 					if (id != selectedId) {
 						selectedId = id;
 						editor.onPicked(id);
@@ -391,6 +402,8 @@ public final class TransitionView extends FrameLayout {
 			}
 			case MotionEvent.ACTION_MOVE -> {
 				if (pinching || (grabbed == null) || (getWidth() == 0)) return true;
+				if (!moved && (Math.abs(x - downX) < slop) && (Math.abs(y - downY) < slop)) return true;
+				moved = true;
 				Element e = grabbed.el;
 				guideX = false;
 				guideY = false;
@@ -406,7 +419,10 @@ public final class TransitionView extends FrameLayout {
 				return true;
 			}
 			case MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-				if ((grabbed != null) && !pinching) editor.onEdited(grabbed.el, true);
+				if ((grabbed != null) && !pinching && !moved && wasSelected && (mode == M_DRAG) &&
+						(ev.getActionMasked() == MotionEvent.ACTION_UP)) {
+					editor.onTapSelected(grabbed.el.id);
+				} else if ((grabbed != null) && !pinching && moved) editor.onEdited(grabbed.el, true);
 				else if (pinching && (selected() != null)) editor.onEdited(selected(), true);
 				grabbed = null;
 				mode = M_NONE;

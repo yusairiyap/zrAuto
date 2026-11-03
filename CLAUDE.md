@@ -1134,9 +1134,13 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
   tiles loop the real animation (only while visible), backgrounds, fills, fonts and alignments are drawn as they will look. Rows have their own helpers and one
   `sync` list that is rebuilt with each card. "Glass" is a frosted look (blurred cover + pale veil + rim), not a live blur of the app behind (nothing can read a
   WebView / fullscreen video). **Never run on a device.**
+- **Phone flow** (not wide): a touch on the preview only *picks* (so it can be dragged at once); a small bar in the hint's place (`selBar`: name, Edit, hide, delete, close)
+  and a second tap on the picked element (`Editor#onTapSelected`) open the options sheet (46% of the height; the preview shrinks above it, `Stage#setInset`). Top chips
+  are icon-only round chips so five fit a phone's width; rows are compact (`compact()`) and the groups fold (`group`: only the first is open on a phone). Back closes the
+  sheet, then the pick. Wide screens pick and open the side column at once.
 - **Why it did not show at first**: `onEngineStarted` can come before the engine's source is set (YouTube), so `TransitionController#onTrackStarted(engine)` asks for it again
   up to 4 times 400 ms apart, then takes the item the UI says plays; a song is one key by its YouTube video id (else its item id). Every skip is in the Diagnostic log
-  (`MUSIC transition screen ...`: skipped / no song to show / no screen registered / shown).
+  (`MUSIC transition screen ...`: skipped / no song to show / no screen registered / shown). The real cause was the YouTube engine's `getSource()`: one placeholder item with a constant id, so every song after the first looked like the same one; the controller keys songs by `engine.getFavoritableItem()` (the real video item).
 - **YouTube sign-in** (YouTube tab's nav bar menu > Sign in to YouTube): "In a window over the app" opens `ui/view/WebLoginCard`, a plain `WebView` in a
   modal card that shares the app's cookie jar (so the YouTube tab's account is the one signed in; hidden in Private Mode, whose profile has its own jar) and
   closes itself when the page returns to youtube.com after the Google sign-in pages, then reloads the tab; "In this tab" loads the sign-in URL in the tab.
