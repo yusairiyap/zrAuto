@@ -83,7 +83,7 @@ public final class TransitionView extends FrameLayout {
 
 	// Touch editing.
 	private final ScaleGestureDetector pinch;
-	private static final int M_NONE = 0, M_DRAG = 1, M_SIZE = 2;
+	private static final int M_NONE = 0, M_DRAG = 1, M_SIZE = 2, M_W = 3, M_H = 4;
 	private int mode;
 	private ElementView grabbed;
 	private float downX, downY, startX, startY;
@@ -329,21 +329,21 @@ public final class TransitionView extends FrameLayout {
 										 @Nullable Runnable end) {
 		boolean isBg = v == bg;
 		float dx = 0f, dy = 0f, sc = 1f;
-		float slideX = isBg ? w : w * 0.12f;
-		float slideY = isBg ? h : h * 0.10f;
+		// The background only drifts a little and always fades: moved or scaled by a lot its hard edges would show.
+		float slideX = isBg ? w * 0.06f : w * 0.12f;
+		float slideY = isBg ? h * 0.05f : h * 0.10f;
 		switch (anim) {
 			case TransitionConfig.ANIM_UP -> dy = slideY;
 			case TransitionConfig.ANIM_DOWN -> dy = -slideY;
 			case TransitionConfig.ANIM_LEFT -> dx = slideX;
 			case TransitionConfig.ANIM_RIGHT -> dx = -slideX;
-			case TransitionConfig.ANIM_ZOOM_IN -> sc = 0.6f;
-			case TransitionConfig.ANIM_ZOOM_OUT -> sc = 1.5f;
+			case TransitionConfig.ANIM_ZOOM_IN -> sc = isBg ? 0.94f : 0.6f;
+			case TransitionConfig.ANIM_ZOOM_OUT -> sc = isBg ? 1.06f : 1.5f;
 			default -> {
 			}
 		}
 		// A background that slides carries its own opacity with it: fade only for the fade and zoom looks.
-		boolean fades = (anim != TransitionConfig.ANIM_NONE) && (!isBg || (anim == TransitionConfig.ANIM_FADE) ||
-				(anim == TransitionConfig.ANIM_ZOOM_IN) || (anim == TransitionConfig.ANIM_ZOOM_OUT));
+		boolean fades = anim != TransitionConfig.ANIM_NONE;
 		if (entering) {
 			v.setTranslationX(dx);
 			v.setTranslationY(dy);
@@ -394,9 +394,16 @@ public final class TransitionView extends FrameLayout {
 		return null;
 	}
 
-	private boolean onHandle(ElementView v, float x, float y) {
+	/** Which handle of the picked element is at the point: the corner (both sizes), the right edge (width), the bottom (height), or 0. */
+	private int handleAt(ElementView v, float x, float y) {
 		float r = density * 26;
-		return (Math.abs(x - v.getRight()) < r) && (Math.abs(y - v.getBottom()) < r);
+		if ((Math.abs(x - v.getRight()) < r) && (Math.abs(y - v.getBottom()) < r)) return M_SIZE;
+		if (!v.el.isText()) return 0;
+		float cx = (v.getLeft() + v.getRight()) / 2f;
+		float cy = (v.getTop() + v.getBottom()) / 2f;
+		if ((Math.abs(x - v.getRight()) < r) && (Math.abs(y - cy) < r)) return M_W;
+		if ((Math.abs(x - cx) < r) && (Math.abs(y - v.getBottom()) < r)) return M_H;
+		return 0;
 	}
 
 	@Override
@@ -416,9 +423,10 @@ public final class TransitionView extends FrameLayout {
 				moved = false;
 				wasSelected = false;
 				ElementView sel = selectedView();
-				if ((sel != null) && sel.shown() && onHandle(sel, x, y)) {
+				int handle = ((sel != null) && sel.shown()) ? handleAt(sel, x, y) : 0;
+				if (handle != 0) {
 					grabbed = sel;
-					mode = M_SIZE;
+					mode = handle;
 				} else {
 					ElementView h = hit(x, y);
 					grabbed = h;
@@ -449,8 +457,13 @@ public final class TransitionView extends FrameLayout {
 				if (mode == M_DRAG) {
 					e.x = Math.max(0f, Math.min(1f, snap(startX + (x - downX) / getWidth(), true)));
 					e.y = Math.max(0f, Math.min(1f, snap(startY + (y - downY) / getHeight(), false)));
-				} else if (mode == M_SIZE) {
-					e.w = Math.max(0.06f, Math.min(1f, 2f * (x - e.x * getWidth()) / getWidth()));
+				} else {
+					if ((mode == M_SIZE) || (mode == M_W)) {
+						e.w = Math.max(0.06f, Math.min(1f, 2f * (x - e.x * getWidth()) / getWidth()));
+					}
+					if (e.isText() && ((mode == M_SIZE) || (mode == M_H))) {
+						e.h = Math.max(0.03f, Math.min(1f, 2f * (y - e.y * getHeight()) / getHeight()));
+					}
 				}
 				requestLayout();
 				editor.onEdited(e, false);
@@ -491,6 +504,17 @@ public final class TransitionView extends FrameLayout {
 		c.drawCircle(v.getRight(), v.getBottom(), density * 9, handlePaint);
 		handlePaint.setColor(0xFFFFFFFF);
 		c.drawCircle(v.getRight(), v.getBottom(), density * 4, handlePaint);
+		if (v.el.isText()) {
+			// The edges: width on the right, height at the bottom.
+			float cx = (v.getLeft() + v.getRight()) / 2f;
+			float cy = (v.getTop() + v.getBottom()) / 2f;
+			handlePaint.setColor(0xFF4FC3F7);
+			c.drawCircle(v.getRight(), cy, density * 6, handlePaint);
+			c.drawCircle(cx, v.getBottom(), density * 6, handlePaint);
+			handlePaint.setColor(0xFFFFFFFF);
+			c.drawCircle(v.getRight(), cy, density * 2.5f, handlePaint);
+			c.drawCircle(cx, v.getBottom(), density * 2.5f, handlePaint);
+		}
 	}
 
 	// ---- Background layer ----
@@ -603,6 +627,23 @@ public final class TransitionView extends FrameLayout {
 			return s;
 		}
 
+		private StaticLayout build(String s, float size, int width, int maxLines) {
+			tp.setTextSize(size);
+			Layout.Alignment al = (el.align == TransitionConfig.ALIGN_LEFT) ? Layout.Alignment.ALIGN_NORMAL :
+					(el.align == TransitionConfig.ALIGN_RIGHT) ? Layout.Alignment.ALIGN_OPPOSITE : Layout.Alignment.ALIGN_CENTER;
+			StaticLayout.Builder b = StaticLayout.Builder.obtain(s, 0, s.length(), tp, width).setAlignment(al)
+					.setMaxLines(maxLines).setIncludePad(false);
+			if (el.ellipsis) b.setEllipsize(TextUtils.TruncateAt.END);
+			return b.build();
+		}
+
+		/** Whether all of {@code s} is shown and the lines are no taller than {@code innerH}. */
+		private boolean fits(StaticLayout lay, String s, int innerH) {
+			int n = lay.getLineCount();
+			boolean cut = (n > 0) && ((lay.getEllipsisCount(n - 1) > 0) || (lay.getLineEnd(n - 1) < s.length()));
+			return !cut && (lay.getHeight() <= innerH);
+		}
+
 		void measureIn(int W, int H) {
 			empty = false;
 			if (!el.visible) {
@@ -624,17 +665,33 @@ public final class TransitionView extends FrameLayout {
 					boxH = 0;
 				} else {
 					int pad = Math.round(el.pad * unitPx(H));
-					tp.setTextSize(el.size * H);
-					tp.setColor(el.color);
+					int innerW = Math.max(1, boxW - 2 * pad);
+					boolean fixedH = el.h > 0f;
+					int fixedBox = Math.max(1, Math.round(el.h * H));
+					int innerH = fixedH ? Math.max(1, fixedBox - 2 * pad) : Integer.MAX_VALUE;
 					int style = (el.bold ? Typeface.BOLD : 0) | (el.italic ? Typeface.ITALIC : 0);
+					tp.setColor(el.color);
 					tp.setTypeface(Typeface.create(Typeface.create(TransitionConfig.FONT_FAMILIES[el.font], Typeface.NORMAL), style));
-					int inner = Math.max(1, boxW - 2 * pad);
-					Layout.Alignment al = (el.align == TransitionConfig.ALIGN_LEFT) ? Layout.Alignment.ALIGN_NORMAL :
-							(el.align == TransitionConfig.ALIGN_RIGHT) ? Layout.Alignment.ALIGN_OPPOSITE : Layout.Alignment.ALIGN_CENTER;
-					layout = StaticLayout.Builder.obtain(s, 0, s.length(), tp, inner).setAlignment(al)
-							.setEllipsize(TextUtils.TruncateAt.END).setMaxLines(el.type == TransitionConfig.T_TITLE ? 3 : 2)
-							.setIncludePad(false).build();
-					boxH = layout.getHeight() + 2 * pad;
+					int maxLines = el.wrap ? Math.max(1, el.lines) : 1;
+					float base = el.size * H;
+					float size = base;
+					StaticLayout lay = build(s, size, innerW, maxLines);
+					if (el.autoFit) {
+						// Shrinks until the words fit the box (their width, and the height when it is set).
+						float min = Math.max(5f * density, base * 0.25f);
+						for (int i = 0; (i < 16) && !fits(lay, s, innerH) && (size > min); i++) {
+							size = Math.max(min, size * 0.9f);
+							lay = build(s, size, innerW, maxLines);
+						}
+					} else if (fixedH) {
+						// Only the lines that fit the height.
+						int n = Math.max(1, lay.getLineCount());
+						int lh = Math.max(1, lay.getHeight() / n);
+						int allowed = Math.max(1, innerH / lh);
+						if (allowed < maxLines) lay = build(s, size, innerW, allowed);
+					}
+					layout = lay;
+					boxH = fixedH ? fixedBox : lay.getHeight() + 2 * pad;
 				}
 			}
 			setVisibility(empty ? View.GONE : View.VISIBLE);
@@ -698,7 +755,10 @@ public final class TransitionView extends FrameLayout {
 			} else if (layout != null) {
 				c.save();
 				float pad = el.pad * u;
-				c.translate(pad, pad);
+				float room = h - 2 * pad;
+				c.clipRect(pad, pad, w - pad, h - pad);
+				// A box taller than its text: the text sits in the middle of it.
+				c.translate(pad, pad + Math.max(0f, (room - layout.getHeight()) / 2f));
 				layout.draw(c);
 				c.restore();
 			}

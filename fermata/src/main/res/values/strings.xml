@@ -1736,4 +1736,15 @@
     <string name="tr_reset_sub">Back to the defaults for this screen</string>
     <string name="tr_edit">Edit options</string>
     <string name="tr_add_title">Add an element</string>
+    <string name="keys_hide_video_ui">Keep video clean on media keys</string>
+    <string name="keys_hide_video_ui_sub">A steering wheel or media key over fullscreen video does not bring up the controls, title and buttons.</string>
+    <string name="tr_height">Height</string>
+    <string name="tr_auto">Auto</string>
+    <string name="tr_wrap">Wrap lines</string>
+    <string name="tr_wrap_sub">Off keeps it on one line</string>
+    <string name="tr_lines">Most lines</string>
+    <string name="tr_ellipsis">Show … when cut</string>
+    <string name="tr_ellipsis_sub">Off simply cuts the text where the box ends</string>
+    <string name="tr_fit">Fit the size to the box</string>
+    <string name="tr_fit_sub">Makes the text smaller until it all fits the width and height you set</string>
 </resources>

@@ -92,6 +92,15 @@ public final class TransitionConfig {
 		public float y = 0.5f;
 		public float w = 0.8f;
 		public float size = 0.06f;
+		/** The box's height as a fraction of the screen's, for text; 0 = as tall as the text needs. */
+		public float h;
+		/** Text: break into lines (else one line), at most {@link #lines}; what does not fit is cut. */
+		public boolean wrap = true;
+		/** Text: show an ellipsis where it is cut. */
+		public boolean ellipsis = true;
+		/** Text: shrink the size until it fits the box (width, and the height when it is set). */
+		public boolean autoFit;
+		public int lines = 2;
 		public int font;
 		public boolean bold;
 		public boolean italic;
@@ -130,6 +139,11 @@ public final class TransitionConfig {
 			e.y = y;
 			e.w = w;
 			e.size = size;
+			e.h = h;
+			e.wrap = wrap;
+			e.ellipsis = ellipsis;
+			e.autoFit = autoFit;
+			e.lines = lines;
 			e.font = font;
 			e.bold = bold;
 			e.italic = italic;
@@ -154,7 +168,8 @@ public final class TransitionConfig {
 		JSONObject toJson() throws JSONException {
 			JSONObject o = new JSONObject();
 			o.put("id", id).put("type", type).put("vis", visible).put("x", x).put("y", y).put("w", w)
-					.put("size", size).put("font", font).put("bold", bold).put("italic", italic).put("align", align)
+					.put("size", size).put("h", h).put("wrap", wrap).put("ell", ellipsis).put("fit", autoFit)
+					.put("lines", lines).put("font", font).put("bold", bold).put("italic", italic).put("align", align)
 					.put("color", color).put("fill", fill).put("fillColor", fillColor).put("fillAlpha", fillAlpha)
 					.put("radius", radius).put("pad", pad).put("edge", edge).put("edgeColor", edgeColor)
 					.put("in", inAnim).put("out", outAnim).put("inMs", inMs).put("outMs", outMs).put("delay", delay)
@@ -171,6 +186,11 @@ public final class TransitionConfig {
 			e.y = (float) o.optDouble("y", 0.5);
 			e.w = (float) o.optDouble("w", 0.8);
 			e.size = (float) o.optDouble("size", 0.06);
+			e.h = (float) o.optDouble("h", 0);
+			e.wrap = o.optBoolean("wrap", true);
+			e.ellipsis = o.optBoolean("ell", true);
+			e.autoFit = o.optBoolean("fit", false);
+			e.lines = o.optInt("lines", (e.type == T_TITLE) ? 3 : 2);
 			e.font = o.optInt("font");
 			e.bold = o.optBoolean("bold");
 			e.italic = o.optBoolean("italic");
@@ -198,6 +218,8 @@ public final class TransitionConfig {
 			y = Math.max(0f, Math.min(1f, y));
 			w = Math.max(0.06f, Math.min(1f, w));
 			size = Math.max(0.015f, Math.min(0.25f, size));
+			h = (h < 0.03f) ? 0f : Math.min(1f, h);
+			lines = Math.max(1, Math.min(8, lines));
 			font = Math.max(0, Math.min(FONT_FAMILIES.length - 1, font));
 			fillAlpha = Math.max(0, Math.min(100, fillAlpha));
 			radius = Math.max(0, Math.min(50, radius));
@@ -218,7 +240,7 @@ public final class TransitionConfig {
 	/** How soft the cover/picture is, 0 to 100. */
 	public int blur = 55;
 	/** How long it stays, in tenths of a second. */
-	public int holdTenths = 40;
+	public int holdTenths = 15;
 	public int inAnim = ANIM_FADE;
 	public int outAnim = ANIM_FADE;
 	public int inMs = 450;
@@ -239,11 +261,11 @@ public final class TransitionConfig {
 	public static TransitionConfig defaults(boolean car) {
 		TransitionConfig c = new TransitionConfig();
 		c.on = false;
-		c.holdTenths = car ? 45 : 40;
+		c.holdTenths = 15;
 		Element art = c.add(T_ART);
 		art.x = 0.5f;
 		art.y = car ? 0.45f : 0.30f;
-		art.w = car ? 0.20f : 0.34f;
+		art.w = car ? 0.30f : 0.52f;
 		art.radius = 18;
 		art.inAnim = ANIM_ZOOM_IN;
 		Element title = c.add(T_TITLE);
@@ -283,6 +305,7 @@ public final class TransitionConfig {
 		e.id = nextId++;
 		e.type = type;
 		e.size = (type == T_TITLE) ? 0.06f : 0.035f;
+		e.lines = (type == T_TITLE) ? 3 : 2;
 		e.w = (type == T_ART) ? 0.3f : 0.8f;
 		if (type == T_ART) e.radius = 16;
 		elements.add(e);
@@ -352,7 +375,7 @@ public final class TransitionConfig {
 		c.bg = o.optInt("bg", BG_ART);
 		c.dim = o.optInt("dim", 45);
 		c.blur = o.optInt("blur", 55);
-		c.holdTenths = Math.max(10, Math.min(150, o.optInt("hold", 40)));
+		c.holdTenths = Math.max(10, Math.min(150, o.optInt("hold", 15)));
 		c.inAnim = o.optInt("in", ANIM_FADE);
 		c.outAnim = o.optInt("out", ANIM_FADE);
 		c.inMs = Math.max(0, Math.min(3000, o.optInt("inMs", 450)));

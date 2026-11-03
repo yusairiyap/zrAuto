@@ -1132,6 +1132,8 @@ public class ControlPanelView extends ConstraintLayout
 						vv.getHeight() / 2f);
 			}
 			case PLAY, PAUSE, PLAY_PAUSE, NEXT, PREV, STOP, NEXT_FOLDER, PREV_FOLDER -> {
+				// Settings > Video: a key leaves the screen clean (no controls, title or buttons over the video).
+				if (a.getPrefs().getBooleanPref(MainActivityPrefs.KEYS_HIDE_VIDEO_UI)) return;
 				if (getVisibility() == VISIBLE) {
 					restartVideoHideTimer();
 					syncVideoControls();

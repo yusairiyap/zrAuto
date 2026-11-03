@@ -206,6 +206,7 @@ public class MusicQueue extends ExtRoot {
 	 */
 	public List<MusicTrackItem> replace(List<? extends PlayableItem> items, int first) {
 		List<MusicTrackItem> added;
+		origin = listNameOf(items);
 
 		synchronized (this) {
 			tracks.clear();
@@ -220,6 +221,26 @@ public class MusicQueue extends ExtRoot {
 
 		changed();
 		return added;
+	}
+
+	/** The name of the playlist (or Favorites) the queue was last filled from, or null (a folder, a search, nothing known). */
+	@androidx.annotation.Nullable
+	private volatile String origin;
+
+	@androidx.annotation.Nullable
+	public String getOrigin() {
+		return origin;
+	}
+
+	@androidx.annotation.Nullable
+	private static String listNameOf(List<? extends PlayableItem> items) {
+		if (items.isEmpty()) return null;
+		MediaLib.BrowsableItem p = items.get(0).getParent();
+		if ((p instanceof MediaLib.Playlist) || (p instanceof MediaLib.Favorites)) {
+			String n = p.getName();
+			return ((n == null) || n.isEmpty()) ? null : n;
+		}
+		return null;
 	}
 
 	/** Appends {@code items} to the queue, and to the end of its shuffled order too, if any. */

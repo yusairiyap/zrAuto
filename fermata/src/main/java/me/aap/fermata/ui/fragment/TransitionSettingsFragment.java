@@ -365,11 +365,9 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		rlp.setMargins(0, dp(6), wide ? panelW + dp(8) : dp(8), 0);
 		root.addView(right, rlp);
 
-		// What plays now is on the preview, with its cover (nothing playing: the samples).
-		if (d != null) {
-			me.aap.fermata.media.lib.MediaLib.PlayableItem pi = me.aap.fermata.ui.home.HomeArt.displayItem(d);
-			if (pi != null) TransitionController.loadInto(d, pi, preview);
-		}
+		// What plays now is on the preview, with its cover (nothing playing: the samples), and follows the song.
+		refreshSong();
+		if (d != null) d.getMediaServiceBinder().addBroadcastListener(songListener);
 
 		if (wide) openPanel(P_GENERAL);
 		return root;
@@ -377,6 +375,26 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 
 	@Nullable
 	private LinearLayout setChips;
+
+	private final me.aap.fermata.media.service.FermataServiceUiBinder.Listener songListener =
+			new me.aap.fermata.media.service.FermataServiceUiBinder.Listener() {
+				@Override
+				public void onPlayableChanged(me.aap.fermata.media.lib.MediaLib.PlayableItem oldItem,
+																			me.aap.fermata.media.lib.MediaLib.PlayableItem newItem) {
+					// The YouTube engine names the video a moment after the session changed: look again once more.
+					App.get().getHandler().post(TransitionSettingsFragment.this::refreshSong);
+					App.get().getHandler().postDelayed(TransitionSettingsFragment.this::refreshSong, 900);
+				}
+			};
+
+	/** Puts the song that plays now (title, channel, playlist and cover) on the preview. */
+	private void refreshSong() {
+		MainActivityDelegate d = getActivityDelegate();
+		TransitionView v = preview;
+		if ((d == null) || (v == null)) return;
+		me.aap.fermata.media.lib.MediaLib.PlayableItem pi = me.aap.fermata.ui.home.HomeArt.displayItem(d);
+		if (pi != null) TransitionController.loadInto(d, pi, v);
+	}
 
 	/** The Phone / Android Auto toggle: icons only on a phone (names beside them when there is room). */
 	private void fillSetChips() {
@@ -574,6 +592,8 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 
 	@Override
 	public void onDestroyView() {
+		MainActivityDelegate dd = getActivityDelegate();
+		if (dd != null) dd.getMediaServiceBinder().removeBroadcastListener(songListener);
 		cfg = null;
 		preview = null;
 		root = null;
@@ -1004,6 +1024,12 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			e.w = v / 100f;
 			elementChanged();
 		}, v -> v + "%", s);
+		if (e.isText()) {
+			sliderRow(p, getString(R.string.tr_height), 0, 80, () -> Math.round(e.h * 100), v -> {
+				e.h = (v < 3) ? 0f : v / 100f;
+				elementChanged();
+			}, v -> (v < 3) ? getString(R.string.tr_auto) : v + "%", s);
+		}
 		sliderRow(p, getString(R.string.tr_pos_x), 0, 100, () -> Math.round(e.x * 100), v -> {
 			e.x = v / 100f;
 			elementChanged();
@@ -1015,6 +1041,22 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 
 		if (e.isText()) {
 			p = group(top, R.string.tr_section_text, wide);
+			switchRow(p, getString(R.string.tr_wrap), getString(R.string.tr_wrap_sub), () -> e.wrap, on -> {
+				e.wrap = on;
+				elementChanged();
+			}, s);
+			sliderRow(p, getString(R.string.tr_lines), 1, 8, () -> e.lines, v -> {
+				e.lines = v;
+				elementChanged();
+			}, v -> String.valueOf(v), s);
+			switchRow(p, getString(R.string.tr_ellipsis), getString(R.string.tr_ellipsis_sub), () -> e.ellipsis, on -> {
+				e.ellipsis = on;
+				elementChanged();
+			}, s);
+			switchRow(p, getString(R.string.tr_fit), getString(R.string.tr_fit_sub), () -> e.autoFit, on -> {
+				e.autoFit = on;
+				elementChanged();
+			}, s);
 			tilesRow(p, getString(R.string.tr_font), strings(R.string.tr_font_sans, R.string.tr_font_light,
 					R.string.tr_font_condensed, R.string.tr_font_medium, R.string.tr_font_serif, R.string.tr_font_mono,
 					R.string.tr_font_script, R.string.tr_font_casual), i -> TransitionDemos.font(palette, i, textPrimary),

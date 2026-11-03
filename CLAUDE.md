@@ -1148,6 +1148,16 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
   column is at most 40% of the screen. Settings > Playback has "Transition screen" as its first entry (a root button grouped by title, `groupRootAtLeast` skips its icon).
 - **Channel and playlist on the screen**: the channel falls back to the download's saved channel (`YtDownloads.getEntry(videoId).artist`) for a downloaded file; the playlist is
   the parent of the Music queue entry's own source (`MusicTrackItem#getSource`), else of the item, when that parent is a Playlist or Favorites.
+- **Text boxes**: a text element has a box (width and, when set, height as fractions of the screen; the corner handle sets both, the right-edge handle the width, the bottom handle the
+  height; "Height: Auto" = as tall as the text), "Wrap lines" with "Most lines", "Show ... when cut" (`ellipsis`) and "Fit the size to the box" (`autoFit`: the size shrinks by 10% steps
+  until nothing is cut and the height fits). Only the lines that fit a set height are shown, and the text sits in the middle of a taller box (`TransitionView.ElementView#measureIn`).
+- **The preview follows the song**: `TransitionSettingsFragment#refreshSong` (on every `FermataServiceUiBinder.Listener#onPlayableChanged`, again 900 ms later) calls
+  `TransitionController#loadInto`, which clears the cover first and ignores answers of an earlier call (a token in the view's tag).
+- **Playlist name**: `MusicQueue#getOrigin` (set in `replace`: the first item's parent when it is a Playlist or Favorites), else the playing queue item's parent
+  (`MediaEngine#getQueueItem`), else the queue entry's source, else the item. Not kept across an app restart.
+- **Background fade**: the background never moves or scales by much (6%/5% drift, 0.94 or 1.06 scale) and always fades with its animation; sliding it a whole screen showed its hard edges.
+- **Keys over fullscreen video**: Settings > Video "Keep video clean on media keys" (`KEYS_HIDE_VIDEO_UI`) makes `ControlPanelView#showKeyFeedback` skip the controls/title for
+  play/pause/next/previous/stop keys (the seek bubble of FF/RW stays).
 - **Why it did not show at first**: `onEngineStarted` can come before the engine's source is set (YouTube), so `TransitionController#onTrackStarted(engine)` asks for it again
   up to 4 times 400 ms apart, then takes the item the UI says plays; a song is one key by its YouTube video id (else its item id). Every skip is in the Diagnostic log
   (`MUSIC transition screen ...`: skipped / no song to show / no screen registered / shown). The real cause was the YouTube engine's `getSource()`: one placeholder item with a constant id, so every song after the first looked like the same one; the controller keys songs by `engine.getFavoritableItem()` (the real video item).

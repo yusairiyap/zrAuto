@@ -168,11 +168,16 @@ public final class TransitionController {
 
 	/** Fills {@code v} with what {@code pi} is: its title, channel, playlist and cover (the preview in the settings). */
 	public static void loadInto(MainActivityDelegate a, PlayableItem pi, TransitionView v) {
+		// A later call (the next song) makes this one's answers stale.
+		Object token = new Object();
+		v.setTag(R.id.transition_settings_fragment, token);
+		v.setArt(null);
 		pi.getMediaData().main().onCompletion((md, err) -> {
+			if (v.getTag(R.id.transition_settings_fragment) != token) return;
 			MusicTrackItem tr = trackOf(a);
-			v.setData(titleOf(pi, md), channelOf(pi, md, tr), playlistOf(pi, tr));
-			HomeArt.cover(a, pi, md, () -> true, bm -> {
-				if (bm != null) v.setArt(bm);
+			v.setData(titleOf(pi, md), channelOf(pi, md, tr), playlistOf(a, pi, tr));
+			HomeArt.cover(a, pi, md, () -> v.getTag(R.id.transition_settings_fragment) == token, bm -> {
+				if ((bm != null) && (v.getTag(R.id.transition_settings_fragment) == token)) v.setArt(bm);
 			});
 		});
 	}
@@ -197,7 +202,7 @@ public final class TransitionController {
 			String title = titleOf(pi, md);
 			MusicTrackItem tr = trackOf(a);
 			String channel = channelOf(pi, md, tr);
-			String playlist = playlistOf(pi, tr);
+			String playlist = playlistOf(a, pi, tr);
 			String shownTitle = title;
 			Shown[] up = {null};
 			boolean[] launched = {false};
@@ -277,10 +282,21 @@ public final class TransitionController {
 		return ((ar == null) || ar.isEmpty()) ? null : MusicTrackItem.cleanArtist(ar);
 	}
 
-	/** The playlist (or Favorites) the song was queued from: the queue entry's own source, else the item's own parent. */
+	/**
+	 * The playlist (or Favorites) the song plays from: the one the Music queue was filled from, else the one of the playing queue item
+	 * (a video started from a playlist), else of the queue entry's source or of the item itself.
+	 */
 	@Nullable
-	private static String playlistOf(PlayableItem pi, @Nullable MusicTrackItem track) {
-		String n = listName((track == null) ? null : track.getSource());
+	private static String playlistOf(MainActivityDelegate a, PlayableItem pi, @Nullable MusicTrackItem track) {
+		if (track != null) {
+			me.aap.fermata.addon.music.MusicQueue q = MusicPlayer.getQueue(a);
+			String o = (q == null) ? null : q.getOrigin();
+			if (o != null) return o;
+		}
+		MediaEngine eng = a.getMediaSessionCallback().getEngine();
+		String n = (eng == null) ? null : listName(eng.getQueueItem());
+		if (n != null) return n;
+		n = listName((track == null) ? null : track.getSource());
 		return (n != null) ? n : listName(pi);
 	}
 
