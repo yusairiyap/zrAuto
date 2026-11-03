@@ -22,6 +22,7 @@ import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.fermata.R;
 import me.aap.fermata.media.lib.MediaLib;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
+import me.aap.fermata.addon.music.MusicPlayer;
 import me.aap.fermata.addon.music.MusicTrackItem;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.home.HomeArt;
@@ -168,7 +169,8 @@ public final class TransitionController {
 	/** Fills {@code v} with what {@code pi} is: its title, channel, playlist and cover (the preview in the settings). */
 	public static void loadInto(MainActivityDelegate a, PlayableItem pi, TransitionView v) {
 		pi.getMediaData().main().onCompletion((md, err) -> {
-			v.setData(titleOf(pi, md), channelOf(pi, md), playlistOf(pi));
+			MusicTrackItem tr = trackOf(a);
+			v.setData(titleOf(pi, md), channelOf(pi, md, tr), playlistOf(pi, tr));
 			HomeArt.cover(a, pi, md, () -> true, bm -> {
 				if (bm != null) v.setArt(bm);
 			});
@@ -193,8 +195,9 @@ public final class TransitionController {
 
 		pi.getMediaData().main().onCompletion((md, err) -> {
 			String title = titleOf(pi, md);
-			String channel = channelOf(pi, md);
-			String playlist = playlistOf(pi);
+			MusicTrackItem tr = trackOf(a);
+			String channel = channelOf(pi, md, tr);
+			String playlist = playlistOf(pi, tr);
 			String shownTitle = title;
 			Shown[] up = {null};
 			boolean[] launched = {false};
@@ -236,18 +239,23 @@ public final class TransitionController {
 		if (c.bg == TransitionConfig.BG_PICTURE) v.setPicture(loadPicture(car));
 		v.setElevation(host.getResources().getDisplayMetrics().density * 18);
 		v.setClickable(c.tapToDismiss);
+		// Invisible until playIn has put every part in its start pose (else the finished screen shows for a frame, then restarts).
+		v.setAlpha(0f);
 		Shown s = new Shown(a, host, v);
 		if (c.tapToDismiss) v.setOnClickListener(x -> s.hide());
 		shownBy.put(a, s);
 		host.addView(v, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-		v.post(v::playIn);
+		v.post(() -> {
+			if (car) TransitionConfig.rememberCarAspect(host.getWidth(), host.getHeight());
+			v.playIn();
+		});
 		main.postDelayed(s.hideTask, c.holdTenths * 100L + c.inMs);
 		DiagnosticLog.log(LogCat.MUSIC, "transition screen shown", "car=" + car, "title=" + title);
 		return s;
 	}
 
 	@Nullable
-	private static String channelOf(PlayableItem pi, @Nullable MediaMetadataCompat md) {
+	private static String channelOf(PlayableItem pi, @Nullable MediaMetadataCompat md, @Nullable MusicTrackItem track) {
 		String ar = (md == null) ? null : md.getString(METADATA_KEY_ARTIST);
 		if (md != null) {
 			if ((ar == null) || ar.isEmpty()) ar = md.getString(METADATA_KEY_ALBUM_ARTIST);
@@ -255,16 +263,41 @@ public final class TransitionController {
 		}
 		if ((ar == null) || ar.isEmpty()) {
 			if (pi instanceof MusicTrackItem t) ar = t.getArtistName();
+			if (((ar == null) || ar.isEmpty()) && (track != null)) ar = track.getArtistName();
+		}
+		// A downloaded video played from its file carries no tags: the download remembers its channel.
+		if ((ar == null) || ar.isEmpty()) {
+			String vid = YtDownloads.videoIdOf(pi);
+			if ((vid == null) && (track != null)) vid = track.getVideoId();
+			if (vid != null) {
+				YtDownloads.Entry e = YtDownloads.get().getEntry(vid);
+				if ((e != null) && (e.artist != null) && !e.artist.isEmpty()) ar = e.artist;
+			}
 		}
 		return ((ar == null) || ar.isEmpty()) ? null : MusicTrackItem.cleanArtist(ar);
 	}
 
+	/** The playlist (or Favorites) the song was queued from: the queue entry's own source, else the item's own parent. */
 	@Nullable
-	private static String playlistOf(PlayableItem pi) {
-		MediaLib.BrowsableItem p = pi.getParent();
-		if (p instanceof MediaLib.Playlist) return p.getName();
-		if (p instanceof MediaLib.Favorites) return p.getName();
+	private static String playlistOf(PlayableItem pi, @Nullable MusicTrackItem track) {
+		String n = listName((track == null) ? null : track.getSource());
+		return (n != null) ? n : listName(pi);
+	}
+
+	@Nullable
+	private static String listName(@Nullable PlayableItem i) {
+		if (i == null) return null;
+		MediaLib.BrowsableItem p = i.getParent();
+		if ((p instanceof MediaLib.Playlist) || (p instanceof MediaLib.Favorites)) {
+			String n = p.getName();
+			return ((n == null) || n.isEmpty()) ? null : n;
+		}
 		return null;
+	}
+
+	@Nullable
+	private static MusicTrackItem trackOf(@Nullable MainActivityDelegate a) {
+		return (a == null) ? null : MusicPlayer.getCurrentTrack(a.getMediaSessionCallback());
 	}
 
 	// ---- The picked picture ----

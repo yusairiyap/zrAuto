@@ -28,6 +28,19 @@ import me.aap.utils.pref.PreferenceStore.Pref;
 public final class TransitionConfig {
 	public static final Pref<Supplier<String>> PHONE = Pref.s("TRANSITION_PHONE", "");
 	public static final Pref<Supplier<String>> CAR = Pref.s("TRANSITION_CAR", "");
+	/** The car screen's shape (width x 1000 / height), remembered the last time the screen showed there. */
+	public static final Pref<me.aap.utils.function.IntSupplier> CAR_ASPECT = Pref.i("TRANSITION_CAR_ASPECT", 0);
+
+	public static void rememberCarAspect(int w, int h) {
+		if ((w <= 0) || (h <= 0)) return;
+		store().applyIntPref(CAR_ASPECT, Math.round(w * 1000f / h));
+	}
+
+	/** The car screen's width / height, or 0 when it has not been seen yet. */
+	public static float carAspect() {
+		return store().getIntPref(CAR_ASPECT) / 1000f;
+	}
+
 	// Background modes.
 	public static final int BG_TRANSPARENT = 0;
 	public static final int BG_DIM = 1;
@@ -339,7 +352,7 @@ public final class TransitionConfig {
 		c.bg = o.optInt("bg", BG_ART);
 		c.dim = o.optInt("dim", 45);
 		c.blur = o.optInt("blur", 55);
-		c.holdTenths = Math.max(10, Math.min(300, o.optInt("hold", 40)));
+		c.holdTenths = Math.max(10, Math.min(150, o.optInt("hold", 40)));
 		c.inAnim = o.optInt("in", ANIM_FADE);
 		c.outAnim = o.optInt("out", ANIM_FADE);
 		c.inMs = Math.max(0, Math.min(3000, o.optInt("inMs", 450)));

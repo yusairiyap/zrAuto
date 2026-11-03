@@ -1735,4 +1735,5 @@
     <string name="tr_section_motion">Coming in and going out</string>
     <string name="tr_reset_sub">Back to the defaults for this screen</string>
     <string name="tr_edit">Edit options</string>
+    <string name="tr_add_title">Add an element</string>
 </resources>

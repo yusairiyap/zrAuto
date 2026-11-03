@@ -672,13 +672,6 @@ public class SettingsFragment extends MainActivityFragment
 			o.title = R.string.play_next_on_completion;
 		});
 		addTapAction(a, sub1, MainActivityPrefs.TAP_ACTION);
-		// The screen that comes over the app for a moment when a new song starts.
-		sub1.addButton(o -> {
-			o.title = R.string.tr_settings;
-			o.subtitle = R.string.tr_settings_sub;
-			o.icon = R.drawable.transition;
-			o.onClick = () -> a.showFragment(R.id.transition_settings_fragment, a.isCarActivity());
-		});
 		if (MusicPlayer.isEnabled()) {
 			sub1.addListPref(o -> {
 				o.store = mediaPrefs;
@@ -1145,11 +1138,19 @@ public class SettingsFragment extends MainActivityFragment
 			}
 		}
 
+		// The screen that comes over the app for a moment when a new song starts: its own entry at the top of Playback.
+		set.addButton(o -> {
+			o.title = R.string.tr_settings;
+			o.subtitle = R.string.tr_settings_sub;
+			o.icon = R.drawable.transition;
+			o.onClick = () -> a.showFragment(R.id.transition_settings_fragment, a.isCarActivity());
+		});
+
 		addDiagnostics(a, set);
 
 		// The eleven categories (moves only, same prefs): entries are found by title wherever they were built.
 		groupRoot(set, R.string.settings_group_playback, R.string.settings_group_playback_sub,
-				R.string.playback_settings, R.string.playback_control, R.string.engine_prefs);
+				R.string.tr_settings, R.string.playback_settings, R.string.playback_control, R.string.engine_prefs);
 		groupRoot(set, R.string.settings_group_subtitles, R.string.settings_group_subtitles_sub,
 				R.string.subtitles, R.string.captions, R.string.lyrics);
 		// The car has no voice control, so its Controls subtitle leaves it out.
@@ -1333,7 +1334,8 @@ public class SettingsFragment extends MainActivityFragment
 			var o = findByTitle(root, t);
 			if (o == null) continue;
 			found.add(o);
-			if (icon == ID_NULL) {
+			// The category keeps its own icon, not the one of the transition screen entry.
+			if ((icon == ID_NULL) && (t != R.string.tr_settings)) {
 				try {
 					icon = o.get().icon;
 				} catch (RuntimeException ex) {

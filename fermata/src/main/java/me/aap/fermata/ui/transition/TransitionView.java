@@ -237,8 +237,35 @@ public final class TransitionView extends FrameLayout {
 		return new AccelerateInterpolator(1.3f);
 	}
 
+	@Nullable
+	private Runnable pendingDone;
+	private final Runnable clearLayers = () -> setLayers(false);
+
+	private void setLayers(boolean on) {
+		int t = on ? LAYER_TYPE_HARDWARE : LAYER_TYPE_NONE;
+		bg.setLayerType(t, null);
+		for (ElementView v : views) v.setLayerType(t, null);
+	}
+
+	/** Stops whatever is moving and shows everything at rest (the preview's stop button). */
+	public void stop() {
+		if (pendingDone != null) {
+			removeCallbacks(pendingDone);
+			pendingDone = null;
+		}
+		removeCallbacks(clearLayers);
+		showNow();
+		setLayers(false);
+		setAlpha(1f);
+	}
+
 	/** Brings the background and the elements in, each with its own animation and delay. */
 	public void playIn() {
+		long longest = config.inMs;
+		for (ElementView v : views) longest = Math.max(longest, v.el.inMs + v.el.delay);
+		setLayers(true);
+		removeCallbacks(clearLayers);
+		postDelayed(clearLayers, longest + 80);
 		bg.animate().cancel();
 		bg.setAlpha(config.inAnim == TransitionConfig.ANIM_NONE ? 1f : 0f);
 		bg.setTranslationX(0f);
@@ -252,10 +279,13 @@ public final class TransitionView extends FrameLayout {
 			v.setAlpha(e.inAnim == TransitionConfig.ANIM_NONE ? 1f : 0f);
 			start(v, e.inAnim, e.inMs, e.delay, true, in(), getWidth(), getHeight(), null);
 		}
+		// Hidden (alpha 0) until every start pose is set, so the finished picture never shows for a frame first.
+		setAlpha(1f);
 	}
 
 	/** Takes them out again and calls {@code done} when the last has left. */
 	public void playOut(@Nullable Runnable done) {
+		setLayers(true);
 		long longest = 0;
 		for (ElementView v : views) {
 			Element e = v.el;
@@ -266,7 +296,10 @@ public final class TransitionView extends FrameLayout {
 		if (config.outAnim == TransitionConfig.ANIM_NONE) bg.setAlpha(0f);
 		else start(bg, config.outAnim, config.outMs, 0, false, out(), getWidth(), getHeight(), null);
 		longest = Math.max(longest, config.outMs);
-		if (done != null) postDelayed(done, longest + 30);
+		if (done != null) {
+			pendingDone = done;
+			postDelayed(done, longest + 30);
+		}
 	}
 
 	/** Shows everything at rest at once (the preview). */
@@ -328,6 +361,12 @@ public final class TransitionView extends FrameLayout {
 	}
 
 	// ---- Editing ----
+
+	/** One "unit" of padding / corner / edge in pixels: a 400th of the screen's height, so the preview and the real screen match. */
+	private float unitPx(int heightPx) {
+		float h = (heightPx > 0) ? heightPx : ((getHeight() > 0) ? getHeight() : 400 * density);
+		return Math.max(0.4f, h / 400f);
+	}
 
 	private float snap(float v, boolean horizontal) {
 		if (Math.abs(v - 0.5f) < SNAP) {
@@ -584,7 +623,7 @@ public final class TransitionView extends FrameLayout {
 					empty = true;
 					boxH = 0;
 				} else {
-					int pad = Math.round(el.pad * density);
+					int pad = Math.round(el.pad * unitPx(H));
 					tp.setTextSize(el.size * H);
 					tp.setColor(el.color);
 					int style = (el.bold ? Typeface.BOLD : 0) | (el.italic ? Typeface.ITALIC : 0);
@@ -609,7 +648,8 @@ public final class TransitionView extends FrameLayout {
 			int w = getWidth();
 			int h = getHeight();
 			boolean art = el.type == TransitionConfig.T_ART;
-			float r = art ? Math.min(w, h) * el.radius / 100f : el.radius * density;
+			float u = unitPx(0);
+			float r = art ? Math.min(w, h) * el.radius / 100f : el.radius * u;
 			r = Math.min(r, Math.min(w, h) / 2f);
 			rect.set(0, 0, w, h);
 
@@ -636,7 +676,7 @@ public final class TransitionView extends FrameLayout {
 			}
 
 			if (art) {
-				float inset = el.pad * density;
+				float inset = el.pad * u;
 				RectF a = new RectF(inset, inset, w - inset, h - inset);
 				float ar = Math.max(0f, r - inset);
 				Bitmap b = data.art;
@@ -657,7 +697,7 @@ public final class TransitionView extends FrameLayout {
 				}
 			} else if (layout != null) {
 				c.save();
-				float pad = el.pad * density;
+				float pad = el.pad * u;
 				c.translate(pad, pad);
 				layout.draw(c);
 				c.restore();
@@ -665,10 +705,10 @@ public final class TransitionView extends FrameLayout {
 
 			if (el.edge > 0) {
 				paint.setStyle(Paint.Style.STROKE);
-				paint.setStrokeWidth(el.edge * density);
+				paint.setStrokeWidth(Math.max(1f, el.edge * u));
 				paint.setColor(el.edgeColor);
 				RectF in = new RectF(rect);
-				float hw = el.edge * density / 2f;
+				float hw = Math.max(1f, el.edge * u) / 2f;
 				in.inset(hw, hw);
 				c.drawRoundRect(in, Math.max(0, r - hw), Math.max(0, r - hw), paint);
 				paint.setStyle(Paint.Style.FILL);

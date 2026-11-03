@@ -1138,6 +1138,16 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
   and a second tap on the picked element (`Editor#onTapSelected`) open the options sheet (46% of the height; the preview shrinks above it, `Stage#setInset`). Top chips
   are icon-only round chips so five fit a phone's width; rows are compact (`compact()`) and the groups fold (`group`: only the first is open on a phone). Back closes the
   sheet, then the pick. Wide screens pick and open the side column at once.
+- **Same on screen as in the preview**: padding, corner radius (text) and edge are in "units" of a 400th of the screen's height (`TransitionView#unitPx`), not dp, so a
+  preview a third of the size draws the same picture; positions, widths and text sizes were already fractions. The preview takes the real screen's shape: this window's
+  for the phone's set, and for the car's set the car screen's as last seen (`TransitionConfig.CAR_ASPECT`, remembered by the controller when it shows there; 2:1 until then).
+- **Entrance without a flicker**: the controller adds the view at alpha 0 and `TransitionView#playIn` makes it visible only after every part has its start pose; the parts
+  animate from hardware layers (`setLayers`). The preview's play button toggles to pause and `TransitionView#stop` interrupts it.
+- **Options card on a phone and the car**: the card (`createPanelCard`) is made once and its chips and body are refreshed in place (`refreshPanel`, a 130 ms body fade), never
+  rebuilt with a sliding animation; chips are 34dp `smallChip`s, the corner buttons 40dp round icons; rows are compact on a phone and on the car screen (`compact()`), and the
+  column is at most 40% of the screen. Settings > Playback has "Transition screen" as its first entry (a root button grouped by title, `groupRootAtLeast` skips its icon).
+- **Channel and playlist on the screen**: the channel falls back to the download's saved channel (`YtDownloads.getEntry(videoId).artist`) for a downloaded file; the playlist is
+  the parent of the Music queue entry's own source (`MusicTrackItem#getSource`), else of the item, when that parent is a Playlist or Favorites.
 - **Why it did not show at first**: `onEngineStarted` can come before the engine's source is set (YouTube), so `TransitionController#onTrackStarted(engine)` asks for it again
   up to 4 times 400 ms apart, then takes the item the UI says plays; a song is one key by its YouTube video id (else its item id). Every skip is in the Diagnostic log
   (`MUSIC transition screen ...`: skipped / no song to show / no screen registered / shown). The real cause was the YouTube engine's `getSource()`: one placeholder item with a constant id, so every song after the first looked like the same one; the controller keys songs by `engine.getFavoritableItem()` (the real video item).

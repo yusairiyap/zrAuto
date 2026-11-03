@@ -151,6 +151,20 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 	@Nullable
 	private LinearLayout panelCard;
 	private final List<Runnable> sync = new ArrayList<>();
+	private boolean onCar;
+	private int panelW;
+	@Nullable
+	private android.widget.ImageButton playBtn;
+	@Nullable
+	private Runnable previewEnd;
+	@Nullable
+	private ChipFlowLayout panelChips;
+	@Nullable
+	private android.widget.HorizontalScrollView panelChipScroll;
+	@Nullable
+	private LinearLayout panelBody;
+	@Nullable
+	private android.widget.ScrollView panelScroll;
 	@Nullable
 	private TextView hintView;
 	@Nullable
@@ -229,7 +243,10 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		initPalette(ctx);
 		ensureCfg();
 		MainActivityDelegate d = getActivityDelegate();
-		wide = (ctx.getResources().getConfiguration().screenWidthDp >= 720) || ((d != null) && d.isCarActivity());
+		onCar = (d != null) && d.isCarActivity();
+		wide = (ctx.getResources().getConfiguration().screenWidthDp >= 720) || onCar;
+		// The column beside the preview: up to 380dp, but never more than 40% of the screen (a car screen is not wide).
+		panelW = Math.min(dp(380), Math.round(ctx.getResources().getDisplayMetrics().widthPixels * 0.40f));
 
 		root = new FrameLayout(palette);
 		LinearLayout row = new LinearLayout(palette);
@@ -262,7 +279,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		hlp.bottomMargin = dp(6);
 		hlp.setMarginStart(dp(12));
 		// Room for the app's own floating button at the right on a phone.
-		hlp.setMarginEnd(wide ? dp(392) : dp(84));
+		hlp.setMarginEnd(wide ? panelW + dp(12) : dp(84));
 		root.addView(hint, hlp);
 
 		// What is picked: a small bar in the same place, so tapping an element never covers the preview.
@@ -300,12 +317,12 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(MATCH_PARENT, dp(44), Gravity.BOTTOM);
 		blp.bottomMargin = dp(6);
 		blp.setMarginStart(dp(8));
-		blp.setMarginEnd(wide ? dp(388) : dp(84));
+		blp.setMarginEnd(wide ? panelW + dp(8) : dp(84));
 		root.addView(selBar, blp);
 
 		if (wide) {
 			sidePanel = new FrameLayout(palette);
-			LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(dp(380), MATCH_PARENT);
+			LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(panelW, MATCH_PARENT);
 			slp.setMargins(0, dp(4), dp(8), dp(8));
 			row.addView(sidePanel, slp);
 		} else {
@@ -335,19 +352,17 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		root.addView(left, llp);
 
 		LinearLayout right = new LinearLayout(palette);
-		right.addView(ChipFlowLayout.chip(palette, R.drawable.play, wide ? getString(R.string.tr_play) : "", true,
-				this::playPreview));
-		LinearLayout.LayoutParams g2 = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
-		g2.setMarginStart(dp(6));
-		right.addView(ChipFlowLayout.chip(palette, R.drawable.home_add, "", false, () -> openPanel(P_ADD)), g2);
-		right.addView(ChipFlowLayout.chip(palette, R.drawable.settings, "", false, () -> {
+		playBtn = roundChip(R.drawable.play, true, getString(R.string.tr_play), this::playPreview);
+		right.addView(playBtn, chipLp(false));
+		right.addView(roundChip(R.drawable.home_add, false, getString(R.string.tr_add_title), () -> openPanel(P_ADD)), chipLp(true));
+		right.addView(roundChip(R.drawable.settings, false, getString(R.string.tr_general), () -> {
 			selectedId = 0;
 			if (preview != null) preview.setSelected(0);
 			updateSelBar();
 			openPanel(P_GENERAL);
-		}), g2);
+		}), chipLp(true));
 		FrameLayout.LayoutParams rlp = new FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP | Gravity.END);
-		rlp.setMargins(0, dp(6), wide ? dp(388) : dp(8), 0);
+		rlp.setMargins(0, dp(6), wide ? panelW + dp(8) : dp(8), 0);
 		root.addView(right, rlp);
 
 		// What plays now is on the preview, with its cover (nothing playing: the samples).
@@ -368,12 +383,55 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		LinearLayout l = setChips;
 		if (l == null) return;
 		l.removeAllViews();
-		l.addView(ChipFlowLayout.chip(palette, R.drawable.home_page, wide ? getString(R.string.home_settings_tab_phone) : "",
-				!car, () -> switchSet(false)));
-		LinearLayout.LayoutParams gap = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
-		gap.setMarginStart(dp(6));
-		l.addView(ChipFlowLayout.chip(palette, R.drawable.car, wide ? getString(R.string.home_settings_tab_aa) : "",
-				car, () -> switchSet(true)), gap);
+		l.addView(roundChip(R.drawable.home_page, !car, getString(R.string.home_settings_tab_phone), () -> switchSet(false)),
+				chipLp(false));
+		l.addView(roundChip(R.drawable.car, car, getString(R.string.home_settings_tab_aa), () -> switchSet(true)), chipLp(true));
+	}
+
+	private LinearLayout.LayoutParams chipLp(boolean gap) {
+		LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(40), dp(40));
+		if (gap) lp.setMarginStart(dp(6));
+		return lp;
+	}
+
+	/** A 40dp round button for the preview's corners: filled with the accent when it is the one that matters or is picked. */
+	private android.widget.ImageButton roundChip(@DrawableRes int icon, boolean on, String desc, Runnable click) {
+		android.widget.ImageButton b = new android.widget.ImageButton(palette);
+		b.setImageResource(icon);
+		b.setImageTintList(ColorStateList.valueOf(on ? onAccent : textPrimary));
+		GradientDrawable fill = new GradientDrawable();
+		fill.setShape(GradientDrawable.OVAL);
+		fill.setColor(on ? accent : (paletteColor(R.attr.musicPanelFill) | 0xFF000000));
+		fill.setStroke(dp(1), 0x33808080);
+		b.setBackground(new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(ripple), fill, null));
+		b.setContentDescription(desc);
+		b.setScaleType(android.widget.ImageView.ScaleType.CENTER);
+		b.setOnClickListener(v -> click.run());
+		return b;
+	}
+
+	/** A small chip for the options card's header: 34dp high, the picked one filled with the accent. */
+	private TextView smallChip(@DrawableRes int icon, CharSequence label, boolean on, Runnable click) {
+		TextView t = text(0, 12.5f, on ? onAccent : textPrimary, true);
+		t.setText(label);
+		t.setSingleLine(true);
+		t.setGravity(Gravity.CENTER_VERTICAL);
+		t.setMinHeight(dp(34));
+		t.setPadding(dp(10), 0, dp(label.length() == 0 ? 10 : 12), 0);
+		android.graphics.drawable.Drawable ic = androidx.appcompat.content.res.AppCompatResources.getDrawable(palette, icon);
+		if (ic != null) {
+			ic = ic.mutate();
+			ic.setBounds(0, 0, dp(18), dp(18));
+			ic.setTintList(ColorStateList.valueOf(on ? onAccent : textPrimary));
+			t.setCompoundDrawablesRelative(ic, null, null, null);
+			t.setCompoundDrawablePadding(label.length() == 0 ? 0 : dp(6));
+		}
+		GradientDrawable fill = rounded(on ? accent : 0x1F808080, 17);
+		t.setBackground(pressable(fill));
+		t.setClickable(true);
+		t.setFocusable(true);
+		t.setOnClickListener(v -> click.run());
+		return t;
 	}
 
 	private android.widget.ImageButton barButton(@DrawableRes int icon, @StringRes int desc, Runnable click) {
@@ -422,26 +480,64 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		insetAnim.start();
 	}
 
+	/** The shape of the real screen: this window's for the phone's set, the car screen's as last seen for the car's. */
 	private void updateAspect() {
 		Stage st = stage;
 		if (st == null) return;
+		if (car && !onCar) {
+			float a = TransitionConfig.carAspect();
+			st.setAspect((a > 0.5f) ? a : 2f);
+			return;
+		}
+		MainActivityDelegate d = getActivityDelegate();
+		View host = (d == null) ? null : d.findViewById(R.id.main_activity);
+		if ((host != null) && (host.getWidth() > 0) && (host.getHeight() > 0)) {
+			st.setAspect((float) host.getWidth() / host.getHeight());
+			return;
+		}
 		android.util.DisplayMetrics dm = palette.getResources().getDisplayMetrics();
-		float screen = (float) Math.max(dm.widthPixels, dm.heightPixels) / Math.min(dm.widthPixels, dm.heightPixels);
-		// The car screen is wide; the phone's own is taken as it is held now.
-		st.setAspect(car ? 16f / 9f : (dm.widthPixels < dm.heightPixels ? 1f / screen : screen));
+		st.setAspect((float) dm.widthPixels / dm.heightPixels);
 	}
 
 	private void playPreview() {
 		TransitionView v = preview;
-		if ((v == null) || playing) return;
+		if (v == null) return;
+		if (playing) {
+			stopPreview();
+			return;
+		}
 		playing = true;
+		setPlayIcon();
 		if (cfg.bg == TransitionConfig.BG_PICTURE) v.setPicture(TransitionController.loadPicture(car));
 		v.playIn();
 		long stay = Math.min(2500, cfg.holdTenths * 100L) + cfg.inMs;
-		v.postDelayed(() -> v.playOut(() -> {
+		previewEnd = () -> v.playOut(() -> {
 			v.showNow();
 			playing = false;
-		}), stay);
+			previewEnd = null;
+			setPlayIcon();
+		});
+		v.postDelayed(previewEnd, stay);
+	}
+
+	/** The play button again: stops the preview where it is and shows the screen at rest. */
+	private void stopPreview() {
+		TransitionView v = preview;
+		if (v != null) {
+			if (previewEnd != null) v.removeCallbacks(previewEnd);
+			v.stop();
+		}
+		previewEnd = null;
+		playing = false;
+		setPlayIcon();
+	}
+
+	private void setPlayIcon() {
+		android.widget.ImageButton b = playBtn;
+		if (b != null) {
+			b.setImageResource(playing ? R.drawable.pause : R.drawable.play);
+			b.setContentDescription(getString(R.string.tr_play));
+		}
 	}
 
 	private void switchSet(boolean forCar) {
@@ -487,6 +583,13 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		panelCard = null;
 		setChips = null;
 		hintView = null;
+		playBtn = null;
+		previewEnd = null;
+		playing = false;
+		panelChips = null;
+		panelChipScroll = null;
+		panelBody = null;
+		panelScroll = null;
 		selBar = null;
 		selName = null;
 		if (insetAnim != null) insetAnim.cancel();
@@ -501,35 +604,34 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 	/** Shows the panel for {@code mode}: in the side column (wide), or as a sheet over the preview (phone). */
 	private void openPanel(int mode) {
 		panelMode = mode;
-		LinearLayout card = buildPanel();
+		boolean shown = (panelCard != null) && (wide ? (panelCard.getParent() != null) : sheetOpen);
+		if (shown) {
+			// Already up: only the content changes, in place (no sliding card, no flicker).
+			refreshPanel();
+			updateSelBar();
+			return;
+		}
+		LinearLayout card = createPanelCard();
 		panelCard = card;
+		refreshPanel();
 		if (wide) {
 			FrameLayout host = sidePanel;
 			if (host == null) return;
 			host.removeAllViews();
 			host.addView(card, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
-			card.setAlpha(0f);
-			card.setTranslationX(dp(28));
-			card.animate().alpha(1f).translationX(0f).setDuration(200).setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f)).start();
 		} else {
 			FrameLayout host = sheet;
 			if (host == null) return;
-			boolean wasOpen = sheetOpen;
 			host.removeAllViews();
 			host.addView(card, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
 			host.setVisibility(View.VISIBLE);
 			sheetOpen = true;
 			updateSelBar();
 			animateInset(host.getLayoutParams().height + dp(6));
-			if (!wasOpen) {
-				host.setTranslationY(dp(220));
-				host.setAlpha(0f);
-				host.animate().translationY(0f).alpha(1f).setDuration(240)
-						.setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f)).start();
-			} else {
-				card.setAlpha(0f);
-				card.animate().alpha(1f).setDuration(150).start();
-			}
+			host.setTranslationY(dp(220));
+			host.setAlpha(0f);
+			host.animate().translationY(0f).alpha(1f).setDuration(240)
+					.setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f)).start();
 		}
 	}
 
@@ -537,48 +639,36 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		FrameLayout host = sheet;
 		if ((host == null) || !sheetOpen) return;
 		sheetOpen = false;
+		panelCard = null;
 		host.animate().translationY(dp(220)).alpha(0f).setDuration(200)
 				.setInterpolator(new android.view.animation.AccelerateInterpolator(1.3f))
 				.withEndAction(() -> {
-					host.setVisibility(View.GONE);
-					host.removeAllViews();
+					if (!sheetOpen) {
+						host.setVisibility(View.GONE);
+						host.removeAllViews();
+					}
 				}).start();
 		animateInset(0);
 		updateSelBar();
 	}
 
-	/** A card: the chips that pick what to edit, a title, and the options. */
-	private LinearLayout buildPanel() {
-		sync.clear();
+	/** The card itself: a header of chips (what to edit) with a close button, and a scrolling body. Made once; its content is refreshed in place. */
+	private LinearLayout createPanelCard() {
 		LinearLayout card = new LinearLayout(palette);
 		card.setOrientation(LinearLayout.VERTICAL);
 		card.setClickable(true);
 		card.setElevation(dp(8));
-		card.setBackground(me.aap.fermata.ui.view.MenuStyle.panel(card, paletteColor(R.attr.musicPanelFill), dp(24)));
-		card.setPadding(dp(10), dp(10), dp(10), dp(8));
+		card.setBackground(me.aap.fermata.ui.view.MenuStyle.panel(card, paletteColor(R.attr.musicPanelFill), dp(22)));
+		card.setPadding(dp(8), dp(8), dp(8), dp(4));
 
-		// What to edit: the screen's own settings, each element, add. (Also how a steering wheel picks one.)
 		LinearLayout head = new LinearLayout(palette);
 		head.setGravity(Gravity.CENTER_VERTICAL);
-		android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(palette);
-		hs.setHorizontalScrollBarEnabled(false);
-		ChipFlowLayout chips = new ChipFlowLayout(palette);
-		chips.setOneRow(true);
-		chips.addView(ChipFlowLayout.chip(palette, R.drawable.settings, getString(R.string.tr_general),
-				panelMode == P_GENERAL, () -> {
-			selectedId = 0;
-			if (preview != null) preview.setSelected(0);
-			openPanel(P_GENERAL);
-		}));
-		for (Element e : cfg.elements) {
-			TextView c = ChipFlowLayout.chip(palette, iconOf(e.type), nameOf(e), (panelMode == P_ELEMENT) && (e.id == selectedId),
-					() -> pick(e.id));
-			c.setAlpha(e.visible ? 1f : 0.5f);
-			chips.addView(c);
-		}
-		chips.addView(ChipFlowLayout.chip(palette, R.drawable.home_add, "", panelMode == P_ADD, () -> openPanel(P_ADD)));
-		hs.addView(chips);
-		head.addView(hs, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+		panelChipScroll = new android.widget.HorizontalScrollView(palette);
+		panelChipScroll.setHorizontalScrollBarEnabled(false);
+		panelChips = new ChipFlowLayout(palette);
+		panelChips.setOneRow(true);
+		panelChipScroll.addView(panelChips);
+		head.addView(panelChipScroll, new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
 		android.widget.ImageButton close = new android.widget.ImageButton(palette);
 		close.setImageResource(me.aap.utils.R.drawable.close);
 		close.setImageTintList(ColorStateList.valueOf(textPrimary));
@@ -596,19 +686,61 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 				closeSheet();
 			}
 		});
-		LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(dp(38), dp(38));
+		LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(dp(34), dp(34));
 		clp.setMarginStart(dp(6));
 		head.addView(close, clp);
 		card.addView(head, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
 
-		android.widget.ScrollView scroll = new android.widget.ScrollView(palette);
-		scroll.setVerticalScrollBarEnabled(false);
-		LinearLayout body = new LinearLayout(palette);
-		body.setOrientation(LinearLayout.VERTICAL);
-		body.setPadding(0, 0, 0, dp(12));
-		scroll.addView(body, new android.view.ViewGroup.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
-		card.addView(scroll, new LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f));
+		panelScroll = new android.widget.ScrollView(palette);
+		panelScroll.setVerticalScrollBarEnabled(false);
+		panelBody = new LinearLayout(palette);
+		panelBody.setOrientation(LinearLayout.VERTICAL);
+		panelBody.setPadding(0, 0, 0, dp(10));
+		panelScroll.addView(panelBody, new android.view.ViewGroup.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		card.addView(panelScroll, new LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f));
+		me.aap.fermata.action.CarNav.markScope(card, wide ? null : this::closeSheet);
+		return card;
+	}
 
+	/** Rebuilds the chips' look and the body for {@link #panelMode} without touching the card. */
+	private void refreshPanel() {
+		ChipFlowLayout chips = panelChips;
+		LinearLayout body = panelBody;
+		if ((chips == null) || (body == null)) return;
+		sync.clear();
+
+		chips.removeAllViews();
+		TextView picked = null;
+		TextView general = smallChip(R.drawable.settings, getString(R.string.tr_general), panelMode == P_GENERAL, () -> {
+			selectedId = 0;
+			if (preview != null) preview.setSelected(0);
+			updateSelBar();
+			openPanel(P_GENERAL);
+		});
+		chips.addView(general);
+		if (panelMode == P_GENERAL) picked = general;
+		for (Element e : cfg.elements) {
+			boolean on = (panelMode == P_ELEMENT) && (e.id == selectedId);
+			TextView c = smallChip(iconOf(e.type), nameOf(e), on, () -> pick(e.id));
+			c.setAlpha(e.visible ? 1f : 0.5f);
+			chips.addView(c);
+			if (on) picked = c;
+		}
+		TextView add = smallChip(R.drawable.home_add, "", panelMode == P_ADD, () -> openPanel(P_ADD));
+		chips.addView(add);
+		if (panelMode == P_ADD) picked = add;
+		for (int i = 1; i < chips.getChildCount(); i++) {
+			chips.getChildAt(i).setLayoutParams(new android.view.ViewGroup.MarginLayoutParams(WRAP_CONTENT, WRAP_CONTENT));
+		}
+		TextView pk = picked;
+		if ((pk != null) && (panelChipScroll != null)) {
+			panelChipScroll.post(() -> panelChipScroll.smoothScrollTo(Math.max(0, pk.getLeft() - dp(24)), 0));
+		}
+
+		// The body fades its content over (about 120 ms) instead of a card sliding in.
+		body.animate().cancel();
+		body.removeAllViews();
+		body.setAlpha(0.15f);
 		switch (panelMode) {
 			case P_ELEMENT -> {
 				if (selected() == null) buildGeneral(body);
@@ -617,9 +749,9 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			case P_ADD -> buildAdd(body);
 			default -> buildGeneral(body);
 		}
+		if (panelScroll != null) panelScroll.scrollTo(0, 0);
+		body.animate().alpha(1f).setDuration(130).start();
 		runSync();
-		me.aap.fermata.action.CarNav.markScope(card, wide ? null : this::closeSheet);
-		return card;
 	}
 
 	private void pick(int id) {
@@ -713,8 +845,9 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 
 	// ---- What the panel holds ----
 
+	/** Tighter rows on a phone and on the car screen (which has little room under the bars). */
 	private boolean compact() {
-		return !wide;
+		return !wide || onCar;
 	}
 
 	/** A section the user can fold: its title with a chevron, and the rows under it (open at first only when there is room). */
@@ -782,7 +915,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			cfg.where = i;
 			changed();
 		}, s);
-		sliderRow(b, getString(R.string.tr_hold), 10, 300, () -> cfg.holdTenths, v -> {
+		sliderRow(b, getString(R.string.tr_hold), 10, 150, () -> cfg.holdTenths, v -> {
 			cfg.holdTenths = v;
 			changed();
 		}, v -> getString(R.string.tr_seconds, v / 10f), s);
@@ -925,15 +1058,15 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		sliderRow(p, getString(e.isText() ? R.string.tr_corner : R.string.tr_corner_art), 0, 50, () -> e.radius, v -> {
 			e.radius = v;
 			elementChanged();
-		}, v -> e.isText() ? v + " dp" : (v >= 50 ? getString(R.string.tr_round) : v + "%"), s);
+		}, v -> e.isText() ? String.valueOf(v) : (v >= 50 ? getString(R.string.tr_round) : v + "%"), s);
 		sliderRow(p, getString(R.string.tr_pad), 0, 48, () -> e.pad, v -> {
 			e.pad = v;
 			elementChanged();
-		}, v -> v + " dp", s);
+		}, v -> String.valueOf(v), s);
 		sliderRow(p, getString(R.string.tr_edge), 0, 8, () -> e.edge, v -> {
 			e.edge = v;
 			elementChanged();
-		}, v -> (v == 0) ? getString(R.string.tr_none) : v + " dp", s);
+		}, v -> (v == 0) ? getString(R.string.tr_none) : String.valueOf(v), s);
 		swatchRow(p, getString(R.string.tr_edge_color), () -> e.edgeColor, c -> {
 			e.edgeColor = (c & 0x00FFFFFF) | 0xCC000000;
 			elementChanged();
