@@ -48,6 +48,15 @@ public final class TransitionView extends FrameLayout {
 		public String playlist;
 		@Nullable
 		public Bitmap art;
+		@Nullable
+		public String next;
+		/** "3 of 12". */
+		@Nullable
+		public String queue;
+		@Nullable
+		public String source;
+		@Nullable
+		public String quality;
 	}
 
 	public interface Editor {
@@ -170,6 +179,15 @@ public final class TransitionView extends FrameLayout {
 		data.title = title;
 		data.channel = channel;
 		data.playlist = playlist;
+		refresh();
+	}
+
+	/** The song's place in the queue, what follows it, where it plays from and its quality. */
+	public void setExtra(@Nullable String next, @Nullable String queue, @Nullable String source, @Nullable String quality) {
+		data.next = next;
+		data.queue = queue;
+		data.source = source;
+		data.quality = quality;
 		refresh();
 	}
 
@@ -397,7 +415,7 @@ public final class TransitionView extends FrameLayout {
 	private int handleAt(ElementView v, float x, float y) {
 		float r = density * 26;
 		if ((Math.abs(x - v.getRight()) < r) && (Math.abs(y - v.getBottom()) < r)) return M_SIZE;
-		if (!v.el.isText()) return 0;
+		if (!v.el.isBox()) return 0;
 		float cx = (v.getLeft() + v.getRight()) / 2f;
 		float cy = (v.getTop() + v.getBottom()) / 2f;
 		if ((Math.abs(x - v.getRight()) < r) && (Math.abs(y - cy) < r)) return M_W;
@@ -460,8 +478,8 @@ public final class TransitionView extends FrameLayout {
 					if ((mode == M_SIZE) || (mode == M_W)) {
 						e.w = Math.max(0.06f, Math.min(e.isText() ? 1f : 3f, 2f * (x - e.x * getWidth()) / getWidth()));
 					}
-					if (e.isText() && ((mode == M_SIZE) || (mode == M_H))) {
-						e.h = Math.max(0.03f, Math.min(1f, 2f * (y - e.y * getHeight()) / getHeight()));
+					if (e.isBox() && ((mode == M_SIZE) || (mode == M_H))) {
+						e.h = Math.max((e.type == TransitionConfig.T_SHAPE) ? 0.001f : 0.03f, Math.min(1f, 2f * (y - e.y * getHeight()) / getHeight()));
 					}
 				}
 				requestLayout();
@@ -503,7 +521,7 @@ public final class TransitionView extends FrameLayout {
 		c.drawCircle(v.getRight(), v.getBottom(), density * 9, handlePaint);
 		handlePaint.setColor(0xFFFFFFFF);
 		c.drawCircle(v.getRight(), v.getBottom(), density * 4, handlePaint);
-		if (v.el.isText()) {
+		if (v.el.isBox()) {
 			// The edges: width on the right, height at the bottom.
 			float cx = (v.getLeft() + v.getRight()) / 2f;
 			float cy = (v.getTop() + v.getBottom()) / 2f;
@@ -601,6 +619,25 @@ public final class TransitionView extends FrameLayout {
 			return el.visible && !empty;
 		}
 
+		@Nullable
+		private Bitmap pic;
+		@Nullable
+		private String picPath;
+
+		/** The picked picture's file (stored shrunk when it was picked), read again only when the path changes. */
+		private void loadPicture() {
+			String path = el.text;
+			if (java.util.Objects.equals(path, picPath)) return;
+			picPath = path;
+			pic = null;
+			if ((path == null) || path.isEmpty()) return;
+			try {
+				pic = android.graphics.BitmapFactory.decodeFile(path);
+			} catch (Throwable ex) {
+				pic = null;
+			}
+		}
+
 		void update() {
 			invalidate();
 		}
@@ -612,11 +649,23 @@ public final class TransitionView extends FrameLayout {
 				case TransitionConfig.T_CHANNEL -> data.channel;
 				case TransitionConfig.T_PLAYLIST -> data.playlist;
 				case TransitionConfig.T_TEXT -> el.text;
+				case TransitionConfig.T_NEXT -> (data.next == null) ? null :
+						getContext().getString(me.aap.fermata.R.string.tr_next_fmt, data.next);
+				case TransitionConfig.T_QUEUE -> data.queue;
+				case TransitionConfig.T_SOURCE -> data.source;
+				case TransitionConfig.T_QUALITY -> data.quality;
+				case TransitionConfig.T_CLOCK -> TransitionFacts.clock(getContext(), el.opt);
+				case TransitionConfig.T_INFO -> TransitionFacts.info(getContext(), el.text);
 				default -> null;
 			};
 			if ((s == null) || s.isEmpty()) {
 				if (!sample) return null;
 				s = switch (el.type) {
+					case TransitionConfig.T_NEXT -> getContext().getString(me.aap.fermata.R.string.tr_next_fmt,
+							getContext().getString(me.aap.fermata.R.string.tr_sample_title));
+					case TransitionConfig.T_QUEUE -> getContext().getString(me.aap.fermata.R.string.tr_queue_fmt, 3, 12);
+					case TransitionConfig.T_SOURCE -> getContext().getString(me.aap.fermata.R.string.tr_source_youtube);
+					case TransitionConfig.T_QUALITY -> "720p";
 					case TransitionConfig.T_TITLE -> getContext().getString(me.aap.fermata.R.string.tr_sample_title);
 					case TransitionConfig.T_CHANNEL -> getContext().getString(me.aap.fermata.R.string.tr_sample_channel);
 					case TransitionConfig.T_PLAYLIST -> getContext().getString(me.aap.fermata.R.string.tr_sample_playlist);
@@ -656,6 +705,12 @@ public final class TransitionView extends FrameLayout {
 			if (el.type == TransitionConfig.T_ART) {
 				if ((data.art == null) && !sample) empty = true;
 				boxH = boxW;
+			} else if (el.type == TransitionConfig.T_PICTURE) {
+				loadPicture();
+				if ((pic == null) && !sample) empty = true;
+				boxH = (pic == null) ? boxW : Math.max(1, Math.round(boxW * pic.getHeight() / (float) pic.getWidth()));
+			} else if (el.type == TransitionConfig.T_SHAPE) {
+				boxH = Math.max(1, Math.round(el.h * H));
 			} else {
 				String s = content();
 				if (s == null) {
@@ -704,7 +759,8 @@ public final class TransitionView extends FrameLayout {
 			if (empty) return;
 			int w = getWidth();
 			int h = getHeight();
-			boolean art = el.type == TransitionConfig.T_ART;
+			boolean art = (el.type == TransitionConfig.T_ART) || (el.type == TransitionConfig.T_PICTURE);
+			boolean shape = el.type == TransitionConfig.T_SHAPE;
 			float u = unitPx(0);
 			float r = art ? Math.min(w, h) * el.radius / 100f : el.radius * u;
 			r = Math.min(r, Math.min(w, h) / 2f);
@@ -736,7 +792,7 @@ public final class TransitionView extends FrameLayout {
 				float inset = el.pad * u;
 				RectF a = new RectF(inset, inset, w - inset, h - inset);
 				float ar = Math.max(0f, r - inset);
-				Bitmap b = data.art;
+				Bitmap b = (el.type == TransitionConfig.T_PICTURE) ? pic : data.art;
 				if (b != null) {
 					clip.reset();
 					clip.addRoundRect(a, ar, ar, Path.Direction.CW);
@@ -752,6 +808,8 @@ public final class TransitionView extends FrameLayout {
 					c.drawRoundRect(a, ar, ar, paint);
 					paint.setShader(null);
 				}
+			} else if (shape) {
+				// Nothing but its fill and edge.
 			} else if (layout != null) {
 				c.save();
 				float pad = el.pad * u;

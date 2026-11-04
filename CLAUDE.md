@@ -1181,6 +1181,16 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
   (`ReorderListFragment` pages: Home, Power, Sleep, Transition, ...; Captions/Lyrics, UI style, All in One) could not be walked on the car screen. Every
   `MainActivityFragment` that says `isSettingsPage()` is a scope now, and long Previous on such a page (not Settings itself) is always "up" (`onBackPressed`).
 
+### Transition screen: more elements, resizable options column
+
+- **New element kinds** (ids at the end, saved: never renumber): `T_NEXT` ("Next: title", from the Music queue's play order), `T_QUEUE` ("3 of 12"),
+  `T_CLOCK` (`Element#opt`: time / date / both), `T_SOURCE` (YouTube / Downloaded / On this device, by `YtOffline.useLocal`), `T_QUALITY` (a download's height, else
+  `QualityIcon.getLabel()`, asked again once the overlay is up), `T_PICTURE` (a picked image, copied shrunk into `files/transition_pic_<ms>.jpg`, its path in `Element#text`),
+  `T_SHAPE` (fill, edge and corners only; width and a thin height, so a divider is a shape 0.4% high) and `T_INFO` (the chosen keys of `INFO_KEYS` in `Element#text`, in order, joined
+  with bullets by `TransitionFacts#info`; Settings has a switch and up/down arrows per fact). `Element#isBox()` = text or shape (has its own height and the edge handles).
+  `TransitionController#extrasOf` fills next/queue/source/quality (`TransitionView#setExtra`). The info row is text with a separator, not the Info overlay's `InfoOverlayView`.
+- **The options column's resize grip** is drawn like `SettingsSplit`'s divider (no panel behind it; `SettingsStyle.Colors#textSecondary`); width in `TRANSITION_PANEL_PERCENT`. Never run on a device.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

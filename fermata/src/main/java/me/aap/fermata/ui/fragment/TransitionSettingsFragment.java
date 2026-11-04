@@ -38,6 +38,7 @@ import me.aap.fermata.ui.transition.TransitionConfig;
 import me.aap.fermata.ui.transition.TransitionConfig.Element;
 import me.aap.fermata.ui.transition.TransitionController;
 import me.aap.fermata.ui.transition.TransitionDemos;
+import me.aap.fermata.ui.transition.TransitionFacts;
 import me.aap.fermata.ui.transition.TransitionView;
 import me.aap.fermata.ui.view.ChipFlowLayout;
 import me.aap.fermata.ui.view.SwitchStyle;
@@ -711,7 +712,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		if (hintLp != null) hintLp.setMarginEnd(w + dp(12));
 		if (selLp != null) selLp.setMarginEnd(w + dp(8));
 		if (rightLp != null) rightLp.setMarginEnd(w + dp(8));
-		if (stripLp != null) stripLp.setMarginEnd(w + dp(8) - dp(9));
+		if (stripLp != null) stripLp.setMarginEnd(w + dp(8) - dp(11));
 		if (hintView != null) hintView.setLayoutParams(hintLp);
 		if (selBar != null) selBar.setLayoutParams(selLp);
 		if (stripView != null) stripView.setLayoutParams(stripLp);
@@ -719,53 +720,68 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		if (r != null) r.setLayoutParams(rightLp);
 	}
 
-	/** A strip on the options column's left edge: drag it to make the column wider or narrower (like the comments column). */
+	/** The grip on the options column's left edge, drawn like the Settings list's divider: drag it to resize the column. */
 	@SuppressLint("ClickableViewAccessibility")
 	private void addPanelStrip(@Nullable MainActivityDelegate d) {
-		FrameLayout strip = new FrameLayout(palette);
-		View bar = new View(palette);
-		GradientDrawable gd = new GradientDrawable();
-		gd.setColor(0x66808080);
-		gd.setCornerRadius(dp(2));
-		bar.setBackground(gd);
-		strip.addView(bar, new FrameLayout.LayoutParams(dp(4), dp(48), Gravity.CENTER));
-		strip.setContentDescription(getString(R.string.tr_resize_panel));
-		stripLp = new FrameLayout.LayoutParams(dp(18), MATCH_PARENT, Gravity.END);
-		stripLp.setMargins(0, dp(60), panelW + dp(8) - dp(9), dp(12));
-		stripView = strip;
-		strip.setOnTouchListener(new View.OnTouchListener() {
+		final me.aap.fermata.ui.view.SettingsStyle.Colors colors = new me.aap.fermata.ui.view.SettingsStyle.Colors(palette);
+		View strip = new View(palette) {
+			private final android.graphics.Paint grip = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+			private final android.graphics.RectF r = new android.graphics.RectF();
 			private float startX;
 			private int startW;
+			private boolean dragging;
+
+			{
+				grip.setColor(colors.textSecondary);
+				grip.setAlpha(150);
+			}
 
 			@Override
-			public boolean onTouch(View v, android.view.MotionEvent e) {
-				int scrW = v.getResources().getDisplayMetrics().widthPixels;
+			protected void onDraw(android.graphics.Canvas c) {
+				float h = colors.dp(dragging ? 56 : 44);
+				float w = colors.dp(dragging ? 6 : 4);
+				float x = getWidth() / 2f;
+				r.set(x - w / 2f, (getHeight() - h) / 2f, x + w / 2f, (getHeight() + h) / 2f);
+				c.drawRoundRect(r, w / 2f, w / 2f, grip);
+			}
+
+			@Override
+			public boolean onTouchEvent(android.view.MotionEvent e) {
+				int scrW = getResources().getDisplayMetrics().widthPixels;
 				switch (e.getActionMasked()) {
 					case android.view.MotionEvent.ACTION_DOWN -> {
 						startX = e.getRawX();
 						startW = panelW;
-						v.getParent().requestDisallowInterceptTouchEvent(true);
-						gd.setColor(0xCC808080);
+						dragging = true;
+						if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
+						invalidate();
 						return true;
 					}
 					case android.view.MotionEvent.ACTION_MOVE -> {
-						setPanelW(clampPanel(startW - Math.round(e.getRawX() - startX), scrW));
+						if (dragging) setPanelW(clampPanel(startW - Math.round(e.getRawX() - startX), scrW));
 						return true;
 					}
 					case android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
-						gd.setColor(0x66808080);
-						if (d != null) {
-							d.getPrefs().applyIntPref(MainActivityPrefs.TRANSITION_PANEL_PERCENT,
-									Math.round(panelW * 100f / Math.max(1, scrW)));
+						if (dragging) {
+							dragging = false;
+							if (d != null) {
+								d.getPrefs().applyIntPref(MainActivityPrefs.TRANSITION_PANEL_PERCENT,
+										Math.round(panelW * 100f / Math.max(1, scrW)));
+							}
+							invalidate();
 						}
 						return true;
 					}
 					default -> {
-						return false;
+						return super.onTouchEvent(e);
 					}
 				}
 			}
-		});
+		};
+		strip.setContentDescription(getString(R.string.tr_resize_panel));
+		stripLp = new FrameLayout.LayoutParams(dp(22), MATCH_PARENT, Gravity.END);
+		stripLp.setMargins(0, dp(60), panelW + dp(8) - dp(11), dp(12));
+		stripView = strip;
 		root.addView(strip, stripLp);
 	}
 
@@ -1016,6 +1032,14 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			case TransitionConfig.T_ART -> R.drawable.home_image;
 			case TransitionConfig.T_PLAYLIST -> R.drawable.playlist;
 			case TransitionConfig.T_CHANNEL -> R.drawable.account;
+			case TransitionConfig.T_NEXT -> R.drawable.up_next;
+			case TransitionConfig.T_QUEUE -> R.drawable.queue_music;
+			case TransitionConfig.T_CLOCK -> R.drawable.clock;
+			case TransitionConfig.T_SOURCE -> R.drawable.download;
+			case TransitionConfig.T_QUALITY -> R.drawable.quality;
+			case TransitionConfig.T_PICTURE -> R.drawable.home_image;
+			case TransitionConfig.T_SHAPE -> R.drawable.expand;
+			case TransitionConfig.T_INFO -> R.drawable.battery;
 			default -> R.drawable.title;
 		};
 	}
@@ -1082,12 +1106,15 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		hint.setPadding(dp(4), 0, dp(4), dp(6));
 		p.addView(hint);
 		int[] kinds = {TransitionConfig.T_TITLE, TransitionConfig.T_CHANNEL, TransitionConfig.T_ART,
-				TransitionConfig.T_PLAYLIST, TransitionConfig.T_TEXT};
+				TransitionConfig.T_PLAYLIST, TransitionConfig.T_NEXT, TransitionConfig.T_QUEUE, TransitionConfig.T_CLOCK,
+				TransitionConfig.T_SOURCE, TransitionConfig.T_QUALITY, TransitionConfig.T_PICTURE, TransitionConfig.T_SHAPE,
+				TransitionConfig.T_INFO, TransitionConfig.T_TEXT};
 		for (int kind : kinds) {
 			actionRow(p, getString(R.string.tr_add_fmt, getString(TransitionConfig.nameRes(kind))), null, iconOf(kind), () -> {
 				Element e = cfg.add(kind);
 				e.y = 0.5f;
 				if (kind == TransitionConfig.T_TEXT) e.text = getString(R.string.tr_sample_text);
+				if (kind == TransitionConfig.T_PICTURE) e.visible = true;
 				cfg.save(car);
 				if (preview != null) {
 					preview.refresh();
@@ -1195,6 +1222,18 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 				elementChanged();
 			}), s);
 		}
+		if (e.type == TransitionConfig.T_CLOCK) {
+			flowRow(p, getString(R.string.tr_clock_show), null, strings(R.string.tr_clock_time, R.string.tr_clock_date,
+					R.string.tr_clock_both), () -> e.opt, i -> {
+				e.opt = i;
+				elementChanged();
+			}, s);
+		}
+		if (e.type == TransitionConfig.T_PICTURE) {
+			actionRow(p, getString(R.string.tr_pick_image), getString(R.string.tr_pick_image_sub), R.drawable.home_image,
+					() -> pickElementPicture(e));
+		}
+		if (e.type == TransitionConfig.T_INFO) infoItems(p, e, s);
 		if (e.isText()) {
 			sliderRow(p, getString(R.string.tr_size), 15, 250, () -> Math.round(e.size * 1000), v -> {
 				e.size = v / 1000f;
@@ -1210,6 +1249,12 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 				e.h = (v < 3) ? 0f : v / 100f;
 				elementChanged();
 			}, v -> (v < 3) ? getString(R.string.tr_auto) : v + "%", s);
+		}
+		if (e.type == TransitionConfig.T_SHAPE) {
+			sliderRow(p, getString(R.string.tr_height), 1, 400, () -> Math.round(e.h * 1000), v -> {
+				e.h = v / 1000f;
+				elementChanged();
+			}, v -> String.format(java.util.Locale.getDefault(), "%.1f%%", v / 10f), s);
 		}
 		sliderRow(p, getString(R.string.tr_pos_x), -50, 150, () -> Math.round(e.x * 100), v -> {
 			e.x = v / 100f;
@@ -1387,6 +1432,97 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 				fillColor(f, on ? androidx.core.graphics.ColorUtils.blendARGB(0x1F808080, accent, 0.22f) : 0x1F808080);
 				f.setStroke(on ? dp(2) : 0, accent);
 			}
+		});
+	}
+
+	// ---- The info row's items ----
+
+	/** The facts an info row shows: a switch for each, and arrows to move the shown ones up and down. */
+	private void infoItems(LinearLayout parent, Element e, List<Runnable> s) {
+		LinearLayout holder = new LinearLayout(palette);
+		holder.setOrientation(LinearLayout.VERTICAL);
+		parent.addView(holder, new LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT));
+		Runnable[] build = {null};
+		build[0] = () -> {
+			holder.removeAllViews();
+			List<String> on = TransitionFacts.chosen(e.text);
+			List<String> all = new ArrayList<>(on);
+			for (String k : TransitionConfig.INFO_KEYS) if (!all.contains(k)) all.add(k);
+			TextView head = label(getString(R.string.tr_info_items), 15, textPrimary, true);
+			head.setPadding(dp(4), dp(10), dp(4), dp(2));
+			holder.addView(head);
+			for (String k : all) {
+				boolean shown = on.contains(k);
+				LinearLayout row = tileRow(holder, false);
+				row.setOrientation(LinearLayout.HORIZONTAL);
+				row.setGravity(Gravity.CENTER_VERTICAL);
+				row.addView(label(getString(TransitionFacts.nameRes(k)), 15, shown ? textPrimary : textSecondary, true),
+						new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f));
+				int idx = on.indexOf(k);
+				if (shown) {
+					TextView up = pill("\u25B2", 0, false, (idx > 0) ? () -> moveInfo(e, on, idx, idx - 1, build[0]) : null);
+					TextView down = pill("\u25BC", 0, false, (idx < on.size() - 1) ? () -> moveInfo(e, on, idx, idx + 1, build[0]) : null);
+					up.setAlpha(idx > 0 ? 1f : 0.35f);
+					down.setAlpha(idx < on.size() - 1 ? 1f : 0.35f);
+					LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(dp(40), dp(36));
+					plp.setMarginEnd(dp(6));
+					row.addView(up, plp);
+					row.addView(down, new LinearLayout.LayoutParams(dp(40), dp(36)));
+				}
+				android.widget.Switch sw = new android.widget.Switch(palette);
+				sw.setChecked(shown);
+				sw.setOnCheckedChangeListener((b, checked) -> {
+					List<String> now = new ArrayList<>(on);
+					if (checked) now.add(k);
+					else now.remove(k);
+					e.text = String.join(",", now);
+					elementChanged();
+					build[0].run();
+				});
+				LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT);
+				slp.setMarginStart(dp(10));
+				row.addView(sw, slp);
+			}
+		};
+		build[0].run();
+	}
+
+	private void moveInfo(Element e, List<String> on, int from, int to, Runnable rebuild) {
+		List<String> now = new ArrayList<>(on);
+		String k = now.remove(from);
+		now.add(to, k);
+		e.text = String.join(",", now);
+		elementChanged();
+		rebuild.run();
+	}
+
+	// ---- Picking a picture for an element ----
+
+	private void pickElementPicture(Element e) {
+		MainActivityDelegate a = delegate();
+		a.startActivityForResult(() -> new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+				.setType("image/*")).onCompletion((d, err) -> {
+			Context ctx = a.getContext();
+			if (err != null) {
+				UiUtils.showAlert(ctx, getString(R.string.tr_pick_failed, err));
+				return;
+			}
+			if ((d == null) || (d.getData() == null)) return;
+			Uri uri = d.getData();
+			App.get().getExecutor().submitTask(() -> TransitionController.saveElementPicture(ctx, uri)).main()
+					.onCompletion((path, e2) -> {
+						if ((e2 != null) || (path == null)) {
+							Log.e(e2, "Failed to use the transition picture");
+							UiUtils.showAlert(ctx, getString(R.string.tr_pick_failed, e2));
+							return;
+						}
+						String old = e.text;
+						e.text = path;
+						e.visible = true;
+						if ((old != null) && !old.isEmpty()) new java.io.File(old).delete();
+						elementChanged();
+						TopToast.show(R.drawable.transition, R.string.tr_picked);
+					});
 		});
 	}
 

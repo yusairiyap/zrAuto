@@ -70,6 +70,25 @@ public final class TransitionConfig {
 	public static final int T_ART = 2;
 	public static final int T_PLAYLIST = 3;
 	public static final int T_TEXT = 4;
+	/** The next song in the queue, "Next: title". */
+	public static final int T_NEXT = 5;
+	/** The song's place in the queue, "3 of 12". */
+	public static final int T_QUEUE = 6;
+	/** The time and/or date ({@link Element#opt}: 0 time, 1 date, 2 both). */
+	public static final int T_CLOCK = 7;
+	/** Where the song plays from: YouTube, Downloaded or Local. */
+	public static final int T_SOURCE = 8;
+	/** The picture quality in use, e.g. 720p. */
+	public static final int T_QUALITY = 9;
+	/** A picture the user picked ({@link Element#text} holds the stored file's path). */
+	public static final int T_PICTURE = 10;
+	/** A plain shape or divider line: a fill, an edge and rounded corners, no content. */
+	public static final int T_SHAPE = 11;
+	/** A row of small facts ({@link Element#text}: the chosen keys in order, see {@link #INFO_KEYS}). */
+	public static final int T_INFO = 12;
+
+	/** What an info row can show; the order here is the order of the ones not chosen yet. */
+	public static final String[] INFO_KEYS = {"time", "date", "battery", "temp", "network"};
 
 	// Fills.
 	public static final int FILL_NONE = 0;
@@ -127,11 +146,19 @@ public final class TransitionConfig {
 		public int outMs = 350;
 		/** How long after the screen starts coming in this one starts, ms. */
 		public int delay;
-		/** Custom text. */
+		/** Custom text; for a picture the stored file's path; for an info row the chosen keys, comma separated. */
 		public String text = "";
+		/** A kind's own choice (the clock: 0 time, 1 date, 2 both). */
+		public int opt;
 
+		/** Whether the element is words (sized by a text height), not a picture or a shape. */
 		public boolean isText() {
-			return type != T_ART;
+			return (type != T_ART) && (type != T_PICTURE) && (type != T_SHAPE);
+		}
+
+		/** Whether the element has a box whose height is its own to set (text and shapes). */
+		public boolean isBox() {
+			return isText() || (type == T_SHAPE);
 		}
 
 		Element copy() {
@@ -168,6 +195,7 @@ public final class TransitionConfig {
 			e.outMs = outMs;
 			e.delay = delay;
 			e.text = text;
+			e.opt = opt;
 			return e;
 		}
 
@@ -179,7 +207,7 @@ public final class TransitionConfig {
 					.put("color", color).put("fill", fill).put("fillColor", fillColor).put("fillAlpha", fillAlpha)
 					.put("radius", radius).put("pad", pad).put("edge", edge).put("edgeColor", edgeColor)
 					.put("in", inAnim).put("out", outAnim).put("inMs", inMs).put("outMs", outMs).put("delay", delay)
-					.put("text", text);
+					.put("text", text).put("opt", opt);
 			return o;
 		}
 
@@ -217,6 +245,7 @@ public final class TransitionConfig {
 			e.outMs = o.optInt("outMs", 350);
 			e.delay = o.optInt("delay");
 			e.text = o.optString("text", "");
+			e.opt = o.optInt("opt");
 			e.clamp();
 			return e;
 		}
@@ -228,7 +257,9 @@ public final class TransitionConfig {
 			w = Math.max(0.06f, Math.min(isText() ? 1f : 3f, w));
 			spacing = Math.max(-5, Math.min(40, spacing));
 			size = Math.max(0.015f, Math.min(0.25f, size));
-			h = (h < 0.03f) ? 0f : Math.min(1f, h);
+			if (type == T_SHAPE) h = Math.max(0.001f, Math.min(1f, h));
+			else h = (h < 0.03f) ? 0f : Math.min(1f, h);
+			opt = Math.max(0, Math.min(2, opt));
 			lines = Math.max(1, Math.min(8, lines));
 			font = Math.max(0, Math.min(TransitionFonts.count() - 1, font));
 			fillAlpha = Math.max(0, Math.min(100, fillAlpha));
@@ -320,6 +351,38 @@ public final class TransitionConfig {
 		e.lines = (type == T_TITLE) ? 3 : 2;
 		e.w = (type == T_ART) ? 0.3f : 0.8f;
 		if (type == T_ART) e.radius = 16;
+		if (type == T_PICTURE) {
+			e.w = 0.3f;
+			e.radius = 8;
+			e.pad = 0;
+		}
+		if (type == T_SHAPE) {
+			e.w = 0.5f;
+			e.h = 0.004f;
+			e.radius = 50;
+			e.pad = 0;
+			e.fill = FILL_SOLID;
+			e.fillColor = 0xFFFFFFFF;
+			e.fillAlpha = 70;
+		}
+		if (type == T_INFO) {
+			e.size = 0.03f;
+			e.lines = 1;
+			e.text = "time,battery";
+			e.fill = FILL_GLASS;
+			e.radius = 24;
+			e.pad = 12;
+		}
+		if ((type == T_NEXT) || (type == T_SOURCE) || (type == T_QUALITY) || (type == T_QUEUE) || (type == T_CLOCK)) {
+			e.size = 0.028f;
+			e.lines = 1;
+		}
+		if (type == T_QUALITY || type == T_SOURCE) {
+			e.fill = FILL_GLASS;
+			e.radius = 24;
+			e.pad = 10;
+			e.w = 0.3f;
+		}
 		elements.add(e);
 		return e;
 	}
@@ -425,6 +488,14 @@ public final class TransitionConfig {
 			case T_CHANNEL -> me.aap.fermata.R.string.tr_el_channel;
 			case T_ART -> me.aap.fermata.R.string.tr_el_art;
 			case T_PLAYLIST -> me.aap.fermata.R.string.tr_el_playlist;
+			case T_NEXT -> me.aap.fermata.R.string.tr_el_next;
+			case T_QUEUE -> me.aap.fermata.R.string.tr_el_queue;
+			case T_CLOCK -> me.aap.fermata.R.string.tr_el_clock;
+			case T_SOURCE -> me.aap.fermata.R.string.tr_el_source;
+			case T_QUALITY -> me.aap.fermata.R.string.tr_el_quality;
+			case T_PICTURE -> me.aap.fermata.R.string.tr_el_picture;
+			case T_SHAPE -> me.aap.fermata.R.string.tr_el_shape;
+			case T_INFO -> me.aap.fermata.R.string.tr_el_info;
 			default -> me.aap.fermata.R.string.tr_el_text;
 		};
 	}

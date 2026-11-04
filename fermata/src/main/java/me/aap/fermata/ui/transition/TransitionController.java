@@ -191,10 +191,51 @@ public final class TransitionController {
 			if (v.getTag(R.id.transition_settings_fragment) != token) return;
 			MusicTrackItem tr = trackOf(a);
 			v.setData(titleOf(pi, md), channelOf(pi, md, tr), playlistOf(a, pi, tr));
+			String[] x = extrasOf(a, pi, tr);
+			v.setExtra(x[0], x[1], x[2], x[3]);
 			HomeArt.cover(a, pi, md, () -> v.getTag(R.id.transition_settings_fragment) == token, bm -> {
 				if ((bm != null) && (v.getTag(R.id.transition_settings_fragment) == token)) v.setArt(bm);
 			});
 		});
+	}
+
+	/** What follows the song, its place in the queue, where it plays from and its quality: {next, queue, source, quality}. */
+	private static String[] extrasOf(MainActivityDelegate a, PlayableItem pi, @Nullable MusicTrackItem track) {
+		String next = null;
+		String queue = null;
+		try {
+			me.aap.fermata.addon.music.MusicQueue q = MusicPlayer.getQueue(a);
+			if ((q != null) && (track != null)) {
+				List<MusicTrackItem> order = q.getPlayOrder();
+				int i = q.indexInPlayOrder(track);
+				if (i >= 0) {
+					queue = a.getContext().getString(R.string.tr_queue_fmt, i + 1, order.size());
+					if (i + 1 < order.size()) {
+						String n = order.get(i + 1).getName();
+						if ((n != null) && !n.isEmpty()) next = n;
+					}
+				}
+			}
+		} catch (RuntimeException ex) {
+			DiagnosticLog.w(LogCat.MUSIC, "transition screen: queue facts failed", ex);
+		}
+		String vid = YtDownloads.videoIdOf(pi);
+		if ((vid == null) && (track != null)) vid = track.getVideoId();
+		int src = (vid == null) ? R.string.tr_source_local :
+				me.aap.fermata.ytdl.YtOffline.useLocal(vid) ? R.string.tr_source_downloaded : R.string.tr_source_youtube;
+		String quality = null;
+		if (vid != null) {
+			if (me.aap.fermata.ytdl.YtOffline.useLocal(vid)) {
+				YtDownloads.Entry e = YtDownloads.get().getEntry(vid);
+				if ((e != null) && e.video) {
+					int h = (e.gotHeight > 0) ? e.gotHeight : e.height;
+					if (h > 0) quality = h + "p";
+				}
+			} else {
+				quality = me.aap.fermata.ui.view.QualityIcon.getLabel();
+			}
+		}
+		return new String[]{next, queue, a.getContext().getString(src), quality};
 	}
 
 	private static String titleOf(PlayableItem pi, @Nullable MediaMetadataCompat md) {
@@ -218,13 +259,14 @@ public final class TransitionController {
 			MusicTrackItem tr = trackOf(a);
 			String channel = channelOf(pi, md, tr);
 			String playlist = playlistOf(a, pi, tr);
+			String[] extra = extrasOf(a, pi, tr);
 			String shownTitle = title;
 			Shown[] up = {null};
 			boolean[] launched = {false};
 			Runnable go = () -> {
 				if (launched[0]) return;
 				launched[0] = true;
-				up[0] = display(a, host, c, car, shownTitle, channel, playlist, null);
+				up[0] = display(a, host, c, car, shownTitle, channel, playlist, extra, null);
 			};
 			// The cover first, if it comes in time; if it is late it is put in when it arrives.
 			boolean needsArt = c.elements.stream().anyMatch(e -> e.visible && e.type == TransitionConfig.T_ART) ||
@@ -238,7 +280,7 @@ public final class TransitionController {
 				if (!launched[0]) {
 					launched[0] = true;
 					main.removeCallbacks(go);
-					up[0] = display(a, host, c, car, shownTitle, channel, playlist, bm);
+					up[0] = display(a, host, c, car, shownTitle, channel, playlist, extra, bm);
 				} else if ((up[0] != null) && (shownBy.get(a) == up[0]) && (bm != null)) {
 					up[0].view.setArt(bm);
 				}
@@ -248,13 +290,14 @@ public final class TransitionController {
 
 	@Nullable
 	private static Shown display(MainActivityDelegate a, ViewGroup host, TransitionConfig c, boolean car, String title,
-															 @Nullable String channel, @Nullable String playlist, @Nullable Bitmap art) {
+															 @Nullable String channel, @Nullable String playlist, String[] extra, @Nullable Bitmap art) {
 		// A newer song may have taken the screen while the cover was coming.
 		Shown old = shownBy.get(a);
 		if (old != null) old.discard();
 
 		TransitionView v = new TransitionView(a.getContext(), c);
 		v.setData(title, channel, playlist);
+		v.setExtra(extra[0], extra[1], extra[2], extra[3]);
 		v.setArt(art);
 		if (c.bg == TransitionConfig.BG_PICTURE) v.setPicture(loadPicture(car));
 		v.setElevation(host.getResources().getDisplayMetrics().density * 18);
@@ -270,6 +313,13 @@ public final class TransitionController {
 			v.playIn();
 		});
 		main.postDelayed(s.hideTask, c.holdTenths * 100L + c.inMs);
+		if (extra[3] == null) {
+			// The player has not said its quality yet: ask, and put it in when it answers.
+			me.aap.fermata.ui.view.QualityIcon.refresh(a, () -> {
+				String q = me.aap.fermata.ui.view.QualityIcon.getLabel();
+				if ((q != null) && (shownBy.get(a) == s)) v.setExtra(extra[0], extra[1], extra[2], q);
+			}, true);
+		}
 		DiagnosticLog.log(LogCat.MUSIC, "transition screen shown", "car=" + car, "title=" + title);
 		return s;
 	}
@@ -337,15 +387,26 @@ public final class TransitionController {
 		return new File(FermataApplication.get().getFilesDir(), car ? "transition_bg_aa.jpg" : "transition_bg.jpg");
 	}
 
+	/** A picture for a Picture element: stored shrunk to 1280 px under a new name; returns the file's path. Blocks. */
+	public static String saveElementPicture(android.content.Context ctx, android.net.Uri uri) throws java.io.IOException {
+		File f = new File(FermataApplication.get().getFilesDir(), "transition_pic_" + System.currentTimeMillis() + ".jpg");
+		storePicture(ctx, uri, f, 1280);
+		return f.getAbsolutePath();
+	}
+
 	/** Decodes a picked picture shrunk to 1600 px (turned upright) and stores it as the set's picture. Blocks. */
 	public static void savePicture(android.content.Context ctx, android.net.Uri uri, boolean car) throws java.io.IOException {
+		storePicture(ctx, uri, pictureFile(car), 1600);
+	}
+
+	private static void storePicture(android.content.Context ctx, android.net.Uri uri, File f, int maxSide) throws java.io.IOException {
 		Bitmap bm;
 		try {
 			android.graphics.ImageDecoder.Source src = android.graphics.ImageDecoder.createSource(ctx.getContentResolver(), uri);
 			bm = android.graphics.ImageDecoder.decodeBitmap(src, (decoder, info, s) -> {
 				int w = info.getSize().getWidth();
 				int h = info.getSize().getHeight();
-				float k = Math.min(1f, 1600f / Math.max(w, h));
+				float k = Math.min(1f, (float) maxSide / Math.max(w, h));
 				decoder.setTargetSize(Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)));
 				decoder.setAllocator(android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE);
 			});
@@ -356,7 +417,6 @@ public final class TransitionController {
 			}
 			if (bm == null) throw new java.io.IOException("Not a picture: " + uri);
 		}
-		File f = pictureFile(car);
 		File tmp = new File(f.getPath() + ".tmp");
 		try (java.io.FileOutputStream out = new java.io.FileOutputStream(tmp)) {
 			bm.compress(Bitmap.CompressFormat.JPEG, 88, out);
