@@ -25,6 +25,11 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+import java.net.NetworkInterface;
+import java.net.Inet4Address;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -62,6 +67,16 @@ import me.aap.utils.log.Log;
  */
 public final class ShareManager {
 	private static final String MAGIC = "ZRSHARE1";
+	/** Asked by a phone looking for this one on a network that has no service discovery (a hotspot). */
+	private static final String PROBE = "ZRPROBE1";
+	/**
+	 * The port the receiver listens on when it is free. A phone with its hotspot on, and the phones joined to
+	 * it, often cannot see each other through mDNS, so the others are found by trying this port on the
+	 * addresses of the network instead.
+	 */
+	static final int SHARE_PORT = 47653;
+	private static final int SCAN_CONNECT_MS = 450;
+	private static final long SCAN_EVERY_MS = 7000;
 	private static final int MAX_HEADER = 8 * 1024 * 1024;
 	private static final int CONNECT_TIMEOUT = 8000;
 	/** The sender waits this long for the person on the other phone to answer. */
@@ -167,6 +182,8 @@ public final class ShareManager {
 	@Nullable
 	private ServerSocket server;
 	private long lastNotify;
+	private boolean scanning;
+	private final Runnable scanTick = this::scanNow;
 
 	private ShareManager() {
 		SharePrefs.store().addBroadcastListener((store, prefs) -> {
@@ -262,9 +279,16 @@ public final class ShareManager {
 
 	private void startServer() {
 		try {
-			ServerSocket s = new ServerSocket(0);
+			ServerSocket s;
+			try {
+				s = new ServerSocket(SHARE_PORT);
+			} catch (IOException busy) {
+				// Taken (another app, or a second copy): any port will do, phones then find this one by mDNS only.
+				s = new ServerSocket(0);
+			}
 			server = s;
-			Thread t = new Thread(() -> acceptLoop(s), "share-accept");
+			ServerSocket fs = s;
+			Thread t = new Thread(() -> acceptLoop(fs), "share-accept");
 			t.setDaemon(true);
 			t.start();
 		} catch (IOException ex) {
@@ -305,15 +329,7 @@ public final class ShareManager {
 		discovery.startDiscovery(new ShareDiscovery.Listener() {
 			@Override
 			public void onPeerFound(Peer peer) {
-				for (int i = 0; i < peers.size(); i++) {
-					if (peers.get(i).id.equals(peer.id)) {
-						peers.set(i, peer);
-						notifyPeers();
-						return;
-					}
-				}
-				peers.add(peer);
-				notifyPeers();
+				peerSeen(peer);
 			}
 
 			@Override
@@ -321,11 +337,141 @@ public final class ShareManager {
 				if (peers.removeIf(p -> p.serviceName.equals(serviceName))) notifyPeers();
 			}
 		});
+		// mDNS does not cross a hotspot reliably, so the network's own addresses are tried as well.
+		main.removeCallbacks(scanTick);
+		main.post(scanTick);
 	}
 
 	public void stopDiscovery() {
 		if ((discoverers == 0) || (--discoverers > 0)) return;
 		discovery.stopDiscovery();
+		main.removeCallbacks(scanTick);
+	}
+
+	/** Looks again now (Refresh): the hotspot's phone may have come up after the window opened. */
+	public void rescan() {
+		if (discoverers > 0) {
+			main.removeCallbacks(scanTick);
+			main.post(scanTick);
+		}
+	}
+
+	private void peerSeen(Peer peer) {
+		for (int i = 0; i < peers.size(); i++) {
+			if (peers.get(i).id.equals(peer.id)) {
+				peers.set(i, peer);
+				notifyPeers();
+				return;
+			}
+		}
+		peers.add(peer);
+		notifyPeers();
+	}
+
+	// ---- Finding others without mDNS (a hotspot, no router) ----
+
+	private void scanNow() {
+		if (discoverers == 0) return;
+		main.removeCallbacks(scanTick);
+		if (scanning) {
+			main.postDelayed(scanTick, SCAN_EVERY_MS);
+			return;
+		}
+		scanning = true;
+		executor.execute(() -> {
+			Set<String> found = new HashSet<>();
+			try {
+				List<Peer> list = scanNetworks();
+				main.post(() -> {
+					for (Peer p : list) {
+						found.add(p.id);
+						peerSeen(p);
+					}
+					// A phone found only by the scan that did not answer this time has gone.
+					if (peers.removeIf(p -> p.serviceName.startsWith("scan:") && !found.contains(p.id))) notifyPeers();
+				});
+			} catch (Exception ex) {
+				DiagnosticLog.w(LogCat.SHARE, "scan failed", ex);
+			} finally {
+				main.post(() -> {
+					scanning = false;
+					if (discoverers > 0) main.postDelayed(scanTick, SCAN_EVERY_MS);
+				});
+			}
+		});
+	}
+
+	/** Every address on the Wi-Fi, hotspot and USB-tethering networks of this phone (never the mobile network). */
+	private static List<InetAddress> scanTargets(Set<String> own) {
+		List<InetAddress> out = new ArrayList<>();
+		try {
+			for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
+				if (!ni.isUp() || ni.isLoopback()) continue;
+				String n = ni.getName().toLowerCase();
+				if (!(n.startsWith("wlan") || n.startsWith("ap") || n.startsWith("swlan") || n.startsWith("softap")
+						|| n.startsWith("eth") || n.startsWith("p2p") || n.startsWith("rndis") || n.startsWith("usb")
+						|| n.startsWith("ncm") || n.startsWith("bt-pan") || n.startsWith("wigig"))) continue;
+				for (java.net.InterfaceAddress ia : ni.getInterfaceAddresses()) {
+					InetAddress a = ia.getAddress();
+					if (!(a instanceof Inet4Address) || !a.isSiteLocalAddress()) continue;
+					own.add(a.getHostAddress());
+					byte[] b = a.getAddress();
+					// The /24 around this address (a larger network is not worth trying all of).
+					for (int i = 1; i < 255; i++) {
+						byte[] c = b.clone();
+						c[3] = (byte) i;
+						if (c[3] == b[3]) continue;
+						out.add(InetAddress.getByAddress(c));
+					}
+				}
+			}
+		} catch (Exception ex) {
+			DiagnosticLog.w(LogCat.SHARE, "no network list", ex);
+		}
+		return out;
+	}
+
+	private List<Peer> scanNetworks() throws InterruptedException {
+		Set<String> own = new HashSet<>();
+		List<InetAddress> targets = scanTargets(own);
+		List<Peer> found = Collections.synchronizedList(new ArrayList<>());
+		if (targets.isEmpty()) return found;
+		ExecutorService pool = Executors.newFixedThreadPool(48, r -> {
+			Thread t = new Thread(r, "share-scan");
+			t.setDaemon(true);
+			return t;
+		});
+		try {
+			for (InetAddress a : targets) {
+				pool.execute(() -> {
+					Peer p = probe(a);
+					if (p != null) found.add(p);
+				});
+			}
+		} finally {
+			pool.shutdown();
+		}
+		pool.awaitTermination(20, TimeUnit.SECONDS);
+		if (!found.isEmpty()) DiagnosticLog.log(LogCat.SHARE, "found by address", "count=" + found.size());
+		return found;
+	}
+
+	@Nullable
+	private Peer probe(InetAddress a) {
+		try (Socket s = new Socket()) {
+			s.connect(new InetSocketAddress(a, SHARE_PORT), SCAN_CONNECT_MS);
+			s.setSoTimeout(1500);
+			DataOutputStream out = new DataOutputStream(s.getOutputStream());
+			out.writeUTF(PROBE);
+			out.flush();
+			DataInputStream in = new DataInputStream(s.getInputStream());
+			String id = in.readUTF();
+			String name = in.readUTF();
+			if (id.equals(discovery.instanceId)) return null;
+			return new Peer(id, name, "scan:" + id, a, SHARE_PORT);
+		} catch (IOException ex) {
+			return null;
+		}
 	}
 
 	private void notifyPeers() {

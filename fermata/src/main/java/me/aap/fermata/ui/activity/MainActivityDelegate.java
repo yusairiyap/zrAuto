@@ -442,6 +442,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			phoneDelegate = new WeakReference<>(this);
 		}
 		me.aap.fermata.share.ShareManager.get().onUiCreated();
+		me.aap.fermata.ui.transition.TransitionController.register(this);
 		Intent intent = getIntent();
 		if ((intent != null) && INTENT_ACTION_FINISH.equals(intent.getAction())) {
 			finish();
@@ -792,6 +793,7 @@ public class MainActivityDelegate extends ActivityDelegate
 			phoneDelegate = new WeakReference<>(null);
 		}
 		me.aap.fermata.share.ShareManager.get().onUiDestroyed();
+		me.aap.fermata.ui.transition.TransitionController.unregister(this);
 		handler.close();
 		getMediaServiceBinder().getMediaSessionCallback().removeAssistant(this);
 		getPrefs().removeBroadcastListener(this);
@@ -2437,6 +2439,8 @@ public class MainActivityDelegate extends ActivityDelegate
 			return new me.aap.fermata.ui.fragment.ThemeSettingsFragment();
 		} else if (id == R.id.network_settings_fragment) {
 			return new me.aap.fermata.ui.fragment.NetworkSettingsFragment();
+		} else if (id == R.id.transition_settings_fragment) {
+			return new me.aap.fermata.ui.fragment.TransitionSettingsFragment();
 		} else if (id == R.id.home_settings_fragment) {
 			return new me.aap.fermata.ui.fragment.HomeSettingsFragment();
 		} else if (id == R.id.glass_settings_fragment) {
@@ -2929,6 +2933,8 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (me.aap.fermata.ui.welcome.WelcomeWizard.onBack()) return;
 		if (me.aap.fermata.ui.home.HomeModal.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.ShareSheet.dismissOpen()) return;
+		if (me.aap.fermata.ui.view.WebLoginCard.dismissOpen()) return;
+		if (me.aap.fermata.ui.transition.TransitionController.dismissOpen(this)) return;
 		if (PlaylistPicker.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.SleepGuide.dismissOpen()) return;
 		if (me.aap.fermata.ui.view.YoutubeAlternativesPicker.dismissOpen()) return;

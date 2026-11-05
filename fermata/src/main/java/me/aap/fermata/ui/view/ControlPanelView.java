@@ -996,12 +996,14 @@ public class ControlPanelView extends ConstraintLayout
 	@Override
 	public boolean onSwipeLeft(MotionEvent e1, MotionEvent e2) {
 		getActivity().getMediaServiceBinder().onPrevNextButtonClick(true);
+		hideVideoUiAfterSkip();
 		return true;
 	}
 
 	@Override
 	public boolean onSwipeRight(MotionEvent e1, MotionEvent e2) {
 		getActivity().getMediaServiceBinder().onPrevNextButtonClick(false);
+		hideVideoUiAfterSkip();
 		return true;
 	}
 
@@ -1132,6 +1134,8 @@ public class ControlPanelView extends ConstraintLayout
 						vv.getHeight() / 2f);
 			}
 			case PLAY, PAUSE, PLAY_PAUSE, NEXT, PREV, STOP, NEXT_FOLDER, PREV_FOLDER -> {
+				// Settings > Video: a key leaves the screen clean (no controls, title or buttons over the video).
+				if (a.getPrefs().getBooleanPref(MainActivityPrefs.KEYS_HIDE_VIDEO_UI)) return;
 				if (getVisibility() == VISIBLE) {
 					restartVideoHideTimer();
 					syncVideoControls();
@@ -1207,6 +1211,15 @@ public class ControlPanelView extends ConstraintLayout
 	 * Fades the fullscreen video controls away: the panel, the floating buttons, the middle
 	 * buttons and title (and with the panel, an Info Overlay shown only with it).
 	 */
+	/** Settings > Video: takes the fullscreen controls away at once after Next / Previous. */
+	public void hideVideoUiAfterSkip() {
+		MainActivityDelegate a = getActivity();
+		if (!a.getPrefs().getBooleanPref(MainActivityPrefs.SKIP_HIDE_VIDEO_UI)) return;
+		if ((mask & MASK_VIDEO_MODE) == 0) return;
+		if (getVisibility() == VISIBLE) hideVideoUi(a);
+		else hideVideoControls(true);
+	}
+
 	private void hideVideoUi(MainActivityDelegate a) {
 		hideTimer = null;
 		// The Info Overlay shown only with the panel leaves together with it (the title's motion), not

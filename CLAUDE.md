@@ -1110,6 +1110,90 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
   `modules/web/.../YoutubePanel` is search + Up next as a `SidePanel.Body` (cards with icon chips; narrow widths show pictures only; car: keyboard on open unless opened by a steering key, then the first chip / queue item is outlined).
   It reuses the addon's search, history, Up next and `playFromList`, and the Favorites/Playlists search (`YT_SEARCH_LIBRARY`); the tab's own `YoutubeSearchPanel` is unchanged and still used outside fullscreen video.
 
+## Transition screen, YouTube sign-in window, hotspot Share, car keys on settings pages
+
+- **Transition screen** (`ui/transition/`, page `ui/fragment/TransitionSettingsFragment`, Settings > Playback > Transition screen): a full-window
+  `TransitionView` over `R.id.main_activity` (elevation 18dp) shown when a new song starts. `TransitionController#onTrackStarted` is called from
+  `MediaSessionCallback#onEngineStarted`; it is shown on every registered `MainActivityDelegate` (phone and car each have their own set and their own
+  switch, `TransitionConfig.load(car)`; registered in `onActivityCreate`/`onActivityDestroy`), only when the song differs from the last one
+  (`firstSong` also allows the first after app start), by "Where" (fullscreen video / outside / everywhere). It waits up to 1 s for the cover
+  (`HomeArt.cover`) and puts a late one in. Back (`dismissOpen(this)` in `MainActivityDelegate#onBackPressed`) and a tap (option) close it.
+  Data: title (media data), channel (`MusicTrackItem.cleanArtist`), playlist (parent when a `Playlist`/`Favorites`), art.
+- **Model**: `TransitionConfig` is one JSON per screen (`TRANSITION_PHONE`/`TRANSITION_CAR` prefs): screen options (background Clear/Dim/Album art/Picture/Glass,
+  darkness, softness, hold, in/out animation + ms) and a list of `Element`s (title, channel, album art, playlist, custom text). Positions and sizes are
+  *fractions of the screen* (centre x/y, width, text height as a fraction of screen height), so the preview and any screen agree. Each element has font, bold,
+  italic, align, colour, fill (none/solid/glass), corner radius, padding, edge line, its own entrance/exit animation, durations and delay. Element ids are
+  saved: never renumber. The picked picture is `files/transition_bg[_aa].jpg` (not in backups).
+- **Preview is the editor, full page**: `TransitionSettingsFragment` (a `ReorderListFragment` only for its palette, `initPalette`; it builds its own root) shows the
+  screen as large as the room allows (`Stage`, the screen's own aspect) with the real now-playing title/channel/playlist/cover on it
+  (`TransitionController#loadInto`; samples when nothing plays). `TransitionView#setEditor` makes it editable: tap picks, drag moves (snaps to the centre
+  lines), the corner handle sets the width, a pinch sets the text size (art width). Chips over it: Phone / Android Auto (top left), Play preview, add, gear (top right).
+  The options are one card (`buildPanel`: chips to pick Screen / each element / add, then the rows): on a wide window (>= 720dp or the car screen) it is a permanent
+  column on the right that cross-slides on every pick; on a phone it is a bottom sheet over the preview (58% of the height, Back closes it). The card is a `CarNav`
+  scope and its chips pick elements, so the steering wheel can do everything. Choices with a picture are tiles (`tilesRow` + `TransitionDemos`): the animation
+  tiles loop the real animation (only while visible), backgrounds, fills, fonts and alignments are drawn as they will look. Rows have their own helpers and one
+  `sync` list that is rebuilt with each card. "Glass" is a frosted look (blurred cover + pale veil + rim), not a live blur of the app behind (nothing can read a
+  WebView / fullscreen video). **Never run on a device.**
+- **Phone flow** (not wide): a touch on the preview only *picks* (so it can be dragged at once); a small bar in the hint's place (`selBar`: name, Edit, hide, delete, close)
+  and a second tap on the picked element (`Editor#onTapSelected`) open the options sheet (46% of the height; the preview shrinks above it, `Stage#setInset`). Top chips
+  are icon-only round chips so five fit a phone's width; rows are compact (`compact()`) and the groups fold (`group`: only the first is open on a phone). Back closes the
+  sheet, then the pick. Wide screens pick and open the side column at once.
+- **Same on screen as in the preview**: padding, corner radius (text) and edge are in "units" of a 400th of the screen's height (`TransitionView#unitPx`), not dp, so a
+  preview a third of the size draws the same picture; positions, widths and text sizes were already fractions. The preview takes the real screen's shape: this window's
+  for the phone's set, and for the car's set the car screen's as last seen (`TransitionConfig.CAR_ASPECT`, remembered by the controller when it shows there; 2:1 until then).
+- **Entrance without a flicker**: the controller adds the view at alpha 0 and `TransitionView#playIn` makes it visible only after every part has its start pose; the parts
+  animate from hardware layers (`setLayers`). The preview's play button toggles to pause and `TransitionView#stop` interrupts it.
+- **Options card on a phone and the car**: the card (`createPanelCard`) is made once and its chips and body are refreshed in place (`refreshPanel`, a 130 ms body fade), never
+  rebuilt with a sliding animation; chips are 34dp `smallChip`s, the corner buttons 40dp round icons; rows are compact on a phone and on the car screen (`compact()`), and the
+  column is at most 40% of the screen. Settings > Playback has "Transition screen" as its first entry (a root button grouped by title, `groupRootAtLeast` skips its icon).
+- **Channel and playlist on the screen**: the channel falls back to the download's saved channel (`YtDownloads.getEntry(videoId).artist`) for a downloaded file; the playlist is
+  the parent of the Music queue entry's own source (`MusicTrackItem#getSource`), else of the item, when that parent is a Playlist or Favorites.
+- **Text boxes**: a text element has a box (width and, when set, height as fractions of the screen; the corner handle sets both, the right-edge handle the width, the bottom handle the
+  height; "Height: Auto" = as tall as the text), "Wrap lines" with "Most lines", "Show ... when cut" (`ellipsis`) and "Fit the size to the box" (`autoFit`: the size shrinks by 10% steps
+  until nothing is cut and the height fits). Only the lines that fit a set height are shown, and the text sits in the middle of a taller box (`TransitionView.ElementView#measureIn`).
+- **The preview follows the song**: `TransitionSettingsFragment#refreshSong` (on every `FermataServiceUiBinder.Listener#onPlayableChanged`, again 900 ms later) calls
+  `TransitionController#loadInto`, which clears the cover first and ignores answers of an earlier call (a token in the view's tag).
+- **Playlist name**: `MusicQueue#getOrigin` (set in `replace`: the first item's parent when it is a Playlist or Favorites), else the playing queue item's parent
+  (`MediaEngine#getQueueItem`), else the queue entry's source, else the item. Not kept across an app restart.
+- **Background fade**: the background never moves or scales by much (6%/5% drift, 0.94 or 1.06 scale) and always fades with its animation; sliding it a whole screen showed its hard edges.
+- **Keys over fullscreen video**: Settings > Video "Keep video clean on media keys" (`KEYS_HIDE_VIDEO_UI`) makes `ControlPanelView#showKeyFeedback` skip the controls/title for
+  play/pause/next/previous/stop keys (the seek bubble of FF/RW stays).
+- **Over the status and navigation bars**: the screen is added to the window's top view (`TransitionController#overlayHost`: `getAppActivity().getWindow().getDecorView()`), not to
+  `main_activity`, which stops below the system bars; the settings preview takes that view's shape too.
+- **Options card**: a grip at its top moves it (`PanelDrag`, kept inside the page; a tap on the grip puts it back, a hard pull down closes the phone's sheet); the parents do not clip
+  children so it can leave its slot. Header chips have equal padding and the picked chip is only scrolled into view when it was not wholly visible.
+- **Bigger than the screen**: a cover's width goes up to 300% of the screen's and positions from -50% to 150% (`Element#clamp`); the overlay clips to the screen. The background has a **Zoom**
+  (100 to 300%, `TransitionConfig#zoom`, applied in `TransitionView.Bg`) like Home's.
+- **Fonts**: `TransitionFonts` (the 8 system families first, then ten bundled OFL fonts in `res/font/tr_*.ttf`: Bebas, Pacifico, Orbitron, Marker, Righteous, Pixel, Abril, Monoton,
+  Bungee, Cinzel; the index is saved, new fonts only at the end), plus Capital letters and Letter spacing (`spacing` in hundredths of an em).
+- **Why it did not show at first**: `onEngineStarted` can come before the engine's source is set (YouTube), so `TransitionController#onTrackStarted(engine)` asks for it again
+  up to 4 times 400 ms apart, then takes the item the UI says plays; a song is one key by its YouTube video id (else its item id). Every skip is in the Diagnostic log
+  (`MUSIC transition screen ...`: skipped / no song to show / no screen registered / shown). The real cause was the YouTube engine's `getSource()`: one placeholder item with a constant id, so every song after the first looked like the same one; the controller keys songs by `engine.getFavoritableItem()` (the real video item).
+- **YouTube sign-in** (YouTube tab's nav bar menu > Sign in to YouTube): "In a window over the app" opens `ui/view/WebLoginCard`, a plain `WebView` in a
+  modal card that shares the app's cookie jar (so the YouTube tab's account is the one signed in; hidden in Private Mode, whose profile has its own jar) and
+  closes itself when the page returns to youtube.com after the Google sign-in pages, then reloads the tab; "In this tab" loads the sign-in URL in the tab.
+- **Share over a hotspot** (`ShareManager`): mDNS (NSD) is unreliable across a phone's hotspot and needs a router, so the receiver also listens on the fixed
+  port `SHARE_PORT` (47653, any port if taken) and answers a `ZRPROBE1` hello with its id and name; while the Share window is open the sender tries that
+  port on the /24 of every Wi-Fi / hotspot / USB-tether interface (`wlan*`, `ap*`, `swlan*`, `softap*`, `rndis*`, ... never the mobile network), every 7 s,
+  and lists what answers next to the NSD finds (`scan:` service names; a scan-found phone that stops answering is dropped). So one phone's hotspot and the
+  other phone joined to it, with no internet, is enough. Not run on a device: look for `SHARE found by address` in the Diagnostic log.
+- **Car keys on settings pages**: `CarNav#findScope` only walked `MediaLibFragment`, `DownloadsFragment` and `SettingsFragment`, so every page built in code
+  (`ReorderListFragment` pages: Home, Power, Sleep, Transition, ...; Captions/Lyrics, UI style, All in One) could not be walked on the car screen. Every
+  `MainActivityFragment` that says `isSettingsPage()` is a scope now, and long Previous on such a page (not Settings itself) is always "up" (`onBackPressed`).
+
+### Transition screen: more elements, resizable options column
+
+- **New element kinds** (ids at the end, saved: never renumber): `T_NEXT` ("Next: title", from the Music queue's play order), `T_QUEUE` ("3 of 12"),
+  `T_CLOCK` (`Element#opt`: time / date / both), `T_SOURCE` (YouTube / Downloaded / On this device, by `YtOffline.useLocal`), `T_QUALITY` (a download's height, else
+  `QualityIcon.getLabel()`, asked again once the overlay is up), `T_PICTURE` (a picked image, copied shrunk into `files/transition_pic_<ms>.jpg`, its path in `Element#text`),
+  `T_SHAPE` (fill, edge and corners only; width and a thin height, so a divider is a shape 0.4% high) and `T_INFO` (the chosen keys of `INFO_KEYS` in `Element#text`, in order, joined
+  with bullets by `TransitionFacts#info`; Settings has a switch and up/down arrows per fact). `Element#isBox()` = text or shape (has its own height and the edge handles).
+  `TransitionController#extrasOf` fills next/queue/source/quality (`TransitionView#setExtra`). The info row is text with a separator, not the Info overlay's `InfoOverlayView`.
+- **The options column's resize grip** is drawn like `SettingsSplit`'s divider (no panel behind it; `SettingsStyle.Colors#textSecondary`); width in `TRANSITION_PANEL_PERCENT`. Never run on a device.
+- **The options column** (wide layout) is a flat pane filled from the theme (`paneColor`: the window's own background with the settings tiles' veil, never the Music palette's near-black panel fill),
+  with the grip inside its left padding. The X closes it (`closeSide`: nothing is picked, the pane slides and fades out over 240 ms while the preview grows into the room, `animateSide`);
+  a tap on an element or on the add / settings chips brings it back, a tap on empty preview does not.
+
 ## This app cannot be built in this (cloud) session
 
 Claude Code sessions hosted at claude.ai run in an ephemeral container **without the Android SDK,

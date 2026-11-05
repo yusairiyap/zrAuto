@@ -206,14 +206,7 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
 													 @Nullable Bundle savedInstanceState) {
 		Context ctx = inflater.getContext();
-		palette = EffectsUi.palette(ctx);
-		density = ctx.getResources().getDisplayMetrics().density;
-		textPrimary = paletteColor(R.attr.musicTextPrimary);
-		textSecondary = paletteColor(R.attr.musicTextSecondary);
-		tileFill = paletteColor(R.attr.musicChipFill);
-		ripple = paletteColor(R.attr.musicChipRipple);
-		accent = EffectsUi.accent(ctx);
-		onAccent = EffectsUi.onAccent(accent);
+		initPalette(ctx);
 
 		RecyclerView rv = new RecyclerView(palette);
 		rv.setLayoutManager(createLayoutManager(palette));
@@ -247,6 +240,18 @@ public abstract class ReorderListFragment extends MainActivityFragment {
 			stickySpacer.setLayoutParams(sl);
 		});
 		return root;
+	}
+
+	/** The colours and sizes the rows are drawn with; a page that builds its own root calls it first. */
+	protected final void initPalette(Context ctx) {
+		palette = EffectsUi.palette(ctx);
+		density = ctx.getResources().getDisplayMetrics().density;
+		textPrimary = paletteColor(R.attr.musicTextPrimary);
+		textSecondary = paletteColor(R.attr.musicTextSecondary);
+		tileFill = paletteColor(R.attr.musicChipFill);
+		ripple = paletteColor(R.attr.musicChipRipple);
+		accent = EffectsUi.accent(ctx);
+		onAccent = EffectsUi.onAccent(accent);
 	}
 
 	/**

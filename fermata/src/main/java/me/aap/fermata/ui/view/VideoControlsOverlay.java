@@ -160,8 +160,8 @@ public class VideoControlsOverlay extends FrameLayout {
 		addView(ownSpinner, new LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER));
 
 		for (View btn : new View[]{prev, playPause, next}) btn.setOnTouchListener(this::buttonTouch);
-		prev.setOnClickListener(v -> onButton(b -> b.onPrevNextButtonClick(false)));
-		next.setOnClickListener(v -> onButton(b -> b.onPrevNextButtonClick(true)));
+		prev.setOnClickListener(v -> skipButton(false));
+		next.setOnClickListener(v -> skipButton(true));
 		// Not the panel's play/pause handler: that one stops playback on a second tap within 300 ms,
 		// too easy to hit here, where a double tap anywhere else seeks.
 		playPause.setOnClickListener(v -> onButton(b -> {
@@ -240,6 +240,13 @@ public class VideoControlsOverlay extends FrameLayout {
 		b.setMinimumWidth(size);
 		b.setMinimumHeight(size);
 		return b;
+	}
+
+	private void skipButton(boolean next) {
+		MainActivityDelegate a = MainActivityDelegate.get(getContext());
+		a.getMediaServiceBinder().onPrevNextButtonClick(next);
+		a.getControlPanel().restartVideoHideTimer();
+		a.getControlPanel().hideVideoUiAfterSkip();
 	}
 
 	private void onButton(me.aap.utils.function.Consumer<FermataServiceUiBinder> action) {
