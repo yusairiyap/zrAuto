@@ -59,6 +59,9 @@ public final class DownloadPicker {
 	private FrameLayout overlay;
 	private FrameLayout card;
 	private boolean dismissing;
+	private int current = -1;
+	@androidx.annotation.StringRes
+	private int title = R.string.ytdl_download_as;
 	// The rows' detail lines, audio first then QUALITIES, for the sizes.
 	private final java.util.List<TextView> details = new java.util.ArrayList<>();
 
@@ -90,6 +93,16 @@ public final class DownloadPicker {
 	 */
 	public static void show(@NonNull MainActivityDelegate a, @NonNull CharSequence name,
 													@NonNull java.util.List<String> videoIds, @NonNull Callback cb) {
+		show(a, name, videoIds, -1, R.string.ytdl_download_as, cb);
+	}
+
+	/**
+	 * Same, with {@code current} (0 = the audio, else a height; -1 = the usual default) marked on
+	 * its row and {@code title} as the card's title, for changing what a video was downloaded as.
+	 */
+	public static void show(@NonNull MainActivityDelegate a, @NonNull CharSequence name,
+													@NonNull java.util.List<String> videoIds, int current,
+													@androidx.annotation.StringRes int title, @NonNull Callback cb) {
 		dismissOpen();
 		ViewGroup host = a.findViewById(R.id.main_activity);
 		if (host == null) {
@@ -98,6 +111,8 @@ public final class DownloadPicker {
 		}
 		DownloadPicker p = new DownloadPicker(EffectsUi.palette(a.getContext()), host);
 		open = p;
+		p.current = current;
+		p.title = title;
 		p.build(a, name, cb);
 		if (videoIds.isEmpty()) return;
 		p.showSizes(null, true);
@@ -156,7 +171,7 @@ public final class DownloadPicker {
 		LinearLayout titles = new LinearLayout(ctx);
 		titles.setOrientation(LinearLayout.VERTICAL);
 		titles.setPadding(dp(10), 0, 0, 0);
-		titles.addView(text(ctx.getString(R.string.ytdl_download_as), 18, primary, true));
+		titles.addView(text(ctx.getString(title), 18, primary, true));
 		TextView sub = text(name.toString(), 12, secondary, false);
 		sub.setSingleLine(true);
 		sub.setEllipsize(TextUtils.TruncateAt.END);
@@ -166,9 +181,9 @@ public final class DownloadPicker {
 
 		LinearLayout rows = new LinearLayout(ctx);
 		rows.setOrientation(LinearLayout.VERTICAL);
-		int def = DownloadsAddon.getMaxVideoHeight();
+		int def = (current >= 0) ? current : DownloadsAddon.getMaxVideoHeight();
 		rows.addView(row(R.drawable.music, ctx.getString(R.string.ytdl_kind_audio),
-				ctx.getString(R.string.ytdl_quality_audio_sub), false, () -> pick(cb, 0)), rowParams());
+				ctx.getString(R.string.ytdl_quality_audio_sub), current == 0, () -> pick(cb, 0)), rowParams());
 		for (int h : DownloadsAddon.QUALITIES) {
 			String sd = (h >= 720) ? ctx.getString(R.string.ytdl_quality_hd) :
 					ctx.getString(R.string.ytdl_quality_sd);
