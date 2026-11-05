@@ -712,7 +712,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		if (hintLp != null) hintLp.setMarginEnd(w + dp(12));
 		if (selLp != null) selLp.setMarginEnd(w + dp(8));
 		if (rightLp != null) rightLp.setMarginEnd(w + dp(8));
-		if (stripLp != null) stripLp.setMarginEnd(w + dp(8) - dp(11));
+		if (stripLp != null) stripLp.setMarginEnd(w + dp(8));
 		if (hintView != null) hintView.setLayoutParams(hintLp);
 		if (selBar != null) selBar.setLayoutParams(selLp);
 		if (stripView != null) stripView.setLayoutParams(stripLp);
@@ -780,7 +780,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		};
 		strip.setContentDescription(getString(R.string.tr_resize_panel));
 		stripLp = new FrameLayout.LayoutParams(dp(22), MATCH_PARENT, Gravity.END);
-		stripLp.setMargins(0, dp(60), panelW + dp(8) - dp(11), dp(12));
+		stripLp.setMargins(0, dp(60), panelW + dp(8), dp(12));
 		stripView = strip;
 		root.addView(strip, stripLp);
 	}
@@ -849,7 +849,9 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		LinearLayout card = new LinearLayout(palette);
 		card.setOrientation(LinearLayout.VERTICAL);
 		card.setClickable(true);
-		card.setElevation(dp(8));
+		// Beside the preview the column is flat like the Settings pages (a shadow showed as a dark edge in a light theme).
+		card.setElevation(wide ? 0 : dp(8));
+		card.setOutlineProvider(wide ? android.view.ViewOutlineProvider.NONE : android.view.ViewOutlineProvider.BACKGROUND);
 		card.setBackground(me.aap.fermata.ui.view.MenuStyle.panel(card, paletteColor(R.attr.musicPanelFill), dp(22)));
 		card.setPadding(dp(8), dp(8), dp(8), dp(4));
 
