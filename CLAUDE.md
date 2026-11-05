@@ -1190,6 +1190,9 @@ picture, a VIDEO badge and a fullscreen chip (or a Watch chip in music mode) tha
   with bullets by `TransitionFacts#info`; Settings has a switch and up/down arrows per fact). `Element#isBox()` = text or shape (has its own height and the edge handles).
   `TransitionController#extrasOf` fills next/queue/source/quality (`TransitionView#setExtra`). The info row is text with a separator, not the Info overlay's `InfoOverlayView`.
 - **The options column's resize grip** is drawn like `SettingsSplit`'s divider (no panel behind it; `SettingsStyle.Colors#textSecondary`); width in `TRANSITION_PANEL_PERCENT`. Never run on a device.
+- **The options column** (wide layout) is a flat pane filled from the theme (`paneColor`: the window's own background with the settings tiles' veil, never the Music palette's near-black panel fill),
+  with the grip inside its left padding. The X closes it (`closeSide`: nothing is picked, the pane slides and fades out over 240 ms while the preview grows into the room, `animateSide`);
+  a tap on an element or on the add / settings chips brings it back, a tap on empty preview does not.
 
 ## This app cannot be built in this (cloud) session
 

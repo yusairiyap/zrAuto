@@ -156,6 +156,11 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 	private final List<Runnable> sync = new ArrayList<>();
 	private boolean onCar;
 	private int panelW;
+	/** The column's width right now: panelW when open, 0 when closed, in between while it slides. */
+	private int sideW;
+	private boolean sideOpen;
+	@Nullable
+	private android.animation.ValueAnimator sideAnim;
 	private View stripView, rightHolder;
 	private FrameLayout.LayoutParams hintLp, selLp, rightLp, stripLp;
 	private LinearLayout.LayoutParams sideLp;
@@ -255,6 +260,8 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		int scrW = ctx.getResources().getDisplayMetrics().widthPixels;
 		int pct = (d == null) ? 40 : d.getPrefs().getIntPref(MainActivityPrefs.TRANSITION_PANEL_PERCENT);
 		panelW = clampPanel(Math.round(scrW * pct / 100f), scrW);
+		sideW = panelW;
+		sideOpen = wide;
 
 		root = new FrameLayout(palette);
 		root.setClipChildren(false);
@@ -642,6 +649,8 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		insetAnim = null;
 		sync.clear();
 		sheetOpen = false;
+		if (sideAnim != null) sideAnim.cancel();
+		sideAnim = null;
 		super.onDestroyView();
 	}
 
@@ -650,7 +659,7 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 	/** Shows the panel for {@code mode}: in the side column (wide), or as a sheet over the preview (phone). */
 	private void openPanel(int mode) {
 		panelMode = mode;
-		boolean shown = (panelCard != null) && (wide ? (panelCard.getParent() != null) : sheetOpen);
+		boolean shown = (panelCard != null) && (wide ? (sideOpen && (panelCard.getParent() != null)) : sheetOpen);
 		if (shown) {
 			// Already up: only the content changes, in place (no sliding card, no flicker).
 			refreshPanel();
@@ -664,7 +673,8 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			FrameLayout host = sidePanel;
 			if (host == null) return;
 			host.removeAllViews();
-			host.addView(card, new FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT));
+			host.addView(card, new FrameLayout.LayoutParams(panelW, MATCH_PARENT, Gravity.END));
+			animateSide(true);
 		} else {
 			FrameLayout host = sheet;
 			if (host == null) return;
@@ -705,6 +715,19 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 	private void setPanelW(int w) {
 		if (w == panelW) return;
 		panelW = w;
+		if (panelCard != null) {
+			android.view.ViewGroup.LayoutParams lp = panelCard.getLayoutParams();
+			if (lp != null) {
+				lp.width = w;
+				panelCard.setLayoutParams(lp);
+			}
+		}
+		if (sideOpen && (sideAnim == null)) layoutSide(w);
+	}
+
+	/** Gives the column {@code w} of room and moves everything that keeps clear of it (hint, bar, chips, grip). */
+	private void layoutSide(int w) {
+		sideW = w;
 		if (sideLp != null) {
 			sideLp.width = w;
 			if (sidePanel != null) sidePanel.setLayoutParams(sideLp);
@@ -712,12 +735,82 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		if (hintLp != null) hintLp.setMarginEnd(w + dp(12));
 		if (selLp != null) selLp.setMarginEnd(w + dp(8));
 		if (rightLp != null) rightLp.setMarginEnd(w + dp(8));
-		if (stripLp != null) stripLp.setMarginEnd(w + dp(8));
+		// The grip sits on the column's own left edge, in the card's wider left padding.
+		if (stripLp != null) stripLp.setMarginEnd(Math.max(0, w + dp(8) - dp(GRIP_DP)));
 		if (hintView != null) hintView.setLayoutParams(hintLp);
 		if (selBar != null) selBar.setLayoutParams(selLp);
 		if (stripView != null) stripView.setLayoutParams(stripLp);
-		View r = (rightLp == null) ? null : (View) rightHolder;
-		if (r != null) r.setLayoutParams(rightLp);
+		if (rightHolder != null) rightHolder.setLayoutParams(rightLp);
+	}
+
+	private static final int GRIP_DP = 20;
+
+	/** Slides the column in (open) or out (closed), the preview growing into the room it leaves. */
+	private void animateSide(boolean open) {
+		FrameLayout host = sidePanel;
+		if (host == null) return;
+		if ((open == sideOpen) && (sideAnim == null) && (sideW == (open ? panelW : 0))) return;
+		sideOpen = open;
+		if (sideAnim != null) sideAnim.cancel();
+		int from = sideW;
+		int to = open ? panelW : 0;
+		host.setVisibility(View.VISIBLE);
+		if (stripView != null) stripView.setVisibility(View.VISIBLE);
+		host.setClipChildren(true);
+		android.animation.ValueAnimator an = android.animation.ValueAnimator.ofInt(from, to);
+		sideAnim = an;
+		an.setDuration(240);
+		an.setInterpolator(open ? new android.view.animation.DecelerateInterpolator(1.6f)
+				: new android.view.animation.AccelerateDecelerateInterpolator());
+		an.addUpdateListener(a -> {
+			int w = (Integer) a.getAnimatedValue();
+			layoutSide(w);
+			float f = Math.max(0f, Math.min(1f, w / (float) Math.max(1, panelW)));
+			host.setAlpha(f);
+			if (stripView != null) stripView.setAlpha(f);
+		});
+		an.addListener(new android.animation.AnimatorListenerAdapter() {
+			private boolean cancelled;
+
+			@Override
+			public void onAnimationCancel(android.animation.Animator animation) {
+				cancelled = true;
+			}
+
+			@Override
+			public void onAnimationEnd(android.animation.Animator animation) {
+				if (cancelled) return;
+				sideAnim = null;
+				host.setClipChildren(false);
+				if (!sideOpen) {
+					host.setVisibility(View.GONE);
+					host.removeAllViews();
+					panelCard = null;
+					if (stripView != null) stripView.setVisibility(View.GONE);
+				}
+			}
+		});
+		an.start();
+	}
+
+	/** The X on the wide layout: nothing is picked and the column slides away; a tap on an element or a top chip brings it back. */
+	private void closeSide() {
+		selectedId = 0;
+		if (preview != null) preview.setSelected(0);
+		updateSelBar();
+		animateSide(false);
+	}
+
+	/** The column's fill: the page's own background with the settings tiles' veil on it, so it follows the theme. */
+	private int paneColor() {
+		android.util.TypedValue tv = new android.util.TypedValue();
+		int base = 0xFF14181F;
+		if (requireContext().getTheme().resolveAttribute(android.R.attr.colorBackground, tv, true)
+				&& (tv.type >= android.util.TypedValue.TYPE_FIRST_COLOR_INT) && (tv.type <= android.util.TypedValue.TYPE_LAST_COLOR_INT)) {
+			base = tv.data;
+		}
+		int solid = (base & 0x00FFFFFF) | 0xEE000000;
+		return androidx.core.graphics.ColorUtils.compositeColors(tileFill, solid);
 	}
 
 	/** The grip on the options column's left edge, drawn like the Settings list's divider: drag it to resize the column. */
@@ -779,8 +872,8 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 			}
 		};
 		strip.setContentDescription(getString(R.string.tr_resize_panel));
-		stripLp = new FrameLayout.LayoutParams(dp(22), MATCH_PARENT, Gravity.END);
-		stripLp.setMargins(0, dp(60), panelW + dp(8), dp(12));
+		stripLp = new FrameLayout.LayoutParams(dp(GRIP_DP), MATCH_PARENT, Gravity.END);
+		stripLp.setMargins(0, dp(60), Math.max(0, panelW + dp(8) - dp(GRIP_DP)), dp(12));
 		stripView = strip;
 		root.addView(strip, stripLp);
 	}
@@ -851,8 +944,9 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		card.setClickable(true);
 		// Beside the preview the column is flat like the Settings pages (a shadow showed as a dark edge in a light theme).
 		card.setElevation(wide ? 0 : dp(8));
-		card.setBackground(me.aap.fermata.ui.view.MenuStyle.panel(card, paletteColor(R.attr.musicPanelFill), dp(22)));
-		card.setPadding(dp(8), dp(8), dp(8), dp(4));
+		card.setBackground(me.aap.fermata.ui.view.MenuStyle.panel(card, wide ? paneColor() : paletteColor(R.attr.musicPanelFill), dp(22)));
+		// Wide: room on the left edge for the resize grip.
+		card.setPadding(dp(wide ? GRIP_DP : 8), dp(8), dp(8), dp(4));
 
 		LinearLayout head = new LinearLayout(palette);
 		head.setGravity(Gravity.CENTER_VERTICAL);
@@ -872,13 +966,8 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		close.setBackground(cb);
 		close.setContentDescription(getString(R.string.close));
 		close.setOnClickListener(v -> {
-			if (wide) {
-				selectedId = 0;
-				if (preview != null) preview.setSelected(0);
-				openPanel(P_GENERAL);
-			} else {
-				closeSheet();
-			}
+			if (wide) closeSide();
+			else closeSheet();
 		});
 		LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(dp(34), dp(34));
 		clp.setMarginStart(dp(8));
@@ -972,8 +1061,9 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		selectedId = id;
 		if (preview != null) preview.setSelected(id);
 		if (id == 0) {
-			if (wide) openPanel(P_GENERAL);
-			else closeSheet();
+			if (wide) {
+				if (sideOpen) openPanel(P_GENERAL);
+			} else closeSheet();
 			return;
 		}
 		openPanel(P_ELEMENT);
