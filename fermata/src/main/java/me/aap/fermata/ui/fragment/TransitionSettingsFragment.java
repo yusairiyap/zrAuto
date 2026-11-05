@@ -851,7 +851,6 @@ public class TransitionSettingsFragment extends ReorderListFragment implements T
 		card.setClickable(true);
 		// Beside the preview the column is flat like the Settings pages (a shadow showed as a dark edge in a light theme).
 		card.setElevation(wide ? 0 : dp(8));
-		card.setOutlineProvider(wide ? android.view.ViewOutlineProvider.NONE : android.view.ViewOutlineProvider.BACKGROUND);
 		card.setBackground(me.aap.fermata.ui.view.MenuStyle.panel(card, paletteColor(R.attr.musicPanelFill), dp(22)));
 		card.setPadding(dp(8), dp(8), dp(8), dp(4));
 
