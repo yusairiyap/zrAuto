@@ -139,7 +139,8 @@ public final class YtDownloadMenu {
 		int now = -2;
 		for (String id : ids) {
 			YtDownloads.Entry e = d.getEntry(id);
-			int h = (e == null) ? -1 : e.height;
+			// What it really is: a refused stream steps down, so the asked-for height can be higher.
+			int h = (e == null) ? -1 : e.video ? ((e.gotHeight > 0) ? e.gotHeight : e.height) : 0;
 			now = (now == -2 || now == h) ? h : -1;
 		}
 		Context ctx = a.getContext();
@@ -150,7 +151,7 @@ public final class YtDownloadMenu {
 			List<YtDownloads.Request> list = new ArrayList<>(ids.size());
 			for (String id : ids) {
 				YtDownloads.Entry e = d.getEntry(id);
-				if ((e != null) && (e.height == height)) continue;
+				if ((e != null) && (((e.video && (e.gotHeight > 0)) ? e.gotHeight : e.height) == height)) continue;
 				String t = titles.get(id);
 				if ((t == null) && (e != null)) t = e.title;
 				list.add(new YtDownloads.Request(id, t, height));

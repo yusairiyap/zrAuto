@@ -354,7 +354,11 @@ public final class YtDownloads {
 				Entry old = entries.get(r.videoId);
 				if (old != null) {
 					if ((old.state == State.QUEUED) || (old.state == State.DOWNLOADING)) continue;
-					if (old.height == r.height) {
+					// A finished download that came out lower than asked (the stream was refused and it stepped
+					// down) is not "the same": asking again for the higher quality tries again.
+					boolean steppedDown = (old.state == State.DONE) && old.video && (old.gotHeight > 0)
+							&& (old.gotHeight < r.height);
+					if ((old.height == r.height) && !steppedDown) {
 						if (old.state == State.DONE) continue;
 						// Paused or failed: carries on from what's already on disk.
 						old.state = State.QUEUED;
