@@ -36,6 +36,11 @@ public class DownloadsAddon implements FermataFragmentAddon {
 	public static final int SORT_NAME = 1;
 	public static final int SORT_SIZE = 2;
 	private static final Pref<IntSupplier> SORT = Pref.i("DOWNLOADS_SORT", SORT_DATE);
+	public static final int GROUP_NONE = 0;
+	public static final int GROUP_PLAYLIST = 1;
+	public static final int GROUP_QUALITY = 2;
+	public static final int GROUP_KIND = 3;
+	private static final Pref<IntSupplier> GROUP = Pref.i("DOWNLOADS_GROUP", GROUP_NONE);
 
 	/** The most videos whose sizes the Download picker adds up before showing it. */
 	private static final int MAX_ESTIMATE = 10;
@@ -141,6 +146,15 @@ public class DownloadsAddon implements FermataFragmentAddon {
 
 	public static void setSort(int sort) {
 		store().applyIntPref(SORT, sort);
+	}
+
+	/** How the downloaded list is grouped: one of the {@code GROUP_} constants. */
+	public static int getGroup() {
+		return store().getIntPref(GROUP);
+	}
+
+	public static void setGroup(int group) {
+		store().applyIntPref(GROUP, group);
 	}
 
 	private static PreferenceStore store() {

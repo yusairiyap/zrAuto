@@ -276,6 +276,14 @@
     <item name="ytdl_sort_date" type="id" />
     <item name="ytdl_sort_name" type="id" />
     <item name="ytdl_sort_size" type="id" />
+    <item name="ytdl_tool_group" type="id" />
+    <item name="ytdl_group_none" type="id" />
+    <item name="ytdl_group_playlist" type="id" />
+    <item name="ytdl_group_quality" type="id" />
+    <item name="ytdl_group_kind" type="id" />
+    <item name="ytdl_group_collapse" type="id" />
+    <item name="ytdl_group_expand" type="id" />
+    <item name="ytdl_change" type="id" />
     <item name="video_controls_prev" type="id" />
     <item name="video_controls_play_pause" type="id" />
     <item name="video_controls_next" type="id" />

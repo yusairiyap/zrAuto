@@ -73,6 +73,10 @@ public final class YtDownloadMenu {
 		}
 
 		if (!downloaded.isEmpty()) {
+			b.addItem(R.id.ytdl_change, R.drawable.download, R.string.ytdl_change).setHandler(i -> {
+				changeDownload(a, videos, downloaded);
+				return true;
+			});
 			b.addItem(R.id.ytdl_remove, R.drawable.download_remove, R.string.ytdl_remove)
 					.setHandler(i -> {
 						for (String id : downloaded) d.remove(id);
@@ -120,6 +124,44 @@ public final class YtDownloadMenu {
 				list.add(new YtDownloads.Request(e.getKey(), e.getValue(), height));
 			}
 			queued(a, YtDownloads.get().enqueue(list));
+		});
+	}
+
+	/**
+	 * Asks what the downloaded {@code ids} should be instead (the audio, or another quality), then
+	 * downloads them again as that: the old file goes when the new request is queued.
+	 */
+	public static void changeDownload(MainActivityDelegate a, Map<String, String> titles,
+																		List<String> ids) {
+		if (ids.isEmpty()) return;
+		YtDownloads d = YtDownloads.get();
+		// What they are now, when it is the same for all of them: marked on its row.
+		int now = -2;
+		for (String id : ids) {
+			YtDownloads.Entry e = d.getEntry(id);
+			// What it really is: a refused stream steps down, so the asked-for height can be higher.
+			int h = (e == null) ? -1 : e.video ? ((e.gotHeight > 0) ? e.gotHeight : e.height) : 0;
+			now = (now == -2 || now == h) ? h : -1;
+		}
+		Context ctx = a.getContext();
+		String name = (ids.size() == 1) ? titles.getOrDefault(ids.get(0), ids.get(0)) :
+				ctx.getResources().getQuantityString(R.plurals.ytdl_videos, ids.size(), ids.size());
+		int current = now;
+		DownloadPicker.show(a, name, new ArrayList<>(ids), current, R.string.ytdl_change_as, height -> {
+			List<YtDownloads.Request> list = new ArrayList<>(ids.size());
+			for (String id : ids) {
+				YtDownloads.Entry e = d.getEntry(id);
+				if ((e != null) && (((e.video && (e.gotHeight > 0)) ? e.gotHeight : e.height) == height)) continue;
+				String t = titles.get(id);
+				if ((t == null) && (e != null)) t = e.title;
+				list.add(new YtDownloads.Request(id, t, height));
+			}
+			if (list.isEmpty()) {
+				TopToast.show(R.drawable.download, R.string.ytdl_change_same);
+				return;
+			}
+			int n = d.enqueue(list);
+			if (n > 0) TopToast.show(R.drawable.download, R.string.ytdl_change_started);
 		});
 	}
 

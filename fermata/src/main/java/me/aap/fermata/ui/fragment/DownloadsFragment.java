@@ -35,28 +35,40 @@ import androidx.annotation.StringRes;
 import androidx.appcompat.view.ContextThemeWrapper;
 import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.DefaultItemAnimator;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
 
 import me.aap.fermata.FermataApplication;
 import me.aap.fermata.R;
 import me.aap.fermata.addon.music.MusicPlayer;
+import me.aap.fermata.media.lib.ItemContainer;
 import me.aap.fermata.media.lib.MediaLib.ExternallyPlayableItem;
+import me.aap.fermata.media.lib.MediaLib.Item;
+import me.aap.fermata.media.lib.MediaLib.Playlist;
 import me.aap.fermata.media.lib.MediaLib.PlayableItem;
 import me.aap.fermata.ui.activity.MainActivityDelegate;
 import me.aap.fermata.ui.view.BodyLayout;
 import me.aap.fermata.ui.view.EffectsUi;
+import me.aap.fermata.ui.view.ShareSheet;
 import me.aap.fermata.ytdl.DownloadsAddon;
 import me.aap.fermata.ytdl.YtDownloadMenu;
 import me.aap.fermata.ytdl.YtDownloads;
 import me.aap.fermata.ytdl.YtDownloads.Entry;
 import me.aap.fermata.ytdl.YtDownloads.State;
 import me.aap.fermata.ytdl.YtOffline;
+import me.aap.utils.async.FutureSupplier;
 import me.aap.utils.ui.UiUtils;
 import me.aap.utils.ui.activity.ActivityDelegate;
 import me.aap.utils.ui.fragment.ActivityFragment;
@@ -79,10 +91,19 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 	private static final int VT_ROW = 2;
 	private static final int VT_GRID = 3;
 	private static final int VT_EMPTY = 4;
+	private static final int VT_GROUP = 5;
 	private static final int HEADER_PROGRESS = 0;
 	private static final int HEADER_DONE = 1;
 	private static final Object PAYLOAD = new Object();
+	/** Keys of the groups folded away; kept while the app runs, so leaving the tab and coming back keeps them. */
+	private static final Set<String> collapsed = new HashSet<>();
 	private final List<Row> rows = new ArrayList<>();
+	// Which playlists (and Favorites) each downloaded video is in, by name; null until read.
+	@Nullable
+	private Map<String, List<String>> membership;
+	private List<String> membershipOrder = new ArrayList<>();
+	private String membershipKey = "";
+	private boolean scanning;
 	private Adapter adapter;
 	private GridLayoutManager layout;
 	private RecyclerView list;
@@ -154,6 +175,9 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		list.setLayoutManager(layout);
 		DefaultItemAnimator an = new DefaultItemAnimator();
 		an.setSupportsChangeAnimations(false);
+		an.setAddDuration(200);
+		an.setRemoveDuration(220);
+		an.setMoveDuration(240);
 		list.setItemAnimator(an);
 		adapter = new Adapter();
 		list.setAdapter(adapter);
@@ -173,6 +197,7 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		super.onResume();
 		YtDownloads.get().addListener(this);
 		rebuild();
+		scanMembership();
 	}
 
 	@Override
@@ -183,7 +208,10 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 
 	@Override
 	public void onDownloadsChanged() {
-		if (isAdded() && (adapter != null)) rebuild();
+		if (isAdded() && (adapter != null)) {
+			rebuild();
+			scanMembership();
+		}
 	}
 
 	@Override
@@ -205,10 +233,12 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 					R.string.view, 0);
 			label(addButton(tb, R.drawable.sort, v -> with(v, DownloadsFragment::showSortMenu),
 					R.id.ytdl_tool_sort), R.string.sort_by, 1);
+			label(addButton(tb, R.drawable.group_by, v -> with(v, DownloadsFragment::showGroupMenu),
+					R.id.ytdl_tool_group), R.string.ytdl_group_by, 2);
 			label(addButton(tb, R.drawable.pause, v -> YtDownloadMenu.togglePause(),
-					R.id.ytdl_tool_pause), R.string.ytdl_pause_all, 2);
+					R.id.ytdl_tool_pause), R.string.ytdl_pause_all, 3);
 			label(addButton(tb, R.drawable.download_remove, v -> with(v, DownloadsFragment::confirmClear),
-					R.id.ytdl_tool_clear), R.string.ytdl_clear, 3);
+					R.id.ytdl_tool_clear), R.string.ytdl_clear, 4);
 			if (f instanceof DownloadsFragment d) d.refreshToolBar();
 		}
 
@@ -271,6 +301,44 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		});
 	}
 
+	private void showGroupMenu() {
+		MainActivityDelegate a = getActivityDelegate();
+		a.getToolBarMenu().show(b -> {
+			int g = DownloadsAddon.getGroup();
+			b.setSelectionHandler(item -> {
+				int id = item.getItemId();
+				if (id == R.id.ytdl_group_none) DownloadsAddon.setGroup(DownloadsAddon.GROUP_NONE);
+				else if (id == R.id.ytdl_group_playlist) DownloadsAddon.setGroup(DownloadsAddon.GROUP_PLAYLIST);
+				else if (id == R.id.ytdl_group_quality) DownloadsAddon.setGroup(DownloadsAddon.GROUP_QUALITY);
+				else if (id == R.id.ytdl_group_kind) DownloadsAddon.setGroup(DownloadsAddon.GROUP_KIND);
+				else if (id == R.id.ytdl_group_collapse) {
+					for (Row r : rows) {
+						if ((r.type == VT_GROUP) && (r.id != null)) collapsed.add(r.id);
+					}
+				} else if (id == R.id.ytdl_group_expand) {
+					collapsed.clear();
+				} else {
+					return false;
+				}
+				scanMembership();
+				rebuild();
+				return true;
+			});
+			b.addItem(R.id.ytdl_group_none, R.string.ytdl_group_none)
+					.setChecked(g == DownloadsAddon.GROUP_NONE, true);
+			b.addItem(R.id.ytdl_group_playlist, R.string.ytdl_group_playlist)
+					.setChecked(g == DownloadsAddon.GROUP_PLAYLIST, true);
+			b.addItem(R.id.ytdl_group_quality, R.string.ytdl_group_quality)
+					.setChecked(g == DownloadsAddon.GROUP_QUALITY, true);
+			b.addItem(R.id.ytdl_group_kind, R.string.ytdl_group_kind)
+					.setChecked(g == DownloadsAddon.GROUP_KIND, true);
+			if (g != DownloadsAddon.GROUP_NONE) {
+				b.addItem(R.id.ytdl_group_collapse, R.string.ytdl_group_collapse);
+				b.addItem(R.id.ytdl_group_expand, R.string.ytdl_group_expand);
+			}
+		});
+	}
+
 	private void confirmClear() {
 		if (YtDownloads.get().getDownloaded().isEmpty()) return;
 		UiUtils.showQuestion(requireContext(), R.string.ytdl_clear_title, R.string.ytdl_clear_question,
@@ -284,11 +352,159 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		final int type;
 		@Nullable
 		final String id;
+		/** The group a download sits in (its key), so one video in two playlists is two distinct rows. */
+		@Nullable
+		String group;
+		// A group's header: its name, what it holds and whether it is folded.
+		String label = "";
+		int count;
+		long bytes;
+		boolean folded;
+		@DrawableRes
+		int icon;
 
 		Row(int type, @Nullable String id) {
 			this.type = type;
 			this.id = id;
 		}
+
+		String key() {
+			return type + "|" + group + "|" + id;
+		}
+	}
+
+	/** A group of downloads under one header. */
+	private static final class Group {
+		final String key;
+		final String label;
+		@DrawableRes
+		final int icon;
+		final List<Entry> items = new ArrayList<>();
+
+		Group(int mode, String label, @DrawableRes int icon) {
+			this.key = mode + "|" + label;
+			this.label = label;
+			this.icon = icon;
+		}
+	}
+
+	private static int shownHeightOf(Entry e) {
+		return (e.gotHeight > 0) ? e.gotHeight : e.height;
+	}
+
+	/** {@code done} split by {@code mode}; empty groups left out. */
+	private List<Group> groupsOf(List<Entry> done, int mode) {
+		Map<String, Group> map = new LinkedHashMap<>();
+		if (mode == DownloadsAddon.GROUP_KIND) {
+			Group v = new Group(mode, getString(R.string.ytdl_kind_video), R.drawable.video);
+			Group au = new Group(mode, getString(R.string.ytdl_kind_audio), R.drawable.music);
+			for (Entry e : done) (e.video ? v : au).items.add(e);
+			map.put("v", v);
+			map.put("a", au);
+		} else if (mode == DownloadsAddon.GROUP_QUALITY) {
+			TreeMap<Integer, Group> by = new TreeMap<>(Collections.reverseOrder());
+			Group au = new Group(mode, getString(R.string.ytdl_kind_audio), R.drawable.music);
+			for (Entry e : done) {
+				if (!e.video) {
+					au.items.add(e);
+					continue;
+				}
+				int h = shownHeightOf(e);
+				Group g = by.get(h);
+				if (g == null) by.put(h, g = new Group(mode, h + "p", R.drawable.video));
+				g.items.add(e);
+			}
+			for (Map.Entry<Integer, Group> g : by.entrySet()) map.put("h" + g.getKey(), g.getValue());
+			map.put("a", au);
+		} else if (membership != null) {
+			Group loose = new Group(mode, getString(R.string.ytdl_group_loose), R.drawable.download);
+			String fav = getString(R.string.favorites);
+			for (String name : membershipOrder) {
+				map.put(name, new Group(mode, name,
+						name.equals(fav) ? R.drawable.favorite_filled : R.drawable.playlist));
+			}
+			for (Entry e : done) {
+				List<String> in = membership.get(e.videoId);
+				if ((in == null) || in.isEmpty()) {
+					loose.items.add(e);
+					continue;
+				}
+				for (String name : in) {
+					Group g = map.get(name);
+					if (g != null) g.items.add(e);
+				}
+			}
+			map.put("~loose", loose);
+		}
+		List<Group> out = new ArrayList<>();
+		for (Group g : map.values()) {
+			if (!g.items.isEmpty()) out.add(g);
+		}
+		return out;
+	}
+
+	/**
+	 * Reads which playlists and Favorites hold the downloaded videos (only while grouped by them),
+	 * one list after the other, and redraws when done. Asked again when the library changed.
+	 */
+	private void scanMembership() {
+		if ((DownloadsAddon.getGroup() != DownloadsAddon.GROUP_PLAYLIST) || scanning || !isAdded()) return;
+		List<Entry> done = YtDownloads.get().getDownloaded();
+		String key = ItemContainer.changeCount() + ":" + done.size();
+		if (key.equals(membershipKey)) return;
+		Set<String> want = new HashSet<>();
+		for (Entry e : done) want.add(e.videoId);
+		scanning = true;
+		MainActivityDelegate a = getActivityDelegate();
+		Map<String, List<String>> found = new HashMap<>();
+		List<String> order = new ArrayList<>();
+		FutureSupplier<List<Item>> fav = a.getLib().getFavorites().getUnsortedChildren();
+		fav.main().onCompletion((items, err) -> {
+			if (!isAdded()) {
+				scanning = false;
+				return;
+			}
+			collect(getString(R.string.favorites), items, want, found, order);
+			FutureSupplier<List<Playlist>> pls = a.getLib().getPlaylists().getChildren();
+			pls.main().onCompletion((lists, err2) -> scanLists(lists, 0, want, found, order, key));
+		});
+	}
+
+	private void scanLists(@Nullable List<Playlist> lists, int i, Set<String> want,
+												 Map<String, List<String>> found, List<String> order, String key) {
+		if (!isAdded()) {
+			scanning = false;
+			return;
+		}
+		if ((lists == null) || (i >= Math.min(lists.size(), 300))) {
+			scanning = false;
+			membership = found;
+			membershipOrder = order;
+			membershipKey = key;
+			rebuild();
+			return;
+		}
+		Playlist pl = lists.get(i);
+		FutureSupplier<List<Item>> f = pl.getUnsortedChildren();
+		f.main().onCompletion((items, err) -> {
+			collect(pl.getName(), items, want, found, order);
+			scanLists(lists, i + 1, want, found, order, key);
+		});
+	}
+
+	private static void collect(String name, @Nullable List<Item> items, Set<String> want,
+															Map<String, List<String>> found, List<String> order) {
+		if (items == null) return;
+		boolean any = false;
+		for (Item it : items) {
+			if (!(it instanceof PlayableItem p)) continue;
+			String id = YtDownloads.videoIdOf(p);
+			if ((id == null) || !want.contains(id)) continue;
+			List<String> in = found.computeIfAbsent(id, k -> new ArrayList<>());
+			if (!in.contains(name)) in.add(name);
+			any = true;
+		}
+		if (any && !order.contains(name)) order.add(name);
 	}
 
 	private void rebuild() {
@@ -318,29 +534,83 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 			n.add(new Row(VT_EMPTY, null));
 		} else {
 			int t = DownloadsAddon.isGrid() ? VT_GRID : VT_ROW;
-			for (Entry e : done) n.add(new Row(t, e.videoId));
+			int mode = DownloadsAddon.getGroup();
+			List<Group> groups = (mode == DownloadsAddon.GROUP_NONE) ? Collections.emptyList() :
+					groupsOf(done, mode);
+			if (groups.isEmpty()) {
+				for (Entry e : done) n.add(new Row(t, e.videoId));
+			} else {
+				for (Group g : groups) {
+					Row h = new Row(VT_GROUP, g.key);
+					h.group = g.key;
+					h.label = g.label;
+					h.icon = g.icon;
+					h.count = g.items.size();
+					for (Entry e : g.items) h.bytes += e.total;
+					h.folded = collapsed.contains(g.key);
+					n.add(h);
+					if (h.folded) continue;
+					for (Entry e : g.items) {
+						Row r = new Row(t, e.videoId);
+						r.group = g.key;
+						n.add(r);
+					}
+				}
+			}
 		}
 
 		boolean same = n.size() == rows.size();
-		for (int i = 0; same && (i < n.size()); i++) {
-			Row a = n.get(i);
-			Row b = rows.get(i);
-			same = (a.type == b.type) && Objects.equals(a.id, b.id);
-		}
+		for (int i = 0; same && (i < n.size()); i++) same = n.get(i).key().equals(rows.get(i).key());
 
+		List<Row> old = new ArrayList<>(rows);
 		rows.clear();
 		rows.addAll(n);
-		// The same cards: only the numbers moved, so they are rebound in place -- no flicker.
 		if (same) {
-			// Only what moves with the transfer: the progress cards and the header counting them.
+			// The same cards: only the numbers moved, so they are rebound in place -- no flicker.
 			for (int i = 0; i < rows.size(); i++) {
-				int t = rows.get(i).type;
-				if ((t == VT_PROGRESS) || (t == VT_HEADER)) adapter.notifyItemChanged(i, PAYLOAD);
+				if (!sameContent(old.get(i), rows.get(i))) adapter.notifyItemChanged(i, PAYLOAD);
 			}
 		} else {
-			adapter.notifyDataSetChanged();
+			// Groups folding and unfolding, or a download arriving: rows slide in and out.
+			DiffUtil.calculateDiff(new DiffUtil.Callback() {
+				@Override
+				public int getOldListSize() {
+					return old.size();
+				}
+
+				@Override
+				public int getNewListSize() {
+					return n.size();
+				}
+
+				@Override
+				public boolean areItemsTheSame(int o, int nw) {
+					return old.get(o).key().equals(n.get(nw).key());
+				}
+
+				@Override
+				public boolean areContentsTheSame(int o, int nw) {
+					return sameContent(old.get(o), n.get(nw));
+				}
+
+				@Nullable
+				@Override
+				public Object getChangePayload(int o, int nw) {
+					return PAYLOAD;
+				}
+			}).dispatchUpdatesTo(adapter);
 		}
 		refreshToolBar();
+	}
+
+	/** Whether a row looks the same as before: the transfer's cards and the counting headers never do. */
+	private static boolean sameContent(Row a, Row b) {
+		if ((a.type == VT_PROGRESS) || (a.type == VT_HEADER)) return false;
+		if (a.type == VT_GROUP) {
+			return (a.count == b.count) && (a.bytes == b.bytes) && (a.folded == b.folded) &&
+					a.label.equals(b.label);
+		}
+		return true;
 	}
 
 	/** The columns for a list {@code width} px wide: one for the list view, as many as fit for the grid. */
@@ -371,7 +641,9 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		MainActivityDelegate a = getActivityDelegate();
 		List<String> ids = new ArrayList<>();
 		for (Row r : rows) {
-			if (((r.type == VT_ROW) || (r.type == VT_GRID)) && (r.id != null)) ids.add(r.id);
+			if (((r.type == VT_ROW) || (r.type == VT_GRID)) && (r.id != null) && !ids.contains(r.id)) {
+				ids.add(r.id);
+			}
 		}
 		if (!ids.contains(videoId)) {
 			ids.clear();
@@ -425,6 +697,10 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 				}
 				a.addPlaylistMenu(b, completed(Collections.singletonList(pi)));
 				YtDownloadMenu.addTo(b, a, Collections.singletonList(pi));
+				b.addItem(R.id.share_item, R.drawable.share, R.string.share).setHandler(i -> {
+					ShareSheet.share(a, pi);
+					return true;
+				});
 				b.addItem(R.id.youtube_alternatives, R.drawable.search, R.string.youtube_alternatives)
 						.setHandler(i -> {
 							me.aap.fermata.ui.view.YoutubeAlternativesPicker.show(a, pi, true);
@@ -533,6 +809,8 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 		TextView chip2;
 		TextView info;
 		TextView quality;
+		ImageView arrow;
+		ImageView groupIcon;
 		Card card;
 
 		Holder(View v) {
@@ -560,15 +838,33 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 			if (pal == null) pal = new Palette(ctx);
 			return switch (type) {
 				case VT_HEADER -> header(ctx);
+				case VT_GROUP -> groupHeader(ctx);
 				case VT_EMPTY -> empty(ctx);
 				case VT_GRID -> gridCard(ctx);
 				default -> rowCard(ctx, type == VT_PROGRESS);
 			};
 		}
 
+		// Set while a rebind is a partial update (not a fresh bind), so a group's arrow turns instead of jumping.
+		private boolean partial;
+
+		@Override
+		public void onBindViewHolder(@NonNull Holder h, int position, @NonNull List<Object> payloads) {
+			partial = !payloads.isEmpty();
+			try {
+				onBindViewHolder(h, position);
+			} finally {
+				partial = false;
+			}
+		}
+
 		@Override
 		public void onBindViewHolder(@NonNull Holder h, int position) {
 			Row r = rows.get(position);
+			if (r.type == VT_GROUP) {
+				bindGroup(h, r);
+				return;
+			}
 			YtDownloads d = YtDownloads.get();
 			Context ctx = h.itemView.getContext();
 
@@ -612,6 +908,26 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 			long h = s / 3600;
 			return (h > 0) ? String.format(java.util.Locale.ROOT, "%d:%02d:%02d", h, (s / 60) % 60, s % 60) :
 					String.format(java.util.Locale.ROOT, "%02d:%02d", s / 60, s % 60);
+		}
+
+		private void bindGroup(Holder h, Row r) {
+			Context ctx = h.itemView.getContext();
+			h.title.setText(r.label);
+			h.groupIcon.setImageResource(r.icon);
+			h.info.setText(ctx.getString(R.string.ytdl_group_count, r.count,
+					Formatter.formatShortFileSize(ctx, r.bytes)));
+			// Open: the chevron points up; folded: down.
+			float to = r.folded ? 180f : 0f;
+			h.arrow.animate().cancel();
+			if (partial) h.arrow.animate().rotation(to).setDuration(220).start();
+			else h.arrow.setRotation(to);
+			h.itemView.setContentDescription(r.label);
+			String key = r.id;
+			h.itemView.setOnClickListener(v -> {
+				if (collapsed.contains(key)) collapsed.remove(key);
+				else collapsed.add(key);
+				rebuild();
+			});
 		}
 
 		private void bindHeader(Holder h, int which, YtDownloads d) {
@@ -751,6 +1067,53 @@ public class DownloadsFragment extends MainActivityFragment implements YtDownloa
 			h.chip2 = chip(ctx);
 			l.addView(h.chip1);
 			l.addView(h.chip2);
+			return h;
+		}
+
+		/** A group's header: a rounded bar with its icon, name, what it holds and a chevron; a tap folds it. */
+		private Holder groupHeader(Context ctx) {
+			LinearLayout l = new LinearLayout(ctx);
+			l.setOrientation(LinearLayout.HORIZONTAL);
+			l.setGravity(Gravity.CENTER_VERTICAL);
+			l.setPadding(dp(ctx, 12), 0, dp(ctx, 8), 0);
+			GradientDrawable bg = new GradientDrawable();
+			bg.setCornerRadius(dp(ctx, 20));
+			bg.setColor(pal.fill);
+			l.setBackground(new android.graphics.drawable.RippleDrawable(
+					ColorStateList.valueOf(pal.ripple), bg, null));
+			l.setClickable(true);
+			l.setFocusable(true);
+			RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(MATCH_PARENT, dp(ctx, 52));
+			lp.setMargins(dp(ctx, 12), dp(ctx, 10), dp(ctx, 12), dp(ctx, 4));
+			l.setLayoutParams(lp);
+			Holder h = new Holder(l);
+
+			FrameLayout disc = new FrameLayout(ctx);
+			GradientDrawable dg = new GradientDrawable();
+			dg.setShape(GradientDrawable.OVAL);
+			dg.setColor((me.aap.fermata.ui.view.ArtAccent.map(pal.accent) & 0x00FFFFFF) | 0x44000000);
+			disc.setBackground(dg);
+			h.groupIcon = new ImageView(ctx);
+			h.groupIcon.setImageTintList(ColorStateList.valueOf(pal.primary));
+			disc.addView(h.groupIcon, new FrameLayout.LayoutParams(dp(ctx, 20), dp(ctx, 20), Gravity.CENTER));
+			l.addView(disc, new LinearLayout.LayoutParams(dp(ctx, 34), dp(ctx, 34)));
+
+			h.title = text(ctx, 16, pal.primary, true);
+			h.title.setSingleLine(true);
+			h.title.setEllipsize(TextUtils.TruncateAt.END);
+			LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f);
+			tp.setMarginStart(dp(ctx, 12));
+			l.addView(h.title, tp);
+
+			h.info = text(ctx, 13, pal.secondary, false);
+			h.info.setSingleLine(true);
+			h.info.setPadding(dp(ctx, 8), 0, dp(ctx, 4), 0);
+			l.addView(h.info);
+
+			h.arrow = new ImageView(ctx);
+			h.arrow.setImageResource(R.drawable.expand);
+			h.arrow.setImageTintList(ColorStateList.valueOf(pal.primary));
+			l.addView(h.arrow, new LinearLayout.LayoutParams(dp(ctx, 28), dp(ctx, 28)));
 			return h;
 		}
 

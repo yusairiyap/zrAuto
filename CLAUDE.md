@@ -1755,6 +1755,18 @@ The stutter turned out to be the sound output starting up; see open issue 6 (the
 - Not built, handed over for their own branches: the settings redesign (`docs/SETTINGS_REDESIGN_PLAN.md`, `docs/HANDOVER_SETTINGS_REDESIGN.md`) and the
   header / control panel that move beside the docked in-video panels (`docs/HANDOVER_VIDEO_PANEL_HEADER.md`).
 
+## Downloads tab: grouping, Change download, Share
+
+- **Group by** (title bar button, `DownloadsAddon.GROUP`: none / playlist or Favorites / quality / audio or video). `DownloadsFragment#groupsOf` makes the groups; each is a
+  `VT_GROUP` header row (icon, name, count and size, a chevron) and its downloads under it; a tap folds it (`collapsed`, keys `mode|label`, kept while the app runs; the menu
+  also has Collapse all / Expand all). `rebuild()` diffs the rows with `DiffUtil` (the list's `DefaultItemAnimator` has add/remove/move durations), so folding slides the rows
+  in and out, and the chevron turns on a partial rebind (`Adapter#partial`). A row's key includes its group, since a video in two playlists is listed in both.
+- **Playlist grouping reads the library** (`scanMembership`, one list after the other, only in that mode, again when `ItemContainer#changeCount` moves); until it has answered the
+  list is shown ungrouped. Favorites first, then playlists in library order, then "Not in a playlist".
+- **Change download** (`YtDownloadMenu#changeDownload`, entry `ytdl_change` next to Remove download in `YtDownloadMenu#addTo`, so every item menu has it: tabs, selections, Home
+  widgets, Downloads): the `DownloadPicker` card with the current quality marked, then `YtDownloads#enqueue` with the new height, which drops the old file. Same quality = a message.
+- **Share** is in the Downloads item menu (`ShareSheet.share`). Never run on a device.
+
 ## Open issues (handover list)
 
 These are the open items to take up next, in a new session or on a new branch. Each is a prompt: the first line says what is wrong.
