@@ -1064,6 +1064,32 @@ public final class MusicPlayer {
 	}
 
 	/**
+	 * "Play as video" of {@code pi} (a list row's menu, Home's or a tab's), before it is handed to the video player. A video
+	 * downloaded as sound only has no picture in its file (it would just play as music again), so it is streamed from
+	 * YouTube instead, as the Music tab's Video button does: the song playing now as music goes on from where it is. True
+	 * when this took care of it (or said why it can't: no connection), so the caller does nothing more.
+	 */
+	public static boolean prepareWatch(MainActivityDelegate a, PlayableItem pi) {
+		String id = me.aap.fermata.ytdl.YtDownloads.videoIdOf(pi);
+		if ((id == null) || !YtOffline.hasCopy(id) || me.aap.fermata.ytdl.YtDownloads.get().isVideoDownloaded(id)) {
+			return false;
+		}
+		if (!me.aap.fermata.util.NetworkState.isOnline()) {
+			me.aap.fermata.ui.view.TopToast.show(R.drawable.network_off, R.string.video_needs_network);
+			return true;
+		}
+		MediaSessionCallback cb = a.getMediaSessionCallback();
+		MusicTrackItem t = getCurrentTrack(cb);
+		if ((t != null) && id.equals(t.getVideoId()) && canSwitchToVideo(cb)) {
+			toggleMusicVideo(a);
+			return true;
+		}
+		DiagnosticLog.log(LogCat.MUSIC, "play as video: streamed, the download is sound only", "id=" + id);
+		YtOffline.forceStream(id);
+		return false;
+	}
+
+	/**
 	 * Switches the music track that's playing now back to its video: YouTube's page is already
 	 * playing it, so it's just a matter of showing it at its usual quality again; a local file
 	 * gets its picture back on the same engine.

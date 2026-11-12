@@ -998,6 +998,8 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 
 			var cur = a.getCurrentPlayable();
 			if (Objects.equals(cur, i) && (allowMusic || !MusicPlayer.isMusicModeActive(a))) return;
+			// Play as video of a video downloaded as sound only: streamed (the file has no picture).
+			if (!allowMusic && MusicPlayer.prepareWatch(a, i)) return;
 			a.getBody().playItem(i);
 			getAdapter().getListView().refreshState();
 			if (i.isVideo()) return;
