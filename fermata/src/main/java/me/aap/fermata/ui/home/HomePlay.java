@@ -53,6 +53,24 @@ public final class HomePlay {
 			return;
 		}
 		if (Objects.equals(a.getCurrentPlayable(), pi) && !MusicPlayer.isMusicModeActive(a)) return;
+		// Downloaded as sound only: its file has no picture (it played as music, never as video), so the video is
+		// streamed, as the Music tab's Video button does. The song playing now as music goes on from where it is.
+		String id = me.aap.fermata.ytdl.YtDownloads.videoIdOf(pi);
+		if ((id != null) && me.aap.fermata.ytdl.YtOffline.hasCopy(id) &&
+				!me.aap.fermata.ytdl.YtDownloads.get().isVideoDownloaded(id)) {
+			if (!NetworkState.isOnline()) {
+				me.aap.fermata.ui.view.TopToast.show(me.aap.fermata.R.drawable.network_off,
+						me.aap.fermata.R.string.video_needs_network);
+				return;
+			}
+			var cb = a.getMediaSessionCallback();
+			var t = MusicPlayer.getCurrentTrack(cb);
+			if ((t != null) && id.equals(t.getVideoId()) && MusicPlayer.canSwitchToVideo(cb)) {
+				MusicPlayer.toggleMusicVideo(a);
+				return;
+			}
+			me.aap.fermata.ytdl.YtOffline.forceStream(id);
+		}
 		a.getBody().playItem(pi);
 	}
 

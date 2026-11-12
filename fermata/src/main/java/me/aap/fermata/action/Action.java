@@ -78,6 +78,14 @@ public enum Action {
 		// From another tab (Favorites, Playlists) while a video plays: back to that video,
 		// fullscreen.
 		var f = a.getActiveFragment();
+		// A song playing as music (YouTube in music mode, or a download played from its file, sound only or not): its
+		// video, as the Music tab's Video button does. Without this a sound-only download playing from its file fell
+		// through to the YouTube tab's own fullscreen toggle (its VideoView was still the active one): the tab came up
+		// with its page paused and silenced, never fullscreen.
+		if (!a.isVideoMode() && me.aap.fermata.addon.music.MusicPlayer.canSwitchToVideo(a.getMediaSessionCallback())) {
+			me.aap.fermata.addon.music.MusicPlayer.toggleMusicVideo(a);
+			return;
+		}
 		if (!a.isVideoMode() && a.isVideoPlaying() && (f != null) &&
 				(f.getFragmentId() != R.id.youtube_fragment)) {
 			var eng = a.getMediaSessionCallback().getEngine();
@@ -92,7 +100,12 @@ public enum Action {
 			}
 		}
 		var vv = a.getActiveVideoView();
-		boolean handled = (vv != null) && vv.toggleNativeFullscreen();
+		var playing = a.getMediaSessionCallback().getEngine();
+		// YouTube's own fullscreen only while YouTube is the player (or its video is up): its VideoView stays the active
+		// one after a local file took over, and toggling it then showed the paused page instead of anything fullscreen.
+		boolean native_ = (vv != null) && (a.isVideoMode() || (playing == null) ||
+				(playing.getId() == me.aap.fermata.media.pref.MediaPrefs.MEDIA_ENG_YT));
+		boolean handled = native_ && vv.toggleNativeFullscreen();
 		Log.d("FULLSCREEN_TOGGLE: activeVideoView=", vv, ", handled=", handled);
 		if (handled) return;
 		// A native handler above covers WebView-hosted video (YouTube); local video's VideoView has
