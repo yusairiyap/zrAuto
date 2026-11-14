@@ -495,6 +495,10 @@ public final class MusicPlayer {
 		// there was no cover at all.
 		boolean covered = watch && a.isVideoMode();
 		if (covered) a.fadeToBlackForYoutube();
+		// Watched: the YouTube tab is shown first and the video loads into the page while it is on screen, the order a video
+		// that is not downloaded takes when it is played as video from a list (MainActivityDelegate#playExternally), whose
+		// fullscreen always came. Loaded into the hidden page and shown afterwards, the page took no fullscreen request.
+		if (watch) a.showFragment(R.id.youtube_fragment);
 		if (!h.play(a, t)) {
 			if (covered) a.liftVideoSwitchFade();
 			return false;
