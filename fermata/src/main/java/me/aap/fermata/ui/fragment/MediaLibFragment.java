@@ -990,6 +990,10 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 				return;
 			}
 
+			// Play as video of a video downloaded as sound only: streamed, like any video that is not downloaded (its file
+			// has no picture and would only play as music again). Before the external player: that is where a YouTube row goes.
+			if (!allowMusic && MusicPlayer.prepareWatch(a, i)) return;
+
 			if (i instanceof MediaLib.ExternallyPlayableItem ext) {
 				// On the car's screen while Android Auto is connected -- one player, one session.
 				a.playExternally(ext, i);
@@ -998,8 +1002,6 @@ public abstract class MediaLibFragment extends MainActivityFragment implements M
 
 			var cur = a.getCurrentPlayable();
 			if (Objects.equals(cur, i) && (allowMusic || !MusicPlayer.isMusicModeActive(a))) return;
-			// Play as video of a video downloaded as sound only: streamed (the file has no picture).
-			if (!allowMusic && MusicPlayer.prepareWatch(a, i)) return;
 			a.getBody().playItem(i);
 			getAdapter().getListView().refreshState();
 			if (i.isVideo()) return;

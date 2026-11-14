@@ -48,12 +48,14 @@ public final class HomePlay {
 			return;
 		}
 		MusicPlayer.markStarted();
+		// Downloaded as sound only: streamed like a video that is not downloaded (before the external player, where a
+		// YouTube row goes and where the file would just play as music again).
+		if (MusicPlayer.prepareWatch(a, pi)) return;
 		if (pi instanceof MediaLib.ExternallyPlayableItem ext) {
 			a.playExternally(ext, pi);
 			return;
 		}
 		if (Objects.equals(a.getCurrentPlayable(), pi) && !MusicPlayer.isMusicModeActive(a)) return;
-		if (MusicPlayer.prepareWatch(a, pi)) return;
 		a.getBody().playItem(pi);
 	}
 
