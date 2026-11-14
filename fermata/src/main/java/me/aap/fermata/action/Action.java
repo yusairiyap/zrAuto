@@ -75,33 +75,29 @@ public enum Action {
 	// Key bindings and the secondary FAB's action are persisted as ordinals, so new entries go at
 	// the end: inserting one mid-enum silently remaps every existing user's saved bindings.
 	FULLSCREEN_TOGGLE(R.string.action_fullscreen_toggle, a(a -> {
-		// From another tab (Favorites, Playlists) while a video plays: back to that video,
-		// fullscreen.
-		var f = a.getActiveFragment();
-		// A song playing as music (YouTube in music mode, or a download played from its file, sound only or not): its
-		// video, as the Music tab's Video button does. Without this a sound-only download playing from its file fell
-		// through to the YouTube tab's own fullscreen toggle (its VideoView was still the active one): the tab came up
-		// with its page paused and silenced, never fullscreen.
-		if (!a.isVideoMode() && me.aap.fermata.addon.music.MusicPlayer.canSwitchToVideo(a.getMediaSessionCallback())) {
-			me.aap.fermata.addon.music.MusicPlayer.toggleMusicVideo(a);
-			return;
-		}
-		// YouTube's video playing but not fullscreen, the YouTube tab in front included: its page's fullscreen, once the
-		// video plays. Left to the active VideoView below, that could be the local player's (the last one to go
-		// fullscreen, e.g. a downloaded file), which has no fullscreen of its own, so only the status bar was hidden.
-		if (!a.isVideoMode() && a.isVideoPlaying()) {
-			var eng = a.getMediaSessionCallback().getEngine();
-			if ((eng != null) && (eng.getId() == me.aap.fermata.media.pref.MediaPrefs.MEDIA_ENG_YT)) {
-				me.aap.fermata.addon.music.MusicPlayer.showYoutubeVideo(a);
+		if (!a.isVideoMode()) {
+			var cb = a.getMediaSessionCallback();
+			// A song playing as music (YouTube in music mode, or a download played from its file, a sound-only one included):
+			// its video, as the Music tab's Video button does.
+			if (me.aap.fermata.addon.music.MusicPlayer.canSwitchToVideo(cb)) {
+				me.aap.fermata.addon.music.MusicPlayer.watchCurrent(a);
 				return;
 			}
-		}
-		if (!a.isVideoMode() && a.isVideoPlaying() && (f != null) &&
-				(f.getFragmentId() != R.id.youtube_fragment)) {
-			var b = a.getBody();
-			if (b != null) {
-				b.setMode(me.aap.fermata.ui.view.BodyLayout.Mode.VIDEO);
-				return;
+			if (a.isVideoPlaying()) {
+				// YouTube's video, from any tab (its own included): the page's fullscreen. Left to the active VideoView below,
+				// that could be the local player's (no fullscreen of its own), which only hid the status bar.
+				var eng = cb.getEngine();
+				if ((eng != null) && (eng.getId() == me.aap.fermata.media.pref.MediaPrefs.MEDIA_ENG_YT)) {
+					me.aap.fermata.addon.music.MusicPlayer.showYoutubeVideo(a);
+					return;
+				}
+				// A local video, from another tab (Favorites, Playlists): back to it, fullscreen.
+				var f = a.getActiveFragment();
+				var b = a.getBody();
+				if ((f != null) && (f.getFragmentId() != R.id.youtube_fragment) && (b != null)) {
+					b.setMode(me.aap.fermata.ui.view.BodyLayout.Mode.VIDEO);
+					return;
+				}
 			}
 		}
 		var vv = a.getActiveVideoView();

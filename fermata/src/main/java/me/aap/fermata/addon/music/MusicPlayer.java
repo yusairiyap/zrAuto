@@ -495,17 +495,12 @@ public final class MusicPlayer {
 		// there was no cover at all.
 		boolean covered = watch && a.isVideoMode();
 		if (covered) a.fadeToBlackForYoutube();
-		// Watched: the YouTube tab is shown first and the video loads into the page while it is on screen, the order a video
-		// that is not downloaded takes when it is played as video from a list (MainActivityDelegate#playExternally), whose
-		// fullscreen always came. Loaded into the hidden page and shown afterwards, the page took no fullscreen request.
-		if (watch) a.showFragment(R.id.youtube_fragment);
 		if (!h.play(a, t)) {
 			if (covered) a.liftVideoSwitchFade();
 			return false;
 		}
-		// Showing the YouTube tab ends music mode (see YoutubeFragment#switchingFrom), and its video goes fullscreen once
-		// it plays (showVideo waits for that: the page is still loading it now).
-		if (watch) h.showVideo(a);
+		// Showing the YouTube tab ends music mode (see YoutubeFragment#switchingFrom).
+		if (watch) a.showFragment(R.id.youtube_fragment);
 		return true;
 	}
 
@@ -1059,10 +1054,7 @@ public final class MusicPlayer {
 	 */
 	public static void toggleMusicVideo(MainActivityDelegate a) {
 		if (canSwitchToVideo(a.getMediaSessionCallback())) {
-			if (watchBlocked(getCurrentTrack(a.getMediaSessionCallback()))) return;
-			// Into the video through black, the same fade as the Music tab's Video button.
-			a.getPlaybackDelegate().fadeToBlackForVideo();
-			switchToVideo(a);
+			watchCurrent(a);
 		} else {
 			playCurrentAsMusic(a);
 		}
@@ -1086,12 +1078,22 @@ public final class MusicPlayer {
 		MediaSessionCallback cb = a.getMediaSessionCallback();
 		MusicTrackItem t = getCurrentTrack(cb);
 		if ((t != null) && id.equals(t.getVideoId()) && canSwitchToVideo(cb)) {
-			toggleMusicVideo(a);
+			watchCurrent(a);
 			return true;
 		}
 		DiagnosticLog.log(LogCat.MUSIC, "play as video: streamed, the download is sound only", "id=" + id);
 		YtOffline.forceStream(id);
 		return false;
+	}
+
+	/**
+	 * The video of what plays as music (the caller has checked {@link #canSwitchToVideo}), through black, the same fade as
+	 * the Music tab's Video button; offline, a song downloaded as sound only only says why it can't.
+	 */
+	public static void watchCurrent(MainActivityDelegate a) {
+		if (watchBlocked(getCurrentTrack(a.getMediaSessionCallback()))) return;
+		a.getPlaybackDelegate().fadeToBlackForVideo();
+		switchToVideo(a);
 	}
 
 	/**

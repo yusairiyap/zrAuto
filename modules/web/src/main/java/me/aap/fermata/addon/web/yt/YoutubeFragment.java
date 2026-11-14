@@ -865,48 +865,6 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 		if ((chrome != null) && !DEFAULT_URLS.contains(getUrl())) chrome.enterFullScreen();
 	}
 
-	// Uptime ms until which enterVideoFullScreenWhenReady() keeps waiting for the page's video.
-	private long fullScreenWantedUntil;
-
-	/**
-	 * enterVideoFullScreen() once the page's video plays: when the tab is shown for a video it is still loading (a song
-	 * downloaded as sound only, watched streamed), asking at once found nothing to put fullscreen, and the playable change
-	 * that would have done it came while the session still said "connecting". Looks every 250 ms for up to 10 s.
-	 */
-	void enterVideoFullScreenWhenReady() {
-		boolean first = fullScreenWantedUntil < android.os.SystemClock.uptimeMillis();
-		fullScreenWantedUntil = android.os.SystemClock.uptimeMillis() + 10000;
-		if (first) fullScreenWhenReady();
-	}
-
-	private void fullScreenWhenReady() {
-		FermataWebView v = getWebView();
-		FermataChromeClient chrome = (v != null) ? v.getWebChromeClient() : null;
-		if ((chrome == null) || chrome.isFullScreen() || isHidden() || MusicPlayer.isYoutubeAudioMode()) {
-			fullScreenWantedUntil = 0;
-			return;
-		}
-		if (chrome.canEnterFullScreen()) {
-			fullScreenWantedUntil = 0;
-			DiagnosticLog.log(LogCat.YT, "fullscreen once the video plays");
-			enterVideoFullScreen();
-			// The page answers a granted request with onShowCustomView; nothing coming means it ignored it (the page's
-			// own "media fullscreen" trace says how).
-			v.postDelayed(() -> {
-				if (!chrome.isFullScreen() && !isHidden()) {
-					DiagnosticLog.w(LogCat.YT, "fullscreen asked, the page did not go fullscreen");
-				}
-			}, 2500);
-			return;
-		}
-		if (android.os.SystemClock.uptimeMillis() >= fullScreenWantedUntil) {
-			fullScreenWantedUntil = 0;
-			DiagnosticLog.w(LogCat.YT, "fullscreen wanted, the video never played");
-			return;
-		}
-		v.postDelayed(this::fullScreenWhenReady, 250);
-	}
-
 	@Override
 	public void onPlayableChanged(MediaLib.PlayableItem oldItem, MediaLib.PlayableItem newItem) {
 		if (searchPanel != null) searchPanel.reloadList();
