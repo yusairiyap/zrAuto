@@ -86,13 +86,18 @@ public enum Action {
 			me.aap.fermata.addon.music.MusicPlayer.toggleMusicVideo(a);
 			return;
 		}
-		if (!a.isVideoMode() && a.isVideoPlaying() && (f != null) &&
-				(f.getFragmentId() != R.id.youtube_fragment)) {
+		// YouTube's video playing but not fullscreen, the YouTube tab in front included: its page's fullscreen, once the
+		// video plays. Left to the active VideoView below, that could be the local player's (the last one to go
+		// fullscreen, e.g. a downloaded file), which has no fullscreen of its own, so only the status bar was hidden.
+		if (!a.isVideoMode() && a.isVideoPlaying()) {
 			var eng = a.getMediaSessionCallback().getEngine();
 			if ((eng != null) && (eng.getId() == me.aap.fermata.media.pref.MediaPrefs.MEDIA_ENG_YT)) {
 				me.aap.fermata.addon.music.MusicPlayer.showYoutubeVideo(a);
 				return;
 			}
+		}
+		if (!a.isVideoMode() && a.isVideoPlaying() && (f != null) &&
+				(f.getFragmentId() != R.id.youtube_fragment)) {
 			var b = a.getBody();
 			if (b != null) {
 				b.setMode(me.aap.fermata.ui.view.BodyLayout.Mode.VIDEO);
