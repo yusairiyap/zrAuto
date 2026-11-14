@@ -2,6 +2,7 @@ package me.aap.fermata.addon.web.yt;
 
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_AD_ENDED;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_AUDIO_TRACE;
+import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_ERR;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_AD_SHOWING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_CONTENT_PLAYING;
 import static me.aap.fermata.addon.web.yt.YoutubeJsInterface.JS_EVENT;
@@ -1345,53 +1346,32 @@ public class YoutubeWebView extends FermataWebView {
 		// rendering isn't paused while merely hidden (no explicit onPause()/pauseTimers() call), but
 		// Chromium can still defer/throttle a hidden page's own work, so whatever churn the original
 		// 1s budget was sized for a brief blip of can plausibly take noticeably longer here.
-		// The player's own <video> first: the page also has preview videos (see fermataScanForPreviewVideos), and the first
-		// <video> in the document can be one of those, whose fullscreen does nothing for the player. A fullscreen element the
-		// page still holds from an exit the app made (see exitPageFullScreen) is left first, or the request is ignored.
-		// Every outcome is traced (YT "media fullscreen" lines): a refused request used to leave no trace at all.
+		// The original request, unchanged (webkitRequestFullscreen first): a version asking requestFullscreen() first had it
+		// refused ("TypeError: not granted") on every path, even Play as video of a video that is not downloaded, which this
+		// one takes fullscreen. Only watched: the page's fullscreenchange / fullscreenerror are traced (YT "media fullscreen").
 		loadUrl("javascript:(function() {\n" +
 				"  function trace(m) { try { " + JS_EVENT + "(" + JS_AUDIO_TRACE + ", 'fullscreen: ' + m); } catch (e) {} }\n" +
-				"  function findVideo() {\n" +
-				"    var v = document.querySelector('#movie_player video') || document.querySelector('.html5-video-player video');\n" +
-				"    if (v) return v;\n" +
-				"    var all = document.querySelectorAll('video');\n" +
-				"    for (var i = 0; i < all.length; i++) if (!all[i].paused || (all[i].currentTime > 0)) return all[i];\n" +
-				"    return all.length ? all[0] : null;\n" +
-				"  }\n" +
-				"  function request(v) {\n" +
-				"    var info = 'videos=' + document.querySelectorAll('video').length + ' paused=' + v.paused +\n" +
-				"      ' size=' + v.clientWidth + 'x' + v.clientHeight + ' hidden=' + document.hidden;\n" +
-				"    try {\n" +
-				"      if (v.requestFullscreen) {\n" +
-				"        var p = v.requestFullscreen();\n" +
-				"        if (p && p.then) p.then(function() { trace('granted ' + info); },\n" +
-				"          function(e) {\n" +
-				"            trace('refused ' + (e && e.name) + ' ' + (e && e.message) + ' ' + info);\n" +
-				"            if (v.webkitRequestFullscreen) { try { v.webkitRequestFullscreen(); trace('webkit retry'); } catch (e2) {} }\n" +
-				"          });\n" +
-				"        else trace('asked ' + info);\n" +
-				"      } else if (v.webkitRequestFullscreen) { v.webkitRequestFullscreen(); trace('asked (webkit) ' + info); }\n" +
-				"      else trace('no requestFullscreen on the video');\n" +
-				"    } catch (e) { trace('threw ' + e + ' ' + info); }\n" +
+				"  if (!window.__fermataFsWatch) {\n" +
+				"    window.__fermataFsWatch = true;\n" +
+				"    ['fullscreenchange', 'webkitfullscreenchange'].forEach(function(t) { document.addEventListener(t, function() {\n" +
+				"      trace((document.fullscreenElement || document.webkitFullscreenElement) ? 'entered' : 'left'); }); });\n" +
+				"    ['fullscreenerror', 'webkitfullscreenerror'].forEach(function(t) { document.addEventListener(t, function() {\n" +
+				"      trace('error event ' + t); }); });\n" +
 				"  }\n" +
 				"  function tryFullscreen(attempt) {\n" +
-				"    var v = findVideo();\n" +
-				"    if (v == null) {\n" +
-				"      if (attempt < 25) setTimeout(function() { tryFullscreen(attempt + 1); }, 200);\n" +
-				"      else trace('no video element');\n" +
-				"      return;\n" +
+				"    var v = document.querySelector('video');\n" +
+				"    if (v != null) {\n" +
+				"      trace('asked attempt=' + attempt + ' videos=' + document.querySelectorAll('video').length + ' paused=' + v.paused +\n" +
+				"        ' size=' + v.clientWidth + 'x' + v.clientHeight + ' hidden=' + document.hidden);\n" +
+				"      if ('webkitRequestFullscreen' in v) v.webkitRequestFullscreen();\n" +
+				"      else if ('requestFullscreen' in v) v.requestFullscreen();\n" +
+				"      else " + JS_EVENT + "(" + JS_ERR + ", 'Method requestFullscreen not found in ' + v);\n" +
+				"    } else if (attempt < 25) {\n" +
+				"      setTimeout(function() { tryFullscreen(attempt + 1); }, 200);\n" +
+				"    } else {\n" +
+				"      trace('no video element');\n" +
+				"      " + JS_EVENT + "(" + JS_ERR + ", 'No video element found for requestFullscreen');\n" +
 				"    }\n" +
-				"    var fs = document.fullscreenElement || document.webkitFullscreenElement;\n" +
-				"    if (fs) {\n" +
-				"      trace('stale fullscreen element left first');\n" +
-				"      var done = function() { setTimeout(function() { request(findVideo() || v); }, 150); };\n" +
-				"      try {\n" +
-				"        if (document.exitFullscreen) document.exitFullscreen().then(done, done);\n" +
-				"        else { document.webkitExitFullscreen(); done(); }\n" +
-				"      } catch (e) { done(); }\n" +
-				"      return;\n" +
-				"    }\n" +
-				"    request(v);\n" +
 				"  }\n" +
 				"  tryFullscreen(0);\n" +
 				"})();");
