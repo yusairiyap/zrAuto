@@ -35,11 +35,6 @@ public class YoutubeJsInterface extends FermataJsInterface {
 	public static final int JS_VIDEO_QUEUE = JS_LAST + 14;
 	/** What the video element did in the seconds after a switch (data = a short line), for the log. */
 	public static final int JS_AUDIO_TRACE = JS_LAST + 15;
-	/**
-	 * The page refused a fullscreen request for want of a user gesture (data = "x,y", the video's centre as fractions of
-	 * the page's width and height): see YoutubeWebView#tapForFullScreen().
-	 */
-	public static final int JS_FULLSCREEN_TAP = JS_LAST + 16;
 	private final YoutubeMediaEngine engine;
 	private Promise<String> result;
 
@@ -121,9 +116,6 @@ public class YoutubeJsInterface extends FermataJsInterface {
 				} else {
 					me.aap.fermata.util.DiagnosticLog.d(me.aap.fermata.util.LogCat.YT, "media trace", "trace=" + data);
 				}
-				break;
-			case JS_FULLSCREEN_TAP:
-				if (getWebView() instanceof YoutubeWebView w) w.tapForFullScreen(data);
 				break;
 			case JS_VIDEO_QUEUE:
 				Log.d("Video queued from the page's menu: ", data);
