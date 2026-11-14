@@ -890,6 +890,13 @@ public class YoutubeFragment extends WebBrowserFragment implements FermataServic
 			fullScreenWantedUntil = 0;
 			DiagnosticLog.log(LogCat.YT, "fullscreen once the video plays");
 			enterVideoFullScreen();
+			// The page answers a granted request with onShowCustomView; nothing coming means it ignored it (the page's
+			// own "media fullscreen" trace says how).
+			v.postDelayed(() -> {
+				if (!chrome.isFullScreen() && !isHidden()) {
+					DiagnosticLog.w(LogCat.YT, "fullscreen asked, the page did not go fullscreen");
+				}
+			}, 2500);
 			return;
 		}
 		if (android.os.SystemClock.uptimeMillis() >= fullScreenWantedUntil) {
