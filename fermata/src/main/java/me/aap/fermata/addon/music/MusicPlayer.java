@@ -499,8 +499,9 @@ public final class MusicPlayer {
 			if (covered) a.liftVideoSwitchFade();
 			return false;
 		}
-		// Showing the YouTube tab ends music mode (see YoutubeFragment#switchingFrom).
-		if (watch) a.showFragment(R.id.youtube_fragment);
+		// Showing the YouTube tab ends music mode (see YoutubeFragment#switchingFrom), and its video goes fullscreen once
+		// it plays (showVideo waits for that: the page is still loading it now).
+		if (watch) h.showVideo(a);
 		return true;
 	}
 

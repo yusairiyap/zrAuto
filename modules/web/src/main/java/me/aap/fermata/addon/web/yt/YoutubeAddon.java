@@ -265,7 +265,7 @@ public class YoutubeAddon extends WebBrowserAddon
 			// The video keeps playing through the tab switch, so nothing else would take it
 			// fullscreen (see YoutubeFragment#onPlayableChanged): done once the tab is showing.
 			if (a.showFragment(getFragmentId()) instanceof YoutubeFragment f) {
-				a.post(f::enterVideoFullScreen);
+				a.post(f::enterVideoFullScreenWhenReady);
 			}
 		}
 
