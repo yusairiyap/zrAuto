@@ -1346,13 +1346,70 @@ public class YoutubeWebView extends FermataWebView {
 		// rendering isn't paused while merely hidden (no explicit onPause()/pauseTimers() call), but
 		// Chromium can still defer/throttle a hidden page's own work, so whatever churn the original
 		// 1s budget was sized for a brief blip of can plausibly take noticeably longer here.
+		// Android 17's WebView: a fullscreen the app asks for by itself is refused by the browser side ("not granted": it
+		// wants a real touch on the page; only the page's own fullscreen button still worked). With the workaround on
+		// (YoutubeAddon#fullscreenTap), a refusal makes the page wait for one tap and tell the app (JS_FULLSCREEN_TAP ->
+		// tapForFullScreen), which gives it one on the video: the page asks again inside that tap's touchend and click, and
+		// swallows the tap (capture phase on window), so YouTube's player never sees it. Once a refusal was seen
+		// (fullScreenNeedsTap) the tap comes first, without the failed try. Refusals and the outcome are traced
+		// (YT "media fullscreen").
+		boolean tap = getAddon().fullscreenTap();
 		loadUrl("javascript:(function() {\n" +
+				"  var canTap = " + tap + ", tapFirst = " + (tap && fullScreenNeedsTap) + ";\n" +
+				"  function trace(m) { try { " + JS_EVENT + "(" + JS_AUDIO_TRACE + ", 'fullscreen: ' + m); } catch (e) {} }\n" +
+				"  function fsEl() { return document.fullscreenElement || document.webkitFullscreenElement; }\n" +
+				"  function ask(v) {\n" +
+				"    if ('webkitRequestFullscreen' in v) v.webkitRequestFullscreen();\n" +
+				"    else if ('requestFullscreen' in v) v.requestFullscreen();\n" +
+				"    else " + JS_EVENT + "(" + JS_ERR + ", 'Method requestFullscreen not found in ' + v);\n" +
+				"  }\n" +
+				"  function waitForTap(v) {\n" +
+				"    window.__fermataFsTap = {until: Date.now() + 2000, asked: 0};\n" +
+				"    var r = v.getBoundingClientRect(), w = window.innerWidth || 1, h = window.innerHeight || 1;\n" +
+				"    var x = Math.min(0.95, Math.max(0.05, (r.left + r.width / 2) / w));\n" +
+				"    var y = Math.min(0.95, Math.max(0.05, (r.top + r.height / 2) / h));\n" +
+				"    " + JS_EVENT + "(" + YoutubeJsInterface.JS_FULLSCREEN_TAP + ", x.toFixed(3) + ',' + y.toFixed(3));\n" +
+				"  }\n" +
+				"  if (!window.__fermataFsHooks) {\n" +
+				"    window.__fermataFsHooks = true;\n" +
+				"    var onTouch = function(e) {\n" +
+				"      var t = window.__fermataFsTap;\n" +
+				"      if (!t) return;\n" +
+				"      if (Date.now() > t.until) { window.__fermataFsTap = null; return; }\n" +
+				"      e.stopImmediatePropagation();\n" +
+				"      if ((e.type === 'click') && e.cancelable) e.preventDefault();\n" +
+				"      if ((e.type === 'touchend') || (e.type === 'click')) {\n" +
+				"        var v = document.querySelector('video');\n" +
+				"        if (v && !fsEl()) { t.asked++; ask(v); }\n" +
+				// The tap is over with its click (or shortly after its touchend, should no click follow).
+				"        t.until = Math.min(t.until, Date.now() + ((e.type === 'click') ? 100 : 500));\n" +
+				"      }\n" +
+				"    };\n" +
+				"    ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'mousedown', 'mouseup', 'click'].forEach(function(n) {\n" +
+				"      window.addEventListener(n, onTouch, {capture: true, passive: false});\n" +
+				"    });\n" +
+				"    ['fullscreenchange', 'webkitfullscreenchange'].forEach(function(n) { document.addEventListener(n, function() {\n" +
+				"      var t = window.__fermataFsTap;\n" +
+				"      if (fsEl() && t && t.asked) trace('entered with the tap');\n" +
+				"    }); });\n" +
+				"    ['fullscreenerror', 'webkitfullscreenerror'].forEach(function(n) { document.addEventListener(n, function() {\n" +
+				"      var f = window.__fermataFsRefused;\n" +
+				"      if (f) f();\n" +
+				"    }); });\n" +
+				"  }\n" +
 				"  function tryFullscreen(attempt) {\n" +
 				"    var v = document.querySelector('video');\n" +
 				"    if (v != null) {\n" +
-				"      if ('webkitRequestFullscreen' in v) v.webkitRequestFullscreen();\n" +
-				"      else if ('requestFullscreen' in v) v.requestFullscreen();\n" +
-				"      else " + JS_EVENT + "(" + JS_ERR + ", 'Method requestFullscreen not found in ' + v);\n" +
+				"      window.__fermataFsRefused = function() {\n" +
+				"        var t = window.__fermataFsTap;\n" +
+				"        if (t && (Date.now() > t.until + 1000)) t = window.__fermataFsTap = null;\n" +
+				"        if (t && t.asked) { if (t.asked === 1) trace('refused with the tap too'); return; }\n" +
+				"        if (t) return;\n" +
+				"        trace('refused' + (canTap ? ', waiting for a tap' : ''));\n" +
+				"        if (canTap) waitForTap(v);\n" +
+				"      };\n" +
+				"      if (tapFirst) waitForTap(v);\n" +
+				"      else ask(v);\n" +
 				"    } else if (attempt < 25) {\n" +
 				"      setTimeout(function() { tryFullscreen(attempt + 1); }, 200);\n" +
 				"    } else {\n" +
@@ -1362,6 +1419,47 @@ public class YoutubeWebView extends FermataWebView {
 				"  tryFullscreen(0);\n" +
 				"})();");
 		return true;
+	}
+
+	/** A fullscreen request was refused in this process: the tap comes first from then on (see requestFullScreen()). */
+	private static boolean fullScreenNeedsTap;
+	private long lastFullScreenTap;
+
+	/**
+	 * The page waits for a tap to ask for fullscreen again (see requestFullScreen()): one touch on the video
+	 * ({@code data} = "x,y", fractions of the page), which the page swallows. Not while the page is off screen or already
+	 * fullscreen, and at most one a second: the page is then told to stop waiting, or it would swallow the user's own touch.
+	 */
+	void tapForFullScreen(@Nullable String data) {
+		fullScreenNeedsTap = true;
+		long now = android.os.SystemClock.uptimeMillis();
+		FermataChromeClient chrome = getWebChromeClient();
+		if (((now - lastFullScreenTap) < 1000) || !isShown() || (getWidth() == 0) || (getHeight() == 0) ||
+				((chrome != null) && chrome.isFullScreen())) {
+			evaluateJavascript("window.__fermataFsTap = null;", null);
+			return;
+		}
+		lastFullScreenTap = now;
+		float fx = 0.5f, fy = 0.5f;
+		try {
+			String[] xy = (data == null) ? new String[0] : data.split(",");
+			if (xy.length == 2) {
+				fx = Float.parseFloat(xy[0]);
+				fy = Float.parseFloat(xy[1]);
+			}
+		} catch (NumberFormatException ignore) {
+		}
+		float x = fx * getWidth();
+		float y = fy * getHeight();
+		touch(android.view.MotionEvent.ACTION_DOWN, now, now, x, y);
+		postDelayed(() -> touch(android.view.MotionEvent.ACTION_UP, now, android.os.SystemClock.uptimeMillis(), x, y), 40);
+	}
+
+	private void touch(int action, long downTime, long time, float x, float y) {
+		android.view.MotionEvent e = android.view.MotionEvent.obtain(downTime, time, action, x, y, 0);
+		e.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
+		dispatchTouchEvent(e);
+		e.recycle();
 	}
 
 	@Override
