@@ -142,7 +142,6 @@ public final class TransitionController {
 		boolean first = lastId == null;
 		boolean same = key.equals(lastId);
 		lastId = key;
-		DiagnosticLog.d(LogCat.MUSIC, "transition screen: song started", "key=" + key, "same=" + same, "first=" + first);
 		if (same) return;
 
 		if (delegates.isEmpty()) {
@@ -152,8 +151,10 @@ public final class TransitionController {
 		for (MainActivityDelegate a : delegates) {
 			boolean car = a.getAppActivity().isCarActivity();
 			TransitionConfig c = TransitionConfig.load(car);
-			if (!c.on || (first && !c.firstSong)) {
-				DiagnosticLog.d(LogCat.MUSIC, "transition screen skipped", "car=" + car, "on=" + c.on, "first=" + first);
+			// Switched off is not news: only a skip of a screen that is on is logged.
+			if (!c.on) continue;
+			if (first && !c.firstSong) {
+				DiagnosticLog.d(LogCat.MUSIC, "transition screen skipped", "car=" + car, "first=" + first);
 				continue;
 			}
 			boolean video = a.isVideoMode();

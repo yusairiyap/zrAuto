@@ -1132,6 +1132,12 @@ public class MainActivityDelegate extends ActivityDelegate
 		});
 	}
 
+	/** "Class.method" of a stack frame: a release build's file name is a long map id that says nothing in the log. */
+	private static String frameName(StackTraceElement e) {
+		String c = e.getClassName();
+		return c.substring(c.lastIndexOf('.') + 1) + '.' + e.getMethodName();
+	}
+
 	public void setVideoMode(boolean videoMode, @Nullable VideoView v) {
 		if (videoMode == this.videoMode) {
 			// The mode itself isn't changing, but getActiveVideoView() should still track whichever
@@ -1156,7 +1162,7 @@ public class MainActivityDelegate extends ActivityDelegate
 		if (!videoMode) {
 			// Who took the fullscreen away (the comment column's log says whether it was open).
 			StackTraceElement[] st = new Throwable().getStackTrace();
-			DiagnosticLog.log(LogCat.VIDEO, "left fullscreen", "commentsOpen=" + me.aap.fermata.ui.view.YoutubeCommentsView.isOpen(), "from=" + ((st.length > 2) ? (st[1] + " via " + st[2]) : "-"));
+			DiagnosticLog.log(LogCat.VIDEO, "left fullscreen", "commentsOpen=" + me.aap.fermata.ui.view.YoutubeCommentsView.isOpen(), "from=" + ((st.length > 2) ? (frameName(st[1]) + " via " + frameName(st[2])) : "-"));
 		}
 		ControlPanelView cp = getControlPanel();
 		videoBarsShown = false;

@@ -76,6 +76,8 @@ public class YoutubeAddon extends WebBrowserAddon
 			"480p", "360p", "240p", "144p"};
 	private static final Pref<BooleanSupplier> YT_SKIP_ADD = Pref.b("YT_SKIP_ADD", true);
 	private static final Pref<BooleanSupplier> YT_START_WARMUP = Pref.b("YT_START_WARMUP", true);
+	// Android 17: the page refuses a fullscreen the app asks for by itself, see YoutubeWebView#requestFullScreen().
+	private static final Pref<BooleanSupplier> YT_FULLSCREEN_TAP = Pref.b("YT_FULLSCREEN_TAP", true);
 	/** How many of the videos on the user's YouTube feed float around on the suggestions tab. */
 	static final Pref<IntSupplier> BUBBLES_COUNT = Pref.i("YT_BUBBLES_COUNT", 12);
 	static final int BUBBLES_TAP_AUTO = 0;
@@ -730,6 +732,10 @@ public class YoutubeAddon extends WebBrowserAddon
 		return getPreferenceStore().getBooleanPref(YT_START_WARMUP);
 	}
 
+	boolean fullscreenTap() {
+		return getPreferenceStore().getBooleanPref(YT_FULLSCREEN_TAP);
+	}
+
 	boolean warmupChanged(List<Pref<?>> prefs) {
 		return prefs.contains(YT_START_WARMUP);
 	}
@@ -936,6 +942,14 @@ public class YoutubeAddon extends WebBrowserAddon
 			o.pref = YT_START_WARMUP;
 			o.title = R.string.yt_start_warmup;
 			o.subtitle = R.string.yt_start_warmup_sub;
+			o.visibility = visibility;
+		});
+
+		set.addBooleanPref(o -> {
+			o.store = getPreferenceStore();
+			o.pref = YT_FULLSCREEN_TAP;
+			o.title = R.string.yt_fullscreen_tap;
+			o.subtitle = R.string.yt_fullscreen_tap_sub;
 			o.visibility = visibility;
 		});
 

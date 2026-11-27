@@ -1839,6 +1839,25 @@ Items marked resolved were tested OK on the device; the numbers are kept so refe
     tracker, Share, YouTube comments and captions, the lyrics page, the welcome wizard's restore, the Home layout on the car screen, and the
     stack manager, timer picks and widget size on Android Auto) were tested OK by the user.**
 
+## YouTube fullscreen on Android 17 (the page refuses a fullscreen the app asks for)
+
+Since Android 17's WebView, `webkitRequestFullscreen()` / `requestFullscreen()` run by the app (`YoutubeWebView#requestFullScreen`, a
+`javascript:` URL) is refused: `webkitfullscreenerror`, or the promise's `TypeError: not granted`, which is Chromium's *browser side*
+saying no (it wants a real touch on the page; the renderer side lets the call through). Only the page's own fullscreen button worked, and
+for a moment after leaving fullscreen (the rotation back allows one). That broke everything that goes fullscreen by itself: the Fullscreen
+action, Play as video, the Music tab's Video / Home's Watch, picture-in-picture (which enters fullscreen on the way).
+**Tried and useless, do not repeat**: asking later (once the video plays), showing the tab before loading the video, `requestFullscreen()`
+before the webkit one, asking the player's own `<video>`, leaving a stale fullscreen element first.
+**The workaround** (YouTube settings > "Fullscreen workaround (Android 17, experimental)", `YT_FULLSCREEN_TAP`, on by default): on a refusal
+the page waits for one tap and tells the app (`JS_FULLSCREEN_TAP`), `YoutubeWebView#tapForFullScreen` dispatches one touch on the video, the
+page asks again inside that tap's `touchend` and `click` and swallows the tap in the capture phase on `window` (YouTube's player never sees
+it). After the first refusal in a process the tap comes first (`fullScreenNeedsTap`). A first version asked at `pointerup` only and called
+`preventDefault()` on `touchstart`: refused. Log: `YT media fullscreen | trace=refused, waiting for a tap` then `entered with the tap` or
+`refused with the tap too`. **Not confirmed on a device.** If it is refused with the tap too, what is left is a fullscreen made by the app
+(the page's player stretched by CSS, the bars hidden by the app), a large change.
+The Fullscreen action (`Action.FULLSCREEN_TOGGLE`) goes to the video of a song playing as music (`MusicPlayer#watchCurrent`, shared with
+Play as music / video) and asks YouTube from any tab; Play as video of a song downloaded as sound only streams it (`MusicPlayer#prepareWatch`).
+
 ## PLAY log: a song ending and what follows (`util/PlayLog`, category `PLAY`)
 
 One trail for "a song ended, what played next", one `seq` per transition and `after=` ms since the end on every line:

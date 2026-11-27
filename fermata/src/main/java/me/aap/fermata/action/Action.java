@@ -75,24 +75,38 @@ public enum Action {
 	// Key bindings and the secondary FAB's action are persisted as ordinals, so new entries go at
 	// the end: inserting one mid-enum silently remaps every existing user's saved bindings.
 	FULLSCREEN_TOGGLE(R.string.action_fullscreen_toggle, a(a -> {
-		// From another tab (Favorites, Playlists) while a video plays: back to that video,
-		// fullscreen.
-		var f = a.getActiveFragment();
-		if (!a.isVideoMode() && a.isVideoPlaying() && (f != null) &&
-				(f.getFragmentId() != R.id.youtube_fragment)) {
-			var eng = a.getMediaSessionCallback().getEngine();
-			if ((eng != null) && (eng.getId() == me.aap.fermata.media.pref.MediaPrefs.MEDIA_ENG_YT)) {
-				me.aap.fermata.addon.music.MusicPlayer.showYoutubeVideo(a);
+		if (!a.isVideoMode()) {
+			var cb = a.getMediaSessionCallback();
+			// A song playing as music (YouTube in music mode, or a download played from its file, a sound-only one included):
+			// its video, as the Music tab's Video button does.
+			if (me.aap.fermata.addon.music.MusicPlayer.canSwitchToVideo(cb)) {
+				me.aap.fermata.addon.music.MusicPlayer.watchCurrent(a);
 				return;
 			}
-			var b = a.getBody();
-			if (b != null) {
-				b.setMode(me.aap.fermata.ui.view.BodyLayout.Mode.VIDEO);
-				return;
+			if (a.isVideoPlaying()) {
+				// YouTube's video, from any tab (its own included): the page's fullscreen. Left to the active VideoView below,
+				// that could be the local player's (no fullscreen of its own), which only hid the status bar.
+				var eng = cb.getEngine();
+				if ((eng != null) && (eng.getId() == me.aap.fermata.media.pref.MediaPrefs.MEDIA_ENG_YT)) {
+					me.aap.fermata.addon.music.MusicPlayer.showYoutubeVideo(a);
+					return;
+				}
+				// A local video, from another tab (Favorites, Playlists): back to it, fullscreen.
+				var f = a.getActiveFragment();
+				var b = a.getBody();
+				if ((f != null) && (f.getFragmentId() != R.id.youtube_fragment) && (b != null)) {
+					b.setMode(me.aap.fermata.ui.view.BodyLayout.Mode.VIDEO);
+					return;
+				}
 			}
 		}
 		var vv = a.getActiveVideoView();
-		boolean handled = (vv != null) && vv.toggleNativeFullscreen();
+		var playing = a.getMediaSessionCallback().getEngine();
+		// YouTube's own fullscreen only while YouTube is the player (or its video is up): its VideoView stays the active
+		// one after a local file took over, and toggling it then showed the paused page instead of anything fullscreen.
+		boolean native_ = (vv != null) && (a.isVideoMode() || (playing == null) ||
+				(playing.getId() == me.aap.fermata.media.pref.MediaPrefs.MEDIA_ENG_YT));
+		boolean handled = native_ && vv.toggleNativeFullscreen();
 		Log.d("FULLSCREEN_TOGGLE: activeVideoView=", vv, ", handled=", handled);
 		if (handled) return;
 		// A native handler above covers WebView-hosted video (YouTube); local video's VideoView has
