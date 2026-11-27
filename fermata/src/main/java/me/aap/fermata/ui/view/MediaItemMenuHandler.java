@@ -223,6 +223,7 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 			}
 
 			if ((pi.getParent() instanceof Playlist)) {
+				b.addItem(R.id.playlist_move_item, R.drawable.playlist_move, R.string.playlist_move);
 				b.addItem(R.id.playlist_remove_item, R.drawable.playlist_remove,
 						R.string.playlist_remove_item);
 			} else {
@@ -656,6 +657,10 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 			item.getLib().getFavorites().removeItem((PlayableItem) item);
 			f = getMainActivity().getMediaLibFragment(R.id.favorites_fragment);
 			if (f != null) f.reload();
+		} else if (id == R.id.playlist_move_item) {
+			if ((item instanceof PlayableItem pi) && (pi.getParent() instanceof Playlist from)) {
+				getMainActivity().showMoveToPlaylistDialog(i.getMenu(), from, Collections.singletonList(pi));
+			}
 		} else if (id == R.id.playlist_remove_item) {
 			getMainActivity().removeFromPlaylist((Playlist) requireNonNull(item.getParent()),
 					Collections.singletonList((PlayableItem) item));
