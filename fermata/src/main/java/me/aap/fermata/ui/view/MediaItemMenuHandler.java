@@ -223,6 +223,7 @@ public class MediaItemMenuHandler implements OverlayMenu.SelectionHandler {
 			}
 
 			if ((pi.getParent() instanceof Playlist)) {
+				a.addPlaylistMenu(b, completed(Collections.singletonList(pi)));
 				b.addItem(R.id.playlist_move_item, R.drawable.playlist_move, R.string.playlist_move);
 				b.addItem(R.id.playlist_remove_item, R.drawable.playlist_remove,
 						R.string.playlist_remove_item);
